@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { kullanici, isYonetici } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [defterLoading, setDefterLoading] = useState(true);
 
   const [yiUfeData, setYiUfeData] = useState<YiUfe[]>([]);
   const [kasaData, setKasaData] = useState<KasaHareketi[]>([]);
@@ -166,7 +167,10 @@ export default function DashboardPage() {
       setSigortaFirmalari(sfData as string[]);
       setSigortaAcenteler(acData as string[]);
 
-      // Şantiye defteri özetleri + son 5 gün detay
+      // Ana veriler hazır — sayfayı göster
+      setLoading(false);
+
+      // Şantiye defteri özetleri + son 5 gün detay (arka planda)
       try {
         const supabase = createClient();
         const santMapLocal = new Map<string, string>();
@@ -246,10 +250,11 @@ export default function DashboardPage() {
           setDefterDetaylar(detaylar.sort((a, b) => a.santiye_adi.localeCompare(b.santiye_adi, "tr")));
         }
       } catch { /* sessiz */ }
+      setDefterLoading(false);
     } catch (err) {
       console.error(err);
-    } finally {
       setLoading(false);
+      setDefterLoading(false);
     }
   }, [ayBitis, tumZamanBaslangic]);
 
@@ -625,7 +630,26 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
+  if (loading) return (
+    <div>
+      <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className={`bg-white rounded-xl border p-4 ${i >= 4 ? "md:col-span-2 lg:col-span-4" : ""}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-4 h-4 bg-gray-200 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-8 w-24 bg-gray-100 rounded animate-pulse" />
+              <div className="h-3 w-full bg-gray-100 rounded animate-pulse" />
+              <div className="h-3 w-3/4 bg-gray-100 rounded animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -934,7 +958,18 @@ export default function DashboardPage() {
             <NotebookPen size={18} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Şantiye Günlük Defteri (Son 5 Gün)</h3>
           </div>
-          {defterDetaylar.length === 0 ? (
+          {defterLoading ? (
+            <div className="bg-white rounded-lg border p-6">
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 flex-1 bg-gray-100 rounded animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : defterDetaylar.length === 0 ? (
             <div className="bg-white rounded-lg border p-8 text-center text-gray-400 text-sm">Defter verisi yok</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
