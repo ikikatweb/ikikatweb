@@ -2,7 +2,7 @@
 // Nakit gelir/gider bakiyeyi etkiler, kart harcamaları sadece kayıt olarak görünür
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -60,6 +60,10 @@ function tr(s: string): string {
 }
 
 export default function KasamuDefPage() {
+  return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}><KasaDefContent /></Suspense>;
+}
+
+function KasaDefContent() {
   const searchParams = useSearchParams();
   const { kullanici, isYonetici } = useAuth();
 

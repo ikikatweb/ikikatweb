@@ -459,7 +459,6 @@ export default function SantiyelerPage() {
         formatTarih(s.gecici_kabul_tarihi),
         formatTarih(s.kesin_kabul_tarihi),
         s.sozlesme_bedeli != null ? s.sozlesme_bedeli.toLocaleString("tr-TR") : null,
-        s.kesif_artisi_bedeli != null ? s.kesif_artisi_bedeli.toLocaleString("tr-TR") : null,
       ].filter(Boolean).join(" ").toLowerCase();
       return text.includes(q);
     }

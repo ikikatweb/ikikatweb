@@ -246,8 +246,7 @@ export default function IscilikTakibiPage() {
     const q = arama.toLowerCase();
     const text = [
       r.santiyeler?.is_adi, r.sicil_no,
-      r.baslangic_tarihi ? new Date(r.baslangic_tarihi).toLocaleDateString("tr-TR") : null,
-      r.santiyeler?.ihale_kayit_no,
+      r.baslangic_tarihi ? formatTarih(r.baslangic_tarihi) : null,
       r.santiyeler?.is_grubu,
     ].filter(Boolean).join(" ").toLowerCase();
     return text.includes(q);

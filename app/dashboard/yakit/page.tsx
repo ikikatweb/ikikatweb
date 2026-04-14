@@ -6,7 +6,7 @@
 "use client";
 
 import AracForm from "@/components/shared/arac-form";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar } from "@/lib/supabase/queries/araclar";
@@ -146,6 +146,10 @@ function hareketKey(h: { tarih: string; saat: string }): string {
 }
 
 export default function YakitPage() {
+  return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}><YakitPageContent /></Suspense>;
+}
+
+function YakitPageContent() {
   const yakitSearchParams = useSearchParams();
   const { kullanici, isYonetici } = useAuth();
 
