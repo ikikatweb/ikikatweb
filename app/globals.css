@@ -1,6 +1,17 @@
+/* Ana stil dosyası - İkikat Yönetim tema renkleri ve global stiller */
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+
+/* Tüm tablo başlıkları sayfa scroll'unda sabit kalır */
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+thead th {
+  background-color: inherit;
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -46,75 +57,49 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* İkikat özel renkler */
+  --color-navy: #1E3A5F;
+  --color-navy-light: #2a4f7a;
+  --color-navy-dark: #152d4a;
+  --color-orange: #F97316;
+  --color-orange-light: #fb923c;
+  --color-orange-dark: #ea580c;
+  --color-neutral: #F1F5F9;
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --background: #F1F5F9;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  --primary: #1E3A5F;
+  --primary-foreground: #ffffff;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #1E3A5F;
+  --muted: #e2e8f0;
+  --muted-foreground: #64748b;
+  --accent: #F97316;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #1E3A5F;
+  --chart-1: #1E3A5F;
+  --chart-2: #F97316;
+  --chart-3: #10b981;
+  --chart-4: #8b5cf6;
+  --chart-5: #f43f5e;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: #1E3A5F;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #F97316;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a4f7a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2a4f7a;
+  --sidebar-ring: #F97316;
 }
 
 @layer base {
@@ -126,5 +111,32 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Yazdırma stilleri - Yazışma evrağı PDF çıktısı için */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .evrak-print-area,
+  .evrak-print-area * {
+    visibility: visible;
+  }
+  .evrak-print-area {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+  }
+  .evrak-print-area .evrak-onizleme {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  @page {
+    size: A4;
+    margin: 0;
   }
 }
