@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const bugun = new Date();
   const ayBaslangic = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-01`;
   const ayBitis = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-${String(new Date(bugun.getFullYear(), bugun.getMonth()+1, 0).getDate()).padStart(2,"0")}`;
-  const tumZamanBaslangic = "2000-01-01";
+  const tumZamanBaslangic = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })();
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -202,24 +202,40 @@ export default function DashboardPage() {
             santiyeGruplu.get(d.santiye_id)!.push(d);
           }
 
+          // Tüm defter ID'lerini topla ve tek sorguda kayıtları çek
+          const tumDefterIds: string[] = [];
+          for (const defterler of santiyeGruplu.values()) {
+            for (const df of defterler.slice(0, 5)) tumDefterIds.push(df.id);
+          }
+
+          // Tek sorgu ile tüm kayıtları çek
+          const kayitMap = new Map<string, { yazan_id: string; icerik: string }[]>();
+          if (tumDefterIds.length > 0) {
+            const { data: tumKayitlar } = await supabase
+              .from("santiye_defteri_kayit")
+              .select("defter_id, yazan_id, icerik, sira")
+              .in("defter_id", tumDefterIds)
+              .order("sira", { ascending: true });
+            if (tumKayitlar) {
+              for (const k of tumKayitlar as { defter_id: string; yazan_id: string; icerik: string }[]) {
+                if (!kayitMap.has(k.defter_id)) kayitMap.set(k.defter_id, []);
+                const arr = kayitMap.get(k.defter_id)!;
+                if (arr.length < 5) arr.push(k);
+              }
+            }
+          }
+
           const detaylar: DefterDetay[] = [];
           for (const [sid, defterler] of santiyeGruplu) {
             const son5 = defterler.slice(0, 5);
-            // Her defter için kayıtları çek
             const gunler: DefterDetay["gunler"] = [];
             for (const df of son5) {
-              const { data: kayitData } = await supabase
-                .from("santiye_defteri_kayit")
-                .select("yazan_id, icerik")
-                .eq("defter_id", df.id)
-                .order("sira", { ascending: true })
-                .limit(5);
               const hava = [df.sicaklik, df.hava_durumu].filter(Boolean).join("/");
               gunler.push({
                 tarih: df.tarih,
                 hava,
                 sayfaNo: df.sayfa_no ?? 0,
-                kayitlar: (kayitData ?? []).map((k: { yazan_id: string; icerik: string }) => ({
+                kayitlar: (kayitMap.get(df.id) ?? []).map((k) => ({
                   yazan: kulMap.get(k.yazan_id) ?? "—",
                   icerik: k.icerik,
                 })),
