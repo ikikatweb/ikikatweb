@@ -27,14 +27,30 @@ type Props = {
 
 // Metin içindeki <b>, <i>, <u> tag'larını güvenli şekilde render et
 function sanitizeHtml(text: string): string {
-  // Sadece b, i, u tag'larına izin ver, diğer HTML'i escape et
-  return text
+  // Önce style attribute'lu tag'ları temiz tag'lara dönüştür
+  let clean = text
+    .replace(/<b\b[^>]*>/gi, "<b>")
+    .replace(/<i\b[^>]*>/gi, "<i>")
+    .replace(/<u\b[^>]*>/gi, "<u>")
+    .replace(/<\/b>/gi, "</b>")
+    .replace(/<\/i>/gi, "</i>")
+    .replace(/<\/u>/gi, "</u>");
+  // font-style: italic olan b tag'larını i'ye çevir
+  if (text.match(/<b[^>]*font-style:\s*italic/i)) {
+    clean = clean.replace(/<b>/gi, "<b><i>").replace(/<\/b>/gi, "</i></b>");
+  }
+  // text-decoration: underline olan tag'ları u'ya çevir
+  if (text.match(/<[^>]*text-decoration[^>]*underline/i)) {
+    clean = clean.replace(/<span[^>]*>/gi, "<u>").replace(/<\/span>/gi, "</u>");
+  }
+  // Diğer span tag'larını kaldır
+  clean = clean.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
+  // Kalan bilinmeyen tag'ları escape et, sadece b/i/u kalsın
+  clean = clean
     .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>")
-    .replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>")
-    .replace(/&lt;u&gt;/g, "<u>").replace(/&lt;\/u&gt;/g, "</u>");
+    .replace(/<(?!\/?[biu]>)/g, "&lt;")
+    .replace(/(?<![biu])>/g, "&gt;");
+  return clean;
 }
 
 export default function GidenEvrakOnIzleme({
@@ -53,7 +69,11 @@ export default function GidenEvrakOnIzleme({
   const aktifEkler = (ekler ?? []).filter((e) => e?.trim());
 
   // Metin paragraflarını ayır
-  const metinParagraflar = (metin ?? "").split("\n").filter((p) => p.trim());
+  const metinParagraflar = (metin ?? "")
+    .replace(/<span[^>]*style="[^"]*white-space:\s*pre[^"]*"[^>]*>[\s\t]*<\/span>/gi, "")
+    .replace(/<div>/gi, "\n").replace(/<\/div>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .split("\n").filter((p) => p.trim());
 
   return (
     <div
@@ -85,17 +105,20 @@ export default function GidenEvrakOnIzleme({
         )}
       </div>
 
+      {/* Çizgi — antet ile tarih arası */}
+      <hr style={{ border: "none", borderTop: "0.5px solid #aaa", margin: "0 0 0.4cm 0" }} />
+
       {/* ===== 2. TARİH — Sağa yaslı, 10pt, kalın ===== */}
       <div style={{ textAlign: "right", fontSize: "10pt", fontWeight: "bold", marginBottom: "0" }}>
         {evrakTarihi ? new Date(evrakTarihi).toLocaleDateString("tr-TR") : ""}
       </div>
 
-      {/* 2 boş satır */}
-      <div style={{ height: "2em" }} />
+      {/* 1 boş satır */}
+      <div style={{ height: "1em" }} />
 
-      {/* ===== 3. SAYI — Sola hizalı, Konu/İlgi ile aynı hizada ===== */}
+      {/* ===== 3. SAYI — 0.5cm soldan ===== */}
       {evrakSayiNo && (
-        <div style={{ fontSize: "10.5pt", marginBottom: "0.2cm", textAlign: "left", textIndent: "0" }}>
+        <div style={{ fontSize: "9.5pt", marginBottom: "0.2cm", textAlign: "left", paddingLeft: "0.5cm" }}>
           <span style={{ fontWeight: "bold" }}>Sayı:</span>&nbsp;&nbsp;{evrakSayiNo}
         </div>
       )}
@@ -103,20 +126,20 @@ export default function GidenEvrakOnIzleme({
       {/* ===== 4. MUHATAP — Ortalı, 11pt Bold ===== */}
       {muhatap && <MuhatapPrintBlock muhatap={muhatap} />}
 
-      {/* 3 boş satır */}
-      <div style={{ height: "3em" }} />
+      {/* 2 boş satır */}
+      <div style={{ height: "2em" }} />
 
-      {/* ===== 5. KONU — 10.5pt, sola hizalı ===== */}
-      <div style={{ fontSize: "10.5pt", textAlign: "left", marginBottom: "0", textIndent: "0" }}>
+      {/* ===== 5. KONU — 10.5pt, 0.5cm soldan ===== */}
+      <div style={{ fontSize: "10.5pt", textAlign: "left", marginBottom: "0", paddingLeft: "0.5cm" }}>
         <span style={{ fontWeight: "bold" }}>Konu:</span>&nbsp;{konu}
       </div>
 
       {/* 1 boş satır */}
       <div style={{ height: "1em" }} />
 
-      {/* ===== 6. İLGİ — 10.5pt, sola hizalı ===== */}
+      {/* ===== 6. İLGİ — 10.5pt, 0.5cm soldan ===== */}
       {aktifIlgi.length > 0 && (
-        <div style={{ fontSize: "10.5pt", textAlign: "left", paddingLeft: "3cm" }}>
+        <div style={{ fontSize: "10.5pt", textAlign: "left", paddingLeft: "0.5cm" }}>
           {aktifIlgi.map((satir, i) => (
             <div key={i} style={{ marginBottom: "1pt" }}>
               <span style={{ fontWeight: "bold" }}>
@@ -161,7 +184,7 @@ export default function GidenEvrakOnIzleme({
             <>
               <div style={{ fontWeight: "bold", paddingLeft: "1.25cm", marginBottom: "2pt" }}>Ek:</div>
               {aktifEkler.map((ek, i) => (
-                <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4" }}>
+                <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4", maxWidth: "50ch", wordWrap: "break-word" as const }}>
                   {i + 1}) {ek}
                 </div>
               ))}
@@ -172,7 +195,7 @@ export default function GidenEvrakOnIzleme({
         {kaseDahil && firma?.kase_url && (
           <div style={{ flexShrink: 0, marginRight: "1cm", marginTop: "-1cm" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "80px", width: "auto" }} />
+            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} />
           </div>
         )}
       </div>

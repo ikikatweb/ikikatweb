@@ -328,7 +328,7 @@ export default function GidenEvrakPage() {
 
       {/* Form Dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
+        <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Giden Evrak Düzenle" : "Yeni Giden Evrak"}</DialogTitle>
           </DialogHeader>

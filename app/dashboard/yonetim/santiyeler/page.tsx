@@ -322,11 +322,12 @@ export default function SantiyelerPage() {
     doc.setFont("helvetica", "normal");
 
     const head = [[
-      "No", tr("Is Tanimlari"), "Ekap Belge No", tr("Isin Adi"),
-      tr("Ihale Kayit No"), tr("Sozlesme Tarihi"),
+      "No", tr("Is Tanimlari"), tr("Ihale Kayit No"), "Durum",
+      "Ekap Belge No", tr("Isin Adi"),
+      tr("Sozlesme Tarihi"),
       "F.F. Dahil\nKalan Tutar", tr("Sozl. Fiy.\nGerceklesen"),
       tr("Gecici Kabul"), "Kesin Kabul", tr("Is Deneyim"),
-      "Durum", tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
+      tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
     ]];
 
     let startY = 20;
@@ -347,16 +348,16 @@ export default function SantiyelerPage() {
         body.push([
           String(si + 1),
           tr(s.is_grubu ?? "—"),
+          s.ihale_kayit_no ?? "—",
+          tr(getDurum(s)),
           s.ekap_belge_no ?? "—",
           tr(s.is_adi),
-          s.ihale_kayit_no ?? "—",
           formatTarih(s.sozlesme_tarihi),
           c.ffDahilKalan != null ? formatPara(c.ffDahilKalan) : "—",
           s.sozlesme_fiyatlariyla_gerceklesen != null ? formatPara(s.sozlesme_fiyatlariyla_gerceklesen) : "—",
           formatTarih(s.gecici_kabul_tarihi),
           formatTarih(s.kesin_kabul_tarihi),
           s.tasfiye_tarihi ? "—" : s.is_deneyim_url ? "Var" : "Yok",
-          tr(getDurum(s)),
           c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—",
           c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—",
         ]);
@@ -368,12 +369,12 @@ export default function SantiyelerPage() {
         headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 5.5, halign: "center" },
         columnStyles: {
           0: { cellWidth: 7, halign: "center" },
-          1: { halign: "center" },
-          2: { halign: "center" },
-          3: { cellWidth: 32, halign: "left" },
+          1: { halign: "left" },
+          2: { halign: "left" },
+          3: { halign: "left" },
           4: { halign: "center" },
-          5: { halign: "center" },
-          8: { halign: "center" },
+          5: { cellWidth: 32, halign: "left" },
+          6: { halign: "center" },
           9: { halign: "center" },
           10: { halign: "center" },
           11: { halign: "center" },

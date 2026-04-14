@@ -24,11 +24,18 @@ type Props = {
 };
 
 function sanitizeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>")
-    .replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>")
-    .replace(/&lt;u&gt;/g, "<u>").replace(/&lt;\/u&gt;/g, "</u>");
+  let clean = text
+    .replace(/<b\b[^>]*>/gi, "<b>").replace(/<i\b[^>]*>/gi, "<i>").replace(/<u\b[^>]*>/gi, "<u>")
+    .replace(/<\/b>/gi, "</b>").replace(/<\/i>/gi, "</i>").replace(/<\/u>/gi, "</u>");
+  if (text.match(/<b[^>]*font-style:\s*italic/i)) {
+    clean = clean.replace(/<b>/gi, "<b><i>").replace(/<\/b>/gi, "</i></b>");
+  }
+  clean = clean.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
+  clean = clean
+    .replace(/&/g, "&amp;")
+    .replace(/<(?!\/?[biu]>)/g, "&lt;")
+    .replace(/(?<![biu])>/g, "&gt;");
+  return clean;
 }
 
 export default function GelenEvrakOnIzleme({
@@ -37,7 +44,11 @@ export default function GelenEvrakOnIzleme({
   const ilgiHarfler = ["A", "B", "C", "D", "E", "F", "G", "H"];
   const ilgiSatirlari = ilgi ? ilgi.split("\n").map((s) => s.trim()).filter(Boolean) : [];
   const eklerSatirlari = ekler ? ekler.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-  const metinParagraflar = (icerik ?? "").split("\n").filter((p) => p.trim());
+  const metinParagraflar = (icerik ?? "")
+    .replace(/<span[^>]*style="[^"]*white-space:\s*pre[^"]*"[^>]*>[\s\t]*<\/span>/gi, "")
+    .replace(/<div>/gi, "\n").replace(/<\/div>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .split("\n").filter((p) => p.trim());
 
   return (
     <div className="evrak-onizleme bg-white mx-auto" style={{
@@ -59,32 +70,35 @@ export default function GelenEvrakOnIzleme({
         )}
       </div>
 
+      {/* Çizgi — antet ile tarih arası */}
+      <hr style={{ border: "none", borderTop: "0.5px solid #aaa", margin: "0 0 0.4cm 0" }} />
+
       {/* Tarih */}
       <div style={{ textAlign: "right", fontSize: "10pt", fontWeight: "bold" }}>
         {evrakTarihi ? new Date(evrakTarihi).toLocaleDateString("tr-TR") : ""}
       </div>
-      <div style={{ height: "2em" }} />
+      <div style={{ height: "1em" }} />
 
       {/* Sayı */}
       {evrakSayiNo && (
-        <div style={{ fontSize: "10.5pt", marginBottom: "0.2cm", textIndent: "3cm" }}>
+        <div style={{ fontSize: "9.5pt", marginBottom: "0.2cm", paddingLeft: "0.5cm" }}>
           <span style={{ fontWeight: "bold" }}>Sayı:</span>&nbsp;&nbsp;{evrakSayiNo}
         </div>
       )}
 
       {/* Muhatap */}
       {muhatap && <MuhatapPrintBlock muhatap={muhatap} />}
-      <div style={{ height: "3em" }} />
+      <div style={{ height: "2em" }} />
 
       {/* Konu */}
-      <div style={{ fontSize: "10.5pt", textAlign: "left", textIndent: "3cm" }}>
+      <div style={{ fontSize: "10.5pt", textAlign: "left", paddingLeft: "0.5cm" }}>
         <span style={{ fontWeight: "bold" }}>Konu:</span>&nbsp;{konu}
       </div>
       <div style={{ height: "1em" }} />
 
       {/* İlgi */}
       {ilgiSatirlari.length > 0 && (
-        <div style={{ fontSize: "10.5pt", textAlign: "left", paddingLeft: "0cm" }}>
+        <div style={{ fontSize: "10.5pt", textAlign: "left", paddingLeft: "0.5cm" }}>
           {ilgiSatirlari.map((satir, i) => (
             <div key={i} style={{ marginBottom: "1pt" }}>
               <span style={{ fontWeight: "bold" }}>
@@ -114,7 +128,7 @@ export default function GelenEvrakOnIzleme({
             <>
               <div style={{ fontWeight: "bold", paddingLeft: "1.25cm", marginBottom: "2pt" }}>Ek:</div>
               {eklerSatirlari.map((ek, i) => (
-                <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4" }}>{i + 1}) {ek}</div>
+                <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4", maxWidth: "50ch", wordWrap: "break-word" as const }}>{i + 1}) {ek}</div>
               ))}
             </>
           )}

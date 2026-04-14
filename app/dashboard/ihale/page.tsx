@@ -1114,32 +1114,34 @@ export default function IhalePage() {
     if (!hesap) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-    // Üst bilgi tablosu — Parametre | Değer
+    // Üst bilgi tablosu — 4 sütunlu düzen
     const ihaleTarihStr = ihaleTarihi ? ihaleTarihi.split("-").reverse().join(".") : "-";
-    const bilgiRows: string[][] = [
-      [tr("Idare Adi"), tr(idareAdi || "-")],
-      [tr("Isin Adi"), tr(isAdi || "-")],
-      ["IKN", tr(ihaleKayitNo || "-")],
-      [tr("Ihale Tarihi"), `${ihaleTarihStr}${ihaleSaati ? " " + ihaleSaati : ""}`],
-      [tr("Is Grubu"), tr(seciliIsGrubu || "-")],
-      [tr("Yaklasik Maliyet"), formatTL(ym)],
-      [tr("Sinir Deger"), formatTL(hesap.sinirDeger)],
-      ["N Katsayisi", nVal.toFixed(2)],
-      [tr("Muhtemel Kazanan"), tr(muhtemelKazanan?.firmaAdi ?? "-")],
-    ];
-    if (hasManualEdits) {
-      bilgiRows.push(["Durum", "DUZENLENDI"]);
-    }
+    const duzenlendi = hasManualEdits ? "DUZENLENDI" : "";
 
     autoTable(doc, {
       startY: 10,
-      head: [["Parametre", tr("Deger")]],
-      body: bilgiRows,
-      styles: { fontSize: 9, cellPadding: 2 },
-      headStyles: { fillColor: [30, 58, 95], textColor: 255 },
+      head: [[
+        { content: "", styles: {} },
+        { content: "", styles: {} },
+        { content: "", styles: {} },
+        { content: duzenlendi, styles: { halign: "right" } },
+      ]],
+      body: [
+        // İşin Adı — tek satır, 4 sütun birleşik
+        [{ content: tr("Isin Adi:  ") + tr(isAdi || "-"), colSpan: 4, styles: { fontStyle: "bold", fontSize: 10 } }],
+        // Yan yana 2'li satırlar
+        [{ content: tr("Idare Adi"), styles: { fontStyle: "bold" } }, tr(idareAdi || "-"), { content: "IKN", styles: { fontStyle: "bold" } }, tr(ihaleKayitNo || "-")],
+        [{ content: tr("Ihale Tarihi"), styles: { fontStyle: "bold" } }, `${ihaleTarihStr}${ihaleSaati ? " " + ihaleSaati : ""}`, { content: tr("Is Grubu"), styles: { fontStyle: "bold" } }, tr(seciliIsGrubu || "-")],
+        [{ content: tr("Yaklasik Maliyet"), styles: { fontStyle: "bold" } }, formatTL(ym), { content: tr("Sinir Deger"), styles: { fontStyle: "bold" } }, formatTL(hesap.sinirDeger)],
+        [{ content: "N Katsayisi", styles: { fontStyle: "bold" } }, nVal.toFixed(2), "", ""],
+        // Muhtemel Kazanan — tek satır
+        [{ content: tr("Muhtemel Kazanan:  ") + tr(muhtemelKazanan?.firmaAdi ?? "-") + (muhtemelKazanan ? "  (" + formatTL(muhtemelKazanan.teklif) + ")" : ""), colSpan: 4, styles: { fontStyle: "bold", fillColor: [255, 237, 213] } }],
+      ],
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 8 },
       columnStyles: {
-        0: { fontStyle: "bold", cellWidth: 45 },
-        1: { cellWidth: 135 },
+        0: { fontStyle: "bold", cellWidth: 35 },
+        2: { fontStyle: "bold", cellWidth: 35 },
       },
       theme: "grid",
     });

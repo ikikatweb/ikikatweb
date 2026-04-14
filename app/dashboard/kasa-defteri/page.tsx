@@ -377,7 +377,7 @@ function KasaDefContent() {
       let kisiGelir = 0, kisiGider = 0, sonBakiye: number | null = null;
       for (const h of kayitlar) {
         pdfBody.push([
-          h.tarih,
+          h.tarih ? h.tarih.split("-").reverse().join(".") : "—",
           tr(kisiAd),
           tr(santiyeMap.get(h.santiye_id) ?? "—"),
           tr(h.aciklama ?? "—"),
@@ -520,7 +520,7 @@ function KasaDefContent() {
   function exportExcel() {
     const headers = ["Tarih", "Personel", "Şantiye", "Açıklama", "Tip", "Ödeme", "Kategori", "Gelir (+)", "Gider (−)", "Bakiye"];
     const data = filtrelenmis.map((h) => [
-      h.tarih,
+      h.tarih ? h.tarih.split("-").reverse().join(".") : "—",
       personelMap.get(h.personel_id)?.ad_soyad ?? "",
       santiyeMap.get(h.santiye_id) ?? "",
       h.aciklama ?? "",

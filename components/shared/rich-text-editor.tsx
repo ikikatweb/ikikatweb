@@ -63,6 +63,30 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
     if (e.ctrlKey && e.key === "i") { e.preventDefault(); execCmd("italic"); }
     if (e.ctrlKey && e.key === "u") { e.preventDefault(); execCmd("underline"); }
     if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
+    // Enter'a basıldığında: doğal paragraf oluşsun, sonra tab ekle
+    if (e.key === "Enter" && !e.shiftKey) {
+      // Doğal davranışa izin ver, sonra tab ekle
+      setTimeout(() => {
+        document.execCommand("insertText", false, "\t");
+        handleInput();
+      }, 0);
+    }
+  }
+
+  // İlk karakter girildiğinde tab + büyük harf
+  function handleBeforeInput(e: React.FormEvent<HTMLDivElement>) {
+    const el = editorRef.current;
+    if (!el) return;
+    const inputEvent = e.nativeEvent as InputEvent;
+    const data = inputEvent.data;
+    if (!data) return;
+    const text = el.textContent ?? "";
+    if (text.length === 0) {
+      e.preventDefault();
+      document.execCommand("insertText", false, "\t" + data.toUpperCase());
+      isInternalChange.current = true;
+      onChange(el.innerHTML);
+    }
   }
 
   function btnClass(active: boolean) {
@@ -97,6 +121,7 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
         suppressContentEditableWarning
         onInput={handleInput}
         onKeyDown={handleKeyDown}
+        onBeforeInput={handleBeforeInput}
         onMouseUp={updateActiveStates}
         onKeyUp={updateActiveStates}
         data-placeholder={placeholder}

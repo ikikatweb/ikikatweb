@@ -35,8 +35,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   ClipboardList, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight,
-  Check, X as XIcon, Trash2, CalendarX, Stethoscope, Sun, Lock,
-  Briefcase, CloudRain,
+  Check, X as XIcon, Trash2, Plane, Cross, Sun, Lock,
+  Car, CloudRain, Clock3,
   Link2, Link2Off, ArrowRight, ArrowLeft as ArrowLeftIcon, UserPlus,
 } from "lucide-react";
 import jsPDF from "jspdf";
@@ -70,11 +70,11 @@ type DurumBilgi = {
 
 const DURUM_LISTESI: DurumBilgi[] = [
   { kod: "calisti",     label: "Çalıştı",      bgClass: "bg-emerald-500", textClass: "text-emerald-700", pdfShort: "+",  pdfRGB: [16, 185, 129],  aciklamaZorunlu: false, IconComponent: Check },
-  { kod: "yarim_gun",   label: "Yarım Gün",    bgClass: "bg-lime-500",    textClass: "text-lime-700",    pdfShort: "½",  pdfRGB: [132, 204, 22],  aciklamaZorunlu: false, IconComponent: () => <span className="font-bold">½</span> },
+  { kod: "yarim_gun",   label: "Yarım Gün",    bgClass: "bg-lime-500",    textClass: "text-lime-700",    pdfShort: "½",  pdfRGB: [132, 204, 22],  aciklamaZorunlu: false, IconComponent: Clock3 },
   { kod: "gelmedi",     label: "Gelmedi",      bgClass: "bg-red-500",     textClass: "text-red-700",     pdfShort: "-",  pdfRGB: [239, 68, 68],   aciklamaZorunlu: true,  IconComponent: XIcon },
-  { kod: "izinli",      label: "İzinli",       bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "I",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: CalendarX },
-  { kod: "raporlu",     label: "Raporlu",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "R",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: false, IconComponent: Stethoscope },
-  { kod: "dis_gorev",   label: "Dış Görev",    bgClass: "bg-indigo-500",  textClass: "text-indigo-700",  pdfShort: "D",  pdfRGB: [99, 102, 241],  aciklamaZorunlu: false, IconComponent: Briefcase },
+  { kod: "izinli",      label: "İzinli",       bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "I",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: Plane },
+  { kod: "raporlu",     label: "Raporlu",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "R",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: false, IconComponent: Cross },
+  { kod: "dis_gorev",   label: "Dış Görev",    bgClass: "bg-indigo-500",  textClass: "text-indigo-700",  pdfShort: "D",  pdfRGB: [99, 102, 241],  aciklamaZorunlu: false, IconComponent: Car },
   { kod: "yagmur",      label: "Yağmur",       bgClass: "bg-sky-500",     textClass: "text-sky-700",     pdfShort: "Y",  pdfRGB: [14, 165, 233],  aciklamaZorunlu: false, IconComponent: CloudRain },
   { kod: "resmi_tatil", label: "Resmi Tatil",  bgClass: "bg-cyan-500",    textClass: "text-cyan-700",    pdfShort: "T",  pdfRGB: [6, 182, 212],   aciklamaZorunlu: false, IconComponent: Sun },
 ];
@@ -830,7 +830,7 @@ export default function PersonelPuantajPage() {
       {/* Tablo */}
       {loading ? (
         <div className="space-y-3">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-10 bg-gray-200 rounded animate-pulse" />)}
+          {[...Array(4)].map((_, i) => <div key={i} className="h-[35px] bg-gray-200 rounded animate-pulse" />)}
         </div>
       ) : !santiyeId ? (
         <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
@@ -847,11 +847,11 @@ export default function PersonelPuantajPage() {
           <Table className="text-xs">
             <TableHeader>
               <TableRow className="bg-[#1E3A5F]">
-                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[200px]">Personel</TableHead>
+                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[120px] max-w-[140px]">Personel</TableHead>
                 {gunler.map((g) => (
                   <TableHead
                     key={g}
-                    className={`text-white text-[10px] text-center px-0 w-12 sm:w-8 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : ""}`}
+                    className={`text-white text-[10px] text-center px-0 min-w-[35px] w-[35px] ${gunHaftaSonu(g) ? "bg-[#2c5278]" : ""}`}
                     title={gunAdi(g)}
                   >
                     <div>{g}</div>
@@ -873,7 +873,7 @@ export default function PersonelPuantajPage() {
                 return (
                   <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-50/80" : ""}`}>
                     <TableCell className={`px-2 sticky left-0 z-10 border-r ${pasif ? "bg-gray-50/80" : "bg-white"}`}>
-                      <div className={`font-bold text-sm leading-tight ${pasif ? "text-gray-400" : ""}`}>
+                      <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                         {pasif && (
                           <span className="ml-2 inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded bg-gray-200 text-gray-500 align-middle">
@@ -881,7 +881,7 @@ export default function PersonelPuantajPage() {
                           </span>
                         )}
                       </div>
-                      <div className={`text-[10px] leading-tight truncate max-w-[190px] ${pasif ? "text-gray-400" : "text-gray-500"}`}>
+                      <div className={`text-[9px] leading-tight truncate max-w-[120px] ${pasif ? "text-gray-400" : "text-gray-500"}`}>
                         {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
                       </div>
                     </TableCell>
@@ -898,10 +898,10 @@ export default function PersonelPuantajPage() {
                         return (
                           <TableCell
                             key={g}
-                            className={`p-0 text-center w-12 sm:w-8 border-l border-gray-100 bg-gray-100/70 ${haftaSonu ? "bg-gray-200/70" : ""}`}
+                            className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-100/70 ${haftaSonu ? "bg-gray-200/70" : ""}`}
                           >
                             <div
-                              className="w-full h-10 sm:h-9 flex items-center justify-center text-gray-300"
+                              className="w-full h-[35px] flex items-center justify-center text-gray-300"
                               title="Personel pasif — puantaj işlenemez"
                             >
                               <Lock size={10} />
@@ -912,11 +912,11 @@ export default function PersonelPuantajPage() {
 
                       if (kilitli) {
                         return (
-                          <TableCell key={g} className={`p-0 text-center w-12 sm:w-8 border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                          <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                             <button
                               type="button"
                               onClick={() => hucreTikla(p, g)}
-                              className="w-full h-10 sm:h-9 flex items-center justify-center bg-gray-100 text-gray-400 cursor-not-allowed hover:bg-gray-150"
+                              className="w-full h-[35px] flex items-center justify-center bg-gray-100 text-gray-400 cursor-not-allowed hover:bg-gray-150"
                               title={`Bu personel ${digerCakisma!.santiye_adi} şantiyesinde puantajlı. Aynı personel aynı gün sadece 1 şantiyede olabilir.`}
                             >
                               <Lock size={11} />
@@ -926,7 +926,7 @@ export default function PersonelPuantajPage() {
                       }
 
                       return (
-                        <TableCell key={g} className={`p-0 text-center w-12 sm:w-8 border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                        <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                           <button
                             type="button"
                             onClick={() => hucreTikla(p, g)}
@@ -945,14 +945,14 @@ export default function PersonelPuantajPage() {
                               }
                             }}
                             onMouseLeave={() => setTooltip(null)}
-                            className={`relative w-full h-10 sm:h-9 text-xs font-bold transition-colors flex items-center justify-center ${
+                            className={`relative w-full h-[35px] text-xs font-bold transition-colors flex items-center justify-center ${
                               dBilgi
                                 ? `${dBilgi.bgClass} text-white hover:opacity-90`
                                 : "hover:bg-gray-200 text-gray-300"
                             }`}
                             title={!dBilgi ? `${g}.${ay} - Tıklayarak puantajla` : undefined}
                           >
-                            {dBilgi ? <dBilgi.IconComponent size={14} className="text-white" /> : ""}
+                            {dBilgi ? <dBilgi.IconComponent size={18} className="text-white" /> : ""}
                             {notVar && (
                               <span
                                 className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-yellow-300 border-l-[8px] border-l-transparent shadow-sm pointer-events-none"

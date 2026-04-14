@@ -78,9 +78,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     load();
   }, []);
 
-  // Firma veya muhatap değişince sayı no'yu yeniden üret (yeni evrakta)
+  // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {
-    if (isEdit) return;
+    // Düzenleme modunda: firma veya muhatap değişmediyse mevcut sayı no'yu koru
+    if (isEdit && firmaId === evrak?.firma_id && muhatapId === (evrak?.muhatap_id ?? "")) return;
     if (!firmaId) { setEvrakSayiNo(""); return; }
     let cancelled = false;
     (async () => {
@@ -129,13 +130,14 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     } catch { toast.error("Muhatap eklenemedi."); }
   }
 
+  function basHarfBuyuk(v: string) { return v.length === 1 ? v.toUpperCase() : v.charAt(0).toUpperCase() + v.slice(1); }
   function addIlgi() { setIlgiListesi((p) => [...p, ""]); }
   function removeIlgi(i: number) { setIlgiListesi((p) => p.filter((_, idx) => idx !== i)); }
-  function updateIlgi(i: number, v: string) { setIlgiListesi((p) => p.map((x, idx) => idx === i ? v : x)); }
+  function updateIlgi(i: number, v: string) { setIlgiListesi((p) => p.map((x, idx) => idx === i ? basHarfBuyuk(v) : x)); }
 
   function addEk() { setEkler((p) => [...p, ""]); }
   function removeEk(i: number) { setEkler((p) => p.filter((_, idx) => idx !== i)); }
-  function updateEk(i: number, v: string) { setEkler((p) => p.map((x, idx) => idx === i ? v : x)); }
+  function updateEk(i: number, v: string) { setEkler((p) => p.map((x, idx) => idx === i ? basHarfBuyuk(v) : x)); }
 
   // Metin değişince ilk paragraf otomatik tab + büyük harf
   function handleMetinChange(val: string) {
@@ -272,7 +274,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <div className="space-y-2">
           <Label>Evrak Sayı No</Label>
           <Input value={evrakSayiNo} disabled className="bg-gray-100 font-mono text-xs" />
-          <p className="text-[10px] text-gray-400">Firma + muhatap seçilince otomatik üretilir</p>
+          <p className="text-[10px] text-gray-400">Firma veya muhatap değiştiğinde otomatik güncellenir</p>
         </div>
         <div className="space-y-2">
           <Label>Kaşe</Label>
@@ -290,7 +292,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
       <div className="space-y-2">
         <Label>Konu <span className="text-red-500">*</span></Label>
-        <Input value={konu} onChange={(e) => setKonu(e.target.value)} placeholder="Evrak konusu" disabled={loading} />
+        <Input value={konu} onChange={(e) => setKonu(basHarfBuyuk(e.target.value))} placeholder="Evrak konusu" disabled={loading} />
       </div>
 
       {/* Muhatap - dropdown seçimli (firma/şantiye gibi) + ekle butonu */}

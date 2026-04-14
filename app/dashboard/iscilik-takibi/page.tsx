@@ -114,7 +114,7 @@ const COLUMNS: ColDef[] = [
       }
       return formatTarih(r.santiyeler?.is_bitim_tarihi ?? null);
     }, getRaw: () => null },
-  { key: "taseron_veri_isleme_tarihi", label: "Taşeron Veri\nİşleme", computed: true,
+  { key: "taseron_veri_isleme_tarihi", label: "Taşeron Son\nVeri Girişi", computed: true,
     getValue: (r) => r.taseron_veri_isleme_tarihi ? formatTarih(r.taseron_veri_isleme_tarihi) : "—", getRaw: () => null },
   { key: "son_veri_girisi_tarihi", label: "Son Veri\nGirişi", computed: true,
     getValue: (r) => r.son_veri_girisi_tarihi ? formatTarih(r.son_veri_girisi_tarihi) : "—", getRaw: () => null },
@@ -266,10 +266,18 @@ export default function IscilikTakibiPage() {
     doc.text("Iscilik Takibi", 14, 15);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(`Tarih: ${new Date().toLocaleDateString("tr-TR")}`, 14, 21);
+    doc.text(`Tarih: ${formatTarih(new Date().toISOString().slice(0, 10))}`, 14, 21);
 
-    const headers = COLUMNS.map((c) => tr(c.label.replace(/\n/g, " ")));
-    const body = filtrelenmis.map((r) => COLUMNS.map((c) => tr(c.getValue(r))));
+    // PDF'den gizlenecek sütunlar
+    const gizle = new Set(["sicil_no", "yatan_prim_yuzde", "sure_uzatimi"]);
+    const pdfColumns = COLUMNS.filter((c) => !gizle.has(c.key));
+
+    const headers = pdfColumns.map((c) => tr(c.label.replace(/\n/g, " ")));
+    const body = filtrelenmis.map((r) => pdfColumns.map((c) => tr(c.getValue(r))));
+
+    // Kalan prim ve iş bitim tarihi sütun index'leri
+    const kalanPrimIdx = pdfColumns.findIndex((c) => c.key === "kalan_prim");
+    const bitimTarihiIdx = pdfColumns.findIndex((c) => c.key === "is_bitim_tarihi");
 
     autoTable(doc, {
       startY: 25,
@@ -278,13 +286,54 @@ export default function IscilikTakibiPage() {
       styles: { fontSize: 5, cellPadding: 1 },
       headStyles: { fillColor: [30, 58, 95], fontSize: 5 },
       alternateRowStyles: { fillColor: [241, 245, 249] },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      didParseCell: (data: any) => {
+        if (data.section !== "body") return;
+        const row = filtrelenmis[data.row.index];
+        if (!row) return;
+        const colIdx = data.column.index - 1; // -1 çünkü ilk sütun "No"
+
+        // Kalan prim renklendirmesi
+        if (colIdx === kalanPrimIdx) {
+          const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+          const kesif = row.kesif_artisi ?? 0;
+          const ff = row.fiyat_farki ?? 0;
+          const oran = row.iscilik_orani ?? 0;
+          const yatacak = (bedel + kesif + ff) * oran / 100;
+          const kalan = yatacak - (row.yatan_prim ?? 0);
+          if (kalan < 0) data.cell.styles.textColor = [220, 38, 38];
+          else if (kalan > 0) { data.cell.styles.textColor = [0, 0, 0]; data.cell.styles.fontStyle = "bold"; }
+        }
+
+        // İş bitim tarihi renklendirmesi
+        if (colIdx === bitimTarihiIdx) {
+          let bitimStr: string | null = null;
+          if (row.baslangic_tarihi && row.sure_text) {
+            const toplam = row.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
+            if (toplam > 0) {
+              const d = new Date(row.baslangic_tarihi);
+              d.setDate(d.getDate() + toplam);
+              bitimStr = d.toISOString().split("T")[0];
+            }
+          } else {
+            bitimStr = row.santiyeler?.is_bitim_tarihi ?? null;
+          }
+          if (bitimStr) {
+            const kalanGun = Math.ceil((new Date(bitimStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            if (kalanGun <= 30) data.cell.styles.textColor = [220, 38, 38];
+            else if (kalanGun <= 60) data.cell.styles.textColor = [249, 115, 22];
+          }
+        }
+      },
     });
     doc.save("iscilik-takibi.pdf");
   }
 
   function exportExcel() {
-    const headers = ["No", ...COLUMNS.map((c) => c.label.replace(/\n/g, " "))];
-    const data = filtrelenmis.map((r, i) => [i + 1, ...COLUMNS.map((c) => c.getValue(r))]);
+    const gizle = new Set(["sicil_no", "yatan_prim_yuzde", "sure_uzatimi"]);
+    const excelColumns = COLUMNS.filter((c) => !gizle.has(c.key));
+    const headers = ["No", ...excelColumns.map((c) => c.label.replace(/\n/g, " "))];
+    const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => c.getValue(r))]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 2, 12) }));
     const wb = XLSX.utils.book_new();
@@ -402,7 +451,7 @@ export default function IscilikTakibiPage() {
                 const gk = row.santiyeler?.gecici_kabul_tarihi;
                 const isPasif = !!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000;
                 return (
-                <TableRow key={row.id} className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : "hover:bg-gray-50"}`}>
+                <TableRow key={row.id} className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
                   <TableCell className="text-center px-2 text-gray-500">{idx + 1}</TableCell>
                   {COLUMNS.map((col) => {
                     const isEditing = editing?.id === row.id && editing?.field === col.key;
@@ -417,7 +466,7 @@ export default function IscilikTakibiPage() {
                       const yatacak = (bedel + kesif + ff) * oran / 100;
                       const kalan = yatacak - (row.yatan_prim ?? 0);
                       if (kalan < 0) kalanPrimClass = " text-red-600 font-bold";
-                      else if (kalan > 0) kalanPrimClass = " font-bold";
+                      else if (kalan > 0) kalanPrimClass = " text-gray-900 font-bold";
                     }
 
                     // İş bitim tarihi renklendirmesi
@@ -434,8 +483,11 @@ export default function IscilikTakibiPage() {
                       } else {
                         bitimStr = row.santiyeler?.is_bitim_tarihi ?? null;
                       }
-                      if (bitimStr && new Date(bitimStr) < new Date()) {
-                        bitimTarihiClass = " text-red-600 font-bold";
+                      if (bitimStr) {
+                        const kalanGun = Math.ceil((new Date(bitimStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        if (kalanGun < 0) bitimTarihiClass = " text-red-600 font-bold";
+                        else if (kalanGun <= 30) bitimTarihiClass = " text-red-600 font-bold";
+                        else if (kalanGun <= 60) bitimTarihiClass = " text-orange-500 font-bold";
                       }
                     }
 

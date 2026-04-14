@@ -72,9 +72,9 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
     load();
   }, []);
 
-  // Firma veya muhatap değişince sayı no'yu yeniden üret (yeni yazışmada)
+  // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit && firmaId === yazisma?.firma_id && muhatapId === (yazisma?.muhatap_id ?? "")) return;
     if (!firmaId) { setEvrakSayiNo(""); return; }
     let cancelled = false;
     (async () => {
@@ -123,13 +123,14 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
     } catch { toast.error("Muhatap eklenemedi."); }
   }
 
+  function basHarfBuyuk(v: string) { return v.length === 1 ? v.toUpperCase() : v.charAt(0).toUpperCase() + v.slice(1); }
   function addIlgi() { setIlgiListesi((p) => [...p, ""]); }
   function removeIlgi(i: number) { setIlgiListesi((p) => p.filter((_, idx) => idx !== i)); }
-  function updateIlgi(i: number, v: string) { setIlgiListesi((p) => p.map((x, idx) => idx === i ? v : x)); }
+  function updateIlgi(i: number, v: string) { setIlgiListesi((p) => p.map((x, idx) => idx === i ? basHarfBuyuk(v) : x)); }
 
   function addEk() { setEkler((p) => [...p, ""]); }
   function removeEk(i: number) { setEkler((p) => p.filter((_, idx) => idx !== i)); }
-  function updateEk(i: number, v: string) { setEkler((p) => p.map((x, idx) => idx === i ? v : x)); }
+  function updateEk(i: number, v: string) { setEkler((p) => p.map((x, idx) => idx === i ? basHarfBuyuk(v) : x)); }
 
   // Metin değişince ilk paragraf otomatik tab + büyük harf
   function handleMetinChange(val: string) {
@@ -277,7 +278,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
       <div className="space-y-2">
         <Label>Konu <span className="text-red-500">*</span></Label>
-        <Input value={konu} onChange={(e) => setKonu(e.target.value)} placeholder="Yazışma konusu" disabled={loading} />
+        <Input value={konu} onChange={(e) => setKonu(basHarfBuyuk(e.target.value))} placeholder="Yazışma konusu" disabled={loading} />
       </div>
 
       {/* Muhatap - dropdown seçimli */}

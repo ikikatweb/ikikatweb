@@ -190,9 +190,13 @@ export default function KullanicilarPage() {
                       {k.rol === "yonetici" ? "Yönetici" : "Kısıtlı"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell className="hidden md:table-cell max-w-[200px]">
                     {k.santiye_ids && k.santiye_ids.length > 0
-                      ? k.santiye_ids.map((sid) => santiyeMap[sid] || sid).join(", ")
+                      ? <div className="flex flex-wrap gap-1">{k.santiye_ids.map((sid) => {
+                          const ad = santiyeMap[sid] || sid;
+                          const kisa = ad.length > 20 ? ad.slice(0, 18) + "…" : ad;
+                          return <span key={sid} className="inline-block text-[10px] bg-gray-100 rounded px-1.5 py-0.5 truncate max-w-[180px]" title={ad}>{kisa}</span>;
+                        })}</div>
                       : k.rol === "yonetici" ? "Tümü" : "—"}
                   </TableCell>
                   <TableCell className="text-center">

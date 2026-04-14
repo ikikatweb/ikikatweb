@@ -9,7 +9,7 @@ import AracForm from "@/components/shared/arac-form";
 import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getAraclar } from "@/lib/supabase/queries/araclar";
+import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import {
@@ -736,6 +736,10 @@ function YakitPageContent() {
           created_by: kullanici?.id ?? null,
         });
       }
+      // Araçın güncel göstergesini güncelle
+      if (km > 0) {
+        await updateArac(verDialogAracId, { guncel_gosterge: km });
+      }
       await loadAll();
       toast.success(verEditId ? "Yakıt kaydı güncellendi." : "Yakıt kaydı eklendi.");
       setVerDialogOpen(false);
@@ -920,7 +924,7 @@ function YakitPageContent() {
 
     const head = [[
       "Tarih/Saat", "Santiye", "Arac/Kaynak", "KM/Saat", "Fark",
-      "Miktar", "Anlik Ort.", "Genel Ort.", "Stok", "Giren",
+      "Miktar", "Anlik Ort.", "Genel Ort.", "Stok", "Kullanıcı Adı",
     ]];
     const body = tabloSatirlari.map((s) => {
       const h = s.hareket;
@@ -938,13 +942,16 @@ function YakitPageContent() {
       }
       const kmSaatText = h.tip === "arac_yakit" ? formatSayi(h.km_saat, 0) : "-";
       const farkText = s.fark !== null ? formatSayi(s.fark, 0) : "-";
-      const miktarText = formatSayi(h.miktar_lt, 2) + " lt";
+      let miktarText: string;
+      if (h.tip === "arac_yakit") miktarText = "-" + formatSayi(h.miktar_lt, 2);
+      else if (h.tip === "alim") miktarText = "+" + formatSayi(h.miktar_lt, 2);
+      else miktarText = (s.virmanYon === "giden" ? "-" : "+") + formatSayi(h.miktar_lt, 2);
       const anlikText = s.anlikOrt !== null ? formatSayi(s.anlikOrt, 2) + (s.limitIhlali ? " !" : "") : "-";
       const genelText = s.genelOrt !== null ? formatSayi(s.genelOrt, 2) : "-";
       const stokText = s.depoStok !== null ? formatSayi(s.depoStok, 0) : "-";
       const girenText = h.created_by ? tr(kullaniciMap.get(h.created_by) ?? "-") : "-";
       return [
-        `${h.tarih} ${h.saat.slice(0, 5)}`,
+        `${h.tarih ? h.tarih.split("-").reverse().join(".") : "—"} ${h.saat.slice(0, 5)}`,
         santiyeText,
         aracText,
         kmSaatText,
@@ -975,13 +982,23 @@ function YakitPageContent() {
         8: { cellWidth: 24, halign: "right" },
         9: { cellWidth: 32, overflow: "ellipsize" },
       },
-      didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 6) {
-          const s = tabloSatirlari[data.row.index];
-          if (s?.limitIhlali) {
-            data.cell.styles.textColor = [220, 38, 38];
-            data.cell.styles.fontStyle = "bold";
-          }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      didParseCell: (data: any) => {
+        if (data.section !== "body") return;
+        const s = tabloSatirlari[data.row.index];
+        if (!s) return;
+        const h = s.hareket;
+        // Miktar renklendirmesi (sütun 5)
+        if (data.column.index === 5) {
+          data.cell.styles.fontStyle = "bold";
+          if (h.tip === "arac_yakit") data.cell.styles.textColor = [220, 38, 38]; // kırmızı
+          else if (h.tip === "alim") data.cell.styles.textColor = [29, 78, 216]; // mavi
+          else data.cell.styles.textColor = [0, 0, 0]; // siyah (virman giden/gelen)
+        }
+        // Limit ihlali (sütun 6)
+        if (data.column.index === 6 && s.limitIhlali) {
+          data.cell.styles.textColor = [220, 38, 38];
+          data.cell.styles.fontStyle = "bold";
         }
       },
     });
@@ -1008,7 +1025,7 @@ function YakitPageContent() {
     const headers = [
       "Tarih", "Saat", "Şantiye", "Araç / Kaynak", "KM/Saat", "Fark",
       "Miktar (lt)", "Anlık Ort.", "Genel Ort.",
-      "Depo Stok", "Giren", "Not",
+      "Depo Stok", "Kullanıcı Adı", "Not",
     ];
     const data = tabloSatirlari.map((s) => {
       const h = s.hareket;
@@ -1025,7 +1042,7 @@ function YakitPageContent() {
         aracText = "Virman";
       }
       return [
-        h.tarih,
+        h.tarih ? h.tarih.split("-").reverse().join(".") : "—",
         h.saat.slice(0, 5),
         santiyeText,
         aracText,
@@ -1119,7 +1136,7 @@ function YakitPageContent() {
                   type="text"
                   value={arama}
                   onChange={(e) => setArama(e.target.value)}
-                  placeholder="Plaka, araç, firma, şantiye, not, giren..."
+                  placeholder="Plaka, araç, firma, şantiye, not, kullanıcı..."
                   className={selectClass + " w-full pl-8"}
                 />
               </div>
@@ -1208,7 +1225,7 @@ function YakitPageContent() {
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Anlık Ort.</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Genel Ort.</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] bg-[#0f2540]">Stok</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Giren</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Kullanıcı Adı</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Not</TableHead>
                 {isYonetici && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
               </TableRow>
@@ -1264,7 +1281,7 @@ function YakitPageContent() {
                 return (
                   <TableRow key={s.satirKey} className={`hover:bg-gray-50 ${rowRenk}`}>
                     <TableCell className="px-2 whitespace-nowrap">
-                      <div className="text-[11px] font-semibold">{h.tarih}</div>
+                      <div className="text-[11px] font-semibold">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
                       <div className="text-[10px] text-gray-500">{h.saat.slice(0, 5)}</div>
                     </TableCell>
                     <TableCell className="px-2 max-w-[140px]">

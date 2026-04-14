@@ -40,7 +40,7 @@ import {
 import {
   ClipboardList, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight,
   ChevronUp, ChevronDown,
-  Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus,
+  Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3,
   ArrowRight, ArrowLeft as ArrowLeftIcon, Link2, Link2Off, Lock,
   FileBarChart, Pencil,
 } from "lucide-react";
@@ -97,7 +97,7 @@ type DurumBilgi = {
 
 const DURUM_LISTESI: DurumBilgi[] = [
   { kod: "calisti",      label: "Çalıştı",      bgClass: "bg-emerald-500", textClass: "text-emerald-700", pdfShort: "+",  pdfRGB: [16, 185, 129],  aciklamaZorunlu: false, IconComponent: Check },
-  { kod: "yarim_gun",    label: "Yarım Gün",    bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "½",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: () => <span className="font-bold">½</span> },
+  { kod: "yarim_gun",    label: "Yarım Gün",    bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "½",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: Clock3 },
   { kod: "calismadi",    label: "Çalışmadı",    bgClass: "bg-red-500",     textClass: "text-red-700",     pdfShort: "-",  pdfRGB: [239, 68, 68],   aciklamaZorunlu: true,  IconComponent: XIcon },
   { kod: "arizali",      label: "Arızalı",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "A",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: true,  IconComponent: Wrench },
   { kod: "operator_yok", label: "Operatör Yok", bgClass: "bg-slate-500",   textClass: "text-slate-700",   pdfShort: "O",  pdfRGB: [100, 116, 139], aciklamaZorunlu: true,  IconComponent: UserX },
@@ -162,6 +162,7 @@ export default function AracPuantajPage() {
   const [seciliGun, setSeciliGun] = useState<number | null>(null);
   const [seciliDurum, setSeciliDurum] = useState<AracPuantajDurum | null>(null);
   const [seciliAciklama, setSeciliAciklama] = useState("");
+  const [seciliGosterge, setSeciliGosterge] = useState("");
   const [dialogKaydediliyor, setDialogKaydediliyor] = useState(false);
   const aciklamaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -828,6 +829,7 @@ export default function AracPuantajPage() {
     setSeciliGun(gun);
     setSeciliDurum(mevcut?.durum ?? null);
     setSeciliAciklama(mevcut?.aciklama ?? "");
+    setSeciliGosterge(arac.guncel_gosterge != null ? String(arac.guncel_gosterge) : "");
     setHucreDialogOpen(true);
   }
 
@@ -862,6 +864,12 @@ export default function AracPuantajPage() {
       // Açıklama: kullanıcı yazdıysa kaydet, yoksa null
       const aciklamaToSave = seciliAciklama.trim() || null;
       await upsertAracPuantaj(seciliArac.id, santiyeId, tarih, durum, aciklamaToSave, kullanici?.id ?? null);
+      // Gösterge (km/saat) güncelle
+      const gostergeVal = parseFloat(seciliGosterge.replace(",", "."));
+      if (!isNaN(gostergeVal) && gostergeVal > 0 && gostergeVal !== (seciliArac.guncel_gosterge ?? 0)) {
+        await updateArac(seciliArac.id, { guncel_gosterge: gostergeVal });
+        setAraclar((prev) => prev.map((a) => a.id === seciliArac.id ? { ...a, guncel_gosterge: gostergeVal } : a));
+      }
       // Lokal state güncelle
       setPuantajlar((prev) => {
         const filtered = prev.filter((x) => !(x.arac_id === seciliArac.id && x.tarih === tarih));
@@ -1536,7 +1544,7 @@ export default function AracPuantajPage() {
 
           {/* Tablo */}
       {loading ? (
-        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-10 bg-gray-200 rounded animate-pulse" />)}</div>
+        <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-[35px] bg-gray-200 rounded animate-pulse" />)}</div>
       ) : !santiyeId ? (
         <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
           <ClipboardList size={48} className="mx-auto text-gray-300 mb-4" />
@@ -1553,11 +1561,11 @@ export default function AracPuantajPage() {
           <Table className="text-xs">
             <TableHeader>
               <TableRow className="bg-[#1E3A5F]">
-                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[160px]">Araç</TableHead>
+                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[110px] max-w-[130px]">Araç</TableHead>
                 {gunler.map((g) => (
                   <TableHead
                     key={g}
-                    className={`text-white text-[10px] text-center px-0 w-12 sm:w-8 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : ""}`}
+                    className={`text-white text-[10px] text-center px-0 min-w-[35px] w-[35px] ${gunHaftaSonu(g) ? "bg-[#2c5278]" : ""}`}
                     title={gunAdi(g)}
                   >
                     <div>{g}</div>
@@ -1575,8 +1583,8 @@ export default function AracPuantajPage() {
                   <TableRow key={a.id} className="hover:bg-gray-50">
                     {/* Araç kolonu - plaka üstte, marka/model altta küçük punto */}
                     <TableCell className="px-2 sticky left-0 bg-white z-10 border-r">
-                      <div className="font-bold text-sm leading-tight">{a.plaka}</div>
-                      <div className="text-[10px] text-gray-500 leading-tight truncate max-w-[150px]">
+                      <div className="font-bold text-xs leading-tight">{a.plaka}</div>
+                      <div className="text-[9px] text-gray-500 leading-tight truncate max-w-[110px]">
                         {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
                       </div>
                     </TableCell>
@@ -1591,7 +1599,7 @@ export default function AracPuantajPage() {
 
                       if (kilitli) {
                         return (
-                          <TableCell key={g} className={`p-0 text-center w-12 sm:w-8 border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                          <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                             <button
                               type="button"
                               onClick={() => hucreTikla(a, g)}
@@ -1605,7 +1613,7 @@ export default function AracPuantajPage() {
                       }
 
                       return (
-                        <TableCell key={g} className={`p-0 text-center w-12 sm:w-8 border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                        <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                           <button
                             type="button"
                             onClick={() => hucreTikla(a, g)}
@@ -1623,7 +1631,7 @@ export default function AracPuantajPage() {
                               }
                             }}
                             onMouseLeave={() => setTooltip(null)}
-                            className={`relative w-full h-10 sm:h-9 text-xs font-bold transition-colors flex items-center justify-center ${
+                            className={`relative w-full h-[35px] text-xs font-bold transition-colors flex items-center justify-center ${
                               dBilgi
                                 ? `${dBilgi.bgClass} text-white hover:opacity-90`
                                 : "hover:bg-gray-200 text-gray-300"
@@ -1634,7 +1642,7 @@ export default function AracPuantajPage() {
                                 : undefined
                             }
                           >
-                            {dBilgi ? <dBilgi.IconComponent size={14} className="text-white" /> : ""}
+                            {dBilgi ? <dBilgi.IconComponent size={18} className="text-white" /> : ""}
                             {notVar && (
                               <span
                                 className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-yellow-300 border-l-[8px] border-l-transparent shadow-sm pointer-events-none"
@@ -1711,7 +1719,7 @@ export default function AracPuantajPage() {
                           <li key={a.id} className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-sm">{a.plaka}</span>
+                                <span className="font-bold text-xs">{a.plaka}</span>
                                 {a.tip === "kiralik" && (
                                   <Badge className="bg-[#F97316] text-[9px] px-1 py-0">Kiralık</Badge>
                                 )}
@@ -1775,7 +1783,7 @@ export default function AracPuantajPage() {
                             </Button>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-sm">{a.plaka}</span>
+                                <span className="font-bold text-xs">{a.plaka}</span>
                                 {a.tip === "kiralik" && (
                                   <Badge className="bg-[#F97316] text-[9px] px-1 py-0">Kiralık</Badge>
                                 )}
@@ -2452,6 +2460,24 @@ export default function AracPuantajPage() {
                 );
               })}
             </div>
+
+            {/* Gösterge (km/saat) girişi */}
+            {seciliArac?.sayac_tipi && (
+              <div className="space-y-1.5 pt-3 border-t">
+                <Label className="text-xs flex items-center gap-1">
+                  Gösterge ({seciliArac.sayac_tipi === "saat" ? "Saat" : "Km"})
+                  <span className="text-[10px] text-gray-400 font-normal">(opsiyonel)</span>
+                </Label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={seciliGosterge}
+                  onChange={(e) => setSeciliGosterge(e.target.value)}
+                  placeholder={seciliArac.guncel_gosterge != null ? `Mevcut: ${seciliArac.guncel_gosterge.toLocaleString("tr-TR")}` : "Gösterge değeri"}
+                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+                />
+              </div>
+            )}
 
             {/* Açıklama alanı - her zaman görünür */}
             <div className="space-y-1.5 pt-3 border-t">
