@@ -81,6 +81,7 @@ export async function insertAracYakit(data: {
   saat: string;
   km_saat: number;
   miktar_lt: number;
+  depo_full?: boolean;
   notu: string | null;
   created_by: string | null;
 }): Promise<void> {
@@ -95,6 +96,7 @@ export async function updateAracYakit(id: string, data: {
   tarih: string;
   km_saat: number;
   miktar_lt: number;
+  depo_full?: boolean;
   notu: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
