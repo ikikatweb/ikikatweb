@@ -320,6 +320,7 @@ export default function DashboardPage() {
     }
     for (const a of araclar) {
       if (a.tip !== "ozmal") continue;
+      if (a.durum === "trafikten_cekildi") continue;
       const pc = policeMap.get(a.id);
       // Trafik/Kasko: poliçeden en güncel bitiş tarihini al, yoksa araç alanından
       const trafikBitis = pc?.trafik?.bitis || a.trafik_sigorta_bitis;

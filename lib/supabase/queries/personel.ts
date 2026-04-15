@@ -131,10 +131,11 @@ export async function deletePersonel(id: string) {
     { tablo: "personel_santiye", alan: "personel_id", label: "şantiye ataması" },
   ];
   for (const k of kontroller) {
-    const { count } = await supabase
+    const { count, error: cErr } = await supabase
       .from(k.tablo)
       .select("id", { count: "exact", head: true })
       .eq(k.alan, id);
+    if (cErr) continue; // tablo yoksa atla
     if (count && count > 0) {
       throw new Error(`Bu personele ait ${count} adet ${k.label} bulunuyor. Personel silinemez, sadece çıkış verilebilir.`);
     }

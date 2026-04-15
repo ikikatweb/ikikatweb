@@ -122,20 +122,24 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="flex-1 overflow-y-auto py-2 px-2">
         {filteredGroups.map((group) => (
-          <div key={group.title} className="mb-1">
+          <div key={group.title} className="mb-0.5">
             <button
               onClick={() => setOpenGroups((p) => ({ ...p, [group.title]: !p[group.title] }))}
-              className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400 hover:text-white transition-colors"
+              className={`flex items-center justify-between w-full px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors rounded-md ${
+                openGroups[group.title]
+                  ? "bg-[#2a4f7a] text-white"
+                  : "text-gray-400 hover:text-white hover:bg-[#253f5f]"
+              }`}
             >
               <span>{group.title}</span>
               {openGroups[group.title] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </button>
 
             {openGroups[group.title] && (
-              <div className="space-y-0.5">
+              <div className="ml-2 pl-2 border-l border-[#2a4f7a] space-y-0.5 mt-0.5 mb-1">
                 {group.items.map((item) => (
                   <Link key={item.href} href={item.href} onClick={() => onNavigate?.()}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] transition-colors ${
                       pathname === item.href
                         ? "bg-[#F97316] text-white font-medium"
                         : "text-gray-300 hover:bg-[#2a4f7a] hover:text-white"

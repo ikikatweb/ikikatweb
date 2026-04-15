@@ -153,6 +153,7 @@ export default function SigortaMuayenePage() {
 
   const filtrelenmis = araclar.filter((a) => {
     if (a.tip !== "ozmal") return false;
+    if (a.durum === "trafikten_cekildi") return false;
     if (durumFiltre !== "tumu" && a.durum !== durumFiltre) return false;
     if (arama.trim()) {
       const q = arama.trim().toLowerCase();

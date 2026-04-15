@@ -129,7 +129,7 @@ export type Arac = {
   id: string;
   sira_no: number;
   tip: "ozmal" | "kiralik";
-  durum: "aktif" | "pasif";
+  durum: "aktif" | "pasif" | "trafikten_cekildi";
   plaka: string;
   marka: string | null;
   model: string | null;
@@ -471,6 +471,7 @@ export type AracYakit = {
   saat: string; // HH:MM:SS
   km_saat: number;
   miktar_lt: number;
+  depo_full: boolean;
   notu: string | null;
   created_at: string;
   created_by: string | null;

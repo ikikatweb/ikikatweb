@@ -53,8 +53,8 @@ export default function PersonelPage() {
       await deletePersonel(deleteId);
       setPersoneller((prev) => prev.filter((p) => p.id !== deleteId));
       toast.success("Personel silindi.");
-    } catch {
-      toast.error("Personel silinirken hata oluştu.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Personel silinirken hata oluştu.");
     } finally {
       setDeleteId(null);
     }

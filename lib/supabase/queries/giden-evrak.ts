@@ -10,7 +10,7 @@ export async function getGidenEvraklar(olusturanId?: string) {
   const supabase = getSupabase();
   let query = supabase
     .from("giden_evrak")
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler!left(is_adi)")
     .or("silindi.is.null,silindi.eq.false")
     .order("evrak_tarihi", { ascending: false });
 
@@ -46,7 +46,7 @@ export async function createGidenEvrak(evrak: GidenEvrakInsert) {
   const { data, error } = await supabase
     .from("giden_evrak")
     .insert(evrak)
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler!left(is_adi)")
     .single();
 
   if (error) throw error;
@@ -59,7 +59,7 @@ export async function updateGidenEvrak(id: string, updates: Partial<GidenEvrakIn
     .from("giden_evrak")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler!left(is_adi)")
     .single();
 
   if (error) throw error;
@@ -87,7 +87,7 @@ export async function getSilinenGidenEvraklar(olusturanId?: string) {
   const supabase = getSupabase();
   let query = supabase
     .from("giden_evrak")
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler!left(is_adi)")
     .eq("silindi", true)
     .order("silme_tarihi", { ascending: false });
 

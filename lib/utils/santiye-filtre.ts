@@ -13,7 +13,7 @@ export function filtreliSantiyeler(
 ): SantiyeBasic[] {
   if (!kullanici) return tumSantiyeler;
   if (kullanici.rol === "yonetici") return tumSantiyeler;
-  if (!kullanici.santiye_ids || kullanici.santiye_ids.length === 0) return tumSantiyeler;
+  if (!kullanici.santiye_ids || kullanici.santiye_ids.length === 0) return [];
   const izinli = new Set(kullanici.santiye_ids);
   return tumSantiyeler.filter((s) => izinli.has(s.id));
 }

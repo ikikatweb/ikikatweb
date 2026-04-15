@@ -190,6 +190,7 @@ function YakitPageContent() {
   const [verDialogKmSaat, setVerDialogKmSaat] = useState("");
   const [verDialogMiktar, setVerDialogMiktar] = useState("");
   const [verDialogNotu, setVerDialogNotu] = useState("");
+  const [verDialogDepoFull, setVerDialogDepoFull] = useState(false);
   const [verDialogLoading, setVerDialogLoading] = useState(false);
 
   // Dialog: Yakıt Al
@@ -611,6 +612,7 @@ function YakitPageContent() {
     setVerDialogKmSaat("");
     setVerDialogMiktar("");
     setVerDialogNotu("");
+    setVerDialogDepoFull(true);
     setVerDialogOpen(true);
   }
 
@@ -623,6 +625,7 @@ function YakitPageContent() {
     setVerDialogKmSaat(String(y.km_saat));
     setVerDialogMiktar(String(y.miktar_lt));
     setVerDialogNotu(y.notu ?? "");
+    setVerDialogDepoFull(y.depo_full ?? false);
     setVerDialogOpen(true);
   }
 
@@ -719,10 +722,10 @@ function YakitPageContent() {
           tarih: verDialogTarih,
           km_saat: km,
           miktar_lt: miktar,
+          depo_full: verDialogDepoFull,
           notu: verDialogNotu.trim() || null,
         });
       } else {
-        // Saat kayıt anında otomatik alınır
         const simdi = new Date();
         const saatStr = `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
         await insertAracYakit({
@@ -732,6 +735,7 @@ function YakitPageContent() {
           saat: saatStr,
           km_saat: km,
           miktar_lt: miktar,
+          depo_full: verDialogDepoFull,
           notu: verDialogNotu.trim() || null,
           created_by: kullanici?.id ?? null,
         });
@@ -1144,15 +1148,15 @@ function YakitPageContent() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={verDialogAc}>
-            <Plus size={14} className="mr-1" /> Yakıt Ver
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={verDialogAc}>
+            <Plus size={16} className="mr-1.5" /> Yakıt Ver
           </Button>
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={alDialogAc}>
-            <Download size={14} className="mr-1" /> Yakıt Al (Depo)
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={alDialogAc}>
+            <Download size={16} className="mr-1.5" /> Yakıt Al (Depo)
           </Button>
-          <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white" onClick={virDialogAc}>
-            <RefreshCcw size={14} className="mr-1" /> Şantiye Virmanı
+          <Button className="bg-purple-600 hover:bg-purple-700 text-white h-11 text-sm" onClick={virDialogAc}>
+            <RefreshCcw size={16} className="mr-1.5" /> Şantiye Virmanı
           </Button>
         </div>
       </div>
@@ -1305,7 +1309,7 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right font-semibold">
                       {h.tip === "arac_yakit" ? (
-                        <span className="text-emerald-700">−{formatSayi(h.miktar_lt, 2)}</span>
+                        <span className="text-emerald-700">−{formatSayi(h.miktar_lt, 2)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}</span>
                       ) : h.tip === "alim" ? (
                         <span className="text-blue-700">+{formatSayi(h.miktar_lt, 2)}</span>
                       ) : (
@@ -1475,6 +1479,21 @@ function YakitPageContent() {
                   disabled={verDialogLoading}
                 />
               </div>
+            </div>
+            <div className="flex items-center gap-3 py-1">
+              <button
+                type="button"
+                onClick={() => setVerDialogDepoFull(!verDialogDepoFull)}
+                disabled={verDialogLoading}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-semibold transition-all w-full ${
+                  verDialogDepoFull
+                    ? "bg-emerald-500 text-white border-emerald-500 shadow-md"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                <Fuel size={18} />
+                {verDialogDepoFull ? "Depo Full" : "Depo Full Değil"}
+              </button>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Not (opsiyonel)</Label>

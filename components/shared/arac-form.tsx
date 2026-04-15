@@ -9,6 +9,7 @@ import {
   uploadRuhsat,
 } from "@/lib/supabase/queries/araclar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
+import { getAraclar } from "@/lib/supabase/queries/araclar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
 import type { Arac, AracInsert, Firma, Santiye } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +49,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
 
   const [loading, setLoading] = useState(false);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
+  const [kiralamaFirmalari, setKiralamaFirmalari] = useState<string[]>([]);
   const [santiyeler, setSantiyeler] = useState<Santiye[]>([]);
   const [ruhsatFile, setRuhsatFile] = useState<File | null>(null);
   const [aracCinsleri, setAracCinsleri] = useState<string[]>([]);
@@ -89,15 +91,22 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
   useEffect(() => {
     async function loadDropdowns() {
       try {
-        const [firmaData, santiyeData, cinsler, cinsTanimData, hgsler, yakitlar] = await Promise.all([
+        const [firmaData, santiyeData, cinsler, cinsTanimData, hgsler, yakitlar, aracData] = await Promise.all([
           getFirmalar(),
           getSantiyeler(),
           getDegerler("arac_cinsi"),
           getTanimlamalar("arac_cinsi").catch(() => []),
           getDegerler("hgs_saglayici"),
           getDegerler("yakit_tipi"),
+          getAraclar().catch(() => []),
         ]);
         setFirmalar(firmaData ?? []);
+        // Mevcut araçlardan benzersiz kiralama firma isimlerini çek
+        const kiraSet = new Set<string>();
+        for (const a of (aracData ?? []) as { kiralama_firmasi?: string | null }[]) {
+          if (a.kiralama_firmasi?.trim()) kiraSet.add(a.kiralama_firmasi.trim());
+        }
+        setKiralamaFirmalari(Array.from(kiraSet).sort((a, b) => a.localeCompare(b, "tr")));
         setSantiyeler(santiyeData ?? []);
         setAracCinsleri(cinsler);
         // cins → sayaç tipi map'i (kisa_ad'dan)
@@ -129,6 +138,10 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
 
     if (!formData.plaka?.trim()) {
       toast.error("Plaka zorunludur.");
+      return;
+    }
+    if (formData.yakit_tipi?.toUpperCase() === "LPG") {
+      toast.error("LPG tek başına yakıt tipi olamaz. Benzin+LPG olarak seçiniz.");
       return;
     }
 
@@ -236,26 +249,25 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                       setFormData((p) => ({ ...p, kiralama_firmasi: formatBaslik(e.target.value) }));
                     }}
                     onKeyDown={(e) => {
-                      const oneriler = firmalar.filter((f) => {
-                        if ((f.durum ?? "aktif") !== "aktif") return false;
-                        const q = normalizeArama(formData.kiralama_firmasi ?? "");
-                        if (!q) return false;
-                        return (
-                          normalizeArama(f.firma_adi).includes(q) ||
-                          (f.kisa_adi && normalizeArama(f.kisa_adi).includes(q))
-                        );
-                      }).slice(0, 6);
-                      if (oneriler.length === 0) return;
+                      const q = normalizeArama(formData.kiralama_firmasi ?? "");
+                      if (!q) return;
+                      const firmaOneriler2 = firmalar.filter((f) =>
+                        normalizeArama(f.firma_adi).includes(q) || (f.kisa_adi && normalizeArama(f.kisa_adi).includes(q))
+                      ).map((f) => f.firma_adi);
+                      const firmaAdlari2 = new Set(firmaOneriler2);
+                      const kiraOneriler2 = kiralamaFirmalari.filter((k) => normalizeArama(k).includes(q) && !firmaAdlari2.has(k));
+                      const tumOneriler2 = [...firmaOneriler2, ...kiraOneriler2].slice(0, 8);
+                      if (tumOneriler2.length === 0) return;
                       if (e.key === "ArrowDown") {
                         e.preventDefault();
-                        setKiralamaSeciliIndex((i) => Math.min(i + 1, oneriler.length - 1));
+                        setKiralamaSeciliIndex((i) => Math.min(i + 1, tumOneriler2.length - 1));
                       } else if (e.key === "ArrowUp") {
                         e.preventDefault();
                         setKiralamaSeciliIndex((i) => Math.max(i - 1, 0));
                       } else if (e.key === "Enter" && kiralamaSeciliIndex >= 0) {
                         e.preventDefault();
-                        const secili = oneriler[kiralamaSeciliIndex];
-                        setFormData((p) => ({ ...p, kiralama_firmasi: secili.firma_adi }));
+                        const secili = tumOneriler2[kiralamaSeciliIndex];
+                        setFormData((p) => ({ ...p, kiralama_firmasi: secili }));
                         setKiralamaOneriAcik(false);
                         setKiralamaSeciliIndex(-1);
                       } else if (e.key === "Escape") {
@@ -268,32 +280,32 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                   {/* Autocomplete öneri dropdown'u */}
                   {kiralamaOneriAcik && (formData.kiralama_firmasi ?? "").trim().length >= 1 && (() => {
                     const q = normalizeArama(formData.kiralama_firmasi ?? "");
-                    const oneriler = firmalar.filter((f) => {
-                      if ((f.durum ?? "aktif") !== "aktif") return false;
-                      return (
-                        normalizeArama(f.firma_adi).includes(q) ||
-                        (f.kisa_adi && normalizeArama(f.kisa_adi).includes(q))
-                      );
-                    }).slice(0, 6);
+                    // Firmalar tablosundan
+                    const firmaOneriler = firmalar.filter((f) =>
+                      normalizeArama(f.firma_adi).includes(q) || (f.kisa_adi && normalizeArama(f.kisa_adi).includes(q))
+                    ).map((f) => f.firma_adi);
+                    // Mevcut kiralama firmalarından (firmalar tablosunda olmayanlar)
+                    const firmaAdlari = new Set(firmaOneriler);
+                    const kiraOneriler = kiralamaFirmalari.filter((k) => normalizeArama(k).includes(q) && !firmaAdlari.has(k));
+                    const tumOneriler = [...firmaOneriler, ...kiraOneriler].slice(0, 8);
 
-                    // Mevcut yazdığı metinle birebir aynıysa veya hiç öneri yoksa gösterme
-                    if (oneriler.length === 0) return null;
-                    if (oneriler.length === 1 && normalizeArama(oneriler[0].firma_adi) === q) return null;
+                    if (tumOneriler.length === 0) return null;
+                    if (tumOneriler.length === 1 && normalizeArama(tumOneriler[0]) === q) return null;
 
                     return (
                       <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
                         <div className="px-3 py-1.5 text-[10px] text-gray-400 uppercase font-semibold border-b bg-gray-50">
-                          Kayıtlı Firmalar
+                          Firmalar
                         </div>
-                        {oneriler.map((f, idx) => {
+                        {tumOneriler.map((ad, idx) => {
                           const aktifMi = idx === kiralamaSeciliIndex;
                           return (
                             <button
-                              key={f.id}
+                              key={ad}
                               type="button"
-                              onMouseDown={(e) => e.preventDefault()} // blur'u engelle
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
-                                setFormData((p) => ({ ...p, kiralama_firmasi: f.firma_adi }));
+                                setFormData((p) => ({ ...p, kiralama_firmasi: ad }));
                                 setKiralamaOneriAcik(false);
                                 setKiralamaSeciliIndex(-1);
                               }}
@@ -302,10 +314,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                                 aktifMi ? "bg-blue-50" : "hover:bg-gray-50"
                               }`}
                             >
-                              <div className="font-medium text-gray-800">{f.firma_adi}</div>
-                              {f.kisa_adi && (
-                                <div className="text-[10px] text-gray-500 font-mono">{f.kisa_adi}</div>
-                              )}
+                              <div className="font-medium text-gray-800">{ad}</div>
                             </button>
                           );
                         })}
@@ -503,7 +512,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                     className={selectClass}
                   >
                     <option value="">Seçiniz</option>
-                    {yakitTipleri.map((y) => (
+                    {yakitTipleri.filter((y) => y.toUpperCase() !== "LPG").map((y) => (
                       <option key={y} value={y}>{y}</option>
                     ))}
                   </select>

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-type Filtre = "tumu" | "aktif" | "pasif";
+type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
 export default function AraclarPage() {
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -53,13 +53,14 @@ export default function AraclarPage() {
 
   useEffect(() => { loadAraclar(); }, []);
 
-  async function handleDurumDegistir(id: string, yeniDurum: "aktif" | "pasif") {
+  async function handleDurumDegistir(id: string, yeniDurum: "aktif" | "pasif" | "trafikten_cekildi") {
     try {
       await toggleAracDurum(id, yeniDurum);
       setAraclar((prev) => prev.map((a) =>
         a.id === id ? { ...a, durum: yeniDurum } : a
       ));
-      toast.success(yeniDurum === "aktif" ? "Araç aktif yapıldı." : "Araç pasife alındı.");
+      const mesajlar = { aktif: "Araç aktif yapıldı.", pasif: "Araç pasife alındı.", trafikten_cekildi: "Araç trafikten çekildi olarak işaretlendi." };
+      toast.success(mesajlar[yeniDurum]);
     } catch {
       toast.error("Durum güncellenirken hata oluştu.");
     }
@@ -114,6 +115,7 @@ export default function AraclarPage() {
           { key: "tumu", label: "Tümü" },
           { key: "aktif", label: "Aktif" },
           { key: "pasif", label: "Pasif" },
+          { key: "trafikten_cekildi", label: "Trafikten Çekildi" },
         ] as { key: Filtre; label: string }[]).map((f) => (
           <Button key={f.key} variant={filtre === f.key ? "default" : "outline"} size="sm"
             onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#1E3A5F]" : ""}>
@@ -168,9 +170,9 @@ export default function AraclarPage() {
           <p className="text-gray-500">&quot;{arama}&quot; ile eşleşen araç bulunamadı.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead className="w-[50px]">No</TableHead>
                 <TableHead>Mülkiyet</TableHead>
@@ -231,10 +233,11 @@ export default function AraclarPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     <select value={arac.durum ?? "aktif"}
-                      onChange={(e) => handleDurumDegistir(arac.id, e.target.value as "aktif" | "pasif")}
+                      onChange={(e) => handleDurumDegistir(arac.id, e.target.value as "aktif" | "pasif" | "trafikten_cekildi")}
                       className="text-xs border rounded px-1.5 py-0.5 bg-white">
                       <option value="aktif">Aktif</option>
                       <option value="pasif">Pasif</option>
+                      <option value="trafikten_cekildi">Trafikten Çekildi</option>
                     </select>
                   </TableCell>
                   <TableCell className="text-right">

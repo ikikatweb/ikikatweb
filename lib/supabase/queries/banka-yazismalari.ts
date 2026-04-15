@@ -10,7 +10,7 @@ export async function getBankaYazismalari(olusturanId?: string) {
   const supabase = getSupabase();
   let query = supabase
     .from("banka_yazismalari")
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
     .or("silindi.is.null,silindi.eq.false")
     .order("evrak_tarihi", { ascending: false });
 
@@ -46,7 +46,7 @@ export async function createBankaYazisma(yazisma: BankaYazismaInsert) {
   const { data, error } = await supabase
     .from("banka_yazismalari")
     .insert(yazisma)
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
     .single();
 
   if (error) throw error;
@@ -59,7 +59,7 @@ export async function updateBankaYazisma(id: string, updates: Partial<BankaYazis
     .from("banka_yazismalari")
     .update({ ...updates, updated_at: new Date().toISOString() })
     .eq("id", id)
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
     .single();
 
   if (error) throw error;
@@ -87,7 +87,7 @@ export async function getSilinenBankaYazismalari(olusturanId?: string) {
   const supabase = getSupabase();
   let query = supabase
     .from("banka_yazismalari")
-    .select("*, firmalar(firma_adi, kisa_adi, adres, antet_url, kase_url)")
+    .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
     .eq("silindi", true)
     .order("silme_tarihi", { ascending: false });
 

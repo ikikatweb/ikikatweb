@@ -99,17 +99,23 @@ export function formatBuyukHarf(metin: string | null | undefined): string {
 }
 
 /**
- * Plaka formatı: boşlukları normalleştirir, tüm harfler büyük.
- * Sayılar ve harfler arasındaki boşlukları korur.
+ * Plaka formatı: standart Türk plakası ise sayı-harf-sayı gruplarını boşlukla ayırır.
+ * İş makinası plakaları (tire içerenler) dokunulmaz.
  *
  * Örnekler:
- *   "60adr790"   -> "60ADR790"
+ *   "60adr790"   -> "60 ADR 790"
  *   "60 adr 790" -> "60 ADR 790"
- *   "06ABC123"   -> "06ABC123"
+ *   "06ABC123"   -> "06 ABC 123"
+ *   "34-00-2556" -> "34-00-2556" (iş makinası)
  */
 export function formatPlaka(metin: string | null | undefined): string {
   if (!metin) return "";
-  return metin.trim().replace(/\s+/g, " ").toLocaleUpperCase(TR);
+  const temiz = metin.trim().toLocaleUpperCase(TR);
+  if (temiz.includes("-")) return temiz;
+  const birlesmis = temiz.replace(/\s+/g, "");
+  const match = birlesmis.match(/^(\d{2})([A-ZÇĞİÖŞÜ]{1,3})(\d{1,4})$/);
+  if (match) return `${match[1]} ${match[2]} ${match[3]}`;
+  return temiz.replace(/\s+/g, " ");
 }
 
 /**

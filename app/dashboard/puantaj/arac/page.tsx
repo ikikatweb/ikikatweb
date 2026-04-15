@@ -1557,9 +1557,9 @@ export default function AracPuantajPage() {
           <p className="text-xs text-gray-400 mt-1">Aracın bu şantiyeye atanmış olması veya bu ay içinde puantajının olması gerekir.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table className="text-xs">
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-[#1E3A5F]">
                 <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[110px] max-w-[130px]">Araç</TableHead>
                 {gunler.map((g) => (
@@ -1934,8 +1934,8 @@ export default function AracPuantajPage() {
                     {ozetSatirlari.map((s) => {
                       const a = s.arac;
                       const sahibi = a.tip === "ozmal"
-                        ? (a.firmalar?.firma_adi ?? "—")
-                        : (a.kiralama_firmasi ?? "—");
+                        ? (a.firmalar?.firma_adi ?? "Firma Belirtilmemiş")
+                        : (a.kiralama_firmasi ?? "Firma Belirtilmemiş");
                       const cokDonem = s.donemSayisi > 1;
                       const donemLabel = `${new Date(s.donemBaslangic).toLocaleDateString("tr-TR")} - ${new Date(s.donemBitis).toLocaleDateString("tr-TR")}`;
 
@@ -2044,7 +2044,7 @@ export default function AracPuantajPage() {
                 if (firmaList.length === 0) return null;
                 return (
                   <div className="mt-4">
-                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full md:w-1/2 lg:w-2/5">
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full md:w-2/3 lg:w-3/5">
                       <div className="bg-[#1E3A5F] text-white px-4 py-2 text-sm font-semibold">
                         Firma Bazlı Toplam Kira Bedeli
                       </div>

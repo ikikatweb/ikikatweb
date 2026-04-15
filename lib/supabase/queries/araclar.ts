@@ -42,7 +42,7 @@ export async function getAraclar() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("araclar")
-    .select("*, firmalar(firma_adi), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi), santiyeler!left(is_adi)")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -53,7 +53,7 @@ export async function getAracById(id: string) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("araclar")
-    .select("*, firmalar(firma_adi), santiyeler(is_adi)")
+    .select("*, firmalar!left(firma_adi), santiyeler!left(is_adi)")
     .eq("id", id)
     .single();
 
@@ -110,10 +110,11 @@ export async function deleteArac(id: string) {
     { tablo: "arac_kira_bedeli", alan: "arac_id", label: "kira bedeli kaydı" },
   ];
   for (const k of kontroller) {
-    const { count } = await supabase
+    const { count, error: cErr } = await supabase
       .from(k.tablo)
       .select("id", { count: "exact", head: true })
       .eq(k.alan, id);
+    if (cErr) continue;
     if (count && count > 0) {
       throw new Error(`Bu araca ait ${count} adet ${k.label} bulunuyor. Araç silinemez, sadece pasife alınabilir.`);
     }
@@ -122,7 +123,7 @@ export async function deleteArac(id: string) {
   if (error) throw error;
 }
 
-export async function toggleAracDurum(id: string, durum: "aktif" | "pasif") {
+export async function toggleAracDurum(id: string, durum: "aktif" | "pasif" | "trafikten_cekildi") {
   const supabase = getSupabase();
   const { error } = await supabase
     .from("araclar")

@@ -843,9 +843,9 @@ export default function PersonelPuantajPage() {
           <p className="text-gray-500">Bu şantiyeye atanmış personel yok.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table className="text-xs">
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-[#1E3A5F]">
                 <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[120px] max-w-[140px]">Personel</TableHead>
                 {gunler.map((g) => (
