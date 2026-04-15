@@ -250,9 +250,9 @@ export default function BankaYazismalariPage() {
           <p className="text-gray-500">{yazismalar.length === 0 ? "Henüz banka yazışması eklenmemiş." : "Filtreye uygun kayıt bulunamadı."}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#1E3A5F]">
                 <TableHead className="text-white text-xs px-2">Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>

@@ -75,7 +75,7 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
     setFormData((prev) => ({
       ...prev,
       [name]: numericFields.includes(name)
-        ? value ? parseFloat(value) : null
+        ? value ? parseFloat(value.replace(",", ".")) : null
         : value,
     }));
   }
@@ -380,7 +380,7 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="maas">Maaş (₺) {!isEdit && <span className="text-red-500">*</span>}</Label>
-              <input id="maas" name="maas" type="text" inputMode="decimal" placeholder="0.00" value={formData.maas ?? ""} onChange={handleChange} disabled={loading}
+              <input id="maas" name="maas" type="text" inputMode="decimal" placeholder="0,00" value={formData.maas != null ? String(formData.maas).replace(".", ",") : ""} onChange={(e) => { const v = e.target.value.replace(",", "."); setFormData((p) => ({ ...p, maas: v ? parseFloat(v) : null })); }} disabled={loading}
                 className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
             </div>
 

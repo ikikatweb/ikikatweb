@@ -41,29 +41,26 @@ export async function POST(request: Request) {
     }
   }
 
-  // Sayaç bul/oluştur
-  const { data: sayac } = await supabase
-    .from("giden_evrak_sayac")
-    .select("*")
-    .eq("firma_id", firma_id)
-    .eq("yil", yil)
-    .eq("muhatap_id", muhatap_id || null)
-    .maybeSingle();
+  // Tablodaki tüm evraklardan (aktif + silinen sekmesindeki) kullanılan numaraları bul
+  // Kalıcı silinen evraklar tabloda olmadığı için otomatik hariç kalır
+  const prefix = `${firmaKisa}-${yil2}/${muhatapKisa}.`;
+  const { data: mevcutEvraklar } = await supabase
+    .from("giden_evrak")
+    .select("evrak_sayi_no")
+    .like("evrak_sayi_no", `${prefix}%`);
 
-  let sonNumara = 1;
-  if (sayac) {
-    sonNumara = sayac.son_numara + 1;
-    await supabase
-      .from("giden_evrak_sayac")
-      .update({ son_numara: sonNumara })
-      .eq("id", sayac.id);
-  } else {
-    await supabase
-      .from("giden_evrak_sayac")
-      .insert({ firma_id, yil, muhatap_id: muhatap_id || null, son_numara: 1 });
+  let enYuksek = 0;
+  if (mevcutEvraklar) {
+    for (const e of mevcutEvraklar) {
+      const parcalar = (e.evrak_sayi_no as string).split(".");
+      const num = parseInt(parcalar[parcalar.length - 1], 10);
+      if (!isNaN(num) && num > enYuksek) enYuksek = num;
+    }
   }
+  // En yüksek numara + 1
+  const sonNumara = enYuksek + 1;
 
-  // Format: KAD-26/DSİ.001 (Türkçe karakterler korunur)
+  // Format: KAD-26/DSİ.001
   const evrakSayiNo = `${firmaKisa}-${yil2}/${muhatapKisa}.${String(sonNumara).padStart(3, "0")}`;
   return NextResponse.json({ evrak_sayi_no: evrakSayiNo });
 }

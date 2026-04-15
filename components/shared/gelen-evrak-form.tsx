@@ -48,6 +48,8 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [yeniMuhatap, setYeniMuhatap] = useState("");
   const [muhatapDialogOpen, setMuhatapDialogOpen] = useState(false);
+  const [muhatapArama, setMuhatapArama] = useState("");
+  const [muhatapDropdownAcik, setMuhatapDropdownAcik] = useState(false);
 
   const [evrakTarihi, setEvrakTarihi] = useState(evrak?.evrak_tarihi ?? new Date().toISOString().split("T")[0]);
   const [firmaId, setFirmaId] = useState(evrak?.firma_id ?? "");
@@ -233,23 +235,45 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <Input value={ilgi} onChange={(e) => setIlgi(e.target.value)} placeholder="İlgi bilgisi" disabled={loading} />
       </div>
 
-      {/* Muhatap - dropdown seçimli (firma/şantiye gibi) + ekle butonu */}
+      {/* Muhatap - aranabilir dropdown */}
       <div className="space-y-2">
         <Label>Muhatap</Label>
         <div className="flex gap-2">
-          <select
-            value={muhatap}
-            onChange={(e) => setMuhatap(e.target.value)}
-            disabled={loading}
-            className={selectClass + " flex-1"}
-          >
-            <option value="">Muhatap seçin</option>
-            {muhataplar.map((m) => (
-              <option key={m} value={m}>
-                {tekSatirMuhatap(m)}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={muhatapArama || (muhatap ? tekSatirMuhatap(muhatap) : "")}
+              onChange={(e) => { setMuhatapArama(e.target.value); setMuhatapDropdownAcik(true); }}
+              onFocus={() => setMuhatapDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setMuhatapDropdownAcik(false), 150)}
+              placeholder="Muhatap ara veya seç..."
+              disabled={loading}
+              className={selectClass}
+            />
+            {muhatapDropdownAcik && (() => {
+              const q = muhatapArama.toLowerCase();
+              const filtreli = q ? muhataplar.filter((m) => tekSatirMuhatap(m).toLowerCase().includes(q)) : muhataplar;
+              if (filtreli.length === 0) return null;
+              return (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {muhatap && (
+                    <button type="button" onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setMuhatap(""); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
+                      Muhatap kaldır
+                    </button>
+                  )}
+                  {filtreli.map((m) => (
+                    <button key={m} type="button" onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setMuhatap(m); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${muhatap === m ? "bg-blue-50 font-semibold" : ""}`}>
+                      {tekSatirMuhatap(m)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
           <Button
             type="button"
             variant="outline"

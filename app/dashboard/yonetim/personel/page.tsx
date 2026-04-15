@@ -144,9 +144,9 @@ export default function PersonelPage() {
           <p className="text-gray-500 text-lg">Henüz personel eklenmemiş.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead>TC Kimlik No</TableHead>
                 <TableHead>Ad Soyad</TableHead>

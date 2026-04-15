@@ -6,7 +6,8 @@ import {
   getAraclar, updateArac,
   getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice,
 } from "@/lib/supabase/queries/araclar";
-import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
+import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import type { Tanimlama } from "@/lib/supabase/types";
 import { useAuth } from "@/hooks";
 import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
 import {
@@ -76,6 +77,7 @@ export default function SigortaMuayenePage() {
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [sigortaFirmalari, setSigortaFirmalari] = useState<string[]>([]);
+  const [cinsSiralama, setCinsSiralama] = useState<Map<string, number>>(new Map());
   const [acenteler, setAcenteler] = useState<string[]>([]);
   const [arama, setArama] = useState("");
   const [durumFiltre, setDurumFiltre] = useState<"tumu" | "aktif" | "pasif">("aktif");
@@ -111,15 +113,19 @@ export default function SigortaMuayenePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData, yakGun, azGun] = await Promise.all([
+      const [aData, pData, sfData, acData, yakGun, azGun, cinsData] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
         getDegerler("sigorta_az_kaldi_gun").catch(() => []),
+        getTanimlamalar("arac_cinsi").catch(() => []),
       ]);
       setAraclar((aData as AracWithRelations[]) ?? []);
+      const sMap = new Map<string, number>();
+      ((cinsData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
+      setCinsSiralama(sMap);
       setPoliceler(pData as AracPolice[]);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
@@ -168,6 +174,10 @@ export default function SigortaMuayenePage() {
       if (!text.includes(q)) return false;
     }
     return true;
+  }).sort((a, b) => {
+    const sa = cinsSiralama.get(a.cinsi ?? "") ?? 999;
+    const sb = cinsSiralama.get(b.cinsi ?? "") ?? 999;
+    return sa - sb;
   });
 
   // Inline tarih kaydetme (muayene/taşıt kartı)

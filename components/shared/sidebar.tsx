@@ -124,7 +124,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {filteredGroups.map((group) => (
           <div key={group.title} className="mb-0.5">
             <button
-              onClick={() => setOpenGroups((p) => ({ ...p, [group.title]: !p[group.title] }))}
+              onClick={() => setOpenGroups((p) => {
+                const yeniDurum: Record<string, boolean> = {};
+                for (const k of Object.keys(p)) yeniDurum[k] = false;
+                yeniDurum[group.title] = !p[group.title];
+                return yeniDurum;
+              })}
               className={`flex items-center justify-between w-full px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors rounded-md ${
                 openGroups[group.title]
                   ? "bg-[#2a4f7a] text-white"

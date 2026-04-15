@@ -47,6 +47,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
   const [yeniMuhatap, setYeniMuhatap] = useState("");
   const [yeniMuhatapKisa, setYeniMuhatapKisa] = useState("");
   const [muhatapDialogOpen, setMuhatapDialogOpen] = useState(false);
+  const [muhatapArama, setMuhatapArama] = useState("");
+  const [muhatapDropdownAcik, setMuhatapDropdownAcik] = useState(false);
 
   const [evrakTarihi, setEvrakTarihi] = useState(yazisma?.evrak_tarihi ?? new Date().toISOString().split("T")[0]);
   const [firmaId, setFirmaId] = useState(yazisma?.firma_id ?? "");
@@ -281,23 +283,48 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         <Input value={konu} onChange={(e) => setKonu(basHarfBuyuk(e.target.value))} placeholder="Yazışma konusu" disabled={loading} />
       </div>
 
-      {/* Muhatap - dropdown seçimli */}
+      {/* Muhatap - aranabilir dropdown */}
       <div className="space-y-2">
         <Label>Muhatap</Label>
         <div className="flex gap-2">
-          <select
-            value={muhatapId}
-            onChange={(e) => selectMuhatapById(e.target.value)}
-            disabled={loading}
-            className={selectClass + " flex-1"}
-          >
-            <option value="">Muhatap seçin</option>
-            {muhataplar.map((m) => (
-              <option key={m.id} value={m.id}>
-                {tekSatirMuhatap(m.deger)}{m.kisa_ad ? ` (${m.kisa_ad})` : ""}
-              </option>
-            ))}
-          </select>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={muhatapArama || (muhatapId ? tekSatirMuhatap(muhataplar.find((m) => m.id === muhatapId)?.deger ?? "") : "")}
+              onChange={(e) => { setMuhatapArama(e.target.value); setMuhatapDropdownAcik(true); }}
+              onFocus={() => setMuhatapDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setMuhatapDropdownAcik(false), 150)}
+              placeholder="Muhatap ara veya seç..."
+              disabled={loading}
+              className={selectClass}
+            />
+            {muhatapDropdownAcik && (() => {
+              const q = muhatapArama.toLowerCase();
+              const filtreli = q ? muhataplar.filter((m) =>
+                tekSatirMuhatap(m.deger).toLowerCase().includes(q) ||
+                (m.kisa_ad?.toLowerCase().includes(q) ?? false)
+              ) : muhataplar;
+              if (filtreli.length === 0) return null;
+              return (
+                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {muhatapId && (
+                    <button type="button" onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { selectMuhatapById(""); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
+                      Muhatap kaldır
+                    </button>
+                  )}
+                  {filtreli.map((m) => (
+                    <button key={m.id} type="button" onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { selectMuhatapById(m.id); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${muhatapId === m.id ? "bg-blue-50 font-semibold" : ""}`}>
+                      {tekSatirMuhatap(m.deger)}{m.kisa_ad ? <span className="text-gray-400 text-xs ml-1">({m.kisa_ad})</span> : ""}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
           <Button
             type="button"
             variant="outline"

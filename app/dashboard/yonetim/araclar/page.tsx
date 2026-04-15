@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAraclar, toggleAracDurum, deleteArac } from "@/lib/supabase/queries/araclar";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import { getSantiyelerBasic } from "@/lib/supabase/queries/santiyeler";
+import { createClient } from "@/lib/supabase/client";
 import { exportAraclarPDF, exportAraclarExcel } from "@/lib/export";
 import type { AracWithRelations, Tanimlama } from "@/lib/supabase/types";
 import {
@@ -28,15 +30,39 @@ export default function AraclarPage() {
   const [loading, setLoading] = useState(true);
   const [arama, setArama] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("tumu");
-  const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("tumu");
+  const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("ozmal");
   const [cinsFiltre, setCinsFiltre] = useState("tumu");
+  const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([]);
+  const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
   const router = useRouter();
+
+  function handleSort(key: string) {
+    setSortList((prev) => {
+      const idx = prev.findIndex((s) => s.key === key);
+      if (idx >= 0) {
+        // Zaten var — yönü değiştir
+        const next = [...prev];
+        next[idx] = { key, dir: prev[idx].dir === "asc" ? "desc" : "asc" };
+        return next;
+      }
+      // Yeni sıralama ekle (max 2)
+      const yeni = [...prev, { key, dir: "asc" as const }];
+      return yeni.slice(-2);
+    });
+  }
+  function sortIcon(key: string) {
+    const s = sortList.find((s) => s.key === key);
+    if (!s) return "";
+    const sira = sortList.indexOf(s) + 1;
+    return s.dir === "asc" ? ` ↑${sira > 1 ? sira : ""}` : ` ↓${sira > 1 ? sira : ""}`;
+  }
 
   async function loadAraclar() {
     try {
-      const [data, cinsData] = await Promise.all([
+      const [data, cinsData, santiyeData] = await Promise.all([
         getAraclar(),
         getTanimlamalar("arac_cinsi"),
+        getSantiyelerBasic(),
       ]);
       setAraclar((data as AracWithRelations[]) ?? []);
       const tItems = (cinsData as Tanimlama[]) ?? [];
@@ -44,6 +70,27 @@ export default function AraclarPage() {
       tItems.forEach((t, i) => sMap.set(t.deger, i));
       setCinsSiralama(sMap);
       setCinsListesi(tItems.map((t) => t.deger));
+
+      // Her araç için son yakıt verilen şantiyeyi bul
+      const santiyeMap = new Map<string, string>();
+      for (const s of (santiyeData ?? []) as { id: string; is_adi: string }[]) santiyeMap.set(s.id, s.is_adi);
+      try {
+        const supabase = createClient();
+        const { data: yakitlar } = await supabase
+          .from("arac_yakit")
+          .select("arac_id, santiye_id, tarih, saat")
+          .order("tarih", { ascending: false })
+          .order("saat", { ascending: false });
+        if (yakitlar) {
+          const sonYakit = new Map<string, string>();
+          for (const y of yakitlar as { arac_id: string; santiye_id: string }[]) {
+            if (!sonYakit.has(y.arac_id)) {
+              sonYakit.set(y.arac_id, santiyeMap.get(y.santiye_id) ?? "");
+            }
+          }
+          setSonYakitSantiye(sonYakit);
+        }
+      } catch { /* sessiz */ }
     } catch {
       toast.error("Araçlar yüklenirken bir hata oluştu.");
     } finally {
@@ -81,13 +128,33 @@ export default function AraclarPage() {
         (a.cinsi?.toLowerCase().includes(q) ?? false) ||
         (a.firmalar?.firma_adi?.toLowerCase().includes(q) ?? false) ||
         (a.kiralama_firmasi?.toLowerCase().includes(q) ?? false) ||
-        (a.santiyeler?.is_adi?.toLowerCase().includes(q) ?? false)
+        (sonYakitSantiye.get(a.id)?.toLowerCase().includes(q) ?? false)
       );
     })
     .sort((a, b) => {
-      const sa = cinsSiralama.get(a.cinsi ?? "") ?? 999;
-      const sb = cinsSiralama.get(b.cinsi ?? "") ?? 999;
-      return sa - sb;
+      for (const s of sortList) {
+        let cmp = 0;
+        switch (s.key) {
+          case "plaka": cmp = a.plaka.localeCompare(b.plaka, "tr"); break;
+          case "firma": {
+            const fa = (a.tip === "ozmal" ? a.firmalar?.firma_adi : a.kiralama_firmasi) ?? "zzz";
+            const fb = (b.tip === "ozmal" ? b.firmalar?.firma_adi : b.kiralama_firmasi) ?? "zzz";
+            cmp = fa.localeCompare(fb, "tr"); break;
+          }
+          case "marka": cmp = (a.marka ?? "").localeCompare(b.marka ?? "", "tr"); break;
+          case "cinsi": {
+            const sa = cinsSiralama.get(a.cinsi ?? "") ?? 999;
+            const sb = cinsSiralama.get(b.cinsi ?? "") ?? 999;
+            cmp = sa - sb; break;
+          }
+          case "yili": cmp = (a.yili ?? 0) - (b.yili ?? 0); break;
+          case "santiye": cmp = (sonYakitSantiye.get(a.id) ?? "zzz").localeCompare(sonYakitSantiye.get(b.id) ?? "zzz", "tr"); break;
+          case "durum": cmp = (a.durum ?? "").localeCompare(b.durum ?? ""); break;
+          case "mulkiyet": cmp = (a.tip ?? "").localeCompare(b.tip ?? ""); break;
+        }
+        if (cmp !== 0) return cmp * (s.dir === "asc" ? 1 : -1);
+      }
+      return 0;
     });
 
   return (
@@ -142,6 +209,11 @@ export default function AraclarPage() {
           <option value="tumu">Tüm Cinsler</option>
           {cinsListesi.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        {sortList.length > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setSortList([])} className="text-red-500 text-xs">
+            Sıralamayı Temizle
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => exportAraclarPDF(filtrelenmis)}
             disabled={filtrelenmis.length === 0}>
@@ -175,13 +247,13 @@ export default function AraclarPage() {
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead className="w-[50px]">No</TableHead>
-                <TableHead>Mülkiyet</TableHead>
-                <TableHead>Plaka</TableHead>
-                <TableHead>Firma</TableHead>
-                <TableHead>Marka / Model</TableHead>
-                <TableHead className="hidden md:table-cell">Cinsi</TableHead>
-                <TableHead className="hidden lg:table-cell">Yılı</TableHead>
-                <TableHead className="hidden md:table-cell">Şantiye</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("mulkiyet")}>Mülkiyet{sortIcon("mulkiyet")}</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("plaka")}>Plaka{sortIcon("plaka")}</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("firma")}>Firma{sortIcon("firma")}</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
+                <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
+                <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
+                <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead className="hidden lg:table-cell">Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
                 <TableHead className="hidden md:table-cell text-center">Ruhsat</TableHead>
@@ -209,7 +281,7 @@ export default function AraclarPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{arac.cinsi ?? "—"}</TableCell>
                   <TableCell className="hidden lg:table-cell">{arac.yili ?? "—"}</TableCell>
-                  <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={arac.santiyeler?.is_adi ?? ""}>{arac.santiyeler?.is_adi ?? "—"}</TableCell>
+                  <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>
                   <TableCell className="hidden lg:table-cell tabular-nums">
                     {arac.guncel_gosterge != null
                       ? `${arac.guncel_gosterge.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
