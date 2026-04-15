@@ -372,7 +372,7 @@ export default function IscilikTakibiPage() {
       {/* Sekme butonları */}
       <div className="flex gap-2 mb-4">
         <Button variant={sekme === "aktif" ? "default" : "outline"} size="sm"
-          onClick={() => setSekme("aktif")} className={sekme === "aktif" ? "bg-[#1E3A5F]" : ""}>
+          onClick={() => setSekme("aktif")} className={sekme === "aktif" ? "bg-[#64748B]" : ""}>
           İşçilik Takibi
         </Button>
         <Button variant={sekme === "cop" ? "default" : "outline"} size="sm"
@@ -432,7 +432,7 @@ export default function IscilikTakibiPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[40px]">No</TableHead>
                 {COLUMNS.map((col) => {
                   const hasTwoLines = col.label.includes("\n");

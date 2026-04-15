@@ -16,7 +16,7 @@ export default function DashboardLayout({
 
   return (
     <AuthProvider>
-      <div className="flex h-screen overflow-hidden bg-[#F1F5F9]">
+      <div className="flex h-screen overflow-hidden bg-[#FAFAFA]">
         <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:shrink-0">
           <Sidebar />
         </aside>

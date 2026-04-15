@@ -751,6 +751,12 @@ export default function DashboardPage() {
                       <TableCell className="px-2 text-center">
                         {(() => {
                           const key = `${y.aracId}-${y.field}`;
+                          const isPolice = y.tip === "Kasko" || y.tip === "Trafik Sigorta";
+                          // Kasko ve Trafik Sigorta: sadece Poliçe Gir ile girilir, tıklanarak düzenlenmez
+                          if (isPolice) {
+                            return <span className="text-xs">{formatTarih(y.bitis)}</span>;
+                          }
+                          // Muayene ve Taşıt Kartı: elle tarih girişi
                           if (editSigortaKey === key) {
                             return (
                               <div className="flex items-center gap-1">
@@ -760,8 +766,9 @@ export default function DashboardPage() {
                                     if (ev.key === "Enter") sigortaTarihKaydet(y.aracId, y.field, (ev.target as HTMLInputElement).value);
                                     if (ev.key === "Escape") setEditSigortaKey(null);
                                   }}
+                                  onBlur={() => setEditSigortaKey(null)}
                                   className="h-6 text-[10px] border rounded px-1" />
-                                <button type="button" onClick={() => {
+                                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => {
                                   const el = document.querySelector(`[data-sigorta-edit="${key}"]`) as HTMLInputElement | null;
                                   if (el) sigortaTarihKaydet(y.aracId, y.field, el.value);
                                 }} className="text-emerald-600"><CheckCircle2 size={12} /></button>
@@ -1125,7 +1132,7 @@ export default function DashboardPage() {
             <div className="space-y-1">
               <Label className="text-xs">Poliçe PDF</Label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPDosya(e.target.files?.[0] ?? null)}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#1E3A5F] file:text-white" />
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
             </div>
             <div className="flex gap-2 justify-end pt-2">
               <Button variant="outline" onClick={() => setPoliceDialogOpen(false)}>İptal</Button>

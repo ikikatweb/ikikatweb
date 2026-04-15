@@ -846,8 +846,8 @@ export default function PersonelPuantajPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table className="text-xs">
             <TableHeader className="sticky top-0 z-20">
-              <TableRow className="bg-[#1E3A5F]">
-                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[120px] max-w-[140px]">Personel</TableHead>
+              <TableRow className="bg-[#64748B]">
+                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#64748B] z-10 min-w-[120px] max-w-[140px]">Personel</TableHead>
                 {gunler.map((g) => (
                   <TableHead
                     key={g}
@@ -1075,14 +1075,14 @@ export default function PersonelPuantajPage() {
 
               {/* SAĞ: Şantiyedeki Personeller */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="bg-[#1E3A5F]/10 border-b px-4 py-2.5 flex items-center justify-between">
+                <div className="bg-[#64748B]/10 border-b px-4 py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Link2 size={16} className="text-[#1E3A5F]" />
                     <h3 className="font-semibold text-[#1E3A5F] text-sm">
                       {santiyeler.find((s) => s.id === santiyeId)?.is_adi ?? "Şantiye"} Personelleri
                     </h3>
                   </div>
-                  <Badge className="bg-[#1E3A5F]">{atamaSantiyedeki.length}</Badge>
+                  <Badge className="bg-[#64748B]">{atamaSantiyedeki.length}</Badge>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto">
                   {atamaSantiyedeki.length === 0 ? (
@@ -1136,7 +1136,7 @@ export default function PersonelPuantajPage() {
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="fixed z-50 bg-[#1E3A5F] text-white px-3 py-2 rounded shadow-lg text-xs pointer-events-none max-w-xs"
+          className="fixed z-50 bg-[#64748B] text-white px-3 py-2 rounded shadow-lg text-xs pointer-events-none max-w-xs"
           style={{ left: tooltip.x, top: tooltip.y, transform: "translateX(-50%)" }}
         >
           <div className="font-bold">{tooltip.ad}</div>

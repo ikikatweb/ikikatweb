@@ -1560,8 +1560,8 @@ export default function AracPuantajPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table className="text-xs">
             <TableHeader className="sticky top-0 z-20">
-              <TableRow className="bg-[#1E3A5F]">
-                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#1E3A5F] z-10 min-w-[110px] max-w-[130px]">Araç</TableHead>
+              <TableRow className="bg-[#64748B]">
+                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#64748B] z-10 min-w-[110px] max-w-[130px]">Araç</TableHead>
                 {gunler.map((g) => (
                   <TableHead
                     key={g}
@@ -1752,14 +1752,14 @@ export default function AracPuantajPage() {
 
               {/* SAĞ: Şantiyedeki Araçlar */}
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="bg-[#1E3A5F]/10 border-b px-4 py-2.5 flex items-center justify-between">
+                <div className="bg-[#64748B]/10 border-b px-4 py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Link2 size={16} className="text-[#1E3A5F]" />
                     <h3 className="font-semibold text-[#1E3A5F] text-sm">
                       {santiyeler.find((s) => s.id === santiyeId)?.is_adi ?? "Şantiye"} Araçları
                     </h3>
                   </div>
-                  <Badge className="bg-[#1E3A5F]">{atamaSantiyedeki.length}</Badge>
+                  <Badge className="bg-[#64748B]">{atamaSantiyedeki.length}</Badge>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto">
                   {atamaSantiyedeki.length === 0 ? (
@@ -1909,7 +1909,7 @@ export default function AracPuantajPage() {
               <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
                 <Table className="text-xs">
                   <TableHeader>
-                    <TableRow className="bg-[#1E3A5F]">
+                    <TableRow className="bg-[#64748B]">
                       <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Sahibi</TableHead>
                       <TableHead className="text-white text-[11px] px-2 min-w-[90px]">Plaka</TableHead>
                       <TableHead className="text-white text-[11px] px-2 min-w-[110px]">Marka/Model</TableHead>
@@ -2045,7 +2045,7 @@ export default function AracPuantajPage() {
                 return (
                   <div className="mt-4">
                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full md:w-2/3 lg:w-3/5">
-                      <div className="bg-[#1E3A5F] text-white px-4 py-2 text-sm font-semibold">
+                      <div className="bg-[#64748B] text-white px-4 py-2 text-sm font-semibold">
                         Firma Bazlı Toplam Kira Bedeli
                       </div>
                       <Table className="text-sm">
@@ -2064,7 +2064,7 @@ export default function AracPuantajPage() {
                               </TableCell>
                             </TableRow>
                           ))}
-                          <TableRow className="bg-[#1E3A5F]/5 border-t-2 border-[#1E3A5F]">
+                          <TableRow className="bg-[#64748B]/5 border-t-2 border-[#1E3A5F]">
                             <TableCell colSpan={2} className="px-4 py-2 text-right">
                               <span className="font-bold text-[#1E3A5F] mr-6">GENEL TOPLAM</span>
                               <span className="font-bold text-[#1E3A5F] text-base">{formatTL(genelToplam)}</span>

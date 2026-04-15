@@ -599,7 +599,7 @@ function KasaDefContent() {
                   setFiltreBaslangic(baslangic.toISOString().slice(0, 10));
                   setFiltreBitis(bitis.toISOString().slice(0, 10));
                 }}
-                  className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#1E3A5F] hover:text-white transition-colors">
+                  className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
                   {b.l}
                 </button>
               ))}
@@ -666,7 +666,7 @@ function KasaDefContent() {
         <div className="bg-white rounded-lg border overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[150px]">Açıklama</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Tip</TableHead>
@@ -745,7 +745,7 @@ function KasaDefContent() {
               <span className={`text-lg font-bold ${devredenBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(devredenBakiye)}</span>
             </div>
           )}
-          <div className="bg-[#1E3A5F] rounded-lg px-4 py-3 flex items-center justify-between">
+          <div className="bg-[#64748B] rounded-lg px-4 py-3 flex items-center justify-between">
             <span className="text-white font-semibold text-sm">Dönem Toplamı</span>
             <div className="flex items-center gap-6">
               <div className="text-right">
@@ -836,7 +836,7 @@ function KasaDefContent() {
                   <div className="space-y-1">
                     <Label className="text-xs">Slip Fotoğrafı</Label>
                     <input type="file" accept="image/*" onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)} disabled={dialogLoading}
-                      className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#1E3A5F] file:text-white hover:file:bg-[#2a4f7a]" />
+                      className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white hover:file:bg-[#2a4f7a]" />
                   </div>
                 )}
                 {dOdeme === "kart" && (

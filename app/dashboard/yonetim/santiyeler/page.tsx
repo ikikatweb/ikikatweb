@@ -587,7 +587,7 @@ export default function SantiyelerPage() {
           { key: "tamamlandi", label: "Tamamlandı" }, { key: "tasfiye", label: "Tasfiye" }, { key: "devir", label: "Devir" },
         ] as { key: Filtre; label: string }[]).map((f) => (
           <Button key={f.key} variant={filtre === f.key ? "default" : "outline"} size="sm"
-            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#1E3A5F]" : ""}>
+            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#64748B]" : ""}>
             {f.label}
           </Button>
         ))}
@@ -631,7 +631,7 @@ export default function SantiyelerPage() {
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-[#1E3A5F]">
+                  <TableRow className="bg-[#64748B]">
                     {HEADER_LABELS.map((h) => {
                       const si = sorts.findIndex((s) => s.key === h.key);
                       const sc = si >= 0 ? sorts[si] : null;

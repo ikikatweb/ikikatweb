@@ -164,7 +164,7 @@ export default function AraclarPage() {
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Araçlar</h1>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/yonetim/araclar/yeni">
-            <Button className="bg-[#1E3A5F] hover:bg-[#2a4f7a] text-white">
+            <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white">
               <Plus size={16} className="mr-1" /> Yeni Araç Ekle
             </Button>
           </Link>
@@ -185,7 +185,7 @@ export default function AraclarPage() {
           { key: "trafikten_cekildi", label: "Trafikten Çekildi" },
         ] as { key: Filtre; label: string }[]).map((f) => (
           <Button key={f.key} variant={filtre === f.key ? "default" : "outline"} size="sm"
-            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#1E3A5F]" : ""}>
+            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#64748B]" : ""}>
             {f.label}
           </Button>
         ))}
@@ -266,7 +266,7 @@ export default function AraclarPage() {
                 <TableRow key={arac.id} className={arac.durum === "pasif" ? "bg-gray-100 opacity-50" : "hover:bg-gray-50"}>
                   <TableCell className="tabular-nums text-gray-500">{index + 1}</TableCell>
                   <TableCell>
-                    <Badge className={arac.tip === "ozmal" ? "bg-[#1E3A5F]" : "bg-[#F97316]"}>
+                    <Badge className={arac.tip === "ozmal" ? "bg-[#64748B]" : "bg-[#F97316]"}>
                       {arac.tip === "ozmal" ? "Özmal" : "Kiralık"}
                     </Badge>
                   </TableCell>

@@ -13,6 +13,21 @@ thead th {
   background-color: inherit;
 }
 
+/* İnce scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -68,7 +83,7 @@ thead th {
 }
 
 :root {
-  --background: #F1F5F9;
+  --background: #FAFAFA;
   --foreground: #1e293b;
   --card: #ffffff;
   --card-foreground: #1e293b;

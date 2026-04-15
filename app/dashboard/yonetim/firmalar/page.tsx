@@ -200,7 +200,7 @@ export default function FirmalarPage() {
           { key: "pasif", label: "Pasif" },
         ] as { key: Filtre; label: string }[]).map((f) => (
           <Button key={f.key} variant={filtre === f.key ? "default" : "outline"} size="sm"
-            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#1E3A5F]" : ""}>
+            onClick={() => setFiltre(f.key)} className={filtre === f.key ? "bg-[#64748B]" : ""}>
             {f.label}
           </Button>
         ))}

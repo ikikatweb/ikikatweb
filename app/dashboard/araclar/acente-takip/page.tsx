@@ -267,7 +267,7 @@ export default function AcenteTakipPage() {
         <div className="flex gap-1 items-end">
           {[{ l: "Bu Ay", a: 1 }, { l: "3 Ay", a: 3 }, { l: "6 Ay", a: 6 }, { l: "1 Yıl", a: 12 }].map((b) => (
             <button key={b.l} type="button" onClick={() => hizliTarih(b.a)}
-              className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#1E3A5F] hover:text-white transition-colors">
+              className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
               {b.l}
             </button>
           ))}
@@ -291,7 +291,7 @@ export default function AcenteTakipPage() {
         <div className="bg-white rounded-lg border overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">İşlem Tarihi</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Ruhsat Sahibi / Firma</TableHead>
@@ -412,7 +412,7 @@ export default function AcenteTakipPage() {
             <div className="space-y-1">
               <Label className="text-xs">Poliçe PDF (yeni dosya yükle)</Label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setEDosya(e.target.files?.[0] ?? null)}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#1E3A5F] file:text-white" />
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
               {editPolice?.police_url && !eDosya && (
                 <a href={editPolice.police_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Mevcut dosyayı görüntüle</a>
               )}

@@ -182,8 +182,8 @@ export default function YiUfePage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
-                <TableHead className="text-white font-bold text-center sticky left-0 bg-[#1E3A5F] z-10 min-w-[70px]">
+              <TableRow className="bg-[#64748B]">
+                <TableHead className="text-white font-bold text-center sticky left-0 bg-[#64748B] z-10 min-w-[70px]">
                   YIL
                 </TableHead>
                 {AY_BASLIK.map((ay) => (

@@ -231,7 +231,7 @@ export default function GelenEvrakPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table>
             <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>

@@ -403,7 +403,7 @@ export default function SigortaMuayenePage() {
         <div className="bg-white rounded-lg border overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 w-10">No</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Marka</TableHead>
@@ -502,7 +502,7 @@ export default function SigortaMuayenePage() {
             <div className="space-y-1">
               <Label className="text-xs">Poliçe PDF</Label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPDosya(e.target.files?.[0] ?? null)}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#1E3A5F] file:text-white" />
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
             </div>
             <div className="flex gap-2 justify-end pt-2">
               <Button variant="outline" onClick={() => setPoliceDialogOpen(false)}>İptal</Button>

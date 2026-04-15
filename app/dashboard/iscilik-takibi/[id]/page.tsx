@@ -376,7 +376,7 @@ export default function IscilikDetayPage() {
       <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-[#1E3A5F]">
+            <TableRow className="bg-[#64748B]">
               <TableHead className="text-white font-semibold text-center text-xs px-3 w-[50px]">S.No</TableHead>
               <TableHead className="text-white font-semibold text-center text-xs px-3 min-w-[100px]">Ait Olduğu Ay</TableHead>
               <TableHead className="text-white font-semibold text-center text-xs px-3 min-w-[180px]">Alt Yüklenici Prime Esas Kazanç Tutarı</TableHead>

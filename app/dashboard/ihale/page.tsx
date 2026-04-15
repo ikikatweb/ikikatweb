@@ -1325,7 +1325,7 @@ export default function IhalePage() {
                       const f = e.target.files?.[0] ?? null;
                       if (f) { setDosya(f); analizEtWithFile(f); }
                     }}
-                    className={`w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#1E3A5F] file:text-white hover:file:bg-[#2a4f7a] ${!seciliIsGrubu ? "opacity-50 cursor-not-allowed" : ""}`} />
+                    className={`w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white hover:file:bg-[#2a4f7a] ${!seciliIsGrubu ? "opacity-50 cursor-not-allowed" : ""}`} />
                   {!seciliIsGrubu && <p className="text-[10px] text-amber-600">Önce iş grubu seçin</p>}
                 </div>
                 {analyzing && (
@@ -1414,7 +1414,7 @@ export default function IhalePage() {
                     </Button>
                   </div>
                   {hesap && (
-                    <div className="bg-[#1E3A5F] text-white px-4 py-1.5 rounded-lg text-sm font-bold">
+                    <div className="bg-[#64748B] text-white px-4 py-1.5 rounded-lg text-sm font-bold">
                       Sınır Değer: {formatTL(hesap.sinirDeger)}
                     </div>
                   )}
@@ -1608,7 +1608,7 @@ export default function IhalePage() {
             <div className="bg-white rounded-lg border overflow-x-auto">
               <Table className="text-xs">
                 <TableHeader>
-                  <TableRow className="bg-[#1E3A5F]">
+                  <TableRow className="bg-[#64748B]">
                     <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
                     <TableHead className="text-white text-[11px] px-2">İKN</TableHead>
                     <TableHead className="text-white text-[11px] px-2 min-w-[200px]">İdare</TableHead>

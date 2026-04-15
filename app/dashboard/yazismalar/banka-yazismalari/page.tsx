@@ -185,7 +185,7 @@ export default function BankaYazismalariPage() {
           <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
             <Plus size={16} className="mr-1" /> Yeni Banka Yazışma Ekle
           </Button>
-          <Button className="bg-[#1E3A5F] hover:bg-[#2a4f7a] text-white" onClick={() => setHizliTalimatOpen(true)}>
+          <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white" onClick={() => setHizliTalimatOpen(true)}>
             <Zap size={16} className="mr-1" /> Hızlı Talimat
           </Button>
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
@@ -253,7 +253,7 @@ export default function BankaYazismalariPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table>
             <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>

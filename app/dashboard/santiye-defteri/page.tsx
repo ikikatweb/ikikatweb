@@ -492,7 +492,7 @@ export default function SantiyeDefPage() {
         <div className="flex gap-1 items-end">
           {[{ l: "Bu Ay", a: 0 }, { l: "3 Ay", a: 2 }, { l: "6 Ay", a: 5 }, { l: "1 Yıl", a: 11 }].map((b) => (
             <button key={b.l} type="button" onClick={() => hizliAy(b.a)}
-              className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#1E3A5F] hover:text-white transition-colors">
+              className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
               {b.l}
             </button>
           ))}
@@ -573,7 +573,7 @@ export default function SantiyeDefPage() {
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto !p-0">
           <div className="bg-white rounded-lg">
             {/* Başlık */}
-            <div className="bg-[#1E3A5F] text-white text-center py-2 rounded-t-lg relative">
+            <div className="bg-[#64748B] text-white text-center py-2 rounded-t-lg relative">
               <h2 className="font-bold text-sm tracking-wider">ŞANTİYE GÜNLÜK DEFTERİ</h2>
               <div className="absolute right-2 top-1.5 flex gap-1">
                 {defter && (

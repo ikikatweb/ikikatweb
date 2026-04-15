@@ -967,7 +967,7 @@ export default function TanimlamalarPage() {
                         <button
                           type="button"
                           onClick={() => setIsGrupAcik((p) => ({ ...p, [anaKey]: !p[anaKey] }))}
-                          className="w-full flex items-center gap-2 px-3 py-2 bg-[#1E3A5F] text-white text-sm font-semibold hover:bg-[#2a4f7a] transition-colors"
+                          className="w-full flex items-center gap-2 px-3 py-2 bg-[#64748B] text-white text-sm font-semibold hover:bg-[#2a4f7a] transition-colors"
                         >
                           {anaAcik ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           <span>({anaKey}) {ana.deger}</span>

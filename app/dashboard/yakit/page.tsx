@@ -1129,7 +1129,7 @@ function YakitPageContent() {
                   setFiltreBaslangic(baslangic.toISOString().slice(0, 10));
                   setFiltreBitis(bitis.toISOString().slice(0, 10));
                 }}
-                  className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#1E3A5F] hover:text-white transition-colors">
+                  className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
                   {b.l}
                 </button>
               ))}
@@ -1222,7 +1222,7 @@ function YakitPageContent() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>
-              <TableRow className="bg-[#1E3A5F]">
+              <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Tarih/Saat</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[180px]">Araç / Kaynak</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">KM/Saat</TableHead>
