@@ -71,6 +71,7 @@ type Hareket =
       arac_id: string;
       km_saat: number;
       miktar_lt: number;
+      depo_full: boolean;
       notu: string | null;
       created_by: string | null;
     }
@@ -349,6 +350,7 @@ function YakitPageContent() {
         arac_id: y.arac_id,
         km_saat: y.km_saat,
         miktar_lt: y.miktar_lt,
+        depo_full: y.depo_full ?? false,
         notu: y.notu,
         created_by: y.created_by,
       });
