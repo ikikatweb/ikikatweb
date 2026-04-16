@@ -1031,7 +1031,7 @@ export default function IhalePage() {
       }
       setSeciliIsGrubu(ihale.is_grubu ?? "");
       setNKatsayisi(String(ihale.n_katsayisi).replace(".", ","));
-      setHasManualEdits(true); // Geçmişten yüklenip düzenlenen = DÜZENLENDİ
+      setHasManualEdits(ihale.has_manual_edits ?? false); // Orijinal kaydın durumunu koru
       setKatilimcilar(kat.map((k) => ({
         firmaAdi: k.firma_adi,
         teklif: k.teklif_tutari,
