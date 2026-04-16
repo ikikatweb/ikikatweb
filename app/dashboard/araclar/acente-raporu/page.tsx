@@ -226,9 +226,18 @@ export default function AcenteRaporuPage() {
     type Row = [string, string, string, string, string, string];
     const body: Row[] = [];
     for (const o of ozetler) {
+      const acenteAcik = !!acikAcenteler[o.acente];
       body.push([tr(o.acente), "", "", "", "", formatPara(o.toplam)]);
+      // Acente kapalıysa şirketleri ve poliçeleri ATLA
+      if (!acenteAcik) continue;
+
       for (const s of o.sirketler) {
+        const sirketKey = `${o.acente}__${s.sirket}`;
+        const sirketAcik = !!acikSirketler[sirketKey];
         body.push(["", tr(s.sirket), "", "", "", formatPara(s.toplam)]);
+        // Şirket kapalıysa poliçe detaylarını ATLA
+        if (!sirketAcik) continue;
+
         for (const p of s.policeler) {
           body.push([
             "", p.policeNo || "—", tr(p.aracAdi),
@@ -242,10 +251,14 @@ export default function AcenteRaporuPage() {
 
     autoTable(doc, {
       startY: 25,
-      head: [["Acente", "Police No / Sirket", "Plaka", "Belge Tipi", "Baslangic - Bitis", "Tutar"]],
+      head: [[
+        "Acente", "Police No / Sirket", "Plaka", "Belge Tipi", "Baslangic - Bitis",
+        { content: "Tutar", styles: { halign: "right" } },
+      ]],
       body,
       foot: [[
-        "GENEL TOPLAM", "", "", "", "", formatPara(genelToplam.toplam),
+        { content: "GENEL TOPLAM", colSpan: 5, styles: { halign: "left" } },
+        { content: formatPara(genelToplam.toplam), styles: { halign: "right" } },
       ]],
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 58, 95] },

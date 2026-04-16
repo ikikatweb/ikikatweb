@@ -843,26 +843,30 @@ export default function PersonelPuantajPage() {
           <p className="text-gray-500">Bu şantiyeye atanmış personel yok.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table className="text-xs">
-            <TableHeader className="sticky top-0 z-20">
-              <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2 sticky left-0 bg-[#64748B] z-10 min-w-[120px] max-w-[140px]">Personel</TableHead>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+          <Table noWrapper className="text-xs border-separate border-spacing-0">
+            <thead>
+              <tr className="bg-[#64748B]">
+                <th
+                  style={{ position: "sticky", top: 0, left: 0, zIndex: 40 }}
+                  className="text-white text-[11px] px-2 h-10 text-left align-middle font-medium whitespace-nowrap bg-[#64748B] min-w-[120px] max-w-[140px] border-b border-gray-200"
+                >Personel</th>
                 {gunler.map((g) => (
-                  <TableHead
+                  <th
                     key={g}
-                    className={`text-white text-[10px] text-center px-0 min-w-[35px] w-[35px] ${gunHaftaSonu(g) ? "bg-[#2c5278]" : ""}`}
+                    style={{ position: "sticky", top: 0, zIndex: 30 }}
+                    className={`text-white text-[10px] text-center px-0 h-10 align-middle font-medium whitespace-nowrap min-w-[35px] w-[35px] border-b border-gray-200 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : "bg-[#64748B]"}`}
                     title={gunAdi(g)}
                   >
                     <div>{g}</div>
                     <div className="text-[8px] opacity-75">{gunAdi(g).slice(0, 1)}</div>
-                  </TableHead>
+                  </th>
                 ))}
-                <TableHead className="text-white text-[11px] text-center px-2 min-w-[70px] bg-[#0f2540]">Mesai</TableHead>
-                <TableHead className="text-white text-[11px] text-center px-2 min-w-[60px] bg-[#0f2540]">İzin</TableHead>
-                <TableHead className="text-white text-[11px] text-center px-2 min-w-[60px] bg-[#0f2540]">Toplam</TableHead>
-              </TableRow>
-            </TableHeader>
+                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[70px] bg-[#0f2540] border-b border-gray-200">Mesai</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">İzin</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">Toplam</th>
+              </tr>
+            </thead>
             <TableBody>
               {gosterilecekPersoneller.map((p) => {
                 const gunMap = personelGunMap.get(p.id);

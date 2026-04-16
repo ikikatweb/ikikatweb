@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks";
 import { hrefToModuleKey } from "@/lib/permissions";
 import {
@@ -113,6 +113,17 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     return initial;
   });
 
+  // Dashboard ana sayfasına gelindiğinde tüm alt menüleri kapat
+  useEffect(() => {
+    if (pathname === "/dashboard") {
+      setOpenGroups((p) => {
+        const reset: Record<string, boolean> = {};
+        for (const k of Object.keys(p)) reset[k] = false;
+        return reset;
+      });
+    }
+  }, [pathname]);
+
   function canView(href: string): boolean {
     const key = hrefToModuleKey(href);
     return hasPermission(key, "goruntule");
@@ -130,10 +141,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* Logo */}
       <div className="px-4 py-5 border-b border-[#cdd4dc]">
         <Link href="/dashboard" onClick={() => onNavigate?.()}>
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="KAD-TEM" className="h-14 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <h2 className="text-sm font-bold text-[#1E3A5F]">KAD-TEM A.Ş.</h2>
+            <img src="/logo.png" alt="KAD-TEM" className="h-24 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
           </div>
         </Link>
       </div>
