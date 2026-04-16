@@ -71,18 +71,20 @@ export async function POST(request: Request) {
   );
 
   // 1. Supabase Auth kullanıcısı oluştur
-  const email = `${kullanici_adi.trim().toLowerCase()}@ikikat.com`;
+  const email = `${kullanici_adi.trim().toLowerCase()}@ikikatweb.vercel.app`;
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password: sifre,
     email_confirm: true,
+    user_metadata: { kullanici_adi: kullanici_adi.trim().toLowerCase() },
   });
 
   if (authError) {
-    if (authError.message.includes("already")) {
+    console.error("Supabase auth createUser hatası:", authError);
+    if (authError.message.includes("already") || authError.message.includes("registered")) {
       return NextResponse.json({ error: "Bu kullanıcı adı zaten kullanılıyor" }, { status: 409 });
     }
-    return NextResponse.json({ error: authError.message }, { status: 500 });
+    return NextResponse.json({ error: `Auth hatası: ${authError.message}` }, { status: 500 });
   }
 
   // 2. Kullanıcılar tablosuna ekle
