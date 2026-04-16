@@ -699,6 +699,10 @@ export default function IhalePage() {
 
   // Analiz sonucu
   const [currentIhaleId, setCurrentIhaleId] = useState<string | null>(null);
+  // Mevcut kaydın orijinal mi düzenlenmiş mi olduğunu takip eder.
+  // true → orijinal (düzenleme yapılırsa YENİ kayıt oluşur)
+  // false → düzenlenmiş veya boş (aynı kayıt üzerine yazılır)
+  const [currentIhaleIsOriginal, setCurrentIhaleIsOriginal] = useState<boolean>(false);
   const [idareAdi, setIdareAdi] = useState("");
   const [isAdi, setIsAdi] = useState("");
   const [ihaleKayitNo, setIhaleKayitNo] = useState("");
@@ -774,6 +778,16 @@ export default function IhalePage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Düzenleme yapıldığında otomatik kaydet (debounce 1.5s)
+  useEffect(() => {
+    if (!hasManualEdits || !analizYapildi) return;
+    const timer = setTimeout(() => {
+      autoSave(null, katilimcilar).catch((err) => console.error("Otomatik kayıt hatası:", err));
+    }, 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasManualEdits, idareAdi, isAdi, ihaleKayitNo, ihaleTarihi, yaklasikMaliyet, seciliIsGrubu, nKatsayisi, katilimcilar]);
 
   // Hesap sonucu (otomatik yeniden hesapla)
   const ym = parseParaInput(yaklasikMaliyet);
@@ -874,6 +888,7 @@ export default function IhalePage() {
       setHasManualEdits(false);
       setAnalizYapildi(true);
       setCurrentIhaleId(null);
+      setCurrentIhaleIsOriginal(true); // Dosyadan okunan kayıt orijinaldir
 
       toast.success(`${yeniKat.length} firma bulundu.`);
 
@@ -923,12 +938,20 @@ export default function IhalePage() {
       };
 
       let ihaleId = currentIhaleId;
+      // Orijinal bir kayıt üzerinde ilk kez düzenleme yapılıyorsa,
+      // orijinali koru ve düzenlemeyi YENİ kayıt olarak oluştur.
+      if (ihaleId && hasManualEdits && currentIhaleIsOriginal) {
+        ihaleId = null;
+      }
       if (ihaleId) {
         await updateIhale(ihaleId, ihaleData);
       } else {
         const saved = await insertIhale(ihaleData);
         ihaleId = saved.id;
         setCurrentIhaleId(saved.id);
+        // Yeni oluşturulan kayıt düzenlenmişse bu artık "düzenlenmiş" kayıttır,
+        // sonraki düzenlemeler aynı kaydı günceller.
+        setCurrentIhaleIsOriginal(!hasManualEdits);
       }
 
       // Katılımcıları kaydet
@@ -1018,8 +1041,11 @@ export default function IhalePage() {
   async function gecmisYukle(ihale: Ihale) {
     try {
       const kat = await getKatilimcilar(ihale.id);
-      // Orijinal kayıt korunur — değişiklik yapılırsa YENİ kayıt oluşur
-      setCurrentIhaleId(null); // null = sonraki kayıt yeni insert olacak
+      // Zaten düzenlenmiş bir kayıt ise aynı kaydın üzerine yazılır (yeni düzenlenmiş kopya oluşmaz).
+      // Orijinal kayıt ise düzenlendiğinde YENİ bir düzenlenmiş kayıt oluşur, orijinal korunur.
+      const zatenDuzenlendi = ihale.has_manual_edits ?? false;
+      setCurrentIhaleId(ihale.id);
+      setCurrentIhaleIsOriginal(!zatenDuzenlendi);
       setIdareAdi(ihale.idare_adi ?? "");
       setIsAdi(ihale.is_adi ?? "");
       setIhaleKayitNo(ihale.ihale_kayit_no ?? "");
@@ -1031,7 +1057,7 @@ export default function IhalePage() {
       }
       setSeciliIsGrubu(ihale.is_grubu ?? "");
       setNKatsayisi(String(ihale.n_katsayisi).replace(".", ","));
-      setHasManualEdits(ihale.has_manual_edits ?? false); // Orijinal kaydın durumunu koru
+      setHasManualEdits(zatenDuzenlendi);
       setKatilimcilar(kat.map((k) => ({
         firmaAdi: k.firma_adi,
         teklif: k.teklif_tutari,
@@ -1045,7 +1071,9 @@ export default function IhalePage() {
       })));
       setAnalizYapildi(true);
       setAktifTab("hesaplama");
-      toast.success("İhale yüklendi. Değişiklik yaparsanız yeni kayıt olarak kaydedilir.");
+      toast.success(zatenDuzenlendi
+        ? "Düzenlenmiş ihale yüklendi. Değişiklikler aynı kayıt üzerine yazılır."
+        : "İhale yüklendi. Değişiklik yaparsanız yeni kayıt olarak kaydedilir.");
     } catch (err) {
       toast.error(`Yükleme hatası: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -1273,6 +1301,7 @@ export default function IhalePage() {
   // Sıfırla
   function sifirla() {
     setCurrentIhaleId(null);
+    setCurrentIhaleIsOriginal(false);
     setIdareAdi(""); setIsAdi(""); setIhaleKayitNo(""); setIhaleTarihi(""); setIhaleSaati(""); setTeklifAcmaTarihi(""); setYaklasikMaliyet("");
     setKatilimcilar([]); setHasManualEdits(false); setAnalizYapildi(false);
     setDosya(null);

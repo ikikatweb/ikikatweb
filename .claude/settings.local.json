@@ -3,7 +3,10 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(npx next:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(taskkill /PID 22344 /F)",
+      "Bash(cmd.exe //c \"taskkill /PID 22344 /F\")"
     ]
   }
 }

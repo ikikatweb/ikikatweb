@@ -158,7 +158,11 @@ export default function TanimlamalarPage() {
       kategoriler.push({ key: t.kategori, sekme: t.sekme });
     }
   }
-  // Banka yazışmaları için gereken iki kategori otomatik eklensin (ilk kayıt olmasa da görünsün)
+  // Yazışmalar için gereken kategoriler otomatik eklensin (ilk kayıt olmasa da görünsün)
+  if (!katSet.has("muhatap")) {
+    kategoriler.push({ key: "muhatap", sekme: "yazismalar" });
+    katSet.add("muhatap");
+  }
   if (!katSet.has("banka_muhatap")) {
     kategoriler.push({ key: "banka_muhatap", sekme: "yazismalar" });
     katSet.add("banka_muhatap");

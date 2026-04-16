@@ -122,11 +122,31 @@ export default function SigortaMuayenePage() {
         getDegerler("sigorta_az_kaldi_gun").catch(() => []),
         getTanimlamalar("arac_cinsi").catch(() => []),
       ]);
-      setAraclar((aData as AracWithRelations[]) ?? []);
+      const araclarData = (aData as AracWithRelations[]) ?? [];
+      const policelerData = pData as AracPolice[];
+
+      // Stale temizlik: aracta trafik_sigorta_bitis/kasko_bitis var ama hiç poliçe yoksa temizle
+      const policeAracTipSet = new Set(policelerData.map((p) => `${p.arac_id}-${p.police_tipi}`));
+      for (const a of araclarData) {
+        const temizle: { trafik_sigorta_bitis?: null; kasko_bitis?: null } = {};
+        if (a.trafik_sigorta_bitis && !policeAracTipSet.has(`${a.id}-trafik`)) temizle.trafik_sigorta_bitis = null;
+        if (a.kasko_bitis && !policeAracTipSet.has(`${a.id}-kasko`)) temizle.kasko_bitis = null;
+        if (Object.keys(temizle).length > 0) {
+          try {
+            await updateArac(a.id, temizle);
+            if ("trafik_sigorta_bitis" in temizle) a.trafik_sigorta_bitis = null;
+            if ("kasko_bitis" in temizle) a.kasko_bitis = null;
+          } catch {
+            // Sessizce geç — UI'yi yine de doğru göstermek için police-only display kullanılıyor
+          }
+        }
+      }
+
+      setAraclar(araclarData);
       const sMap = new Map<string, number>();
       ((cinsData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
       setCinsSiralama(sMap);
-      setPoliceler(pData as AracPolice[]);
+      setPoliceler(policelerData);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
       if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
@@ -231,9 +251,16 @@ export default function SigortaMuayenePage() {
         await supabase.from("arac_police").update({ police_url: url }).eq("id", result.id);
       }
 
-      // Aracın ilgili bitiş tarihini güncelle
+      // Aracın ilgili bitiş tarihini güncelle — mevcut poliçeler + yeni poliçe içindeki en ileri bitiş
+      const ayniTipPoliceler = policeler.filter(
+        (p) => p.arac_id === policeAracId && p.police_tipi === pTip
+      );
+      let enIleriBitis = pBitisTarih;
+      for (const p of ayniTipPoliceler) {
+        if (p.bitis_tarihi && p.bitis_tarihi > enIleriBitis) enIleriBitis = p.bitis_tarihi;
+      }
       const updateField = pTip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
-      await updateArac(policeAracId, { [updateField]: pBitisTarih });
+      await updateArac(policeAracId, { [updateField]: enIleriBitis });
 
       await loadData();
       setPoliceDialogOpen(false);
@@ -245,11 +272,30 @@ export default function SigortaMuayenePage() {
     }
   }
 
-  // Poliçe sil
+  // Poliçe sil — silinen poliçeye göre araç bitiş tarihini de güncelle
   async function policeSil() {
     if (!silOnay) return;
     try {
+      // Silinmeden önce poliçe bilgilerini al
+      const silinen = policeler.find((p) => p.id === silOnay);
       await deleteAracPolice(silOnay);
+
+      if (silinen) {
+        // Silinen poliçenin tipinde aynı araca ait kalan poliçeler
+        const kalan = policeler.filter(
+          (p) => p.id !== silOnay && p.arac_id === silinen.arac_id && p.police_tipi === silinen.police_tipi
+        );
+        // Kalan poliçelerden en ileri bitiş tarihini bul (yoksa null)
+        let yeniBitis: string | null = null;
+        for (const k of kalan) {
+          if (k.bitis_tarihi && (!yeniBitis || k.bitis_tarihi > yeniBitis)) {
+            yeniBitis = k.bitis_tarihi;
+          }
+        }
+        const updateField = silinen.police_tipi === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
+        await updateArac(silinen.arac_id, { [updateField]: yeniBitis });
+      }
+
       setSilOnay(null);
       await loadData();
       toast.success("Poliçe silindi.");
@@ -278,7 +324,11 @@ export default function SigortaMuayenePage() {
           <button type="button" onClick={() => {
             const el = document.querySelector(`[data-date-field="${key}"]`) as HTMLInputElement | null;
             if (el) saveDate(arac.id, field, el.value);
-          }} className="text-[10px] text-white bg-emerald-600 rounded px-1.5 py-1 hover:bg-emerald-700">OK</button>
+          }} className="text-[10px] text-white bg-emerald-600 rounded px-1.5 py-1 hover:bg-emerald-700" title="Kaydet">OK</button>
+          <button type="button" onClick={() => saveDate(arac.id, field, "")}
+            className="text-[10px] text-white bg-red-500 rounded px-1.5 py-1 hover:bg-red-600" title="Tarihi temizle">
+            Temizle
+          </button>
         </div>
       );
     }
@@ -292,15 +342,14 @@ export default function SigortaMuayenePage() {
     );
   }
 
-  // SigortaCell — poliçeden en güncel bitiş tarihini göster
+  // SigortaCell — sadece poliçeden veri gelir, elle düzenleme yok
   function SigortaCell({ arac, tip }: { arac: AracWithRelations; tip: "kasko" | "trafik" }) {
     const police = sonPoliceMap.get(arac.id)?.[tip];
-    const fallbackField = tip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
-    const tarih = police?.bitis_tarihi ?? (arac[fallbackField] as string | null);
+    const tarih = police?.bitis_tarihi ?? null;
     const { durum, kalanGun } = tarihDurumHesapla(tarih, yaklasirGun, azKaldiGun);
 
     return (
-      <div className={`text-center px-1.5 py-1 rounded text-xs ${tarihClass(durum)}`}>
+      <div className={`text-center px-1.5 py-1 rounded text-xs ${tarihClass(durum)}`} title={police ? "Bu tarih aktif poliçeden gelir" : "Poliçe ekleyin"}>
         {tarih ? formatTarih(tarih) : "—"}
         {durumLabel(durum, kalanGun) && <span className="block text-[9px]">{durumLabel(durum, kalanGun)}</span>}
       </div>

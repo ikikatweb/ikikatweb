@@ -322,12 +322,12 @@ export default function DashboardPage() {
       if (a.tip !== "ozmal") continue;
       if (a.durum === "trafikten_cekildi") continue;
       const pc = policeMap.get(a.id);
-      // Trafik/Kasko: poliçeden en güncel bitiş tarihini al, yoksa araç alanından
-      const trafikBitis = pc?.trafik?.bitis || a.trafik_sigorta_bitis;
-      const kaskoBitis = pc?.kasko?.bitis || a.kasko_bitis;
+      // Trafik/Kasko: sadece poliçeden gelen bitiş tarihi (araç alanına fallback YOK — stale data'yı gösterme)
+      const trafikBitis = pc?.trafik?.bitis || null;
+      const kaskoBitis = pc?.kasko?.bitis || null;
       const fields: [string, string, string | null, string][] = [
-        ["Trafik Sigorta", "trafik_sigorta_bitis", trafikBitis ?? null, pc?.trafik?.acente ?? ""],
-        ["Kasko", "kasko_bitis", kaskoBitis ?? null, pc?.kasko?.acente ?? ""],
+        ["Trafik Sigorta", "trafik_sigorta_bitis", trafikBitis, pc?.trafik?.acente ?? ""],
+        ["Kasko", "kasko_bitis", kaskoBitis, pc?.kasko?.acente ?? ""],
         ["Muayene", "muayene_bitis", a.muayene_bitis, ""],
         ["Taşıt Kartı", "tasit_karti_bitis", a.tasit_karti_bitis, ""],
       ];
