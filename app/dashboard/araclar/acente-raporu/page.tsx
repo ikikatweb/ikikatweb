@@ -61,8 +61,8 @@ export default function AcenteRaporuPage() {
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [arama, setArama] = useState("");
-  const [fBaslangic, setFBaslangic] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });
-  const [fBitis, setFBitis] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fBaslangic, setFBaslangic] = useState("");
+  const [fBitis, setFBitis] = useState("");
   const [acikAcenteler, setAcikAcenteler] = useState<Record<string, boolean>>({});
   const [acikSirketler, setAcikSirketler] = useState<Record<string, boolean>>({});
 
@@ -115,9 +115,11 @@ export default function AcenteRaporuPage() {
     const acenteMap = new Map<string, Map<string, SirketOzet>>();
 
     for (const p of policeler) {
-      const tarih = p.islem_tarihi ?? p.created_at?.slice(0, 10) ?? "";
-      if (fBaslangic && tarih < fBaslangic) continue;
-      if (fBitis && tarih > fBitis) continue;
+      // Filtreleme tarihi: poliçenin işlem (giriş) tarihi → yoksa kaydedilme tarihi
+      // baslangic_tarihi gelecek bir tarih olabilir, bu yüzden ona fallback YAPMA
+      const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
+      if (fBaslangic && tarih && tarih < fBaslangic) continue;
+      if (fBitis && tarih && tarih > fBitis) continue;
       const acenteAdi = (p.acente ?? "").trim() || "(Acentesiz)";
       const sirketAdi = (p.sigorta_firmasi ?? "").trim() || "(Şirket belirtilmemiş)";
       if (!acenteMap.has(acenteAdi)) acenteMap.set(acenteAdi, new Map());
@@ -216,7 +218,9 @@ export default function AcenteRaporuPage() {
     doc.setFont("helvetica", "bold"); doc.setFontSize(12);
     doc.text("Acente Raporu", 14, 15);
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    const aralik = `${formatTarih(fBaslangic)} - ${formatTarih(fBitis)}`;
+    const aralik = (fBaslangic || fBitis)
+      ? `${fBaslangic ? formatTarih(fBaslangic) : "Baslangic"} - ${fBitis ? formatTarih(fBitis) : "Bugun"}`
+      : "Tum tarihler";
     doc.text(`Tarih Araligi: ${aralik}  |  ${ozetler.length} acente`, 14, 21);
 
     type Row = [string, string, string, string, string, string];
@@ -244,9 +248,14 @@ export default function AcenteRaporuPage() {
         "GENEL TOPLAM", "", "", "", "", formatPara(genelToplam.toplam),
       ]],
       styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fillColor: [30, 58, 95], halign: "left" },
+      headStyles: { fillColor: [30, 58, 95] },
       footStyles: { fillColor: [241, 245, 249], textColor: [30, 58, 95], fontStyle: "bold" },
       columnStyles: {
+        0: { halign: "left" },
+        1: { halign: "left" },
+        2: { halign: "left" },
+        3: { halign: "left" },
+        4: { halign: "left" },
         5: { halign: "right" },
       },
       didParseCell: (hookData) => {

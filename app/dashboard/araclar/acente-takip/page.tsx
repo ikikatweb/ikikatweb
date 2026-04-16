@@ -47,8 +47,8 @@ export default function AcenteTakipPage() {
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [arama, setArama] = useState("");
   const [tipFiltre, setTipFiltre] = useState<"" | "kasko" | "trafik">("");
-  const [fBaslangic, setFBaslangic] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });
-  const [fBitis, setFBitis] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fBaslangic, setFBaslangic] = useState("");
+  const [fBitis, setFBitis] = useState("");
   const [silOnay, setSilOnay] = useState<string | null>(null);
   const [sigortaFirmalari, setSigortaFirmalari] = useState<string[]>([]);
   const [acenteler, setAcenteler] = useState<string[]>([]);
@@ -99,9 +99,11 @@ export default function AcenteTakipPage() {
     return policeler
       .filter((p) => {
         if (tipFiltre && p.police_tipi !== tipFiltre) return false;
-        const tarih = p.islem_tarihi ?? p.created_at?.slice(0, 10) ?? "";
-        if (fBaslangic && tarih < fBaslangic) return false;
-        if (fBitis && tarih > fBitis) return false;
+        // Filtreleme tarihi: islem_tarihi → yoksa kaydedilme tarihi
+        // baslangic_tarihi gelecek tarih olabilir, ona fallback YAPMA
+        const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
+        if (fBaslangic && tarih && tarih < fBaslangic) return false;
+        if (fBitis && tarih && tarih > fBitis) return false;
         if (q) {
           const arac = aracMap.get(p.arac_id);
           const text = [
