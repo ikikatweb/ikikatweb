@@ -29,7 +29,7 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const email = `${username.trim().toLowerCase()}@ikikatweb.vercel.app`;
+      const email = `${username.trim().toLowerCase()}@gmail.com`;
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,

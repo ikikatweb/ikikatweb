@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   );
 
   // 1. Supabase Auth kullanıcısı oluştur
-  const email = `${kullanici_adi.trim().toLowerCase()}@ikikatweb.vercel.app`;
+  const email = `${kullanici_adi.trim().toLowerCase()}@gmail.com`;
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password: sifre,
