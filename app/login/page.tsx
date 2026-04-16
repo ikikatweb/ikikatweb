@@ -29,11 +29,23 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const email = `${username.trim().toLowerCase()}@gmail.com`;
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Türkçe karakterleri temizle
+      const normalize = (s: string) => s.trim().toLowerCase()
+        .replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i")
+        .replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u")
+        .replace(/[^a-z0-9]/g, "");
+      const normalized = normalize(username);
+      // Mevcut kullanıcılar için birden fazla domain dene
+      const domains = ["@ikikat.local", "@gmail.com", "@ikikatweb.vercel.app", "@ikikat.com"];
+      let error = null;
+      for (const domain of domains) {
+        const result = await supabase.auth.signInWithPassword({
+          email: normalized + domain,
+          password,
+        });
+        if (!result.error) { error = null; break; }
+        error = result.error;
+      }
 
       if (error) {
         toast.error("Kullanıcı adı veya şifre hatalı.");

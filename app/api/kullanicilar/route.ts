@@ -70,13 +70,18 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // 1. Supabase Auth kullanıcısı oluştur
-  const email = `${kullanici_adi.trim().toLowerCase()}@gmail.com`;
+  // 1. Supabase Auth kullanıcısı oluştur — Türkçe karakterleri temizle
+  const normalize = (s: string) => s.trim().toLowerCase()
+    .replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i")
+    .replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u")
+    .replace(/[^a-z0-9]/g, "");
+  const normalizedKullaniciAdi = normalize(kullanici_adi);
+  const email = `${normalizedKullaniciAdi}@gmail.com`;
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
     email,
     password: sifre,
     email_confirm: true,
-    user_metadata: { kullanici_adi: kullanici_adi.trim().toLowerCase() },
+    user_metadata: { kullanici_adi: normalizedKullaniciAdi },
   });
 
   if (authError) {
