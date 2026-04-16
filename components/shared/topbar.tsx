@@ -68,11 +68,6 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
 
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
-          {kullanici?.rol && (
-            <Badge className={kullanici.rol === "yonetici" ? "bg-[#F97316]" : "bg-gray-500"} variant="default">
-              {kullanici.rol === "yonetici" ? "Yönetici" : "Kısıtlı"}
-            </Badge>
-          )}
         </div>
         <Button
           variant="outline"

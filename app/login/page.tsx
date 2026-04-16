@@ -29,7 +29,7 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const email = `${username.trim().toLowerCase()}@ikikat.local`;
+      const email = `${username.trim().toLowerCase()}@ikikat.com`;
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,

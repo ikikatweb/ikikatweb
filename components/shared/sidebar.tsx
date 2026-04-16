@@ -129,13 +129,10 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {/* Logo */}
       <div className="px-4 py-5 border-b border-[#cdd4dc]">
         <Link href="/dashboard" onClick={() => onNavigate?.()}>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="KAD-TEM" className="h-10 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            <div>
-              <h2 className="text-sm font-bold text-[#1E3A5F]">KAD-TEM A.Ş.</h2>
-              <p className="text-[10px] text-gray-400">Yönetim Sistemi</p>
-            </div>
+            <img src="/logo.png" alt="KAD-TEM" className="h-14 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            <h2 className="text-sm font-bold text-[#1E3A5F]">KAD-TEM A.Ş.</h2>
           </div>
         </Link>
       </div>
