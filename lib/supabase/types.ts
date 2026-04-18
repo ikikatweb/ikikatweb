@@ -616,6 +616,8 @@ export type Kullanici = {
   // Kısıtlı kullanıcı: geriye dönük kaç gün işlem yapabilir (puantaj, yakıt vb.)
   // null veya 0 = sadece bugün; 7 = bugün dahil 7 gün geriye
   geriye_donus_gun: number | null;
+  // Dashboard'da hangi widget'lar gösterilsin (boş/null = hepsi)
+  dashboard_widgets: string[] | null;
   created_at: string;
   updated_at: string;
 };

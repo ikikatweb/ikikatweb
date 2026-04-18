@@ -9,6 +9,7 @@ export type KullaniciCreatePayload = {
   izinler?: Izinler;
   santiye_ids?: string[];
   geriye_donus_gun?: number | null;
+  dashboard_widgets?: string[] | null;
 };
 
 export type KullaniciUpdatePayload = {
@@ -19,6 +20,7 @@ export type KullaniciUpdatePayload = {
   izinler?: Izinler;
   santiye_ids?: string[];
   geriye_donus_gun?: number | null;
+  dashboard_widgets?: string[] | null;
 };
 
 // İzin şablonu tipi

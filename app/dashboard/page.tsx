@@ -652,6 +652,10 @@ export default function DashboardPage() {
     </div>
   );
 
+  // Widget görünürlük kontrolü: kullanıcının dashboard_widgets ayarı (boş/null = hepsi)
+  const wl = kullanici?.dashboard_widgets;
+  const wg = (key: string) => !wl || wl.length === 0 || wl.includes(key);
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
@@ -659,7 +663,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler */}
-        <div className="bg-white rounded-xl border p-4">
+        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Yi-ÜFE Endeksler</h3>
@@ -686,10 +690,10 @@ export default function DashboardPage() {
               )}
             </div>
           ) : <p className="text-sm text-gray-400">Veri yok</p>}
-        </div>
+        </div> : null}
 
         {/* Widget 2: Kasa Defteri Personel Özeti */}
-        <div className="bg-white rounded-lg border p-3">
+        {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Personel Özeti</h3>
@@ -718,10 +722,10 @@ export default function DashboardPage() {
               </Table>
             </div>
           )}
-        </div>
+        </div> : null}
 
         {/* Widget 3: Yaklaşan Sigorta/Muayene */}
-        <div className="bg-white rounded-lg border p-4 lg:col-span-2">
+        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2">
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -814,10 +818,10 @@ export default function DashboardPage() {
               </Table>
             </div>
           )}
-        </div>
+        </div> : null}
 
         {/* Widget 4: Depo Yakıt Durumu — kart tabanlı */}
-        <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
           <CardHeader icon={Fuel} title="Şantiye Yakıt Stokları" />
           {depoOzet.length === 0 ? <p className="text-sm text-gray-400">Depo verisi yok</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -850,10 +854,10 @@ export default function DashboardPage() {
               })}
             </div>
           )}
-        </div>
+        </div> : null}
 
         {/* Widget 5: Son Yakıt Alımları */}
-        <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
           <CardHeader icon={Fuel} title="Son Yakıt Alımları" color="text-emerald-700" />
           {sonAlimlar.length === 0 ? <p className="text-sm text-gray-400">Alım verisi yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -885,10 +889,10 @@ export default function DashboardPage() {
               </Table>
             </div>
           )}
-        </div>
+        </div> : null}
 
         {/* Widget 6: Eksik Evrak Numaraları */}
-        <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
@@ -958,10 +962,10 @@ export default function DashboardPage() {
             </div>
             </div>
           )}
-        </div>
+        </div> : null}
 
         {/* Widget 7: Şantiye Günlük Defteri — Son 5 Gün */}
-        <div className="md:col-span-2 lg:col-span-4">
+        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4">
           <div className="flex items-center gap-2 mb-3">
             <NotebookPen size={18} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Şantiye Günlük Defteri (Son 5 Gün)</h3>
@@ -1025,7 +1029,7 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </div>
+        </div> : null}
 
       </div>
 

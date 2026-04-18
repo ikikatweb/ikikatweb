@@ -32,6 +32,16 @@ const selectClass =
 
 const grupluModuller = getGrupluModuller();
 
+const DASHBOARD_WIDGETS = [
+  { key: "yiufe", label: "Yi-ÜFE Endeksler" },
+  { key: "kasa_ozet", label: "Kasa Defteri — Personel Özeti" },
+  { key: "sigorta_muayene", label: "Yaklaşan Sigorta & Muayene" },
+  { key: "depo_yakit", label: "Depo Yakıt Durumu" },
+  { key: "son_yakit", label: "Son Yakıt Alımları" },
+  { key: "eksik_evrak", label: "Eksik Evrak Numaraları" },
+  { key: "santiye_defteri", label: "Şantiye Günlük Defteri" },
+];
+
 export default function KullaniciForm({ kullanici, onSuccess, onCancel }: KullaniciFormProps) {
   const isEdit = !!kullanici;
   const [loading, setLoading] = useState(false);
@@ -46,6 +56,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [geriyeDonusGun, setGeriyeDonusGun] = useState<string>(
     kullanici?.geriye_donus_gun != null ? String(kullanici.geriye_donus_gun) : "",
   );
+  const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kullanici?.dashboard_widgets ?? []);
 
   // Şantiye ve şablon listeleri
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
@@ -136,6 +147,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           izinler: rol === "kisitli" ? izinler : {},
           santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
           geriye_donus_gun: rol === "kisitli" ? parsedGeriyeGun : null,
+          dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success("Kullanıcı güncellendi.");
@@ -148,6 +160,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           izinler: rol === "kisitli" ? izinler : {},
           santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
           geriye_donus_gun: rol === "kisitli" ? parsedGeriyeGun : null,
+          dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
         });
         toast.success("Kullanıcı oluşturuldu.");
       }
@@ -210,8 +223,24 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           {/* Şantiye ataması */}
           <Card>
             <CardContent className="pt-4">
-              <h3 className="font-semibold text-[#1E3A5F] mb-3">Şantiye Ataması</h3>
-              <p className="text-xs text-gray-400 mb-3">Kullanıcının erişebileceği şantiyeleri seçin. Seçim yapılmazsa tüm şantiyelere erişebilir.</p>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-[#1E3A5F]">Şantiye Ataması</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Kullanıcının erişebileceği şantiyeleri seçin. Seçim yapılmazsa tüm şantiyelere erişebilir.</p>
+                </div>
+                {aktifSantiyeler.length > 0 && (
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => {
+                      if (seciliSantiyeler.length === aktifSantiyeler.length) {
+                        setSeciliSantiyeler([]);
+                      } else {
+                        setSeciliSantiyeler(aktifSantiyeler.map((s) => s.id));
+                      }
+                    }}>
+                    {seciliSantiyeler.length === aktifSantiyeler.length ? "Temizle" : "Hepsini Seç"}
+                  </Button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {aktifSantiyeler.map((s) => (
                   <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${seciliSantiyeler.includes(s.id) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
@@ -220,6 +249,40 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                   </label>
                 ))}
                 {aktifSantiyeler.length === 0 && <p className="text-sm text-gray-400">Henüz aktif şantiye yok.</p>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Dashboard Widget Seçimi */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-[#1E3A5F]">Dashboard Görünümü</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">Kullanıcının ana ekranda göreceği tabloları seçin. Seçim yapılmazsa hepsi gösterilir.</p>
+                </div>
+                {DASHBOARD_WIDGETS.length > 0 && (
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => {
+                      if (dashboardWidgets.length === DASHBOARD_WIDGETS.length) {
+                        setDashboardWidgets([]);
+                      } else {
+                        setDashboardWidgets(DASHBOARD_WIDGETS.map((w) => w.key));
+                      }
+                    }}>
+                    {dashboardWidgets.length === DASHBOARD_WIDGETS.length ? "Temizle" : "Hepsini Seç"}
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {DASHBOARD_WIDGETS.map((w) => (
+                  <label key={w.key} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${dashboardWidgets.includes(w.key) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
+                    <input type="checkbox" checked={dashboardWidgets.includes(w.key)}
+                      onChange={() => setDashboardWidgets((prev) => prev.includes(w.key) ? prev.filter((k) => k !== w.key) : [...prev, w.key])}
+                      className="w-4 h-4 accent-[#F97316]" />
+                    <span className="text-sm">{w.label}</span>
+                  </label>
+                ))}
               </div>
             </CardContent>
           </Card>
