@@ -41,6 +41,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -221,6 +222,10 @@ function YakitPageContent() {
 
   // Silme onayı
   const [silOnay, setSilOnay] = useState<{ tip: "arac_yakit" | "alim" | "virman"; id: string } | null>(null);
+
+  // Hızlı araç atama (yakıt dialog içinden)
+  const [hizliAtamaOpen, setHizliAtamaOpen] = useState(false);
+  const [hizliAtamaArama, setHizliAtamaArama] = useState("");
 
   // Veri yükleme
   const loadAll = useCallback(async () => {
@@ -584,14 +589,17 @@ function YakitPageContent() {
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
 
-        // Limit kontrolü
+        // Limit kontrolü — limitler DB'de lt/birim olarak saklanır, km araçlar için ×100 çevrimi yapılır
         if (arac?.cinsi && arac.sayac_tipi) {
           const limit = limitMap.get(`${arac.cinsi}|${arac.sayac_tipi}`);
           if (limit) {
-            satir.limitAlt = limit.alt_sinir;
-            satir.limitUst = limit.ust_sinir;
+            const carpan = arac.sayac_tipi === "saat" ? 1 : 100;
+            const limitAlt = limit.alt_sinir * carpan;
+            const limitUst = limit.ust_sinir * carpan;
+            satir.limitAlt = limitAlt;
+            satir.limitUst = limitUst;
             if (satir.anlikOrt !== null) {
-              if (satir.anlikOrt < limit.alt_sinir || satir.anlikOrt > limit.ust_sinir) {
+              if (satir.anlikOrt < limitAlt || satir.anlikOrt > limitUst) {
                 satir.limitIhlali = true;
               }
             }
@@ -1426,33 +1434,96 @@ function YakitPageContent() {
 
       {/* Yakıt Ver Dialog */}
       <Dialog open={verDialogOpen} onOpenChange={setVerDialogOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Truck size={18} className="text-emerald-600" />
               {verEditId ? "Yakıt Kaydını Düzenle" : "Araca Yakıt Ver"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 overflow-hidden">
             <div className="space-y-1">
               <Label className="text-xs">Şantiye</Label>
-              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={verDialogSantiyeId} onChange={(v) => { setVerDialogSantiyeId(v); setVerDialogAracId(""); }} className={selectClass + " w-full"} />
+              <div className="overflow-hidden">
+                <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={verDialogSantiyeId} onChange={(v) => { setVerDialogSantiyeId(v); setVerDialogAracId(""); setHizliAtamaOpen(false); }} className={selectClass + " w-full"} />
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Araç</Label>
-              <select
-                value={verDialogAracId}
-                onChange={(e) => setVerDialogAracId(e.target.value)}
-                className={selectClass + " w-full"}
-                disabled={verDialogLoading || !verDialogSantiyeId}
-              >
-                <option value="">Araç seçiniz</option>
-                {verDialogAraclari.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.plaka} - {[a.marka, a.model].filter(Boolean).join(" ")} ({a.sayac_tipi ?? "km"})
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-1">
+                <select
+                  value={verDialogAracId}
+                  onChange={(e) => setVerDialogAracId(e.target.value)}
+                  className={selectClass + " flex-1"}
+                  disabled={verDialogLoading || !verDialogSantiyeId}
+                >
+                  <option value="">Araç seçiniz</option>
+                  {verDialogAraclari.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.plaka} - {[a.marka, a.model].filter(Boolean).join(" ")} ({a.sayac_tipi ?? "km"})
+                    </option>
+                  ))}
+                </select>
+                {verDialogSantiyeId && (
+                  <button
+                    type="button"
+                    onClick={() => setHizliAtamaOpen(true)}
+                    className="shrink-0 h-9 w-9 rounded-lg border border-input bg-white flex items-center justify-center text-gray-500 hover:text-[#F97316] hover:border-[#F97316]"
+                    title="Bu şantiyeye araç ata"
+                    disabled={verDialogLoading}
+                  >+</button>
+                )}
+              </div>
+              {/* Hızlı Araç Atama — inline panel */}
+              {hizliAtamaOpen && verDialogSantiyeId && (
+                <div className="border rounded-lg bg-gray-50 p-2 space-y-2 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-gray-600">Şantiyeye Araç Ata</span>
+                    <button type="button" onClick={() => { setHizliAtamaOpen(false); setHizliAtamaArama(""); }}
+                      className="text-gray-400 hover:text-gray-600 text-xs">Kapat</button>
+                  </div>
+                  <Input
+                    value={hizliAtamaArama}
+                    onChange={(e) => setHizliAtamaArama(e.target.value)}
+                    placeholder="Plaka veya marka ara..."
+                    className="h-8 text-xs"
+                    autoFocus
+                  />
+                  <div className="max-h-[150px] overflow-y-auto space-y-0.5">
+                    {araclar
+                      .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id !== verDialogSantiyeId)
+                      .filter((a) => {
+                        if (!hizliAtamaArama.trim()) return true;
+                        const q = hizliAtamaArama.trim().toLowerCase();
+                        return [a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" ").toLowerCase().includes(q);
+                      })
+                      .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"))
+                      .slice(0, 20)
+                      .map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await updateArac(a.id, { santiye_id: verDialogSantiyeId });
+                              setAraclar((prev) => prev.map((x) => x.id === a.id ? { ...x, santiye_id: verDialogSantiyeId } : x));
+                              setVerDialogAracId(a.id);
+                              setHizliAtamaOpen(false);
+                              setHizliAtamaArama("");
+                              toast.success(`${a.plaka} bu şantiyeye atandı.`);
+                            } catch (err) {
+                              toast.error(`Atama hatası: ${err instanceof Error ? err.message : String(err)}`);
+                            }
+                          }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left rounded hover:bg-blue-50"
+                        >
+                          <span className="font-bold text-[#1E3A5F]">{a.plaka}</span>
+                          <span className="text-gray-500 text-[10px] truncate">{[a.marka, a.model].filter(Boolean).join(" ")}</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
             {verDialogSonKayit && (
               <div className="bg-amber-50 border border-amber-200 rounded p-2 text-xs">
@@ -1747,6 +1818,7 @@ function YakitPageContent() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Hızlı araç atama artık yakıt dialog'u içinde inline olarak gösterilir */}
     </div>
   );
 }

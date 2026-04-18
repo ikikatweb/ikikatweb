@@ -16,7 +16,17 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Save, X } from "lucide-react";
+import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import toast from "react-hot-toast";
+
+// Telefon formatlama: 0535 535 35 35
+function formatTelefon(val: string): string {
+  const digits = val.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
+}
 
 type PersonelFormProps = {
   personel?: Personel;
@@ -49,6 +59,8 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
     izin_hakki: personel?.izin_hakki ?? null,
     mesai_ucreti_var: personel?.mesai_ucreti_var ?? false,
     ise_giris_tarihi: personel?.ise_giris_tarihi ?? null,
+    ev_telefon: personel?.ev_telefon ?? null,
+    cep_telefon: personel?.cep_telefon ?? null,
     durum: personel?.durum ?? "aktif",
     pasif_tarihi: personel?.pasif_tarihi ?? null,
   });
@@ -105,7 +117,9 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
           maas: null, // maaş boş — kullanıcı dolduracak
           izin_hakki: pasif.izin_hakki,
           mesai_ucreti_var: pasif.mesai_ucreti_var,
-          ise_giris_tarihi: new Date().toISOString().slice(0, 10), // bugünü yeni giriş olarak ata
+          ise_giris_tarihi: new Date().toISOString().slice(0, 10),
+          ev_telefon: pasif.ev_telefon ?? null,
+          cep_telefon: pasif.cep_telefon ?? null,
           durum: "aktif",
           pasif_tarihi: null,
         });
@@ -380,13 +394,32 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="maas">Maaş (₺) {!isEdit && <span className="text-red-500">*</span>}</Label>
-              <input id="maas" name="maas" type="text" inputMode="decimal" placeholder="0,00" value={formData.maas != null ? String(formData.maas).replace(".", ",") : ""} onChange={(e) => { const v = e.target.value.replace(",", "."); setFormData((p) => ({ ...p, maas: v ? parseFloat(v) : null })); }} disabled={loading}
+              <input id="maas" name="maas" type="text" inputMode="decimal" placeholder="0,00"
+                value={formData.maas != null ? formatParaInput(formData.maas.toFixed(2).replace(".", ",")) : ""}
+                onChange={(e) => { const formatted = formatParaInput(e.target.value); const parsed = parseParaInput(formatted); setFormData((p) => ({ ...p, maas: parsed || null })); }}
+                disabled={loading}
                 className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="izin_hakki">İzin Hakkı (Gün)</Label>
               <Input id="izin_hakki" name="izin_hakki" type="text" inputMode="numeric" placeholder="14" value={formData.izin_hakki ?? ""} onChange={handleChange} disabled={loading} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cep_telefon">Cep Telefonu</Label>
+              <Input id="cep_telefon" name="cep_telefon" type="tel" placeholder="0535 535 35 35"
+                value={formData.cep_telefon ?? ""}
+                onChange={(e) => setFormData((p) => ({ ...p, cep_telefon: formatTelefon(e.target.value) || null }))}
+                disabled={loading} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ev_telefon">Ev Telefonu</Label>
+              <Input id="ev_telefon" name="ev_telefon" type="tel" placeholder="0356 214 35 35"
+                value={formData.ev_telefon ?? ""}
+                onChange={(e) => setFormData((p) => ({ ...p, ev_telefon: formatTelefon(e.target.value) || null }))}
+                disabled={loading} />
             </div>
           </div>
 

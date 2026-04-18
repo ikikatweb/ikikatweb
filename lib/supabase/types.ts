@@ -104,6 +104,8 @@ export type Personel = {
   izin_hakki: number | null;
   mesai_ucreti_var: boolean;
   ise_giris_tarihi: string | null;
+  ev_telefon: string | null;
+  cep_telefon: string | null;
   durum: "aktif" | "pasif";
   pasif_tarihi: string | null;
   created_at: string;

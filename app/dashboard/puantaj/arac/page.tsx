@@ -4,6 +4,8 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
+import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
+import type { AracYakit } from "@/lib/supabase/types";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import {
@@ -42,7 +44,7 @@ import {
   ChevronUp, ChevronDown,
   Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3,
   ArrowRight, ArrowLeft as ArrowLeftIcon, Link2, Link2Off, Lock,
-  FileBarChart, Pencil,
+  FileBarChart, Pencil, Fuel,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -150,6 +152,8 @@ export default function AracPuantajPage() {
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [santiyeId, setSantiyeId] = useState("");
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
+  const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
+  const [yakitGoster, setYakitGoster] = useState(true);
   // Diğer şantiye çakışmaları: arac_id -> (gün -> { santiye_id, santiye_adi })
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
@@ -287,12 +291,21 @@ export default function AracPuantajPage() {
   const loadPuantajlar = useCallback(async () => {
     if (!santiyeId) {
       setPuantajlar([]);
+      setAylikYakitlar([]);
       setDigerCakismalar(new Map());
       return;
     }
     try {
-      const data = await getAracPuantajByAySantiye(santiyeId, yil, ay);
+      const baslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
+      const sonrakiAy = ay === 12 ? 1 : ay + 1;
+      const sonrakiYil = ay === 12 ? yil + 1 : yil;
+      const bitis = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
+      const [data, yakitData] = await Promise.all([
+        getAracPuantajByAySantiye(santiyeId, yil, ay),
+        getAracYakitlarByRange(null, baslangic, bitis).catch(() => [] as AracYakit[]),
+      ]);
       setPuantajlar(data);
+      setAylikYakitlar(yakitData);
 
       // TÜM diğer şantiye çakışmalarını getir (filtresiz).
       // Bu race condition ve stale state sorunlarını engeller -
@@ -422,6 +435,18 @@ export default function AracPuantajPage() {
     }
     return m;
   }, [puantajlar]);
+
+  // Hızlı erişim: arac_id -> Map<gün, toplam yakıt lt>
+  const aracGunYakitMap = useMemo(() => {
+    const m = new Map<string, Map<number, number>>();
+    for (const y of aylikYakitlar) {
+      const gun = parseInt(y.tarih.slice(8, 10), 10);
+      if (!m.has(y.arac_id)) m.set(y.arac_id, new Map());
+      const gMap = m.get(y.arac_id)!;
+      gMap.set(gun, (gMap.get(gun) ?? 0) + y.miktar_lt);
+    }
+    return m;
+  }, [aylikYakitlar]);
 
   // Bir aracın o ay içindeki toplam çalışma günü (Çalıştı=1, Yarım gün=0.5)
   function aracToplamGun(aracId: string): number {
@@ -1542,6 +1567,22 @@ export default function AracPuantajPage() {
             </div>
           </div>
 
+          {/* Yakıt göster/gizle butonu */}
+          {santiyeId && goruntulenenAraclar.length > 0 && (
+            <div className="flex justify-end mb-2">
+              <button
+                type="button"
+                onClick={() => setYakitGoster((p) => !p)}
+                className={`flex items-center gap-1.5 px-3 h-8 text-xs rounded-lg border transition-colors ${
+                  yakitGoster ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                <Fuel size={14} />
+                {yakitGoster ? "Yakıtı Gizle" : "Yakıtı Göster"}
+              </button>
+            </div>
+          )}
+
           {/* Tablo */}
       {loading ? (
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-[35px] bg-gray-200 rounded animate-pulse" />)}</div>
@@ -1631,7 +1672,7 @@ export default function AracPuantajPage() {
                                   x: rect.left + rect.width / 2,
                                   y: rect.bottom + 8,
                                   plaka: a.plaka,
-                                  isleyenAd: p.created_by_ad ?? "Bilinmiyor",
+                                  isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
                                 });
@@ -1649,7 +1690,12 @@ export default function AracPuantajPage() {
                                 : undefined
                             }
                           >
-                            {dBilgi ? <dBilgi.IconComponent size={18} className="text-white" /> : ""}
+                            {dBilgi ? <dBilgi.IconComponent size={14} className="text-white" /> : ""}
+                            {yakitGoster && (() => {
+                              const yakitLt = aracGunYakitMap.get(a.id)?.get(g);
+                              if (!yakitLt) return null;
+                              return <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-blue-700 leading-none bg-white/90 rounded px-0.5 py-px">{Math.round(yakitLt)}</span>;
+                            })()}
                             {notVar && (
                               <span
                                 className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-yellow-300 border-l-[8px] border-l-transparent shadow-sm pointer-events-none"

@@ -468,9 +468,14 @@ export default function SantiyeDefPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-          <NotebookPen size={24} /> Şantiye Defteri
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
+            <NotebookPen size={24} /> Şantiye Defteri
+          </h1>
+          <p className="text-xs font-bold text-red-700 mt-1 leading-relaxed">
+            {"ÖNEMLİ NOT : Şantiye Defteri Günlük Çıktı Alınacak. Talimatla Yapılan İşler, Tutanaksız Yapılan İşler, Döküm Sahasının Belirlenmesi Gibi Önemli Konular Mutlaka Şantiye Defterine Yazılacak ve Kontrol Mühendisine O Gün İmzalatılacak."}
+          </p>
+        </div>
         <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => {
           setSeciliTarih(new Date().toISOString().slice(0, 10));
           setDefterDialogOpen(true);

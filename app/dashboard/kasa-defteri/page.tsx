@@ -286,7 +286,7 @@ function KasaDefContent() {
     const finalOdeme = dTip === "gelir" ? "nakit" : dOdeme;
     const finalKategori = dTip === "gelir" ? "Tahsilat" : (dKategori || null);
     const finalAciklama = dTip === "gelir"
-      ? otomatikGelirAciklama(dTarih)
+      ? (dAciklama.trim() ? `${otomatikGelirAciklama(dTarih)} — ${dAciklama.trim()}` : otomatikGelirAciklama(dTarih))
       : (dAciklama.trim() || null);
 
     setDialogLoading(true);
@@ -805,9 +805,16 @@ function KasaDefContent() {
               <input type="text" inputMode="decimal" value={dTutar} onChange={(e) => setDTutar(formatParaInput(e.target.value))} placeholder="0,00" className={selectClass + " w-full"} disabled={dialogLoading} />
             </div>
             {dTip === "gelir" && (
-              <div className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                Gelir kaydı: Nakit olarak işlenir. Açıklama otomatik oluşur: &quot;{otomatikGelirAciklama(dTarih || new Date().toISOString().slice(0,10))}&quot;
-              </div>
+              <>
+                <div className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                  Gelir kaydı: Nakit olarak işlenir. Açıklama otomatik oluşur: &quot;{otomatikGelirAciklama(dTarih || new Date().toISOString().slice(0,10))}&quot;
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Not / Açıklama</Label>
+                  <textarea value={dAciklama} onChange={(e) => setDAciklama(e.target.value)} placeholder="Opsiyonel not ekleyebilirsiniz..." rows={2}
+                    className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50" disabled={dialogLoading} />
+                </div>
+              </>
             )}
             {dTip === "gider" && (
               <>

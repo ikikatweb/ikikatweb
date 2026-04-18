@@ -67,7 +67,7 @@ const menuGroups: MenuGroup[] = [
     icon: <ClipboardList size={20} />,
     color: "text-amber-600 bg-amber-50",
     items: [
-      { label: "Takip Listesi", href: "/dashboard/iscilik-takibi", icon: <ClipboardList size={16} /> },
+      { label: "İşçilik Durum Raporu", href: "/dashboard/iscilik-takibi", icon: <ClipboardList size={16} /> },
     ],
   },
   {
@@ -99,7 +99,7 @@ const menuGroups: MenuGroup[] = [
     icon: <Calculator size={20} />,
     color: "text-orange-600 bg-orange-50",
     items: [
-      { label: "Sınır Değer", href: "/dashboard/ihale", icon: <Calculator size={16} /> },
+      { label: "Sınır Değer Hesabı", href: "/dashboard/ihale", icon: <Calculator size={16} /> },
     ],
   },
 ];

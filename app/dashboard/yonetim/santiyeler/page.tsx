@@ -266,12 +266,24 @@ export default function SantiyelerPage() {
       if (aDim !== bDim) return aDim - bDim;
 
       // Kullanıcı sıralaması varsa uygula
-      for (const sort of sorts) {
-        const va = getSortVal(a, sort.key);
-        const vb = getSortVal(b, sort.key);
-        let cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "tr");
-        if (cmp !== 0) return sort.dir === "asc" ? cmp : -cmp;
+      if (sorts.length > 0) {
+        for (const sort of sorts) {
+          const va = getSortVal(a, sort.key);
+          const vb = getSortVal(b, sort.key);
+          let cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "tr");
+          if (cmp !== 0) return sort.dir === "asc" ? cmp : -cmp;
+        }
+        return 0;
       }
+
+      // Varsayılan sıralama: iş tanımları sırası → ilan tarihi (en yeni üstte)
+      const sa = isGrupSiralama.get(a.is_grubu ?? "") ?? 999;
+      const sb = isGrupSiralama.get(b.is_grubu ?? "") ?? 999;
+      if (sa !== sb) return sa - sb;
+      // Aynı iş grubunda: ilan tarihine göre (en yeni üstte)
+      const ta = a.ilan_tarihi ?? "";
+      const tb = b.ilan_tarihi ?? "";
+      if (ta !== tb) return tb.localeCompare(ta);
       return 0;
     });
   }

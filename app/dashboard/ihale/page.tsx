@@ -1231,7 +1231,8 @@ export default function IhalePage() {
       },
     });
 
-    doc.save(`sinir-deger-${ihaleKayitNo || "rapor"}.pdf`);
+    const pdfAdi = (isAdi || ihaleKayitNo || "sinir-deger-rapor").replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s-]/g, "").replace(/\s+/g, "-").slice(0, 100);
+    doc.save(`${pdfAdi}.pdf`);
   }
 
   // Excel Export
@@ -1396,8 +1397,7 @@ export default function IhalePage() {
                     <tr className="border-b border-gray-100">
                       <td className="text-gray-500 py-2 pr-3 whitespace-nowrap">İhale Tarihi</td>
                       <td className="py-2 flex items-center gap-2">
-                        <input type="date" value={ihaleTarihi} onChange={(e) => { setIhaleTarihi(e.target.value); setHasManualEdits(true); }}
-                          className="font-semibold bg-transparent border-0 outline-none" />
+                        <span className="font-semibold text-gray-800">{ihaleTarihi ? new Date(ihaleTarihi + "T00:00:00").toLocaleDateString("tr-TR") : "—"}</span>
                         {ihaleSaati && <span className="text-gray-600 font-semibold">{ihaleSaati}</span>}
                       </td>
                     </tr>
