@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import type { YiUfe } from "@/lib/supabase/types";
+import { Input } from "@/components/ui/input";
 import PageHeader from "@/components/shared/page-header";
 import {
   Table,
@@ -42,6 +43,9 @@ export default function YiUfePage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [sonGuncelleme, setSonGuncelleme] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null); // "yil-ay"
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const loadVeriler = useCallback(async () => {
     try {
@@ -116,6 +120,28 @@ export default function YiUfePage() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function handleCellSave(yil: number, ay: number, val: string) {
+    if (saving) return;
+    const trimmed = val.replace(",", ".").trim();
+    if (!trimmed) { setEditKey(null); return; }
+    const num = parseFloat(trimmed);
+    if (isNaN(num) || num <= 0) { toast.error("Geçerli bir değer girin."); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/yi-ufe/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yil, ay, endeks: num }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Kaydetme hatası");
+      await loadVeriler();
+      toast.success(`${yil} / ${AY_BASLIK[ay - 1]} güncellendi.`);
+    } catch (err) { console.error("Yi-ÜFE kaydetme hatası:", err); toast.error(`Kaydetme hatası: ${err instanceof Error ? err.message : String(err)}`); }
+    setEditKey(null);
+    setSaving(false);
   }
 
   // Son veriyi bul (vurgulama için)
@@ -205,10 +231,19 @@ export default function YiUfePage() {
                   {satir.aylar.map((deger, ayIndex) => {
                     const isSon =
                       satir.yil === sonYil && ayIndex + 1 === sonAy;
+                    const cellKey = `${satir.yil}-${ayIndex + 1}`;
+                    const isEditing = editKey === cellKey;
+                    // Tüm yıllar elle düzenlenebilir (scrape sadece 2020+ verileri günceller ama elle de girilebilir)
+                    const elleGirilebilir = true;
+                    // Ondalık hassasiyeti: 2020 öncesi 6 hane, 2020+ 2 hane
+                    const formatEndeks = (v: number) => {
+                      const hane = satir.yil < 2020 ? 6 : 2;
+                      return v.toFixed(hane).replace(".", ",");
+                    };
                     return (
                       <TableCell
                         key={ayIndex}
-                        className={`text-center text-sm tabular-nums ${
+                        className={`text-center text-sm tabular-nums p-0 ${
                           isSon
                             ? "bg-[#F97316] text-white font-bold"
                             : deger !== null
@@ -216,12 +251,37 @@ export default function YiUfePage() {
                             : "text-gray-300"
                         }`}
                       >
-                        {deger !== null
-                          ? deger.toLocaleString("tr-TR", {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })
-                          : "—"}
+                        {isEditing && elleGirilebilir ? (
+                          <div className="flex items-center gap-0.5 px-0.5">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              autoFocus
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); handleCellSave(satir.yil, ayIndex + 1, editValue); }
+                                if (e.key === "Escape") setEditKey(null);
+                              }}
+                              className="flex-1 min-w-0 h-7 text-center text-sm border-2 border-blue-400 rounded bg-white outline-none px-1"
+                              disabled={saving}
+                            />
+                            <button type="button" onClick={() => handleCellSave(satir.yil, ayIndex + 1, editValue)}
+                              className="shrink-0 h-7 px-1.5 text-[10px] bg-emerald-600 text-white rounded hover:bg-emerald-700" disabled={saving}>OK</button>
+                          </div>
+                        ) : elleGirilebilir ? (
+                          <button
+                            type="button"
+                            onClick={() => { setEditKey(cellKey); setEditValue(deger != null ? deger.toString().replace(".", ",") : ""); }}
+                            className="w-full h-8 px-1 hover:bg-blue-50 cursor-text"
+                          >
+                            {deger !== null ? formatEndeks(deger) : "—"}
+                          </button>
+                        ) : (
+                          <span className="inline-block h-8 leading-8 px-1">
+                            {deger !== null ? formatEndeks(deger) : "—"}
+                          </span>
+                        )}
                       </TableCell>
                     );
                   })}

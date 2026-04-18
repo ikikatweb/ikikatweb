@@ -468,6 +468,14 @@ export default function PersonelPuantajPage() {
       return;
     }
 
+    // Mesai saati yazıldıysa açıklama zorunlu
+    if (seciliMesaiSaat.trim() && !seciliAciklama.trim()) {
+      setSeciliDurum(durum);
+      toast.error("Mesai yazıldığında açıklama girmek zorunludur.");
+      setTimeout(() => aciklamaRef.current?.focus(), 50);
+      return;
+    }
+
     const tarih = tarihStr(yil, ay, seciliGun);
     setDialogKaydediliyor(true);
     try {
@@ -964,7 +972,7 @@ export default function PersonelPuantajPage() {
                               />
                             )}
                             {pg?.mesai_saat != null && pg.mesai_saat > 0 && (
-                              <span className="absolute bottom-0 right-0 text-[7px] font-bold bg-white/30 px-0.5 rounded-tl leading-none pointer-events-none">
+                              <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-orange-700 bg-white/90 rounded px-0.5 py-px leading-none pointer-events-none">
                                 +{pg.mesai_saat}
                               </span>
                             )}

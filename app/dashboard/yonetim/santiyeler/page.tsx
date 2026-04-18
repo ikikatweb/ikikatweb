@@ -105,7 +105,6 @@ const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "kesin_kabul", label: "Kesin Kabul" },
   { key: "is_deneyim", label: "İş Deneyim" },
   { key: "durum", label: "Durum" },
-  { key: "yiufe_orani", label: "Yi-ÜFE\nOranı", twoLine: true },
   { key: "guncel_deneyim", label: "Güncel İş\nDeneyim Tutarı", twoLine: true },
   { key: "ff_yuzde", label: "Fiyat Farkı" },
 ];
@@ -296,7 +295,7 @@ export default function SantiyelerPage() {
       ff_dahil_kalan: c.ffDahilKalan ?? 0, gerceklesen: s.sozlesme_fiyatlariyla_gerceklesen ?? 0,
       gecici_kabul: s.gecici_kabul_tarihi ?? "", kesin_kabul: s.kesin_kabul_tarihi ?? "",
       is_deneyim: s.is_deneyim_url ? 1 : 0, durum: s.durum,
-      yiufe_orani: c.yiufeOrani ?? 0, guncel_deneyim: c.guncelDeneyim ?? 0, ff_yuzde: c.ffYuzde ?? 0,
+      guncel_deneyim: c.guncelDeneyim ?? 0, ff_yuzde: c.ffYuzde ?? 0,
     };
     return map[key] ?? "";
   }
@@ -345,7 +344,7 @@ export default function SantiyelerPage() {
       tr("Sozlesme Tarihi"),
       "F.F. Dahil\nKalan Tutar", tr("Sozl. Fiy.\nGerceklesen"),
       tr("Gecici Kabul"), "Kesin Kabul", tr("Is Deneyim"),
-      tr("Yi-UFE\nOrani"), tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
+      tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
     ]];
 
     let startY = 20;
@@ -376,7 +375,6 @@ export default function SantiyelerPage() {
           formatTarih(s.gecici_kabul_tarihi),
           formatTarih(s.kesin_kabul_tarihi),
           s.tasfiye_tarihi ? "—" : s.is_deneyim_url ? "Var" : "Yok",
-          c.yiufeOrani != null ? c.yiufeOrani.toFixed(6) : "—",
           c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—",
           c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—",
         ]);
@@ -412,7 +410,7 @@ export default function SantiyelerPage() {
   }
 
   function santiyeExportExcel() {
-    const headers = ["Firma", "İş Adı", "İş Tanımları", "Sözleşme Tarihi", "Gerçekleşen", "FF Dahil Kalan", "Yi-ÜFE Oranı", "Güncel Deneyim", "Durum"];
+    const headers = ["Firma", "İş Adı", "İş Tanımları", "Sözleşme Tarihi", "Gerçekleşen", "FF Dahil Kalan", "Güncel Deneyim", "Durum"];
     const data: (string | number)[][] = [];
     for (const grup of firmaGruplari) {
       for (const satir of grup.satirlar) {
@@ -423,7 +421,6 @@ export default function SantiyelerPage() {
           formatTarih(s.sozlesme_tarihi),
           s.sozlesme_fiyatlariyla_gerceklesen ?? "",
           c.ffDahilKalan ?? "",
-          c.yiufeOrani != null ? Number(c.yiufeOrani.toFixed(6)) : "",
           c.guncelDeneyim ?? "",
           getDurum(s),
         ]);
@@ -739,10 +736,6 @@ export default function SantiyelerPage() {
                     {/* Durum */}
                     <TableCell className="text-center px-2">
                       <Badge className={durumColor}>{durumText}</Badge>
-                    </TableCell>
-                    {/* Yi-ÜFE Oranı */}
-                    <TableCell className="text-center px-2 tabular-nums whitespace-nowrap text-gray-600">
-                      {c.yiufeOrani != null ? c.yiufeOrani.toFixed(6) : "—"}
                     </TableCell>
                     {/* Güncel İş Deneyim - tıklayınca iş grubu dağılımı gösterilir */}
                     <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">

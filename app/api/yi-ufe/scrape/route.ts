@@ -133,10 +133,17 @@ export async function GET(request: Request) {
       );
     }
 
-    // Supabase'e upsert (mevcut verileri güncelle, yenileri ekle)
+    // Sadece 2020 ve sonrası verileri güncelle — 2020 öncesi elle girilir, scrape ile ezilmez
+    const filtreli = veriler.filter((v) => v.yil >= 2020);
+
+    if (filtreli.length === 0) {
+      return NextResponse.json({ basarili: true, toplamVeri: 0, yeniKayit: 0, sonVeri: { yil: 0, ay: "", endeks: 0 } });
+    }
+
+    // Supabase'e upsert (sadece 2020+ verileri güncelle/ekle)
     const { data, error } = await supabase
       .from("yi_ufe")
-      .upsert(veriler, { onConflict: "yil,ay" })
+      .upsert(filtreli, { onConflict: "yil,ay" })
       .select();
 
     if (error) {

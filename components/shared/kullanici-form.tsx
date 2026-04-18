@@ -159,7 +159,9 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
     }
   }
 
-  const aktifSantiyeler = santiyeler.filter((s) => s.durum === "aktif");
+  const aktifSantiyeler = santiyeler.filter((s) =>
+    s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
+  );
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">

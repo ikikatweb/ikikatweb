@@ -28,3 +28,28 @@ export async function upsertYiUfe(veriler: YiUfeInsert[]) {
   if (error) throw error;
   return data;
 }
+
+// Tek bir Yi-ÜFE kaydını güncelle veya ekle
+export async function upsertTekYiUfe(yil: number, ay: number, endeks: number) {
+  const supabase = getSupabase();
+  // Mevcut kayıt var mı?
+  const { data: mevcut } = await supabase
+    .from("yi_ufe")
+    .select("id")
+    .eq("yil", yil)
+    .eq("ay", ay)
+    .maybeSingle();
+
+  if (mevcut) {
+    const { error } = await supabase
+      .from("yi_ufe")
+      .update({ endeks })
+      .eq("id", mevcut.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("yi_ufe")
+      .insert({ yil, ay, endeks });
+    if (error) throw error;
+  }
+}
