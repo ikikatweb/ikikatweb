@@ -232,6 +232,7 @@ export type IscilikTakibiWithSantiye = IscilikTakibi & {
     is_bitim_tarihi: string | null;
     isyeri_teslim_tarihi: string | null;
     gecici_kabul_tarihi: string | null;
+    kesin_kabul_tarihi: string | null;
     created_at: string;
   };
 };

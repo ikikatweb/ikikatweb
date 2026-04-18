@@ -43,14 +43,20 @@ export default function KullanicilarPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const [santiyeMap, setSantiyeMap] = useState<Record<string, string>>({});
+  const [aktifSantiyeSayisi, setAktifSantiyeSayisi] = useState(0);
 
   async function loadKullanicilar() {
     try {
       const [kData, sData] = await Promise.all([getKullanicilar(), getSantiyeler()]);
       setKullanicilar(kData);
+      const all = (sData as SantiyeWithRelations[]) ?? [];
       const map: Record<string, string> = {};
-      ((sData as SantiyeWithRelations[]) ?? []).forEach((s) => { map[s.id] = s.is_adi; });
+      all.forEach((s) => { map[s.id] = s.is_adi; });
       setSantiyeMap(map);
+      const aktifSayisi = all.filter((s) =>
+        s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
+      ).length;
+      setAktifSantiyeSayisi(aktifSayisi);
     } catch {
       toast.error("Kullanıcılar yüklenirken hata oluştu.");
     } finally {
@@ -192,11 +198,13 @@ export default function KullanicilarPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px]">
                     {k.santiye_ids && k.santiye_ids.length > 0
-                      ? <div className="flex flex-wrap gap-1">{k.santiye_ids.map((sid) => {
-                          const ad = santiyeMap[sid] || sid;
-                          const kisa = ad.length > 20 ? ad.slice(0, 18) + "…" : ad;
-                          return <span key={sid} className="inline-block text-[10px] bg-gray-100 rounded px-1.5 py-0.5 truncate max-w-[180px]" title={ad}>{kisa}</span>;
-                        })}</div>
+                      ? (aktifSantiyeSayisi > 0 && k.santiye_ids.length >= aktifSantiyeSayisi
+                        ? <span className="text-xs text-emerald-700 font-semibold">Tüm Şantiyeler</span>
+                        : <div className="flex flex-wrap gap-1">{k.santiye_ids.map((sid) => {
+                            const ad = santiyeMap[sid] || sid;
+                            const kisa = ad.length > 20 ? ad.slice(0, 18) + "…" : ad;
+                            return <span key={sid} className="inline-block text-[10px] bg-gray-100 rounded px-1.5 py-0.5 truncate max-w-[180px]" title={ad}>{kisa}</span>;
+                          })}</div>)
                       : k.rol === "yonetici" ? "Tümü" : "—"}
                   </TableCell>
                   <TableCell className="text-center">

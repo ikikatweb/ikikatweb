@@ -59,7 +59,7 @@ import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtr
 import { formatBaslik } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 

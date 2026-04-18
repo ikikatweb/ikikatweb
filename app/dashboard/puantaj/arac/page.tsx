@@ -54,7 +54,7 @@ import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 
 // Özet Rapor satırları: her araç için, tarih aralığı içindeki her farklı kira tarife
 // dönemi ayrı satır olarak döner. Birden fazla tarife varsa araç o kadar satırla gösterilir.

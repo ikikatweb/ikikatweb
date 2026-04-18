@@ -186,10 +186,6 @@ export default function TanimlamalarPage() {
     kategoriler.push({ key: "sigorta_yaklasir_gun", sekme: "sigorta-muayene" });
     katSet.add("sigorta_yaklasir_gun");
   }
-  if (!katSet.has("sigorta_az_kaldi_gun")) {
-    kategoriler.push({ key: "sigorta_az_kaldi_gun", sekme: "sigorta-muayene" });
-    katSet.add("sigorta_az_kaldi_gun");
-  }
   kategoriler.sort((a, b) => a.key.localeCompare(b.key, "tr"));
 
   // Banka muhatapları (banka_hesap formunda seçim için)

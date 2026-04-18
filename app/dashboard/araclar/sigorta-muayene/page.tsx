@@ -108,18 +108,17 @@ export default function SigortaMuayenePage() {
 
   // Uyarı gün süreleri (tanımlamalardan)
   const [yaklasirGun, setYaklasirGun] = useState(30);
-  const [azKaldiGun, setAzKaldiGun] = useState(10);
+  const azKaldiGun = Math.round(yaklasirGun / 3);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData, yakGun, azGun, cinsData] = await Promise.all([
+      const [aData, pData, sfData, acData, yakGun, cinsData] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
-        getDegerler("sigorta_az_kaldi_gun").catch(() => []),
         getTanimlamalar("arac_cinsi").catch(() => []),
       ]);
       const araclarData = (aData as AracWithRelations[]) ?? [];
@@ -150,7 +149,6 @@ export default function SigortaMuayenePage() {
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
       if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
-      if (azGun.length > 0) setAzKaldiGun(parseInt(azGun[0]) || 10);
     } catch (err) {
       console.error(err);
     } finally {

@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 
-type SantiyeItem = { id: string; is_adi: string; durum?: string; gecici_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeItem = { id: string; is_adi: string; durum?: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 
 type Props = {
   santiyeler: SantiyeItem[];
@@ -18,10 +18,10 @@ export default function SantiyeSelect({ santiyeler, value, onChange, placeholder
   const [digerAcik, setDigerAcik] = useState(false);
 
   const aktifler = santiyeler.filter((s) =>
-    s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
+    s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
   );
   const digerleri = santiyeler.filter((s) =>
-    s.durum !== "aktif" || s.gecici_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi
+    s.durum !== "aktif" || s.gecici_kabul_tarihi || s.kesin_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi
   );
 
   const seciliDigerde = digerleri.some((s) => s.id === value);
@@ -41,7 +41,7 @@ export default function SantiyeSelect({ santiyeler, value, onChange, placeholder
         {gosterDigerleri && digerleri.length > 0 && (
           <optgroup label="Diğer Şantiyeler">
             {digerleri.map((s) => {
-              const etiket = s.tasfiye_tarihi ? " (Tasfiye)" : s.devir_tarihi ? " (Devir)" : s.gecici_kabul_tarihi ? " (Tamamlandı)" : s.durum === "pasif" ? " (Pasif)" : "";
+              const etiket = s.tasfiye_tarihi ? " (Tasfiye)" : s.devir_tarihi ? " (Devir)" : (s.gecici_kabul_tarihi || s.kesin_kabul_tarihi) ? " (Tamamlandı)" : s.durum === "pasif" ? " (Pasif)" : "";
               return <option key={s.id} value={s.id}>{s.is_adi}{etiket}</option>;
             })}
           </optgroup>

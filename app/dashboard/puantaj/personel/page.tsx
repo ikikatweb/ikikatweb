@@ -46,7 +46,7 @@ import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 

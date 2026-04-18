@@ -38,7 +38,7 @@ import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 const AY_ADLARI = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];

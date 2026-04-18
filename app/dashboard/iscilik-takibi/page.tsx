@@ -449,7 +449,9 @@ export default function IscilikTakibiPage() {
             <TableBody>
               {filtrelenmis.map((row, idx) => {
                 const gk = row.santiyeler?.gecici_kabul_tarihi;
-                const isPasif = !!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000;
+                const kk = row.santiyeler?.kesin_kabul_tarihi;
+                const isPasif = (!!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000)
+                  || (!!kk && kk !== "0001-01-01" && new Date(kk).getFullYear() > 2000);
                 return (
                 <TableRow key={row.id} className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
                   <TableCell className="text-center px-2 text-gray-500">{idx + 1}</TableCell>

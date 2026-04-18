@@ -9,7 +9,7 @@ export async function getIscilikTakibi(dahilSilinen = false) {
   const supabase = getSupabase();
   let query = supabase
     .from("iscilik_takibi")
-    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, created_at)")
+    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, created_at)")
     .order("created_at", { ascending: true });
 
   if (!dahilSilinen) {
@@ -25,7 +25,7 @@ export async function getSilinenIscilikTakibi() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("iscilik_takibi")
-    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, created_at)")
+    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, created_at)")
     .eq("silindi", true)
     .order("updated_at", { ascending: false });
 
@@ -63,19 +63,14 @@ export async function upsertIscilikTakibi(
 export async function ensureAktifSantiyeler() {
   const supabase = getSupabase();
 
-  // Aktif şantiyeleri al
-  const { data: aktifSantiyeler } = await supabase
-    .from("santiyeler")
-    .select("id")
-    .not("gecici_kabul_tarihi", "is", null)
-    .is("tasfiye_tarihi", null);
-
-  // Aslında aktif = geçici kabul yok ve tasfiye yok
+  // Aktif = geçici kabul yok, kesin kabul yok, tasfiye yok, devir yok
   const { data: gercekAktif } = await supabase
     .from("santiyeler")
     .select("id")
     .is("gecici_kabul_tarihi", null)
-    .is("tasfiye_tarihi", null);
+    .is("kesin_kabul_tarihi", null)
+    .is("tasfiye_tarihi", null)
+    .is("devir_tarihi", null);
 
   const aktifIds = (gercekAktif ?? []).map((s) => s.id);
 

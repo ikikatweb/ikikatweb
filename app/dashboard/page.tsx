@@ -126,7 +126,7 @@ export default function DashboardPage() {
   const [eaBirimFiyat, setEaBirimFiyat] = useState("");
   const [eaNotu, setEaNotu] = useState("");
   const [eaSaving, setEaSaving] = useState(false);
-  const [azKaldiGun, setAzKaldiGun] = useState(10);
+  const azKaldiGun = Math.round(yaklasirGun / 3);
 
   const bugun = new Date();
   const ayBaslangic = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-01`;
@@ -136,7 +136,7 @@ export default function DashboardPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [yi, kasa, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, azGun, sfData, acData] = await Promise.all([
+      const [yi, kasa, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData] = await Promise.all([
         getYiUfeVerileri().catch(() => []),
         getKasaHareketleri().catch(() => []),
         getPersoneller().catch(() => []),
@@ -148,7 +148,6 @@ export default function DashboardPage() {
         getGidenEvraklar().catch(() => []),
         getSantiyelerBasic().catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
-        getDegerler("sigorta_az_kaldi_gun").catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
       ]);
@@ -163,7 +162,6 @@ export default function DashboardPage() {
       setGidenEvraklar(evrak as GidenEvrak[]);
       setSantiyeler(sant as SantiyeBasic[]);
       if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
-      if (azGun.length > 0) setAzKaldiGun(parseInt(azGun[0]) || 10);
       setSigortaFirmalari(sfData as string[]);
       setSigortaAcenteler(acData as string[]);
 
