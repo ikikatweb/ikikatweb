@@ -10,6 +10,8 @@ import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
+import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import type { Tanimlama } from "@/lib/supabase/types";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import {
@@ -224,12 +226,30 @@ function YakitPageContent() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [aracData, santiyeData, limitData] = await Promise.all([
+      const [aracData, santiyeData, limitData, cinsTanimData] = await Promise.all([
         getAraclar(),
         getSantiyelerAll(),
         getAracCinsiYakitLimitler().catch(() => [] as AracCinsiYakitLimit[]),
+        getTanimlamalar("arac_cinsi").catch(() => [] as Tanimlama[]),
       ]);
-      setAraclar(aracData as AracWithRelations[]);
+      // Cins → sayaç tipi map'i (tanımlamalardan güncel değer)
+      const cinsSayacMap = new Map<string, "km" | "saat">();
+      for (const t of cinsTanimData) {
+        if (t.kisa_ad === "km" || t.kisa_ad === "saat") cinsSayacMap.set(t.deger, t.kisa_ad);
+      }
+      // Araçların sayac_tipi'ni tanımlamadaki cins→sayac bilgisiyle senkronize et
+      const araclarFixed = (aracData as AracWithRelations[]).map((a) => {
+        if (a.cinsi && cinsSayacMap.has(a.cinsi)) {
+          const guncelSayac = cinsSayacMap.get(a.cinsi)!;
+          if (a.sayac_tipi !== guncelSayac) {
+            // DB'yi de arka planda güncelle (sessiz)
+            updateArac(a.id, { sayac_tipi: guncelSayac }).catch(() => {});
+            return { ...a, sayac_tipi: guncelSayac };
+          }
+        }
+        return a;
+      });
+      setAraclar(araclarFixed);
       setSantiyeler(santiyeData as SantiyeBasic[]);
       setLimitler(limitData);
 
@@ -319,10 +339,13 @@ function YakitPageContent() {
       const fark = son.km_saat - ilk.km_saat;
       if (fark <= 0) continue;
       const tuketilenLt = sirali.slice(1).reduce((s, k) => s + k.miktar_lt, 0);
-      m.set(aracId, tuketilenLt / fark);
+      // Sayaç tipi km ise lt/100km, saat ise lt/saat
+      const arac = aracMap.get(aracId);
+      const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
+      m.set(aracId, (tuketilenLt / fark) * carpan);
     }
     return m;
-  }, [yakitKayitlari]);
+  }, [yakitKayitlari, aracMap]);
 
   // Aracın önceki kaydını bul (tarih+saat'ten önce)
   function oncekiAracKayit(aracId: string, tarih: string, saat: string, mevcutId?: string): AracYakit | null {
@@ -554,7 +577,9 @@ function YakitPageContent() {
           const fark = h.km_saat - onceki.km_saat;
           satir.fark = fark;
           if (fark > 0) {
-            satir.anlikOrt = h.miktar_lt / fark;
+            // Sayaç tipi km ise lt/100km, saat ise lt/saat
+            const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
+            satir.anlikOrt = (h.miktar_lt / fark) * carpan;
           }
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
@@ -929,7 +954,7 @@ function YakitPageContent() {
     doc.text(`${filtreBaslangic} - ${filtreBitis}`, 14, 17);
 
     const head = [[
-      "Tarih/Saat", "Santiye", "Arac/Kaynak", "KM/Saat", "Fark",
+      "Tarih/Saat", "Santiye", "Arac/Kaynak", "Gosterge", "Fark",
       "Miktar", "Anlik Ort.", "Genel Ort.", "Stok", "Kullanıcı Adı",
     ]];
     const body = tabloSatirlari.map((s) => {
@@ -1029,7 +1054,7 @@ function YakitPageContent() {
 
   function exportExcel() {
     const headers = [
-      "Tarih", "Saat", "Şantiye", "Araç / Kaynak", "KM/Saat", "Fark",
+      "Tarih", "Saat", "Şantiye", "Araç / Kaynak", "Gösterge", "Fark",
       "Miktar (lt)", "Anlık Ort.", "Genel Ort.",
       "Depo Stok", "Kullanıcı Adı", "Not",
     ];
@@ -1225,7 +1250,7 @@ function YakitPageContent() {
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Tarih/Saat</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[180px]">Araç / Kaynak</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">KM/Saat</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">Gösterge</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px]">Fark</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Miktar</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Anlık Ort.</TableHead>
@@ -1239,7 +1264,7 @@ function YakitPageContent() {
             <TableBody>
               {tabloSatirlari.map((s) => {
                 const h = s.hareket;
-                const birimEki = s.birim === "saat" ? " L/s" : s.birim === "km" ? " L/km" : "";
+                const birimEki = s.birim === "saat" ? " L/s" : s.birim === "km" ? " L/100km" : "";
 
                 let aracKaynakText: React.ReactNode = "—";
                 if (h.tip === "arac_yakit") {
@@ -1303,7 +1328,10 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right">
                       {h.tip === "arac_yakit" ? (
-                        <span className="font-semibold">{formatSayi(h.km_saat, 0)}</span>
+                        <span className="font-semibold">
+                          {formatSayi(h.km_saat, 0)}
+                          <span className="text-[9px] text-gray-400 ml-0.5">{aracMap.get(h.arac_id)?.sayac_tipi === "saat" ? "s" : "km"}</span>
+                        </span>
                       ) : "—"}
                     </TableCell>
                     <TableCell className="px-2 text-right text-gray-600">
@@ -1436,7 +1464,7 @@ function YakitPageContent() {
                   {formatLt(verDialogSonKayit.miktar_lt)}
                 </div>
                 <div className="text-[10px] text-amber-600 mt-0.5">
-                  Yeni km/saat bu değerden küçük olamaz.
+                  Yeni {aracMap.get(verDialogSonKayit?.arac_id ?? "")?.sayac_tipi === "saat" ? "saat" : "km"} değeri bu değerden küçük olamaz.
                 </div>
               </div>
             )}
@@ -1458,7 +1486,7 @@ function YakitPageContent() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">KM / Saat</Label>
+                <Label className="text-xs">{aracMap.get(verDialogAracId)?.sayac_tipi === "saat" ? "Saat" : "KM"}</Label>
                 <input
                   type="text"
                   inputMode="decimal"

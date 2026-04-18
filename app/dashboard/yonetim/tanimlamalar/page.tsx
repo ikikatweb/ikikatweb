@@ -67,6 +67,8 @@ export default function TanimlamalarPage() {
   // İş grupları accordion state
   const [isGrupAcik, setIsGrupAcik] = useState<Record<string, boolean>>({});
   const [isGrupAltAcik, setIsGrupAltAcik] = useState<Record<string, boolean>>({});
+  // Manuel iş grubu (Diğer) ekleme
+  const [yeniDigerIsGrubu, setYeniDigerIsGrubu] = useState("");
 
   // Banka hesap tanımlama formu (hesap no + firma + banka birlikte)
   const [yeniHesapNo, setYeniHesapNo] = useState("");
@@ -368,8 +370,9 @@ export default function TanimlamalarPage() {
       await deleteTanimlama(deleteId);
       await loadData();
       toast.success("Silindi.");
-    } catch { toast.error("Silinirken hata oluştu."); }
-    finally { setDeleteId(null); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Silinirken hata oluştu.");
+    } finally { setDeleteId(null); }
   }
 
   async function handleToggleAktif(t: Tanimlama) {
@@ -404,10 +407,15 @@ export default function TanimlamalarPage() {
     if (!silKat) return;
     try {
       const items = tanimlamalar.filter((t) => t.kategori === silKat);
-      await Promise.all(items.map((t) => deleteTanimlama(t.id)));
+      // Her birini sil (deleteTanimlama kullanım kontrolü yapar)
+      for (const t of items) {
+        await deleteTanimlama(t.id);
+      }
       await loadData();
       toast.success("Kategori ve tüm değerleri silindi.");
-    } catch { toast.error("Silme hatası."); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Silme hatası.");
+    }
     setSilKat(null);
   }
 
@@ -1026,6 +1034,100 @@ export default function TanimlamalarPage() {
                     );
                   })}
                 </div>
+
+                {/* Diğer — Manuel iş grubu ekleme/listeleme */}
+                {(() => {
+                  const digerKey = "Diğer";
+                  const digerAcik = isGrupAcik[digerKey] ?? false;
+                  const digerItems = tanimlamalar
+                    .filter((t) => t.kategori === "is_gruplari_diger" && t.aktif)
+                    .sort((a, b) => a.sira - b.sira);
+                  return (
+                    <div className="border rounded-lg overflow-hidden mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsGrupAcik((p) => ({ ...p, [digerKey]: !p[digerKey] }))}
+                        className="w-full flex items-center gap-2 px-3 py-2 bg-[#475569] text-white text-sm font-semibold hover:bg-[#3e4c5e] transition-colors"
+                      >
+                        {digerAcik ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <span>Diğer (Manuel Eklenen)</span>
+                        <Badge className="ml-auto bg-white/20 text-white text-[10px]">{digerItems.length}</Badge>
+                      </button>
+                      {digerAcik && (
+                        <div className="bg-white p-3">
+                          {/* Mevcut diğer iş grupları */}
+                          {digerItems.length > 0 && (
+                            <div className="space-y-1 mb-3">
+                              {digerItems.map((d, i) => (
+                                <div key={d.id} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 rounded">
+                                  <span className="text-gray-400 w-5 text-xs">{i + 1}.</span>
+                                  <span className="flex-1 text-gray-700">{d.deger}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteId(d.id)}
+                                    className="p-1 text-gray-300 hover:text-red-500"
+                                    title="Sil"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Yeni ekleme */}
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={yeniDigerIsGrubu}
+                              onChange={(e) => setYeniDigerIsGrubu(e.target.value)}
+                              placeholder="Yeni iş grubu adı girin..."
+                              className="flex-1 h-9 text-sm"
+                              onKeyDown={async (e) => {
+                                if (e.key === "Enter" && yeniDigerIsGrubu.trim()) {
+                                  try {
+                                    await createTanimlama({
+                                      kategori: "is_gruplari_diger",
+                                      sekme: "santiyeler",
+                                      deger: formatBaslik(yeniDigerIsGrubu.trim()),
+                                      kisa_ad: "DGR",
+                                      sira: digerItems.length + 1,
+                                      aktif: true,
+                                    });
+                                    setYeniDigerIsGrubu("");
+                                    await loadData();
+                                    toast.success("İş grubu eklendi.");
+                                  } catch { toast.error("Ekleme hatası."); }
+                                }
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              className="h-9 bg-[#475569] hover:bg-[#3e4c5e] text-white"
+                              disabled={!yeniDigerIsGrubu.trim()}
+                              onClick={async () => {
+                                if (!yeniDigerIsGrubu.trim()) return;
+                                try {
+                                  await createTanimlama({
+                                    kategori: "is_gruplari_diger",
+                                    sekme: "santiyeler",
+                                    deger: formatBaslik(yeniDigerIsGrubu.trim()),
+                                    kisa_ad: "DGR",
+                                    sira: digerItems.length + 1,
+                                    aktif: true,
+                                  });
+                                  setYeniDigerIsGrubu("");
+                                  await loadData();
+                                  toast.success("İş grubu eklendi.");
+                                } catch { toast.error("Ekleme hatası."); }
+                              }}
+                            >
+                              <Plus size={14} className="mr-1" /> Ekle
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           );

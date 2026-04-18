@@ -64,6 +64,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   const [isGrupAnaList, setIsGrupAnaList] = useState<Tanimlama[]>([]);
   const [isGrupAltList, setIsGrupAltList] = useState<Tanimlama[]>([]);
   const [isGrupDetayList, setIsGrupDetayList] = useState<Tanimlama[]>([]);
+  const [isGrupDigerList, setIsGrupDigerList] = useState<Tanimlama[]>([]);
   const [depoVar, setDepoVar] = useState(
     santiye?.depo_kapasitesi != null && santiye.depo_kapasitesi > 0
   );
@@ -119,14 +120,16 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
       setIsGruplari(gruplar);
       // İş gruplarını yükle (3-kademeli: ana, alt, detay)
       try {
-        const [anaData, altData, detayData] = await Promise.all([
+        const [anaData, altData, detayData, digerData] = await Promise.all([
           getTanimlamalar("is_gruplari_ana").catch(() => []),
           getTanimlamalar("is_gruplari_alt").catch(() => []),
           getTanimlamalar("is_gruplari_detay").catch(() => []),
+          getTanimlamalar("is_gruplari_diger").catch(() => []),
         ]);
         setIsGrupAnaList(anaData as Tanimlama[]);
         setIsGrupAltList(altData as Tanimlama[]);
         setIsGrupDetayList(detayData as Tanimlama[]);
+        setIsGrupDigerList(digerData as Tanimlama[]);
         // Düz liste de doldur (İş Grubu Benzer İş dropdown'u için)
         setIsGrupListesi((altData as Tanimlama[]).map((t) => `(${t.kisa_ad ?? ""}) ${t.deger}`));
       } catch {
@@ -243,11 +246,18 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
 
       // İş grubu dağılımını kaydet
       const gecerliDagilim = isGrupDagilimi
-        .filter((d) => d.alt && d.tutar)
-        .map((d) => ({
-          is_grubu: `(${d.ana}) ${d.alt}${d.detay ? " - " + d.detay : ""}`,
-          tutar: parseFloat(d.tutar.replace(/\./g, "").replace(",", ".")) || 0,
-        }))
+        .filter((d) => d.ana && d.tutar && (d.ana.startsWith("DGR-") || d.alt))
+        .map((d) => {
+          // "Diğer" gruplarda is_grubu = ad, normal gruplarda = "(A) Alt Grup - Detay"
+          const isDiger = d.ana.startsWith("DGR-");
+          const isGrubu = isDiger
+            ? d.ana.replace("DGR-", "")
+            : `(${d.ana}) ${d.alt}${d.detay ? " - " + d.detay : ""}`;
+          return {
+            is_grubu: isGrubu,
+            tutar: parseFloat(d.tutar.replace(/\./g, "").replace(",", ".")) || 0,
+          };
+        })
         .filter((d) => d.tutar > 0);
       try {
         await saveSantiyeIsGruplari(savedId, gecerliDagilim);
@@ -306,22 +316,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                     disabled={loading}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>İş Tanımları</Label>
-                  <select name="is_grubu" value={formData.is_grubu ?? ""} onChange={(e) => handleSelectChange("is_grubu", e.target.value)} disabled={loading} className={selectClass}>
-                    <option value="">Seçiniz</option>
-                    {isGruplari.map((g) => (<option key={g} value={g}>{g}</option>))}
-                  </select>
-                </div>
-                {isGrupListesi.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>İş Grubu (Benzer İş)</Label>
-                    <select name="benzer_is_grubu" value={formData.benzer_is_grubu ?? ""} onChange={(e) => handleSelectChange("benzer_is_grubu", e.target.value)} disabled={loading} className={selectClass}>
-                      <option value="">Seçiniz</option>
-                      {isGrupListesi.map((g) => (<option key={g} value={g}>{g}</option>))}
-                    </select>
-                  </div>
-                )}
+                {/* İş Tanımları ve İş Grubu (Benzer İş) genel bilgilerde gösterilmez — kabul sekmesindeki İş Grubu Dağılımı'ndan seçilir */}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -569,10 +564,11 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                     Sözleşme fiyatlarıyla gerçekleşen tutarın iş gruplarına dağılımını girin. Toplamları gerçekleşen tutara eşit olmalıdır.
                   </p>
                   {isGrupDagilimi.map((d, i) => {
-                    const filtreliAlt = isGrupAltList.filter((a) => a.kisa_ad === d.ana);
+                    const isDigerGrup = d.ana.startsWith("DGR-");
+                    const filtreliAlt = isDigerGrup ? [] : isGrupAltList.filter((a) => a.kisa_ad === d.ana);
                     const romMatch = d.alt.match(/^([IVXLCDM]+)\./);
                     const detayKey = romMatch ? `${d.ana}-${romMatch[1]}` : "";
-                    const filtreliDetay = isGrupDetayList.filter((dt) => dt.kisa_ad === detayKey);
+                    const filtreliDetay = isDigerGrup ? [] : isGrupDetayList.filter((dt) => dt.kisa_ad === detayKey);
                     return (
                       <div key={i} className="border rounded-lg p-3 bg-white space-y-2">
                         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_40px] gap-2 items-end">
@@ -589,38 +585,49 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                               {isGrupAnaList.map((a) => (
                                 <option key={a.id} value={a.kisa_ad ?? ""}>({a.kisa_ad}) {a.deger}</option>
                               ))}
+                              {isGrupDigerList.length > 0 && (
+                                <optgroup label="Diğer">
+                                  {isGrupDigerList.map((d) => (
+                                    <option key={d.id} value={`DGR-${d.deger}`}>{d.deger}</option>
+                                  ))}
+                                </optgroup>
+                              )}
                             </select>
                           </div>
-                          {/* Alt Grup */}
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-gray-500">Alt Grup</Label>
-                            <select
-                              value={d.alt}
-                              onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, alt: e.target.value, detay: "" } : x))}
-                              disabled={loading || !d.ana}
-                              className={selectClass + " text-xs"}
-                            >
-                              <option value="">Seçiniz</option>
-                              {filtreliAlt.map((a) => (
-                                <option key={a.id} value={a.deger}>{a.deger}</option>
-                              ))}
-                            </select>
-                          </div>
-                          {/* Detay */}
-                          <div className="space-y-1">
-                            <Label className="text-[10px] text-gray-500">Detay</Label>
-                            <select
-                              value={d.detay}
-                              onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, detay: e.target.value } : x))}
-                              disabled={loading || !d.alt || filtreliDetay.length === 0}
-                              className={selectClass + " text-xs"}
-                            >
-                              <option value="">{filtreliDetay.length === 0 ? "Detay yok" : "Seçiniz"}</option>
-                              {filtreliDetay.map((dt) => (
-                                <option key={dt.id} value={dt.deger}>{dt.deger}</option>
-                              ))}
-                            </select>
-                          </div>
+                          {/* Alt Grup — Diğer gruplarda gizli */}
+                          {!isDigerGrup && (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-gray-500">Alt Grup</Label>
+                              <select
+                                value={d.alt}
+                                onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, alt: e.target.value, detay: "" } : x))}
+                                disabled={loading || !d.ana}
+                                className={selectClass + " text-xs"}
+                              >
+                                <option value="">Seçiniz</option>
+                                {filtreliAlt.map((a) => (
+                                  <option key={a.id} value={a.deger}>{a.deger}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {/* Detay — Diğer gruplarda gizli */}
+                          {!isDigerGrup && (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] text-gray-500">Detay</Label>
+                              <select
+                                value={d.detay}
+                                onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, detay: e.target.value } : x))}
+                                disabled={loading || !d.alt || filtreliDetay.length === 0}
+                                className={selectClass + " text-xs"}
+                              >
+                                <option value="">{filtreliDetay.length === 0 ? "Detay yok" : "Seçiniz"}</option>
+                                {filtreliDetay.map((dt) => (
+                                  <option key={dt.id} value={dt.deger}>{dt.deger}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                           {/* Sil */}
                           <Button type="button" variant="ghost" size="sm" className="text-red-500"
                             onClick={() => setIsGrupDagilimi((prev) => prev.filter((_, j) => j !== i))} disabled={loading}>

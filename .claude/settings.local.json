@@ -6,7 +6,8 @@
       "Bash(xargs grep:*)",
       "mcp__Claude_Preview__preview_start",
       "Bash(taskkill /PID 22344 /F)",
-      "Bash(cmd.exe //c \"taskkill /PID 22344 /F\")"
+      "Bash(cmd.exe //c \"taskkill /PID 22344 /F\")",
+      "Bash(grep -rn \"arac_cinsi\\\\|sigorta_firmasi\\\\|yakit_tipi\\\\|hgs_saglayici\\\\|muhatap\\\\|is_grubu\\\\|kasa_harcama_kategori\" /c/Users/MSI/Desktop/ikikatweb/lib/supabase/types.ts /c/Users/MSI/Desktop/ikikatweb/lib/supabase/queries/*.ts)"
     ]
   }
 }

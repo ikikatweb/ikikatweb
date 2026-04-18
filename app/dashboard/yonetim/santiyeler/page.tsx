@@ -88,7 +88,7 @@ function getDurum(s: SantiyeWithRelations): string {
   return "Devam Ediyor";
 }
 function isDimmed(s: SantiyeWithRelations): boolean {
-  return !!s.gecici_kabul_tarihi || !!s.tasfiye_tarihi || !!s.devir_tarihi;
+  return !!s.gecici_kabul_tarihi || !!s.kesin_kabul_tarihi || !!s.tasfiye_tarihi || !!s.devir_tarihi;
 }
 
 // Sütun başlıkları
@@ -105,6 +105,7 @@ const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "kesin_kabul", label: "Kesin Kabul" },
   { key: "is_deneyim", label: "İş Deneyim" },
   { key: "durum", label: "Durum" },
+  { key: "yiufe_orani", label: "Yi-ÜFE\nOranı", twoLine: true },
   { key: "guncel_deneyim", label: "Güncel İş\nDeneyim Tutarı", twoLine: true },
   { key: "ff_yuzde", label: "Fiyat Farkı" },
 ];
@@ -216,11 +217,11 @@ export default function SantiyelerPage() {
     // Fiyat Farkı için: ihale tarihinin BULUNDUĞU ayın endeksi
     const ffBazYiUfe = getYiUfeAyindaki(yiUfeData, s.ihale_tarihi);
 
-    // En son Yi-ÜFE: aktifse en son açıklanan, geçici kabul varsa o tarihteki, tasfiye varsa o tarihteki
+    // En son Yi-ÜFE (Fiyat Farkı için): aktifse en son açıklanan, tasfiye varsa o tarihteki
     let enSonYiUfe: number | null = null;
     if (s.tasfiye_tarihi) {
       enSonYiUfe = getYiUfeAyindaki(yiUfeData, s.tasfiye_tarihi) ?? guncelYiUfe;
-    } else if (!s.gecici_kabul_tarihi) {
+    } else if (!s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi) {
       enSonYiUfe = guncelYiUfe;
     }
 
@@ -234,7 +235,7 @@ export default function SantiyelerPage() {
       ? s.sozlesme_bedeli - s.sozlesme_fiyatlariyla_gerceklesen : null;
     const ffDahilKalan = kalan != null && ffYuzde != null ? kalan * (ffYuzde / 100) + kalan : null;
 
-    // Yi-ÜFE oranı (güncel / sözleşme)
+    // Yi-ÜFE oranı (güncel / sözleşme) — İş Deneyim hesabı için her zaman güncel Yi-ÜFE kullanılır
     const yiufeOrani = guncelYiUfe && sozYiUfe ? guncelYiUfe / sozYiUfe : null;
 
     // Güncel İş Deneyim — ortakOrani parametresi öncelikli, yoksa şantiyenin kendi oranı
@@ -258,8 +259,13 @@ export default function SantiyelerPage() {
   }
 
   function sortData(data: SantiyeWithRelations[]) {
-    if (sorts.length === 0) return data;
     return [...data].sort((a, b) => {
+      // Öncelik: devam eden işler (dimmed olmayan) her zaman üstte
+      const aDim = isDimmed(a) ? 1 : 0;
+      const bDim = isDimmed(b) ? 1 : 0;
+      if (aDim !== bDim) return aDim - bDim;
+
+      // Kullanıcı sıralaması varsa uygula
       for (const sort of sorts) {
         const va = getSortVal(a, sort.key);
         const vb = getSortVal(b, sort.key);
@@ -278,7 +284,7 @@ export default function SantiyelerPage() {
       ff_dahil_kalan: c.ffDahilKalan ?? 0, gerceklesen: s.sozlesme_fiyatlariyla_gerceklesen ?? 0,
       gecici_kabul: s.gecici_kabul_tarihi ?? "", kesin_kabul: s.kesin_kabul_tarihi ?? "",
       is_deneyim: s.is_deneyim_url ? 1 : 0, durum: s.durum,
-      guncel_deneyim: c.guncelDeneyim ?? 0, ff_yuzde: c.ffYuzde ?? 0,
+      yiufe_orani: c.yiufeOrani ?? 0, guncel_deneyim: c.guncelDeneyim ?? 0, ff_yuzde: c.ffYuzde ?? 0,
     };
     return map[key] ?? "";
   }
@@ -327,7 +333,7 @@ export default function SantiyelerPage() {
       tr("Sozlesme Tarihi"),
       "F.F. Dahil\nKalan Tutar", tr("Sozl. Fiy.\nGerceklesen"),
       tr("Gecici Kabul"), "Kesin Kabul", tr("Is Deneyim"),
-      tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
+      tr("Yi-UFE\nOrani"), tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
     ]];
 
     let startY = 20;
@@ -358,6 +364,7 @@ export default function SantiyelerPage() {
           formatTarih(s.gecici_kabul_tarihi),
           formatTarih(s.kesin_kabul_tarihi),
           s.tasfiye_tarihi ? "—" : s.is_deneyim_url ? "Var" : "Yok",
+          c.yiufeOrani != null ? c.yiufeOrani.toFixed(6) : "—",
           c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—",
           c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—",
         ]);
@@ -442,8 +449,8 @@ export default function SantiyelerPage() {
   // Filtre + Arama + İş Tanımları
   const filtrelenmis = sortData(santiyeler.filter((s) => {
     // Durum filtresi
-    if (filtre === "aktif" && (s.gecici_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi)) return false;
-    if (filtre === "tamamlandi" && (!s.gecici_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi)) return false;
+    if (filtre === "aktif" && (s.gecici_kabul_tarihi || s.kesin_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi)) return false;
+    if (filtre === "tamamlandi" && (!(s.gecici_kabul_tarihi || s.kesin_kabul_tarihi) || s.tasfiye_tarihi || s.devir_tarihi)) return false;
     if (filtre === "tasfiye" && !s.tasfiye_tarihi) return false;
     if (filtre === "devir" && !s.devir_tarihi) return false;
     // İş grubu filtresi
@@ -720,6 +727,10 @@ export default function SantiyelerPage() {
                     {/* Durum */}
                     <TableCell className="text-center px-2">
                       <Badge className={durumColor}>{durumText}</Badge>
+                    </TableCell>
+                    {/* Yi-ÜFE Oranı */}
+                    <TableCell className="text-center px-2 tabular-nums whitespace-nowrap text-gray-600">
+                      {c.yiufeOrani != null ? c.yiufeOrani.toFixed(6) : "—"}
                     </TableCell>
                     {/* Güncel İş Deneyim - tıklayınca iş grubu dağılımı gösterilir */}
                     <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">

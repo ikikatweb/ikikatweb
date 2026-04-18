@@ -90,8 +90,69 @@ export async function updateTanimlama(id: string, updates: Partial<TanimlamaInse
   if (error) throw error;
 }
 
+// Kategori → kullanıldığı tablo ve sütun eşlemesi
+const KULLANIM_KONTROL: Record<string, { tablo: string; sutun: string; label: string }[]> = {
+  arac_cinsi: [{ tablo: "araclar", sutun: "cinsi", label: "araç" }],
+  yakit_tipi: [{ tablo: "araclar", sutun: "yakit_tipi", label: "araç" }],
+  hgs_saglayici: [{ tablo: "araclar", sutun: "hgs_saglayici", label: "araç" }],
+  muhatap: [
+    { tablo: "gelen_evrak", sutun: "muhatap", label: "gelen evrak" },
+    { tablo: "giden_evrak", sutun: "muhatap", label: "giden evrak" },
+  ],
+  banka_muhatap: [{ tablo: "banka_yazisma", sutun: "muhatap", label: "banka yazışması" }],
+  sigorta_firmasi: [{ tablo: "arac_police", sutun: "sigorta_firmasi", label: "poliçe" }],
+  sigorta_acente: [{ tablo: "arac_police", sutun: "acente", label: "poliçe" }],
+  personel_meslek: [{ tablo: "personel", sutun: "meslek", label: "personel" }],
+  personel_gorev: [{ tablo: "personel", sutun: "gorev", label: "personel" }],
+  kasa_harcama_kategori: [{ tablo: "kasa_hareketi", sutun: "kategori", label: "kasa hareketi" }],
+};
+
 export async function deleteTanimlama(id: string) {
   const supabase = getSupabase();
+
+  // Silinmek istenen tanımlamanın değerini ve kategorisini al
+  const { data: tanimlama, error: fetchErr } = await supabase
+    .from("tanimlamalar")
+    .select("id, deger, kategori")
+    .eq("id", id)
+    .single();
+  if (fetchErr) throw fetchErr;
+  if (!tanimlama) throw new Error("Tanımlama bulunamadı.");
+
+  // Kullanım kontrolü
+  const kontroller = KULLANIM_KONTROL[tanimlama.kategori];
+  if (kontroller) {
+    for (const k of kontroller) {
+      const { count, error: cErr } = await supabase
+        .from(k.tablo)
+        .select("id", { count: "exact", head: true })
+        .eq(k.sutun, tanimlama.deger);
+      if (cErr) continue;
+      if (count && count > 0) {
+        throw new Error(
+          `"${tanimlama.deger}" değeri ${count} adet ${k.label} kaydında kullanılıyor. Kullanılan tanımlama silinemez.`
+        );
+      }
+    }
+  }
+
+  // Banka hesapları özel kontrol: banka_muhatap ID olarak kisa_ad içinde referans ediliyor
+  if (tanimlama.kategori === "banka_muhatap") {
+    const { data: hesaplar } = await supabase
+      .from("tanimlamalar")
+      .select("id, kisa_ad")
+      .eq("kategori", "banka_hesap");
+    const kullananHesap = (hesaplar ?? []).some((h) => {
+      const { muhatap_id } = unpackHesapKisaAd(h.kisa_ad);
+      return muhatap_id === id;
+    });
+    if (kullananHesap) {
+      throw new Error(
+        `"${tanimlama.deger}" bankası bir banka hesabında kullanılıyor. Kullanılan tanımlama silinemez.`
+      );
+    }
+  }
+
   const { error } = await supabase
     .from("tanimlamalar")
     .delete()
