@@ -316,7 +316,14 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                     disabled={loading}
                   />
                 </div>
-                {/* İş Tanımları ve İş Grubu (Benzer İş) genel bilgilerde gösterilmez — kabul sekmesindeki İş Grubu Dağılımı'ndan seçilir */}
+                <div className="space-y-2">
+                  <Label>İş Tanımları</Label>
+                  <select name="is_grubu" value={formData.is_grubu ?? ""} onChange={(e) => handleSelectChange("is_grubu", e.target.value)} disabled={loading} className={selectClass}>
+                    <option value="">Seçiniz</option>
+                    {isGruplari.map((g) => (<option key={g} value={g}>{g}</option>))}
+                  </select>
+                </div>
+                {/* İş Grubu (Benzer İş) genel bilgilerde gösterilmez — kabul sekmesindeki İş Grubu Dağılımı'ndan seçilir */}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

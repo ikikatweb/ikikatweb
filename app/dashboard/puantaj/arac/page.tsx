@@ -385,14 +385,16 @@ export default function AracPuantajPage() {
 
   // Sadece üzerinde aktif araç ataması olan şantiyeler
   // (Atama sekmesinde tüm şantiyeler gösterilir; bu liste sadece puantaj sekmesi için)
+  // Kısıtlı kullanıcı: sadece atandığı şantiyeleri görsün
   const santiyelerAtamalı = useMemo(() => {
     const atamaliIds = new Set(
       araclar
         .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id)
         .map((a) => a.santiye_id as string)
     );
-    return santiyeler.filter((s) => atamaliIds.has(s.id));
-  }, [araclar, santiyeler]);
+    const atamali = santiyeler.filter((s) => atamaliIds.has(s.id));
+    return filtreliSantiyeler(atamali, kullanici);
+  }, [araclar, santiyeler, kullanici]);
 
   // Dönem dropdown'u için yıl/ay seçenekleri (geçen yıl + bu yıl + gelecek yıl)
   const ayYilSecenekleri = useMemo(() => {

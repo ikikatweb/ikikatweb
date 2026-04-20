@@ -547,7 +547,19 @@ export default function IscilikTakibiPage() {
                       }
                     }
 
-                    const cellClass = `px-2 whitespace-nowrap ${col.editable ? "cursor-pointer hover:bg-blue-50" : ""} ${col.type === "para" || col.computed ? "text-right tabular-nums" : col.type === "date" ? "text-center" : ""} ${col.key === "is_adi" ? "text-left font-medium max-w-[180px] truncate" : "text-center"}${kalanPrimClass}${bitimTarihiClass}`;
+                    // Hizalama önceliği: is_adi → sola, para/computed/sicil_no(doluysa) → sağa, diğer → ortala
+                    const sicilNoDolu = col.key === "sicil_no" && !!row.sicil_no;
+                    const sagaYasliMi = sicilNoDolu
+                      || ((col.type === "para" || col.computed)
+                          && col.key !== "son_veri_girisi_tarihi"
+                          && col.key !== "taseron_veri_isleme_tarihi"
+                          && col.key !== "is_bitim_tarihi");
+                    const hizalama = col.key === "is_adi"
+                      ? "text-left font-medium max-w-[180px] truncate"
+                      : sagaYasliMi
+                        ? "text-right tabular-nums"
+                        : "text-center";
+                    const cellClass = `px-2 whitespace-nowrap ${col.editable ? "cursor-pointer hover:bg-blue-50" : ""} ${hizalama}${kalanPrimClass}${bitimTarihiClass}`;
 
                     if (isEditing) {
                       return (
