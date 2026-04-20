@@ -68,13 +68,13 @@ type ColDef = {
 };
 
 const COLUMNS: ColDef[] = [
-  { key: "sicil_no", label: "Sicil No", editable: true, type: "text",
+  { key: "sicil_no", label: "Sicil No", type: "text",
     getValue: (r) => r.sicil_no ?? "—", getRaw: (r) => r.sicil_no },
   { key: "is_adi", label: "İşin Adı", fromSantiye: true,
     getValue: (r) => r.santiyeler?.is_adi ?? "—", getRaw: () => null },
   { key: "sozlesme_bedeli", label: "Sözleşme Bedeli", fromSantiye: true, type: "para",
     getValue: (r) => formatPara(r.santiyeler?.sozlesme_bedeli ?? null), getRaw: () => null },
-  { key: "kesif_artisi", label: "Keşif Artışı", editable: true, type: "para",
+  { key: "kesif_artisi", label: "Keşif Artışı", type: "para",
     getValue: (r) => formatPara(r.kesif_artisi), getRaw: (r) => r.kesif_artisi },
   { key: "fiyat_farki", label: "Fiyat Farkı", editable: true, type: "para",
     getValue: (r) => formatPara(r.fiyat_farki), getRaw: (r) => r.fiyat_farki },
@@ -349,13 +349,57 @@ export default function IscilikTakibiPage() {
     const kalanPrimIdx = pdfColumns.findIndex((c) => c.key === "kalan_prim");
     const bitimTarihiIdx = pdfColumns.findIndex((c) => c.key === "is_bitim_tarihi");
 
+    // Toplam satırı için veri hesapla
+    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+    for (const row of filtrelenmis) {
+      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+      const kesif = row.kesif_artisi ?? 0;
+      const ff = row.fiyat_farki ?? 0;
+      const oran = row.iscilik_orani ?? 0;
+      const yatacak = (bedel + kesif + ff) * oran / 100;
+      kesifT += kesif;
+      fiyatFarkiT += ff;
+      yatmasiGerekenT += yatacak;
+      yatanT += (row.yatan_prim ?? 0);
+      kalanT += (yatacak - (row.yatan_prim ?? 0));
+      toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
+    }
+    // PDF'te toplam satırı için her sütunun değerini bul
+    const toplamMap: Record<string, string> = {
+      kesif_artisi: formatPara(kesifT),
+      fiyat_farki: formatPara(fiyatFarkiT),
+      yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
+      yatan_prim: formatPara(yatanT),
+      kalan_prim: formatPara(kalanT),
+      toplam_son_veri_tutari: formatPara(toplamSonVeriT),
+    };
+    const toplamSatiri = ["", ...pdfColumns.map((c) => {
+      if (c.key === "is_adi") return "TOPLAM";
+      return toplamMap[c.key] ?? "";
+    })];
+
+    // Sütun bazlı hizalama: is_adi sola, para/computed (tarihler hariç) sağa, sicil_no sağa (dolu ise), diğer ortaya
+    const columnStyles: Record<number, { halign: "left" | "right" | "center" }> = {};
+    columnStyles[0] = { halign: "center" }; // No
+    pdfColumns.forEach((c, i) => {
+      const idx = i + 1;
+      if (c.key === "is_adi") columnStyles[idx] = { halign: "left" };
+      else if (c.key === "sicil_no") columnStyles[idx] = { halign: "right" };
+      else if (c.key === "son_veri_girisi_tarihi" || c.key === "taseron_veri_isleme_tarihi" || c.key === "is_bitim_tarihi") columnStyles[idx] = { halign: "center" };
+      else if (c.type === "para" || c.computed) columnStyles[idx] = { halign: "right" };
+      else columnStyles[idx] = { halign: "center" };
+    });
+
     autoTable(doc, {
       startY: 25,
       head: [["No", ...headers]],
       body: body.map((row, i) => [String(i + 1), ...row]),
+      foot: [toplamSatiri],
       styles: { fontSize: 5, cellPadding: 1 },
-      headStyles: { fillColor: [30, 58, 95], fontSize: 5 },
+      headStyles: { fillColor: [30, 58, 95], fontSize: 5, halign: "center" },
+      footStyles: { fillColor: [226, 232, 240], textColor: [30, 58, 95], fontStyle: "bold", fontSize: 5 },
       alternateRowStyles: { fillColor: [241, 245, 249] },
+      columnStyles,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
         if (data.section !== "body") return;
@@ -404,7 +448,36 @@ export default function IscilikTakibiPage() {
     const excelColumns = COLUMNS.filter((c) => !gizle.has(c.key));
     const headers = ["No", ...excelColumns.map((c) => c.label.replace(/\n/g, " "))];
     const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => c.getValue(r))]);
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+
+    // Toplam satırı
+    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+    for (const row of filtrelenmis) {
+      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+      const kesif = row.kesif_artisi ?? 0;
+      const ff = row.fiyat_farki ?? 0;
+      const oran = row.iscilik_orani ?? 0;
+      const yatacak = (bedel + kesif + ff) * oran / 100;
+      kesifT += kesif;
+      fiyatFarkiT += ff;
+      yatmasiGerekenT += yatacak;
+      yatanT += (row.yatan_prim ?? 0);
+      kalanT += (yatacak - (row.yatan_prim ?? 0));
+      toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
+    }
+    const toplamMap: Record<string, string> = {
+      kesif_artisi: formatPara(kesifT),
+      fiyat_farki: formatPara(fiyatFarkiT),
+      yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
+      yatan_prim: formatPara(yatanT),
+      kalan_prim: formatPara(kalanT),
+      toplam_son_veri_tutari: formatPara(toplamSonVeriT),
+    };
+    const toplamRow = ["", ...excelColumns.map((c) => {
+      if (c.key === "is_adi") return "TOPLAM";
+      return toplamMap[c.key] ?? "";
+    })];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data, toplamRow]);
     ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 2, 12) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Iscilik Takibi");
@@ -594,7 +667,7 @@ export default function IscilikTakibiPage() {
                     // İş adına tıklayınca detay sayfasına git
                     if (col.key === "is_adi") {
                       return (
-                        <TableCell key={col.key} className={cellClass + " cursor-pointer text-[#1E3A5F] hover:text-[#F97316] hover:underline"}
+                        <TableCell key={col.key} className={cellClass + " cursor-pointer text-[#1E3A5F] hover:text-[#F97316]"}
                           title={row.santiyeler?.is_adi}
                           onClick={() => router.push(`/dashboard/iscilik-takibi/${row.id}`)}>
                           {col.getValue(row)}
@@ -618,6 +691,39 @@ export default function IscilikTakibiPage() {
                 </TableRow>
                 );
               })}
+              {/* Toplam satırı — Sözleşme Bedeli hariç tüm tutarların toplamı */}
+              {(() => {
+                let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+                for (const row of filtrelenmis) {
+                  const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+                  const kesif = row.kesif_artisi ?? 0;
+                  const ff = row.fiyat_farki ?? 0;
+                  const oran = row.iscilik_orani ?? 0;
+                  const yatacak = (bedel + kesif + ff) * oran / 100;
+                  kesifT += kesif;
+                  fiyatFarkiT += ff;
+                  yatmasiGerekenT += yatacak;
+                  yatanT += (row.yatan_prim ?? 0);
+                  kalanT += (yatacak - (row.yatan_prim ?? 0));
+                  toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
+                }
+                return (
+                  <TableRow className="bg-[#1E3A5F]/10 font-bold border-t-2 border-[#1E3A5F]">
+                    <TableCell className="text-center px-2 text-[#1E3A5F]" colSpan={3}>TOPLAM</TableCell>
+                    <TableCell className="text-center px-2 text-gray-400">—</TableCell>
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(kesifT)}</TableCell>
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(fiyatFarkiT)}</TableCell>
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(yatmasiGerekenT)}</TableCell>
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(yatanT)}</TableCell>
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(kalanT)}</TableCell>
+                    <TableCell />
+                    <TableCell />
+                    <TableCell />
+                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(toplamSonVeriT)}</TableCell>
+                    <TableCell />
+                  </TableRow>
+                );
+              })()}
             </TableBody>
           </Table>
         </div>

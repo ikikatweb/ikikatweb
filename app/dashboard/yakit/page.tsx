@@ -172,13 +172,12 @@ function YakitPageContent() {
   const bugun = new Date();
   const [filtreSantiyeId, setFiltreSantiyeId] = useState<string>(() => yakitSearchParams.get("santiye") ?? "");
   // URL'deki santiye parametresi değişirse filtreyi güncelle (Dashboard'dan navigasyonda)
+  const urlSantiyeParam = yakitSearchParams.get("santiye");
   useEffect(() => {
-    const urlSantiye = yakitSearchParams.get("santiye");
-    if (urlSantiye && urlSantiye !== filtreSantiyeId) {
-      setFiltreSantiyeId(urlSantiye);
+    if (urlSantiyeParam) {
+      setFiltreSantiyeId(urlSantiyeParam);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yakitSearchParams]);
+  }, [urlSantiyeParam]);
   const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
     const y = bugun.getFullYear();
     const m = bugun.getMonth() + 1;

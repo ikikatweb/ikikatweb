@@ -37,6 +37,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
     kisa_adi: firma?.kisa_adi ?? "",
     vergi_no: firma?.vergi_no ?? "",
     adres: firma?.adres ?? "",
+    renk: firma?.renk ?? "#1E3A5F",
     kase_url: firma?.kase_url ?? null,
     antet_url: firma?.antet_url ?? null,
     smtp_host: firma?.smtp_host ?? "",
@@ -177,6 +178,32 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
                   disabled={loading}
                   rows={3}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="renk">Firma Rengi</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="renk"
+                    type="color"
+                    value={formData.renk ?? "#1E3A5F"}
+                    onChange={(e) => setFormData((p) => ({ ...p, renk: e.target.value }))}
+                    disabled={loading}
+                    className="h-10 w-20 rounded-lg border border-input cursor-pointer"
+                  />
+                  <Input
+                    type="text"
+                    placeholder="#1E3A5F"
+                    value={formData.renk ?? ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, renk: e.target.value }))}
+                    disabled={loading}
+                    className="w-32 font-mono text-sm"
+                  />
+                  <span className="inline-block px-3 py-1.5 rounded text-white text-sm font-semibold" style={{ backgroundColor: formData.renk ?? "#1E3A5F" }}>
+                    {formData.firma_adi || "Önizleme"}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400">Firma rengini belirleyin. Bu renk firma verilerinde (araç, şantiye vb.) göstergelerde kullanılır.</p>
               </div>
 
               {/* Dosya Yüklemeleri */}

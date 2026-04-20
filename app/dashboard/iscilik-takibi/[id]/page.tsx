@@ -130,12 +130,22 @@ export default function IscilikDetayPage() {
   // Üst kart düzenleme
   async function saveHeaderEdit() {
     if (!editingHeader || !takip) return;
-    const cleaned = headerEditValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-    const value = cleaned ? parseFloat(cleaned) : null;
+    // Metin alanları (sicil_no) için raw string, para alanları için parse et
+    const metinAlanlari = new Set(["sicil_no"]);
+    let value: string | number | null;
+    if (metinAlanlari.has(editingHeader)) {
+      value = headerEditValue.trim() || null;
+    } else {
+      const cleaned = headerEditValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+      value = cleaned ? parseFloat(cleaned) : null;
+    }
     try {
       await upsertIscilikTakibi(takip.santiye_id, { [editingHeader]: value });
-      setTakip((p) => p ? { ...p, [editingHeader]: value } : p);
-    } catch { toast.error("Güncelleme hatası."); }
+      setTakip((p) => p ? { ...p, [editingHeader]: value } as typeof p : p);
+    } catch (err) {
+      console.error("Header güncelleme hatası:", err);
+      toast.error(`Güncelleme hatası: ${err instanceof Error ? err.message : String(err)}`);
+    }
     setEditingHeader(null);
   }
 
@@ -265,15 +275,30 @@ export default function IscilikDetayPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
             {/* Sol */}
             <div>
+              {/* Sicil Numarası — metin, düzenlenebilir */}
               <div className="flex items-center justify-between py-1 border-b border-gray-100">
                 <span className="text-xs text-gray-500 font-medium">Sicil Numarası</span>
-                <span className="text-xs font-semibold">{takip.sicil_no ?? "—"}</span>
+                {editingHeader === "sicil_no" ? (
+                  <Input ref={inputRef} value={headerEditValue}
+                    onChange={(e) => setHeaderEditValue(e.target.value)}
+                    onBlur={saveHeaderEdit}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
+                    className="h-6 text-xs w-32 text-right" />
+                ) : (
+                  <span className="text-xs font-semibold cursor-pointer hover:text-[#F97316]"
+                    onClick={() => {
+                      setEditingHeader("sicil_no");
+                      setHeaderEditValue(takip.sicil_no ?? "");
+                    }}>
+                    {takip.sicil_no ?? "—"}
+                  </span>
+                )}
               </div>
               <div className="flex items-center justify-between py-1 border-b border-gray-100">
                 <span className="text-xs text-gray-500 font-medium">Sözleşme Bedeli</span>
                 <span className="text-xs font-semibold">{formatPara(sozlesmeBedeli)}</span>
               </div>
-              {headerField("Keşif Artışı", "kesif_artisi", takip.kesif_artisi, false)}
+              {headerField("Keşif Artışı", "kesif_artisi", takip.kesif_artisi, true)}
               {headerField("Fiyat Farkı", "fiyat_farki", takip.fiyat_farki, true)}
               {headerField("İşçilik Oranı %", "iscilik_orani", takip.iscilik_orani, true)}
               <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-[#F1F5F9] px-1 rounded">

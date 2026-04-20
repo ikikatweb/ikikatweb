@@ -8,6 +8,7 @@ export type Firma = {
   kisa_adi: string | null;
   vergi_no: string | null;
   adres: string | null;
+  renk: string | null;
   kase_url: string | null;
   antet_url: string | null;
   smtp_host: string | null;

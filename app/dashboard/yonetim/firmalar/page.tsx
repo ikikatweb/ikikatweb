@@ -248,7 +248,12 @@ export default function FirmalarPage() {
                         className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20"><ArrowDown size={14} /></button>
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">{firma.firma_adi}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="inline-block w-3 h-3 rounded-full border border-gray-300 flex-shrink-0" style={{ backgroundColor: firma.renk ?? "#1E3A5F" }} title="Firma rengi" />
+                      {firma.firma_adi}
+                    </span>
+                  </TableCell>
                   <TableCell>{firma.kisa_adi ?? "—"}</TableCell>
                   <TableCell>{firma.vergi_no ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell max-w-xs truncate">{firma.adres ?? "—"}</TableCell>
