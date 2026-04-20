@@ -92,6 +92,17 @@ function isDimmed(s: SantiyeWithRelations): boolean {
   return !!s.gecici_kabul_tarihi || !!s.kesin_kabul_tarihi || !!s.tasfiye_tarihi || !!s.devir_tarihi;
 }
 
+// Bir hex rengi belirli oran kadar koyulaştır (0-1 arası; 0.2 = %20 daha koyu)
+function koyulastir(hex: string, oran: number = 0.2): string {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return hex;
+  const r = Math.max(0, Math.round(parseInt(m[1], 16) * (1 - oran)));
+  const g = Math.max(0, Math.round(parseInt(m[2], 16) * (1 - oran)));
+  const b = Math.max(0, Math.round(parseInt(m[3], 16) * (1 - oran)));
+  const p = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${p(r)}${p(g)}${p(b)}`;
+}
+
 // Sütun başlıkları
 const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "sira_no", label: "Sıra No" },
@@ -654,13 +665,13 @@ export default function SantiyelerPage() {
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-[#64748B]">
+                  <TableRow style={{ backgroundColor: koyulastir(grup.firmaRenk ?? "#152d4a", 0.25) }}>
                     {HEADER_LABELS.map((h) => {
                       const si = sorts.findIndex((s) => s.key === h.key);
                       const sc = si >= 0 ? sorts[si] : null;
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
-                          className={`text-white font-semibold text-center text-[10px] px-2 cursor-pointer hover:bg-[#2a4f7a] select-none ${h.key === "sira_no" ? "min-w-[40px]" : h.key === "is_adi" ? "min-w-[140px] max-w-[180px]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          className={`text-white font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : h.key === "is_adi" ? "min-w-[140px] max-w-[180px]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">

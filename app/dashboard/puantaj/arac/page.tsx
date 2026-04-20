@@ -672,7 +672,11 @@ export default function AracPuantajPage() {
       });
     }
 
-    return satirlar;
+    // Hiç puantaj işaretlenmemiş araçları gizle (tüm durum sayıları toplamı 0 olanlar)
+    return satirlar.filter((s) => {
+      const toplamKayit = Object.values(s.sayilar).reduce((t, n) => t + n, 0);
+      return toplamKayit > 0;
+    });
   }, [ozetAraclari, kiraMap, ozetRangePuantajlar, ozetBaslangic, ozetBitis, ozetOverridesMap]);
 
   // Kira bedeli kaydetme
