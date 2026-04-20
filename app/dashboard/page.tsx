@@ -286,12 +286,15 @@ export default function DashboardPage() {
   }, [yiUfeData]);
 
   // Widget 2: Kasa kullanıcı özeti — devir bakiyesi (önceki ay sonu) + bu ay hareketleri
+  // Kısıtlı kullanıcı sadece kendi kayıtlarını görür; yönetici herkesi görür
   const kasaOzet = useMemo(() => {
     // Bu ay hareketleri grupla
     const aylik = kasaData.filter((h) => h.tarih >= ayBaslangic && h.tarih <= ayBitis);
     const map = new Map<string, { gelir: number; giderNakit: number; giderKart: number }>();
     for (const h of aylik) {
       if (!kullaniciAdlari.has(h.personel_id)) continue;
+      // Kısıtlı kullanıcı sadece kendi kayıtlarını görsün
+      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
       if (!map.has(h.personel_id)) map.set(h.personel_id, { gelir: 0, giderNakit: 0, giderKart: 0 });
       const e = map.get(h.personel_id)!;
       if (h.tip === "gelir") e.gelir += h.tutar;
@@ -300,7 +303,12 @@ export default function DashboardPage() {
     }
 
     // Hem bu ay işlemi olan hem de devirden bakiyesi olan kullanıcıları dahil et
-    const tumIds = new Set<string>([...map.keys(), ...devirBakiye.keys()].filter((id) => kullaniciAdlari.has(id)));
+    const tumIds = new Set<string>([...map.keys(), ...devirBakiye.keys()].filter((id) => {
+      if (!kullaniciAdlari.has(id)) return false;
+      // Kısıtlı kullanıcı sadece kendini görsün
+      if (!isYonetici && kullanici && id !== kullanici.id) return false;
+      return true;
+    }));
     return Array.from(tumIds).map((pid) => {
       const v = map.get(pid) ?? { gelir: 0, giderNakit: 0, giderKart: 0 };
       const devir = devirBakiye.get(pid) ?? 0;
@@ -316,7 +324,7 @@ export default function DashboardPage() {
     })
     .filter((r) => r.nakitBakiye !== 0 || r.nakitHarcama !== 0 || r.kartHarcama !== 0)
     .sort((a, b) => a.personel.localeCompare(b.personel, "tr"));
-  }, [kasaData, devirBakiye, ayBaslangic, ayBitis, kullaniciAdlari]);
+  }, [kasaData, devirBakiye, ayBaslangic, ayBitis, kullaniciAdlari, isYonetici, kullanici]);
 
   // Widget 3: Yaklaşan sigorta/muayene + acente bilgisi
   const yaklasanlar = useMemo(() => {
