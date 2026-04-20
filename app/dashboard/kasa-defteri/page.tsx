@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { getPersoneller } from "@/lib/supabase/queries/personel";
+// Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
@@ -16,7 +16,8 @@ import {
   uploadSlip,
 } from "@/lib/supabase/queries/kasa";
 import { useAuth } from "@/hooks";
-import type { PersonelWithRelations, KasaHareketi } from "@/lib/supabase/types";
+import type { KasaHareketi } from "@/lib/supabase/types";
+type KasaKullanici = { id: string; ad_soyad: string; aktif?: boolean };
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -68,7 +69,7 @@ function KasaDefContent() {
   const { kullanici, isYonetici } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
+  const [personeller, setPersoneller] = useState<KasaKullanici[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [kategoriler, setKategoriler] = useState<string[]>([]);
   const [hareketler, setHareketler] = useState<KasaHareketi[]>([]);
@@ -113,13 +114,15 @@ function KasaDefContent() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [pData, sData, katData, hData] = await Promise.all([
-        getPersoneller(),
+      const [sData, katData, hData, kResp] = await Promise.all([
         getSantiyelerAll(),
         getDegerler("kasa_harcama_kategori").catch(() => []),
         getKasaHareketleri().catch(() => []),
+        fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
       ]);
-      setPersoneller((pData as PersonelWithRelations[]) ?? []);
+      const kullaniciListesi = ((kResp as { id: string; ad_soyad: string; aktif?: boolean }[]) ?? [])
+        .map((k) => ({ id: k.id, ad_soyad: k.ad_soyad, aktif: k.aktif !== false }));
+      setPersoneller(kullaniciListesi);
       setSantiyeler((sData as SantiyeBasic[]) ?? []);
       setKategoriler(katData);
       setHareketler(hData);
@@ -155,7 +158,7 @@ function KasaDefContent() {
 
   // Map'ler
   const personelMap = useMemo(() => {
-    const m = new Map<string, PersonelWithRelations>();
+    const m = new Map<string, KasaKullanici>();
     for (const p of personeller) m.set(p.id, p);
     return m;
   }, [personeller]);
@@ -266,7 +269,7 @@ function KasaDefContent() {
   }
 
   async function kaydet() {
-    if (!dPersonel) { toast.error("Personel seçin."); return; }
+    if (!dPersonel) { toast.error("Kullanıcı seçin."); return; }
     if (!dSantiye) { toast.error("Şantiye seçin."); return; }
     if (!dTarih) { toast.error("Tarih girin."); return; }
     if (!tarihIzinliMi(kullanici, dTarih)) {
@@ -274,7 +277,10 @@ function KasaDefContent() {
       return;
     }
     const tutar = parseParaInput(dTutar);
-    if (tutar <= 0) { toast.error("Geçerli tutar girin."); return; }
+    // Gelir: negatif tutar girilebilir (devir/eksi bakiye için)
+    // Gider: sadece pozitif tutar
+    if (tutar === 0) { toast.error("Geçerli tutar girin."); return; }
+    if (dTip === "gider" && tutar < 0) { toast.error("Gider tutarı negatif olamaz."); return; }
 
     // Gider ise tüm alanlar zorunlu
     if (dTip === "gider") {
@@ -326,9 +332,19 @@ function KasaDefContent() {
       toast.success(editId ? "İşlem güncellendi." : "İşlem eklendi.");
       setDialogOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Kasa kaydetme hatası:", err);
+      // Supabase hatası veya diğer hata objelerinden mesajı çek
+      let msg = "Bilinmeyen hata";
+      if (err instanceof Error) msg = err.message;
+      else if (typeof err === "string") msg = err;
+      else if (err && typeof err === "object") {
+        const e = err as { message?: string; details?: string; hint?: string; code?: string };
+        msg = e.message || e.details || e.hint || e.code || JSON.stringify(err);
+      }
       if (msg.includes("does not exist")) {
         toast.error("kasa_hareketi tablosu yok. SQL çalıştırın.", { duration: 8000 });
+      } else if (msg.includes("foreign key") || msg.includes("violates")) {
+        toast.error("Seçilen kullanıcı/şantiye geçersiz. Muhtemelen kullanıcı silinmiş veya şantiye pasif.", { duration: 8000 });
       } else {
         toast.error(`Hata: ${msg}`, { duration: 6000 });
       }
@@ -353,7 +369,7 @@ function KasaDefContent() {
     doc.setFont("helvetica", "bold"); doc.setFontSize(12);
     doc.text("Kasa Defteri", 14, 12);
     doc.setFontSize(9); doc.setFont("helvetica", "normal");
-    const pdfPersonel = filtrePersonel ? tr(personelMap.get(filtrePersonel)?.ad_soyad ?? "") : "Tum Personel";
+    const pdfPersonel = filtrePersonel ? tr(personelMap.get(filtrePersonel)?.ad_soyad ?? "") : "Tum Kullanicilar";
     const pdfSantiye = filtreSantiye ? tr(santiyeMap.get(filtreSantiye) ?? "") : "Tum Santiyeler";
     doc.text(`${pdfPersonel} | ${pdfSantiye} | ${filtreBaslangic} - ${filtreBitis}`, 14, 17);
     let pdfStartY = 22;
@@ -406,7 +422,7 @@ function KasaDefContent() {
 
     autoTable(doc, {
       startY: pdfStartY,
-      head: [["Tarih", "Personel", "Santiye", "Aciklama", "Tip", "Odeme", "Kategori",
+      head: [["Tarih", "Kullanici", "Santiye", "Aciklama", "Tip", "Odeme", "Kategori",
         { content: "Gelir", styles: { halign: "right" as const } },
         { content: "Gider", styles: { halign: "right" as const } },
         { content: "Bakiye", styles: { halign: "right" as const } },
@@ -518,7 +534,7 @@ function KasaDefContent() {
     doc.save("kasa-defteri.pdf");
   }
   function exportExcel() {
-    const headers = ["Tarih", "Personel", "Şantiye", "Açıklama", "Tip", "Ödeme", "Kategori", "Gelir (+)", "Gider (−)", "Bakiye"];
+    const headers = ["Tarih", "Kullanıcı", "Şantiye", "Açıklama", "Tip", "Ödeme", "Kategori", "Gelir (+)", "Gider (−)", "Bakiye"];
     const data = filtrelenmis.map((h) => [
       h.tarih ? h.tarih.split("-").reverse().join(".") : "—",
       personelMap.get(h.personel_id)?.ad_soyad ?? "",
@@ -567,10 +583,10 @@ function KasaDefContent() {
               <SantiyeSelect santiyeler={gosterilenSantiyeler} value={filtreSantiye} onChange={setFiltreSantiye} showAll className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
-              <Label className="text-[10px] text-gray-500">Personel</Label>
+              <Label className="text-[10px] text-gray-500">Kullanıcı</Label>
               <select value={filtrePersonel} onChange={(e) => setFiltrePersonel(e.target.value)} className={selectClass + " w-full"}>
                 <option value="">Tümü</option>
-                {personeller.filter((p) => p.durum === "aktif").map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
+                {personeller.filter((p) => p.aktif !== false).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -608,7 +624,7 @@ function KasaDefContent() {
               <Label className="text-[10px] text-gray-500">Arama</Label>
               <div className="relative">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Personel, şantiye, açıklama..." className={selectClass + " w-full pl-8"} />
+                <input type="text" value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Kullanıcı, şantiye, açıklama..." className={selectClass + " w-full pl-8"} />
               </div>
             </div>
           </div>
@@ -660,7 +676,7 @@ function KasaDefContent() {
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border">
           <Wallet size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">{!filtreSantiye && !filtrePersonel ? "Şantiye veya personel seçin." : "Kayıt bulunamadı."}</p>
+          <p className="text-gray-500">{!filtreSantiye && !filtrePersonel ? "Şantiye veya kullanıcı seçin." : "Kayıt bulunamadı."}</p>
         </div>
       ) : (
         <div className="bg-white rounded-lg border overflow-x-auto">
@@ -779,10 +795,10 @@ function KasaDefContent() {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label className="text-xs">Personel <span className="text-red-500">*</span></Label>
+              <Label className="text-xs">Kullanıcı <span className="text-red-500">*</span></Label>
               <select value={dPersonel} onChange={(e) => setDPersonel(e.target.value)} className={selectClass + " w-full"} disabled={dialogLoading}>
-                <option value="">Personel seçiniz</option>
-                {personeller.filter((p) => p.durum === "aktif").map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
+                <option value="">Kullanıcı seçiniz</option>
+                {personeller.filter((p) => p.aktif !== false).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>
             </div>
             <div className="space-y-1">

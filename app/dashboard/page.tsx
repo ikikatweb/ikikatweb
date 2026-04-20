@@ -276,25 +276,45 @@ export default function DashboardPage() {
     return { son: sorted[0] ?? null, onceki: sorted[1] ?? null };
   }, [yiUfeData]);
 
-  // Widget 2: Kasa personel özeti (bu ay)
+  // Widget 2: Kasa kullanıcı özeti — nakit bakiye tüm zamanlar (devir dahil), harcama bu ay
   const kasaOzet = useMemo(() => {
+    // Tüm zamanlar kümülatif nakit bakiye (kasa defterindeki bakiye ile birebir tutar)
+    const kumulatifBakiye = new Map<string, number>();
+    for (const h of kasaData) {
+      if (!kullaniciAdlari.has(h.personel_id)) continue;
+      if (h.odeme_yontemi !== "nakit") continue;
+      const prev = kumulatifBakiye.get(h.personel_id) ?? 0;
+      kumulatifBakiye.set(h.personel_id, prev + (h.tip === "gelir" ? h.tutar : -h.tutar));
+    }
+
+    // Bu ay harcamalar
     const aylik = kasaData.filter((h) => h.tarih >= ayBaslangic && h.tarih <= ayBitis);
     const map = new Map<string, { gelir: number; giderNakit: number; giderKart: number }>();
     for (const h of aylik) {
+      if (!kullaniciAdlari.has(h.personel_id)) continue;
       if (!map.has(h.personel_id)) map.set(h.personel_id, { gelir: 0, giderNakit: 0, giderKart: 0 });
       const e = map.get(h.personel_id)!;
       if (h.tip === "gelir") e.gelir += h.tutar;
       else if (h.odeme_yontemi === "nakit") e.giderNakit += h.tutar;
       else e.giderKart += h.tutar;
     }
-    return Array.from(map.entries()).map(([pid, v]) => ({
-      personelId: pid,
-      personel: persMap.get(pid) ?? "—",
-      nakitBakiye: v.gelir - v.giderNakit,
-      nakitHarcama: v.giderNakit,
-      kartHarcama: v.giderKart,
-    })).sort((a, b) => a.personel.localeCompare(b.personel, "tr"));
-  }, [kasaData, ayBaslangic, ayBitis, persMap]);
+
+    // Hem bu ay işlemi olan hem de geçmişten bakiyesi olan kullanıcıları dahil et
+    const tumIds = new Set<string>([...map.keys(), ...kumulatifBakiye.keys()]);
+    return Array.from(tumIds).map((pid) => {
+      const v = map.get(pid) ?? { gelir: 0, giderNakit: 0, giderKart: 0 };
+      return {
+        personelId: pid,
+        personel: kullaniciAdlari.get(pid) ?? "—",
+        nakitBakiye: kumulatifBakiye.get(pid) ?? 0, // tüm zaman kümülatif (devir dahil)
+        nakitHarcama: v.giderNakit,
+        kartHarcama: v.giderKart,
+      };
+    })
+    // Bu ay işlemi olmayan ve bakiyesi 0 olanları gösterme
+    .filter((r) => r.nakitBakiye !== 0 || r.nakitHarcama !== 0 || r.kartHarcama !== 0)
+    .sort((a, b) => a.personel.localeCompare(b.personel, "tr"));
+  }, [kasaData, ayBaslangic, ayBitis, kullaniciAdlari]);
 
   // Widget 3: Yaklaşan sigorta/muayene + acente bilgisi
   const yaklasanlar = useMemo(() => {
@@ -694,7 +714,7 @@ export default function DashboardPage() {
         {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={16} className="text-[#1E3A5F]" />
-            <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Personel Özeti</h3>
+            <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Kullanıcı Özeti</h3>
           </div>
           {kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">

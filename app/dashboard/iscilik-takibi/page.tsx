@@ -40,6 +40,12 @@ function formatTarih(d: string | null) {
   const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
   return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
 }
+// Sadece ay/yıl (MM.YYYY) — veri girişi ait olduğu ay gösterimi için
+function formatAyYil(d: string | null) {
+  if (!d) return "—";
+  const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
+  return `${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
+}
 
 // Sütun tanımları
 type ColDef = {
@@ -115,9 +121,9 @@ const COLUMNS: ColDef[] = [
       return formatTarih(r.santiyeler?.is_bitim_tarihi ?? null);
     }, getRaw: () => null },
   { key: "taseron_veri_isleme_tarihi", label: "Taşeron Son\nVeri Girişi", computed: true,
-    getValue: (r) => r.taseron_veri_isleme_tarihi ? formatTarih(r.taseron_veri_isleme_tarihi) : "—", getRaw: () => null },
+    getValue: (r) => r.taseron_veri_isleme_tarihi ? formatAyYil(r.taseron_veri_isleme_tarihi) : "—", getRaw: () => null },
   { key: "son_veri_girisi_tarihi", label: "Son Veri\nGirişi", computed: true,
-    getValue: (r) => r.son_veri_girisi_tarihi ? formatTarih(r.son_veri_girisi_tarihi) : "—", getRaw: () => null },
+    getValue: (r) => r.son_veri_girisi_tarihi ? formatAyYil(r.son_veri_girisi_tarihi) : "—", getRaw: () => null },
   { key: "toplam_son_veri_tutari", label: "Toplam Son\nVeri Tutarı", computed: true,
     getValue: (r) => formatPara(r.toplam_son_veri_tutari), getRaw: () => null },
 ];
@@ -240,8 +246,13 @@ export default function IscilikTakibiPage() {
     } catch { /* sessiz */ }
   }
 
-  // Arama filtresi
+  // Arama + bitmiş iş filtresi (geçici/kesin kabul, tasfiye, devir olan işler gizlenir)
   const filtrelenmis = rows.filter((r) => {
+    const s = r.santiyeler;
+    // Bitmiş / devredilmiş / tasfiye edilmiş işleri gizle
+    const bitmis = !!(s?.gecici_kabul_tarihi || s?.kesin_kabul_tarihi || s?.tasfiye_tarihi || s?.devir_tarihi);
+    if (bitmis) return false;
+    // Arama filtresi
     if (!arama.trim()) return true;
     const q = arama.toLowerCase();
     const text = [
