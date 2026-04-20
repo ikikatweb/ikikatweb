@@ -160,9 +160,6 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <Button variant="ghost" size="sm" onClick={() => setOnIzleme(false)} className="text-gray-500">
             <ArrowLeft size={16} className="mr-1" /> Düzenlemeye Dön
           </Button>
-          <Button variant="outline" size="sm" onClick={handleYazdir}>
-            <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
-          </Button>
         </div>
 
         {/* Yazışma Şablonu - paylaşılan ön izleme bileşeni */}

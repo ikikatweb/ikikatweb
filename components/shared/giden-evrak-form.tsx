@@ -217,9 +217,6 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <Button variant="ghost" size="sm" onClick={() => setOnIzleme(false)} className="text-gray-500">
             <ArrowLeft size={16} className="mr-1" /> Düzenlemeye Dön
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
-          </Button>
         </div>
 
         {/* Print alanı - yazdırıldığında sadece bu görünür */}

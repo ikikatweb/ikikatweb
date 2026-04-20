@@ -625,39 +625,60 @@ export default function SantiyeDefPage() {
                 <div className="text-center py-8 text-gray-400 text-sm">Henüz kayıt girilmemiş.</div>
               ) : (
                 <div className="space-y-2">
-                  {kayitlar.map((k) => {
-                    const yazanAd = kullaniciMap.get(k.yazan_id) ?? "Bilinmeyen";
-                    const isOwn = k.yazan_id === kullanici?.id;
-                    return (
-                      <div key={k.id} className="group">
-                        {editId === k.id ? (
-                          <div className="space-y-2">
-                            <textarea value={editIcerik} onChange={(e) => setEditIcerik(e.target.value)}
-                              rows={3} className="w-full text-sm border rounded-lg px-3 py-2 outline-none focus:border-[#1E3A5F]" />
-                            <div className="flex gap-2 justify-end">
-                              <Button size="sm" variant="outline" onClick={() => setEditId(null)}>İptal</Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={kayitDuzenle}>Güncelle</Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 relative">
-                            <p className="text-sm text-gray-800 leading-relaxed pr-12">
-                              <span className="text-gray-400 mr-1">•</span>
-                              {k.icerik} <span className="text-[10px] text-gray-300 italic ml-1">{yazanAd}</span>
-                            </p>
-                            {isOwn && tarihIzinli && (
-                              <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button type="button" onClick={() => { setEditId(k.id); setEditIcerik(k.icerik); }}
-                                  className="p-1 text-gray-300 hover:text-blue-600"><Pencil size={12} /></button>
-                                <button type="button" onClick={() => setSilOnay(k.id)}
-                                  className="p-1 text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                  {(() => {
+                    // Ardışık aynı kullanıcı kayıtlarını grupla
+                    type KayitGrup = { yazan_id: string; kayitlar: typeof kayitlar };
+                    const gruplar: KayitGrup[] = [];
+                    for (const k of kayitlar) {
+                      const son = gruplar[gruplar.length - 1];
+                      if (son && son.yazan_id === k.yazan_id) {
+                        son.kayitlar.push(k);
+                      } else {
+                        gruplar.push({ yazan_id: k.yazan_id, kayitlar: [k] });
+                      }
+                    }
+                    return gruplar.map((g, gIdx) => {
+                      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "Bilinmeyen";
+                      const isOwn = g.yazan_id === kullanici?.id;
+                      // Grup içinde düzenlenen kayıt var mı?
+                      const editKayitIdx = g.kayitlar.findIndex((k) => k.id === editId);
+                      return (
+                        <div key={`grup-${gIdx}`} className="group">
+                          {editKayitIdx >= 0 ? (
+                            <div className="space-y-2">
+                              <textarea value={editIcerik} onChange={(e) => setEditIcerik(e.target.value)}
+                                rows={3} className="w-full text-sm border rounded-lg px-3 py-2 outline-none focus:border-[#1E3A5F]" />
+                              <div className="flex gap-2 justify-end">
+                                <Button size="sm" variant="outline" onClick={() => setEditId(null)}>İptal</Button>
+                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={kayitDuzenle}>Güncelle</Button>
                               </div>
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 relative">
+                              <p className="text-sm text-gray-800 leading-relaxed pr-12">
+                                <span className="text-gray-400 mr-1">•</span>
+                                {g.kayitlar.map((k) => k.icerik).join(" ")}
+                                <span className="text-[10px] text-gray-300 italic ml-2">— {yazanAd}</span>
+                              </p>
+                              {isOwn && tarihIzinli && (
+                                <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button type="button" onClick={() => {
+                                    // En son kaydı düzenle, içeriği birleştirilmiş olarak yükle
+                                    const sonKayit = g.kayitlar[g.kayitlar.length - 1];
+                                    setEditId(sonKayit.id);
+                                    setEditIcerik(g.kayitlar.map((k) => k.icerik).join(" "));
+                                  }}
+                                    className="p-1 text-gray-300 hover:text-blue-600"><Pencil size={12} /></button>
+                                  <button type="button" onClick={() => setSilOnay(g.kayitlar[g.kayitlar.length - 1].id)}
+                                    className="p-1 text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                                </div>
                             )}
                           </div>
                         )}
                       </div>
                     );
-                  })}
+                  });
+                  })()}
                 </div>
               )}
 

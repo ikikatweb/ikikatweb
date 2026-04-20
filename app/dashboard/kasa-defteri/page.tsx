@@ -392,17 +392,23 @@ function KasaDefContent() {
     for (const [kisiAd, kayitlar] of Array.from(kisiGrup.entries()).sort(([a], [b]) => a.localeCompare(b, "tr"))) {
       let kisiGelir = 0, kisiGider = 0, sonBakiye: number | null = null;
       for (const h of kayitlar) {
+        const isAvans = (h.kategori ?? "").toLowerCase().includes("avans");
+        // Avans ise sarı arka plan + koyu renk
+        const rowStyle = isAvans
+          ? { fillColor: [254, 243, 199] as unknown as string, fontStyle: "bold" as const, textColor: [146, 64, 14] as unknown as string }
+          : undefined;
+        const wrap = (v: string) => rowStyle ? { content: v, styles: rowStyle } : v;
         pdfBody.push([
-          h.tarih ? h.tarih.split("-").reverse().join(".") : "—",
-          tr(kisiAd),
-          tr(santiyeMap.get(h.santiye_id) ?? "—"),
-          tr(h.aciklama ?? "—"),
-          h.tip === "gelir" ? "Gelir" : "Gider",
-          h.odeme_yontemi === "nakit" ? "Nakit" : "Kart",
-          tr(h.kategori ?? "—"),
-          h.tip === "gelir" ? "+" + formatSayi(h.tutar) : "",
-          h.tip === "gider" ? "-" + formatSayi(h.tutar) : "",
-          h.odeme_yontemi === "nakit" ? formatSayi(bakiyeMap.get(`${h.personel_id}|${h.id}`) ?? 0) : "-",
+          wrap(h.tarih ? h.tarih.split("-").reverse().join(".") : "—"),
+          wrap(tr(kisiAd)),
+          wrap(tr(santiyeMap.get(h.santiye_id) ?? "—")),
+          wrap((isAvans ? "[AVANS] " : "") + tr(h.aciklama ?? "—")),
+          wrap(h.tip === "gelir" ? "Gelir" : "Gider"),
+          wrap(h.odeme_yontemi === "nakit" ? "Nakit" : "Kart"),
+          wrap(tr(h.kategori ?? "—")),
+          wrap(h.tip === "gelir" ? "+" + formatSayi(h.tutar) : ""),
+          wrap(h.tip === "gider" ? "-" + formatSayi(h.tutar) : ""),
+          wrap(h.odeme_yontemi === "nakit" ? formatSayi(bakiyeMap.get(`${h.personel_id}|${h.id}`) ?? 0) : "-"),
         ]);
         if (h.tip === "gelir") kisiGelir += h.tutar;
         else kisiGider += h.tutar;
@@ -697,12 +703,19 @@ function KasaDefContent() {
             </TableHeader>
             <TableBody>
               {filtrelenmis.map((h) => {
-                const rowBorder = h.tip === "gelir" ? "border-l-4 border-l-emerald-400" : h.odeme_yontemi === "kart" ? "border-l-4 border-l-purple-400" : "border-l-4 border-l-red-400";
+                const isAvans = (h.kategori ?? "").toLowerCase().includes("avans");
+                const rowBorder = isAvans
+                  ? "border-l-4 border-l-amber-500"
+                  : h.tip === "gelir" ? "border-l-4 border-l-emerald-400" : h.odeme_yontemi === "kart" ? "border-l-4 border-l-purple-400" : "border-l-4 border-l-red-400";
+                const rowBg = isAvans ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-gray-50";
                 const bakiye = bakiyeMap.get(`${h.personel_id}|${h.id}`);
                 return (
-                  <TableRow key={h.id} className={`hover:bg-gray-50 ${rowBorder}`}>
+                  <TableRow key={h.id} className={`${rowBg} ${rowBorder}`}>
                     <TableCell className="px-2 whitespace-nowrap">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</TableCell>
-                    <TableCell className="px-2 text-gray-700 truncate max-w-[150px]" title={h.aciklama ?? ""}>{h.aciklama ?? "—"}</TableCell>
+                    <TableCell className="px-2 text-gray-700 truncate max-w-[150px]" title={h.aciklama ?? ""}>
+                      {isAvans && <span className="inline-block text-[9px] font-bold bg-amber-500 text-white rounded px-1 mr-1">AVANS</span>}
+                      {h.aciklama ?? "—"}
+                    </TableCell>
                     <TableCell className="px-2 text-center">
                       {h.tip === "gelir"
                         ? <span className="inline-flex items-center gap-0.5 text-emerald-700"><ArrowUpCircle size={12} /> Gelir</span>
@@ -713,7 +726,7 @@ function KasaDefContent() {
                         ? <span className="inline-flex items-center gap-0.5 text-gray-700"><Banknote size={12} /> Nakit</span>
                         : <span className="inline-flex items-center gap-0.5 text-purple-700"><CreditCard size={12} /> Kart</span>}
                     </TableCell>
-                    <TableCell className="px-2 text-gray-600">{h.kategori ?? "—"}</TableCell>
+                    <TableCell className={`px-2 ${isAvans ? "text-amber-700 font-bold" : "text-gray-600"}`}>{h.kategori ?? "—"}</TableCell>
                     <TableCell className="px-2 text-right font-semibold text-emerald-700 bg-emerald-50">
                       {h.tip === "gelir" ? `+${formatSayi(h.tutar)}` : ""}
                     </TableCell>

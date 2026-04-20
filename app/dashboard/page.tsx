@@ -10,7 +10,7 @@ import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTe
 import type { TeklifGonderim } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
-import { getSantiyelerBasic } from "@/lib/supabase/queries/santiyeler";
+import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
 import { getDegerler, getTumTanimlamalar, unpackAcenteKisaAd } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -30,7 +30,7 @@ import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null };
 type YiUfe = { id: string; yil: number; ay: number; endeks: number; created_at: string };
 type YakitAlim = { id: string; santiye_id: string; tarih: string; saat: string; tedarikci_firma: string | null; miktar_lt: number; birim_fiyat: number; notu: string | null };
 type AracYakit = { id: string; arac_id: string; santiye_id: string; tarih: string; miktar_lt: number };
@@ -146,7 +146,7 @@ export default function DashboardPage() {
         getYakitAlimlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
         getAracYakitlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
         getGidenEvraklar().catch(() => []),
-        getSantiyelerBasic().catch(() => []),
+        getSantiyelerAll().catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
@@ -360,19 +360,27 @@ export default function DashboardPage() {
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
   }, [araclar, policeler, yaklasirGun]);
 
-  // Widget 4: Depo yakıt durumu
+  // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
   const depoOzet = useMemo(() => {
     const alimMap = new Map<string, number>();
     for (const a of yakitAlimlar) alimMap.set(a.santiye_id, (alimMap.get(a.santiye_id) ?? 0) + a.miktar_lt);
     const dagitimMap = new Map<string, number>();
     for (const d of yakitDagitimlar) dagitimMap.set(d.santiye_id, (dagitimMap.get(d.santiye_id) ?? 0) + d.miktar_lt);
     const result: { santiyeId: string; santiye: string; alim: number; dagitim: number; stok: number }[] = [];
-    for (const [sid, alim] of alimMap) {
+    // Depo kapasitesi olan tüm şantiyeleri dahil et (alım olmasa bile)
+    const depoluSantiyeler = new Set<string>();
+    for (const s of santiyeler) {
+      if ((s.depo_kapasitesi ?? 0) > 0) depoluSantiyeler.add(s.id);
+    }
+    // Hem depolu hem alımı olan tüm şantiyeler
+    const tumIds = new Set<string>([...depoluSantiyeler, ...alimMap.keys()]);
+    for (const sid of tumIds) {
+      const alim = alimMap.get(sid) ?? 0;
       const dagitim = dagitimMap.get(sid) ?? 0;
       result.push({ santiyeId: sid, santiye: santMap.get(sid) ?? "—", alim, dagitim, stok: alim - dagitim });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
-  }, [yakitAlimlar, yakitDagitimlar, santMap]);
+  }, [yakitAlimlar, yakitDagitimlar, santMap, santiyeler]);
 
   // Widget 5: Son yakıt alımları
   const sonAlimlar = useMemo(() => {
