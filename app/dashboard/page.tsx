@@ -71,7 +71,7 @@ function CardHeader({ icon: Icon, title, color = "text-[#1E3A5F]" }: { icon: typ
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [defterLoading, setDefterLoading] = useState(true);
 
@@ -658,7 +658,8 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) return (
+  // Auth profili veya dashboard verisi yüklenene kadar iskelet göster
+  if (authLoading || loading) return (
     <div>
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

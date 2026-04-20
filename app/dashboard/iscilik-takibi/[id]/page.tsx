@@ -184,29 +184,20 @@ export default function IscilikDetayPage() {
         const sonAy = [...yeniAyliklar].sort((a, b) => b.sira_no - a.sira_no)[0];
         const toplamSonVeri = sonAy ? (sonAy.alt_yuklenici_tutar ?? 0) + (sonAy.yuklenici_tutar ?? 0) : 0;
 
-        // Taşeron son veri işleme tarihi = alt_yuklenici_tutar'ı olan en büyük ait_oldugu_ay
-        const altliAyliklar = yeniAyliklar.filter((a) => a.alt_yuklenici_tutar != null && a.alt_yuklenici_tutar > 0);
-        const enSonTaseronAy = altliAyliklar.length > 0
-          ? altliAyliklar.map((a) => a.ait_oldugu_ay).sort().reverse()[0]
-          : null;
-
-        // Yüklenici son veri girişi tarihi = yuklenici_tutar'ı olan en büyük ait_oldugu_ay
-        const yukleniciliAyliklar = yeniAyliklar.filter((a) => a.yuklenici_tutar != null && a.yuklenici_tutar > 0);
-        const enSonYukleniciAy = yukleniciliAyliklar.length > 0
-          ? yukleniciliAyliklar.map((a) => a.ait_oldugu_ay).sort().reverse()[0]
-          : null;
-
+        // Artık bu tarihler stored değil, ana sayfada aylıklardan dinamik hesaplanıyor
+        // Sadece toplam bilgileri güncelle
         const updates: Record<string, unknown> = {
           yatan_prim: yeniToplamYatan,
           toplam_son_veri_tutari: toplamSonVeri,
-          taseron_veri_isleme_tarihi: enSonTaseronAy,
-          son_veri_girisi_tarihi: enSonYukleniciAy,
         };
 
         await upsertIscilikTakibi(takip.santiye_id, updates);
         setTakip((p) => p ? { ...p, ...updates } as typeof p : p);
       }
-    } catch { toast.error("Güncelleme hatası."); }
+    } catch (err) {
+      console.error("İşçilik güncelleme hatası:", err);
+      toast.error(`Güncelleme hatası: ${err instanceof Error ? err.message : String(err)}`);
+    }
     setEditing(null);
   }
 
