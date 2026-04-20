@@ -374,14 +374,19 @@ export default function DashboardPage() {
       if ((s.depo_kapasitesi ?? 0) > 0) depoluSantiyeler.add(s.id);
     }
     // Hem depolu hem alımı olan tüm şantiyeler
-    const tumIds = new Set<string>([...depoluSantiyeler, ...alimMap.keys()]);
+    let tumIds = new Set<string>([...depoluSantiyeler, ...alimMap.keys()]);
+    // Kısıtlı kullanıcı ise sadece atandığı şantiyeleri göster
+    if (kullanici && !isYonetici) {
+      const izinli = new Set(kullanici.santiye_ids ?? []);
+      tumIds = new Set([...tumIds].filter((id) => izinli.has(id)));
+    }
     for (const sid of tumIds) {
       const alim = alimMap.get(sid) ?? 0;
       const dagitim = dagitimMap.get(sid) ?? 0;
       result.push({ santiyeId: sid, santiye: santMap.get(sid) ?? "—", alim, dagitim, stok: alim - dagitim });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
-  }, [yakitAlimlar, yakitDagitimlar, santMap, santiyeler]);
+  }, [yakitAlimlar, yakitDagitimlar, santMap, santiyeler, kullanici, isYonetici]);
 
   // Widget 5: Son yakıt alımları
   const sonAlimlar = useMemo(() => {

@@ -171,6 +171,14 @@ function YakitPageContent() {
   // Filtre state'leri
   const bugun = new Date();
   const [filtreSantiyeId, setFiltreSantiyeId] = useState<string>(() => yakitSearchParams.get("santiye") ?? "");
+  // URL'deki santiye parametresi değişirse filtreyi güncelle (Dashboard'dan navigasyonda)
+  useEffect(() => {
+    const urlSantiye = yakitSearchParams.get("santiye");
+    if (urlSantiye && urlSantiye !== filtreSantiyeId) {
+      setFiltreSantiyeId(urlSantiye);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yakitSearchParams]);
   const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
     const y = bugun.getFullYear();
     const m = bugun.getMonth() + 1;
@@ -1729,7 +1737,7 @@ function YakitPageContent() {
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">Gönderen Şantiye</Label>
-              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)} value={virDialogGonderen} onChange={setVirDialogGonderen} className={selectClass + " w-full"} />
+              <SantiyeSelect santiyeler={santiyeler.filter((s) => (s.depo_kapasitesi ?? 0) > 0)} value={virDialogGonderen} onChange={setVirDialogGonderen} className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Alan Şantiye</Label>

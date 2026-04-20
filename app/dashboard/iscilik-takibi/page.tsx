@@ -72,7 +72,7 @@ const COLUMNS: ColDef[] = [
     getValue: (r) => r.sicil_no ?? "—", getRaw: (r) => r.sicil_no },
   { key: "is_adi", label: "İşin Adı", fromSantiye: true,
     getValue: (r) => r.santiyeler?.is_adi ?? "—", getRaw: () => null },
-  { key: "sozlesme_bedeli", label: "Sözleşme Bedeli", fromSantiye: true,
+  { key: "sozlesme_bedeli", label: "Sözleşme Bedeli", fromSantiye: true, type: "para",
     getValue: (r) => formatPara(r.santiyeler?.sozlesme_bedeli ?? null), getRaw: () => null },
   { key: "kesif_artisi", label: "Keşif Artışı", editable: true, type: "para",
     getValue: (r) => formatPara(r.kesif_artisi), getRaw: (r) => r.kesif_artisi },
@@ -177,9 +177,11 @@ export default function IscilikTakibiPage() {
         return 0;
       };
 
-      // Her takibi için aylık bazında en son taşeron/yüklenici aylarını hesapla
+      // Her takibi için aylık bazında en son taşeron/yüklenici aylarını ve toplam son veri tutarını hesapla
       const taseronMap = new Map<string, string>();
       const yukleniciMap = new Map<string, string>();
+      // En son aya (en büyük ait_oldugu_ay) ait kayıt referansı
+      const enSonAyliklar = new Map<string, { ay: string; alt: number; yuk: number }>();
       for (const a of ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; alt_yuklenici_tutar: number | null; yuklenici_tutar: number | null }[]) {
         if (a.alt_yuklenici_tutar != null && a.alt_yuklenici_tutar > 0) {
           const mevcut = taseronMap.get(a.iscilik_takibi_id);
@@ -189,15 +191,29 @@ export default function IscilikTakibiPage() {
           const mevcut = yukleniciMap.get(a.iscilik_takibi_id);
           if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) yukleniciMap.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
         }
+        // Toplam son veri tutarı için: en büyük ait_oldugu_ay olan ayın alt+yüklenici toplamı
+        const mevcutSon = enSonAyliklar.get(a.iscilik_takibi_id);
+        const ayNum = ayYilNumerik(a.ait_oldugu_ay);
+        if (!mevcutSon || ayNum > ayYilNumerik(mevcutSon.ay)) {
+          enSonAyliklar.set(a.iscilik_takibi_id, {
+            ay: a.ait_oldugu_ay,
+            alt: a.alt_yuklenici_tutar ?? 0,
+            yuk: a.yuklenici_tutar ?? 0,
+          });
+        }
       }
 
       // İş grubu sırasına göre sırala, aynı gruptakiler oluşturulma sırasına göre
       const sorted = ((data as IscilikTakibiWithSantiye[]) ?? [])
-        .map((r) => ({
-          ...r,
-          taseron_veri_isleme_tarihi: taseronMap.get(r.id) ?? null,
-          son_veri_girisi_tarihi: yukleniciMap.get(r.id) ?? null,
-        }))
+        .map((r) => {
+          const sonAy = enSonAyliklar.get(r.id);
+          return {
+            ...r,
+            taseron_veri_isleme_tarihi: taseronMap.get(r.id) ?? null,
+            son_veri_girisi_tarihi: yukleniciMap.get(r.id) ?? null,
+            toplam_son_veri_tutari: sonAy ? sonAy.alt + sonAy.yuk : 0,
+          };
+        })
         .sort((a, b) => {
           const sa = sMap.get(a.santiyeler?.is_grubu ?? "") ?? 999;
           const sb = sMap.get(b.santiyeler?.is_grubu ?? "") ?? 999;
