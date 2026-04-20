@@ -6,6 +6,18 @@ function getSupabase() {
   return createClient();
 }
 
+// Defter kaydı olan şantiye ID'lerini getir (filtre dropdown'u için)
+export async function getDefterliSantiyeIds(): Promise<string[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("santiye_defteri")
+    .select("santiye_id");
+  if (error) throw error;
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { santiye_id: string }[]) set.add(r.santiye_id);
+  return Array.from(set);
+}
+
 // Defter — tarih aralığı
 export async function getDefterler(
   santiyeId: string,

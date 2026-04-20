@@ -9,7 +9,7 @@ export async function getIscilikTakibi(dahilSilinen = false) {
   const supabase = getSupabase();
   let query = supabase
     .from("iscilik_takibi")
-    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, created_at)")
+    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, yuklenici_firma_id, created_at)")
     .order("created_at", { ascending: true });
 
   if (!dahilSilinen) {
@@ -25,7 +25,7 @@ export async function getSilinenIscilikTakibi() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("iscilik_takibi")
-    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, created_at)")
+    .select("*, santiyeler(sira_no, is_adi, is_grubu, sozlesme_bedeli, sure_uzatimi, is_suresi, is_bitim_tarihi, isyeri_teslim_tarihi, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, yuklenici_firma_id, created_at)")
     .eq("silindi", true)
     .order("updated_at", { ascending: false });
 

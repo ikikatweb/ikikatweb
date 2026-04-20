@@ -125,6 +125,7 @@ export default function DashboardPage() {
   const [eaSantiye, setEaSantiye] = useState("");
   const [eaMiktar, setEaMiktar] = useState("");
   const [eaBirimFiyat, setEaBirimFiyat] = useState("");
+  const [eaToplam, setEaToplam] = useState("");
   const [eaNotu, setEaNotu] = useState("");
   const [eaSaving, setEaSaving] = useState(false);
   const azKaldiGun = Math.round(yaklasirGun / 3);
@@ -404,7 +405,8 @@ export default function DashboardPage() {
     setEaTedarikci(a.tedarikci_firma ?? "");
     setEaSantiye(a.santiye_id);
     setEaMiktar(String(a.miktar_lt));
-    setEaBirimFiyat(String(a.birim_fiyat).replace(".", ","));
+    setEaBirimFiyat(formatParaInput(a.birim_fiyat.toFixed(6).replace(".", ",")));
+    setEaToplam(formatParaInput((a.miktar_lt * a.birim_fiyat).toFixed(2).replace(".", ",")));
     setEaNotu(a.notu ?? "");
   }
 
@@ -416,7 +418,7 @@ export default function DashboardPage() {
         santiye_id: eaSantiye,
         tarih: eaTarih,
         tedarikci_firma: eaTedarikci,
-        miktar_lt: parseFloat(eaMiktar) || 0,
+        miktar_lt: parseParaInput(eaMiktar) || 0,
         birim_fiyat: parseParaInput(eaBirimFiyat) || 0,
         notu: eaNotu || null,
       });
@@ -911,7 +913,7 @@ export default function DashboardPage() {
                       <TableCell className="px-2 truncate max-w-[100px]">{a.tedarikci_firma ?? "—"}</TableCell>
                       <TableCell className="px-2 truncate max-w-[100px]">{santMap.get(a.santiye_id) ?? "—"}</TableCell>
                       <TableCell className="px-2 text-right">{formatSayi(a.miktar_lt, 0)}</TableCell>
-                      <TableCell className="px-2 text-right">{formatSayi(a.birim_fiyat)}</TableCell>
+                      <TableCell className="px-2 text-right tabular-nums">{formatSayi(a.birim_fiyat, 2)}</TableCell>
                       <TableCell className="px-2 text-right font-semibold">{formatSayi(a.miktar_lt * a.birim_fiyat)}</TableCell>
                       <TableCell className="px-2 text-center">
                         <button type="button" onClick={() => alimDuzenleAc(a)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={12} /></button>
@@ -1089,15 +1091,41 @@ export default function DashboardPage() {
                 {santiyeler.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Miktar (Lt)</Label>
-                <input type="number" value={eaMiktar} onChange={(e) => setEaMiktar(e.target.value)}
+                <input type="text" inputMode="decimal" value={eaMiktar}
+                  onChange={(e) => {
+                    const v = formatParaInput(e.target.value);
+                    setEaMiktar(v);
+                    const m = parseParaInput(v);
+                    const bf = parseParaInput(eaBirimFiyat);
+                    if (m > 0 && bf > 0) setEaToplam(formatParaInput((m * bf).toFixed(2).replace(".", ",")));
+                  }}
                   className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Birim Fiyat (TL)</Label>
-                <input type="text" inputMode="decimal" value={eaBirimFiyat} onChange={(e) => setEaBirimFiyat(formatParaInput(e.target.value))}
+                <input type="text" inputMode="decimal" value={eaBirimFiyat}
+                  onChange={(e) => {
+                    const v = formatParaInput(e.target.value, 6);
+                    setEaBirimFiyat(v);
+                    const m = parseParaInput(eaMiktar);
+                    const bf = parseParaInput(v);
+                    if (m > 0 && bf > 0) setEaToplam(formatParaInput((m * bf).toFixed(2).replace(".", ",")));
+                  }}
+                  className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Toplam Tutar (TL)</Label>
+                <input type="text" inputMode="decimal" value={eaToplam}
+                  onChange={(e) => {
+                    const v = formatParaInput(e.target.value);
+                    setEaToplam(v);
+                    const m = parseParaInput(eaMiktar);
+                    const t = parseParaInput(v);
+                    if (m > 0 && t > 0) setEaBirimFiyat(formatParaInput((t / m).toFixed(6).replace(".", ","), 6));
+                  }}
                   className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none" />
               </div>
             </div>

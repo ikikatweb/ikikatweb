@@ -16,6 +16,7 @@ import {
   updateKayit,
   deleteKayit,
   deleteDefter,
+  getDefterliSantiyeIds,
 } from "@/lib/supabase/queries/santiye-defteri";
 import type { SantiyeDefteri, SantiyeDefterKayit } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ export default function SantiyeDefPage() {
 
   const [loading, setLoading] = useState(true);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
+  const [defterliSantiyeIds, setDefterliSantiyeIds] = useState<Set<string>>(new Set());
   const [filtreSantiye, setFiltreSantiye] = useState("");
   const [seciliTarih, setSeciliTarih] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -98,10 +100,18 @@ export default function SantiyeDefPage() {
   const [silOnay, setSilOnay] = useState<string | null>(null);
   const [silDefterOnay, setSilDefterOnay] = useState<string | null>(null);
 
+  // "+" dialog — tüm aktif şantiyelerden defter açmak için
+  const [ekleDialogOpen, setEkleDialogOpen] = useState(false);
+  const [ekleSeciliSantiye, setEkleSeciliSantiye] = useState("");
+
   const loadSantiyeler = useCallback(async () => {
     try {
-      const sData = await getSantiyelerAll();
+      const [sData, defterliIds] = await Promise.all([
+        getSantiyelerAll(),
+        getDefterliSantiyeIds().catch(() => [] as string[]),
+      ]);
       setSantiyeler((sData as SantiyeBasic[]) ?? []);
+      setDefterliSantiyeIds(new Set(defterliIds));
       const otoId = otomatikSantiyeId(sData as SantiyeBasic[], kullanici);
       if (otoId) setFiltreSantiye(otoId);
       const map = new Map<string, string>();
@@ -316,17 +326,43 @@ export default function SantiyeDefPage() {
 
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     let cl = 0;
-    for (const kayit of d.kayitlar) {
-      const yazanAd = kullaniciMap.get(kayit.yazan_id) ?? "";
-      const lines = doc.splitTextToSize(`• ${tr(kayit.icerik)}`, contentW - 8) as string[];
+    // Aynı yazan_id kayıtlarını grupla (ilk göründüğü sıraya göre), metni birleştir
+    type KGrup = { yazan_id: string; metin: string };
+    const kgruplar: KGrup[] = [];
+    const kIdxMap = new Map<string, number>();
+    for (const k of d.kayitlar) {
+      const idx = kIdxMap.get(k.yazan_id);
+      if (idx === undefined) {
+        kIdxMap.set(k.yazan_id, kgruplar.length);
+        kgruplar.push({ yazan_id: k.yazan_id, metin: k.icerik });
+      } else {
+        kgruplar[idx].metin += " " + k.icerik;
+      }
+    }
+    for (const g of kgruplar) {
+      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "";
+      const suffix = yazanAd ? `  — ${tr(yazanAd)}` : "";
+      const fullText = `• ${tr(g.metin)}${suffix}`;
+      const lines = doc.splitTextToSize(fullText, contentW - 8) as string[];
       for (const line of lines) {
         if (cl >= satirSayisi - 1) break;
-        doc.text(line, mx + 4, icerikY + (cl + 1) * satirH - 1.5); cl++;
-      }
-      if (cl < satirSayisi - 1 && yazanAd) {
-        doc.setFont("helvetica", "italic");
-        doc.text(`- ${tr(yazanAd)}`, pw - mx - 4, icerikY + (cl + 1) * satirH - 1.5, { align: "right" });
-        doc.setFont("helvetica", "normal"); cl++;
+        if (yazanAd && line.includes(suffix)) {
+          // Satır hem metin hem isim içeriyor — isim kısmını italik+soluk yaz
+          const namePart = suffix;
+          const textPart = line.substring(0, line.length - namePart.length);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+          doc.text(textPart, mx + 4, icerikY + (cl + 1) * satirH - 1.5);
+          const textW = doc.getTextWidth(textPart);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(156, 163, 175);
+          doc.text(namePart, mx + 4 + textW, icerikY + (cl + 1) * satirH - 1.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+        } else {
+          doc.text(line, mx + 4, icerikY + (cl + 1) * satirH - 1.5);
+        }
+        cl++;
       }
     }
 
@@ -389,21 +425,43 @@ export default function SantiyeDefPage() {
     }
     doc.setDrawColor(0, 0, 0);
 
-    // Kayıtları yaz
+    // Kayıtları yaz — aynı yazan_id kayıtlarını grupla
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     let cl = 0;
-    for (const kayit of kayitlar) {
-      const yazanAd = kullaniciMap.get(kayit.yazan_id) ?? "";
-      const lines = doc.splitTextToSize(`• ${tr(kayit.icerik)}`, contentW - 8) as string[];
+    type KGrup = { yazan_id: string; metin: string };
+    const kgruplar: KGrup[] = [];
+    const kIdxMap = new Map<string, number>();
+    for (const k of kayitlar) {
+      const idx = kIdxMap.get(k.yazan_id);
+      if (idx === undefined) {
+        kIdxMap.set(k.yazan_id, kgruplar.length);
+        kgruplar.push({ yazan_id: k.yazan_id, metin: k.icerik });
+      } else {
+        kgruplar[idx].metin += " " + k.icerik;
+      }
+    }
+    for (const g of kgruplar) {
+      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "";
+      const suffix = yazanAd ? `  — ${tr(yazanAd)}` : "";
+      const fullText = `• ${tr(g.metin)}${suffix}`;
+      const lines = doc.splitTextToSize(fullText, contentW - 8) as string[];
       for (const line of lines) {
         if (cl >= satirSayisi - 1) break;
-        doc.text(line, mx + 4, icerikY + (cl + 1) * satirH - 1.5);
-        cl++;
-      }
-      if (cl < satirSayisi - 1 && yazanAd) {
-        doc.setFont("helvetica", "italic");
-        doc.text(`- ${tr(yazanAd)}`, pw - mx - 4, icerikY + (cl + 1) * satirH - 1.5, { align: "right" });
-        doc.setFont("helvetica", "normal");
+        if (yazanAd && line.includes(suffix)) {
+          const namePart = suffix;
+          const textPart = line.substring(0, line.length - namePart.length);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+          doc.text(textPart, mx + 4, icerikY + (cl + 1) * satirH - 1.5);
+          const textW = doc.getTextWidth(textPart);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(156, 163, 175);
+          doc.text(namePart, mx + 4 + textW, icerikY + (cl + 1) * satirH - 1.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+        } else {
+          doc.text(line, mx + 4, icerikY + (cl + 1) * satirH - 1.5);
+        }
         cl++;
       }
     }
@@ -423,7 +481,15 @@ export default function SantiyeDefPage() {
     doc.save(`santiye-defteri-${seciliTarih}.pdf`);
   }
 
-  const gosterilenSantiyeler = filtreliSantiyeler(santiyeler, kullanici);
+  // Şantiye dropdown'unda: tüm izinli şantiyeler + defteri olan üstte
+  const tumIzinliSantiyeler = filtreliSantiyeler(santiyeler, kullanici);
+  const gosterilenSantiyeler = tumIzinliSantiyeler.filter((s) => defterliSantiyeIds.has(s.id));
+  // "+" dialog için: aktif şantiyeler (bitmemiş/tasfiye olmayan)
+  const aktifSantiyeler = tumIzinliSantiyeler.filter((s) => {
+    const gecerli = (t?: string | null) => !!t && t !== "0001-01-01" && new Date(t).getFullYear() > 2000;
+    return !gecerli(s.gecici_kabul_tarihi) && !gecerli(s.kesin_kabul_tarihi)
+      && !gecerli(s.tasfiye_tarihi) && !gecerli(s.devir_tarihi);
+  });
   const tarihIzinli = tarihIzinliMi(kullanici, seciliTarih);
   const HavaIcon = HAVA_ICONLARI[havaDurumu] ?? Sun;
 
@@ -488,7 +554,16 @@ export default function SantiyeDefPage() {
       <div className="bg-white rounded-lg border p-3 mb-4 flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Şantiye</Label>
-          <SantiyeSelect santiyeler={gosterilenSantiyeler} value={filtreSantiye} onChange={setFiltreSantiye} placeholder="Şantiye seçin" className={selectClass + " w-full min-w-[200px]"} />
+          <div className="flex gap-1 items-center">
+            <SantiyeSelect santiyeler={gosterilenSantiyeler} value={filtreSantiye} onChange={setFiltreSantiye} placeholder="Şantiye seçin" className={selectClass + " w-full min-w-[200px]"} />
+            {isYonetici && (
+              <button type="button" onClick={() => { setEkleSeciliSantiye(""); setEkleDialogOpen(true); }}
+                title="Defteri olmayan bir şantiye için yeni defter aç"
+                className="h-9 w-9 flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex-shrink-0">
+                <Plus size={16} />
+              </button>
+            )}
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Ay</Label>
@@ -546,15 +621,17 @@ export default function SantiyeDefPage() {
                   <div className="text-[10px] text-gray-400">{GUN_ADLARI[new Date(d.tarih + "T00:00:00").getDay()]}</div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 truncate">{kisaMetin}</p>
+                  <p className="text-sm text-gray-800 truncate">
+                    {kisaMetin}
+                    {yazanlar.length > 0 && (
+                      <span className="text-[11px] text-gray-300 italic ml-2">— {yazanlar.join(", ")}</span>
+                    )}
+                  </p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] text-gray-400">Sayfa: {d.sayfa_no}</span>
                     {d.hava_durumu && <span className="text-[10px] text-gray-400">{d.sicaklik ? `${d.sicaklik}/` : ""}{d.hava_durumu}</span>}
                     <span className="text-[10px] text-gray-400">{d.kayitlar.length} kayıt</span>
                   </div>
-                </div>
-                <div className="text-right min-w-[80px]">
-                  <p className="text-[10px] text-gray-300 italic">{yazanlar.join(", ")}</p>
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <button type="button" onClick={() => defterAc(d.tarih)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Ön İzleme">
@@ -626,15 +703,18 @@ export default function SantiyeDefPage() {
               ) : (
                 <div className="space-y-2">
                   {(() => {
-                    // Ardışık aynı kullanıcı kayıtlarını grupla
+                    // Aynı gün içinde aynı kullanıcının TÜM kayıtlarını birleştir
+                    // (ardışık olmasa bile, ilk göründüğü sırayı koru)
                     type KayitGrup = { yazan_id: string; kayitlar: typeof kayitlar };
                     const gruplar: KayitGrup[] = [];
+                    const idxMap = new Map<string, number>();
                     for (const k of kayitlar) {
-                      const son = gruplar[gruplar.length - 1];
-                      if (son && son.yazan_id === k.yazan_id) {
-                        son.kayitlar.push(k);
-                      } else {
+                      const idx = idxMap.get(k.yazan_id);
+                      if (idx === undefined) {
+                        idxMap.set(k.yazan_id, gruplar.length);
                         gruplar.push({ yazan_id: k.yazan_id, kayitlar: [k] });
+                      } else {
+                        gruplar[idx].kayitlar.push(k);
                       }
                     }
                     return gruplar.map((g, gIdx) => {
@@ -658,7 +738,7 @@ export default function SantiyeDefPage() {
                               <p className="text-sm text-gray-800 leading-relaxed pr-12">
                                 <span className="text-gray-400 mr-1">•</span>
                                 {g.kayitlar.map((k) => k.icerik).join(" ")}
-                                <span className="text-[10px] text-gray-300 italic ml-2">— {yazanAd}</span>
+                                <span className="text-[11px] text-gray-300 italic"> — {yazanAd}</span>
                               </p>
                               {isOwn && tarihIzinli && (
                                 <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -738,6 +818,41 @@ export default function SantiyeDefPage() {
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setSilDefterOnay(null)}>İptal</Button>
             <Button variant="destructive" onClick={defterSil}>Sil</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* "+" — Yeni şantiye için defter aç */}
+      <Dialog open={ekleDialogOpen} onOpenChange={(o) => !o && setEkleDialogOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Şantiye Seç</DialogTitle></DialogHeader>
+          <p className="text-xs text-gray-500 pb-2">
+            Henüz defteri olmayan bir şantiye için defter açın. Aşağıdan aktif şantiyelerden birini seçin.
+          </p>
+          <div className="space-y-2">
+            <Label className="text-xs">Aktif Şantiyeler</Label>
+            <SantiyeSelect
+              santiyeler={aktifSantiyeler}
+              value={ekleSeciliSantiye}
+              onChange={setEkleSeciliSantiye}
+              placeholder="Şantiye seçin"
+              className={selectClass + " w-full"}
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-3">
+            <Button variant="outline" onClick={() => setEkleDialogOpen(false)}>İptal</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={!ekleSeciliSantiye}
+              onClick={() => {
+                if (!ekleSeciliSantiye) return;
+                setFiltreSantiye(ekleSeciliSantiye);
+                setEkleDialogOpen(false);
+                setSeciliTarih(new Date().toISOString().slice(0, 10));
+                setDefterDialogOpen(true);
+              }}>
+              Defter Aç
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

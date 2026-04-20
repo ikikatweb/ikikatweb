@@ -3,7 +3,8 @@
 // 1234567,89 → "1.234.567,89"
 
 // Input değerini formatla (yazarken çağrılır)
-export function formatParaInput(value: string): string {
+// maxOndalik: ondalık basamak sayısı (varsayılan 2, birim fiyat gibi yerlerde 6 kullanılabilir)
+export function formatParaInput(value: string, maxOndalik: number = 2): string {
   // Sadece rakam, virgül ve eksi bırak
   let temiz = value.replace(/[^\d,\-]/g, "");
 
@@ -25,7 +26,7 @@ export function formatParaInput(value: string): string {
 
   // Ondalık kısmı ekle (varsa)
   if (temiz.includes(",")) {
-    const ondalik = (ondalikKisim ?? "").slice(0, 2); // max 2 hane
+    const ondalik = (ondalikKisim ?? "").slice(0, maxOndalik);
     sonuc += "," + ondalik;
   }
 

@@ -30,6 +30,7 @@ import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { paletGetBg } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 
 type Filtre = "tumu" | "aktif" | "tamamlandi" | "tasfiye" | "devir";
@@ -127,6 +128,7 @@ export default function SantiyelerPage() {
   const [yiUfeData, setYiUfeData] = useState<YiUfe[]>([]);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
+  const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>("tumu");
   const [isGrupFiltre, setIsGrupFiltre] = useState<string>("tumu");
@@ -163,8 +165,13 @@ export default function SantiyelerPage() {
       // İş grubu sıralama map'i ve liste
       const tItems = (tData as Tanimlama[]) ?? [];
       const sMap = new Map<string, number>();
-      tItems.forEach((t, i) => sMap.set(t.deger, i));
+      const rMap = new Map<string, string>();
+      tItems.forEach((t, i) => {
+        sMap.set(t.deger, i);
+        if (t.renk) rMap.set(t.deger, t.renk);
+      });
       setIsGrupSiralama(sMap);
+      setIsGrubuRenkMap(rMap);
       setIsGruplari(tItems.map((t) => t.deger));
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
@@ -504,40 +511,42 @@ export default function SantiyelerPage() {
 
   // Firmaya göre grupla — ortak girişim olan işler her ortak firma için ayrı satır
   type TabloSatir = { santiye: SantiyeWithRelations; ortakOrani: number | null; ortakFirmaAdi: string | null };
-  const firmaGruplari: { firmaAdi: string; satirlar: TabloSatir[] }[] = [];
-  const firmaGrupMap = new Map<string, TabloSatir[]>();
+  const firmaGruplari: { firmaAdi: string; firmaRenk: string | null; satirlar: TabloSatir[] }[] = [];
+  const firmaGrupMap = new Map<string, { satirlar: TabloSatir[]; renk: string | null }>();
 
   for (const s of filtrelenmis) {
     const anaFirma = s.firmalar?.firma_adi ?? "Firma Belirtilmemiş";
+    const anaFirmaRenk = s.firmalar?.renk ?? null;
     const ortaklar = ortaklarMap.get(s.id) ?? [];
 
     // Ana firma satırı (kendi ortaklık oranı ile)
     const anaKey = anaFirma;
-    if (!firmaGrupMap.has(anaKey)) firmaGrupMap.set(anaKey, []);
-    firmaGrupMap.get(anaKey)!.push({ santiye: s, ortakOrani: s.ortaklik_orani, ortakFirmaAdi: null });
+    if (!firmaGrupMap.has(anaKey)) firmaGrupMap.set(anaKey, { satirlar: [], renk: anaFirmaRenk });
+    firmaGrupMap.get(anaKey)!.satirlar.push({ santiye: s, ortakOrani: s.ortaklik_orani, ortakFirmaAdi: null });
 
     // Ortak girişim varsa: her ortak firma için de ayrı satır
     if (s.is_ortak_girisim && ortaklar.length > 0) {
       for (const o of ortaklar) {
         const ortakFirma = o.firmalar?.firma_adi ?? "Ortak Firma";
-        if (!firmaGrupMap.has(ortakFirma)) firmaGrupMap.set(ortakFirma, []);
-        firmaGrupMap.get(ortakFirma)!.push({ santiye: s, ortakOrani: o.oran, ortakFirmaAdi: ortakFirma });
+        const ortakFirmaRenk = (o.firmalar as { renk?: string | null })?.renk ?? null;
+        if (!firmaGrupMap.has(ortakFirma)) firmaGrupMap.set(ortakFirma, { satirlar: [], renk: ortakFirmaRenk });
+        firmaGrupMap.get(ortakFirma)!.satirlar.push({ santiye: s, ortakOrani: o.oran, ortakFirmaAdi: ortakFirma });
       }
     }
   }
   // Firma sıralaması: firmalar tablosundaki sira_no'ya göre
-  for (const [firmaAdi, satirlar] of Array.from(firmaGrupMap.entries()).sort(([, a], [, b]) => {
-    const siraA = a[0]?.santiye?.firmalar?.sira_no ?? 999;
-    const siraB = b[0]?.santiye?.firmalar?.sira_no ?? 999;
+  for (const [firmaAdi, grupData] of Array.from(firmaGrupMap.entries()).sort(([, a], [, b]) => {
+    const siraA = a.satirlar[0]?.santiye?.firmalar?.sira_no ?? 999;
+    const siraB = b.satirlar[0]?.santiye?.firmalar?.sira_no ?? 999;
     if (siraA !== siraB) return siraA - siraB;
-    return a[0]?.santiye?.firmalar?.firma_adi?.localeCompare(b[0]?.santiye?.firmalar?.firma_adi ?? "", "tr") ?? 0;
+    return a.satirlar[0]?.santiye?.firmalar?.firma_adi?.localeCompare(b.satirlar[0]?.santiye?.firmalar?.firma_adi ?? "", "tr") ?? 0;
   })) {
-    satirlar.sort((a, b) => {
+    grupData.satirlar.sort((a, b) => {
       const sa = isGrupSiralama.get(a.santiye.is_grubu ?? "") ?? 999;
       const sb = isGrupSiralama.get(b.santiye.is_grubu ?? "") ?? 999;
       return sa - sb;
     });
-    firmaGruplari.push({ firmaAdi, satirlar });
+    firmaGruplari.push({ firmaAdi, firmaRenk: grupData.renk, satirlar: grupData.satirlar });
   }
 
   return (
@@ -641,8 +650,8 @@ export default function SantiyelerPage() {
         <div className="space-y-6">
           {firmaGruplari.map((grup) => (
             <div key={grup.firmaAdi} className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-              {/* Firma başlığı */}
-              <div className="bg-[#152d4a] px-4 py-2">
+              {/* Firma başlığı — firma rengi kullanılır */}
+              <div className="px-4 py-2" style={{ backgroundColor: grup.firmaRenk ?? "#152d4a" }}>
                 <h2 className="text-sm font-bold text-white text-center">{grup.firmaAdi}</h2>
               </div>
               <Table>
@@ -677,8 +686,15 @@ export default function SantiyelerPage() {
                 const durumText = getDurum(s);
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
+                const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
+                // Pasif satırlarda da renk göster (ama opacity düşük)
+                const satirBg = isGrubuRengi ? paletGetBg(isGrubuRengi) : undefined;
                 return (
-                  <TableRow key={`${s.id}-${satir.ortakOrani ?? "ana"}`} className={`text-xs ${dim ? "bg-gray-100 opacity-50" : "hover:bg-gray-50"}`}>
+                  <TableRow
+                    key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
+                    className={`text-xs ${dim ? "opacity-60" : "hover:brightness-95"}`}
+                    style={satirBg ? { backgroundColor: satirBg } : (dim ? { backgroundColor: "#F1F5F9" } : undefined)}
+                  >
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
                     {/* İş Tanımları */}

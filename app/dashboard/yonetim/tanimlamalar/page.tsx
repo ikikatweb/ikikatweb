@@ -34,6 +34,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight } from "lucide-react";
+import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 
 const selectClass = "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -90,6 +91,7 @@ export default function TanimlamalarPage() {
   // İnline değer düzenleme state'i (id -> yeni metin)
   const [duzenleId, setDuzenleId] = useState<string | null>(null);
   const [duzenleDeger, setDuzenleDeger] = useState("");
+  const [renkPopoverId, setRenkPopoverId] = useState<string | null>(null);
 
   // Yeni kategori dialog
   const [yeniKatDialog, setYeniKatDialog] = useState(false);
@@ -516,6 +518,7 @@ export default function TanimlamalarPage() {
           const isBankaHesap = kat.key.toLowerCase() === "banka_hesap";
           const isAracCinsi = kat.key.toLowerCase() === "arac_cinsi";
           const isAcente = kat.key.toLowerCase() === "sigorta_acente";
+          const isIsGrubu = kat.key.toLowerCase() === "is_grubu" || kat.key.toLowerCase() === "is_tanimlari";
           return (
             <Card key={kat.key}>
               <CardContent className="pt-4">
@@ -710,13 +713,64 @@ export default function TanimlamalarPage() {
                                 className="flex-1 text-xs border rounded px-1.5 py-0.5"
                               />
                             ) : (
-                              <span
-                                className="truncate cursor-pointer hover:text-[#F97316]"
-                                title="Düzenlemek için tıklayın"
-                                onClick={() => { setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
-                              >
-                                {t.deger}
-                              </span>
+                              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                {isIsGrubu && (
+                                  <div className="relative">
+                                    <button
+                                      type="button"
+                                      className="w-4 h-4 rounded-full border border-gray-300 flex-shrink-0"
+                                      style={{ backgroundColor: t.renk ?? "#E5E7EB" }}
+                                      title="Rengi değiştir"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setRenkPopoverId(renkPopoverId === t.id ? null : t.id);
+                                      }}
+                                    />
+                                    {renkPopoverId === t.id && (
+                                      <>
+                                        <div className="fixed inset-0 z-20" onClick={() => setRenkPopoverId(null)} />
+                                        <div className="absolute top-6 left-0 z-30 bg-white border rounded-lg shadow-lg p-2 flex flex-wrap gap-1 w-[260px]">
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              try {
+                                                await updateTanimlama(t.id, { renk: null });
+                                                setTanimlamalar((p) => p.map((x) => x.id === t.id ? { ...x, renk: null } : x));
+                                              } catch { toast.error("Renk güncellenemedi."); }
+                                              setRenkPopoverId(null);
+                                            }}
+                                            className="w-6 h-6 rounded-full border-2 border-gray-300 text-xs text-gray-400 flex items-center justify-center hover:border-gray-500"
+                                            title="Renk yok"
+                                          >✕</button>
+                                          {RENK_PALETI.map((p) => (
+                                            <button
+                                              key={p.hex}
+                                              type="button"
+                                              onClick={async () => {
+                                                try {
+                                                  await updateTanimlama(t.id, { renk: p.hex });
+                                                  setTanimlamalar((x) => x.map((xx) => xx.id === t.id ? { ...xx, renk: p.hex } : xx));
+                                                } catch { toast.error("Renk güncellenemedi."); }
+                                                setRenkPopoverId(null);
+                                              }}
+                                              className="w-6 h-6 rounded-full border-2 hover:scale-110 transition-transform"
+                                              style={{ backgroundColor: p.hex, borderColor: p.hex }}
+                                              title={p.ad}
+                                            />
+                                          ))}
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                <span
+                                  className="truncate cursor-pointer hover:text-[#F97316]"
+                                  title="Düzenlemek için tıklayın"
+                                  onClick={() => { setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
+                                >
+                                  {t.deger}
+                                </span>
+                              </div>
                             )}
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">

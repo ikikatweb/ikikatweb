@@ -10,7 +10,7 @@ export async function getSantiyeler() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiyeler")
-    .select("*, firmalar!left(firma_adi, sira_no)")
+    .select("*, firmalar!left(firma_adi, sira_no, renk)")
     .order("sira_no", { ascending: true });
 
   if (error) throw error;
@@ -44,7 +44,7 @@ export async function getSantiyeById(id: string) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiyeler")
-    .select("*, firmalar!left(firma_adi, sira_no)")
+    .select("*, firmalar!left(firma_adi, sira_no, renk)")
     .eq("id", id)
     .single();
 
@@ -114,7 +114,7 @@ export async function getTumOrtaklar(): Promise<(SantiyeOrtagi & { firmalar?: { 
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiye_ortaklari")
-    .select("*, firmalar!left(firma_adi, sira_no)");
+    .select("*, firmalar!left(firma_adi, sira_no, renk)");
   if (error) throw error;
   return (data ?? []) as (SantiyeOrtagi & { firmalar?: { firma_adi: string } })[];
 }
@@ -123,7 +123,7 @@ export async function getOrtaklar(santiyeId: string) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiye_ortaklari")
-    .select("*, firmalar!left(firma_adi, sira_no)")
+    .select("*, firmalar!left(firma_adi, sira_no, renk)")
     .eq("santiye_id", santiyeId)
     .order("is_pilot", { ascending: false });
 

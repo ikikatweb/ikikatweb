@@ -342,19 +342,27 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             {formTip === "ozmal" && (
               <div className="space-y-2">
                 <Label htmlFor="firma_id">Firma</Label>
-                <select
-                  id="firma_id"
-                  name="firma_id"
-                  value={formData.firma_id ?? ""}
-                  onChange={handleChange}
-                  disabled={loading}
-                  className={selectClass}
-                >
-                  <option value="">Seçiniz</option>
-                  {firmalar.map((f) => (
-                    <option key={f.id} value={f.id}>{f.firma_adi}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {formData.firma_id && (() => {
+                    const f = firmalar.find((x) => x.id === formData.firma_id);
+                    return f?.renk ? (
+                      <span className="inline-block w-5 h-5 rounded-full border border-gray-300 flex-shrink-0" style={{ backgroundColor: f.renk }} title={`${f.firma_adi} rengi`} />
+                    ) : null;
+                  })()}
+                  <select
+                    id="firma_id"
+                    name="firma_id"
+                    value={formData.firma_id ?? ""}
+                    onChange={handleChange}
+                    disabled={loading}
+                    className={selectClass + " flex-1"}
+                  >
+                    <option value="">Seçiniz</option>
+                    {firmalar.map((f) => (
+                      <option key={f.id} value={f.id}>{f.firma_adi}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 

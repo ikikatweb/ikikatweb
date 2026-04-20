@@ -213,6 +213,7 @@ function YakitPageContent() {
   const [alDialogFirma, setAlDialogFirma] = useState("");
   const [alDialogMiktar, setAlDialogMiktar] = useState("");
   const [alDialogBirimFiyat, setAlDialogBirimFiyat] = useState("");
+  const [alDialogToplam, setAlDialogToplam] = useState("");
   const [alDialogNotu, setAlDialogNotu] = useState("");
   const [alDialogLoading, setAlDialogLoading] = useState(false);
 
@@ -596,17 +597,17 @@ function YakitPageContent() {
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
 
-        // Limit kontrolü — limitler DB'de lt/birim olarak saklanır, km araçlar için ×100 çevrimi yapılır
+        // Limit kontrolü — limitler tanımlamalardaki formatta (lt/100km veya lt/saat) olarak kullanılır
+        // Anlık ortalama aynı formatta hesaplandığı için direkt karşılaştırılır
         if (arac?.cinsi && arac.sayac_tipi) {
           const limit = limitMap.get(`${arac.cinsi}|${arac.sayac_tipi}`);
           if (limit) {
-            const carpan = arac.sayac_tipi === "saat" ? 1 : 100;
-            const limitAlt = limit.alt_sinir * carpan;
-            const limitUst = limit.ust_sinir * carpan;
-            satir.limitAlt = limitAlt;
-            satir.limitUst = limitUst;
+            satir.limitAlt = limit.alt_sinir;
+            satir.limitUst = limit.ust_sinir;
             if (satir.anlikOrt !== null) {
-              if (satir.anlikOrt < limitAlt || satir.anlikOrt > limitUst) {
+              // Alt < anlık < Üst → limit içinde (işaret yok)
+              // Anlık < Alt veya Anlık > Üst → limit dışı
+              if (satir.anlikOrt < limit.alt_sinir || satir.anlikOrt > limit.ust_sinir) {
                 satir.limitIhlali = true;
               }
             }
@@ -681,6 +682,7 @@ function YakitPageContent() {
     setAlDialogFirma("");
     setAlDialogMiktar("");
     setAlDialogBirimFiyat("");
+    setAlDialogToplam("");
     setAlDialogNotu("");
     setAlDialogOpen(true);
   }
@@ -691,8 +693,9 @@ function YakitPageContent() {
     setAlDialogTarih(a.tarih);
     setAlDialogSaat(a.saat.slice(0, 5));
     setAlDialogFirma(a.tedarikci_firma);
-    setAlDialogMiktar(String(a.miktar_lt));
-    setAlDialogBirimFiyat(String(a.birim_fiyat));
+    setAlDialogMiktar(formatParaInput(String(a.miktar_lt).replace(".", ",")));
+    setAlDialogBirimFiyat(formatParaInput(a.birim_fiyat.toFixed(6).replace(".", ","), 6));
+    setAlDialogToplam(formatParaInput((a.miktar_lt * a.birim_fiyat).toFixed(2).replace(".", ",")));
     setAlDialogNotu(a.notu ?? "");
     setAlDialogOpen(true);
   }
@@ -741,18 +744,21 @@ function YakitPageContent() {
     if (miktar <= 0) { toast.error("Geçerli bir miktar girin."); return; }
 
     // KM/Saat validasyonu: son kayıttan küçük olamaz (edit modunda mevcut kayıt hariç)
-    const sonKayitlar = yakitKayitlari
-      .filter((y) => y.arac_id === verDialogAracId && y.id !== verEditId)
-      .sort((a, b) => hareketKey(b).localeCompare(hareketKey(a)));
-    const son = sonKayitlar.length > 0 ? sonKayitlar[0] : null;
-    if (son && km < son.km_saat) {
-      const arac = aracMap.get(verDialogAracId);
-      const birim = arac?.sayac_tipi === "saat" ? "saat" : "km";
-      toast.error(
-        `Girilen ${birim} değeri (${formatSayi(km, 0)}) son kayıttaki değerden (${formatSayi(son.km_saat, 0)}) küçük olamaz.`,
-        { duration: 8000 },
-      );
-      return;
+    // Yönetici için kısıtlama yok — eskiye dönük veri girebilir
+    if (!isYonetici) {
+      const sonKayitlar = yakitKayitlari
+        .filter((y) => y.arac_id === verDialogAracId && y.id !== verEditId)
+        .sort((a, b) => hareketKey(b).localeCompare(hareketKey(a)));
+      const son = sonKayitlar.length > 0 ? sonKayitlar[0] : null;
+      if (son && km < son.km_saat) {
+        const arac = aracMap.get(verDialogAracId);
+        const birim = arac?.sayac_tipi === "saat" ? "saat" : "km";
+        toast.error(
+          `Girilen ${birim} değeri (${formatSayi(km, 0)}) son kayıttaki değerden (${formatSayi(son.km_saat, 0)}) küçük olamaz.`,
+          { duration: 8000 },
+        );
+        return;
+      }
     }
 
     setVerDialogLoading(true);
@@ -1139,7 +1145,15 @@ function YakitPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Şantiye</Label>
-              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={filtreSantiyeId} onChange={setFiltreSantiyeId} showAll className={selectClass + " w-full"} />
+              {(() => {
+                // Sadece işlemi olan (alım, dağıtım veya virman) şantiyeleri göster
+                const islemliIds = new Set<string>();
+                for (const a of alimlar) islemliIds.add(a.santiye_id);
+                for (const d of yakitKayitlari) islemliIds.add(d.santiye_id);
+                for (const v of virmanlar) { islemliIds.add(v.gonderen_santiye_id); islemliIds.add(v.alan_santiye_id); }
+                const islemliSantiyeler = filtreliSantiyeler(santiyeler, kullanici).filter((s) => islemliIds.has(s.id));
+                return <SantiyeSelect santiyeler={islemliSantiyeler} value={filtreSantiyeId} onChange={setFiltreSantiyeId} showAll className={selectClass + " w-full"} />;
+              })()}
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Başlangıç</Label>
@@ -1546,7 +1560,9 @@ function YakitPageContent() {
                   {formatLt(verDialogSonKayit.miktar_lt)}
                 </div>
                 <div className="text-[10px] text-amber-600 mt-0.5">
-                  Yeni {aracMap.get(verDialogSonKayit?.arac_id ?? "")?.sayac_tipi === "saat" ? "saat" : "km"} değeri bu değerden küçük olamaz.
+                  {isYonetici
+                    ? "Yönetici olarak eskiye dönük (daha küçük) değer girebilirsiniz."
+                    : `Yeni ${aracMap.get(verDialogSonKayit?.arac_id ?? "")?.sayac_tipi === "saat" ? "saat" : "km"} değeri bu değerden küçük olamaz.`}
                 </div>
               </div>
             )}
@@ -1673,14 +1689,23 @@ function YakitPageContent() {
                 disabled={alDialogLoading}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Miktar (lt)</Label>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={alDialogMiktar}
-                  onChange={(e) => setAlDialogMiktar(formatParaInput(e.target.value))}
+                  onChange={(e) => {
+                    const yeniMiktar = formatParaInput(e.target.value);
+                    setAlDialogMiktar(yeniMiktar);
+                    // Eğer birim fiyat doluysa toplam güncellenir, toplam doluysa birim fiyat güncellenir
+                    const m = parseParaInput(yeniMiktar);
+                    const bf = parseParaInput(alDialogBirimFiyat);
+                    if (m > 0 && bf > 0) {
+                      setAlDialogToplam(formatParaInput((m * bf).toFixed(2).replace(".", ",")));
+                    }
+                  }}
                   placeholder="Örn: 5000"
                   className={selectClass + " w-full"}
                   disabled={alDialogLoading}
@@ -1692,8 +1717,37 @@ function YakitPageContent() {
                   type="text"
                   inputMode="decimal"
                   value={alDialogBirimFiyat}
-                  onChange={(e) => setAlDialogBirimFiyat(formatParaInput(e.target.value))}
-                  placeholder="Örn: 45.50"
+                  onChange={(e) => {
+                    const yeniBF = formatParaInput(e.target.value, 6);
+                    setAlDialogBirimFiyat(yeniBF);
+                    const m = parseParaInput(alDialogMiktar);
+                    const bf = parseParaInput(yeniBF);
+                    if (m > 0 && bf > 0) {
+                      setAlDialogToplam(formatParaInput((m * bf).toFixed(2).replace(".", ",")));
+                    }
+                  }}
+                  placeholder="Örn: 45,506789"
+                  className={selectClass + " w-full"}
+                  disabled={alDialogLoading}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Toplam Tutar (TL)</Label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={alDialogToplam}
+                  onChange={(e) => {
+                    const yeniToplam = formatParaInput(e.target.value);
+                    setAlDialogToplam(yeniToplam);
+                    // Miktar doluysa birim fiyat otomatik hesaplanır
+                    const m = parseParaInput(alDialogMiktar);
+                    const t = parseParaInput(yeniToplam);
+                    if (m > 0 && t > 0) {
+                      setAlDialogBirimFiyat(formatParaInput((t / m).toFixed(6).replace(".", ","), 6));
+                    }
+                  }}
+                  placeholder="Otomatik"
                   className={selectClass + " w-full"}
                   disabled={alDialogLoading}
                 />

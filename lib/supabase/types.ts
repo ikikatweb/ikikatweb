@@ -74,7 +74,7 @@ export type SantiyeInsert = Omit<Santiye, "id" | "sira_no" | "created_at" | "upd
 export type SantiyeUpdate = Partial<SantiyeInsert>;
 
 export type SantiyeWithRelations = Santiye & {
-  firmalar?: { firma_adi: string; sira_no?: number } | null;
+  firmalar?: { firma_adi: string; sira_no?: number; renk?: string | null } | null;
 };
 
 // İş grubu dağılımı: bir şantiyenin gerçekleşen tutarının iş gruplarına bölünmesi
@@ -236,6 +236,7 @@ export type IscilikTakibiWithSantiye = IscilikTakibi & {
     kesin_kabul_tarihi: string | null;
     tasfiye_tarihi: string | null;
     devir_tarihi: string | null;
+    yuklenici_firma_id: string | null;
     created_at: string;
   };
 };
@@ -246,12 +247,13 @@ export type Tanimlama = {
   sekme: string | null;
   deger: string;
   kisa_ad: string | null;
+  renk: string | null;
   sira: number;
   aktif: boolean;
   created_at: string;
 };
 
-export type TanimlamaInsert = Omit<Tanimlama, "id" | "created_at" | "kisa_ad"> & { kisa_ad?: string | null };
+export type TanimlamaInsert = Omit<Tanimlama, "id" | "created_at" | "kisa_ad" | "renk"> & { kisa_ad?: string | null; renk?: string | null };
 
 export type GelenEvrak = {
   id: string;

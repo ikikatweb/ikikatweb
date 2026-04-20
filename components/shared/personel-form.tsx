@@ -44,6 +44,10 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
   const [loading, setLoading] = useState(false);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [meslekler, setMeslekler] = useState<string[]>([]);
+  // Maaş için ayrı gösterim state'i (input cursor'unun bozulmaması için)
+  const [maasInput, setMaasInput] = useState<string>(
+    personel?.maas != null ? formatParaInput(personel.maas.toFixed(2).replace(".", ",")) : ""
+  );
   const [gorevler, setGorevler] = useState<string[]>([]);
   // Pasif personel yeniden işe alma: TC ile bulunan pasif personel ID'si
   const [pasifBulunanId, setPasifBulunanId] = useState<string | null>(null);
@@ -123,6 +127,7 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
           durum: "aktif",
           pasif_tarihi: null,
         });
+        setMaasInput(""); // maaş gösterimi de sıfırla
         setPasifBulunanId(pasif.id);
         const tarihStr = pasif.pasif_tarihi
           ? new Date(pasif.pasif_tarihi).toLocaleDateString("tr-TR")
@@ -395,8 +400,13 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
             <div className="space-y-2">
               <Label htmlFor="maas">Maaş (₺) {!isEdit && <span className="text-red-500">*</span>}</Label>
               <input id="maas" name="maas" type="text" inputMode="decimal" placeholder="0,00"
-                value={formData.maas != null ? formatParaInput(formData.maas.toFixed(2).replace(".", ",")) : ""}
-                onChange={(e) => { const formatted = formatParaInput(e.target.value); const parsed = parseParaInput(formatted); setFormData((p) => ({ ...p, maas: parsed || null })); }}
+                value={maasInput}
+                onChange={(e) => {
+                  const formatted = formatParaInput(e.target.value);
+                  setMaasInput(formatted);
+                  const parsed = parseParaInput(formatted);
+                  setFormData((p) => ({ ...p, maas: formatted.trim() === "" ? null : parsed }));
+                }}
                 disabled={loading}
                 className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
             </div>

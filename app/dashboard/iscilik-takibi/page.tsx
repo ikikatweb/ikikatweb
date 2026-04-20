@@ -14,6 +14,7 @@ import {
   getTumIscilikAyliklari,
 } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import type { IscilikTakibiWithSantiye, Tanimlama } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -143,6 +144,7 @@ const VISIBLE_COLUMNS = COLUMNS.filter((c) => !GIZLI_SUTUNLAR.has(c.key));
 export default function IscilikTakibiPage() {
   const [rows, setRows] = useState<IscilikTakibiWithSantiye[]>([]);
   const [loading, setLoading] = useState(true);
+  const [firmaRenkMap, setFirmaRenkMap] = useState<Map<string, string>>(new Map());
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [arama, setArama] = useState("");
@@ -157,11 +159,18 @@ export default function IscilikTakibiPage() {
   const loadData = useCallback(async () => {
     try {
       await ensureAktifSantiyeler();
-      const [data, tData, ayliklarData] = await Promise.all([
+      const [data, tData, ayliklarData, firmalarData] = await Promise.all([
         getIscilikTakibi(),
         getTanimlamalar("is_grubu"),
         getTumIscilikAyliklari().catch(() => []),
+        getFirmalar().catch(() => []),
       ]);
+      // Firma renk map'i
+      const renkMap = new Map<string, string>();
+      for (const f of (firmalarData as { id: string; renk: string | null }[]) ?? []) {
+        if (f.renk) renkMap.set(f.id, f.renk);
+      }
+      setFirmaRenkMap(renkMap);
       // İş grubu sıralama map'i
       const sMap = new Map<string, number>();
       ((tData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
@@ -396,12 +405,29 @@ export default function IscilikTakibiPage() {
       body: body.map((row, i) => [String(i + 1), ...row]),
       foot: [toplamSatiri],
       styles: { fontSize: 5, cellPadding: 1 },
-      headStyles: { fillColor: [30, 58, 95], fontSize: 5, halign: "center" },
+      headStyles: { fillColor: [30, 58, 95], fontSize: 5 },
       footStyles: { fillColor: [226, 232, 240], textColor: [30, 58, 95], fontStyle: "bold", fontSize: 5 },
       alternateRowStyles: { fillColor: [241, 245, 249] },
       columnStyles,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (data: any) => {
+        // HEAD ve FOOT satırlarında da columnStyles hizalamasını zorla uygula
+        if (data.section === "head" || data.section === "foot") {
+          const colIdx = data.column.index;
+          if (colIdx === 0) {
+            data.cell.styles.halign = "center";
+          } else {
+            const c = pdfColumns[colIdx - 1];
+            if (c) {
+              if (c.key === "is_adi") data.cell.styles.halign = "left";
+              else if (c.key === "sicil_no") data.cell.styles.halign = "right";
+              else if (c.key === "son_veri_girisi_tarihi" || c.key === "taseron_veri_isleme_tarihi" || c.key === "is_bitim_tarihi") data.cell.styles.halign = "center";
+              else if (c.type === "para" || c.computed) data.cell.styles.halign = "right";
+              else data.cell.styles.halign = "center";
+            }
+          }
+          return;
+        }
         if (data.section !== "body") return;
         const row = filtrelenmis[data.row.index];
         if (!row) return;
@@ -579,9 +605,13 @@ export default function IscilikTakibiPage() {
                 <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[40px]">No</TableHead>
                 {VISIBLE_COLUMNS.map((col) => {
                   const hasTwoLines = col.label.includes("\n");
+                  // Sayısal/para sütunları sağa yaslı başlık (body ile aynı eksende)
+                  const tarihSutunu = col.key === "is_bitim_tarihi" || col.key === "taseron_veri_isleme_tarihi" || col.key === "son_veri_girisi_tarihi";
+                  const sayisal = (col.type === "para" || col.computed) && !tarihSutunu;
+                  const basliHizalama = col.key === "is_adi" ? "text-left" : sayisal ? "text-right" : "text-center";
                   return (
                     <TableHead key={col.key}
-                      className={`text-white font-semibold text-center text-[10px] px-1 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${col.key === "is_adi" ? "min-w-[120px]" : "min-w-[60px]"}`}>
+                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-2 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${col.key === "is_adi" ? "min-w-[120px]" : "min-w-[60px]"}`}>
                       {col.label}
                     </TableHead>
                   );
@@ -595,8 +625,11 @@ export default function IscilikTakibiPage() {
                 const kk = row.santiyeler?.kesin_kabul_tarihi;
                 const isPasif = (!!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000)
                   || (!!kk && kk !== "0001-01-01" && new Date(kk).getFullYear() > 2000);
+                const firmaRengi = row.santiyeler?.yuklenici_firma_id ? firmaRenkMap.get(row.santiyeler.yuklenici_firma_id) : null;
                 return (
-                <TableRow key={row.id} className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
+                <TableRow key={row.id}
+                  style={firmaRengi ? { borderLeft: `5px solid ${firmaRengi}` } : undefined}
+                  className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
                   <TableCell className="text-center px-2 text-gray-500">{idx + 1}</TableCell>
                   {VISIBLE_COLUMNS.map((col) => {
                     const isEditing = editing?.id === row.id && editing?.field === col.key;
@@ -670,7 +703,10 @@ export default function IscilikTakibiPage() {
                         <TableCell key={col.key} className={cellClass + " cursor-pointer text-[#1E3A5F] hover:text-[#F97316]"}
                           title={row.santiyeler?.is_adi}
                           onClick={() => router.push(`/dashboard/iscilik-takibi/${row.id}`)}>
-                          {col.getValue(row)}
+                          <span className="inline-flex items-center gap-1.5">
+                            {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: firmaRengi }} />}
+                            <span className="truncate">{col.getValue(row)}</span>
+                          </span>
                         </TableCell>
                       );
                     }
@@ -707,20 +743,37 @@ export default function IscilikTakibiPage() {
                   kalanT += (yatacak - (row.yatan_prim ?? 0));
                   toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
                 }
+                // Her VISIBLE_COLUMN için TOPLAM satırı değeri
+                const toplamDegerMap: Record<string, { deger: string; hizalama: "left" | "right" | "center" }> = {
+                  sicil_no: { deger: "", hizalama: "center" },
+                  is_adi: { deger: "TOPLAM", hizalama: "left" },
+                  sozlesme_bedeli: { deger: "—", hizalama: "center" },
+                  kesif_artisi: { deger: formatPara(kesifT), hizalama: "right" },
+                  fiyat_farki: { deger: formatPara(fiyatFarkiT), hizalama: "right" },
+                  yatmasi_gereken_prim: { deger: formatPara(yatmasiGerekenT), hizalama: "right" },
+                  yatan_prim: { deger: formatPara(yatanT), hizalama: "right" },
+                  kalan_prim: { deger: formatPara(kalanT), hizalama: "right" },
+                  is_bitim_tarihi: { deger: "", hizalama: "center" },
+                  taseron_veri_isleme_tarihi: { deger: "", hizalama: "center" },
+                  son_veri_girisi_tarihi: { deger: "", hizalama: "center" },
+                  toplam_son_veri_tutari: { deger: formatPara(toplamSonVeriT), hizalama: "right" },
+                };
                 return (
-                  <TableRow className="bg-[#1E3A5F]/10 font-bold border-t-2 border-[#1E3A5F]">
-                    <TableCell className="text-center px-2 text-[#1E3A5F]" colSpan={3}>TOPLAM</TableCell>
-                    <TableCell className="text-center px-2 text-gray-400">—</TableCell>
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(kesifT)}</TableCell>
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(fiyatFarkiT)}</TableCell>
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(yatmasiGerekenT)}</TableCell>
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(yatanT)}</TableCell>
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(kalanT)}</TableCell>
-                    <TableCell />
-                    <TableCell />
-                    <TableCell />
-                    <TableCell className="text-right px-2 tabular-nums text-[#1E3A5F]">{formatPara(toplamSonVeriT)}</TableCell>
-                    <TableCell />
+                  <TableRow
+                    style={{ borderLeft: "5px solid transparent" }}
+                    className="text-xs bg-[#1E3A5F]/10 border-t-2 border-[#1E3A5F] hover:bg-[#1E3A5F]/10">
+                    <TableCell className="text-center px-2 text-[#1E3A5F] whitespace-nowrap">—</TableCell>
+                    {VISIBLE_COLUMNS.map((col) => {
+                      const d = toplamDegerMap[col.key] ?? { deger: "", hizalama: "center" as const };
+                      const hCls = d.hizalama === "left" ? "text-left font-bold" : d.hizalama === "right" ? "text-right tabular-nums" : "text-center";
+                      const textCls = d.deger === "—" ? "text-gray-400" : "text-[#1E3A5F]";
+                      return (
+                        <TableCell key={col.key} className={`px-2 whitespace-nowrap ${hCls} ${textCls}`}>
+                          {d.deger}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="px-1" />
                   </TableRow>
                 );
               })()}

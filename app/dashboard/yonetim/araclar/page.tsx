@@ -32,6 +32,7 @@ export default function AraclarPage() {
   const [filtre, setFiltre] = useState<Filtre>("tumu");
   const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("ozmal");
   const [cinsFiltre, setCinsFiltre] = useState("tumu");
+  const [firmaFiltre, setFirmaFiltre] = useState("tumu");
   const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([]);
   const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
   const router = useRouter();
@@ -119,6 +120,10 @@ export default function AraclarPage() {
       if (filtre !== "tumu" && a.durum !== filtre) return false;
       if (mulkiyetFiltre !== "tumu" && a.tip !== mulkiyetFiltre) return false;
       if (cinsFiltre !== "tumu" && a.cinsi !== cinsFiltre) return false;
+      if (firmaFiltre !== "tumu") {
+        const firmaAdi = a.tip === "ozmal" ? (a.firmalar?.firma_adi ?? "") : (a.kiralama_firmasi ?? "");
+        if (firmaAdi !== firmaFiltre) return false;
+      }
       if (!arama.trim()) return true;
       const q = arama.toLowerCase();
       return (
@@ -208,6 +213,18 @@ export default function AraclarPage() {
           className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm min-w-[130px]">
           <option value="tumu">Tüm Cinsler</option>
           {cinsListesi.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={firmaFiltre} onChange={(e) => setFirmaFiltre(e.target.value)}
+          className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm min-w-[160px]">
+          <option value="tumu">Tüm Firmalar</option>
+          {(() => {
+            const firmaSet = new Set<string>();
+            for (const a of araclar) {
+              const adi = a.tip === "ozmal" ? a.firmalar?.firma_adi : a.kiralama_firmasi;
+              if (adi) firmaSet.add(adi);
+            }
+            return Array.from(firmaSet).sort((a, b) => a.localeCompare(b, "tr")).map((f) => <option key={f} value={f}>{f}</option>);
+          })()}
         </select>
         {sortList.length > 0 && (
           <Button variant="ghost" size="sm" onClick={() => setSortList([])} className="text-red-500 text-xs">

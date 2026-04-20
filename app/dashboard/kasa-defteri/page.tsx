@@ -564,6 +564,12 @@ function KasaDefContent() {
   }
 
   const gosterilenSantiyeler = filtreliSantiyeler(santiyeler, kullanici);
+  // Filtre için: sadece kasa hareketi olan şantiyeler
+  const filtreSantiyeleri = (() => {
+    const islemliIds = new Set<string>();
+    for (const h of hareketler) islemliIds.add(h.santiye_id);
+    return gosterilenSantiyeler.filter((s) => islemliIds.has(s.id));
+  })();
 
   return (
     <div>
@@ -589,7 +595,7 @@ function KasaDefContent() {
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Şantiye</Label>
-              <SantiyeSelect santiyeler={gosterilenSantiyeler} value={filtreSantiye} onChange={setFiltreSantiye} showAll className={selectClass + " w-full"} />
+              <SantiyeSelect santiyeler={filtreSantiyeleri} value={filtreSantiye} onChange={setFiltreSantiye} showAll className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Kullanıcı</Label>
