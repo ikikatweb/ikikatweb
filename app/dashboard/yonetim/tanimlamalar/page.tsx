@@ -916,7 +916,7 @@ export default function TanimlamalarPage() {
               </h3>
               <Badge variant="secondary">{yakitLimitler.length}</Badge>
             </div>
-            <p className="text-[10px] text-gray-400 mb-3">Araç cinsi bazlı L/km veya L/saat aralığı</p>
+            <p className="text-[10px] text-gray-400 mb-3">Oran kontrolü: (genel ort. / anlık ort.) bu aralıkta olmalı</p>
 
             {/* Mevcut limitler - compact liste */}
             <div className="space-y-1 mb-3 overflow-y-auto max-h-[300px]">
@@ -930,7 +930,7 @@ export default function TanimlamalarPage() {
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-xs font-semibold truncate">{l.arac_cinsi}</span>
                         <span className="text-[10px] text-gray-500">
-                          {l.sayac_tipi === "km" ? "L/km" : "L/saat"} · {l.alt_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })} - {l.ust_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}
+                          {l.sayac_tipi === "km" ? "Km" : "Saat"} · Oran: {l.alt_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })} - {l.ust_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}
                         </span>
                       </div>
                     </div>
@@ -973,7 +973,7 @@ export default function TanimlamalarPage() {
               </select>
               {yakitLimitCins && (
                 <div className="text-[10px] text-gray-500 px-1">
-                  Sayaç: <strong>{yakitLimitSayacTipi === "saat" ? "Saat (L/saat)" : "Kilometre (L/km)"}</strong> — otomatik
+                  Sayaç: <strong>{yakitLimitSayacTipi === "saat" ? "Saat" : "Kilometre"}</strong> — Oran kontrolü (genel ort. / anlık ort.)
                 </div>
               )}
               <div className="grid grid-cols-2 gap-1.5">
@@ -982,7 +982,7 @@ export default function TanimlamalarPage() {
                   inputMode="decimal"
                   value={yakitLimitAlt}
                   onChange={(e) => setYakitLimitAlt(e.target.value)}
-                  placeholder="Alt (0,5)"
+                  placeholder="Alt oran (0,5)"
                   className={selectClass + " text-xs"}
                 />
                 <input
@@ -990,7 +990,7 @@ export default function TanimlamalarPage() {
                   inputMode="decimal"
                   value={yakitLimitUst}
                   onChange={(e) => setYakitLimitUst(e.target.value)}
-                  placeholder="Üst (2)"
+                  placeholder="Üst oran (2)"
                   className={selectClass + " text-xs"}
                 />
               </div>

@@ -597,17 +597,17 @@ function YakitPageContent() {
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
 
-        // Limit kontrolü — limitler tanımlamalardaki formatta (lt/100km veya lt/saat) olarak kullanılır
-        // Anlık ortalama aynı formatta hesaplandığı için direkt karşılaştırılır
+        // Limit kontrolü — oran bazlı: genel ortalama / anlık ortalama
+        // Alt ≤ (genelOrt / anlikOrt) ≤ Üst → limit içinde
+        // Dışındaysa → limit dışı (örn. anlık, genel ortalamadan çok farklıysa anomali)
         if (arac?.cinsi && arac.sayac_tipi) {
           const limit = limitMap.get(`${arac.cinsi}|${arac.sayac_tipi}`);
           if (limit) {
             satir.limitAlt = limit.alt_sinir;
             satir.limitUst = limit.ust_sinir;
-            if (satir.anlikOrt !== null) {
-              // Alt < anlık < Üst → limit içinde (işaret yok)
-              // Anlık < Alt veya Anlık > Üst → limit dışı
-              if (satir.anlikOrt < limit.alt_sinir || satir.anlikOrt > limit.ust_sinir) {
+            if (satir.anlikOrt !== null && satir.anlikOrt > 0 && satir.genelOrt !== null && satir.genelOrt > 0) {
+              const oran = satir.genelOrt / satir.anlikOrt;
+              if (oran < limit.alt_sinir || oran > limit.ust_sinir) {
                 satir.limitIhlali = true;
               }
             }
@@ -1383,12 +1383,12 @@ function YakitPageContent() {
                           <span className={s.limitIhlali ? "text-red-600 font-bold" : "text-gray-700"}>
                             {formatSayi(s.anlikOrt, 2)}{birimEki}
                           </span>
-                          {s.limitIhlali && (
+                          {s.limitIhlali && s.genelOrt !== null && s.anlikOrt > 0 && (
                             <span
                               className="text-[9px] text-red-500 flex items-center gap-0.5"
-                              title={`Limit: ${s.limitAlt} - ${s.limitUst}`}
+                              title={`Oran: ${(s.genelOrt / s.anlikOrt).toFixed(2)} (Limit: ${s.limitAlt} - ${s.limitUst})`}
                             >
-                              <AlertTriangle size={8} /> Limit dışı
+                              <AlertTriangle size={8} /> Limit dışı · Oran: {(s.genelOrt / s.anlikOrt).toFixed(2)}
                             </span>
                           )}
                         </div>

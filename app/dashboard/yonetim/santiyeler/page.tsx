@@ -266,11 +266,6 @@ export default function SantiyelerPage() {
 
   function sortData(data: SantiyeWithRelations[]) {
     return [...data].sort((a, b) => {
-      // Öncelik: devam eden işler (dimmed olmayan) her zaman üstte
-      const aDim = isDimmed(a) ? 1 : 0;
-      const bDim = isDimmed(b) ? 1 : 0;
-      if (aDim !== bDim) return aDim - bDim;
-
       // Kullanıcı sıralaması varsa uygula
       if (sorts.length > 0) {
         for (const sort of sorts) {
@@ -282,14 +277,17 @@ export default function SantiyelerPage() {
         return 0;
       }
 
-      // Varsayılan sıralama: iş tanımları sırası → ilan tarihi (en yeni üstte)
+      // Varsayılan sıralama: iş grubu sırası → sözleşme tarihi (en eski üstte, en yeni altta)
       const sa = isGrupSiralama.get(a.is_grubu ?? "") ?? 999;
       const sb = isGrupSiralama.get(b.is_grubu ?? "") ?? 999;
       if (sa !== sb) return sa - sb;
-      // Aynı iş grubunda: ilan tarihine göre (en yeni üstte)
-      const ta = a.ilan_tarihi ?? "";
-      const tb = b.ilan_tarihi ?? "";
-      if (ta !== tb) return tb.localeCompare(ta);
+      // Aynı iş grubunda: sözleşme tarihine göre artan (en eski üstte)
+      const ta = a.sozlesme_tarihi ?? "";
+      const tb = b.sozlesme_tarihi ?? "";
+      // Tarihi boş olanlar en sonda
+      if (!ta && tb) return 1;
+      if (ta && !tb) return -1;
+      if (ta !== tb) return ta.localeCompare(tb);
       return 0;
     });
   }
