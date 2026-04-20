@@ -193,7 +193,8 @@ function KasaDefContent() {
     return hareketler.filter((h) => {
       // Kısıtlı kullanıcı
       if (!isYonetici && kullanici) {
-        if (h.created_by !== kullanici.id) return false;
+        // Kısıtlı kullanıcı sadece kendi personel_id'si olan kayıtları görür
+        if (h.personel_id !== kullanici.id) return false;
         if (!tarihIzinliMi(kullanici, h.tarih)) return false;
       }
       // Tarih
@@ -252,7 +253,9 @@ function KasaDefContent() {
   // Dialog açma
   function dialogAc() {
     setEditId(null);
-    setDPersonel(filtrePersonel || ""); setDSantiye(filtreSantiye || "");
+    // Kısıtlı kullanıcı ise otomatik olarak kendisi seçili
+    setDPersonel(!isYonetici && kullanici ? kullanici.id : (filtrePersonel || ""));
+    setDSantiye(filtreSantiye || "");
     const bugunStr = new Date().toISOString().slice(0, 10);
     setDTarih(bugunStr);
     setDTip("gider"); setDOdeme("nakit");
@@ -809,9 +812,12 @@ function KasaDefContent() {
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">Kullanıcı <span className="text-red-500">*</span></Label>
-              <select value={dPersonel} onChange={(e) => setDPersonel(e.target.value)} className={selectClass + " w-full"} disabled={dialogLoading}>
+              <select value={dPersonel} onChange={(e) => setDPersonel(e.target.value)} className={selectClass + " w-full"} disabled={dialogLoading || !isYonetici}>
                 <option value="">Kullanıcı seçiniz</option>
-                {personeller.filter((p) => p.aktif !== false).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
+                {(!isYonetici && kullanici
+                  ? personeller.filter((p) => p.id === kullanici.id)
+                  : personeller.filter((p) => p.aktif !== false)
+                ).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>
             </div>
             <div className="space-y-1">

@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, geriye_donus_gun } = body;
+  const { ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, geriye_donus_gun, dashboard_widgets } = body;
 
   if (!ad_soyad || !kullanici_adi || !sifre) {
     return NextResponse.json({ error: "Ad soyad, kullanıcı adı ve şifre zorunludur" }, { status: 400 });
@@ -105,6 +105,7 @@ export async function POST(request: Request) {
       izinler: izinler || {},
       santiye_ids: santiye_ids || [],
       geriye_donus_gun: geriye_donus_gun ?? null,
+      dashboard_widgets: dashboard_widgets ?? null,
     })
     .select()
     .single();

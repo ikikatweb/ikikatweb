@@ -45,7 +45,7 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { ad_soyad, rol, aktif, sifre, izinler, santiye_ids, geriye_donus_gun } = body;
+  const { ad_soyad, rol, aktif, sifre, izinler, santiye_ids, geriye_donus_gun, dashboard_widgets } = body;
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,6 +92,7 @@ export async function PUT(
   if (izinler !== undefined) updateData.izinler = izinler;
   if (santiye_ids !== undefined) updateData.santiye_ids = santiye_ids;
   if (geriye_donus_gun !== undefined) updateData.geriye_donus_gun = geriye_donus_gun;
+  if (dashboard_widgets !== undefined) updateData.dashboard_widgets = dashboard_widgets;
   if (sifre && sifre.trim()) updateData.sifre_gorunur = sifre;
 
   const { data, error } = await supabase
