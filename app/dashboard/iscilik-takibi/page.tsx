@@ -11,6 +11,7 @@ import {
   getSilinenIscilikTakibi,
   restoreIscilikTakibi,
   permanentDeleteIscilikTakibi,
+  getTumIscilikAyliklari,
 } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { IscilikTakibiWithSantiye, Tanimlama } from "@/lib/supabase/types";
@@ -43,7 +44,14 @@ function formatTarih(d: string | null) {
 // Sadece ay/yıl (MM.YYYY) — veri girişi ait olduğu ay gösterimi için
 function formatAyYil(d: string | null) {
   if (!d) return "—";
+  // Zaten "MM.YYYY" formatında ise aynen döndür
+  if (/^\d{2}\.\d{4}$/.test(d)) return d;
+  // "M.YYYY" ise başına 0 ekle
+  const mm = d.match(/^(\d{1,2})\.(\d{4})$/);
+  if (mm) return `${mm[1].padStart(2, "0")}.${mm[2]}`;
+  // ISO date formatı ("YYYY-MM-DD" veya benzeri)
   const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
+  if (isNaN(dt.getTime())) return d; // parse edilemezse orijinali döndür
   return `${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
 }
 
@@ -122,11 +130,15 @@ const COLUMNS: ColDef[] = [
     }, getRaw: () => null },
   { key: "taseron_veri_isleme_tarihi", label: "Taşeron Son\nVeri Girişi", computed: true,
     getValue: (r) => r.taseron_veri_isleme_tarihi ? formatAyYil(r.taseron_veri_isleme_tarihi) : "—", getRaw: () => null },
-  { key: "son_veri_girisi_tarihi", label: "Son Veri\nGirişi", computed: true,
+  { key: "son_veri_girisi_tarihi", label: "Yüklenici Son\nVeri Girişi", computed: true,
     getValue: (r) => r.son_veri_girisi_tarihi ? formatAyYil(r.son_veri_girisi_tarihi) : "—", getRaw: () => null },
   { key: "toplam_son_veri_tutari", label: "Toplam Son\nVeri Tutarı", computed: true,
     getValue: (r) => formatPara(r.toplam_son_veri_tutari), getRaw: () => null },
 ];
+
+// Tabloda, PDF ve Excel'de gizlenecek sütunlar
+const GIZLI_SUTUNLAR = new Set(["yatan_prim_yuzde", "sure_uzatimi"]);
+const VISIBLE_COLUMNS = COLUMNS.filter((c) => !GIZLI_SUTUNLAR.has(c.key));
 
 export default function IscilikTakibiPage() {
   const [rows, setRows] = useState<IscilikTakibiWithSantiye[]>([]);
@@ -145,24 +157,55 @@ export default function IscilikTakibiPage() {
   const loadData = useCallback(async () => {
     try {
       await ensureAktifSantiyeler();
-      const [data, tData] = await Promise.all([
+      const [data, tData, ayliklarData] = await Promise.all([
         getIscilikTakibi(),
         getTanimlamalar("is_grubu"),
+        getTumIscilikAyliklari().catch(() => []),
       ]);
       // İş grubu sıralama map'i
       const sMap = new Map<string, number>();
       ((tData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
       setIsGrupSiralama(sMap);
 
+      // "MM.YYYY" veya ISO tarihini karşılaştırılabilir sayıya dönüştür (YYYYMM)
+      const ayYilNumerik = (s: string): number => {
+        if (!s) return 0;
+        const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+        if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+        const iso = s.match(/^(\d{4})-(\d{2})/);
+        if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+        return 0;
+      };
+
+      // Her takibi için aylık bazında en son taşeron/yüklenici aylarını hesapla
+      const taseronMap = new Map<string, string>();
+      const yukleniciMap = new Map<string, string>();
+      for (const a of ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; alt_yuklenici_tutar: number | null; yuklenici_tutar: number | null }[]) {
+        if (a.alt_yuklenici_tutar != null && a.alt_yuklenici_tutar > 0) {
+          const mevcut = taseronMap.get(a.iscilik_takibi_id);
+          if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) taseronMap.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
+        }
+        if (a.yuklenici_tutar != null && a.yuklenici_tutar > 0) {
+          const mevcut = yukleniciMap.get(a.iscilik_takibi_id);
+          if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) yukleniciMap.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
+        }
+      }
+
       // İş grubu sırasına göre sırala, aynı gruptakiler oluşturulma sırasına göre
-      const sorted = ((data as IscilikTakibiWithSantiye[]) ?? []).sort((a, b) => {
-        const sa = sMap.get(a.santiyeler?.is_grubu ?? "") ?? 999;
-        const sb = sMap.get(b.santiyeler?.is_grubu ?? "") ?? 999;
-        if (sa !== sb) return sa - sb;
-        const da = a.santiyeler?.created_at ?? "";
-        const db = b.santiyeler?.created_at ?? "";
-        return da.localeCompare(db);
-      });
+      const sorted = ((data as IscilikTakibiWithSantiye[]) ?? [])
+        .map((r) => ({
+          ...r,
+          taseron_veri_isleme_tarihi: taseronMap.get(r.id) ?? null,
+          son_veri_girisi_tarihi: yukleniciMap.get(r.id) ?? null,
+        }))
+        .sort((a, b) => {
+          const sa = sMap.get(a.santiyeler?.is_grubu ?? "") ?? 999;
+          const sb = sMap.get(b.santiyeler?.is_grubu ?? "") ?? 999;
+          if (sa !== sb) return sa - sb;
+          const da = a.santiyeler?.created_at ?? "";
+          const db = b.santiyeler?.created_at ?? "";
+          return da.localeCompare(db);
+        });
       setRows(sorted);
     } catch {
       toast.error("Veriler yüklenirken hata oluştu.");
@@ -280,7 +323,7 @@ export default function IscilikTakibiPage() {
     doc.text(`Tarih: ${formatTarih(new Date().toISOString().slice(0, 10))}`, 14, 21);
 
     // PDF'den gizlenecek sütunlar
-    const gizle = new Set(["sicil_no", "yatan_prim_yuzde", "sure_uzatimi"]);
+    const gizle = GIZLI_SUTUNLAR;
     const pdfColumns = COLUMNS.filter((c) => !gizle.has(c.key));
 
     const headers = pdfColumns.map((c) => tr(c.label.replace(/\n/g, " ")));
@@ -341,7 +384,7 @@ export default function IscilikTakibiPage() {
   }
 
   function exportExcel() {
-    const gizle = new Set(["sicil_no", "yatan_prim_yuzde", "sure_uzatimi"]);
+    const gizle = GIZLI_SUTUNLAR;
     const excelColumns = COLUMNS.filter((c) => !gizle.has(c.key));
     const headers = ["No", ...excelColumns.map((c) => c.label.replace(/\n/g, " "))];
     const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => c.getValue(r))]);
@@ -445,7 +488,7 @@ export default function IscilikTakibiPage() {
             <TableHeader>
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[40px]">No</TableHead>
-                {COLUMNS.map((col) => {
+                {VISIBLE_COLUMNS.map((col) => {
                   const hasTwoLines = col.label.includes("\n");
                   return (
                     <TableHead key={col.key}
@@ -466,7 +509,7 @@ export default function IscilikTakibiPage() {
                 return (
                 <TableRow key={row.id} className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
                   <TableCell className="text-center px-2 text-gray-500">{idx + 1}</TableCell>
-                  {COLUMNS.map((col) => {
+                  {VISIBLE_COLUMNS.map((col) => {
                     const isEditing = editing?.id === row.id && editing?.field === col.key;
 
                     // Kalan prim renklendirmesi

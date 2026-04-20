@@ -108,6 +108,16 @@ export async function restoreIscilikTakibi(id: string) {
   if (error) throw error;
 }
 
+// Tüm iscilik_aylik kayıtlarını getir (işçilik durum raporu için tarih hesabı)
+export async function getTumIscilikAyliklari() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("iscilik_aylik")
+    .select("iscilik_takibi_id, ait_oldugu_ay, alt_yuklenici_tutar, yuklenici_tutar");
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function permanentDeleteIscilikTakibi(id: string) {
   const supabase = getSupabase();
   await supabase.from("iscilik_aylik").delete().eq("iscilik_takibi_id", id);

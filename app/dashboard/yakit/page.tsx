@@ -59,7 +59,7 @@ import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtr
 import { formatBaslik } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null; depo_kapasitesi?: number | null };
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -1445,7 +1445,11 @@ function YakitPageContent() {
             <div className="space-y-1">
               <Label className="text-xs">Şantiye</Label>
               <div className="overflow-hidden">
-                <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={verDialogSantiyeId} onChange={(v) => { setVerDialogSantiyeId(v); setVerDialogAracId(""); setHizliAtamaOpen(false); }} className={selectClass + " w-full"} />
+                <SantiyeSelect
+                  santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)}
+                  value={verDialogSantiyeId}
+                  onChange={(v) => { setVerDialogSantiyeId(v); setVerDialogAracId(""); setHizliAtamaOpen(false); }}
+                  className={selectClass + " w-full"} />
               </div>
             </div>
             <div className="space-y-1">
@@ -1633,7 +1637,7 @@ function YakitPageContent() {
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">Şantiye (Depo)</Label>
-              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={alDialogSantiyeId} onChange={setAlDialogSantiyeId} className={selectClass + " w-full"} />
+              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)} value={alDialogSantiyeId} onChange={setAlDialogSantiyeId} className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Tarih</Label>
@@ -1725,11 +1729,11 @@ function YakitPageContent() {
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">Gönderen Şantiye</Label>
-              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={virDialogGonderen} onChange={setVirDialogGonderen} className={selectClass + " w-full"} />
+              <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)} value={virDialogGonderen} onChange={setVirDialogGonderen} className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Alan Şantiye</Label>
-              <SantiyeSelect santiyeler={santiyeler.filter((s) => s.id !== virDialogGonderen)} value={virDialogAlan} onChange={setVirDialogAlan} className={selectClass + " w-full"} />
+              <SantiyeSelect santiyeler={santiyeler.filter((s) => s.id !== virDialogGonderen && (s.depo_kapasitesi ?? 0) > 0)} value={virDialogAlan} onChange={setVirDialogAlan} className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Tarih</Label>

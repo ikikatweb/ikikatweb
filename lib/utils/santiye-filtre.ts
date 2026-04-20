@@ -3,14 +3,14 @@
 // - Tek şantiye atandıysa otomatik seçilir
 // - Yönetici tüm şantiyeleri görebilir
 
-type SantiyeBasic = { id: string; is_adi: string };
+type SantiyeLike = { id: string; is_adi: string };
 type KullaniciMinimal = { rol: string; santiye_ids: string[] } | null;
 
-// Kullanıcının görebileceği şantiyeleri filtrele
-export function filtreliSantiyeler(
-  tumSantiyeler: SantiyeBasic[],
+// Kullanıcının görebileceği şantiyeleri filtrele (generic — orijinal tipi korur)
+export function filtreliSantiyeler<T extends SantiyeLike>(
+  tumSantiyeler: T[],
   kullanici: KullaniciMinimal,
-): SantiyeBasic[] {
+): T[] {
   if (!kullanici) return tumSantiyeler;
   if (kullanici.rol === "yonetici") return tumSantiyeler;
   if (!kullanici.santiye_ids || kullanici.santiye_ids.length === 0) return [];
@@ -19,8 +19,8 @@ export function filtreliSantiyeler(
 }
 
 // Tek şantiye atandıysa otomatik seçilecek ID, yoksa ""
-export function otomatikSantiyeId(
-  tumSantiyeler: SantiyeBasic[],
+export function otomatikSantiyeId<T extends SantiyeLike>(
+  tumSantiyeler: T[],
   kullanici: KullaniciMinimal,
 ): string {
   if (!kullanici) return "";

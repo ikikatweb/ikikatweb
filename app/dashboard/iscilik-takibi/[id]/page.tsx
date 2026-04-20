@@ -179,22 +179,29 @@ export default function IscilikDetayPage() {
 
       // Tutar değiştiyse toplam yatanı + tarihleri + toplam son veri tutarını güncelle
       if (editing.field === "yuklenici_tutar" || editing.field === "alt_yuklenici_tutar") {
-        const bugun = new Date().toISOString().split("T")[0];
         const yeniToplamYatan = yeniAyliklar.reduce((t, a) => t + (a.yuklenici_tutar ?? 0) + (a.alt_yuklenici_tutar ?? 0), 0);
         // Toplam son veri tutarı = en son girilen ayın (en büyük sıra no) yüklenici + alt yüklenici toplamı
         const sonAy = [...yeniAyliklar].sort((a, b) => b.sira_no - a.sira_no)[0];
         const toplamSonVeri = sonAy ? (sonAy.alt_yuklenici_tutar ?? 0) + (sonAy.yuklenici_tutar ?? 0) : 0;
 
-        const updates: Record<string, unknown> = { yatan_prim: yeniToplamYatan, toplam_son_veri_tutari: toplamSonVeri };
+        // Taşeron son veri işleme tarihi = alt_yuklenici_tutar'ı olan en büyük ait_oldugu_ay
+        const altliAyliklar = yeniAyliklar.filter((a) => a.alt_yuklenici_tutar != null && a.alt_yuklenici_tutar > 0);
+        const enSonTaseronAy = altliAyliklar.length > 0
+          ? altliAyliklar.map((a) => a.ait_oldugu_ay).sort().reverse()[0]
+          : null;
 
-        // Alt yüklenici tutarı girilmişse taşeron veri işleme tarihini güncelle
-        if (editing.field === "alt_yuklenici_tutar") {
-          updates.taseron_veri_isleme_tarihi = bugun;
-        }
-        // Yüklenici tutarı girilmişse son veri girişi tarihini güncelle
-        if (editing.field === "yuklenici_tutar") {
-          updates.son_veri_girisi_tarihi = bugun;
-        }
+        // Yüklenici son veri girişi tarihi = yuklenici_tutar'ı olan en büyük ait_oldugu_ay
+        const yukleniciliAyliklar = yeniAyliklar.filter((a) => a.yuklenici_tutar != null && a.yuklenici_tutar > 0);
+        const enSonYukleniciAy = yukleniciliAyliklar.length > 0
+          ? yukleniciliAyliklar.map((a) => a.ait_oldugu_ay).sort().reverse()[0]
+          : null;
+
+        const updates: Record<string, unknown> = {
+          yatan_prim: yeniToplamYatan,
+          toplam_son_veri_tutari: toplamSonVeri,
+          taseron_veri_isleme_tarihi: enSonTaseronAy,
+          son_veri_girisi_tarihi: enSonYukleniciAy,
+        };
 
         await upsertIscilikTakibi(takip.santiye_id, updates);
         setTakip((p) => p ? { ...p, ...updates } as typeof p : p);
