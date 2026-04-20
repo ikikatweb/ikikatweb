@@ -17,6 +17,38 @@ export async function getKasaHareketleri(): Promise<KasaHareketi[]> {
   return (data ?? []) as KasaHareketi[];
 }
 
+// Tarih aralığına göre kasa hareketlerini getir — büyük veri setlerinde hızlı yükleme için
+export async function getKasaHareketleriByRange(baslangic: string, bitis: string): Promise<KasaHareketi[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("kasa_hareketi")
+    .select("*")
+    .gte("tarih", baslangic)
+    .lte("tarih", bitis)
+    .order("tarih", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as KasaHareketi[];
+}
+
+// Bir tarihe kadar olan kümülatif nakit bakiyeleri — kullanıcı bazlı devir hesabı için hızlı
+// Sadece personel_id, tip, tutar alanları çekilir (minimal payload)
+export async function getKasaDevirBakiyeleri(bitisTarihi: string): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("kasa_hareketi")
+    .select("personel_id, tip, tutar")
+    .eq("odeme_yontemi", "nakit")
+    .lte("tarih", bitisTarihi);
+  if (error) throw error;
+  const map = new Map<string, number>();
+  for (const h of (data ?? []) as { personel_id: string; tip: string; tutar: number }[]) {
+    const prev = map.get(h.personel_id) ?? 0;
+    map.set(h.personel_id, prev + (h.tip === "gelir" ? h.tutar : -h.tutar));
+  }
+  return map;
+}
+
 export async function insertKasaHareketi(data: {
   personel_id: string;
   santiye_id: string;

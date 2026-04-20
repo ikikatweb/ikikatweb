@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
-import { getKasaHareketleri } from "@/lib/supabase/queries/kasa";
+import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
 import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice } from "@/lib/supabase/queries/araclar";
 import type { TeklifGonderim } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
@@ -77,6 +77,7 @@ export default function DashboardPage() {
 
   const [yiUfeData, setYiUfeData] = useState<YiUfe[]>([]);
   const [kasaData, setKasaData] = useState<KasaHareketi[]>([]);
+  const [devirBakiye, setDevirBakiye] = useState<Map<string, number>>(new Map());
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
@@ -131,14 +132,20 @@ export default function DashboardPage() {
   const bugun = new Date();
   const ayBaslangic = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-01`;
   const ayBitis = `${bugun.getFullYear()}-${String(bugun.getMonth()+1).padStart(2,"0")}-${String(new Date(bugun.getFullYear(), bugun.getMonth()+1, 0).getDate()).padStart(2,"0")}`;
-  const tumZamanBaslangic = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })();
+  const tumZamanBaslangic = (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+  // Önceki ayın son günü (devir bakiyesi için)
+  const oncekiAySonGun = (() => {
+    const d = new Date(bugun.getFullYear(), bugun.getMonth(), 0);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  })();
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [yi, kasa, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData] = await Promise.all([
+      const [yi, kasa, devirMap, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData] = await Promise.all([
         getYiUfeVerileri().catch(() => []),
-        getKasaHareketleri().catch(() => []),
+        getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []),
+        getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
         getPersoneller().catch(() => []),
         getAraclar().catch(() => []),
         getTumPoliceler().catch(() => []),
@@ -153,6 +160,7 @@ export default function DashboardPage() {
       ]);
       setYiUfeData(yi as YiUfe[]);
       setKasaData(kasa as KasaHareketi[]);
+      setDevirBakiye(devirMap);
       setPersoneller(pers as PersonelWithRelations[]);
       setAraclar(arac as AracWithRelations[]);
       setPoliceler(pol as AracPolice[]);
@@ -276,18 +284,9 @@ export default function DashboardPage() {
     return { son: sorted[0] ?? null, onceki: sorted[1] ?? null };
   }, [yiUfeData]);
 
-  // Widget 2: Kasa kullanıcı özeti — nakit bakiye tüm zamanlar (devir dahil), harcama bu ay
+  // Widget 2: Kasa kullanıcı özeti — devir bakiyesi (önceki ay sonu) + bu ay hareketleri
   const kasaOzet = useMemo(() => {
-    // Tüm zamanlar kümülatif nakit bakiye (kasa defterindeki bakiye ile birebir tutar)
-    const kumulatifBakiye = new Map<string, number>();
-    for (const h of kasaData) {
-      if (!kullaniciAdlari.has(h.personel_id)) continue;
-      if (h.odeme_yontemi !== "nakit") continue;
-      const prev = kumulatifBakiye.get(h.personel_id) ?? 0;
-      kumulatifBakiye.set(h.personel_id, prev + (h.tip === "gelir" ? h.tutar : -h.tutar));
-    }
-
-    // Bu ay harcamalar
+    // Bu ay hareketleri grupla
     const aylik = kasaData.filter((h) => h.tarih >= ayBaslangic && h.tarih <= ayBitis);
     const map = new Map<string, { gelir: number; giderNakit: number; giderKart: number }>();
     for (const h of aylik) {
@@ -299,22 +298,24 @@ export default function DashboardPage() {
       else e.giderKart += h.tutar;
     }
 
-    // Hem bu ay işlemi olan hem de geçmişten bakiyesi olan kullanıcıları dahil et
-    const tumIds = new Set<string>([...map.keys(), ...kumulatifBakiye.keys()]);
+    // Hem bu ay işlemi olan hem de devirden bakiyesi olan kullanıcıları dahil et
+    const tumIds = new Set<string>([...map.keys(), ...devirBakiye.keys()].filter((id) => kullaniciAdlari.has(id)));
     return Array.from(tumIds).map((pid) => {
       const v = map.get(pid) ?? { gelir: 0, giderNakit: 0, giderKart: 0 };
+      const devir = devirBakiye.get(pid) ?? 0;
+      // Bakiye = devir (önceki ay sonu) + bu ay nakit gelir - bu ay nakit gider
+      const nakitBakiye = devir + v.gelir - v.giderNakit;
       return {
         personelId: pid,
         personel: kullaniciAdlari.get(pid) ?? "—",
-        nakitBakiye: kumulatifBakiye.get(pid) ?? 0, // tüm zaman kümülatif (devir dahil)
+        nakitBakiye,
         nakitHarcama: v.giderNakit,
         kartHarcama: v.giderKart,
       };
     })
-    // Bu ay işlemi olmayan ve bakiyesi 0 olanları gösterme
     .filter((r) => r.nakitBakiye !== 0 || r.nakitHarcama !== 0 || r.kartHarcama !== 0)
     .sort((a, b) => a.personel.localeCompare(b.personel, "tr"));
-  }, [kasaData, ayBaslangic, ayBitis, kullaniciAdlari]);
+  }, [kasaData, devirBakiye, ayBaslangic, ayBitis, kullaniciAdlari]);
 
   // Widget 3: Yaklaşan sigorta/muayene + acente bilgisi
   const yaklasanlar = useMemo(() => {
