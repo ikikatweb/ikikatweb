@@ -708,14 +708,16 @@ export default function SantiyelerPage() {
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
-                // Tüm satır seçilen renkte — yazı rengi her zaman siyah
+                // Tüm satır seçilen renkte — pasif (dim) olsa da arka plan aynı
+                // Aktif: siyah yazı | Pasif: gri yazı (arka plan normal)
+                const satirYazi = dim ? "#6B7280" : "#000000";
                 const satirStyle: React.CSSProperties = isGrubuRengi
-                  ? { backgroundColor: isGrubuRengi, color: "#000000" }
-                  : { color: "#000000" };
+                  ? { backgroundColor: isGrubuRengi, color: satirYazi }
+                  : { color: satirYazi };
                 return (
                   <TableRow
                     key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
-                    className={`text-xs ${dim ? "opacity-70" : "hover:brightness-95"}`}
+                    className="text-xs hover:brightness-95"
                     style={satirStyle}
                   >
                     {/* Sıra No - firma içinde 1'den başlar */}

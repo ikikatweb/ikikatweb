@@ -172,9 +172,9 @@ export default function KullanicilarPage() {
           <p className="text-gray-500 text-lg">Henüz kullanıcı eklenmemiş.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-          <Table>
-            <TableHeader>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
+          <Table noWrapper>
+            <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead>Ad Soyad</TableHead>
                 <TableHead>Kullanıcı Adı</TableHead>
