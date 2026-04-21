@@ -103,6 +103,18 @@ function koyulastir(hex: string, oran: number = 0.2): string {
   return `#${p(r)}${p(g)}${p(b)}`;
 }
 
+// Arka plan rengine göre uygun yazı rengi (beyaz/siyah) döner
+function yaziRengi(hex: string): string {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return "#000000";
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  // Göreceli parlaklık hesabı (ITU-R BT.601)
+  const parlaklik = (r * 299 + g * 587 + b * 114) / 1000;
+  return parlaklik > 155 ? "#000000" : "#FFFFFF";
+}
+
 // Sütun başlıkları
 const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "sira_no", label: "Sıra No" },
@@ -696,32 +708,20 @@ export default function SantiyelerPage() {
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
-                // Pasif satırlarda da renk (arka plan) aynı kalsın, sadece yazılar solsun
-                const satirBg = isGrubuRengi ? paletGetBg(isGrubuRengi) : undefined;
-                // Seçilen rengi açıkça göster (sol kenarlık + iş grubu metin rengi)
-                const satirStyle: React.CSSProperties = {
-                  ...(satirBg ? { backgroundColor: satirBg } : {}),
-                  ...(isGrubuRengi ? { borderLeft: `6px solid ${isGrubuRengi}` } : {}),
-                };
+                // Tüm satır seçilen renkte — okunurluk için yazı rengi otomatik (beyaz/siyah)
+                const satirStyle: React.CSSProperties = isGrubuRengi
+                  ? { backgroundColor: isGrubuRengi, color: yaziRengi(isGrubuRengi) }
+                  : {};
                 return (
                   <TableRow
                     key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
-                    className={`text-xs ${dim ? "[&>td]:text-gray-400" : "hover:brightness-95"}`}
+                    className={`text-xs ${dim ? "opacity-70" : "hover:brightness-95"}`}
                     style={satirStyle}
                   >
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
-                    {/* İş Tanımları - seçilen renkle vurgulu chip */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">
-                      {s.is_grubu ? (
-                        <span
-                          className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
-                          style={{ backgroundColor: isGrubuRengi ?? "#64748B" }}
-                        >
-                          {s.is_grubu}
-                        </span>
-                      ) : "—"}
-                    </TableCell>
+                    {/* İş Tanımları */}
+                    <TableCell className="text-center px-2 whitespace-nowrap font-semibold">{s.is_grubu ?? "—"}</TableCell>
                     {/* Ekap Belge No */}
                     <TableCell className="text-center px-2 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
                     {/* İşin Adı - daraltılmış, hover'da tam gösterim */}
