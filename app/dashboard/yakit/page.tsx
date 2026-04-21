@@ -1467,7 +1467,16 @@ function YakitPageContent() {
               <Label className="text-xs">Şantiye</Label>
               <div className="overflow-hidden">
                 <SantiyeSelect
-                  santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)}
+                  santiyeler={(() => {
+                    // Deposu olan VEYA araç ataması bulunan şantiyeleri göster
+                    const aracVarSantiyeIds = new Set<string>();
+                    for (const a of araclar) {
+                      if ((a.durum ?? "aktif") === "aktif" && a.santiye_id) aracVarSantiyeIds.add(a.santiye_id);
+                    }
+                    return filtreliSantiyeler(santiyeler, kullanici).filter(
+                      (s) => (s.depo_kapasitesi ?? 0) > 0 || aracVarSantiyeIds.has(s.id),
+                    );
+                  })()}
                   value={verDialogSantiyeId}
                   onChange={(v) => { setVerDialogSantiyeId(v); setVerDialogAracId(""); setHizliAtamaOpen(false); }}
                   className={selectClass + " w-full"} />
