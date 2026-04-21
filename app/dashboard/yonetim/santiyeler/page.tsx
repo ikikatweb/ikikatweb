@@ -696,18 +696,32 @@ export default function SantiyelerPage() {
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
-                // Pasif satırlarda da renk göster (ama opacity düşük)
+                // Pasif satırlarda da renk (arka plan) aynı kalsın, sadece yazılar solsun
                 const satirBg = isGrubuRengi ? paletGetBg(isGrubuRengi) : undefined;
+                // Seçilen rengi açıkça göster (sol kenarlık + iş grubu metin rengi)
+                const satirStyle: React.CSSProperties = {
+                  ...(satirBg ? { backgroundColor: satirBg } : {}),
+                  ...(isGrubuRengi ? { borderLeft: `6px solid ${isGrubuRengi}` } : {}),
+                };
                 return (
                   <TableRow
                     key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
-                    className={`text-xs ${dim ? "opacity-60" : "hover:brightness-95"}`}
-                    style={satirBg ? { backgroundColor: satirBg } : (dim ? { backgroundColor: "#F1F5F9" } : undefined)}
+                    className={`text-xs ${dim ? "[&>td]:text-gray-400" : "hover:brightness-95"}`}
+                    style={satirStyle}
                   >
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
-                    {/* İş Tanımları */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">{s.is_grubu ?? "—"}</TableCell>
+                    {/* İş Tanımları - seçilen renkle vurgulu chip */}
+                    <TableCell className="text-center px-2 whitespace-nowrap">
+                      {s.is_grubu ? (
+                        <span
+                          className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold text-white"
+                          style={{ backgroundColor: isGrubuRengi ?? "#64748B" }}
+                        >
+                          {s.is_grubu}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
                     {/* Ekap Belge No */}
                     <TableCell className="text-center px-2 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
                     {/* İşin Adı - daraltılmış, hover'da tam gösterim */}
