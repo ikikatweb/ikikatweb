@@ -75,8 +75,7 @@ export default function LoginPage() {
         {/* Uygulama Başlığı */}
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="KAD-TEM" className="h-16 object-contain mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          <h1 className="text-3xl font-bold text-[#1E3A5F]">KAD-TEM A.Ş.</h1>
+          <img src="/logo.png" alt="Kad-Tem" className="h-40 object-contain mx-auto mb-3" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
           <p className="text-sm text-gray-500 mt-1">
             Yönetim Sistemi
           </p>
