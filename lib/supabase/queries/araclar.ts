@@ -169,6 +169,29 @@ export async function insertAracPolice(police: {
   created_by: string | null;
 }) {
   const supabase = getSupabase();
+
+  // Aynı plakaya (arac_id) aynı tarih + aynı tutar + aynı poliçe no ile
+  // aynı tipte (kasko/trafik) tekrar kayıt girilmesini engelle
+  {
+    let q = supabase
+      .from("arac_police")
+      .select("id")
+      .eq("arac_id", police.arac_id)
+      .eq("police_tipi", police.police_tipi)
+      .limit(1);
+    if (police.islem_tarihi !== null) q = q.eq("islem_tarihi", police.islem_tarihi);
+    else q = q.is("islem_tarihi", null);
+    if (police.tutar !== null) q = q.eq("tutar", police.tutar);
+    else q = q.is("tutar", null);
+    if (police.police_no !== null) q = q.eq("police_no", police.police_no);
+    else q = q.is("police_no", null);
+    const { data: mevcut, error: checkError } = await q;
+    if (checkError) throw checkError;
+    if (mevcut && mevcut.length > 0) {
+      throw new Error(`Bu araç için aynı tarih (${police.islem_tarihi ?? "—"}), aynı tutar ve aynı poliçe no ile bir ${police.police_tipi === "kasko" ? "kasko" : "trafik"} kaydı zaten var.`);
+    }
+  }
+
   const { data, error } = await supabase
     .from("arac_police")
     .insert(police)
