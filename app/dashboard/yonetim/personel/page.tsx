@@ -68,7 +68,8 @@ export default function PersonelPage() {
       p.tc_kimlik_no.includes(q) ||
       (p.meslek?.toLowerCase().includes(q) ?? false) ||
       (p.gorev?.toLowerCase().includes(q) ?? false) ||
-      (p.santiyeler?.is_adi?.toLowerCase().includes(q) ?? false)
+      (p.santiyeler?.is_adi?.toLowerCase().includes(q) ?? false) ||
+      (p.cep_telefon?.includes(q) ?? false)
     );
   });
 
@@ -80,10 +81,12 @@ export default function PersonelPage() {
     doc.text(`Toplam: ${filtrelenmis.length} personel`, 14, 17);
     autoTable(doc, {
       startY: 22,
-      head: [["Ad Soyad", "TC Kimlik No", "Meslek", "Gorev", "Santiye", "Maas", "Izin Hakki", "Durum"]],
+      head: [["Ad Soyad", "TC Kimlik No", "Santiye", "Cep Telefonu", "Meslek", "Gorev", "Maas", "Izin Hakki", "Durum"]],
       body: filtrelenmis.map((p) => [
-        tr(p.ad_soyad), p.tc_kimlik_no, tr(p.meslek ?? "—"), tr(p.gorev ?? "—"),
+        tr(p.ad_soyad), p.tc_kimlik_no,
         tr(p.santiyeler?.is_adi ?? "—"),
+        p.cep_telefon ?? "—",
+        tr(p.meslek ?? "—"), tr(p.gorev ?? "—"),
         p.maas != null ? p.maas.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "—",
         p.izin_hakki != null ? String(p.izin_hakki) : "—",
         p.durum === "pasif" ? "Pasif" : "Aktif",
@@ -95,10 +98,13 @@ export default function PersonelPage() {
   }
 
   function exportExcel() {
-    const headers = ["Ad Soyad", "TC Kimlik No", "Meslek", "Görev", "Şantiye", "Maaş", "İzin Hakkı", "Durum"];
+    const headers = ["Ad Soyad", "TC Kimlik No", "Şantiye", "Cep Telefonu", "Meslek", "Görev", "Maaş", "İzin Hakkı", "Durum"];
     const data = filtrelenmis.map((p) => [
-      p.ad_soyad, p.tc_kimlik_no, p.meslek ?? "", p.gorev ?? "",
-      p.santiyeler?.is_adi ?? "", p.maas ?? "", p.izin_hakki ?? "",
+      p.ad_soyad, p.tc_kimlik_no,
+      p.santiyeler?.is_adi ?? "",
+      p.cep_telefon ?? "",
+      p.meslek ?? "", p.gorev ?? "",
+      p.maas ?? "", p.izin_hakki ?? "",
       p.durum === "pasif" ? "Pasif" : "Aktif",
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -145,12 +151,13 @@ export default function PersonelPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table>
+          <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead>TC Kimlik No</TableHead>
                 <TableHead>Ad Soyad</TableHead>
                 <TableHead>Şantiye</TableHead>
+                <TableHead className="hidden sm:table-cell">Cep Telefonu</TableHead>
                 <TableHead className="hidden md:table-cell">Meslek</TableHead>
                 <TableHead className="hidden md:table-cell">Görev</TableHead>
                 <TableHead className="hidden lg:table-cell">Maaş</TableHead>
@@ -172,6 +179,7 @@ export default function PersonelPage() {
                       )}
                     </TableCell>
                     <TableCell>{p.santiyeler?.is_adi ?? "—"}</TableCell>
+                    <TableCell className="hidden sm:table-cell tabular-nums">{p.cep_telefon ?? "—"}</TableCell>
                     <TableCell className="hidden md:table-cell">{p.meslek ?? "—"}</TableCell>
                     <TableCell className="hidden md:table-cell">{p.gorev ?? "—"}</TableCell>
                     <TableCell className="hidden lg:table-cell tabular-nums">

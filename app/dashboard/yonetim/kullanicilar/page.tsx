@@ -48,7 +48,11 @@ export default function KullanicilarPage() {
   async function loadKullanicilar() {
     try {
       const [kData, sData] = await Promise.all([getKullanicilar(), getSantiyeler()]);
-      setKullanicilar(kData);
+      // Ad soyada göre alfabetik sırala (Türkçe locale)
+      const siralanmis = [...kData].sort((a, b) =>
+        (a.ad_soyad ?? "").localeCompare(b.ad_soyad ?? "", "tr"),
+      );
+      setKullanicilar(siralanmis);
       const all = (sData as SantiyeWithRelations[]) ?? [];
       const map: Record<string, string> = {};
       all.forEach((s) => { map[s.id] = s.is_adi; });

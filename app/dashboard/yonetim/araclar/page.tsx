@@ -260,7 +260,7 @@ export default function AraclarPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table>
+          <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
                 <TableHead className="w-[50px]">No</TableHead>

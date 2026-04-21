@@ -190,6 +190,8 @@ export default function AracPuantajPage() {
   const [kiraMap, setKiraMap] = useState<Map<string, AracKiraBedeli[]>>(new Map());
   // Tarih aralığındaki gerçek puantaj kayıtları
   const [ozetRangePuantajlar, setOzetRangePuantajlar] = useState<AracPuantaj[]>([]);
+  // Tarih aralığındaki yakıt kayıtları
+  const [ozetRangeYakitlar, setOzetRangeYakitlar] = useState<AracYakit[]>([]);
   // Kira düzenleme modal
   const [kiraDialogOpen, setKiraDialogOpen] = useState(false);
   const [kiraDialogArac, setKiraDialogArac] = useState<AracWithRelations | null>(null);
@@ -358,9 +360,19 @@ export default function AracPuantajPage() {
       const bitisExclusive = `${ey}-${String(em).padStart(2, "0")}-${String(ed).padStart(2, "0")}`;
       const rangePuantajlar = await getAracPuantajByRange(santiyeId, ozetBaslangic, bitisExclusive);
       setOzetRangePuantajlar(rangePuantajlar);
+
+      // Tarih aralığındaki yakıt kayıtları — bu şantiyeye verilen tüm yakıt
+      try {
+        const rangeYakitlar = await getAracYakitlarByRange([santiyeId], ozetBaslangic, ozetBitis);
+        setOzetRangeYakitlar(rangeYakitlar);
+      } catch (err) {
+        console.error("getAracYakitlarByRange (ozet) hatası:", err);
+        setOzetRangeYakitlar([]);
+      }
     } catch (err) {
       console.error("getAracPuantajByRange hatası:", err);
       setOzetRangePuantajlar([]);
+      setOzetRangeYakitlar([]);
     }
 
     // Tarih aralığındaki override'lar
@@ -449,6 +461,16 @@ export default function AracPuantajPage() {
     }
     return m;
   }, [aylikYakitlar]);
+
+  // Özet rapor — arac_id + dönem tarih aralığı -> toplam yakıt lt
+  function ozetAracYakitToplam(aracId: string, donemBaslangic: string, donemBitis: string): number {
+    let toplam = 0;
+    for (const y of ozetRangeYakitlar) {
+      if (y.arac_id !== aracId) continue;
+      if (y.tarih >= donemBaslangic && y.tarih <= donemBitis) toplam += y.miktar_lt;
+    }
+    return toplam;
+  }
 
   // Bir aracın o ay içindeki toplam çalışma günü (Çalıştı=1, Yarım gün=0.5)
   function aracToplamGun(aracId: string): number {
@@ -672,12 +694,20 @@ export default function AracPuantajPage() {
       });
     }
 
-    // Hiç puantaj işaretlenmemiş araçları gizle (tüm durum sayıları toplamı 0 olanlar)
+    // Hiç puantaj işaretlenmemiş VE yakıt almamış araçları gizle
+    // (puantaj yoksa bile o dönemde mazot aldıysa özet raporda görünsün)
     return satirlar.filter((s) => {
       const toplamKayit = Object.values(s.sayilar).reduce((t, n) => t + n, 0);
-      return toplamKayit > 0;
+      if (toplamKayit > 0) return true;
+      // Puantaj yoksa yakıt kontrolü yap
+      const toplamYakit = ozetRangeYakitlar.reduce((acc, y) => {
+        if (y.arac_id !== s.arac.id) return acc;
+        if (y.tarih < s.donemBaslangic || y.tarih > s.donemBitis) return acc;
+        return acc + y.miktar_lt;
+      }, 0);
+      return toplamYakit > 0;
     });
-  }, [ozetAraclari, kiraMap, ozetRangePuantajlar, ozetBaslangic, ozetBitis, ozetOverridesMap]);
+  }, [ozetAraclari, kiraMap, ozetRangePuantajlar, ozetBaslangic, ozetBitis, ozetOverridesMap, ozetRangeYakitlar]);
 
   // Kira bedeli kaydetme
   async function kiraKaydet() {
@@ -1171,7 +1201,7 @@ export default function AracPuantajPage() {
     doc.text(`${formatDateTR(ozetBaslangic)} - ${formatDateTR(ozetBitis)}`, 14, 17);
 
     const head = [
-      "Sahibi", "Plaka", "Marka/Model", "Aylik Kira",
+      "Sahibi", "Plaka", "Marka/Model", "Aylik Kira", "Top.Yakit",
       ...DURUM_LISTESI.map((d) => d.pdfShort),
       "Top.Gun", "Toplam Kira",
     ];
@@ -1183,11 +1213,14 @@ export default function AracPuantajPage() {
         ? (a.firmalar?.firma_adi ?? "—")
         : (a.kiralama_firmasi ?? "—");
       const aylikKiraText = s.aylikBedel !== null ? formatTL(s.aylikBedel) : "-";
+      const toplamYakitLt = ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
+      const yakitText = toplamYakitLt > 0 ? `${toplamYakitLt.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt` : "-";
       return [
         s.donemIndex === 0 ? tr(sahibi) : "",
         s.donemIndex === 0 ? tr(a.plaka) : tr(a.plaka),
         s.donemIndex === 0 ? tr([a.marka, a.model].filter(Boolean).join(" ")) : "",
         aylikKiraText, // tarih didDrawCell ile ayrıca çizilecek
+        yakitText,
         // Durum sayıları: override varsa "yeni (eski)" göster
         ...DURUM_LISTESI.map((d) => {
           const val = String(s.sayilar[d.kod]);
@@ -1212,16 +1245,16 @@ export default function AracPuantajPage() {
     }
 
     // Kolon boyutları:
-    // 0: Sahibi (geniş), 1: Plaka (orta), 2: Marka/Model (geniş),
-    // 3: Aylık Kira (orta), 4-9: Durumlar (çok dar, 7mm her biri),
-    // 10: Toplam Gün (dar), 11: Toplam Kira (geniş, sağa yaslı)
-    // Kolon genişlikleri — tabloyu sayfada ortala
+    // 0: Sahibi, 1: Plaka, 2: Marka/Model, 3: Aylık Kira, 4: Top.Yakıt,
+    // 5..(5+N-1): Durumlar, sonra Top.Gün ve Toplam Kira
     const durumKolonStyle: Record<number, { cellWidth: number; halign: "center"; fontSize: number; fontStyle: "bold" }> = {};
     DURUM_LISTESI.forEach((_, idx) => {
-      durumKolonStyle[4 + idx] = { cellWidth: 12, halign: "center", fontSize: 9, fontStyle: "bold" };
+      durumKolonStyle[5 + idx] = { cellWidth: 12, halign: "center", fontSize: 9, fontStyle: "bold" };
     });
+    // Top.Yakıt genel toplamı
+    const toplamYakitGenel = ozetSatirlari.reduce((acc, s) => acc + ozetAracYakitToplam(s.arac.id, s.donemBaslangic, s.donemBitis), 0);
     // Toplam kolon genişliği hesapla ve tabloyu ortala
-    const kolonToplamW = 40 + 28 + 44 + 30 + (12 * DURUM_LISTESI.length) + 18 + 32;
+    const kolonToplamW = 40 + 28 + 44 + 30 + 20 + (12 * DURUM_LISTESI.length) + 18 + 32;
     const tabloSolMargin = Math.max(10, (pageWidth - kolonToplamW) / 2);
 
     autoTable(doc, {
@@ -1231,6 +1264,10 @@ export default function AracPuantajPage() {
       body,
       foot: [[
         { content: "GENEL TOPLAM", colSpan: 4, styles: { halign: "right" as const } },
+        {
+          content: toplamYakitGenel > 0 ? `${toplamYakitGenel.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt` : "-",
+          styles: { halign: "right" as const },
+        },
         ...DURUM_LISTESI.map((d) => ({
           content: String(durumToplamlari[d.kod]),
           styles: { halign: "center" as const },
@@ -1252,9 +1289,10 @@ export default function AracPuantajPage() {
         1: { cellWidth: 28 },                                    // Plaka (tam gözüksün)
         2: { cellWidth: 44, overflow: "ellipsize" },           // Marka/Model (genişletildi)
         3: { cellWidth: 30, halign: "right", overflow: "linebreak" }, // Aylık Kira (küçültüldü)
-        ...durumKolonStyle,                                       // Durumlar 12mm × 6 = 72mm
-        [4 + DURUM_LISTESI.length]: { cellWidth: 18, halign: "center", fontSize: 9, fontStyle: "bold" }, // Top.Gün
-        [4 + DURUM_LISTESI.length + 1]: { cellWidth: 32, halign: "right", fontSize: 9, fontStyle: "bold" },  // Toplam Kira (küçültüldü, punto büyütüldü)
+        4: { cellWidth: 20, halign: "right", fontSize: 8 },     // Top.Yakıt
+        ...durumKolonStyle,                                       // Durumlar
+        [5 + DURUM_LISTESI.length]: { cellWidth: 18, halign: "center", fontSize: 9, fontStyle: "bold" }, // Top.Gün
+        [5 + DURUM_LISTESI.length + 1]: { cellWidth: 32, halign: "right", fontSize: 9, fontStyle: "bold" },  // Toplam Kira
       },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       didParseCell: (data) => {
@@ -1265,9 +1303,9 @@ export default function AracPuantajPage() {
             data.cell.styles.minCellHeight = 12;
           }
         }
-        // Durum kolonlarını hafif renklendir
-        if (data.section === "body" && data.column.index >= 4 && data.column.index < 4 + DURUM_LISTESI.length) {
-          const idx = data.column.index - 4;
+        // Durum kolonlarını hafif renklendir (indeks +1 kaydı çünkü Top.Yakıt 4. sütun eklendi)
+        if (data.section === "body" && data.column.index >= 5 && data.column.index < 5 + DURUM_LISTESI.length) {
+          const idx = data.column.index - 5;
           const d = DURUM_LISTESI[idx];
           if (d) {
             const [r, g, b] = d.pdfRGB;
@@ -1380,7 +1418,7 @@ export default function AracPuantajPage() {
     const headers = [
       "Sahibi", "Plaka", "Marka", "Model",
       "Dönem Başlangıç", "Dönem Bitiş",
-      "Aylık Kira (TL)",
+      "Aylık Kira (TL)", "Toplam Yakıt (lt)",
       ...DURUM_LISTESI.map((d) => d.label),
       "Toplam Gün", "Toplam Kira (TL)",
     ];
@@ -1389,6 +1427,7 @@ export default function AracPuantajPage() {
       const sahibi = a.tip === "ozmal"
         ? (a.firmalar?.firma_adi ?? "")
         : (a.kiralama_firmasi ?? "");
+      const toplamYakitLt = ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
       return [
         sahibi,
         a.plaka,
@@ -1397,6 +1436,7 @@ export default function AracPuantajPage() {
         s.donemBaslangic,
         s.donemBitis,
         s.aylikBedel ?? "",
+        toplamYakitLt,
         ...DURUM_LISTESI.map((d) => s.sayilar[d.kod]),
         s.toplamGun,
         s.toplamKira,
@@ -1406,6 +1446,7 @@ export default function AracPuantajPage() {
     // Toplam satırı
     const toplamKiraGenel = ozetSatirlari.reduce((acc, s) => acc + s.toplamKira, 0);
     const toplamGunGenel = ozetSatirlari.reduce((acc, s) => acc + s.toplamGun, 0);
+    const toplamYakitGenel = ozetSatirlari.reduce((acc, s) => acc + ozetAracYakitToplam(s.arac.id, s.donemBaslangic, s.donemBitis), 0);
     const durumToplamlari: Record<AracPuantajDurum, number> = {
       calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0,
     };
@@ -1414,6 +1455,7 @@ export default function AracPuantajPage() {
     }
     const toplamSatiri: (string | number)[] = [
       "GENEL TOPLAM", "", "", "", "", "", "",
+      toplamYakitGenel,
       ...DURUM_LISTESI.map((d) => durumToplamlari[d.kod]),
       toplamGunGenel,
       toplamKiraGenel,
@@ -2036,8 +2078,17 @@ export default function AracPuantajPage() {
                               )}
                             </button>
                           </TableCell>
-                          {/* Toplam Yakıt - placeholder */}
-                          <TableCell className="px-2 text-right text-gray-400 italic">—</TableCell>
+                          {/* Toplam Yakıt - dönem içinde alınan yakıt toplamı */}
+                          <TableCell className="px-2 text-right">
+                            {(() => {
+                              const toplamLt = ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
+                              return toplamLt > 0 ? (
+                                <span className="font-semibold text-blue-700">{toplamLt.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt</span>
+                              ) : (
+                                <span className="text-gray-300">—</span>
+                              );
+                            })()}
+                          </TableCell>
                           {/* Durum sayıları - dönem bazlı (tıklanabilir override) */}
                           {DURUM_LISTESI.map((d) => {
                             const degisti = s.override !== null && s.sayilar[d.kod] !== s.orijinalSayilar[d.kod];
@@ -2071,6 +2122,40 @@ export default function AracPuantajPage() {
                         </TableRow>
                       );
                     })}
+                    {/* GENEL TOPLAM satırı — toplam yakıt, toplam gün ve toplam kira */}
+                    {(() => {
+                      const genelYakit = ozetSatirlari.reduce(
+                        (acc, s) => acc + ozetAracYakitToplam(s.arac.id, s.donemBaslangic, s.donemBitis),
+                        0,
+                      );
+                      const genelGun = ozetSatirlari.reduce((acc, s) => acc + s.toplamGun, 0);
+                      const genelKira = ozetSatirlari.reduce((acc, s) => acc + s.toplamKira, 0);
+                      const durumToplam: Record<AracPuantajDurum, number> = {
+                        calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0,
+                      };
+                      for (const s of ozetSatirlari) {
+                        for (const d of DURUM_LISTESI) durumToplam[d.kod] += s.sayilar[d.kod];
+                      }
+                      return (
+                        <TableRow className="bg-[#0f2540] text-white font-bold border-t-2 border-[#1E3A5F]">
+                          <TableCell className="px-2 text-white font-bold" colSpan={4}>GENEL TOPLAM</TableCell>
+                          <TableCell className="px-2 text-right text-white font-bold">
+                            {genelYakit > 0 ? `${genelYakit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt` : "—"}
+                          </TableCell>
+                          {DURUM_LISTESI.map((d) => (
+                            <TableCell key={d.kod} className="px-1 text-center text-white font-bold">
+                              {durumToplam[d.kod]}
+                            </TableCell>
+                          ))}
+                          <TableCell className="px-2 text-center text-white font-bold">
+                            {genelGun % 1 === 0 ? genelGun : genelGun.toFixed(1)}
+                          </TableCell>
+                          <TableCell className="px-2 text-right text-white font-bold">
+                            {formatTL(genelKira)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })()}
                   </TableBody>
                 </Table>
               </div>

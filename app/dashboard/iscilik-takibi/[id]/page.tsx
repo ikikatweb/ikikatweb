@@ -317,12 +317,12 @@ export default function IscilikDetayPage() {
                 <span className="text-xs text-gray-500 font-medium">Kalan</span>
                 <span className="text-xs font-bold text-red-700">{formatPara(kalanPrim)}</span>
               </div>
-              {/* Başlangıç Tarihi - elle */}
+              {/* İş Yeri Teslim Tarihi - elle */}
               {(() => {
                 const isEdBas = editingHeader === "baslangic_tarihi";
                 return (
                   <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">Başlangıç Tarihi</span>
+                    <span className="text-xs text-gray-500 font-medium">İş Yeri Teslim Tarihi</span>
                     {isEdBas ? (
                       <Input ref={inputRef} type="date" value={headerEditValue}
                         onChange={(e) => setHeaderEditValue(e.target.value)}
@@ -373,14 +373,14 @@ export default function IscilikDetayPage() {
                   </div>
                 );
               })()}
-              {/* Bitiş Tarihi = Başlangıç + Süre toplamı */}
+              {/* Bitiş Tarihi = Başlangıç + Süre toplamı - 1 gün (başlangıç günü dahil) */}
               {(() => {
                 const sureText = takip.sure_text ?? "";
                 const sureToplam = sureText ? sureText.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0) : 0;
                 let bitisTarihi: string | null = null;
                 if (takip.baslangic_tarihi && sureToplam > 0) {
                   const d = new Date(takip.baslangic_tarihi);
-                  d.setDate(d.getDate() + sureToplam);
+                  d.setDate(d.getDate() + sureToplam - 1);
                   bitisTarihi = d.toISOString().split("T")[0];
                 }
                 return (

@@ -266,7 +266,7 @@ export default function GidenEvrakPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table>
+          <Table noWrapper>
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Tarih</TableHead>

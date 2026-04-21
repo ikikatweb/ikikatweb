@@ -123,7 +123,7 @@ const COLUMNS: ColDef[] = [
         const toplam = r.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
         if (toplam > 0) {
           const d = new Date(r.baslangic_tarihi);
-          d.setDate(d.getDate() + toplam);
+          d.setDate(d.getDate() + toplam - 1);
           return formatTarih(d.toISOString().split("T")[0]);
         }
       }
@@ -452,7 +452,7 @@ export default function IscilikTakibiPage() {
             const toplam = row.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
             if (toplam > 0) {
               const d = new Date(row.baslangic_tarihi);
-              d.setDate(d.getDate() + toplam);
+              d.setDate(d.getDate() + toplam - 1);
               bitimStr = d.toISOString().split("T")[0];
             }
           } else {
@@ -655,7 +655,7 @@ export default function IscilikTakibiPage() {
                         const toplam = row.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
                         if (toplam > 0) {
                           const d = new Date(row.baslangic_tarihi);
-                          d.setDate(d.getDate() + toplam);
+                          d.setDate(d.getDate() + toplam - 1);
                           bitimStr = d.toISOString().split("T")[0];
                         }
                       } else {
