@@ -470,6 +470,15 @@ export type AracCinsiYakitLimit = {
   updated_at: string;
 };
 
+// Kasa hareketi üst limitleri — nakit ve kart için ayrı (tek satırlık tablo)
+// Bu tutarları aşan işlemlerde kullanıcıya uyarı gösterilir
+export type KasaHareketLimit = {
+  id: string;
+  ust_sinir_nakit: number;
+  ust_sinir_kart: number;
+  updated_at: string;
+};
+
 // Araçlara verilen yakıt dağıtımı
 export type AracYakit = {
   id: string;

@@ -1,6 +1,6 @@
 // Kasa Defteri sorguları — personel harcama takibi
 import { createClient } from "@/lib/supabase/client";
-import type { KasaHareketi } from "@/lib/supabase/types";
+import type { KasaHareketi, KasaHareketLimit } from "@/lib/supabase/types";
 
 function getSupabase() {
   return createClient();
@@ -110,4 +110,38 @@ export async function uploadSlip(file: File, hareketId: string): Promise<string>
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Slip yüklenemedi");
   return data.url;
+}
+
+// ==================== KASA HAREKET ÜST LİMİT ====================
+// Tek satırlı yapı — DB'de sadece bir satır beklenir
+
+export async function getKasaHareketLimit(): Promise<KasaHareketLimit | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("kasa_hareketi_limit")
+    .select("*")
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as KasaHareketLimit | null;
+}
+
+export async function upsertKasaHareketLimit(limit: {
+  ust_sinir_nakit: number;
+  ust_sinir_kart: number;
+}): Promise<void> {
+  const supabase = getSupabase();
+  const mevcut = await getKasaHareketLimit();
+  if (mevcut) {
+    const { error } = await supabase
+      .from("kasa_hareketi_limit")
+      .update({ ...limit, updated_at: new Date().toISOString() })
+      .eq("id", mevcut.id);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("kasa_hareketi_limit")
+      .insert(limit);
+    if (error) throw error;
+  }
 }

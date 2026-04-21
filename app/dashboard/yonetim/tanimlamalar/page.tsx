@@ -19,7 +19,9 @@ import {
   upsertAracCinsiYakitLimit,
   deleteAracCinsiYakitLimit,
 } from "@/lib/supabase/queries/yakit";
+import { getKasaHareketLimit, upsertKasaHareketLimit } from "@/lib/supabase/queries/kasa";
 import { formatBaslik, formatBuyukHarf, formatMuhatap, formatKisiAdi } from "@/lib/utils/isim";
+import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Tanimlama, Firma, AracCinsiYakitLimit } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,7 +35,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 
@@ -114,15 +116,29 @@ export default function TanimlamalarPage() {
   const [yakitLimitUst, setYakitLimitUst] = useState("");
   const [yakitLimitSilId, setYakitLimitSilId] = useState<string | null>(null);
 
+  // Kasa Hareketi Üst Limitleri — nakit ve kart ayrı
+  const [kasaLimitNakitDB, setKasaLimitNakitDB] = useState<number>(0);
+  const [kasaLimitKartDB, setKasaLimitKartDB] = useState<number>(0);
+  const [kasaLimitNakitInput, setKasaLimitNakitInput] = useState("");
+  const [kasaLimitKartInput, setKasaLimitKartInput] = useState("");
+  const [kasaLimitKaydediyor, setKasaLimitKaydediyor] = useState(false);
+
   const loadData = useCallback(async () => {
     try {
-      const [data, fData, lData] = await Promise.all([
+      const [data, fData, lData, kasaLimit] = await Promise.all([
         getTumTanimlamalar(),
         getFirmalar(),
         getAracCinsiYakitLimitler().catch(() => [] as AracCinsiYakitLimit[]),
+        getKasaHareketLimit().catch(() => null),
       ]);
       setFirmalar(fData ?? []);
       setYakitLimitler(lData);
+      if (kasaLimit) {
+        setKasaLimitNakitDB(kasaLimit.ust_sinir_nakit);
+        setKasaLimitKartDB(kasaLimit.ust_sinir_kart);
+        setKasaLimitNakitInput(formatParaInput(kasaLimit.ust_sinir_nakit.toFixed(2).replace(".", ",")));
+        setKasaLimitKartInput(formatParaInput(kasaLimit.ust_sinir_kart.toFixed(2).replace(".", ",")));
+      }
       const items = data ?? [];
 
       // Sıra numarası olmayan veya çakışan kayıtları düzelt
@@ -1000,6 +1016,87 @@ export default function TanimlamalarPage() {
                 onClick={handleYakitLimitEkle}
               >
                 <Plus size={12} className="mr-1" /> Ekle / Güncelle
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Kasa Hareketi Üst Limit kartı — nakit ve kart ayrı */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-[#1E3A5F] flex items-center gap-1.5">
+                <Wallet size={14} /> kasa_hareketi_ust_limit
+              </h3>
+            </div>
+            <p className="text-[10px] text-gray-400 mb-3">
+              Nakit ve kredi kartı için ayrı üst limit — tutarı aşan işlemlerde uyarı çıkar
+            </p>
+            <div className="space-y-2 pt-2 border-t">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-gray-500">Nakit Üst Limit (TL)</Label>
+                  {kasaLimitNakitDB > 0 && (
+                    <span className="text-[9px] text-gray-400">
+                      Mevcut: {kasaLimitNakitDB.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={kasaLimitNakitInput}
+                  onChange={(e) => setKasaLimitNakitInput(formatParaInput(e.target.value))}
+                  placeholder="10.000,00"
+                  className={selectClass + " text-xs"}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-gray-500">Kredi Kartı Üst Limit (TL)</Label>
+                  {kasaLimitKartDB > 0 && (
+                    <span className="text-[9px] text-gray-400">
+                      Mevcut: {kasaLimitKartDB.toLocaleString("tr-TR", { maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={kasaLimitKartInput}
+                  onChange={(e) => setKasaLimitKartInput(formatParaInput(e.target.value))}
+                  placeholder="25.000,00"
+                  className={selectClass + " text-xs"}
+                />
+              </div>
+              <Button
+                size="sm"
+                className="w-full bg-[#F97316] hover:bg-[#ea580c] text-white h-7 text-xs"
+                disabled={kasaLimitKaydediyor}
+                onClick={async () => {
+                  const nakit = parseParaInput(kasaLimitNakitInput);
+                  const kart = parseParaInput(kasaLimitKartInput);
+                  if (isNaN(nakit) || nakit < 0) { toast.error("Nakit için geçerli bir tutar girin."); return; }
+                  if (isNaN(kart) || kart < 0) { toast.error("Kart için geçerli bir tutar girin."); return; }
+                  setKasaLimitKaydediyor(true);
+                  try {
+                    await upsertKasaHareketLimit({ ust_sinir_nakit: nakit, ust_sinir_kart: kart });
+                    setKasaLimitNakitDB(nakit);
+                    setKasaLimitKartDB(kart);
+                    toast.success("Kasa üst limitleri güncellendi.");
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("column")) {
+                      toast.error("Tablo / sütun eksik. Migrasyon SQL'ini çalıştırın.", { duration: 8000 });
+                    } else {
+                      toast.error("Kaydedilemedi: " + msg);
+                    }
+                  } finally {
+                    setKasaLimitKaydediyor(false);
+                  }
+                }}
+              >
+                {kasaLimitKaydediyor ? "Kaydediliyor..." : "Kaydet"}
               </Button>
             </div>
           </CardContent>

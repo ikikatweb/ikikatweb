@@ -14,6 +14,7 @@ import {
   updateKasaHareketi,
   deleteKasaHareketi,
   uploadSlip,
+  getKasaHareketLimit,
 } from "@/lib/supabase/queries/kasa";
 import { useAuth } from "@/hooks";
 import type { KasaHareketi } from "@/lib/supabase/types";
@@ -74,6 +75,9 @@ function KasaDefContent() {
   const [kategoriler, setKategoriler] = useState<string[]>([]);
   const [hareketler, setHareketler] = useState<KasaHareketi[]>([]);
   const [kullaniciMap, setKullaniciMap] = useState<Map<string, string>>(new Map());
+  // Kasa hareket üst limitleri — tanımlamalardan gelir (nakit ve kart ayrı)
+  const [kasaUstLimitNakit, setKasaUstLimitNakit] = useState<number>(0);
+  const [kasaUstLimitKart, setKasaUstLimitKart] = useState<number>(0);
 
   // Filtreler
   const bugun = new Date();
@@ -114,11 +118,12 @@ function KasaDefContent() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sData, katData, hData, kResp] = await Promise.all([
+      const [sData, katData, hData, kResp, limitData] = await Promise.all([
         getSantiyelerAll(),
         getDegerler("kasa_harcama_kategori").catch(() => []),
         getKasaHareketleri().catch(() => []),
         fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
+        getKasaHareketLimit().catch(() => null),
       ]);
       const kullaniciListesi = ((kResp as { id: string; ad_soyad: string; aktif?: boolean }[]) ?? [])
         .map((k) => ({ id: k.id, ad_soyad: k.ad_soyad, aktif: k.aktif !== false }));
@@ -126,6 +131,8 @@ function KasaDefContent() {
       setSantiyeler((sData as SantiyeBasic[]) ?? []);
       setKategoriler(katData);
       setHareketler(hData);
+      setKasaUstLimitNakit(limitData?.ust_sinir_nakit ?? 0);
+      setKasaUstLimitKart(limitData?.ust_sinir_kart ?? 0);
 
       // Otomatik şantiye seçimi
       const otoId = otomatikSantiyeId(sData as SantiyeBasic[], kullanici);
@@ -284,6 +291,20 @@ function KasaDefContent() {
     // Gider: sadece pozitif tutar
     if (tutar === 0) { toast.error("Geçerli tutar girin."); return; }
     if (dTip === "gider" && tutar < 0) { toast.error("Gider tutarı negatif olamaz."); return; }
+
+    // Üst limit uyarısı — ödeme yöntemine göre ilgili limit (bloklamaz, sadece uyarır)
+    {
+      // Nihai ödeme yöntemi (gelir için otomatik nakit)
+      const nihaiOdeme = dTip === "gelir" ? "nakit" : dOdeme;
+      const ilgiliLimit = nihaiOdeme === "nakit" ? kasaUstLimitNakit : kasaUstLimitKart;
+      const tip = nihaiOdeme === "nakit" ? "Nakit" : "Kredi kartı";
+      if (ilgiliLimit > 0 && Math.abs(tutar) > ilgiliLimit) {
+        toast(`Dikkat: ${tip} üst limiti (${ilgiliLimit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })} TL) aşıldı.`, {
+          icon: "⚠️", duration: 6000,
+          style: { background: "#FEF3C7", color: "#92400E", fontWeight: "bold" },
+        });
+      }
+    }
 
     // Gider ise tüm alanlar zorunlu
     if (dTip === "gider") {
