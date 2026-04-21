@@ -708,10 +708,10 @@ export default function SantiyelerPage() {
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
-                // Tüm satır seçilen renkte — okunurluk için yazı rengi otomatik (beyaz/siyah)
+                // Tüm satır seçilen renkte — yazı rengi her zaman siyah
                 const satirStyle: React.CSSProperties = isGrubuRengi
-                  ? { backgroundColor: isGrubuRengi, color: yaziRengi(isGrubuRengi) }
-                  : {};
+                  ? { backgroundColor: isGrubuRengi, color: "#000000" }
+                  : { color: "#000000" };
                 return (
                   <TableRow
                     key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
