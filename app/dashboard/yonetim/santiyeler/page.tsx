@@ -103,6 +103,17 @@ function koyulastir(hex: string, oran: number = 0.2): string {
   return `#${p(r)}${p(g)}${p(b)}`;
 }
 
+// Bir hex rengi belirli oran kadar açıklaştır (beyaza doğru karıştır)
+function aciklastir(hex: string, oran: number = 0.2): string {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return hex;
+  const r = Math.round(parseInt(m[1], 16) * (1 - oran) + 255 * oran);
+  const g = Math.round(parseInt(m[2], 16) * (1 - oran) + 255 * oran);
+  const b = Math.round(parseInt(m[3], 16) * (1 - oran) + 255 * oran);
+  const p = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${p(r)}${p(g)}${p(b)}`;
+}
+
 // Arka plan rengine göre uygun yazı rengi (beyaz/siyah) döner
 function yaziRengi(hex: string): string {
   const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
@@ -153,7 +164,7 @@ export default function SantiyelerPage() {
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>("tumu");
+  const [filtre, setFiltre] = useState<Filtre>("aktif");
   const [isGrupFiltre, setIsGrupFiltre] = useState<string>("tumu");
   const [firmaFiltre, setFirmaFiltre] = useState<string>("tumu");
   const [arama, setArama] = useState("");
@@ -673,28 +684,28 @@ export default function SantiyelerPage() {
             <div key={grup.firmaAdi} className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
               {/* Firma başlığı — firma rengi kullanılır */}
               <div className="px-4 py-2" style={{ backgroundColor: grup.firmaRenk ?? "#152d4a" }}>
-                <h2 className="text-sm font-bold text-white text-center">{grup.firmaAdi}</h2>
+                <h2 className="text-base font-bold text-black text-center">{grup.firmaAdi}</h2>
               </div>
               <Table>
                 <TableHeader>
-                  <TableRow style={{ backgroundColor: koyulastir(grup.firmaRenk ?? "#152d4a", 0.25) }}>
+                  <TableRow style={{ backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) }}>
                     {HEADER_LABELS.map((h) => {
                       const si = sorts.findIndex((s) => s.key === h.key);
                       const sc = si >= 0 ? sorts[si] : null;
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
-                          className={`text-white font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : h.key === "is_adi" ? "min-w-[140px] max-w-[180px]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          className={`text-black font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : h.key === "is_adi" ? "min-w-[140px] max-w-[180px]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">
-                              {sorts.length > 1 && <span className="text-[8px] text-orange-300">{si + 1}</span>}
-                              {sc.dir === "asc" ? <ArrowUp size={10} className="text-orange-300" /> : <ArrowDown size={10} className="text-orange-300" />}
+                              {sorts.length > 1 && <span className="text-[8px] text-orange-700">{si + 1}</span>}
+                              {sc.dir === "asc" ? <ArrowUp size={10} className="text-orange-700" /> : <ArrowDown size={10} className="text-orange-700" />}
                             </span>}
                           </div>
                         </TableHead>
                       );
                     })}
-                    <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[50px]">İşlem</TableHead>
+                    <TableHead className="text-black font-semibold text-center text-[10px] px-2 min-w-[50px]">İşlem</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -708,12 +719,10 @@ export default function SantiyelerPage() {
                 const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
-                // Tüm satır seçilen renkte — pasif (dim) olsa da arka plan aynı
-                // Aktif: siyah yazı | Pasif: gri yazı (arka plan normal)
-                const satirYazi = dim ? "#6B7280" : "#000000";
+                // Tüm satırlar (aktif/pasif) — yazı rengi her zaman siyah
                 const satirStyle: React.CSSProperties = isGrubuRengi
-                  ? { backgroundColor: isGrubuRengi, color: satirYazi }
-                  : { color: satirYazi };
+                  ? { backgroundColor: isGrubuRengi, color: "#000000" }
+                  : { color: "#000000" };
                 return (
                   <TableRow
                     key={`${s.id}-${satir.ortakOrani ?? "ana"}`}
