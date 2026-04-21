@@ -25,7 +25,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Kullanıcılar", href: "/dashboard/yonetim/kullanicilar", icon: <Users size={16} /> },
       { label: "Firmalar", href: "/dashboard/yonetim/firmalar", icon: <Building2 size={16} /> },
-      { label: "Şantiyeler", href: "/dashboard/yonetim/santiyeler", icon: <HardHat size={16} /> },
+      { label: "İş Deneyim Belgeleri", href: "/dashboard/yonetim/santiyeler", icon: <HardHat size={16} /> },
       { label: "Personeller", href: "/dashboard/yonetim/personel", icon: <UserCog size={16} /> },
       { label: "Araçlar", href: "/dashboard/yonetim/araclar", icon: <Truck size={16} /> },
       { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },

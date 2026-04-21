@@ -168,6 +168,12 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
       return;
     }
 
+    // Cep telefonu zorunlu
+    if (!formData.cep_telefon || !formData.cep_telefon.trim()) {
+      toast.error("Cep telefonu zorunludur.");
+      return;
+    }
+
     // Ad soyadı, meslek ve görev için standart format uygula
     const submitData = {
       ...formData,
@@ -417,10 +423,11 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cep_telefon">Cep Telefonu</Label>
+              <Label htmlFor="cep_telefon">Cep Telefonu <span className="text-red-500">*</span></Label>
               <Input id="cep_telefon" name="cep_telefon" type="tel" placeholder="0535 535 35 35"
                 value={formData.cep_telefon ?? ""}
                 onChange={(e) => setFormData((p) => ({ ...p, cep_telefon: formatTelefon(e.target.value) || null }))}
+                required
                 disabled={loading} />
             </div>
 

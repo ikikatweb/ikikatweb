@@ -573,7 +573,7 @@ export default function SantiyelerPage() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">Şantiyeler</h1>
+        <h1 className="text-2xl font-bold text-[#1E3A5F]">İş Deneyim Belgeleri</h1>
         <div className="flex items-center gap-3 flex-wrap">
           {/* İhale İlan Daveti Tarihi — ay seçilir, bir önceki ayın Yi-ÜFE'si kullanılır */}
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
