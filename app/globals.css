@@ -133,11 +133,24 @@ thead th {
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
-  /* Her A4 sayfasında tutarlı kenar boşluğu — her sayfada aynı margin uygulanır
-     böylece çok sayfalı evraklarda 2. sayfanın ilk satırı kenara yapışmaz */
+  /* @page margin — her sayfada tutarlı kenar boşluğu (tek sayfalı VE çok sayfalı
+     evraklar için). Padding container'a uygulandığında sadece ilk sayfada geçerli
+     olup sonraki sayfalarda içerik kesilebildiği için @page kullanmak zorundayız.
+     NOT: Bu margin alanında tarayıcı header/footer ekleyebilir —
+     print dialog'da "Üstbilgi ve altbilgi" checkbox'ını kaldırmanız gerekir. */
   @page {
     size: A4;
     margin: 1.25cm 2.25cm 1cm 2.25cm;
+  }
+
+  /* Margin box'ları explicit boşalt — bazı tarayıcılar bunu respect eder */
+  @page {
+    @top-left { content: ""; }
+    @top-center { content: ""; }
+    @top-right { content: ""; }
+    @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
+    @bottom-right { content: ""; }
   }
 
   html, body {
@@ -160,8 +173,8 @@ thead th {
     height: auto !important;
   }
 
-  /* Onizleme kutusunun kendi padding/width'ini baskıda sıfırla —
-     @page margin'leri zaten kenar boşluğunu sağlıyor */
+  /* Onizleme kutusu — baskıda padding'i sıfırla çünkü @page margin zaten
+     kenar boşluğunu sağlıyor. Aksi halde çift margin olur */
   .evrak-print-area .evrak-onizleme {
     box-shadow: none !important;
     border: none !important;
