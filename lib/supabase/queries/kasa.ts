@@ -8,43 +8,75 @@ function getSupabase() {
 
 export async function getKasaHareketleri(): Promise<KasaHareketi[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("kasa_hareketi")
-    .select("*")
-    .order("tarih", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as KasaHareketi[];
+  // Supabase default 1000 satır limitini pagination ile aş (tüm geçmiş kayıtlar gelsin)
+  const PARCA = 1000;
+  const tumRows: KasaHareketi[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("kasa_hareketi")
+      .select("*")
+      .order("tarih", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as KasaHareketi[];
+    tumRows.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tumRows;
 }
 
-// Tarih aralığına göre kasa hareketlerini getir — büyük veri setlerinde hızlı yükleme için
+// Tarih aralığına göre kasa hareketlerini getir — pagination ile tüm veriyi çek
 export async function getKasaHareketleriByRange(baslangic: string, bitis: string): Promise<KasaHareketi[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("kasa_hareketi")
-    .select("*")
-    .gte("tarih", baslangic)
-    .lte("tarih", bitis)
-    .order("tarih", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as KasaHareketi[];
+  const PARCA = 1000;
+  const tumRows: KasaHareketi[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("kasa_hareketi")
+      .select("*")
+      .gte("tarih", baslangic)
+      .lte("tarih", bitis)
+      .order("tarih", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as KasaHareketi[];
+    tumRows.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tumRows;
 }
 
-// Bir tarihe kadar olan kümülatif nakit bakiyeleri — kullanıcı bazlı devir hesabı için hızlı
-// Sadece personel_id, tip, tutar alanları çekilir (minimal payload)
+// Bir tarihe kadar olan kümülatif nakit bakiyeleri — kullanıcı bazlı devir hesabı
+// Pagination ile tüm geçmiş kayıtları tara (devir bakiye doğru olsun)
 export async function getKasaDevirBakiyeleri(bitisTarihi: string): Promise<Map<string, number>> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("kasa_hareketi")
-    .select("personel_id, tip, tutar")
-    .eq("odeme_yontemi", "nakit")
-    .lte("tarih", bitisTarihi);
-  if (error) throw error;
+  const PARCA = 1000;
   const map = new Map<string, number>();
-  for (const h of (data ?? []) as { personel_id: string; tip: string; tutar: number }[]) {
-    const prev = map.get(h.personel_id) ?? 0;
-    map.set(h.personel_id, prev + (h.tip === "gelir" ? h.tutar : -h.tutar));
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("kasa_hareketi")
+      .select("personel_id, tip, tutar")
+      .eq("odeme_yontemi", "nakit")
+      .lte("tarih", bitisTarihi)
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as { personel_id: string; tip: string; tutar: number }[];
+    for (const h of parca) {
+      const prev = map.get(h.personel_id) ?? 0;
+      map.set(h.personel_id, prev + (h.tip === "gelir" ? h.tutar : -h.tutar));
+    }
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
   }
   return map;
 }
