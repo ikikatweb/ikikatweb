@@ -470,6 +470,43 @@ export type AracCinsiYakitLimit = {
   updated_at: string;
 };
 
+// Araç / iş makinası bakım ve tamirat kaydı
+export type AracBakimTipi = "bakim" | "tamirat";
+export type AracBakim = {
+  id: string;
+  arac_id: string;
+  tip: AracBakimTipi;
+  bakim_tarihi: string; // YYYY-MM-DD
+  yaptiran_id: string | null;
+  yaptiran_adi: string | null;
+  servis_tamirci: string | null; // dış servis/tamirci adı
+  tutar: number | null;
+  km: number | null;
+  detay: string | null;
+  sonraki_bakim_km: number | null;
+  sonraki_bakim_tarihi: string | null;
+  fatura_url: string | null; // legacy — ilk dosya
+  fatura_urls: string[] | null; // faturalar (mali belge — PDF/JPG)
+  is_foto_urls: string[] | null; // yapılan iş foto/PDF'leri
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+};
+
+// Araç bilgileri join'lenmiş bakım kaydı (liste için)
+export type AracBakimWithArac = AracBakim & {
+  araclar?: {
+    plaka: string;
+    marka: string | null;
+    model: string | null;
+    guncel_gosterge: number | null;
+    sayac_tipi: "km" | "saat" | null;
+    cinsi: string | null;
+  } | null;
+  yaptiran_ad?: string | null; // personel tablosundan çözülmüş (işi yaptıran)
+  isleme_giren_ad?: string | null; // kullanicilar tablosundan çözülmüş (kaydı giren)
+};
+
 // Kasa hareketi üst limitleri — nakit ve kart için ayrı (tek satırlık tablo)
 // Bu tutarları aşan işlemlerde kullanıcıya uyarı gösterilir
 export type KasaHareketLimit = {

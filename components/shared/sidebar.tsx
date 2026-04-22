@@ -9,7 +9,7 @@ import { hrefToModuleKey } from "@/lib/permissions";
 import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
   Mail, MailOpen, Landmark, Trash2,
-  Shield, Headphones, BarChart3,
+  Shield, Headphones, BarChart3, Wrench,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator,
   ChevronDown, ChevronUp,
 } from "lucide-react";
@@ -51,6 +51,14 @@ const menuGroups: MenuGroup[] = [
       { label: "Sigorta & Muayene", href: "/dashboard/araclar/sigorta-muayene", icon: <Shield size={16} /> },
       { label: "Acente Takip", href: "/dashboard/araclar/acente-takip", icon: <Headphones size={16} /> },
       { label: "Acente Raporu", href: "/dashboard/araclar/acente-raporu", icon: <BarChart3 size={16} /> },
+    ],
+  },
+  {
+    title: "Araç Bakım",
+    icon: <Wrench size={20} />,
+    color: "text-cyan-600 bg-cyan-50",
+    items: [
+      { label: "Bakım & Tamirat", href: "/dashboard/arac-bakim", icon: <Wrench size={16} /> },
     ],
   },
   {

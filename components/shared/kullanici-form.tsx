@@ -36,6 +36,7 @@ const DASHBOARD_WIDGETS = [
   { key: "yiufe", label: "Yi-ÜFE Endeksler" },
   { key: "kasa_ozet", label: "Kasa Defteri — Personel Özeti" },
   { key: "sigorta_muayene", label: "Yaklaşan Sigorta & Muayene" },
+  { key: "yaklasan_bakim", label: "Yaklaşan Araç Bakımları" },
   { key: "depo_yakit", label: "Depo Yakıt Durumu" },
   { key: "son_yakit", label: "Son Yakıt Alımları" },
   { key: "eksik_evrak", label: "Eksik Evrak Numaraları" },

@@ -26,6 +26,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "araclar-sigorta-muayene", label: "Sigorta & Muayene", grup: "Araçlar" },
   { key: "araclar-acente-takip", label: "Acente Takip", grup: "Araçlar" },
   { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Araçlar" },
+  { key: "arac-bakim", label: "Araç Bakım", grup: "Araçlar" },
   // Puantaj
   { key: "puantaj-personel", label: "Personel Puantaj", grup: "Puantaj" },
   { key: "puantaj-arac", label: "Araç Puantaj", grup: "Puantaj" },

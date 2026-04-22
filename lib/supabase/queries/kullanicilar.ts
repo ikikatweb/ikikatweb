@@ -9,6 +9,15 @@ export type KullaniciCreatePayload = {
   izinler?: Izinler;
   santiye_ids?: string[];
   geriye_donus_gun?: number | null;
+  // Modül bazlı işlem/görüntüleme gün limitleri
+  puantaj_islem_gun?: number | null;
+  puantaj_goruntuleme_gun?: number | null;
+  yakit_islem_gun?: number | null;
+  yakit_goruntuleme_gun?: number | null;
+  kasa_islem_gun?: number | null;
+  kasa_goruntuleme_gun?: number | null;
+  santiye_defteri_islem_gun?: number | null;
+  santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
 };
 
@@ -20,6 +29,15 @@ export type KullaniciUpdatePayload = {
   izinler?: Izinler;
   santiye_ids?: string[];
   geriye_donus_gun?: number | null;
+  // Modül bazlı işlem/görüntüleme gün limitleri
+  puantaj_islem_gun?: number | null;
+  puantaj_goruntuleme_gun?: number | null;
+  yakit_islem_gun?: number | null;
+  yakit_goruntuleme_gun?: number | null;
+  kasa_islem_gun?: number | null;
+  kasa_goruntuleme_gun?: number | null;
+  santiye_defteri_islem_gun?: number | null;
+  santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
 };
 

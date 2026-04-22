@@ -7,7 +7,8 @@ import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
 import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip } from "@/lib/supabase/queries/araclar";
-import type { TeklifGonderim } from "@/lib/supabase/types";
+import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
+import type { TeklifGonderim, AracBakimWithArac } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -82,6 +83,7 @@ export default function DashboardPage() {
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
+  const [aracBakimlar, setAracBakimlar] = useState<AracBakimWithArac[]>([]);
   // Teklif listesinin genişletildiği satır(lar)ın key'i — "aracId|tipKey" formatında
   const [teklifAcikKeyler, setTeklifAcikKeyler] = useState<Set<string>>(new Set());
   const [yakitAlimlar, setYakitAlimlar] = useState<YakitAlim[]>([]);
@@ -145,7 +147,7 @@ export default function DashboardPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [yi, kasa, devirMap, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData] = await Promise.all([
+      const [yi, kasa, devirMap, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData, bakimData] = await Promise.all([
         getYiUfeVerileri().catch(() => []),
         getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []),
         getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
@@ -160,6 +162,7 @@ export default function DashboardPage() {
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
+        getAracBakimlar().catch(() => []),
       ]);
       setYiUfeData(yi as YiUfe[]);
       setKasaData(kasa as KasaHareketi[]);
@@ -168,6 +171,7 @@ export default function DashboardPage() {
       setAraclar(arac as AracWithRelations[]);
       setPoliceler(pol as AracPolice[]);
       setTeklifGonderimler(tekGon as TeklifGonderim[]);
+      setAracBakimlar(bakimData as AracBakimWithArac[]);
       setYakitAlimlar(alim as YakitAlim[]);
       setYakitDagitimlar(dagitim as AracYakit[]);
       setGidenEvraklar(evrak as GidenEvrak[]);
@@ -371,6 +375,35 @@ export default function DashboardPage() {
     }
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
   }, [araclar, policeler, yaklasirGun]);
+
+  // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
+  const yaklasanBakimlar = useMemo(() => {
+    const sonBakim = new Map<string, AracBakimWithArac>();
+    for (const b of aracBakimlar) {
+      if ((b.tip ?? "bakim") !== "bakim") continue;
+      const mevcut = sonBakim.get(b.arac_id);
+      if (!mevcut || b.bakim_tarihi > mevcut.bakim_tarihi) sonBakim.set(b.arac_id, b);
+    }
+    const bugunMs = new Date().setHours(0,0,0,0);
+    const liste: (AracBakimWithArac & { kalanGun?: number; kmFark?: number; aracYakin?: boolean })[] = [];
+    for (const b of sonBakim.values()) {
+      const guncelKm = b.araclar?.guncel_gosterge ?? null;
+      let kmFark: number | undefined;
+      let kalanGun: number | undefined;
+      if (b.sonraki_bakim_km != null && guncelKm != null) kmFark = b.sonraki_bakim_km - guncelKm;
+      if (b.sonraki_bakim_tarihi) {
+        kalanGun = Math.ceil((new Date(b.sonraki_bakim_tarihi + "T00:00:00").getTime() - bugunMs) / 86400000);
+      }
+      const kmYaklasti = kmFark != null && kmFark <= 500;
+      const tarihYaklasti = kalanGun != null && kalanGun <= 30;
+      if (kmYaklasti || tarihYaklasti) liste.push({ ...b, kalanGun, kmFark });
+    }
+    return liste.sort((x, y) => {
+      const xKey = Math.min(x.kalanGun ?? 1e9, x.kmFark ?? 1e9);
+      const yKey = Math.min(y.kalanGun ?? 1e9, y.kmFark ?? 1e9);
+      return xKey - yKey;
+    });
+  }, [aracBakimlar]);
 
   // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
   const depoOzet = useMemo(() => {
@@ -711,8 +744,8 @@ export default function DashboardPage() {
 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Widget 1: Yi-ÜFE Endeksler */}
-        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4">
+        {/* Widget 1: Yi-ÜFE Endeksler (sol üst) */}
+        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-2 lg:order-1">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Yi-ÜFE Endeksler</h3>
@@ -741,8 +774,8 @@ export default function DashboardPage() {
           ) : <p className="text-sm text-gray-400">Veri yok</p>}
         </div> : null}
 
-        {/* Widget 2: Kasa Defteri Personel Özeti */}
-        {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3">
+        {/* Widget 2: Kasa Defteri Personel Özeti (sol alt) */}
+        {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3 lg:col-span-2 lg:order-3">
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Kullanıcı Özeti</h3>
@@ -773,8 +806,8 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 3: Yaklaşan Sigorta/Muayene */}
-        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2">
+        {/* Widget 3: Yaklaşan Sigorta/Muayene (sağ üst) */}
+        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -928,8 +961,72 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
+        {/* Widget: Yaklaşan Araç Bakımları */}
+        {wg("yaklasan_bakim") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-4">
+          <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
+          {yaklasanBakimlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bakım yok</p> : (
+            <div className="max-h-[220px] overflow-y-auto">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="px-2 text-[10px]">Plaka</TableHead>
+                    <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Güncel Km</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Sonraki Km</TableHead>
+                    <TableHead className="px-2 text-[10px] text-center">Durum</TableHead>
+                    <TableHead className="px-2 text-[10px] text-center">Sonraki Tarih</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {yaklasanBakimlar.map((b) => {
+                    const guncelKm = b.araclar?.guncel_gosterge ?? null;
+                    const kmGecti = b.kmFark != null && b.kmFark < 0;
+                    const tarihGecti = b.kalanGun != null && b.kalanGun < 0;
+                    const kritik = kmGecti || tarihGecti;
+                    return (
+                      <TableRow
+                        key={b.id}
+                        className={`cursor-pointer ${kritik ? "bg-red-50 hover:bg-red-100" : "hover:bg-orange-50"}`}
+                        onClick={() => router.push("/dashboard/arac-bakim")}
+                      >
+                        <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{b.araclar?.plaka ?? "—"}</TableCell>
+                        <TableCell className="px-2 truncate max-w-[140px] text-[11px]">
+                          {[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}
+                        </TableCell>
+                        <TableCell className="px-2 text-right tabular-nums text-[11px]">
+                          {guncelKm != null ? guncelKm.toLocaleString("tr-TR") : "—"}
+                        </TableCell>
+                        <TableCell className="px-2 text-right tabular-nums text-[11px]">
+                          {b.sonraki_bakim_km != null ? b.sonraki_bakim_km.toLocaleString("tr-TR") : "—"}
+                        </TableCell>
+                        <TableCell className="px-2 text-center">
+                          <div className="flex flex-col items-center gap-0.5">
+                            {b.kmFark != null && (
+                              <span className={`text-[10px] font-semibold ${b.kmFark < 0 ? "text-red-600" : b.kmFark <= 100 ? "text-red-500" : "text-amber-700"}`}>
+                                {b.kmFark < 0 ? `${Math.abs(b.kmFark).toLocaleString("tr-TR")} km geçti` : `${b.kmFark.toLocaleString("tr-TR")} km kaldı`}
+                              </span>
+                            )}
+                            {b.kalanGun != null && (
+                              <span className={`text-[10px] font-semibold ${b.kalanGun < 0 ? "text-red-600" : b.kalanGun <= 7 ? "text-red-500" : "text-amber-700"}`}>
+                                {b.kalanGun < 0 ? `${Math.abs(b.kalanGun)} gün geçti` : `${b.kalanGun} gün kaldı`}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-2 text-center text-[10px] whitespace-nowrap">
+                          {formatTarih(b.sonraki_bakim_tarihi)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div> : null}
+
         {/* Widget 4: Depo Yakıt Durumu — kart tabanlı */}
-        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-5">
           <CardHeader icon={Fuel} title="Şantiye Yakıt Stokları" />
           {depoOzet.length === 0 ? <p className="text-sm text-gray-400">Depo verisi yok</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -965,7 +1062,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 5: Son Yakıt Alımları */}
-        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-6">
           <CardHeader icon={Fuel} title="Son Yakıt Alımları" color="text-emerald-700" />
           {sonAlimlar.length === 0 ? <p className="text-sm text-gray-400">Alım verisi yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -1000,7 +1097,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 6: Eksik Evrak Numaraları */}
-        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4">
+        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-7">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
@@ -1073,7 +1170,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 7: Şantiye Günlük Defteri — Son 5 Gün */}
-        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4">
+        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4 lg:order-8">
           <div className="flex items-center gap-2 mb-3">
             <NotebookPen size={18} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Şantiye Günlük Defteri (Son 5 Gün)</h3>
