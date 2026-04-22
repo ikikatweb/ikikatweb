@@ -637,9 +637,20 @@ export type Kullanici = {
   aktif: boolean;
   izinler: Izinler;
   santiye_ids: string[];
-  // Kısıtlı kullanıcı: geriye dönük kaç gün işlem yapabilir (puantaj, yakıt vb.)
-  // null veya 0 = sadece bugün; 7 = bugün dahil 7 gün geriye
+  // Kısıtlı kullanıcı: legacy — kullanılmıyor (geriye uyumluluk için bırakıldı)
   geriye_donus_gun: number | null;
+  // Modül bazlı geriye dönük sınırlar — her modül için 2 sınır:
+  // *_islem_gun: İşlem yapabileceği (oluşturma/düzenleme) gün sayısı
+  // *_goruntuleme_gun: Geriye dönük görüntüleyebileceği gün sayısı
+  // Varsayılan: 2 (bugün + dün)
+  puantaj_islem_gun: number | null;
+  puantaj_goruntuleme_gun: number | null;
+  yakit_islem_gun: number | null;
+  yakit_goruntuleme_gun: number | null;
+  kasa_islem_gun: number | null;
+  kasa_goruntuleme_gun: number | null;
+  santiye_defteri_islem_gun: number | null;
+  santiye_defteri_goruntuleme_gun: number | null;
   // Dashboard'da hangi widget'lar gösterilsin (boş/null = hepsi)
   dashboard_widgets: string[] | null;
   created_at: string;

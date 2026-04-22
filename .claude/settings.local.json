@@ -7,7 +7,11 @@
       "mcp__Claude_Preview__preview_start",
       "Bash(taskkill /PID 22344 /F)",
       "Bash(cmd.exe //c \"taskkill /PID 22344 /F\")",
-      "Bash(grep -rn \"arac_cinsi\\\\|sigorta_firmasi\\\\|yakit_tipi\\\\|hgs_saglayici\\\\|muhatap\\\\|is_grubu\\\\|kasa_harcama_kategori\" /c/Users/MSI/Desktop/ikikatweb/lib/supabase/types.ts /c/Users/MSI/Desktop/ikikatweb/lib/supabase/queries/*.ts)"
+      "Bash(grep -rn \"arac_cinsi\\\\|sigorta_firmasi\\\\|yakit_tipi\\\\|hgs_saglayici\\\\|muhatap\\\\|is_grubu\\\\|kasa_harcama_kategori\" /c/Users/MSI/Desktop/ikikatweb/lib/supabase/types.ts /c/Users/MSI/Desktop/ikikatweb/lib/supabase/queries/*.ts)",
+      "Read(//c/Users/MSI/Downloads/**)",
+      "Bash(pandoc --track-changes=all \"Teminatın iadesi REVİZELİ22.04.2026.docx\" -o /tmp/teminat.md)",
+      "Read(//tmp/**)",
+      "PowerShell($file = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\Teminatın iadesi REVİZELİ22.04.2026.docx\"; $tempDir = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\teminat_unpacked\"; if \\(Test-Path $tempDir\\) { Remove-Item -Recurse -Force $tempDir }; Expand-Archive -Path $file -DestinationPath $tempDir -Force; Get-ChildItem $tempDir\\\\word\\\\document.xml | Select-Object -First 1)"
     ]
   }
 }

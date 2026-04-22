@@ -281,3 +281,18 @@ export async function insertTeklifGonderim(gonderim: {
   const { error } = await supabase.from("teklif_gonderim").insert(gonderim);
   if (error) throw error;
 }
+
+// Bir araç+tip için gönderilen tüm teklif kayıtlarını sil
+// Poliçe girildikten sonra çağrılır — bir sonraki dönemde temiz başlasın
+export async function deleteTeklifGonderimlerByAracTip(
+  aracId: string,
+  policeTipi: "kasko" | "trafik",
+) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("teklif_gonderim")
+    .delete()
+    .eq("arac_id", aracId)
+    .eq("police_tipi", policeTipi);
+  if (error) throw error;
+}

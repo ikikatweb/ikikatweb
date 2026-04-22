@@ -45,7 +45,14 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { ad_soyad, rol, aktif, sifre, izinler, santiye_ids, geriye_donus_gun, dashboard_widgets } = body;
+  const {
+    ad_soyad, rol, aktif, sifre, izinler, santiye_ids,
+    geriye_donus_gun, dashboard_widgets,
+    puantaj_islem_gun, puantaj_goruntuleme_gun,
+    yakit_islem_gun, yakit_goruntuleme_gun,
+    kasa_islem_gun, kasa_goruntuleme_gun,
+    santiye_defteri_islem_gun, santiye_defteri_goruntuleme_gun,
+  } = body;
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,6 +99,14 @@ export async function PUT(
   if (izinler !== undefined) updateData.izinler = izinler;
   if (santiye_ids !== undefined) updateData.santiye_ids = santiye_ids;
   if (geriye_donus_gun !== undefined) updateData.geriye_donus_gun = geriye_donus_gun;
+  if (puantaj_islem_gun !== undefined) updateData.puantaj_islem_gun = puantaj_islem_gun;
+  if (puantaj_goruntuleme_gun !== undefined) updateData.puantaj_goruntuleme_gun = puantaj_goruntuleme_gun;
+  if (yakit_islem_gun !== undefined) updateData.yakit_islem_gun = yakit_islem_gun;
+  if (yakit_goruntuleme_gun !== undefined) updateData.yakit_goruntuleme_gun = yakit_goruntuleme_gun;
+  if (kasa_islem_gun !== undefined) updateData.kasa_islem_gun = kasa_islem_gun;
+  if (kasa_goruntuleme_gun !== undefined) updateData.kasa_goruntuleme_gun = kasa_goruntuleme_gun;
+  if (santiye_defteri_islem_gun !== undefined) updateData.santiye_defteri_islem_gun = santiye_defteri_islem_gun;
+  if (santiye_defteri_goruntuleme_gun !== undefined) updateData.santiye_defteri_goruntuleme_gun = santiye_defteri_goruntuleme_gun;
   if (dashboard_widgets !== undefined) updateData.dashboard_widgets = dashboard_widgets;
   if (sifre && sifre.trim()) updateData.sifre_gorunur = sifre;
 

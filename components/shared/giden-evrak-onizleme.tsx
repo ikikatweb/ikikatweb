@@ -106,7 +106,35 @@ function sanitizeHtmlTamHtml(text: string): string {
       return sonuc;
     }
 
-    // div, p, b, i, u — tag'ı koru ama attribute'leri at
+    // div, p — justify + margin sıfır (spacing Word'ün boş paragrafları ile sağlanır)
+    if (tag === "div" || tag === "p") {
+      // BOŞ paragraf ise (sadece whitespace) <br> ile koru — Word'ün aralık kullanımı
+      const temizIcerik = icerik.replace(/<br\s*\/?>/gi, "").trim();
+      if (!temizIcerik) return `<${tag} style="margin:0"><br></${tag}>`;
+
+      // Paragraf style'ında text-indent varsa koru
+      const pStyle = el.getAttribute("style") ?? "";
+      const indentMatch = pStyle.match(/text-indent\s*:\s*([^;]+)/i);
+
+      // Liste maddesi veya kısa etiket mi kontrol et
+      const plainText = icerik.replace(/<[^>]+>/g, "").trim();
+      const listeMaddesi = /^[a-zçğıöşüA-ZÇĞİÖŞÜ][\.\)]\s|^\d+[\.\)]\s|^[-•*◦–—]\s|^["'„]/.test(plainText);
+      const kisaEtiket = plainText.length < 30 && /[:;]$/.test(plainText);
+      const coKisa = plainText.length < 15;
+
+      let dpStyle = "text-align:justify;margin:0";
+      if (indentMatch) {
+        const indentDeger = indentMatch[1].trim();
+        if (indentDeger && !/^0(pt|px|cm|mm|em|%)?\s*$/.test(indentDeger)) {
+          dpStyle += `;text-indent:${indentDeger}`;
+        }
+      } else if (!listeMaddesi && !kisaEtiket && !coKisa) {
+        // Uzun prose paragraflarda varsayılan tab girinti
+        dpStyle += ";text-indent:1.25cm";
+      }
+      return `<${tag} style="${dpStyle}">${icerik}</${tag}>`;
+    }
+    // b, i, u — tag'ı olduğu gibi koru
     return `<${tag}>${icerik}</${tag}>`;
   }
 

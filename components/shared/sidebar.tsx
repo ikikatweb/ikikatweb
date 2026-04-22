@@ -44,7 +44,7 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    title: "Araçlar",
+    title: "Kasko & Sigorta",
     icon: <Truck size={20} />,
     color: "text-blue-600 bg-blue-50",
     items: [

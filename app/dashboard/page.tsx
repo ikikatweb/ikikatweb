@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip } from "@/lib/supabase/queries/araclar";
 import type { TeklifGonderim } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
@@ -82,6 +82,8 @@ export default function DashboardPage() {
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
+  // Teklif listesinin genişletildiği satır(lar)ın key'i — "aracId|tipKey" formatında
+  const [teklifAcikKeyler, setTeklifAcikKeyler] = useState<Set<string>>(new Set());
   const [yakitAlimlar, setYakitAlimlar] = useState<YakitAlim[]>([]);
   const [yakitDagitimlar, setYakitDagitimlar] = useState<AracYakit[]>([]);
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
@@ -556,6 +558,10 @@ export default function DashboardPage() {
       const updateField = pTip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
       await updateArac(policeAracId, { [updateField]: pBitisTarih });
 
+      // Poliçe girildi → bu araç+tip için olan tüm teklif kayıtlarını sil
+      // (bir sonraki dönem boş başlasın, yeni teklif istenirse yan yana biriksin)
+      await deleteTeklifGonderimlerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ });
+
       await loadAll();
       setPoliceDialogOpen(false);
       toast.success("Poliçe kaydedildi.");
@@ -788,9 +794,68 @@ export default function DashboardPage() {
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
                         {(y.tip === "Kasko" || y.tip === "Trafik Sigorta") && (() => {
                           const tipKey = y.tip === "Kasko" ? "kasko" : "trafik";
-                          const gonderim = teklifGonderimler.find((g) => g.arac_id === y.aracId && g.police_tipi === tipKey);
-                          if (!gonderim) return null;
-                          return <div className="text-[9px] text-purple-500 truncate max-w-[120px]" title={gonderim.acente_adlari}>Teklif: {gonderim.acente_adlari}</div>;
+                          const gonderimler = teklifGonderimler.filter((g) => g.arac_id === y.aracId && g.police_tipi === tipKey);
+                          if (gonderimler.length === 0) return null;
+                          // Tekrarsız acente isimleri listesi
+                          const tumAcenteler = Array.from(new Set(
+                            gonderimler.flatMap((g) => g.acente_adlari.split(",").map((s) => s.trim())).filter(Boolean),
+                          ));
+                          if (tumAcenteler.length === 0) return null;
+                          const acikKey = `${y.aracId}|${tipKey}`;
+                          const acik = teklifAcikKeyler.has(acikKey);
+                          const cokluMu = tumAcenteler.length > 1;
+                          return (
+                            <div className="text-[9px] text-purple-500 max-w-[140px]">
+                              {!acik ? (
+                                <span className="flex items-center gap-0.5">
+                                  <span className="truncate" title={tumAcenteler.join(", ")}>
+                                    Teklif: {tumAcenteler[0]}
+                                  </span>
+                                  {cokluMu && (
+                                    <button
+                                      type="button"
+                                      className="text-purple-700 font-bold hover:underline cursor-pointer"
+                                      title={`${tumAcenteler.length - 1} daha göster`}
+                                      onClick={() => {
+                                        setTeklifAcikKeyler((prev) => {
+                                          const yeni = new Set(prev);
+                                          yeni.add(acikKey);
+                                          return yeni;
+                                        });
+                                      }}
+                                    >
+                                      ...
+                                    </button>
+                                  )}
+                                </span>
+                              ) : (
+                                <div>
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold">Teklifler:</span>
+                                    <button
+                                      type="button"
+                                      className="text-purple-700 font-bold hover:underline cursor-pointer text-[10px]"
+                                      title="Gizle"
+                                      onClick={() => {
+                                        setTeklifAcikKeyler((prev) => {
+                                          const yeni = new Set(prev);
+                                          yeni.delete(acikKey);
+                                          return yeni;
+                                        });
+                                      }}
+                                    >
+                                      ▲
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    {tumAcenteler.map((a, idx) => (
+                                      <span key={idx} className="truncate">• {a}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
                         })()}
                       </TableCell>
                       <TableCell className="px-2">{y.tip}</TableCell>

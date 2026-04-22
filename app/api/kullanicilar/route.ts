@@ -59,7 +59,14 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, geriye_donus_gun, dashboard_widgets } = body;
+  const {
+    ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids,
+    geriye_donus_gun, dashboard_widgets,
+    puantaj_islem_gun, puantaj_goruntuleme_gun,
+    yakit_islem_gun, yakit_goruntuleme_gun,
+    kasa_islem_gun, kasa_goruntuleme_gun,
+    santiye_defteri_islem_gun, santiye_defteri_goruntuleme_gun,
+  } = body;
 
   if (!ad_soyad || !kullanici_adi || !sifre) {
     return NextResponse.json({ error: "Ad soyad, kullanıcı adı ve şifre zorunludur" }, { status: 400 });
@@ -105,6 +112,14 @@ export async function POST(request: Request) {
       izinler: izinler || {},
       santiye_ids: santiye_ids || [],
       geriye_donus_gun: geriye_donus_gun ?? null,
+      puantaj_islem_gun: puantaj_islem_gun ?? null,
+      puantaj_goruntuleme_gun: puantaj_goruntuleme_gun ?? null,
+      yakit_islem_gun: yakit_islem_gun ?? null,
+      yakit_goruntuleme_gun: yakit_goruntuleme_gun ?? null,
+      kasa_islem_gun: kasa_islem_gun ?? null,
+      kasa_goruntuleme_gun: kasa_goruntuleme_gun ?? null,
+      santiye_defteri_islem_gun: santiye_defteri_islem_gun ?? null,
+      santiye_defteri_goruntuleme_gun: santiye_defteri_goruntuleme_gun ?? null,
       dashboard_widgets: dashboard_widgets ?? null,
     })
     .select()

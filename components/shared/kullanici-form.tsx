@@ -56,6 +56,16 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [geriyeDonusGun, setGeriyeDonusGun] = useState<string>(
     kullanici?.geriye_donus_gun != null ? String(kullanici.geriye_donus_gun) : "",
   );
+  // Modül bazlı 2 sınır (işlem + görüntüleme). Default 2.
+  const initGun = (v: number | null | undefined) => v != null ? String(v) : "2";
+  const [puantajIslemGun, setPuantajIslemGun] = useState<string>(initGun(kullanici?.puantaj_islem_gun));
+  const [puantajGoruntulemeGun, setPuantajGoruntulemeGun] = useState<string>(initGun(kullanici?.puantaj_goruntuleme_gun));
+  const [yakitIslemGun, setYakitIslemGun] = useState<string>(initGun(kullanici?.yakit_islem_gun));
+  const [yakitGoruntulemeGun, setYakitGoruntulemeGun] = useState<string>(initGun(kullanici?.yakit_goruntuleme_gun));
+  const [kasaIslemGun, setKasaIslemGun] = useState<string>(initGun(kullanici?.kasa_islem_gun));
+  const [kasaGoruntulemeGun, setKasaGoruntulemeGun] = useState<string>(initGun(kullanici?.kasa_goruntuleme_gun));
+  const [santiyeIslemGun, setSantiyeIslemGun] = useState<string>(initGun(kullanici?.santiye_defteri_islem_gun));
+  const [santiyeGoruntulemeGun, setSantiyeGoruntulemeGun] = useState<string>(initGun(kullanici?.santiye_defteri_goruntuleme_gun));
   const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kullanici?.dashboard_widgets ?? []);
 
   // Şantiye ve şablon listeleri
@@ -133,10 +143,31 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
     const formatliAdSoyad = formatKisiAdi(adSoyad);
     setAdSoyad(formatliAdSoyad);
 
-    // Geriye dönüş gün sayısını parse et
-    const parsedGeriyeGun = geriyeDonusGun.trim()
-      ? parseInt(geriyeDonusGun.replace(",", "."), 10)
-      : null;
+    const parseGun = (s: string): number => {
+      if (!s.trim()) return 2;
+      const n = parseInt(s.replace(",", "."), 10);
+      return isNaN(n) ? 2 : Math.max(0, n);
+    };
+    const limitler = {
+      puantaj_islem_gun: parseGun(puantajIslemGun),
+      puantaj_goruntuleme_gun: parseGun(puantajGoruntulemeGun),
+      yakit_islem_gun: parseGun(yakitIslemGun),
+      yakit_goruntuleme_gun: parseGun(yakitGoruntulemeGun),
+      kasa_islem_gun: parseGun(kasaIslemGun),
+      kasa_goruntuleme_gun: parseGun(kasaGoruntulemeGun),
+      santiye_defteri_islem_gun: parseGun(santiyeIslemGun),
+      santiye_defteri_goruntuleme_gun: parseGun(santiyeGoruntulemeGun),
+    };
+    const bosLimitler = {
+      puantaj_islem_gun: null,
+      puantaj_goruntuleme_gun: null,
+      yakit_islem_gun: null,
+      yakit_goruntuleme_gun: null,
+      kasa_islem_gun: null,
+      kasa_goruntuleme_gun: null,
+      santiye_defteri_islem_gun: null,
+      santiye_defteri_goruntuleme_gun: null,
+    };
 
     setLoading(true);
     try {
@@ -146,7 +177,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           rol,
           izinler: rol === "kisitli" ? izinler : {},
           santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
-          geriye_donus_gun: rol === "kisitli" ? parsedGeriyeGun : null,
+          geriye_donus_gun: rol === "kisitli" ? limitler.puantaj_islem_gun : null, // legacy
+          ...(rol === "kisitli" ? limitler : bosLimitler),
           dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           ...(sifre.trim() ? { sifre } : {}),
         });
@@ -159,7 +191,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           rol,
           izinler: rol === "kisitli" ? izinler : {},
           santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
-          geriye_donus_gun: rol === "kisitli" ? parsedGeriyeGun : null,
+          geriye_donus_gun: rol === "kisitli" ? limitler.puantaj_islem_gun : null,
+          ...(rol === "kisitli" ? limitler : bosLimitler),
           dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
         });
         toast.success("Kullanıcı oluşturuldu.");
@@ -287,28 +320,55 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
             </CardContent>
           </Card>
 
-          {/* Geriye dönük gün sayısı */}
+          {/* Modül Bazlı Geriye Dönük Sınırlar */}
           <Card>
             <CardContent className="pt-4">
-              <h3 className="font-semibold text-[#1E3A5F] mb-2">Geriye Dönük İşlem Sınırı</h3>
+              <h3 className="font-semibold text-[#1E3A5F] mb-2">Geriye Dönük İşlem Sınırları</h3>
               <p className="text-xs text-gray-400 mb-3">
-                Bu kullanıcı puantaj ve yakıt gibi sayfalarda geriye dönük kaç gün işlem yapabilir? Boş bırakılırsa sınırsız olur.
+                Her modül için iki ayrı sınır: <strong>İşlem</strong> = kaç gün öncesine kadar kayıt oluşturabilir/düzenleyebilir,
+                <strong> Görüntüleme</strong> = kaç gün öncesine kadar kayıtları görebilir. Varsayılan: 2 gün.
               </p>
-              <div className="flex items-center gap-3 max-w-xs">
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  value={geriyeDonusGun}
-                  onChange={(e) => setGeriyeDonusGun(e.target.value)}
-                  placeholder="Örn: 7"
-                  disabled={loading}
-                  className="w-24"
-                />
-                <span className="text-sm text-gray-600">gün</span>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-2">
-                Örn: 7 girilirse kullanıcı bugünden 7 gün öncesine kadar düzenleme yapabilir.
-                0 girilirse sadece bugünü düzenleyebilir.
+              {(() => {
+                const modulList = [
+                  { label: "Puantaj", islem: puantajIslemGun, setIslem: setPuantajIslemGun, goruntuleme: puantajGoruntulemeGun, setGoruntuleme: setPuantajGoruntulemeGun },
+                  { label: "Yakıt", islem: yakitIslemGun, setIslem: setYakitIslemGun, goruntuleme: yakitGoruntulemeGun, setGoruntuleme: setYakitGoruntulemeGun },
+                  { label: "Kasa Defteri", islem: kasaIslemGun, setIslem: setKasaIslemGun, goruntuleme: kasaGoruntulemeGun, setGoruntuleme: setKasaGoruntulemeGun },
+                  { label: "Şantiye Defteri", islem: santiyeIslemGun, setIslem: setSantiyeIslemGun, goruntuleme: santiyeGoruntulemeGun, setGoruntuleme: setSantiyeGoruntulemeGun },
+                ];
+                return (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-[10px] font-semibold text-gray-500 pb-1 border-b">
+                      <span>Modül</span>
+                      <span className="text-center w-24">İşlem (gün)</span>
+                      <span className="text-center w-24">Görüntüleme (gün)</span>
+                    </div>
+                    {modulList.map((m) => (
+                      <div key={m.label} className="grid grid-cols-[1fr_auto_auto] items-center gap-3">
+                        <span className="text-sm font-medium">{m.label}</span>
+                        <Input
+                          type="text" inputMode="numeric"
+                          value={m.islem}
+                          onChange={(e) => m.setIslem(e.target.value)}
+                          placeholder="2"
+                          disabled={loading}
+                          className="w-24 text-center"
+                        />
+                        <Input
+                          type="text" inputMode="numeric"
+                          value={m.goruntuleme}
+                          onChange={(e) => m.setGoruntuleme(e.target.value)}
+                          placeholder="2"
+                          disabled={loading}
+                          className="w-24 text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              <p className="text-[10px] text-gray-400 mt-3">
+                Örn: Puantaj İşlem=2 ise kullanıcı bugün + 1 gün öncesini düzenleyebilir.
+                Puantaj Görüntüleme=30 ise 30 gün öncesine kadar puantajları listede görebilir.
               </p>
             </CardContent>
           </Card>
