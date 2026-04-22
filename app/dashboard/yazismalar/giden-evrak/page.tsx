@@ -69,6 +69,7 @@ export default function GidenEvrakPage() {
 
   // Yazdırma için seçili evrak
   const [printEvrakRef, setPrintEvrakRef] = useState<GidenEvrakWithRelations | null>(null);
+  const [onIzlemeDialogOpen, setOnIzlemeDialogOpen] = useState(false);
 
   // Filtreler
   const [fArama, setFArama] = useState("");
@@ -194,14 +195,38 @@ export default function GidenEvrakPage() {
     XLSX.writeFile(wb, "giden-evrak-listesi.xlsx");
   }
 
+  // Yazdır butonuna tıklandığında direkt yazıcıya göndermek yerine kendi ön izleme
+  // dialog'umuzu aç. Kullanıcı önizlemeyi görsün, içinden "Yazdır"a basınca
+  // gerçek tarayıcı print dialog'u açılsın. Böylece her PC'de aynı UX.
   function printEvrak(e: GidenEvrakWithRelations) {
     setPrintEvrakRef(e);
-    // Render olduktan sonra print başlat
+    setOnIzlemeDialogOpen(true);
+  }
+
+  // Ön izleme dialog'undaki "Yazdır" butonu — gerçek baskıyı tetikler
+  function gercekYazdir() {
     setTimeout(() => {
+      // Tek sayfalık evraksa sayfa numarasını gizle
+      const printArea = document.querySelector(".evrak-print-portal") as HTMLElement | null;
+      const styleTagId = "evrak-tek-sayfa-style";
+      const eskiTag = document.getElementById(styleTagId);
+      if (eskiTag) eskiTag.remove();
+      if (printArea) {
+        const A4_USABLE_PX = 980;
+        const contentHeight = printArea.getBoundingClientRect().height;
+        if (contentHeight <= A4_USABLE_PX) {
+          const style = document.createElement("style");
+          style.id = styleTagId;
+          style.textContent = `@media print { @page { @bottom-center { content: ""; } } }`;
+          document.head.appendChild(style);
+        }
+      }
       window.print();
-      // Print sonrası temizle
-      setTimeout(() => setPrintEvrakRef(null), 500);
-    }, 200);
+      setTimeout(() => {
+        const tag = document.getElementById(styleTagId);
+        if (tag) tag.remove();
+      }, 500);
+    }, 100);
   }
 
   return (
@@ -422,6 +447,44 @@ export default function GidenEvrakPage() {
         </div>,
         document.body,
       )}
+
+      {/* Ön izleme dialog'u — Yazdır butonu öncesi standart önizleme.
+          Her PC'de aynı UX sağlar (tarayıcı print dialog'u daha sonra açılır) */}
+      <Dialog open={onIzlemeDialogOpen} onOpenChange={(o) => {
+        if (!o) { setOnIzlemeDialogOpen(false); setPrintEvrakRef(null); }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto !p-0">
+          <div className="sticky top-0 z-10 bg-white border-b px-4 py-2 flex items-center justify-between">
+            <DialogTitle className="text-sm font-semibold">Ön İzleme</DialogTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => {
+                setOnIzlemeDialogOpen(false);
+                setPrintEvrakRef(null);
+              }}>Kapat</Button>
+              <Button size="sm" className="bg-[#1E3A5F] hover:bg-[#2a4f7a] text-white" onClick={gercekYazdir}>
+                <Printer size={14} className="mr-1" /> Yazdır
+              </Button>
+            </div>
+          </div>
+          <div className="p-4 bg-gray-100">
+            {printEvrakRef && (
+              <div className="mx-auto shadow-lg" style={{ width: "210mm", backgroundColor: "white" }}>
+                <GidenEvrakOnIzleme
+                  firma={printEvrakRef.firmalar ?? null}
+                  evrakTarihi={printEvrakRef.evrak_tarihi}
+                  evrakSayiNo={printEvrakRef.evrak_sayi_no}
+                  konu={printEvrakRef.konu}
+                  muhatap={printEvrakRef.muhatap}
+                  ilgiListesi={printEvrakRef.ilgi_listesi ?? []}
+                  metin={printEvrakRef.metin}
+                  ekler={printEvrakRef.ekler ?? []}
+                  kaseDahil={printEvrakRef.kase_dahil ?? false}
+                />
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

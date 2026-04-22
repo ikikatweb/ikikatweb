@@ -133,25 +133,31 @@ thead th {
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
-  /* @page margin — her sayfada tutarlı kenar boşluğu (tek sayfalı VE çok sayfalı
-     evraklar için). Padding container'a uygulandığında sadece ilk sayfada geçerli
-     olup sonraki sayfalarda içerik kesilebildiği için @page kullanmak zorundayız.
-     NOT: Bu margin alanında tarayıcı header/footer ekleyebilir —
-     print dialog'da "Üstbilgi ve altbilgi" checkbox'ını kaldırmanız gerekir. */
+  /* @page margin — her sayfada tutarlı kenar boşluğu:
+     üst 1.25cm, sağ 2.25cm, alt 2.5cm, sol 2.25cm
+     Alttaki 2.5cm boşluğun ortasına sayfa numarası yazılır (çok sayfalı evrakta). */
   @page {
     size: A4;
-    margin: 1.25cm 2.25cm 1cm 2.25cm;
-  }
+    margin: 1.25cm 2.25cm 2.5cm 2.25cm;
 
-  /* Margin box'ları explicit boşalt — bazı tarayıcılar bunu respect eder */
-  @page {
+    /* Üst margin box'ları boş bırak (tarayıcı header ekleme çabasına karşı) */
     @top-left { content: ""; }
     @top-center { content: ""; }
     @top-right { content: ""; }
+
+    /* Alt sol/sağ margin box'ları boş */
     @bottom-left { content: ""; }
-    @bottom-center { content: ""; }
     @bottom-right { content: ""; }
+
+    /* Alt orta — sayfa numarası (örn. 1/2, 2/2) */
+    @bottom-center {
+      content: counter(page) "/" counter(pages);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9pt;
+      color: #555;
+    }
   }
+
 
   html, body {
     margin: 0 !important;
