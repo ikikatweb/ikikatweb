@@ -12,6 +12,7 @@ import {
   getAracPuantajByAySantiye,
   getAracPuantajByRange,
   getAracPuantajCakisma,
+  getAracPuantajKayitlari,
   getDigerSantiyeCakismalari,
   upsertAracPuantaj,
   deleteAracPuantaj,
@@ -306,6 +307,15 @@ export default function AracPuantajPage() {
         getAracPuantajByAySantiye(santiyeId, yil, ay),
         getAracYakitlarByRange(null, baslangic, bitis).catch(() => [] as AracYakit[]),
       ]);
+      console.log("[PUANTAJ YÜKLEME]", {
+        santiyeId, yil, ay, baslangic, bitis,
+        kayitSayisi: data.length,
+        gunDagilimi: data.reduce((acc, p) => {
+          const gun = parseInt(p.tarih.slice(8, 10), 10);
+          acc[gun] = (acc[gun] ?? 0) + 1;
+          return acc;
+        }, {} as Record<number, number>),
+      });
       setPuantajlar(data);
       setAylikYakitlar(yakitData);
 
@@ -324,6 +334,14 @@ export default function AracPuantajPage() {
   }, [santiyeId, yil, ay]);
 
   useEffect(() => { loadPuantajlar(); }, [loadPuantajlar]);
+
+  // Ay/yıl/şantiye değişince açık olan hücre dialog'unu kapat
+  // (aksi halde eski seciliGun yeni aya taşınabilir — 31. gün yok olan ayda sorun çıkarır)
+  useEffect(() => {
+    setHucreDialogOpen(false);
+    setSeciliArac(null);
+    setSeciliGun(null);
+  }, [yil, ay, santiyeId]);
 
   // Özet Rapor verilerini yükle (şantiye + tarih aralığı + araçlar değişince)
   const loadOzet = useCallback(async () => {
@@ -912,6 +930,17 @@ export default function AracPuantajPage() {
       return;
     }
 
+    // Geçersiz tarih kontrolü — seciliGun ayın gerçek gün sayısından büyük olamaz
+    // (ay değiştiğinde dialog açık kalırsa oluşabilecek sorun için defansif)
+    const gercekAyinGunSayisi = gunSayisi(yil, ay);
+    if (seciliGun > gercekAyinGunSayisi) {
+      toast.error(
+        `${AY_ADLARI[ay - 1]} ${yil} ayında ${seciliGun}. gün yoktur (bu ay ${gercekAyinGunSayisi} gündür).`,
+      );
+      setHucreDialogOpen(false);
+      return;
+    }
+
     const tarih = tarihStr(yil, ay, seciliGun);
     setDialogKaydediliyor(true);
     try {
@@ -924,7 +953,23 @@ export default function AracPuantajPage() {
       }
       // Açıklama: kullanıcı yazdıysa kaydet, yoksa null
       const aciklamaToSave = seciliAciklama.trim() || null;
+      console.log("[PUANTAJ KAYDET]", { tarih, arac: seciliArac.plaka, santiye: santiyeId, durum });
       await upsertAracPuantaj(seciliArac.id, santiyeId, tarih, durum, aciklamaToSave, kullanici?.id ?? null);
+
+      // DOĞRULAMA — kaydın DB'ye gerçekten yazıldığını kontrol et
+      // (RLS veya başka bir nedenle sessizce kaybolma kontrolü)
+      const dogrulama = await getAracPuantajKayitlari(seciliArac.id, tarih);
+      const savedRec = dogrulama.find((k) => k.santiye_id === santiyeId);
+      if (!savedRec) {
+        console.error("[PUANTAJ DOĞRULAMA BAŞARISIZ]", { tarih, arac: seciliArac.plaka, santiye: santiyeId, dogrulama });
+        toast.error(
+          `Kayıt DB'ye yazılamadı! (${tarih} tarihinde ${seciliArac.plaka}). ` +
+          "RLS veya bir DB kısıtlaması engelliyor olabilir. Console'u kontrol edin.",
+          { duration: 10000 },
+        );
+        return;
+      }
+      console.log("[PUANTAJ KAYDET OK]", { tarih, id: savedRec.id });
       // Gösterge (km/saat) güncelle
       const gostergeVal = parseFloat(seciliGosterge.replace(",", "."));
       if (!isNaN(gostergeVal) && gostergeVal > 0 && gostergeVal !== (seciliArac.guncel_gosterge ?? 0)) {

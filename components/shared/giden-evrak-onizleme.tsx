@@ -261,11 +261,13 @@ export default function GidenEvrakOnIzleme({
             marginLeft: "0.5cm",
             fontSize: "10.5pt",
             lineHeight: "1.5",
-            textAlign: "left",
+            textAlign: "justify",
             whiteSpace: "pre-wrap",
+            tabSize: 16,
+            MozTabSize: 16,
             orphans: 3,
             widows: 3,
-          }}
+          } as React.CSSProperties}
           dangerouslySetInnerHTML={{ __html: metinTemiz }}
         />
       )}

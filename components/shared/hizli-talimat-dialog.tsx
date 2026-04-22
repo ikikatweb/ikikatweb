@@ -26,7 +26,7 @@ import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatKisiAdi } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
-import { formatParaInput } from "@/lib/utils/para-format";
+import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
 const selectClass = "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -280,8 +280,9 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
 
   const seciliFirma = firmalar.find((f) => f.id === firmaId);
 
-  // Tutarı sayıya çevir
-  const tutarSayisi = parseFloat(tutar.replace(/[^\d.,]/g, "").replace(",", "."));
+  // Tutarı sayıya çevir — Türkçe formatı (nokta=binlik, virgül=ondalık) doğru parse eder
+  // "170.000" → 170000, "170.000,50" → 170000.5
+  const tutarSayisi = parseParaInput(tutar);
   const tutarStr = !isNaN(tutarSayisi) && tutarSayisi > 0 ? formatTutar(tutarSayisi) : "[TUTAR]";
 
   // Otomatik üretilen metin

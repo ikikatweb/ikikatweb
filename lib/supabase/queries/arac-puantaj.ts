@@ -15,15 +15,26 @@ export async function getAracPuantajByRange(
   bitis: string
 ): Promise<AracPuantaj[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("arac_puantaj")
-    .select("*")
-    .eq("santiye_id", santiyeId)
-    .gte("tarih", baslangic)
-    .lt("tarih", bitis);
-
-  if (error) throw error;
-  return (data ?? []) as AracPuantaj[];
+  // Supabase 1000 satır limitini pagination ile aş
+  const PARCA = 1000;
+  const tumRows: AracPuantaj[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_puantaj")
+      .select("*")
+      .eq("santiye_id", santiyeId)
+      .gte("tarih", baslangic)
+      .lt("tarih", bitis)
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parcaRows = (data ?? []) as AracPuantaj[];
+    tumRows.push(...parcaRows);
+    if (parcaRows.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tumRows;
 }
 
 // Bir ay için belirli şantiyenin puantaj kayıtlarını getir
@@ -39,15 +50,27 @@ export async function getAracPuantajByAySantiye(
   const sonrakiYil = ay === 12 ? yil + 1 : yil;
   const bitis = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
 
-  const { data, error } = await supabase
-    .from("arac_puantaj")
-    .select("*")
-    .eq("santiye_id", santiyeId)
-    .gte("tarih", baslangic)
-    .lt("tarih", bitis);
-
-  if (error) throw error;
-  const rows = (data ?? []) as AracPuantaj[];
+  // Supabase default 1000 satır limiti — büyük şantiyelerde (40 araç × 31 gün = 1240+)
+  // bu limit veriyi keser. Pagination ile (range) 1000'lik parçalar halinde çekiyoruz.
+  const PARCA = 1000;
+  const tumRows: AracPuantaj[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_puantaj")
+      .select("*")
+      .eq("santiye_id", santiyeId)
+      .gte("tarih", baslangic)
+      .lt("tarih", bitis)
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parcaRows = (data ?? []) as AracPuantaj[];
+    tumRows.push(...parcaRows);
+    if (parcaRows.length < PARCA) break; // son parça — daha fazla veri yok
+    offset += PARCA;
+    if (offset > 100000) break; // güvenlik - sonsuz döngüyü önle
+  }
+  const rows = tumRows;
   if (rows.length === 0) return rows;
 
   // created_by id'lerinden kullanıcı ad_soyad'larını çek
@@ -79,15 +102,26 @@ export async function getAracPuantajByAyWithRelations(
   const sonrakiYil = ay === 12 ? yil + 1 : yil;
   const bitis = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
 
-  const { data, error } = await supabase
-    .from("arac_puantaj")
-    .select("*, araclar(plaka, marka, model, tip)")
-    .eq("santiye_id", santiyeId)
-    .gte("tarih", baslangic)
-    .lt("tarih", bitis);
-
-  if (error) throw error;
-  return data ?? [];
+  // Pagination ile 1000 limitini aş
+  const PARCA = 1000;
+  const tumRows: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_puantaj")
+      .select("*, araclar(plaka, marka, model, tip)")
+      .eq("santiye_id", santiyeId)
+      .gte("tarih", baslangic)
+      .lt("tarih", bitis)
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parcaRows = (data ?? []) as Record<string, unknown>[];
+    tumRows.push(...parcaRows);
+    if (parcaRows.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tumRows;
 }
 
 // Belirtilen ay içinde, BAŞKA şantiyelerdeki TÜM araç puantajlarını getir.
@@ -106,22 +140,31 @@ export async function getDigerSantiyeCakismalari(
   const sonrakiYil = ay === 12 ? yil + 1 : yil;
   const bitis = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
 
-  let query = supabase
-    .from("arac_puantaj")
-    .select("arac_id, tarih, santiye_id, santiyeler(is_adi)")
-    .neq("santiye_id", haricSantiyeId)
-    .gte("tarih", baslangic)
-    .lt("tarih", bitis);
-
-  // Araç listesi verilmişse filtrele, değilse tümünü getir
-  if (aracIds && aracIds.length > 0) {
-    query = query.in("arac_id", aracIds);
+  // Pagination ile 1000 limitini aş — diğer şantiyelerdeki tüm puantajları topla
+  const PARCA = 1000;
+  const tumRows: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    let query = supabase
+      .from("arac_puantaj")
+      .select("arac_id, tarih, santiye_id, santiyeler(is_adi)")
+      .neq("santiye_id", haricSantiyeId)
+      .gte("tarih", baslangic)
+      .lt("tarih", bitis)
+      .range(offset, offset + PARCA - 1);
+    if (aracIds && aracIds.length > 0) {
+      query = query.in("arac_id", aracIds);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    const parcaRows = (data ?? []) as Record<string, unknown>[];
+    tumRows.push(...parcaRows);
+    if (parcaRows.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return (data ?? []).map((r) => {
+  return tumRows.map((r) => {
     const s = r as unknown as {
       arac_id: string;
       tarih: string;
