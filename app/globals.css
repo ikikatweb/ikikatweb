@@ -133,9 +133,11 @@ thead th {
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
+  /* Her A4 sayfasında tutarlı kenar boşluğu — her sayfada aynı margin uygulanır
+     böylece çok sayfalı evraklarda 2. sayfanın ilk satırı kenara yapışmaz */
   @page {
     size: A4;
-    margin: 0;
+    margin: 1.25cm 2.25cm 1cm 2.25cm;
   }
 
   html, body {
@@ -158,10 +160,15 @@ thead th {
     height: auto !important;
   }
 
+  /* Onizleme kutusunun kendi padding/width'ini baskıda sıfırla —
+     @page margin'leri zaten kenar boşluğunu sağlıyor */
   .evrak-print-area .evrak-onizleme {
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -172,9 +179,10 @@ thead th {
   }
 }
 
-/* Ekranda (normal modda) print-area hiç görünmesin */
+/* Ekranda print-PORTAL (body'ye Portal ile mount edilen) görünmesin
+   .evrak-print-area class'ı form ön izlemede de kullanıldığı için ona dokunmuyoruz */
 @media screen {
-  .evrak-print-area {
+  .evrak-print-portal {
     display: none !important;
   }
 }

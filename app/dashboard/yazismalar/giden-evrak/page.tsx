@@ -404,9 +404,10 @@ export default function GidenEvrakPage() {
       </AlertDialog>
 
       {/* Yazdırma için — Portal ile body'nin en üstüne render edilir
-          (sayfa hierarşisine girmez, ilk sayfa boş kalmaz) */}
+          (sayfa hierarşisine girmez, ilk sayfa boş kalmaz)
+          "evrak-print-portal" class'ı SADECE print'de kullanılır, ekranda gizlenir */}
       {printEvrakRef && typeof document !== "undefined" && createPortal(
-        <div className="evrak-print-area">
+        <div className="evrak-print-portal evrak-print-area">
           <GidenEvrakOnIzleme
             firma={printEvrakRef.firmalar ?? null}
             evrakTarihi={printEvrakRef.evrak_tarihi}
