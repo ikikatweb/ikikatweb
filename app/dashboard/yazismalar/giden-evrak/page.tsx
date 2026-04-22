@@ -196,72 +196,30 @@ export default function GidenEvrakPage() {
 
   function printEvrak(e: GidenEvrakWithRelations) {
     setPrintEvrakRef(e);
-    // Yeni pencerede render et → window.print() oradan çağrılır
-    // Bu yöntem Chrome preview'ını her PC'de garanti açar (tarayıcı ayarından bağımsız)
+    // Render olduktan sonra print başlat
     setTimeout(() => {
+      // Tek sayfalık evraksa sayfa numarasını gizle
       const printArea = document.querySelector(".evrak-print-portal") as HTMLElement | null;
-      if (!printArea) {
-        setPrintEvrakRef(null);
-        return;
+      const styleTagId = "evrak-tek-sayfa-style";
+      const eskiTag = document.getElementById(styleTagId);
+      if (eskiTag) eskiTag.remove();
+      if (printArea) {
+        const A4_USABLE_PX = 980;
+        const contentHeight = printArea.getBoundingClientRect().height;
+        if (contentHeight <= A4_USABLE_PX) {
+          const style = document.createElement("style");
+          style.id = styleTagId;
+          style.textContent = `@media print { @page { @bottom-center { content: ""; } } }`;
+          document.head.appendChild(style);
+        }
       }
-      const icerik = printArea.innerHTML;
-      // Mevcut sayfadaki tüm style tag'lerini ve globals.css link'lerini kopyala
-      const styleler = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map((el) => el.outerHTML)
-        .join("\n");
-
-      // Tek sayfa mı kontrolü
-      const A4_USABLE_PX = 980;
-      const contentHeight = printArea.getBoundingClientRect().height;
-      const tekSayfa = contentHeight <= A4_USABLE_PX;
-      const bottomCenterOverride = tekSayfa
-        ? "@page { @bottom-center { content: \"\"; } }"
-        : "";
-
-      const html = `<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<title>Giden Evrak — ${e.evrak_sayi_no}</title>
-${styleler}
-<style>
-  body { margin: 0; padding: 0; }
-  ${bottomCenterOverride}
-  @media print {
-    body { margin: 0 !important; padding: 0 !important; }
-  }
-</style>
-</head>
-<body>
-  ${icerik}
-  <script>
-    // Sayfa yüklenince otomatik print dialog'u aç
-    window.addEventListener("load", function () {
-      setTimeout(function () {
-        window.focus();
-        window.print();
-      }, 300);
-    });
-    // Print dialog kapanınca pencereyi kapat (opsiyonel)
-    window.addEventListener("afterprint", function () {
-      setTimeout(function () { window.close(); }, 200);
-    });
-  </script>
-</body>
-</html>`;
-
-      const yeniPencere = window.open("", "_blank", "width=900,height=1100");
-      if (!yeniPencere) {
-        alert("Pop-up engellenmiş. Lütfen bu site için pop-up izni verin ve tekrar deneyin.");
+      window.print();
+      // Print sonrası temizle
+      setTimeout(() => {
         setPrintEvrakRef(null);
-        return;
-      }
-      yeniPencere.document.open();
-      yeniPencere.document.write(html);
-      yeniPencere.document.close();
-
-      // Ana sayfadaki print portal'ı artık gerekmez
-      setTimeout(() => setPrintEvrakRef(null), 500);
+        const tag = document.getElementById(styleTagId);
+        if (tag) tag.remove();
+      }, 500);
     }, 200);
   }
 
