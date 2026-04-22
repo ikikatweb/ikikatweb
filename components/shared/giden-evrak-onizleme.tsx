@@ -25,32 +25,135 @@ type Props = {
   kaseDahil: boolean;
 };
 
+// Word HTML çöpünü (MSO attribute'leri, conditional comments, namespaced tag'lar
+// ve metin içine literal olarak sızmış Word CSS kalıntıları) agresif şekilde temizler
+function wordCopGidr(text: string): string {
+  let result = text
+    // === 1. Gerçek HTML tag-level çöp ===
+    .replace(/<!--\[if[\s\S]*?<!\[endif\]-->/gi, "")
+    .replace(/<!\[if[\s\S]*?<!\[endif\]>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\/?[a-z]+:[a-z0-9_-]+\b[^>]*>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    // Tüm tag'lardaki attribute'leri sil
+    .replace(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, "<$1$2>");
+
+  // === 2. Paragraf başlangıcındaki literal Word CSS kalıntısı ===
+  // Pattern: metin `something:value;...">` şeklinde başlıyorsa, o kısmı sil
+  // (açılış <span style="..."> kısmı kesilmiş, sadece attribute content + "> text kalmış)
+  // İki kez uygula — bazen ardışık garbage olabilir
+  const cssKalintiRegex = /^\s*"?[^<>"\n]*?[a-zA-Z-]+\s*:\s*[^<>\n]*?">\s*/;
+  for (let i = 0; i < 3; i++) {
+    const yeni = result.replace(cssKalintiRegex, "");
+    if (yeni === result) break;
+    result = yeni;
+  }
+
+  return result;
+}
+
+// HTML yapısını (div/br) koruyarak sadece çöpü temizler — editör çıktısını birebir render için
+function sanitizeHtmlTamHtml(text: string): string {
+  if (!text) return "";
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return text;
+  }
+
+  // Word çöpünü temizle
+  const cleaned = wordCopGidr(text);
+
+  // DOMParser ile güvenli parse + yeniden serialize
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${cleaned}</div>`, "text/html");
+  const root = doc.body.firstChild as HTMLElement | null;
+  if (!root) return "";
+
+  const escapeText = (s: string): string =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // İzin verilen tag'lar: div, p, br, b, strong, i, em, u, span (içerik için)
+  const izinliTag = new Set(["div", "p", "br", "b", "strong", "i", "em", "u", "span"]);
+
+  function walk(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return escapeText(node.textContent ?? "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    const icerik = Array.from(el.childNodes).map(walk).join("");
+
+    if (!izinliTag.has(tag)) return icerik;
+
+    // Tag normalizasyonu
+    if (tag === "strong") return `<b>${icerik}</b>`;
+    if (tag === "em") return `<i>${icerik}</i>`;
+    if (tag === "br") return "<br>";
+
+    // Inline style'da bold/italic/underline varsa tag'a çevir
+    const style = el.getAttribute("style") ?? "";
+    const bold = /font-weight\s*:\s*(bold|[6-9]00|1000)/i.test(style);
+    const italic = /font-style\s*:\s*italic/i.test(style);
+    const underline = /text-decoration[^;]*underline/i.test(style);
+
+    if (tag === "span") {
+      let sonuc = icerik;
+      if (bold) sonuc = `<b>${sonuc}</b>`;
+      if (italic) sonuc = `<i>${sonuc}</i>`;
+      if (underline) sonuc = `<u>${sonuc}</u>`;
+      return sonuc;
+    }
+
+    // div, p, b, i, u — tag'ı koru ama attribute'leri at
+    return `<${tag}>${icerik}</${tag}>`;
+  }
+
+  return walk(root);
+}
+
 // Metin içindeki <b>, <i>, <u> tag'larını güvenli şekilde render et
+// DOMParser ile parse edip, sadece izin verilen tag'ları koruyarak güvenli HTML üretir
 function sanitizeHtml(text: string): string {
-  // Önce style attribute'lu tag'ları temiz tag'lara dönüştür
-  let clean = text
-    .replace(/<b\b[^>]*>/gi, "<b>")
-    .replace(/<i\b[^>]*>/gi, "<i>")
-    .replace(/<u\b[^>]*>/gi, "<u>")
-    .replace(/<\/b>/gi, "</b>")
-    .replace(/<\/i>/gi, "</i>")
-    .replace(/<\/u>/gi, "</u>");
-  // font-style: italic olan b tag'larını i'ye çevir
-  if (text.match(/<b[^>]*font-style:\s*italic/i)) {
-    clean = clean.replace(/<b>/gi, "<b><i>").replace(/<\/b>/gi, "</i></b>");
+  if (!text) return "";
+  // SSR ortamında DOMParser yok — basit fallback ile text döndür
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return text.replace(/<[^>]*>/g, "");
   }
-  // text-decoration: underline olan tag'ları u'ya çevir
-  if (text.match(/<[^>]*text-decoration[^>]*underline/i)) {
-    clean = clean.replace(/<span[^>]*>/gi, "<u>").replace(/<\/span>/gi, "</u>");
+
+  // 1) Word çöplerini agresif temizle
+  const cleaned = wordCopGidr(text);
+
+  // 2) DOMParser ile güvenli parse
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${cleaned}</div>`, "text/html");
+  const root = doc.body.firstChild as HTMLElement | null;
+  if (!root) return "";
+
+  const escapeText = (s: string): string =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  function walk(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return escapeText(node.textContent ?? "");
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    const icerik = Array.from(el.childNodes).map(walk).join("");
+
+    // Doğrudan desteklenen tag'lar
+    if (tag === "b" || tag === "strong") return `<b>${icerik}</b>`;
+    if (tag === "i" || tag === "em") return `<i>${icerik}</i>`;
+    if (tag === "u") return `<u>${icerik}</u>`;
+
+    // Diğer tag'lar (span, div, p, font, h1-6 vb.) → sadece içerik
+    return icerik;
   }
-  // Diğer span tag'larını kaldır
-  clean = clean.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
-  // Kalan bilinmeyen tag'ları escape et, sadece b/i/u kalsın
-  clean = clean
-    .replace(/&/g, "&amp;")
-    .replace(/<(?!\/?[biu]>)/g, "&lt;")
-    .replace(/(?<![biu])>/g, "&gt;");
-  return clean;
+
+  return walk(root);
 }
 
 export default function GidenEvrakOnIzleme({
@@ -68,12 +171,9 @@ export default function GidenEvrakOnIzleme({
   const aktifIlgi = (ilgiListesi ?? []).filter((i) => i?.trim());
   const aktifEkler = (ekler ?? []).filter((e) => e?.trim());
 
-  // Metin paragraflarını ayır
-  const metinParagraflar = (metin ?? "")
-    .replace(/<span[^>]*style="[^"]*white-space:\s*pre[^"]*"[^>]*>[\s\t]*<\/span>/gi, "")
-    .replace(/<div>/gi, "\n").replace(/<\/div>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .split("\n").filter((p) => p.trim());
+  // Metin olduğu gibi (editördeki biçimle birebir) render edilecek
+  // Sadece Word çöpü temizlenir, HTML yapısı korunur
+  const metinTemiz = sanitizeHtmlTamHtml(metin ?? "");
 
   return (
     <div
@@ -154,23 +254,20 @@ export default function GidenEvrakOnIzleme({
       {/* 2 boş satır */}
       <div style={{ height: "2em" }} />
 
-      {/* ===== 7. METİN — 10.5pt, sol 0.5cm, first-line 1.5cm, justify, space-after 3pt ===== */}
-      {metinParagraflar.length > 0 && (
-        <div style={{ marginLeft: "0.5cm" }}>
-          {metinParagraflar.map((paragraf, i) => (
-            <div
-              key={i}
-              style={{
-                fontSize: "10.5pt",
-                lineHeight: "1.5",
-                textAlign: "justify",
-                textIndent: "1.5cm",
-                marginBottom: "3pt",
-              }}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(paragraf) }}
-            />
-          ))}
-        </div>
+      {/* ===== 7. METİN — editör çıktısı birebir (tab'lar, boş satırlar, paragraflar korunur) ===== */}
+      {metinTemiz && (
+        <div
+          style={{
+            marginLeft: "0.5cm",
+            fontSize: "10.5pt",
+            lineHeight: "1.5",
+            textAlign: "left",
+            whiteSpace: "pre-wrap",
+            orphans: 3,
+            widows: 3,
+          }}
+          dangerouslySetInnerHTML={{ __html: metinTemiz }}
+        />
       )}
 
       {/* 4 boş satır */}

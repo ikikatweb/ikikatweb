@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -402,9 +403,10 @@ export default function GidenEvrakPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Yazdırma için görünmez render alanı - print modunda görünür */}
-      {printEvrakRef && (
-        <div className="evrak-print-area" style={{ position: "fixed", left: "-10000px", top: 0 }}>
+      {/* Yazdırma için — Portal ile body'nin en üstüne render edilir
+          (sayfa hierarşisine girmez, ilk sayfa boş kalmaz) */}
+      {printEvrakRef && typeof document !== "undefined" && createPortal(
+        <div className="evrak-print-area">
           <GidenEvrakOnIzleme
             firma={printEvrakRef.firmalar ?? null}
             evrakTarihi={printEvrakRef.evrak_tarihi}
@@ -416,7 +418,8 @@ export default function GidenEvrakPage() {
             ekler={printEvrakRef.ekler ?? []}
             kaseDahil={printEvrakRef.kase_dahil ?? false}
           />
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

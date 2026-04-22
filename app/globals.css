@@ -129,29 +129,52 @@ thead th {
   }
 }
 
-/* Yazdırma stilleri - Yazışma evrağı PDF çıktısı için */
+/* Yazdırma stilleri — Yazışma evrağı PDF çıktısı için
+   .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
+   bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    size: A4;
+    margin: 0;
   }
-  .evrak-print-area,
-  .evrak-print-area * {
-    visibility: visible;
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
-  .evrak-print-area {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
+
+  /* body'nin tüm direkt çocuklarını gizle (dashboard layout, sidebar vb.) */
+  body > * {
+    display: none !important;
+  }
+
+  /* Sadece print alanını göster */
+  body > .evrak-print-area {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
+    height: auto !important;
   }
+
   .evrak-print-area .evrak-onizleme {
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  @page {
-    size: A4;
-    margin: 0;
+
+  .evrak-print-area * {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+}
+
+/* Ekranda (normal modda) print-area hiç görünmesin */
+@media screen {
+  .evrak-print-area {
+    display: none !important;
   }
 }
