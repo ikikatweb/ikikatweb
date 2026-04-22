@@ -16,6 +16,7 @@ import {
   uploadSlip,
   getKasaHareketLimit,
 } from "@/lib/supabase/queries/kasa";
+import { getGoruntulemeLimit, ngunOnce } from "@/lib/supabase/queries/goruntuleme-limit";
 import { useAuth } from "@/hooks";
 import type { KasaHareketi } from "@/lib/supabase/types";
 type KasaKullanici = { id: string; ad_soyad: string; aktif?: boolean };
@@ -78,6 +79,8 @@ function KasaDefContent() {
   // Kasa hareket üst limitleri — tanımlamalardan gelir (nakit ve kart ayrı)
   const [kasaUstLimitNakit, setKasaUstLimitNakit] = useState<number>(0);
   const [kasaUstLimitKart, setKasaUstLimitKart] = useState<number>(0);
+  // Kısıtlı kullanıcılar için görüntüleme gün limiti (tanımlamalardan)
+  const [kasaGoruntulemeGun, setKasaGoruntulemeGun] = useState<number>(30);
 
   // Filtreler
   const bugun = new Date();
@@ -118,12 +121,13 @@ function KasaDefContent() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [sData, katData, hData, kResp, limitData] = await Promise.all([
+      const [sData, katData, hData, kResp, limitData, gorLimit] = await Promise.all([
         getSantiyelerAll(),
         getDegerler("kasa_harcama_kategori").catch(() => []),
         getKasaHareketleri().catch(() => []),
         fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
         getKasaHareketLimit().catch(() => null),
+        getGoruntulemeLimit().catch(() => null),
       ]);
       const kullaniciListesi = ((kResp as { id: string; ad_soyad: string; aktif?: boolean }[]) ?? [])
         .map((k) => ({ id: k.id, ad_soyad: k.ad_soyad, aktif: k.aktif !== false }));

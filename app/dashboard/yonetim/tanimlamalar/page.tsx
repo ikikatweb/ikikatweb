@@ -20,6 +20,7 @@ import {
   deleteAracCinsiYakitLimit,
 } from "@/lib/supabase/queries/yakit";
 import { getKasaHareketLimit, upsertKasaHareketLimit } from "@/lib/supabase/queries/kasa";
+import { getGoruntulemeLimit, upsertGoruntulemeLimit } from "@/lib/supabase/queries/goruntuleme-limit";
 import { formatBaslik, formatBuyukHarf, formatMuhatap, formatKisiAdi } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Tanimlama, Firma, AracCinsiYakitLimit } from "@/lib/supabase/types";
@@ -123,13 +124,21 @@ export default function TanimlamalarPage() {
   const [kasaLimitKartInput, setKasaLimitKartInput] = useState("");
   const [kasaLimitKaydediyor, setKasaLimitKaydediyor] = useState(false);
 
+  // Görüntüleme gün limitleri — kısıtlı kullanıcılar için
+  const [gorKasaDB, setGorKasaDB] = useState<number>(30);
+  const [gorYakitDB, setGorYakitDB] = useState<number>(30);
+  const [gorKasaInput, setGorKasaInput] = useState("30");
+  const [gorYakitInput, setGorYakitInput] = useState("30");
+  const [gorLimitKaydediyor, setGorLimitKaydediyor] = useState(false);
+
   const loadData = useCallback(async () => {
     try {
-      const [data, fData, lData, kasaLimit] = await Promise.all([
+      const [data, fData, lData, kasaLimit, gorLimit] = await Promise.all([
         getTumTanimlamalar(),
         getFirmalar(),
         getAracCinsiYakitLimitler().catch(() => [] as AracCinsiYakitLimit[]),
         getKasaHareketLimit().catch(() => null),
+        getGoruntulemeLimit().catch(() => null),
       ]);
       setFirmalar(fData ?? []);
       setYakitLimitler(lData);
@@ -138,6 +147,12 @@ export default function TanimlamalarPage() {
         setKasaLimitKartDB(kasaLimit.ust_sinir_kart);
         setKasaLimitNakitInput(formatParaInput(kasaLimit.ust_sinir_nakit.toFixed(2).replace(".", ",")));
         setKasaLimitKartInput(formatParaInput(kasaLimit.ust_sinir_kart.toFixed(2).replace(".", ",")));
+      }
+      if (gorLimit) {
+        setGorKasaDB(gorLimit.kasa_gun);
+        setGorYakitDB(gorLimit.yakit_gun);
+        setGorKasaInput(String(gorLimit.kasa_gun));
+        setGorYakitInput(String(gorLimit.yakit_gun));
       }
       const items = data ?? [];
 
@@ -1097,6 +1112,82 @@ export default function TanimlamalarPage() {
                 }}
               >
                 {kasaLimitKaydediyor ? "Kaydediliyor..." : "Kaydet"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Görüntüleme Gün Limitleri — kısıtlı kullanıcılar için */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-[#1E3A5F] flex items-center gap-1.5">
+                <Wallet size={14} /> goruntuleme_gun_limiti
+              </h3>
+            </div>
+            <p className="text-[10px] text-gray-400 mb-3">
+              Kısıtlı kullanıcılar Kasa Defteri ve Yakıt sayfalarında son N günün verilerini görebilir.
+              Yönetici her zaman tümünü görür.
+            </p>
+            <div className="space-y-2 pt-2 border-t">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-gray-500">Kasa Defteri (gün)</Label>
+                  <span className="text-[9px] text-gray-400">Mevcut: {gorKasaDB}</span>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="3650"
+                  value={gorKasaInput}
+                  onChange={(e) => setGorKasaInput(e.target.value)}
+                  placeholder="30"
+                  className={selectClass + " text-xs"}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-gray-500">Yakıt (gün)</Label>
+                  <span className="text-[9px] text-gray-400">Mevcut: {gorYakitDB}</span>
+                </div>
+                <input
+                  type="number"
+                  min="1"
+                  max="3650"
+                  value={gorYakitInput}
+                  onChange={(e) => setGorYakitInput(e.target.value)}
+                  placeholder="30"
+                  className={selectClass + " text-xs"}
+                />
+              </div>
+              <Button
+                size="sm"
+                className="w-full bg-[#F97316] hover:bg-[#ea580c] text-white h-7 text-xs"
+                disabled={gorLimitKaydediyor}
+                onClick={async () => {
+                  const kasa = parseInt(gorKasaInput, 10);
+                  const yakit = parseInt(gorYakitInput, 10);
+                  if (isNaN(kasa) || kasa < 1) { toast.error("Kasa için geçerli bir gün sayısı girin."); return; }
+                  if (isNaN(yakit) || yakit < 1) { toast.error("Yakıt için geçerli bir gün sayısı girin."); return; }
+                  setGorLimitKaydediyor(true);
+                  try {
+                    await upsertGoruntulemeLimit({ kasa_gun: kasa, yakit_gun: yakit });
+                    setGorKasaDB(kasa);
+                    setGorYakitDB(yakit);
+                    toast.success("Görüntüleme limitleri güncellendi.");
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    if (msg.includes("does not exist") || msg.includes("relation")) {
+                      toast.error("goruntuleme_limit tablosu Supabase'de yok. SQL'i çalıştırın.", { duration: 8000 });
+                    } else {
+                      toast.error("Kaydedilemedi: " + msg);
+                    }
+                  } finally {
+                    setGorLimitKaydediyor(false);
+                  }
+                }}
+              >
+                {gorLimitKaydediyor ? "Kaydediliyor..." : "Kaydet"}
               </Button>
             </div>
           </CardContent>

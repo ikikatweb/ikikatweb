@@ -479,6 +479,15 @@ export type KasaHareketLimit = {
   updated_at: string;
 };
 
+// Kısıtlı kullanıcıların Kasa Defteri ve Yakıt sayfalarında kaç gün geriye
+// ait verileri görebileceğini belirler (tek satırlık tablo)
+export type GoruntulemeLimit = {
+  id: string;
+  kasa_gun: number;
+  yakit_gun: number;
+  updated_at: string;
+};
+
 // Araçlara verilen yakıt dağıtımı
 export type AracYakit = {
   id: string;
