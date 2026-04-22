@@ -253,6 +253,8 @@ function KasaDefContent() {
     for (const h of hareketler) {
       if (h.odeme_yontemi !== "nakit") continue;
       if (h.tarih >= filtreBaslangic) continue;
+      // Kısıtlı kullanıcı sadece KENDİ kayıtlarının devir bakiyesini görsün
+      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
       // Şantiye filtresi
       if (filtreSantiye && h.santiye_id !== filtreSantiye) continue;
       // Personel filtresi
@@ -260,7 +262,7 @@ function KasaDefContent() {
       bakiye += h.tip === "gelir" ? h.tutar : -h.tutar;
     }
     return bakiye;
-  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel]);
+  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, isYonetici, kullanici]);
 
   // Dialog açma
   function dialogAc() {
