@@ -285,10 +285,15 @@ export default function DashboardPage() {
     return m;
   }, [santiyeler]);
 
-  // Widget 1: Yi-ÜFE
+  // Widget 1: Yi-ÜFE — son 4 ay (iki kart: son 2 ay + ondan önceki 2 ay)
   const yiUfeSon = useMemo(() => {
     const sorted = [...yiUfeData].sort((a, b) => b.yil !== a.yil ? b.yil - a.yil : b.ay - a.ay);
-    return { son: sorted[0] ?? null, onceki: sorted[1] ?? null };
+    return {
+      son: sorted[0] ?? null,
+      onceki: sorted[1] ?? null,
+      oncekiOncesi: sorted[2] ?? null,
+      ucOncesi: sorted[3] ?? null,
+    };
   }, [yiUfeData]);
 
   // Widget 2: Kasa kullanıcı özeti — devir bakiyesi (önceki ay sonu) + bu ay hareketleri
@@ -744,34 +749,63 @@ export default function DashboardPage() {
 
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Widget 1: Yi-ÜFE Endeksler (sol üst) */}
+        {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
         {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-2 lg:order-1">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Yi-ÜFE Endeksler</h3>
           </div>
-          {yiUfeSon.son ? (
-            <div>
-              <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.son.ay - 1)] ?? ""} {yiUfeSon.son.yil}</div>
-              <div className="text-3xl font-bold text-[#1E3A5F] mb-4">{formatSayi(yiUfeSon.son.endeks)}</div>
-              {yiUfeSon.onceki && (
-                <>
-                  <div className="border-t pt-3">
-                    <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.onceki.ay - 1)] ?? ""} {yiUfeSon.onceki.yil}</div>
-                    <div className="text-lg font-semibold text-gray-600 mb-3">{formatSayi(yiUfeSon.onceki.endeks)}</div>
+          {!yiUfeSon.son ? (
+            <p className="text-sm text-gray-400">Veri yok</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Kart 1: Son ay + bir önceki ay */}
+              <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.son.ay - 1)] ?? ""} {yiUfeSon.son.yil}</div>
+                <div className="text-2xl font-bold text-[#1E3A5F] mb-3">{formatSayi(yiUfeSon.son.endeks)}</div>
+                {yiUfeSon.onceki && (
+                  <>
+                    <div className="border-t pt-2">
+                      <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.onceki.ay - 1)] ?? ""} {yiUfeSon.onceki.yil}</div>
+                      <div className="text-base font-semibold text-gray-600 mb-2">{formatSayi(yiUfeSon.onceki.endeks)}</div>
+                    </div>
+                    {(() => {
+                      const degisim = ((yiUfeSon.son.endeks - yiUfeSon.onceki.endeks) / yiUfeSon.onceki.endeks) * 100;
+                      return (
+                        <div className={`text-center py-1.5 rounded-lg text-xs font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                          {degisim >= 0 ? "+" : ""}%{formatSayi(degisim)}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              {/* Kart 2: Bir önceki ay + ondan önceki ay */}
+              {yiUfeSon.onceki && yiUfeSon.oncekiOncesi ? (
+                <div className="bg-gray-50 rounded-lg p-3 border">
+                  <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.onceki.ay - 1)] ?? ""} {yiUfeSon.onceki.yil}</div>
+                  <div className="text-2xl font-bold text-[#1E3A5F] mb-3">{formatSayi(yiUfeSon.onceki.endeks)}</div>
+                  <div className="border-t pt-2">
+                    <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.oncekiOncesi.ay - 1)] ?? ""} {yiUfeSon.oncekiOncesi.yil}</div>
+                    <div className="text-base font-semibold text-gray-600 mb-2">{formatSayi(yiUfeSon.oncekiOncesi.endeks)}</div>
                   </div>
                   {(() => {
-                    const degisim = ((yiUfeSon.son.endeks - yiUfeSon.onceki.endeks) / yiUfeSon.onceki.endeks) * 100;
+                    const degisim = ((yiUfeSon.onceki.endeks - yiUfeSon.oncekiOncesi.endeks) / yiUfeSon.oncekiOncesi.endeks) * 100;
                     return (
-                      <div className={`text-center py-2 rounded-lg text-sm font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                      <div className={`text-center py-1.5 rounded-lg text-xs font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                         {degisim >= 0 ? "+" : ""}%{formatSayi(degisim)}
                       </div>
                     );
                   })()}
-                </>
+                </div>
+              ) : (
+                <div className="bg-gray-50 rounded-lg p-3 border flex items-center justify-center text-xs text-gray-400">
+                  Geçmiş dönem verisi yok
+                </div>
               )}
             </div>
-          ) : <p className="text-sm text-gray-400">Veri yok</p>}
+          )}
         </div> : null}
 
         {/* Widget 2: Kasa Defteri Personel Özeti (sol alt) */}
@@ -972,9 +1006,9 @@ export default function DashboardPage() {
                     <TableHead className="px-2 text-[10px]">Plaka</TableHead>
                     <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
                     <TableHead className="px-2 text-[10px] text-right">Güncel Km</TableHead>
-                    <TableHead className="px-2 text-[10px] text-right">Sonraki Km</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Yapılacak Km</TableHead>
                     <TableHead className="px-2 text-[10px] text-center">Durum</TableHead>
-                    <TableHead className="px-2 text-[10px] text-center">Sonraki Tarih</TableHead>
+                    <TableHead className="px-2 text-[10px] text-center">Yapılacak Tarih</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

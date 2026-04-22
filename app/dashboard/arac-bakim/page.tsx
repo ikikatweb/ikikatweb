@@ -409,7 +409,7 @@ export default function AracBakimPage() {
     doc.text(`Tarih: ${new Date().toLocaleDateString("tr-TR")} | Toplam: ${filtrelenmis.length} kayit | Toplam tutar: ${formatSayi(ozet.toplamTutar)} TL`, 14, 21);
     autoTable(doc, {
       startY: 25,
-      head: [["Tarih", "Tip", "Plaka", "Marka/Model", "Yaptiran", "Islemi Giren", "Km", "Servis/Tamirci", "Detay", "Tutar (TL)", "Sonraki Bakim"]],
+      head: [["Tarih", "Tip", "Plaka", "Marka/Model", "Yaptiran", "Islemi Giren", "Km", "Servis/Tamirci", "Detay", "Tutar (TL)", "Bakim Yapilacak"]],
       body: filtrelenmis.map((b) => [
         tr(formatTarih(b.bakim_tarihi)),
         (b.tip ?? "bakim") === "tamirat" ? "Tamirat" : "Bakim",
@@ -434,7 +434,7 @@ export default function AracBakimPage() {
   }
 
   function exportExcel() {
-    const headers = ["Tarih", "Tip", "Plaka", "Marka", "Model", "Yaptıran", "İşlemi Giren", "Km/Saat", "Servis/Tamirci", "Detay", "Tutar (TL)", "Sonraki Bakım Km", "Sonraki Bakım Tarihi", "Fatura URL'leri", "İş Foto/PDF URL'leri"];
+    const headers = ["Tarih", "Tip", "Plaka", "Marka", "Model", "Yaptıran", "İşlemi Giren", "Km/Saat", "Servis/Tamirci", "Detay", "Tutar (TL)", "Bakım Yapılacak Km", "Bakım Yapılacak Tarih", "Fatura URL'leri", "İş Foto/PDF URL'leri"];
     const data = filtrelenmis.map((b) => {
       const faturaDosyalar = Array.isArray(b.fatura_urls) && b.fatura_urls.length > 0
         ? b.fatura_urls
@@ -550,7 +550,7 @@ export default function AracBakimPage() {
                 <TableHead className="text-white text-[11px] px-2">Servis/Tamirci</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Detay</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right">Tutar</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-center">Sonraki Bakım</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-center">Bakım Yapılacak</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Fatura</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">İş Foto/PDF</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>
@@ -894,7 +894,7 @@ export default function AracBakimPage() {
               </div>
               {dTip === "bakim" && (
                 <div className="space-y-1">
-                  <Label className="text-xs">Sonraki Bakım Km / Saat</Label>
+                  <Label className="text-xs">Bakım Yapılacak Km / Saat</Label>
                   <input
                     type="text" inputMode="numeric"
                     value={dSonrakiKm}
@@ -925,11 +925,11 @@ export default function AracBakimPage() {
 
             {dTip === "bakim" && (
               <div className="space-y-1">
-                <Label className="text-xs">Sonraki Bakım Tarihi</Label>
+                <Label className="text-xs">Bakım Yapılacak Tarih</Label>
                 <input type="date" value={dSonrakiTarih} onChange={(e) => setDSonrakiTarih(e.target.value)} className={selectClass + " w-full"} />
                 <p className="text-[9px] text-gray-400">
                   Bakım tarihi seçildiğinde otomatik olarak 1 yıl sonrası atanır.
-                  Km dolmadıysa bu tarihte bakım yapılır.
+                  Km dolmadıysa bu tarihte bakım yapılacaktır.
                 </p>
               </div>
             )}
