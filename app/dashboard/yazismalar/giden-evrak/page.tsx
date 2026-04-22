@@ -196,30 +196,11 @@ export default function GidenEvrakPage() {
 
   function printEvrak(e: GidenEvrakWithRelations) {
     setPrintEvrakRef(e);
-    // Render olduktan sonra print başlat
+    // Render olduktan sonra print başlat — sayfa numarası her zaman görünür
+    // (CSS @page @bottom-center kuralı "counter(page)/counter(pages)" gösterir)
     setTimeout(() => {
-      // Tek sayfalık evraksa sayfa numarasını gizle
-      const printArea = document.querySelector(".evrak-print-portal") as HTMLElement | null;
-      const styleTagId = "evrak-tek-sayfa-style";
-      const eskiTag = document.getElementById(styleTagId);
-      if (eskiTag) eskiTag.remove();
-      if (printArea) {
-        const A4_USABLE_PX = 980;
-        const contentHeight = printArea.getBoundingClientRect().height;
-        if (contentHeight <= A4_USABLE_PX) {
-          const style = document.createElement("style");
-          style.id = styleTagId;
-          style.textContent = `@media print { @page { @bottom-center { content: ""; } } }`;
-          document.head.appendChild(style);
-        }
-      }
       window.print();
-      // Print sonrası temizle
-      setTimeout(() => {
-        setPrintEvrakRef(null);
-        const tag = document.getElementById(styleTagId);
-        if (tag) tag.remove();
-      }, 500);
+      setTimeout(() => setPrintEvrakRef(null), 500);
     }, 200);
   }
 
