@@ -206,7 +206,8 @@ function KasaDefContent() {
       if (!isYonetici && kullanici) {
         // Kısıtlı kullanıcı sadece kendi personel_id'si olan kayıtları görür
         if (h.personel_id !== kullanici.id) return false;
-        if (!tarihIzinliMi(kullanici, h.tarih)) return false;
+        // Görüntüleme sınırı — kullanıcının kasa_goruntuleme_gun değerine göre filtrele
+        if (!tarihIzinliMi(kullanici, h.tarih, "kasa", "goruntuleme")) return false;
       }
       // Tarih
       if (isYonetici && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
@@ -286,7 +287,8 @@ function KasaDefContent() {
     if (!dPersonel) { toast.error("Kullanıcı seçin."); return; }
     if (!dSantiye) { toast.error("Şantiye seçin."); return; }
     if (!dTarih) { toast.error("Tarih girin."); return; }
-    if (!tarihIzinliMi(kullanici, dTarih)) {
+    // İşlem sınırı — kullanıcının kasa_islem_gun değerine göre
+    if (!tarihIzinliMi(kullanici, dTarih, "kasa", "islem")) {
       toast.error(`Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün.`);
       return;
     }
@@ -706,7 +708,9 @@ function KasaDefContent() {
       {/* Kısıtlı kullanıcı notu */}
       {!isYonetici && kullanici && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-4 text-xs text-amber-800">
-          Sadece kendi girdiğiniz kayıtları görebilirsiniz{kullanici.geriye_donus_gun != null ? ` (son ${kullanici.geriye_donus_gun} gün)` : ""}.
+          Sadece kendi girdiğiniz kayıtları görebilirsiniz
+          {kullanici.kasa_goruntuleme_gun != null ? ` (son ${kullanici.kasa_goruntuleme_gun} gün)` : ""}.
+          {kullanici.kasa_islem_gun != null && ` İşlem yapılabilecek en eski tarih: son ${kullanici.kasa_islem_gun} gün.`}
         </div>
       )}
 
