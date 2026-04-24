@@ -19,6 +19,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "yil, ay ve endeks zorunludur" }, { status: 400 });
     }
 
+    // 2020 ve sonrası verilere manuel müdahale yasak — otomatik scrape ile güncelleniyor
+    if (yil >= 2020) {
+      return NextResponse.json({
+        error: "2020 ve sonrası Yi-ÜFE verilerine manuel müdahale edilemez. Veri Tanımlamalar > Yi-ÜFE otomatik çekme ile TÜİK'ten alınır.",
+      }, { status: 403 });
+    }
+
+    // Endeks değeri mantıklı olmalı (saçma 1 gibi değerler engellensin)
+    if (typeof endeks !== "number" || endeks <= 0 || !Number.isFinite(endeks)) {
+      return NextResponse.json({ error: "Geçersiz endeks değeri" }, { status: 400 });
+    }
+
     // Mevcut kayıt var mı?
     const { data: mevcut } = await supabase
       .from("yi_ufe")

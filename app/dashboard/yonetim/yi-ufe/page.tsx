@@ -189,6 +189,11 @@ export default function YiUfePage() {
         </Button>
       </div>
 
+      {/* Bilgilendirme */}
+      <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 text-xs text-blue-900">
+        <strong>📌 Not:</strong> 2020 ve sonrası veriler TÜİK'ten <strong>otomatik çekilir</strong> (elle değiştirilemez). Henüz yayınlanmamış aylar boş kalır — TÜİK açıkladıktan sonra &quot;Verileri Güncelle&quot; butonu ile çekilir. Sadece <strong>2020 öncesi</strong> tarihi veriler elle girilebilir.
+      </div>
+
       {/* Tablo */}
       {loading ? (
         <div className="space-y-3">
@@ -233,8 +238,9 @@ export default function YiUfePage() {
                       satir.yil === sonYil && ayIndex + 1 === sonAy;
                     const cellKey = `${satir.yil}-${ayIndex + 1}`;
                     const isEditing = editKey === cellKey;
-                    // Tüm yıllar elle düzenlenebilir (scrape sadece 2020+ verileri günceller ama elle de girilebilir)
-                    const elleGirilebilir = true;
+                    // 2020 ve sonrası: SADECE otomatik scrape. Elle müdahale yok.
+                    // 2020 öncesi: tarihi veri, TÜİK yayınlamıyor, elle girilir.
+                    const elleGirilebilir = satir.yil < 2020;
                     // Ondalık hassasiyeti: 2020 öncesi 6 hane, 2020+ 2 hane
                     const formatEndeks = (v: number) => {
                       const hane = satir.yil < 2020 ? 6 : 2;
@@ -278,7 +284,10 @@ export default function YiUfePage() {
                             {deger !== null ? formatEndeks(deger) : "—"}
                           </button>
                         ) : (
-                          <span className="inline-block h-8 leading-8 px-1">
+                          <span
+                            className="inline-block h-8 leading-8 px-1"
+                            title="2020 ve sonrası veriler TÜİK'ten otomatik çekilir, elle değiştirilemez"
+                          >
                             {deger !== null ? formatEndeks(deger) : "—"}
                           </span>
                         )}

@@ -31,10 +31,18 @@ export default function PushBildirimButonu() {
       setDurum("reddedilmis");
       return;
     }
-    // Subscription durumunu kontrol et
-    navigator.serviceWorker.ready
-      .then((reg) => reg.pushManager.getSubscription())
-      .then((sub) => setDurum(sub ? "acik" : "kapali"))
+    // Mevcut kayıt var mı kontrol et. getRegistration hemen resolve olur
+    // (serviceWorker.ready ise kayıt yoksa sonsuza kadar bekler — bug)
+    navigator.serviceWorker
+      .getRegistration()
+      .then(async (reg) => {
+        if (!reg) {
+          setDurum("kapali");
+          return;
+        }
+        const sub = await reg.pushManager.getSubscription();
+        setDurum(sub ? "acik" : "kapali");
+      })
       .catch(() => setDurum("kapali"));
   }, []);
 

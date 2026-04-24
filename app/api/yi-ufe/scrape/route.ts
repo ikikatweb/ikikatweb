@@ -134,7 +134,8 @@ export async function GET(request: Request) {
     }
 
     // Sadece 2020 ve sonrası verileri güncelle — 2020 öncesi elle girilir, scrape ile ezilmez
-    const filtreli = veriler.filter((v) => v.yil >= 2020);
+    // Ek sanity check: 2020+ Yi-ÜFE endeksleri 450'den düşük olamaz (saçma placeholder değerler engellensin)
+    const filtreli = veriler.filter((v) => v.yil >= 2020 && v.endeks >= 100);
 
     if (filtreli.length === 0) {
       return NextResponse.json({ basarili: true, toplamVeri: 0, yeniKayit: 0, sonVeri: { yil: 0, ay: "", endeks: 0 } });
