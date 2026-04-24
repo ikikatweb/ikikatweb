@@ -22,11 +22,11 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabaseAuth.auth.getUser();
   if (!user) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
 
-  // Kullanıcı id'sini al
+  // Kullanıcı id ve adını al
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const { data: kullanici } = await supabase
     .from("kullanicilar")
-    .select("id")
+    .select("id, ad_soyad, kullanici_adi")
     .eq("auth_id", user.id)
     .single();
   if (!kullanici) return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 });
@@ -38,10 +38,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "baslik ve govde zorunludur" }, { status: 400 });
   }
 
+  // İşlemi yapan kullanıcı adını bildirime ekle
+  const kullaniciAdi = kullanici.ad_soyad || kullanici.kullanici_adi || "Bilinmeyen kullanıcı";
+  const govdeSonu = `\n👤 ${kullaniciAdi}`;
+  const maxGovde = 300 - govdeSonu.length;
+  const govdeFinal = String(govde).slice(0, maxGovde) + govdeSonu;
+
   // Yöneticilere gönder (çağıran hariç)
   const sent = await sendPushToYoneticilerExcept(kullanici.id, {
     title: String(baslik).slice(0, 100),
-    body: String(govde).slice(0, 300),
+    body: govdeFinal,
     url: url || "/dashboard",
     tag: tag || undefined,
   });
