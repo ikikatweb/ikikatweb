@@ -288,23 +288,22 @@ export default function PersonelPuantajPage() {
   const gunler = useMemo(() => Array.from({ length: ayinGunSayisi }, (_, i) => i + 1), [ayinGunSayisi]);
 
   // Seçili şantiyede gösterilecek personeller
-  // - Sadece seçili şantiyeye atanmış AKTİF personeller
-  // - Pasif personeller: seçili ay içinde pasife alındıysa (o aydaki aktif günleri görelim) göster,
-  //   aksi halde tamamen gizle
+  // - Sadece seçili şantiyeye atanmış olanlar
+  // - Aktif personeller: her zaman görünür
+  // - Pasif personeller:
+  //   * Pasife alındığı aydan ÖNCEKİ aylarda ve o ayda göster (o aylarda aktifti, puantaj kayıtları var)
+  //   * Pasife alındığı aydan SONRAKİ aylarda tamamen gizle (artık burada değil)
   const gosterilecekPersoneller = useMemo(() => {
     if (!santiyeId) return [];
     const ayBaslangici = `${yil}-${String(ay).padStart(2, "0")}-01`;
-    const sonrakiAy = ay === 12 ? 1 : ay + 1;
-    const sonrakiYil = ay === 12 ? yil + 1 : yil;
-    const ayBitisi = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
     return personeller
       .filter((p) => personelSantiyeMap.get(p.id)?.has(santiyeId))
       .filter((p) => {
         if (p.durum !== "pasif") return true;
-        // Pasif personeller: sadece pasif_tarihi seçili ay içindeyse göster
-        // (o ayki aktif günlerini görebilmek için). Diğer aylarda tamamen gizle.
-        if (!p.pasif_tarihi) return false;
-        return p.pasif_tarihi >= ayBaslangici && p.pasif_tarihi < ayBitisi;
+        if (!p.pasif_tarihi) return true; // tarih yoksa gösterelim (güvenli taraf)
+        // pasif_tarihi seçili ayın başından SONRASIysa göster (o ay veya sonrası pasife alındı)
+        // → yani seçili ay, pasif tarihinin AYI veya ÖNCESİ ise göster
+        return p.pasif_tarihi >= ayBaslangici;
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
   }, [personeller, personelSantiyeMap, santiyeId, yil, ay]);
@@ -895,11 +894,9 @@ export default function PersonelPuantajPage() {
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
-                      {!pasif && (
-                        <div className="text-[9px] leading-tight truncate max-w-[120px] text-gray-500">
-                          {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
-                        </div>
-                      )}
+                      <div className={`text-[9px] leading-tight truncate max-w-[120px] ${pasif ? "text-gray-400" : "text-gray-500"}`}>
+                        {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
+                      </div>
                     </TableCell>
                     {gunler.map((g) => {
                       const pg = gunMap?.get(g);
