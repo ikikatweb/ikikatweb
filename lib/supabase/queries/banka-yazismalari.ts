@@ -50,6 +50,20 @@ export async function createBankaYazisma(yazisma: BankaYazismaInsert) {
     .single();
 
   if (error) throw error;
+
+  // Push bildirim
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const firma = data?.firmalar?.kisa_adi || data?.firmalar?.firma_adi || "?";
+    const banka = yazisma.muhatap ? String(yazisma.muhatap).split("\n").slice(-1)[0].slice(0, 50) : "";
+    bildirimGonder({
+      baslik: `🏦 Yeni Banka Yazışması — ${firma}`,
+      govde: [banka, yazisma.konu ? String(yazisma.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
+      url: "/dashboard/yazismalar/banka-yazismalari",
+      tag: "banka-yazismalari",
+    });
+  } catch { /* sessiz */ }
+
   return { ...data, kullanicilar: null };
 }
 

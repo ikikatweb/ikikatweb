@@ -52,6 +52,20 @@ export async function createGelenEvrak(evrak: GelenEvrakInsert) {
     .single();
 
   if (error) throw error;
+
+  // Push bildirim
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const firma = data?.firmalar?.kisa_adi || data?.firmalar?.firma_adi || "?";
+    const gonderen = evrak.gonderen ? String(evrak.gonderen).slice(0, 60) : "";
+    bildirimGonder({
+      baslik: `📥 Yeni Gelen Evrak — ${firma}`,
+      govde: [gonderen, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
+      url: "/dashboard/yazismalar/gelen-evrak",
+      tag: "gelen-evrak",
+    });
+  } catch { /* sessiz */ }
+
   return { ...data, kullanicilar: null };
 }
 

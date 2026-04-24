@@ -100,6 +100,20 @@ export async function insertKasaHareketi(data: {
     .select()
     .single();
   if (error) throw error;
+
+  // Push bildirim — yöneticilere (kaydı giren hariç)
+  try {
+    const { bildirimGonder, formatTL } = await import("@/lib/bildirim");
+    const tip = data.tip === "gelir" ? "Gelir" : "Gider";
+    const odeme = data.odeme_yontemi === "nakit" ? "Nakit" : "Kart";
+    bildirimGonder({
+      baslik: `💰 Yeni Kasa ${tip} — ${formatTL(data.tutar)}`,
+      govde: `${odeme}${data.kategori ? " · " + data.kategori : ""}${data.aciklama ? " · " + data.aciklama.slice(0, 80) : ""}`,
+      url: "/dashboard/kasa-defteri",
+      tag: "kasa",
+    });
+  } catch { /* sessiz */ }
+
   return result as KasaHareketi;
 }
 

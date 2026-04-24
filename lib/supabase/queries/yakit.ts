@@ -148,6 +148,24 @@ export async function insertYakitAlim(data: {
   const supabase = getSupabase();
   const { error } = await supabase.from("yakit_alim").insert(data);
   if (error) throw error;
+
+  // Push bildirim
+  try {
+    const { bildirimGonder, formatTL } = await import("@/lib/bildirim");
+    const { data: santiye } = await supabase
+      .from("santiyeler")
+      .select("is_adi")
+      .eq("id", data.santiye_id)
+      .maybeSingle();
+    const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
+    const toplam = data.miktar_lt * data.birim_fiyat;
+    bildirimGonder({
+      baslik: `⛽ Yeni Yakıt Alımı — ${santiyeAd}`,
+      govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${formatTL(toplam)} · ${data.tedarikci_firma}`,
+      url: "/dashboard/yakit",
+      tag: "yakit",
+    });
+  } catch { /* sessiz */ }
 }
 
 export async function updateYakitAlim(id: string, data: {

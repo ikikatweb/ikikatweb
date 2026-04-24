@@ -5,6 +5,10 @@
     {
       "path": "/api/yi-ufe/scrape",
       "schedule": "0 6 3 * *"
+    },
+    {
+      "path": "/api/cron/yaklasan-bildirim",
+      "schedule": "0 5 * * *"
     }
   ]
 }

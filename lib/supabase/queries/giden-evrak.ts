@@ -50,6 +50,20 @@ export async function createGidenEvrak(evrak: GidenEvrakInsert) {
     .single();
 
   if (error) throw error;
+
+  // Push bildirim
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const firma = data?.firmalar?.kisa_adi || data?.firmalar?.firma_adi || "?";
+    const muhatapKisa = evrak.muhatap ? String(evrak.muhatap).split("\n")[0].slice(0, 60) : "";
+    bildirimGonder({
+      baslik: `📤 Yeni Giden Evrak — ${firma}`,
+      govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
+      url: "/dashboard/yazismalar/giden-evrak",
+      tag: "giden-evrak",
+    });
+  } catch { /* sessiz */ }
+
   return { ...data, kullanicilar: null };
 }
 

@@ -72,6 +72,27 @@ export async function insertAracBakim(data: {
     .select()
     .single();
   if (error) throw error;
+
+  // Push bildirim
+  try {
+    const { bildirimGonder, formatTL } = await import("@/lib/bildirim");
+    // Araç plakasını çöz
+    const { data: arac } = await supabase
+      .from("araclar")
+      .select("plaka, marka, model")
+      .eq("id", data.arac_id)
+      .maybeSingle();
+    const plaka = arac?.plaka ?? "?";
+    const tipAd = data.tip === "tamirat" ? "Tamirat" : "Bakım";
+    const ikon = data.tip === "tamirat" ? "🔧" : "🛠️";
+    bildirimGonder({
+      baslik: `${ikon} Yeni ${tipAd} — ${plaka}`,
+      govde: `${[arac?.marka, arac?.model].filter(Boolean).join(" ")}${data.tutar ? " · " + formatTL(data.tutar) : ""}${data.detay ? " · " + data.detay.slice(0, 80) : ""}`,
+      url: "/dashboard/arac-bakim",
+      tag: "arac-bakim",
+    });
+  } catch { /* sessiz */ }
+
   return row as AracBakim;
 }
 
