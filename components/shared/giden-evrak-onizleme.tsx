@@ -15,7 +15,8 @@ type Firma = {
 
 type Props = {
   firma: Firma | null | undefined;
-  evrakTarihi: string;
+  evrakTarihi: string | null;
+  tarihGosterim?: string | null; // Kısmi tarih (örn. "..04.2026")
   evrakSayiNo: string;
   konu: string;
   muhatap: string | null;
@@ -187,6 +188,7 @@ function sanitizeHtml(text: string): string {
 export default function GidenEvrakOnIzleme({
   firma,
   evrakTarihi,
+  tarihGosterim,
   evrakSayiNo,
   konu,
   muhatap,
@@ -238,7 +240,11 @@ export default function GidenEvrakOnIzleme({
 
       {/* ===== 2. TARİH — Sağa yaslı, 10pt, kalın ===== */}
       <div style={{ textAlign: "right", fontSize: "10pt", fontWeight: "bold", marginBottom: "0" }}>
-        {evrakTarihi ? new Date(evrakTarihi).toLocaleDateString("tr-TR") : ""}
+        {tarihGosterim
+          ? tarihGosterim
+          : evrakTarihi
+          ? new Date(evrakTarihi).toLocaleDateString("tr-TR")
+          : ""}
       </div>
 
       {/* 1 boş satır */}

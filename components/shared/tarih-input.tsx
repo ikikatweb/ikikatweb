@@ -1,90 +1,141 @@
-// Maskeli tarih girişi — dd.MM.yyyy formatında, bölümler silinebilir
-// Kullanıcı "24" veya "04" bölümlerini silerse "..." olarak görünür
+// 3-segmentli tarih girişi: [gg] . [aa] . [yyyy]
+// Herhangi bir segmenti silince o kısım ".." (veya "....") olarak gösterim stringine yazılır
+// Örn:
+//   gün=24, ay=04, yıl=2026 → gosterim="24.04.2026", tarih="2026-04-24"
+//   gün=boş, ay=04, yıl=2026 → gosterim="..04.2026", tarih=null (partial)
+//   gün=boş, ay=boş, yıl=2026 → gosterim="....2026", tarih=null
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState } from "react";
 
 type Props = {
-  // "YYYY-MM-DD" (tam tarih) veya null
-  value: string | null;
-  // Kısmi tarih metni (örn: "..04.2026" veya "24.04.2026" veya ".....2026")
-  gosterim: string | null;
+  value: string | null;      // "YYYY-MM-DD" (tam tarih) veya null
+  gosterim: string | null;   // Kısmi gösterim "dd.MM.yyyy" formatında
   onChange: (degerler: { tarih: string | null; gosterim: string | null }) => void;
   disabled?: boolean;
-  required?: boolean;
 };
 
-// ISO "YYYY-MM-DD" → "dd.MM.yyyy"
-function isoToTr(iso: string | null): string {
-  if (!iso) return "";
+// ISO "YYYY-MM-DD" → { gun, ay, yil }
+function isoParcala(iso: string | null): { gun: string; ay: string; yil: string } {
+  if (!iso) return { gun: "", ay: "", yil: "" };
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return "";
-  return `${m[3]}.${m[2]}.${m[1]}`;
+  if (!m) return { gun: "", ay: "", yil: "" };
+  return { gun: m[3], ay: m[2], yil: m[1] };
 }
 
-// "dd.MM.yyyy" veya kısmi → ISO'ya çevir (sadece tam tarih ise)
-function trToIso(tr: string): string | null {
-  const m = tr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (!m) return null;
-  const gun = parseInt(m[1], 10);
-  const ay = parseInt(m[2], 10);
-  const yil = parseInt(m[3], 10);
-  if (ay < 1 || ay > 12 || gun < 1 || gun > 31) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
+// Gösterim stringinden parçaları çıkar:
+//   "24/04/2026"       → { gun: "24",   ay: "04",   yil: "2026" }
+//   "..../04/2026"     → { gun: "",     ay: "04",   yil: "2026" }
+//   "..../..../2026"   → { gun: "",     ay: "",     yil: "2026" }
+//   "24.04.2026"       → (eski format) desteklenir
+function gosterimParcala(gs: string | null): { gun: string; ay: string; yil: string } | null {
+  if (!gs) return null;
+  // "...." (4+ nokta) → marker, sonra / veya . ile bölünür
+  const s = gs.replace(/\.{4,}/g, "§EMPTY§");
+  const parcalar = s.split(/[\/.]/);
+  if (parcalar.length !== 3) return null;
+  const [g, a, y] = parcalar.map((p) => p === "§EMPTY§" ? "" : p);
+  return {
+    gun: /^\d{1,2}$/.test(g) ? g.padStart(2, "0") : "",
+    ay: /^\d{1,2}$/.test(a) ? a.padStart(2, "0") : "",
+    yil: /^\d{4}$/.test(y) ? y : "",
+  };
 }
 
-// Kullanıcı girdisini dd.MM.yyyy formuna doğru otomatik dönüştür
-// Nokta eklemelerini sağlar, kısmi eksik parçalara izin verir
-function normalize(raw: string): string {
-  // Sadece rakam ve noktaları koru
-  let s = raw.replace(/[^0-9.]/g, "");
-  // Fazla noktaları temizle (3'ten fazlasını iki nokta kaldır)
-  const parcalar = s.split(".");
-  if (parcalar.length > 3) {
-    s = `${parcalar[0]}.${parcalar[1]}.${parcalar.slice(2).join("")}`;
-  }
-  return s;
-}
+export default function TarihInput({ value, gosterim, onChange, disabled }: Props) {
+  // Başlangıç: gosterim varsa onu kullan, yoksa value
+  const ilk = gosterimParcala(gosterim) ?? isoParcala(value);
+  const [gun, setGun] = useState(ilk.gun);
+  const [ay, setAy] = useState(ilk.ay);
+  const [yil, setYil] = useState(ilk.yil);
 
-export default function TarihInput({ value, gosterim, onChange, disabled, required }: Props) {
-  // gosterim varsa onu kullan, yoksa value'yu dd.MM.yyyy yap
-  const [metin, setMetin] = useState<string>(() => gosterim ?? isoToTr(value));
-  const ilkKurulum = useRef(true);
-
-  // value/gosterim değişirse state güncelle (controlled senaryolar için)
+  // Dış value/gosterim değişince (düzenleme modu vs.) local state güncelle
   useEffect(() => {
-    if (ilkKurulum.current) { ilkKurulum.current = false; return; }
-    const yeni = gosterim ?? isoToTr(value);
-    if (yeni !== metin) setMetin(yeni);
-  }, [value, gosterim]); // eslint-disable-line react-hooks/exhaustive-deps
+    const yeni = gosterimParcala(gosterim) ?? isoParcala(value);
+    setGun(yeni.gun);
+    setAy(yeni.ay);
+    setYil(yeni.yil);
+  }, [value, gosterim]);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const ham = normalize(e.target.value);
-    setMetin(ham);
-    const iso = trToIso(ham);
-    // Eğer tam geçerli tarih ise evrak_tarihi olarak, aksi halde sadece gösterim
-    if (iso) {
-      onChange({ tarih: iso, gosterim: null });
-    } else if (ham.trim()) {
-      // Kısmi/yanlış format — sadece gösterim kaydet, evrak_tarihi null
-      onChange({ tarih: null, gosterim: ham });
-    } else {
+  // Değişiklikleri dışarı gönder
+  function bildir(g: string, a: string, y: string) {
+    const gOk = /^\d{2}$/.test(g);
+    const aOk = /^\d{2}$/.test(a);
+    const yOk = /^\d{4}$/.test(y);
+
+    // Tamamen boşsa
+    if (!g && !a && !y) {
       onChange({ tarih: null, gosterim: null });
+      return;
     }
+
+    // Tam ve geçerli tarih → ISO olarak kaydet
+    if (gOk && aOk && yOk) {
+      const gi = parseInt(g, 10), ai = parseInt(a, 10);
+      if (ai >= 1 && ai <= 12 && gi >= 1 && gi <= 31) {
+        onChange({ tarih: `${y}-${a}-${g}`, gosterim: null });
+        return;
+      }
+    }
+
+    // Kısmi — boş segmentler "...." olarak gösterilir, ayırıcı "/"
+    //   - Gün yok: "..../04/2026"
+    //   - Gün + Ay yok: "..../..../2026"
+    const PLACEHOLDER = "....";
+    const gsGun = g ? g.padStart(2, "0") : PLACEHOLDER;
+    const gsAy = a ? a.padStart(2, "0") : PLACEHOLDER;
+    const gsYil = y ? y : PLACEHOLDER;
+    onChange({ tarih: null, gosterim: `${gsGun}/${gsAy}/${gsYil}` });
   }
+
+  // Input handler — numeric only
+  function h(setter: (v: string) => void, maxLen: number, otherA: string, otherB: string, alan: "g" | "a" | "y") {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.value.replace(/\D/g, "").slice(0, maxLen);
+      setter(v);
+      if (alan === "g") bildir(v, otherA, otherB);
+      else if (alan === "a") bildir(otherA, v, otherB);
+      else bildir(otherA, otherB, v);
+    };
+  }
+
+  const kutu =
+    "h-9 rounded-lg border border-input bg-white text-center text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 font-mono disabled:opacity-50 disabled:bg-gray-50";
 
   return (
-    <Input
-      type="text"
-      inputMode="numeric"
-      placeholder="gg.aa.yyyy (örn: 24.04.2026)"
-      value={metin}
-      onChange={handleChange}
-      disabled={disabled}
-      required={required}
-      maxLength={10}
-      className="font-mono"
-    />
+    <div className="flex items-center gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="gg"
+        value={gun}
+        onChange={h(setGun, 2, ay, yil, "g")}
+        disabled={disabled}
+        className={`${kutu} w-12`}
+        maxLength={2}
+      />
+      <span className="text-gray-500 font-bold">.</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="aa"
+        value={ay}
+        onChange={h(setAy, 2, gun, yil, "a")}
+        disabled={disabled}
+        className={`${kutu} w-12`}
+        maxLength={2}
+      />
+      <span className="text-gray-500 font-bold">.</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="yyyy"
+        value={yil}
+        onChange={h(setYil, 4, gun, ay, "y")}
+        disabled={disabled}
+        className={`${kutu} w-20`}
+        maxLength={4}
+      />
+    </div>
   );
 }

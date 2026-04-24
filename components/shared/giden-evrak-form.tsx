@@ -11,6 +11,7 @@ import {
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
+import TarihInput from "@/components/shared/tarih-input";
 import { getMuhataplarFull, createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -26,6 +27,15 @@ import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-reac
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
+
+// Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
+function tarihGosterimdenIso(gs: string): string {
+  const parcalar = gs.split(".");
+  const g = /^\d{1,2}$/.test(parcalar[0]) ? parcalar[0].padStart(2, "0") : "01";
+  const a = /^\d{1,2}$/.test(parcalar[1]) ? parcalar[1].padStart(2, "0") : "01";
+  const y = /^\d{4}$/.test(parcalar[2] ?? "") ? parcalar[2] : new Date().getFullYear().toString();
+  return `${y}-${a}-${g}`;
+}
 
 type Props = {
   evrak?: GidenEvrakWithRelations;
@@ -54,7 +64,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [muhatapArama, setMuhatapArama] = useState("");
   const [muhatapDropdownAcik, setMuhatapDropdownAcik] = useState(false);
 
-  const [evrakTarihi, setEvrakTarihi] = useState(evrak?.evrak_tarihi ?? new Date().toISOString().split("T")[0]);
+  const [evrakTarihi, setEvrakTarihi] = useState<string | null>(evrak?.evrak_tarihi ?? new Date().toISOString().split("T")[0]);
+  const [tarihGosterim, setTarihGosterim] = useState<string | null>(evrak?.tarih_gosterim ?? null);
   const [firmaId, setFirmaId] = useState(evrak?.firma_id ?? "");
   const [santiyeId, setSantiyeId] = useState(evrak?.santiye_id ?? "");
   const [evrakSayiNo, setEvrakSayiNo] = useState(evrak?.evrak_sayi_no ?? "");
@@ -151,7 +162,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   }
 
   async function handleSubmit() {
-    if (!evrakTarihi) { toast.error("Evrak tarihi zorunludur."); return; }
+    // Tam tarih yoksa ama gösterim varsa (kısmi tarih) yıl kısmı dolu olmalı — aksi halde sıralama bozulur
+    if (!evrakTarihi && !tarihGosterim) { toast.error("Evrak tarihi zorunludur."); return; }
     if (!firmaId) { toast.error("Firma seçimi zorunludur."); return; }
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
 
@@ -168,8 +180,11 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         if (res.ok) pdfUrl = data.url;
       }
 
+      // Tam tarih yoksa yıldan kurtarma (sıralama için ocak 1)
+      const tarihIso = evrakTarihi ?? (tarihGosterim ? tarihGosterimdenIso(tarihGosterim) : new Date().toISOString().slice(0, 10));
       const payload = {
-        evrak_tarihi: evrakTarihi,
+        evrak_tarihi: tarihIso,
+        tarih_gosterim: tarihGosterim,
         firma_id: firmaId,
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
@@ -225,6 +240,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             <GidenEvrakOnIzleme
               firma={seciliFirma}
               evrakTarihi={evrakTarihi}
+              tarihGosterim={tarihGosterim}
               evrakSayiNo={evrakSayiNo}
               konu={konu}
               muhatap={muhatap}
@@ -252,7 +268,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>Evrak Tarihi <span className="text-red-500">*</span></Label>
-          <Input type="date" value={evrakTarihi} onChange={(e) => setEvrakTarihi(e.target.value)} disabled={loading} />
+          <TarihInput
+            value={evrakTarihi}
+            gosterim={tarihGosterim}
+            onChange={({ tarih, gosterim }) => { setEvrakTarihi(tarih); setTarihGosterim(gosterim); }}
+            disabled={loading}
+          />
         </div>
         <div className="space-y-2">
           <Label>Firma <span className="text-red-500">*</span></Label>

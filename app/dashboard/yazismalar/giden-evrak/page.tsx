@@ -427,6 +427,7 @@ export default function GidenEvrakPage() {
           <GidenEvrakOnIzleme
             firma={printEvrakRef.firmalar ?? null}
             evrakTarihi={printEvrakRef.evrak_tarihi}
+            tarihGosterim={printEvrakRef.tarih_gosterim ?? null}
             evrakSayiNo={printEvrakRef.evrak_sayi_no}
             konu={printEvrakRef.konu}
             muhatap={printEvrakRef.muhatap}
