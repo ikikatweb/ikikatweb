@@ -333,7 +333,7 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} disablePointerDismissal>
         <DialogContent className={onIzleme ? "!w-[90vw] !max-w-none max-h-[95vh] overflow-y-auto" : "max-w-3xl max-h-[90vh] overflow-y-auto"}>
           {onIzleme ? (
             /* ==================== PDF ÖN İZLEME ==================== */

@@ -109,7 +109,7 @@ export default function GelenEvrakPage() {
   function handleEdit(e: GelenEvrakWithRelations) { setEditEvrak(e); setFormOpen(true); }
 
   function handleCopy(e: GelenEvrakWithRelations) {
-    setEditEvrak({ ...e, id: "", evrak_sayi_no: "" } as GelenEvrakWithRelations);
+    setEditEvrak({ ...e, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() } as GelenEvrakWithRelations & { _cogaltKey: number });
     setFormOpen(true);
   }
 
@@ -279,15 +279,21 @@ export default function GelenEvrakPage() {
         </div>
       )}
 
-      {/* Evrak Form Dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      {/* Evrak Form Dialog — boşluğa tıklayınca kapanmaz */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen} disablePointerDismissal>
         <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Evrak Düzenle" : "Yeni Gelen Evrak"}</DialogTitle>
           </DialogHeader>
           <GelenEvrakForm
-            key={editEvrak?.id || String(Date.now())}
-            evrak={editEvrak?.id ? editEvrak : undefined}
+            key={
+              editEvrak?.id
+                ? `edit-${editEvrak.id}`
+                : (editEvrak as { _cogaltKey?: number } | null)?._cogaltKey
+                ? `cogalt-${(editEvrak as { _cogaltKey: number })._cogaltKey}`
+                : "yeni"
+            }
+            evrak={editEvrak ?? undefined}
             onSuccess={() => { setFormOpen(false); loadData(); }}
             onCancel={() => setFormOpen(false)}
           />

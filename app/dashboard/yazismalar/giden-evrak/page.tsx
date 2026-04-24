@@ -121,7 +121,8 @@ export default function GidenEvrakPage() {
 
   function handleCogalt(e: GidenEvrakWithRelations) {
     // Yeni evrak olarak kopyala (id, sayı no, kayıt no boş)
-    setEditEvrak({ ...e, id: "", evrak_sayi_no: "", evrak_kayit_no: null } as GidenEvrakWithRelations);
+    // _cogaltKey: Form'un remount için — aynı kayıt tekrar çoğaltılınca da fresh form
+    setEditEvrak({ ...e, id: "", evrak_sayi_no: "", evrak_kayit_no: null, _cogaltKey: Date.now() } as GidenEvrakWithRelations & { _cogaltKey: number });
     setFormOpen(true);
   }
 
@@ -331,15 +332,21 @@ export default function GidenEvrakPage() {
         </div>
       )}
 
-      {/* Form Dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      {/* Form Dialog — boşluğa veya Esc'e tıklayınca kapanmaz; sadece ✕ / İptal / Kaydet ile kapanır */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen} disablePointerDismissal>
         <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Giden Evrak Düzenle" : "Yeni Giden Evrak"}</DialogTitle>
           </DialogHeader>
           <GidenEvrakForm
-            key={editEvrak?.id || String(Date.now())}
-            evrak={editEvrak?.id ? editEvrak : undefined}
+            key={
+              editEvrak?.id
+                ? `edit-${editEvrak.id}`
+                : (editEvrak as { _cogaltKey?: number } | null)?._cogaltKey
+                ? `cogalt-${(editEvrak as { _cogaltKey: number })._cogaltKey}`
+                : "yeni"
+            }
+            evrak={editEvrak ?? undefined}
             onSuccess={() => { setFormOpen(false); loadData(); }}
             onCancel={() => setFormOpen(false)}
           />

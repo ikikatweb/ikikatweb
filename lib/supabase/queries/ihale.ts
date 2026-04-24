@@ -37,6 +37,17 @@ export async function insertIhale(ihale: IhaleInsert): Promise<Ihale> {
     .select()
     .single();
   if (error) throw error;
+
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    bildirimGonder({
+      baslik: `🏛️ Yeni İhale`,
+      govde: `${ihale.idare_adi ?? "?"}${ihale.is_adi ? " · " + ihale.is_adi.slice(0, 80) : ""}`,
+      url: "/dashboard/ihale",
+      tag: "ihale",
+    });
+  } catch { /* sessiz */ }
+
   return data as Ihale;
 }
 

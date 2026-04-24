@@ -20,16 +20,22 @@ function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
 
 // Kategori tanımları
 const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[] = [
-  { tag: "kasa", label: "Kasa Hareketi", emoji: "💰", desc: "Yeni gelir/gider" },
-  { tag: "arac-bakim", label: "Araç Bakım & Tamirat", emoji: "🛠️", desc: "Yeni bakım/tamirat" },
-  { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Yeni puantaj kaydı" },
-  { tag: "arac-puantaj", label: "Araç Puantaj", emoji: "🚚", desc: "Yeni puantaj kaydı" },
-  { tag: "yakit", label: "Yakıt Alımı", emoji: "⛽", desc: "Yeni yakıt alımı" },
+  { tag: "santiye", label: "İş Deneyim Belgeleri", emoji: "🏗️", desc: "Yeni iş / güncelleme" },
+  { tag: "personel", label: "Personeller", emoji: "👤", desc: "Yeni personel / güncelleme" },
+  { tag: "arac", label: "Araçlar", emoji: "🚗", desc: "Yeni araç / güncelleme" },
   { tag: "gelen-evrak", label: "Gelen Evrak", emoji: "📥", desc: "Yeni gelen evrak" },
   { tag: "giden-evrak", label: "Giden Evrak", emoji: "📤", desc: "Yeni giden evrak" },
-  { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni banka yazışması" },
-  { tag: "yaklasan-sigorta", label: "Yaklaşan Sigorta & Muayene", emoji: "📋", desc: "Sabah 08:00 özeti" },
+  { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni yazışma / hızlı talimat" },
+  { tag: "yaklasan-sigorta", label: "Sigorta & Muayene", emoji: "📋", desc: "Yaklaşan/geçen — sabah özeti" },
+  { tag: "arac-bakim", label: "Araç Bakım & Tamirat", emoji: "🛠️", desc: "Yeni bakım/tamirat" },
   { tag: "yaklasan-bakim", label: "Yaklaşan Araç Bakımı", emoji: "🛠️", desc: "Sabah 08:00 özeti" },
+  { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Her 10 girişte 1" },
+  { tag: "arac-puantaj", label: "Araç Puantaj", emoji: "🚚", desc: "Her 10 girişte 1" },
+  { tag: "iscilik-takibi", label: "İşçilik Takibi", emoji: "📊", desc: "Her veri girişi / güncellemede" },
+  { tag: "yakit", label: "Yakıt", emoji: "⛽", desc: "Yeni yakıt alımı" },
+  { tag: "kasa", label: "Kasa Defteri", emoji: "💰", desc: "Yeni gelir/gider" },
+  { tag: "santiye-defteri", label: "Şantiye Defteri", emoji: "📓", desc: "Yeni günlük defter açılışı" },
+  { tag: "ihale", label: "İhale", emoji: "🏛️", desc: "Yeni ihale kaydı" },
 ];
 
 type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";

@@ -192,9 +192,9 @@ export async function upsertPersonelPuantaj(
     });
   if (error) throw error;
 
-  // Push bildirim — tag ile üst üste binsin (spam azalsın)
+  // Push bildirim — her 10 girişte 1 (gün içinde sayaç)
   try {
-    const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+    const { bildirimGonderHerNdaBir, formatTarih } = await import("@/lib/bildirim");
     const { data: santiye } = await supabase
       .from("santiyeler")
       .select("is_adi")
@@ -203,7 +203,7 @@ export async function upsertPersonelPuantaj(
     const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
     const personelAd = personelRow?.ad_soyad ? String(personelRow.ad_soyad).slice(0, 40) : "?";
     const [yilStr, ayStr] = tarih.split("-");
-    bildirimGonder({
+    bildirimGonderHerNdaBir("personel-puantaj", 10, {
       baslik: `👷 Personel Puantaj — ${santiyeAd}`,
       govde: `${personelAd} · ${formatTarih(tarih)} · ${durum}${mesaiSaat ? ` · ${mesaiSaat} sa mesai` : ""}`,
       url: `/dashboard/puantaj/personel?santiye=${santiyeId}&yil=${yilStr}&ay=${parseInt(ayStr, 10)}`,

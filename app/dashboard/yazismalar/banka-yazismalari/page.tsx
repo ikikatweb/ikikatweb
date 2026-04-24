@@ -121,7 +121,7 @@ export default function BankaYazismalariPage() {
   function handleEdit(y: BankaYazismaWithRelations) { setEditYazisma(y); setFormOpen(true); }
 
   function handleCogalt(y: BankaYazismaWithRelations) {
-    setEditYazisma({ ...y, id: "", evrak_sayi_no: "" } as BankaYazismaWithRelations);
+    setEditYazisma({ ...y, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() } as BankaYazismaWithRelations & { _cogaltKey: number });
     setFormOpen(true);
   }
 
@@ -302,15 +302,21 @@ export default function BankaYazismalariPage() {
         </div>
       )}
 
-      {/* Form Dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      {/* Form Dialog — boşluğa tıklayınca kapanmaz */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen} disablePointerDismissal>
         <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editYazisma?.id ? "Banka Yazışma Düzenle" : "Yeni Banka Yazışması"}</DialogTitle>
           </DialogHeader>
           <BankaYazismaForm
-            key={editYazisma?.id || String(Date.now())}
-            yazisma={editYazisma?.id ? editYazisma : undefined}
+            key={
+              editYazisma?.id
+                ? `edit-${editYazisma.id}`
+                : (editYazisma as { _cogaltKey?: number } | null)?._cogaltKey
+                ? `cogalt-${(editYazisma as { _cogaltKey: number })._cogaltKey}`
+                : "yeni"
+            }
+            yazisma={editYazisma ?? undefined}
             onSuccess={() => { setFormOpen(false); loadData(); }}
             onCancel={() => setFormOpen(false)}
           />

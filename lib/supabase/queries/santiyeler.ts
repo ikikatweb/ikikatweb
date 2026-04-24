@@ -61,6 +61,17 @@ export async function createSantiye(santiye: SantiyeInsert) {
     .single();
 
   if (error) throw error;
+
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    bildirimGonder({
+      baslik: `🏗️ Yeni İş Deneyim Belgesi`,
+      govde: String(santiye.is_adi ?? "").slice(0, 150),
+      url: "/dashboard/yonetim/santiyeler",
+      tag: "santiye",
+    });
+  } catch { /* sessiz */ }
+
   return data;
 }
 
@@ -74,6 +85,23 @@ export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
     .single();
 
   if (error) throw error;
+
+  // Update bildirimi — sadece form kaydet (is_adi, sozlesme_bedeli vs.) için tetiklesin,
+  // inline edit (örn. sozlesme_fiyatlariyla_gerceklesen tek alan) spam etmesin
+  try {
+    const anahtarAlanlar = ["is_adi", "sozlesme_bedeli", "durum", "gecici_kabul_tarihi", "kesin_kabul_tarihi", "tasfiye_tarihi", "sozlesme_tarihi"];
+    const degisenAnahtar = anahtarAlanlar.some((k) => k in santiye);
+    if (degisenAnahtar && data?.is_adi) {
+      const { bildirimGonder } = await import("@/lib/bildirim");
+      bildirimGonder({
+        baslik: `🏗️ İş Deneyim Güncellendi`,
+        govde: String(data.is_adi).slice(0, 150),
+        url: "/dashboard/yonetim/santiyeler",
+        tag: "santiye",
+      });
+    }
+  } catch { /* sessiz */ }
+
   return data;
 }
 

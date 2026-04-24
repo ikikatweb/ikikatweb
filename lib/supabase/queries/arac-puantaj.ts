@@ -270,9 +270,9 @@ export async function upsertAracPuantaj(
     });
   if (error) throw error;
 
-  // Push bildirim — tag ile üst üste binsin (spam azalsın)
+  // Push bildirim — her 10 girişte 1 (gün içinde sayaç)
   try {
-    const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+    const { bildirimGonderHerNdaBir, formatTarih } = await import("@/lib/bildirim");
     const [{ data: arac }, { data: santiye }] = await Promise.all([
       supabase.from("araclar").select("plaka, marka").eq("id", aracId).maybeSingle(),
       supabase.from("santiyeler").select("is_adi").eq("id", santiyeId).maybeSingle(),
@@ -280,7 +280,7 @@ export async function upsertAracPuantaj(
     const plaka = arac?.plaka ? String(arac.plaka) : "?";
     const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
     const [yilStr, ayStr] = tarih.split("-");
-    bildirimGonder({
+    bildirimGonderHerNdaBir("arac-puantaj", 10, {
       baslik: `🚚 Araç Puantaj — ${santiyeAd}`,
       govde: `${plaka} · ${formatTarih(tarih)} · ${durum}`,
       url: `/dashboard/puantaj/arac?santiye=${santiyeId}&yil=${yilStr}&ay=${parseInt(ayStr, 10)}`,

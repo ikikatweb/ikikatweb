@@ -58,6 +58,24 @@ export async function upsertIscilikTakibi(
       .insert({ santiye_id: santiyeId, ...updates });
     if (error) throw error;
   }
+
+  // Push bildirim — her güncellemede 1 bildirim (batch yok)
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const { data: santiye } = await supabase
+      .from("santiyeler")
+      .select("is_adi")
+      .eq("id", santiyeId)
+      .maybeSingle();
+    const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 50) : "?";
+    const degisenAlanlar = Object.keys(updates).filter((k) => k !== "updated_at").slice(0, 3).join(", ");
+    bildirimGonder({
+      baslik: `📊 İşçilik Takibi — ${santiyeAd}`,
+      govde: `Güncellenen: ${degisenAlanlar}`,
+      url: "/dashboard/iscilik-takibi",
+      tag: "iscilik-takibi",
+    });
+  } catch { /* sessiz */ }
 }
 
 export async function ensureAktifSantiyeler() {

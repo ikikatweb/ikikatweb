@@ -21,6 +21,33 @@ export function bildirimGonder(payload: BildirimPayload): void {
   });
 }
 
+// Puantaj gibi çok sık tetiklenen olaylar için:
+// Gün içinde her N'inci olayda 1 bildirim gönderir (1, 11, 21, ... giriş).
+// Sayaç localStorage'da gün bazlı tutulur.
+export function bildirimGonderHerNdaBir(
+  kategori: string,
+  n: number,
+  payload: BildirimPayload,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    const bugun = new Date().toISOString().slice(0, 10);
+    const key = `bildirim-sayac-${kategori}-${bugun}`;
+    const sayac = parseInt(localStorage.getItem(key) ?? "0", 10) + 1;
+    localStorage.setItem(key, String(sayac));
+    // 1, n+1, 2n+1, ... olaylarda bildirim
+    if ((sayac - 1) % n === 0) {
+      bildirimGonder({
+        ...payload,
+        govde: `${payload.govde} · Bugünkü ${sayac}. giriş`,
+      });
+    }
+  } catch {
+    // localStorage yoksa normal bildirim gönder
+    bildirimGonder(payload);
+  }
+}
+
 // TL formatı (bildirim metni için kısa)
 export function formatTL(n: number | null | undefined): string {
   if (n == null) return "-";

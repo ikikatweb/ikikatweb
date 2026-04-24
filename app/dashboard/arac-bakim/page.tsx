@@ -971,17 +971,36 @@ export default function AracBakimPage() {
             {/* FATURA dosyaları */}
             <div className="space-y-1 bg-blue-50/30 border border-blue-200 rounded-lg p-2">
               <Label className="text-xs font-semibold text-blue-800">📄 Fatura / Makbuz (PDF, JPG, PNG)</Label>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
-                onChange={(e) => {
-                  const liste = e.target.files ? Array.from(e.target.files) : [];
-                  setDFaturaYeni((prev) => [...prev, ...liste]);
-                  e.target.value = "";
-                }}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-blue-600 file:text-white"
-              />
+              <div className="flex gap-2 items-center">
+                <input
+                  id="fatura-dosya-input"
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    const liste = e.target.files ? Array.from(e.target.files) : [];
+                    setDFaturaYeni((prev) => [...prev, ...liste]);
+                    e.target.value = "";
+                  }}
+                  className="flex-1 text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-blue-600 file:text-white"
+                />
+                {/* Mobilde kamera butonu */}
+                <label htmlFor="fatura-kamera-input" className="md:hidden flex-shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1">
+                  📸 Çek
+                </label>
+                <input
+                  id="fatura-kamera-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const liste = e.target.files ? Array.from(e.target.files) : [];
+                    setDFaturaYeni((prev) => [...prev, ...liste]);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
+              </div>
 
               {dFaturaMevcut.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -1013,17 +1032,36 @@ export default function AracBakimPage() {
             {/* YAPILAN İŞ — foto / PDF */}
             <div className="space-y-1 bg-amber-50/30 border border-amber-200 rounded-lg p-2">
               <Label className="text-xs font-semibold text-amber-800">🔧 Yapılan İşle İlgili Foto / PDF (parça, hasar, rapor vb.)</Label>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
-                onChange={(e) => {
-                  const liste = e.target.files ? Array.from(e.target.files) : [];
-                  setDIsFotoYeni((prev) => [...prev, ...liste]);
-                  e.target.value = "";
-                }}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-amber-600 file:text-white"
-              />
+              <div className="flex gap-2 items-center">
+                <input
+                  id="isfoto-dosya-input"
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    const liste = e.target.files ? Array.from(e.target.files) : [];
+                    setDIsFotoYeni((prev) => [...prev, ...liste]);
+                    e.target.value = "";
+                  }}
+                  className="flex-1 text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-amber-600 file:text-white"
+                />
+                {/* Mobilde kamera butonu */}
+                <label htmlFor="isfoto-kamera-input" className="md:hidden flex-shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1">
+                  📸 Çek
+                </label>
+                <input
+                  id="isfoto-kamera-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    const liste = e.target.files ? Array.from(e.target.files) : [];
+                    setDIsFotoYeni((prev) => [...prev, ...liste]);
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
+              </div>
 
               {dIsFotoMevcut.length > 0 && (
                 <div className="mt-2 space-y-1">

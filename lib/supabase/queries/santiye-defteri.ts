@@ -82,6 +82,23 @@ export async function insertDefter(defter: {
     .select()
     .single();
   if (error) throw error;
+
+  try {
+    const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+    const { data: santiye } = await supabase
+      .from("santiyeler")
+      .select("is_adi")
+      .eq("id", defter.santiye_id)
+      .maybeSingle();
+    const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
+    bildirimGonder({
+      baslik: `📓 Yeni Şantiye Defteri — ${santiyeAd}`,
+      govde: `${formatTarih(defter.tarih)} · Sayfa ${defter.sayfa_no}${defter.hava_durumu ? " · " + defter.hava_durumu : ""}`,
+      url: "/dashboard/santiye-defteri",
+      tag: "santiye-defteri",
+    });
+  } catch { /* sessiz */ }
+
   return data as SantiyeDefteri;
 }
 

@@ -75,6 +75,17 @@ export async function createArac(arac: AracInsert) {
     .single();
 
   if (error) throw error;
+
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    bildirimGonder({
+      baslik: `🚗 Yeni Araç`,
+      govde: `${arac.plaka}${arac.marka ? " · " + arac.marka : ""}${arac.model ? " " + arac.model : ""}`,
+      url: "/dashboard/yonetim/araclar",
+      tag: "arac",
+    });
+  } catch { /* sessiz */ }
+
   return data;
 }
 
@@ -97,6 +108,25 @@ export async function updateArac(id: string, arac: AracUpdate) {
     .single();
 
   if (error) throw error;
+
+  // Update bildirimi — KM güncellemesi spam olmasın, sadece anahtar alanlar değişince gönder
+  try {
+    const anahtarAlanlar = ["plaka", "marka", "model", "durum", "santiye_id", "firma_id", "muayene_bitis", "tasit_karti_bitis"];
+    const sadeceKmDegismis = Object.keys(arac).every((k) =>
+      ["guncel_gosterge", "updated_at"].includes(k)
+    );
+    const anahtarDegismis = anahtarAlanlar.some((k) => k in arac);
+    if (!sadeceKmDegismis && anahtarDegismis) {
+      const { bildirimGonder } = await import("@/lib/bildirim");
+      bildirimGonder({
+        baslik: `🚗 Araç Güncellendi`,
+        govde: `${data.plaka}${data.marka ? " · " + data.marka : ""}${data.model ? " " + data.model : ""}`,
+        url: "/dashboard/yonetim/araclar",
+        tag: "arac",
+      });
+    }
+  } catch { /* sessiz */ }
+
   return data;
 }
 

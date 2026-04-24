@@ -99,6 +99,17 @@ export async function createPersonel(personel: PersonelInsert) {
     .single();
 
   if (error) throw error;
+
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    bildirimGonder({
+      baslik: `👤 Yeni Personel`,
+      govde: `${personel.ad_soyad}${personel.gorev ? " · " + personel.gorev : ""}`,
+      url: "/dashboard/yonetim/personel",
+      tag: "personel",
+    });
+  } catch { /* sessiz */ }
+
   return data;
 }
 
@@ -119,6 +130,17 @@ export async function updatePersonel(id: string, personel: PersonelUpdate) {
     .single();
 
   if (error) throw error;
+
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    bildirimGonder({
+      baslik: `👤 Personel Güncellendi`,
+      govde: `${data.ad_soyad}${data.gorev ? " · " + data.gorev : ""}`,
+      url: "/dashboard/yonetim/personel",
+      tag: "personel",
+    });
+  } catch { /* sessiz */ }
+
   return data;
 }
 

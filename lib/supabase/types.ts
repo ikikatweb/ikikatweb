@@ -258,6 +258,7 @@ export type TanimlamaInsert = Omit<Tanimlama, "id" | "created_at" | "kisa_ad" | 
 export type GelenEvrak = {
   id: string;
   evrak_tarihi: string;
+  tarih_gosterim?: string | null; // kısmi tarih görünümü (örn: "..04.2026")
   firma_id: string | null;
   santiye_id: string | null;
   evrak_sayi_no: string;
@@ -292,6 +293,7 @@ export type GelenEvrakWithRelations = GelenEvrak & {
 export type GidenEvrak = {
   id: string;
   evrak_tarihi: string;
+  tarih_gosterim?: string | null; // kısmi tarih görünümü
   firma_id: string;
   santiye_id: string | null;
   evrak_sayi_no: string;
@@ -329,6 +331,7 @@ export type GidenEvrakWithRelations = GidenEvrak & {
 export type BankaYazisma = {
   id: string;
   evrak_tarihi: string;
+  tarih_gosterim?: string | null; // kısmi tarih görünümü
   firma_id: string;
   evrak_sayi_no: string;
   konu: string;
