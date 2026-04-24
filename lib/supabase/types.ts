@@ -690,6 +690,8 @@ export type Kullanici = {
   santiye_defteri_goruntuleme_gun: number | null;
   // Dashboard'da hangi widget'lar gösterilsin (boş/null = hepsi)
   dashboard_widgets: string[] | null;
+  // Push bildirim kategori ayarları: { "kasa": false, ... } — varsayılan hepsi true/open
+  bildirim_ayarlari?: Record<string, boolean> | null;
   created_at: string;
   updated_at: string;
 };
