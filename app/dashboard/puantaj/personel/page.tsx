@@ -893,15 +893,12 @@ export default function PersonelPuantajPage() {
                     <TableCell className={`px-2 sticky left-0 z-10 border-r ${pasif ? "bg-gray-50/80" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
-                        {pasif && (
-                          <span className="ml-2 inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded bg-gray-200 text-gray-500 align-middle">
-                            PASİF{p.pasif_tarihi ? ` · ${new Date(p.pasif_tarihi).toLocaleDateString("tr-TR")}` : ""}
-                          </span>
-                        )}
                       </div>
-                      <div className={`text-[9px] leading-tight truncate max-w-[120px] ${pasif ? "text-gray-400" : "text-gray-500"}`}>
-                        {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
-                      </div>
+                      {!pasif && (
+                        <div className="text-[9px] leading-tight truncate max-w-[120px] text-gray-500">
+                          {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
+                        </div>
+                      )}
                     </TableCell>
                     {gunler.map((g) => {
                       const pg = gunMap?.get(g);
