@@ -972,6 +972,9 @@ export default function AracBakimPage() {
             <div className="space-y-1 bg-blue-50/30 border border-blue-200 rounded-lg p-2">
               <Label className="text-xs font-semibold text-blue-800">📄 Fatura / Makbuz (PDF, JPG, PNG)</Label>
               <div className="flex gap-2 items-center">
+                <label htmlFor="fatura-dosya-input" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                  📁 Dosya Seç
+                </label>
                 <input
                   id="fatura-dosya-input"
                   type="file"
@@ -982,10 +985,9 @@ export default function AracBakimPage() {
                     setDFaturaYeni((prev) => [...prev, ...liste]);
                     e.target.value = "";
                   }}
-                  className="flex-1 text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-blue-600 file:text-white"
+                  className="hidden"
                 />
-                {/* Mobilde kamera butonu */}
-                <label htmlFor="fatura-kamera-input" className="md:hidden flex-shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1">
+                <label htmlFor="fatura-kamera-input" className="md:hidden px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
                   📸 Çek
                 </label>
                 <input
@@ -1033,6 +1035,9 @@ export default function AracBakimPage() {
             <div className="space-y-1 bg-amber-50/30 border border-amber-200 rounded-lg p-2">
               <Label className="text-xs font-semibold text-amber-800">🔧 Yapılan İşle İlgili Foto / PDF (parça, hasar, rapor vb.)</Label>
               <div className="flex gap-2 items-center">
+                <label htmlFor="isfoto-dosya-input" className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                  📁 Dosya Seç
+                </label>
                 <input
                   id="isfoto-dosya-input"
                   type="file"
@@ -1043,10 +1048,9 @@ export default function AracBakimPage() {
                     setDIsFotoYeni((prev) => [...prev, ...liste]);
                     e.target.value = "";
                   }}
-                  className="flex-1 text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-amber-600 file:text-white"
+                  className="hidden"
                 />
-                {/* Mobilde kamera butonu */}
-                <label htmlFor="isfoto-kamera-input" className="md:hidden flex-shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1">
+                <label htmlFor="isfoto-kamera-input" className="md:hidden px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
                   📸 Çek
                 </label>
                 <input

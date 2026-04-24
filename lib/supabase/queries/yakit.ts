@@ -26,21 +26,31 @@ export async function getAracYakitlarByRange(
   bitis: string,
 ): Promise<AracYakit[]> {
   const supabase = getSupabase();
-  let q = supabase
-    .from("arac_yakit")
-    .select("*")
-    .gte("tarih", baslangic)
-    .lte("tarih", bitis)
-    .order("tarih", { ascending: false })
-    .order("saat", { ascending: false });
-
-  if (santiyeIds && santiyeIds.length > 0) {
-    q = q.in("santiye_id", santiyeIds);
+  // Supabase varsayılan 1000 satır limiti — pagination ile tamamını getir
+  const PARCA = 1000;
+  const tum: AracYakit[] = [];
+  let offset = 0;
+  while (true) {
+    let q = supabase
+      .from("arac_yakit")
+      .select("*")
+      .gte("tarih", baslangic)
+      .lte("tarih", bitis)
+      .order("tarih", { ascending: false })
+      .order("saat", { ascending: false })
+      .range(offset, offset + PARCA - 1);
+    if (santiyeIds && santiyeIds.length > 0) {
+      q = q.in("santiye_id", santiyeIds);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    const parca = (data ?? []) as AracYakit[];
+    tum.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
   }
-
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as AracYakit[];
+  return tum;
 }
 
 // Bir aracın tüm yakıt kayıtlarını getir (genel ortalama hesaplaması için)
@@ -118,21 +128,30 @@ export async function getYakitAlimlarByRange(
   bitis: string,
 ): Promise<YakitAlim[]> {
   const supabase = getSupabase();
-  let q = supabase
-    .from("yakit_alim")
-    .select("*")
-    .gte("tarih", baslangic)
-    .lte("tarih", bitis)
-    .order("tarih", { ascending: false })
-    .order("saat", { ascending: false });
-
-  if (santiyeIds && santiyeIds.length > 0) {
-    q = q.in("santiye_id", santiyeIds);
+  const PARCA = 1000;
+  const tum: YakitAlim[] = [];
+  let offset = 0;
+  while (true) {
+    let q = supabase
+      .from("yakit_alim")
+      .select("*")
+      .gte("tarih", baslangic)
+      .lte("tarih", bitis)
+      .order("tarih", { ascending: false })
+      .order("saat", { ascending: false })
+      .range(offset, offset + PARCA - 1);
+    if (santiyeIds && santiyeIds.length > 0) {
+      q = q.in("santiye_id", santiyeIds);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    const parca = (data ?? []) as YakitAlim[];
+    tum.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
   }
-
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []) as YakitAlim[];
+  return tum;
 }
 
 export async function insertYakitAlim(data: {
@@ -194,15 +213,26 @@ export async function getYakitVirmanlarByRange(
   bitis: string,
 ): Promise<YakitVirman[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("yakit_virman")
-    .select("*")
-    .gte("tarih", baslangic)
-    .lte("tarih", bitis)
-    .order("tarih", { ascending: false })
-    .order("saat", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as YakitVirman[];
+  const PARCA = 1000;
+  const tum: YakitVirman[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("yakit_virman")
+      .select("*")
+      .gte("tarih", baslangic)
+      .lte("tarih", bitis)
+      .order("tarih", { ascending: false })
+      .order("saat", { ascending: false })
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as YakitVirman[];
+    tum.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tum;
 }
 
 export async function insertYakitVirman(data: {

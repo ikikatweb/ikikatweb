@@ -922,42 +922,48 @@ function KasaDefContent() {
                   <textarea value={dAciklama} onChange={(e) => setDAciklama(e.target.value)} placeholder="Harcama detayı..." rows={2}
                     className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50" disabled={dialogLoading} />
                 </div>
-                {dOdeme === "kart" && (
-                  <div className="space-y-1">
-                    <Label className="text-xs">Slip Fotoğrafı / PDF</Label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        id="slip-dosya-input"
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)}
-                        disabled={dialogLoading}
-                        className="flex-1 text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white hover:file:bg-[#2a4f7a]"
-                      />
-                      {/* Sadece mobilde gözüken kamera butonu */}
-                      <label
-                        htmlFor="slip-kamera-input"
-                        className="md:hidden flex-shrink-0 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1"
-                      >
-                        📸 Çek
-                      </label>
-                      <input
-                        id="slip-kamera-input"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)}
-                        disabled={dialogLoading}
-                        className="hidden"
-                      />
-                    </div>
-                    {dSlipFile && (
-                      <p className="text-[10px] text-emerald-700">
-                        Seçilen: {dSlipFile.name} ({(dSlipFile.size / 1024).toFixed(0)} KB)
-                      </p>
-                    )}
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {dOdeme === "kart" ? "Slip Fotoğrafı / PDF" : "Fiş / Fotoğraf / PDF"}
+                  </Label>
+                  <div className="flex gap-2 items-center">
+                    <label
+                      htmlFor="slip-dosya-input"
+                      className="px-3 py-1.5 bg-[#64748B] hover:bg-[#2a4f7a] text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                    >
+                      📁 Dosya Seç
+                    </label>
+                    <input
+                      id="slip-dosya-input"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)}
+                      disabled={dialogLoading}
+                      className="hidden"
+                    />
+                    {/* Sadece mobilde gözüken kamera butonu */}
+                    <label
+                      htmlFor="slip-kamera-input"
+                      className="md:hidden px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
+                    >
+                      📸 Çek
+                    </label>
+                    <input
+                      id="slip-kamera-input"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)}
+                      disabled={dialogLoading}
+                      className="hidden"
+                    />
                   </div>
-                )}
+                  {dSlipFile && (
+                    <p className="text-[10px] text-emerald-700 truncate">
+                      Seçilen: {dSlipFile.name} ({(dSlipFile.size / 1024).toFixed(0)} KB)
+                    </p>
+                  )}
+                </div>
                 {dOdeme === "kart" && (
                   <div className="text-[10px] text-purple-600 bg-purple-50 px-2 py-1 rounded">
                     Kart ile yapılan harcamalar nakit bakiyeyi etkilemez.
