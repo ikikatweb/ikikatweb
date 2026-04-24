@@ -4,6 +4,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import {
@@ -345,7 +346,8 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
                   <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
                 </Button>
               </div>
-              <div className="evrak-print-area">
+              {/* Ekranda görünen önizleme (dialog içinde) */}
+              <div>
                 <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
                   <BankaYazismaOnIzleme
                     firma={seciliFirma ?? undefined}
@@ -586,6 +588,25 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Yazdırma Portal'ı — ekranda gizli, sadece window.print() çağrıldığında
+          @media print ile görünür olur. Body'nin direkt çocuğu olmak zorunda */}
+      {open && onIzleme && typeof document !== "undefined" && createPortal(
+        <div className="evrak-print-portal evrak-print-area">
+          <BankaYazismaOnIzleme
+            firma={seciliFirma ?? undefined}
+            evrakTarihi={yaziTarihi}
+            evrakSayiNo=""
+            konu={konuOtomatik}
+            muhatap={muhatap}
+            ilgiListesi={[]}
+            metin={onizlemeMetni}
+            ekler={[]}
+            kaseDahil={kaseDahil}
+          />
+        </div>,
+        document.body
+      )}
 
       {/* Yeni Kişi Ekleme Alt-Dialog'u */}
       <Dialog open={yeniKisiOpen} onOpenChange={setYeniKisiOpen}>

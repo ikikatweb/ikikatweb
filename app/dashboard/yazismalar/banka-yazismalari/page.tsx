@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma } from "@/lib/supabase/queries/banka-yazismalari";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -337,9 +338,10 @@ export default function BankaYazismalariPage() {
         onSuccess={loadData}
       />
 
-      {/* Yazdırma için görünmez render alanı - print modunda görünür */}
-      {printRef && (
-        <div className="evrak-print-area" style={{ position: "fixed", left: "-10000px", top: 0 }}>
+      {/* Yazdırma için — Portal ile body'nin direkt çocuğu olarak render edilir
+          (CSS body > .evrak-print-area kuralı bu sayede eşleşir) */}
+      {printRef && typeof document !== "undefined" && createPortal(
+        <div className="evrak-print-portal evrak-print-area">
           <BankaYazismaOnIzleme
             firma={printRef.firmalar ?? null}
             evrakTarihi={printRef.evrak_tarihi}
@@ -351,7 +353,8 @@ export default function BankaYazismalariPage() {
             ekler={printRef.ekler ?? []}
             kaseDahil={printRef.kase_dahil ?? false}
           />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

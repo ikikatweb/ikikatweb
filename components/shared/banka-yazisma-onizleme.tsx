@@ -47,7 +47,10 @@ export default function BankaYazismaOnIzleme({
   const aktifEkler = (ekler ?? []).filter((e) => e?.trim());
   const metinParagraflar = (metin ?? "")
     .replace(/<span[^>]*style="[^"]*white-space:\s*pre[^"]*"[^>]*>[\s\t]*<\/span>/gi, "")
-    .replace(/<div>/gi, "\n").replace(/<\/div>/gi, "")
+    // <div> attribute'lu veya attributesiz her varyasyonu paragraf ayırıcı olarak ele al
+    .replace(/<div\b[^>]*>/gi, "\n").replace(/<\/div>/gi, "")
+    // <p> etiketleri de aynı şekilde
+    .replace(/<p\b[^>]*>/gi, "\n").replace(/<\/p>/gi, "")
     .replace(/<br\s*\/?>/gi, "\n")
     .split("\n").filter((p) => p.trim());
 
