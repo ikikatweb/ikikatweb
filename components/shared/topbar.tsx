@@ -17,7 +17,7 @@ type TopbarProps = {
 
 export default function Topbar({ onMenuToggle }: TopbarProps) {
   const router = useRouter();
-  const { kullanici } = useAuth();
+  const { kullanici, isYonetici } = useAuth();
   const [tarihSaat, setTarihSaat] = useState("");
 
   useEffect(() => {
@@ -71,8 +71,8 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
         </div>
 
-        {/* Bildirim Menüsü (aç/kapat + kategori ayarları) */}
-        <PushBildirimMenu />
+        {/* Bildirim Menüsü — yalnızca yöneticilere gösterilir (kısıtlı kullanıcıya değil) */}
+        {isYonetici && <PushBildirimMenu />}
 
         <Button
           variant="outline"

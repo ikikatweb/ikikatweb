@@ -172,11 +172,6 @@ export default function PersonelPage() {
                     <TableCell className="tabular-nums">{p.tc_kimlik_no}</TableCell>
                     <TableCell className="font-medium">
                       <span className={pasif ? "text-gray-500" : undefined}>{p.ad_soyad}</span>
-                      {pasif && (
-                        <span className="ml-2 inline-block px-1.5 py-0.5 text-[9px] font-semibold rounded bg-gray-200 text-gray-600 align-middle">
-                          PASİF{p.pasif_tarihi ? ` · ${new Date(p.pasif_tarihi).toLocaleDateString("tr-TR")}` : ""}
-                        </span>
-                      )}
                     </TableCell>
                     <TableCell>{p.santiyeler?.is_adi ?? "—"}</TableCell>
                     <TableCell className="hidden sm:table-cell tabular-nums">{p.cep_telefon ?? "—"}</TableCell>
