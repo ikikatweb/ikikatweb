@@ -69,17 +69,18 @@ type ColDef = {
 };
 
 const COLUMNS: ColDef[] = [
-  { key: "sicil_no", label: "Sicil No", type: "text",
-    getValue: (r) => r.sicil_no ?? "—", getRaw: (r) => r.sicil_no },
+  // Sicil No sütunu tablodan kaldırıldı — iş adının tam görünmesi için
+  // { key: "sicil_no", label: "Sicil No", type: "text",
+  //   getValue: (r) => r.sicil_no ?? "—", getRaw: (r) => r.sicil_no },
   { key: "is_adi", label: "İşin Adı", fromSantiye: true,
     getValue: (r) => r.santiyeler?.is_adi ?? "—", getRaw: () => null },
-  { key: "sozlesme_bedeli", label: "Sözleşme Bedeli", fromSantiye: true, type: "para",
+  { key: "sozlesme_bedeli", label: "Sözleşme\nBedeli", fromSantiye: true, type: "para",
     getValue: (r) => formatPara(r.santiyeler?.sozlesme_bedeli ?? null), getRaw: () => null },
-  { key: "kesif_artisi", label: "Keşif Artışı", type: "para",
+  { key: "kesif_artisi", label: "Keşif\nArtışı", type: "para",
     getValue: (r) => formatPara(r.kesif_artisi), getRaw: (r) => r.kesif_artisi },
-  { key: "fiyat_farki", label: "Fiyat Farkı", editable: true, type: "para",
+  { key: "fiyat_farki", label: "Fiyat\nFarkı", editable: true, type: "para",
     getValue: (r) => formatPara(r.fiyat_farki), getRaw: (r) => r.fiyat_farki },
-  { key: "yatmasi_gereken_prim", label: "Yatması Gereken Prim", computed: true,
+  { key: "yatmasi_gereken_prim", label: "Yatması\nGereken Prim", computed: true,
     getValue: (r) => {
       const bedel = r.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = r.kesif_artisi ?? 0;
@@ -88,9 +89,9 @@ const COLUMNS: ColDef[] = [
       const toplam = (bedel + kesif + ff) * oran / 100;
       return toplam > 0 ? formatPara(toplam) : "—";
     }, getRaw: () => null },
-  { key: "yatan_prim", label: "Yatan Prim", computed: true,
+  { key: "yatan_prim", label: "Yatan\nPrim", computed: true,
     getValue: (r) => formatPara(r.yatan_prim), getRaw: () => null },
-  { key: "kalan_prim", label: "Kalan Prim", computed: true,
+  { key: "kalan_prim", label: "Kalan\nPrim", computed: true,
     getValue: (r) => {
       const bedel = r.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = r.kesif_artisi ?? 0;
@@ -100,7 +101,7 @@ const COLUMNS: ColDef[] = [
       if (yatacak === 0) return "—";
       return formatPara(yatacak - (r.yatan_prim ?? 0));
     }, getRaw: () => null },
-  { key: "yatan_prim_yuzde", label: "Yatan Prim %", computed: true,
+  { key: "yatan_prim_yuzde", label: "Yatan\nPrim %", computed: true,
     getValue: (r) => {
       const bedel = r.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = r.kesif_artisi ?? 0;
@@ -611,7 +612,7 @@ export default function IscilikTakibiPage() {
                   const basliHizalama = col.key === "is_adi" ? "text-left" : sayisal ? "text-right" : "text-center";
                   return (
                     <TableHead key={col.key}
-                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-2 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${col.key === "is_adi" ? "min-w-[120px]" : "min-w-[60px]"}`}>
+                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${col.key === "is_adi" ? "min-w-[260px] max-w-[360px]" : "min-w-[52px]"}`}>
                       {col.label}
                     </TableHead>
                   );
@@ -677,11 +678,13 @@ export default function IscilikTakibiPage() {
                           && col.key !== "taseron_veri_isleme_tarihi"
                           && col.key !== "is_bitim_tarihi");
                     const hizalama = col.key === "is_adi"
-                      ? "text-left font-medium max-w-[180px] truncate"
+                      ? "text-left font-medium max-w-[360px]"
                       : sagaYasliMi
                         ? "text-right tabular-nums"
                         : "text-center";
-                    const cellClass = `px-2 whitespace-nowrap ${col.editable ? "cursor-pointer hover:bg-blue-50" : ""} ${hizalama}${kalanPrimClass}${bitimTarihiClass}`;
+                    // is_adi için whitespace-normal — iş adı sara sara tam görünsün
+                    const wsClass = col.key === "is_adi" ? "whitespace-normal leading-tight" : "whitespace-nowrap";
+                    const cellClass = `px-2 ${wsClass} ${col.editable ? "cursor-pointer hover:bg-blue-50" : ""} ${hizalama}${kalanPrimClass}${bitimTarihiClass}`;
 
                     if (isEditing) {
                       return (
@@ -703,9 +706,9 @@ export default function IscilikTakibiPage() {
                         <TableCell key={col.key} className={cellClass + " cursor-pointer text-[#1E3A5F] hover:text-[#F97316]"}
                           title={row.santiyeler?.is_adi}
                           onClick={() => router.push(`/dashboard/iscilik-takibi/${row.id}`)}>
-                          <span className="inline-flex items-center gap-1.5">
-                            {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: firmaRengi }} />}
-                            <span className="truncate">{col.getValue(row)}</span>
+                          <span className="inline-flex items-start gap-1.5">
+                            {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: firmaRengi }} />}
+                            <span>{col.getValue(row)}</span>
                           </span>
                         </TableCell>
                       );
@@ -745,7 +748,6 @@ export default function IscilikTakibiPage() {
                 }
                 // Her VISIBLE_COLUMN için TOPLAM satırı değeri
                 const toplamDegerMap: Record<string, { deger: string; hizalama: "left" | "right" | "center" }> = {
-                  sicil_no: { deger: "", hizalama: "center" },
                   is_adi: { deger: "TOPLAM", hizalama: "left" },
                   sozlesme_bedeli: { deger: "—", hizalama: "center" },
                   kesif_artisi: { deger: formatPara(kesifT), hizalama: "right" },
