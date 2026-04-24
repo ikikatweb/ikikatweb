@@ -149,6 +149,8 @@ export default function IscilikTakibiPage() {
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [arama, setArama] = useState("");
+  // Mobilde iş adı sütununu sabitleme (sticky) açık/kapalı toggle
+  const [isAdiSabit, setIsAdiSabit] = useState(true);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sekme, setSekme] = useState<"aktif" | "cop">("aktif");
@@ -530,6 +532,16 @@ export default function IscilikTakibiPage() {
           <Input placeholder="İş adı, sicil no ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
         </div>
         <div className="flex items-center gap-2">
+          {/* Mobilde iş adı sabit/kayar toggle — masaüstünde gizli */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAdiSabit((v) => !v)}
+            className="md:hidden"
+            title={isAdiSabit ? "İş adı sütununu serbestçe kaydır" : "İş adı sütununu sabitle"}
+          >
+            {isAdiSabit ? "🔒 İş Adı Sabit" : "🔓 İş Adı Kayar"}
+          </Button>
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
             <FileDown size={16} className="mr-1" /> PDF
           </Button>
@@ -603,10 +615,7 @@ export default function IscilikTakibiPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-[#64748B]">
-                <TableHead
-                  style={{ position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" }}
-                  className="text-white font-semibold text-center text-[10px] px-2 min-w-[32px] max-w-[32px]"
-                >No</TableHead>
+                <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[32px] max-w-[32px]">No</TableHead>
                 {VISIBLE_COLUMNS.map((col) => {
                   const hasTwoLines = col.label.includes("\n");
                   // Sayısal/para sütunları sağa yaslı başlık (body ile aynı eksende)
@@ -616,8 +625,8 @@ export default function IscilikTakibiPage() {
                   const isIsAdi = col.key === "is_adi";
                   return (
                     <TableHead key={col.key}
-                      style={isIsAdi ? { position: "sticky", left: 32, zIndex: 20, backgroundColor: "#64748B" } : undefined}
-                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${isIsAdi ? "min-w-[180px] max-w-[220px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : "min-w-[52px]"}`}>
+                      style={isIsAdi && isAdiSabit ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" } : undefined}
+                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${isIsAdi ? `min-w-[180px] max-w-[220px]${isAdiSabit ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : ""}` : "min-w-[52px]"}`}>
                       {col.label}
                     </TableHead>
                   );
@@ -636,10 +645,7 @@ export default function IscilikTakibiPage() {
                 <TableRow key={row.id}
                   style={firmaRengi ? { borderLeft: `5px solid ${firmaRengi}` } : undefined}
                   className={`text-xs ${isPasif ? "bg-gray-100 opacity-50" : idx % 2 === 1 ? "bg-slate-100 hover:bg-slate-200" : "hover:bg-gray-50"}`}>
-                  <TableCell
-                    style={{ position: "sticky", left: 0, zIndex: 5 }}
-                    className={`text-center px-2 text-gray-500 min-w-[32px] max-w-[32px] ${isPasif ? "bg-gray-100" : idx % 2 === 1 ? "bg-slate-100" : "bg-white"}`}
-                  >{idx + 1}</TableCell>
+                  <TableCell className="text-center px-2 text-gray-500 min-w-[32px] max-w-[32px]">{idx + 1}</TableCell>
                   {VISIBLE_COLUMNS.map((col) => {
                     const isEditing = editing?.id === row.id && editing?.field === col.key;
 
@@ -692,12 +698,12 @@ export default function IscilikTakibiPage() {
                         : "text-center";
                     // is_adi için whitespace-normal — iş adı sara sara tam görünsün
                     const wsClass = col.key === "is_adi" ? "whitespace-normal leading-tight" : "whitespace-nowrap";
-                    // İş adı sütunu STICKY — yatay kaydırırken sabit kalır (No sütunundan sonra, left:32px)
+                    // İş adı sütunu STICKY — yatay kaydırırken sabit kalır (toggle ile kapatılabilir)
                     const isIsAdi = col.key === "is_adi";
-                    const stickyStyle = isIsAdi ? { position: "sticky" as const, left: 32, zIndex: 5 } : undefined;
-                    const stickyCls = isIsAdi ? "shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : "";
+                    const stickyStyle = isIsAdi && isAdiSabit ? { position: "sticky" as const, left: 0, zIndex: 5 } : undefined;
+                    const stickyCls = isIsAdi && isAdiSabit ? "shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : "";
                     // Sticky hücrenin arka planı satırın rengine göre
-                    const stickyBg = isIsAdi
+                    const stickyBg = isIsAdi && isAdiSabit
                       ? (isPasif ? "bg-gray-100" : idx % 2 === 1 ? "bg-slate-100" : "bg-white")
                       : "";
                     const cellClass = `px-2 ${wsClass} ${stickyCls} ${stickyBg} ${col.editable ? "cursor-pointer hover:bg-blue-50" : ""} ${hizalama}${kalanPrimClass}${bitimTarihiClass}`;
@@ -780,18 +786,16 @@ export default function IscilikTakibiPage() {
                   <TableRow
                     style={{ borderLeft: "5px solid transparent" }}
                     className="text-xs bg-[#1E3A5F]/10 border-t-2 border-[#1E3A5F] hover:bg-[#1E3A5F]/10">
-                    <TableCell
-                      style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "#dde3ed" }}
-                      className="text-center px-2 text-[#1E3A5F] whitespace-nowrap min-w-[32px] max-w-[32px]">—</TableCell>
+                    <TableCell className="text-center px-2 text-[#1E3A5F] whitespace-nowrap min-w-[32px] max-w-[32px]">—</TableCell>
                     {VISIBLE_COLUMNS.map((col) => {
                       const d = toplamDegerMap[col.key] ?? { deger: "", hizalama: "center" as const };
                       const hCls = d.hizalama === "left" ? "text-left font-bold" : d.hizalama === "right" ? "text-right tabular-nums" : "text-center";
                       const textCls = d.deger === "—" ? "text-gray-400" : "text-[#1E3A5F]";
                       const isIsAdi = col.key === "is_adi";
-                      const stickyStyle = isIsAdi
-                        ? { position: "sticky" as const, left: 32, zIndex: 5, backgroundColor: "#dde3ed" }
+                      const stickyStyle = isIsAdi && isAdiSabit
+                        ? { position: "sticky" as const, left: 0, zIndex: 5, backgroundColor: "#dde3ed" }
                         : undefined;
-                      const stickyShadow = isIsAdi ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : "";
+                      const stickyShadow = isIsAdi && isAdiSabit ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : "";
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={`px-2 whitespace-nowrap ${hCls} ${textCls}${stickyShadow}`}>
                           {d.deger}
