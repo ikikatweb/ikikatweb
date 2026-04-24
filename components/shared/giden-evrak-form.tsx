@@ -39,7 +39,7 @@ type MuhatapItem = { id: string; deger: string; kisa_ad: string | null };
 const selectClass = "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
-  const isEdit = !!evrak;
+  const isEdit = !!evrak?.id;
   const { kullanici } = useAuth();
   const [loading, setLoading] = useState(false);
   const [onIzleme, setOnIzleme] = useState(false);

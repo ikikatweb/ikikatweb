@@ -109,7 +109,8 @@ export default function GelenEvrakPage() {
   function handleEdit(e: GelenEvrakWithRelations) { setEditEvrak(e); setFormOpen(true); }
 
   function handleCopy(e: GelenEvrakWithRelations) {
-    setEditEvrak({ ...e, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() } as GelenEvrakWithRelations & { _cogaltKey: number });
+    const cogaltEvrak = { ...e, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() };
+    setEditEvrak(cogaltEvrak as unknown as GelenEvrakWithRelations);
     setFormOpen(true);
   }
 
@@ -285,18 +286,22 @@ export default function GelenEvrakPage() {
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Evrak Düzenle" : "Yeni Gelen Evrak"}</DialogTitle>
           </DialogHeader>
-          <GelenEvrakForm
-            key={
-              editEvrak?.id
-                ? `edit-${editEvrak.id}`
-                : (editEvrak as { _cogaltKey?: number } | null)?._cogaltKey
-                ? `cogalt-${(editEvrak as { _cogaltKey: number })._cogaltKey}`
-                : "yeni"
-            }
-            evrak={editEvrak ?? undefined}
-            onSuccess={() => { setFormOpen(false); loadData(); }}
-            onCancel={() => setFormOpen(false)}
-          />
+          {(() => {
+            const cogaltKey = (editEvrak as unknown as { _cogaltKey?: number } | null)?._cogaltKey;
+            const formKey = editEvrak?.id
+              ? `edit-${editEvrak.id}`
+              : cogaltKey
+              ? `cogalt-${cogaltKey}`
+              : "yeni";
+            return (
+              <GelenEvrakForm
+                key={formKey}
+                evrak={editEvrak ?? undefined}
+                onSuccess={() => { setFormOpen(false); loadData(); }}
+                onCancel={() => setFormOpen(false)}
+              />
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
