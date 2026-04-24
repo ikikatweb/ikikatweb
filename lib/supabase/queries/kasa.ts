@@ -109,7 +109,7 @@ export async function insertKasaHareketi(data: {
     bildirimGonder({
       baslik: `💰 Yeni Kasa ${tip} — ${formatTL(data.tutar)}`,
       govde: `${odeme}${data.kategori ? " · " + data.kategori : ""}${data.aciklama ? " · " + data.aciklama.slice(0, 80) : ""}`,
-      url: "/dashboard/kasa-defteri",
+      url: `/dashboard/kasa-defteri?personel=${data.personel_id}`,
       tag: "kasa",
     });
   } catch { /* sessiz */ }

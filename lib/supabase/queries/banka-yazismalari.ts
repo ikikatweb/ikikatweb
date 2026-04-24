@@ -59,7 +59,7 @@ export async function createBankaYazisma(yazisma: BankaYazismaInsert) {
     bildirimGonder({
       baslik: `🏦 Yeni Banka Yazışması — ${firma}`,
       govde: [banka, yazisma.konu ? String(yazisma.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
-      url: "/dashboard/yazismalar/banka-yazismalari",
+      url: `/dashboard/yazismalar/banka-yazismalari${yazisma.evrak_sayi_no ? `?ara=${encodeURIComponent(yazisma.evrak_sayi_no)}` : ""}`,
       tag: "banka-yazismalari",
     });
   } catch { /* sessiz */ }

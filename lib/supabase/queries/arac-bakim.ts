@@ -88,7 +88,7 @@ export async function insertAracBakim(data: {
     bildirimGonder({
       baslik: `${ikon} Yeni ${tipAd} — ${plaka}`,
       govde: `${[arac?.marka, arac?.model].filter(Boolean).join(" ")}${data.tutar ? " · " + formatTL(data.tutar) : ""}${data.detay ? " · " + data.detay.slice(0, 80) : ""}`,
-      url: "/dashboard/arac-bakim",
+      url: `/dashboard/arac-bakim?arac=${data.arac_id}`,
       tag: "arac-bakim",
     });
   } catch { /* sessiz */ }

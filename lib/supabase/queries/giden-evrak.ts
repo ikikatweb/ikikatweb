@@ -59,7 +59,7 @@ export async function createGidenEvrak(evrak: GidenEvrakInsert) {
     bildirimGonder({
       baslik: `📤 Yeni Giden Evrak — ${firma}`,
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
-      url: "/dashboard/yazismalar/giden-evrak",
+      url: `/dashboard/yazismalar/giden-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
       tag: "giden-evrak",
     });
   } catch { /* sessiz */ }

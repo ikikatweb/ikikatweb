@@ -269,6 +269,24 @@ export async function upsertAracPuantaj(
       created_by: kullaniciId ?? null,
     });
   if (error) throw error;
+
+  // Push bildirim — tag ile üst üste binsin (spam azalsın)
+  try {
+    const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+    const [{ data: arac }, { data: santiye }] = await Promise.all([
+      supabase.from("araclar").select("plaka, marka").eq("id", aracId).maybeSingle(),
+      supabase.from("santiyeler").select("is_adi").eq("id", santiyeId).maybeSingle(),
+    ]);
+    const plaka = arac?.plaka ? String(arac.plaka) : "?";
+    const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
+    const [yilStr, ayStr] = tarih.split("-");
+    bildirimGonder({
+      baslik: `🚚 Araç Puantaj — ${santiyeAd}`,
+      govde: `${plaka} · ${formatTarih(tarih)} · ${durum}`,
+      url: `/dashboard/puantaj/arac?santiye=${santiyeId}&yil=${yilStr}&ay=${parseInt(ayStr, 10)}`,
+      tag: "arac-puantaj",
+    });
+  } catch { /* sessiz */ }
 }
 
 // Puantajı sil (toggle off)

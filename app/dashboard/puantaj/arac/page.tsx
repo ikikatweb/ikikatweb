@@ -127,9 +127,15 @@ function tr(s: string): string {
 export default function AracPuantajPage() {
   const { kullanici } = useAuth();
 
+  // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri
   const bugun = new Date();
-  const [yil, setYil] = useState(bugun.getFullYear());
-  const [ay, setAy] = useState(bugun.getMonth() + 1); // 1-12
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const urlSantiye = urlParams?.get("santiye") ?? "";
+  const urlYil = urlParams?.get("yil");
+  const urlAy = urlParams?.get("ay");
+
+  const [yil, setYil] = useState(urlYil ? parseInt(urlYil, 10) : bugun.getFullYear());
+  const [ay, setAy] = useState(urlAy ? parseInt(urlAy, 10) : bugun.getMonth() + 1); // 1-12
 
   // Özet Rapor için ayrı tarih aralığı (ayın 1'i - ayın sonu varsayılan)
   // Not: toISOString() UTC'ye çevirdiği için Türkiye saat dilimiyle 1 gün kayması yaşanıyordu,
@@ -151,7 +157,7 @@ export default function AracPuantajPage() {
 
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
-  const [santiyeId, setSantiyeId] = useState("");
+  const [santiyeId, setSantiyeId] = useState(urlSantiye);
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
   const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
   const [yakitGoster, setYakitGoster] = useState(true);

@@ -96,9 +96,14 @@ export default function AracBakimPage() {
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [personeller, setPersoneller] = useState<AdKayit[]>([]);
 
+  // URL parametresi — bildirimden gelen arac_id ile başlangıç
+  const urlAracParam = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("arac") ?? ""
+    : "";
+
   // Filtreler
   const [arama, setArama] = useState("");
-  const [filtreArac, setFiltreArac] = useState("");
+  const [filtreArac, setFiltreArac] = useState(urlAracParam);
   const [filtreTip, setFiltreTip] = useState<"" | AracBakimTipi>("");
   const [filtreBaslangic, setFiltreBaslangic] = useState("");
   const [filtreBitis, setFiltreBitis] = useState("");

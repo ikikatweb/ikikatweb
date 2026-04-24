@@ -65,8 +65,12 @@ export default function BankaYazismalariPage() {
   // Yazdırma için seçili yazışma
   const [printRef, setPrintRef] = useState<BankaYazismaWithRelations | null>(null);
 
-  // Filtreler
-  const [fArama, setFArama] = useState("");
+  // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
+  const [fArama, setFArama] = useState(() =>
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("ara") ?? ""
+      : ""
+  );
   const [fBaslangic, setFBaslangic] = useState("");
   const [fBitis, setFBitis] = useState("");
   const [fFirma, setFFirma] = useState("");

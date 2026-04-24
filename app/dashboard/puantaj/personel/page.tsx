@@ -99,14 +99,20 @@ function tr(s: string): string {
 export default function PersonelPuantajPage() {
   const { kullanici, isYonetici } = useAuth();
 
+  // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri
   const bugun = new Date();
-  const [yil, setYil] = useState(bugun.getFullYear());
-  const [ay, setAy] = useState(bugun.getMonth() + 1); // 1-12
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const urlSantiye = urlParams?.get("santiye") ?? "";
+  const urlYil = urlParams?.get("yil");
+  const urlAy = urlParams?.get("ay");
+
+  const [yil, setYil] = useState(urlYil ? parseInt(urlYil, 10) : bugun.getFullYear());
+  const [ay, setAy] = useState(urlAy ? parseInt(urlAy, 10) : bugun.getMonth() + 1); // 1-12
 
   const [loading, setLoading] = useState(true);
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
-  const [santiyeId, setSantiyeId] = useState<string>("");
+  const [santiyeId, setSantiyeId] = useState<string>(urlSantiye);
   // Çoklu atama: personel_id -> Set<santiye_id>
   const [personelSantiyeMap, setPersonelSantiyeMap] = useState<Map<string, Set<string>>>(new Map());
 

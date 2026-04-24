@@ -162,7 +162,7 @@ export async function insertYakitAlim(data: {
     bildirimGonder({
       baslik: `⛽ Yeni Yakıt Alımı — ${santiyeAd}`,
       govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${formatTL(toplam)} · ${data.tedarikci_firma}`,
-      url: "/dashboard/yakit",
+      url: `/dashboard/yakit?santiye=${data.santiye_id}`,
       tag: "yakit",
     });
   } catch { /* sessiz */ }
