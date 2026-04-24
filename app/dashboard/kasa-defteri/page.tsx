@@ -941,22 +941,6 @@ function KasaDefContent() {
                       disabled={dialogLoading}
                       className="hidden"
                     />
-                    {/* Sadece mobilde gözüken kamera butonu */}
-                    <label
-                      htmlFor="slip-kamera-input"
-                      className="md:hidden px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
-                    >
-                      📸 Çek
-                    </label>
-                    <input
-                      id="slip-kamera-input"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => setDSlipFile(e.target.files?.[0] ?? null)}
-                      disabled={dialogLoading}
-                      className="hidden"
-                    />
                   </div>
                   {dSlipFile && (
                     <p className="text-[10px] text-emerald-700 truncate">

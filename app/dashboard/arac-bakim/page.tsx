@@ -987,21 +987,6 @@ export default function AracBakimPage() {
                   }}
                   className="hidden"
                 />
-                <label htmlFor="fatura-kamera-input" className="md:hidden px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
-                  📸 Çek
-                </label>
-                <input
-                  id="fatura-kamera-input"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={(e) => {
-                    const liste = e.target.files ? Array.from(e.target.files) : [];
-                    setDFaturaYeni((prev) => [...prev, ...liste]);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
               </div>
 
               {dFaturaMevcut.length > 0 && (
@@ -1043,21 +1028,6 @@ export default function AracBakimPage() {
                   type="file"
                   multiple
                   accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    const liste = e.target.files ? Array.from(e.target.files) : [];
-                    setDIsFotoYeni((prev) => [...prev, ...liste]);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
-                <label htmlFor="isfoto-kamera-input" className="md:hidden px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
-                  📸 Çek
-                </label>
-                <input
-                  id="isfoto-kamera-input"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
                   onChange={(e) => {
                     const liste = e.target.files ? Array.from(e.target.files) : [];
                     setDIsFotoYeni((prev) => [...prev, ...liste]);

@@ -9,7 +9,7 @@ import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabas
 import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac } from "@/lib/supabase/types";
-import { getYakitAlimlarByRange, getAracYakitlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
+import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
@@ -88,6 +88,10 @@ export default function DashboardPage() {
   const [teklifAcikKeyler, setTeklifAcikKeyler] = useState<Set<string>>(new Set());
   const [yakitAlimlar, setYakitAlimlar] = useState<YakitAlim[]>([]);
   const [yakitDagitimlar, setYakitDagitimlar] = useState<AracYakit[]>([]);
+  // Stok hesabı için TÜM ZAMAN alım + dağıtım + virman (son 30 gün değil)
+  const [yakitAlimlarTum, setYakitAlimlarTum] = useState<YakitAlim[]>([]);
+  const [yakitDagitimlarTum, setYakitDagitimlarTum] = useState<AracYakit[]>([]);
+  const [yakitVirmanlarTum, setYakitVirmanlarTum] = useState<{ gonderen_santiye_id: string; alan_santiye_id: string; miktar_lt: number }[]>([]);
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -182,6 +186,21 @@ export default function DashboardPage() {
 
       // Ana veriler hazır — sayfayı göster
       setLoading(false);
+
+      // Arka planda: depo stok hesabı için TÜM ZAMAN yakıt verilerini çek
+      // (son 30 gün yeterli değil — kümülatif stok hesabı için)
+      (async () => {
+        try {
+          const [alimTum, dagitimTum, virmanTum] = await Promise.all([
+            getYakitAlimlarByRange(null, "2000-01-01", "2099-12-31").catch(() => []),
+            getAracYakitlarByRange(null, "2000-01-01", "2099-12-31").catch(() => []),
+            getYakitVirmanlarByRange("2000-01-01", "2099-12-31").catch(() => []),
+          ]);
+          setYakitAlimlarTum(alimTum as YakitAlim[]);
+          setYakitDagitimlarTum(dagitimTum as AracYakit[]);
+          setYakitVirmanlarTum(virmanTum as { gonderen_santiye_id: string; alan_santiye_id: string; miktar_lt: number }[]);
+        } catch { /* sessiz */ }
+      })();
 
       // Şantiye defteri özetleri + son 5 gün detay (arka planda)
       try {
@@ -411,20 +430,32 @@ export default function DashboardPage() {
   }, [aracBakimlar]);
 
   // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
+  // TÜM ZAMAN verileri kullanılır (son 30 gün değil) + virman hareketleri dahil edilir
   const depoOzet = useMemo(() => {
     const alimMap = new Map<string, number>();
-    for (const a of yakitAlimlar) alimMap.set(a.santiye_id, (alimMap.get(a.santiye_id) ?? 0) + a.miktar_lt);
+    for (const a of yakitAlimlarTum) alimMap.set(a.santiye_id, (alimMap.get(a.santiye_id) ?? 0) + a.miktar_lt);
     const dagitimMap = new Map<string, number>();
-    for (const d of yakitDagitimlar) dagitimMap.set(d.santiye_id, (dagitimMap.get(d.santiye_id) ?? 0) + d.miktar_lt);
+    for (const d of yakitDagitimlarTum) dagitimMap.set(d.santiye_id, (dagitimMap.get(d.santiye_id) ?? 0) + d.miktar_lt);
+    const gelenVirmanMap = new Map<string, number>();
+    const gidenVirmanMap = new Map<string, number>();
+    for (const v of yakitVirmanlarTum) {
+      gidenVirmanMap.set(v.gonderen_santiye_id, (gidenVirmanMap.get(v.gonderen_santiye_id) ?? 0) + v.miktar_lt);
+      gelenVirmanMap.set(v.alan_santiye_id, (gelenVirmanMap.get(v.alan_santiye_id) ?? 0) + v.miktar_lt);
+    }
     const result: { santiyeId: string; santiye: string; alim: number; dagitim: number; stok: number }[] = [];
     // Depo kapasitesi olan tüm şantiyeleri dahil et (alım olmasa bile)
     const depoluSantiyeler = new Set<string>();
     for (const s of santiyeler) {
       if ((s.depo_kapasitesi ?? 0) > 0) depoluSantiyeler.add(s.id);
     }
-    // Hem depolu hem alımı olan tüm şantiyeler
-    let tumIds = new Set<string>([...depoluSantiyeler, ...alimMap.keys()]);
-    // Kısıtlı kullanıcı ise sadece atandığı şantiyeleri göster
+    // Hem depolu hem hareketi olan tüm şantiyeler
+    let tumIds = new Set<string>([
+      ...depoluSantiyeler,
+      ...alimMap.keys(),
+      ...dagitimMap.keys(),
+      ...gelenVirmanMap.keys(),
+      ...gidenVirmanMap.keys(),
+    ]);
     if (kullanici && !isYonetici) {
       const izinli = new Set(kullanici.santiye_ids ?? []);
       tumIds = new Set([...tumIds].filter((id) => izinli.has(id)));
@@ -432,10 +463,14 @@ export default function DashboardPage() {
     for (const sid of tumIds) {
       const alim = alimMap.get(sid) ?? 0;
       const dagitim = dagitimMap.get(sid) ?? 0;
-      result.push({ santiyeId: sid, santiye: santMap.get(sid) ?? "—", alim, dagitim, stok: alim - dagitim });
+      const gelen = gelenVirmanMap.get(sid) ?? 0;
+      const giden = gidenVirmanMap.get(sid) ?? 0;
+      // Stok = alım + gelen virman - giden virman - dağıtım
+      const stok = alim + gelen - giden - dagitim;
+      result.push({ santiyeId: sid, santiye: santMap.get(sid) ?? "—", alim, dagitim, stok });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
-  }, [yakitAlimlar, yakitDagitimlar, santMap, santiyeler, kullanici, isYonetici]);
+  }, [yakitAlimlarTum, yakitDagitimlarTum, yakitVirmanlarTum, santMap, santiyeler, kullanici, isYonetici]);
 
   // Widget 5: Son yakıt alımları
   const sonAlimlar = useMemo(() => {
