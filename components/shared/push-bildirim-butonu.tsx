@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, BellOff, BellRing } from "lucide-react";
+import { Bell, BellOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 
@@ -117,21 +117,6 @@ export default function PushBildirimButonu() {
     }
   }
 
-  async function testBildirim() {
-    setIslemYapiliyor(true);
-    try {
-      const res = await fetch("/api/push/test", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      if (data.sent > 0) toast.success(`${data.sent} cihaza test bildirim gönderildi.`);
-      else toast.error("Hiç abone cihaz bulunamadı.");
-    } catch (err) {
-      toast.error(`Test başarısız: ${err instanceof Error ? err.message : ""}`);
-    } finally {
-      setIslemYapiliyor(false);
-    }
-  }
-
   if (durum === "yukleniyor") return null;
 
   if (durum === "desteklenmiyor") {
@@ -160,13 +145,8 @@ export default function PushBildirimButonu() {
 
   // acik
   return (
-    <div className="flex gap-2">
-      <Button size="sm" variant="outline" onClick={testBildirim} disabled={islemYapiliyor} title="Test bildirim gönder">
-        <BellRing size={14} className="mr-1" /> Test
-      </Button>
-      <Button size="sm" variant="outline" onClick={bildirimKapat} disabled={islemYapiliyor}>
-        <BellOff size={14} className="mr-1" /> Bildirimleri Kapat
-      </Button>
-    </div>
+    <Button size="sm" variant="outline" onClick={bildirimKapat} disabled={islemYapiliyor}>
+      <BellOff size={14} className="mr-1" /> Bildirimleri Kapat
+    </Button>
   );
 }

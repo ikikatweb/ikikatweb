@@ -1,0 +1,303 @@
+// Birleşik Bildirim Menüsü — tek buton + dropdown
+// Üst: Bildirimleri Aç/Kapat (master switch)
+// Alt: Kategori bazlı aç/kapat toggle'ları
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Bell, BellOff } from "lucide-react";
+import toast from "react-hot-toast";
+
+// Base64 URL-safe → ArrayBuffer
+function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const buffer = new ArrayBuffer(rawData.length);
+  const view = new Uint8Array(buffer);
+  for (let i = 0; i < rawData.length; i++) view[i] = rawData.charCodeAt(i);
+  return buffer;
+}
+
+// Kategori tanımları
+const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[] = [
+  { tag: "kasa", label: "Kasa Hareketi", emoji: "💰", desc: "Yeni gelir/gider" },
+  { tag: "arac-bakim", label: "Araç Bakım & Tamirat", emoji: "🛠️", desc: "Yeni bakım/tamirat" },
+  { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Yeni puantaj kaydı" },
+  { tag: "arac-puantaj", label: "Araç Puantaj", emoji: "🚚", desc: "Yeni puantaj kaydı" },
+  { tag: "yakit", label: "Yakıt Alımı", emoji: "⛽", desc: "Yeni yakıt alımı" },
+  { tag: "gelen-evrak", label: "Gelen Evrak", emoji: "📥", desc: "Yeni gelen evrak" },
+  { tag: "giden-evrak", label: "Giden Evrak", emoji: "📤", desc: "Yeni giden evrak" },
+  { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni banka yazışması" },
+  { tag: "yaklasan-sigorta", label: "Yaklaşan Sigorta & Muayene", emoji: "📋", desc: "Sabah 08:00 özeti" },
+  { tag: "yaklasan-bakim", label: "Yaklaşan Araç Bakımı", emoji: "🛠️", desc: "Sabah 08:00 özeti" },
+];
+
+type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";
+
+export default function PushBildirimMenu() {
+  const [durum, setDurum] = useState<Durum>("yukleniyor");
+  const [islemYapiliyor, setIslemYapiliyor] = useState(false);
+  const [acik, setAcik] = useState(false);
+  const [ayarlar, setAyarlar] = useState<Record<string, boolean>>({});
+  const [ayarlarYuklendi, setAyarlarYuklendi] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // İlk kontrol: tarayıcı desteği + izin + mevcut abonelik
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setDurum("desteklenmiyor");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setDurum("reddedilmis");
+      return;
+    }
+    navigator.serviceWorker.getRegistration()
+      .then(async (reg) => {
+        if (!reg) { setDurum("kapali"); return; }
+        const sub = await reg.pushManager.getSubscription();
+        setDurum(sub ? "acik" : "kapali");
+      })
+      .catch(() => setDurum("kapali"));
+  }, []);
+
+  // Menü açıldığında ayarları yükle (bir kez)
+  useEffect(() => {
+    if (!acik || ayarlarYuklendi) return;
+    fetch("/api/push/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setAyarlar((data.ayarlar as Record<string, boolean>) ?? {});
+        setAyarlarYuklendi(true);
+      })
+      .catch(() => { /* sessiz */ });
+  }, [acik, ayarlarYuklendi]);
+
+  // Dışarı tıklayınca kapat
+  useEffect(() => {
+    if (!acik) return;
+    function kapat(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setAcik(false);
+    }
+    document.addEventListener("mousedown", kapat);
+    return () => document.removeEventListener("mousedown", kapat);
+  }, [acik]);
+
+  // Ana bildirim aç
+  async function bildirimAc() {
+    setIslemYapiliyor(true);
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      const izin = await Notification.requestPermission();
+      if (izin !== "granted") {
+        toast.error("Bildirim izni reddedildi.");
+        setDurum(izin === "denied" ? "reddedilmis" : "kapali");
+        return;
+      }
+      const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublic) {
+        toast.error("VAPID key yapılandırılmamış.");
+        return;
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToArrayBuffer(vapidPublic),
+      });
+      const subJson = sub.toJSON();
+      const res = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: subJson.endpoint,
+          p256dh: subJson.keys?.p256dh,
+          auth: subJson.keys?.auth,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Kayıt başarısız");
+      setDurum("acik");
+      toast.success("Bildirimler açıldı!");
+    } catch (err) {
+      toast.error(`Bildirim açılamadı: ${err instanceof Error ? err.message : ""}`);
+    } finally {
+      setIslemYapiliyor(false);
+    }
+  }
+
+  // Ana bildirim kapat
+  async function bildirimKapat() {
+    setIslemYapiliyor(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setDurum("kapali");
+      toast.success("Bildirimler kapatıldı.");
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : ""}`);
+    } finally {
+      setIslemYapiliyor(false);
+    }
+  }
+
+  // Kategori toggle — anında server'a kaydet
+  async function kategoriToggle(tag: string) {
+    const yeniDurum = isAcikKat(ayarlar, tag) ? false : true;
+    const yeniAyarlar = { ...ayarlar, [tag]: yeniDurum };
+    setAyarlar(yeniAyarlar);
+    try {
+      const res = await fetch("/api/push/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ayarlar: yeniAyarlar }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Kayıt başarısız");
+    } catch (err) {
+      // Rollback
+      setAyarlar(ayarlar);
+      toast.error(`Hata: ${err instanceof Error ? err.message : ""}`);
+    }
+  }
+
+  async function kategoriHepsi(aktif: boolean) {
+    const yeni: Record<string, boolean> = {};
+    for (const k of KATEGORILER) yeni[k.tag] = aktif;
+    setAyarlar(yeni);
+    try {
+      const res = await fetch("/api/push/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ayarlar: yeni }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Kayıt başarısız");
+      toast.success(aktif ? "Tüm kategoriler açıldı." : "Tüm kategoriler kapatıldı.");
+    } catch (err) {
+      setAyarlar(ayarlar);
+      toast.error(`Hata: ${err instanceof Error ? err.message : ""}`);
+    }
+  }
+
+  function isAcikKat(a: Record<string, boolean>, tag: string) {
+    return a[tag] !== false; // varsayılan açık
+  }
+
+  if (durum === "yukleniyor") return null;
+
+  if (durum === "desteklenmiyor") {
+    return (
+      <div className="text-xs text-gray-400 flex items-center gap-1">
+        <BellOff size={14} /> Desteklenmiyor
+      </div>
+    );
+  }
+
+  if (durum === "reddedilmis") {
+    return (
+      <div className="text-xs text-red-500 flex items-center gap-1" title="Tarayıcı ayarlarından izin vermen gerekiyor">
+        <BellOff size={14} /> Bildirim izni reddedildi
+      </div>
+    );
+  }
+
+  // Aç/Kapat butonu + Dropdown
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setAcik((v) => !v)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+          durum === "acik"
+            ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+            : "bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200"
+        }`}
+        title={durum === "acik" ? "Bildirimler açık" : "Bildirimler kapalı"}
+      >
+        {durum === "acik" ? <Bell size={14} /> : <BellOff size={14} />}
+        <span className="hidden sm:inline">Bildirimler</span>
+        <span className={`text-[10px] font-bold ${durum === "acik" ? "text-emerald-700" : "text-gray-400"}`}>
+          {durum === "acik" ? "AÇIK" : "KAPALI"}
+        </span>
+      </button>
+
+      {/* Dropdown */}
+      {acik && (
+        <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+          {/* Ana aç/kapat */}
+          <div className={`p-3 border-b ${durum === "acik" ? "bg-emerald-50 border-emerald-100" : "bg-gray-50"}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-gray-900">Bildirimler</div>
+                <div className="text-[11px] text-gray-500">
+                  {durum === "acik" ? "Bu cihazda açık" : "Bu cihazda kapalı"}
+                </div>
+              </div>
+              {durum === "kapali" ? (
+                <button
+                  type="button"
+                  onClick={bildirimAc}
+                  disabled={islemYapiliyor}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md disabled:opacity-50"
+                >
+                  {islemYapiliyor ? "..." : "Aç"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={bildirimKapat}
+                  disabled={islemYapiliyor}
+                  className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-semibold rounded-md disabled:opacity-50"
+                >
+                  {islemYapiliyor ? "..." : "Kapat"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Kategori alt-bildirimleri (sadece ana açıksa aktif) */}
+          <div className={`px-3 py-2 ${durum !== "acik" ? "opacity-50 pointer-events-none" : ""}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Kategoriler</div>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => kategoriHepsi(true)} className="text-[10px] text-emerald-700 hover:underline">Hepsi Açık</button>
+                <span className="text-gray-300">·</span>
+                <button type="button" onClick={() => kategoriHepsi(false)} className="text-[10px] text-gray-600 hover:underline">Hepsi Kapalı</button>
+              </div>
+            </div>
+
+            <div className="max-h-[360px] overflow-y-auto space-y-0.5">
+              {KATEGORILER.map((k) => {
+                const katAcik = isAcikKat(ayarlar, k.tag);
+                return (
+                  <button
+                    key={k.tag}
+                    type="button"
+                    onClick={() => kategoriToggle(k.tag)}
+                    className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-gray-50 text-left transition-colors"
+                  >
+                    <span className="text-base flex-shrink-0">{k.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-gray-900 truncate">{k.label}</div>
+                      <div className="text-[10px] text-gray-400 truncate">{k.desc}</div>
+                    </div>
+                    {/* Basit toggle switch */}
+                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${katAcik ? "bg-emerald-500" : "bg-gray-300"}`}>
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${katAcik ? "left-4" : "left-0.5"}`} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
