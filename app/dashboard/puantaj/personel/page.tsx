@@ -288,22 +288,23 @@ export default function PersonelPuantajPage() {
   const gunler = useMemo(() => Array.from({ length: ayinGunSayisi }, (_, i) => i + 1), [ayinGunSayisi]);
 
   // Seçili şantiyede gösterilecek personeller
-  // - Sadece seçili şantiyeye atanmış olanlar
-  // - Aktif personeller: her zaman görünür
-  // - Pasif personeller:
-  //   * Pasif tarihleri, seçili ayın başlangıcından önceyse gizle (sonraki ay)
-  //   * Pasif tarihleri, seçili ayda veya sonraysa göster (gri)
+  // - Sadece seçili şantiyeye atanmış AKTİF personeller
+  // - Pasif personeller: seçili ay içinde pasife alındıysa (o aydaki aktif günleri görelim) göster,
+  //   aksi halde tamamen gizle
   const gosterilecekPersoneller = useMemo(() => {
     if (!santiyeId) return [];
+    const ayBaslangici = `${yil}-${String(ay).padStart(2, "0")}-01`;
+    const sonrakiAy = ay === 12 ? 1 : ay + 1;
+    const sonrakiYil = ay === 12 ? yil + 1 : yil;
+    const ayBitisi = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
     return personeller
       .filter((p) => personelSantiyeMap.get(p.id)?.has(santiyeId))
       .filter((p) => {
         if (p.durum !== "pasif") return true;
-        if (!p.pasif_tarihi) return true; // pasif ama tarih yok -> güvenli tarafta göster
-        const ayBaslangici = new Date(yil, ay - 1, 1);
-        const pasifDate = new Date(p.pasif_tarihi);
-        // Pasif tarihi seçili aydan ÖNCEYSE artık görünmez (ayrıldığı aydan sonraki ay)
-        return pasifDate >= ayBaslangici;
+        // Pasif personeller: sadece pasif_tarihi seçili ay içindeyse göster
+        // (o ayki aktif günlerini görebilmek için). Diğer aylarda tamamen gizle.
+        if (!p.pasif_tarihi) return false;
+        return p.pasif_tarihi >= ayBaslangici && p.pasif_tarihi < ayBitisi;
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
   }, [personeller, personelSantiyeMap, santiyeId, yil, ay]);
@@ -889,8 +890,8 @@ export default function PersonelPuantajPage() {
                 const izinInfo = personelIzinGosterim(p);
                 const pasif = p.durum === "pasif";
                 return (
-                  <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-50/80" : ""}`}>
-                    <TableCell className={`px-2 sticky left-0 z-10 border-r ${pasif ? "bg-gray-50/80" : "bg-white"}`}>
+                  <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-100" : ""}`}>
+                    <TableCell className={`px-2 sticky left-0 z-10 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
