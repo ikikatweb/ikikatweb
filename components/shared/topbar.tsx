@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Menu, LogOut, Clock } from "lucide-react";
 import toast from "react-hot-toast";
+import PushBildirimButonu from "@/components/shared/push-bildirim-butonu";
 
 type TopbarProps = {
   onMenuToggle: () => void;
@@ -69,6 +70,10 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
         </div>
+
+        {/* Push Bildirim Aç/Kapat */}
+        <PushBildirimButonu />
+
         <Button
           variant="outline"
           size="sm"

@@ -12,6 +12,8 @@ import {
 } from "@/lib/supabase/queries/santiyeler";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/queries/santiyeler";
+import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
+import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama } from "@/lib/supabase/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -73,6 +75,9 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   const [sozlesmeBedeliStr, setSozlesmeBedeliStr] = useState(
     formatParaInput(santiye?.sozlesme_bedeli ?? null)
   );
+
+  // Keşif Artışı — iscilik_takibi tablosunda tutulur, işçilik takibi sayfasıyla ortak veri
+  const [kesifArtisiStr, setKesifArtisiStr] = useState("");
 
   const [geciciKabulFile, setGeciciKabulFile] = useState<File | null>(null);
   const [kesinKabulFile, setKesinKabulFile] = useState<File | null>(null);
@@ -170,6 +175,24 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
 
   useEffect(() => { loadDropdowns(); }, [loadDropdowns]);
 
+  // Edit modunda iscilik_takibi kaydından kesif_artisi değerini yükle
+  useEffect(() => {
+    if (!isEdit || !santiye?.id) return;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("iscilik_takibi")
+          .select("kesif_artisi")
+          .eq("santiye_id", santiye.id)
+          .maybeSingle();
+        if (data?.kesif_artisi != null) {
+          setKesifArtisiStr(formatParaInput(data.kesif_artisi));
+        }
+      } catch { /* sessiz */ }
+    })();
+  }, [isEdit, santiye?.id]);
+
   // İş süresi değişince iş bitim tarihini hesapla
   useEffect(() => {
     if (formData.isyeri_teslim_tarihi && formData.is_suresi && formData.is_suresi > 0) {
@@ -262,6 +285,15 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
       try {
         await saveSantiyeIsGruplari(savedId, gecerliDagilim);
       } catch { /* tablo yoksa sessiz atla */ }
+
+      // Keşif Artışı — iscilik_takibi tablosuna upsert (işçilik takibi sayfasıyla ortak veri)
+      try {
+        const kesifArtisi = parseParaInput(kesifArtisiStr);
+        await upsertIscilikTakibi(savedId, { kesif_artisi: kesifArtisi });
+      } catch (err) {
+        // Kesif artışı kaydı başarısız olursa form genel başarısını bozma, sadece uyarı göster
+        console.warn("Keşif artışı kaydedilemedi:", err);
+      }
 
       // Dosya yüklemeleri
       if (geciciKabulFile) {
@@ -421,6 +453,30 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi</Label>
                   <Input id="sozlesme_tarihi" name="sozlesme_tarihi" type="date" value={formData.sozlesme_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                </div>
+              </div>
+
+              {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="kesif_artisi">Keşif Artışı</Label>
+                  <div className="relative">
+                    <Input
+                      id="kesif_artisi"
+                      placeholder="0,00"
+                      value={kesifArtisiStr}
+                      onChange={(e) => setKesifArtisiStr(e.target.value)}
+                      onBlur={() => {
+                        const val = parseParaInput(kesifArtisiStr);
+                        setKesifArtisiStr(val != null ? formatParaInput(val) : "");
+                      }}
+                      disabled={loading}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₺</span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    İşçilik Takibi sayfasındaki Keşif Artışı ile aynı veridir — biri değişince diğeri de güncellenir.
+                  </p>
                 </div>
               </div>
 

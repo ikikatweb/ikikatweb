@@ -12,6 +12,20 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "İkikat Yönetim",
   description: "Taahhüt şirketi yönetim uygulaması",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "İkikat",
+  },
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
+};
+
+export const viewport = {
+  themeColor: "#1E3A5F",
 };
 
 export default function RootLayout({

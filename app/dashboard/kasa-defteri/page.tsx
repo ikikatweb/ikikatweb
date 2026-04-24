@@ -86,7 +86,8 @@ function KasaDefContent() {
   const bugun = new Date();
   const [filtreSantiye, setFiltreSantiye] = useState("");
   const [filtrePersonel, setFiltrePersonel] = useState(() => searchParams.get("personel") ?? "");
-  const [filtreOdeme, setFiltreOdeme] = useState<"" | "nakit" | "kart">("");
+  // Varsayılan "Nakit" — kart görmek için "Kart" veya "Tümü" seçilir
+  const [filtreOdeme, setFiltreOdeme] = useState<"" | "nakit" | "kart">("nakit");
   const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
     const y = bugun.getFullYear(); const m = bugun.getMonth() + 1;
     return `${y}-${String(m).padStart(2,"0")}-01`;
@@ -235,6 +236,16 @@ function KasaDefContent() {
       return true;
     }).sort((a, b) => `${b.tarih}${b.created_at}`.localeCompare(`${a.tarih}${a.created_at}`));
   }, [hareketler, filtreSantiye, filtrePersonel, filtreOdeme, filtreBaslangic, filtreBitis, arama, isYonetici, kullanici, personelMap, santiyeMap, kullaniciMap]);
+
+  // Filtre dropdown'u için — sadece en az bir kasa hareketi girmiş kullanıcılar
+  const veriGirenPersoneller = useMemo(() => {
+    const ids = new Set<string>();
+    for (const h of hareketler) if (h.personel_id) ids.add(h.personel_id);
+    return personeller
+      .filter((p) => ids.has(p.id))
+      .slice()
+      .sort((a, b) => (a.ad_soyad ?? "").localeCompare(b.ad_soyad ?? "", "tr"));
+  }, [hareketler, personeller]);
 
   // Özet
   const ozet = useMemo(() => {
@@ -630,7 +641,7 @@ function KasaDefContent() {
               <Label className="text-[10px] text-gray-500">Kullanıcı</Label>
               <select value={filtrePersonel} onChange={(e) => setFiltrePersonel(e.target.value)} className={selectClass + " w-full"}>
                 <option value="">Tümü</option>
-                {personeller.filter((p) => p.aktif !== false).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
+                {veriGirenPersoneller.map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>
             </div>
             <div className="space-y-1">
