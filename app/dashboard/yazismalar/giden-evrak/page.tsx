@@ -238,15 +238,17 @@ export default function GidenEvrakPage() {
         />
       </div>
 
-      {/* Filtreler — mobilde tek sütun (tarihler birbirine girmesin), tabletten itibaren 2-4 sütun */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      {/* Filtreler — mobilde 2 sütun (firma/muhatap gibi). Tarihler kompakt stilde. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4">
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Başlangıç</Label>
-          <Input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)} className="h-8 text-xs w-full min-w-0" />
+          <input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)}
+            className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-1.5 sm:px-3 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 [&::-webkit-date-and-time-value]:text-left" />
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Bitiş</Label>
-          <Input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className="h-8 text-xs w-full min-w-0" />
+          <input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)}
+            className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-1.5 sm:px-3 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 [&::-webkit-date-and-time-value]:text-left" />
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Firma</Label>
