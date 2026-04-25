@@ -168,6 +168,19 @@ function KasaDefContent() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // URL parametresi (?personel=xxx) değişince filtre state'ini senkronize et.
+  // Dashboard'dan kişiye tıklayarak gelindiğinde kullanılır — useState lazy init
+  // sadece ilk mount'ta çalıştığı için bu useEffect olmadan filtre güncellenmez.
+  useEffect(() => {
+    const p = searchParams.get("personel");
+    if (p && p !== filtrePersonel) {
+      setFiltrePersonel(p);
+      // Bir kişiye odaklanmak için ödeme filtresini "Tümü"ne çek
+      // (varsayılan "nakit" yüzünden o kişinin kart kayıtları görünmez kalmasın)
+      setFiltreOdeme("");
+    }
+  }, [searchParams, filtrePersonel]);
+
   // Map'ler
   const personelMap = useMemo(() => {
     const m = new Map<string, KasaKullanici>();

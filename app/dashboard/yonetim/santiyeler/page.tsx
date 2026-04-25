@@ -681,20 +681,24 @@ export default function SantiyelerPage() {
       ) : (
         <div className="space-y-6">
           {firmaGruplari.map((grup) => (
-            <div key={grup.firmaAdi} className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-              {/* Firma başlığı — firma rengi kullanılır */}
-              <div className="px-4 py-2" style={{ backgroundColor: grup.firmaRenk ?? "#152d4a" }}>
+            <div key={grup.firmaAdi} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              {/* Firma başlığı — overflow konteyneri dışında, yatay kaydırırken sabit kalır */}
+              <div className="px-4 py-2 sticky left-0 z-10" style={{ backgroundColor: grup.firmaRenk ?? "#152d4a" }}>
                 <h2 className="text-base font-bold text-black text-center">{grup.firmaAdi}</h2>
               </div>
+              {/* Sadece tablo yatay kayar, firma başlığı sabit */}
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow style={{ backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) }}>
                     {HEADER_LABELS.map((h) => {
                       const si = sorts.findIndex((s) => s.key === h.key);
                       const sc = si >= 0 ? sorts[si] : null;
+                      const isIsAdi = h.key === "is_adi";
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
-                          className={`text-black font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : h.key === "is_adi" ? "min-w-[140px] max-w-[180px]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          style={isIsAdi ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) } : undefined}
+                          className={`text-black font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : isIsAdi ? "min-w-[140px] max-w-[180px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">
@@ -735,8 +739,12 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2 whitespace-nowrap font-semibold">{s.is_grubu ?? "—"}</TableCell>
                     {/* Ekap Belge No */}
                     <TableCell className="text-center px-2 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
-                    {/* İşin Adı - daraltılmış, hover'da tam gösterim */}
-                    <TableCell className="px-2 font-medium max-w-[180px] truncate" title={s.is_adi}>{s.is_adi}</TableCell>
+                    {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim */}
+                    <TableCell
+                      style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: isGrubuRengi ?? "#ffffff" }}
+                      className="px-2 font-medium max-w-[180px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                      title={s.is_adi}
+                    >{s.is_adi}</TableCell>
                     {/* İhale Kayıt No */}
                     <TableCell className="text-center px-2 whitespace-nowrap">{s.ihale_kayit_no ?? "—"}</TableCell>
                     {/* Sözleşme Tarihi */}
@@ -827,6 +835,7 @@ export default function SantiyelerPage() {
               })}
                 </TableBody>
               </Table>
+              </div>
             </div>
           ))}
         </div>

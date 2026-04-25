@@ -850,7 +850,7 @@ export default function DashboardPage() {
             <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Kullanıcı Özeti</h3>
           </div>
           {kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
-            <div className="max-h-[200px] overflow-y-auto">
+            <div>
               <Table className="text-xs">
                 <TableHeader><TableRow>
                   <TableHead className="px-2 text-[10px]">Personel</TableHead>

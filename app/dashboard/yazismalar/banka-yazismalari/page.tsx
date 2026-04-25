@@ -214,27 +214,27 @@ export default function BankaYazismalariPage() {
       </div>
 
       {/* Filtreler */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-        <div className="space-y-1">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Başlangıç</Label>
-          <Input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)} className="h-8 text-xs w-full min-w-0" />
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Bitiş</Label>
-          <Input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className="h-8 text-xs" />
+          <Input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className="h-8 text-xs w-full min-w-0" />
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Firma</Label>
-          <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full"}>
+          <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
             <option value="">Tümü</option>
             {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
               <option key={f.id} value={f.id}>{f.firma_adi}</option>
             ))}
           </select>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
-          <Input value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} placeholder="Ara..." className="h-8 text-xs" />
+          <Input value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} placeholder="Ara..." className="h-8 text-xs w-full min-w-0" />
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-400">Oluşturan</Label>
