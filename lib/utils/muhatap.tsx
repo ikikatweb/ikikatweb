@@ -1,4 +1,4 @@
-// Muhatap render yardımcısı - Son satır (şehir) önceki satırın son kelimesinin ortasına hizalanır
+// Muhatap render yardımcısı - Son satır (şehir) önceki satırın son HARFİNİN ortasına hizalanır
 "use client";
 
 import React, { useRef, useLayoutEffect, useState } from "react";
@@ -16,11 +16,12 @@ export function tekSatirMuhatap(deger: string | null | undefined): string {
 /**
  * Şehir (son satır) elementinin sol ofsetini hesaplar.
  *
- * Yaklaşım: Range.getBoundingClientRect() ile önceki satırın son kelimesinin
+ * Yaklaşım: Range.getBoundingClientRect() ile önceki satırın SON HARFİNİN
  * gerçek render edilmiş pozisyonunu ve şehir metninin gerçek genişliğini
- * (letter-spacing dahil) doğrudan DOM'dan okur. Bu yöntem manuel span
- * ölçümlerine göre çok daha kesindir — kerning, letter-spacing ve font
- * metrik farklılıklarından etkilenmez.
+ * (letter-spacing dahil) doğrudan DOM'dan okur.
+ *
+ * Örn: "Dsi 12. Bölge Müdürlüğü" → son harf "ü" → şehir ortası "ü"nün altına gelir
+ *      "Orman Bölge Müdürlüğü'ne" → son harf "e" → şehir ortası "e"nin altına gelir
  *
  * Dönüş: şehir div'ine uygulanması gereken paddingLeft değeri (px),
  * ya da ölçüm yapılamıyorsa null.
@@ -43,31 +44,27 @@ export function hesaplaSehirOfset(
   const trimmed = sonSatirText.trim();
   if (!trimmed) return null;
 
-  const kelimeler = trimmed.split(/\s+/);
-  const sonKelime = kelimeler[kelimeler.length - 1];
-  if (!sonKelime) return null;
+  // Son harfin (whitespace olmayan son karakterin) text node içindeki indeksini bul
+  let sonHarfIndex = sonSatirText.length - 1;
+  while (sonHarfIndex >= 0 && /\s/.test(sonSatirText[sonHarfIndex])) sonHarfIndex--;
+  if (sonHarfIndex < 0) return null;
 
-  // Son kelimenin text node içindeki başlangıç ve bitiş indeksleri
-  const sonKelimeStart = sonSatirText.lastIndexOf(sonKelime);
-  if (sonKelimeStart < 0) return null;
-  const sonKelimeEnd = sonKelimeStart + sonKelime.length;
-
-  // Range API: son kelimenin gerçek render edilmiş bounding box'ı
-  let kelimeRect: DOMRect;
+  // Range API: SADECE son harfin gerçek render edilmiş bounding box'ı
+  let harfRect: DOMRect;
   try {
     const range = document.createRange();
-    range.setStart(sonSatirTextNode, sonKelimeStart);
-    range.setEnd(sonSatirTextNode, sonKelimeEnd);
-    kelimeRect = range.getBoundingClientRect();
+    range.setStart(sonSatirTextNode, sonHarfIndex);
+    range.setEnd(sonSatirTextNode, sonHarfIndex + 1);
+    harfRect = range.getBoundingClientRect();
   } catch {
     return null;
   }
 
-  if (kelimeRect.width === 0) return null;
+  if (harfRect.width === 0) return null;
 
-  // Son kelimenin container'a göre sol pozisyonu + orta nokta
+  // Son harfin container'a göre sol pozisyonu + orta nokta
   const containerRect = sonSatirEl.getBoundingClientRect();
-  const kelimeOrtasi = kelimeRect.left - containerRect.left + kelimeRect.width / 2;
+  const kelimeOrtasi = harfRect.left - containerRect.left + harfRect.width / 2;
 
   // Şehir metninin gerçek genişliği (letter-spacing dahil)
   let sehirGenislik = 0;
