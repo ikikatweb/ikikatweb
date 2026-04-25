@@ -213,17 +213,15 @@ export default function BankaYazismalariPage() {
         />
       </div>
 
-      {/* Filtreler */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+      {/* Filtreler — mobilde tek sütun (tarihler birbirine girmesin), tabletten itibaren 2-5 sütun */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Başlangıç</Label>
-          <Input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)}
-            className="h-8 text-[10px] sm:text-xs w-full min-w-0 px-1.5 sm:px-3" />
+          <Input type="date" value={fBaslangic} onChange={(e) => setFBaslangic(e.target.value)} className="h-8 text-xs w-full min-w-0" />
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Bitiş</Label>
-          <Input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)}
-            className="h-8 text-[10px] sm:text-xs w-full min-w-0 px-1.5 sm:px-3" />
+          <Input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className="h-8 text-xs w-full min-w-0" />
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Firma</Label>
