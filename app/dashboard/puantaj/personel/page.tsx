@@ -772,11 +772,14 @@ export default function PersonelPuantajPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Personel Puantaj</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <Link href="/dashboard/yonetim/personel/yeni">
-            <Button size="sm" className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-              <UserPlus size={14} className="mr-1" /> Personel Ekle
-            </Button>
-          </Link>
+          {/* Personel Ekle: yetki gerekir (yonetim-personel.ekle). Yetkisi olmayanlara butonu gösterme. */}
+          {(isYonetici || (kullanici?.izinler?.["yonetim-personel"]?.ekle === true)) && (
+            <Link href="/dashboard/yonetim/personel/yeni">
+              <Button size="sm" className="bg-[#F97316] hover:bg-[#ea580c] text-white">
+                <UserPlus size={14} className="mr-1" /> Personel Ekle
+              </Button>
+            </Link>
+          )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={!santiyeId || gosterilecekPersoneller.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
           </Button>
