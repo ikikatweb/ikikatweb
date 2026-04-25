@@ -169,17 +169,20 @@ function KasaDefContent() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   // URL parametresi (?personel=xxx) değişince filtre state'ini senkronize et.
-  // Dashboard'dan kişiye tıklayarak gelindiğinde kullanılır — useState lazy init
-  // sadece ilk mount'ta çalıştığı için bu useEffect olmadan filtre güncellenmez.
+  // Dashboard'dan farklı kişilere üst üste tıklandığında doğru kişi yüklenmeli.
+  // searchParams.toString()'i string olarak izleyerek güvenilir tetikleme sağlanır
+  // (object reference değişikliği bazen Next.js cache'de kaybolabiliyor).
+  const personelParam = searchParams.get("personel") ?? "";
   useEffect(() => {
-    const p = searchParams.get("personel");
-    if (p && p !== filtrePersonel) {
-      setFiltrePersonel(p);
+    if (personelParam && personelParam !== filtrePersonel) {
+      setFiltrePersonel(personelParam);
       // Bir kişiye odaklanmak için ödeme filtresini "Tümü"ne çek
-      // (varsayılan "nakit" yüzünden o kişinin kart kayıtları görünmez kalmasın)
       setFiltreOdeme("");
     }
-  }, [searchParams, filtrePersonel]);
+    // filtrePersonel'i deps'e koymuyoruz — sonsuz döngüye sebep olabilir.
+    // Sadece URL parametresi değişikliğine duyarlı olsun.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personelParam]);
 
   // Map'ler
   const personelMap = useMemo(() => {
