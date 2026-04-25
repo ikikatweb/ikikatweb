@@ -216,11 +216,19 @@ export default function DashboardPage() {
         } catch { /* sessiz */ }
         setKullaniciAdlari(kulMap);
 
-        const { data } = await supabase
+        // Kısıtlı kullanıcı sadece kendi atandığı şantiyelerin defterlerini görsün
+        let defterQuery = supabase
           .from("santiye_defteri")
           .select("id, santiye_id, tarih, sayfa_no, hava_durumu, sicaklik")
           .order("tarih", { ascending: false })
           .limit(200);
+        if (!isYonetici && kullanici?.santiye_ids && kullanici.santiye_ids.length > 0) {
+          defterQuery = defterQuery.in("santiye_id", kullanici.santiye_ids);
+        } else if (!isYonetici && (!kullanici?.santiye_ids || kullanici.santiye_ids.length === 0)) {
+          // Kısıtlı kullanıcı ama hiçbir şantiyeye atanmamış → hiçbir defter görmesin
+          defterQuery = defterQuery.eq("santiye_id", "00000000-0000-0000-0000-000000000000");
+        }
+        const { data } = await defterQuery;
         if (data) {
           // Özet
           const gruplar = new Map<string, DefterOzet>();
@@ -288,7 +296,7 @@ export default function DashboardPage() {
       setLoading(false);
       setDefterLoading(false);
     }
-  }, [ayBitis, tumZamanBaslangic]);
+  }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
