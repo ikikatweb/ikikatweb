@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createPersonel, updatePersonel, getPasifPersonelByTc, setPersonelAktif } from "@/lib/supabase/queries/personel";
+import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
@@ -200,9 +201,26 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           pasif_tarihi: null,
         });
         basarili = true;
+        // Şantiye seçildiyse otomatik atama ekle (varsa zaten silently başarısız olur)
+        if (submitData.santiye_id) {
+          try {
+            await addPersonelSantiye(pasifBulunanId, submitData.santiye_id);
+          } catch (atErr) {
+            console.warn("Otomatik şantiye ataması başarısız:", atErr);
+          }
+        }
       } else {
-        await createPersonel(submitData);
+        const yeni = await createPersonel(submitData);
         basarili = true;
+        // Şantiye seçildiyse personel_santiye junction'a otomatik atama ekle
+        // (puantaj sayfasında listede görünmesi için gerekli)
+        if (submitData.santiye_id && yeni?.id) {
+          try {
+            await addPersonelSantiye(yeni.id, submitData.santiye_id);
+          } catch (atErr) {
+            console.warn("Otomatik şantiye ataması başarısız:", atErr);
+          }
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";

@@ -111,16 +111,79 @@ export async function updateArac(id: string, arac: AracUpdate) {
 
   // Update bildirimi — KM güncellemesi spam olmasın, sadece anahtar alanlar değişince gönder
   try {
-    const anahtarAlanlar = ["plaka", "marka", "model", "durum", "santiye_id", "firma_id", "muayene_bitis", "tasit_karti_bitis"];
+    const anahtarAlanlar = ["plaka", "marka", "model", "durum", "santiye_id", "firma_id", "muayene_bitis", "tasit_karti_bitis", "yili", "cinsi", "yakit_tipi", "sayac_tipi", "motor_no", "sase_no", "hgs_saglayici", "kiralama_firmasi", "kiralik_iletisim", "trafik_sigorta_bitis", "kasko_bitis", "son_muayene_tarihi"];
     const sadeceKmDegismis = Object.keys(arac).every((k) =>
       ["guncel_gosterge", "updated_at"].includes(k)
     );
     const anahtarDegismis = anahtarAlanlar.some((k) => k in arac);
+
+    // ÖZEL DURUM: Sadece santiye_id değişmişse → araç atama/çıkarma bildirimi
+    const arcKeys = Object.keys(arac).filter((k) => k !== "updated_at");
+    const sadeceSantiyeDegismis = arcKeys.length === 1 && arcKeys[0] === "santiye_id";
+
+    if (sadeceSantiyeDegismis) {
+      const { bildirimGonder } = await import("@/lib/bildirim");
+      const aracBilgi = `${data.plaka}${data.marka ? " · " + data.marka : ""}${data.model ? " " + data.model : ""}`;
+      if (data.santiye_id) {
+        const { data: santiye } = await supabase
+          .from("santiyeler")
+          .select("is_adi")
+          .eq("id", data.santiye_id)
+          .maybeSingle();
+        const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 60) : "—";
+        bildirimGonder({
+          baslik: `🚚 Araç Atandı — ${aracBilgi}`,
+          govde: `${santiyeAd} şantiyesine atandı`,
+          url: "/dashboard/yonetim/araclar",
+          tag: "arac",
+        });
+      } else {
+        bildirimGonder({
+          baslik: `🚚 Araç Şantiyeden Çıkarıldı`,
+          govde: aracBilgi,
+          url: "/dashboard/yonetim/araclar",
+          tag: "arac",
+        });
+      }
+      return data;
+    }
+
     if (!sadeceKmDegismis && anahtarDegismis) {
       const { bildirimGonder } = await import("@/lib/bildirim");
+      // Hangi alanlar değişti — okunabilir etiketlerle göster
+      const ALAN_ETIKET: Record<string, string> = {
+        plaka: "Plaka",
+        marka: "Marka",
+        model: "Model",
+        yili: "Model Yılı",
+        cinsi: "Cinsi",
+        durum: "Durum",
+        santiye_id: "Şantiye",
+        firma_id: "Firma",
+        yakit_tipi: "Yakıt Tipi",
+        sayac_tipi: "Sayaç Tipi",
+        muayene_bitis: "Muayene Bitiş",
+        tasit_karti_bitis: "Taşıt Kartı Bitiş",
+        trafik_sigorta_bitis: "Trafik Sigorta Bitiş",
+        kasko_bitis: "Kasko Bitiş",
+        son_muayene_tarihi: "Son Muayene Tarihi",
+        motor_no: "Motor No",
+        sase_no: "Şase No",
+        hgs_saglayici: "HGS Sağlayıcı",
+        kiralama_firmasi: "Kiralama Firması",
+        kiralik_iletisim: "Kiralık İletişim",
+        ruhsat_url: "Ruhsat",
+      };
+      const degisenAlanlar = Object.keys(arac)
+        .filter((k) => k !== "updated_at" && ALAN_ETIKET[k])
+        .map((k) => ALAN_ETIKET[k]);
+      const aracBilgi = `${data.plaka}${data.marka ? " · " + data.marka : ""}${data.model ? " " + data.model : ""}`;
+      const degisikMetin = degisenAlanlar.length > 0
+        ? `Güncellenen: ${degisenAlanlar.join(", ")}`
+        : "Güncelleme yapıldı";
       bildirimGonder({
-        baslik: `🚗 Araç Güncellendi`,
-        govde: `${data.plaka}${data.marka ? " · " + data.marka : ""}${data.model ? " " + data.model : ""}`,
+        baslik: `🚗 Araç Güncellendi — ${aracBilgi}`,
+        govde: degisikMetin,
         url: "/dashboard/yonetim/araclar",
         tag: "arac",
       });
