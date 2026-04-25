@@ -30,6 +30,9 @@ function formatTelefon(val: string): string {
 
 type PersonelFormProps = {
   personel?: Personel;
+  // Dialog/inline kullanım için: başarılı kayıt sonrası navigate yerine bu fonksiyon çağrılır
+  onSuccess?: () => void;
+  onCancel?: () => void;
 };
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string };
@@ -37,7 +40,7 @@ type SantiyeBasic = { id: string; is_adi: string; durum: string };
 const selectClass =
   "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
 
-export default function PersonelForm({ personel }: PersonelFormProps) {
+export default function PersonelForm({ personel, onSuccess, onCancel }: PersonelFormProps) {
   const isEdit = !!personel;
   const router = useRouter();
 
@@ -218,7 +221,12 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
           : pasifBulunanId ? "Personel tekrar aktif hale getirildi."
           : "Personel eklendi.",
       );
-      window.location.href = "/dashboard/yonetim/personel";
+      // Dialog modunda onSuccess callback'i çağır; aksi halde navigate et
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        window.location.href = "/dashboard/yonetim/personel";
+      }
     }
   }
 
@@ -500,7 +508,12 @@ export default function PersonelForm({ personel }: PersonelFormProps) {
       </Card>
 
       <div className="flex items-center justify-end gap-3 mt-6">
-        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/yonetim/personel")} disabled={loading}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/personel")}
+          disabled={loading}
+        >
           <X size={16} className="mr-1" /> İptal
         </Button>
         <Button type="submit" className="bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>

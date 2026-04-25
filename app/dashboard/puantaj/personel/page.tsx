@@ -3,6 +3,7 @@
 "use client";
 
 import Link from "next/link";
+import PersonelForm from "@/components/shared/personel-form";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getPersoneller, setPersonelPasif } from "@/lib/supabase/queries/personel";
 import {
@@ -126,6 +127,9 @@ export default function PersonelPuantajPage() {
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
   >(new Map());
+
+  // Personel ekleme dialog'u — kısıtlı kullanıcılar yönetim menüsüne erişemese bile buradan ekleyebilsin
+  const [personelEkleDialogOpen, setPersonelEkleDialogOpen] = useState(false);
 
   // Hücre dialog state
   const [hucreDialogOpen, setHucreDialogOpen] = useState(false);
@@ -772,14 +776,14 @@ export default function PersonelPuantajPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Personel Puantaj</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Personel Ekle: yetki gerekir (yonetim-personel.ekle). Yetkisi olmayanlara butonu gösterme. */}
-          {(isYonetici || (kullanici?.izinler?.["yonetim-personel"]?.ekle === true)) && (
-            <Link href="/dashboard/yonetim/personel/yeni">
-              <Button size="sm" className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-                <UserPlus size={14} className="mr-1" /> Personel Ekle
-              </Button>
-            </Link>
-          )}
+          {/* Personel Ekle: dialog ile sayfa içinde — yönetim menüsüne girmeden çalışır */}
+          <Button
+            size="sm"
+            className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+            onClick={() => setPersonelEkleDialogOpen(true)}
+          >
+            <UserPlus size={14} className="mr-1" /> Personel Ekle
+          </Button>
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={!santiyeId || gosterilecekPersoneller.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
           </Button>
@@ -1299,6 +1303,23 @@ export default function PersonelPuantajPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Personel Ekle Dialog — yönetim menüsüne girmeden direkt buradan eklenir */}
+      <Dialog open={personelEkleDialogOpen} onOpenChange={setPersonelEkleDialogOpen} disablePointerDismissal>
+        <DialogContent className="!w-[95vw] md:!w-[70vw] !max-w-none max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Yeni Personel Ekle</DialogTitle>
+          </DialogHeader>
+          <PersonelForm
+            onSuccess={async () => {
+              setPersonelEkleDialogOpen(false);
+              // Yeni eklenen personel listede görünsün
+              await loadPersoneller();
+            }}
+            onCancel={() => setPersonelEkleDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </div>
