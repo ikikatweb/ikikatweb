@@ -178,6 +178,22 @@ export async function setPersonelPasif(id: string, pasifTarihi: string) {
     })
     .eq("id", id);
   if (error) throw error;
+
+  // Push bildirim — personeli pasife alma
+  try {
+    const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+    const { data } = await supabase
+      .from("personel")
+      .select("ad_soyad, gorev")
+      .eq("id", id)
+      .maybeSingle();
+    bildirimGonder({
+      baslik: `🚪 Personel Pasife Alındı`,
+      govde: `${data?.ad_soyad ?? "—"}${data?.gorev ? " · " + data.gorev : ""} · ${formatTarih(pasifTarihi)}`,
+      url: "/dashboard/yonetim/personel",
+      tag: "personel",
+    });
+  } catch { /* sessiz */ }
 }
 
 // Personeli tekrar aktife al
@@ -192,4 +208,20 @@ export async function setPersonelAktif(id: string) {
     })
     .eq("id", id);
   if (error) throw error;
+
+  // Push bildirim — personel tekrar aktife alındı
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const { data } = await supabase
+      .from("personel")
+      .select("ad_soyad, gorev")
+      .eq("id", id)
+      .maybeSingle();
+    bildirimGonder({
+      baslik: `✅ Personel Tekrar Aktif`,
+      govde: `${data?.ad_soyad ?? "—"}${data?.gorev ? " · " + data.gorev : ""}`,
+      url: "/dashboard/yonetim/personel",
+      tag: "personel",
+    });
+  } catch { /* sessiz */ }
 }
