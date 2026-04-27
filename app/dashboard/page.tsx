@@ -72,7 +72,8 @@ function CardHeader({ icon: Icon, title, color = "text-[#1E3A5F]" }: { icon: typ
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { kullanici, isYonetici, loading: authLoading } = useAuth();
+  const { kullanici, isYonetici, loading: authLoading, hasPermission } = useAuth();
+  const yakitDuzenle = hasPermission("yakit", "duzenle");
   const [loading, setLoading] = useState(true);
   const [defterLoading, setDefterLoading] = useState(true);
 
@@ -254,6 +255,7 @@ export default function DashboardPage() {
 
           // Tek sorgu ile tüm kayıtları çek
           // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtları görsün
+          // Şantiye admini + Yönetici: tüm kullanıcıların kayıtlarını görür
           const kayitMap = new Map<string, { yazan_id: string; icerik: string }[]>();
           if (tumDefterIds.length > 0) {
             let kayitQuery = supabase
@@ -261,7 +263,10 @@ export default function DashboardPage() {
               .select("defter_id, yazan_id, icerik, sira")
               .in("defter_id", tumDefterIds)
               .order("sira", { ascending: true });
-            if (!isYonetici && kullanici?.id) {
+            // Sadece "kısıtlı" kullanıcı için yazan filtresi (santiye admini için değil)
+            const isShantiyeAdmin = kullanici?.rol === "santiye_admin";
+            const sadeceKendiKayitlari = !isYonetici && !isShantiyeAdmin;
+            if (sadeceKendiKayitlari && kullanici?.id) {
               kayitQuery = kayitQuery.eq("yazan_id", kullanici.id);
             }
             const { data: tumKayitlar } = await kayitQuery;
@@ -1186,7 +1191,9 @@ export default function DashboardPage() {
                       <TableCell className="px-2 text-right tabular-nums">{formatSayi(a.birim_fiyat, 2)}</TableCell>
                       <TableCell className="px-2 text-right font-semibold">{formatSayi(a.miktar_lt * a.birim_fiyat)}</TableCell>
                       <TableCell className="px-2 text-center">
-                        <button type="button" onClick={() => alimDuzenleAc(a)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={12} /></button>
+                        {yakitDuzenle && (
+                          <button type="button" onClick={() => alimDuzenleAc(a)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={12} /></button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

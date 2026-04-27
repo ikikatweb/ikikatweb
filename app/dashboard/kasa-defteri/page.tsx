@@ -63,7 +63,18 @@ function tr(s: string): string {
 }
 
 export default function KasamuDefPage() {
-  return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}><KasaDefContent /></Suspense>;
+  return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}>
+    <KasaDefContentWrapper />
+  </Suspense>;
+}
+
+// Wrapper — URL parametreleri değiştiğinde KasaDefContent'i tamamen remount ediyor.
+// Next.js router cache bazen useSearchParams güncellemelerini gecikiyor; key prop'u ile
+// component yeni URL ile fresh state'te render olur (filtrePersonel doğru sıfırlanır).
+function KasaDefContentWrapper() {
+  const searchParams = useSearchParams();
+  const remountKey = searchParams.toString();
+  return <KasaDefContent key={remountKey || "_"} />;
 }
 
 function KasaDefContent() {

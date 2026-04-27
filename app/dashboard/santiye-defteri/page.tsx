@@ -83,7 +83,7 @@ function basHarfBuyuk(text: string): string {
 }
 
 export default function SantiyeDefPage() {
-  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
   const yEkle = hasPermission("santiye-defteri", "ekle");
   const yDuzenle = hasPermission("santiye-defteri", "duzenle");
   const ySil = hasPermission("santiye-defteri", "sil");
@@ -159,7 +159,12 @@ export default function SantiyeDefPage() {
       if (d) {
         setHavaDurumu(d.hava_durumu ?? "");
         setSicaklik(d.sicaklik ?? "");
-        const k = await getKayitlar(d.id);
+        let k = await getKayitlar(d.id);
+        // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtları görsün
+        // (yönetici + şantiye admini tümünü görür)
+        if (sadeceKendiKayitlari && kullanici?.id) {
+          k = k.filter((x) => x.yazan_id === kullanici.id);
+        }
         setKayitlar(k);
       } else {
         setHavaDurumu(""); setSicaklik(""); setKayitlar([]);
@@ -171,7 +176,7 @@ export default function SantiyeDefPage() {
         toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: 8000 });
       }
     }
-  }, [filtreSantiye, seciliTarih]);
+  }, [filtreSantiye, seciliTarih, sadeceKendiKayitlari, kullanici?.id]);
 
   useEffect(() => { loadDefter(); }, [loadDefter]);
 
@@ -185,15 +190,19 @@ export default function SantiyeDefPage() {
       const bitis = `${y}-${String(m).padStart(2, "0")}-${String(son).padStart(2, "0")}`;
       const defterler = await getDefterler(filtreSantiye, baslangic, bitis);
       // Her defter için kayıtları da yükle
+      // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtlar görünür
       const listWithKayitlar = await Promise.all(
         defterler.map(async (d) => {
-          const k = await getKayitlar(d.id).catch(() => []);
+          let k = await getKayitlar(d.id).catch(() => []);
+          if (sadeceKendiKayitlari && kullanici?.id) {
+            k = k.filter((x) => x.yazan_id === kullanici.id);
+          }
           return { ...d, kayitlar: k };
         })
       );
       setDefterListesi(listWithKayitlar);
     } catch { /* sessiz */ }
-  }, [filtreSantiye, filtreAy]);
+  }, [filtreSantiye, filtreAy, sadeceKendiKayitlari, kullanici?.id]);
 
   useEffect(() => { loadDefterListesi(); }, [loadDefterListesi]);
 
