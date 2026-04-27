@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 // Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -64,17 +64,8 @@ function tr(s: string): string {
 
 export default function KasamuDefPage() {
   return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}>
-    <KasaDefContentWrapper />
+    <KasaDefContent />
   </Suspense>;
-}
-
-// Wrapper — URL parametreleri değiştiğinde KasaDefContent'i tamamen remount ediyor.
-// Next.js router cache bazen useSearchParams güncellemelerini gecikiyor; key prop'u ile
-// component yeni URL ile fresh state'te render olur (filtrePersonel doğru sıfırlanır).
-function KasaDefContentWrapper() {
-  const searchParams = useSearchParams();
-  const remountKey = searchParams.toString();
-  return <KasaDefContent key={remountKey || "_"} />;
 }
 
 function KasaDefContent() {
@@ -100,7 +91,18 @@ function KasaDefContent() {
   // Filtreler
   const bugun = new Date();
   const [filtreSantiye, setFiltreSantiye] = useState("");
-  const [filtrePersonel, setFiltrePersonel] = useState(() => searchParams.get("personel") ?? "");
+  // filtrePersonel — URL ?personel parametresi tek kaynak.
+  // Dashboard'dan üst üste farklı kişilere tıklandığında doğru kişi yüklenir.
+  // Dropdown'dan değiştirme: URL'i router.push ile güncelliyoruz (aşağıda).
+  const router = useRouter();
+  const filtrePersonel = searchParams.get("personel") ?? "";
+  const setFiltrePersonel = useCallback((val: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (val) params.set("personel", val);
+    else params.delete("personel");
+    const qs = params.toString();
+    router.replace(`/dashboard/kasa-defteri${qs ? `?${qs}` : ""}`);
+  }, [router, searchParams]);
   // Varsayılan ödeme filtresi:
   //  - Yönetici: "nakit" (çoğunlukla nakit takibi yapar, isterse Kart/Tümü seçer)
   //  - Kısıtlı kullanıcı: "" (Tümü) — kendi tüm hareketlerini hem nakit hem kart görsün
@@ -223,21 +225,13 @@ function KasaDefContent() {
     }
   }, [kullanici, isYonetici, searchParams]);
 
-  // URL parametresi (?personel=xxx) değişince filtre state'ini senkronize et.
-  // Dashboard'dan farklı kişilere üst üste tıklandığında doğru kişi yüklenmeli.
-  // searchParams.toString()'i string olarak izleyerek güvenilir tetikleme sağlanır.
-  const personelParam = searchParams.get("personel") ?? "";
+  // URL parametresi (?personel=xxx) değiştiğinde ödeme filtresini sıfırla.
+  // filtrePersonel zaten URL'den hesaplanıyor (state değil), o yüzden sync gerekmiyor.
   const searchParamsStr = searchParams.toString();
   useEffect(() => {
-    // URL'de personel parametresi varsa state'i her zaman ona eşitle
-    // (sonsuz döngü olmaz çünkü dep listesi searchParamsStr — URL değişmedikçe çalışmaz)
-    if (personelParam) {
-      setFiltrePersonel(personelParam);
-      // Bir kişiye odaklanmak için ödeme filtresini "Tümü"ne çek
+    if (searchParams.get("personel")) {
       setFiltreOdeme("");
     }
-    // filtrePersonel'i deps'e koymuyoruz — sonsuz döngüye sebep olur.
-    // searchParamsStr değiştiğinde (URL değiştiğinde) çalışsın yeter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParamsStr]);
 
