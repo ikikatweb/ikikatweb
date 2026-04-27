@@ -253,13 +253,18 @@ export default function DashboardPage() {
           }
 
           // Tek sorgu ile tüm kayıtları çek
+          // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtları görsün
           const kayitMap = new Map<string, { yazan_id: string; icerik: string }[]>();
           if (tumDefterIds.length > 0) {
-            const { data: tumKayitlar } = await supabase
+            let kayitQuery = supabase
               .from("santiye_defteri_kayit")
               .select("defter_id, yazan_id, icerik, sira")
               .in("defter_id", tumDefterIds)
               .order("sira", { ascending: true });
+            if (!isYonetici && kullanici?.id) {
+              kayitQuery = kayitQuery.eq("yazan_id", kullanici.id);
+            }
+            const { data: tumKayitlar } = await kayitQuery;
             if (tumKayitlar) {
               for (const k of tumKayitlar as { defter_id: string; yazan_id: string; icerik: string }[]) {
                 if (!kayitMap.has(k.defter_id)) kayitMap.set(k.defter_id, []);
@@ -482,13 +487,19 @@ export default function DashboardPage() {
 
   // Widget 5: Son yakıt alımları — tüm zaman içinde en yeni 50 kayıt
   // (kullanıcı 4'erli paginating ile gezecek)
+  // Kısıtlı kullanıcı: sadece kendi atandığı şantiyelerin alımları görünür
   const sonAlimlar = useMemo(() => {
     // yakitAlimlarTum tüm zamandan veri içerir (yakitAlimlar son 30 günle sınırlı)
     const kaynak = yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar;
-    return [...kaynak]
+    let filtreli = kaynak;
+    if (!isYonetici) {
+      const izinli = new Set(kullanici?.santiye_ids ?? []);
+      filtreli = kaynak.filter((a) => izinli.has(a.santiye_id));
+    }
+    return [...filtreli]
       .sort((a, b) => `${b.tarih}${b.saat ?? ""}`.localeCompare(`${a.tarih}${a.saat ?? ""}`))
       .slice(0, 50);
-  }, [yakitAlimlarTum, yakitAlimlar]);
+  }, [yakitAlimlarTum, yakitAlimlar, isYonetici, kullanici]);
   // Görünen kayıt sayısı — varsayılan 4, "v" tuşuyla 4'er artar
   const [sonAlimGoster, setSonAlimGoster] = useState(4);
 
