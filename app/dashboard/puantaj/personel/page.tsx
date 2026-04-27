@@ -98,7 +98,10 @@ function tr(s: string): string {
 }
 
 export default function PersonelPuantajPage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("puantaj-personel", "ekle");
+  const yDuzenle = hasPermission("puantaj-personel", "duzenle");
+  const ySil = hasPermission("puantaj-personel", "sil");
 
   // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri
   const bugun = new Date();
@@ -463,6 +466,16 @@ export default function PersonelPuantajPage() {
 
     const mevcut = personelGunMap.get(p.id)?.get(gun);
 
+    // Yetki: hücre boşsa ekleme yetkisi, doluysa düzenleme yetkisi gerekli
+    if (!mevcut && !yEkle) {
+      toast.error("Puantaj girme yetkiniz yok.");
+      return;
+    }
+    if (mevcut && !yDuzenle && !ySil) {
+      toast.error("Bu kayıtta düzenleme/silme yetkiniz yok.");
+      return;
+    }
+
     // Başka şantiyede puantajlı mı? (Bu şantiyede yoksa engelle)
     const digerCakisma = digerCakismalar.get(p.id)?.get(gun);
     if (digerCakisma && !mevcut) {
@@ -791,13 +804,15 @@ export default function PersonelPuantajPage() {
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Personel Puantaj</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Personel Ekle: dialog ile sayfa içinde — yönetim menüsüne girmeden çalışır */}
-          <Button
-            size="sm"
-            className="bg-[#F97316] hover:bg-[#ea580c] text-white"
-            onClick={() => setPersonelEkleDialogOpen(true)}
-          >
-            <UserPlus size={14} className="mr-1" /> Personel Ekle
-          </Button>
+          {hasPermission("yonetim-personel", "ekle") && (
+            <Button
+              size="sm"
+              className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+              onClick={() => setPersonelEkleDialogOpen(true)}
+            >
+              <UserPlus size={14} className="mr-1" /> Personel Ekle
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={!santiyeId || gosterilecekPersoneller.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
           </Button>
@@ -1265,7 +1280,7 @@ export default function PersonelPuantajPage() {
               {/* Alt butonlar */}
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center gap-2">
-                  {personelGunMap.get(seciliPersonel.id)?.has(seciliGun ?? -1) && (
+                  {personelGunMap.get(seciliPersonel.id)?.has(seciliGun ?? -1) && ySil && (
                     <Button
                       type="button"
                       variant="outline"

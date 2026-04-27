@@ -59,13 +59,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const hasPermissionFn = useCallback(
     (moduleKey: string, aksiyon: IzinAksiyonu): boolean => {
-      if (!kullanici) return true; // Profil yüklenemezse (ilk kurulum) her şeye izin ver
+      // Profil yüklenirken: yükleme tamamlanana kadar yetki yok varsay
+      // (yüklenince re-render olur ve doğru sonuç döner — flicker önlenir)
+      if (loading) return false;
+      // Profil yüklenememişse (ilk kurulum / kayıt yok): yönetici varsay
+      if (!kullanici) return true;
       return checkPermission(kullanici.rol, kullanici.izinler, moduleKey, aksiyon);
     },
-    [kullanici]
+    [kullanici, loading]
   );
 
-  const isYonetici = kullanici?.rol === "yonetici" || !kullanici;
+  // Yükleme bitmeden yönetici varsayma — yetki kontrolünden geçmeden buton görünmesin
+  const isYonetici = !loading && (kullanici?.rol === "yonetici" || !kullanici);
   const isShantiyeAdmin = kullanici?.rol === "santiye_admin";
 
   return (

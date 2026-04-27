@@ -68,7 +68,11 @@ export default function KasamuDefPage() {
 
 function KasaDefContent() {
   const searchParams = useSearchParams();
-  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
+  // Yetkiler — yönetici tam yetkili; diğerleri için izin matrisinden gelir
+  const yEkle = hasPermission("kasa-defteri", "ekle");
+  const yDuzenle = hasPermission("kasa-defteri", "duzenle");
+  const ySil = hasPermission("kasa-defteri", "sil");
 
   const [loading, setLoading] = useState(true);
   const [personeller, setPersoneller] = useState<KasaKullanici[]>([]);
@@ -210,19 +214,21 @@ function KasaDefContent() {
 
   // URL parametresi (?personel=xxx) değişince filtre state'ini senkronize et.
   // Dashboard'dan farklı kişilere üst üste tıklandığında doğru kişi yüklenmeli.
-  // searchParams.toString()'i string olarak izleyerek güvenilir tetikleme sağlanır
-  // (object reference değişikliği bazen Next.js cache'de kaybolabiliyor).
+  // searchParams.toString()'i string olarak izleyerek güvenilir tetikleme sağlanır.
   const personelParam = searchParams.get("personel") ?? "";
+  const searchParamsStr = searchParams.toString();
   useEffect(() => {
-    if (personelParam && personelParam !== filtrePersonel) {
+    // URL'de personel parametresi varsa state'i her zaman ona eşitle
+    // (sonsuz döngü olmaz çünkü dep listesi searchParamsStr — URL değişmedikçe çalışmaz)
+    if (personelParam) {
       setFiltrePersonel(personelParam);
       // Bir kişiye odaklanmak için ödeme filtresini "Tümü"ne çek
       setFiltreOdeme("");
     }
-    // filtrePersonel'i deps'e koymuyoruz — sonsuz döngüye sebep olabilir.
-    // Sadece URL parametresi değişikliğine duyarlı olsun.
+    // filtrePersonel'i deps'e koymuyoruz — sonsuz döngüye sebep olur.
+    // searchParamsStr değiştiğinde (URL değiştiğinde) çalışsın yeter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personelParam]);
+  }, [searchParamsStr]);
 
   // Slip görüntüleyici — açıldığında zoom/pan sıfırla
   useEffect(() => {
@@ -383,6 +389,11 @@ function KasaDefContent() {
   }
 
   async function kaydet() {
+    // Yetki kontrolü
+    if (editId ? !yDuzenle : !yEkle) {
+      toast.error(editId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok.");
+      return;
+    }
     if (!dPersonel) { toast.error("Kullanıcı seçin."); return; }
     if (!dSantiye) { toast.error("Şantiye seçin."); return; }
     if (!dTarih) { toast.error("Tarih girin."); return; }
@@ -482,6 +493,7 @@ function KasaDefContent() {
 
   async function silOnayla() {
     if (!silOnay) return;
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       await deleteKasaHareketi(silOnay);
       await loadAll();
@@ -711,7 +723,7 @@ function KasaDefContent() {
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <Wallet size={24} /> Kasa Defteri
         </h1>
-        {isYonetici && (
+        {(isYonetici || isShantiyeAdmin) && (
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
               <FileDown size={14} className="mr-1" /> PDF
@@ -725,7 +737,7 @@ function KasaDefContent() {
 
       {/* Filtre barı */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4 space-y-3">
-        {isYonetici && (
+        {(isYonetici || isShantiyeAdmin) && (
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Şantiye</Label>
@@ -778,13 +790,15 @@ function KasaDefContent() {
             </div>
           </div>
         )}
-        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={dialogAc}>
-          <Plus size={14} className="mr-1" /> İşlem Ekle
-        </Button>
+        {yEkle && (
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={dialogAc}>
+            <Plus size={14} className="mr-1" /> İşlem Ekle
+          </Button>
+        )}
       </div>
 
       {/* Özet kartları */}
-      {isYonetici && (
+      {(isYonetici || isShantiyeAdmin) && (
         <div className={`grid gap-3 mb-4 ${filtreOdeme === "kart" ? "grid-cols-1 md:grid-cols-1 max-w-xs" : "grid-cols-2 md:grid-cols-3"}`}>
           {filtreOdeme !== "kart" && (
             <>
@@ -846,7 +860,7 @@ function KasaDefContent() {
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] bg-red-800">Gider</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] bg-[#0f2540]">Bakiye</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Slip</TableHead>
-                {isYonetici && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
+                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -910,11 +924,15 @@ function KasaDefContent() {
                         </button>
                       ) : "—"}
                     </TableCell>
-                    {isYonetici && (
+                    {(yDuzenle || ySil) && (
                       <TableCell className="px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button type="button" onClick={() => dialogDuzenleAc(h)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={12} /></button>
-                          <button type="button" onClick={() => setSilOnay(h.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={12} /></button>
+                          {yDuzenle && (
+                            <button type="button" onClick={() => dialogDuzenleAc(h)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={12} /></button>
+                          )}
+                          {ySil && (
+                            <button type="button" onClick={() => setSilOnay(h.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={12} /></button>
+                          )}
                         </div>
                       </TableCell>
                     )}

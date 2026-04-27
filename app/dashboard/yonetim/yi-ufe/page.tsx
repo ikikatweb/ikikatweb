@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { RefreshCw, TrendingUp } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
 
 const AY_BASLIK = [
   "OCAK",
@@ -39,6 +40,9 @@ type YilVerisi = {
 };
 
 export default function YiUfePage() {
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-yi-ufe", "ekle");
+  const yDuzenle = hasPermission("yonetim-yi-ufe", "duzenle");
   const [veriler, setVeriler] = useState<YilVerisi[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -176,7 +180,7 @@ export default function YiUfePage() {
             </p>
           )}
         </div>
-        <Button
+        {yEkle && <Button
           onClick={handleSync}
           disabled={syncing}
           className="bg-[#F97316] hover:bg-[#ea580c] text-white"
@@ -186,7 +190,7 @@ export default function YiUfePage() {
             className={`mr-1 ${syncing ? "animate-spin" : ""}`}
           />
           {syncing ? "Güncelleniyor..." : "Verileri Güncelle"}
-        </Button>
+        </Button>}
       </div>
 
       {/* Bilgilendirme */}
@@ -275,7 +279,7 @@ export default function YiUfePage() {
                             <button type="button" onClick={() => handleCellSave(satir.yil, ayIndex + 1, editValue)}
                               className="shrink-0 h-7 px-1.5 text-[10px] bg-emerald-600 text-white rounded hover:bg-emerald-700" disabled={saving}>OK</button>
                           </div>
-                        ) : elleGirilebilir ? (
+                        ) : elleGirilebilir && yDuzenle ? (
                           <button
                             type="button"
                             onClick={() => { setEditKey(cellKey); setEditValue(deger != null ? deger.toString().replace(".", ",") : ""); }}

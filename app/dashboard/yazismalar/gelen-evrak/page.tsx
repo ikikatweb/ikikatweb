@@ -45,7 +45,10 @@ function tr(s: string): string {
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 export default function GelenEvrakPage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("yazismalar-gelen-evrak", "ekle");
+  const yDuzenle = hasPermission("yazismalar-gelen-evrak", "duzenle");
+  const ySil = hasPermission("yazismalar-gelen-evrak", "sil");
   const [evraklar, setEvraklar] = useState<GelenEvrakWithRelations[]>([]);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,9 +183,11 @@ export default function GelenEvrakPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Gelen Evrak</h1>
         <div className="flex items-center gap-2">
-          <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
-            <Plus size={16} className="mr-1" /> Yeni Gelen Evrak
-          </Button>
+          {yEkle && (
+            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
+              <Plus size={16} className="mr-1" /> Yeni Gelen Evrak
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
             <FileDown size={16} className="mr-1" /> PDF
           </Button>
@@ -274,8 +279,12 @@ export default function GelenEvrakPage() {
                       {e.pdf_url && (
                         <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
                       )}
-                      <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
-                      <button onClick={() => { setSilDialog(e.id); setSilmeNedeni(""); }} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      {yDuzenle && (
+                        <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
+                      )}
+                      {ySil && (
+                        <button onClick={() => { setSilDialog(e.id); setSilmeNedeni(""); }} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

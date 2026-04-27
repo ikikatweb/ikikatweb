@@ -36,7 +36,10 @@ export default function PersonelPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const router = useRouter();
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-personel", "ekle");
+  const yDuzenle = hasPermission("yonetim-personel", "duzenle");
+  const ySil = hasPermission("yonetim-personel", "sil");
 
   async function loadPersoneller() {
     try {
@@ -148,11 +151,13 @@ export default function PersonelPage() {
           <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
             <FileSpreadsheet size={14} className="mr-1" /> Excel
           </Button>
-          <Link href="/dashboard/yonetim/personel/yeni">
-            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-              <Plus size={16} className="mr-1" /> Personel Ekle
-            </Button>
-          </Link>
+          {yEkle && (
+            <Link href="/dashboard/yonetim/personel/yeni">
+              <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
+                <Plus size={16} className="mr-1" /> Personel Ekle
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -205,12 +210,16 @@ export default function PersonelPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/yonetim/personel/${p.id}/duzenle`)}>
-                          <Pencil size={16} />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => setDeleteId(p.id)}>
-                          <Trash2 size={16} />
-                        </Button>
+                        {yDuzenle && (
+                          <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/yonetim/personel/${p.id}/duzenle`)}>
+                            <Pencil size={16} />
+                          </Button>
+                        )}
+                        {ySil && (
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => setDeleteId(p.id)}>
+                            <Trash2 size={16} />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

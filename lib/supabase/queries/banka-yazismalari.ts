@@ -22,21 +22,20 @@ export async function getBankaYazismalari(olusturanId?: string) {
   if (error) throw error;
 
   if (data && data.length > 0) {
-    const olusturanIds = [...new Set(data.map((e) => e.olusturan_id).filter(Boolean))];
-    if (olusturanIds.length > 0) {
-      const { data: kullanicilar } = await supabase
-        .from("kullanicilar")
-        .select("id, ad_soyad")
-        .in("id", olusturanIds);
+    // RLS bypass için API üzerinden kullanıcı adlarını çek
+    const map = new Map<string, string>();
+    try {
+      const res = await fetch("/api/kullanicilar/adlar");
+      if (res.ok) {
+        const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
+        adlar.forEach((k) => map.set(k.id, k.ad_soyad));
+      }
+    } catch { /* sessiz */ }
 
-      const map = new Map<string, string>();
-      (kullanicilar ?? []).forEach((k) => map.set(k.id, k.ad_soyad));
-
-      return data.map((e) => ({
-        ...e,
-        kullanicilar: e.olusturan_id ? { ad_soyad: map.get(e.olusturan_id) ?? "—" } : null,
-      }));
-    }
+    return data.map((e) => ({
+      ...e,
+      kullanicilar: e.olusturan_id ? { ad_soyad: map.get(e.olusturan_id) ?? "—" } : null,
+    }));
   }
   return (data ?? []).map((e) => ({ ...e, kullanicilar: null }));
 }

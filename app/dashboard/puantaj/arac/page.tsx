@@ -125,7 +125,10 @@ function tr(s: string): string {
 }
 
 export default function AracPuantajPage() {
-  const { kullanici } = useAuth();
+  const { kullanici, hasPermission } = useAuth();
+  const yEkle = hasPermission("puantaj-arac", "ekle");
+  const yDuzenle = hasPermission("puantaj-arac", "duzenle");
+  const ySil = hasPermission("puantaj-arac", "sil");
 
   // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri
   const bugun = new Date();
@@ -904,6 +907,16 @@ export default function AracPuantajPage() {
 
     const mevcut = aracGunMap.get(arac.id)?.get(gun);
 
+    // Yetki: hücre boşsa ekleme yetkisi, doluysa düzenleme yetkisi gerekli
+    if (!mevcut && !yEkle) {
+      toast.error("Puantaj girme yetkiniz yok.");
+      return;
+    }
+    if (mevcut && !yDuzenle && !ySil) {
+      toast.error("Bu kayıtta düzenleme/silme yetkiniz yok.");
+      return;
+    }
+
     // Bu gün başka şantiyede puantajlı mı? (Bu şantiyede kayıt yoksa engelle)
     const digerCakisma = digerCakismalar.get(arac.id)?.get(gun);
     if (digerCakisma && !mevcut) {
@@ -1563,13 +1576,15 @@ export default function AracPuantajPage() {
           <p className="text-xs text-gray-500 mt-0.5">Şantiye bazlı aylık araç çalışma takibi</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            className="bg-[#F97316] hover:bg-[#ea580c] text-white"
-            size="sm"
-            onClick={() => setKiralikDialogOpen(true)}
-          >
-            <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
-          </Button>
+          {hasPermission("yonetim-araclar", "ekle") && (
+            <Button
+              className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+              size="sm"
+              onClick={() => setKiralikDialogOpen(true)}
+            >
+              <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
+            </Button>
+          )}
           {/* PDF/Excel butonları - sadece puantaj ve özet tab'larında aktif */}
           {aktifTab !== "atama" && (() => {
             const puantajAktif = aktifTab === "puantaj";
@@ -1889,14 +1904,16 @@ export default function AracPuantajPage() {
                                 </div>
                               )}
                             </div>
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
-                              onClick={() => handleAta(a.id)}
-                              disabled={yukleniyor}
-                            >
-                              {yukleniyor ? "..." : <>Ata <ArrowRight size={14} className="ml-1" /></>}
-                            </Button>
+                            {yEkle && (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
+                                onClick={() => handleAta(a.id)}
+                                disabled={yukleniyor}
+                              >
+                                {yukleniyor ? "..." : <>Ata <ArrowRight size={14} className="ml-1" /></>}
+                              </Button>
+                            )}
                           </li>
                         );
                       })}
@@ -1927,15 +1944,17 @@ export default function AracPuantajPage() {
                         const yukleniyor = atamaYuklenenId === a.id;
                         return (
                           <li key={a.id} className="px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 h-8"
-                              onClick={() => handleCikar(a.id)}
-                              disabled={yukleniyor}
-                            >
-                              {yukleniyor ? "..." : <><ArrowLeftIcon size={14} className="mr-1" /> Çıkar</>}
-                            </Button>
+                            {ySil && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 h-8"
+                                onClick={() => handleCikar(a.id)}
+                                disabled={yukleniyor}
+                              >
+                                {yukleniyor ? "..." : <><ArrowLeftIcon size={14} className="mr-1" /> Çıkar</>}
+                              </Button>
+                            )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-xs">{a.plaka}</span>
@@ -2716,7 +2735,7 @@ export default function AracPuantajPage() {
             </div>
 
             {/* Kaldır butonu - sadece mevcut puantaj varsa */}
-            {seciliArac && seciliGun !== null && aracGunMap.get(seciliArac.id)?.has(seciliGun) && (
+            {seciliArac && seciliGun !== null && aracGunMap.get(seciliArac.id)?.has(seciliGun) && ySil && (
               <div className="pt-2 border-t">
                 <Button
                   variant="outline"

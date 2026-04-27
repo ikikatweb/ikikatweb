@@ -23,6 +23,7 @@ import { getKasaHareketLimit, upsertKasaHareketLimit } from "@/lib/supabase/quer
 import { formatBaslik, formatBuyukHarf, formatMuhatap, formatKisiAdi } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Tanimlama, Firma, AracCinsiYakitLimit } from "@/lib/supabase/types";
+import { useAuth } from "@/hooks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +63,10 @@ function formatTanimlamaDeger(kategori: string, deger: string): string {
 }
 
 export default function TanimlamalarPage() {
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-tanimlamalar", "ekle");
+  const yDuzenle = hasPermission("yonetim-tanimlamalar", "duzenle");
+  const ySil = hasPermission("yonetim-tanimlamalar", "sil");
   const [tanimlamalar, setTanimlamalar] = useState<Tanimlama[]>([]);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
@@ -522,9 +527,11 @@ export default function TanimlamalarPage() {
             <p className="text-sm text-gray-500">Dropdown listelerinde görünecek değerleri buradan yönetin.</p>
           </div>
         </div>
-        <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={() => setYeniKatDialog(true)}>
-          <Plus size={16} className="mr-1" /> Yeni Tanımlama
-        </Button>
+        {yEkle && (
+          <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={() => setYeniKatDialog(true)}>
+            <Plus size={16} className="mr-1" /> Yeni Tanımlama
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -542,12 +549,16 @@ export default function TanimlamalarPage() {
                   <h3 className="font-semibold text-[#1E3A5F]">{kat.key}</h3>
                   <div className="flex items-center gap-1">
                     <Badge variant="secondary">{items.filter((t) => t.aktif).length}</Badge>
-                    <button onClick={() => openDuzenleKat(kat.key, kat.sekme)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Düzenle">
-                      <Pencil size={12} />
-                    </button>
-                    <button onClick={() => setSilKat(kat.key)} className="p-1 text-gray-400 hover:text-red-500" title="Kategoriyi Sil">
-                      <Trash2 size={12} />
-                    </button>
+                    {yDuzenle && (
+                      <button onClick={() => openDuzenleKat(kat.key, kat.sekme)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Düzenle">
+                        <Pencil size={12} />
+                      </button>
+                    )}
+                    {ySil && (
+                      <button onClick={() => setSilKat(kat.key)} className="p-1 text-gray-400 hover:text-red-500" title="Kategoriyi Sil">
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-400 mb-3">

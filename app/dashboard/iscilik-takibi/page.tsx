@@ -159,7 +159,10 @@ export default function IscilikTakibiPage() {
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("iscilik-takibi", "ekle");
+  const yDuzenle = hasPermission("iscilik-takibi", "duzenle");
+  const ySil = hasPermission("iscilik-takibi", "sil");
 
   const loadData = useCallback(async () => {
     try {
@@ -255,6 +258,7 @@ export default function IscilikTakibiPage() {
 
   function handleCellClick(row: IscilikTakibiWithSantiye, col: ColDef) {
     if (!col.editable) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const raw = col.getRaw(row);
     setEditing({ id: row.id, santiyeId: row.santiye_id, field: col.key });
     if (col.type === "para" && raw != null) {
@@ -266,6 +270,7 @@ export default function IscilikTakibiPage() {
 
   async function saveEdit() {
     if (!editing) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const col = COLUMNS.find((c) => c.key === editing.field);
     if (!col) { setEditing(null); return; }
 
@@ -288,6 +293,7 @@ export default function IscilikTakibiPage() {
 
   async function handleDelete() {
     if (!deleteId) return;
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       await deleteIscilikTakibi(deleteId);
       const silinen = rows.find((r) => r.id === deleteId);
@@ -758,9 +764,11 @@ export default function IscilikTakibiPage() {
                   })}
                   {/* Silme butonu */}
                   <TableCell className="text-center px-1">
-                    <button onClick={() => setDeleteId(row.id)} className="text-gray-300 hover:text-red-500 p-0.5" title="Sil">
-                      <Trash2 size={13} />
-                    </button>
+                    {ySil && (
+                      <button onClick={() => setDeleteId(row.id)} className="text-gray-300 hover:text-red-500 p-0.5" title="Sil">
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </TableCell>
                 </TableRow>
                 );

@@ -21,23 +21,21 @@ export async function getGelenEvraklar(olusturanId?: string) {
   const { data, error } = await query;
   if (error) throw error;
 
-  // Oluşturan bilgisini ayrı çek
+  // Oluşturan bilgisini API üzerinden çek (RLS bypass)
   if (data && data.length > 0) {
-    const olusturanIds = [...new Set(data.map((e) => e.olusturan_id).filter(Boolean))];
-    if (olusturanIds.length > 0) {
-      const { data: kullanicilar } = await supabase
-        .from("kullanicilar")
-        .select("id, ad_soyad")
-        .in("id", olusturanIds);
+    const kullaniciMap = new Map<string, string>();
+    try {
+      const res = await fetch("/api/kullanicilar/adlar");
+      if (res.ok) {
+        const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
+        adlar.forEach((k) => kullaniciMap.set(k.id, k.ad_soyad));
+      }
+    } catch { /* sessiz */ }
 
-      const kullaniciMap = new Map<string, string>();
-      (kullanicilar ?? []).forEach((k) => kullaniciMap.set(k.id, k.ad_soyad));
-
-      return data.map((e) => ({
-        ...e,
-        kullanicilar: e.olusturan_id ? { ad_soyad: kullaniciMap.get(e.olusturan_id) ?? "—" } : null,
-      }));
-    }
+    return data.map((e) => ({
+      ...e,
+      kullanicilar: e.olusturan_id ? { ad_soyad: kullaniciMap.get(e.olusturan_id) ?? "—" } : null,
+    }));
   }
 
   return (data ?? []).map((e) => ({ ...e, kullanicilar: null }));

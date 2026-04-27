@@ -27,6 +27,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
+import { useAuth } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -155,6 +156,10 @@ type RowCalc = {
 };
 
 export default function SantiyelerPage() {
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-santiyeler", "ekle");
+  const yDuzenle = hasPermission("yonetim-santiyeler", "duzenle");
+  const ySil = hasPermission("yonetim-santiyeler", "sil");
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
   const [ortaklarData, setOrtaklarData] = useState<(SantiyeOrtagi & { firmalar?: { firma_adi: string } })[]>([]);
   const [isGrupDagilimData, setIsGrupDagilimData] = useState<SantiyeIsGrubu[]>([]);
@@ -630,11 +635,11 @@ export default function SantiyelerPage() {
           <Button variant="outline" size="sm" onClick={santiyeExportExcel} disabled={filtrelenmis.length === 0}>
             <FileSpreadsheet size={14} className="mr-1" /> Excel
           </Button>
-          <Link href="/dashboard/yonetim/santiyeler/yeni">
+          {yEkle && <Link href="/dashboard/yonetim/santiyeler/yeni">
             <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
               <Plus size={16} className="mr-1" /> Yeni İş Ekle
             </Button>
-          </Link>
+          </Link>}
         </div>
       </div>
 
@@ -829,10 +834,12 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2 tabular-nums">{c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—"}</TableCell>
                     {/* İşlem - sadece düzenle */}
                     <TableCell className="text-center px-2">
+                      {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
                         onClick={() => router.push(`/dashboard/yonetim/santiyeler/${s.id}/duzenle`)}>
                         <Pencil size={14} />
                       </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

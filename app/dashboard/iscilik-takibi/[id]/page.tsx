@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Plus, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
 
 type EditingCell = { id: string; field: string } | null;
 
@@ -33,6 +34,10 @@ function formatTarih(d: string | null) {
 export default function IscilikDetayPage() {
   const params = useParams();
   const takipId = params.id as string;
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("iscilik-takibi", "ekle");
+  const yDuzenle = hasPermission("iscilik-takibi", "duzenle");
+  const ySil = hasPermission("iscilik-takibi", "sil");
   const router = useRouter();
 
   const [takip, setTakip] = useState<IscilikTakibiWithSantiye | null>(null);
@@ -130,6 +135,7 @@ export default function IscilikDetayPage() {
   // Üst kart düzenleme
   async function saveHeaderEdit() {
     if (!editingHeader || !takip) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     // Metin alanları (sicil_no) için raw string, para alanları için parse et
     const metinAlanlari = new Set(["sicil_no"]);
     let value: string | number | null;
@@ -177,6 +183,7 @@ export default function IscilikDetayPage() {
   // Aylık satır düzenleme + toplam yatanı otomatik güncelle
   async function saveAylikEdit() {
     if (!editing || !takip) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     let value: string | number | null = editValue || null;
     if (editing.field !== "ait_oldugu_ay") {
       const cleaned = editValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
@@ -213,6 +220,7 @@ export default function IscilikDetayPage() {
 
   // Yeni ay ekle
   async function handleYeniAy() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     const sonAy = ayliklar.length > 0 ? ayliklar[ayliklar.length - 1].ait_oldugu_ay : null;
     let yeniAy: string;
     if (sonAy) {
@@ -234,6 +242,7 @@ export default function IscilikDetayPage() {
 
   // Satır sil
   async function handleSatirSil(id: string) {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       await deleteAylikVeri(id);
       setAyliklar((p) => p.filter((a) => a.id !== id));
@@ -454,9 +463,11 @@ export default function IscilikDetayPage() {
 
                 {/* Sil */}
                 <TableCell className="text-center px-1">
-                  <button onClick={() => handleSatirSil(a.id)} className="text-gray-300 hover:text-red-500 p-0.5">
-                    <Trash2 size={12} />
-                  </button>
+                  {ySil && (
+                    <button onClick={() => handleSatirSil(a.id)} className="text-gray-300 hover:text-red-500 p-0.5">
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -486,9 +497,11 @@ export default function IscilikDetayPage() {
 
         {/* Yeni ay ekle butonu */}
         <div className="border-t p-2 flex justify-center">
-          <Button variant="outline" size="sm" onClick={handleYeniAy} className="text-[#F97316] border-[#F97316] hover:bg-[#F97316] hover:text-white">
-            <Plus size={16} className="mr-1" /> Yeni Ay Ekle
-          </Button>
+          {yEkle && (
+            <Button variant="outline" size="sm" onClick={handleYeniAy} className="text-[#F97316] border-[#F97316] hover:bg-[#F97316] hover:text-white">
+              <Plus size={16} className="mr-1" /> Yeni Ay Ekle
+            </Button>
+          )}
         </div>
       </div>
     </div>

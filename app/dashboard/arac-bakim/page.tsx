@@ -90,7 +90,10 @@ function dosyaAd(url: string): string {
 type AdKayit = { id: string; ad_soyad: string; durum?: "aktif" | "pasif" };
 
 export default function AracBakimPage() {
-  const { kullanici } = useAuth();
+  const { kullanici, hasPermission } = useAuth();
+  const yEkle = hasPermission("arac-bakim", "ekle");
+  const yDuzenle = hasPermission("arac-bakim", "duzenle");
+  const ySil = hasPermission("arac-bakim", "sil");
   const [loading, setLoading] = useState(true);
   const [bakimlar, setBakimlar] = useState<AracBakimWithArac[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -324,6 +327,7 @@ export default function AracBakimPage() {
   }
 
   async function kaydet() {
+    if (editId ? !yDuzenle : !yEkle) { toast.error(editId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!dAracId) { toast.error("Araç seçin."); return; }
     if (!dTarih) { toast.error("Tarih girin."); return; }
     if (!dDetay.trim()) { toast.error("Yapılan işin detayı zorunludur."); return; }
@@ -421,6 +425,7 @@ export default function AracBakimPage() {
 
   async function kayitSil() {
     if (!silOnay) return;
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       await deleteAracBakim(silOnay);
       setSilOnay(null);
@@ -517,6 +522,7 @@ export default function AracBakimPage() {
               <FileSpreadsheet size={14} className="mr-1" /> Excel
             </Button>
           </div>
+          {yEkle && (
           <div className="flex gap-2">
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("bakim")}>
               <Plus size={14} className="mr-1" /> Yeni Bakım
@@ -525,6 +531,7 @@ export default function AracBakimPage() {
               <Plus size={14} className="mr-1" /> Yeni Tamirat
             </Button>
           </div>
+          )}
         </div>
       </div>
 
@@ -672,8 +679,12 @@ export default function AracBakimPage() {
                   </TableCell>
                   <TableCell className="px-2 text-center">
                     <div className="flex items-center justify-center gap-0.5">
-                      <button type="button" onClick={() => dialogDuzenleAc(b)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={13} /></button>
-                      <button type="button" onClick={() => setSilOnay(b.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      {yDuzenle && (
+                        <button type="button" onClick={() => dialogDuzenleAc(b)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={13} /></button>
+                      )}
+                      {ySil && (
+                        <button type="button" onClick={() => setSilOnay(b.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -155,7 +155,10 @@ export default function YakitPage() {
 
 function YakitPageContent() {
   const yakitSearchParams = useSearchParams();
-  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
+  const yEkle = hasPermission("yakit", "ekle");
+  const yDuzenle = hasPermission("yakit", "duzenle");
+  const ySil = hasPermission("yakit", "sil");
 
   // Veri state'leri
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -740,6 +743,7 @@ function YakitPageContent() {
   // ============ KAYDETME FONKSİYONLARI ============
 
   async function verKaydet() {
+    if (verEditId ? !yDuzenle : !yEkle) { toast.error(verEditId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!verDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!verDialogAracId) { toast.error("Araç seçin."); return; }
     if (!verDialogTarih) { toast.error("Tarih girin."); return; }
@@ -822,6 +826,7 @@ function YakitPageContent() {
   }
 
   async function alKaydet() {
+    if (alEditId ? !yDuzenle : !yEkle) { toast.error(alEditId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!alDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!alDialogTarih) { toast.error("Tarih girin."); return; }
     if (!tarihIzinliMi(kullanici, alDialogTarih)) {
@@ -879,6 +884,7 @@ function YakitPageContent() {
   }
 
   async function virKaydet() {
+    if (virEditId ? !yDuzenle : !yEkle) { toast.error(virEditId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!virDialogGonderen) { toast.error("Gönderen şantiye seçin."); return; }
     if (!virDialogAlan) { toast.error("Alan şantiye seçin."); return; }
     if (virDialogGonderen === virDialogAlan) { toast.error("Gönderen ve alan şantiye aynı olamaz."); return; }
@@ -933,6 +939,7 @@ function YakitPageContent() {
 
   async function silOnayla() {
     if (!silOnay) return;
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       if (silOnay.tip === "arac_yakit") await deleteAracYakit(silOnay.id);
       else if (silOnay.tip === "alim") await deleteYakitAlim(silOnay.id);
@@ -1139,7 +1146,7 @@ function YakitPageContent() {
         </h1>
         {(isYonetici || isShantiyeAdmin) && (
           <div className="flex items-center gap-2 flex-wrap">
-            {isYonetici && (
+            {hasPermission("yonetim-araclar", "ekle") && (
               <Button variant="outline" size="sm" onClick={() => setYakitKiralikDialogOpen(true)}>
                 <Truck size={14} className="mr-1" /> Kiralık Araç Ekle
               </Button>
@@ -1219,17 +1226,19 @@ function YakitPageContent() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={verDialogAc}>
-            <Plus size={16} className="mr-1.5" /> Yakıt Ver
-          </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={alDialogAc}>
-            <Download size={16} className="mr-1.5" /> Yakıt Al (Depo)
-          </Button>
-          <Button className="bg-purple-600 hover:bg-purple-700 text-white h-11 text-sm" onClick={virDialogAc}>
-            <RefreshCcw size={16} className="mr-1.5" /> Şantiye Virmanı
-          </Button>
-        </div>
+        {yEkle && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={verDialogAc}>
+              <Plus size={16} className="mr-1.5" /> Yakıt Ver
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={alDialogAc}>
+              <Download size={16} className="mr-1.5" /> Yakıt Al (Depo)
+            </Button>
+            <Button className="bg-purple-600 hover:bg-purple-700 text-white h-11 text-sm" onClick={virDialogAc}>
+              <RefreshCcw size={16} className="mr-1.5" /> Şantiye Virmanı
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Özet kartları — sadece yönetici */}
@@ -1302,7 +1311,7 @@ function YakitPageContent() {
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] bg-[#0f2540]">Stok</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Kullanıcı Adı</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Not</TableHead>
-                {(isYonetici || isShantiyeAdmin) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
+                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1425,36 +1434,40 @@ function YakitPageContent() {
                     <TableCell className="px-2 text-[10px] text-gray-500 max-w-[120px] truncate" title={h.notu ?? ""}>
                       {h.notu || "—"}
                     </TableCell>
-                    {(isYonetici || isShantiyeAdmin) && (
+                    {(yDuzenle || ySil) && (
                       <TableCell className="px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (h.tip === "arac_yakit") {
-                                const y = yakitKayitlari.find((x) => x.id === h.id);
-                                if (y) verDialogDuzenleAc(y);
-                              } else if (h.tip === "alim") {
-                                const a = alimlar.find((x) => x.id === h.id);
-                                if (a) alDialogDuzenleAc(a);
-                              } else {
-                                const v = virmanlar.find((x) => x.id === h.id);
-                                if (v) virDialogDuzenleAc(v);
-                              }
-                            }}
-                            className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                            title="Düzenle"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setSilOnay({ tip: h.tip, id: h.id })}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded"
-                            title="Sil"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          {yDuzenle && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (h.tip === "arac_yakit") {
+                                  const y = yakitKayitlari.find((x) => x.id === h.id);
+                                  if (y) verDialogDuzenleAc(y);
+                                } else if (h.tip === "alim") {
+                                  const a = alimlar.find((x) => x.id === h.id);
+                                  if (a) alDialogDuzenleAc(a);
+                                } else {
+                                  const v = virmanlar.find((x) => x.id === h.id);
+                                  if (v) virDialogDuzenleAc(v);
+                                }
+                              }}
+                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                              title="Düzenle"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                          {ySil && (
+                            <button
+                              type="button"
+                              onClick={() => setSilOnay({ tip: h.tip, id: h.id })}
+                              className="p-1 text-gray-400 hover:text-red-600 rounded"
+                              title="Sil"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     )}

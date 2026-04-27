@@ -46,7 +46,10 @@ function tr(s: string): string {
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 export default function BankaYazismalariPage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("yazismalar-banka-yazismalari", "ekle");
+  const yDuzenle = hasPermission("yazismalar-banka-yazismalari", "duzenle");
+  const ySil = hasPermission("yazismalar-banka-yazismalari", "sil");
   const [yazismalar, setYazismalar] = useState<BankaYazismaWithRelations[]>([]);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,9 +195,11 @@ export default function BankaYazismalariPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Banka Yazışmaları</h1>
         <div className="flex items-center gap-2">
-          <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
-            <Plus size={16} className="mr-1" /> Yeni Banka Yazışma Ekle
-          </Button>
+          {yEkle && (
+            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
+              <Plus size={16} className="mr-1" /> Yeni Banka Yazışma Ekle
+            </Button>
+          )}
           <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white" onClick={() => setHizliTalimatOpen(true)}>
             <Zap size={16} className="mr-1" /> Hızlı Talimat
           </Button>
@@ -298,8 +303,12 @@ export default function BankaYazismalariPage() {
                       {y.pdf_url && (
                         <a href={y.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
                       )}
-                      <button onClick={() => handleEdit(y)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
-                      <button onClick={() => { setSilDialog(y); setSilmeNedeni(""); }} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      {yDuzenle && (
+                        <button onClick={() => handleEdit(y)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
+                      )}
+                      {ySil && (
+                        <button onClick={() => { setSilDialog(y); setSilmeNedeni(""); }} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

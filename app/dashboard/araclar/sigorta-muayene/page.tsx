@@ -72,7 +72,9 @@ function formatTarih(tarih: string | null): string {
 }
 
 export default function SigortaMuayenePage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("araclar-sigorta-muayene", "ekle");
+  const ySil = hasPermission("araclar-sigorta-muayene", "sil");
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
@@ -481,9 +483,11 @@ export default function SigortaMuayenePage() {
                   </TableCell>
                   <TableCell className="px-2 text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <button type="button" onClick={() => policeDialogAc(a.id)} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100">
-                        <Plus size={11} /> Poliçe Ekle
-                      </button>
+                      {yEkle && (
+                        <button type="button" onClick={() => policeDialogAc(a.id)} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100">
+                          <Plus size={11} /> Poliçe Ekle
+                        </button>
+                      )}
                       <button type="button" onClick={() => setPoliceListeAracId(a.id)} className="p-1 text-gray-400 hover:text-blue-600" title="Poliçeler">
                         <FileText size={14} />
                       </button>
@@ -592,9 +596,11 @@ export default function SigortaMuayenePage() {
                         <ExternalLink size={14} />
                       </a>
                     )}
-                    <button type="button" onClick={() => setSilOnay(p.id)} className="p-1 text-gray-400 hover:text-red-600">
-                      <Trash2 size={14} />
-                    </button>
+                    {ySil && (
+                      <button type="button" onClick={() => setSilOnay(p.id)} className="p-1 text-gray-400 hover:text-red-600">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

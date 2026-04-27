@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Building2, Search, Truck, Trash2, Power, FileDown, FileSpreadsheet, ArrowUp, ArrowDown } from "lucide-react";
+import { useAuth } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -34,6 +35,10 @@ export default function FirmalarPage() {
   const [filtre, setFiltre] = useState<Filtre>("tumu");
   const [arama, setArama] = useState("");
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-firmalar", "ekle");
+  const yDuzenle = hasPermission("yonetim-firmalar", "duzenle");
+  const ySil = hasPermission("yonetim-firmalar", "sil");
 
   async function loadFirmalar() {
     try {
@@ -179,8 +184,8 @@ export default function FirmalarPage() {
       <div className="flex items-center justify-between mb-4">
         <PageHeader
           title="Firmalar"
-          actionLabel="Yeni Firma Ekle"
-          actionHref="/dashboard/yonetim/firmalar/yeni"
+          actionLabel={yEkle ? "Yeni Firma Ekle" : undefined}
+          actionHref={yEkle ? "/dashboard/yonetim/firmalar/yeni" : undefined}
         />
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
@@ -271,28 +276,32 @@ export default function FirmalarPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm"
-                        onClick={() => router.push(`/dashboard/yonetim/firmalar/${firma.id}/duzenle`)}>
-                        <Pencil size={16} />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" title="Sil"
-                        onClick={async () => {
-                          if (!confirm(`"${firma.firma_adi}" firmasını silmek istediğinize emin misiniz?`)) return;
-                          try {
-                            await deleteFirma(firma.id);
-                            setFirmalar((prev) => prev.filter((f) => f.id !== firma.id));
-                            toast.success(`${firma.firma_adi} silindi.`);
-                          } catch (err) {
-                            const msg = err instanceof Error ? err.message : String(err);
-                            if (msg.includes("violates foreign key") || msg.includes("referenced") || msg.includes("constraint")) {
-                              toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: 8000 });
-                            } else {
-                              toast.error(`Silme hatası: ${msg}`, { duration: 6000 });
+                      {yDuzenle && (
+                        <Button variant="ghost" size="sm"
+                          onClick={() => router.push(`/dashboard/yonetim/firmalar/${firma.id}/duzenle`)}>
+                          <Pencil size={16} />
+                        </Button>
+                      )}
+                      {ySil && (
+                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" title="Sil"
+                          onClick={async () => {
+                            if (!confirm(`"${firma.firma_adi}" firmasını silmek istediğinize emin misiniz?`)) return;
+                            try {
+                              await deleteFirma(firma.id);
+                              setFirmalar((prev) => prev.filter((f) => f.id !== firma.id));
+                              toast.success(`${firma.firma_adi} silindi.`);
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : String(err);
+                              if (msg.includes("violates foreign key") || msg.includes("referenced") || msg.includes("constraint")) {
+                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: 8000 });
+                              } else {
+                                toast.error(`Silme hatası: ${msg}`, { duration: 6000 });
+                              }
                             }
-                          }
-                        }}>
-                        <Trash2 size={16} />
-                      </Button>
+                          }}>
+                          <Trash2 size={16} />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

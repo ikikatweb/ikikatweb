@@ -41,7 +41,9 @@ function formatPara(n: number | null): string {
 }
 
 export default function AcenteTakipPage() {
-  const { isYonetici } = useAuth();
+  const { isYonetici, hasPermission } = useAuth();
+  const yDuzenle = hasPermission("araclar-acente-takip", "duzenle");
+  const ySil = hasPermission("araclar-acente-takip", "sil");
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
@@ -338,8 +340,12 @@ export default function AcenteTakipPage() {
                     </TableCell>
                     <TableCell className="px-2 text-center">
                       <div className="flex items-center justify-center gap-0.5">
-                        <button type="button" onClick={() => duzenleAc(p)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={13} /></button>
-                        <button type="button" onClick={() => setSilOnay(p.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                        {yDuzenle && (
+                          <button type="button" onClick={() => duzenleAc(p)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={13} /></button>
+                        )}
+                        {ySil && (
+                          <button type="button" onClick={() => setSilOnay(p.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={13} /></button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

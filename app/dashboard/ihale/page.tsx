@@ -681,7 +681,10 @@ async function parseDocx(file: File): Promise<ParsedData> {
 type IsGrubu = { id: string; deger: string; kisa_ad: string | null; sira: number; aktif: boolean };
 
 export default function IhalePage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("ihale", "ekle");
+  const yDuzenle = hasPermission("ihale", "duzenle");
+  const ySil = hasPermission("ihale", "sil");
 
   const [loading, setLoading] = useState(true);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -1667,9 +1670,11 @@ export default function IhalePage() {
                           <button type="button" onClick={() => gecmisYukle(i)} className="p-1 text-gray-400 hover:text-blue-600" title="Görüntüle">
                             <Eye size={13} />
                           </button>
-                          <button type="button" onClick={() => setSilOnay(i.id)} className="p-1 text-gray-400 hover:text-red-600" title="Sil">
-                            <Trash2 size={13} />
-                          </button>
+                          {ySil && (
+                            <button type="button" onClick={() => setSilOnay(i.id)} className="p-1 text-gray-400 hover:text-red-600" title="Sil">
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

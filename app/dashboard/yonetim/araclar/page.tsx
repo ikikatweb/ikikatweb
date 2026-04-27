@@ -20,10 +20,15 @@ import {
   Pencil, Truck, Plus, Search, FileDown, FileSpreadsheet, FileCheck, Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
 
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
 export default function AraclarPage() {
+  const { hasPermission } = useAuth();
+  const yEkle = hasPermission("yonetim-araclar", "ekle");
+  const yDuzenle = hasPermission("yonetim-araclar", "duzenle");
+  const ySil = hasPermission("yonetim-araclar", "sil");
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [cinsSiralama, setCinsSiralama] = useState<Map<string, number>>(new Map());
   const [cinsListesi, setCinsListesi] = useState<string[]>([]);
@@ -168,16 +173,20 @@ export default function AraclarPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Araçlar</h1>
         <div className="flex items-center gap-2">
-          <Link href="/dashboard/yonetim/araclar/yeni">
-            <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white">
-              <Plus size={16} className="mr-1" /> Yeni Araç Ekle
-            </Button>
-          </Link>
-          <Link href="/dashboard/yonetim/araclar/kiralik">
-            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-              <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
-            </Button>
-          </Link>
+          {yEkle && (
+            <>
+              <Link href="/dashboard/yonetim/araclar/yeni">
+                <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white">
+                  <Plus size={16} className="mr-1" /> Yeni Araç Ekle
+                </Button>
+              </Link>
+              <Link href="/dashboard/yonetim/araclar/kiralik">
+                <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
+                  <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
@@ -331,10 +340,13 @@ export default function AraclarPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
                         onClick={() => router.push(`/dashboard/yonetim/araclar/${arac.id}/duzenle`)}>
                         <Pencil size={16} />
                       </Button>
+                      )}
+                      {ySil && (
                       <Button variant="ghost" size="sm" title="Sil"
                         className="text-red-500 hover:text-red-700"
                         onClick={async () => {
@@ -354,6 +366,7 @@ export default function AraclarPage() {
                         }}>
                         <Trash2 size={16} />
                       </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

@@ -83,7 +83,10 @@ function basHarfBuyuk(text: string): string {
 }
 
 export default function SantiyeDefPage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const yEkle = hasPermission("santiye-defteri", "ekle");
+  const yDuzenle = hasPermission("santiye-defteri", "duzenle");
+  const ySil = hasPermission("santiye-defteri", "sil");
 
   const [loading, setLoading] = useState(true);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -232,6 +235,7 @@ export default function SantiyeDefPage() {
   }
 
   async function kayitEkle() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!yeniIcerik.trim()) { toast.error("İçerik girin."); return; }
     if (!filtreSantiye) { toast.error("Şantiye seçin."); return; }
     if (!tarihIzinliMi(kullanici, seciliTarih)) { toast.error("Bu tarihe kayıt yapamazsınız."); return; }
@@ -263,6 +267,7 @@ export default function SantiyeDefPage() {
   }
 
   async function kayitDuzenle() {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (!editId || !editIcerik.trim()) return;
     try {
       await updateKayit(editId, editIcerik.trim());
@@ -276,6 +281,7 @@ export default function SantiyeDefPage() {
   }
 
   async function kayitSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silOnay) return;
     try {
       await deleteKayit(silOnay);
@@ -289,6 +295,7 @@ export default function SantiyeDefPage() {
   }
 
   async function defterSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silDefterOnay) return;
     try {
       await deleteDefter(silDefterOnay);
@@ -561,12 +568,14 @@ export default function SantiyeDefPage() {
             {"ÖNEMLİ NOT : Şantiye Defteri Günlük Çıktı Alınacak. Talimatla Yapılan İşler, Tutanaksız Yapılan İşler, Döküm Sahasının Belirlenmesi Gibi Önemli Konular Mutlaka Şantiye Defterine Yazılacak ve Kontrol Mühendisine O Gün İmzalatılacak."}
           </p>
         </div>
-        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => {
-          setSeciliTarih(new Date().toISOString().slice(0, 10));
-          setDefterDialogOpen(true);
-        }} disabled={!filtreSantiye}>
-          <Plus size={14} className="mr-1" /> Yeni Şantiye Defteri Ekle
-        </Button>
+        {yEkle && (
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => {
+            setSeciliTarih(new Date().toISOString().slice(0, 10));
+            setDefterDialogOpen(true);
+          }} disabled={!filtreSantiye}>
+            <Plus size={14} className="mr-1" /> Yeni Şantiye Defteri Ekle
+          </Button>
+        )}
       </div>
 
       {/* Filtreler */}
@@ -575,7 +584,7 @@ export default function SantiyeDefPage() {
           <Label className="text-[10px] text-gray-500">Şantiye</Label>
           <div className="flex gap-1 items-center">
             <SantiyeSelect santiyeler={gosterilenSantiyeler} value={filtreSantiye} onChange={setFiltreSantiye} placeholder="Şantiye seçin" className={selectClass + " w-full min-w-[200px]"} />
-            {isYonetici && (
+            {yEkle && (
               <button type="button" onClick={() => { setEkleSeciliSantiye(""); setEkleDialogOpen(true); }}
                 title="Defteri olmayan bir şantiye için yeni defter aç"
                 className="h-9 w-9 flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex-shrink-0">
@@ -759,17 +768,21 @@ export default function SantiyeDefPage() {
                                 {g.kayitlar.map((k) => k.icerik).join(" ")}
                                 <span className="text-[11px] text-gray-300 italic"> — {yazanAd}</span>
                               </p>
-                              {isOwn && tarihIzinli && (
+                              {isOwn && tarihIzinli && (yDuzenle || ySil) && (
                                 <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button type="button" onClick={() => {
-                                    // En son kaydı düzenle, içeriği birleştirilmiş olarak yükle
-                                    const sonKayit = g.kayitlar[g.kayitlar.length - 1];
-                                    setEditId(sonKayit.id);
-                                    setEditIcerik(g.kayitlar.map((k) => k.icerik).join(" "));
-                                  }}
-                                    className="p-1 text-gray-300 hover:text-blue-600"><Pencil size={12} /></button>
-                                  <button type="button" onClick={() => setSilOnay(g.kayitlar[g.kayitlar.length - 1].id)}
-                                    className="p-1 text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                                  {yDuzenle && (
+                                    <button type="button" onClick={() => {
+                                      // En son kaydı düzenle, içeriği birleştirilmiş olarak yükle
+                                      const sonKayit = g.kayitlar[g.kayitlar.length - 1];
+                                      setEditId(sonKayit.id);
+                                      setEditIcerik(g.kayitlar.map((k) => k.icerik).join(" "));
+                                    }}
+                                      className="p-1 text-gray-300 hover:text-blue-600"><Pencil size={12} /></button>
+                                  )}
+                                  {ySil && (
+                                    <button type="button" onClick={() => setSilOnay(g.kayitlar[g.kayitlar.length - 1].id)}
+                                      className="p-1 text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                                  )}
                                 </div>
                             )}
                           </div>
@@ -782,7 +795,7 @@ export default function SantiyeDefPage() {
               )}
 
               {/* Yeni kayıt ekleme */}
-              {tarihIzinli && (
+              {tarihIzinli && yEkle && (
                 <div className="mt-3 border-t border-dashed border-gray-300 pt-3">
                   <div className="flex items-start gap-2">
                     <span className="text-emerald-500 font-bold mt-1.5">+</span>
