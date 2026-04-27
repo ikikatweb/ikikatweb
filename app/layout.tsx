@@ -26,6 +26,11 @@ export const metadata: Metadata = {
 
 export const viewport = {
   themeColor: "#1E3A5F",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  // viewportFit: "cover" — iOS notch'lu cihazlarda tam ekran kullansın
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({

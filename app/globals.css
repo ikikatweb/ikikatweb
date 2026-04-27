@@ -126,6 +126,16 @@ thead th {
   }
   html {
     @apply font-sans;
+    /* iOS Safari'de yatay çevirince metni otomatik büyütme — dikey'e dönünce
+       eski boyutuna yumuşak şekilde geri döner. Tüm tarayıcılar için */
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 }
 

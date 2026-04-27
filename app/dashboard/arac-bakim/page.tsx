@@ -552,7 +552,10 @@ export default function AracBakimPage() {
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Tip</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" }}
+                  className="text-white text-[11px] px-2 min-w-[80px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                >Plaka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Marka/Model</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Yaptıran</TableHead>
                 <TableHead className="text-white text-[11px] px-2">İşlemi Giren</TableHead>
@@ -577,7 +580,10 @@ export default function AracBakimPage() {
                       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Bakım</span>
                     )}
                   </TableCell>
-                  <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{b.araclar?.plaka ?? "—"}</TableCell>
+                  <TableCell
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                    className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap min-w-[80px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                  >{b.araclar?.plaka ?? "—"}</TableCell>
                   <TableCell className="px-2 truncate max-w-[140px]">{[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}</TableCell>
                   <TableCell className="px-2">{b.yaptiran_ad ?? "—"}</TableCell>
                   <TableCell className="px-2 text-gray-500 text-[11px]">{b.isleme_giren_ad ?? "—"}</TableCell>

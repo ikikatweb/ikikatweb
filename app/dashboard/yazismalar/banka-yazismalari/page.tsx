@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma } from "@/lib/supabase/queries/banka-yazismalari";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -175,11 +175,12 @@ export default function BankaYazismalariPage() {
   }
 
   function printYazisma(y: BankaYazismaWithRelations) {
-    setPrintRef(y);
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setPrintRef(null), 500);
-    }, 200);
+    // iOS Safari user-gesture korunmalı — flushSync ile senkron render
+    flushSync(() => {
+      setPrintRef(y);
+    });
+    window.print();
+    setTimeout(() => setPrintRef(null), 1000);
   }
 
   return (

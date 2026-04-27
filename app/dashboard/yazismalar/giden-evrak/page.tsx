@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -201,13 +201,14 @@ export default function GidenEvrakPage() {
   }
 
   function printEvrak(e: GidenEvrakWithRelations) {
-    setPrintEvrakRef(e);
-    // Render olduktan sonra print başlat — sayfa numarası her zaman görünür
-    // (CSS @page @bottom-center kuralı "counter(page)/counter(pages)" gösterir)
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setPrintEvrakRef(null), 500);
-    }, 200);
+    // iOS Safari: setTimeout içindeki print() "otomatik" sayılıp engelleniyor.
+    // flushSync ile state'i senkron uygula → print() user-gesture içinde kalsın.
+    flushSync(() => {
+      setPrintEvrakRef(e);
+    });
+    window.print();
+    // Print dialog kapandıktan sonra portal'ı temizle
+    setTimeout(() => setPrintEvrakRef(null), 1000);
   }
 
   return (

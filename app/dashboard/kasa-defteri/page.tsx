@@ -2,7 +2,7 @@
 // Nakit gelir/gider bakiyeyi etkiler, kart harcamaları sadece kayıt olarak görünür
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 // Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -86,8 +86,10 @@ function KasaDefContent() {
   const bugun = new Date();
   const [filtreSantiye, setFiltreSantiye] = useState("");
   const [filtrePersonel, setFiltrePersonel] = useState(() => searchParams.get("personel") ?? "");
-  // Varsayılan "Nakit" — kart görmek için "Kart" veya "Tümü" seçilir
-  const [filtreOdeme, setFiltreOdeme] = useState<"" | "nakit" | "kart">("nakit");
+  // Varsayılan ödeme filtresi:
+  //  - Yönetici: "nakit" (çoğunlukla nakit takibi yapar, isterse Kart/Tümü seçer)
+  //  - Kısıtlı kullanıcı: "" (Tümü) — kendi tüm hareketlerini hem nakit hem kart görsün
+  const [filtreOdeme, setFiltreOdeme] = useState<"" | "nakit" | "kart">(isYonetici ? "nakit" : "");
   const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
     const y = bugun.getFullYear(); const m = bugun.getMonth() + 1;
     return `${y}-${String(m).padStart(2,"0")}-01`;
@@ -167,6 +169,18 @@ function KasaDefContent() {
   }, [kullanici]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Auth yüklendiğinde varsayılan ödeme filtresini role göre ayarla
+  // (useState ilk render'da çalışır, isYonetici henüz hazır değil olabilir)
+  const odemeInitRef = useRef(false);
+  useEffect(() => {
+    if (!kullanici || odemeInitRef.current) return;
+    odemeInitRef.current = true;
+    // URL'den ?personel parametresi geldiyse zaten "" olur (notify endpoint), o durumu bozma
+    if (!searchParams.get("personel")) {
+      setFiltreOdeme(isYonetici ? "nakit" : "");
+    }
+  }, [kullanici, isYonetici, searchParams]);
 
   // URL parametresi (?personel=xxx) değişince filtre state'ini senkronize et.
   // Dashboard'dan farklı kişilere üst üste tıklandığında doğru kişi yüklenmeli.
