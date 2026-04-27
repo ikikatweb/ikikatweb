@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AuthProvider } from "@/lib/auth-context";
 import Sidebar from "@/components/shared/sidebar";
 import Topbar from "@/components/shared/topbar";
+import PullToRefresh from "@/components/shared/pull-to-refresh";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export default function DashboardLayout({
@@ -29,6 +30,7 @@ export default function DashboardLayout({
 
         <div className="flex flex-1 flex-col overflow-hidden">
           <Topbar onMenuToggle={() => setSidebarOpen(true)} />
+          <PullToRefresh scrollTargetId="dashboard-main" />
           <main className="flex-1 overflow-auto p-4 md:p-6" id="dashboard-main">
             {children}
           </main>
