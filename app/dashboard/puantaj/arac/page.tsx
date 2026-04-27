@@ -1576,7 +1576,8 @@ export default function AracPuantajPage() {
           <p className="text-xs text-gray-500 mt-0.5">Şantiye bazlı aylık araç çalışma takibi</p>
         </div>
         <div className="flex items-center gap-2">
-          {hasPermission("yonetim-araclar", "ekle") && (
+          {/* Kiralık Araç Ekle: araç puantaj VEYA yönetim/araçlar "ekle" yetkisinden biri yeterli */}
+          {(yEkle || hasPermission("yonetim-araclar", "ekle")) && (
             <Button
               className="bg-[#F97316] hover:bg-[#ea580c] text-white"
               size="sm"

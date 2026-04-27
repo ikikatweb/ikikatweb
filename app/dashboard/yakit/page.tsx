@@ -1146,7 +1146,8 @@ function YakitPageContent() {
         </h1>
         {(isYonetici || isShantiyeAdmin) && (
           <div className="flex items-center gap-2 flex-wrap">
-            {hasPermission("yonetim-araclar", "ekle") && (
+            {/* Kiralık Araç Ekle: yakıt VEYA yönetim/araçlar "ekle" yetkisinden biri yeterli */}
+            {(yEkle || hasPermission("yonetim-araclar", "ekle") || hasPermission("puantaj-arac", "ekle")) && (
               <Button variant="outline" size="sm" onClick={() => setYakitKiralikDialogOpen(true)}>
                 <Truck size={14} className="mr-1" /> Kiralık Araç Ekle
               </Button>
