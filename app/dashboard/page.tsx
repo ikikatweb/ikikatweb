@@ -895,7 +895,12 @@ export default function DashboardPage() {
                 <TableBody>
                   {kasaOzet.map((k) => (
                     <TableRow key={k.personel} className="cursor-pointer hover:bg-blue-50"
-                      onClick={() => router.push(`/dashboard/kasa-defteri?personel=${k.personelId}`)}>
+                      onClick={() => {
+                        // Next.js Router Cache, query parametresi değişimini segment cache'iyle
+                        // doğru ayırmıyor — aynı segment'e farklı kullanıcı ID'siyle gidince
+                        // önceki state geliyordu. window.location ile tam navigasyon → fresh mount.
+                        window.location.href = `/dashboard/kasa-defteri?personel=${k.personelId}`;
+                      }}>
                       <TableCell className="px-2">
                         <div className="font-medium text-[#1E3A5F]">{k.personel}</div>
                         <div className="text-[9px] text-gray-400 mt-0.5">
