@@ -9,7 +9,7 @@ import {
   deleteAracBakim,
   uploadBakimDosyalar,
 } from "@/lib/supabase/queries/arac-bakim";
-import { getAraclar } from "@/lib/supabase/queries/araclar";
+import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
 import { useAuth } from "@/hooks";
 import type { AracBakimWithArac, AracBakimTipi, AracWithRelations } from "@/lib/supabase/types";
@@ -398,6 +398,16 @@ export default function AracBakimPage() {
           });
         }
         toast.success(`${etiket} kaydı eklendi.`);
+      }
+      // Aracın güncel göstergesini güncelle — sadece girilen km mevcuttan büyükse.
+      // Bu sayede sonraki yeni bakım/tamirat dialog'u en son km/saat'i otomatik algılar.
+      // Geçmiş kayıt düzenleme arac göstergesini düşürmez.
+      if (km != null && km > 0) {
+        const aracObj = araclar.find((a) => a.id === dAracId);
+        const mevcut = aracObj?.guncel_gosterge ?? 0;
+        if (km > mevcut) {
+          try { await updateArac(dAracId, { guncel_gosterge: km }); } catch { /* sessiz */ }
+        }
       }
       await loadAll();
       setDialogOpen(false);
