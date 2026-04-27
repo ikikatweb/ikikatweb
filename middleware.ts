@@ -28,7 +28,28 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // getUser hata verebilir (Invalid Refresh Token vs.) — yakala ve login'e yönlendir
+  let user = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      // Refresh token bozuksa session'ı temizle, login'e yönlendir
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      const redirectResponse = NextResponse.redirect(url);
+      // Bozuk Supabase auth çerezlerini sil
+      for (const c of request.cookies.getAll()) {
+        if (c.name.startsWith("sb-")) redirectResponse.cookies.delete(c.name);
+      }
+      return redirectResponse;
+    }
+    user = data.user;
+  } catch {
+    // Network/auth hatası — login'e yönlendir
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
 
   // Oturum yoksa dashboard'a erişimi engelle
   if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {

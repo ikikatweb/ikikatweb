@@ -19,6 +19,22 @@ export async function GET(request: Request) {
 
   const bugunMs = new Date().setHours(0, 0, 0, 0);
 
+  // Tanımlamalar'dan "sigorta yaklaşır gün" eşiğini oku (varsayılan 30)
+  let yaklasirGun = 30;
+  try {
+    const { data: tanim } = await supabase
+      .from("tanimlamalar")
+      .select("deger")
+      .eq("kategori", "sigorta_yaklasir_gun")
+      .eq("aktif", true)
+      .limit(1)
+      .maybeSingle();
+    if (tanim?.deger) {
+      const n = parseInt(String(tanim.deger), 10);
+      if (!Number.isNaN(n) && n > 0) yaklasirGun = n;
+    }
+  } catch { /* sessiz, varsayılan 30 ile devam */ }
+
   // ========== YAKLAŞAN SİGORTA/MUAYENE ==========
   // Araçların trafik/kasko/muayene/taşıt kartı bitiş tarihleri + poliçe bitişleri
   const { data: araclar } = await supabase
@@ -54,7 +70,8 @@ export async function GET(request: Request) {
     for (const [tip, tarih] of kontroller) {
       if (!tarih) continue;
       const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
-      if (kalan <= 30 && kalan >= -7) {
+      // Tanımlamalardan gelen yaklaşır gün eşiği — geçenleri (-7 gün) de dahil et
+      if (kalan <= yaklasirGun && kalan >= -7) {
         yaklasanlar.push({ plaka: a.plaka, tip, tarih, kalanGun: kalan });
       }
     }

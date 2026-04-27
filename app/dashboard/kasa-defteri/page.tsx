@@ -502,11 +502,17 @@ function KasaDefContent() {
       },
     });
 
-    // Şantiye Bakiye Özet tablosu
+    // Şantiye Bakiye Özet tablosu — seçili filtrelerle uyumlu
     const santiyeOzet = new Map<string, { devreden: number; gelir: number; gider: number }>();
-    // Devreden bakiye: dönem başlangıcından önceki nakit hareketler
     for (const h of hareketler) {
       if (h.odeme_yontemi !== "nakit") continue;
+      // Personel filtresi — seçiliyse sadece o kullanıcının kayıtları
+      if (filtrePersonel && h.personel_id !== filtrePersonel) continue;
+      // Şantiye filtresi — seçiliyse sadece o şantiye
+      if (filtreSantiye && h.santiye_id !== filtreSantiye) continue;
+      // Kısıtlı kullanıcı: sadece kendi kayıtları
+      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
+
       const santiyeAdi = tr(santiyeMap.get(h.santiye_id) ?? "Diger");
       if (!santiyeOzet.has(santiyeAdi)) santiyeOzet.set(santiyeAdi, { devreden: 0, gelir: 0, gider: 0 });
       const item = santiyeOzet.get(santiyeAdi)!;
@@ -756,8 +762,11 @@ function KasaDefContent() {
           <Table className="text-xs">
             <TableHeader>
               <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[150px]">Açıklama</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[80px]">Tarih</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" }}
+                  className="text-white text-[11px] px-2 min-w-[150px] max-w-[180px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                >Açıklama</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Tip</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Ödeme</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Kategori</TableHead>
@@ -776,10 +785,23 @@ function KasaDefContent() {
                   : h.tip === "gelir" ? "border-l-4 border-l-emerald-400" : h.odeme_yontemi === "kart" ? "border-l-4 border-l-purple-400" : "border-l-4 border-l-red-400";
                 const rowBg = isAvans ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-gray-50";
                 const bakiye = bakiyeMap.get(`${h.personel_id}|${h.id}`);
+                // Sticky açıklama hücresinin arka planı satır rengiyle eşleşmeli
+                const stickyBg = isAvans ? "bg-amber-50" : "bg-white";
                 return (
                   <TableRow key={h.id} className={`${rowBg} ${rowBorder}`}>
-                    <TableCell className="px-2 whitespace-nowrap">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</TableCell>
-                    <TableCell className="px-2 text-gray-700 truncate max-w-[150px]" title={h.aciklama ?? ""}>
+                    <TableCell className="px-2 whitespace-nowrap min-w-[80px]">
+                      <div>{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
+                      {h.created_at && (
+                        <div className="text-[9px] text-gray-400 leading-tight">
+                          {new Date(h.created_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      style={{ position: "sticky", left: 0, zIndex: 5 }}
+                      className={`px-2 text-gray-700 truncate min-w-[150px] max-w-[180px] shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${stickyBg}`}
+                      title={h.aciklama ?? ""}
+                    >
                       {isAvans && <span className="inline-block text-[9px] font-bold bg-amber-500 text-white rounded px-1 mr-1">AVANS</span>}
                       {h.aciklama ?? "—"}
                     </TableCell>
@@ -841,24 +863,25 @@ function KasaDefContent() {
               <span className={`text-lg font-bold ${devredenBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(devredenBakiye)}</span>
             </div>
           )}
-          <div className="bg-[#64748B] rounded-lg px-4 py-3 flex items-center justify-between">
-            <span className="text-white font-semibold text-sm">Dönem Toplamı</span>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
+          {/* Mobilde dikey grid (2x2), masaüstünde tek satır - yatay scroll yapmaz */}
+          <div className="bg-[#64748B] rounded-lg px-3 py-2.5 sm:px-4 sm:py-3">
+            <div className="text-white font-semibold text-xs sm:text-sm mb-2 sm:mb-0 sm:inline-block">Dönem Toplamı</div>
+            <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end sm:gap-6 gap-2">
+              <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gelir</div>
-                <div className="text-emerald-300 font-bold">+{formatSayi(ozet.toplamGelir)}</div>
+                <div className="text-emerald-300 font-bold text-sm sm:text-base">+{formatSayi(ozet.toplamGelir)}</div>
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gider (Nakit)</div>
-                <div className="text-red-300 font-bold">−{formatSayi(ozet.toplamGiderNakit)}</div>
+                <div className="text-red-300 font-bold text-sm sm:text-base">−{formatSayi(ozet.toplamGiderNakit)}</div>
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gider (Kart)</div>
-                <div className="text-purple-300 font-bold">−{formatSayi(ozet.toplamGiderKart)}</div>
+                <div className="text-purple-300 font-bold text-sm sm:text-base">−{formatSayi(ozet.toplamGiderKart)}</div>
               </div>
-              <div className="text-right border-l border-white/30 pl-6">
+              <div className="text-left sm:text-right sm:border-l sm:border-white/30 sm:pl-6">
                 <div className="text-[10px] text-white/60">Güncel Nakit Bakiye</div>
-                <div className={`text-lg font-bold ${(devredenBakiye + ozet.nakitBakiye) < 0 ? "text-red-300" : "text-white"}`}>
+                <div className={`text-base sm:text-lg font-bold ${(devredenBakiye + ozet.nakitBakiye) < 0 ? "text-red-300" : "text-white"}`}>
                   {formatTL(devredenBakiye + ozet.nakitBakiye)}
                 </div>
               </div>

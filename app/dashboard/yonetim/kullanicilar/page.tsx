@@ -174,9 +174,12 @@ export default function KullanicilarPage() {
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table noWrapper>
-            <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
+            <TableHeader className="sticky top-0 z-30 bg-white shadow-sm">
               <TableRow>
-                <TableHead>Ad Soyad</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 35, backgroundColor: "white" }}
+                  className="shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                >Ad Soyad</TableHead>
                 <TableHead>Kullanıcı Adı</TableHead>
                 <TableHead>Şifre</TableHead>
                 <TableHead className="text-center">Rol</TableHead>
@@ -192,7 +195,10 @@ export default function KullanicilarPage() {
                 return k.ad_soyad.toLowerCase().includes(q) || k.kullanici_adi.toLowerCase().includes(q);
               }).map((k) => (
                 <TableRow key={k.id} className={!k.aktif ? "bg-gray-100 opacity-50" : ""}>
-                  <TableCell className="font-medium">{k.ad_soyad}</TableCell>
+                  <TableCell
+                    style={{ position: "sticky", left: 0, zIndex: 5 }}
+                    className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
+                  >{k.ad_soyad}</TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>
                   <TableCell className="font-mono text-sm">{k.sifre_gorunur ?? "••••••"}</TableCell>
                   <TableCell className="text-center">

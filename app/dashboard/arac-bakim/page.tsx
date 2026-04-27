@@ -472,23 +472,28 @@ export default function AracBakimPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <Wrench size={24} /> Araç Bakım & Tamirat
         </h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
-            <FileDown size={14} className="mr-1" /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
-            <FileSpreadsheet size={14} className="mr-1" /> Excel
-          </Button>
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => dialogAc("bakim")}>
-            <Plus size={14} className="mr-1" /> Yeni Bakım
-          </Button>
-          <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white" onClick={() => dialogAc("tamirat")}>
-            <Plus size={14} className="mr-1" /> Yeni Tamirat
-          </Button>
+        {/* Mobilde 2 satır (PDF/Excel üstte, Yeni Bakım/Tamirat altta), masaüstünde tek satır */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0} className="flex-1 sm:flex-none">
+              <FileDown size={14} className="mr-1" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0} className="flex-1 sm:flex-none">
+              <FileSpreadsheet size={14} className="mr-1" /> Excel
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("bakim")}>
+              <Plus size={14} className="mr-1" /> Yeni Bakım
+            </Button>
+            <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("tamirat")}>
+              <Plus size={14} className="mr-1" /> Yeni Tamirat
+            </Button>
+          </div>
         </div>
       </div>
 
