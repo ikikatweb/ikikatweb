@@ -20,7 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Pencil, Eye, MapPin, Calendar, User,
+  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Pencil, Eye, MapPin, Calendar, User, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -480,14 +480,17 @@ export default function DashboardPage() {
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
   }, [yakitAlimlarTum, yakitDagitimlarTum, yakitVirmanlarTum, santMap, santiyeler, kullanici, isYonetici]);
 
-  // Widget 5: Son yakıt alımları — tüm zaman içinde en yeni 10 kayıt
+  // Widget 5: Son yakıt alımları — tüm zaman içinde en yeni 50 kayıt
+  // (kullanıcı 4'erli paginating ile gezecek)
   const sonAlimlar = useMemo(() => {
     // yakitAlimlarTum tüm zamandan veri içerir (yakitAlimlar son 30 günle sınırlı)
     const kaynak = yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar;
     return [...kaynak]
       .sort((a, b) => `${b.tarih}${b.saat ?? ""}`.localeCompare(`${a.tarih}${a.saat ?? ""}`))
-      .slice(0, 10);
+      .slice(0, 50);
   }, [yakitAlimlarTum, yakitAlimlar]);
+  // Görünen kayıt sayısı — varsayılan 4, "v" tuşuyla 4'er artar
+  const [sonAlimGoster, setSonAlimGoster] = useState(4);
 
   // Widget 6: Eksik evrak numaraları
   const eksikEvraklar = useMemo(() => {
@@ -1146,7 +1149,7 @@ export default function DashboardPage() {
         {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-6">
           <CardHeader icon={Fuel} title="Son Yakıt Alımları" color="text-emerald-700" />
           {sonAlimlar.length === 0 ? <p className="text-sm text-gray-400">Alım verisi yok</p> : (
-            <div className="max-h-[200px] overflow-y-auto">
+            <>
               <Table className="text-xs">
                 <TableHeader><TableRow>
                   <TableHead className="px-2 text-[10px]">Tarih</TableHead>
@@ -1158,7 +1161,7 @@ export default function DashboardPage() {
                   <TableHead className="px-2 text-[10px] text-center w-[40px]"></TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {sonAlimlar.map((a) => (
+                  {sonAlimlar.slice(0, sonAlimGoster).map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="px-2 whitespace-nowrap">{formatTarih(a.tarih)}</TableCell>
                       <TableCell className="px-2 truncate max-w-[100px]">{a.tedarikci_firma ?? "—"}</TableCell>
@@ -1173,7 +1176,34 @@ export default function DashboardPage() {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+              {/* Pagination — 4'erli aç/kapa */}
+              {sonAlimlar.length > 4 && (
+                <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t">
+                  {sonAlimGoster > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setSonAlimGoster((g) => Math.max(4, g - 4))}
+                      className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-[#1E3A5F] hover:bg-gray-50 rounded-full px-2.5 py-1 transition"
+                      title="4 kayıt gizle"
+                    >
+                      <ChevronUp size={14} />
+                      Daha az
+                    </button>
+                  )}
+                  {sonAlimGoster < sonAlimlar.length && (
+                    <button
+                      type="button"
+                      onClick={() => setSonAlimGoster((g) => Math.min(sonAlimlar.length, g + 4))}
+                      className="inline-flex items-center gap-1 text-[11px] text-[#1E3A5F] hover:bg-blue-50 rounded-full px-2.5 py-1 font-medium transition"
+                      title="4 kayıt daha göster"
+                    >
+                      <ChevronDown size={14} />
+                      4 kayıt daha ({sonAlimGoster}/{sonAlimlar.length})
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div> : null}
 
