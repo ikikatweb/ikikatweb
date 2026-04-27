@@ -12,7 +12,8 @@
       "Bash(pandoc --track-changes=all \"Teminatın iadesi REVİZELİ22.04.2026.docx\" -o /tmp/teminat.md)",
       "Read(//tmp/**)",
       "PowerShell($file = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\Teminatın iadesi REVİZELİ22.04.2026.docx\"; $tempDir = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\teminat_unpacked\"; if \\(Test-Path $tempDir\\) { Remove-Item -Recurse -Force $tempDir }; Expand-Archive -Path $file -DestinationPath $tempDir -Force; Get-ChildItem $tempDir\\\\word\\\\document.xml | Select-Object -First 1)",
-      "Bash(node -e \"const wp = require\\('web-push'\\); const k = wp.generateVAPIDKeys\\(\\); console.log\\('PUBLIC:', k.publicKey\\); console.log\\('PRIVATE:', k.privateKey\\);\")"
+      "Bash(node -e \"const wp = require\\('web-push'\\); const k = wp.generateVAPIDKeys\\(\\); console.log\\('PUBLIC:', k.publicKey\\); console.log\\('PRIVATE:', k.privateKey\\);\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

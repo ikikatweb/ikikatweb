@@ -95,6 +95,16 @@ export default function GidenEvrakPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Antet/kaşe görsellerini ön belleğe al — yazdır'a ilk tıklandığında
+  // resimlerin tamamen yüklü olması için. Aksi halde ilk print'te boş çıkıyor.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    for (const f of firmalar) {
+      if (f.antet_url) { const img = new Image(); img.src = f.antet_url; }
+      if (f.kase_url) { const img = new Image(); img.src = f.kase_url; }
+    }
+  }, [firmalar]);
+
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
     if (fBitis && e.evrak_tarihi > fBitis) return false;

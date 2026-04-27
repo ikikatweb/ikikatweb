@@ -1,7 +1,7 @@
 // Araç Bakım & Tamirat sayfası
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   getAracBakimlar,
   insertAracBakim,
@@ -151,6 +151,27 @@ export default function AracBakimPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, [lightboxUrl]);
+
+  // Mouse wheel ile zoom (resim + PDF) — passive:false gerektiğinden native listener
+  const lightboxWheelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const node = lightboxWheelRef.current;
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      // Ctrl basılı değilken de wheel ile zoom — kullanıcı isteği
+      e.preventDefault();
+      const adim = e.deltaY < 0 ? 0.15 : -0.15;
+      setLightboxZoom((z) => {
+        const yeni = z + adim;
+        if (yeni < 0.25) return 0.25;
+        if (yeni > 5) return 5;
+        return Math.round(yeni * 100) / 100;
+      });
+    };
+    node.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => node.removeEventListener("wheel", onWheel, { capture: true } as EventListenerOptions);
   }, [lightboxUrl]);
 
   const loadAll = useCallback(async () => {
@@ -655,27 +676,28 @@ export default function AracBakimPage() {
       {/* Lightbox — fatura/foto önizleme */}
       {lightboxUrl && (
         <div
+          ref={lightboxWheelRef}
           className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center animate-in fade-in duration-150"
           onClick={() => setLightboxUrl(null)}
         >
           {/* Üst kontroller */}
           <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
-            {resimMi(lightboxUrl) && (
+            {(resimMi(lightboxUrl) || pdfMi(lightboxUrl)) && (
               <>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setLightboxZoom((z) => Math.max(0.25, z - 0.25)); }}
                   className="bg-white/95 text-black rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-white"
-                  title="Küçült (-)"
+                  title="Küçült (- veya tekerleği aşağı çevir)"
                 >−</button>
                 <span className="bg-white/95 text-black rounded-lg px-3 py-1.5 text-sm font-medium min-w-[60px] text-center">
                   {Math.round(lightboxZoom * 100)}%
                 </span>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setLightboxZoom((z) => Math.min(4, z + 0.25)); }}
+                  onClick={(e) => { e.stopPropagation(); setLightboxZoom((z) => Math.min(5, z + 0.25)); }}
                   className="bg-white/95 text-black rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-white"
-                  title="Büyüt (+)"
+                  title="Büyüt (+ veya tekerleği yukarı çevir)"
                 >+</button>
                 <button
                   type="button"
@@ -705,7 +727,7 @@ export default function AracBakimPage() {
 
           {/* Alt bilgi çubuğu */}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-white/90 text-black text-xs px-4 py-1.5 rounded-full z-10 pointer-events-none">
-            {dosyaAd(lightboxUrl)} — Kapatmak için boşluğa tıkla veya Esc
+            {dosyaAd(lightboxUrl)} — Tekerleği çevir: zoom · Esc: kapat
           </div>
 
           {/* İçerik */}
@@ -723,11 +745,19 @@ export default function AracBakimPage() {
                 draggable={false}
               />
             ) : pdfMi(lightboxUrl) ? (
-              <iframe
-                src={lightboxUrl}
-                className="w-[92vw] h-[92vh] bg-white rounded-lg shadow-xl border-0"
-                title="PDF önizleme"
-              />
+              <div
+                style={{
+                  width: `${92 * lightboxZoom}vw`,
+                  height: `${92 * lightboxZoom}vh`,
+                  transition: "width 120ms, height 120ms",
+                }}
+              >
+                <iframe
+                  src={lightboxUrl}
+                  className="w-full h-full bg-white rounded-lg shadow-xl border-0"
+                  title="PDF önizleme"
+                />
+              </div>
             ) : (
               <div className="bg-white p-8 rounded-lg shadow-xl text-center">
                 <p className="text-gray-600 mb-3">Bu dosya tipi önizlenemiyor.</p>

@@ -91,6 +91,16 @@ export default function BankaYazismalariPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Antet/kaşe görsellerini ön belleğe al — yazdır'a ilk tıklandığında
+  // resimlerin tamamen yüklü olması için. Aksi halde ilk print'te boş çıkıyor.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    for (const f of firmalar) {
+      if (f.antet_url) { const img = new Image(); img.src = f.antet_url; }
+      if (f.kase_url) { const img = new Image(); img.src = f.kase_url; }
+    }
+  }, [firmalar]);
+
   // Oluşturan kullanıcı listesini çıkar
   const olusturanlar = Array.from(
     new Map(yazismalar.filter((y) => y.kullanicilar?.ad_soyad).map((y) => [y.olusturan_id, y.kullanicilar!.ad_soyad])).entries()
