@@ -761,7 +761,10 @@ function YakitPageContent() {
     if (miktar <= 0) { toast.error("Geçerli bir miktar girin."); return; }
 
     // KM/Saat validasyonu: son kayıttan küçük olamaz (edit modunda mevcut kayıt hariç)
-    // Yönetici için kısıtlama yok — eskiye dönük veri girebilir
+    // Yönetici için kısıtlama yok — eskiye dönük veri girebilir.
+    // Bozuk sayaç senaryosu: ya baştan 0 olur (önceki=0, yeni=0 kabul) ya da bozulduğu
+    // değerde kalır (önceki=50000, yeni=50000 kabul). Asla DÜŞMEZ — bu yüzden eşitlik OK,
+    // küçülme bloklu.
     if (!isYonetici) {
       const sonKayitlar = yakitKayitlari
         .filter((y) => y.arac_id === verDialogAracId && y.id !== verEditId)
