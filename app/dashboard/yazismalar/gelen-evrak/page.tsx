@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/gelen-evrak";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -162,13 +163,12 @@ export default function GelenEvrakPage() {
   }
 
   function printEvrak(e: GelenEvrakWithRelations) {
-    setPrintEvrakRef(e);
-    // Render olduktan sonra print başlat
-    setTimeout(() => {
-      window.print();
-      // Print sonrası temizle
-      setTimeout(() => setPrintEvrakRef(null), 500);
-    }, 200);
+    // iOS Safari user-gesture korunmalı — flushSync ile senkron render, sonra hemen print
+    flushSync(() => {
+      setPrintEvrakRef(e);
+    });
+    window.print();
+    setTimeout(() => setPrintEvrakRef(null), 1000);
   }
 
   return (

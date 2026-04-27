@@ -756,10 +756,14 @@ export default function SantiyelerPage() {
                       onClick={() => !isEditingThis && handleGerceklesenClick(editKey, s.sozlesme_fiyatlariyla_gerceklesen)}>
                       {isEditingThis ? (
                         <Input ref={inputRef} value={editValue}
+                          inputMode="decimal"
                           onChange={(e) => setEditValue(e.target.value)}
                           onBlur={saveEdit}
                           onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }}
-                          className="h-6 text-xs px-1 min-w-[100px] text-right" />
+                          // iOS auto-zoom'u önlemek için font-size 16px (style ile inline)
+                          // Tailwind text-xs (12px) iOS'ta input focus'unda zoom tetikler ve geri dönmez
+                          style={{ fontSize: "16px" }}
+                          className="h-7 px-1 min-w-[100px] text-right" />
                       ) : formatPara(s.sozlesme_fiyatlariyla_gerceklesen)}
                     </TableCell>
                     {/* Geçici Kabul */}

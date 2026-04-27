@@ -139,6 +139,17 @@ thead th {
   }
 }
 
+/* iOS Safari'de input/textarea/select focus'unda otomatik zoom yapılmasını önle.
+   Font-size 16px'ten küçük olan input'larda iOS otomatik zoom yapar ve geri dönmez.
+   Sadece mobilde uygula (masaüstünde küçük input'lar normal kalsın) */
+@media (max-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* Yazdırma stilleri — Yazışma evrağı PDF çıktısı için
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
@@ -150,22 +161,15 @@ thead th {
     size: A4;
     margin: 1.25cm 2.25cm 2.5cm 2.25cm;
 
-    /* Üst margin box'ları boş bırak (tarayıcı header ekleme çabasına karşı) */
+    /* Tüm margin box'ları boş bırak — tarayıcının kendi URL/tarih/sayfa header'ları
+       eklemesini engellemeye çalış. iOS Safari kendi header'ını yine de ekleyebilir,
+       o durumda kullanıcı yazdırma diyaloğunda "Headers and Footers" toggle'ını kapatmalı */
     @top-left { content: ""; }
     @top-center { content: ""; }
     @top-right { content: ""; }
-
-    /* Alt sol/sağ margin box'ları boş */
     @bottom-left { content: ""; }
+    @bottom-center { content: ""; }
     @bottom-right { content: ""; }
-
-    /* Alt orta — sayfa numarası (örn. 1/2, 2/2) */
-    @bottom-center {
-      content: counter(page) "/" counter(pages);
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 9pt;
-      color: #555;
-    }
   }
 
 

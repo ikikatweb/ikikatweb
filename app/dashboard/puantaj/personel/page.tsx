@@ -300,17 +300,31 @@ export default function PersonelPuantajPage() {
   const gosterilecekPersoneller = useMemo(() => {
     if (!santiyeId) return [];
     const ayBaslangici = `${yil}-${String(ay).padStart(2, "0")}-01`;
+    // Seçili ayda bu şantiyede puantaj kaydı olan personel id'leri
+    // (atamadan çıkarılmış olsa bile geçmiş kayıtlar görünür kalsın)
+    const ayBitisi = `${yil}-${String(ay).padStart(2, "0")}-${String(gunSayisi(yil, ay)).padStart(2, "0")}`;
+    const ayinPuantajPersonelleri = new Set<string>();
+    for (const p of puantajlar) {
+      if (p.santiye_id !== santiyeId) continue;
+      if (p.tarih < ayBaslangici || p.tarih > ayBitisi) continue;
+      ayinPuantajPersonelleri.add(p.personel_id);
+    }
     return personeller
-      .filter((p) => personelSantiyeMap.get(p.id)?.has(santiyeId))
+      .filter((p) => {
+        // 1) Şu an bu şantiyeye atanmış → göster
+        if (personelSantiyeMap.get(p.id)?.has(santiyeId)) return true;
+        // 2) Atamadan çıkarılmış ama bu ay/şantiyede puantaj kaydı var → göster
+        if (ayinPuantajPersonelleri.has(p.id)) return true;
+        return false;
+      })
       .filter((p) => {
         if (p.durum !== "pasif") return true;
-        if (!p.pasif_tarihi) return true; // tarih yoksa gösterelim (güvenli taraf)
-        // pasif_tarihi seçili ayın başından SONRASIysa göster (o ay veya sonrası pasife alındı)
-        // → yani seçili ay, pasif tarihinin AYI veya ÖNCESİ ise göster
+        if (!p.pasif_tarihi) return true;
+        // Pasif personel: pasife alındığı ay ve öncesinde göster
         return p.pasif_tarihi >= ayBaslangici;
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
-  }, [personeller, personelSantiyeMap, santiyeId, yil, ay]);
+  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay]);
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
   const personelliSantiyeler = useMemo(() => {
