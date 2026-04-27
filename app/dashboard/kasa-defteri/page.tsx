@@ -120,6 +120,12 @@ function KasaDefContent() {
 
   // Slip görüntüleme
   const [slipGoster, setSlipGoster] = useState<string | null>(null);
+  // Slip görüntüleyici — zoom + pan (sürükle)
+  const [slipZoom, setSlipZoom] = useState(1);
+  const [slipPan, setSlipPan] = useState({ x: 0, y: 0 });
+  const slipDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
+  const [slipDragging, setSlipDragging] = useState(false);
+  const slipViewportRef = useRef<HTMLDivElement | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -197,6 +203,42 @@ function KasaDefContent() {
     // Sadece URL parametresi değişikliğine duyarlı olsun.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personelParam]);
+
+  // Slip görüntüleyici — açıldığında zoom/pan sıfırla
+  useEffect(() => {
+    if (slipGoster) {
+      setSlipZoom(1);
+      setSlipPan({ x: 0, y: 0 });
+    }
+  }, [slipGoster]);
+
+  // Slip görüntüleyici — mouse wheel ile zoom (passive:false)
+  useEffect(() => {
+    if (!slipGoster) return;
+    const node = slipViewportRef.current;
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const adim = e.deltaY < 0 ? 0.15 : -0.15;
+      setSlipZoom((z) => {
+        const yeni = z + adim;
+        return Math.max(0.5, Math.min(5, Math.round(yeni * 100) / 100));
+      });
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => node.removeEventListener("wheel", onWheel);
+  }, [slipGoster]);
+
+  // Slip görüntüleyici — sürükleme global mouseup yakalama
+  useEffect(() => {
+    if (!slipDragging) return;
+    const onUp = () => {
+      slipDragRef.current = null;
+      setSlipDragging(false);
+    };
+    window.addEventListener("mouseup", onUp);
+    return () => window.removeEventListener("mouseup", onUp);
+  }, [slipDragging]);
 
   // Map'ler
   const personelMap = useMemo(() => {
@@ -1030,14 +1072,94 @@ function KasaDefContent() {
         </DialogContent>
       </Dialog>
 
-      {/* Slip Görüntüleme */}
+      {/* Slip Görüntüleme — zoom + pan (sürükle) */}
       <Dialog open={!!slipGoster} onOpenChange={(o) => !o && setSlipGoster(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Slip Görüntüle</DialogTitle></DialogHeader>
-          {slipGoster && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={slipGoster} alt="Slip" className="w-full rounded-lg" />
-          )}
+        <DialogContent className="max-w-3xl h-[85vh] flex flex-col p-4">
+          <DialogHeader>
+            <DialogTitle>Slip Görüntüle</DialogTitle>
+          </DialogHeader>
+          {/* Zoom kontrolleri */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button" size="sm" variant="outline"
+              onClick={() => setSlipZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))}
+              title="Küçült"
+            >−</Button>
+            <span className="text-sm font-medium min-w-[60px] text-center bg-gray-100 rounded px-2 py-1">
+              {Math.round(slipZoom * 100)}%
+            </span>
+            <Button
+              type="button" size="sm" variant="outline"
+              onClick={() => setSlipZoom((z) => Math.min(5, Math.round((z + 0.25) * 100) / 100))}
+              title="Büyüt"
+            >+</Button>
+            <Button
+              type="button" size="sm" variant="ghost"
+              onClick={() => { setSlipZoom(1); setSlipPan({ x: 0, y: 0 }); }}
+            >Sıfırla</Button>
+            <span className="text-xs text-gray-500 ml-2 hidden sm:inline">
+              Tekerlek: zoom · Sürükle: kaydır
+            </span>
+          </div>
+          {/* Görüntü viewport */}
+          <div
+            ref={slipViewportRef}
+            className="flex-1 overflow-hidden bg-gray-100 rounded-lg relative select-none"
+            style={{
+              cursor: slipZoom > 1 ? (slipDragging ? "grabbing" : "grab") : "default",
+              touchAction: slipZoom > 1 ? "none" : "auto",
+            }}
+            onMouseDown={(e) => {
+              if (slipZoom <= 1) return;
+              slipDragRef.current = {
+                startX: e.clientX,
+                startY: e.clientY,
+                startPanX: slipPan.x,
+                startPanY: slipPan.y,
+              };
+              setSlipDragging(true);
+            }}
+            onMouseMove={(e) => {
+              if (!slipDragRef.current) return;
+              const dx = e.clientX - slipDragRef.current.startX;
+              const dy = e.clientY - slipDragRef.current.startY;
+              setSlipPan({
+                x: slipDragRef.current.startPanX + dx,
+                y: slipDragRef.current.startPanY + dy,
+              });
+            }}
+          >
+            {slipGoster && (
+              slipGoster.toLowerCase().match(/\.pdf(\?|$)/) ? (
+                <iframe
+                  src={slipGoster}
+                  title="Slip PDF"
+                  className="absolute top-1/2 left-1/2 bg-white border-0"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    transformOrigin: "center center",
+                    transform: `translate(-50%, -50%) translate(${slipPan.x}px, ${slipPan.y}px) scale(${slipZoom})`,
+                    transition: slipDragging ? "none" : "transform 120ms",
+                    pointerEvents: slipZoom > 1 ? "none" : "auto",
+                  }}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={slipGoster}
+                  alt="Slip"
+                  draggable={false}
+                  className="absolute top-1/2 left-1/2 max-w-full max-h-full object-contain"
+                  style={{
+                    transformOrigin: "center center",
+                    transform: `translate(-50%, -50%) translate(${slipPan.x}px, ${slipPan.y}px) scale(${slipZoom})`,
+                    transition: slipDragging ? "none" : "transform 120ms",
+                  }}
+                />
+              )
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

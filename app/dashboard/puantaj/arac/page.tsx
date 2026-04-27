@@ -254,16 +254,17 @@ export default function AracPuantajPage() {
   }
 
   // Atama tab için: boştaki ve şantiyedeki araçlar
+  // NOT: "trafikten_cekildi" araçlar da atanabilir — sadece "pasif" araçlar hariç tutulur
   const atamaBostakiler = useMemo(() => {
     return araclar
-      .filter((a) => (a.durum ?? "aktif") === "aktif")
+      .filter((a) => (a.durum ?? "aktif") !== "pasif")
       .filter((a) => a.santiye_id !== santiyeId) // null veya başka şantiye
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
   }, [araclar, santiyeId]);
 
   const atamaSantiyedeki = useMemo(() => {
     return araclar
-      .filter((a) => (a.durum ?? "aktif") === "aktif")
+      .filter((a) => (a.durum ?? "aktif") !== "pasif")
       .filter((a) => a.santiye_id === santiyeId && santiyeId)
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
   }, [araclar, santiyeId]);
@@ -357,8 +358,9 @@ export default function AracPuantajPage() {
       return;
     }
     // Bu şantiyede gösterilecek araçların id listesi
+    // ("trafikten_cekildi" araçlar da dahil — sadece "pasif" hariç)
     const idList = araclar
-      .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id === santiyeId)
+      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === santiyeId)
       .map((a) => a.id);
 
     // Kira bedelleri
@@ -425,7 +427,7 @@ export default function AracPuantajPage() {
   const santiyelerAtamalı = useMemo(() => {
     const atamaliIds = new Set(
       araclar
-        .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id)
+        .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id)
         .map((a) => a.santiye_id as string)
     );
     const atamali = santiyeler.filter((s) => atamaliIds.has(s.id));
@@ -455,9 +457,10 @@ export default function AracPuantajPage() {
   // 1) santiye_id'si bu olan araçlar
   // 2) Bu ay puantajı olan araçlar (isim listesinde değilse bile)
   const goruntulenenAraclar = useMemo(() => {
-    const aktifAraclar = araclar.filter((a) => (a.durum ?? "aktif") === "aktif");
+    // "trafikten_cekildi" araçlar da dahil — sadece "pasif" hariç
+    const kullanilabilir = araclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
     const buAyPuantajVerilmis = new Set(puantajlar.map((p) => p.arac_id));
-    const liste = aktifAraclar.filter(
+    const liste = kullanilabilir.filter(
       (a) => a.santiye_id === santiyeId || buAyPuantajVerilmis.has(a.id)
     );
     return liste.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
@@ -517,7 +520,7 @@ export default function AracPuantajPage() {
   // Özet Rapor'da görüntülenecek araçlar (sadece bu şantiyeye atanmış olanlar)
   const ozetAraclari = useMemo(() => {
     return araclar
-      .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id === santiyeId)
+      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === santiyeId)
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
   }, [araclar, santiyeId]);
 

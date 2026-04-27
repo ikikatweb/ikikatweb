@@ -1471,7 +1471,7 @@ function YakitPageContent() {
                     // Deposu olan VEYA araç ataması bulunan şantiyeleri göster
                     const aracVarSantiyeIds = new Set<string>();
                     for (const a of araclar) {
-                      if ((a.durum ?? "aktif") === "aktif" && a.santiye_id) aracVarSantiyeIds.add(a.santiye_id);
+                      if ((a.durum ?? "aktif") !== "pasif" && a.santiye_id) aracVarSantiyeIds.add(a.santiye_id);
                     }
                     return filtreliSantiyeler(santiyeler, kullanici).filter(
                       (s) => (s.depo_kapasitesi ?? 0) > 0 || aracVarSantiyeIds.has(s.id),
