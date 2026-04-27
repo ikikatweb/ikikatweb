@@ -34,6 +34,20 @@ import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
+// Supabase/PostgREST hata nesnesini okunabilir stringe çevir
+// (Aksi halde "[object Object]" görünüyordu)
+function hataMesaji(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const e = err as { message?: string; details?: string; hint?: string; code?: string };
+    const parts = [e.message, e.details, e.hint, e.code ? `(${e.code})` : ""].filter(Boolean);
+    if (parts.length > 0) return parts.join(" — ");
+    try { return JSON.stringify(err); } catch { return "Bilinmeyen hata"; }
+  }
+  return String(err);
+}
+
 type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -148,8 +162,8 @@ export default function SantiyeDefPage() {
         setHavaDurumu(""); setSicaklik(""); setKayitlar([]);
       }
     } catch (err) {
-      console.error(err);
-      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Defter yükleme hatası:", err);
+      const msg = hataMesaji(err);
       if (msg.includes("does not exist")) {
         toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: 8000 });
       }
@@ -212,7 +226,8 @@ export default function SantiyeDefPage() {
         toast.success("Defter oluşturuldu.");
       }
     } catch (err) {
-      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Şantiye defteri hatası:", err);
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
     }
   }
 
@@ -242,7 +257,8 @@ export default function SantiyeDefPage() {
       setDefterDialogOpen(false);
       toast.success("Kayıt eklendi.");
     } catch (err) {
-      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Şantiye defteri hatası:", err);
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
     } finally { setSaving(false); }
   }
 
@@ -254,7 +270,8 @@ export default function SantiyeDefPage() {
       await loadDefter(); await loadDefterListesi();
       toast.success("Kayıt güncellendi.");
     } catch (err) {
-      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Şantiye defteri hatası:", err);
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
     }
   }
 
@@ -266,7 +283,8 @@ export default function SantiyeDefPage() {
       await loadDefter(); await loadDefterListesi();
       toast.success("Kayıt silindi.");
     } catch (err) {
-      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Şantiye defteri hatası:", err);
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
     }
   }
 
@@ -279,7 +297,8 @@ export default function SantiyeDefPage() {
       await loadDefterListesi();
       toast.success("Defter silindi.");
     } catch (err) {
-      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("Şantiye defteri hatası:", err);
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
     }
   }
 

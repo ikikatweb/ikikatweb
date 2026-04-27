@@ -480,10 +480,14 @@ export default function DashboardPage() {
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
   }, [yakitAlimlarTum, yakitDagitimlarTum, yakitVirmanlarTum, santMap, santiyeler, kullanici, isYonetici]);
 
-  // Widget 5: Son yakıt alımları
+  // Widget 5: Son yakıt alımları — tüm zaman içinde en yeni 10 kayıt
   const sonAlimlar = useMemo(() => {
-    return [...yakitAlimlar].sort((a, b) => b.tarih.localeCompare(a.tarih)).slice(0, 10);
-  }, [yakitAlimlar]);
+    // yakitAlimlarTum tüm zamandan veri içerir (yakitAlimlar son 30 günle sınırlı)
+    const kaynak = yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar;
+    return [...kaynak]
+      .sort((a, b) => `${b.tarih}${b.saat ?? ""}`.localeCompare(`${a.tarih}${a.saat ?? ""}`))
+      .slice(0, 10);
+  }, [yakitAlimlarTum, yakitAlimlar]);
 
   // Widget 6: Eksik evrak numaraları
   const eksikEvraklar = useMemo(() => {
