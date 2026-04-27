@@ -125,7 +125,7 @@ function tr(s: string): string {
 }
 
 export default function AracPuantajPage() {
-  const { kullanici, hasPermission } = useAuth();
+  const { kullanici, hasPermission, sadeceKendiKayitlari } = useAuth();
   const yEkle = hasPermission("puantaj-arac", "ekle");
   const yDuzenle = hasPermission("puantaj-arac", "duzenle");
   const ySil = hasPermission("puantaj-arac", "sil");
@@ -1628,9 +1628,12 @@ export default function AracPuantajPage() {
           <TabsTrigger value="atama">
             <Link2 size={14} className="mr-1" /> Araç Atama
           </TabsTrigger>
-          <TabsTrigger value="ozet">
-            <FileBarChart size={14} className="mr-1" /> Özet Rapor
-          </TabsTrigger>
+          {/* Özet Rapor — kısıtlı kullanıcı için gizli (yönetici + şantiye admini görür) */}
+          {!sadeceKendiKayitlari && (
+            <TabsTrigger value="ozet">
+              <FileBarChart size={14} className="mr-1" /> Özet Rapor
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* === PUANTAJ TAB === */}

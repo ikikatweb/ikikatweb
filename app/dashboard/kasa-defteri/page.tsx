@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 // Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -64,8 +64,18 @@ function tr(s: string): string {
 
 export default function KasamuDefPage() {
   return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}>
-    <KasaDefContent />
+    <KasaDefContentWithKey />
   </Suspense>;
+}
+
+// "personel" URL parametresine göre key — Dashboard'dan farklı kullanıcılara üst üste
+// tıklandığında Next.js Router Cache aynı component instance'ı yeniden kullansa da
+// key değişikliği React'i remount etmeye zorlar. Diğer filtre değişiklikleri URL'i
+// değiştirmez, bu yüzden state kaybolmaz (sadece personel için remount olur).
+function KasaDefContentWithKey() {
+  const searchParams = useSearchParams();
+  const personel = searchParams.get("personel") ?? "_yok_";
+  return <KasaDefContent key={`p-${personel}`} />;
 }
 
 function KasaDefContent() {
@@ -91,18 +101,11 @@ function KasaDefContent() {
   // Filtreler
   const bugun = new Date();
   const [filtreSantiye, setFiltreSantiye] = useState("");
-  // filtrePersonel — URL ?personel parametresi tek kaynak.
-  // Dashboard'dan üst üste farklı kişilere tıklandığında doğru kişi yüklenir.
-  // Dropdown'dan değiştirme: URL'i router.push ile güncelliyoruz (aşağıda).
-  const router = useRouter();
-  const filtrePersonel = searchParams.get("personel") ?? "";
-  const setFiltrePersonel = useCallback((val: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (val) params.set("personel", val);
-    else params.delete("personel");
-    const qs = params.toString();
-    router.replace(`/dashboard/kasa-defteri${qs ? `?${qs}` : ""}`);
-  }, [router, searchParams]);
+  // filtrePersonel — useState ile URL'den init. Dashboard'dan farklı kişilere
+  // tıklandığında: KasaDefContentWithKey wrapper key remount yapar, useState
+  // tekrar URL'den init olur, doğru kişi gelir. Dropdown değişimi sadece state'i
+  // günceller (URL'i değiştirmez) → diğer filtreler kaybolmaz.
+  const [filtrePersonel, setFiltrePersonel] = useState(() => searchParams.get("personel") ?? "");
   // Varsayılan ödeme filtresi:
   //  - Yönetici: "nakit" (çoğunlukla nakit takibi yapar, isterse Kart/Tümü seçer)
   //  - Kısıtlı kullanıcı: "" (Tümü) — kendi tüm hareketlerini hem nakit hem kart görsün
