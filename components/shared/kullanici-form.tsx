@@ -172,10 +172,11 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
 
     setLoading(true);
     try {
-      // Şantiye ataması: kısıtlı VE şantiye admini için aktif
+      // Şantiye ataması, izin matrisi, limit, dashboard widget:
+      // hem kısıtlı hem şantiye admini için kullanılır
+      // (yönetici hepsine sahip — bu alanlar boş bırakılır)
       const santiyeKullanir = rol === "kisitli" || rol === "santiye_admin";
-      // İzin matrisi + limit + dashboard widget: SADECE kısıtlı için
-      const izinKullanir = rol === "kisitli";
+      const izinKullanir = rol === "kisitli" || rol === "santiye_admin";
       if (isEdit) {
         await updateKullanici(kullanici.id, {
           ad_soyad: formatliAdSoyad,
@@ -261,8 +262,15 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
         </select>
         {rol === "santiye_admin" && (
           <p className="text-xs text-blue-600">
-            Bu kullanıcı atanan şantiyelerdeki <strong>tüm kullanıcıların</strong> verilerini görebilir
-            (yazışmalar, defter, kasa, vb). Kullanıcı yönetimi hariç tüm modüllere erişir.
+            <strong>Şantiye Yöneticisi:</strong> Aşağıda verdiğiniz yetki alanlarında atanan şantiyelerdeki{" "}
+            <strong>tüm kullanıcıların</strong> verilerine erişir (yazışmalar, defter, kasa vb).
+            Yetki vermediğiniz modüllere erişemez.
+          </p>
+        )}
+        {rol === "kisitli" && (
+          <p className="text-xs text-gray-500">
+            <strong>Kısıtlı Kullanıcı:</strong> Aşağıda verdiğiniz yetki alanlarında atanan şantiyelerde{" "}
+            <strong>sadece kendi kayıtlarını</strong> görür/yazar.
           </p>
         )}
       </div>
@@ -303,8 +311,6 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
             </CardContent>
           </Card>
 
-          {/* Dashboard widget + limit + izin matrisi — SADECE kısıtlı için */}
-          {rol === "kisitli" && (<>
           {/* Dashboard Widget Seçimi */}
           <Card>
             <CardContent className="pt-4">
@@ -459,7 +465,6 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
               </div>
             </CardContent>
           </Card>
-          </>)}
         </>
       )}
 

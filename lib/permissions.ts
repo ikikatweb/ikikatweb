@@ -89,6 +89,10 @@ export function pathToAction(pathname: string): IzinAksiyonu {
 type Rol = "yonetici" | "santiye_admin" | "kisitli";
 
 // İzin kontrolü
+// Hem "kisitli" hem "santiye_admin" izin matrisinden geçer; aralarındaki fark
+// VERİ KAPSAMINDA: kisitli sadece kendi kayıtlarını görür, santiye_admin
+// atandığı şantiyelerin TÜM kullanıcılarının kayıtlarını görür. Modül erişimi
+// her iki rol için de "izinler" matrisine göre belirlenir.
 export function hasPermission(
   rol: Rol,
   izinler: Izinler,
@@ -101,11 +105,7 @@ export function hasPermission(
   // Kullanıcılar modülü sadece yönetici
   if (moduleKey === "yonetim-kullanicilar") return false;
 
-  // Şantiye admini: izin matrisi yönetici ile aynı (modül kısıtı yok),
-  // erişim sadece santiye_ids üzerinden veri filtrelemesiyle daraltılır.
-  if (rol === "santiye_admin") return true;
-
-  // Kısıtlı kullanıcı izin kontrolü
+  // Kısıtlı + Şantiye admini: izin matrisi kontrolü
   const modulIzin = izinler[moduleKey];
   if (!modulIzin) return false;
 
@@ -123,11 +123,7 @@ export function getAccessibleModuleKeys(
     return all;
   }
 
-  // Şantiye admini: tüm modüller (kullanıcı yönetimi hariç)
-  if (rol === "santiye_admin") {
-    return new Set(MODUL_LISTESI.map((m) => m.key));
-  }
-
+  // Kısıtlı + Şantiye admini: izinler matrisinden gelen modüller
   const keys = new Set<string>();
   for (const m of MODUL_LISTESI) {
     if (izinler[m.key]?.goruntule) {
