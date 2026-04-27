@@ -125,7 +125,27 @@ function KasaDefContent() {
   const [slipPan, setSlipPan] = useState({ x: 0, y: 0 });
   const slipDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
   const [slipDragging, setSlipDragging] = useState(false);
-  const slipViewportRef = useRef<HTMLDivElement | null>(null);
+  // Callback ref — node tam attach olunca wheel listener'ı bağla.
+  // Radix Dialog portal asenkron mount ettiği için useEffect+useRef güvenilir değildi.
+  const slipWheelCleanupRef = useRef<(() => void) | null>(null);
+  const setSlipViewport = useCallback((node: HTMLDivElement | null) => {
+    // Eski node varsa cleanup yap
+    if (slipWheelCleanupRef.current) {
+      slipWheelCleanupRef.current();
+      slipWheelCleanupRef.current = null;
+    }
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const adim = e.deltaY < 0 ? 0.15 : -0.15;
+      setSlipZoom((z) => {
+        const yeni = z + adim;
+        return Math.max(0.5, Math.min(5, Math.round(yeni * 100) / 100));
+      });
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    slipWheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -210,23 +230,6 @@ function KasaDefContent() {
       setSlipZoom(1);
       setSlipPan({ x: 0, y: 0 });
     }
-  }, [slipGoster]);
-
-  // Slip görüntüleyici — mouse wheel ile zoom (passive:false)
-  useEffect(() => {
-    if (!slipGoster) return;
-    const node = slipViewportRef.current;
-    if (!node) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const adim = e.deltaY < 0 ? 0.15 : -0.15;
-      setSlipZoom((z) => {
-        const yeni = z + adim;
-        return Math.max(0.5, Math.min(5, Math.round(yeni * 100) / 100));
-      });
-    };
-    node.addEventListener("wheel", onWheel, { passive: false });
-    return () => node.removeEventListener("wheel", onWheel);
   }, [slipGoster]);
 
   // Slip görüntüleyici — sürükleme global mouseup yakalama
@@ -1103,7 +1106,7 @@ function KasaDefContent() {
           </div>
           {/* Görüntü viewport */}
           <div
-            ref={slipViewportRef}
+            ref={setSlipViewport}
             className="flex-1 overflow-hidden bg-gray-100 rounded-lg relative select-none"
             style={{
               cursor: slipZoom > 1 ? (slipDragging ? "grabbing" : "grab") : "default",

@@ -1280,8 +1280,8 @@ export default function DashboardPage() {
                       <span className="text-xs font-bold text-[#1E3A5F]">{det.santiye_adi}</span>
                     </div>
                   </div>
-                  {/* Günler */}
-                  <div className="divide-y max-h-[350px] overflow-y-auto">
+                  {/* Günler — 5 gün scrollbar olmadan tam görünsün */}
+                  <div className="divide-y">
                     {det.gunler.map((gun) => {
                       const d = new Date(gun.tarih + "T00:00:00");
                       const gunAdi = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"][d.getDay()];
