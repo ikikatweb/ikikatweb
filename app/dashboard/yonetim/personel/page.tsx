@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPersoneller, deletePersonel } from "@/lib/supabase/queries/personel";
-import type { PersonelWithRelations } from "@/lib/supabase/types";
+import { getPersonelSantiyeler } from "@/lib/supabase/queries/personel-santiye";
+import type { PersonelWithRelations, PersonelSantiye } from "@/lib/supabase/types";
+import { useAuth } from "@/hooks";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -29,15 +31,21 @@ function tr(s: string): string {
 
 export default function PersonelPage() {
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
+  const [personelSantiyeler, setPersonelSantiyeler] = useState<PersonelSantiye[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const router = useRouter();
+  const { kullanici, isYonetici } = useAuth();
 
   async function loadPersoneller() {
     try {
-      const data = await getPersoneller();
+      const [data, ps] = await Promise.all([
+        getPersoneller(),
+        getPersonelSantiyeler().catch(() => []),
+      ]);
       setPersoneller((data as PersonelWithRelations[]) ?? []);
+      setPersonelSantiyeler(ps as PersonelSantiye[]);
     } catch {
       toast.error("Personeller yüklenirken hata oluştu.");
     } finally {
@@ -60,7 +68,22 @@ export default function PersonelPage() {
     }
   }
 
+  // Kısıtlı / Şantiye admini: sadece atandığı şantiyelerdeki personeller
+  // (primary santiye_id VEYA personel_santiye junction üzerinden)
+  const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+    ? new Set(kullanici.santiye_ids)
+    : null;
+  const personelIzinliSantiyedeMi = (personelId: string, primarySantiyeId: string | null) => {
+    if (!izinliSantiyeler) return true;
+    if (primarySantiyeId && izinliSantiyeler.has(primarySantiyeId)) return true;
+    // Junction tablosunda atanmış mı?
+    return personelSantiyeler.some(
+      (ps) => ps.personel_id === personelId && izinliSantiyeler.has(ps.santiye_id),
+    );
+  };
+
   const filtrelenmis = personeller.filter((p) => {
+    if (!personelIzinliSantiyedeMi(p.id, p.santiye_id)) return false;
     if (!arama.trim()) return true;
     const q = arama.toLowerCase();
     return (
