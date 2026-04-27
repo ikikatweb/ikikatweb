@@ -28,34 +28,26 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // getUser hata verebilir (Invalid Refresh Token vs.) — yakala ve login'e yönlendir
+  // getUser auth hatası verebilir (Invalid Refresh Token, Auth session missing).
+  // Sessiz şekilde user=null kabul et — sonsuz redirect döngüsünü önle.
   let user = null;
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) {
-      // Refresh token bozuksa session'ı temizle, login'e yönlendir
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      const redirectResponse = NextResponse.redirect(url);
-      // Bozuk Supabase auth çerezlerini sil
-      for (const c of request.cookies.getAll()) {
-        if (c.name.startsWith("sb-")) redirectResponse.cookies.delete(c.name);
-      }
-      return redirectResponse;
-    }
+    const { data } = await supabase.auth.getUser();
     user = data.user;
   } catch {
-    // Network/auth hatası — login'e yönlendir
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    // Sessizce devam et — user null olarak kalacak
   }
 
   // Oturum yoksa dashboard'a erişimi engelle
   if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    const redirectResponse = NextResponse.redirect(url);
+    // Bozuk Supabase auth çerezlerini sil (varsa)
+    for (const c of request.cookies.getAll()) {
+      if (c.name.startsWith("sb-")) redirectResponse.cookies.delete(c.name);
+    }
+    return redirectResponse;
   }
 
   // Oturum varsa login'e girmeyi engelle
