@@ -155,7 +155,7 @@ export default function YakitPage() {
 
 function YakitPageContent() {
   const yakitSearchParams = useSearchParams();
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari } = useAuth();
 
   // Veri state'leri
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -467,16 +467,29 @@ function YakitPageContent() {
   const tabloSatirlari = useMemo<TabloSatir[]>(() => {
     const aramaQ = arama.trim().toLowerCase();
 
+    // Şantiye admini için izinli şantiye seti
+    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
+
     // Filter
     const filtrelenmis = tumHareketler.filter((h) => {
+      // Şantiye admini: sadece atandığı şantiyelerin hareketleri
+      if (izinliSantiyeler) {
+        if (h.tip === "arac_yakit" || h.tip === "alim") {
+          if (!izinliSantiyeler.has(h.santiye_id)) return false;
+        } else if (h.tip === "virman") {
+          if (!izinliSantiyeler.has(h.gonderen_santiye_id) && !izinliSantiyeler.has(h.alan_santiye_id)) return false;
+        }
+      }
       // Kısıtlı kullanıcı: sadece kendi kayıtlarını ve izinli tarih aralığını görsün
-      if (!isYonetici && kullanici) {
+      if (sadeceKendiKayitlari && kullanici) {
         if (h.created_by !== kullanici.id) return false;
         if (!tarihIzinliMi(kullanici, h.tarih)) return false;
       }
 
-      // Tarih aralığı (yönetici filtrelemesi)
-      if (isYonetici && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
+      // Tarih aralığı (yönetici + şantiye admini için)
+      if ((isYonetici || isShantiyeAdmin) && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
 
       // Şantiye filtresi
       if (filtreSantiyeId) {
@@ -621,7 +634,7 @@ function YakitPageContent() {
   }, [
     tumHareketler, filtreSantiyeId, filtreBaslangic, filtreBitis, arama,
     aracMap, santiyeMap, stokMap, limitMap, aracGenelOrt, kullaniciMap,
-    isYonetici, kullanici,
+    isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, kullanici,
   ]);
 
   // Dönem özet kartları
@@ -1124,11 +1137,13 @@ function YakitPageContent() {
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
           <Fuel size={24} /> Yakıt
         </h1>
-        {isYonetici && (
+        {(isYonetici || isShantiyeAdmin) && (
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={() => setYakitKiralikDialogOpen(true)}>
-              <Truck size={14} className="mr-1" /> Kiralık Araç Ekle
-            </Button>
+            {isYonetici && (
+              <Button variant="outline" size="sm" onClick={() => setYakitKiralikDialogOpen(true)}>
+                <Truck size={14} className="mr-1" /> Kiralık Araç Ekle
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={exportPDF} disabled={tabloSatirlari.length === 0}>
               <FileDown size={14} className="mr-1" /> PDF
             </Button>
@@ -1141,7 +1156,7 @@ function YakitPageContent() {
 
       {/* Filtre barı */}
       <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4 space-y-3">
-        {isYonetici && (
+        {(isYonetici || isShantiyeAdmin) && (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Şantiye</Label>
@@ -1218,7 +1233,7 @@ function YakitPageContent() {
       </div>
 
       {/* Özet kartları — sadece yönetici */}
-      {isYonetici && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      {(isYonetici || isShantiyeAdmin) && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <div className="text-[10px] text-gray-500 uppercase font-semibold">Mevcut Depo Stoğu</div>
           <div className={`text-xl font-bold ${mevcutDepoStok !== null && mevcutDepoStok < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>
@@ -1254,8 +1269,8 @@ function YakitPageContent() {
         </div>
       </div>}
 
-      {/* Kısıtlı kullanıcı bilgi notu */}
-      {!isYonetici && kullanici && (
+      {/* Kısıtlı kullanıcı bilgi notu (şantiye admini görmesin) */}
+      {sadeceKendiKayitlari && kullanici && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-4 text-xs text-amber-800">
           Sadece kendi girdiğiniz kayıtları görebilirsiniz{kullanici.geriye_donus_gun != null ? ` (son ${kullanici.geriye_donus_gun} gün)` : ""}.
         </div>
@@ -1287,7 +1302,7 @@ function YakitPageContent() {
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] bg-[#0f2540]">Stok</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Kullanıcı Adı</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Not</TableHead>
-                {isYonetici && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
+                {(isYonetici || isShantiyeAdmin) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1410,7 +1425,7 @@ function YakitPageContent() {
                     <TableCell className="px-2 text-[10px] text-gray-500 max-w-[120px] truncate" title={h.notu ?? ""}>
                       {h.notu || "—"}
                     </TableCell>
-                    {isYonetici && (
+                    {(isYonetici || isShantiyeAdmin) && (
                       <TableCell className="px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button

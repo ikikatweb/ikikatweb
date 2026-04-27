@@ -16,6 +16,7 @@ import {
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import type { IscilikTakibiWithSantiye, Tanimlama } from "@/lib/supabase/types";
+import { useAuth } from "@/hooks";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -158,6 +159,7 @@ export default function IscilikTakibiPage() {
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { kullanici, isYonetici } = useAuth();
 
   const loadData = useCallback(async () => {
     try {
@@ -215,8 +217,14 @@ export default function IscilikTakibiPage() {
         }
       }
 
+      // Kısıtlı / Şantiye admini: sadece atandığı şantiyeler görünür
+      const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+        ? new Set(kullanici.santiye_ids)
+        : null;
+
       // İş grubu sırasına göre sırala, aynı gruptakiler oluşturulma sırasına göre
       const sorted = ((data as IscilikTakibiWithSantiye[]) ?? [])
+        .filter((r) => izinliSantiyeler ? izinliSantiyeler.has(r.santiye_id) : true)
         .map((r) => {
           const sonAy = enSonAyliklar.get(r.id);
           return {
@@ -240,7 +248,7 @@ export default function IscilikTakibiPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isYonetici, kullanici]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
@@ -313,7 +321,12 @@ export default function IscilikTakibiPage() {
   async function loadSilinenler() {
     try {
       const data = await getSilinenIscilikTakibi();
-      setSilinenler((data as IscilikTakibiWithSantiye[]) ?? []);
+      const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+        ? new Set(kullanici.santiye_ids)
+        : null;
+      const filtreli = ((data as IscilikTakibiWithSantiye[]) ?? [])
+        .filter((r) => izinliSantiyeler ? izinliSantiyeler.has(r.santiye_id) : true);
+      setSilinenler(filtreli);
     } catch { /* sessiz */ }
   }
 

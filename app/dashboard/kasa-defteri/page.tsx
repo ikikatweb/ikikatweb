@@ -68,7 +68,7 @@ export default function KasamuDefPage() {
 
 function KasaDefContent() {
   const searchParams = useSearchParams();
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [personeller, setPersoneller] = useState<KasaKullanici[]>([]);
@@ -273,20 +273,26 @@ function KasaDefContent() {
 
   // Filtrelenmiş satırlar — şantiye veya personel seçilmeden boş göster
   const filtrelenmis = useMemo(() => {
-    // Yönetici: şantiye veya personel seçilmeden veri gösterme
-    if (isYonetici && !filtreSantiye && !filtrePersonel) return [];
+    // Yönetici/Şantiye Admin: şantiye veya personel seçilmeden veri gösterme
+    if ((isYonetici || isShantiyeAdmin) && !filtreSantiye && !filtrePersonel) return [];
+
+    // Şantiye admini: atanmış olmayan şantiyeler hariç
+    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
 
     const q = arama.trim().toLowerCase();
     return hareketler.filter((h) => {
-      // Kısıtlı kullanıcı
-      if (!isYonetici && kullanici) {
-        // Kısıtlı kullanıcı sadece kendi personel_id'si olan kayıtları görür
+      // Şantiye admini: sadece atandığı şantiyeler
+      if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) return false;
+      // Kısıtlı kullanıcı (yalnızca kendi kayıtları)
+      if (sadeceKendiKayitlari && kullanici) {
         if (h.personel_id !== kullanici.id) return false;
         // Görüntüleme sınırı — kullanıcının kasa_goruntuleme_gun değerine göre filtrele
         if (!tarihIzinliMi(kullanici, h.tarih, "kasa", "goruntuleme")) return false;
       }
-      // Tarih
-      if (isYonetici && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
+      // Tarih (yönetici + şantiye admini için tarih aralığı uygulanır)
+      if ((isYonetici || isShantiyeAdmin) && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
       // Şantiye
       if (filtreSantiye && h.santiye_id !== filtreSantiye) return false;
       // Personel
@@ -310,7 +316,7 @@ function KasaDefContent() {
       }
       return true;
     }).sort((a, b) => `${b.tarih}${b.created_at}`.localeCompare(`${a.tarih}${a.created_at}`));
-  }, [hareketler, filtreSantiye, filtrePersonel, filtreOdeme, filtreBaslangic, filtreBitis, arama, isYonetici, kullanici, personelMap, santiyeMap, kullaniciMap]);
+  }, [hareketler, filtreSantiye, filtrePersonel, filtreOdeme, filtreBaslangic, filtreBitis, arama, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, kullanici, personelMap, santiyeMap, kullaniciMap]);
 
   // Filtre dropdown'u için — sadece en az bir kasa hareketi girmiş kullanıcılar
   const veriGirenPersoneller = useMemo(() => {
@@ -335,12 +341,17 @@ function KasaDefContent() {
 
   // Devreden bakiye — dönem başlangıcından önceki nakit hareketlerin toplamı
   const devredenBakiye = useMemo(() => {
+    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
     let bakiye = 0;
     for (const h of hareketler) {
       if (h.odeme_yontemi !== "nakit") continue;
       if (h.tarih >= filtreBaslangic) continue;
+      // Şantiye admini: sadece atandığı şantiyeler
+      if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) continue;
       // Kısıtlı kullanıcı sadece KENDİ kayıtlarının devir bakiyesini görsün
-      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
+      if (sadeceKendiKayitlari && kullanici && h.personel_id !== kullanici.id) continue;
       // Şantiye filtresi
       if (filtreSantiye && h.santiye_id !== filtreSantiye) continue;
       // Personel filtresi
@@ -348,13 +359,13 @@ function KasaDefContent() {
       bakiye += h.tip === "gelir" ? h.tutar : -h.tutar;
     }
     return bakiye;
-  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, isYonetici, kullanici]);
+  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, isShantiyeAdmin, sadeceKendiKayitlari, kullanici]);
 
   // Dialog açma
   function dialogAc() {
     setEditId(null);
-    // Kısıtlı kullanıcı ise otomatik olarak kendisi seçili
-    setDPersonel(!isYonetici && kullanici ? kullanici.id : (filtrePersonel || ""));
+    // Kısıtlı kullanıcı ise otomatik olarak kendisi seçili (şantiye admini değil)
+    setDPersonel(sadeceKendiKayitlari && kullanici ? kullanici.id : (filtrePersonel || ""));
     setDSantiye(filtreSantiye || "");
     const bugunStr = new Date().toISOString().slice(0, 10);
     setDTarih(bugunStr);
@@ -569,8 +580,10 @@ function KasaDefContent() {
       if (filtrePersonel && h.personel_id !== filtrePersonel) continue;
       // Şantiye filtresi — seçiliyse sadece o şantiye
       if (filtreSantiye && h.santiye_id !== filtreSantiye) continue;
+      // Şantiye admini: sadece atandığı şantiyeler
+      if (isShantiyeAdmin && kullanici?.santiye_ids && !kullanici.santiye_ids.includes(h.santiye_id)) continue;
       // Kısıtlı kullanıcı: sadece kendi kayıtları
-      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
+      if (sadeceKendiKayitlari && kullanici && h.personel_id !== kullanici.id) continue;
 
       const santiyeAdi = tr(santiyeMap.get(h.santiye_id) ?? "Diger");
       if (!santiyeOzet.has(santiyeAdi)) santiyeOzet.set(santiyeAdi, { devreden: 0, gelir: 0, gider: 0 });
