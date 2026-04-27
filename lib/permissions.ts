@@ -86,9 +86,11 @@ export function pathToAction(pathname: string): IzinAksiyonu {
   return "goruntule";
 }
 
+type Rol = "yonetici" | "santiye_admin" | "kisitli";
+
 // İzin kontrolü
 export function hasPermission(
-  rol: "yonetici" | "kisitli",
+  rol: Rol,
   izinler: Izinler,
   moduleKey: string,
   aksiyon: IzinAksiyonu
@@ -99,6 +101,10 @@ export function hasPermission(
   // Kullanıcılar modülü sadece yönetici
   if (moduleKey === "yonetim-kullanicilar") return false;
 
+  // Şantiye admini: izin matrisi yönetici ile aynı (modül kısıtı yok),
+  // erişim sadece santiye_ids üzerinden veri filtrelemesiyle daraltılır.
+  if (rol === "santiye_admin") return true;
+
   // Kısıtlı kullanıcı izin kontrolü
   const modulIzin = izinler[moduleKey];
   if (!modulIzin) return false;
@@ -108,13 +114,18 @@ export function hasPermission(
 
 // Kullanıcının görebileceği modül anahtarları
 export function getAccessibleModuleKeys(
-  rol: "yonetici" | "kisitli",
+  rol: Rol,
   izinler: Izinler
 ): Set<string> {
   if (rol === "yonetici") {
     const all = new Set(MODUL_LISTESI.map((m) => m.key));
     all.add("yonetim-kullanicilar");
     return all;
+  }
+
+  // Şantiye admini: tüm modüller (kullanıcı yönetimi hariç)
+  if (rol === "santiye_admin") {
+    return new Set(MODUL_LISTESI.map((m) => m.key));
   }
 
   const keys = new Set<string>();

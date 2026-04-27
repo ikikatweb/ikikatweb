@@ -116,7 +116,7 @@ export default function KullanicilarPage() {
       head: [["Ad Soyad", "Kullanici Adi", "Rol", "Durum"]],
       body: kullanicilar.map((k) => [
         tr(k.ad_soyad), k.kullanici_adi,
-        k.rol === "yonetici" ? "Yonetici" : "Kisitli",
+        k.rol === "yonetici" ? "Yonetici" : k.rol === "santiye_admin" ? "Santiye Yoneticisi" : "Kisitli",
         k.aktif ? "Aktif" : "Pasif",
       ]),
       styles: { fontSize: 9, cellPadding: 2 },
@@ -129,7 +129,7 @@ export default function KullanicilarPage() {
     const headers = ["Ad Soyad", "Kullanıcı Adı", "Rol", "Durum"];
     const data = kullanicilar.map((k) => [
       k.ad_soyad, k.kullanici_adi,
-      k.rol === "yonetici" ? "Yönetici" : "Kısıtlı",
+      k.rol === "yonetici" ? "Yönetici" : k.rol === "santiye_admin" ? "Şantiye Yöneticisi" : "Kısıtlı",
       k.aktif ? "Aktif" : "Pasif",
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -202,8 +202,14 @@ export default function KullanicilarPage() {
                   <TableCell>{k.kullanici_adi}</TableCell>
                   <TableCell className="font-mono text-sm">{k.sifre_gorunur ?? "••••••"}</TableCell>
                   <TableCell className="text-center">
-                    <Badge className={k.rol === "yonetici" ? "bg-[#F97316]" : "bg-gray-500"}>
-                      {k.rol === "yonetici" ? "Yönetici" : "Kısıtlı"}
+                    <Badge className={
+                      k.rol === "yonetici" ? "bg-[#F97316]"
+                      : k.rol === "santiye_admin" ? "bg-blue-600"
+                      : "bg-gray-500"
+                    }>
+                      {k.rol === "yonetici" ? "Yönetici"
+                        : k.rol === "santiye_admin" ? "Şantiye Yöneticisi"
+                        : "Kısıtlı"}
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px]">

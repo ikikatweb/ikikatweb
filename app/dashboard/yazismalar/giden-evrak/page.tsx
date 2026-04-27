@@ -95,15 +95,9 @@ export default function GidenEvrakPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Antet/kaşe görsellerini ön belleğe al — yazdır'a ilk tıklandığında
-  // resimlerin tamamen yüklü olması için. Aksi halde ilk print'te boş çıkıyor.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    for (const f of firmalar) {
-      if (f.antet_url) { const img = new Image(); img.src = f.antet_url; }
-      if (f.kase_url) { const img = new Image(); img.src = f.kase_url; }
-    }
-  }, [firmalar]);
+  // NOT: Antet/kaşe ön belleği için artık DOM'a gerçek <img> mount ediyoruz
+  // (sayfanın altındaki hidden div'de). new Image() sadece byte cache'liyor,
+  // decode bitmeden window.print() snapshot alıyor → ilk yazdırma boş çıkıyordu.
 
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
@@ -431,6 +425,25 @@ export default function GidenEvrakPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* GİZLİ PRE-RENDER: tüm firmaların antet/kaşe görsellerini DOM'a mount et.
+          Tarayıcı bunları gerçekten yükleyip decode eder ve cache'ler.
+          Print portal mount edildiğinde aynı URL'ler anında render olur.
+          Ekranda görünmesinler (offscreen + size 1px). */}
+      <div aria-hidden="true" style={{ position: "absolute", left: -99999, top: -99999, width: 1, height: 1, overflow: "hidden", pointerEvents: "none" }}>
+        {firmalar.map((f) => (
+          <span key={f.id}>
+            {f.antet_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.antet_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+            )}
+            {f.kase_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.kase_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+            )}
+          </span>
+        ))}
+      </div>
 
       {/* Yazdırma için — Portal ile body'nin en üstüne render edilir
           (sayfa hierarşisine girmez, ilk sayfa boş kalmaz)

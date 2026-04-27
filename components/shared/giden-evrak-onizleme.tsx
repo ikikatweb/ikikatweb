@@ -225,7 +225,7 @@ export default function GidenEvrakOnIzleme({
       <div style={{ marginBottom: "0.3cm" }}>
         {firma?.antet_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={firma.antet_url} alt="Antet" style={{ width: "100%", height: "auto" }} />
+          <img src={firma.antet_url} alt="Antet" style={{ width: "100%", height: "auto" }} loading="eager" decoding="sync" />
         ) : (
           <div style={{ textAlign: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -328,7 +328,7 @@ export default function GidenEvrakOnIzleme({
         {kaseDahil && firma?.kase_url && (
           <div style={{ flexShrink: 0, marginRight: "1cm", marginTop: "-1cm" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} />
+            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} loading="eager" decoding="sync" />
           </div>
         )}
       </div>

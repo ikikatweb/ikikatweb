@@ -5,7 +5,7 @@ export type KullaniciCreatePayload = {
   ad_soyad: string;
   kullanici_adi: string;
   sifre: string;
-  rol: "yonetici" | "kisitli";
+  rol: "yonetici" | "santiye_admin" | "kisitli";
   izinler?: Izinler;
   santiye_ids?: string[];
   geriye_donus_gun?: number | null;
@@ -23,7 +23,7 @@ export type KullaniciCreatePayload = {
 
 export type KullaniciUpdatePayload = {
   ad_soyad?: string;
-  rol?: "yonetici" | "kisitli";
+  rol?: "yonetici" | "santiye_admin" | "kisitli";
   aktif?: boolean;
   sifre?: string;
   izinler?: Izinler;

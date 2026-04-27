@@ -51,7 +51,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [adSoyad, setAdSoyad] = useState(kullanici?.ad_soyad ?? "");
   const [kullaniciAdi, setKullaniciAdi] = useState(kullanici?.kullanici_adi ?? "");
   const [sifre, setSifre] = useState(isEdit ? (kullanici?.sifre_gorunur ?? "") : "");
-  const [rol, setRol] = useState<"yonetici" | "kisitli">(kullanici?.rol ?? "kisitli");
+  const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kullanici?.rol ?? "kisitli");
   const [izinler, setIzinler] = useState<Izinler>(kullanici?.izinler ?? {});
   const [seciliSantiyeler, setSeciliSantiyeler] = useState<string[]>(kullanici?.santiye_ids ?? []);
   const [geriyeDonusGun, setGeriyeDonusGun] = useState<string>(
@@ -172,15 +172,19 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
 
     setLoading(true);
     try {
+      // Şantiye ataması: kısıtlı VE şantiye admini için aktif
+      const santiyeKullanir = rol === "kisitli" || rol === "santiye_admin";
+      // İzin matrisi + limit + dashboard widget: SADECE kısıtlı için
+      const izinKullanir = rol === "kisitli";
       if (isEdit) {
         await updateKullanici(kullanici.id, {
           ad_soyad: formatliAdSoyad,
           rol,
-          izinler: rol === "kisitli" ? izinler : {},
-          santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
-          geriye_donus_gun: rol === "kisitli" ? limitler.puantaj_islem_gun : null, // legacy
-          ...(rol === "kisitli" ? limitler : bosLimitler),
-          dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
+          izinler: izinKullanir ? izinler : {},
+          santiye_ids: santiyeKullanir ? seciliSantiyeler : [],
+          geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null, // legacy
+          ...(izinKullanir ? limitler : bosLimitler),
+          dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success("Kullanıcı güncellendi.");
@@ -190,11 +194,11 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           kullanici_adi: kullaniciAdi.trim().toLowerCase(),
           sifre,
           rol,
-          izinler: rol === "kisitli" ? izinler : {},
-          santiye_ids: rol === "kisitli" ? seciliSantiyeler : [],
-          geriye_donus_gun: rol === "kisitli" ? limitler.puantaj_islem_gun : null,
-          ...(rol === "kisitli" ? limitler : bosLimitler),
-          dashboard_widgets: rol === "kisitli" && dashboardWidgets.length > 0 ? dashboardWidgets : null,
+          izinler: izinKullanir ? izinler : {},
+          santiye_ids: santiyeKullanir ? seciliSantiyeler : [],
+          geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null,
+          ...(izinKullanir ? limitler : bosLimitler),
+          dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
         });
         toast.success("Kullanıcı oluşturuldu.");
       }
@@ -245,14 +249,26 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
 
       <div className="space-y-2">
         <Label>Kullanıcı Tipi</Label>
-        <select value={rol} onChange={(e) => setRol(e.target.value as "yonetici" | "kisitli")} disabled={loading} className={selectClass + " max-w-xs"}>
-          <option value="yonetici">Yönetici</option>
-          <option value="kisitli">Kısıtlı Kullanıcı</option>
+        <select
+          value={rol}
+          onChange={(e) => setRol(e.target.value as "yonetici" | "santiye_admin" | "kisitli")}
+          disabled={loading}
+          className={selectClass + " max-w-xs"}
+        >
+          <option value="yonetici">Yönetici (tam yetki)</option>
+          <option value="santiye_admin">Şantiye Yöneticisi (atandığı şantiyelerin tümünü görür)</option>
+          <option value="kisitli">Kısıtlı Kullanıcı (sadece kendi kayıtları)</option>
         </select>
+        {rol === "santiye_admin" && (
+          <p className="text-xs text-blue-600">
+            Bu kullanıcı atanan şantiyelerdeki <strong>tüm kullanıcıların</strong> verilerini görebilir
+            (yazışmalar, defter, kasa, vb). Kullanıcı yönetimi hariç tüm modüllere erişir.
+          </p>
+        )}
       </div>
 
-      {/* Kısıtlı kullanıcı: Şantiye ataması + İzin matrisi */}
-      {rol === "kisitli" && (
+      {/* Şantiye ataması — kısıtlı VE şantiye admini için ortak */}
+      {(rol === "kisitli" || rol === "santiye_admin") && (
         <>
           {/* Şantiye ataması */}
           <Card>
@@ -287,6 +303,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
             </CardContent>
           </Card>
 
+          {/* Dashboard widget + limit + izin matrisi — SADECE kısıtlı için */}
+          {rol === "kisitli" && (<>
           {/* Dashboard Widget Seçimi */}
           <Card>
             <CardContent className="pt-4">
@@ -441,6 +459,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
               </div>
             </CardContent>
           </Card>
+          </>)}
         </>
       )}
 

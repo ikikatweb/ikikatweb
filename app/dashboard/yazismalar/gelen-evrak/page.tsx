@@ -84,15 +84,8 @@ export default function GelenEvrakPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Antet/kaşe görsellerini ön belleğe al — yazdır'a ilk tıklandığında
-  // resimlerin tamamen yüklü olması için. Aksi halde ilk print'te boş çıkıyor.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    for (const f of firmalar) {
-      if (f.antet_url) { const img = new Image(); img.src = f.antet_url; }
-      if (f.kase_url) { const img = new Image(); img.src = f.kase_url; }
-    }
-  }, [firmalar]);
+  // NOT: Antet/kaşe ön belleği için DOM'a hidden <img> mount ediliyor (aşağıda).
+  // new Image() byte cache'liyor ama decode bitmeden print snapshot alınıyordu.
 
   // Filtreleme
   const filtrelenmis = evraklar.filter((e) => {
@@ -334,6 +327,23 @@ export default function GelenEvrakPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* GİZLİ PRE-RENDER: tüm firmaların antet/kaşe görselleri offscreen mount edilir.
+          Tarayıcı bunları gerçekten decode edip cache'ler — print snapshot'ta anında çıksın. */}
+      <div aria-hidden="true" style={{ position: "absolute", left: -99999, top: -99999, width: 1, height: 1, overflow: "hidden", pointerEvents: "none" }}>
+        {firmalar.map((f) => (
+          <span key={f.id}>
+            {f.antet_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.antet_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+            )}
+            {f.kase_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={f.kase_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+            )}
+          </span>
+        ))}
+      </div>
 
       {/* Yazdırma için görünmez render alanı - print modunda görünür */}
       {printEvrakRef && (

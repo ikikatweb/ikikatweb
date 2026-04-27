@@ -673,7 +673,10 @@ export type Kullanici = {
   ad_soyad: string;
   kullanici_adi: string;
   sifre_gorunur: string | null;
-  rol: "yonetici" | "kisitli";
+  // "yonetici" — tam yetki
+  // "santiye_admin" — atandığı şantiyelerin TÜM verilerine yetki (başka kullanıcılarınki dahil)
+  // "kisitli" — atandığı şantiyelerde sadece KENDİ verilerini görür/yazar
+  rol: "yonetici" | "santiye_admin" | "kisitli";
   aktif: boolean;
   izinler: Izinler;
   santiye_ids: string[];

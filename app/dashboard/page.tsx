@@ -505,8 +505,13 @@ export default function DashboardPage() {
 
   // Widget 6: Eksik evrak numaraları
   const eksikEvraklar = useMemo(() => {
-    return gidenEvraklar.filter((e) => !e.evrak_kayit_no || e.evrak_kayit_no.trim() === "").slice(0, 15);
-  }, [gidenEvraklar]);
+    // Kısıtlı kullanıcı: sadece kendi oluşturduğu evraklardaki eksik numaralar görünür
+    let kaynak = gidenEvraklar;
+    if (!isYonetici && kullanici?.id) {
+      kaynak = gidenEvraklar.filter((e) => e.olusturan_id === kullanici.id);
+    }
+    return kaynak.filter((e) => !e.evrak_kayit_no || e.evrak_kayit_no.trim() === "").slice(0, 15);
+  }, [gidenEvraklar, isYonetici, kullanici]);
 
   function alimDuzenleAc(a: YakitAlim) {
     setEditAlim(a);

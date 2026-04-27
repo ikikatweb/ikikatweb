@@ -10,7 +10,16 @@ type AuthContextType = {
   kullanici: Kullanici | null;
   loading: boolean;
   hasPermission: (moduleKey: string, aksiyon: IzinAksiyonu) => boolean;
+  // Tam yetkili sistem yöneticisi — tüm verilere erişir
   isYonetici: boolean;
+  // Şantiye yöneticisi — atandığı şantiyelerin TÜM verilerine erişir
+  isShantiyeAdmin: boolean;
+  // Şantiye filtresinden muaf mı? (yönetici için true)
+  // Kısıtlı + Şantiye admini: santiye_ids üzerinden filtrelenir
+  santiyeFilterUygula: boolean;
+  // Veriler "kendi kayıtları" olarak filtrelensin mi? (sadece kısıtlı)
+  // Yönetici ve şantiye admini için false → tüm kayıtlar görünür
+  sadeceKendiKayitlari: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -56,13 +65,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [kullanici]
   );
 
+  const isYonetici = kullanici?.rol === "yonetici" || !kullanici;
+  const isShantiyeAdmin = kullanici?.rol === "santiye_admin";
+
   return (
     <AuthContext.Provider
       value={{
         kullanici,
         loading,
         hasPermission: hasPermissionFn,
-        isYonetici: kullanici?.rol === "yonetici" || !kullanici,
+        isYonetici,
+        isShantiyeAdmin,
+        // Şantiye filtresi: yönetici hariç herkese (admin + kısıtlı) uygulanır
+        santiyeFilterUygula: !isYonetici,
+        // Kendi kayıtları filtresi: SADECE kısıtlı için
+        sadeceKendiKayitlari: !isYonetici && !isShantiyeAdmin,
       }}
     >
       {children}
