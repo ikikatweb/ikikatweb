@@ -159,12 +159,16 @@ export default function IscilikTakibiPage() {
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const { kullanici, isYonetici, hasPermission, loading: authLoading } = useAuth();
   const yEkle = hasPermission("iscilik-takibi", "ekle");
   const yDuzenle = hasPermission("iscilik-takibi", "duzenle");
   const ySil = hasPermission("iscilik-takibi", "sil");
 
   const loadData = useCallback(async () => {
+    // Auth profili yüklenmeden fetch yapma — yoksa kullanici=null iken
+    // isYonetici=true varsayımıyla TÜM şantiyelerin verisi yüklenir, sonra
+    // profil gelince yeniden filtrelenir → ekranda flash olur.
+    if (authLoading) return;
     try {
       await ensureAktifSantiyeler();
       const [data, tData, ayliklarData, firmalarData] = await Promise.all([
@@ -251,7 +255,7 @@ export default function IscilikTakibiPage() {
     } finally {
       setLoading(false);
     }
-  }, [isYonetici, kullanici]);
+  }, [isYonetici, kullanici, authLoading]);
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
