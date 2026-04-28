@@ -134,10 +134,24 @@ export default function PushBildirimMenu() {
   }, [acik, ayarlarYuklendi]);
 
   // Menü açıldığında veya tarih değişince geçmişi yükle
+  // VE menü açıldığında okunmamış sayıyı otomatik sıfırla (kullanıcı görmüş sayılır)
   useEffect(() => {
     if (!acik) return;
     if (aktifSekme !== "gecmis") return;
     gecmisYukle(seciliTarih);
+    // Menü "Geçmiş" sekmesinde açıldıysa: okunmamışları gördü kabul et
+    // Backend'e tumu=true gönder → tüm tarihlerdeki okunmamışlar okundu olarak işaretlenir
+    if (okunmamisSayisi > 0) {
+      fetch("/api/bildirim-gecmisi", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tumu: true }),
+      })
+        .then((r) => r.ok && setOkunmamisSayisi(0))
+        .catch(() => { /* sessiz */ });
+    }
+    // okunmamisSayisi'yi deps'e koymuyoruz — sadece menü açıldığında bir kez çalışsın
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acik, aktifSekme, seciliTarih, gecmisYukle]);
 
   // Tek bildirimi okundu işaretle
@@ -329,9 +343,11 @@ export default function PushBildirimMenu() {
         )}
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown — mobilde tam viewport'a sığsın diye fixed konumlandırma kullanılır */}
       {acik && (
-        <div className="absolute right-0 mt-2 w-[360px] max-w-[calc(100vw-1rem)] bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+        <div
+          className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-14 sm:top-auto sm:mt-2 sm:w-[360px] bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden"
+        >
           {/* Sekme başlıkları */}
           <div className="flex border-b bg-gray-50">
             <button

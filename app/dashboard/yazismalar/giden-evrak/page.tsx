@@ -142,13 +142,9 @@ export default function GidenEvrakPage() {
   }
 
   function handleSilTikla(e: GidenEvrakWithRelations) {
-    // Kayıt no varsa sadece yönetici silebilir + çift onay
+    // Kayıt numarası girilmiş evrak silinemez (rol fark etmez — kalıcı kayıt)
     if (e.evrak_kayit_no) {
-      if (!isYonetici) {
-        toast.error("Evrak kayıt numarası girilmiş yazıyı sadece yönetici silebilir.");
-        return;
-      }
-      setSilmeOnayDialog(e);
+      toast.error("Evrak kayıt numarası girilmiş yazıyı silemezsiniz.");
       return;
     }
     setSilDialog(e);
@@ -354,8 +350,16 @@ export default function GidenEvrakPage() {
                           title="Kayıt numarası girilmiş — düzenlenemez"
                         ><Pencil size={14} /></button>
                       )}
-                      {ySil && (
+                      {ySil && !e.evrak_kayit_no && (
                         <button onClick={() => handleSilTikla(e)} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      )}
+                      {ySil && e.evrak_kayit_no && (
+                        <button
+                          type="button"
+                          disabled
+                          className="p-1 text-gray-300 cursor-not-allowed"
+                          title="Kayıt numarası girilmiş — silinemez"
+                        ><Trash2 size={14} /></button>
                       )}
                     </div>
                   </TableCell>

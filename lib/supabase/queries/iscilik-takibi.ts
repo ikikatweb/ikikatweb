@@ -21,6 +21,21 @@ export async function getIscilikTakibi(dahilSilinen = false) {
   return data;
 }
 
+// Tüm şantiyelerin keşif artışı değerlerini Map olarak getir (santiyeler listesi için)
+export async function getKesifArtisMap(): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("iscilik_takibi")
+    .select("santiye_id, kesif_artisi")
+    .or("silindi.is.null,silindi.eq.false");
+  if (error) throw error;
+  const map = new Map<string, number>();
+  for (const row of (data ?? []) as { santiye_id: string; kesif_artisi: number | null }[]) {
+    if (row.kesif_artisi != null) map.set(row.santiye_id, row.kesif_artisi);
+  }
+  return map;
+}
+
 export async function getSilinenIscilikTakibi() {
   const supabase = getSupabase();
   const { data, error } = await supabase

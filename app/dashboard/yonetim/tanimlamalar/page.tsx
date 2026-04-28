@@ -82,6 +82,8 @@ export default function TanimlamalarPage() {
   const [yeniHesapNo, setYeniHesapNo] = useState("");
   const [yeniHesapFirmaId, setYeniHesapFirmaId] = useState("");
   const [yeniHesapMuhatapId, setYeniHesapMuhatapId] = useState("");
+  // Düzenleme modu — set edilirse formdaki ekle butonu güncelleme yapar
+  const [duzenlenenHesapId, setDuzenlenenHesapId] = useState<string | null>(null);
 
   // Acente ekleme
   const [yeniAcenteAd, setYeniAcenteAd] = useState("");
@@ -116,6 +118,8 @@ export default function TanimlamalarPage() {
   // Yakıt Tüketim Limitleri
   const [yakitLimitler, setYakitLimitler] = useState<AracCinsiYakitLimit[]>([]);
   const [yakitLimitCins, setYakitLimitCins] = useState("");
+  // Düzenleme modu — set edilirse mevcut limit güncellenir
+  const [duzenlenenYakitLimitId, setDuzenlenenYakitLimitId] = useState<string | null>(null);
   const [yakitLimitSayacTipi, setYakitLimitSayacTipi] = useState<"km" | "saat">("km");
   const [yakitLimitAlt, setYakitLimitAlt] = useState("");
   const [yakitLimitUst, setYakitLimitUst] = useState("");
@@ -293,7 +297,7 @@ export default function TanimlamalarPage() {
     }
   }
 
-  // Banka hesabı ekleme (hesap no + firma + banka birlikte)
+  // Banka hesabı ekleme veya düzenleme (hesap no + firma + banka birlikte)
   async function handleBankaHesapEkle() {
     if (!yeniHesapNo.trim()) { toast.error("Hesap no boş olamaz."); return; }
     if (!yeniHesapFirmaId) { toast.error("Firma seçilmeli."); return; }
@@ -303,33 +307,45 @@ export default function TanimlamalarPage() {
     const hesapNoTemiz = yeniHesapNo.trim();
 
     const mevcut = tanimlamalar.filter((t) => t.kategori === "banka_hesap");
-    if (mevcut.some((t) => t.deger === hesapNoTemiz)) {
+    // Düzenleme modunda kendi kaydını çakışma kontrolünden hariç tut
+    const cakisma = mevcut.some((t) => t.deger === hesapNoTemiz && t.id !== duzenlenenHesapId);
+    if (cakisma) {
       toast.error("Bu hesap no zaten ekli.");
       return;
     }
 
     try {
-      const sira = mevcut.filter((t) => t.aktif).length + 1;
-      await createTanimlama({
-        kategori: "banka_hesap",
-        sekme: "yazismalar",
-        deger: hesapNoTemiz,
-        kisa_ad: packHesapKisaAd(yeniHesapMuhatapId, yeniHesapFirmaId),
-        sira,
-        aktif: true,
-      });
+      if (duzenlenenHesapId) {
+        // DÜZENLEME — mevcut kaydı güncelle
+        await updateTanimlama(duzenlenenHesapId, {
+          deger: hesapNoTemiz,
+          kisa_ad: packHesapKisaAd(yeniHesapMuhatapId, yeniHesapFirmaId),
+        });
+      } else {
+        // YENİ EKLEME
+        const sira = mevcut.filter((t) => t.aktif).length + 1;
+        await createTanimlama({
+          kategori: "banka_hesap",
+          sekme: "yazismalar",
+          deger: hesapNoTemiz,
+          kisa_ad: packHesapKisaAd(yeniHesapMuhatapId, yeniHesapFirmaId),
+          sira,
+          aktif: true,
+        });
 
-      // Placeholder'ları temizle
-      const placeholders = mevcut.filter((t) => t.deger === "(boş)");
-      for (const p of placeholders) {
-        await deleteTanimlama(p.id);
+        // Placeholder'ları temizle
+        const placeholders = mevcut.filter((t) => t.deger === "(boş)");
+        for (const p of placeholders) {
+          await deleteTanimlama(p.id);
+        }
       }
 
       setYeniHesapNo("");
       setYeniHesapFirmaId("");
       setYeniHesapMuhatapId("");
+      setDuzenlenenHesapId(null);
       await loadData();
-      toast.success("Hesap eklendi.");
+      toast.success(duzenlenenHesapId ? "Hesap güncellendi." : "Hesap eklendi.");
     } catch {
       toast.error("Eklenirken hata oluştu.");
     }
@@ -479,10 +495,12 @@ export default function TanimlamalarPage() {
       });
       const yeni = await getAracCinsiYakitLimitler();
       setYakitLimitler(yeni);
+      const idiDuzenleme = !!duzenlenenYakitLimitId;
       setYakitLimitCins("");
       setYakitLimitAlt("");
       setYakitLimitUst("");
-      toast.success("Yakıt limiti kaydedildi.");
+      setDuzenlenenYakitLimitId(null);
+      toast.success(idiDuzenleme ? "Yakıt limiti güncellendi." : "Yakıt limiti kaydedildi.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
@@ -672,7 +690,17 @@ export default function TanimlamalarPage() {
                               </div>
                               );
                             })() : isBankaHesap ? (
-                              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                              <div
+                                className={`flex flex-col gap-0.5 flex-1 min-w-0 cursor-pointer hover:bg-blue-50 -mx-2 -my-1 px-2 py-1 rounded ${duzenlenenHesapId === t.id ? "bg-blue-50 ring-1 ring-blue-200" : ""}`}
+                                title="Düzenlemek için tıklayın"
+                                onClick={() => {
+                                  setDuzenlenenHesapId(t.id);
+                                  setYeniHesapNo(t.deger);
+                                  const ad = unpackHesapKisaAd(t.kisa_ad ?? "");
+                                  setYeniHesapMuhatapId(ad.muhatap_id ?? "");
+                                  setYeniHesapFirmaId(ad.firma_id ?? "");
+                                }}
+                              >
                                 <div className="flex items-center gap-2 text-xs">
                                   <span className="font-mono font-semibold">{t.deger}</span>
                                   {hesapBanka && (
@@ -897,13 +925,31 @@ export default function TanimlamalarPage() {
                         </option>
                       ))}
                     </select>
-                    <Button
-                      size="sm"
-                      className="h-8 bg-[#F97316] hover:bg-[#ea580c] w-full"
-                      onClick={handleBankaHesapEkle}
-                    >
-                      <Plus size={14} className="mr-1" /> Hesap Ekle
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        className="h-8 bg-[#F97316] hover:bg-[#ea580c] flex-1"
+                        onClick={handleBankaHesapEkle}
+                      >
+                        {duzenlenenHesapId ? "Güncelle" : <><Plus size={14} className="mr-1" /> Hesap Ekle</>}
+                      </Button>
+                      {duzenlenenHesapId && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={() => {
+                            setDuzenlenenHesapId(null);
+                            setYeniHesapNo("");
+                            setYeniHesapFirmaId("");
+                            setYeniHesapMuhatapId("");
+                          }}
+                        >
+                          İptal
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className={isMuhatap ? "space-y-2" : "flex gap-1"}>
@@ -951,8 +997,23 @@ export default function TanimlamalarPage() {
                 <p className="text-xs text-gray-400 py-2">Henüz limit tanımlanmamış.</p>
               ) : (
                 yakitLimitler.map((l, idx) => (
-                  <div key={l.id} className="flex items-start justify-between px-2 py-1.5 rounded text-sm hover:bg-gray-50 group">
-                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                  <div
+                    key={l.id}
+                    className={`flex items-start justify-between px-2 py-1.5 rounded text-sm hover:bg-gray-50 group ${duzenlenenYakitLimitId === l.id ? "bg-blue-50 ring-1 ring-blue-200" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Düzenleme moduna gir — formu mevcut değerlerle doldur
+                        setDuzenlenenYakitLimitId(l.id);
+                        setYakitLimitCins(l.arac_cinsi);
+                        setYakitLimitSayacTipi(l.sayac_tipi);
+                        setYakitLimitAlt(l.alt_sinir.toString().replace(".", ","));
+                        setYakitLimitUst(l.ust_sinir.toString().replace(".", ","));
+                      }}
+                      className="flex items-start gap-2 flex-1 min-w-0 text-left cursor-pointer"
+                      title="Düzenlemek için tıklayın"
+                    >
                       <span className="text-[10px] text-gray-400 w-4 mt-0.5 flex-shrink-0">{idx + 1}</span>
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-xs font-semibold truncate">{l.arac_cinsi}</span>
@@ -960,7 +1021,7 @@ export default function TanimlamalarPage() {
                           {l.sayac_tipi === "km" ? "Km" : "Saat"} · Oran: {l.alt_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })} - {l.ust_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}
                         </span>
                       </div>
-                    </div>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setYakitLimitSilId(l.id)}
@@ -1021,13 +1082,31 @@ export default function TanimlamalarPage() {
                   className={selectClass + " text-xs"}
                 />
               </div>
-              <Button
-                size="sm"
-                className="w-full bg-[#F97316] hover:bg-[#ea580c] text-white h-7 text-xs"
-                onClick={handleYakitLimitEkle}
-              >
-                <Plus size={12} className="mr-1" /> Ekle / Güncelle
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-[#F97316] hover:bg-[#ea580c] text-white h-7 text-xs"
+                  onClick={handleYakitLimitEkle}
+                >
+                  {duzenlenenYakitLimitId ? "Güncelle" : <><Plus size={12} className="mr-1" /> Ekle / Güncelle</>}
+                </Button>
+                {duzenlenenYakitLimitId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setDuzenlenenYakitLimitId(null);
+                      setYakitLimitCins("");
+                      setYakitLimitAlt("");
+                      setYakitLimitUst("");
+                    }}
+                  >
+                    İptal
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/queries/santiyeler";
 import type { SantiyeOrtagi, SantiyeIsGrubu } from "@/lib/supabase/types";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
+import { getKesifArtisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTanimlamalar, getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import type { SantiyeWithRelations, YiUfe, SantiyeUpdate } from "@/lib/supabase/types";
@@ -179,6 +180,8 @@ export default function SantiyelerPage() {
   const [isGrupDagilimData, setIsGrupDagilimData] = useState<SantiyeIsGrubu[]>([]);
   const [ffKatsayi, setFfKatsayi] = useState<number>(1); // Fiyat farkı katsayı oranı (tanımlamalardan)
   const [yiUfeData, setYiUfeData] = useState<YiUfe[]>([]);
+  // Şantiye id → keşif artışı tutarı (sözleşme bedeline eklenir)
+  const [kesifArtisMap, setKesifArtisMap] = useState<Map<string, number>>(new Map());
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
@@ -199,12 +202,14 @@ export default function SantiyelerPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [sData, yData, tData, oData, igData, ffKatData] = await Promise.all([
+      const [sData, yData, tData, oData, igData, ffKatData, kesifMap] = await Promise.all([
         getSantiyeler(), getYiUfeVerileri(), getTanimlamalar("is_tanimlari"),
         getTumOrtaklar().catch(() => []),
         getTumSantiyeIsGruplari().catch(() => []),
         getDegerler("fiyat_farki_katsayi_orani").catch(() => []),
+        getKesifArtisMap().catch(() => new Map<string, number>()),
       ]);
+      setKesifArtisMap(kesifMap);
       setSantiyeler((sData as SantiyeWithRelations[]) ?? []);
       setOrtaklarData(oData);
       setIsGrupDagilimData(igData);
@@ -293,9 +298,14 @@ export default function SantiyelerPage() {
 
     // FF Dahil Kalan sadece devam eden işlerde gösterilir
     // Geçici kabul, kesin kabul, devir veya tasfiye tarihi varsa null
+    // Efektif sözleşme bedeli = sözleşme + keşif artışı (varsa)
     const devamEdiyor = !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.devir_tarihi && !s.tasfiye_tarihi;
-    const kalan = devamEdiyor && s.sozlesme_bedeli != null && s.sozlesme_fiyatlariyla_gerceklesen != null
-      ? s.sozlesme_bedeli - s.sozlesme_fiyatlariyla_gerceklesen : null;
+    const kesifArtisi = kesifArtisMap.get(s.id) ?? 0;
+    const efektifSozlesme = s.sozlesme_bedeli != null ? s.sozlesme_bedeli + kesifArtisi : null;
+    const ham = devamEdiyor && efektifSozlesme != null && s.sozlesme_fiyatlariyla_gerceklesen != null
+      ? efektifSozlesme - s.sozlesme_fiyatlariyla_gerceklesen : null;
+    // Gerçekleşen sözleşmeyi aştıysa "kalan" anlamı yok → null göster (—)
+    const kalan = ham != null && ham < 0 ? null : ham;
     // FF uygulanmıyorsa kalan tutar = sözleşme - gerçekleşen (FF eklenmez)
     const ffDahilKalan = kalan != null
       ? (ffYuzde != null ? kalan * (ffYuzde / 100) + kalan : kalan)
