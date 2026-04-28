@@ -3,9 +3,21 @@
 // Alt: Kategori bazlı aç/kapat toggle'ları
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Bell, BellOff } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Bell, BellOff, History, Settings } from "lucide-react";
 import toast from "react-hot-toast";
+
+type BildirimKayit = {
+  id: string;
+  baslik: string;
+  govde: string;
+  url: string | null;
+  tag: string | null;
+  tarih: string;
+  saat: string;
+  okundu: boolean;
+  created_at: string;
+};
 
 // Base64 URL-safe → ArrayBuffer
 function urlBase64ToArrayBuffer(base64String: string): ArrayBuffer {
@@ -48,6 +60,47 @@ export default function PushBildirimMenu() {
   const [ayarlarYuklendi, setAyarlarYuklendi] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Geçmiş bildirimler
+  const [aktifSekme, setAktifSekme] = useState<"gecmis" | "ayarlar">("gecmis");
+  const [seciliTarih, setSeciliTarih] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [bildirimler, setBildirimler] = useState<BildirimKayit[]>([]);
+  const [okunmamisSayisi, setOkunmamisSayisi] = useState<number>(0);
+  const [gecmisYukleniyor, setGecmisYukleniyor] = useState(false);
+
+  // Bildirim geçmişini yükle
+  const gecmisYukle = useCallback(async (tarih: string) => {
+    setGecmisYukleniyor(true);
+    try {
+      const res = await fetch(`/api/bildirim-gecmisi?tarih=${tarih}`);
+      if (res.ok) {
+        const data = await res.json() as { bildirimler: BildirimKayit[]; okunmamisSayisi: number };
+        setBildirimler(data.bildirimler ?? []);
+        setOkunmamisSayisi(data.okunmamisSayisi ?? 0);
+      }
+    } catch { /* sessiz */ }
+    finally { setGecmisYukleniyor(false); }
+  }, []);
+
+  // Sayfada açıldığında ve periyodik olarak okunmamış sayısını çek (badge için)
+  useEffect(() => {
+    if (durum !== "acik" && durum !== "kapali") return;
+    const cek = async () => {
+      try {
+        const res = await fetch(`/api/bildirim-gecmisi?tarih=${seciliTarih}`);
+        if (res.ok) {
+          const data = await res.json() as { okunmamisSayisi: number };
+          setOkunmamisSayisi(data.okunmamisSayisi ?? 0);
+        }
+      } catch { /* sessiz */ }
+    };
+    cek();
+    const interval = setInterval(cek, 30_000); // 30 sn'de bir badge güncelle
+    return () => clearInterval(interval);
+  }, [durum, seciliTarih]);
+
   // İlk kontrol: tarayıcı desteği + izin + mevcut abonelik
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -79,6 +132,43 @@ export default function PushBildirimMenu() {
       })
       .catch(() => { /* sessiz */ });
   }, [acik, ayarlarYuklendi]);
+
+  // Menü açıldığında veya tarih değişince geçmişi yükle
+  useEffect(() => {
+    if (!acik) return;
+    if (aktifSekme !== "gecmis") return;
+    gecmisYukle(seciliTarih);
+  }, [acik, aktifSekme, seciliTarih, gecmisYukle]);
+
+  // Tek bildirimi okundu işaretle
+  async function bildirimOkundu(id: string) {
+    try {
+      const res = await fetch("/api/bildirim-gecmisi", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setBildirimler((prev) => prev.map((b) => b.id === id ? { ...b, okundu: true } : b));
+        setOkunmamisSayisi((c) => Math.max(0, c - 1));
+      }
+    } catch { /* sessiz */ }
+  }
+
+  // Tüm bildirimleri okundu işaretle
+  async function tumunuOku() {
+    try {
+      const res = await fetch("/api/bildirim-gecmisi", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tumu: true }),
+      });
+      if (res.ok) {
+        setBildirimler((prev) => prev.map((b) => ({ ...b, okundu: true })));
+        setOkunmamisSayisi(0);
+      }
+    } catch { /* sessiz */ }
+  }
 
   // Dışarı tıklayınca kapat
   useEffect(() => {
@@ -219,7 +309,7 @@ export default function PushBildirimMenu() {
       <button
         type="button"
         onClick={() => setAcik((v) => !v)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+        className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
           durum === "acik"
             ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
             : "bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200"
@@ -231,11 +321,115 @@ export default function PushBildirimMenu() {
         <span className={`text-[10px] font-bold ${durum === "acik" ? "text-emerald-700" : "text-gray-400"}`}>
           {durum === "acik" ? "AÇIK" : "KAPALI"}
         </span>
+        {/* Okunmamış bildirim sayısı badge */}
+        {okunmamisSayisi > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white">
+            {okunmamisSayisi > 99 ? "99+" : okunmamisSayisi}
+          </span>
+        )}
       </button>
 
       {/* Dropdown */}
       {acik && (
-        <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-[360px] max-w-[calc(100vw-1rem)] bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+          {/* Sekme başlıkları */}
+          <div className="flex border-b bg-gray-50">
+            <button
+              type="button"
+              onClick={() => setAktifSekme("gecmis")}
+              className={`flex-1 px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                aktifSekme === "gecmis" ? "bg-white text-[#1E3A5F] border-b-2 border-[#1E3A5F]" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <History size={14} /> Geçmiş
+              {okunmamisSayisi > 0 && (
+                <span className="bg-red-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                  {okunmamisSayisi > 99 ? "99+" : okunmamisSayisi}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAktifSekme("ayarlar")}
+              className={`flex-1 px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                aktifSekme === "ayarlar" ? "bg-white text-[#1E3A5F] border-b-2 border-[#1E3A5F]" : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              <Settings size={14} /> Ayarlar
+            </button>
+          </div>
+
+          {/* GEÇMİŞ SEKMESİ */}
+          {aktifSekme === "gecmis" && (
+            <div className="flex flex-col">
+              {/* Tarih seçimi + Tümünü Oku */}
+              <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between gap-2">
+                <input
+                  type="date"
+                  value={seciliTarih}
+                  onChange={(e) => setSeciliTarih(e.target.value)}
+                  className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-[#1E3A5F] flex-1"
+                />
+                {okunmamisSayisi > 0 && (
+                  <button
+                    type="button"
+                    onClick={tumunuOku}
+                    className="text-[10px] text-blue-600 hover:underline whitespace-nowrap"
+                    title="Tüm bildirimleri okundu işaretle"
+                  >
+                    Tümünü Oku
+                  </button>
+                )}
+              </div>
+              {/* Bildirim listesi */}
+              <div className="max-h-[400px] overflow-y-auto">
+                {gecmisYukleniyor ? (
+                  <div className="p-6 text-center text-xs text-gray-400">Yükleniyor...</div>
+                ) : bildirimler.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-gray-400">
+                    Bu tarihte bildirim yok
+                  </div>
+                ) : (
+                  bildirimler.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => {
+                        if (!b.okundu) bildirimOkundu(b.id);
+                        if (b.url) window.location.href = b.url;
+                      }}
+                      className={`w-full text-left px-3 py-2.5 border-b last:border-b-0 hover:bg-blue-50 transition-colors ${
+                        !b.okundu ? "bg-blue-50/50" : ""
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {!b.okundu && (
+                          <span className="mt-1 w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" title="Okunmadı" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <div className={`text-xs ${!b.okundu ? "font-bold text-[#1E3A5F]" : "font-medium text-gray-700"} truncate`}>
+                              {b.baslik}
+                            </div>
+                            <div className="text-[10px] text-gray-400 tabular-nums flex-shrink-0">
+                              {b.saat?.slice(0, 5)}
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-gray-600 whitespace-pre-wrap break-words leading-tight">
+                            {b.govde}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* AYARLAR SEKMESİ */}
+          {aktifSekme === "ayarlar" && (
+            <>
           {/* Ana aç/kapat */}
           <div className={`p-3 border-b ${durum === "acik" ? "bg-emerald-50 border-emerald-100" : "bg-gray-50"}`}>
             <div className="flex items-center justify-between gap-2">
@@ -302,6 +496,8 @@ export default function PushBildirimMenu() {
               })}
             </div>
           </div>
+            </>
+          )}
         </div>
       )}
     </div>

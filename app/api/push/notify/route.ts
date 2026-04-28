@@ -96,6 +96,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, sent: 0, filtered: aliciAdaylari.length });
   }
 
+  // BİLDİRİM GEÇMİŞİ — her alıcı için kayıt at (push gönderilmese bile geçmişte görsünler)
+  // tarih: TR yerel saatine göre YYYY-MM-DD, saat: HH:MM:SS
+  try {
+    const now = new Date();
+    const tarih = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const saat = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+    const gecmisRows = istekliIds.map((kid) => ({
+      kullanici_id: kid,
+      baslik: baslikFinal,
+      govde: govdeFinal,
+      url: url || "/dashboard",
+      tag: tagStr || null,
+      tarih,
+      saat,
+      okundu: false,
+    }));
+    await supabase.from("bildirim_gecmisi").insert(gecmisRows);
+  } catch { /* sessiz — geçmiş kaydı başarısız olsa da push gönderimine devam et */ }
+
   // Bu kullanıcıların subscription'larını al
   const { data: subs } = await supabase
     .from("push_subscriptions")
