@@ -144,6 +144,13 @@ function formatLt(n: number): string {
   return formatSayi(n, n % 1 === 0 ? 0 : 2) + " lt";
 }
 
+// Akıllı miktar formatı — tamsayıysa ondalık gösterme, küsüratlıysa 2 hane
+// "Yuvarlamayalım" — kullanıcının girdiği değer neyse o görünsün
+function formatMiktar(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return formatSayi(n, n % 1 === 0 ? 0 : 2);
+}
+
 // Tarih+saat karşılaştırması için tek string
 function hareketKey(h: { tarih: string; saat: string }): string {
   return `${h.tarih}T${h.saat}`;
@@ -496,7 +503,11 @@ function YakitPageContent() {
       }
 
       // Tarih aralığı (yönetici + şantiye admini için)
-      if ((isYonetici || isShantiyeAdmin) && (h.tarih < filtreBaslangic || h.tarih > filtreBitis)) return false;
+      // Boş tarih (geçersiz date input gibi) durumunda filtreyi atla
+      if ((isYonetici || isShantiyeAdmin)) {
+        if (filtreBaslangic && h.tarih < filtreBaslangic) return false;
+        if (filtreBitis && h.tarih > filtreBitis) return false;
+      }
 
       // Şantiye filtresi
       if (filtreSantiyeId) {
@@ -1272,11 +1283,11 @@ function YakitPageContent() {
           <div className="text-[10px] text-gray-500 uppercase font-semibold">Virman</div>
           <div className="flex items-baseline gap-2">
             <div>
-              <span className="text-sm font-bold text-emerald-700">+{formatSayi(donemOzet.virmanGelen, 0)}</span>
+              <span className="text-sm font-bold text-emerald-700">+{formatMiktar(donemOzet.virmanGelen)}</span>
               <span className="text-[9px] text-gray-400 ml-0.5">gelen</span>
             </div>
             <div>
-              <span className="text-sm font-bold text-red-600">−{formatSayi(donemOzet.virmanGiden, 0)}</span>
+              <span className="text-sm font-bold text-red-600">−{formatMiktar(donemOzet.virmanGiden)}</span>
               <span className="text-[9px] text-gray-400 ml-0.5">giden</span>
             </div>
           </div>
@@ -1400,12 +1411,12 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right font-semibold">
                       {h.tip === "arac_yakit" ? (
-                        <span className="text-emerald-700">−{formatSayi(h.miktar_lt, 2)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}</span>
+                        <span className="text-emerald-700">−{formatMiktar(h.miktar_lt)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}</span>
                       ) : h.tip === "alim" ? (
-                        <span className="text-blue-700">+{formatSayi(h.miktar_lt, 2)}</span>
+                        <span className="text-blue-700">+{formatMiktar(h.miktar_lt)}</span>
                       ) : (
                         <span className={s.virmanYon === "giden" ? "text-red-600" : "text-emerald-700"}>
-                          {s.virmanYon === "giden" ? "−" : "+"}{formatSayi(h.miktar_lt, 2)}
+                          {s.virmanYon === "giden" ? "−" : "+"}{formatMiktar(h.miktar_lt)}
                         </span>
                       )}
                     </TableCell>
@@ -1432,7 +1443,7 @@ function YakitPageContent() {
                     <TableCell className="px-2 text-right bg-blue-50 font-bold text-[#1E3A5F]">
                       {s.depoStok !== null ? (
                         <span className={s.depoStok < 0 ? "text-red-600" : ""}>
-                          {formatSayi(s.depoStok, 0)}
+                          {formatMiktar(s.depoStok)}
                         </span>
                       ) : "—"}
                     </TableCell>
