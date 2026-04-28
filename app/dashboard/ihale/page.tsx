@@ -1084,7 +1084,9 @@ export default function IhalePage() {
         durum: k.durum,
         gecersizNedeni: k.gecersizlik_nedeni,
         uyarilar: [], yasaklilik: "", teminat: "", vergiBorcu: "", sgkBorcu: "",
-        isOwn: k.is_own_company,
+        // Eski kayıtlarda is_own_company yanlış hesaplanmış olabilir.
+        // Her yüklemede güncel firmalar listesine + güncel mantığa göre yeniden hesapla.
+        isOwn: isOwnCompany(k.firma_adi, firmalar),
         isManual: k.is_manual,
         isEdited: false,
         eskiTutar: null,
