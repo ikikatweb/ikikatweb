@@ -47,6 +47,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
     smtp_password: firma?.smtp_password ?? "",
     smtp_sender_name: firma?.smtp_sender_name ?? "",
     smtp_sender_email: firma?.smtp_sender_email ?? "",
+    bizim_firma: firma?.bizim_firma ?? false,
   });
 
   function handleChange(
@@ -190,6 +191,27 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
                   allowClear
                 />
                 <p className="text-[10px] text-gray-400">Paletten bir renk seçin. Bu renk firma verilerinde göstergelerde kullanılır.</p>
+              </div>
+
+              {/* Bizim Firma flag — ihale katılımcı listesinde "kendi firma" işaretlemesi */}
+              <div className="flex items-start gap-2 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+                <input
+                  type="checkbox"
+                  id="bizim_firma"
+                  checked={formData.bizim_firma ?? false}
+                  onChange={(e) => setFormData((p) => ({ ...p, bizim_firma: e.target.checked }))}
+                  disabled={loading}
+                  className="mt-0.5 w-4 h-4 accent-emerald-600"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="bizim_firma" className="text-sm cursor-pointer">
+                    Bizim Firma
+                  </Label>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    İhale katılımcı listesinde rakipler arasında bu firma "kendi firmamız" olarak vurgulanır.
+                    Sadece kendi firmalarınızı işaretleyin.
+                  </p>
+                </div>
               </div>
 
               {/* Dosya Yüklemeleri */}

@@ -16,6 +16,9 @@ export type Firma = {
   smtp_user: string | null;
   smtp_password: string | null;
   smtp_sender_name: string | null;
+  // İhale katılımcı listesinde "bizim firma" olarak işaretlemek için
+  // Sadece bu flag'i true olan firmalar isOwnCompany kontrolünden geçer
+  bizim_firma: boolean | null;
   smtp_sender_email: string | null;
   created_at: string;
   updated_at: string;
