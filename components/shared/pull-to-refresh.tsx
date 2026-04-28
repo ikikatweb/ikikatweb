@@ -20,6 +20,13 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
   const [yenileniyor, setYenileniyor] = useState(false);
   const startYRef = useRef<number | null>(null);
   const aktifRef = useRef(false);
+  // Listener'lar bu ref'leri okur → her state değişiminde yeniden bağlanmaz
+  const pullRef = useRef(0);
+  const yenileniyorRef = useRef(false);
+  const onRefreshRef = useRef(onRefresh);
+  useEffect(() => { pullRef.current = pull; }, [pull]);
+  useEffect(() => { yenileniyorRef.current = yenileniyor; }, [yenileniyor]);
+  useEffect(() => { onRefreshRef.current = onRefresh; }, [onRefresh]);
 
   useEffect(() => {
     // Sadece mobil/touch cihazlarda aktif
@@ -37,14 +44,14 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
         aktifRef.current = false;
         return;
       }
-      if (yenileniyor) return;
+      if (yenileniyorRef.current) return;
       startYRef.current = e.touches[0].clientY;
       aktifRef.current = true;
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (!aktifRef.current || startYRef.current === null) return;
-      if (yenileniyor) return;
+      if (yenileniyorRef.current) return;
       // Hareket sırasında scroll yukarı çıktıysa iptal
       if (target.scrollTop > 0) {
         aktifRef.current = false;
@@ -72,14 +79,14 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
         return;
       }
       aktifRef.current = false;
-      const tetiklendi = pull >= THRESHOLD;
+      const tetiklendi = pullRef.current >= THRESHOLD;
       startYRef.current = null;
-      if (tetiklendi && !yenileniyor) {
+      if (tetiklendi && !yenileniyorRef.current) {
         setYenileniyor(true);
         setPull(THRESHOLD);
         try {
-          if (onRefresh) {
-            await onRefresh();
+          if (onRefreshRef.current) {
+            await onRefreshRef.current();
           } else {
             window.location.reload();
             return; // sayfa zaten yenileniyor
@@ -105,7 +112,9 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
       target.removeEventListener("touchend", onTouchEnd);
       target.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [scrollTargetId, onRefresh, pull, yenileniyor]);
+    // Listener'ları YALNIZCA bir kez bağla — pull/yenileniyor/onRefresh ref'lerden okunuyor
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollTargetId]);
 
   // Görsel — sadece çekme aktifken görünür
   if (pull === 0 && !yenileniyor) return null;

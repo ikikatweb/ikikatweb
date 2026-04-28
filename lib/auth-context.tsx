@@ -1,7 +1,7 @@
 // Auth context - Kullanıcı profili, rol ve izin yönetimi
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { getKullaniciProfil } from "@/lib/supabase/queries/kullanicilar";
 import { hasPermission as checkPermission } from "@/lib/permissions";
 import type { Kullanici, IzinAksiyonu } from "@/lib/supabase/types";
@@ -69,24 +69,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [kullanici, loading]
   );
 
-  // Yükleme bitmeden yönetici varsayma — yetki kontrolünden geçmeden buton görünmesin
-  const isYonetici = !loading && (kullanici?.rol === "yonetici" || !kullanici);
-  const isShantiyeAdmin = kullanici?.rol === "santiye_admin";
+  // Provider value — useMemo ile sabit referans (her render'da yeni obje
+  // yaratmazsa tüm consumer'lar gereksiz re-render olmaz)
+  const contextValue = useMemo<AuthContextType>(() => {
+    const isYonetici = !loading && (kullanici?.rol === "yonetici" || !kullanici);
+    const isShantiyeAdmin = kullanici?.rol === "santiye_admin";
+    return {
+      kullanici,
+      loading,
+      hasPermission: hasPermissionFn,
+      isYonetici,
+      isShantiyeAdmin,
+      // Şantiye filtresi: yönetici hariç herkese (admin + kısıtlı) uygulanır
+      santiyeFilterUygula: !isYonetici,
+      // Kendi kayıtları filtresi: SADECE kısıtlı için
+      sadeceKendiKayitlari: !isYonetici && !isShantiyeAdmin,
+    };
+  }, [kullanici, loading, hasPermissionFn]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        kullanici,
-        loading,
-        hasPermission: hasPermissionFn,
-        isYonetici,
-        isShantiyeAdmin,
-        // Şantiye filtresi: yönetici hariç herkese (admin + kısıtlı) uygulanır
-        santiyeFilterUygula: !isYonetici,
-        // Kendi kayıtları filtresi: SADECE kısıtlı için
-        sadeceKendiKayitlari: !isYonetici && !isShantiyeAdmin,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
