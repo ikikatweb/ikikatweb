@@ -7,6 +7,9 @@ export type BildirimPayload = {
   govde: string;
   url?: string;
   tag?: string;
+  // Şantiye yöneticisi filtresi için: bu olay hangi şantiyeye ait?
+  // (yönetici tüm bildirimleri alır; santiye_admin sadece atandığı şantiyelere ait olanları)
+  santiye_id?: string | null;
 };
 
 export function bildirimGonder(payload: BildirimPayload): void {

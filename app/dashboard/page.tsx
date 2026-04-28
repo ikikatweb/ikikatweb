@@ -76,6 +76,9 @@ export default function DashboardPage() {
   const yakitDuzenle = hasPermission("yakit", "duzenle");
   const [loading, setLoading] = useState(true);
   const [defterLoading, setDefterLoading] = useState(true);
+  // Kasa Defteri widget'ı için bağımsız yükleme — ana loadAll'dan önce tamamlanırsa
+  // widget hızlıca görünür (diğer 13 sorgunun bitmesini beklemez)
+  const [kasaLoading, setKasaLoading] = useState(true);
 
   const [yiUfeData, setYiUfeData] = useState<YiUfe[]>([]);
   const [kasaData, setKasaData] = useState<KasaHareketi[]>([]);
@@ -151,41 +154,82 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    try {
-      const [yi, kasa, devirMap, pers, arac, pol, tekGon, alim, dagitim, evrak, sant, yakGun, sfData, acData, bakimData] = await Promise.all([
-        getYiUfeVerileri().catch(() => []),
-        getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []),
-        getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
-        getPersoneller().catch(() => []),
-        getAraclar().catch(() => []),
-        getTumPoliceler().catch(() => []),
-        getTeklifGonderimler().catch(() => []),
-        getYakitAlimlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
-        getAracYakitlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
-        getGidenEvraklar().catch(() => []),
-        getSantiyelerAll().catch(() => []),
-        getDegerler("sigorta_yaklasir_gun").catch(() => []),
-        getDegerler("sigorta_firmasi").catch(() => []),
-        getDegerler("sigorta_acente").catch(() => []),
-        getAracBakimlar().catch(() => []),
-      ]);
-      setYiUfeData(yi as YiUfe[]);
-      setKasaData(kasa as KasaHareketi[]);
-      setDevirBakiye(devirMap);
-      setPersoneller(pers as PersonelWithRelations[]);
-      setAraclar(arac as AracWithRelations[]);
-      setPoliceler(pol as AracPolice[]);
-      setTeklifGonderimler(tekGon as TeklifGonderim[]);
-      setAracBakimlar(bakimData as AracBakimWithArac[]);
-      setYakitAlimlar(alim as YakitAlim[]);
-      setYakitDagitimlar(dagitim as AracYakit[]);
-      setGidenEvraklar(evrak as GidenEvrak[]);
-      setSantiyeler(sant as SantiyeBasic[]);
-      if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
-      setSigortaFirmalari(sfData as string[]);
-      setSigortaAcenteler(acData as string[]);
+    setKasaLoading(true);
 
-      // Ana veriler hazır — sayfayı göster
+    // YENİ STRATEJİ: Tüm sorgular bağımsız Promise olarak başlatılır.
+    // Her sorgu kendi state'ini set eder. Sayfa kritik veriler gelir gelmez render olur.
+    // Diğer widget'lar verisi gelene kadar boş/yükleniyor durumunda kalır.
+
+    // KRİTİK BATCH (kasa widget) — sayfa açılışı bunu bekler
+    const kritikPromise = (async () => {
+      try {
+        const [kasaErken, devirErken, kAdlarRes, sant] = await Promise.all([
+          getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []),
+          getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
+          fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
+          getSantiyelerAll().catch(() => []),
+        ]);
+        setKasaData(kasaErken as KasaHareketi[]);
+        setDevirBakiye(devirErken);
+        const kAdlar = kAdlarRes as { id: string; ad_soyad: string }[];
+        setKullaniciAdlari((prev) => {
+          const m = new Map(prev);
+          for (const k of kAdlar) m.set(k.id, k.ad_soyad);
+          return m;
+        });
+        setSantiyeler(sant as SantiyeBasic[]);
+        setKasaLoading(false);
+        return sant as SantiyeBasic[];
+      } catch {
+        setKasaLoading(false);
+        return [] as SantiyeBasic[];
+      }
+    })();
+
+    // BACKGROUND BATCH 1: Sigorta widget verileri (araclar, polisler, tanımlar, bakım)
+    (async () => {
+      try {
+        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun] = await Promise.all([
+          getAraclar().catch(() => []),
+          getTumPoliceler().catch(() => []),
+          getTeklifGonderimler().catch(() => []),
+          getDegerler("sigorta_firmasi").catch(() => []),
+          getDegerler("sigorta_acente").catch(() => []),
+          getAracBakimlar().catch(() => []),
+          getDegerler("sigorta_yaklasir_gun").catch(() => []),
+        ]);
+        setAraclar(arac as AracWithRelations[]);
+        setPoliceler(pol as AracPolice[]);
+        setTeklifGonderimler(tekGon as TeklifGonderim[]);
+        setSigortaFirmalari(sfData as string[]);
+        setSigortaAcenteler(acData as string[]);
+        setAracBakimlar(bakimData as AracBakimWithArac[]);
+        if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
+      } catch { /* sessiz */ }
+    })();
+
+    // BACKGROUND BATCH 2: Yakıt + Evrak + Personel + Yi-ÜFE
+    (async () => {
+      try {
+        const [alim, dagitim, evrak, pers, yi] = await Promise.all([
+          getYakitAlimlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
+          getAracYakitlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
+          getGidenEvraklar().catch(() => []),
+          getPersoneller().catch(() => []),
+          getYiUfeVerileri().catch(() => []),
+        ]);
+        setYakitAlimlar(alim as YakitAlim[]);
+        setYakitDagitimlar(dagitim as AracYakit[]);
+        setGidenEvraklar(evrak as GidenEvrak[]);
+        setPersoneller(pers as PersonelWithRelations[]);
+        setYiUfeData(yi as YiUfe[]);
+      } catch { /* sessiz */ }
+    })();
+
+    try {
+      const sant = await kritikPromise;
+
+      // Sayfa render olabilir (kritik veriler hazır)
       setLoading(false);
 
       // Arka planda: depo stok hesabı için TÜM ZAMAN yakıt verilerini çek
@@ -885,7 +929,8 @@ export default function DashboardPage() {
             <Wallet size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Kullanıcı Özeti</h3>
           </div>
-          {kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
+          {kasaLoading ? <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
+          : kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
             <div>
               <Table className="text-xs">
                 <TableHeader><TableRow>

@@ -57,31 +57,43 @@ export async function POST(req: Request) {
   const govdeFinal = String(govde).slice(0, maxGovde) + govdeSonu;
   const baslikFinal = String(baslik).slice(0, 100);
 
-  // Yöneticileri ve tercihlerini al (çağıran hariç)
-  const { data: yoneticiler } = await supabase
+  // Bildirim alıcıları: Yönetici + Şantiye Yöneticisi (çağıran hariç)
+  // - Yönetici: tüm bildirimleri alır
+  // - Şantiye Yöneticisi: santiye_id event'le ilişkili olduğunda alır (yoksa atandığı şantiyelerden olduğu varsayımıyla yine alır — payload'da santiye_id varsa filtreler)
+  const { data: aliciAdaylari } = await supabase
     .from("kullanicilar")
-    .select("id, bildirim_ayarlari")
-    .eq("rol", "yonetici")
+    .select("id, rol, bildirim_ayarlari, santiye_ids")
+    .in("rol", ["yonetici", "santiye_admin"])
     .eq("aktif", true)
     .neq("id", caller.id);
 
-  if (!yoneticiler || yoneticiler.length === 0) {
+  if (!aliciAdaylari || aliciAdaylari.length === 0) {
     return NextResponse.json({ success: true, sent: 0 });
   }
 
-  // Bu tag'i kapatmış olmayanları filtrele
+  // Bu tag'i kapatmış olmayanları filtrele + şantiye filtrelemesi (santiye_admin için)
   const tagStr = tag ? String(tag) : "";
-  const istekliIds = yoneticiler
+  const eventSantiyeId = body.santiye_id ? String(body.santiye_id) : null;
+  const istekliIds = aliciAdaylari
     .filter((y) => {
-      if (!tagStr) return true;
-      const ayar = (y.bildirim_ayarlari ?? {}) as Record<string, boolean>;
-      // Açıkça false olarak işaretlenmişse hariç tut, aksi halde gönder
-      return ayar[tagStr] !== false;
+      // Tag (kategori) filtresi: kapatılmamış olmalı
+      if (tagStr) {
+        const ayar = (y.bildirim_ayarlari ?? {}) as Record<string, boolean>;
+        if (ayar[tagStr] === false) return false;
+      }
+      // Şantiye admini için: event santiye_id'si atandığı şantiyelerde olmalı
+      // (yönetici için bu kontrol yok — hepsini alır)
+      // Event santiye_id yoksa (örn. genel bildirim), şantiye admini de alır
+      if (y.rol === "santiye_admin" && eventSantiyeId) {
+        const ids = Array.isArray(y.santiye_ids) ? (y.santiye_ids as string[]) : [];
+        if (ids.length > 0 && !ids.includes(eventSantiyeId)) return false;
+      }
+      return true;
     })
     .map((y) => y.id);
 
   if (istekliIds.length === 0) {
-    return NextResponse.json({ success: true, sent: 0, filtered: yoneticiler.length });
+    return NextResponse.json({ success: true, sent: 0, filtered: aliciAdaylari.length });
   }
 
   // Bu kullanıcıların subscription'larını al
