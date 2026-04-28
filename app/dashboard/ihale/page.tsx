@@ -158,12 +158,12 @@ function kisaltFirmaAdi(ad: string): string {
 }
 
 // Kendi firması mı kontrol
-// SADECE bizim_firma=true olarak işaretli firmalar dikkate alınır.
-// Eşleşme için ünvan ekleri (INS., LTD., SAN., A.Ş. vb.) temizlenip kelime kelime karşılaştırılır.
+// SADECE bizim_firma=true olarak işaretli firmalar dikkate alınır → flag yeterli güvenlik.
+// Eşleşme normalize edilmiş substring kontrolüyle yapılır (ünvan ekleri/Türkçe karakterler temizli).
 function normalizeUnvan(s: string): string {
   return s.toLowerCase()
     .replace(/[.,]/g, " ")
-    .replace(/\b(ins|insaat|inş|inşaat|taah|taahhut|taahhüt|tic|san|ltd|sti|şti|a\.?s|a\.?ş|as|aş|muh|muhendislik|mühendislik|mad|nak|enr|enrj|enerji|gida|gıda|tarim|tarım|elek|elektrik|otom|otomasyon|nakliye|turz|turizm|sirketi|şirketi)\b/g, " ")
+    .replace(/\b(ins|insaat|inş|inşaat|taah|taahhut|taahhüt|tic|san|ltd|sti|şti|a\.?s|a\.?ş|as|aş|muh|muhendislik|mühendislik|mad|nak|enr|enrj|enerji|gida|gıda|tarim|tarım|elek|elektrik|otom|otomasyon|nakliye|turz|turizm|sirketi|şirketi|ve)\b/g, " ")
     .replace(/[ığüşöç]/g, (c) => ({ "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c" }[c] ?? c))
     .replace(/\s+/g, " ")
     .trim();
@@ -173,15 +173,15 @@ function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
   if (!adNorm) return false;
   // Sadece "bizim_firma" işaretli firmaları dikkate al
   const bizimler = firmalar.filter((f) => f.bizim_firma === true);
+  if (bizimler.length === 0) return false;
   return bizimler.some((f) => {
     const fAdNorm = normalizeUnvan(f.firma_adi);
-    if (!fAdNorm) return false;
-    // Tam eşleşme veya tüm bizim-firma kelimelerini içeriyor olması
-    if (adNorm === fAdNorm) return true;
-    // Bizim firma kelimelerinin tamamı, rakip firma adında geçiyor mu?
-    const fKelimeler = fAdNorm.split(" ").filter((k) => k.length >= 3);
-    if (fKelimeler.length === 0) return false;
-    return fKelimeler.every((k) => adNorm.split(/\s+/).includes(k));
+    const fKisaNorm = f.kisa_adi ? normalizeUnvan(f.kisa_adi) : "";
+    // Substring eşleşmesi — bizim firma adı veya kısa adı rakipte geçiyorsa eşleşir
+    // (flag zaten "bizim" olarak işaretlemiş, geniş eşleşme güvenli)
+    if (fAdNorm && (adNorm.includes(fAdNorm) || fAdNorm.includes(adNorm))) return true;
+    if (fKisaNorm && (adNorm.includes(fKisaNorm) || fKisaNorm.includes(adNorm))) return true;
+    return false;
   });
 }
 
