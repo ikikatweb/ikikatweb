@@ -174,13 +174,22 @@ function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
   // Sadece "bizim_firma" işaretli firmaları dikkate al
   const bizimler = firmalar.filter((f) => f.bizim_firma === true);
   if (bizimler.length === 0) return false;
+  // Rakip firma adının token (kelime) seti
+  const adTokens = new Set(adNorm.split(/\s+/).filter((w) => w.length > 0));
   return bizimler.some((f) => {
     const fAdNorm = normalizeUnvan(f.firma_adi);
+    if (!fAdNorm) return false;
+    // 1) Tam veya yakın substring eşleşmesi
+    if (adNorm.includes(fAdNorm) || fAdNorm.includes(adNorm)) return true;
+    // 2) Token-tabanlı eşleşme — joint venture (ortak girişim) için kritik
+    // Bizim firmanın AYIRT EDİCİ kelimeleri (>=4 karakter, ünvan kelimeleri zaten temizlendi)
+    // Rakip firmada AYNI kelime olarak geçiyorsa eşleşir.
+    // Örnek: Bizim "İkikat" → Rakip "İkikat-Mafer Ortak Girişim" → "ikikat" token'ı eşleşir
+    const fTokens = fAdNorm.split(/\s+/).filter((w) => w.length >= 4);
+    if (fTokens.some((t) => adTokens.has(t))) return true;
+    // 3) Kısa ad (varsa, >=3 karakter) rakipte token olarak geçiyorsa
     const fKisaNorm = f.kisa_adi ? normalizeUnvan(f.kisa_adi) : "";
-    // Substring eşleşmesi — bizim firma adı veya kısa adı rakipte geçiyorsa eşleşir
-    // (flag zaten "bizim" olarak işaretlemiş, geniş eşleşme güvenli)
-    if (fAdNorm && (adNorm.includes(fAdNorm) || fAdNorm.includes(adNorm))) return true;
-    if (fKisaNorm && (adNorm.includes(fKisaNorm) || fKisaNorm.includes(adNorm))) return true;
+    if (fKisaNorm && fKisaNorm.length >= 3 && adTokens.has(fKisaNorm)) return true;
     return false;
   });
 }
