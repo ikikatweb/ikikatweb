@@ -49,6 +49,12 @@ export type Santiye = {
   is_ortak_girisim: boolean;
   ortaklik_orani: number | null;
   sozlesme_bedeli: number | null;
+  // Sözleşme bedelinin para birimi: TRY (varsayılan), USD, EUR
+  para_birimi: "TRY" | "USD" | "EUR" | null;
+  // Fiyat farkı (Yi-ÜFE) hesaplaması yapılsın mı?
+  // - true (varsayılan): FF Dahil Kalan Tutar ve Fiyat Farkı sütunlarında hesaplanır
+  // - false: hesaplama yapılmaz, sadece sözleşme bedeli baz alınır
+  ff_hesaplanacak: boolean | null;
   sozlesme_tarihi: string | null;
   isyeri_teslim_tarihi: string | null;
   is_suresi: number | null;

@@ -49,6 +49,20 @@ function formatTarih(d: string | null) {
   const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
   return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
 }
+// Para birimi sembolü
+function paraBirimiSembol(pb: string | null | undefined): string {
+  if (pb === "USD") return "$";
+  if (pb === "EUR") return "€";
+  return "₺";
+}
+// Para formatla + sembol ile birlikte göster (sadece TRY değilse sembol ekler)
+function formatParaIle(n: number | null, pb: string | null | undefined): string {
+  if (n == null) return "—";
+  const sembol = paraBirimiSembol(pb);
+  const sayi = n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // TRY'de zaten satıra ₺ konmuyor, USD/EUR için sembol baş tarafa eklensin
+  return pb && pb !== "TRY" ? `${sembol}${sayi}` : sayi;
+}
 function formatPara(n: number | null) {
   if (n == null) return "—";
   return n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -270,22 +284,29 @@ export default function SantiyelerPage() {
       enSonYiUfe = guncelYiUfe;
     }
 
+    // FF hesaplanmıyorsa (kullanıcı işaretlemedi) veya yabancı para birimi (Yi-ÜFE TRY-bazlı)
+    // → fiyat farkı uygulanmaz
+    const ffUygula = (s.ff_hesaplanacak ?? true) && (s.para_birimi ?? "TRY") === "TRY";
+
     // Fiyat Farkı = ((enSonYiUfe / ihale ayı Yi-ÜFE) - 1) × fiyatFarkıKatsayı
-    const ffYuzde = enSonYiUfe && ffBazYiUfe ? ((enSonYiUfe / ffBazYiUfe) - 1) * ffKatsayi * 100 : null;
+    const ffYuzde = ffUygula && enSonYiUfe && ffBazYiUfe ? ((enSonYiUfe / ffBazYiUfe) - 1) * ffKatsayi * 100 : null;
 
     // FF Dahil Kalan sadece devam eden işlerde gösterilir
     // Geçici kabul, kesin kabul, devir veya tasfiye tarihi varsa null
     const devamEdiyor = !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.devir_tarihi && !s.tasfiye_tarihi;
     const kalan = devamEdiyor && s.sozlesme_bedeli != null && s.sozlesme_fiyatlariyla_gerceklesen != null
       ? s.sozlesme_bedeli - s.sozlesme_fiyatlariyla_gerceklesen : null;
-    const ffDahilKalan = kalan != null && ffYuzde != null ? kalan * (ffYuzde / 100) + kalan : null;
+    // FF uygulanmıyorsa kalan tutar = sözleşme - gerçekleşen (FF eklenmez)
+    const ffDahilKalan = kalan != null
+      ? (ffYuzde != null ? kalan * (ffYuzde / 100) + kalan : kalan)
+      : null;
 
-    // Yi-ÜFE oranı (güncel / sözleşme) — İş Deneyim hesabı için her zaman güncel Yi-ÜFE kullanılır
-    const yiufeOrani = guncelYiUfe && sozYiUfe ? guncelYiUfe / sozYiUfe : null;
+    // Yi-ÜFE oranı (güncel / sözleşme) — sadece TRY için uygulanır, USD/EUR'de oran 1
+    const yiufeOrani = ffUygula && guncelYiUfe && sozYiUfe ? guncelYiUfe / sozYiUfe : 1;
 
     // Güncel İş Deneyim — ortakOrani parametresi öncelikli, yoksa şantiyenin kendi oranı
     const oran = ortakOrani ?? s.ortaklik_orani;
-    const guncelDeneyim = yiufeOrani && s.sozlesme_fiyatlariyla_gerceklesen && oran
+    const guncelDeneyim = s.sozlesme_fiyatlariyla_gerceklesen && oran
       ? yiufeOrani * s.sozlesme_fiyatlariyla_gerceklesen * oran / 100 : null;
 
     return { sozYiUfe, ffBazYiUfe, enSonYiUfe, ffYuzde, ffDahilKalan, yiufeOrani, guncelDeneyim };
@@ -754,8 +775,8 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2 whitespace-nowrap">{s.ihale_kayit_no ?? "—"}</TableCell>
                     {/* Sözleşme Tarihi */}
                     <TableCell className="text-center px-2 whitespace-nowrap">{formatTarih(s.sozlesme_tarihi)}</TableCell>
-                    {/* FF Dahil Kalan - otomatik */}
-                    <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">{c.ffDahilKalan != null ? formatPara(c.ffDahilKalan) : "—"}</TableCell>
+                    {/* FF Dahil Kalan - otomatik (FF kapalıysa kalan tutar gösterilir) */}
+                    <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">{c.ffDahilKalan != null ? formatParaIle(c.ffDahilKalan, s.para_birimi) : "—"}</TableCell>
                     {/* Sözl. Fiy. Gerçekleşen - tıklanabilir */}
                     <TableCell className="text-right px-2 tabular-nums whitespace-nowrap cursor-pointer hover:bg-blue-50"
                       onClick={() => !isEditingThis && handleGerceklesenClick(editKey, s.sozlesme_fiyatlariyla_gerceklesen)}>
@@ -769,7 +790,7 @@ export default function SantiyelerPage() {
                           // Tailwind text-xs (12px) iOS'ta input focus'unda zoom tetikler ve geri dönmez
                           style={{ fontSize: "16px" }}
                           className="h-7 px-1 min-w-[100px] text-right" />
-                      ) : formatPara(s.sozlesme_fiyatlariyla_gerceklesen)}
+                      ) : formatParaIle(s.sozlesme_fiyatlariyla_gerceklesen, s.para_birimi)}
                     </TableCell>
                     {/* Geçici Kabul */}
                     <TableCell className="text-center px-2 whitespace-nowrap">
@@ -809,23 +830,26 @@ export default function SantiyelerPage() {
                       {(() => {
                         const dagilim = isGrupDagilimMap.get(s.id);
                         const varDagilim = dagilim && dagilim.length > 0 && c.sozYiUfe && guncelYiUfe;
-                        if (!varDagilim) return c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—";
+                        if (!varDagilim) return c.guncelDeneyim != null ? formatParaIle(c.guncelDeneyim, s.para_birimi) : "—";
                         const oran = satir.ortakOrani ?? s.ortaklik_orani ?? 100;
+                        // FF kapalı veya yabancı para birimi → Yi-ÜFE oranı uygulanmaz, dağılım da TRY-bazsız
+                        const ffUygula = (s.ff_hesaplanacak ?? true) && (s.para_birimi ?? "TRY") === "TRY";
+                        const yiOran = ffUygula ? (guncelYiUfe! / c.sozYiUfe!) : 1;
                         const satirlar = dagilim!.map((d) => ({
                           grup: d.is_grubu,
-                          tutar: (guncelYiUfe! / c.sozYiUfe!) * d.tutar * oran / 100,
+                          tutar: yiOran * d.tutar * oran / 100,
                         }));
                         const tooltipText = satirlar.map((r) =>
-                          `${r.grup}: ${formatPara(r.tutar)}`
+                          `${r.grup}: ${formatParaIle(r.tutar, s.para_birimi)}`
                         ).join("\n") + (satirlar.length > 1
-                          ? `\n─────────────\nToplam: ${formatPara(satirlar.reduce((a, r) => a + r.tutar, 0))}`
+                          ? `\n─────────────\nToplam: ${formatParaIle(satirlar.reduce((a, r) => a + r.tutar, 0), s.para_birimi)}`
                           : "");
                         return (
                           <span
                             className="cursor-help border-b border-dashed border-[#1E3A5F]"
                             title={tooltipText}
                           >
-                            {c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—"}
+                            {c.guncelDeneyim != null ? formatParaIle(c.guncelDeneyim, s.para_birimi) : "—"}
                           </span>
                         );
                       })()}

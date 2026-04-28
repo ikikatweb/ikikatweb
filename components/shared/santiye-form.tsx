@@ -96,6 +96,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     is_ortak_girisim: santiye?.is_ortak_girisim ?? false,
     ortaklik_orani: santiye?.ortaklik_orani ?? null,
     sozlesme_bedeli: santiye?.sozlesme_bedeli ?? null,
+    para_birimi: santiye?.para_birimi ?? "TRY",
+    ff_hesaplanacak: santiye?.ff_hesaplanacak ?? true,
     sozlesme_tarihi: santiye?.sozlesme_tarihi ?? null,
     isyeri_teslim_tarihi: santiye?.isyeri_teslim_tarihi ?? null,
     is_suresi: santiye?.is_suresi ?? null,
@@ -435,25 +437,60 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç)</Label>
-                  <div className="relative">
-                    <Input
-                      id="sozlesme_bedeli"
-                      placeholder="0,00"
-                      value={sozlesmeBedeliStr}
-                      onChange={(e) => setSozlesmeBedeliStr(e.target.value)}
-                      onBlur={() => {
-                        const val = parseParaInput(sozlesmeBedeliStr);
-                        setSozlesmeBedeliStr(val != null ? formatParaInput(val) : "");
-                      }}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="sozlesme_bedeli"
+                        placeholder="0,00"
+                        value={sozlesmeBedeliStr}
+                        onChange={(e) => setSozlesmeBedeliStr(e.target.value)}
+                        onBlur={() => {
+                          const val = parseParaInput(sozlesmeBedeliStr);
+                          setSozlesmeBedeliStr(val != null ? formatParaInput(val) : "");
+                        }}
+                        disabled={loading}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                        {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
+                      </span>
+                    </div>
+                    <select
+                      value={formData.para_birimi ?? "TRY"}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, para_birimi: e.target.value as "TRY" | "USD" | "EUR" }))}
                       disabled={loading}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₺</span>
+                      className="h-10 px-2 text-sm border border-gray-300 rounded-md bg-white outline-none focus:border-[#1E3A5F] w-20"
+                      title="Para birimi"
+                    >
+                      <option value="TRY">TL</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi</Label>
                   <Input id="sozlesme_tarihi" name="sozlesme_tarihi" type="date" value={formData.sozlesme_tarihi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
+              </div>
+
+              {/* Fiyat Farkı Hesaplaması Toggle */}
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+                <input
+                  type="checkbox"
+                  id="ff_hesaplanacak"
+                  checked={formData.ff_hesaplanacak ?? true}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, ff_hesaplanacak: e.target.checked }))}
+                  disabled={loading}
+                  className="w-4 h-4 accent-[#1E3A5F]"
+                />
+                <Label htmlFor="ff_hesaplanacak" className="text-sm cursor-pointer flex-1">
+                  Fiyat Farkı Hesaplanacaktır
+                </Label>
+                <span className="text-[10px] text-gray-500">
+                  {(formData.ff_hesaplanacak ?? true)
+                    ? "FF Dahil Kalan Tutar ve Fiyat Farkı sütunlarında Yi-ÜFE hesabı yapılır"
+                    : "FF hesaplaması atlanır — sadece sözleşme bedeli baz alınır"}
+                </span>
               </div>
 
               {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
@@ -472,10 +509,13 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                       }}
                       disabled={loading}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₺</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                      {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
+                    </span>
                   </div>
                   <p className="text-[10px] text-gray-400">
                     İşçilik Takibi sayfasındaki Keşif Artışı ile aynı veridir — biri değişince diğeri de güncellenir.
+                    Para birimi sözleşme ile aynı (yukarıdan değiştirilebilir).
                   </p>
                 </div>
               </div>
