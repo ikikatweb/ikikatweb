@@ -289,11 +289,11 @@ export default function SantiyelerPage() {
       enSonYiUfe = guncelYiUfe;
     }
 
-    // FF hesaplanmıyorsa (kullanıcı işaretlemedi) veya yabancı para birimi (Yi-ÜFE TRY-bazlı)
-    // → fiyat farkı uygulanmaz
-    const ffUygula = (s.ff_hesaplanacak ?? true) && (s.para_birimi ?? "TRY") === "TRY";
+    // FF hesaplanmıyorsa (kullanıcı işaretlemedi) → fiyat farkı uygulanmaz
+    const ffUygula = (s.ff_hesaplanacak ?? true);
 
     // Fiyat Farkı = ((enSonYiUfe / ihale ayı Yi-ÜFE) - 1) × fiyatFarkıKatsayı
+    // (FF kapalıysa null → "—" göster)
     const ffYuzde = ffUygula && enSonYiUfe && ffBazYiUfe ? ((enSonYiUfe / ffBazYiUfe) - 1) * ffKatsayi * 100 : null;
 
     // FF Dahil Kalan sadece devam eden işlerde gösterilir
@@ -302,21 +302,19 @@ export default function SantiyelerPage() {
     const devamEdiyor = !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.devir_tarihi && !s.tasfiye_tarihi;
     const kesifArtisi = kesifArtisMap.get(s.id) ?? 0;
     const efektifSozlesme = s.sozlesme_bedeli != null ? s.sozlesme_bedeli + kesifArtisi : null;
-    const ham = devamEdiyor && efektifSozlesme != null && s.sozlesme_fiyatlariyla_gerceklesen != null
+    const kalan = devamEdiyor && efektifSozlesme != null && s.sozlesme_fiyatlariyla_gerceklesen != null
       ? efektifSozlesme - s.sozlesme_fiyatlariyla_gerceklesen : null;
-    // Gerçekleşen sözleşmeyi aştıysa "kalan" anlamı yok → null göster (—)
-    const kalan = ham != null && ham < 0 ? null : ham;
-    // FF uygulanmıyorsa kalan tutar = sözleşme - gerçekleşen (FF eklenmez)
+    // FF açıksa: kalan × (1 + FF%/100). FF kapalıysa: sadece kalan (sözleşme + keşif − gerçekleşen)
     const ffDahilKalan = kalan != null
       ? (ffYuzde != null ? kalan * (ffYuzde / 100) + kalan : kalan)
       : null;
 
-    // Yi-ÜFE oranı (güncel / sözleşme) — sadece TRY için uygulanır, USD/EUR'de oran 1
-    const yiufeOrani = ffUygula && guncelYiUfe && sozYiUfe ? guncelYiUfe / sozYiUfe : 1;
+    // Yi-ÜFE oranı (güncel / sözleşme) — İş Deneyim hesabı için her zaman güncel Yi-ÜFE kullanılır
+    const yiufeOrani = guncelYiUfe && sozYiUfe ? guncelYiUfe / sozYiUfe : null;
 
     // Güncel İş Deneyim — ortakOrani parametresi öncelikli, yoksa şantiyenin kendi oranı
     const oran = ortakOrani ?? s.ortaklik_orani;
-    const guncelDeneyim = s.sozlesme_fiyatlariyla_gerceklesen && oran
+    const guncelDeneyim = yiufeOrani && s.sozlesme_fiyatlariyla_gerceklesen && oran
       ? yiufeOrani * s.sozlesme_fiyatlariyla_gerceklesen * oran / 100 : null;
 
     return { sozYiUfe, ffBazYiUfe, enSonYiUfe, ffYuzde, ffDahilKalan, yiufeOrani, guncelDeneyim };

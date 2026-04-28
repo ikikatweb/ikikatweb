@@ -450,7 +450,9 @@ function YakitPageContent() {
     return result;
   }, [tumHareketler]);
 
-  // Seçili şantiyenin şu anki (en son) stoğu
+  // Seçili şantiyenin SEÇİLİ TARİH ARALIĞINA kadar olan stoğu
+  // (filtre tarih aralığının BİTİŞ tarihine kadar olan tüm hareketler kümülatif toplanır)
+  // Bu sayede tarih aralığı geçmişe çekildiğinde "o dönemin sonundaki stok" görülür.
   const mevcutDepoStok = useMemo(() => {
     if (!filtreSantiyeId) return null;
     const siraliAsc = [...tumHareketler].sort((a, b) =>
@@ -458,13 +460,15 @@ function YakitPageContent() {
     );
     let stok = 0;
     for (const h of siraliAsc) {
+      // Sadece bitiş tarihine kadar olan hareketler hesaba katılsın
+      if (filtreBitis && h.tarih > filtreBitis) continue;
       if (h.tip === "arac_yakit" && h.santiye_id === filtreSantiyeId) stok -= h.miktar_lt;
       else if (h.tip === "alim" && h.santiye_id === filtreSantiyeId) stok += h.miktar_lt;
       else if (h.tip === "virman" && h.gonderen_santiye_id === filtreSantiyeId) stok -= h.miktar_lt;
       else if (h.tip === "virman" && h.alan_santiye_id === filtreSantiyeId) stok += h.miktar_lt;
     }
     return stok;
-  }, [tumHareketler, filtreSantiyeId]);
+  }, [tumHareketler, filtreSantiyeId, filtreBitis]);
 
   // Filtrelenmiş + sıralanmış tablo satırları
   const tabloSatirlari = useMemo<TabloSatir[]>(() => {

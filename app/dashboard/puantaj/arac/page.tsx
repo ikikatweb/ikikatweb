@@ -358,27 +358,16 @@ export default function AracPuantajPage() {
     if (!santiyeId) {
       setKiraMap(new Map());
       setOzetRangePuantajlar([]);
+      setOzetRangeYakitlar([]);
       return;
     }
-    // Bu şantiyede gösterilecek araçların id listesi
-    // ("trafikten_cekildi" araçlar da dahil — sadece "pasif" hariç)
-    const idList = araclar
-      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === santiyeId)
-      .map((a) => a.id);
 
-    // Kira bedelleri
-    try {
-      const kira = await getAracKiraBedelleri(idList);
-      setKiraMap(kira);
-    } catch (err) {
-      console.error("getAracKiraBedelleri hatası:", err);
-      setKiraMap(new Map());
-    }
-
-    // Tarih aralığındaki gerçek puantajlar
+    // Tarih aralığındaki gerçek puantajlar + yakıt kayıtlarını ÖNCE yükle
+    // (kira bedeli için hangi araçların ilgili olduğunu belirlemek için lazım)
+    let rangePuantajlar: AracPuantaj[] = [];
+    let rangeYakitlar: AracYakit[] = [];
     try {
       // bitis tarihini "bitis+1" yap çünkü SQL .lt kullanıyor
-      // UTC kayma bug'ını önlemek için yerel bileşenlerle hesapla
       const by = parseInt(ozetBitis.slice(0, 4), 10);
       const bm = parseInt(ozetBitis.slice(5, 7), 10);
       const bd = parseInt(ozetBitis.slice(8, 10), 10);
@@ -387,12 +376,11 @@ export default function AracPuantajPage() {
       const em = ertesiGun.getMonth() + 1;
       const ed = ertesiGun.getDate();
       const bitisExclusive = `${ey}-${String(em).padStart(2, "0")}-${String(ed).padStart(2, "0")}`;
-      const rangePuantajlar = await getAracPuantajByRange(santiyeId, ozetBaslangic, bitisExclusive);
+      rangePuantajlar = await getAracPuantajByRange(santiyeId, ozetBaslangic, bitisExclusive);
       setOzetRangePuantajlar(rangePuantajlar);
 
-      // Tarih aralığındaki yakıt kayıtları — bu şantiyeye verilen tüm yakıt
       try {
-        const rangeYakitlar = await getAracYakitlarByRange([santiyeId], ozetBaslangic, ozetBitis);
+        rangeYakitlar = await getAracYakitlarByRange([santiyeId], ozetBaslangic, ozetBitis);
         setOzetRangeYakitlar(rangeYakitlar);
       } catch (err) {
         console.error("getAracYakitlarByRange (ozet) hatası:", err);
@@ -402,6 +390,27 @@ export default function AracPuantajPage() {
       console.error("getAracPuantajByRange hatası:", err);
       setOzetRangePuantajlar([]);
       setOzetRangeYakitlar([]);
+    }
+
+    // Kira bedeli için araç id listesi:
+    // (1) Şu an bu şantiyede atanmış olanlar +
+    // (2) Bu tarih aralığında bu şantiyede puantajı olanlar +
+    // (3) Bu tarih aralığında bu şantiyede yakıt verilen araçlar
+    // (Araç şantiyeden çıkarılsa da geçmiş veriler gözükmeli)
+    const idSet = new Set<string>();
+    for (const a of araclar) {
+      if ((a.durum ?? "aktif") !== "pasif" && a.santiye_id === santiyeId) idSet.add(a.id);
+    }
+    for (const p of rangePuantajlar) idSet.add(p.arac_id);
+    for (const y of rangeYakitlar) idSet.add(y.arac_id);
+    const idList = Array.from(idSet);
+
+    try {
+      const kira = await getAracKiraBedelleri(idList);
+      setKiraMap(kira);
+    } catch (err) {
+      console.error("getAracKiraBedelleri hatası:", err);
+      setKiraMap(new Map());
     }
 
     // Tarih aralığındaki override'lar
@@ -520,12 +529,20 @@ export default function AracPuantajPage() {
     return tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL";
   }
 
-  // Özet Rapor'da görüntülenecek araçlar (sadece bu şantiyeye atanmış olanlar)
+  // Özet Rapor'da görüntülenecek araçlar:
+  // (1) Şu an bu şantiyeye atanmış olanlar +
+  // (2) Bu tarih aralığında bu şantiyede puantajı olanlar +
+  // (3) Bu tarih aralığında bu şantiyede yakıt verilen araçlar
+  // (Araç şantiyeden çıkarılsa bile eskiye dönük kayıtlar görünmeli — kaybolmamalı)
   const ozetAraclari = useMemo(() => {
+    const idsInRange = new Set<string>();
+    for (const p of ozetRangePuantajlar) idsInRange.add(p.arac_id);
+    for (const y of ozetRangeYakitlar) idsInRange.add(y.arac_id);
     return araclar
-      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === santiyeId)
+      .filter((a) => (a.durum ?? "aktif") !== "pasif"
+        && (a.santiye_id === santiyeId || idsInRange.has(a.id)))
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
-  }, [araclar, santiyeId]);
+  }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar]);
 
 
   const ozetSatirlari = useMemo<OzetSatir[]>(() => {
