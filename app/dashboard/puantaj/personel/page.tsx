@@ -986,7 +986,7 @@ export default function PersonelPuantajPage() {
                                   x: rect.left + rect.width / 2,
                                   y: rect.bottom + 8,
                                   ad: p.ad_soyad,
-                                  isleyenAd: pg.created_by_ad ?? "Bilinmiyor",
+                                  isleyenAd: pg.created_by_ad || (pg.created_by ? "Bilinmiyor" : "—"),
                                   durum: pg.durum,
                                   aciklama: pg.aciklama ?? null,
                                   mesaiSaat: pg.mesai_saat,

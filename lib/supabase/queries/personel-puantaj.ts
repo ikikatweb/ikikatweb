@@ -31,21 +31,21 @@ export async function getPersonelPuantajByAySantiye(
   const rows = (data ?? []) as PersonelPuantaj[];
   if (rows.length === 0) return rows;
 
-  // created_by id'lerinden kullanıcı ad_soyad'larını topluca çek
-  const userIds = [...new Set(rows.map((p) => p.created_by).filter(Boolean) as string[])];
-  if (userIds.length > 0) {
-    const { data: kullanicilar } = await supabase
-      .from("kullanicilar")
-      .select("id, ad_soyad")
-      .in("id", userIds);
-    const map = new Map<string, string>();
-    (kullanicilar ?? []).forEach((k) => map.set(k.id, k.ad_soyad));
-    return rows.map((p) => ({
-      ...p,
-      created_by_ad: p.created_by ? map.get(p.created_by) ?? null : null,
-    }));
-  }
-  return rows.map((p) => ({ ...p, created_by_ad: null }));
+  // created_by id'lerinden kullanıcı ad_soyad'larını çek
+  // RLS bypass için API endpoint kullan (service role key ile çalışır) — direkt
+  // supabase.from("kullanicilar") sorgusu RLS politikasına takılıp boş döner.
+  const map = new Map<string, string>();
+  try {
+    const res = await fetch("/api/kullanicilar/adlar");
+    if (res.ok) {
+      const tumKullanicilar = (await res.json()) as { id: string; ad_soyad: string }[];
+      for (const k of tumKullanicilar) map.set(k.id, k.ad_soyad);
+    }
+  } catch { /* sessiz */ }
+  return rows.map((p) => ({
+    ...p,
+    created_by_ad: p.created_by ? map.get(p.created_by) ?? null : null,
+  }));
 }
 
 // Belirtilen ay içinde, BAŞKA şantiyelerdeki TÜM personel puantajlarını getir.
