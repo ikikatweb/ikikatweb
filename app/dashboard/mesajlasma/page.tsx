@@ -256,9 +256,9 @@ export default function MesajlasmaPage() {
   if (!kullanici) return <div className="p-4 text-gray-500">Yükleniyor...</div>;
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-0 md:gap-3">
+    <div className="flex h-[calc(100dvh-56px)] md:h-[calc(100vh-120px)] gap-0 md:gap-3 -m-4 md:m-0">
       {/* Sol panel: Konuşma listesi — mobilde sadece konuşma seçilmediyse görün */}
-      <div className={`${seciliKonusmaId ? "hidden md:flex" : "flex"} w-full md:w-72 md:flex-shrink-0 bg-white rounded-lg border flex-col overflow-hidden`}>
+      <div className={`${seciliKonusmaId ? "hidden md:flex" : "flex"} w-full md:w-72 md:flex-shrink-0 bg-white md:rounded-lg md:border border-b flex-col overflow-hidden`}>
         <div className="p-3 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageSquare size={18} className="text-[#1E3A5F]" />
@@ -315,7 +315,7 @@ export default function MesajlasmaPage() {
       </div>
 
       {/* Sağ panel: Seçili konuşma — mobilde sadece konuşma seçildiyse görün */}
-      <div className={`${seciliKonusmaId ? "flex" : "hidden md:flex"} flex-1 bg-white rounded-lg border flex-col overflow-hidden min-w-0`}>
+      <div className={`${seciliKonusmaId ? "flex" : "hidden md:flex"} flex-1 bg-white md:rounded-lg md:border flex-col overflow-hidden min-w-0`}>
         {!seciliKonusmaId ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             <div className="text-center">
