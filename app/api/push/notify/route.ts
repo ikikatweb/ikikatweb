@@ -98,10 +98,19 @@ export async function POST(req: Request) {
 
   // BİLDİRİM GEÇMİŞİ — her alıcı için kayıt at (push gönderilmese bile geçmişte görsünler)
   // tarih: TR yerel saatine göre YYYY-MM-DD, saat: HH:MM:SS
+  // Sunucu UTC çalıştığı için new Date().getHours() UTC saati döner — TR'ye dönüştür.
   try {
-    const now = new Date();
-    const tarih = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    const saat = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+    const trParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Istanbul",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+    const get = (type: string) => trParts.find((p) => p.type === type)?.value ?? "00";
+    const tarih = `${get("year")}-${get("month")}-${get("day")}`;
+    // hour bazen "24" döner, "00" yap
+    const hh = get("hour") === "24" ? "00" : get("hour");
+    const saat = `${hh}:${get("minute")}:${get("second")}`;
     const gecmisRows = istekliIds.map((kid) => ({
       kullanici_id: kid,
       baslik: baslikFinal,
