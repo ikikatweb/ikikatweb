@@ -171,8 +171,10 @@ function normalizeUnvan(s: string): string {
 function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
   const adNorm = normalizeUnvan(firmaAdi);
   if (!adNorm) return false;
-  // Sadece "bizim_firma" işaretli firmaları dikkate al
-  const bizimler = firmalar.filter((f) => f.bizim_firma === true);
+  // Yönetim/Firmalar listesindeki TÜM firmalar "bizim" sayılır.
+  // İstersen bir firmayı dışlamak için bizim_firma=false işaretle (gelecekte UI eklenebilir).
+  // Şu an bizim_firma=false işaretlenmemişse (null/true ise) dahil ediyoruz.
+  const bizimler = firmalar.filter((f) => f.bizim_firma !== false);
   if (bizimler.length === 0) return false;
   // Rakip firma adının token (kelime) seti
   const adTokens = new Set(adNorm.split(/\s+/).filter((w) => w.length > 0));
