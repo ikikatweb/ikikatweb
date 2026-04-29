@@ -14,23 +14,31 @@ export type KonusmaOzet = MesajKonusma & {
   okunmamisSayisi: number;
 };
 
-export async function getKonusmalar(currentKullaniciId: string): Promise<KonusmaOzet[]> {
+export async function getKonusmalar(
+  currentKullaniciId: string,
+  tumunuGor = false,
+): Promise<KonusmaOzet[]> {
   const supabase = getSupabase();
-  // Önce kullanıcının üye olduğu konuşma id'lerini al
+  // Kullanıcının kendi üyeliklerini çek (okunmamış sayısını hesaplamak için her durumda lazım)
   const { data: uyelikler } = await supabase
     .from("mesaj_uye")
     .select("konusma_id, son_okunan_mesaj_id, son_okunma_zamani")
     .eq("kullanici_id", currentKullaniciId);
-  if (!uyelikler || uyelikler.length === 0) return [];
-  const konusmaIds = uyelikler.map((u) => u.konusma_id);
+  const kendiUyelikleri = uyelikler ?? [];
 
-  // Konuşmaları çek
-  const { data: konusmalar } = await supabase
+  // tumunuGor=true (yönetici/şantiye yöneticisi): tüm konuşmaları çek
+  // tumunuGor=false: sadece kullanıcının üye olduğu konuşmaları çek
+  let konusmaQuery = supabase
     .from("mesaj_konusma")
     .select("*")
-    .in("id", konusmaIds)
     .order("son_mesaj_zamani", { ascending: false, nullsFirst: false });
-  if (!konusmalar) return [];
+  if (!tumunuGor) {
+    if (kendiUyelikleri.length === 0) return [];
+    konusmaQuery = konusmaQuery.in("id", kendiUyelikleri.map((u) => u.konusma_id));
+  }
+  const { data: konusmalar } = await konusmaQuery;
+  if (!konusmalar || konusmalar.length === 0) return [];
+  const konusmaIds = konusmalar.map((k) => k.id);
 
   // Tüm üyeleri tek seferde çek
   const { data: tumUyeler } = await supabase
@@ -67,12 +75,14 @@ export async function getKonusmalar(currentKullaniciId: string): Promise<Konusma
     }
   }
 
-  // Okunmamış sayıları hesapla — mevcut kullanıcı için her konuşmada
+  // Okunmamış sayıları hesapla — sadece kullanıcının ÜYE olduğu konuşmalarda
+  // (admin tüm konuşmaları görse bile, üye olmadığı yerlerin "okunmamış"ı kendi sayısına yazılmaz)
   const okunmamisMap = new Map<string, number>();
   const uyelikMap = new Map<string, string | null>();
-  for (const u of uyelikler) uyelikMap.set(u.konusma_id, u.son_okunma_zamani);
+  for (const u of kendiUyelikleri) uyelikMap.set(u.konusma_id, u.son_okunma_zamani);
   for (const m of sonMesajlar ?? []) {
     if (m.gonderen_id === currentKullaniciId) continue; // kendi mesajları okunmamış sayılmaz
+    if (!uyelikMap.has(m.konusma_id)) continue; // üye değilse atla (admin gözlemci modu)
     const sonOkundu = uyelikMap.get(m.konusma_id);
     if (!sonOkundu || m.created_at > sonOkundu) {
       okunmamisMap.set(m.konusma_id, (okunmamisMap.get(m.konusma_id) ?? 0) + 1);

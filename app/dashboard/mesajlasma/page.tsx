@@ -44,16 +44,17 @@ export default function MesajlasmaPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [adMap, setAdMap] = useState<Map<string, string>>(new Map());
 
-  // Konuşmaları yükle
+  // Konuşmaları yükle — yönetici ve şantiye yöneticisi tüm konuşmaları görür
+  const tumunuGor = isYonetici || isShantiyeAdmin;
   const loadKonusmalar = useCallback(async () => {
     if (!kullanici?.id) return;
     try {
-      const data = await getKonusmalar(kullanici.id);
+      const data = await getKonusmalar(kullanici.id, tumunuGor);
       setKonusmalar(data);
     } catch (err) {
       console.error("Konuşmalar yüklenemedi:", err);
     }
-  }, [kullanici?.id]);
+  }, [kullanici?.id, tumunuGor]);
 
   // Tüm kullanıcıları çek (yeni konuşma için)
   const loadKullanicilar = useCallback(async () => {
