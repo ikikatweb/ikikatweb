@@ -101,14 +101,15 @@ function MesajlasmaContent() {
   }, [loadKonusmalar, loadKullanicilar]);
 
   // URL'de ?konusma=<id> varsa o konuşmayı otomatik aç (bildirim tıklamasından gelen deep link)
-  // Sadece bir kez çalışır — kullanıcı sonradan başka konuşmaya tıklarsa override etmesin
-  const deepLinkKullanildi = useRef(false);
+  // Son işlenen ID takip edilir — service worker client.navigate ile farklı konuşma URL'i gelirse
+  // yeni ID için tekrar tetiklenir.
+  const sonIslenenKonusma = useRef<string>("");
   useEffect(() => {
-    if (deepLinkKullanildi.current) return;
     if (!urlKonusmaId || yukleniyor || konusmalar.length === 0) return;
+    if (sonIslenenKonusma.current === urlKonusmaId) return;
     const varMi = konusmalar.some((k) => k.id === urlKonusmaId);
     if (varMi) {
-      deepLinkKullanildi.current = true;
+      sonIslenenKonusma.current = urlKonusmaId;
       konusmaSec(urlKonusmaId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

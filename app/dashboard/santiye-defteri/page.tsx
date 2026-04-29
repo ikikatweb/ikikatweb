@@ -181,20 +181,49 @@ function SantiyeDefContent() {
   }, [pdfPreviewUrl]);
 
   // URL'den ?santiye=<id>&tarih=<tarih> okumak — bildirim deep link
-  // Sadece bir kez çalışır (sayfa yüklendiğinde) — kullanıcı sonra filtre değiştirirse override etmesin
-  const deepLinkKullanildi = useRef(false);
+  // Aynı URL ikinci kez işlenmesin diye son işlenen "santiye:tarih" key'ini takip ediyoruz.
+  // Service worker client.navigate() ile aynı sayfaya farklı query ile gelinebilir;
+  // o durumda yeni key gelirse yeniden işle.
+  const sonIslenenDeepLink = useRef<string>("");
   useEffect(() => {
-    if (deepLinkKullanildi.current) return;
     if (!urlSantiye || santiyeler.length === 0) return;
+    const key = `${urlSantiye}:${urlTarih ?? ""}`;
+    if (sonIslenenDeepLink.current === key) return;
     const exists = santiyeler.some((s) => s.id === urlSantiye);
     if (!exists) return;
-    deepLinkKullanildi.current = true;
-    setFiltreSantiye(urlSantiye);
-    if (urlTarih) {
+    sonIslenenDeepLink.current = key;
+
+    (async () => {
+      // Önce filtreyi set et (sayfa kullanıcı için doğru şantiyeyi gösteriyor olsun)
+      setFiltreSantiye(urlSantiye);
+      if (!urlTarih) return;
       setSeciliTarih(urlTarih);
-      setPreviewMode(true);
-      setDefterDialogOpen(true);
-    }
+
+      // Doğrudan defteri fetch et (loadDefter useCallback ile race olmasın)
+      try {
+        const d = await getDefterByTarih(urlSantiye, urlTarih);
+        if (d) {
+          // Veriyi state'e koy ve PDF ön izlemeyi aç (kullanıcı bildirime tıklayınca direkt
+          // o gün ki defteri PDF olarak görsün — yazılan yazı net şekilde gözüksün)
+          setDefter(d);
+          setHavaDurumu(d.hava_durumu ?? "");
+          setSicaklik(d.sicaklik ?? "");
+          let k = await getKayitlar(d.id).catch(() => []);
+          if (sadeceKendiKayitlari && kullanici?.id) {
+            k = k.filter((x) => x.yazan_id === kullanici.id);
+          }
+          setKayitlar(k);
+          // PDF önizleme aç
+          previewPDFForDefter({ ...d, kayitlar: k });
+        } else {
+          // Defter henüz yok — dialog'u açıp göster
+          setPreviewMode(true);
+          setDefterDialogOpen(true);
+        }
+      } catch (err) {
+        console.error("Deep link defter yükleme hatası:", err);
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSantiye, urlTarih, santiyeler.length]);
 
