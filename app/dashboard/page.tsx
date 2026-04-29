@@ -504,7 +504,10 @@ export default function DashboardPage() {
       gidenVirmanMap.set(v.gonderen_santiye_id, (gidenVirmanMap.get(v.gonderen_santiye_id) ?? 0) + v.miktar_lt);
       gelenVirmanMap.set(v.alan_santiye_id, (gelenVirmanMap.get(v.alan_santiye_id) ?? 0) + v.miktar_lt);
     }
-    const result: { santiyeId: string; santiye: string; alim: number; dagitim: number; stok: number }[] = [];
+    const result: { santiyeId: string; santiye: string; alim: number; dagitim: number; stok: number; depoKapasitesi: number }[] = [];
+    // Şantiye id → depo kapasitesi haritası
+    const depoKapMap = new Map<string, number>();
+    for (const s of santiyeler) depoKapMap.set(s.id, s.depo_kapasitesi ?? 0);
     // Depo kapasitesi olan tüm şantiyeleri dahil et (alım olmasa bile)
     const depoluSantiyeler = new Set<string>();
     for (const s of santiyeler) {
@@ -529,7 +532,12 @@ export default function DashboardPage() {
       const giden = gidenVirmanMap.get(sid) ?? 0;
       // Stok = alım + gelen virman - giden virman - dağıtım
       const stok = alim + gelen - giden - dagitim;
-      result.push({ santiyeId: sid, santiye: santMap.get(sid) ?? "—", alim, dagitim, stok });
+      result.push({
+        santiyeId: sid,
+        santiye: santMap.get(sid) ?? "—",
+        alim, dagitim, stok,
+        depoKapasitesi: depoKapMap.get(sid) ?? 0,
+      });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
   }, [yakitAlimlarTum, yakitDagitimlarTum, yakitVirmanlarTum, santMap, santiyeler, kullanici, isYonetici]);
@@ -1186,7 +1194,8 @@ export default function DashboardPage() {
           {depoOzet.length === 0 ? <p className="text-sm text-gray-400">Depo verisi yok</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {depoOzet.map((d) => {
-                const yuzde = d.alim > 0 ? Math.round((d.stok / d.alim) * 100) : 0;
+                // Yüzde = anlık stok / depo kapasitesi (kapasite yoksa 0)
+                const yuzde = d.depoKapasitesi > 0 ? Math.round((d.stok / d.depoKapasitesi) * 100) : 0;
                 const barColor = yuzde > 60 ? "bg-emerald-500" : yuzde > 30 ? "bg-blue-500" : yuzde > 10 ? "bg-amber-500" : "bg-red-500";
                 const badgeColor = yuzde > 60 ? "bg-emerald-600" : yuzde > 30 ? "bg-blue-600" : yuzde > 10 ? "bg-amber-600" : "bg-red-600";
                 return (
@@ -1199,7 +1208,7 @@ export default function DashboardPage() {
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-semibold text-[#1E3A5F] truncate" title={d.santiye}>{d.santiye}</div>
                         <div className="text-[10px] text-gray-400 mt-0.5">
-                          {formatSayi(d.stok, 0)} Lt / {formatSayi(d.alim, 0)} Lt
+                          {formatSayi(d.stok, 0)} Lt / {d.depoKapasitesi > 0 ? `${formatSayi(d.depoKapasitesi, 0)} Lt` : "kapasite yok"}
                         </div>
                         <div className="flex items-center gap-2 mt-1.5">
                           <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">

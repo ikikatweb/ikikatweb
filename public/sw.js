@@ -46,13 +46,18 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // Zaten açık bir sekme varsa onu odakla
+      // Açık bir sekme varsa, ONU TAM URL'E YÖNLENDİR + odakla
+      // Önceki kod sadece URL kısmen eşleşince focus ediyordu — query parametresi
+      // (örn. ?arac=ID, ?ara=...) işlenemiyordu, ilgili veri filtrelenmiyordu.
       for (const client of clientList) {
-        if (client.url.includes(url) && "focus" in client) {
+        if ("focus" in client) {
+          if ("navigate" in client) {
+            return client.navigate(url).then(() => client.focus()).catch(() => client.focus());
+          }
           return client.focus();
         }
       }
-      // Yoksa yeni sekme aç
+      // Açık sekme yoksa yeni sekme aç (URL tam — query param dahil)
       if (clients.openWindow) return clients.openWindow(url);
     })
   );

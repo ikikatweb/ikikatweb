@@ -31,7 +31,8 @@ export async function getDefterler(
     .eq("santiye_id", santiyeId)
     .gte("tarih", baslangic)
     .lte("tarih", bitis)
-    .order("tarih", { ascending: true });
+    // En son yazılan defter en üstte → tarih azalan sırayla
+    .order("tarih", { ascending: false });
   if (error) throw error;
   return (data ?? []) as SantiyeDefteri[];
 }

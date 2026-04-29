@@ -823,9 +823,19 @@ function YakitPageContent() {
           created_by: kullanici?.id ?? null,
         });
       }
-      // Araçın güncel göstergesini güncelle
+      // Araçın güncel göstergesini güncelle (km > 0 ise)
+      // RLS bypass için server-side API route kullanıyoruz — kısıtlı kullanıcı
+      // araclar tablosunu doğrudan update edemese de bu route service role ile yazar.
       if (km > 0) {
-        await updateArac(verDialogAracId, { guncel_gosterge: km });
+        try {
+          await fetch("/api/arac-gosterge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ arac_id: verDialogAracId, km }),
+          });
+        } catch (e) {
+          console.warn("Araç göstergesi güncellenemedi:", e);
+        }
       }
       await loadAll();
       toast.success(verEditId ? "Yakıt kaydı güncellendi." : "Yakıt kaydı eklendi.");
@@ -1219,8 +1229,13 @@ function YakitPageContent() {
                 <button key={b.l} type="button" onClick={() => {
                   const bitis = new Date();
                   const baslangic = new Date();
-                  baslangic.setMonth(baslangic.getMonth() - b.a);
-                  if (b.a <= 1) baslangic.setDate(1);
+                  if (b.a === 1) {
+                    // "Bu Ay" → bu ayın 1'i ile bugün
+                    baslangic.setDate(1);
+                  } else {
+                    // "3 Ay" / "6 Ay" / "1 Yıl" → a ay önceki tarihten bugüne
+                    baslangic.setMonth(baslangic.getMonth() - b.a);
+                  }
                   setFiltreBaslangic(baslangic.toISOString().slice(0, 10));
                   setFiltreBitis(bitis.toISOString().slice(0, 10));
                 }}

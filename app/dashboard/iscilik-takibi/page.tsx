@@ -634,7 +634,10 @@ export default function IscilikTakibiPage() {
           <p className="text-gray-400 text-sm mt-1">Şantiyeler sekmesinden iş ekleyince burada otomatik görünecek.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div
+          className={`bg-white rounded-lg border border-gray-200 overflow-x-auto ${rows.length > 16 ? "overflow-y-auto" : ""}`}
+          style={rows.length > 16 ? { maxHeight: "calc(100vh - 280px)" } : undefined}
+        >
           <Table>
             <TableHeader>
               <TableRow className="bg-[#64748B]">

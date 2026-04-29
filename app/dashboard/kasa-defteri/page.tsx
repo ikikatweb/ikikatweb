@@ -779,8 +779,11 @@ function KasaDefContent() {
                 <button key={b.l} type="button" onClick={() => {
                   const bitis = new Date();
                   const baslangic = new Date();
-                  baslangic.setMonth(baslangic.getMonth() - b.a);
-                  if (b.a <= 1) baslangic.setDate(1);
+                  if (b.a === 1) {
+                    baslangic.setDate(1);
+                  } else {
+                    baslangic.setMonth(baslangic.getMonth() - b.a);
+                  }
                   setFiltreBaslangic(baslangic.toISOString().slice(0, 10));
                   setFiltreBitis(bitis.toISOString().slice(0, 10));
                 }}
