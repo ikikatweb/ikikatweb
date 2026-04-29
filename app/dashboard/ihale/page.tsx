@@ -158,15 +158,27 @@ function kisaltFirmaAdi(ad: string): string {
 }
 
 // Kendi firması mı kontrol
-// SADECE bizim_firma=true olarak işaretli firmalar dikkate alınır → flag yeterli güvenlik.
-// Eşleşme normalize edilmiş substring kontrolüyle yapılır (ünvan ekleri/Türkçe karakterler temizli).
+// Yönetim/Firmalar listesindeki tüm firmalar "bizim" sayılır.
+// normalize: Türkçe karakterler ASCII'ye çevrilir, ünvan ekleri (LTD, ŞTİ, İNŞ vb.) temizlenir.
+// (JavaScript regex \b Türkçe karakterleri tanımadığı için token-bazlı temizleme yapıyoruz.)
+const UNVAN_EKLERI = new Set([
+  "ins", "insaat", "taah", "taahhut", "tic", "san", "ltd", "sti", "as",
+  "muh", "muhendislik", "mad", "nak", "enr", "enrj", "enerji",
+  "gida", "tarim", "elek", "elektrik", "otom", "otomasyon",
+  "nakliye", "turz", "turizm", "sirketi", "ve",
+  "anonim", "limited", "sirket", "kollektif", "komandit",
+]);
 function normalizeUnvan(s: string): string {
-  return s.toLowerCase()
-    .replace(/[.,]/g, " ")
-    .replace(/\b(ins|insaat|inş|inşaat|taah|taahhut|taahhüt|tic|san|ltd|sti|şti|a\.?s|a\.?ş|as|aş|muh|muhendislik|mühendislik|mad|nak|enr|enrj|enerji|gida|gıda|tarim|tarım|elek|elektrik|otom|otomasyon|nakliye|turz|turizm|sirketi|şirketi|ve)\b/g, " ")
+  // 1) Türkçe karakterleri ASCII'ye çevir (önce — regex sonra çalışsın diye)
+  const ascii = s
+    .toLocaleLowerCase("tr-TR")
+    // Birleşik "i + üst nokta" karakterini sadeleştir
+    .replace(/i̇/g, "i")
     .replace(/[ığüşöç]/g, (c) => ({ "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c" }[c] ?? c))
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[.,]/g, " ");
+  // 2) Token'lara ayır, ünvan eklerini at, geri birleştir
+  const tokens = ascii.split(/\s+/).filter((t) => t.length > 0 && !UNVAN_EKLERI.has(t));
+  return tokens.join(" ");
 }
 function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
   const adNorm = normalizeUnvan(firmaAdi);
