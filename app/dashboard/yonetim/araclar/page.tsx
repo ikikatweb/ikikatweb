@@ -285,7 +285,7 @@ export default function AraclarPage() {
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
                 <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
-                <TableHead className="hidden lg:table-cell">Gösterge</TableHead>
+                <TableHead>Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
                 <TableHead className="hidden md:table-cell text-center">Ruhsat</TableHead>
                 <TableHead className="text-center">Durum</TableHead>
@@ -313,10 +313,10 @@ export default function AraclarPage() {
                   <TableCell className="hidden md:table-cell">{arac.cinsi ?? "—"}</TableCell>
                   <TableCell className="hidden lg:table-cell">{arac.yili ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>
-                  <TableCell className="hidden lg:table-cell tabular-nums">
+                  <TableCell className="tabular-nums">
                     {arac.guncel_gosterge != null ? (
                       <div className="flex flex-col">
-                        <span>{arac.guncel_gosterge.toLocaleString("tr-TR")} {arac.sayac_tipi === "saat" ? "sa" : "km"}</span>
+                        <span className="whitespace-nowrap">{arac.guncel_gosterge.toLocaleString("tr-TR")} {arac.sayac_tipi === "saat" ? "sa" : "km"}</span>
                         {sonGostergeTarihi.get(arac.id) && (
                           <span className="text-[9px] text-gray-400 mt-0.5">
                             {sonGostergeTarihi.get(arac.id)!.split("-").reverse().join(".")}
