@@ -279,7 +279,11 @@ export default function AraclarPage() {
               <TableRow>
                 <TableHead className="w-[50px]">No</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("mulkiyet")}>Mülkiyet{sortIcon("mulkiyet")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("plaka")}>Plaka{sortIcon("plaka")}</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 11, backgroundColor: "white" }}
+                  className="cursor-pointer select-none hover:text-blue-600 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                  onClick={() => handleSort("plaka")}
+                >Plaka{sortIcon("plaka")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("firma")}>Firma{sortIcon("firma")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
@@ -301,7 +305,10 @@ export default function AraclarPage() {
                       {arac.tip === "ozmal" ? "Özmal" : "Kiralık"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-bold">{arac.plaka}</TableCell>
+                  <TableCell
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: arac.durum === "pasif" ? "#f3f4f6" : "white" }}
+                    className="font-bold shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                  >{arac.plaka}</TableCell>
                   <TableCell className="max-w-[120px] truncate" title={arac.tip === "ozmal" ? arac.firmalar?.firma_adi ?? "" : arac.kiralama_firmasi ?? ""}>
                     {arac.tip === "ozmal"
                       ? arac.firmalar?.firma_adi ?? "—"
