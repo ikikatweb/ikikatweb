@@ -205,6 +205,35 @@ export async function mesajGonder(input: {
     .from("mesaj_konusma")
     .update({ son_mesaj_zamani: new Date().toISOString() })
     .eq("id", input.konusma_id);
+
+  // Bildirim gönder — konuşmadaki diğer üyelere
+  try {
+    const { data: digerUyeler } = await supabase
+      .from("mesaj_uye")
+      .select("kullanici_id")
+      .eq("konusma_id", input.konusma_id)
+      .neq("kullanici_id", input.gonderen_id);
+    const targetIds = (digerUyeler ?? []).map((u) => u.kullanici_id);
+    if (targetIds.length > 0) {
+      const govde = input.icerik?.trim()
+        ? input.icerik.trim()
+        : input.dosya_adi
+          ? `📎 ${input.dosya_adi}`
+          : "Yeni mesaj";
+      await fetch("/api/push/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baslik: "Yeni Mesaj",
+          govde,
+          url: "/dashboard/mesajlasma",
+          tag: "mesaj",
+          target_user_ids: targetIds,
+        }),
+      });
+    }
+  } catch { /* sessiz — bildirim başarısız olsa da mesaj kaydedildi */ }
+
   return data as Mesaj;
 }
 

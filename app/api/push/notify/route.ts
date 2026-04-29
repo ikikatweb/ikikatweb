@@ -57,15 +57,26 @@ export async function POST(req: Request) {
   const govdeFinal = String(govde).slice(0, maxGovde) + govdeSonu;
   const baslikFinal = String(baslik).slice(0, 100);
 
-  // Bildirim alıcıları: Yönetici + Şantiye Yöneticisi (çağıran hariç)
-  // - Yönetici: tüm bildirimleri alır
-  // - Şantiye Yöneticisi: santiye_id event'le ilişkili olduğunda alır (yoksa atandığı şantiyelerden olduğu varsayımıyla yine alır — payload'da santiye_id varsa filtreler)
-  const { data: aliciAdaylari } = await supabase
+  // Bildirim alıcıları:
+  // - Eğer body.target_user_ids verilmişse: SADECE o kullanıcılara gönder (mesajlaşma için)
+  // - Yoksa: Yönetici + Şantiye Yöneticisi (mevcut davranış)
+  const targetUserIds = Array.isArray(body.target_user_ids)
+    ? body.target_user_ids.filter((id: unknown): id is string => typeof id === "string")
+    : null;
+
+  let aliciSorgusu = supabase
     .from("kullanicilar")
     .select("id, rol, bildirim_ayarlari, santiye_ids")
-    .in("rol", ["yonetici", "santiye_admin"])
     .eq("aktif", true)
     .neq("id", caller.id);
+
+  if (targetUserIds && targetUserIds.length > 0) {
+    aliciSorgusu = aliciSorgusu.in("id", targetUserIds);
+  } else {
+    aliciSorgusu = aliciSorgusu.in("rol", ["yonetici", "santiye_admin"]);
+  }
+
+  const { data: aliciAdaylari } = await aliciSorgusu;
 
   if (!aliciAdaylari || aliciAdaylari.length === 0) {
     return NextResponse.json({ success: true, sent: 0 });

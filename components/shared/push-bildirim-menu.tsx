@@ -48,6 +48,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "kasa", label: "Kasa Defteri", emoji: "💰", desc: "Yeni gelir/gider" },
   { tag: "santiye-defteri", label: "Şantiye Defteri", emoji: "📓", desc: "Yeni günlük defter açılışı" },
   { tag: "ihale", label: "İhale", emoji: "🏛️", desc: "Yeni ihale kaydı" },
+  { tag: "mesaj", label: "Mesajlar", emoji: "💬", desc: "Yeni mesaj geldiğinde" },
 ];
 
 type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";

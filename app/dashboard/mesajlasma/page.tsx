@@ -135,7 +135,12 @@ export default function MesajlasmaPage() {
     }
     setDosyaYukleniyor(true);
     try {
-      const path = `${seciliKonusmaId}/${Date.now()}-${file.name}`;
+      // Supabase Storage parantez/boşluk/Türkçe chars'ı kabul etmiyor
+      // Path'i sadece timestamp + uzantı yap, orijinal isim DB'de tutulur (dosya_adi)
+      const extRaw = file.name.includes(".") ? file.name.split(".").pop() ?? "" : "";
+      const ext = extRaw.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
+      const rand = Math.random().toString(36).slice(2, 8);
+      const path = `${seciliKonusmaId}/${Date.now()}-${rand}${ext ? "." + ext : ""}`;
       const url = await uploadDosya(file, "mesaj-dosya", path);
       const dosyaTipi = file.type.startsWith("image/") ? "image" : "file";
       await mesajGonder({
