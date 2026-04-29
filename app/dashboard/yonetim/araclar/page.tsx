@@ -40,6 +40,8 @@ export default function AraclarPage() {
   const [firmaFiltre, setFirmaFiltre] = useState("tumu");
   const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([]);
   const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
+  // Aracın son güncellenen km/saat değerinin tarihi (en son yakıt kaydı tarihi)
+  const [sonGostergeTarihi, setSonGostergeTarihi] = useState<Map<string, string>>(new Map());
   const router = useRouter();
 
   function handleSort(key: string) {
@@ -89,12 +91,15 @@ export default function AraclarPage() {
           .order("saat", { ascending: false });
         if (yakitlar) {
           const sonYakit = new Map<string, string>();
-          for (const y of yakitlar as { arac_id: string; santiye_id: string }[]) {
+          const sonTarih = new Map<string, string>();
+          for (const y of yakitlar as { arac_id: string; santiye_id: string; tarih: string }[]) {
             if (!sonYakit.has(y.arac_id)) {
               sonYakit.set(y.arac_id, santiyeMap.get(y.santiye_id) ?? "");
+              sonTarih.set(y.arac_id, y.tarih);
             }
           }
           setSonYakitSantiye(sonYakit);
+          setSonGostergeTarihi(sonTarih);
         }
       } catch { /* sessiz */ }
     } catch {
@@ -309,9 +314,16 @@ export default function AraclarPage() {
                   <TableCell className="hidden lg:table-cell">{arac.yili ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>
                   <TableCell className="hidden lg:table-cell tabular-nums">
-                    {arac.guncel_gosterge != null
-                      ? `${arac.guncel_gosterge.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
-                      : "—"}
+                    {arac.guncel_gosterge != null ? (
+                      <div className="flex flex-col">
+                        <span>{arac.guncel_gosterge.toLocaleString("tr-TR")} {arac.sayac_tipi === "saat" ? "sa" : "km"}</span>
+                        {sonGostergeTarihi.get(arac.id) && (
+                          <span className="text-[9px] text-gray-400 mt-0.5">
+                            {sonGostergeTarihi.get(arac.id)!.split("-").reverse().join(".")}
+                          </span>
+                        )}
+                      </div>
+                    ) : "—"}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-center">
                     <Badge variant={arac.hgs_saglayici ? "default" : "secondary"}
