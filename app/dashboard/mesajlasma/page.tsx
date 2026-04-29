@@ -20,9 +20,18 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { MessageSquare, Send, Plus, Paperclip, Image as ImageIcon, Trash2, Download, Users, X, ArrowLeft } from "lucide-react";
+import { MessageSquare, Send, Plus, Paperclip, Image as ImageIcon, Trash2, FileText, FileType2, Users, X, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
+// PDF için Türkçe karakter temizleyici
+function tr(s: string): string {
+  return s.replace(/ğ/g,"g").replace(/Ğ/g,"G").replace(/ü/g,"u").replace(/Ü/g,"U")
+    .replace(/ş/g,"s").replace(/Ş/g,"S").replace(/ö/g,"o").replace(/Ö/g,"O")
+    .replace(/ç/g,"c").replace(/Ç/g,"C").replace(/ı/g,"i").replace(/İ/g,"I").replace(/—/g,"-");
+}
 
 type Kullanici = { id: string; ad_soyad: string };
 
@@ -44,6 +53,10 @@ export default function MesajlasmaPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [adMap, setAdMap] = useState<Map<string, string>>(new Map());
+  // Lightbox: resme tıklayınca uygulama içi modal'da göster (Supabase URL'i kullanıcıya gözükmez)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxAd, setLightboxAd] = useState<string>("");
+  const [lightboxZoom, setLightboxZoom] = useState(1);
 
   // Konuşmaları yükle — yönetici ve şantiye yöneticisi tüm konuşmaları görür
   const tumunuGor = isYonetici || isShantiyeAdmin;
@@ -75,6 +88,16 @@ export default function MesajlasmaPage() {
     setYukleniyor(true);
     Promise.all([loadKonusmalar(), loadKullanicilar()]).finally(() => setYukleniyor(false));
   }, [loadKonusmalar, loadKullanicilar]);
+
+  // Lightbox açıkken Esc ile kapatma
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxUrl(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxUrl]);
 
   // Textarea içerik değiştiğinde otomatik yüksekliği ayarla
   useEffect(() => {
@@ -115,6 +138,14 @@ export default function MesajlasmaPage() {
   // Konuşma seç
   async function konusmaSec(id: string) {
     setSeciliKonusmaId(id);
+    // Mobilde klavyenin otomatik açılması için textarea'ya hemen focus ver.
+    // iOS Safari focus()'u kullanıcı dokunma olayının yakın takibinde olmayı şart koşar
+    // bu yüzden setSeciliKonusmaId'den sonra render'ı bekleyip rAF ile focus veriyoruz.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+    });
     await loadMesajlar(id);
   }
 
@@ -237,24 +268,109 @@ export default function MesajlasmaPage() {
     }
   }
 
-  // Konuşmayı yedekle (JSON indir)
-  async function konusmaYedekleHandle() {
-    if (!seciliKonusmaId) return;
+  // Konuşmayı PDF olarak indir (okunaklı, yazıcıdan çıktı alınabilir)
+  async function konusmaIndirPDF() {
+    if (!seciliKonusmaId || !seciliKonusma) return;
     try {
       const data = await konusmaYedekle(seciliKonusmaId);
-      const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
+      const mesajlarL = (data.mesajlar ?? []) as Mesaj[];
+      const baslik = buildBaslik(seciliKonusma);
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+      // Başlık bilgisi
+      doc.setFontSize(14);
+      doc.text(tr(`Mesajlasma Yedegi: ${baslik}`), 14, 15);
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      const uyeMetni = seciliKonusma.uyeler.map((u) => u.ad_soyad).join(", ");
+      doc.text(tr(`Uyeler: ${uyeMetni}`), 14, 21);
+      doc.text(tr(`Toplam mesaj: ${mesajlarL.filter((m) => !m.silindi).length}`), 14, 26);
+      doc.text(tr(`Indirme: ${new Date().toLocaleString("tr-TR")}`), 14, 31);
+
+      // Tablo
+      const rows = mesajlarL.map((m) => {
+        const tarih = new Date(m.created_at).toLocaleString("tr-TR", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+        });
+        const gonderen = adMap.get(m.gonderen_id) ?? "—";
+        let icerik = "";
+        if (m.silindi) icerik = "[Silinmis mesaj]";
+        else {
+          if (m.icerik) icerik = m.icerik;
+          if (m.dosya_url) icerik += (icerik ? "\n" : "") + `[Ek: ${m.dosya_adi || "Dosya"}]`;
+        }
+        return [tr(tarih), tr(gonderen), tr(icerik)];
+      });
+
+      autoTable(doc, {
+        startY: 36,
+        head: [[tr("Tarih"), tr("Gonderen"), tr("Mesaj")]],
+        body: rows,
+        styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
+        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: "bold" },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: "auto" },
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      const tarihStr = new Date().toISOString().slice(0, 10);
+      doc.save(`konusma-${baslik.replace(/[^a-zA-Z0-9]+/g, "_")}-${tarihStr}.pdf`);
+      toast.success("PDF indirildi.");
+    } catch (err) {
+      toast.error("PDF olusturulamadi: " + (err instanceof Error ? err.message : ""));
+    }
+  }
+
+  // Konuşmayı TXT olarak indir (WhatsApp tarzı)
+  async function konusmaIndirTXT() {
+    if (!seciliKonusmaId || !seciliKonusma) return;
+    try {
+      const data = await konusmaYedekle(seciliKonusmaId);
+      const mesajlarL = (data.mesajlar ?? []) as Mesaj[];
+      const baslik = buildBaslik(seciliKonusma);
+      const uyeMetni = seciliKonusma.uyeler.map((u) => u.ad_soyad).join(", ");
+
+      const satirlar: string[] = [];
+      satirlar.push(`Mesajlaşma Yedeği: ${baslik}`);
+      satirlar.push(`Üyeler: ${uyeMetni}`);
+      satirlar.push(`İndirme: ${new Date().toLocaleString("tr-TR")}`);
+      satirlar.push(`Toplam: ${mesajlarL.filter((m) => !m.silindi).length} mesaj`);
+      satirlar.push("=".repeat(60));
+      satirlar.push("");
+
+      for (const m of mesajlarL) {
+        const tarih = new Date(m.created_at).toLocaleString("tr-TR", {
+          day: "2-digit", month: "2-digit", year: "numeric",
+          hour: "2-digit", minute: "2-digit",
+        });
+        const gonderen = adMap.get(m.gonderen_id) ?? "—";
+        if (m.silindi) {
+          satirlar.push(`[${tarih}] ${gonderen}: [Silinmiş mesaj]`);
+        } else {
+          let satir = `[${tarih}] ${gonderen}: ${m.icerik ?? ""}`;
+          if (m.dosya_url) satir += ` [Ek: ${m.dosya_adi || "Dosya"}]`;
+          satirlar.push(satir);
+        }
+      }
+
+      const metin = satirlar.join("\r\n");
+      // BOM ekle ki Notepad UTF-8 olarak açabilsin (Türkçe karakterler bozulmasın)
+      const blob = new Blob(["﻿" + metin], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `konusma-${seciliKonusmaId}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `konusma-${baslik.replace(/[^a-zA-Z0-9]+/g, "_")}-${new Date().toISOString().slice(0, 10)}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Yedek indirildi.");
+      toast.success("TXT indirildi.");
     } catch (err) {
-      toast.error("Yedeklenemedi: " + (err instanceof Error ? err.message : ""));
+      toast.error("TXT olusturulamadi: " + (err instanceof Error ? err.message : ""));
     }
   }
 
@@ -396,11 +512,19 @@ export default function MesajlasmaPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={konusmaYedekleHandle}
+                  onClick={konusmaIndirPDF}
                   className="p-1.5 text-gray-400 hover:text-[#1E3A5F] rounded"
-                  title="Yedekle (JSON indir)"
+                  title="PDF olarak indir"
                 >
-                  <Download size={16} />
+                  <FileText size={16} />
+                </button>
+                <button
+                  type="button"
+                  onClick={konusmaIndirTXT}
+                  className="p-1.5 text-gray-400 hover:text-[#1E3A5F] rounded"
+                  title="TXT olarak indir"
+                >
+                  <FileType2 size={16} />
                 </button>
                 {yetkiliSilmek && (
                   <button
@@ -425,11 +549,19 @@ export default function MesajlasmaPage() {
                 mesajlar.map((m) => {
                   const benim = m.gonderen_id === kullanici?.id;
                   const ad = adMap.get(m.gonderen_id) ?? "—";
+                  // Gözlem modu: kullanıcı bu konuşmanın üyesi değil (admin/şantiye yöneticisi gözlemde)
+                  const gozlemModu = seciliKonusma
+                    ? !seciliKonusma.uyeler.some((u) => u.kullanici_id === kullanici?.id)
+                    : false;
+                  // Gönderen adını göster:
+                  // - Grup konuşmalarında karşı taraf mesajlarında
+                  // - Gözlem modunda HER mesajda (admin kim yazdı görsün)
+                  const adGoster = gozlemModu || (!benim && seciliKonusma?.tip === "grup");
                   return (
                     <div key={m.id} className={`flex ${benim ? "justify-end" : "justify-start"} group`}>
                       <div className={`max-w-[85%] md:max-w-[70%] ${benim ? "bg-[#1E3A5F] text-white" : "bg-white border"} rounded-2xl px-3 py-1.5 md:py-2 relative shadow-sm`}>
-                        {!benim && seciliKonusma?.tip === "grup" && (
-                          <div className="text-[10px] font-semibold text-blue-600 mb-0.5">{ad}</div>
+                        {adGoster && (
+                          <div className={`text-[10px] font-semibold mb-0.5 ${benim ? "text-blue-200" : "text-blue-600"}`}>{ad}</div>
                         )}
                         {m.silindi ? (
                           <div className="text-xs italic opacity-60">— Mesaj silindi —</div>
@@ -444,7 +576,11 @@ export default function MesajlasmaPage() {
                                     src={m.dosya_url}
                                     alt={m.dosya_adi ?? ""}
                                     className="w-full max-w-[220px] md:max-w-[300px] max-h-[220px] md:max-h-[300px] object-cover rounded-lg cursor-pointer"
-                                    onClick={() => window.open(m.dosya_url!, "_blank")}
+                                    onClick={() => {
+                                      setLightboxUrl(m.dosya_url!);
+                                      setLightboxAd(m.dosya_adi ?? "Resim");
+                                      setLightboxZoom(1);
+                                    }}
                                   />
                                 ) : (
                                   <a href={m.dosya_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1.5 text-xs ${benim ? "text-blue-200" : "text-blue-600"} underline break-all`}>
@@ -459,14 +595,15 @@ export default function MesajlasmaPage() {
                         <div className={`text-[9px] ${benim ? "text-blue-200" : "text-gray-400"} mt-0.5 text-right`}>
                           {new Date(m.created_at).toLocaleString("tr-TR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                         </div>
-                        {!m.silindi && (benim || yetkiliSilmek) && (
+                        {/* Silme: sadece yönetici ve şantiye yöneticisi yapabilir, her zaman görünür */}
+                        {!m.silindi && yetkiliSilmek && (
                           <button
                             type="button"
                             onClick={() => mesajSilHandle(m)}
-                            className={`absolute ${benim ? "left-1" : "right-1"} -top-2 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 bg-red-500 text-white rounded-full p-1 transition-opacity`}
+                            className={`absolute ${benim ? "-left-2" : "-right-2"} -top-2 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 shadow-md`}
                             title="Mesajı sil"
                           >
-                            <X size={10} />
+                            <Trash2 size={11} />
                           </button>
                         )}
                       </div>
@@ -572,6 +709,73 @@ export default function MesajlasmaPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Resim Lightbox — Supabase URL'i kullanıcıya gözükmesin diye uygulama içi modal */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxUrl(null)}
+          onWheel={(e) => {
+            e.preventDefault();
+            setLightboxZoom((z) => {
+              const next = e.deltaY < 0 ? z * 1.15 : z / 1.15;
+              return Math.max(0.3, Math.min(5, next));
+            });
+          }}
+        >
+          {/* Üst toolbar */}
+          <div className="absolute top-0 left-0 right-0 px-4 py-3 bg-gradient-to-b from-black/70 to-transparent flex items-center justify-between gap-2 text-white" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-medium truncate flex-1">{lightboxAd}</div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setLightboxZoom((z) => Math.max(0.3, z / 1.2))}
+                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-sm font-bold"
+                title="Uzaklaştır"
+              >
+                −
+              </button>
+              <span className="text-xs tabular-nums w-12 text-center">{Math.round(lightboxZoom * 100)}%</span>
+              <button
+                type="button"
+                onClick={() => setLightboxZoom((z) => Math.min(5, z * 1.2))}
+                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-sm font-bold"
+                title="Yakınlaştır"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => setLightboxZoom(1)}
+                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-xs"
+                title="Sıfırla"
+              >
+                1:1
+              </button>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                className="p-1.5 bg-white/10 hover:bg-white/20 rounded ml-2"
+                title="Kapat (Esc)"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          {/* Resim */}
+          <div className="overflow-auto w-full h-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={lightboxUrl}
+              alt={lightboxAd}
+              draggable={false}
+              style={{ transform: `scale(${lightboxZoom})`, transformOrigin: "center", transition: "transform 0.05s linear" }}
+              className="max-w-[95vw] max-h-[95vh] object-contain select-none"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
