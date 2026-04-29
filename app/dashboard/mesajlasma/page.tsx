@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { MessageSquare, Send, Plus, Paperclip, Image as ImageIcon, Trash2, Download, Users, X } from "lucide-react";
+import { MessageSquare, Send, Plus, Paperclip, Image as ImageIcon, Trash2, Download, Users, X, ArrowLeft } from "lucide-react";
 import toast from "react-hot-toast";
 import { createClient } from "@/lib/supabase/client";
 
@@ -256,9 +256,9 @@ export default function MesajlasmaPage() {
   if (!kullanici) return <div className="p-4 text-gray-500">Yükleniyor...</div>;
 
   return (
-    <div className="flex h-[calc(100vh-120px)] gap-3">
-      {/* Sol panel: Konuşma listesi */}
-      <div className="w-72 flex-shrink-0 bg-white rounded-lg border flex flex-col overflow-hidden">
+    <div className="flex h-[calc(100vh-120px)] gap-0 md:gap-3">
+      {/* Sol panel: Konuşma listesi — mobilde sadece konuşma seçilmediyse görün */}
+      <div className={`${seciliKonusmaId ? "hidden md:flex" : "flex"} w-full md:w-72 md:flex-shrink-0 bg-white rounded-lg border flex-col overflow-hidden`}>
         <div className="p-3 border-b flex items-center justify-between">
           <div className="flex items-center gap-2">
             <MessageSquare size={18} className="text-[#1E3A5F]" />
@@ -314,8 +314,8 @@ export default function MesajlasmaPage() {
         </div>
       </div>
 
-      {/* Sağ panel: Seçili konuşma */}
-      <div className="flex-1 bg-white rounded-lg border flex flex-col overflow-hidden">
+      {/* Sağ panel: Seçili konuşma — mobilde sadece konuşma seçildiyse görün */}
+      <div className={`${seciliKonusmaId ? "flex" : "hidden md:flex"} flex-1 bg-white rounded-lg border flex-col overflow-hidden min-w-0`}>
         {!seciliKonusmaId ? (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             <div className="text-center">
@@ -326,12 +326,21 @@ export default function MesajlasmaPage() {
         ) : (
           <>
             {/* Başlık */}
-            <div className="px-4 py-3 border-b flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {seciliKonusma?.tip === "grup" && <Users size={16} className="text-gray-500" />}
-                <h3 className="font-bold text-sm text-[#1E3A5F]">{konusmaBasligi}</h3>
+            <div className="px-3 md:px-4 py-2.5 md:py-3 border-b flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {/* Geri butonu — sadece mobilde */}
+                <button
+                  type="button"
+                  onClick={() => setSeciliKonusmaId(null)}
+                  className="md:hidden p-1 -ml-1 text-[#1E3A5F] hover:bg-gray-100 rounded flex-shrink-0"
+                  title="Geri"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                {seciliKonusma?.tip === "grup" && <Users size={16} className="text-gray-500 flex-shrink-0" />}
+                <h3 className="font-bold text-sm text-[#1E3A5F] truncate">{konusmaBasligi}</h3>
                 {seciliKonusma?.tip === "grup" && (
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">
                     {seciliKonusma.uyeler.length} üye
                   </span>
                 )}
@@ -359,7 +368,7 @@ export default function MesajlasmaPage() {
             </div>
 
             {/* Mesaj listesi */}
-            <div ref={mesajContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50">
+            <div ref={mesajContainerRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 md:space-y-2 bg-gray-50">
               {mesajlar.length === 0 ? (
                 <div className="text-center text-xs text-gray-400 py-8">
                   Henüz mesaj yok. İlk mesajı sen gönder!
@@ -370,7 +379,7 @@ export default function MesajlasmaPage() {
                   const ad = adMap.get(m.gonderen_id) ?? "—";
                   return (
                     <div key={m.id} className={`flex ${benim ? "justify-end" : "justify-start"} group`}>
-                      <div className={`max-w-[70%] ${benim ? "bg-[#1E3A5F] text-white" : "bg-white border"} rounded-lg px-3 py-2 relative`}>
+                      <div className={`max-w-[85%] md:max-w-[70%] ${benim ? "bg-[#1E3A5F] text-white" : "bg-white border"} rounded-2xl px-3 py-1.5 md:py-2 relative shadow-sm`}>
                         {!benim && seciliKonusma?.tip === "grup" && (
                           <div className="text-[10px] font-semibold text-blue-600 mb-0.5">{ad}</div>
                         )}
@@ -378,29 +387,35 @@ export default function MesajlasmaPage() {
                           <div className="text-xs italic opacity-60">— Mesaj silindi —</div>
                         ) : (
                           <>
-                            {m.icerik && <div className="text-sm whitespace-pre-wrap break-words">{m.icerik}</div>}
+                            {m.icerik && <div className="text-sm whitespace-pre-wrap break-words leading-snug">{m.icerik}</div>}
                             {m.dosya_url && (
                               <div className="mt-1">
                                 {m.dosya_tipi === "image" ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={m.dosya_url} alt={m.dosya_adi ?? ""} className="max-w-[300px] max-h-[300px] rounded cursor-pointer" onClick={() => window.open(m.dosya_url!, "_blank")} />
+                                  <img
+                                    src={m.dosya_url}
+                                    alt={m.dosya_adi ?? ""}
+                                    className="w-full max-w-[220px] md:max-w-[300px] max-h-[220px] md:max-h-[300px] object-cover rounded-lg cursor-pointer"
+                                    onClick={() => window.open(m.dosya_url!, "_blank")}
+                                  />
                                 ) : (
-                                  <a href={m.dosya_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1.5 text-xs ${benim ? "text-blue-200" : "text-blue-600"} underline`}>
-                                    <Paperclip size={12} /> {m.dosya_adi || "Dosya"}
+                                  <a href={m.dosya_url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1.5 text-xs ${benim ? "text-blue-200" : "text-blue-600"} underline break-all`}>
+                                    <Paperclip size={12} className="flex-shrink-0" />
+                                    <span className="truncate">{m.dosya_adi || "Dosya"}</span>
                                   </a>
                                 )}
                               </div>
                             )}
                           </>
                         )}
-                        <div className={`text-[9px] ${benim ? "text-blue-200" : "text-gray-400"} mt-0.5`}>
+                        <div className={`text-[9px] ${benim ? "text-blue-200" : "text-gray-400"} mt-0.5 text-right`}>
                           {new Date(m.created_at).toLocaleString("tr-TR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                         </div>
                         {!m.silindi && (benim || yetkiliSilmek) && (
                           <button
                             type="button"
                             onClick={() => mesajSilHandle(m)}
-                            className={`absolute ${benim ? "left-1" : "right-1"} -top-2 opacity-0 group-hover:opacity-100 bg-red-500 text-white rounded-full p-1 transition-opacity`}
+                            className={`absolute ${benim ? "left-1" : "right-1"} -top-2 opacity-0 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 bg-red-500 text-white rounded-full p-1 transition-opacity`}
                             title="Mesajı sil"
                           >
                             <X size={10} />
