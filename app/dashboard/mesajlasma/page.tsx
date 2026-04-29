@@ -173,7 +173,16 @@ export default function MesajlasmaPage() {
       await loadKonusmalar();
       konusmaSec(k.id);
     } catch (err) {
-      toast.error("Konuşma başlatılamadı: " + (err instanceof Error ? err.message : ""));
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Konuşma başlatılamadı:", err);
+      // SQL migration henüz çalışmadıysa anlamlı bilgi ver
+      if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("schema")) {
+        toast.error("Mesajlaşma tabloları Supabase'de yok. SQL migration çalıştırılmalı.", { duration: 10000 });
+      } else if (msg.includes("policy") || msg.includes("RLS") || msg.includes("row-level security")) {
+        toast.error("RLS politikası izin vermiyor. Supabase'de policy ayarlarını kontrol et.", { duration: 10000 });
+      } else {
+        toast.error("Konuşma başlatılamadı: " + msg, { duration: 10000 });
+      }
     }
   }
 
