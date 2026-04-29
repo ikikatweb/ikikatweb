@@ -7,9 +7,10 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Menu, LogOut, Clock } from "lucide-react";
+import { Menu, LogOut, Clock, Mail } from "lucide-react";
 import toast from "react-hot-toast";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
+import { getOkunmamisToplam } from "@/lib/supabase/queries/mesajlasma";
 
 type TopbarProps = {
   onMenuToggle: () => void;
@@ -19,6 +20,7 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
   const router = useRouter();
   const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
   const [tarihSaat, setTarihSaat] = useState("");
+  const [mesajOkunmamis, setMesajOkunmamis] = useState(0);
 
   useEffect(() => {
     function guncelle() {
@@ -31,6 +33,20 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
     const timer = setInterval(guncelle, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Mesaj okunmamış sayısı — 30 sn'de bir çek
+  useEffect(() => {
+    if (!kullanici?.id) return;
+    const cek = async () => {
+      try {
+        const sayi = await getOkunmamisToplam(kullanici.id);
+        setMesajOkunmamis(sayi);
+      } catch { /* sessiz */ }
+    };
+    cek();
+    const interval = setInterval(cek, 30_000);
+    return () => clearInterval(interval);
+  }, [kullanici?.id]);
 
   const displayName = kullanici?.ad_soyad || kullanici?.kullanici_adi || "";
 
@@ -70,6 +86,21 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
         </div>
+
+        {/* Mesajlaşma ikonu — tüm kullanıcılar */}
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/mesajlasma")}
+          className="relative p-2 rounded-md text-[#1E3A5F] hover:bg-gray-100 transition-colors"
+          title="Mesajlar"
+        >
+          <Mail size={20} />
+          {mesajOkunmamis > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full ring-2 ring-white">
+              {mesajOkunmamis > 99 ? "99+" : mesajOkunmamis}
+            </span>
+          )}
+        </button>
 
         {/* Bildirim Menüsü — yönetici ve şantiye admini görür (kısıtlı kullanıcıya değil) */}
         {(isYonetici || isShantiyeAdmin) && <PushBildirimMenu />}

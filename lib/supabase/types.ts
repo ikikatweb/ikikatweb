@@ -716,6 +716,39 @@ export type Kullanici = {
 export type KullaniciInsert = Omit<Kullanici, "id" | "created_at" | "updated_at">;
 export type KullaniciUpdate = Partial<Omit<KullaniciInsert, "auth_id">>;
 
+// ============ MESAJLAŞMA ============
+export type MesajKonusma = {
+  id: string;
+  tip: "tekil" | "grup";
+  baslik: string | null; // grup için isim
+  olusturan_id: string | null;
+  son_mesaj_zamani: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MesajUye = {
+  konusma_id: string;
+  kullanici_id: string;
+  son_okunan_mesaj_id: string | null;
+  son_okunma_zamani: string | null;
+  joined_at: string;
+};
+
+export type Mesaj = {
+  id: string;
+  konusma_id: string;
+  gonderen_id: string;
+  icerik: string | null;
+  dosya_url: string | null;
+  dosya_adi: string | null;
+  dosya_tipi: string | null; // "image" | "file"
+  silindi: boolean;
+  silinme_zamani: string | null;
+  silen_id: string | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
