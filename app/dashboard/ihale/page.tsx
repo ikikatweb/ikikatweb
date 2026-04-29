@@ -818,6 +818,22 @@ export default function IhalePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasManualEdits, idareAdi, isAdi, ihaleKayitNo, ihaleTarihi, yaklasikMaliyet, seciliIsGrubu, nKatsayisi, katilimcilar]);
 
+  // Firmalar listesi async yüklendiğinde mevcut katilimcilarda isOwn'u yeniden hesapla.
+  // Aksi halde firmalar gelmeden önce hesaplanan isOwn=false olarak kalıyor → renklenme yok.
+  useEffect(() => {
+    if (firmalar.length === 0) return;
+    setKatilimcilar((prev) => {
+      if (prev.length === 0) return prev;
+      let degisti = false;
+      const yeni = prev.map((k) => {
+        const yeniIsOwn = isOwnCompany(k.firmaAdi, firmalar);
+        if (yeniIsOwn !== k.isOwn) degisti = true;
+        return yeniIsOwn === k.isOwn ? k : { ...k, isOwn: yeniIsOwn };
+      });
+      return degisti ? yeni : prev;
+    });
+  }, [firmalar]);
+
   // Hesap sonucu (otomatik yeniden hesapla)
   const ym = parseParaInput(yaklasikMaliyet);
   const nVal = parseFloat(nKatsayisi.replace(",", ".")) || 1;
