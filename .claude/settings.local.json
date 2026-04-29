@@ -14,7 +14,15 @@
       "PowerShell($file = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\Teminatın iadesi REVİZELİ22.04.2026.docx\"; $tempDir = \"C:\\\\Users\\\\MSI\\\\Downloads\\\\teminat_unpacked\"; if \\(Test-Path $tempDir\\) { Remove-Item -Recurse -Force $tempDir }; Expand-Archive -Path $file -DestinationPath $tempDir -Force; Get-ChildItem $tempDir\\\\word\\\\document.xml | Select-Object -First 1)",
       "Bash(node -e \"const wp = require\\('web-push'\\); const k = wp.generateVAPIDKeys\\(\\); console.log\\('PUBLIC:', k.publicKey\\); console.log\\('PRIVATE:', k.privateKey\\);\")",
       "Bash(npx tsc *)",
-      "Bash(grep -n \"^      \\)}\" \"C:\\\\\\\\Users\\\\\\\\MSI\\\\\\\\Desktop\\\\\\\\ikikatweb\\\\\\\\components\\\\\\\\shared\\\\\\\\kullanici-form.tsx\")"
+      "Bash(grep -n \"^      \\)}\" \"C:\\\\\\\\Users\\\\\\\\MSI\\\\\\\\Desktop\\\\\\\\ikikatweb\\\\\\\\components\\\\\\\\shared\\\\\\\\kullanici-form.tsx\")",
+      "Bash(command -v pandoc)",
+      "Bash(command -v python)",
+      "Read(//c/Users/MSI/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/**)",
+      "Bash(where python *)",
+      "Bash(where py *)",
+      "Bash(py --version)",
+      "Bash(cp \"TekliflerinAcilmasinaİliskinTutanak \\(21\\) - Kopya.docx\" tutanak.zip)",
+      "Bash(unzip -o tutanak.zip -d unpacked_tutanak21)"
     ]
   }
 }

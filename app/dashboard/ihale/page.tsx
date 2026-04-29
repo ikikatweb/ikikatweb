@@ -328,6 +328,9 @@ type ParsedData = {
   ihaleKayitNo: string;
   yaklasikMaliyet: number;
   katilimcilar: ParsedKatilimci[];
+  // Multi-grup tutanak ise alt grup listesi (≥2 gerçek grup tespit edildiyse dolu olur)
+  // Tek grup ise undefined (mevcut akış değişmez)
+  altGruplar?: { baslik: string; yaklasikMaliyet: number; katilimcilar: ParsedKatilimci[] }[];
 };
 
 // Hücre metnini temizle
@@ -601,6 +604,99 @@ function parseKatilimciTablosu(rows: string[][]): { katilimcilar: ParsedKatilimc
   return { katilimcilar, yaklasikMaliyet };
 }
 
+// MULTI-GRUP parser: Bir ihale içinde birden fazla "alt grup" (alt iş) varsa
+// her birinin kendi YAKLAŞIK MALİYET satırı ve katılımcı listesi olur.
+// Tablo yapısı:
+//   - Grup başlık satırı: tek hücrede uppercase metin (örn. "MODÜLER YÖNLENDİRME...")
+//   - Bidder satırları: firma + teklif tutarı + durum sütunları
+//   - YM satırı: "YAKLAŞIK MALİYET" + tutar
+// Her grup: { baslik, ym, katilimcilar }
+type ParsedGrup = { baslik: string; yaklasikMaliyet: number; katilimcilar: ParsedKatilimci[] };
+function parseKatilimciTablosuMultiGrup(rows: string[][]): ParsedGrup[] {
+  const gruplar: ParsedGrup[] = [];
+  if (rows.length < 2) return gruplar;
+
+  // Sütunları belirle (tek-grup parser'la aynı mantık)
+  let headerIdx = -1;
+  let firmaCol = -1, teklifCol = -1, yasaklilikCol = -1, teminatCol = -1, vergiCol = -1, sgkCol = -1;
+  for (let ri = 0; ri < Math.min(rows.length, 3); ri++) {
+    const headerCells = rows[ri].map((c) => trLowerUtil(c));
+    const hasFirma = headerCells.findIndex((c) => c.includes("istekli") || c.includes("firma") || (c.includes("ad") && c.includes("soyad")));
+    const hasTeklif = headerCells.findIndex((c) => c.includes("teklif") || c.includes("tutar") || c.includes("bedel") || c.includes("fiyat"));
+    if (hasFirma >= 0 && hasTeklif >= 0) {
+      headerIdx = ri;
+      firmaCol = hasFirma;
+      teklifCol = hasTeklif;
+      yasaklilikCol = headerCells.findIndex((c) => c.includes("yasaklı"));
+      teminatCol = headerCells.findIndex((c) => c.includes("teminat"));
+      vergiCol = headerCells.findIndex((c) => c.includes("vergi"));
+      sgkCol = headerCells.findIndex((c) => c.includes("sgk") || c.includes("sosyal güvenlik") || c.includes("sigorta"));
+      break;
+    }
+  }
+  if (headerIdx === -1) return gruplar;
+
+  let aktifGrup: ParsedGrup | null = null;
+  for (let ri = headerIdx + 1; ri < rows.length; ri++) {
+    const cells = rows[ri];
+    if (!cells || cells.length === 0) continue;
+    const allText = cells.join(" ").trim();
+    if (!allText) continue;
+
+    const lowerText = trLowerUtil(allText);
+    const isYmRow = lowerText.includes("yaklaşık maliyet") || lowerText.includes("yaklasık maliyet") || lowerText.includes("yaklasik maliyet");
+
+    // YAKLAŞIK MALİYET satırı → aktif grubun YM'sini ayarla
+    if (isYmRow) {
+      const ymTutar = parseTutar(allText);
+      if (aktifGrup && ymTutar > 0) aktifGrup.yaklasikMaliyet = ymTutar;
+      continue;
+    }
+
+    // Grup başlığı satırı tespiti:
+    // - Tek hücrede metin var (diğerleri boş)
+    // - Tutar yok
+    // - Tarih yok
+    // - Uppercase ağırlıklı (genelde başlıklar büyük harfle yazılır)
+    const doluHucreSayisi = cells.filter((c) => c && c.trim()).length;
+    const teklifTutar = parseTutar(cells[teklifCol] ?? "");
+    const tarihRx = /\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}/;
+    const hasDate = tarihRx.test(allText);
+    const grupBaslik = cells[firmaCol]?.trim() ?? "";
+    const isUppercase = grupBaslik.length > 5 && grupBaslik === grupBaslik.toLocaleUpperCase("tr-TR");
+
+    // Grup başlığı: tek hücrede metin, tutar yok, tarih yok, uppercase
+    if (doluHucreSayisi <= 2 && teklifTutar === 0 && !hasDate && grupBaslik.length > 5 && isUppercase) {
+      aktifGrup = { baslik: grupBaslik, yaklasikMaliyet: 0, katilimcilar: [] };
+      gruplar.push(aktifGrup);
+      continue;
+    }
+
+    // Normal bidder satırı
+    if (teklifTutar > 0 && grupBaslik.length >= 3 && !/^\d+$/.test(grupBaslik)) {
+      // Henüz hiç grup yoksa, ilk grup default başlıkla aç
+      if (!aktifGrup) {
+        aktifGrup = { baslik: "", yaklasikMaliyet: 0, katilimcilar: [] };
+        gruplar.push(aktifGrup);
+      }
+      const yasaklilik = yasaklilikCol >= 0 ? (cells[yasaklilikCol] ?? "") : "";
+      const teminat = teminatCol >= 0 ? (cells[teminatCol] ?? "") : "";
+      const vergiBorcu = vergiCol >= 0 ? (cells[vergiCol] ?? "") : "";
+      const sgkBorcu = sgkCol >= 0 ? (cells[sgkCol] ?? "") : "";
+      aktifGrup.katilimcilar.push({
+        firmaAdi: grupBaslik.replace(/^\d+[\.\)\-\s]+/, "").trim(),
+        teklif: teklifTutar,
+        yasaklilik, teminat, vergiBorcu, sgkBorcu,
+        gecersizNedeni: belirleGecersizlik(yasaklilik, teminat),
+        uyarilar: belirleUyarilar(vergiBorcu, sgkBorcu),
+      });
+    }
+  }
+
+  // En az 2 gerçek grup (her birinde başlık + ≥1 katılımcı) varsa multi-grup say
+  return gruplar.filter((g) => g.katilimcilar.length > 0);
+}
+
 async function parseDocx(file: File): Promise<ParsedData> {
   const mammoth = await import("mammoth");
   const arrayBuffer = await file.arrayBuffer();
@@ -622,6 +718,9 @@ async function parseDocx(file: File): Promise<ParsedData> {
   let yaklasikMaliyet = 0;
   let katilimcilar: ParsedKatilimci[] = [];
 
+  // Multi-grup denemesi (≥2 alt grup varsa dolu döner)
+  let altGruplarTespit: ParsedGrup[] | undefined;
+
   if (allTables.length >= 2) {
     // İlk tablo: İhale bilgileri
     const bilgi = parseIhaleBilgiTablosu(allTables[0]);
@@ -632,6 +731,12 @@ async function parseDocx(file: File): Promise<ParsedData> {
     ihaleSaati = bilgi.ihaleSaati;
     teklifAcmaTarihi = bilgi.teklifAcmaTarihi;
     yaklasikMaliyet = bilgi.yaklasikMaliyet;
+
+    // Multi-grup parser çalıştır → ≥2 grup varsa altGruplarTespit dolar
+    const muhtemelGruplar = parseKatilimciTablosuMultiGrup(allTables[1]);
+    if (muhtemelGruplar.length >= 2) {
+      altGruplarTespit = muhtemelGruplar;
+    }
 
     // İkinci tablo: Katılımcılar (en alttaki yaklaşık maliyet satırı ayrı çekilir)
     const parsed2 = parseKatilimciTablosu(allTables[1]);
@@ -712,7 +817,7 @@ async function parseDocx(file: File): Promise<ParsedData> {
     }
   }
 
-  return { idareAdi, isAdi, ihaleTarihi, ihaleSaati, teklifAcmaTarihi, ihaleKayitNo, yaklasikMaliyet, katilimcilar };
+  return { idareAdi, isAdi, ihaleTarihi, ihaleSaati, teklifAcmaTarihi, ihaleKayitNo, yaklasikMaliyet, katilimcilar, altGruplar: altGruplarTespit };
 }
 
 // İş Grubu tipi
@@ -916,6 +1021,84 @@ export default function IhalePage() {
     setAnalyzing(true);
     try {
       const parsed = await parseDocx(file);
+
+      // MULTI-GRUP TUTANAK: ≥2 alt grup tespit edildi → her grubu AYRI ihale olarak kaydet.
+      // Mevcut tek-grup akışı bozulmaz; sadece çoklu grup için yeni davranış.
+      if (parsed.altGruplar && parsed.altGruplar.length >= 2) {
+        const baslik = parsed.isAdi || "İhale";
+        let basariliKayit = 0;
+        for (let gi = 0; gi < parsed.altGruplar.length; gi++) {
+          const g = parsed.altGruplar[gi];
+          const grupKat = g.katilimcilar.map((k) => ({
+            firmaAdi: kisaltFirmaAdi(k.firmaAdi),
+            teklif: k.teklif,
+            durum: k.gecersizNedeni ? "gecersiz" as const : "gecerli" as const,
+            gecersizNedeni: k.gecersizNedeni,
+            uyarilar: k.uyarilar,
+            yasaklilik: k.yasaklilik,
+            teminat: k.teminat,
+            vergiBorcu: k.vergiBorcu,
+            sgkBorcu: k.sgkBorcu,
+            isOwn: isOwnCompany(k.firmaAdi, firmalar),
+            isManual: false,
+            isEdited: false,
+            eskiTutar: null,
+          }));
+          // Her grup için ayrı parsed objesi (idare, ihale no aynı; iş adı + grup başlığı + YM grubun)
+          const grupParsed: ParsedData = {
+            ...parsed,
+            isAdi: `${baslik} - ${g.baslik}`,
+            yaklasikMaliyet: g.yaklasikMaliyet,
+            katilimcilar: g.katilimcilar,
+            altGruplar: undefined, // alt-kayıt değil, normal ihale gibi sakla
+          };
+          try {
+            // Doğrudan kaydet (mevcut state'i bozmadan)
+            await autoSave(grupParsed, grupKat);
+            basariliKayit++;
+          } catch (err) {
+            console.error(`Grup ${gi + 1} kaydedilemedi:`, err);
+          }
+        }
+        // Son grubu ekrana yükle (kullanıcı bir tane görsün, geçmişte hepsi olur)
+        const sonGrup = parsed.altGruplar[parsed.altGruplar.length - 1];
+        setIdareAdi(parsed.idareAdi);
+        setIsAdi(`${baslik} - ${sonGrup.baslik}`);
+        setIhaleKayitNo(parsed.ihaleKayitNo);
+        setIhaleTarihi(parsed.ihaleTarihi);
+        setIhaleSaati(parsed.ihaleSaati);
+        setTeklifAcmaTarihi(parsed.teklifAcmaTarihi);
+        setYaklasikMaliyet(formatParaInput(sonGrup.yaklasikMaliyet.toFixed(2).replace(".", ",")));
+        setKatilimcilar(sonGrup.katilimcilar.map((k) => ({
+          firmaAdi: kisaltFirmaAdi(k.firmaAdi),
+          teklif: k.teklif,
+          durum: k.gecersizNedeni ? "gecersiz" as const : "gecerli" as const,
+          gecersizNedeni: k.gecersizNedeni,
+          uyarilar: k.uyarilar,
+          yasaklilik: k.yasaklilik,
+          teminat: k.teminat,
+          vergiBorcu: k.vergiBorcu,
+          sgkBorcu: k.sgkBorcu,
+          isOwn: isOwnCompany(k.firmaAdi, firmalar),
+          isManual: false, isEdited: false, eskiTutar: null,
+        })));
+        setHasManualEdits(false);
+        setAnalizYapildi(true);
+        setCurrentIhaleId(null);
+        setCurrentIhaleIsOriginal(true);
+        toast.success(
+          `${parsed.altGruplar.length} alt grup tespit edildi, ${basariliKayit} grup ayrı ihale olarak kaydedildi. Her grubu Geçmiş sekmesinden açıp sınır değer hesabını görüntüleyebilirsin.`,
+          { duration: 8000 },
+        );
+        // Geçmiş listesini yenile (yeni kayıtlar görünsün)
+        try {
+          const fresh = await getIhaleler();
+          setGecmisIhaleler(fresh);
+        } catch { /* sessiz */ }
+        return;
+      }
+
+      // TEK GRUP (mevcut akış — bozulmadı)
       setIdareAdi(parsed.idareAdi);
       setIsAdi(parsed.isAdi);
       setIhaleKayitNo(parsed.ihaleKayitNo);
