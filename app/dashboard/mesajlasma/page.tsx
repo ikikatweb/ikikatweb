@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { MessageSquare, Send, Plus, Paperclip, Image as ImageIcon, Trash2, Download, Users, X } from "lucide-react";
 import toast from "react-hot-toast";
-import { uploadDosya } from "@/lib/supabase/queries/upload";
+import { createClient } from "@/lib/supabase/client";
 
 type Kullanici = { id: string; ad_soyad: string };
 
@@ -135,13 +135,20 @@ export default function MesajlasmaPage() {
     }
     setDosyaYukleniyor(true);
     try {
-      // Supabase Storage parantez/boşluk/Türkçe chars'ı kabul etmiyor
-      // Path'i sadece timestamp + uzantı yap, orijinal isim DB'de tutulur (dosya_adi)
+      // Direkt Supabase Storage'a yükle — /api/upload üzerinden gitmek
+      // Next.js body size limit'ine (4.5 MB) takılıyor. Client-side upload bunu bypass eder.
+      // Path: timestamp + random + extension (Türkçe/parantez yok); orijinal isim dosya_adi'da
       const extRaw = file.name.includes(".") ? file.name.split(".").pop() ?? "" : "";
       const ext = extRaw.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
       const rand = Math.random().toString(36).slice(2, 8);
       const path = `${seciliKonusmaId}/${Date.now()}-${rand}${ext ? "." + ext : ""}`;
-      const url = await uploadDosya(file, "mesaj-dosya", path);
+      const supabase = createClient();
+      const { error: upErr } = await supabase.storage
+        .from("mesaj-dosya")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+      const { data: { publicUrl } } = supabase.storage.from("mesaj-dosya").getPublicUrl(path);
+      const url = publicUrl;
       const dosyaTipi = file.type.startsWith("image/") ? "image" : "file";
       await mesajGonder({
         konusma_id: seciliKonusmaId,
