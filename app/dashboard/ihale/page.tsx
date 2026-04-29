@@ -171,14 +171,12 @@ function normalizeUnvan(s: string): string {
 function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
   const adNorm = normalizeUnvan(firmaAdi);
   if (!adNorm) return false;
-  // Yönetim/Firmalar listesindeki TÜM firmalar "bizim" sayılır.
-  // İstersen bir firmayı dışlamak için bizim_firma=false işaretle (gelecekte UI eklenebilir).
-  // Şu an bizim_firma=false işaretlenmemişse (null/true ise) dahil ediyoruz.
-  const bizimler = firmalar.filter((f) => f.bizim_firma !== false);
-  if (bizimler.length === 0) return false;
+  // Yönetim/Firmalar listesindeki TÜM firmalar koşulsuz "bizim" sayılır.
+  // (bizim_firma flag'i artık kullanılmıyor — kullanıcı listesinden silmek dışla anlamına gelir)
+  if (firmalar.length === 0) return false;
   // Rakip firma adının token (kelime) seti
   const adTokens = new Set(adNorm.split(/\s+/).filter((w) => w.length > 0));
-  return bizimler.some((f) => {
+  return firmalar.some((f) => {
     const fAdNorm = normalizeUnvan(f.firma_adi);
     if (!fAdNorm) return false;
     // 1) Tam veya yakın substring eşleşmesi
