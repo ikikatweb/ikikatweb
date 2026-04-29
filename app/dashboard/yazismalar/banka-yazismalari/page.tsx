@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { getBankaYazismalari, softDeleteBankaYazisma } from "@/lib/supabase/queries/banka-yazismalari";
+import { getBankaYazismalari, softDeleteBankaYazisma, createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { BankaYazismaWithRelations, Firma } from "@/lib/supabase/types";
@@ -126,10 +126,37 @@ export default function BankaYazismalariPage() {
   function handleAdd() { setEditYazisma(undefined); setFormOpen(true); }
   function handleEdit(y: BankaYazismaWithRelations) { setEditYazisma(y); setFormOpen(true); }
 
-  function handleCogalt(y: BankaYazismaWithRelations) {
-    const cogaltYazisma = { ...y, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() };
-    setEditYazisma(cogaltYazisma as unknown as BankaYazismaWithRelations);
-    setFormOpen(true);
+  async function handleCogalt(y: BankaYazismaWithRelations) {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
+    // Çoğalt: form açmadan, mevcut yazışmanın bir kopyasını otomatik kayıt eder.
+    // Yeni sayı no üretilir; oluşturma tarihi anlık.
+    try {
+      const yeniSayiNo = await getBankaYazismaSayiNo(y.firma_id, y.muhatap_id ?? null).catch(() => "");
+      const payload = {
+        evrak_tarihi: new Date().toISOString().slice(0, 10),
+        tarih_gosterim: null,
+        firma_id: y.firma_id,
+        evrak_sayi_no: yeniSayiNo,
+        konu: y.konu,
+        muhatap: y.muhatap ?? null,
+        muhatap_id: y.muhatap_id ?? null,
+        ilgi_listesi: y.ilgi_listesi ?? [],
+        metin: y.metin ?? null,
+        ekler: y.ekler ?? [],
+        kase_dahil: y.kase_dahil ?? false,
+        pdf_url: null,
+        olusturan_id: kullanici?.id ?? "",
+        olusturma_tarihi: new Date().toISOString(),
+        silindi: false,
+        silme_nedeni: null,
+      };
+      await createBankaYazisma(payload);
+      await loadData();
+      toast.success("Yazışma çoğaltıldı (yeni kayıt oluşturuldu).");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Bir hata oluştu";
+      toast.error(`Çoğaltma hatası: ${msg}`);
+    }
   }
 
   async function handleSil() {

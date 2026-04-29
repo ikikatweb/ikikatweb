@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
+import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak, createGidenEvrak, getGidenEvrakSayiNo } from "@/lib/supabase/queries/giden-evrak";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -133,12 +133,39 @@ export default function GidenEvrakPage() {
     setEditEvrak(e); setFormOpen(true);
   }
 
-  function handleCogalt(e: GidenEvrakWithRelations) {
-    // Yeni evrak olarak kopyala (id, sayı no, kayıt no boş)
-    // _cogaltKey: Form'un remount için — aynı kayıt tekrar çoğaltılınca da fresh form
-    const cogaltEvrak = { ...e, id: "", evrak_sayi_no: "", evrak_kayit_no: null, _cogaltKey: Date.now() };
-    setEditEvrak(cogaltEvrak as unknown as GidenEvrakWithRelations);
-    setFormOpen(true);
+  async function handleCogalt(e: GidenEvrakWithRelations) {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
+    // Çoğalt: form açmadan, mevcut evrakın bir kopyasını otomatik kayıt eder.
+    // Yeni sayı no üretilir; kayıt no boş; oluşturma tarihi anlık.
+    try {
+      const yeniSayiNo = await getGidenEvrakSayiNo(e.firma_id, e.muhatap_id ?? null).catch(() => "");
+      const payload = {
+        evrak_tarihi: new Date().toISOString().slice(0, 10),
+        tarih_gosterim: null,
+        firma_id: e.firma_id,
+        santiye_id: e.santiye_id ?? null,
+        evrak_sayi_no: yeniSayiNo,
+        evrak_kayit_no: null,
+        konu: e.konu,
+        muhatap: e.muhatap ?? null,
+        muhatap_id: e.muhatap_id ?? null,
+        ilgi_listesi: e.ilgi_listesi ?? [],
+        metin: e.metin ?? null,
+        ekler: e.ekler ?? [],
+        kase_dahil: e.kase_dahil ?? false,
+        pdf_url: null, // PDF kopyalanmaz — yeni yükleme gerekirse düzenlemeden eklenir
+        olusturan_id: kullanici?.id ?? "",
+        olusturma_tarihi: new Date().toISOString(),
+        silindi: false,
+        silme_nedeni: null,
+      };
+      await createGidenEvrak(payload);
+      await loadData();
+      toast.success("Evrak çoğaltıldı (yeni kayıt oluşturuldu).");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Bir hata oluştu";
+      toast.error(`Çoğaltma hatası: ${msg}`);
+    }
   }
 
   function handleSilTikla(e: GidenEvrakWithRelations) {

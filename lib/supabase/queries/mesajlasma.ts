@@ -216,14 +216,27 @@ export async function mesajGonder(input: {
     .update({ son_mesaj_zamani: new Date().toISOString() })
     .eq("id", input.konusma_id);
 
-  // Bildirim gönder — konuşmadaki diğer üyelere
+  // Bildirim gönder — konuşmadaki diğer üyeler + tüm admin/şantiye yöneticileri
+  // (admin/şantiye yöneticisi konuşmanın üyesi olmasa bile haber alsın)
   try {
-    const { data: digerUyeler } = await supabase
-      .from("mesaj_uye")
-      .select("kullanici_id")
-      .eq("konusma_id", input.konusma_id)
-      .neq("kullanici_id", input.gonderen_id);
-    const targetIds = (digerUyeler ?? []).map((u) => u.kullanici_id);
+    const [{ data: digerUyeler }, { data: adminler }] = await Promise.all([
+      supabase
+        .from("mesaj_uye")
+        .select("kullanici_id")
+        .eq("konusma_id", input.konusma_id)
+        .neq("kullanici_id", input.gonderen_id),
+      supabase
+        .from("kullanicilar")
+        .select("id")
+        .in("rol", ["yonetici", "santiye_admin"])
+        .eq("aktif", true)
+        .neq("id", input.gonderen_id),
+    ]);
+    // İki listeyi birleştir + tekrarları temizle
+    const idSet = new Set<string>();
+    for (const u of digerUyeler ?? []) idSet.add(u.kullanici_id);
+    for (const a of adminler ?? []) idSet.add(a.id);
+    const targetIds = Array.from(idSet);
     if (targetIds.length > 0) {
       const govde = input.icerik?.trim()
         ? input.icerik.trim()
