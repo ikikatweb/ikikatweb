@@ -42,6 +42,7 @@ export default function MesajlasmaPage() {
   const [grupBaslik, setGrupBaslik] = useState("");
   const mesajContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [adMap, setAdMap] = useState<Map<string, string>>(new Map());
 
   // Konuşmaları yükle — yönetici ve şantiye yöneticisi tüm konuşmaları görür
@@ -74,6 +75,14 @@ export default function MesajlasmaPage() {
     setYukleniyor(true);
     Promise.all([loadKonusmalar(), loadKullanicilar()]).finally(() => setYukleniyor(false));
   }, [loadKonusmalar, loadKullanicilar]);
+
+  // Textarea içerik değiştiğinde otomatik yüksekliği ayarla
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }, [yeniMesaj]);
 
   // Periyodik yenile (gerçek zamanlı yerine basit polling)
   useEffect(() => {
@@ -119,6 +128,8 @@ export default function MesajlasmaPage() {
         icerik: yeniMesaj.trim(),
       });
       setYeniMesaj("");
+      // Textarea yüksekliğini sıfırla (auto-grow useEffect zaten çalışacak ama anında sıfırlamak için)
+      if (textareaRef.current) textareaRef.current.style.height = "40px";
       await loadMesajlar(seciliKonusmaId);
       await loadKonusmalar();
     } catch (err) {
@@ -248,16 +259,29 @@ export default function MesajlasmaPage() {
   }
 
   const seciliKonusma = konusmalar.find((k) => k.id === seciliKonusmaId);
-  const konusmaBasligi = seciliKonusma
-    ? seciliKonusma.tip === "grup"
-      ? seciliKonusma.baslik || "Grup"
-      : seciliKonusma.uyeler.find((u) => u.kullanici_id !== kullanici?.id)?.ad_soyad || "—"
+  // Konuşma başlığı:
+  // - Grup: başlık || "Grup"
+  // - Tekil: kullanıcı üyeyse → karşı tarafın adı
+  //          değilse (admin gözlem) → "A ↔ B" şeklinde her iki tarafın adı
+  function buildBaslik(k: KonusmaOzet): string {
+    if (k.tip === "grup") return k.baslik || "Grup";
+    const benUyeMiyim = k.uyeler.some((u) => u.kullanici_id === kullanici?.id);
+    if (benUyeMiyim) {
+      return k.uyeler.find((u) => u.kullanici_id !== kullanici?.id)?.ad_soyad || "—";
+    }
+    // Admin gözlemci — her iki üyeyi de göster
+    return k.uyeler.map((u) => u.ad_soyad).join(" ↔ ") || "—";
+  }
+  const konusmaBasligi = seciliKonusma ? buildBaslik(seciliKonusma) : "";
+  // Konuşmadaki üye listesi (grup için ya da admin gözlem için yardımcı satır)
+  const seciliKonusmaUyeMetni = seciliKonusma
+    ? seciliKonusma.uyeler.map((u) => u.ad_soyad).join(", ")
     : "";
 
   if (!kullanici) return <div className="p-4 text-gray-500">Yükleniyor...</div>;
 
   return (
-    <div className="flex h-[calc(100dvh-56px)] md:h-[calc(100vh-120px)] gap-0 md:gap-3 -m-4 md:m-0">
+    <div className="fixed left-0 right-0 top-14 bottom-0 flex md:static md:h-[calc(100vh-120px)] md:m-0 gap-0 md:gap-3">
       {/* Sol panel: Konuşma listesi — mobilde sadece konuşma seçilmediyse görün */}
       <div className={`${seciliKonusmaId ? "hidden md:flex" : "flex"} w-full md:w-72 md:flex-shrink-0 bg-white md:rounded-lg md:border border-b flex-col overflow-hidden`}>
         <div className="p-3 border-b flex items-center justify-between">
@@ -278,10 +302,13 @@ export default function MesajlasmaPage() {
             </div>
           ) : (
             konusmalar.map((k) => {
-              const baslik = k.tip === "grup"
-                ? k.baslik || "Grup"
-                : k.uyeler.find((u) => u.kullanici_id !== kullanici?.id)?.ad_soyad || "—";
+              const baslik = buildBaslik(k);
               const aktif = k.id === seciliKonusmaId;
+              const benUyeMiyim = k.uyeler.some((u) => u.kullanici_id === kullanici?.id);
+              // Üye satırı: grup için tüm üyeler, 1-1'de admin gözlemse zaten başlıkta var → tekrar gösterme
+              const uyeSatiri = k.tip === "grup"
+                ? k.uyeler.map((u) => u.ad_soyad).join(", ")
+                : null;
               return (
                 <button
                   key={k.id}
@@ -294,12 +321,22 @@ export default function MesajlasmaPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-[#1E3A5F] truncate">{baslik}</span>
+                        {!benUyeMiyim && (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                            Gözlem
+                          </span>
+                        )}
                         {k.okunmamisSayisi > 0 && (
                           <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center flex-shrink-0">
                             {k.okunmamisSayisi}
                           </span>
                         )}
                       </div>
+                      {uyeSatiri && (
+                        <div className="text-[10px] text-gray-400 truncate mt-0.5">
+                          {uyeSatiri}
+                        </div>
+                      )}
                       {k.sonMesaj && (
                         <div className="text-[11px] text-gray-500 truncate mt-0.5">
                           <span className="font-medium">{k.sonMesaj.gonderen_ad}:</span>{" "}
@@ -339,12 +376,22 @@ export default function MesajlasmaPage() {
                   <ArrowLeft size={20} />
                 </button>
                 {seciliKonusma?.tip === "grup" && <Users size={16} className="text-gray-500 flex-shrink-0" />}
-                <h3 className="font-bold text-sm text-[#1E3A5F] truncate">{konusmaBasligi}</h3>
-                {seciliKonusma?.tip === "grup" && (
-                  <span className="text-[10px] text-gray-400 flex-shrink-0">
-                    {seciliKonusma.uyeler.length} üye
-                  </span>
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-[#1E3A5F] truncate">{konusmaBasligi}</h3>
+                    {seciliKonusma && !seciliKonusma.uyeler.some((u) => u.kullanici_id === kullanici?.id) && (
+                      <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                        Gözlem
+                      </span>
+                    )}
+                  </div>
+                  {/* Grup için üye listesi (truncate) */}
+                  {seciliKonusma?.tip === "grup" && (
+                    <div className="text-[10px] text-gray-500 truncate">
+                      {seciliKonusma.uyeler.length} üye: {seciliKonusmaUyeMetni}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -448,12 +495,14 @@ export default function MesajlasmaPage() {
                 {dosyaYukleniyor ? <span className="text-xs">...</span> : <ImageIcon size={18} />}
               </button>
               <textarea
+                ref={textareaRef}
                 value={yeniMesaj}
                 onChange={(e) => setYeniMesaj(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); mesajGonderHandle(); } }}
                 placeholder="Mesaj yaz... (Enter ile gönder, Shift+Enter ile yeni satır)"
                 rows={1}
-                className="flex-1 text-sm border rounded-lg px-3 py-2 outline-none focus:border-[#1E3A5F] resize-none max-h-32"
+                className="flex-1 text-sm border rounded-lg px-3 py-2 outline-none focus:border-[#1E3A5F] resize-none overflow-y-auto"
+                style={{ minHeight: "40px", maxHeight: "200px" }}
               />
               <Button
                 size="sm"
