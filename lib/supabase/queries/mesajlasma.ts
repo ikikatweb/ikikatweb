@@ -236,7 +236,7 @@ export async function mesajGonder(input: {
         body: JSON.stringify({
           baslik: "Yeni Mesaj",
           govde,
-          url: "/dashboard/mesajlasma",
+          url: `/dashboard/mesajlasma?konusma=${input.konusma_id}`,
           tag: "mesaj",
           target_user_ids: targetIds,
         }),

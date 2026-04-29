@@ -1,7 +1,8 @@
 // Şantiye Defteri — günlük kayıt takibi
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -83,6 +84,17 @@ function basHarfBuyuk(text: string): string {
 }
 
 export default function SantiyeDefPage() {
+  return (
+    <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}>
+      <SantiyeDefContent />
+    </Suspense>
+  );
+}
+
+function SantiyeDefContent() {
+  const searchParams = useSearchParams();
+  const urlSantiye = searchParams.get("santiye");
+  const urlTarih = searchParams.get("tarih");
   const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
   const yEkle = hasPermission("santiye-defteri", "ekle");
   const yDuzenle = hasPermission("santiye-defteri", "duzenle");
@@ -99,6 +111,8 @@ export default function SantiyeDefPage() {
   const [kayitlar, setKayitlar] = useState<SantiyeDefterKayit[]>([]);
   const [kullaniciMap, setKullaniciMap] = useState<Map<string, string>>(new Map());
   const [defterDialogOpen, setDefterDialogOpen] = useState(false);
+  // previewMode: göz ikonu açıyorsa true → sadece okuma; kalem açıyorsa false → düzenleme
+  const [previewMode, setPreviewMode] = useState(false);
 
   // Filtreler — ay bazlı liste
   const [filtreAy, setFiltreAy] = useState(() => {
@@ -150,6 +164,24 @@ export default function SantiyeDefPage() {
   }, [kullanici]);
 
   useEffect(() => { loadSantiyeler(); }, [loadSantiyeler]);
+
+  // URL'den ?santiye=<id>&tarih=<tarih> okumak — bildirim deep link
+  // Sadece bir kez çalışır (sayfa yüklendiğinde) — kullanıcı sonra filtre değiştirirse override etmesin
+  const deepLinkKullanildi = useRef(false);
+  useEffect(() => {
+    if (deepLinkKullanildi.current) return;
+    if (!urlSantiye || santiyeler.length === 0) return;
+    const exists = santiyeler.some((s) => s.id === urlSantiye);
+    if (!exists) return;
+    deepLinkKullanildi.current = true;
+    setFiltreSantiye(urlSantiye);
+    if (urlTarih) {
+      setSeciliTarih(urlTarih);
+      setPreviewMode(true);
+      setDefterDialogOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSantiye, urlTarih, santiyeler.length]);
 
   const loadDefter = useCallback(async () => {
     if (!filtreSantiye) { setDefter(null); setKayitlar([]); return; }
@@ -580,6 +612,7 @@ export default function SantiyeDefPage() {
         {yEkle && (
           <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => {
             setSeciliTarih(new Date().toISOString().slice(0, 10));
+            setPreviewMode(false);
             setDefterDialogOpen(true);
           }} disabled={!filtreSantiye}>
             <Plus size={14} className="mr-1" /> Yeni Şantiye Defteri Ekle
@@ -652,7 +685,7 @@ export default function SantiyeDefPage() {
               : "Kayıt yok";
             return (
               <div key={d.id} className="border-b last:border-b-0 hover:bg-gray-50 cursor-pointer px-4 py-3 flex items-center gap-4"
-                onClick={() => defterAc(d.tarih)}>
+                onClick={() => { setPreviewMode(true); defterAc(d.tarih); }}>
                 <div className="text-center min-w-[60px]">
                   <div className="text-lg font-bold text-[#1E3A5F]">{new Date(d.tarih + "T00:00:00").getDate()}</div>
                   <div className="text-[10px] text-gray-400">{GUN_ADLARI[new Date(d.tarih + "T00:00:00").getDay()]}</div>
@@ -671,15 +704,22 @@ export default function SantiyeDefPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => defterAc(d.tarih)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Ön İzleme">
+                  <button type="button" onClick={() => { setPreviewMode(true); defterAc(d.tarih); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Ön İzleme (sadece görüntüle)">
                     <Eye size={14} />
                   </button>
+                  {(yEkle || yDuzenle) && (
+                    <button type="button" onClick={() => { setPreviewMode(false); defterAc(d.tarih); }} className="p-1.5 text-gray-400 hover:text-emerald-600 rounded hover:bg-emerald-50" title="Düzenle">
+                      <Pencil size={14} />
+                    </button>
+                  )}
                   <button type="button" onClick={() => exportPDFForDefter(d)} className="p-1.5 text-gray-400 hover:text-[#1E3A5F] rounded hover:bg-gray-100" title="PDF İndir">
                     <FileDown size={14} />
                   </button>
-                  <button type="button" onClick={() => setSilDefterOnay(d.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Sil">
-                    <Trash2 size={14} />
-                  </button>
+                  {ySil && (
+                    <button type="button" onClick={() => setSilDefterOnay(d.id)} className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50" title="Sil">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -693,8 +733,16 @@ export default function SantiyeDefPage() {
           <div className="bg-white rounded-lg">
             {/* Başlık */}
             <div className="bg-[#64748B] text-white text-center py-2 rounded-t-lg relative">
-              <h2 className="font-bold text-sm tracking-wider">ŞANTİYE GÜNLÜK DEFTERİ</h2>
+              <h2 className="font-bold text-sm tracking-wider">
+                ŞANTİYE GÜNLÜK DEFTERİ
+                {previewMode && <span className="ml-2 text-[10px] bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded font-medium align-middle">ÖN İZLEME</span>}
+              </h2>
               <div className="absolute right-2 top-1.5 flex gap-1">
+                {previewMode && (yEkle || yDuzenle) && (
+                  <button type="button" onClick={() => setPreviewMode(false)} className="text-white/80 hover:text-white px-2 py-0.5 text-[10px] bg-emerald-600/70 hover:bg-emerald-600 rounded font-semibold" title="Düzenleme moduna geç">
+                    DÜZENLE
+                  </button>
+                )}
                 {defter && (
                   <button type="button" onClick={exportPDF} className="text-white/70 hover:text-white p-1" title="PDF"><FileDown size={16} /></button>
                 )}
@@ -718,13 +766,22 @@ export default function SantiyeDefPage() {
               <div className="grid grid-cols-3 text-xs">
                 <div className="border-r px-3 py-2"><span className="font-bold text-gray-600">HAVA DURUMU</span></div>
                 <div className="col-span-2 px-3 py-1 flex items-center gap-2">
-                  <input type="text" value={sicaklik} onChange={(e) => setSicaklik(e.target.value)}
-                    placeholder="°C" className="w-14 h-7 text-xs border rounded px-2 text-center" />
-                  <select value={havaDurumu} onChange={(e) => setHavaDurumu(e.target.value)} className="h-7 text-xs border rounded px-2">
-                    <option value="">Seçiniz</option>
-                    {HAVA_SECENEKLERI.map((h) => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                  {havaDurumu && <HavaIcon size={16} className="text-gray-500" />}
+                  {previewMode ? (
+                    <span className="text-sm font-semibold">
+                      {[sicaklik, havaDurumu].filter(Boolean).join(" / ") || "—"}
+                      {havaDurumu && <HavaIcon size={16} className="text-gray-500 inline ml-2" />}
+                    </span>
+                  ) : (
+                    <>
+                      <input type="text" value={sicaklik} onChange={(e) => setSicaklik(e.target.value)}
+                        placeholder="°C" className="w-14 h-7 text-xs border rounded px-2 text-center" />
+                      <select value={havaDurumu} onChange={(e) => setHavaDurumu(e.target.value)} className="h-7 text-xs border rounded px-2">
+                        <option value="">Seçiniz</option>
+                        {HAVA_SECENEKLERI.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                      {havaDurumu && <HavaIcon size={16} className="text-gray-500" />}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -777,7 +834,7 @@ export default function SantiyeDefPage() {
                                 {g.kayitlar.map((k) => k.icerik).join(" ")}
                                 <span className="text-[11px] text-gray-300 italic"> — {yazanAd}</span>
                               </p>
-                              {isOwn && tarihIzinli && (yDuzenle || ySil) && (
+                              {!previewMode && isOwn && tarihIzinli && (yDuzenle || ySil) && (
                                 <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {yDuzenle && (
                                     <button type="button" onClick={() => {
@@ -803,8 +860,8 @@ export default function SantiyeDefPage() {
                 </div>
               )}
 
-              {/* Yeni kayıt ekleme */}
-              {tarihIzinli && yEkle && (
+              {/* Yeni kayıt ekleme — preview modunda gizli */}
+              {!previewMode && tarihIzinli && yEkle && (
                 <div className="mt-3 border-t border-dashed border-gray-300 pt-3">
                   <div className="flex items-start gap-2">
                     <span className="text-emerald-500 font-bold mt-1.5">+</span>
@@ -890,6 +947,7 @@ export default function SantiyeDefPage() {
                 setFiltreSantiye(ekleSeciliSantiye);
                 setEkleDialogOpen(false);
                 setSeciliTarih(new Date().toISOString().slice(0, 10));
+                setPreviewMode(false);
                 setDefterDialogOpen(true);
               }}>
               Defter Aç

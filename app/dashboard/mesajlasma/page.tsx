@@ -1,7 +1,8 @@
 // Mesajlaşma sayfası — kullanıcı arası 1-1 ve grup konuşmaları
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   getKonusmalar,
   getMesajlar,
@@ -36,6 +37,16 @@ function tr(s: string): string {
 type Kullanici = { id: string; ad_soyad: string };
 
 export default function MesajlasmaPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-gray-500">Yükleniyor...</div>}>
+      <MesajlasmaContent />
+    </Suspense>
+  );
+}
+
+function MesajlasmaContent() {
+  const searchParams = useSearchParams();
+  const urlKonusmaId = searchParams.get("konusma");
   const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
   const yetkiliSilmek = isYonetici || isShantiyeAdmin;
 
@@ -88,6 +99,20 @@ export default function MesajlasmaPage() {
     setYukleniyor(true);
     Promise.all([loadKonusmalar(), loadKullanicilar()]).finally(() => setYukleniyor(false));
   }, [loadKonusmalar, loadKullanicilar]);
+
+  // URL'de ?konusma=<id> varsa o konuşmayı otomatik aç (bildirim tıklamasından gelen deep link)
+  // Sadece bir kez çalışır — kullanıcı sonradan başka konuşmaya tıklarsa override etmesin
+  const deepLinkKullanildi = useRef(false);
+  useEffect(() => {
+    if (deepLinkKullanildi.current) return;
+    if (!urlKonusmaId || yukleniyor || konusmalar.length === 0) return;
+    const varMi = konusmalar.some((k) => k.id === urlKonusmaId);
+    if (varMi) {
+      deepLinkKullanildi.current = true;
+      konusmaSec(urlKonusmaId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlKonusmaId, konusmalar, yukleniyor]);
 
   // Lightbox açıkken Esc ile kapatma
   useEffect(() => {

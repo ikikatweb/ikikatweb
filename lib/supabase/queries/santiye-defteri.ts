@@ -95,8 +95,9 @@ export async function insertDefter(defter: {
     bildirimGonder({
       baslik: `📓 Yeni Şantiye Defteri — ${santiyeAd}`,
       govde: `${formatTarih(defter.tarih)} · Sayfa ${defter.sayfa_no}${defter.hava_durumu ? " · " + defter.hava_durumu : ""}`,
-      url: "/dashboard/santiye-defteri",
+      url: `/dashboard/santiye-defteri?santiye=${defter.santiye_id}&tarih=${defter.tarih}`,
       tag: "santiye-defteri",
+      santiye_id: defter.santiye_id,
     });
   } catch { /* sessiz */ }
 
