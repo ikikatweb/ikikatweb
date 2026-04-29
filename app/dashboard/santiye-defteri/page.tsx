@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   NotebookPen, ChevronLeft, ChevronRight, FileDown, Plus,
-  Pencil, Trash2, Sun, Cloud, CloudRain, Snowflake, Eye, Search, FileSpreadsheet,
+  Pencil, Trash2, Sun, Cloud, CloudRain, Snowflake, Eye, Search, FileSpreadsheet, X,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import * as XLSX from "xlsx";
@@ -113,6 +113,10 @@ function SantiyeDefContent() {
   const [defterDialogOpen, setDefterDialogOpen] = useState(false);
   // previewMode: göz ikonu açıyorsa true → sadece okuma; kalem açıyorsa false → düzenleme
   const [previewMode, setPreviewMode] = useState(false);
+  // PDF ön izleme — göz ikonuna basıldığında PDF'in iframe'de gösterileceği URL ve dosya bilgisi
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewBaslik, setPdfPreviewBaslik] = useState<string>("");
+  const [pdfPreviewDoc, setPdfPreviewDoc] = useState<jsPDF | null>(null);
 
   // Filtreler — ay bazlı liste
   const [filtreAy, setFiltreAy] = useState(() => {
@@ -164,6 +168,17 @@ function SantiyeDefContent() {
   }, [kullanici]);
 
   useEffect(() => { loadSantiyeler(); }, [loadSantiyeler]);
+
+  // PDF ön izleme açıkken Esc ile kapat
+  useEffect(() => {
+    if (!pdfPreviewUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") pdfPreviewKapat();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfPreviewUrl]);
 
   // URL'den ?santiye=<id>&tarih=<tarih> okumak — bildirim deep link
   // Sadece bir kez çalışır (sayfa yüklendiğinde) — kullanıcı sonra filtre değiştirirse override etmesin
@@ -350,8 +365,8 @@ function SantiyeDefContent() {
     }
   }
 
-  // Belirli bir defterin PDF'ini oluştur (liste satırından)
-  function exportPDFForDefter(d: SantiyeDefteri & { kayitlar: SantiyeDefterKayit[] }) {
+  // Belirli bir defterin PDF jsPDF nesnesini oluştur — indirme veya önizleme için
+  function buildDefterPDF(d: SantiyeDefteri & { kayitlar: SantiyeDefterKayit[] }): jsPDF {
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pw = doc.internal.pageSize.getWidth();
     const ph = doc.internal.pageSize.getHeight();
@@ -441,7 +456,36 @@ function SantiyeDefContent() {
     doc.text(tr("MUTEAHHIT"), mx + bw + bw / 2, imzaY + 4, { align: "center" });
     doc.text(tr("KONTROL MUHENDISI"), mx + bw * 2 + bw / 2, imzaY + 4, { align: "center" });
 
+    return doc;
+  }
+
+  // İndir
+  function exportPDFForDefter(d: SantiyeDefteri & { kayitlar: SantiyeDefterKayit[] }) {
+    const doc = buildDefterPDF(d);
     doc.save(`santiye-defteri-${d.tarih}.pdf`);
+  }
+
+  // Ön izleme (göz ikonu) — PDF'i iframe'de göster
+  function previewPDFForDefter(d: SantiyeDefteri & { kayitlar: SantiyeDefterKayit[] }) {
+    // Eski blob URL'i temizle
+    if (pdfPreviewUrl) {
+      try { URL.revokeObjectURL(pdfPreviewUrl); } catch { /* sessiz */ }
+    }
+    const doc = buildDefterPDF(d);
+    const blob = doc.output("blob") as Blob;
+    const url = URL.createObjectURL(blob);
+    setPdfPreviewUrl(url);
+    setPdfPreviewBaslik(`${formatTarihGun(d.tarih)} · Sayfa ${d.sayfa_no}`);
+    setPdfPreviewDoc(doc);
+  }
+
+  function pdfPreviewKapat() {
+    if (pdfPreviewUrl) {
+      try { URL.revokeObjectURL(pdfPreviewUrl); } catch { /* sessiz */ }
+    }
+    setPdfPreviewUrl(null);
+    setPdfPreviewBaslik("");
+    setPdfPreviewDoc(null);
   }
 
   function exportPDF() {
@@ -685,7 +729,7 @@ function SantiyeDefContent() {
               : "Kayıt yok";
             return (
               <div key={d.id} className="border-b last:border-b-0 hover:bg-gray-50 cursor-pointer px-4 py-3 flex items-center gap-4"
-                onClick={() => { setPreviewMode(true); defterAc(d.tarih); }}>
+                onClick={() => previewPDFForDefter(d)}>
                 <div className="text-center min-w-[60px]">
                   <div className="text-lg font-bold text-[#1E3A5F]">{new Date(d.tarih + "T00:00:00").getDate()}</div>
                   <div className="text-[10px] text-gray-400">{GUN_ADLARI[new Date(d.tarih + "T00:00:00").getDay()]}</div>
@@ -704,7 +748,7 @@ function SantiyeDefContent() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button type="button" onClick={() => { setPreviewMode(true); defterAc(d.tarih); }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="Ön İzleme (sadece görüntüle)">
+                  <button type="button" onClick={() => previewPDFForDefter(d)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50" title="PDF Ön İzleme">
                     <Eye size={14} />
                   </button>
                   {(yEkle || yDuzenle) && (
@@ -919,6 +963,45 @@ function SantiyeDefContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* PDF Ön İzleme Modal */}
+      {pdfPreviewUrl && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col" onClick={pdfPreviewKapat}>
+          {/* Üst toolbar */}
+          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Eye size={18} className="flex-shrink-0" />
+              <span className="text-sm font-medium truncate">PDF Ön İzleme — {pdfPreviewBaslik}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => { if (pdfPreviewDoc) pdfPreviewDoc.save(`santiye-defteri-${pdfPreviewBaslik.split(" ")[0].replace(/\./g, "-")}.pdf`); }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs font-medium flex items-center gap-1.5"
+                title="İndir"
+              >
+                <FileDown size={14} /> İndir
+              </button>
+              <button
+                type="button"
+                onClick={pdfPreviewKapat}
+                className="p-1.5 hover:bg-white/10 rounded"
+                title="Kapat"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          {/* PDF iframe */}
+          <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
+            <iframe
+              src={pdfPreviewUrl}
+              title="PDF Ön İzleme"
+              className="w-full h-full border-0"
+            />
+          </div>
+        </div>
+      )}
 
       {/* "+" — Yeni şantiye için defter aç */}
       <Dialog open={ekleDialogOpen} onOpenChange={(o) => !o && setEkleDialogOpen(false)}>
