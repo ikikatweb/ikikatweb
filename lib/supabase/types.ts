@@ -618,6 +618,8 @@ export type Ihale = {
   k_degeri: number | null;
   standart_sapma: number | null;
   muhtemel_kazanan: string | null;
+  // Muhtemel kazananın teklif tutarı (firma adı muhtemel_kazanan'da)
+  muhtemel_kazanan_tutar: number | null;
   has_manual_edits: boolean;
   created_by: string | null;
   created_at: string;

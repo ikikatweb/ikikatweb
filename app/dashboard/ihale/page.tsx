@@ -1151,11 +1151,12 @@ export default function IhalePage() {
       const ymVal = parsed ? parsed.yaklasikMaliyet : parseParaInput(yaklasikMaliyet);
       const gecerliTeklifler = kat.filter((k) => k.durum === "gecerli").map((k) => k.teklif);
       const h = hesaplaSinirDeger(gecerliTeklifler, ymVal, nVal);
-      const mk = (() => {
-        if (!h) return null;
+      const mkInfo = (() => {
+        if (!h) return { firma: null as string | null, tutar: null as number | null };
         const sorted = [...kat].sort((a, b) => a.teklif - b.teklif);
         const g = sorted.filter((k) => k.durum === "gecerli" && k.teklif >= h.sinirDeger);
-        return g[0]?.firmaAdi ?? null;
+        const ilk = g[0];
+        return { firma: ilk?.firmaAdi ?? null, tutar: ilk?.teklif ?? null };
       })();
 
       const ihaleData = {
@@ -1172,7 +1173,8 @@ export default function IhalePage() {
         c_degeri: h?.c ?? null,
         k_degeri: h?.k ?? null,
         standart_sapma: h?.standartSapma ?? null,
-        muhtemel_kazanan: mk,
+        muhtemel_kazanan: mkInfo.firma,
+        muhtemel_kazanan_tutar: mkInfo.tutar,
         has_manual_edits: hasManualEdits,
         created_by: kullanici?.id ?? null,
       };
@@ -1880,12 +1882,12 @@ export default function IhalePage() {
               <Table className="text-xs">
                 <TableHeader>
                   <TableRow className="bg-[#64748B]">
-                    <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">Analiz Tarihi</TableHead>
                     <TableHead className="text-white text-[11px] px-2">İKN</TableHead>
                     <TableHead className="text-white text-[11px] px-2 min-w-[200px]">İdare</TableHead>
                     <TableHead className="text-white text-[11px] px-2 min-w-[150px]">İşin Adı</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-right">Y. Maliyet</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Sınır Değer</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right">Kazanan Tutar</TableHead>
                     <TableHead className="text-white text-[11px] px-2">Muhtemel Kazanan</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-center">Durum</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-center w-[80px]">İşlem</TableHead>
@@ -1894,12 +1896,12 @@ export default function IhalePage() {
                 <TableBody>
                   {filtreliGecmis.map((i) => (
                     <TableRow key={i.id} className="hover:bg-gray-50">
-                      <TableCell className="px-2 whitespace-nowrap">{i.ihale_tarihi ? i.ihale_tarihi.split("-").reverse().join(".") : "—"}</TableCell>
+                      <TableCell className="px-2 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
                       <TableCell className="px-2 font-mono text-[11px]">{i.ihale_kayit_no ?? "—"}</TableCell>
                       <TableCell className="px-2 truncate max-w-[200px]" title={i.idare_adi ?? ""}>{i.idare_adi ?? "—"}</TableCell>
                       <TableCell className="px-2 truncate max-w-[150px]" title={i.is_adi ?? ""}>{i.is_adi ?? "—"}</TableCell>
                       <TableCell className="px-2 text-right">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
-                      <TableCell className="px-2 text-right font-bold text-[#1E3A5F]">{i.sinir_deger ? formatTL(i.sinir_deger) : "—"}</TableCell>
+                      <TableCell className="px-2 text-right font-bold text-[#1E3A5F]">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
                       <TableCell className="px-2">{i.muhtemel_kazanan ?? "—"}</TableCell>
                       <TableCell className="px-2 text-center">
                         {i.has_manual_edits && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">DÜZENLENDİ</span>}
