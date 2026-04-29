@@ -709,6 +709,9 @@ export type Kullanici = {
   dashboard_widgets: string[] | null;
   // Push bildirim kategori ayarları: { "kasa": false, ... } — varsayılan hepsi true/open
   bildirim_ayarlari?: Record<string, boolean> | null;
+  // Mesajlaşmada tüm konuşmaları görme yetkisi (admin için her zaman true,
+  // şantiye yöneticisi için form'dan seçilir, kısıtlı için hiç verilmez)
+  tum_mesajlari_gor?: boolean | null;
   created_at: string;
   updated_at: string;
 };

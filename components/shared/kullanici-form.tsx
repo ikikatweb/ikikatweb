@@ -68,6 +68,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [santiyeIslemGun, setSantiyeIslemGun] = useState<string>(initGun(kullanici?.santiye_defteri_islem_gun));
   const [santiyeGoruntulemeGun, setSantiyeGoruntulemeGun] = useState<string>(initGun(kullanici?.santiye_defteri_goruntuleme_gun));
   const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kullanici?.dashboard_widgets ?? []);
+  // Mesajlaşmada tüm konuşmaları görme yetkisi (sadece santiye_admin için ayarlanır)
+  const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kullanici?.tum_mesajlari_gor ?? false);
 
   // Şantiye ve şablon listeleri
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
@@ -177,6 +179,12 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
       // (yönetici hepsine sahip — bu alanlar boş bırakılır)
       const santiyeKullanir = rol === "kisitli" || rol === "santiye_admin";
       const izinKullanir = rol === "kisitli" || rol === "santiye_admin";
+      // Tüm mesajları görme yetkisi:
+      // - yönetici: her zaman true (form'da göstermesek de DB'de net olsun)
+      // - şantiye yöneticisi: form'daki seçim
+      // - kısıtlı: her zaman false
+      const tumMesajlariGorFinal = rol === "yonetici" ? true : (rol === "santiye_admin" ? tumMesajlariGor : false);
+
       if (isEdit) {
         await updateKullanici(kullanici.id, {
           ad_soyad: formatliAdSoyad,
@@ -186,6 +194,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null, // legacy
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
+          tum_mesajlari_gor: tumMesajlariGorFinal,
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success("Kullanıcı güncellendi.");
@@ -200,6 +209,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null,
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
+          tum_mesajlari_gor: tumMesajlariGorFinal,
         });
         toast.success("Kullanıcı oluşturuldu.");
       }
@@ -261,11 +271,29 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           <option value="kisitli">Kısıtlı Kullanıcı (sadece kendi kayıtları)</option>
         </select>
         {rol === "santiye_admin" && (
-          <p className="text-xs text-blue-600">
-            <strong>Şantiye Yöneticisi:</strong> Aşağıda verdiğiniz yetki alanlarında atanan şantiyelerdeki{" "}
-            <strong>tüm kullanıcıların</strong> verilerine erişir (yazışmalar, defter, kasa vb).
-            Yetki vermediğiniz modüllere erişemez.
-          </p>
+          <>
+            <p className="text-xs text-blue-600">
+              <strong>Şantiye Yöneticisi:</strong> Aşağıda verdiğiniz yetki alanlarında atanan şantiyelerdeki{" "}
+              <strong>tüm kullanıcıların</strong> verilerine erişir (yazışmalar, defter, kasa vb).
+              Yetki vermediğiniz modüllere erişemez.
+            </p>
+            {/* Mesajlaşma — tüm konuşmaları görme yetkisi (opsiyonel) */}
+            <label className="mt-2 flex items-start gap-2 p-2.5 border rounded-md bg-blue-50/40 cursor-pointer hover:bg-blue-50 transition-colors max-w-xl">
+              <input
+                type="checkbox"
+                checked={tumMesajlariGor}
+                onChange={(e) => setTumMesajlariGor(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#F97316]"
+              />
+              <div>
+                <div className="text-sm font-semibold text-[#1E3A5F]">💬 Tüm mesajlaşmaları görsün</div>
+                <div className="text-[11px] text-gray-500">
+                  İşaretliyse: kullanıcılar arası tüm 1-1 ve grup konuşmalarını izleyebilir.
+                  İşaretli değilse: sadece kendi dahil olduğu konuşmaları görür.
+                </div>
+              </div>
+            </label>
+          </>
         )}
         {rol === "kisitli" && (
           <p className="text-xs text-gray-500">

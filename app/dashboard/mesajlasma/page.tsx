@@ -69,8 +69,11 @@ function MesajlasmaContent() {
   const [lightboxAd, setLightboxAd] = useState<string>("");
   const [lightboxZoom, setLightboxZoom] = useState(1);
 
-  // Konuşmaları yükle — yönetici ve şantiye yöneticisi tüm konuşmaları görür
-  const tumunuGor = isYonetici || isShantiyeAdmin;
+  // Konuşmaları yükle:
+  // - Yönetici: her zaman tümünü görür
+  // - Şantiye yöneticisi: kullanıcı kaydında tum_mesajlari_gor=true ise tümünü görür
+  // - Diğer: sadece üye olduğu konuşmalar
+  const tumunuGor = isYonetici || (isShantiyeAdmin && (kullanici?.tum_mesajlari_gor === true));
   const loadKonusmalar = useCallback(async () => {
     if (!kullanici?.id) return;
     try {
