@@ -1478,21 +1478,38 @@ function YakitPageContent() {
                       )}
                     </TableCell>
                     <TableCell className="px-2 text-right">
-                      {s.anlikOrt !== null ? (
-                        <div className="flex flex-col items-end">
-                          <span className={s.limitIhlali ? "text-red-600 font-bold" : "text-gray-700"}>
-                            {formatSayi(s.anlikOrt, 2)}{birimEki}
-                          </span>
-                          {s.limitIhlali && s.genelOrt !== null && s.anlikOrt > 0 && (
-                            <span
-                              className="text-[9px] text-red-500 flex items-center gap-0.5"
-                              title={`Oran: ${(s.genelOrt / s.anlikOrt).toFixed(2)} (Limit: ${s.limitAlt} - ${s.limitUst})`}
-                            >
-                              <AlertTriangle size={8} /> Limit dışı · Oran: {(s.genelOrt / s.anlikOrt).toFixed(2)}
+                      {s.anlikOrt !== null ? (() => {
+                        // Limit ihlali yönü: oran > üst → kırmızı, oran < alt → yeşil
+                        let limitYon: "ust" | "alt" | null = null;
+                        let oran: number | null = null;
+                        if (s.limitIhlali && s.genelOrt !== null && s.anlikOrt > 0 && s.limitUst !== null && s.limitAlt !== null) {
+                          oran = s.genelOrt / s.anlikOrt;
+                          if (oran > s.limitUst) limitYon = "ust";
+                          else if (oran < s.limitAlt) limitYon = "alt";
+                        }
+                        const renkClass = limitYon === "ust"
+                          ? "text-red-600 font-bold"
+                          : limitYon === "alt"
+                          ? "text-emerald-600 font-bold"
+                          : "text-gray-700";
+                        const altRenk = limitYon === "ust" ? "text-red-500" : "text-emerald-600";
+                        return (
+                          <div className="flex flex-col items-end">
+                            <span className={renkClass}>
+                              {formatSayi(s.anlikOrt, 2)}{birimEki}
                             </span>
-                          )}
-                        </div>
-                      ) : "—"}
+                            {limitYon && oran !== null && (
+                              <span
+                                className={`text-[9px] flex items-center gap-0.5 ${altRenk}`}
+                                title={`Oran: ${oran.toFixed(2)} (Limit: ${s.limitAlt} - ${s.limitUst})`}
+                              >
+                                <AlertTriangle size={8} />
+                                {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit altı"} · Oran: {oran.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })() : "—"}
                     </TableCell>
                     <TableCell className="px-2 text-right text-gray-700">
                       {s.genelOrt !== null ? formatSayi(s.genelOrt, 2) + birimEki : "—"}
