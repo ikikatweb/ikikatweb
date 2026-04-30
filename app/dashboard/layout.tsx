@@ -1,7 +1,7 @@
 // Dashboard layout - Sidebar, üst bar, AuthProvider ile sarmalanmış
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AuthProvider } from "@/lib/auth-context";
 import Sidebar from "@/components/shared/sidebar";
 import Topbar from "@/components/shared/topbar";
@@ -14,6 +14,22 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Service worker'dan gelen "BILDIRIM_NAVIGATE" mesajını dinle.
+  // Bildirime tıklayınca SW bu mesajı yollar; biz window.location.href ile
+  // tam yönlendirme yaparak sayfanın doğru URL'e gitmesini garanti ederiz
+  // (client.navigate iOS Safari'de bazen sessizce başarısız oluyor).
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    const handler = (e: MessageEvent) => {
+      const data = e.data as { type?: string; url?: string } | undefined;
+      if (data?.type === "BILDIRIM_NAVIGATE" && data.url) {
+        window.location.href = data.url;
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, []);
 
   return (
     <AuthProvider>

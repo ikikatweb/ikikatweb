@@ -45,14 +45,20 @@ self.addEventListener("notificationclick", (event) => {
   const url = event.notification.data?.url || "/dashboard";
 
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // Açık bir sekme varsa, ONU TAM URL'E YÖNLENDİR + odakla
-      // Önceki kod sadece URL kısmen eşleşince focus ediyordu — query parametresi
-      // (örn. ?arac=ID, ?ara=...) işlenemiyordu, ilgili veri filtrelenmiyordu.
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
+      // Açık bir sekme varsa: postMessage ile sayfaya navigate komutu yolla + focus
+      // Bu yöntem client.navigate()'tan daha güvenilir — bazı tarayıcılarda
+      // (özellikle iOS Safari) client.navigate sessizce başarısız oluyor.
+      // Sayfanın kendi içindeki listener window.location.href ile garanti yönlendirir.
       for (const client of clientList) {
         if ("focus" in client) {
+          // Önce postMessage gönder (sayfa yönlendirmeyi yapacak)
+          try {
+            client.postMessage({ type: "BILDIRIM_NAVIGATE", url });
+          } catch (e) { /* sessiz */ }
+          // Yedek: client.navigate da çağır (eski tarayıcılar için)
           if ("navigate" in client) {
-            return client.navigate(url).then(() => client.focus()).catch(() => client.focus());
+            try { await client.navigate(url); } catch (e) { /* sessiz */ }
           }
           return client.focus();
         }
