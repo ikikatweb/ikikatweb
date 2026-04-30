@@ -485,7 +485,17 @@ function YakitPageContent() {
 
   // Filtrelenmiş + sıralanmış tablo satırları
   const tabloSatirlari = useMemo<TabloSatir[]>(() => {
-    const aramaQ = arama.trim().toLowerCase();
+    // Arama: "kamyon" → kamyon ve kamyonet ikisini de bulur (substring)
+    //        "kamyon " (sondaki boşluk) → SADECE "kamyon" tam kelimesini bulur
+    const aramaRaw = arama.toLowerCase();
+    const tamKelime = aramaRaw.trim().length > 0 && aramaRaw !== aramaRaw.trimEnd();
+    const aramaQ = aramaRaw.trim();
+    let aramaRegex: RegExp | null = null;
+    if (tamKelime && aramaQ) {
+      const escaped = aramaQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Türkçe karakterleri de "harf" sayıyoruz; öncesi ve sonrası harf/rakam DEĞİL olmalı
+      aramaRegex = new RegExp(`(^|[^a-z0-9çğıöşü])${escaped}([^a-z0-9çğıöşü]|$)`, "i");
+    }
 
     // Şantiye admini için izinli şantiye seti
     const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
@@ -555,7 +565,13 @@ function YakitPageContent() {
             h.created_by ? kullaniciMap.get(h.created_by) : null,
           ].filter(Boolean).join(" ").toLowerCase();
         }
-        if (!text.includes(aramaQ)) return false;
+        if (aramaRegex) {
+          // Tam kelime eşleşmesi (boşluk ile sonlandırılmış arama)
+          if (!aramaRegex.test(text)) return false;
+        } else {
+          // Substring eşleşmesi (varsayılan)
+          if (!text.includes(aramaQ)) return false;
+        }
       }
 
       return true;
@@ -1262,7 +1278,7 @@ function YakitPageContent() {
                   type="text"
                   value={arama}
                   onChange={(e) => setArama(e.target.value)}
-                  placeholder="Plaka, araç, firma, şantiye, not, kullanıcı..."
+                  placeholder="Ara... (sonuna boşluk bırak: tam kelime)"
                   className={selectClass + " w-full pl-8"}
                 />
               </div>
