@@ -426,7 +426,14 @@ function MesajlasmaContent() {
   if (!kullanici) return <div className="p-4 text-gray-500">Yükleniyor...</div>;
 
   return (
-    <div className="fixed left-0 right-0 top-14 bottom-0 flex md:static md:h-[calc(100vh-120px)] md:m-0 gap-0 md:gap-3">
+    <div
+      className="fixed left-0 right-0 flex md:static md:h-[calc(100vh-120px)] md:m-0 gap-0 md:gap-3"
+      style={{
+        // Safe area + topbar (h-14) altında başla; alt safe area kadar boşluk bırak
+        top: "calc(3.5rem + env(safe-area-inset-top, 0px))",
+        bottom: "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
       {/* Sol panel: Konuşma listesi — mobilde sadece konuşma seçilmediyse görün */}
       <div className={`${seciliKonusmaId ? "hidden md:flex" : "flex"} w-full md:w-72 md:flex-shrink-0 bg-white md:rounded-lg md:border border-b flex-col overflow-hidden`}>
         <div className="p-3 border-b flex items-center justify-between">

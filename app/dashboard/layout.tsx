@@ -33,7 +33,16 @@ export default function DashboardLayout({
 
   return (
     <AuthProvider>
-      <div className="flex h-screen overflow-hidden bg-[#FAFAFA]">
+      <div
+        className="flex overflow-hidden bg-[#FAFAFA]"
+        style={{
+          // PWA standalone modda status bar (telefon saati) ile çakışmasın diye
+          // safe-area-inset-top kadar boşluk bırakılır. Tarayıcıda env değeri 0'dır.
+          height: "100dvh",
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }}
+      >
         <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:shrink-0">
           <Sidebar />
         </aside>
