@@ -344,11 +344,14 @@ function YakitPageContent() {
 
   // Aracın genel kümülatif ortalaması hesaplama
   // (ilk kayıt hariç tüketilen lt) / (son km - ilk km)
+  // Eğer filtreSantiyeId seçiliyse: sadece o şantiyedeki yakıtlar üzerinden hesapla
+  // (kullanıcı belirli bir şantiyenin ortalamasını görmek istiyor olabilir)
   const aracGenelOrt = useMemo(() => {
     const m = new Map<string, number>();
-    // aracId → sıralı tüm kayıtlar
+    // aracId → sıralı kayıtlar (şantiye filtresi uygulanmış)
     const byArac = new Map<string, AracYakit[]>();
     for (const y of yakitKayitlari) {
+      if (filtreSantiyeId && y.santiye_id !== filtreSantiyeId) continue;
       if (!byArac.has(y.arac_id)) byArac.set(y.arac_id, []);
       byArac.get(y.arac_id)!.push(y);
     }
@@ -368,7 +371,7 @@ function YakitPageContent() {
       m.set(aracId, (tuketilenLt / fark) * carpan);
     }
     return m;
-  }, [yakitKayitlari, aracMap]);
+  }, [yakitKayitlari, aracMap, filtreSantiyeId]);
 
   // Aracın önceki kaydını bul (tarih+saat'ten önce)
   function oncekiAracKayit(aracId: string, tarih: string, saat: string, mevcutId?: string): AracYakit | null {
