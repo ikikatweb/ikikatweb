@@ -642,7 +642,10 @@ function YakitPageContent() {
         if (onceki) {
           const fark = h.km_saat - onceki.km_saat;
           satir.fark = fark;
-          if (fark > 0) {
+          // Anlık ortalama SADECE depo_full=true ise hesaplanır.
+          // Aksi halde gerçek tüketim ölçülemez (depo dolduğu noktayı bilmiyoruz),
+          // bu nedenle anlık ortalama verilmez. Genel ortalamaya tüm kayıtlar dahil.
+          if (fark > 0 && h.depo_full) {
             // Sayaç tipi km ise lt/100km, saat ise lt/saat
             const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
             satir.anlikOrt = (h.miktar_lt / fark) * carpan;

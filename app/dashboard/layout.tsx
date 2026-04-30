@@ -48,7 +48,11 @@ export default function DashboardLayout({
         </aside>
 
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          <SheetContent side="left" className="p-0 w-64 border-0">
+          {/* Mobilde tam ekran kapla, tablet+ (sm) için sidebar genişliği — data-attr'ları override etmek için ! prefix */}
+          <SheetContent
+            side="left"
+            className="p-0 border-0 !w-full !max-w-full sm:!w-80 sm:!max-w-sm"
+          >
             <Sidebar onNavigate={() => setSidebarOpen(false)} />
           </SheetContent>
         </Sheet>

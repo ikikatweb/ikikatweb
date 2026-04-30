@@ -297,7 +297,10 @@ export default function AcenteTakipPage() {
             <TableHeader>
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">İşlem Tarihi</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 11, backgroundColor: "#64748B" }}
+                  className="text-white text-[11px] px-2 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                >Plaka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Ruhsat Sahibi / Firma</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Poliçe Tipi</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Sigorta Firması</TableHead>
@@ -316,7 +319,10 @@ export default function AcenteTakipPage() {
                 return (
                   <TableRow key={p.id} className="hover:bg-gray-50">
                     <TableCell className="px-2 whitespace-nowrap">{formatTarih(p.islem_tarihi)}</TableCell>
-                    <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{arac?.plaka ?? "—"}</TableCell>
+                    <TableCell
+                      style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                      className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                    >{arac?.plaka ?? "—"}</TableCell>
                     <TableCell className="px-2 truncate max-w-[150px]" title={arac?.firmalar?.firma_adi ?? ""}>
                       {arac?.firmalar?.firma_adi ?? "—"}
                     </TableCell>

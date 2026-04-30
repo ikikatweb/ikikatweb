@@ -454,7 +454,10 @@ export default function SigortaMuayenePage() {
             <TableHeader>
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 w-10">No</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
+                <TableHead
+                  style={{ position: "sticky", left: 0, zIndex: 11, backgroundColor: "#64748B" }}
+                  className="text-white text-[11px] px-2 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                >Plaka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Marka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Model</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Cinsi</TableHead>
@@ -470,7 +473,10 @@ export default function SigortaMuayenePage() {
               {filtrelenmis.map((a, i) => (
                 <TableRow key={a.id} className="hover:bg-gray-50">
                   <TableCell className="px-2 text-center text-gray-400">{i + 1}</TableCell>
-                  <TableCell className="px-2 font-bold text-[#1E3A5F]">{a.plaka}</TableCell>
+                  <TableCell
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                    className="px-2 font-bold text-[#1E3A5F] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                  >{a.plaka}</TableCell>
                   <TableCell className="px-2">{a.marka ?? "—"}</TableCell>
                   <TableCell className="px-2">{a.model ?? "—"}</TableCell>
                   <TableCell className="px-2">{a.cinsi ?? "—"}</TableCell>
