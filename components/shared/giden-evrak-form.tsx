@@ -29,8 +29,11 @@ import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
+// "/" veya "." ayırıcılarını destekler (TarihInput artık "/" kullanıyor)
 function tarihGosterimdenIso(gs: string): string {
-  const parcalar = gs.split(".");
+  // "...." marker'ı kaldır, sonra / veya . ile böl
+  const temizlenmis = gs.replace(/\.{4,}/g, "");
+  const parcalar = temizlenmis.split(/[\/.]/);
   const g = /^\d{1,2}$/.test(parcalar[0]) ? parcalar[0].padStart(2, "0") : "01";
   const a = /^\d{1,2}$/.test(parcalar[1]) ? parcalar[1].padStart(2, "0") : "01";
   const y = /^\d{4}$/.test(parcalar[2] ?? "") ? parcalar[2] : new Date().getFullYear().toString();

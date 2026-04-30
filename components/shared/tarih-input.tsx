@@ -27,6 +27,7 @@ function isoParcala(iso: string | null): { gun: string; ay: string; yil: string 
 //   "24/04/2026"       → { gun: "24",   ay: "04",   yil: "2026" }
 //   "..../04/2026"     → { gun: "",     ay: "04",   yil: "2026" }
 //   "..../..../2026"   → { gun: "",     ay: "",     yil: "2026" }
+//   "..../..../2"      → { gun: "",     ay: "",     yil: "2"    } (kullanıcı yıl yazıyor)
 //   "24.04.2026"       → (eski format) desteklenir
 function gosterimParcala(gs: string | null): { gun: string; ay: string; yil: string } | null {
   if (!gs) return null;
@@ -36,9 +37,10 @@ function gosterimParcala(gs: string | null): { gun: string; ay: string; yil: str
   if (parcalar.length !== 3) return null;
   const [g, a, y] = parcalar.map((p) => p === "§EMPTY§" ? "" : p);
   return {
-    gun: /^\d{1,2}$/.test(g) ? g.padStart(2, "0") : "",
-    ay: /^\d{1,2}$/.test(a) ? a.padStart(2, "0") : "",
-    yil: /^\d{4}$/.test(y) ? y : "",
+    // Partial digits korunur (kullanıcı yazarken state reset olmasın)
+    gun: /^\d{1,2}$/.test(g) ? g : "",
+    ay: /^\d{1,2}$/.test(a) ? a : "",
+    yil: /^\d{1,4}$/.test(y) ? y : "",
   };
 }
 
@@ -79,12 +81,12 @@ export default function TarihInput({ value, gosterim, onChange, disabled }: Prop
     }
 
     // Kısmi — boş segmentler "...." olarak gösterilir, ayırıcı "/"
-    //   - Gün yok: "..../04/2026"
-    //   - Gün + Ay yok: "..../..../2026"
+    // Padding YAPMA — kullanıcı yazarken state'i bozmasın
+    // (örn. "1" yazınca "01" yapılırsa, sonra "5" yazıldığında slice ile "5" kaybolur)
     const PLACEHOLDER = "....";
-    const gsGun = g ? g.padStart(2, "0") : PLACEHOLDER;
-    const gsAy = a ? a.padStart(2, "0") : PLACEHOLDER;
-    const gsYil = y ? y : PLACEHOLDER;
+    const gsGun = g || PLACEHOLDER;
+    const gsAy = a || PLACEHOLDER;
+    const gsYil = y || PLACEHOLDER;
     onChange({ tarih: null, gosterim: `${gsGun}/${gsAy}/${gsYil}` });
   }
 
