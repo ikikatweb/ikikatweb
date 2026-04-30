@@ -111,7 +111,9 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
                     gonderen: k.sonMesaj.gonderen_ad ?? "—",
                     icerik: k.sonMesaj.icerik || "📎 Dosya",
                     grupBaslik: k.tip === "grup" ? (k.baslik || "Grup") : null,
-                    onClick: () => router.push(`/dashboard/mesajlasma?konusma=${k.id}`),
+                    // window.location.href ile tam yükleme — sayfa fresh mount olur,
+                    // deep link useEffect garantili çalışır (router.push bazen soft nav yapıp atlatabiliyor)
+                    onClick: () => { window.location.href = `/dashboard/mesajlasma?konusma=${k.id}`; },
                   });
                 }
               }
