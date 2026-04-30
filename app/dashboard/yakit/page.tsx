@@ -200,6 +200,8 @@ function YakitPageContent() {
     return `${y}-${String(m).padStart(2, "0")}-${String(son).padStart(2, "0")}`;
   });
   const [arama, setArama] = useState("");
+  // Sadece limit dışı (anomali) kayıtları göster
+  const [sadeceLimitDisi, setSadeceLimitDisi] = useState(false);
 
   // Dialog: Yakıt Ver
   const [verDialogOpen, setVerDialogOpen] = useState(false);
@@ -344,14 +346,15 @@ function YakitPageContent() {
 
   // Aracın genel kümülatif ortalaması hesaplama
   // (ilk kayıt hariç tüketilen lt) / (son km - ilk km)
-  // Eğer filtreSantiyeId seçiliyse: sadece o şantiyedeki yakıtlar üzerinden hesapla
-  // (kullanıcı belirli bir şantiyenin ortalamasını görmek istiyor olabilir)
+  // Filtreler uygulanır: santiye + tarih aralığı (kullanıcı belirli bir kapsam istiyor)
   const aracGenelOrt = useMemo(() => {
     const m = new Map<string, number>();
-    // aracId → sıralı kayıtlar (şantiye filtresi uygulanmış)
+    // aracId → sıralı kayıtlar (şantiye + tarih filtresi uygulanmış)
     const byArac = new Map<string, AracYakit[]>();
     for (const y of yakitKayitlari) {
       if (filtreSantiyeId && y.santiye_id !== filtreSantiyeId) continue;
+      if (filtreBaslangic && y.tarih < filtreBaslangic) continue;
+      if (filtreBitis && y.tarih > filtreBitis) continue;
       if (!byArac.has(y.arac_id)) byArac.set(y.arac_id, []);
       byArac.get(y.arac_id)!.push(y);
     }
@@ -371,7 +374,7 @@ function YakitPageContent() {
       m.set(aracId, (tuketilenLt / fark) * carpan);
     }
     return m;
-  }, [yakitKayitlari, aracMap, filtreSantiyeId]);
+  }, [yakitKayitlari, aracMap, filtreSantiyeId, filtreBaslangic, filtreBitis]);
 
   // Aracın önceki kaydını bul (tarih+saat'ten önce)
   function oncekiAracKayit(aracId: string, tarih: string, saat: string, mevcutId?: string): AracYakit | null {
@@ -651,11 +654,15 @@ function YakitPageContent() {
 
       sonuc.push(satir);
     }
+    // "Sadece limit dışı" filtresi: araç yakıt + limit ihlali olan satırları bırak
+    if (sadeceLimitDisi) {
+      return sonuc.filter((s) => s.hareket.tip === "arac_yakit" && s.limitIhlali);
+    }
     return sonuc;
   }, [
     tumHareketler, filtreSantiyeId, filtreBaslangic, filtreBitis, arama,
     aracMap, santiyeMap, stokMap, limitMap, aracGenelOrt, kullaniciMap,
-    isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, kullanici,
+    isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, kullanici, sadeceLimitDisi,
   ]);
 
   // Dönem özet kartları
@@ -1259,6 +1266,22 @@ function YakitPageContent() {
                   className={selectClass + " w-full pl-8"}
                 />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-gray-500">&nbsp;</Label>
+              <button
+                type="button"
+                onClick={() => setSadeceLimitDisi((v) => !v)}
+                className={`h-9 px-3 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors w-full justify-center ${
+                  sadeceLimitDisi
+                    ? "bg-amber-500 border-amber-600 text-white hover:bg-amber-600"
+                    : "bg-white border-gray-200 text-gray-600 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300"
+                }`}
+                title={sadeceLimitDisi ? "Tüm hareketleri göster" : "Sadece limit dışı (anomali) kayıtları göster"}
+              >
+                <AlertTriangle size={14} />
+                {sadeceLimitDisi ? "Limit Dışı (Aktif)" : "Sadece Limit Dışı"}
+              </button>
             </div>
           </div>
         )}
