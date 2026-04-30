@@ -1479,13 +1479,16 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right">
                       {s.anlikOrt !== null ? (() => {
-                        // Limit ihlali yönü: oran > üst → kırmızı, oran < alt → yeşil
+                        // Limit ihlali yönü:
+                        //  - oran = genel / anlık
+                        //  - oran > limitUst → ANLIK çok DÜŞÜK (az tüketim) → "Alt limit aşıldı" → YEŞİL
+                        //  - oran < limitAlt → ANLIK çok YÜKSEK (çok tüketim) → "Üst limit aşıldı" → KIRMIZI
                         let limitYon: "ust" | "alt" | null = null;
                         let oran: number | null = null;
                         if (s.limitIhlali && s.genelOrt !== null && s.anlikOrt > 0 && s.limitUst !== null && s.limitAlt !== null) {
                           oran = s.genelOrt / s.anlikOrt;
-                          if (oran > s.limitUst) limitYon = "ust";
-                          else if (oran < s.limitAlt) limitYon = "alt";
+                          if (oran > s.limitUst) limitYon = "alt";       // anlık düşük → alt aşıldı
+                          else if (oran < s.limitAlt) limitYon = "ust";  // anlık yüksek → üst aşıldı
                         }
                         const renkClass = limitYon === "ust"
                           ? "text-red-600 font-bold"
@@ -1504,7 +1507,7 @@ function YakitPageContent() {
                                 title={`Oran: ${oran.toFixed(2)} (Limit: ${s.limitAlt} - ${s.limitUst})`}
                               >
                                 <AlertTriangle size={8} />
-                                {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit altı"} · Oran: {oran.toFixed(2)}
+                                {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit aşıldı"} · Oran: {oran.toFixed(2)}
                               </span>
                             )}
                           </div>
