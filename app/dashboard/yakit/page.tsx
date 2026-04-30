@@ -1017,11 +1017,12 @@ function YakitPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verDialogAracId, verEditId, yakitKayitlari]);
 
-  // Seçili şantiyedeki aktif araçlar
+  // Seçili şantiyedeki kullanılabilir araçlar (pasif olmayan — trafikten çekildi dahil)
+  // Trafikten çekildi araçlara da yakıt verilebilir, sadece "pasif" olanlar hariç tutulur.
   const verDialogAraclari = useMemo(() => {
     if (!verDialogSantiyeId) return [] as AracWithRelations[];
     return araclar
-      .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id === verDialogSantiyeId)
+      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === verDialogSantiyeId)
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
   }, [araclar, verDialogSantiyeId]);
 
@@ -1649,7 +1650,8 @@ function YakitPageContent() {
                   />
                   <div className="max-h-[150px] overflow-y-auto space-y-0.5">
                     {araclar
-                      .filter((a) => (a.durum ?? "aktif") === "aktif" && a.santiye_id !== verDialogSantiyeId)
+                      // Trafikten çekildi araçlara da yakıt verilebilmeli — sadece "pasif" hariç
+                      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id !== verDialogSantiyeId)
                       .filter((a) => {
                         if (!hizliAtamaArama.trim()) return true;
                         const q = hizliAtamaArama.trim().toLowerCase();

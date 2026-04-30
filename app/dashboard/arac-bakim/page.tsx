@@ -823,7 +823,8 @@ export default function AracBakimPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Araç <span className="text-red-500">*</span></Label>
                 {(() => {
-                  const aktifAraclar = ozMalAraclar.filter((a) => (a.durum ?? "aktif") === "aktif");
+                  // Trafikten çekildi araçlara da bakım/tamirat girilebilmeli — sadece "pasif" hariç
+                  const aktifAraclar = ozMalAraclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
                   const q = dAracAra.trim().toLowerCase();
                   const filtrelenmisAraclar = q
                     ? aktifAraclar.filter((a) => {

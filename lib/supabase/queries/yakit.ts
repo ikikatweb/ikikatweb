@@ -98,6 +98,27 @@ export async function insertAracYakit(data: {
   const supabase = getSupabase();
   const { error } = await supabase.from("arac_yakit").insert(data);
   if (error) throw error;
+
+  // Push bildirim — araç yakıt verme
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const [{ data: arac }, { data: santiye }] = await Promise.all([
+      supabase.from("araclar").select("plaka, marka, model, sayac_tipi").eq("id", data.arac_id).maybeSingle(),
+      supabase.from("santiyeler").select("is_adi").eq("id", data.santiye_id).maybeSingle(),
+    ]);
+    const aracAd = arac
+      ? `${arac.plaka ?? ""} ${arac.marka ?? ""} ${arac.model ?? ""}`.trim() || "?"
+      : "?";
+    const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
+    const birim = arac?.sayac_tipi === "saat" ? "s" : "km";
+    bildirimGonder({
+      baslik: `⛽ Araç Yakıt — ${aracAd.slice(0, 50)}`,
+      govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${data.km_saat.toLocaleString("tr-TR")} ${birim} · ${santiyeAd}${data.depo_full ? " · Depo Full" : ""}`,
+      url: `/dashboard/yakit?santiye=${data.santiye_id}`,
+      tag: "yakit",
+      santiye_id: data.santiye_id,
+    });
+  } catch { /* sessiz */ }
 }
 
 export async function updateAracYakit(id: string, data: {
@@ -250,6 +271,24 @@ export async function insertYakitVirman(data: {
   const supabase = getSupabase();
   const { error } = await supabase.from("yakit_virman").insert(data);
   if (error) throw error;
+
+  // Push bildirim — şantiye yakıt virmanı
+  try {
+    const { bildirimGonder } = await import("@/lib/bildirim");
+    const [{ data: gonderen }, { data: alan }] = await Promise.all([
+      supabase.from("santiyeler").select("is_adi").eq("id", data.gonderen_santiye_id).maybeSingle(),
+      supabase.from("santiyeler").select("is_adi").eq("id", data.alan_santiye_id).maybeSingle(),
+    ]);
+    const gonderenAd = gonderen?.is_adi ? String(gonderen.is_adi).slice(0, 30) : "?";
+    const alanAd = alan?.is_adi ? String(alan.is_adi).slice(0, 30) : "?";
+    bildirimGonder({
+      baslik: `🔄 Yakıt Virmanı`,
+      govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${gonderenAd} → ${alanAd}`,
+      url: `/dashboard/yakit`,
+      tag: "yakit",
+      santiye_id: data.gonderen_santiye_id,
+    });
+  } catch { /* sessiz */ }
 }
 
 export async function updateYakitVirman(id: string, data: {
