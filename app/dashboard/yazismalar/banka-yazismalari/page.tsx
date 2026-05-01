@@ -221,7 +221,7 @@ export default function BankaYazismalariPage() {
       {/* Başlık */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Banka Yazışmaları</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {yEkle && (
             <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
               <Plus size={16} className="mr-1" /> Yeni Banka Yazışma Ekle
