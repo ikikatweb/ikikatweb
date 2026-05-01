@@ -146,6 +146,8 @@ export default function AracPuantajPage() {
   // bu yüzden yerel tarih bileşenleriyle string oluşturuyoruz.
   // Özet rapor — firma filtresi (sahibi: özmal firma_adi + kiralık kiralama_firmasi)
   const [ozetFiltreFirma, setOzetFiltreFirma] = useState<string>("tumu");
+  // Özet rapor — arama (sondaki boşluk: tam kelime modu — yakıt sayfasındaki gibi)
+  const [ozetArama, setOzetArama] = useState<string>("");
   const [ozetBaslangic, setOzetBaslangic] = useState(() => {
     const y = bugun.getFullYear();
     const m = bugun.getMonth() + 1;
@@ -545,6 +547,17 @@ export default function AracPuantajPage() {
     const idsInRange = new Set<string>();
     for (const p of ozetRangePuantajlar) idsInRange.add(p.arac_id);
     for (const y of ozetRangeYakitlar) idsInRange.add(y.arac_id);
+
+    // Arama — sondaki boşluk varsa tam kelime modu (örn. "kamyon " sadece kamyonu, kamyoneti getirmez)
+    const aramaRaw = ozetArama.toLowerCase();
+    const tamKelime = aramaRaw.trim().length > 0 && aramaRaw !== aramaRaw.trimEnd();
+    const aramaQ = aramaRaw.trim();
+    let aramaRegex: RegExp | null = null;
+    if (tamKelime && aramaQ) {
+      const escaped = aramaQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      aramaRegex = new RegExp(`(^|[^a-z0-9çğıöşü])${escaped}([^a-z0-9çğıöşü]|$)`, "i");
+    }
+
     return araclar
       .filter((a) => (a.durum ?? "aktif") !== "pasif"
         && (a.santiye_id === santiyeId || idsInRange.has(a.id)))
@@ -555,8 +568,17 @@ export default function AracPuantajPage() {
           : (a.kiralama_firmasi ?? "");
         return sahibi === ozetFiltreFirma;
       })
+      .filter((a) => {
+        if (!aramaQ) return true;
+        const sahibi = a.tip === "ozmal"
+          ? (a.firmalar?.firma_adi ?? "")
+          : (a.kiralama_firmasi ?? "");
+        const text = [a.plaka, a.marka, a.model, a.cinsi, sahibi].filter(Boolean).join(" ").toLowerCase();
+        if (aramaRegex) return aramaRegex.test(text);
+        return text.includes(aramaQ);
+      })
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
-  }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar, ozetFiltreFirma]);
+  }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar, ozetFiltreFirma, ozetArama]);
 
 
   const ozetSatirlari = useMemo<OzetSatir[]>(() => {
@@ -2075,6 +2097,18 @@ export default function AracPuantajPage() {
                 );
               })()}
             </div>
+          </div>
+
+          {/* Arama — kamyon, plaka, marka model gibi alanlarda. Sondaki boşluk = tam kelime */}
+          <div className="mb-3">
+            <Label className="text-[10px] text-gray-400">Arama</Label>
+            <input
+              type="text"
+              value={ozetArama}
+              onChange={(e) => setOzetArama(e.target.value)}
+              placeholder="Plaka, marka, model, cinsi, firma... (sonuna boşluk: tam kelime)"
+              className={selectClass + " w-full"}
+            />
           </div>
 
           {/* Hızlı aralık butonları */}
