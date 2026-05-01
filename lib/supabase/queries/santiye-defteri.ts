@@ -98,6 +98,8 @@ export async function insertDefter(defter: {
       url: `/dashboard/santiye-defteri?santiye=${defter.santiye_id}&tarih=${defter.tarih}`,
       tag: "santiye-defteri",
       santiye_id: defter.santiye_id,
+      kaynak_tip: "santiye-defteri",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -178,4 +180,9 @@ export async function deleteDefter(id: string): Promise<void> {
     .delete()
     .eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("santiye-defteri", id);
+  } catch { /* sessiz */ }
 }

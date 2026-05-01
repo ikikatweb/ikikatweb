@@ -126,10 +126,17 @@ export default function PersonelPuantajPage() {
   const [atamaYuklenenId, setAtamaYuklenenId] = useState<string | null>(null);
 
   const [puantajlar, setPuantajlar] = useState<PersonelPuantaj[]>([]);
+  // Bu şantiyede HERHANGI BIR ZAMAN puantaj kaydı olan personel id'leri
+  // (atamadan çıkarılmış olsa ve seçili ayda kaydı olmasa bile geçmiş veriyi görmek için listede tut)
+  const [gecmisteCalismisPersonelIds, setGecmisteCalismisPersonelIds] = useState<Set<string>>(new Set());
   // personel_id -> gun -> { santiye_id, santiye_adi }
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
   >(new Map());
+  // Diğer şantiyelerin ham puantaj listesi (durum bilgisi dahil) — izin orantı hesabı için
+  const [digerSantiyeRecords, setDigerSantiyeRecords] = useState<
+    { personel_id: string; tarih: string; santiye_id: string; durum: string }[]
+  >([]);
 
   // Personel ekleme dialog'u — kısıtlı kullanıcılar yönetim menüsüne erişemese bile buradan ekleyebilsin
   const [personelEkleDialogOpen, setPersonelEkleDialogOpen] = useState(false);
@@ -269,11 +276,28 @@ export default function PersonelPuantajPage() {
     if (!santiyeId) {
       setPuantajlar([]);
       setDigerCakismalar(new Map());
+      setGecmisteCalismisPersonelIds(new Set());
       return;
     }
     try {
       const data = await getPersonelPuantajByAySantiye(santiyeId, yil, ay);
       setPuantajlar(data);
+
+      // Bu şantiyede TÜM ZAMANLARDA puantaj kaydı olan personel id'lerini ayrıca çek.
+      // Atamadan çıkarılmış personeller seçili ay'da kaydı olmasa bile listede kalsın
+      // (kullanıcı geçmiş veriyi inceleyebilsin diye).
+      try {
+        const supabase = (await import("@/lib/supabase/client")).createClient();
+        const { data: tumKayitlar } = await supabase
+          .from("personel_puantaj")
+          .select("personel_id")
+          .eq("santiye_id", santiyeId);
+        const idSet = new Set<string>();
+        for (const r of (tumKayitlar ?? []) as { personel_id: string }[]) {
+          if (r.personel_id) idSet.add(r.personel_id);
+        }
+        setGecmisteCalismisPersonelIds(idSet);
+      } catch { /* sessiz — geçmişe dair filtre olmasa da çalışsın */ }
 
       // Tüm diğer şantiye çakışmalarını filtresiz yükle (race condition guard)
       const cakismalar = await getDigerSantiyePersonelCakismalari(null, yil, ay, santiyeId);
@@ -284,6 +308,8 @@ export default function PersonelPuantajPage() {
         m.get(c.personel_id)!.set(gun, { santiye_id: c.santiye_id, santiye_adi: c.santiye_adi });
       }
       setDigerCakismalar(m);
+      // Ham listeyi de sakla — izin orantı hesabı (personelIzinGosterim) bunu kullanır
+      setDigerSantiyeRecords(cakismalar);
     } catch {
       toast.error("Puantaj verileri yüklenirken hata oluştu.");
     }
@@ -318,6 +344,9 @@ export default function PersonelPuantajPage() {
         if (personelSantiyeMap.get(p.id)?.has(santiyeId)) return true;
         // 2) Atamadan çıkarılmış ama bu ay/şantiyede puantaj kaydı var → göster
         if (ayinPuantajPersonelleri.has(p.id)) return true;
+        // 3) Atamadan çıkarılmış, seçili ay'da kaydı yok ama bu şantiyede HERHANGI BIR
+        //    geçmiş puantajı var → yine de göster (kullanıcı boş ay'da bile görsün)
+        if (gecmisteCalismisPersonelIds.has(p.id)) return true;
         return false;
       })
       .filter((p) => {
@@ -327,7 +356,7 @@ export default function PersonelPuantajPage() {
         return p.pasif_tarihi >= ayBaslangici;
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
-  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay]);
+  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, gecmisteCalismisPersonelIds]);
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
   const personelliSantiyeler = useMemo(() => {
@@ -403,7 +432,7 @@ export default function PersonelPuantajPage() {
     return toplam;
   }
 
-  // Bir personelin o ay içinde kullandığı izin gün sayısı (sadece "izinli" durumu)
+  // Bir personelin o ay içinde SEÇİLİ ŞANTİYE'de kullandığı izin gün sayısı
   function personelIzinKullanilan(personelId: string): number {
     const gunMap = personelGunMap.get(personelId);
     if (!gunMap) return 0;
@@ -414,17 +443,115 @@ export default function PersonelPuantajPage() {
     return toplam;
   }
 
-  // İzin sütununda gösterilecek değer: kalan izin = hak - kullanılan
-  // Pozitif = kalan gün (yeşil), 0 = hak bitti, Negatif = aşıldı (kırmızı, -1, -2 şeklinde)
+  // İzin gösterimi — orantılı pay dağıtımı + diğer şantiyelerin kullanım taşması telafisi
+  //
+  // Mantık:
+  // - Personelin toplam izin hakkı (tahsil edilen tüm yıllık izinler)
+  // - Aynı ay içinde personel birden fazla şantiyede çalışmışsa, hak bu şantiyelere
+  //   çalışılan gün sayısına orantılı olarak DAĞITILIR.
+  //   Örn: 3 izin, A'da 10 gün B'de 20 gün → A'nın hakkı 1, B'nin hakkı 2.
+  // - Her şantiyedeki yerel kullanım kontrol edilir.
+  // - Eğer bir şantiyede yerelden FAZLA kullanılırsa, fazla kısım diğer şantiyelerin
+  //   kullanılmamış payından düşülür (taşma telafisi).
+  // - Sonuç: kullanıcının baktığı şantiye için "kalan" değeri global durumu yansıtır.
   function personelIzinGosterim(personel: { id: string; izin_hakki: number | null }): {
-    kalan: number;     // hak - kullanılan (negatif olabilir)
-    kullanilan: number;
-    hakki: number;
+    kalan: number;     // bu şantiyedeki net kalan (pay − kullanım − taşma payı)
+    kullanilan: number; // bu şantiyedeki yerel kullanım
+    hakki: number;     // bu şantiyenin orantılı payı
   } {
-    const kullanilan = personelIzinKullanilan(personel.id);
-    const hakki = personel.izin_hakki ?? 0;
-    const kalan = hakki - kullanilan;
-    return { kalan, kullanilan, hakki };
+    const personelId = personel.id;
+    const totalHakki = personel.izin_hakki ?? 0;
+
+    // Tüm şantiyelerdeki çalışma ve izin günlerini topla
+    // (calisti, dis_gorev, mesai gibi durumlar "çalışma günü" sayılır;
+    //  izinli, gelmedi, yagmur, hafta_sonu sayılmaz çünkü pay temeli "iş günleri")
+    const calismaSayilan = new Set(["calisti", "dis_gorev"]);
+    const calismaPerSantiye = new Map<string, number>();
+    const izinPerSantiye = new Map<string, number>();
+
+    // Mevcut şantiye verisi (puantajlar state)
+    for (const p of puantajlar) {
+      if (p.personel_id !== personelId) continue;
+      if (p.santiye_id !== santiyeId) continue;
+      if (calismaSayilan.has(p.durum)) {
+        calismaPerSantiye.set(p.santiye_id, (calismaPerSantiye.get(p.santiye_id) ?? 0) + 1);
+      } else if (p.durum === "izinli") {
+        izinPerSantiye.set(p.santiye_id, (izinPerSantiye.get(p.santiye_id) ?? 0) + 1);
+      }
+    }
+
+    // Diğer şantiyelerdeki kayıtlar — digerCakismalar map'inden topla
+    // Bu map: personel_id → gun → { santiye_id, ... } yapısında günlük; tek bir gün için
+    // 1 santiye gözüküyor. Ek ayrıntı (durum) için doğrudan ham veriyi de tarayalım.
+    // (digerSantiyeRecords ham listeyi zorunlu kılar — onu state'te tutuyoruz aşağıda)
+    for (const r of digerSantiyeRecords) {
+      if (r.personel_id !== personelId) continue;
+      if (calismaSayilan.has(r.durum)) {
+        calismaPerSantiye.set(r.santiye_id, (calismaPerSantiye.get(r.santiye_id) ?? 0) + 1);
+      } else if (r.durum === "izinli") {
+        izinPerSantiye.set(r.santiye_id, (izinPerSantiye.get(r.santiye_id) ?? 0) + 1);
+      }
+    }
+
+    const toplamCalisma = Array.from(calismaPerSantiye.values()).reduce((s, v) => s + v, 0);
+    const toplamIzin = Array.from(izinPerSantiye.values()).reduce((s, v) => s + v, 0);
+
+    // Bu şantiye için yerel veriler
+    const localCalisma = calismaPerSantiye.get(santiyeId) ?? 0;
+    const localIzin = izinPerSantiye.get(santiyeId) ?? 0;
+
+    // Pay hesaplama yardımcısı — çalışma günü varsa ona, yoksa izin günlerine göre dağıt
+    function payHesapla(localC: number, localI: number): number {
+      if (toplamCalisma > 0) return totalHakki * (localC / toplamCalisma);
+      if (toplamIzin > 0) return totalHakki * (localI / toplamIzin);
+      return 0;
+    }
+    const localPay = payHesapla(localCalisma, localIzin);
+
+    // Tüm şantiyelerdeki net kalanları hesapla — çalışma + izin gibi tüm anahtarlar
+    const tumSantiyeIds = new Set<string>();
+    for (const k of calismaPerSantiye.keys()) tumSantiyeIds.add(k);
+    for (const k of izinPerSantiye.keys()) tumSantiyeIds.add(k);
+    let toplamArtan = 0; // pozitif kalanların toplamı
+    let toplamEksi = 0;  // |negatif kalanların| toplamı
+    for (const sId of tumSantiyeIds) {
+      const calisma = calismaPerSantiye.get(sId) ?? 0;
+      const izinKul = izinPerSantiye.get(sId) ?? 0;
+      const pay = payHesapla(calisma, izinKul);
+      const k = pay - izinKul;
+      if (k > 0) toplamArtan += k;
+      else toplamEksi += -k;
+    }
+
+    const yerelKalanRaw = localPay - localIzin;
+
+    // Pozitif kalanlar (artan pay) negatif kalanların (taşma) ihtiyacını karşılar.
+    // Eğer toplam artan ≥ toplam eksi: tüm taşmalar telafi edilir → negatifler 0,
+    //                                   pozitifler oranla azaltılır.
+    // Eğer toplam artan < toplam eksi: tüm pozitifler 0, negatifler kısmen telafi edilir.
+    let kalan: number;
+    if (toplamArtan > 0 && toplamEksi > 0) {
+      if (yerelKalanRaw > 0) {
+        const transferOran = Math.min(1, toplamEksi / toplamArtan);
+        kalan = yerelKalanRaw * (1 - transferOran);
+      } else if (yerelKalanRaw < 0) {
+        const telafiOran = Math.min(1, toplamArtan / toplamEksi);
+        // yerelKalanRaw negatif, |yerelKalanRaw| × telafiOran kadar telafi
+        kalan = yerelKalanRaw + (-yerelKalanRaw) * telafiOran;
+      } else {
+        kalan = 0;
+      }
+    } else {
+      // Tek yönlü (hep pozitif veya hep negatif): olduğu gibi göster
+      kalan = yerelKalanRaw;
+    }
+
+    // Tam sayıya yuvarla (kullanıcı dostu görünüm)
+    return {
+      kalan: Math.round(kalan * 10) / 10,
+      kullanilan: localIzin,
+      hakki: Math.round(localPay * 10) / 10,
+    };
   }
 
   function gunHaftaSonu(gun: number): boolean {

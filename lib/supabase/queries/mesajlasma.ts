@@ -252,6 +252,9 @@ export async function mesajGonder(input: {
           url: `/dashboard/mesajlasma?konusma=${input.konusma_id}`,
           tag: "mesaj",
           target_user_ids: targetIds,
+          // Kaynak: konuşma silinirse bu bildirim de silinsin
+          kaynak_tip: "konusma",
+          kaynak_id: input.konusma_id,
         }),
       });
     }
@@ -291,6 +294,11 @@ export async function konusmaSil(konusmaId: string): Promise<void> {
   await supabase.from("mesaj").delete().eq("konusma_id", konusmaId);
   await supabase.from("mesaj_uye").delete().eq("konusma_id", konusmaId);
   await supabase.from("mesaj_konusma").delete().eq("id", konusmaId);
+  // İlgili bildirim_gecmisi kayıtlarını da temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("konusma", konusmaId);
+  } catch { /* sessiz */ }
 }
 
 // Konuşmayı yedekle — JSON formatında tüm mesajları (ve dosya URL'lerini) döner

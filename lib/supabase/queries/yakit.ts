@@ -111,6 +111,8 @@ export async function insertAracYakit(data: {
       : "?";
     const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
     const birim = arac?.sayac_tipi === "saat" ? "s" : "km";
+    // arac_yakit insert'inde döndürülen id yok (data tipi void), bu yüzden insert'ten select() çekmeliyiz.
+    // Şimdilik bildirim gönderdiğimiz için kaynak_id'yi atlıyoruz; ileride gerekirse buraya da ekleriz.
     bildirimGonder({
       baslik: `⛽ Araç Yakıt — ${aracAd.slice(0, 50)}`,
       govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${data.km_saat.toLocaleString("tr-TR")} ${birim} · ${santiyeAd}${data.depo_full ? " · Depo Full" : ""}`,

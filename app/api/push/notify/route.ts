@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   // Body
   const body = await req.json();
-  const { baslik, govde, url, tag } = body;
+  const { baslik, govde, url, tag, kaynak_tip, kaynak_id } = body;
   if (!baslik || !govde) {
     return NextResponse.json({ error: "baslik ve govde zorunludur" }, { status: 400 });
   }
@@ -131,6 +131,9 @@ export async function POST(req: Request) {
       tarih,
       saat,
       okundu: false,
+      // Kaynak takibi — kayıt silindiğinde ilgili bildirim de silinebilsin
+      kaynak_tip: kaynak_tip ?? null,
+      kaynak_id: kaynak_id ?? null,
     }));
     await supabase.from("bildirim_gecmisi").insert(gecmisRows);
   } catch { /* sessiz — geçmiş kaydı başarısız olsa da push gönderimine devam et */ }

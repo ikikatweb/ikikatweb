@@ -2140,18 +2140,16 @@ export default function AracPuantajPage() {
                           className={`hover:bg-gray-50 align-top ${cokDonem && s.donemIndex > 0 ? "border-t-0" : ""}`}
                         >
                           <TableCell className="px-2 text-gray-700 truncate max-w-[120px]" title={sahibi}>
-                            {s.donemIndex === 0 ? sahibi : <span className="text-gray-300">·</span>}
+                            {sahibi}
                           </TableCell>
                           <TableCell className="px-2 font-bold">
-                            {s.donemIndex === 0 ? a.plaka : <span className="text-gray-400 font-normal">{a.plaka}</span>}
+                            {a.plaka}
                           </TableCell>
                           <TableCell
                             className="px-2 text-gray-600 truncate max-w-[110px] cursor-help"
                             title={[a.marka, a.model].filter(Boolean).join(" ") || ""}
                           >
-                            {s.donemIndex === 0
-                              ? ([a.marka, a.model].filter(Boolean).join(" ") || "—")
-                              : <span className="text-gray-300">·</span>}
+                            {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
                           </TableCell>
                           {/* Aylık Kira + Dönem aralığı */}
                           <TableCell className="px-2 text-right">

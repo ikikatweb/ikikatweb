@@ -60,6 +60,8 @@ export async function createBankaYazisma(yazisma: BankaYazismaInsert) {
       govde: [banka, yazisma.konu ? String(yazisma.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
       url: `/dashboard/yazismalar/banka-yazismalari${yazisma.evrak_sayi_no ? `?ara=${encodeURIComponent(yazisma.evrak_sayi_no)}` : ""}`,
       tag: "banka-yazismalari",
+      kaynak_tip: "banka-yazismalari",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -93,6 +95,11 @@ export async function softDeleteBankaYazisma(id: string, silmeNedeni: string, si
     })
     .eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("banka-yazismalari", id);
+  } catch { /* sessiz */ }
 }
 
 // Silinen banka yazışmalarını getir

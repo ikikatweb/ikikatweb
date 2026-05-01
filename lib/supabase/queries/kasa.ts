@@ -125,6 +125,8 @@ export async function insertKasaHareketi(data: {
       govde: `${odeme}${data.kategori ? " · " + data.kategori : ""}${data.aciklama ? " · " + data.aciklama.slice(0, 80) : ""}`,
       url: `/dashboard/kasa-defteri?personel=${data.personel_id}`,
       tag: "kasa",
+      kaynak_tip: "kasa",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -157,6 +159,11 @@ export async function deleteKasaHareketi(id: string): Promise<void> {
     .delete()
     .eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("kasa", id);
+  } catch { /* sessiz */ }
 }
 
 export async function uploadSlip(file: File, hareketId: string): Promise<string> {

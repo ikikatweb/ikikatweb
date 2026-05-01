@@ -50,12 +50,13 @@ export async function getPersonelPuantajByAySantiye(
 
 // Belirtilen ay içinde, BAŞKA şantiyelerdeki TÜM personel puantajlarını getir.
 // Race condition'a karşı: personelIds null verilirse tüm personelin çakışmaları getirilir.
+// Durum bilgisi de eklendi (izin dağıtım hesabında kullanılır).
 export async function getDigerSantiyePersonelCakismalari(
   personelIds: string[] | null,
   yil: number,
   ay: number,
   haricSantiyeId: string
-): Promise<{ personel_id: string; tarih: string; santiye_id: string; santiye_adi: string }[]> {
+): Promise<{ personel_id: string; tarih: string; santiye_id: string; santiye_adi: string; durum: string }[]> {
   const supabase = getSupabase();
   const baslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
   const sonrakiAy = ay === 12 ? 1 : ay + 1;
@@ -64,7 +65,7 @@ export async function getDigerSantiyePersonelCakismalari(
 
   let query = supabase
     .from("personel_puantaj")
-    .select("personel_id, tarih, santiye_id, santiyeler(is_adi)")
+    .select("personel_id, tarih, santiye_id, durum, santiyeler(is_adi)")
     .neq("santiye_id", haricSantiyeId)
     .gte("tarih", baslangic)
     .lt("tarih", bitis);
@@ -81,6 +82,7 @@ export async function getDigerSantiyePersonelCakismalari(
       personel_id: string;
       tarih: string;
       santiye_id: string;
+      durum: string;
       santiyeler?: { is_adi: string } | null;
     };
     return {
@@ -88,6 +90,7 @@ export async function getDigerSantiyePersonelCakismalari(
       tarih: s.tarih,
       santiye_id: s.santiye_id,
       santiye_adi: s.santiyeler?.is_adi ?? "?",
+      durum: s.durum,
     };
   });
 }

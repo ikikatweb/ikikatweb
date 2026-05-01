@@ -61,6 +61,8 @@ export async function createGelenEvrak(evrak: GelenEvrakInsert) {
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
       url: `/dashboard/yazismalar/gelen-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
       tag: "gelen-evrak",
+      kaynak_tip: "gelen-evrak",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -95,6 +97,11 @@ export async function softDeleteGelenEvrak(id: string, silmeNedeni: string, sile
     .eq("id", id);
 
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("gelen-evrak", id);
+  } catch { /* sessiz */ }
 }
 
 // Silinen gelen evrakları getir

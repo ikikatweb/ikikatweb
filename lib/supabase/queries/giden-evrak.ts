@@ -61,6 +61,8 @@ export async function createGidenEvrak(evrak: GidenEvrakInsert) {
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
       url: `/dashboard/yazismalar/giden-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
       tag: "giden-evrak",
+      kaynak_tip: "giden-evrak",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -94,6 +96,11 @@ export async function softDeleteGidenEvrak(id: string, silmeNedeni: string, sile
     })
     .eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("giden-evrak", id);
+  } catch { /* sessiz */ }
 }
 
 // Silinen giden evrakları getir

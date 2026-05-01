@@ -10,6 +10,12 @@ export type BildirimPayload = {
   // Şantiye yöneticisi filtresi için: bu olay hangi şantiyeye ait?
   // (yönetici tüm bildirimleri alır; santiye_admin sadece atandığı şantiyelere ait olanları)
   santiye_id?: string | null;
+  // Kaynak takibi: ilgili kayıt silindiğinde bildirimi de silebilmek için
+  // (örn. kaynak_tip="giden-evrak", kaynak_id=evrak.id)
+  kaynak_tip?: string | null;
+  kaynak_id?: string | null;
+  // Hedef kullanıcı ID'leri (mesajlaşma gibi senaryolarda)
+  target_user_ids?: string[];
 };
 
 export function bildirimGonder(payload: BildirimPayload): void {
@@ -62,4 +68,17 @@ export function formatTarih(d: string | null | undefined): string {
   if (!d) return "";
   const date = new Date(d + "T00:00:00");
   return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
+}
+
+// İlgili kayıt silindiğinde bildirimi de sil — fire-and-forget
+// kaynak_tip + kaynak_id eşleşen tüm bildirim_gecmisi kayıtlarını siler
+export function bildirimSilByKaynak(kaynak_tip: string, kaynak_id: string): void {
+  if (typeof window === "undefined") return;
+  fetch("/api/bildirim/sil-by-kaynak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kaynak_tip, kaynak_id }),
+  }).catch((err) => {
+    console.warn("Bildirim silme başarısız:", err);
+  });
 }
