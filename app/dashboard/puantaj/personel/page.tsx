@@ -126,9 +126,6 @@ export default function PersonelPuantajPage() {
   const [atamaYuklenenId, setAtamaYuklenenId] = useState<string | null>(null);
 
   const [puantajlar, setPuantajlar] = useState<PersonelPuantaj[]>([]);
-  // Bu şantiyede HERHANGI BIR ZAMAN puantaj kaydı olan personel id'leri
-  // (atamadan çıkarılmış olsa ve seçili ayda kaydı olmasa bile geçmiş veriyi görmek için listede tut)
-  const [gecmisteCalismisPersonelIds, setGecmisteCalismisPersonelIds] = useState<Set<string>>(new Set());
   // personel_id -> gun -> { santiye_id, santiye_adi }
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
@@ -277,28 +274,11 @@ export default function PersonelPuantajPage() {
     if (!santiyeId) {
       setPuantajlar([]);
       setDigerCakismalar(new Map());
-      setGecmisteCalismisPersonelIds(new Set());
       return;
     }
     try {
       const data = await getPersonelPuantajByAySantiye(santiyeId, yil, ay);
       setPuantajlar(data);
-
-      // Bu şantiyede TÜM ZAMANLARDA puantaj kaydı olan personel id'lerini ayrıca çek.
-      // Atamadan çıkarılmış personeller seçili ay'da kaydı olmasa bile listede kalsın
-      // (kullanıcı geçmiş veriyi inceleyebilsin diye).
-      try {
-        const supabase = (await import("@/lib/supabase/client")).createClient();
-        const { data: tumKayitlar } = await supabase
-          .from("personel_puantaj")
-          .select("personel_id")
-          .eq("santiye_id", santiyeId);
-        const idSet = new Set<string>();
-        for (const r of (tumKayitlar ?? []) as { personel_id: string }[]) {
-          if (r.personel_id) idSet.add(r.personel_id);
-        }
-        setGecmisteCalismisPersonelIds(idSet);
-      } catch { /* sessiz — geçmişe dair filtre olmasa da çalışsın */ }
 
       // Tüm diğer şantiye çakışmalarını filtresiz yükle (race condition guard)
       const cakismalar = await getDigerSantiyePersonelCakismalari(null, yil, ay, santiyeId);
@@ -343,11 +323,9 @@ export default function PersonelPuantajPage() {
       .filter((p) => {
         // 1) Şu an bu şantiyeye atanmış → göster
         if (personelSantiyeMap.get(p.id)?.has(santiyeId)) return true;
-        // 2) Atamadan çıkarılmış ama bu ay/şantiyede puantaj kaydı var → göster
+        // 2) Atamadan çıkarılmış olsa bile bu ay/şantiyede puantaj kaydı varsa göster
+        //    (geçmiş aylara bakıldığında görünür kalsın diye)
         if (ayinPuantajPersonelleri.has(p.id)) return true;
-        // 3) Atamadan çıkarılmış, seçili ay'da kaydı yok ama bu şantiyede HERHANGI BIR
-        //    geçmiş puantajı var → yine de göster (kullanıcı boş ay'da bile görsün)
-        if (gecmisteCalismisPersonelIds.has(p.id)) return true;
         return false;
       })
       .filter((p) => {
@@ -357,7 +335,7 @@ export default function PersonelPuantajPage() {
         return p.pasif_tarihi >= ayBaslangici;
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
-  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, gecmisteCalismisPersonelIds]);
+  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay]);
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
   const personelliSantiyeler = useMemo(() => {
