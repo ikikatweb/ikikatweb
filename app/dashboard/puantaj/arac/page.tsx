@@ -493,16 +493,19 @@ export default function AracPuantajPage() {
   }, [puantajlar]);
 
   // Hızlı erişim: arac_id -> Map<gün, toplam yakıt lt>
+  // Sadece SEÇİLİ ŞANTİYE'de alınan yakıtlar — diğer şantiyelerin yakıtları
+  // bu sayfada görünmemeli (kullanıcının bulunduğu şantiyenin verileri).
   const aracGunYakitMap = useMemo(() => {
     const m = new Map<string, Map<number, number>>();
     for (const y of aylikYakitlar) {
+      if (santiyeId && y.santiye_id !== santiyeId) continue;
       const gun = parseInt(y.tarih.slice(8, 10), 10);
       if (!m.has(y.arac_id)) m.set(y.arac_id, new Map());
       const gMap = m.get(y.arac_id)!;
       gMap.set(gun, (gMap.get(gun) ?? 0) + y.miktar_lt);
     }
     return m;
-  }, [aylikYakitlar]);
+  }, [aylikYakitlar, santiyeId]);
 
   // Özet rapor — arac_id + dönem tarih aralığı -> toplam yakıt lt
   function ozetAracYakitToplam(aracId: string, donemBaslangic: string, donemBitis: string): number {
