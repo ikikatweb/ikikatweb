@@ -126,7 +126,7 @@ export async function insertKasaHareketi(data: {
       url: `/dashboard/kasa-defteri?personel=${data.personel_id}`,
       tag: "kasa",
       kaynak_tip: "kasa",
-      kaynak_id: data.id,
+      kaynak_id: (result as { id?: string })?.id,
     });
   } catch { /* sessiz */ }
 
