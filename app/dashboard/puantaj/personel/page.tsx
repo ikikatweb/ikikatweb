@@ -496,28 +496,61 @@ export default function PersonelPuantajPage() {
     const toplamCalisma = Array.from(calismaPerSantiye.values()).reduce((s, v) => s + v, 0);
     const toplamIzin = Array.from(izinPerSantiye.values()).reduce((s, v) => s + v, 0);
 
-    // Bu şantiye için yerel veriler
-    const localCalisma = calismaPerSantiye.get(santiyeId) ?? 0;
+    // Bu şantiye için yerel izin kullanımı (kalan hesabında lazım)
     const localIzin = izinPerSantiye.get(santiyeId) ?? 0;
 
     // Pay hesaplama yardımcısı — çalışma günü varsa ona, yoksa izin günlerine göre dağıt
-    function payHesapla(localC: number, localI: number): number {
+    function payHam(localC: number, localI: number): number {
       if (toplamCalisma > 0) return totalHakki * (localC / toplamCalisma);
       if (toplamIzin > 0) return totalHakki * (localI / toplamIzin);
       return 0;
     }
-    const localPay = payHesapla(localCalisma, localIzin);
 
-    // Tüm şantiyelerdeki net kalanları hesapla — çalışma + izin gibi tüm anahtarlar
-    const tumSantiyeIds = new Set<string>();
-    for (const k of calismaPerSantiye.keys()) tumSantiyeIds.add(k);
-    for (const k of izinPerSantiye.keys()) tumSantiyeIds.add(k);
+    // Yuvarlama kuralı:
+    // - Ondalık < 0.5 → aşağı yuvarla (kayıp pay diğerine aktarılır)
+    // - Ondalık = 0.5 → olduğu gibi kalır (örn. 1.5)
+    // - Ondalık > 0.5 → yukarı yuvarla (eksik pay diğerinden alınır)
+    function yuvarla(x: number): number {
+      const tam = Math.floor(x);
+      const frac = x - tam;
+      if (frac < 0.5 - 1e-9) return tam;          // < 0.5
+      if (frac > 0.5 + 1e-9) return tam + 1;      // > 0.5
+      return tam + 0.5;                           // = 0.5 → keep half
+    }
+
+    // Tüm şantiyeler için yuvarlanmış pay map'ini önceden hesapla
+    // (sum mismatch olursa en büyük pay'a fark eklenir/çıkarılır)
+    const rawPaylar = new Map<string, number>();
+    const tumIds = new Set<string>();
+    for (const k of calismaPerSantiye.keys()) tumIds.add(k);
+    for (const k of izinPerSantiye.keys()) tumIds.add(k);
+    for (const sId of tumIds) {
+      rawPaylar.set(sId, payHam(calismaPerSantiye.get(sId) ?? 0, izinPerSantiye.get(sId) ?? 0));
+    }
+    const yuvarlanmisPaylar = new Map<string, number>();
+    for (const [sId, raw] of rawPaylar) yuvarlanmisPaylar.set(sId, yuvarla(raw));
+    // Sum doğrulama — totalHakki'ye eşitlemek için en büyük raw pay'a fark ekle
+    const yuvarlanmisToplam = Array.from(yuvarlanmisPaylar.values()).reduce((s, v) => s + v, 0);
+    const fark = totalHakki - yuvarlanmisToplam;
+    if (Math.abs(fark) > 0.01 && rawPaylar.size > 0) {
+      // En büyük raw pay'ı bul
+      let enBuyukId: string | null = null;
+      let enBuyukDeger = -Infinity;
+      for (const [sId, raw] of rawPaylar) {
+        if (raw > enBuyukDeger) { enBuyukDeger = raw; enBuyukId = sId; }
+      }
+      if (enBuyukId) {
+        yuvarlanmisPaylar.set(enBuyukId, (yuvarlanmisPaylar.get(enBuyukId) ?? 0) + fark);
+      }
+    }
+    const localPay = yuvarlanmisPaylar.get(santiyeId) ?? 0;
+
+    // Tüm şantiyelerdeki net kalanları hesapla — yuvarlanmış paylarla
     let toplamArtan = 0; // pozitif kalanların toplamı
     let toplamEksi = 0;  // |negatif kalanların| toplamı
-    for (const sId of tumSantiyeIds) {
-      const calisma = calismaPerSantiye.get(sId) ?? 0;
+    for (const sId of tumIds) {
       const izinKul = izinPerSantiye.get(sId) ?? 0;
-      const pay = payHesapla(calisma, izinKul);
+      const pay = yuvarlanmisPaylar.get(sId) ?? 0;
       const k = pay - izinKul;
       if (k > 0) toplamArtan += k;
       else toplamEksi += -k;

@@ -409,7 +409,8 @@ export type AracPuantajDurum =
   | "calismadi"      // Çalışmadı (açıklama zorunlu)
   | "arizali"        // Arızalı (açıklama zorunlu)
   | "operator_yok"   // Operatör yok (açıklama zorunlu)
-  | "tatil";         // Tatil
+  | "tatil"          // Tatil
+  | "dis_gorev";     // Dış görev (açıklama zorunlu)
 
 export type AracPuantaj = {
   id: string;
@@ -463,6 +464,7 @@ export type AracPuantajOverride = {
   arizali: number | null;
   operator_yok: number | null;
   tatil: number | null;
+  dis_gorev: number | null;
   created_at: string;
   updated_at: string;
   updated_by: string | null;

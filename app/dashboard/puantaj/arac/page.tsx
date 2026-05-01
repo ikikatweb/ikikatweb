@@ -43,7 +43,7 @@ import {
 import {
   ClipboardList, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight,
   ChevronUp, ChevronDown,
-  Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3,
+  Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3, Plane,
   ArrowRight, ArrowLeft as ArrowLeftIcon, Link2, Link2Off, Lock,
   FileBarChart, Pencil, Fuel,
 } from "lucide-react";
@@ -105,6 +105,7 @@ const DURUM_LISTESI: DurumBilgi[] = [
   { kod: "arizali",      label: "Arızalı",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "A",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: true,  IconComponent: Wrench },
   { kod: "operator_yok", label: "Operatör Yok", bgClass: "bg-slate-500",   textClass: "text-slate-700",   pdfShort: "O",  pdfRGB: [100, 116, 139], aciklamaZorunlu: true,  IconComponent: UserX },
   { kod: "tatil",        label: "Tatil",        bgClass: "bg-cyan-500",    textClass: "text-cyan-700",    pdfShort: "T",  pdfRGB: [6, 182, 212],   aciklamaZorunlu: false, IconComponent: Sun },
+  { kod: "dis_gorev",    label: "Dış Görev",    bgClass: "bg-blue-500",    textClass: "text-blue-700",    pdfShort: "D",  pdfRGB: [59, 130, 246],  aciklamaZorunlu: true,  IconComponent: Plane },
 ];
 
 const DURUM_MAP = new Map<AracPuantajDurum, DurumBilgi>(DURUM_LISTESI.map((d) => [d.kod, d]));
@@ -580,7 +581,7 @@ export default function AracPuantajPage() {
         // Hiç kira tarifesi yok - yine de aracı tabloda göster; gerçek puantajdan sayıları hesapla
         const orijinalSayilar: Record<AracPuantajDurum, number> = {
           calisti: 0, yarim_gun: 0, calismadi: 0,
-          arizali: 0, operator_yok: 0, tatil: 0,
+          arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
         };
         for (const p of ozetRangePuantajlar) {
           if (p.arac_id !== arac.id) continue;
@@ -596,7 +597,7 @@ export default function AracPuantajPage() {
         const bulunanNk = aracOverridesNk.find((o) => o.donem_baslangic === rangeStart);
         if (bulunanNk) {
           overrideNk = bulunanNk;
-          for (const key of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil"] as AracPuantajDurum[]) {
+          for (const key of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil", "dis_gorev"] as AracPuantajDurum[]) {
             const v = bulunanNk[key];
             if (v !== null && v !== undefined) sayilar[key] = v;
           }
@@ -662,7 +663,7 @@ export default function AracPuantajPage() {
         // Hiç dönem oluşmadıysa (edge case): boş 1 satır (düzenlenebilir)
         const bosSayilar: Record<AracPuantajDurum, number> = {
           calisti: 0, yarim_gun: 0, calismadi: 0,
-          arizali: 0, operator_yok: 0, tatil: 0,
+          arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
         };
         satirlar.push({
           key: `${arac.id}-empty`,
@@ -686,7 +687,7 @@ export default function AracPuantajPage() {
         // Döneme ait puantajları filtrele
         const orijinalSayilar: Record<AracPuantajDurum, number> = {
           calisti: 0, yarim_gun: 0, calismadi: 0,
-          arizali: 0, operator_yok: 0, tatil: 0,
+          arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
         };
         let kira = 0;
         for (const p of ozetRangePuantajlar) {
@@ -714,7 +715,7 @@ export default function AracPuantajPage() {
         const bulunan = aracOverrides.find((o) => o.donem_baslangic === d.baslangic);
         if (bulunan) {
           override = bulunan;
-          for (const key of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil"] as AracPuantajDurum[]) {
+          for (const key of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil", "dis_gorev"] as AracPuantajDurum[]) {
             const v = bulunan[key];
             if (v !== null && v !== undefined) sayilar[key] = v;
           }
@@ -1331,7 +1332,7 @@ export default function AracPuantajPage() {
     const toplamKiraGenel = ozetSatirlari.reduce((acc, s) => acc + s.toplamKira, 0);
     const toplamGunGenel = ozetSatirlari.reduce((acc, s) => acc + s.toplamGun, 0);
     const durumToplamlari: Record<AracPuantajDurum, number> = {
-      calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0,
+      calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
     };
     for (const s of ozetSatirlari) {
       for (const d of DURUM_LISTESI) durumToplamlari[d.kod] += s.sayilar[d.kod];
@@ -1541,7 +1542,7 @@ export default function AracPuantajPage() {
     const toplamGunGenel = ozetSatirlari.reduce((acc, s) => acc + s.toplamGun, 0);
     const toplamYakitGenel = ozetSatirlari.reduce((acc, s) => acc + ozetAracYakitToplam(s.arac.id, s.donemBaslangic, s.donemBitis), 0);
     const durumToplamlari: Record<AracPuantajDurum, number> = {
-      calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0,
+      calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
     };
     for (const s of ozetSatirlari) {
       for (const d of DURUM_LISTESI) durumToplamlari[d.kod] += s.sayilar[d.kod];
@@ -2263,7 +2264,7 @@ export default function AracPuantajPage() {
                       const genelGun = ozetSatirlari.reduce((acc, s) => acc + s.toplamGun, 0);
                       const genelKira = ozetSatirlari.reduce((acc, s) => acc + s.toplamKira, 0);
                       const durumToplam: Record<AracPuantajDurum, number> = {
-                        calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0,
+                        calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
                       };
                       for (const s of ozetSatirlari) {
                         for (const d of DURUM_LISTESI) durumToplam[d.kod] += s.sayilar[d.kod];
