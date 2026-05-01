@@ -143,6 +143,8 @@ export default function AracPuantajPage() {
   // Özet Rapor için ayrı tarih aralığı (ayın 1'i - ayın sonu varsayılan)
   // Not: toISOString() UTC'ye çevirdiği için Türkiye saat dilimiyle 1 gün kayması yaşanıyordu,
   // bu yüzden yerel tarih bileşenleriyle string oluşturuyoruz.
+  // Özet rapor — firma filtresi (sahibi: özmal firma_adi + kiralık kiralama_firmasi)
+  const [ozetFiltreFirma, setOzetFiltreFirma] = useState<string>("tumu");
   const [ozetBaslangic, setOzetBaslangic] = useState(() => {
     const y = bugun.getFullYear();
     const m = bugun.getMonth() + 1;
@@ -541,8 +543,15 @@ export default function AracPuantajPage() {
     return araclar
       .filter((a) => (a.durum ?? "aktif") !== "pasif"
         && (a.santiye_id === santiyeId || idsInRange.has(a.id)))
+      .filter((a) => {
+        if (ozetFiltreFirma === "tumu") return true;
+        const sahibi = a.tip === "ozmal"
+          ? (a.firmalar?.firma_adi ?? "")
+          : (a.kiralama_firmasi ?? "");
+        return sahibi === ozetFiltreFirma;
+      })
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
-  }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar]);
+  }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar, ozetFiltreFirma]);
 
 
   const ozetSatirlari = useMemo<OzetSatir[]>(() => {
@@ -2001,8 +2010,8 @@ export default function AracPuantajPage() {
 
         {/* === ÖZET RAPOR TAB === */}
         <TabsContent value="ozet">
-          {/* Üst: Şantiye + Tarih Aralığı */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          {/* Üst: Şantiye + Tarih Aralığı + Firma */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-400">Şantiye</Label>
               <SantiyeSelect santiyeler={santiyelerAtamalı} value={santiyeId} onChange={setSantiyeId} className={selectClass + " w-full"} />
@@ -2024,6 +2033,37 @@ export default function AracPuantajPage() {
                 onChange={(e) => setOzetBitis(e.target.value)}
                 className={selectClass + " w-full"}
               />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-gray-400">Firma</Label>
+              {(() => {
+                // Bu şantiyedeki ve aralıkta puantajı/yakıtı olan araçların firma listesi
+                const firmaSet = new Set<string>();
+                const idsInRange = new Set<string>();
+                for (const p of ozetRangePuantajlar) idsInRange.add(p.arac_id);
+                for (const y of ozetRangeYakitlar) idsInRange.add(y.arac_id);
+                for (const a of araclar) {
+                  if ((a.durum ?? "aktif") === "pasif") continue;
+                  if (a.santiye_id !== santiyeId && !idsInRange.has(a.id)) continue;
+                  const sahibi = a.tip === "ozmal"
+                    ? (a.firmalar?.firma_adi ?? "")
+                    : (a.kiralama_firmasi ?? "");
+                  if (sahibi) firmaSet.add(sahibi);
+                }
+                const firmaListesi = Array.from(firmaSet).sort((a, b) => a.localeCompare(b, "tr"));
+                return (
+                  <select
+                    value={ozetFiltreFirma}
+                    onChange={(e) => setOzetFiltreFirma(e.target.value)}
+                    className={selectClass + " w-full"}
+                  >
+                    <option value="tumu">Tüm Firmalar ({firmaListesi.length})</option>
+                    {firmaListesi.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                );
+              })()}
             </div>
           </div>
 
