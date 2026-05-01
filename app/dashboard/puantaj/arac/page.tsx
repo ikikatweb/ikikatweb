@@ -187,6 +187,7 @@ export default function AracPuantajPage() {
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
+    yukari: boolean; // true ise hücrenin üstünde gösterilir (alt satırda taşma olmasın diye)
     plaka: string;
     isleyenAd: string;
     durum: AracPuantajDurum;
@@ -1819,9 +1820,14 @@ export default function AracPuantajPage() {
                             onMouseEnter={(e) => {
                               if (p && dBilgi) {
                                 const rect = e.currentTarget.getBoundingClientRect();
+                                // Tooltip ~200px yükseklikte; ekranın altına yakınsa üstte göster
+                                const tahminiYukseklik = 220;
+                                const altBosluk = window.innerHeight - rect.bottom;
+                                const yukari = altBosluk < tahminiYukseklik + 16;
                                 setTooltip({
                                   x: rect.left + rect.width / 2,
-                                  y: rect.bottom + 8,
+                                  y: yukari ? rect.top - 8 : rect.bottom + 8,
+                                  yukari,
                                   plaka: a.plaka,
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
@@ -2662,7 +2668,7 @@ export default function AracPuantajPage() {
             style={{
               left: tooltip.x,
               top: tooltip.y,
-              transform: "translateX(-50%)",
+              transform: tooltip.yukari ? "translate(-50%, -100%)" : "translateX(-50%)",
             }}
           >
             <div className="bg-white border-2 rounded-lg shadow-2xl overflow-hidden min-w-[220px] max-w-[340px]"

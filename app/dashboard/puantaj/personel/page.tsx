@@ -154,6 +154,7 @@ export default function PersonelPuantajPage() {
   // Tooltip state (hover için)
   const [tooltip, setTooltip] = useState<{
     x: number; y: number;
+    yukari: boolean; // true ise hücrenin üstünde gösterilir
     ad: string;
     isleyenAd: string;
     durum: PersonelPuantajDurum;
@@ -1142,9 +1143,14 @@ export default function PersonelPuantajPage() {
                             onMouseEnter={(e) => {
                               if (pg && dBilgi) {
                                 const rect = e.currentTarget.getBoundingClientRect();
+                                // Alt satırda taşma olmasın diye akıllı konumlandırma
+                                const tahminiYukseklik = 220;
+                                const altBosluk = window.innerHeight - rect.bottom;
+                                const yukari = altBosluk < tahminiYukseklik + 16;
                                 setTooltip({
                                   x: rect.left + rect.width / 2,
-                                  y: rect.bottom + 8,
+                                  y: yukari ? rect.top - 8 : rect.bottom + 8,
+                                  yukari,
                                   ad: p.ad_soyad,
                                   isleyenAd: pg.created_by_ad || (pg.created_by ? "Bilinmiyor" : "—"),
                                   durum: pg.durum,
@@ -1346,7 +1352,7 @@ export default function PersonelPuantajPage() {
       {tooltip && (
         <div
           className="fixed z-50 bg-[#64748B] text-white px-3 py-2 rounded shadow-lg text-xs pointer-events-none max-w-xs"
-          style={{ left: tooltip.x, top: tooltip.y, transform: "translateX(-50%)" }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: tooltip.yukari ? "translate(-50%, -100%)" : "translateX(-50%)" }}
         >
           <div className="font-bold">{tooltip.ad}</div>
           <div className="text-[10px] opacity-80">
