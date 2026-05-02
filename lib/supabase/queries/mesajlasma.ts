@@ -216,48 +216,35 @@ export async function mesajGonder(input: {
     .update({ son_mesaj_zamani: new Date().toISOString() })
     .eq("id", input.konusma_id);
 
-  // Bildirim gönder — konuşmadaki diğer üyeler + tüm admin/şantiye yöneticileri
-  // (admin/şantiye yöneticisi konuşmanın üyesi olmasa bile haber alsın)
+  // Bildirim gönder — konuşmadaki diğer üyeler + admin'ler (server-side service role ile)
+  // RLS nedeniyle client'tan admin id'leri çekemediğimiz için include_admins=true ile route halletsin
   try {
-    const [{ data: digerUyeler }, { data: adminler }] = await Promise.all([
-      supabase
-        .from("mesaj_uye")
-        .select("kullanici_id")
-        .eq("konusma_id", input.konusma_id)
-        .neq("kullanici_id", input.gonderen_id),
-      supabase
-        .from("kullanicilar")
-        .select("id")
-        .in("rol", ["yonetici", "santiye_admin"])
-        .eq("aktif", true)
-        .neq("id", input.gonderen_id),
-    ]);
-    // İki listeyi birleştir + tekrarları temizle
-    const idSet = new Set<string>();
-    for (const u of digerUyeler ?? []) idSet.add(u.kullanici_id);
-    for (const a of adminler ?? []) idSet.add(a.id);
-    const targetIds = Array.from(idSet);
-    if (targetIds.length > 0) {
-      const govde = input.icerik?.trim()
-        ? input.icerik.trim()
-        : input.dosya_adi
-          ? `📎 ${input.dosya_adi}`
-          : "Yeni mesaj";
-      await fetch("/api/push/notify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baslik: "Yeni Mesaj",
-          govde,
-          url: `/dashboard/mesajlasma?konusma=${input.konusma_id}`,
-          tag: "mesaj",
-          target_user_ids: targetIds,
-          // Kaynak: konuşma silinirse bu bildirim de silinsin
-          kaynak_tip: "konusma",
-          kaynak_id: input.konusma_id,
-        }),
-      });
-    }
+    const { data: digerUyeler } = await supabase
+      .from("mesaj_uye")
+      .select("kullanici_id")
+      .eq("konusma_id", input.konusma_id)
+      .neq("kullanici_id", input.gonderen_id);
+    const targetIds = (digerUyeler ?? []).map((u) => u.kullanici_id);
+    const govde = input.icerik?.trim()
+      ? input.icerik.trim()
+      : input.dosya_adi
+        ? `📎 ${input.dosya_adi}`
+        : "Yeni mesaj";
+    await fetch("/api/push/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        baslik: "Yeni Mesaj",
+        govde,
+        url: `/dashboard/mesajlasma?konusma=${input.konusma_id}`,
+        tag: "mesaj",
+        target_user_ids: targetIds,
+        include_admins: true, // sunucu service role ile yöneticileri de ekler
+        // Kaynak: konuşma silinirse bu bildirim de silinsin
+        kaynak_tip: "konusma",
+        kaynak_id: input.konusma_id,
+      }),
+    });
   } catch { /* sessiz — bildirim başarısız olsa da mesaj kaydedildi */ }
 
   return data as Mesaj;

@@ -58,11 +58,13 @@ export async function POST(req: Request) {
   const baslikFinal = String(baslik).slice(0, 100);
 
   // Bildirim alıcıları:
-  // - Eğer body.target_user_ids verilmişse: SADECE o kullanıcılara gönder (mesajlaşma için)
-  // - Yoksa: Yönetici + Şantiye Yöneticisi (mevcut davranış)
+  // - Eğer body.target_user_ids verilmişse: o kullanıcılara gönder (mesajlaşma için)
+  // - body.include_admins=true ise: target_user_ids'e ek olarak tüm yönetici/şantiye yöneticisi de eklenir
+  // - Hiçbiri yoksa: Yönetici + Şantiye Yöneticisi (mevcut davranış)
   const targetUserIds = Array.isArray(body.target_user_ids)
     ? body.target_user_ids.filter((id: unknown): id is string => typeof id === "string")
     : null;
+  const includeAdmins = body.include_admins === true;
 
   let aliciSorgusu = supabase
     .from("kullanicilar")
@@ -71,7 +73,13 @@ export async function POST(req: Request) {
     .neq("id", caller.id);
 
   if (targetUserIds && targetUserIds.length > 0) {
-    aliciSorgusu = aliciSorgusu.in("id", targetUserIds);
+    if (includeAdmins) {
+      // target_user_ids OR rol IN (admin) — Supabase'de OR için .or() kullan
+      const idsList = targetUserIds.map((id) => `"${id}"`).join(",");
+      aliciSorgusu = aliciSorgusu.or(`id.in.(${idsList}),rol.in.(yonetici,santiye_admin)`);
+    } else {
+      aliciSorgusu = aliciSorgusu.in("id", targetUserIds);
+    }
   } else {
     aliciSorgusu = aliciSorgusu.in("rol", ["yonetici", "santiye_admin"]);
   }

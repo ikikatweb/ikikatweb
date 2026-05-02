@@ -1342,7 +1342,8 @@ function YakitPageContent() {
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-3">
           <div className="text-[10px] text-gray-500 uppercase font-semibold">Virman</div>
-          <div className="flex items-baseline gap-2">
+          {/* Mobilde alt alta — sayılar büyüyünce yan yana sığmıyordu */}
+          <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
             <div>
               <span className="text-sm font-bold text-emerald-700">+{formatMiktar(donemOzet.virmanGelen)}</span>
               <span className="text-[9px] text-gray-400 ml-0.5">gelen</span>

@@ -85,8 +85,59 @@ export async function upsertIscilikTakibi(
     if (error) throw error;
   }
 
-  // Push bildirim — her güncellemede 1 bildirim (batch yok)
+  // Push bildirim — sadece anlamlı bir DEĞER girildiğinde gönder.
+  // Yeni satır açma (ensureAktifSantiyeler) veya boş değer girme → bildirim YOK.
+  // Aylık tutar girişlerinden (yatan_prim, toplam_son_veri_tutari) gelen senkronizasyon →
+  // bildirim YOK çünkü asıl bildirim updateAylikVeri'den (rakam + ait olduğu ay birlikte) gidiyor.
   try {
+    // Aylık senkron için kullanılan türemiş alanlar — bunlar update'te varsa bildirim atma
+    const TUREMIS_ALANLAR = new Set(["yatan_prim", "toplam_son_veri_tutari"]);
+    // updates içinde gerçek bir değer var mı? (null/undefined/boş string ise atla)
+    const anlamliAlanlar = Object.entries(updates).filter(([k, v]) => {
+      if (k === "updated_at" || k === "created_at") return false;
+      if (TUREMIS_ALANLAR.has(k)) return false;
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string" && v.trim() === "") return false;
+      return true;
+    });
+    if (anlamliAlanlar.length === 0) return; // değer yok → bildirim atılmaz
+
+    // Alan etiketleri (kullanıcıya gösterilecek isimler)
+    const ALAN_LABELLER: Record<string, string> = {
+      kesif_artisi: "Keşif Artışı",
+      fiyat_farki: "Fiyat Farkı",
+      yatan_prim: "Yatan Prim",
+      taseron_veri_isleme_tarihi: "Taşeron Veri Girişi",
+      son_veri_girisi_tarihi: "Yüklenici Son Veri Girişi",
+      toplam_son_veri_tutari: "Toplam Son Veri Tutarı",
+      iscilik_orani: "İşçilik Oranı",
+      sure_text: "Süre Uzatımı",
+      baslangic_tarihi: "Başlangıç Tarihi",
+    };
+    // Tarih alanları (YYYY-MM-DD'yi MM.YYYY veya DD.MM.YYYY olarak göster)
+    const TARIH_ALANLARI = new Set(["taseron_veri_isleme_tarihi", "son_veri_girisi_tarihi", "baslangic_tarihi"]);
+    // Para alanları (binlik ayraç + TL)
+    const PARA_ALANLARI = new Set(["kesif_artisi", "fiyat_farki", "yatan_prim", "toplam_son_veri_tutari"]);
+
+    function formatDeger(alan: string, deger: unknown): string {
+      if (deger === null || deger === undefined) return "—";
+      // Tarih: YYYY-MM-DD veya YYYY-MM-XX → MM.YYYY (kullanıcının istediği format)
+      if (TARIH_ALANLARI.has(alan) && typeof deger === "string") {
+        const m = deger.match(/^(\d{4})-(\d{2})/);
+        if (m) return `${m[2]}.${m[1]}`;
+        return deger;
+      }
+      if (PARA_ALANLARI.has(alan) && typeof deger === "number") {
+        return deger.toLocaleString("tr-TR", { maximumFractionDigits: 2 }) + " ₺";
+      }
+      return String(deger);
+    }
+
+    const govdeKisimlari = anlamliAlanlar.slice(0, 3).map(([k, v]) => {
+      const label = ALAN_LABELLER[k] ?? k;
+      return `${label}: ${formatDeger(k, v)}`;
+    });
+
     const { bildirimGonder } = await import("@/lib/bildirim");
     const { data: santiye } = await supabase
       .from("santiyeler")
@@ -94,12 +145,12 @@ export async function upsertIscilikTakibi(
       .eq("id", santiyeId)
       .maybeSingle();
     const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 50) : "?";
-    const degisenAlanlar = Object.keys(updates).filter((k) => k !== "updated_at").slice(0, 3).join(", ");
     bildirimGonder({
       baslik: `📊 İşçilik Takibi — ${santiyeAd}`,
-      govde: `Güncellenen: ${degisenAlanlar}`,
+      govde: govdeKisimlari.join(" · "),
       url: "/dashboard/iscilik-takibi",
       tag: "iscilik-takibi",
+      santiye_id: santiyeId,
     });
   } catch { /* sessiz */ }
 }
