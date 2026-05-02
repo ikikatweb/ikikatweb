@@ -75,7 +75,7 @@ export async function POST(req: Request) {
   if (targetUserIds && targetUserIds.length > 0) {
     if (includeAdmins) {
       // target_user_ids OR rol IN (admin) — Supabase'de OR için .or() kullan
-      const idsList = targetUserIds.map((id) => `"${id}"`).join(",");
+      const idsList = targetUserIds.map((id: string) => `"${id}"`).join(",");
       aliciSorgusu = aliciSorgusu.or(`id.in.(${idsList}),rol.in.(yonetici,santiye_admin)`);
     } else {
       aliciSorgusu = aliciSorgusu.in("id", targetUserIds);
