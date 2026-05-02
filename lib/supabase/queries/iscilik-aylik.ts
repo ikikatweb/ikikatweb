@@ -62,7 +62,14 @@ export async function updateAylikVeri(
       const v = updates[key];
       return typeof v === "number" && v > 0;
     });
-    if (girilenTutarlar.length === 0) return; // sıfır veya tutar yok → bildirim atma
+    // Sıfır/null girildi → eski bildirimi sil ve çık (yeni bildirim atmıyoruz)
+    if (girilenTutarlar.length === 0) {
+      try {
+        const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+        bildirimSilByKaynak("iscilik-aylik", id);
+      } catch { /* sessiz */ }
+      return;
+    }
 
     // Aylık satırı + üst takip + şantiye bilgisini çek
     const { data: aylikRow } = await supabase
@@ -89,6 +96,13 @@ export async function updateAylikVeri(
     });
     govdeKisimlari.push(`Ay: ${aylikRow.ait_oldugu_ay}`);
 
+    // Yeni bildirim göndermeden önce, bu aylık satırı için eski bildirimleri SİL
+    // (ardışık güncellemelerde menüde eski rakamlı bildirim kalmasın)
+    try {
+      const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+      bildirimSilByKaynak("iscilik-aylik", id);
+    } catch { /* sessiz */ }
+
     const { bildirimGonder } = await import("@/lib/bildirim");
     bildirimGonder({
       baslik: `📊 İşçilik Takibi — ${santiyeAd}`,
@@ -96,6 +110,9 @@ export async function updateAylikVeri(
       url: "/dashboard/iscilik-takibi",
       tag: "iscilik-takibi",
       santiye_id: santiyeId ?? null,
+      // Kaynak: aylık satır silinince veya 0'lanınca bu bildirim de silinsin
+      kaynak_tip: "iscilik-aylik",
+      kaynak_id: id,
     });
   } catch { /* sessiz */ }
 }
@@ -108,4 +125,9 @@ export async function deleteAylikVeri(id: string) {
     .eq("id", id);
 
   if (error) throw error;
+  // İlgili bildirimleri de sil (artık veri yok)
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("iscilik-aylik", id);
+  } catch { /* sessiz */ }
 }
