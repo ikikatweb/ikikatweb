@@ -558,11 +558,16 @@ export default function PersonelPuantajPage() {
       kalan = yerelKalanRaw;
     }
 
-    // Tam sayıya yuvarla (kullanıcı dostu görünüm)
+    // Yuvarlama kuralı: < 0.5 aşağı, = 0.5 X.5 olarak kalır, > 0.5 yukarı
+    // Aynı kural negatif değerler için de uygulanır (örn. -0.3 → 0, -0.6 → -1)
+    function yuvarlaSigned(x: number): number {
+      if (x < 0) return -yuvarla(-x);
+      return yuvarla(x);
+    }
     return {
-      kalan: Math.round(kalan * 10) / 10,
+      kalan: yuvarlaSigned(kalan),
       kullanilan: localIzin,
-      hakki: Math.round(localPay * 10) / 10,
+      hakki: yuvarlaSigned(localPay),
     };
   }
 
