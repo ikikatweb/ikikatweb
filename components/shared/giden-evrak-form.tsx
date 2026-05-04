@@ -299,8 +299,30 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Evrak Sayı No</Label>
-          <Input value={evrakSayiNo} disabled className="bg-gray-100 font-mono text-xs" />
-          <p className="text-[10px] text-gray-400">Firma veya muhatap değiştiğinde otomatik güncellenir</p>
+          <div className="flex gap-2">
+            <Input value={evrakSayiNo} disabled className="bg-gray-100 font-mono text-xs flex-1" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9"
+              disabled={!firmaId}
+              onClick={async () => {
+                if (!firmaId) return;
+                try {
+                  const no = await getGidenEvrakSayiNo(firmaId, muhatapId || null, muhatap || null);
+                  setEvrakSayiNo(no);
+                  toast.success("Sayı no yenilendi.");
+                } catch {
+                  toast.error("Sayı no üretilemedi.");
+                }
+              }}
+              title="Sayı no'yu yeniden üret (kısa ad değişmişse uygulanır)"
+            >
+              🔄 Yenile
+            </Button>
+          </div>
+          <p className="text-[10px] text-gray-400">Firma/muhatap değişince otomatik; manuel için Yenile</p>
         </div>
         <div className="space-y-2">
           <Label>Kaşe</Label>
@@ -344,16 +366,21 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               ) : muhataplar;
               if (filtreli.length === 0) return null;
               return (
-                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                // onMouseDown preventDefault: dropdown ALANINA (scrollbar dahil) tıklayınca
+                // input blur olmasın, dropdown açık kalsın. Buton onClick'leri etkilenmez.
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
                   {muhatapId && (
-                    <button type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button type="button"
                       onClick={() => { selectMuhatapById(""); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
                       Muhatap kaldır
                     </button>
                   )}
                   {filtreli.map((m) => (
-                    <button key={m.id} type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button key={m.id} type="button"
                       onClick={() => { selectMuhatapById(m.id); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${muhatapId === m.id ? "bg-blue-50 font-semibold" : ""}`}>
                       {tekSatirMuhatap(m.deger)}{m.kisa_ad ? <span className="text-gray-400 text-xs ml-1">({m.kisa_ad})</span> : ""}

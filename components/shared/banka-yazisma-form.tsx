@@ -304,16 +304,19 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
               ) : muhataplar;
               if (filtreli.length === 0) return null;
               return (
-                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
                   {muhatapId && (
-                    <button type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button type="button"
                       onClick={() => { selectMuhatapById(""); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
                       Muhatap kaldır
                     </button>
                   )}
                   {filtreli.map((m) => (
-                    <button key={m.id} type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button key={m.id} type="button"
                       onClick={() => { selectMuhatapById(m.id); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${muhatapId === m.id ? "bg-blue-50 font-semibold" : ""}`}>
                       {tekSatirMuhatap(m.deger)}{m.kisa_ad ? <span className="text-gray-400 text-xs ml-1">({m.kisa_ad})</span> : ""}

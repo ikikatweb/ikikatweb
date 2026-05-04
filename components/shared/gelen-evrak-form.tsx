@@ -253,16 +253,19 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               const filtreli = q ? muhataplar.filter((m) => tekSatirMuhatap(m).toLowerCase().includes(q)) : muhataplar;
               if (filtreli.length === 0) return null;
               return (
-                <div className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
                   {muhatap && (
-                    <button type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button type="button"
                       onClick={() => { setMuhatap(""); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 border-b">
                       Muhatap kaldır
                     </button>
                   )}
                   {filtreli.map((m) => (
-                    <button key={m} type="button" onMouseDown={(e) => e.preventDefault()}
+                    <button key={m} type="button"
                       onClick={() => { setMuhatap(m); setMuhatapArama(""); setMuhatapDropdownAcik(false); }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 ${muhatap === m ? "bg-blue-50 font-semibold" : ""}`}>
                       {tekSatirMuhatap(m)}
