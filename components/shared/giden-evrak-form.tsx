@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
+import { formatMuhatap } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -193,7 +194,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
         konu,
-        muhatap: muhatap || null,
+        // Son satır (şehir) BÜYÜK harfe çevrilir, öncekiler Title Case
+        muhatap: muhatap ? formatMuhatap(muhatap) : null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
         metin: metin || null,

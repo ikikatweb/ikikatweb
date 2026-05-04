@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
+import { formatMuhatap } from "@/lib/utils/isim";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -120,7 +121,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         konu,
         ilgi: ilgi || null,
         icerik: icerik || null,
-        muhatap: muhatap || null,
+        muhatap: muhatap ? formatMuhatap(muhatap) : null,
         ekler: ekler || null,
         pdf_url: pdfUrl,
       };

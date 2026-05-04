@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
+import { formatMuhatap } from "@/lib/utils/isim";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import toast from "react-hot-toast";
 
@@ -166,7 +167,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         firma_id: firmaId,
         evrak_sayi_no: evrakSayiNo,
         konu,
-        muhatap: muhatap || null,
+        muhatap: muhatap ? formatMuhatap(muhatap) : null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
         metin: metin || null,
