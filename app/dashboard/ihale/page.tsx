@@ -181,28 +181,21 @@ function normalizeUnvan(s: string): string {
   return tokens.join(" ");
 }
 function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
+  // Tek kural: BİZİM firma adımız rakibin metninde geçiyor mu? (tek yön, substring)
+  // - "İKİKAT" listede + Rakip "İkikat-Mafer Ortak Girişim" → ✅ yeşil (substring)
+  // - "İKİKAT" listede + Rakip "Mafer Ortak Girişim" → ❌ yeşil değil (içermez)
+  // - "KAD-TEM" listede + Rakip "Kad-Tem Yeşilırmak" → ✅ yeşil
+  // - "KAD-TEM" listede + Rakip "Yeşilırmak" → ❌ yeşil değil
+  // Joint venture / ortak girişim → bizim adımız metinde geçer → otomatik yakalanır.
+  // Tek başına ortak partnerimiz (mafer, yesilirmak vb.) → adımız geçmez → yeşil değil.
   const adNorm = normalizeUnvan(firmaAdi);
   if (!adNorm) return false;
-  // Yönetim/Firmalar listesindeki TÜM firmalar koşulsuz "bizim" sayılır.
-  // (bizim_firma flag'i artık kullanılmıyor — kullanıcı listesinden silmek dışla anlamına gelir)
   if (firmalar.length === 0) return false;
-  // Rakip firma adının token (kelime) seti
-  const adTokens = new Set(adNorm.split(/\s+/).filter((w) => w.length > 0));
   return firmalar.some((f) => {
     const fAdNorm = normalizeUnvan(f.firma_adi);
     if (!fAdNorm) return false;
-    // 1) Tam veya yakın substring eşleşmesi
-    if (adNorm.includes(fAdNorm) || fAdNorm.includes(adNorm)) return true;
-    // 2) Token-tabanlı eşleşme — joint venture (ortak girişim) için kritik
-    // Bizim firmanın AYIRT EDİCİ kelimeleri (>=4 karakter, ünvan kelimeleri zaten temizlendi)
-    // Rakip firmada AYNI kelime olarak geçiyorsa eşleşir.
-    // Örnek: Bizim "İkikat" → Rakip "İkikat-Mafer Ortak Girişim" → "ikikat" token'ı eşleşir
-    const fTokens = fAdNorm.split(/\s+/).filter((w) => w.length >= 4);
-    if (fTokens.some((t) => adTokens.has(t))) return true;
-    // 3) Kısa ad (varsa, >=3 karakter) rakipte token olarak geçiyorsa
-    const fKisaNorm = f.kisa_adi ? normalizeUnvan(f.kisa_adi) : "";
-    if (fKisaNorm && fKisaNorm.length >= 3 && adTokens.has(fKisaNorm)) return true;
-    return false;
+    // SADECE tek yön: rakip adımızı içeriyor mu? (Yani bizim adımız rakipte geçiyor mu?)
+    return adNorm.includes(fAdNorm);
   });
 }
 
