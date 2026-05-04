@@ -56,6 +56,9 @@ function tekSatirMuhatap(deger: string): string {
 // muhatap/banka_muhatap için çok satırlı muhatap formatı, talimat_kisi için kişi adı,
 // diğerleri için title case
 function formatTanimlamaDeger(kategori: string, deger: string): string {
+  // URL ise hiçbir formatlama uygulama (büyük/küçük harf duyarlılığı kritik)
+  const trimmed = deger.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   const k = kategori.toLowerCase();
   if (k === "muhatap" || k === "banka_muhatap") return formatMuhatap(deger);
   if (k === "talimat_kisi") return formatKisiAdi(deger);

@@ -104,7 +104,9 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-    const scrapeUrl = urlTanim.deger;
+    // URL'yi normalize et: bazı formlar otomatik kapitalleştiriyor (Https://Www...)
+    // ama hakedis.org path'i case-sensitive — küçük harfe çevirip 404'ü engelle
+    const scrapeUrl = String(urlTanim.deger).toLowerCase().trim();
 
     const response = await fetch(scrapeUrl, {
       headers: {
