@@ -862,9 +862,17 @@ export default function DashboardPage() {
     </div>
   );
 
-  // Widget görünürlük kontrolü: kullanıcının dashboard_widgets ayarı (boş/null = hepsi)
+  // Widget görünürlük kontrolü:
+  // - Yönetici: null/boş → tüm widget'lar görünür (yetkilidir, kısıtlama yok)
+  // - Kısıtlı / Şantiye yöneticisi: null veya boş → HİÇBİR widget görünmez
+  //   (yönetici hangi widget'ları açtıysa sadece onları görür)
   const wl = kullanici?.dashboard_widgets;
-  const wg = (key: string) => !wl || wl.length === 0 || wl.includes(key);
+  const wg = (key: string) => {
+    if (isYonetici) return !wl || wl.length === 0 || wl.includes(key);
+    // Kısıtlı/santiye_admin: liste boş veya null → hiçbiri görünmez
+    if (!wl || wl.length === 0) return false;
+    return wl.includes(key);
+  };
 
   return (
     <div>
