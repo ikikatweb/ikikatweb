@@ -7,7 +7,7 @@ export async function POST(request: Request) {
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { firma_id, muhatap_id } = await request.json();
+  const { firma_id, muhatap_id, muhatap } = await request.json();
   if (!firma_id) {
     return NextResponse.json({ error: "firma_id zorunlu" }, { status: 400 });
   }
@@ -28,16 +28,28 @@ export async function POST(request: Request) {
 
   const firmaKisa = (firma.kisa_adi || firma.firma_adi.split(/\s+/).map((w: string) => w[0]).join("")).toLocaleUpperCase("tr-TR");
 
-  // Muhatap kısa adını al (varsa)
+  // Muhatap kısa adını al — önce id ile, sonra metin eşleşmesiyle
   let muhatapKisa = "GENEL";
   if (muhatap_id) {
-    const { data: muhatap } = await supabase
+    const { data: m } = await supabase
       .from("tanimlamalar")
-      .select("kisa_ad, deger")
+      .select("kisa_ad")
       .eq("id", muhatap_id)
       .single();
-    if (muhatap?.kisa_ad) {
-      muhatapKisa = muhatap.kisa_ad.toLocaleUpperCase("tr-TR");
+    if (m?.kisa_ad) {
+      muhatapKisa = m.kisa_ad.toLocaleUpperCase("tr-TR");
+    }
+  }
+  // Hâlâ "GENEL" ise ve serbest metin gönderildiyse: değer eşleşen tanımlamayı bul
+  if (muhatapKisa === "GENEL" && typeof muhatap === "string" && muhatap.trim()) {
+    const { data: m2 } = await supabase
+      .from("tanimlamalar")
+      .select("kisa_ad")
+      .eq("kategori", "muhatap")
+      .eq("deger", muhatap.trim())
+      .maybeSingle();
+    if (m2?.kisa_ad) {
+      muhatapKisa = m2.kisa_ad.toLocaleUpperCase("tr-TR");
     }
   }
 

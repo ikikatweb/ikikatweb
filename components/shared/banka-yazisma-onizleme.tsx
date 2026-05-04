@@ -149,11 +149,7 @@ export default function BankaYazismaOnIzleme({
 }
 
 function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
-  const ham = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
-  // Son satır (şehir) → BÜYÜK harf — eski kayıtlardaki "Karabük" gibi bozuk veriler de düzelir
-  const satirlar = ham.length >= 2
-    ? [...ham.slice(0, -1), ham[ham.length - 1].toLocaleUpperCase("tr-TR")]
-    : ham;
+  const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
   const sonSatirRef = useRef<HTMLDivElement>(null);
   const sehirRef = useRef<HTMLDivElement>(null);
   const [sehirLeft, setSehirLeft] = useState<number | null>(null);

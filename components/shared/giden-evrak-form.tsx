@@ -98,18 +98,19 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {
     // Düzenleme modunda: firma veya muhatap değişmediyse mevcut sayı no'yu koru
-    if (isEdit && firmaId === evrak?.firma_id && muhatapId === (evrak?.muhatap_id ?? "")) return;
+    if (isEdit && firmaId === evrak?.firma_id && muhatapId === (evrak?.muhatap_id ?? "") && muhatap === (evrak?.muhatap ?? "")) return;
     if (!firmaId) { setEvrakSayiNo(""); return; }
     let cancelled = false;
     (async () => {
       try {
-        const no = await getGidenEvrakSayiNo(firmaId, muhatapId || null);
+        // muhatap metni de gönderilir — id yoksa metin ile tanımlamayı bulup kısa adı kullansın
+        const no = await getGidenEvrakSayiNo(firmaId, muhatapId || null, muhatap || null);
         if (!cancelled) setEvrakSayiNo(no);
       } catch { /* sessiz */ }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firmaId, muhatapId]);
+  }, [firmaId, muhatapId, muhatap]);
 
   function selectMuhatapById(id: string) {
     if (!id) {
@@ -194,8 +195,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
         konu,
-        // Son satır (şehir) BÜYÜK harfe çevrilir, öncekiler Title Case
-        muhatap: muhatap ? formatMuhatap(muhatap) : null,
+        // Sadece trim — kullanıcı nasıl yazdıysa öyle kaydedilir
+        muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
         metin: metin || null,

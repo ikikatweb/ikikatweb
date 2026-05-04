@@ -167,7 +167,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         firma_id: firmaId,
         evrak_sayi_no: evrakSayiNo,
         konu,
-        muhatap: muhatap ? formatMuhatap(muhatap) : null,
+        muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
         metin: metin || null,

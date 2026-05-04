@@ -158,11 +158,11 @@ export async function hardDeleteGidenEvrak(id: string) {
   if (error) throw error;
 }
 
-export async function getGidenEvrakSayiNo(firmaId: string, muhatapId: string | null): Promise<string> {
+export async function getGidenEvrakSayiNo(firmaId: string, muhatapId: string | null, muhatap?: string | null): Promise<string> {
   const res = await fetch("/api/giden-evrak-sayi", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ firma_id: firmaId, muhatap_id: muhatapId }),
+    body: JSON.stringify({ firma_id: firmaId, muhatap_id: muhatapId, muhatap: muhatap ?? null }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Sayı üretilemedi");

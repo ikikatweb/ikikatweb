@@ -121,7 +121,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         konu,
         ilgi: ilgi || null,
         icerik: icerik || null,
-        muhatap: muhatap ? formatMuhatap(muhatap) : null,
+        muhatap: muhatap?.trim() || null,
         ekler: ekler || null,
         pdf_url: pdfUrl,
       };

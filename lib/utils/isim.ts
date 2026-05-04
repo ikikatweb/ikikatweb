@@ -131,10 +131,8 @@ export function formatPlaka(metin: string | null | undefined): string {
  */
 export function formatMuhatap(metin: string | null | undefined): string {
   if (!metin) return "";
+  // Otomatik büyük/küçük dönüşüm YOK — kullanıcı nasıl yazdıysa öyle kalır.
+  // Sadece her satırda baş/son boşlukları temizler ve boş satırları atar.
   const satirlar = metin.split("\n").map((s) => s.replace(/[\t ]+/g, " ").trim()).filter(Boolean);
-  if (satirlar.length === 0) return "";
-  if (satirlar.length === 1) return formatBaslik(satirlar[0]);
-  const son = satirlar[satirlar.length - 1].toLocaleUpperCase(TR);
-  const oncekiler = satirlar.slice(0, -1).map(formatBaslik);
-  return [...oncekiler, son].join("\n");
+  return satirlar.join("\n");
 }
