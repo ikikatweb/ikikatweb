@@ -26,9 +26,10 @@ export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const cronAuthOk = cronSecret ? authHeader === `Bearer ${cronSecret}` : true;
 
-  // Cron header'ı yoksa kullanıcı auth'una bak (yönetici mi?)
+  // Cron header'ı yoksa kullanıcının login olup olmadığına bak.
+  // Sayfa erişimi zaten "yonetim-yi-ufe" izniyle filtreleniyor — burada sadece auth kontrolü yeterli.
   let userAuthOk = false;
-  if (!cronAuthOk || !cronSecret) {
+  if (!cronAuthOk) {
     try {
       const cookieStore = await cookies();
       const supabaseAuth = createServerClient(
@@ -42,23 +43,12 @@ export async function GET(request: Request) {
         },
       );
       const { data: { user } } = await supabaseAuth.auth.getUser();
-      if (user) {
-        const tempSupabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        );
-        const { data: kullanici } = await tempSupabase
-          .from("kullanicilar")
-          .select("rol")
-          .eq("auth_id", user.id)
-          .single();
-        if (kullanici?.rol === "yonetici") userAuthOk = true;
-      }
+      if (user) userAuthOk = true;
     } catch { /* sessiz */ }
   }
 
   if (!cronAuthOk && !userAuthOk) {
-    return NextResponse.json({ error: "Yetkisiz erişim — sadece yönetici veya cron çalıştırabilir" }, { status: 401 });
+    return NextResponse.json({ error: "Yetkisiz erişim — login olmanız gerekir" }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
