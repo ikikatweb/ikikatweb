@@ -150,44 +150,22 @@ export default function BankaYazismaOnIzleme({
 
 function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
   const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
-  const sonSatirRef = useRef<HTMLDivElement>(null);
-  const sehirRef = useRef<HTMLDivElement>(null);
-  const [sehirYuzde, setSehirYuzde] = useState<number | null>(null);
   const tekSatir = satirlar.length < 2;
   const sehir = tekSatir ? "" : satirlar[satirlar.length - 1];
   const oncekiSatirlar = tekSatir ? satirlar : satirlar.slice(0, -1);
-
-  useLayoutEffect(() => {
-    if (tekSatir || !sonSatirRef.current || !sehirRef.current) return;
-    const o = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
-    if (o !== null) setSehirYuzde(o);
-  }, [muhatap, tekSatir, sehir]);
-
-  useEffect(() => {
-    if (tekSatir) return;
-    const handler = () => {
-      if (sonSatirRef.current && sehirRef.current) {
-        const o = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
-        if (o !== null) setSehirYuzde(o);
-      }
-    };
-    window.addEventListener("beforeprint", handler);
-    return () => window.removeEventListener("beforeprint", handler);
-  }, [tekSatir]);
 
   if (tekSatir) {
     return <div style={{ textAlign: "center", fontSize: "11pt", fontWeight: "bold", lineHeight: "1.4" }}>{satirlar[0] ?? ""}</div>;
   }
 
   return (
-    <div style={{ fontSize: "11pt", fontWeight: "bold", lineHeight: "1.4", position: "relative" }}>
-      {oncekiSatirlar.map((s, i) => (
-        <div key={i} ref={i === oncekiSatirlar.length - 1 ? sonSatirRef : undefined} style={{ textAlign: "center" }}>{s}</div>
-      ))}
-      <div ref={sehirRef} style={{
-        letterSpacing: "0.05em", whiteSpace: "nowrap",
-        ...(sehirYuzde != null ? { paddingLeft: `${Math.max(0, sehirYuzde)}%`, textAlign: "left" as const } : { textAlign: "center" as const }),
-      }}>{sehir}</div>
+    <div style={{ textAlign: "center", fontSize: "11pt", fontWeight: "bold", lineHeight: "1.4" }}>
+      <div style={{ display: "inline-block" }}>
+        {oncekiSatirlar.map((s, i) => (
+          <div key={i} style={{ textAlign: "center", whiteSpace: "nowrap" }}>{s}</div>
+        ))}
+        <div style={{ textAlign: "right", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{sehir}</div>
+      </div>
     </div>
   );
 }

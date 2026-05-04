@@ -336,37 +336,15 @@ export default function GidenEvrakOnIzleme({
   );
 }
 
-// Muhatap bloğu — ortalı, 11pt Bold, son satır (şehir) önceki satırın son kelimesinin ortasına hizalı
-// Otomatik büyük/küçük dönüşüm YOK — kullanıcı nasıl yazdıysa öyle gösterilir.
+// Muhatap bloğu — CSS only, JS hesabı YOK.
+// Bütün blok inline-block (ortada), içinde önceki satırlar text-align: center,
+// şehir text-align: right → en uzun satırın sağ kenarına dayalı, önceki satırların
+// son kelimesinin altında görünür. Hem ekranda hem print'te tutarlı.
 function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
   const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
-  const sonSatirRef = useRef<HTMLDivElement>(null);
-  const sehirRef = useRef<HTMLDivElement>(null);
-  // Yüzde olarak — container width değişse bile hizalama korunsun (print farkı)
-  const [sehirYuzde, setSehirYuzde] = useState<number | null>(null);
-
   const tekSatir = satirlar.length < 2;
   const sehir = tekSatir ? "" : satirlar[satirlar.length - 1];
   const oncekiSatirlar = tekSatir ? satirlar : satirlar.slice(0, -1);
-
-  useLayoutEffect(() => {
-    if (tekSatir) return;
-    if (!sonSatirRef.current || !sehirRef.current) return;
-    const ofsetYuzde = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
-    if (ofsetYuzde !== null) setSehirYuzde(ofsetYuzde);
-  }, [muhatap, tekSatir, sehir]);
-
-  useEffect(() => {
-    if (tekSatir) return;
-    const handler = () => {
-      if (sonSatirRef.current && sehirRef.current) {
-        const ofsetYuzde = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
-        if (ofsetYuzde !== null) setSehirYuzde(ofsetYuzde);
-      }
-    };
-    window.addEventListener("beforeprint", handler);
-    return () => window.removeEventListener("beforeprint", handler);
-  }, [tekSatir]);
 
   if (tekSatir) {
     return (
@@ -377,27 +355,14 @@ function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
   }
 
   return (
-    <div style={{ fontSize: "11pt", fontWeight: "bold", lineHeight: "1.4", position: "relative" }}>
-      {oncekiSatirlar.map((s, i) => (
-        <div
-          key={i}
-          ref={i === oncekiSatirlar.length - 1 ? sonSatirRef : undefined}
-          style={{ textAlign: "center" }}
-        >
-          {s}
+    <div style={{ textAlign: "center", fontSize: "11pt", fontWeight: "bold", lineHeight: "1.4" }}>
+      <div style={{ display: "inline-block" }}>
+        {oncekiSatirlar.map((s, i) => (
+          <div key={i} style={{ textAlign: "center", whiteSpace: "nowrap" }}>{s}</div>
+        ))}
+        <div style={{ textAlign: "right", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+          {sehir}
         </div>
-      ))}
-      <div
-        ref={sehirRef}
-        style={{
-          letterSpacing: "0.05em",
-          whiteSpace: "nowrap",
-          ...(sehirYuzde != null
-            ? { paddingLeft: `${Math.max(0, sehirYuzde)}%`, textAlign: "left" as const }
-            : { textAlign: "center" as const }),
-        }}
-      >
-        {sehir}
       </div>
     </div>
   );
