@@ -1730,14 +1730,14 @@ export default function IhalePage() {
 
                 {/* Teklif Listesi Tablosu */}
                 <Table className="text-xs">
-                  <TableHeader>
-                    <TableRow className="border-b-2 border-gray-200">
-                      <TableHead className="text-[11px] px-2 w-10 font-semibold text-gray-700">No</TableHead>
-                      <TableHead className="text-[11px] px-2 min-w-[180px] font-semibold text-gray-700">Firma / İstekli Adı</TableHead>
-                      <TableHead className="text-[11px] px-2 text-right min-w-[100px] font-semibold text-gray-700">Teklif Tutarı</TableHead>
-                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700">Tenzilat</TableHead>
-                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700">Durum</TableHead>
-                      <TableHead className="text-[11px] px-2 text-center w-[40px] font-semibold text-gray-700">Sil</TableHead>
+                  <TableHeader className="sticky top-0 z-10 bg-white shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1)]">
+                    <TableRow className="border-b-2 border-gray-200 bg-white">
+                      <TableHead className="text-[11px] px-2 w-10 font-semibold text-gray-700 bg-white">No</TableHead>
+                      <TableHead className="text-[11px] px-2 min-w-[180px] font-semibold text-gray-700 bg-white">Firma / İstekli Adı</TableHead>
+                      <TableHead className="text-[11px] px-2 text-right min-w-[100px] font-semibold text-gray-700 bg-white">Teklif Tutarı</TableHead>
+                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700 bg-white">Tenzilat</TableHead>
+                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700 bg-white">Durum</TableHead>
+                      <TableHead className="text-[11px] px-2 text-center w-[40px] font-semibold text-gray-700 bg-white">Sil</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
