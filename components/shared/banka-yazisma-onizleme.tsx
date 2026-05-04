@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { hesaplaSehirOfset } from "@/lib/utils/muhatap";
+import { hesaplaSehirOfsetYuzde } from "@/lib/utils/muhatap";
 
 type Firma = {
   firma_adi: string;
@@ -152,23 +152,23 @@ function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
   const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
   const sonSatirRef = useRef<HTMLDivElement>(null);
   const sehirRef = useRef<HTMLDivElement>(null);
-  const [sehirLeft, setSehirLeft] = useState<number | null>(null);
+  const [sehirYuzde, setSehirYuzde] = useState<number | null>(null);
   const tekSatir = satirlar.length < 2;
   const sehir = tekSatir ? "" : satirlar[satirlar.length - 1];
   const oncekiSatirlar = tekSatir ? satirlar : satirlar.slice(0, -1);
 
   useLayoutEffect(() => {
     if (tekSatir || !sonSatirRef.current || !sehirRef.current) return;
-    const ofset = hesaplaSehirOfset(sonSatirRef.current, sehirRef.current);
-    if (ofset !== null) setSehirLeft(ofset);
+    const o = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
+    if (o !== null) setSehirYuzde(o);
   }, [muhatap, tekSatir, sehir]);
 
   useEffect(() => {
     if (tekSatir) return;
     const handler = () => {
       if (sonSatirRef.current && sehirRef.current) {
-        const ofset = hesaplaSehirOfset(sonSatirRef.current, sehirRef.current);
-        if (ofset !== null) setSehirLeft(ofset);
+        const o = hesaplaSehirOfsetYuzde(sonSatirRef.current, sehirRef.current);
+        if (o !== null) setSehirYuzde(o);
       }
     };
     window.addEventListener("beforeprint", handler);
@@ -186,7 +186,7 @@ function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
       ))}
       <div ref={sehirRef} style={{
         letterSpacing: "0.05em", whiteSpace: "nowrap",
-        ...(sehirLeft != null ? { paddingLeft: `${Math.max(0, sehirLeft)}px`, textAlign: "left" as const } : { textAlign: "center" as const }),
+        ...(sehirYuzde != null ? { paddingLeft: `${Math.max(0, sehirYuzde)}%`, textAlign: "left" as const } : { textAlign: "center" as const }),
       }}>{sehir}</div>
     </div>
   );

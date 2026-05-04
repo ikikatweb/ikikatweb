@@ -88,8 +88,24 @@ export function hesaplaSehirOfset(
 
   if (sehirGenislik === 0) return null;
 
-  // Şehrin sol pozisyonu = kelimeOrtası - şehirGenişlik/2
+  // Şehrin sol pozisyonu = kelimeOrtası - şehirGenişlik/2 (px olarak)
   return kelimeOrtasi - sehirGenislik / 2;
+}
+
+/**
+ * Şehir ofsetini container genişliğinin yüzdesi olarak döner.
+ * Print modunda sayfa genişliği değiştiğinde de doğru hizalama için.
+ */
+export function hesaplaSehirOfsetYuzde(
+  sonSatirEl: HTMLElement,
+  sehirEl: HTMLElement,
+): number | null {
+  const ofset = hesaplaSehirOfset(sonSatirEl, sehirEl);
+  if (ofset === null) return null;
+  const container = sonSatirEl.parentElement || sonSatirEl;
+  const w = container.getBoundingClientRect().width;
+  if (w <= 0) return null;
+  return (ofset / w) * 100;
 }
 
 export function renderMuhatap(deger: string, size: "sm" | "xs" = "xs") {

@@ -243,9 +243,14 @@ export default function GidenEvrakPage() {
     flushSync(() => {
       setPrintEvrakRef(e);
     });
-    window.print();
-    // Print dialog kapandıktan sonra portal'ı temizle
-    setTimeout(() => setPrintEvrakRef(null), 1000);
+    // DOM'un layout pass'ı tamamlanması için çift rAF — şehir offset hesabı
+    // (hesaplaSehirOfset) doğru render edilmiş bounding box'lara erişebilsin.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => setPrintEvrakRef(null), 1000);
+      });
+    });
   }
 
   return (
