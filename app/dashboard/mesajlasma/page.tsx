@@ -56,6 +56,7 @@ function MesajlasmaContent() {
   const [yeniMesaj, setYeniMesaj] = useState("");
   const [yukleniyor, setYukleniyor] = useState(true);
   const [dosyaYukleniyor, setDosyaYukleniyor] = useState(false);
+  const [mesajGonderiliyor, setMesajGonderiliyor] = useState(false);
   const [yeniKonusmaDialog, setYeniKonusmaDialog] = useState(false);
   const [tumKullanicilar, setTumKullanicilar] = useState<Kullanici[]>([]);
   const [seciliKullanicilar, setSeciliKullanicilar] = useState<Set<string>>(new Set());
@@ -178,22 +179,29 @@ function MesajlasmaContent() {
     await loadMesajlar(id);
   }
 
-  // Mesaj gönder
+  // Mesaj gönder — duplicate önleme: gönderim sırasında tekrar tıklanırsa görmezden gel
   async function mesajGonderHandle() {
     if (!kullanici?.id || !seciliKonusmaId || !yeniMesaj.trim()) return;
+    if (mesajGonderiliyor) return; // zaten gönderiliyor, dublicate kayıt olmasın
+    setMesajGonderiliyor(true);
+    // Mesajı hemen yakala ve input'u temizle (kullanıcı ikinci kez bassa bile boş)
+    const icerik = yeniMesaj.trim();
+    setYeniMesaj("");
+    if (textareaRef.current) textareaRef.current.style.height = "40px";
     try {
       await mesajGonder({
         konusma_id: seciliKonusmaId,
         gonderen_id: kullanici.id,
-        icerik: yeniMesaj.trim(),
+        icerik,
       });
-      setYeniMesaj("");
-      // Textarea yüksekliğini sıfırla (auto-grow useEffect zaten çalışacak ama anında sıfırlamak için)
-      if (textareaRef.current) textareaRef.current.style.height = "40px";
       await loadMesajlar(seciliKonusmaId);
       await loadKonusmalar();
     } catch (err) {
       toast.error("Mesaj gönderilemedi: " + (err instanceof Error ? err.message : ""));
+      // Hata olduysa içeriği geri yükle, kullanıcı yeniden deneyebilir
+      setYeniMesaj(icerik);
+    } finally {
+      setMesajGonderiliyor(false);
     }
   }
 
@@ -681,7 +689,7 @@ function MesajlasmaContent() {
                 size="sm"
                 className="bg-[#1E3A5F] hover:bg-[#2a4f7a] h-9"
                 onClick={mesajGonderHandle}
-                disabled={!yeniMesaj.trim()}
+                disabled={!yeniMesaj.trim() || mesajGonderiliyor}
               >
                 <Send size={14} />
               </Button>
