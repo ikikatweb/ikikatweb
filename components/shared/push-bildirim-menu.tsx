@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Bell, BellOff, History, Settings } from "lucide-react";
+import { Bell, BellOff, History, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 
 type BildirimKayit = {
@@ -379,14 +379,40 @@ export default function PushBildirimMenu() {
           {/* GEÇMİŞ SEKMESİ */}
           {aktifSekme === "gecmis" && (
             <div className="flex flex-col">
-              {/* Tarih seçimi + Tümünü Oku */}
+              {/* Tarih seçimi (sol/sağ ok ile gün değiştir) + Tümünü Oku */}
               <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between gap-2">
-                <input
-                  type="date"
-                  value={seciliTarih}
-                  onChange={(e) => setSeciliTarih(e.target.value)}
-                  className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-[#1E3A5F] flex-1"
-                />
+                <div className="flex items-center gap-1 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(seciliTarih + "T00:00:00");
+                      d.setDate(d.getDate() - 1);
+                      setSeciliTarih(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+                    }}
+                    className="p-1 text-gray-600 hover:text-[#1E3A5F] hover:bg-gray-200 rounded flex-shrink-0"
+                    title="Önceki gün"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <input
+                    type="date"
+                    value={seciliTarih}
+                    onChange={(e) => setSeciliTarih(e.target.value)}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-[#1E3A5F] flex-1 min-w-0"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(seciliTarih + "T00:00:00");
+                      d.setDate(d.getDate() + 1);
+                      setSeciliTarih(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+                    }}
+                    className="p-1 text-gray-600 hover:text-[#1E3A5F] hover:bg-gray-200 rounded flex-shrink-0"
+                    title="Sonraki gün"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
                 {okunmamisSayisi > 0 && (
                   <button
                     type="button"

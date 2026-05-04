@@ -1,6 +1,8 @@
 // Yi-ÜFE veri çekme API route - Tanımlamalar'daki URL'den endeks verilerini scrape eder
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import * as cheerio from "cheerio";
 
 const AY_ISIMLERI = [
@@ -19,13 +21,44 @@ const AY_ISIMLERI = [
 ];
 
 export async function GET(request: Request) {
-  // Güvenlik kontrolü: Cron secret veya Authorization header
+  // İki yetki yolu: (a) Cron secret (Vercel Cron Jobs), (b) Authenticated yönetici (manuel buton)
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
+  const cronAuthOk = cronSecret ? authHeader === `Bearer ${cronSecret}` : true;
 
-  // Cron secret tanımlıysa kontrol et (Vercel Cron Jobs için)
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
+  // Cron header'ı yoksa kullanıcı auth'una bak (yönetici mi?)
+  let userAuthOk = false;
+  if (!cronAuthOk || !cronSecret) {
+    try {
+      const cookieStore = await cookies();
+      const supabaseAuth = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            getAll() { return cookieStore.getAll(); },
+            setAll() {},
+          },
+        },
+      );
+      const { data: { user } } = await supabaseAuth.auth.getUser();
+      if (user) {
+        const tempSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        const { data: kullanici } = await tempSupabase
+          .from("kullanicilar")
+          .select("rol")
+          .eq("auth_id", user.id)
+          .single();
+        if (kullanici?.rol === "yonetici") userAuthOk = true;
+      }
+    } catch { /* sessiz */ }
+  }
+
+  if (!cronAuthOk && !userAuthOk) {
+    return NextResponse.json({ error: "Yetkisiz erişim — sadece yönetici veya cron çalıştırabilir" }, { status: 401 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,6 +75,30 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
+    // ERKEN ÇIKIŞ: Bir önceki ayın verisi zaten DB'de varsa scrape yapma.
+    // (TÜİK ayın 3'ünde GEÇEN ay'ın verisini açıklar; geçen ayın verisi
+    //  varsa bu ay için yapacağımız bir şey yok.)
+    // Cron her 5 dk çalışsa bile, veri çekildikten sonra sessizce hızlı return eder.
+    const simdi = new Date();
+    const oncekiAyTarih = new Date(simdi.getFullYear(), simdi.getMonth() - 1, 1);
+    const beklenenYil = oncekiAyTarih.getFullYear();
+    const beklenenAy = oncekiAyTarih.getMonth() + 1; // 1-12
+    const { data: mevcutKayit } = await supabase
+      .from("yi_ufe")
+      .select("id")
+      .eq("yil", beklenenYil)
+      .eq("ay", beklenenAy)
+      .maybeSingle();
+    if (mevcutKayit) {
+      return NextResponse.json({
+        basarili: true,
+        atlandi: true,
+        mesaj: `Geçen ay (${beklenenAy}/${beklenenYil}) zaten kayıtlı — scrape atlandı.`,
+        toplamVeri: 0,
+        yeniKayit: 0,
+      });
+    }
+
     // URL'yi tanımlamalardan çek
     const { data: urlTanim } = await supabase
       .from("tanimlamalar")
