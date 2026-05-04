@@ -145,7 +145,11 @@ export default function GelenEvrakOnIzleme({
 }
 
 function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
-  const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
+  const ham = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
+  // Son satır (şehir) → BÜYÜK harf — eski kayıtlardaki bozuk veriler de düzelir
+  const satirlar = ham.length >= 2
+    ? [...ham.slice(0, -1), ham[ham.length - 1].toLocaleUpperCase("tr-TR")]
+    : ham;
   const sonSatirRef = useRef<HTMLDivElement>(null);
   const sehirRef = useRef<HTMLDivElement>(null);
   const [sehirLeft, setSehirLeft] = useState<number | null>(null);

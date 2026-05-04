@@ -337,8 +337,13 @@ export default function GidenEvrakOnIzleme({
 }
 
 // Muhatap bloğu — ortalı, 11pt Bold, son satır (şehir) önceki satırın son kelimesinin ortasına hizalı
+// Eski kayıtlarda son satır küçük harfli olabilir; render'da BÜYÜK harfe çeviriyoruz.
 function MuhatapPrintBlock({ muhatap }: { muhatap: string }) {
-  const satirlar = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
+  const ham = muhatap.split("\n").map((s) => s.trim()).filter(Boolean);
+  // Son satır (şehir) → BÜYÜK harf (Türkçe locale ile İ/I ayrımı korunur)
+  const satirlar = ham.length >= 2
+    ? [...ham.slice(0, -1), ham[ham.length - 1].toLocaleUpperCase("tr-TR")]
+    : ham;
   const sonSatirRef = useRef<HTMLDivElement>(null);
   const sehirRef = useRef<HTMLDivElement>(null);
   const [sehirLeft, setSehirLeft] = useState<number | null>(null);
