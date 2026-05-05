@@ -8,7 +8,7 @@ function getSupabase() {
 
 // --- İhale CRUD ---
 
-export async function getIhaleler(): Promise<Ihale[]> {
+export async function getIhaleler(): Promise<(Ihale & { katilimci_sayisi?: number; firma_adlari?: string[] })[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("ihale")
@@ -16,37 +16,50 @@ export async function getIhaleler(): Promise<Ihale[]> {
     .order("created_at", { ascending: false });
   if (error) throw error;
   const ihaleler = (data ?? []) as Ihale[];
+  if (ihaleler.length === 0) return [];
 
-  // Eski kayıtlarda muhtemel_kazanan_tutar boş olabilir (kolon henüz yoksa veya
-  // kayıt eski mantıkla atılmışsa). Doldurmak için katılımcılardan dinamik bul:
-  // Her ihale için kazanan firma adına eşleşen ilk katılımcının teklif tutarını al.
-  const eksikIds = ihaleler
-    .filter((i) => i.muhtemel_kazanan && (i.muhtemel_kazanan_tutar == null))
-    .map((i) => i.id);
-  if (eksikIds.length === 0) return ihaleler;
-
+  // Tüm katılımcıları çek — Supabase varsayılan 1000 satır limitini aşmak için
+  // ihale_id'leri 5'erli gruplara böl, paralel sorgula.
+  // (Tek .in() çağrısı çok ihale × çok firma olunca server-side max_rows'a takılıyor.)
+  const ihaleIds = ihaleler.map((i) => i.id);
+  const katMap = new Map<string, { firma_adi: string; teklif_tutari: number; durum: string }[]>();
   try {
-    const { data: katData } = await supabase
-      .from("ihale_katilimci")
-      .select("ihale_id, firma_adi, teklif_tutari, durum, sira")
-      .in("ihale_id", eksikIds);
-    if (!katData) return ihaleler;
-    const katMap = new Map<string, { firma_adi: string; teklif_tutari: number; durum: string }[]>();
-    for (const k of katData as { ihale_id: string; firma_adi: string; teklif_tutari: number; durum: string }[]) {
-      if (!katMap.has(k.ihale_id)) katMap.set(k.ihale_id, []);
-      katMap.get(k.ihale_id)!.push(k);
+    const chunkSize = 5;
+    const chunks: string[][] = [];
+    for (let i = 0; i < ihaleIds.length; i += chunkSize) {
+      chunks.push(ihaleIds.slice(i, i + chunkSize));
     }
-    return ihaleler.map((i) => {
-      if (i.muhtemel_kazanan_tutar != null || !i.muhtemel_kazanan) return i;
-      const kats = katMap.get(i.id) ?? [];
-      // Kazanan firma adına eşleşen ilk katılımcının teklif tutarı
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("ihale_katilimci")
+          .select("ihale_id, firma_adi, teklif_tutari, durum")
+          .in("ihale_id", chunk)
+          .then(({ data }) => (data ?? []) as { ihale_id: string; firma_adi: string; teklif_tutari: number; durum: string }[])
+      )
+    );
+    for (const arr of results) {
+      for (const k of arr) {
+        if (!katMap.has(k.ihale_id)) katMap.set(k.ihale_id, []);
+        katMap.get(k.ihale_id)!.push(k);
+      }
+    }
+  } catch { /* sessiz */ }
+
+  return ihaleler.map((i) => {
+    const kats = katMap.get(i.id) ?? [];
+    let muhtemel_kazanan_tutar = i.muhtemel_kazanan_tutar;
+    if (muhtemel_kazanan_tutar == null && i.muhtemel_kazanan) {
       const kazanan = kats.find((k) => k.firma_adi === i.muhtemel_kazanan && k.durum === "gecerli");
-      if (kazanan) return { ...i, muhtemel_kazanan_tutar: kazanan.teklif_tutari };
-      return i;
-    });
-  } catch {
-    return ihaleler;
-  }
+      if (kazanan) muhtemel_kazanan_tutar = kazanan.teklif_tutari;
+    }
+    return {
+      ...i,
+      muhtemel_kazanan_tutar,
+      katilimci_sayisi: kats.length,
+      firma_adlari: kats.map((k) => k.firma_adi),
+    };
+  });
 }
 
 export async function getIhaleById(id: string): Promise<Ihale> {

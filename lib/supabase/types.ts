@@ -611,6 +611,9 @@ export type Ihale = {
   ihale_kayit_no: string | null;
   ihale_tarihi: string | null;
   yaklasik_maliyet: number | null;
+  // Manuel girilen hesaplanan yaklaşık maliyet (sadece bilgi amaçlı, hesaba dahil değil).
+  // Optional: form'dan yazılmaz, sadece geçmiş tabloda inline edit ile güncellenir.
+  hesaplanan_yaklasik_maliyet?: number | null;
   is_grubu: string | null;
   n_katsayisi: number;
   sinir_deger: number | null;

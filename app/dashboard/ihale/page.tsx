@@ -175,27 +175,49 @@ function normalizeUnvan(s: string): string {
     // Birleşik "i + üst nokta" karakterini sadeleştir
     .replace(/i̇/g, "i")
     .replace(/[ığüşöç]/g, (c) => ({ "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c" }[c] ?? c))
-    .replace(/[.,]/g, " ");
+    .replace(/[.,]/g, " ")
+    // Tüm tire türleri (- – —) ve fazla boşlukları tek boşluğa indir.
+    // Bu sayede "KAD-TEM", "kad–tem", "KAD TEM" hepsi aynı norm forma gelir: "kad tem"
+    .replace(/[-–—_]+/g, " ");
   // 2) Token'lara ayır, ünvan eklerini at, geri birleştir
   const tokens = ascii.split(/\s+/).filter((t) => t.length > 0 && !UNVAN_EKLERI.has(t));
   return tokens.join(" ");
 }
+// Firma adının ÜNVAN EKLERİ'nden ÖNCEKİ ayırt edici kısmını al.
+// Örn: "Kad-Tem Müh. Müt. İnş. Oto..." → "kad tem" (ilk ünvan eki "müh"den önce)
+//      "İkikat İnş. Taah." → "ikikat"
+//      "Kenan Tugay İkikat İnş." → "kenan tugay ikikat"
+function ayirtEdiciKisim(firmaAdi: string): string {
+  const ascii = firmaAdi
+    .toLocaleLowerCase("tr-TR")
+    .replace(/i̇/g, "i")
+    .replace(/[ığüşöç]/g, (c) => ({ "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c" }[c] ?? c))
+    .replace(/[.,]/g, " ")
+    .replace(/[-–—_]+/g, " ");
+  const tokens = ascii.split(/\s+/).filter(Boolean);
+  const distinctive: string[] = [];
+  for (const t of tokens) {
+    if (UNVAN_EKLERI.has(t)) break; // ilk ünvan ekinde dur
+    distinctive.push(t);
+  }
+  return distinctive.join(" ");
+}
+
 function isOwnCompany(firmaAdi: string, firmalar: Firma[]): boolean {
-  // Tek kural: BİZİM firma adımız rakibin metninde geçiyor mu? (tek yön, substring)
-  // - "İKİKAT" listede + Rakip "İkikat-Mafer Ortak Girişim" → ✅ yeşil (substring)
-  // - "İKİKAT" listede + Rakip "Mafer Ortak Girişim" → ❌ yeşil değil (içermez)
-  // - "KAD-TEM" listede + Rakip "Kad-Tem Yeşilırmak" → ✅ yeşil
-  // - "KAD-TEM" listede + Rakip "Yeşilırmak" → ❌ yeşil değil
-  // Joint venture / ortak girişim → bizim adımız metinde geçer → otomatik yakalanır.
-  // Tek başına ortak partnerimiz (mafer, yesilirmak vb.) → adımız geçmez → yeşil değil.
+  // Bizim firma adımızın AYIRT EDİCİ kısmı (ünvan eklerinden önce)
+  // rakibin normalize edilmiş metninde substring olarak geçiyor mu?
+  // - Bizim "Kad-Tem Müh. Müt..." → ayırt edici "kad tem"
+  // - Rakip "KAD-TEM MÜH. MÜT..." → norm "kad tem mut otomotiv..." → "kad tem" var → ✅
+  // - Bizim "İkikat İnş..." → ayırt edici "ikikat"
+  // - Rakip "İkikat-Mafer Ortak..." → norm "ikikat mafer ortak..." → "ikikat" var → ✅
+  // - Rakip "Mafer..." → norm "mafer..." → "ikikat" YOK → ❌
+  if (firmalar.length === 0) return false;
   const adNorm = normalizeUnvan(firmaAdi);
   if (!adNorm) return false;
-  if (firmalar.length === 0) return false;
   return firmalar.some((f) => {
-    const fAdNorm = normalizeUnvan(f.firma_adi);
-    if (!fAdNorm) return false;
-    // SADECE tek yön: rakip adımızı içeriyor mu? (Yani bizim adımız rakipte geçiyor mu?)
-    return adNorm.includes(fAdNorm);
+    const ayirt = ayirtEdiciKisim(f.firma_adi);
+    if (!ayirt || ayirt.length < 3) return false;
+    return adNorm.includes(ayirt);
   });
 }
 
@@ -890,6 +912,11 @@ export default function IhalePage() {
   // Silme onayı
   const [silOnay, setSilOnay] = useState<string | null>(null);
 
+  // Geçmiş tablo inline edit (İhale Tarihi, Hesaplanan YM)
+  const [gecmisEditId, setGecmisEditId] = useState<string | null>(null);
+  const [gecmisEditField, setGecmisEditField] = useState<"ihale_tarihi" | "hesaplanan_ym" | null>(null);
+  const [gecmisEditValue, setGecmisEditValue] = useState("");
+
   // Veri yükleme
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -1046,8 +1073,8 @@ export default function IhalePage() {
             altGruplar: undefined, // alt-kayıt değil, normal ihale gibi sakla
           };
           try {
-            // Doğrudan kaydet (mevcut state'i bozmadan)
-            await autoSave(grupParsed, grupKat);
+            // Doğrudan kaydet (mevcut state'i bozmadan) — her grup yeni kayıt
+            await autoSave(grupParsed, grupKat, true);
             basariliKayit++;
           } catch (err) {
             console.error(`Grup ${gi + 1} kaydedilemedi:`, err);
@@ -1100,6 +1127,8 @@ export default function IhalePage() {
       setTeklifAcmaTarihi(parsed.teklifAcmaTarihi);
       if (parsed.yaklasikMaliyet > 0) {
         setYaklasikMaliyet(formatParaInput(parsed.yaklasikMaliyet.toFixed(2).replace(".", ",")));
+      } else {
+        setYaklasikMaliyet("");
       }
 
       const yeniKat = parsed.katilimcilar.map((k) => ({
@@ -1125,8 +1154,8 @@ export default function IhalePage() {
 
       toast.success(`${yeniKat.length} firma bulundu.`);
 
-      // Otomatik kaydet
-      await autoSave(parsed, yeniKat);
+      // Otomatik kaydet — yeni dosya = yeni kayıt (üzerine yazma yok)
+      await autoSave(parsed, yeniKat, true);
     } catch (err) {
       console.error(err);
       toast.error(`Dosya okunamadı: ${err instanceof Error ? err.message : String(err)}`);
@@ -1139,6 +1168,10 @@ export default function IhalePage() {
   async function autoSave(
     parsed: ParsedData | null,
     kat: typeof katilimcilar,
+    // forceNew=true: önceki ihale üzerine yazmaz, yeni satır oluşturur.
+    // Yeni dosya yükleme akışında setCurrentIhaleId(null) henüz state'e yansımadığı
+    // için autoSave eski ID'yi okuyup üzerine yazıyordu. Bu flag onu önler.
+    forceNew = false,
   ) {
     try {
       const ymVal = parsed ? parsed.yaklasikMaliyet : parseParaInput(yaklasikMaliyet);
@@ -1158,6 +1191,8 @@ export default function IhalePage() {
         ihale_kayit_no: parsed?.ihaleKayitNo ?? ihaleKayitNo,
         ihale_tarihi: (parsed?.ihaleTarihi ?? ihaleTarihi) || null,
         yaklasik_maliyet: ymVal || null,
+        // hesaplanan_yaklasik_maliyet alanı buradan yazılmaz — yalnızca geçmiş tablodan
+        // inline edit ile güncellenir, otomatik save'in bu alanı sıfırlamasını önlemek için.
         is_grubu: seciliIsGrubu || null,
         n_katsayisi: nVal,
         sinir_deger: h?.sinirDeger ?? null,
@@ -1172,7 +1207,7 @@ export default function IhalePage() {
         created_by: kullanici?.id ?? null,
       };
 
-      let ihaleId = currentIhaleId;
+      let ihaleId = forceNew ? null : currentIhaleId;
       // Orijinal bir kayıt üzerinde ilk kez düzenleme yapılıyorsa,
       // orijinali koru ve düzenlemeyi YENİ kayıt olarak oluştur.
       if (ihaleId && hasManualEdits && currentIhaleIsOriginal) {
@@ -1272,6 +1307,47 @@ export default function IhalePage() {
     setTimeout(() => autoSave(null, updated), 500);
   }
 
+  // Geçmiş tablo inline edit — başlat
+  function gecmisEditStart(ihale: Ihale, field: "ihale_tarihi" | "hesaplanan_ym") {
+    setGecmisEditId(ihale.id);
+    setGecmisEditField(field);
+    if (field === "ihale_tarihi") {
+      setGecmisEditValue(ihale.ihale_tarihi ?? "");
+    } else {
+      setGecmisEditValue(
+        ihale.hesaplanan_yaklasik_maliyet
+          ? formatParaInput(ihale.hesaplanan_yaklasik_maliyet.toFixed(2).replace(".", ","))
+          : ""
+      );
+    }
+  }
+
+  // Geçmiş tablo inline edit — iptal
+  function gecmisEditIptal() {
+    setGecmisEditId(null);
+    setGecmisEditField(null);
+    setGecmisEditValue("");
+  }
+
+  // Geçmiş tablo inline edit — kaydet
+  async function gecmisEditKaydet() {
+    if (!gecmisEditId || !gecmisEditField) return;
+    try {
+      if (gecmisEditField === "ihale_tarihi") {
+        await updateIhale(gecmisEditId, { ihale_tarihi: gecmisEditValue || null });
+      } else {
+        const val = parseParaInput(gecmisEditValue) || null;
+        await updateIhale(gecmisEditId, { hesaplanan_yaklasik_maliyet: val });
+      }
+      gecmisEditIptal();
+      const fresh = await getIhaleler().catch(() => []);
+      setGecmisIhaleler(fresh);
+      toast.success("Güncellendi.");
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Geçmiş ihaleyi yükle
   async function gecmisYukle(ihale: Ihale) {
     try {
@@ -1289,6 +1365,8 @@ export default function IhalePage() {
       setTeklifAcmaTarihi("");
       if (ihale.yaklasik_maliyet) {
         setYaklasikMaliyet(formatParaInput(ihale.yaklasik_maliyet.toFixed(2).replace(".", ",")));
+      } else {
+        setYaklasikMaliyet("");
       }
       setSeciliIsGrubu(ihale.is_grubu ?? "");
       setNKatsayisi(String(ihale.n_katsayisi).replace(".", ","));
@@ -1526,14 +1604,20 @@ export default function IhalePage() {
     toast.success("WhatsApp açıldı. Kişi seçip gönderin.");
   }
 
-  // Geçmiş filtre
+  // Geçmiş filtre — Türkçe-safe arama (İ/I, Ş/ş vs.) + tüm katılımcı firma adları
+  // "nisa harita" yazınca, Nisa Harita'nın katıldığı tüm ihaleler süzülür.
   const filtreliGecmis = useMemo(() => {
-    const q = gecmisArama.trim().toLowerCase();
+    const q = gecmisArama.trim().toLocaleLowerCase("tr-TR");
     if (!q) return gecmisIhaleler;
-    return gecmisIhaleler.filter((i) =>
-      [i.idare_adi, i.is_adi, i.ihale_kayit_no, i.muhtemel_kazanan, String(i.yaklasik_maliyet)]
-        .filter(Boolean).join(" ").toLowerCase().includes(q)
-    );
+    return gecmisIhaleler.filter((i) => {
+      const firmaList = (i as Ihale & { firma_adlari?: string[] }).firma_adlari ?? [];
+      const haystack = [
+        i.idare_adi, i.is_adi, i.ihale_kayit_no, i.muhtemel_kazanan,
+        String(i.yaklasik_maliyet ?? ""),
+        ...firmaList,
+      ].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+      return haystack.includes(q);
+    });
   }, [gecmisIhaleler, gecmisArama]);
 
   // Sıfırla
@@ -1631,13 +1715,6 @@ export default function IhalePage() {
                           placeholder="—" className="w-full font-semibold bg-transparent border-0 outline-none" />
                       </td>
                     </tr>
-                    <tr className="border-b border-gray-100">
-                      <td className="text-gray-500 py-2 pr-3 whitespace-nowrap">İhale Tarihi</td>
-                      <td className="py-2 flex items-center gap-2">
-                        <span className="font-semibold text-gray-800">{ihaleTarihi ? new Date(ihaleTarihi + "T00:00:00").toLocaleDateString("tr-TR") : "—"}</span>
-                        {ihaleSaati && <span className="text-gray-600 font-semibold">{ihaleSaati}</span>}
-                      </td>
-                    </tr>
                     {teklifAcmaTarihi && (
                       <tr className="border-b border-gray-100">
                         <td className="text-gray-500 py-2 pr-3 whitespace-nowrap">Teklif Açma</td>
@@ -1733,10 +1810,10 @@ export default function IhalePage() {
                   <TableHeader className="sticky top-0 z-10 bg-white shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1)]">
                     <TableRow className="border-b-2 border-gray-200 bg-white">
                       <TableHead className="text-[11px] px-2 w-10 font-semibold text-gray-700 bg-white">No</TableHead>
-                      <TableHead className="text-[11px] px-2 min-w-[180px] font-semibold text-gray-700 bg-white">Firma / İstekli Adı</TableHead>
-                      <TableHead className="text-[11px] px-2 text-right min-w-[100px] font-semibold text-gray-700 bg-white">Teklif Tutarı</TableHead>
-                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700 bg-white">Tenzilat</TableHead>
-                      <TableHead className="text-[11px] px-2 text-center font-semibold text-gray-700 bg-white">Durum</TableHead>
+                      <TableHead className="text-[11px] px-2 font-semibold text-gray-700 bg-white">Firma / İstekli Adı</TableHead>
+                      <TableHead className="text-[11px] px-2 text-right whitespace-nowrap w-[120px] font-semibold text-gray-700 bg-white">Teklif Tutarı</TableHead>
+                      <TableHead className="text-[11px] px-2 text-center whitespace-nowrap w-[70px] font-semibold text-gray-700 bg-white">Tenzilat</TableHead>
+                      <TableHead className="text-[11px] px-2 text-center whitespace-nowrap w-[110px] font-semibold text-gray-700 bg-white">Durum</TableHead>
                       <TableHead className="text-[11px] px-2 text-center w-[40px] font-semibold text-gray-700 bg-white">Sil</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1751,13 +1828,25 @@ export default function IhalePage() {
                         : k.durum === "gecersiz"
                         ? "bg-gray-50"
                         : "hover:bg-gray-50";
+                      // Firma adı + tarih ayrımı (tarih varsa firma adı sonundan ayıkla)
+                      let firmaAd = k.firmaAdi;
+                      let tarihSaat = "";
+                      const tarihMatch = firmaAd.match(/^(.+?)\s*[-·]\s*(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?)\s*$/);
+                      if (tarihMatch) {
+                        firmaAd = tarihMatch[1].trim();
+                        tarihSaat = tarihMatch[2].trim();
+                      }
+                      const firmaKisa = firmaAd.length > 60 ? firmaAd.slice(0, 60) + "…" : firmaAd;
                       return (
                         <TableRow key={`${k.firmaAdi}-${k.teklif}-${i}`} className={rowClass}>
                           <TableCell className="px-2 text-center text-gray-400">{i + 1}</TableCell>
-                          <TableCell className="px-2">
-                            <span className={`uppercase font-medium text-gray-900 ${k.isOwn ? "text-emerald-800 font-bold" : ""}`}>
-                              {k.firmaAdi}
-                            </span>
+                          <TableCell className="px-2 max-w-0">
+                            <div className="truncate" title={firmaAd}>
+                              <span className={`uppercase font-medium text-gray-900 ${k.isOwn ? "text-emerald-800 font-bold" : ""}`}>
+                                {firmaKisa}
+                              </span>
+                              {tarihSaat && <span className="text-gray-500 ml-1">· {tarihSaat}</span>}
+                            </div>
                             {(k.gecersizNedeni || k.uyarilar.length > 0 || k.isEdited) && (
                               <div className="mt-0.5 flex flex-wrap gap-1">
                                 {k.isEdited && (
@@ -1871,32 +1960,124 @@ export default function IhalePage() {
               <p className="text-gray-500">Henüz kaydedilmiş ihale bulunmuyor.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg border overflow-x-auto">
+            <div className="bg-white rounded-lg border">
               <Table className="text-xs">
                 <TableHeader>
                   <TableRow className="bg-[#64748B]">
-                    <TableHead className="text-white text-[11px] px-2">Analiz Tarihi</TableHead>
-                    <TableHead className="text-white text-[11px] px-2">İKN</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 min-w-[200px]">İdare</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 min-w-[150px]">İşin Adı</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Y. Maliyet</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Kazanan Tutar</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Analiz Tarihi</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">İhale Tarihi</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">İKN</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">İdare</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">İşin Adı</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Hesaplanan Y. Maliyet</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Y. Maliyet</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Kazanan Tutar</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-center whitespace-nowrap">Firma</TableHead>
                     <TableHead className="text-white text-[11px] px-2">Muhtemel Kazanan</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-center">Durum</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-center whitespace-nowrap">Durum</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-center w-[80px]">İşlem</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtreliGecmis.map((i) => (
+                  {filtreliGecmis.map((i) => {
+                    // İşin adını 30 karakterde kes (… ile)
+                    const isAdiKisa = i.is_adi
+                      ? (i.is_adi.length > 30 ? i.is_adi.slice(0, 30) + "…" : i.is_adi)
+                      : "—";
+                    // Muhtemel kazanan + ihale tarihi/saati yan yana
+                    let mkAdHam = i.muhtemel_kazanan ?? "";
+                    let ihaleTarihStr = "";
+                    // Önce ihale_tarihi field'ından dene
+                    if (i.ihale_tarihi) {
+                      const d = new Date(i.ihale_tarihi);
+                      if (!isNaN(d.getTime())) {
+                        ihaleTarihStr = d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                      } else {
+                        ihaleTarihStr = i.ihale_tarihi;
+                      }
+                    }
+                    // ihale_tarihi yoksa firma adının sonunda gizli olabilir:
+                    // "FIRMA - DD.MM.YYYY HH:MM" veya "FIRMA - DD.MM.YYYY" formatı
+                    if (!ihaleTarihStr) {
+                      const m = mkAdHam.match(/^(.+?)\s*[-·]\s*(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?)\s*$/);
+                      if (m) {
+                        mkAdHam = m[1].trim();
+                        ihaleTarihStr = m[2].trim();
+                      }
+                    }
+                    const mkKisa = mkAdHam.length > 25 ? mkAdHam.slice(0, 25) + "…" : mkAdHam;
+                    const idareKisa = i.idare_adi
+                      ? (i.idare_adi.length > 22 ? i.idare_adi.slice(0, 22) + "…" : i.idare_adi)
+                      : "—";
+                    const katSayisi = (i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0;
+                    return (
                     <TableRow key={i.id} className="hover:bg-gray-50">
                       <TableCell className="px-2 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
-                      <TableCell className="px-2 font-mono text-[11px]">{i.ihale_kayit_no ?? "—"}</TableCell>
-                      <TableCell className="px-2 truncate max-w-[200px]" title={i.idare_adi ?? ""}>{i.idare_adi ?? "—"}</TableCell>
-                      <TableCell className="px-2 truncate max-w-[150px]" title={i.is_adi ?? ""}>{i.is_adi ?? "—"}</TableCell>
-                      <TableCell className="px-2 text-right">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
-                      <TableCell className="px-2 text-right font-bold text-[#1E3A5F]">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
-                      <TableCell className="px-2">{i.muhtemel_kazanan ?? "—"}</TableCell>
-                      <TableCell className="px-2 text-center">
+                      {/* İhale Tarihi — tıklayınca inline date input açılır */}
+                      <TableCell className="px-2 whitespace-nowrap">
+                        {gecmisEditId === i.id && gecmisEditField === "ihale_tarihi" ? (
+                          <input
+                            type="date"
+                            value={gecmisEditValue}
+                            autoFocus
+                            onChange={(e) => setGecmisEditValue(e.target.value)}
+                            onBlur={gecmisEditKaydet}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") gecmisEditKaydet();
+                              if (e.key === "Escape") gecmisEditIptal();
+                            }}
+                            className="h-7 text-xs border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); gecmisEditStart(i, "ihale_tarihi"); }}
+                            title="Düzenlemek için tıklayın"
+                            className="hover:bg-blue-50 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                          >
+                            {i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").toLocaleDateString("tr-TR") : "—"}
+                          </button>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-2 font-mono text-[11px] whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
+                      <TableCell className="px-2 whitespace-nowrap max-w-[160px] truncate" title={i.idare_adi ?? ""}>{idareKisa}</TableCell>
+                      <TableCell className="px-2 whitespace-nowrap" title={i.is_adi ?? ""}>{isAdiKisa}</TableCell>
+                      {/* Hesaplanan YM — tıklayınca inline para input açılır */}
+                      <TableCell className="px-2 text-right whitespace-nowrap text-blue-700">
+                        {gecmisEditId === i.id && gecmisEditField === "hesaplanan_ym" ? (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={gecmisEditValue}
+                            autoFocus
+                            onChange={(e) => setGecmisEditValue(formatParaInput(e.target.value))}
+                            onBlur={gecmisEditKaydet}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") gecmisEditKaydet();
+                              if (e.key === "Escape") gecmisEditIptal();
+                            }}
+                            placeholder="0,00"
+                            className="h-7 text-xs text-right border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200 w-32"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); gecmisEditStart(i, "hesaplanan_ym"); }}
+                            title="Düzenlemek için tıklayın"
+                            className="hover:bg-blue-50 rounded px-1.5 py-0.5 cursor-pointer transition-colors text-blue-700"
+                          >
+                            {i.hesaplanan_yaklasik_maliyet ? formatTL(i.hesaplanan_yaklasik_maliyet) : "—"}
+                          </button>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-2 text-right whitespace-nowrap">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
+                      <TableCell className="px-2 text-right font-bold text-[#1E3A5F] whitespace-nowrap">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
+                      <TableCell className="px-2 text-center whitespace-nowrap">{katSayisi}</TableCell>
+                      <TableCell className="px-2 whitespace-nowrap" title={i.muhtemel_kazanan ?? ""}>
+                        {mkKisa || "—"}
+                        {ihaleTarihStr && <span className="text-gray-500 ml-1">· {ihaleTarihStr}</span>}
+                      </TableCell>
+                      <TableCell className="px-2 text-center whitespace-nowrap">
                         {i.has_manual_edits && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">DÜZENLENDİ</span>}
                       </TableCell>
                       <TableCell className="px-2 text-center">
@@ -1912,7 +2093,8 @@ export default function IhalePage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
