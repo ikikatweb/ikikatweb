@@ -917,6 +917,33 @@ export default function IhalePage() {
   const [gecmisEditField, setGecmisEditField] = useState<"ihale_tarihi" | "hesaplanan_ym" | null>(null);
   const [gecmisEditValue, setGecmisEditValue] = useState("");
 
+  // Geçmiş tablo çoklu sıralama (Shift+tıklama → ek sütun ekler)
+  type SortField = "created_at" | "ihale_tarihi" | "ihale_kayit_no" | "idare_adi" | "is_adi"
+    | "hesaplanan_yaklasik_maliyet" | "yaklasik_maliyet" | "muhtemel_kazanan_tutar"
+    | "katilimci_sayisi" | "muhtemel_kazanan";
+  type SortItem = { field: SortField; dir: "asc" | "desc" };
+  const [sortConfig, setSortConfig] = useState<SortItem[]>([]);
+
+  function toggleSort(field: SortField, shiftKey: boolean) {
+    setSortConfig((prev) => {
+      const idx = prev.findIndex((s) => s.field === field);
+      if (idx >= 0) {
+        const cur = prev[idx];
+        // asc → desc → kaldır (shift yoksa diğer sortları temizle)
+        if (cur.dir === "asc") {
+          const next = [...prev];
+          next[idx] = { ...cur, dir: "desc" };
+          return shiftKey ? next : [next[idx]];
+        }
+        // desc → kaldır
+        const filtered = prev.filter((_, i) => i !== idx);
+        return shiftKey ? filtered : [];
+      }
+      const newItem: SortItem = { field, dir: "asc" };
+      return shiftKey ? [...prev, newItem] : [newItem];
+    });
+  }
+
   // Veri yükleme
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -1606,10 +1633,10 @@ export default function IhalePage() {
 
   // Geçmiş filtre — Türkçe-safe arama (İ/I, Ş/ş vs.) + tüm katılımcı firma adları
   // "nisa harita" yazınca, Nisa Harita'nın katıldığı tüm ihaleler süzülür.
+  // Çoklu sıralama: sortConfig dolu ise sırayla uygulanır (öncelik: ilk öğe).
   const filtreliGecmis = useMemo(() => {
     const q = gecmisArama.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return gecmisIhaleler;
-    return gecmisIhaleler.filter((i) => {
+    const filtered = !q ? gecmisIhaleler : gecmisIhaleler.filter((i) => {
       const firmaList = (i as Ihale & { firma_adlari?: string[] }).firma_adlari ?? [];
       const haystack = [
         i.idare_adi, i.is_adi, i.ihale_kayit_no, i.muhtemel_kazanan,
@@ -1618,7 +1645,39 @@ export default function IhalePage() {
       ].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
       return haystack.includes(q);
     });
-  }, [gecmisIhaleler, gecmisArama]);
+
+    if (sortConfig.length === 0) return filtered;
+
+    function getVal(i: Ihale & { katilimci_sayisi?: number }, field: SortField): number | string | null {
+      switch (field) {
+        case "created_at": return i.created_at ? new Date(i.created_at).getTime() : null;
+        case "ihale_tarihi": return i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").getTime() : null;
+        case "ihale_kayit_no": return i.ihale_kayit_no ?? null;
+        case "idare_adi": return i.idare_adi ?? null;
+        case "is_adi": return i.is_adi ?? null;
+        case "hesaplanan_yaklasik_maliyet": return i.hesaplanan_yaklasik_maliyet ?? null;
+        case "yaklasik_maliyet": return i.yaklasik_maliyet ?? null;
+        case "muhtemel_kazanan_tutar": return i.muhtemel_kazanan_tutar ?? null;
+        case "katilimci_sayisi": return i.katilimci_sayisi ?? 0;
+        case "muhtemel_kazanan": return i.muhtemel_kazanan ?? null;
+      }
+    }
+
+    return [...filtered].sort((a, b) => {
+      for (const s of sortConfig) {
+        const av = getVal(a, s.field);
+        const bv = getVal(b, s.field);
+        let cmp = 0;
+        if (av == null && bv == null) cmp = 0;
+        else if (av == null) cmp = 1;       // null'lar sona
+        else if (bv == null) cmp = -1;
+        else if (typeof av === "number" && typeof bv === "number") cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv), "tr-TR", { sensitivity: "base" });
+        if (cmp !== 0) return s.dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
+    });
+  }, [gecmisIhaleler, gecmisArama, sortConfig]);
 
   // Sıfırla
   function sifirla() {
@@ -1946,12 +2005,22 @@ export default function IhalePage() {
 
         {/* ======================== SEKME 2: GEÇMİŞ İHALELER ======================== */}
         <TabsContent value="gecmis">
-          <div className="bg-white rounded-lg border p-3 mb-4">
-            <div className="relative max-w-sm">
+          <div className="bg-white rounded-lg border p-3 mb-4 flex items-center gap-3 flex-wrap">
+            <div className="relative max-w-sm flex-1 min-w-[240px]">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input type="text" value={gecmisArama} onChange={(e) => setGecmisArama(e.target.value)}
                 placeholder="İKN, idare, firma ara..." className={selectClass + " w-full pl-8"} />
             </div>
+            <span className="text-[10px] text-gray-400 flex items-center gap-1 select-none">
+              <span className="bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 font-mono text-[9px]">Shift</span>
+              + tıkla → çoklu sıralama
+            </span>
+            {sortConfig.length > 0 && (
+              <button type="button" onClick={() => setSortConfig([])}
+                className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
+                Sırayı temizle ({sortConfig.length})
+              </button>
+            )}
           </div>
 
           {filtreliGecmis.length === 0 ? (
@@ -1964,16 +2033,37 @@ export default function IhalePage() {
               <Table className="text-xs">
                 <TableHeader>
                   <TableRow className="bg-[#64748B]">
-                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Analiz Tarihi</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">İhale Tarihi</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">İKN</TableHead>
-                    <TableHead className="text-white text-[11px] px-2">İdare</TableHead>
-                    <TableHead className="text-white text-[11px] px-2">İşin Adı</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Hesaplanan Y. Maliyet</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Y. Maliyet</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right whitespace-nowrap">Kazanan Tutar</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-center whitespace-nowrap">Firma</TableHead>
-                    <TableHead className="text-white text-[11px] px-2">Muhtemel Kazanan</TableHead>
+                    {([
+                      { f: "created_at" as SortField, label: "Analiz Tarihi", align: "left" },
+                      { f: "ihale_tarihi" as SortField, label: "İhale Tarihi", align: "left" },
+                      { f: "ihale_kayit_no" as SortField, label: "İKN", align: "left" },
+                      { f: "idare_adi" as SortField, label: "İdare", align: "left" },
+                      { f: "is_adi" as SortField, label: "İşin Adı", align: "left" },
+                      { f: "hesaplanan_yaklasik_maliyet" as SortField, label: "Hesaplanan Y. Maliyet", align: "right" },
+                      { f: "yaklasik_maliyet" as SortField, label: "Y. Maliyet", align: "right" },
+                      { f: "muhtemel_kazanan_tutar" as SortField, label: "Kazanan Tutar", align: "right" },
+                      { f: "katilimci_sayisi" as SortField, label: "Firma", align: "center" },
+                      { f: "muhtemel_kazanan" as SortField, label: "Muhtemel Kazanan", align: "left" },
+                    ] as { f: SortField; label: string; align: "left" | "right" | "center" }[]).map((col) => {
+                      const sortIdx = sortConfig.findIndex((s) => s.field === col.f);
+                      const sortItem = sortIdx >= 0 ? sortConfig[sortIdx] : null;
+                      return (
+                        <TableHead key={col.f}
+                          onClick={(e) => toggleSort(col.f, e.shiftKey)}
+                          title="Tıkla: sırala. Shift+tıkla: çoklu sıralama. Tekrar tıkla: yön/iptal."
+                          className={`text-white text-[11px] px-2 whitespace-nowrap cursor-pointer select-none hover:bg-[#4f5b6b] ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}`}>
+                          <span className="inline-flex items-center gap-1">
+                            {col.label}
+                            {sortItem && (
+                              <span className="inline-flex items-center text-[9px] text-amber-300 font-semibold">
+                                {sortItem.dir === "asc" ? "▲" : "▼"}
+                                {sortConfig.length > 1 && <span className="ml-0.5">{sortIdx + 1}</span>}
+                              </span>
+                            )}
+                          </span>
+                        </TableHead>
+                      );
+                    })}
                     <TableHead className="text-white text-[11px] px-2 text-center whitespace-nowrap">Durum</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-center w-[80px]">İşlem</TableHead>
                   </TableRow>
