@@ -59,7 +59,13 @@ function formatTanimlamaDeger(kategori: string, deger: string): string {
   // URL ise hiçbir formatlama uygulama (büyük/küçük harf duyarlılığı kritik)
   const trimmed = deger.trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  // Email ise hiçbir formatlama uygulama (örn. muhasebe@firma.com.tr olduğu gibi kalsın)
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
   const k = kategori.toLowerCase();
+  // Email içeren kategoriler için her durumda formatlamayı atla
+  if (k.includes("email") || k.includes("e_posta") || k.includes("eposta") || k.includes("mail")) {
+    return trimmed;
+  }
   if (k === "muhatap" || k === "banka_muhatap") return formatMuhatap(deger);
   if (k === "talimat_kisi") return formatKisiAdi(deger);
   return formatBaslik(deger);
@@ -215,6 +221,11 @@ export default function TanimlamalarPage() {
   if (!katSet.has("sigorta_yaklasir_gun")) {
     kategoriler.push({ key: "sigorta_yaklasir_gun", sekme: "sigorta-muayene" });
     katSet.add("sigorta_yaklasir_gun");
+  }
+  // Bordro takibi muhasebe email
+  if (!katSet.has("muhasebe_email")) {
+    kategoriler.push({ key: "muhasebe_email", sekme: "bordro-takibi" });
+    katSet.add("muhasebe_email");
   }
   kategoriler.sort((a, b) => a.key.localeCompare(b.key, "tr"));
 

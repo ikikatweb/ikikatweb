@@ -12,6 +12,7 @@ export const SEKME_LISTESI = [
   { key: "firmalar", label: "Firmalar" },
   { key: "santiyeler", label: "Şantiyeler" },
   { key: "personel", label: "Personel" },
+  { key: "bordro-takibi", label: "Bordro Takibi" },
   { key: "araclar", label: "Araçlar" },
   { key: "yazismalar", label: "Yazışmalar" },
   { key: "puantaj", label: "Puantaj" },

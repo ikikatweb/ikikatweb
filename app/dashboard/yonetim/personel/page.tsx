@@ -35,6 +35,8 @@ export default function PersonelPage() {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
+  // Personel tipi filtresi: "tumu" | "kadro" | "taseron"
+  const [tipFiltre, setTipFiltre] = useState<"tumu" | "kadro" | "taseron">("tumu");
   const router = useRouter();
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-personel", "ekle");
@@ -87,6 +89,9 @@ export default function PersonelPage() {
 
   const filtrelenmis = personeller.filter((p) => {
     if (!personelIzinliSantiyedeMi(p.id, p.santiye_id)) return false;
+    // Tip filtresi: kadro = personel_tipi !== "taseron" (boş veya "kadro"); taseron = "taseron"
+    if (tipFiltre === "kadro" && p.personel_tipi === "taseron") return false;
+    if (tipFiltre === "taseron" && p.personel_tipi !== "taseron") return false;
     if (!arama.trim()) return true;
     const q = arama.toLowerCase();
     return (
@@ -161,9 +166,37 @@ export default function PersonelPage() {
         </div>
       </div>
 
-      <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <Input placeholder="Ad, TC, meslek, görev ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Input placeholder="Ad, TC, meslek, görev ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
+        </div>
+        {/* Tip filtresi: Tümü / Kadro / Taşeron */}
+        <div className="flex gap-1">
+          {([
+            { k: "tumu", l: "Tümü" },
+            { k: "kadro", l: "Kadro" },
+            { k: "taseron", l: "Taşeron" },
+          ] as const).map((b) => {
+            const aktif = tipFiltre === b.k;
+            const sayi =
+              b.k === "tumu" ? personeller.length :
+              b.k === "kadro" ? personeller.filter((p) => p.personel_tipi !== "taseron").length :
+              personeller.filter((p) => p.personel_tipi === "taseron").length;
+            return (
+              <button key={b.k} type="button" onClick={() => setTipFiltre(b.k)}
+                className={`text-xs px-3 py-2 rounded-md border transition-colors inline-flex items-center gap-1.5 ${
+                  aktif ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
+                    : "bg-white border-gray-300 text-gray-600 hover:border-[#1E3A5F]"
+                }`}>
+                {b.l}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                  aktif ? "bg-white/20" : "bg-gray-100 text-gray-500"
+                }`}>{sayi}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {loading ? (
@@ -199,7 +232,12 @@ export default function PersonelPage() {
                   <TableRow key={p.id} className={pasif ? "opacity-60 bg-gray-50" : undefined}>
                     <TableCell className="tabular-nums">{p.tc_kimlik_no}</TableCell>
                     <TableCell className="font-medium">
-                      <span className={pasif ? "text-gray-500" : undefined}>{p.ad_soyad}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={pasif ? "text-gray-500" : undefined}>{p.ad_soyad}</span>
+                        {p.personel_tipi === "taseron" && (
+                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">TAŞERON</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>{p.santiyeler?.is_adi ?? "—"}</TableCell>
                     <TableCell className="hidden sm:table-cell tabular-nums">{p.cep_telefon ?? "—"}</TableCell>

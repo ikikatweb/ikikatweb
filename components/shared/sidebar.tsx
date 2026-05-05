@@ -10,7 +10,7 @@ import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
   Mail, MailOpen, Landmark, Trash2,
   Shield, Headphones, BarChart3, Wrench,
-  ClipboardList, Fuel, Wallet, NotebookPen, Calculator,
+  ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus,
   ChevronDown, ChevronUp,
 } from "lucide-react";
 
@@ -76,6 +76,7 @@ const menuGroups: MenuGroup[] = [
     color: "text-amber-600 bg-amber-50",
     items: [
       { label: "İşçilik Durum Raporu", href: "/dashboard/iscilik-takibi", icon: <ClipboardList size={16} /> },
+      { label: "Bordro Takibi", href: "/dashboard/bordro-takibi", icon: <UserPlus size={16} /> },
     ],
   },
   {

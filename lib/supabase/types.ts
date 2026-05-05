@@ -118,6 +118,10 @@ export type Personel = {
   cep_telefon: string | null;
   durum: "aktif" | "pasif";
   pasif_tarihi: string | null;
+  // Personel tipi: "kadro" (firma kadrolu) | "taseron" (taşeron işçi).
+  // Bordro Takibi'nden eklenenler "taseron" olarak işaretlenir; her ikisi de
+  // bordro kanban'ında görünür ama Personeller sayfasında filtrelenebilir.
+  personel_tipi?: "kadro" | "taseron";
   created_at: string;
   updated_at: string;
 };
@@ -135,6 +139,30 @@ export type PersonelSantiye = {
   personel_id: string;
   santiye_id: string;
   atanma_tarihi: string;
+};
+
+// Personel atama geçmişi — transfer ve gün sayısı takibi için.
+// Her satır bir personelin bir şantiyede ne zaman başladığını + ne zaman ayrıldığını tutar.
+// bitis_tarihi NULL → personel halen o şantiyede çalışıyor.
+export type PersonelAtamaGecmisi = {
+  id: string;
+  personel_id: string;
+  santiye_id: string;
+  baslangic_tarihi: string;       // YYYY-MM-DD
+  bitis_tarihi: string | null;     // YYYY-MM-DD veya NULL
+  created_at: string;
+};
+export type PersonelAtamaGecmisiInsert = Omit<PersonelAtamaGecmisi, "id" | "created_at">;
+
+// Personel × Şantiye × Ay bazlı manuel gün override.
+// Atama tarihlerini etkilemez — sadece o ay için gün sayısını görsel olarak değiştirir.
+export type PersonelAtamaManuelGun = {
+  id: string;
+  personel_id: string;
+  santiye_id: string;
+  ay: string;       // "YYYY-MM"
+  gun: number;
+  created_at: string;
 };
 
 export type Arac = {
