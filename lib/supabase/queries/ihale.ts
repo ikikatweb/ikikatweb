@@ -84,11 +84,15 @@ export async function insertIhale(ihale: IhaleInsert): Promise<Ihale> {
 
   try {
     const { bildirimGonder } = await import("@/lib/bildirim");
+    const savedId = (data as Ihale).id;
     bildirimGonder({
       baslik: `🏛️ Yeni İhale`,
       govde: `${ihale.idare_adi ?? "?"}${ihale.is_adi ? " · " + ihale.is_adi.slice(0, 80) : ""}`,
-      url: "/dashboard/ihale",
+      // Bildirime tıklayınca: ilgili ihale yüklenip PDF otomatik açılır
+      url: `/dashboard/ihale?ihale=${savedId}&pdf=1`,
       tag: "ihale",
+      kaynak_tip: "ihale",
+      kaynak_id: savedId,
     });
   } catch { /* sessiz */ }
 

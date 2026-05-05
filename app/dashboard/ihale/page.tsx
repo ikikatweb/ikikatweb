@@ -2,7 +2,8 @@
 // 4734 Sayılı KİK bazlı rekabet analizi otomasyonu
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
@@ -838,11 +839,26 @@ async function parseDocx(file: File): Promise<ParsedData> {
 // İş Grubu tipi
 type IsGrubu = { id: string; deger: string; kisa_ad: string | null; sira: number; aktif: boolean };
 
+// useSearchParams() Suspense gerektirir — wrap edip içerideki component'i çağırıyoruz.
 export default function IhalePage() {
+  return (
+    <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}>
+      <IhalePageContent />
+    </Suspense>
+  );
+}
+
+function IhalePageContent() {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("ihale", "ekle");
   const yDuzenle = hasPermission("ihale", "duzenle");
   const ySil = hasPermission("ihale", "sil");
+
+  // Bildirimden gelen deep link parametrelerini takip
+  // (?ihale=<id>&pdf=1 → o ihaleyi yükleyip PDF'i otomatik aç)
+  const searchParams = useSearchParams();
+  const otoYukleRef = useRef<string>("");
+  const otoPdfRef = useRef<string>("");
 
   const [loading, setLoading] = useState(true);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -907,6 +923,8 @@ export default function IhalePage() {
 
   // Geçmiş filtre
   const [gecmisArama, setGecmisArama] = useState("");
+  // Çoklu iş grubu seçimi — boşken filtre yok, dolduğunda sadece seçilenler gösterilir
+  const [isGrubuFiltre, setIsGrubuFiltre] = useState<Set<string>>(new Set());
   const [hesapDetayAcik, setHesapDetayAcik] = useState(false);
 
   // Silme onayı
@@ -971,6 +989,19 @@ export default function IhalePage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Bildirimden gelen deep link: ?ihale=<id>&pdf=1
+  // Geçmiş ihaleler yüklendikten sonra ilgili kaydı forma yükle.
+  useEffect(() => {
+    const urlIhaleId = searchParams.get("ihale");
+    if (!urlIhaleId || gecmisIhaleler.length === 0) return;
+    if (otoYukleRef.current === urlIhaleId) return;
+    const target = gecmisIhaleler.find((i) => i.id === urlIhaleId);
+    if (!target) return;
+    otoYukleRef.current = urlIhaleId;
+    gecmisYukle(target).catch((err) => console.error("Deep link yükleme:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, gecmisIhaleler]);
 
   // Düzenleme yapıldığında otomatik kaydet (debounce 1.5s)
   useEffect(() => {
@@ -1052,6 +1083,22 @@ export default function IhalePage() {
     if (ym <= 0) return 0;
     return round2(((ym - teklif) / ym) * 100);
   }
+
+  // Auto-PDF: bildirimden geldiyse (?ihale=<id>&pdf=1), yükleme tamamlanıp hesap hazır olunca PDF üret
+  useEffect(() => {
+    const urlIhaleId = searchParams.get("ihale");
+    const pdfFlag = searchParams.get("pdf");
+    if (pdfFlag !== "1" || !urlIhaleId) return;
+    if (currentIhaleId !== urlIhaleId) return;
+    if (!analizYapildi || !hesap) return;
+    if (otoPdfRef.current === urlIhaleId) return;
+    otoPdfRef.current = urlIhaleId;
+    // Bir tick bekle ki UI render bitsin
+    setTimeout(() => {
+      try { exportPDF(); } catch (err) { console.error("Auto PDF hatası:", err); }
+    }, 300);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, currentIhaleId, analizYapildi, hesap]);
 
   // İş grubu seçilince N otomatik dol
   function isGrubuSec(val: string) {
@@ -1201,6 +1248,22 @@ export default function IhalePage() {
     forceNew = false,
   ) {
     try {
+      // Yeni dosya yüklemesinde aynı İKN + iş_adı kombinasyonu zaten kayıtlıysa
+      // tekrar kayıt yapma. (Multi-grup ihalelerde her alt grup farklı iş_adı'yla
+      // kaydedildiği için aynı İKN'ye sahip birden çok kayıt olabilir.)
+      if (forceNew && parsed?.ihaleKayitNo) {
+        const yeniIsAdi = parsed.isAdi || null;
+        const mevcut = gecmisIhaleler.find(
+          (g) => g.ihale_kayit_no === parsed.ihaleKayitNo && (g.is_adi ?? null) === yeniIsAdi
+        );
+        if (mevcut) {
+          toast.error(
+            `Bu ihale zaten kayıtlı (İKN: ${mevcut.ihale_kayit_no}). Düzenlemek için Geçmiş İhaleler sekmesinden açın.`,
+            { duration: 7000 }
+          );
+          return;
+        }
+      }
       const ymVal = parsed ? parsed.yaklasikMaliyet : parseParaInput(yaklasikMaliyet);
       const gecerliTeklifler = kat.filter((k) => k.durum === "gecerli").map((k) => k.teklif);
       const h = hesaplaSinirDeger(gecerliTeklifler, ymVal, nVal);
@@ -1636,7 +1699,7 @@ export default function IhalePage() {
   // Çoklu sıralama: sortConfig dolu ise sırayla uygulanır (öncelik: ilk öğe).
   const filtreliGecmis = useMemo(() => {
     const q = gecmisArama.trim().toLocaleLowerCase("tr-TR");
-    const filtered = !q ? gecmisIhaleler : gecmisIhaleler.filter((i) => {
+    let filtered = !q ? gecmisIhaleler : gecmisIhaleler.filter((i) => {
       const firmaList = (i as Ihale & { firma_adlari?: string[] }).firma_adlari ?? [];
       const haystack = [
         i.idare_adi, i.is_adi, i.ihale_kayit_no, i.muhtemel_kazanan,
@@ -1645,6 +1708,11 @@ export default function IhalePage() {
       ].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
       return haystack.includes(q);
     });
+
+    // İş grubu çoklu filtre: seçim varsa sadece seçili gruplara ait kayıtları tut
+    if (isGrubuFiltre.size > 0) {
+      filtered = filtered.filter((i) => i.is_grubu != null && isGrubuFiltre.has(i.is_grubu));
+    }
 
     if (sortConfig.length === 0) return filtered;
 
@@ -1677,7 +1745,71 @@ export default function IhalePage() {
       }
       return 0;
     });
-  }, [gecmisIhaleler, gecmisArama, sortConfig]);
+  }, [gecmisIhaleler, gecmisArama, sortConfig, isGrubuFiltre]);
+
+  // Geçmiş İhaleler — Excel indir (filtreli + sıralı liste)
+  function gecmisExportExcel() {
+    if (filtreliGecmis.length === 0) { toast.error("İndirilecek kayıt yok."); return; }
+    const headers = [
+      "Sıra", "Analiz Tarihi", "İhale Tarihi", "İKN", "İdare", "İşin Adı",
+      "Hesaplanan Y. Maliyet", "Y. Maliyet", "Kazanan Tutar",
+      "Firma Sayısı", "Muhtemel Kazanan", "İş Grubu",
+    ];
+    const data = filtreliGecmis.map((i, ix) => [
+      ix + 1,
+      i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "",
+      i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").toLocaleDateString("tr-TR") : "",
+      i.ihale_kayit_no ?? "",
+      i.idare_adi ?? "",
+      i.is_adi ?? "",
+      i.hesaplanan_yaklasik_maliyet ?? "",
+      i.yaklasik_maliyet ?? "",
+      i.muhtemel_kazanan_tutar ?? "",
+      (i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0,
+      i.muhtemel_kazanan ?? "",
+      i.is_grubu ?? "",
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    ws["!cols"] = [
+      { wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 30 }, { wch: 35 },
+      { wch: 18 }, { wch: 18 }, { wch: 18 },
+      { wch: 8 }, { wch: 30 }, { wch: 14 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Geçmiş İhaleler");
+    XLSX.writeFile(wb, `gecmis-ihaleler-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  // Geçmiş İhaleler — PDF indir (filtreli + sıralı liste)
+  function gecmisExportPDF() {
+    if (filtreliGecmis.length === 0) { toast.error("İndirilecek kayıt yok."); return; }
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+    doc.text(tr("Gecmis Ihaleler"), 14, 15);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(`Tarih: ${new Date().toLocaleDateString("tr-TR")}  |  Toplam: ${filtreliGecmis.length} ihale`, 14, 21);
+    autoTable(doc, {
+      startY: 25,
+      head: [["Sira", "Analiz", "Ihale Tar.", "IKN", "Idare", "Isin Adi", "Hes. Y.M.", "Y. Maliyet", "Kazanan", "Firma", "Muh. Kazanan"]],
+      body: filtreliGecmis.map((i, ix) => [
+        String(ix + 1),
+        i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "",
+        i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").toLocaleDateString("tr-TR") : "",
+        i.ihale_kayit_no ?? "",
+        tr((i.idare_adi ?? "").slice(0, 30)),
+        tr((i.is_adi ?? "").slice(0, 35)),
+        i.hesaplanan_yaklasik_maliyet ? i.hesaplanan_yaklasik_maliyet.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "",
+        i.yaklasik_maliyet ? i.yaklasik_maliyet.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "",
+        i.muhtemel_kazanan_tutar ? i.muhtemel_kazanan_tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "",
+        String((i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0),
+        tr((i.muhtemel_kazanan ?? "").slice(0, 30)),
+      ]),
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [30, 58, 95] },
+      alternateRowStyles: { fillColor: [241, 245, 249] },
+    });
+    doc.save(`gecmis-ihaleler-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
 
   // Sıfırla
   function sifirla() {
@@ -2005,21 +2137,66 @@ export default function IhalePage() {
 
         {/* ======================== SEKME 2: GEÇMİŞ İHALELER ======================== */}
         <TabsContent value="gecmis">
-          <div className="bg-white rounded-lg border p-3 mb-4 flex items-center gap-3 flex-wrap">
-            <div className="relative max-w-sm flex-1 min-w-[240px]">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" value={gecmisArama} onChange={(e) => setGecmisArama(e.target.value)}
-                placeholder="İKN, idare, firma ara..." className={selectClass + " w-full pl-8"} />
+          <div className="bg-white rounded-lg border p-3 mb-4 space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative max-w-sm flex-1 min-w-[240px]">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" value={gecmisArama} onChange={(e) => setGecmisArama(e.target.value)}
+                  placeholder="İKN, idare, firma ara..." className={selectClass + " w-full pl-8"} />
+              </div>
+              <span className="text-[10px] text-gray-400 flex items-center gap-1 select-none">
+                <span className="bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 font-mono text-[9px]">Shift</span>
+                + tıkla → çoklu sıralama
+              </span>
+              {sortConfig.length > 0 && (
+                <button type="button" onClick={() => setSortConfig([])}
+                  className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
+                  Sırayı temizle ({sortConfig.length})
+                </button>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-[11px] text-gray-400">{filtreliGecmis.length} kayıt</span>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={gecmisExportPDF} disabled={filtreliGecmis.length === 0}>
+                  <FileDown size={13} /> PDF
+                </Button>
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={gecmisExportExcel} disabled={filtreliGecmis.length === 0}>
+                  <FileSpreadsheet size={13} /> Excel
+                </Button>
+              </div>
             </div>
-            <span className="text-[10px] text-gray-400 flex items-center gap-1 select-none">
-              <span className="bg-gray-100 border border-gray-300 rounded px-1.5 py-0.5 font-mono text-[9px]">Shift</span>
-              + tıkla → çoklu sıralama
-            </span>
-            {sortConfig.length > 0 && (
-              <button type="button" onClick={() => setSortConfig([])}
-                className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
-                Sırayı temizle ({sortConfig.length})
-              </button>
+
+            {/* İş grubu çoklu filtre */}
+            {isGruplari.filter((g) => g.aktif).length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-gray-100">
+                <span className="text-[11px] font-semibold text-gray-500 mr-1">İş Grubu:</span>
+                {isGruplari.filter((g) => g.aktif).map((g) => {
+                  const aktif = isGrubuFiltre.has(g.deger);
+                  return (
+                    <button key={g.id} type="button"
+                      onClick={() => {
+                        setIsGrubuFiltre((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(g.deger)) next.delete(g.deger);
+                          else next.add(g.deger);
+                          return next;
+                        });
+                      }}
+                      className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
+                        aktif
+                          ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
+                          : "bg-white border-gray-300 text-gray-600 hover:border-[#1E3A5F] hover:text-[#1E3A5F]"
+                      }`}>
+                      {g.deger}
+                    </button>
+                  );
+                })}
+                {isGrubuFiltre.size > 0 && (
+                  <button type="button" onClick={() => setIsGrubuFiltre(new Set())}
+                    className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-50 ml-1">
+                    Temizle
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -2030,9 +2207,10 @@ export default function IhalePage() {
             </div>
           ) : (
             <div className="bg-white rounded-lg border">
-              <Table className="text-xs">
-                <TableHeader>
+              <Table className="text-[11px] w-full" containerClassName="overflow-x-hidden max-h-[75vh]">
+                <TableHeader className="sticky top-0 z-20">
                   <TableRow className="bg-[#64748B]">
+                    <TableHead className="text-white text-[10px] px-1.5 text-center w-[34px] whitespace-nowrap bg-[#64748B]">#</TableHead>
                     {([
                       { f: "created_at" as SortField, label: "Analiz Tarihi", align: "left" },
                       { f: "ihale_tarihi" as SortField, label: "İhale Tarihi", align: "left" },
@@ -2051,11 +2229,11 @@ export default function IhalePage() {
                         <TableHead key={col.f}
                           onClick={(e) => toggleSort(col.f, e.shiftKey)}
                           title="Tıkla: sırala. Shift+tıkla: çoklu sıralama. Tekrar tıkla: yön/iptal."
-                          className={`text-white text-[11px] px-2 whitespace-nowrap cursor-pointer select-none hover:bg-[#4f5b6b] ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}`}>
+                          className={`text-white text-[10px] px-1.5 whitespace-nowrap cursor-pointer select-none bg-[#64748B] hover:bg-[#4f5b6b] ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}`}>
                           <span className="inline-flex items-center gap-1">
                             {col.label}
                             {sortItem && (
-                              <span className="inline-flex items-center text-[9px] text-amber-300 font-semibold">
+                              <span className="inline-flex items-center text-[8px] text-amber-300 font-semibold">
                                 {sortItem.dir === "asc" ? "▲" : "▼"}
                                 {sortConfig.length > 1 && <span className="ml-0.5">{sortIdx + 1}</span>}
                               </span>
@@ -2064,47 +2242,72 @@ export default function IhalePage() {
                         </TableHead>
                       );
                     })}
-                    <TableHead className="text-white text-[11px] px-2 text-center whitespace-nowrap">Durum</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-center w-[80px]">İşlem</TableHead>
+                    <TableHead className="text-white text-[10px] px-1.5 text-center whitespace-nowrap bg-[#64748B]">Durum</TableHead>
+                    <TableHead className="text-white text-[10px] px-1.5 text-center w-[64px] bg-[#64748B]">İşlem</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtreliGecmis.map((i) => {
-                    // İşin adını 30 karakterde kes (… ile)
+                  {filtreliGecmis.map((i, ix) => {
+                    // İşin adını 24 karakterde kes (… ile)
                     const isAdiKisa = i.is_adi
-                      ? (i.is_adi.length > 30 ? i.is_adi.slice(0, 30) + "…" : i.is_adi)
+                      ? (i.is_adi.length > 24 ? i.is_adi.slice(0, 24) + "…" : i.is_adi)
                       : "—";
                     // Muhtemel kazanan + ihale tarihi/saati yan yana
+                    // ÖNCE muhtemel_kazanan'da gömülü "FIRMA - DD.MM.YYYY HH:MM" pattern'ini ara —
+                    // gerçek teklif açma saati orada saklı. ihale_tarihi DB'de sadece tarih olarak
+                    // saklanıyor, saati yok. Bu yüzden ihale_tarihi'ni Date'e parse edip saat
+                    // göstermek YANLIŞ saat üretiyordu (UTC→lokal kayması).
                     let mkAdHam = i.muhtemel_kazanan ?? "";
                     let ihaleTarihStr = "";
-                    // Önce ihale_tarihi field'ından dene
-                    if (i.ihale_tarihi) {
-                      const d = new Date(i.ihale_tarihi);
+                    const mEmbed = mkAdHam.match(/^(.+?)\s*[-·]\s*(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?)\s*$/);
+                    if (mEmbed) {
+                      mkAdHam = mEmbed[1].trim();
+                      ihaleTarihStr = mEmbed[2].trim();
+                    } else if (i.ihale_tarihi) {
+                      // Sadece tarih var (saatsiz) — Date oluştururken yerel timezone için "T00:00:00" ekle
+                      const d = new Date(i.ihale_tarihi + "T00:00:00");
                       if (!isNaN(d.getTime())) {
-                        ihaleTarihStr = d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-                      } else {
-                        ihaleTarihStr = i.ihale_tarihi;
+                        ihaleTarihStr = d.toLocaleDateString("tr-TR");
                       }
                     }
-                    // ihale_tarihi yoksa firma adının sonunda gizli olabilir:
-                    // "FIRMA - DD.MM.YYYY HH:MM" veya "FIRMA - DD.MM.YYYY" formatı
-                    if (!ihaleTarihStr) {
-                      const m = mkAdHam.match(/^(.+?)\s*[-·]\s*(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?)\s*$/);
-                      if (m) {
-                        mkAdHam = m[1].trim();
-                        ihaleTarihStr = m[2].trim();
+                    const mkKisa = mkAdHam.length > 20 ? mkAdHam.slice(0, 20) + "…" : mkAdHam;
+                    // İdare adından "Devlet Su İşleri Genel Müdürlüğü" / "DSİ" prefix'lerini çıkar.
+                    // JS'in /i bayrağı Türkçe büyük "İ"yi her zaman "i" ile eşleştirmediği için,
+                    // önce string'i ASCII'ye normalleştirip indexOf ile bulup orijinalden slice alıyoruz.
+                    const idareAdiTam = i.idare_adi ?? "";
+                    const trAscii = (s: string) => s
+                      .replace(/[İIıi]/g, "i")
+                      .replace(/[şŞ]/g, "s")
+                      .replace(/[ğĞ]/g, "g")
+                      .replace(/[üÜ]/g, "u")
+                      .replace(/[öÖ]/g, "o")
+                      .replace(/[çÇ]/g, "c")
+                      .toLowerCase();
+                    const idareAscii = trAscii(idareAdiTam);
+                    // Olası prefix varyantları (uzundan kısaya — uzun olan önce eşleşmeli)
+                    const prefixAdaylari = [
+                      "devlet su isleri genel mudurlugu",
+                      "dsi genel mudurlugu",
+                    ];
+                    let idareTemiz = idareAdiTam;
+                    for (const pref of prefixAdaylari) {
+                      const ix = idareAscii.indexOf(pref);
+                      if (ix >= 0) {
+                        idareTemiz = idareAdiTam.slice(0, ix) + idareAdiTam.slice(ix + pref.length);
+                        break;
                       }
                     }
-                    const mkKisa = mkAdHam.length > 25 ? mkAdHam.slice(0, 25) + "…" : mkAdHam;
-                    const idareKisa = i.idare_adi
-                      ? (i.idare_adi.length > 22 ? i.idare_adi.slice(0, 22) + "…" : i.idare_adi)
+                    idareTemiz = idareTemiz.replace(/^[\s\-–—,:.]+|[\s\-–—,:.]+$/g, "").trim();
+                    const idareKisa = idareTemiz
+                      ? (idareTemiz.length > 18 ? idareTemiz.slice(0, 18) + "…" : idareTemiz)
                       : "—";
                     const katSayisi = (i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0;
                     return (
                     <TableRow key={i.id} className="hover:bg-gray-50">
-                      <TableCell className="px-2 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
+                      <TableCell className="px-1.5 text-center text-gray-400 text-[10px] font-mono">{ix + 1}</TableCell>
+                      <TableCell className="px-1.5 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
                       {/* İhale Tarihi — tıklayınca inline date input açılır */}
-                      <TableCell className="px-2 whitespace-nowrap">
+                      <TableCell className="px-1.5 whitespace-nowrap">
                         {gecmisEditId === i.id && gecmisEditField === "ihale_tarihi" ? (
                           <input
                             type="date"
@@ -2116,24 +2319,24 @@ export default function IhalePage() {
                               if (e.key === "Enter") gecmisEditKaydet();
                               if (e.key === "Escape") gecmisEditIptal();
                             }}
-                            className="h-7 text-xs border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200"
+                            className="h-6 text-[10px] border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); gecmisEditStart(i, "ihale_tarihi"); }}
                             title="Düzenlemek için tıklayın"
-                            className="hover:bg-blue-50 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                            className="hover:bg-blue-50 rounded px-1 py-0.5 cursor-pointer transition-colors"
                           >
                             {i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").toLocaleDateString("tr-TR") : "—"}
                           </button>
                         )}
                       </TableCell>
-                      <TableCell className="px-2 font-mono text-[11px] whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
-                      <TableCell className="px-2 whitespace-nowrap max-w-[160px] truncate" title={i.idare_adi ?? ""}>{idareKisa}</TableCell>
-                      <TableCell className="px-2 whitespace-nowrap" title={i.is_adi ?? ""}>{isAdiKisa}</TableCell>
+                      <TableCell className="px-1.5 font-mono text-[10px] whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
+                      <TableCell className="px-1.5 truncate max-w-[140px]" title={i.idare_adi ?? ""}>{idareKisa}</TableCell>
+                      <TableCell className="px-1.5 truncate max-w-[180px]" title={i.is_adi ?? ""}>{isAdiKisa}</TableCell>
                       {/* Hesaplanan YM — tıklayınca inline para input açılır */}
-                      <TableCell className="px-2 text-right whitespace-nowrap text-blue-700">
+                      <TableCell className="px-1.5 text-right whitespace-nowrap text-blue-700">
                         {gecmisEditId === i.id && gecmisEditField === "hesaplanan_ym" ? (
                           <input
                             type="text"
@@ -2147,37 +2350,37 @@ export default function IhalePage() {
                               if (e.key === "Escape") gecmisEditIptal();
                             }}
                             placeholder="0,00"
-                            className="h-7 text-xs text-right border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200 w-32"
+                            className="h-6 text-[10px] text-right border border-blue-400 rounded px-1 outline-none focus:ring-2 focus:ring-blue-200 w-28"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); gecmisEditStart(i, "hesaplanan_ym"); }}
                             title="Düzenlemek için tıklayın"
-                            className="hover:bg-blue-50 rounded px-1.5 py-0.5 cursor-pointer transition-colors text-blue-700"
+                            className="hover:bg-blue-50 rounded px-1 py-0.5 cursor-pointer transition-colors text-blue-700"
                           >
                             {i.hesaplanan_yaklasik_maliyet ? formatTL(i.hesaplanan_yaklasik_maliyet) : "—"}
                           </button>
                         )}
                       </TableCell>
-                      <TableCell className="px-2 text-right whitespace-nowrap">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
-                      <TableCell className="px-2 text-right font-bold text-[#1E3A5F] whitespace-nowrap">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
-                      <TableCell className="px-2 text-center whitespace-nowrap">{katSayisi}</TableCell>
-                      <TableCell className="px-2 whitespace-nowrap" title={i.muhtemel_kazanan ?? ""}>
+                      <TableCell className="px-1.5 text-right whitespace-nowrap">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
+                      <TableCell className="px-1.5 text-right font-bold text-[#1E3A5F] whitespace-nowrap">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
+                      <TableCell className="px-1.5 text-center whitespace-nowrap">{katSayisi}</TableCell>
+                      <TableCell className="px-1.5 truncate max-w-[200px]" title={i.muhtemel_kazanan ?? ""}>
                         {mkKisa || "—"}
-                        {ihaleTarihStr && <span className="text-gray-500 ml-1">· {ihaleTarihStr}</span>}
+                        {ihaleTarihStr && <span className="text-gray-500 ml-1 text-[9px]">· {ihaleTarihStr}</span>}
                       </TableCell>
-                      <TableCell className="px-2 text-center whitespace-nowrap">
-                        {i.has_manual_edits && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">DÜZENLENDİ</span>}
+                      <TableCell className="px-1.5 text-center whitespace-nowrap">
+                        {i.has_manual_edits && <span className="text-[8px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-semibold">DÜZ.</span>}
                       </TableCell>
-                      <TableCell className="px-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button type="button" onClick={() => gecmisYukle(i)} className="p-1 text-gray-400 hover:text-blue-600" title="Görüntüle">
-                            <Eye size={13} />
+                      <TableCell className="px-1 text-center">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <button type="button" onClick={() => gecmisYukle(i)} className="p-0.5 text-gray-400 hover:text-blue-600" title="Görüntüle">
+                            <Eye size={12} />
                           </button>
                           {ySil && (
-                            <button type="button" onClick={() => setSilOnay(i.id)} className="p-1 text-gray-400 hover:text-red-600" title="Sil">
-                              <Trash2 size={13} />
+                            <button type="button" onClick={() => setSilOnay(i.id)} className="p-0.5 text-gray-400 hover:text-red-600" title="Sil">
+                              <Trash2 size={12} />
                             </button>
                           )}
                         </div>
