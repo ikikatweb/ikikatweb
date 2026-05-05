@@ -2209,8 +2209,8 @@ function IhalePageContent() {
             <div className="bg-white rounded-lg border">
               <Table className="text-[11px] w-full" containerClassName="overflow-x-hidden max-h-[75vh]">
                 <TableHeader className="sticky top-0 z-20">
-                  <TableRow className="bg-[#64748B]">
-                    <TableHead className="text-white text-[10px] px-1.5 text-center w-[34px] whitespace-nowrap bg-[#64748B]">#</TableHead>
+                  <TableRow style={{ backgroundColor: "#64748B" }}>
+                    <TableHead style={{ backgroundColor: "#64748B" }} className="text-white text-[10px] px-1.5 text-center w-[34px] whitespace-nowrap">#</TableHead>
                     {([
                       { f: "created_at" as SortField, label: "Analiz Tarihi", align: "left" },
                       { f: "ihale_tarihi" as SortField, label: "İhale Tarihi", align: "left" },
@@ -2229,7 +2229,8 @@ function IhalePageContent() {
                         <TableHead key={col.f}
                           onClick={(e) => toggleSort(col.f, e.shiftKey)}
                           title="Tıkla: sırala. Shift+tıkla: çoklu sıralama. Tekrar tıkla: yön/iptal."
-                          className={`text-white text-[10px] px-1.5 whitespace-nowrap cursor-pointer select-none bg-[#64748B] hover:bg-[#4f5b6b] ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}`}>
+                          style={{ backgroundColor: "#64748B" }}
+                          className={`text-white text-[10px] px-1.5 whitespace-nowrap cursor-pointer select-none hover:brightness-110 ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}`}>
                           <span className="inline-flex items-center gap-1">
                             {col.label}
                             {sortItem && (
@@ -2242,8 +2243,8 @@ function IhalePageContent() {
                         </TableHead>
                       );
                     })}
-                    <TableHead className="text-white text-[10px] px-1.5 text-center whitespace-nowrap bg-[#64748B]">Durum</TableHead>
-                    <TableHead className="text-white text-[10px] px-1.5 text-center w-[64px] bg-[#64748B]">İşlem</TableHead>
+                    <TableHead style={{ backgroundColor: "#64748B" }} className="text-white text-[10px] px-1.5 text-center whitespace-nowrap">Durum</TableHead>
+                    <TableHead style={{ backgroundColor: "#64748B" }} className="text-white text-[10px] px-1.5 text-center w-[64px]">İşlem</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2366,9 +2367,9 @@ function IhalePageContent() {
                       <TableCell className="px-1.5 text-right whitespace-nowrap">{i.yaklasik_maliyet ? formatTL(i.yaklasik_maliyet) : "—"}</TableCell>
                       <TableCell className="px-1.5 text-right font-bold text-[#1E3A5F] whitespace-nowrap">{i.muhtemel_kazanan_tutar ? formatTL(i.muhtemel_kazanan_tutar) : "—"}</TableCell>
                       <TableCell className="px-1.5 text-center whitespace-nowrap">{katSayisi}</TableCell>
-                      <TableCell className="px-1.5 truncate max-w-[200px]" title={i.muhtemel_kazanan ?? ""}>
+                      <TableCell className="px-1.5 truncate max-w-[230px]" title={i.muhtemel_kazanan ?? ""}>
                         {mkKisa || "—"}
-                        {ihaleTarihStr && <span className="text-gray-500 ml-1 text-[9px]">· {ihaleTarihStr}</span>}
+                        {ihaleTarihStr && <span className="text-gray-500 ml-1">· {ihaleTarihStr}</span>}
                       </TableCell>
                       <TableCell className="px-1.5 text-center whitespace-nowrap">
                         {i.has_manual_edits && <span className="text-[8px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-semibold">DÜZ.</span>}
