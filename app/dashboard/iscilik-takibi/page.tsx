@@ -150,6 +150,8 @@ export default function IscilikTakibiPage() {
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [arama, setArama] = useState("");
+  // Günlük ücret tutarı (manuel — sadece rakam, localStorage'da saklanır)
+  const [gunlukUcret, setGunlukUcret] = useState<string>("");
   // Mobilde iş adı sütununu sabitleme (sticky) açık/kapalı toggle
   const [isAdiSabit, setIsAdiSabit] = useState(true);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
@@ -259,6 +261,20 @@ export default function IscilikTakibiPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
+
+  // Günlük ücret tutarı — localStorage'tan yükle / kaydet
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("iscilik-gunluk-ucret");
+      if (saved != null) setGunlukUcret(saved);
+    } catch { /* sessiz */ }
+  }, []);
+  useEffect(() => {
+    try {
+      if (gunlukUcret !== "") localStorage.setItem("iscilik-gunluk-ucret", gunlukUcret);
+      else localStorage.removeItem("iscilik-gunluk-ucret");
+    } catch { /* sessiz */ }
+  }, [gunlukUcret]);
 
   function handleCellClick(row: IscilikTakibiWithSantiye, col: ColDef) {
     if (!col.editable) return;
@@ -565,12 +581,31 @@ export default function IscilikTakibiPage() {
           >
             {isAdiSabit ? "🔒 İş Adı Sabit" : "🔓 İş Adı Kayar"}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
-            <FileDown size={16} className="mr-1" /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
-            <FileSpreadsheet size={16} className="mr-1" /> Excel
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
+                <FileDown size={16} className="mr-1" /> PDF
+              </Button>
+              <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
+                <FileSpreadsheet size={16} className="mr-1" /> Excel
+              </Button>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <span>Günlük Ücret:</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={gunlukUcret}
+                onChange={(e) => {
+                  // Sadece rakam ve virgül kabul et
+                  const v = e.target.value.replace(/[^\d,]/g, "");
+                  setGunlukUcret(v);
+                }}
+                placeholder="0"
+                className="h-8 w-28 px-2 text-sm text-right font-semibold text-[#1E3A5F] border border-gray-300 rounded outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
