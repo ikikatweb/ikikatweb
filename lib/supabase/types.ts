@@ -610,6 +610,8 @@ export type Ihale = {
   is_adi: string | null;
   ihale_kayit_no: string | null;
   ihale_tarihi: string | null;
+  // İhale tutanağındaki resmi açma saati (örn. "10:30") — Word belgesinden parse edilir
+  ihale_saati?: string | null;
   yaklasik_maliyet: number | null;
   // Manuel girilen hesaplanan yaklaşık maliyet (sadece bilgi amaçlı, hesaba dahil değil).
   // Optional: form'dan yazılmaz, sadece geçmiş tabloda inline edit ile güncellenir.

@@ -1280,6 +1280,7 @@ function IhalePageContent() {
         is_adi: (parsed?.isAdi ?? isAdi) || null,
         ihale_kayit_no: parsed?.ihaleKayitNo ?? ihaleKayitNo,
         ihale_tarihi: (parsed?.ihaleTarihi ?? ihaleTarihi) || null,
+        ihale_saati: (parsed?.ihaleSaati ?? ihaleSaati) || null,
         yaklasik_maliyet: ymVal || null,
         // hesaplanan_yaklasik_maliyet alanı buradan yazılmaz — yalnızca geçmiş tablodan
         // inline edit ile güncellenir, otomatik save'in bu alanı sıfırlamasını önlemek için.
@@ -1451,7 +1452,7 @@ function IhalePageContent() {
       setIsAdi(ihale.is_adi ?? "");
       setIhaleKayitNo(ihale.ihale_kayit_no ?? "");
       setIhaleTarihi(ihale.ihale_tarihi ?? "");
-      setIhaleSaati("");
+      setIhaleSaati(ihale.ihale_saati ?? "");
       setTeklifAcmaTarihi("");
       if (ihale.yaklasik_maliyet) {
         setYaklasikMaliyet(formatParaInput(ihale.yaklasik_maliyet.toFixed(2).replace(".", ",")));
@@ -2234,7 +2235,6 @@ function IhalePageContent() {
                   <TableRow style={{ backgroundColor: "#64748B" }}>
                     <TableHead style={{ backgroundColor: "#64748B" }} className="text-white text-[10px] px-1.5 text-center w-[34px] whitespace-nowrap">#</TableHead>
                     {([
-                      { f: "created_at" as SortField, label: "Analiz Tarihi", align: "left" },
                       { f: "ihale_tarihi" as SortField, label: "İhale Tarihi", align: "left" },
                       { f: "ihale_kayit_no" as SortField, label: "İKN", align: "left" },
                       { f: "idare_adi" as SortField, label: "İdare", align: "left" },
@@ -2275,24 +2275,18 @@ function IhalePageContent() {
                     const isAdiKisa = i.is_adi
                       ? (i.is_adi.length > 24 ? i.is_adi.slice(0, 24) + "…" : i.is_adi)
                       : "—";
-                    // Muhtemel kazanan + ihale tarihi/saati yan yana
-                    // ÖNCE muhtemel_kazanan'da gömülü "FIRMA - DD.MM.YYYY HH:MM" pattern'ini ara —
-                    // gerçek teklif açma saati orada saklı. ihale_tarihi DB'de sadece tarih olarak
-                    // saklanıyor, saati yok. Bu yüzden ihale_tarihi'ni Date'e parse edip saat
-                    // göstermek YANLIŞ saat üretiyordu (UTC→lokal kayması).
+                    // Muhtemel kazanan'ın gömülü "FIRMA - DD.MM.YYYY HH:MM" suffix'i:
+                    // bu firmanın TEKLİF SUNMA tarih/saati (ihale açma saati değil).
+                    // Muhtemel kazanan sütununda gösterilir.
                     let mkAdHam = i.muhtemel_kazanan ?? "";
-                    let ihaleTarihStr = "";
+                    let mkTeklifTarihStr = "";
                     const mEmbed = mkAdHam.match(/^(.+?)\s*[-·]\s*(\d{2}\.\d{2}\.\d{4}(?:\s+\d{2}:\d{2})?)\s*$/);
                     if (mEmbed) {
                       mkAdHam = mEmbed[1].trim();
-                      ihaleTarihStr = mEmbed[2].trim();
-                    } else if (i.ihale_tarihi) {
-                      // Sadece tarih var (saatsiz) — Date oluştururken yerel timezone için "T00:00:00" ekle
-                      const d = new Date(i.ihale_tarihi + "T00:00:00");
-                      if (!isNaN(d.getTime())) {
-                        ihaleTarihStr = d.toLocaleDateString("tr-TR");
-                      }
+                      mkTeklifTarihStr = mEmbed[2].trim();
                     }
+                    // İhale Tarihi sütununda gösterilecek RESMİ ihale açma saati — DB'den.
+                    const ihaleAcmaSaati = (i as Ihale & { ihale_saati?: string | null }).ihale_saati ?? "";
                     const mkKisa = mkAdHam.length > 20 ? mkAdHam.slice(0, 20) + "…" : mkAdHam;
                     // İdare adından "Devlet Su İşleri Genel Müdürlüğü" / "DSİ" prefix'lerini çıkar.
                     // JS'in /i bayrağı Türkçe büyük "İ"yi her zaman "i" ile eşleştirmediği için,
@@ -2328,8 +2322,8 @@ function IhalePageContent() {
                     return (
                     <TableRow key={i.id} className="hover:bg-gray-50">
                       <TableCell className="px-1.5 text-center text-gray-400 font-mono">{ix + 1}</TableCell>
-                      <TableCell className="px-1.5 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
-                      {/* İhale Tarihi — tıklayınca inline date input açılır */}
+                      {/* İhale Tarihi + saat — tıklayınca inline date input açılır.
+                          Saat muhtemel_kazanan suffix'inden çıkartılıyor (DB'de saat alanı yok). */}
                       <TableCell className="px-1.5 whitespace-nowrap">
                         {gecmisEditId === i.id && gecmisEditField === "ihale_tarihi" ? (
                           <input
@@ -2352,6 +2346,7 @@ function IhalePageContent() {
                             className="hover:bg-blue-50 rounded px-1 py-0.5 cursor-pointer transition-colors"
                           >
                             {i.ihale_tarihi ? new Date(i.ihale_tarihi + "T00:00:00").toLocaleDateString("tr-TR") : "—"}
+                            {ihaleAcmaSaati && <span className="ml-1 text-gray-500">{ihaleAcmaSaati}</span>}
                           </button>
                         )}
                       </TableCell>
@@ -2391,7 +2386,7 @@ function IhalePageContent() {
                       <TableCell className="px-1.5 text-center whitespace-nowrap">{katSayisi}</TableCell>
                       <TableCell className="px-1.5 truncate max-w-[230px]" title={i.muhtemel_kazanan ?? ""}>
                         {mkKisa || "—"}
-                        {ihaleTarihStr && <span className="text-gray-500 ml-1">· {ihaleTarihStr}</span>}
+                        {mkTeklifTarihStr && <span className="text-gray-500 ml-1">· {mkTeklifTarihStr}</span>}
                       </TableCell>
                       <TableCell className="px-1.5 text-center whitespace-nowrap">
                         {i.has_manual_edits && <span className="text-[8px] bg-red-100 text-red-600 px-1 py-0.5 rounded font-semibold">DÜZ.</span>}
