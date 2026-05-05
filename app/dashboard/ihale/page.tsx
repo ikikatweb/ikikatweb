@@ -2166,38 +2166,60 @@ function IhalePageContent() {
             </div>
 
             {/* İş grubu çoklu filtre */}
-            {isGruplari.filter((g) => g.aktif).length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-gray-100">
-                <span className="text-[11px] font-semibold text-gray-500 mr-1">İş Grubu:</span>
-                {isGruplari.filter((g) => g.aktif).map((g) => {
-                  const aktif = isGrubuFiltre.has(g.deger);
-                  return (
-                    <button key={g.id} type="button"
-                      onClick={() => {
-                        setIsGrubuFiltre((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(g.deger)) next.delete(g.deger);
-                          else next.add(g.deger);
-                          return next;
-                        });
-                      }}
-                      className={`text-[11px] px-2 py-1 rounded-full border transition-colors ${
-                        aktif
-                          ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
-                          : "bg-white border-gray-300 text-gray-600 hover:border-[#1E3A5F] hover:text-[#1E3A5F]"
-                      }`}>
-                      {g.deger}
+            {isGruplari.filter((g) => g.aktif).length > 0 && (() => {
+              // Her iş grubunda kaç ihale var (filtreden bağımsız, tüm geçmiş üzerinden)
+              const sayiMap = new Map<string, number>();
+              let isGrubusuzSayi = 0;
+              for (const i of gecmisIhaleler) {
+                if (i.is_grubu) sayiMap.set(i.is_grubu, (sayiMap.get(i.is_grubu) ?? 0) + 1);
+                else isGrubusuzSayi++;
+              }
+              return (
+                <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-gray-100">
+                  <span className="text-[11px] font-semibold text-gray-500 mr-1">
+                    İş Grubu <span className="text-gray-400 font-normal">(toplam {gecmisIhaleler.length}):</span>
+                  </span>
+                  {isGruplari.filter((g) => g.aktif).map((g) => {
+                    const aktif = isGrubuFiltre.has(g.deger);
+                    const sayi = sayiMap.get(g.deger) ?? 0;
+                    return (
+                      <button key={g.id} type="button"
+                        onClick={() => {
+                          setIsGrubuFiltre((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(g.deger)) next.delete(g.deger);
+                            else next.add(g.deger);
+                            return next;
+                          });
+                        }}
+                        className={`text-[11px] px-2 py-1 rounded-full border transition-colors inline-flex items-center gap-1.5 ${
+                          aktif
+                            ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
+                            : "bg-white border-gray-300 text-gray-600 hover:border-[#1E3A5F] hover:text-[#1E3A5F]"
+                        }`}>
+                        {g.deger}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                          aktif ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {sayi}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {isGrubusuzSayi > 0 && (
+                    <span className="text-[10px] text-gray-400 italic">
+                      grupsuz: {isGrubusuzSayi}
+                    </span>
+                  )}
+                  {isGrubuFiltre.size > 0 && (
+                    <button type="button" onClick={() => setIsGrubuFiltre(new Set())}
+                      className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-50 ml-1">
+                      Temizle
                     </button>
-                  );
-                })}
-                {isGrubuFiltre.size > 0 && (
-                  <button type="button" onClick={() => setIsGrubuFiltre(new Set())}
-                    className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-50 ml-1">
-                    Temizle
-                  </button>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {filtreliGecmis.length === 0 ? (
@@ -2305,7 +2327,7 @@ function IhalePageContent() {
                     const katSayisi = (i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0;
                     return (
                     <TableRow key={i.id} className="hover:bg-gray-50">
-                      <TableCell className="px-1.5 text-center text-gray-400 text-[10px] font-mono">{ix + 1}</TableCell>
+                      <TableCell className="px-1.5 text-center text-gray-400 font-mono">{ix + 1}</TableCell>
                       <TableCell className="px-1.5 whitespace-nowrap">{i.created_at ? new Date(i.created_at).toLocaleDateString("tr-TR") : "—"}</TableCell>
                       {/* İhale Tarihi — tıklayınca inline date input açılır */}
                       <TableCell className="px-1.5 whitespace-nowrap">
@@ -2333,7 +2355,7 @@ function IhalePageContent() {
                           </button>
                         )}
                       </TableCell>
-                      <TableCell className="px-1.5 font-mono text-[10px] whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
+                      <TableCell className="px-1.5 font-mono whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
                       <TableCell className="px-1.5 truncate max-w-[140px]" title={i.idare_adi ?? ""}>{idareKisa}</TableCell>
                       <TableCell className="px-1.5 truncate max-w-[180px]" title={i.is_adi ?? ""}>{isAdiKisa}</TableCell>
                       {/* Hesaplanan YM — tıklayınca inline para input açılır */}
