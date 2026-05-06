@@ -8,9 +8,16 @@ import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
-import type { Tanimlama } from "@/lib/supabase/types";
+import {
+  getPersonelBrutUcretler,
+  insertPersonelBrutUcret,
+  updatePersonelBrutUcret,
+  deletePersonelBrutUcret,
+} from "@/lib/supabase/queries/personel-brut-ucret";
+import type { Tanimlama, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, formatBaslik } from "@/lib/utils/isim";
 import { useAuth } from "@/hooks";
+import { Trash2, Plus } from "lucide-react";
 import type { Personel, PersonelInsert } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,10 +63,16 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
   const [maasInput, setMaasInput] = useState<string>(
     personel?.maas != null ? formatParaInput(personel.maas.toFixed(2).replace(".", ",")) : ""
   );
-  // Brüt ücret için ayrı gösterim state'i
-  const [brutUcretInput, setBrutUcretInput] = useState<string>(
-    personel?.brut_ucret != null ? formatParaInput(personel.brut_ucret.toFixed(2).replace(".", ",")) : ""
-  );
+  // Brüt ücret geçmişi (kira bedeli mantığında: her değişiklikte yeni satır)
+  const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
+  // Yeni brüt ücret kaydı için input
+  const [yeniBrutUcret, setYeniBrutUcret] = useState<string>("");
+  const [yeniBrutTarih, setYeniBrutTarih] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [brutKaydetYukleniyor, setBrutKaydetYukleniyor] = useState(false);
+  // Geçmiş satırı düzenleme
+  const [editBrutId, setEditBrutId] = useState<string | null>(null);
+  const [editBrutUcret, setEditBrutUcret] = useState<string>("");
+  const [editBrutTarih, setEditBrutTarih] = useState<string>("");
   const [gorevler, setGorevler] = useState<string[]>([]);
   // Pasif personel yeniden işe alma: TC ile bulunan pasif personel ID'si
   const [pasifBulunanId, setPasifBulunanId] = useState<string | null>(null);
@@ -72,7 +85,6 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     gorev: personel?.gorev ?? "",
     santiye_id: personel?.santiye_id ?? null,
     maas: personel?.maas ?? null,
-    brut_ucret: personel?.brut_ucret ?? null,
     izin_hakki: personel?.izin_hakki ?? null,
     mesai_ucreti_var: personel?.mesai_ucreti_var ?? false,
     ise_giris_tarihi: personel?.ise_giris_tarihi ?? null,
@@ -81,6 +93,18 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     durum: personel?.durum ?? "aktif",
     pasif_tarihi: personel?.pasif_tarihi ?? null,
   });
+
+  // Brüt ücret geçmişini yükle (sadece düzenleme modunda + yetkili kullanıcı için)
+  async function loadBrutUcretGecmisi() {
+    if (!personel?.id || !brutUcretYetkili) return;
+    const list = await getPersonelBrutUcretler(personel.id);
+    setBrutUcretGecmisi(list);
+  }
+
+  useEffect(() => {
+    loadBrutUcretGecmisi();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [personel?.id, brutUcretYetkili]);
 
   useEffect(() => {
     async function loadData() {
@@ -458,24 +482,174 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                 className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
             </div>
 
-            {/* Brüt Ücret — sadece yönetici / şantiye yöneticisi görür ve düzenler */}
-            {brutUcretYetkili && (
-              <div className="space-y-2">
-                <Label htmlFor="brut_ucret" className="flex items-center gap-1">
-                  Brüt Ücret (₺)
-                  <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">YÖNETİCİ</span>
-                </Label>
-                <input id="brut_ucret" name="brut_ucret" type="text" inputMode="decimal" placeholder="0,00"
-                  value={brutUcretInput}
-                  onChange={(e) => {
-                    const formatted = formatParaInput(e.target.value);
-                    setBrutUcretInput(formatted);
-                    const parsed = parseParaInput(formatted);
-                    setFormData((p) => ({ ...p, brut_ucret: formatted.trim() === "" ? null : parsed }));
-                  }}
-                  disabled={loading}
-                  className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
-                <p className="text-[10px] text-amber-700">Bu alanı sadece yönetici ve şantiye yöneticisi görebilir/düzenleyebilir.</p>
+            {/* Brüt Ücret — sadece yönetici / şantiye yöneticisi görür ve düzenler.
+                 Geçmiş tutulur: kira bedeli mantığı — her değişiklikte yeni satır,
+                 hesaplamada o tarih için geçerli olan satır kullanılır. */}
+            {brutUcretYetkili && isEdit && (
+              <div className="space-y-2 md:col-span-2 lg:col-span-3 bg-amber-50 border-2 border-amber-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-1">
+                    Brüt Ücret (₺) Geçmişi
+                    <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">YÖNETİCİ</span>
+                  </Label>
+                  {brutUcretGecmisi.length > 0 && (
+                    <span className="text-[10px] text-amber-700">
+                      Aktif: {brutUcretGecmisi[0].ucret.toLocaleString("tr-TR")} ₺ ({new Date(brutUcretGecmisi[0].gecerli_tarih + "T00:00:00").toLocaleDateString("tr-TR")})
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-amber-700 leading-relaxed">
+                  Brüt ücret değişebilir. Her değişiklikte yeni bir kayıt ekleyin — geçerlilik tarihi olarak değişikliğin başladığı tarihi girin.
+                  Hesaplama her ay için o ayda geçerli olan ücreti kullanır (önceki tarihlerde eski ücret korunur).
+                </p>
+
+                {/* Yeni kayıt ekleme satırı */}
+                <div className="flex flex-wrap items-end gap-2 bg-white border border-amber-300 rounded p-2">
+                  <div className="flex-1 min-w-[120px]">
+                    <Label className="text-[10px] text-gray-500">Yeni Tutar (₺)</Label>
+                    <input type="text" inputMode="decimal" placeholder="0,00"
+                      value={yeniBrutUcret}
+                      onChange={(e) => setYeniBrutUcret(formatParaInput(e.target.value))}
+                      className="w-full h-8 border rounded px-2 text-xs" />
+                  </div>
+                  <div className="flex-1 min-w-[140px]">
+                    <Label className="text-[10px] text-gray-500">Geçerlilik Başlangıç</Label>
+                    <input type="date" value={yeniBrutTarih}
+                      onChange={(e) => setYeniBrutTarih(e.target.value)}
+                      className="w-full h-8 border rounded px-2 text-xs" />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white h-8"
+                    disabled={brutKaydetYukleniyor || !yeniBrutUcret.trim() || !yeniBrutTarih}
+                    onClick={async () => {
+                      const parsed = parseParaInput(yeniBrutUcret);
+                      if (!parsed || parsed <= 0) { toast.error("Geçerli bir tutar girin."); return; }
+                      if (!yeniBrutTarih) { toast.error("Geçerlilik tarihi seçin."); return; }
+                      setBrutKaydetYukleniyor(true);
+                      try {
+                        await insertPersonelBrutUcret(personel!.id, parsed, yeniBrutTarih);
+                        toast.success("Brüt ücret kaydedildi.");
+                        setYeniBrutUcret("");
+                        setYeniBrutTarih(new Date().toISOString().slice(0, 10));
+                        await loadBrutUcretGecmisi();
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        if (msg.includes("personel_brut_ucret") || (msg.includes("relation") && msg.includes("does not exist"))) {
+                          toast.error(
+                            `Veritabanında 'personel_brut_ucret' tablosu yok. Supabase SQL editöründe şunu çalıştırın:\n\n` +
+                            `CREATE TABLE personel_brut_ucret (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE, ucret NUMERIC NOT NULL CHECK (ucret >= 0), gecerli_tarih DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), created_by UUID);`,
+                            { duration: 14000 },
+                          );
+                        } else {
+                          toast.error(`Kayıt hatası: ${msg}`, { duration: 8000 });
+                        }
+                      } finally {
+                        setBrutKaydetYukleniyor(false);
+                      }
+                    }}
+                  >
+                    <Plus size={12} className="mr-1" /> Ekle
+                  </Button>
+                </div>
+
+                {/* Geçmiş satırları */}
+                {brutUcretGecmisi.length === 0 ? (
+                  <p className="text-[11px] text-gray-500 italic text-center py-2">Henüz brüt ücret kaydı yok.</p>
+                ) : (
+                  <div className="bg-white border border-amber-200 rounded overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-amber-100 text-amber-900">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-semibold">Tutar (₺)</th>
+                          <th className="px-2 py-1 text-left font-semibold">Geçerlilik</th>
+                          <th className="px-2 py-1 text-center w-20"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {brutUcretGecmisi.map((b, i) => (
+                          <tr key={b.id} className={`border-t ${i === 0 ? "bg-amber-50 font-semibold" : ""}`}>
+                            {editBrutId === b.id ? (
+                              <>
+                                <td className="px-2 py-1">
+                                  <input type="text" inputMode="decimal" value={editBrutUcret}
+                                    onChange={(e) => setEditBrutUcret(formatParaInput(e.target.value))}
+                                    className="w-full h-7 border rounded px-2 text-xs" />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input type="date" value={editBrutTarih}
+                                    onChange={(e) => setEditBrutTarih(e.target.value)}
+                                    className="w-full h-7 border rounded px-2 text-xs" />
+                                </td>
+                                <td className="px-2 py-1 text-center">
+                                  <div className="flex gap-1 justify-center">
+                                    <button type="button"
+                                      onClick={async () => {
+                                        const parsed = parseParaInput(editBrutUcret);
+                                        if (!parsed || parsed <= 0 || !editBrutTarih) { toast.error("Geçerli değer girin."); return; }
+                                        try {
+                                          await updatePersonelBrutUcret(b.id, parsed, editBrutTarih);
+                                          toast.success("Güncellendi");
+                                          setEditBrutId(null);
+                                          await loadBrutUcretGecmisi();
+                                        } catch (err) {
+                                          toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+                                        }
+                                      }}
+                                      className="px-2 py-0.5 text-[10px] bg-emerald-600 text-white rounded hover:bg-emerald-700">
+                                      OK
+                                    </button>
+                                    <button type="button" onClick={() => setEditBrutId(null)}
+                                      className="px-2 py-0.5 text-[10px] bg-gray-200 rounded hover:bg-gray-300">İptal</button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="px-2 py-1">
+                                  {b.ucret.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺
+                                  {i === 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">AKTİF</span>}
+                                </td>
+                                <td className="px-2 py-1 text-gray-600">
+                                  {new Date(b.gecerli_tarih + "T00:00:00").toLocaleDateString("tr-TR")}
+                                </td>
+                                <td className="px-2 py-1 text-center">
+                                  <div className="flex gap-1 justify-center">
+                                    <button type="button"
+                                      onClick={() => {
+                                        setEditBrutId(b.id);
+                                        setEditBrutUcret(formatParaInput(b.ucret.toFixed(2).replace(".", ",")));
+                                        setEditBrutTarih(b.gecerli_tarih);
+                                      }}
+                                      className="text-[10px] text-blue-600 hover:underline">Düzenle</button>
+                                    <button type="button"
+                                      onClick={async () => {
+                                        if (!confirm("Bu kaydı silmek istediğinize emin misiniz?")) return;
+                                        try {
+                                          await deletePersonelBrutUcret(b.id);
+                                          toast.success("Silindi");
+                                          await loadBrutUcretGecmisi();
+                                        } catch (err) {
+                                          toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+                                        }
+                                      }}
+                                      className="text-red-500 hover:text-red-700"><Trash2 size={11} /></button>
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {brutUcretYetkili && !isEdit && (
+              <div className="md:col-span-2 lg:col-span-3 bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-700">
+                💡 Brüt ücret bilgisi personel kaydedildikten sonra düzenleme ekranında girilebilir.
               </div>
             )}
 

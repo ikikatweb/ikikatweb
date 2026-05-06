@@ -477,6 +477,18 @@ export type AracKiraBedeli = {
   created_by: string | null;
 };
 
+// Personel Brüt Ücret Geçmişi
+// Kira bedeli mantığında çalışır: her değişiklikte yeni bir satır eklenir,
+// hesaplama yapılırken hangi ay/tarih için geçerli olan satır bulunup kullanılır.
+export type PersonelBrutUcret = {
+  id: string;
+  personel_id: string;
+  ucret: number;
+  gecerli_tarih: string; // YYYY-MM-DD — bu tarihten itibaren geçerli
+  created_at: string;
+  created_by: string | null;
+};
+
 // Araç Aylık Puantaj Override
 // Özet raporda kullanıcı çalıştı/çalışmadı vb. gün sayılarını elle değiştirebilir.
 // Gerçek puantaj verisi (arac_puantaj tablosu) aynen kalır, sadece rapor üstünde

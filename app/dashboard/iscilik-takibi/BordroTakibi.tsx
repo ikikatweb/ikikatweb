@@ -39,7 +39,8 @@ import {
   getGunlukUcretler,
   type GunlukUcret,
 } from "@/lib/supabase/queries/bordro";
-import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun } from "@/lib/supabase/types";
+import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi } from "@/lib/utils/isim";
 
 type SantiyeBasic = {
@@ -336,6 +337,7 @@ export default function BordroTakibi() {
   const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
+  const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [muhasebeEmail, setMuhasebeEmail] = useState<string>("");
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
@@ -474,7 +476,7 @@ export default function BordroTakibi() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, p, a, m, f, iscilik, gorevler, mGunler, notlar, ucretler] = await Promise.all([
+      const [s, p, a, m, f, iscilik, gorevler, mGunler, notlar, ucretler, brutGecmis] = await Promise.all([
         getSantiyelerAll().catch(() => []),
         getBordroPersoneller().catch(() => []),
         getAtamaGecmisiTumu().catch(() => []),
@@ -485,11 +487,13 @@ export default function BordroTakibi() {
         getManuelGunler().catch(() => []),
         getBilgiNotlari().catch(() => []),
         getGunlukUcretler().catch(() => []),
+        getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
       ]);
       setGorevSecenekleri(gorevler ?? []);
       setManuelGunler(mGunler);
       setBilgiNotlari(notlar);
       setGunlukUcretler(ucretler);
+      setBrutUcretGecmisi(brutGecmis);
       // İşçilik Durum Raporu'ndaki filtreyle BİREBİR AYNI + firma_id mapleme.
       const iscilikRaporSantiyeIds = new Set<string>();
       const firmaIdMap = new Map<string, string>(); // santiye_id → firma_id
@@ -1899,8 +1903,8 @@ export default function BordroTakibi() {
     const yil = parseInt(seciliAy.split("-")[0], 10);
     // Yıllık varsayılan günlük ücret (Bordro Takibi > Günlük Ücret sekmesinden)
     const defaultUcret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
-    // Tutar sütununu göster: varsayılan ücret >0 veya listedeki herhangi bir personelin brüt ücreti varsa
-    const tutarSutunuGoster = defaultUcret > 0 || liste.some((p) => (p.brut_ucret ?? 0) > 0);
+    // Tutar sütununu göster: varsayılan ücret >0 veya listedeki herhangi bir personelin brüt ücreti tarihçesi varsa
+    const tutarSutunuGoster = defaultUcret > 0 || liste.some((p) => brutUcretForAy(brutUcretGecmisi, p.id, seciliAy) > 0);
     const isAtanmamis = sutunKey === ATANMAMIS_KEY;
     const isPasif = sutunKey === PASIF_KEY;
     return (
@@ -1935,8 +1939,9 @@ export default function BordroTakibi() {
 
   // Tek satır personel: <tr> formatında, checkbox + sütunlar + butonlar
   function PersonelSatir({ p, sutunKey, ucret, tutarGoster }: { p: Personel; sutunKey: string; ucret: number; tutarGoster: boolean }) {
-    // Personelin brüt ücreti varsa onu günlük ücret olarak kullan, yoksa yıl bazlı varsayılan ücret
-    const personelBrut = p.brut_ucret ?? 0;
+    // Personelin seçili ay için brüt ücreti varsa onu günlük ücret olarak kullan,
+    // yoksa yıl bazlı varsayılan ücret. Brüt ücret tarihsel: değişiklikten sonra yeni değer baz alınır.
+    const personelBrut = brutUcretForAy(brutUcretGecmisi, p.id, seciliAy);
     const kullanilanUcret = personelBrut > 0 ? personelBrut : ucret;
     const brutKullanildi = personelBrut > 0;
     const ozelGun = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY

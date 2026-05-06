@@ -33,7 +33,8 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
-import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi, Personel } from "@/lib/supabase/types";
+import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi, Personel, PersonelBrutUcret } from "@/lib/supabase/types";
 
 type EditingCell = { id: string; santiyeId: string; field: string } | null;
 
@@ -165,6 +166,7 @@ export default function IscilikTakibiPage() {
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
+  const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
   const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
@@ -182,7 +184,7 @@ export default function IscilikTakibiPage() {
     if (authLoading) return;
     try {
       await ensureAktifSantiyeler();
-      const [data, tData, ayliklarData, firmalarData, mGunler, ucretler, atamaData, persData] = await Promise.all([
+      const [data, tData, ayliklarData, firmalarData, mGunler, ucretler, atamaData, persData, brutData] = await Promise.all([
         getIscilikTakibi(),
         getTanimlamalar("is_grubu"),
         getTumIscilikAyliklari().catch(() => []),
@@ -191,11 +193,13 @@ export default function IscilikTakibiPage() {
         getGunlukUcretler().catch(() => [] as GunlukUcret[]),
         getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
         getBordroPersoneller().catch(() => [] as Personel[]),
+        getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
       ]);
       setManuelGunler(mGunler);
       setGunlukUcretler(ucretler);
       setAtamalar(atamaData);
       setBordroPersoneller(persData);
+      setBrutUcretGecmisi(brutData);
       // Firma renk map'i
       const renkMap = new Map<string, string>();
       for (const f of (firmalarData as { id: string; renk: string | null }[]) ?? []) {
@@ -846,10 +850,13 @@ export default function IscilikTakibiPage() {
                         // Format: "personelId|YYYY-MM"
                         const dahilEdilen = new Set<string>();
 
-                        // Personel bazlı ücret çözümü: brüt ücret > 0 ise onu kullan, yoksa yıl bazlı varsayılan ücret
-                        const personelUcret = (personelId: string, yil: number): number => {
-                          const p = bordroPersoneller.find((x) => x.id === personelId);
-                          const brut = p?.brut_ucret ?? 0;
+                        // Personel + ay bazlı ücret çözümü:
+                        //  - Brüt ücret tarihçesinde o ay için geçerli kayıt varsa → o ücret
+                        //  - Yoksa → yıl bazlı varsayılan ücret
+                        // Not: bordroPersoneller şu an brüt için doğrudan kullanılmıyor; tarihsel yapı brüt için kullanılıyor.
+                        void bordroPersoneller;
+                        const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
+                          const brut = brutUcretForAy(brutUcretGecmisi, personelId, ayStr);
                           if (brut > 0) return brut;
                           return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
                         };
@@ -860,7 +867,7 @@ export default function IscilikTakibiPage() {
                           const mAyNum = ayYilNum(m.ay);
                           if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
                           const yil = parseInt(m.ay.split("-")[0], 10);
-                          const ucret = personelUcret(m.personel_id, yil);
+                          const ucret = personelUcret(m.personel_id, m.ay, yil);
                           if (ucret > 0) {
                             bordroToplam += m.gun * ucret;
                             dahilEdilen.add(`${m.personel_id}|${m.ay}`);
@@ -894,7 +901,7 @@ export default function IscilikTakibiPage() {
                               const gun = sMap.get(santiyeId) ?? 0;
                               if (gun <= 0) continue;
                               if (dahilEdilen.has(`${pId}|${ayStr}`)) continue; // manuel olarak zaten eklendi
-                              const ucret = personelUcret(pId, yil);
+                              const ucret = personelUcret(pId, ayStr, yil);
                               if (ucret > 0) bordroToplam += gun * ucret;
                             }
                             ay += 1;
