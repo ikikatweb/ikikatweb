@@ -28,6 +28,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -260,14 +261,14 @@ export default function AracBakimPage() {
 
   // Filtrelenmiş liste
   const filtrelenmis = useMemo(() => {
-    const q = arama.trim().toLowerCase();
+    const q = trAramaNormalize(arama.trim());
     return bakimlar.filter((b) => {
       if (filtreArac && b.arac_id !== filtreArac) return false;
       if (filtreTip && (b.tip ?? "bakim") !== filtreTip) return false;
       if (filtreBaslangic && b.bakim_tarihi < filtreBaslangic) return false;
       if (filtreBitis && b.bakim_tarihi > filtreBitis) return false;
       if (q) {
-        const text = [
+        const text = trAramaNormalize([
           b.araclar?.plaka,
           b.araclar?.marka,
           b.araclar?.model,
@@ -275,7 +276,7 @@ export default function AracBakimPage() {
           b.servis_tamirci,
           b.detay,
           b.tutar != null ? String(b.tutar) : null,
-        ].filter(Boolean).join(" ").toLowerCase();
+        ].filter(Boolean).join(" "));
         if (!text.includes(q)) return false;
       }
       return true;
@@ -825,10 +826,10 @@ export default function AracBakimPage() {
                 {(() => {
                   // Trafikten çekildi araçlara da bakım/tamirat girilebilmeli — sadece "pasif" hariç
                   const aktifAraclar = ozMalAraclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
-                  const q = dAracAra.trim().toLowerCase();
+                  const q = trAramaNormalize(dAracAra.trim());
                   const filtrelenmisAraclar = q
                     ? aktifAraclar.filter((a) => {
-                        const t = [a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" ").toLowerCase();
+                        const t = trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" "));
                         return t.includes(q);
                       })
                     : aktifAraclar;

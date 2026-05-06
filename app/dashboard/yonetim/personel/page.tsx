@@ -22,6 +22,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -93,13 +94,13 @@ export default function PersonelPage() {
     if (tipFiltre === "kadro" && p.personel_tipi === "taseron") return false;
     if (tipFiltre === "taseron" && p.personel_tipi !== "taseron") return false;
     if (!arama.trim()) return true;
-    const q = arama.toLowerCase();
+    const q = trAramaNormalize(arama);
     return (
-      p.ad_soyad.toLowerCase().includes(q) ||
+      trAramaNormalize(p.ad_soyad).includes(q) ||
       p.tc_kimlik_no.includes(q) ||
-      (p.meslek?.toLowerCase().includes(q) ?? false) ||
-      (p.gorev?.toLowerCase().includes(q) ?? false) ||
-      (p.santiyeler?.is_adi?.toLowerCase().includes(q) ?? false) ||
+      trAramaNormalize(p.meslek).includes(q) ||
+      trAramaNormalize(p.gorev).includes(q) ||
+      trAramaNormalize(p.santiyeler?.is_adi).includes(q) ||
       (p.cep_telefon?.includes(q) ?? false)
     );
   });

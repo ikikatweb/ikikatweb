@@ -28,6 +28,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -191,8 +192,8 @@ export default function KullanicilarPage() {
             <TableBody>
               {kullanicilar.filter((k) => {
                 if (!arama.trim()) return true;
-                const q = arama.toLowerCase();
-                return k.ad_soyad.toLowerCase().includes(q) || k.kullanici_adi.toLowerCase().includes(q);
+                const q = trAramaNormalize(arama);
+                return trAramaNormalize(k.ad_soyad).includes(q) || trAramaNormalize(k.kullanici_adi).includes(q);
               }).map((k) => (
                 <TableRow key={k.id} className={!k.aktif ? "bg-gray-100 opacity-50" : ""}>
                   <TableCell

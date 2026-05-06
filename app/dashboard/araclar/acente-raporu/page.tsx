@@ -14,6 +14,7 @@ import { Headphones, Search, FileDown, FileSpreadsheet, ChevronDown, ChevronRigh
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -161,16 +162,16 @@ export default function AcenteRaporuPage() {
       });
     }
 
-    const q = arama.trim().toLowerCase();
+    const q = trAramaNormalize(arama.trim());
     let filtered = result;
     if (q) {
       filtered = filtered.filter((o) =>
-        o.acente.toLowerCase().includes(q) ||
+        trAramaNormalize(o.acente).includes(q) ||
         o.sirketler.some((s) =>
-          s.sirket.toLowerCase().includes(q) ||
+          trAramaNormalize(s.sirket).includes(q) ||
           s.policeler.some((p) =>
-            p.aracAdi.toLowerCase().includes(q) ||
-            p.policeNo.toLowerCase().includes(q)
+            trAramaNormalize(p.aracAdi).includes(q) ||
+            trAramaNormalize(p.policeNo).includes(q)
           )
         )
       );

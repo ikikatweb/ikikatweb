@@ -34,6 +34,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { paletGetBg } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 type Filtre = "tumu" | "aktif" | "tamamlandi" | "tasfiye" | "devir";
 type SortDir = "asc" | "desc";
@@ -541,15 +542,15 @@ export default function SantiyelerPage() {
     if (firmaFiltre !== "tumu" && (s.firmalar?.firma_adi ?? "") !== firmaFiltre) return false;
     // Arama
     if (arama.trim()) {
-      const q = arama.toLowerCase();
-      const text = [
+      const q = trAramaNormalize(arama);
+      const text = trAramaNormalize([
         s.is_adi, s.is_grubu, s.ihale_kayit_no, s.ekap_belge_no,
         s.firmalar?.firma_adi,
         formatTarih(s.sozlesme_tarihi),
         formatTarih(s.gecici_kabul_tarihi),
         formatTarih(s.kesin_kabul_tarihi),
         s.sozlesme_bedeli != null ? s.sozlesme_bedeli.toLocaleString("tr-TR") : null,
-      ].filter(Boolean).join(" ").toLowerCase();
+      ].filter(Boolean).join(" "));
       return text.includes(q);
     }
     return true;

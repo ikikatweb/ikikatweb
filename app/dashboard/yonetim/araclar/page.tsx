@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
@@ -135,15 +136,15 @@ export default function AraclarPage() {
         if (firmaAdi !== firmaFiltre) return false;
       }
       if (!arama.trim()) return true;
-      const q = arama.toLowerCase();
+      const q = trAramaNormalize(arama);
       return (
-        a.plaka.toLowerCase().includes(q) ||
-        (a.marka?.toLowerCase().includes(q) ?? false) ||
-        (a.model?.toLowerCase().includes(q) ?? false) ||
-        (a.cinsi?.toLowerCase().includes(q) ?? false) ||
-        (a.firmalar?.firma_adi?.toLowerCase().includes(q) ?? false) ||
-        (a.kiralama_firmasi?.toLowerCase().includes(q) ?? false) ||
-        (sonYakitSantiye.get(a.id)?.toLowerCase().includes(q) ?? false)
+        trAramaNormalize(a.plaka).includes(q) ||
+        trAramaNormalize(a.marka).includes(q) ||
+        trAramaNormalize(a.model).includes(q) ||
+        trAramaNormalize(a.cinsi).includes(q) ||
+        trAramaNormalize(a.firmalar?.firma_adi).includes(q) ||
+        trAramaNormalize(a.kiralama_firmasi).includes(q) ||
+        trAramaNormalize(sonYakitSantiye.get(a.id)).includes(q)
       );
     })
     .sort((a, b) => {

@@ -28,6 +28,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -182,15 +183,15 @@ export default function SigortaMuayenePage() {
     if (a.durum === "trafikten_cekildi") return false;
     if (durumFiltre !== "tumu" && a.durum !== durumFiltre) return false;
     if (arama.trim()) {
-      const q = arama.trim().toLowerCase();
+      const q = trAramaNormalize(arama.trim());
       const sp = sonPoliceMap.get(a.id);
-      const text = [
+      const text = trAramaNormalize([
         a.plaka, a.marka, a.model, a.cinsi,
         formatTarih(sp?.trafik?.bitis_tarihi ?? a.trafik_sigorta_bitis),
         formatTarih(sp?.kasko?.bitis_tarihi ?? a.kasko_bitis),
         formatTarih(a.muayene_bitis), formatTarih(a.tasit_karti_bitis),
         durumLabel(tarihDurumHesapla(sp?.trafik?.bitis_tarihi ?? a.trafik_sigorta_bitis, yaklasirGun, azKaldiGun).durum, tarihDurumHesapla(sp?.trafik?.bitis_tarihi ?? a.trafik_sigorta_bitis, yaklasirGun, azKaldiGun).kalanGun),
-      ].filter(Boolean).join(" ").toLowerCase();
+      ].filter(Boolean).join(" "));
       if (!text.includes(q)) return false;
     }
     return true;

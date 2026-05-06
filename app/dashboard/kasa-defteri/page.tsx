@@ -40,6 +40,7 @@ import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -295,7 +296,7 @@ function KasaDefContent() {
       ? new Set(kullanici.santiye_ids)
       : null;
 
-    const q = arama.trim().toLowerCase();
+    const q = trAramaNormalize(arama.trim());
     return hareketler.filter((h) => {
       // Şantiye admini: sadece atandığı şantiyeler
       if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) return false;
@@ -315,7 +316,7 @@ function KasaDefContent() {
       if (filtreOdeme && h.odeme_yontemi !== filtreOdeme) return false;
       // Arama
       if (q) {
-        const text = [
+        const text = trAramaNormalize([
           personelMap.get(h.personel_id)?.ad_soyad,
           santiyeMap.get(h.santiye_id),
           h.kategori, h.aciklama,
@@ -325,7 +326,7 @@ function KasaDefContent() {
           h.tip === "gelir" ? "gelir" : "gider",
           h.odeme_yontemi,
           h.created_by ? kullaniciMap.get(h.created_by) : null,
-        ].filter(Boolean).join(" ").toLowerCase();
+        ].filter(Boolean).join(" "));
         if (!text.includes(q)) return false;
       }
       return true;

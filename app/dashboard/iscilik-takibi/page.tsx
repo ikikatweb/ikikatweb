@@ -31,6 +31,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 type EditingCell = { id: string; santiyeId: string; field: string } | null;
 
@@ -364,12 +365,12 @@ export default function IscilikTakibiPage() {
     if (bitmis) return false;
     // Arama filtresi
     if (!arama.trim()) return true;
-    const q = arama.toLowerCase();
-    const text = [
+    const q = trAramaNormalize(arama);
+    const text = trAramaNormalize([
       r.santiyeler?.is_adi, r.sicil_no,
       r.baslangic_tarihi ? formatTarih(r.baslangic_tarihi) : null,
       r.santiyeler?.is_grubu,
-    ].filter(Boolean).join(" ").toLowerCase();
+    ].filter(Boolean).join(" "));
     return text.includes(q);
   });
 

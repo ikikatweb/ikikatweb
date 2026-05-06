@@ -22,6 +22,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -97,7 +98,7 @@ export default function AcenteTakipPage() {
   }, [araclar]);
 
   const filtrelenmis = useMemo(() => {
-    const q = arama.trim().toLowerCase();
+    const q = trAramaNormalize(arama.trim());
     return policeler
       .filter((p) => {
         if (tipFiltre && p.police_tipi !== tipFiltre) return false;
@@ -108,14 +109,14 @@ export default function AcenteTakipPage() {
         if (fBitis && tarih && tarih > fBitis) return false;
         if (q) {
           const arac = aracMap.get(p.arac_id);
-          const text = [
+          const text = trAramaNormalize([
             arac?.plaka, arac?.marka, arac?.model,
             arac?.firmalar?.firma_adi,
             p.sigorta_firmasi, p.acente, p.police_no,
             formatTarih(p.islem_tarihi), formatTarih(p.baslangic_tarihi), formatTarih(p.bitis_tarihi),
             p.tutar != null ? p.tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : null,
             p.tutar != null ? String(p.tutar) : null,
-          ].filter(Boolean).join(" ").toLowerCase();
+          ].filter(Boolean).join(" "));
           if (!text.includes(q)) return false;
         }
         return true;

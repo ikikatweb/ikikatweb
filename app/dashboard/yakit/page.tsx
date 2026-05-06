@@ -56,7 +56,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
-import { formatBaslik } from "@/lib/utils/isim";
+import { formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null; depo_kapasitesi?: number | null };
@@ -487,14 +487,14 @@ function YakitPageContent() {
   const tabloSatirlari = useMemo<TabloSatir[]>(() => {
     // Arama: "kamyon" → kamyon ve kamyonet ikisini de bulur (substring)
     //        "kamyon " (sondaki boşluk) → SADECE "kamyon" tam kelimesini bulur
-    const aramaRaw = arama.toLowerCase();
+    const aramaRaw = trAramaNormalize(arama);
     const tamKelime = aramaRaw.trim().length > 0 && aramaRaw !== aramaRaw.trimEnd();
     const aramaQ = aramaRaw.trim();
     let aramaRegex: RegExp | null = null;
     if (tamKelime && aramaQ) {
       const escaped = aramaQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Türkçe karakterleri de "harf" sayıyoruz; öncesi ve sonrası harf/rakam DEĞİL olmalı
-      aramaRegex = new RegExp(`(^|[^a-z0-9çğıöşü])${escaped}([^a-z0-9çğıöşü]|$)`, "i");
+      // Normalize edilmiş metinde Türkçe karakterler ASCII'ye dönüşmüş olur
+      aramaRegex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
     }
 
     // Şantiye admini için izinli şantiye seti
@@ -540,30 +540,30 @@ function YakitPageContent() {
         const tarihStr = h.tarih ? h.tarih.split("-").reverse().join(".") : "";
         if (h.tip === "arac_yakit") {
           const arac = aracMap.get(h.arac_id);
-          text = [
+          text = trAramaNormalize([
             arac?.plaka, arac?.marka, arac?.model, arac?.cinsi,
             santiyeMap.get(h.santiye_id),
             h.notu, tarihStr,
             h.miktar_lt != null ? String(h.miktar_lt) : null,
             h.created_by ? kullaniciMap.get(h.created_by) : null,
-          ].filter(Boolean).join(" ").toLowerCase();
+          ].filter(Boolean).join(" "));
         } else if (h.tip === "alim") {
-          text = [
+          text = trAramaNormalize([
             h.tedarikci_firma,
             santiyeMap.get(h.santiye_id),
             h.notu, tarihStr,
             h.miktar_lt != null ? String(h.miktar_lt) : null,
             h.birim_fiyat != null ? String(h.birim_fiyat) : null,
             h.created_by ? kullaniciMap.get(h.created_by) : null,
-          ].filter(Boolean).join(" ").toLowerCase();
+          ].filter(Boolean).join(" "));
         } else {
-          text = [
+          text = trAramaNormalize([
             santiyeMap.get(h.gonderen_santiye_id),
             santiyeMap.get(h.alan_santiye_id),
             h.notu, tarihStr,
             h.miktar_lt != null ? String(h.miktar_lt) : null,
             h.created_by ? kullaniciMap.get(h.created_by) : null,
-          ].filter(Boolean).join(" ").toLowerCase();
+          ].filter(Boolean).join(" "));
         }
         if (aramaRegex) {
           // Tam kelime eşleşmesi (boşluk ile sonlandırılmış arama)
@@ -1658,8 +1658,8 @@ function YakitPageContent() {
                       .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id !== verDialogSantiyeId)
                       .filter((a) => {
                         if (!hizliAtamaArama.trim()) return true;
-                        const q = hizliAtamaArama.trim().toLowerCase();
-                        return [a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" ").toLowerCase().includes(q);
+                        const q = trAramaNormalize(hizliAtamaArama.trim());
+                        return trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" ")).includes(q);
                       })
                       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"))
                       .slice(0, 20)

@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -122,12 +123,12 @@ export default function FirmalarPage() {
   const filtrelenmis = firmalar.filter((f) => {
     if (filtre !== "tumu" && (f.durum ?? "aktif") !== filtre) return false;
     if (!arama.trim()) return true;
-    const q = arama.toLowerCase();
+    const q = trAramaNormalize(arama);
     return (
-      f.firma_adi.toLowerCase().includes(q) ||
-      (f.kisa_adi?.toLowerCase().includes(q) ?? false) ||
+      trAramaNormalize(f.firma_adi).includes(q) ||
+      trAramaNormalize(f.kisa_adi).includes(q) ||
       (f.vergi_no?.includes(q) ?? false) ||
-      (f.adres?.toLowerCase().includes(q) ?? false)
+      trAramaNormalize(f.adres).includes(q)
     );
   });
 

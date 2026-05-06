@@ -34,6 +34,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 // Supabase/PostgREST hata nesnesini okunabilir stringe çevir
 // (Aksi halde "[object Object]" görünüyordu)
@@ -643,9 +644,9 @@ function SantiyeDefContent() {
 
   const filtrelenmisDefterler = defterArama.trim()
     ? defterListesi.filter((d) => {
-        const q = defterArama.trim().toLowerCase();
-        const kayitText = d.kayitlar.map((k) => k.icerik).join(" ").toLowerCase();
-        const tarihText = formatTarihGun(d.tarih).toLowerCase();
+        const q = trAramaNormalize(defterArama.trim());
+        const kayitText = trAramaNormalize(d.kayitlar.map((k) => k.icerik).join(" "));
+        const tarihText = trAramaNormalize(formatTarihGun(d.tarih));
         return kayitText.includes(q) || tarihText.includes(q);
       })
     : defterListesi;

@@ -34,6 +34,7 @@ import {
   deleteManuelGun,
 } from "@/lib/supabase/queries/bordro";
 import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun } from "@/lib/supabase/types";
+import { formatKisiAdi } from "@/lib/utils/isim";
 
 type SantiyeBasic = {
   id: string; is_adi: string; durum: string;
@@ -277,10 +278,11 @@ export default function BordroTakibi() {
   const [topluTarih, setTopluTarih] = useState(() => new Date().toISOString().slice(0, 10));
   const [topluEkleniyor, setTopluEkleniyor] = useState(false);
 
-  // Ay seçici (default: bu ay). Geçmiş aylarda kanban salt-okunur snapshot gösterir.
+  // Ay seçici (default: bu ay). Tüm aylar düzenlenebilir — kullanıcı geçmiş ve gelecek
+  // ayların kayıtları üzerinde de işlem yapabilir.
   const [seciliAy, setSeciliAy] = useState<string>(su_an_ay);
   const buAy = su_an_ay();
-  const isReadOnly = seciliAy < buAy;
+  const isReadOnly = false;
 
   // Bekleyen değişiklikler — mail kuyruğu (localStorage'da kalıcı)
   const [pending, setPending] = useState<PendingChange[]>([]);
@@ -799,7 +801,7 @@ export default function BordroTakibi() {
     setKaydetYukleniyor(true);
     try {
       const yeni = await insertBordroPersonel({
-        ad_soyad: ekleAd.trim(),
+        ad_soyad: formatKisiAdi(ekleAd),
         tc_kimlik_no: ekleTc.trim(),
         gorev: ekleGorev || null,
         meslek: null,
@@ -1239,7 +1241,15 @@ export default function BordroTakibi() {
           <div className="space-y-3 py-2">
             <div>
               <Label className="text-xs">Ad Soyad <span className="text-red-500">*</span></Label>
-              <Input value={ekleAd} onChange={(e) => setEkleAd(e.target.value)} placeholder="Ad Soyad" />
+              <Input
+                value={ekleAd}
+                onChange={(e) => setEkleAd(e.target.value)}
+                onBlur={() => setEkleAd(formatKisiAdi(ekleAd))}
+                placeholder="Ahmet ÇELİK"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                Adın baş harfi büyük, soyadı tamamı büyük olarak otomatik düzeltilir.
+              </p>
             </div>
             <div>
               <Label className="text-xs">TC Kimlik No <span className="text-red-500">*</span></Label>

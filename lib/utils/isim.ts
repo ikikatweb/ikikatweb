@@ -85,6 +85,27 @@ export function formatBaslik(metin: string | null | undefined): string {
 }
 
 /**
+ * Türkçe karakter farkına bakmayan ASCII-arama normalizasyonu.
+ * "BİLECİK", "bilecik", "Bilecık", "BILECIK" hepsi → "bilecik"
+ *
+ * Kullanım:
+ *   const text = trAramaNormalize(r.is_adi);
+ *   const q = trAramaNormalize(aramaInput);
+ *   if (text.includes(q)) ...
+ */
+export function trAramaNormalize(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/[İIıi]/g, "i")
+    .replace(/[şŞ]/g, "s")
+    .replace(/[ğĞ]/g, "g")
+    .replace(/[üÜ]/g, "u")
+    .replace(/[öÖ]/g, "o")
+    .replace(/[çÇ]/g, "c")
+    .toLowerCase();
+}
+
+/**
  * Tüm metni Türkçe locale ile BÜYÜK harfe çevirir.
  * Boşlukları normalleştirir.
  * Firma kısa adı, plaka gibi her zaman büyük olan alanlar için.
