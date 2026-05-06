@@ -535,15 +535,30 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                         setYeniBrutTarih(new Date().toISOString().slice(0, 10));
                         await loadBrutUcretGecmisi();
                       } catch (err) {
-                        const msg = err instanceof Error ? err.message : String(err);
-                        if (msg.includes("personel_brut_ucret") || (msg.includes("relation") && msg.includes("does not exist"))) {
+                        // Hata detaylarını topla (Supabase: { message, details, hint, code })
+                        console.error("Brüt ücret kayıt hatası:", err);
+                        const e = err as { message?: string; details?: string; hint?: string; code?: string };
+                        const code = e?.code ?? "";
+                        const msgText = [e?.message, e?.details, e?.hint].filter(Boolean).join(" — ")
+                          || (err instanceof Error ? err.message : String(err));
+                        const tabloYok =
+                          code === "42P01" ||
+                          /relation .* does not exist/i.test(msgText) ||
+                          /personel_brut_ucret/i.test(msgText);
+                        const rlsHatasi = code === "42501" || /permission denied|row.level security|RLS/i.test(msgText);
+                        if (tabloYok) {
                           toast.error(
-                            `Veritabanında 'personel_brut_ucret' tablosu yok. Supabase SQL editöründe şunu çalıştırın:\n\n` +
-                            `CREATE TABLE personel_brut_ucret (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE, ucret NUMERIC NOT NULL CHECK (ucret >= 0), gecerli_tarih DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), created_by UUID);`,
+                            `Veritabanında 'personel_brut_ucret' tablosu yok. Supabase SQL Editor'da şunu çalıştırın:\n\n` +
+                            `CREATE TABLE personel_brut_ucret (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE, ucret NUMERIC NOT NULL CHECK (ucret >= 0), gecerli_tarih DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), created_by UUID); ALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
+                            { duration: 18000 },
+                          );
+                        } else if (rlsHatasi) {
+                          toast.error(
+                            `RLS engelliyor. Supabase SQL Editor'da şunu çalıştırın:\n\nALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
                             { duration: 14000 },
                           );
                         } else {
-                          toast.error(`Kayıt hatası: ${msg}`, { duration: 8000 });
+                          toast.error(`Kayıt hatası${code ? ` (${code})` : ""}: ${msgText}`, { duration: 10000 });
                         }
                       } finally {
                         setBrutKaydetYukleniyor(false);
