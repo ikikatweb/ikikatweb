@@ -46,15 +46,43 @@ export async function insertPersonelBrutUcret(
   kullaniciId?: string | null,
 ): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase
+  const { data, error, status, statusText } = await supabase
     .from("personel_brut_ucret")
     .insert({
       personel_id: personelId,
       ucret,
       gecerli_tarih: gecerliTarih,
       created_by: kullaniciId ?? null,
-    });
-  if (error) throw error;
+    })
+    .select();
+  if (error) {
+    // Supabase PostgrestError'i tüm alanlarıyla ayağa kaldıralım — boş objeye düşmesin.
+    const props = Object.getOwnPropertyNames(error);
+    const dump: Record<string, unknown> = {};
+    for (const k of props) dump[k] = (error as unknown as Record<string, unknown>)[k];
+    console.error(
+      "[insertPersonelBrutUcret] Supabase hata:",
+      { status, statusText, error, dump, message: error.message, code: error.code, details: error.details, hint: error.hint },
+    );
+    // Yeni Error oluştur — orijinal hata alanlarını kopyala.
+    const wrapped = new Error(
+      [error.message, error.details, error.hint].filter(Boolean).join(" — ")
+        || `HTTP ${status} ${statusText}`
+        || "Bilinmeyen Supabase hatası",
+    ) as Error & { code?: string; details?: string; hint?: string; status?: number };
+    wrapped.code = error.code;
+    wrapped.details = error.details;
+    wrapped.hint = error.hint;
+    wrapped.status = status;
+    throw wrapped;
+  }
+  // Insert başarılıysa data dönmeli (RLS engelliyorsa boş array dönebilir, hata vermeyebilir)
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Kayıt insert edildi gibi görünüyor ama satır dönmedi. Muhtemel neden: Row Level Security (RLS) erişimi engelliyor. " +
+      "Supabase SQL editöründe çalıştırın: ALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;",
+    );
+  }
 }
 
 // Mevcut bir kaydı güncelle

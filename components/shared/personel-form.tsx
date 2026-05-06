@@ -536,11 +536,22 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                         await loadBrutUcretGecmisi();
                       } catch (err) {
                         // Hata detaylarını topla (Supabase: { message, details, hint, code })
-                        console.error("Brüt ücret kayıt hatası:", err);
-                        const e = err as { message?: string; details?: string; hint?: string; code?: string };
+                        // PostgrestError property'leri her zaman enumerable değil; JSON ile yetinmeyelim.
+                        const e = err as { message?: string; details?: string; hint?: string; code?: string; status?: number; name?: string };
+                        const dumpEntries: Record<string, unknown> = {};
+                        try {
+                          const props = Object.getOwnPropertyNames(err as object);
+                          for (const k of props) {
+                            dumpEntries[k] = (err as Record<string, unknown>)[k];
+                          }
+                        } catch { /* sessiz */ }
+                        console.error("Brüt ücret kayıt hatası:", err, dumpEntries, JSON.stringify(dumpEntries));
                         const code = e?.code ?? "";
+                        const status = e?.status;
                         const msgText = [e?.message, e?.details, e?.hint].filter(Boolean).join(" — ")
-                          || (err instanceof Error ? err.message : String(err));
+                          || (err instanceof Error ? err.message : "")
+                          || (Object.keys(dumpEntries).length > 0 ? JSON.stringify(dumpEntries) : "")
+                          || String(err);
                         const tabloYok =
                           code === "42P01" ||
                           /relation .* does not exist/i.test(msgText) ||
@@ -558,7 +569,10 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                             { duration: 14000 },
                           );
                         } else {
-                          toast.error(`Kayıt hatası${code ? ` (${code})` : ""}: ${msgText}`, { duration: 10000 });
+                          toast.error(
+                            `Kayıt hatası${code ? ` (${code})` : ""}${status ? ` [HTTP ${status}]` : ""}: ${msgText || "Boş hata — F12 Console'a bakın"}`,
+                            { duration: 12000 },
+                          );
                         }
                       } finally {
                         setBrutKaydetYukleniyor(false);
