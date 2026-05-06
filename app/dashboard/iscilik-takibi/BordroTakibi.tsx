@@ -2818,7 +2818,7 @@ export default function BordroTakibi() {
 
       {/* Mail Önizleme + Gönder */}
       <Dialog open={mailDialogAcik} onOpenChange={setMailDialogAcik}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye size={18} /> Mail Önizleme — {pending.length} değişiklik
@@ -2928,13 +2928,13 @@ export default function BordroTakibi() {
                   placeholder="Örn. Acil işlem yapılması rica olunur."
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t">
-                <Button variant="outline" size="sm" onClick={() => setMailDialogAcik(false)}>
+              <div className="flex flex-wrap justify-end gap-2 pt-2 border-t sticky bottom-0 bg-white">
+                <Button variant="outline" size="sm" onClick={() => setMailDialogAcik(false)} className="flex-shrink-0">
                   İptal
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0 whitespace-nowrap"
                   onClick={bulkMailGonder}
                   disabled={mailGonderiliyor || !muhasebeEmail || firmalar.length === 0}
                 >
