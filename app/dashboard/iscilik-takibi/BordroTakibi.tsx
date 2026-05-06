@@ -218,6 +218,9 @@ function AtamaSatir({
   const [halen, setHalen] = useState(atama.bitis_tarihi == null);
   const degisti = bas !== atama.baslangic_tarihi
     || (halen ? atama.bitis_tarihi !== null : bit !== (atama.bitis_tarihi ?? ""));
+  // Çıkış tarihi başlangıçtan önce olamaz
+  const tarihHatasi = !halen && bit && bas && bit < bas;
+  const kaydedilebilir = degisti && !tarihHatasi;
   return (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
       <div className="grid grid-cols-2 gap-2 mb-2">
@@ -235,9 +238,16 @@ function AtamaSatir({
             </span>
           </label>
           <input type="date" value={halen ? "" : bit} onChange={(e) => setBit(e.target.value)}
-            disabled={halen} className="w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100" />
+            min={bas || undefined}
+            disabled={halen}
+            className={`w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100 ${tarihHatasi ? "border-red-400 bg-red-50" : ""}`} />
         </div>
       </div>
+      {tarihHatasi && (
+        <p className="text-[10px] text-red-600 font-semibold mb-1.5">
+          ⚠️ İşten çıkış tarihi, işe başlama tarihinden önce olamaz.
+        </p>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-xs text-emerald-700 font-semibold">Bu ayda: {gunSayisi} gün</span>
         <div className="flex gap-1">
@@ -245,7 +255,7 @@ function AtamaSatir({
             className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50">
             Sil
           </button>
-          <button type="button" disabled={!degisti}
+          <button type="button" disabled={!kaydedilebilir}
             onClick={() => onSave(bas, halen ? null : (bit || null))}
             className="px-3 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
             Kaydet
@@ -268,6 +278,8 @@ function YeniAtamaSatir({
   const [bas, setBas] = useState(defaultBaslangic);
   const [bit, setBit] = useState(defaultBitis);
   const [halen, setHalen] = useState(false);
+  // Çıkış tarihi başlangıçtan önce olamaz
+  const tarihHatasi = !halen && bit && bas && bit < bas;
   if (!acik) {
     return (
       <button type="button" onClick={() => setAcik(true)}
@@ -293,15 +305,23 @@ function YeniAtamaSatir({
             </span>
           </label>
           <input type="date" value={halen ? "" : bit} onChange={(e) => setBit(e.target.value)}
-            disabled={halen} className="w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100" />
+            min={bas || undefined}
+            disabled={halen}
+            className={`w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100 ${tarihHatasi ? "border-red-400 bg-red-50" : ""}`} />
         </div>
       </div>
+      {tarihHatasi && (
+        <p className="text-[10px] text-red-600 font-semibold mb-1.5">
+          ⚠️ İşten çıkış tarihi, işe başlama tarihinden önce olamaz.
+        </p>
+      )}
       <div className="flex justify-end gap-1">
         <button type="button" onClick={() => setAcik(false)}
           className="px-2 py-1 text-[11px] text-gray-500 border border-gray-200 rounded hover:bg-gray-50">İptal</button>
         <button type="button"
+          disabled={!!tarihHatasi}
           onClick={() => { onEkle(bas, halen ? null : (bit || null)); setAcik(false); }}
-          className="px-3 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700">Ekle</button>
+          className="px-3 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed">Ekle</button>
       </div>
     </div>
   );
@@ -863,9 +883,36 @@ export default function BordroTakibi() {
 
   // Gün düzenle: bir personelin belirli şantiyedeki atamaları + ay sınırlarına çakışan günler
   async function gunEditAtamaUpdate(atamaId: string, baslangic: string, bitis: string | null) {
+    if (bitis && bitis < baslangic) {
+      toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
+      return;
+    }
     try {
+      // Mail kuyruğu mantığı için ESKİ haline bak
+      const eskiAtama = atamalar.find((a) => a.id === atamaId);
+      const personel = eskiAtama ? personeller.find((p) => p.id === eskiAtama.personel_id) : undefined;
+      const santiyeAd = eskiAtama ? santiyeler.find((s) => s.id === eskiAtama.santiye_id)?.is_adi : undefined;
+
       await updateAtama(atamaId, { baslangic_tarihi: baslangic, bitis_tarihi: bitis });
-      toast.success("Atama güncellendi");
+
+      // Mail kuyruğuna ekle (önceki durum → yeni durum)
+      if (eskiAtama && personel) {
+        const eskiAcik = !eskiAtama.bitis_tarihi;
+        const yeniAcik = !bitis;
+        if (eskiAcik && !yeniAcik) {
+          // Açık atama kapatıldı → işten çıkış maili
+          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: santiyeAd, onceSantiyeId: eskiAtama.santiye_id });
+          toast.success(`Atama güncellendi · ${personel.ad_soyad} işten çıkış maili kuyruğa eklendi`);
+        } else if (!eskiAcik && yeniAcik) {
+          // Kapalı atama yeniden açıldı → işe geri giriş maili
+          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: eskiAtama.santiye_id });
+          toast.success(`Atama güncellendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
+        } else {
+          toast.success("Atama güncellendi");
+        }
+      } else {
+        toast.success("Atama güncellendi");
+      }
       setGunEdit(null); // Kaydet sonrası pencereyi kapat
       await loadData();
     } catch (err) {
@@ -884,9 +931,23 @@ export default function BordroTakibi() {
     }
   }
   async function gunEditAtamaEkle(personelId: string, santiyeId: string, baslangic: string, bitis: string | null) {
+    if (bitis && bitis < baslangic) {
+      toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
+      return;
+    }
     try {
       await insertAtama(personelId, santiyeId, baslangic, bitis);
-      toast.success("Atama eklendi");
+
+      // Mail kuyruğu: yeni atama açık (bitis_tarihi yok) ise giriş maili gönder.
+      // Kapalı atama (bitis dolu) eklendiyse bu geçmiş bir kayıt — mail gönderme.
+      const personel = personeller.find((p) => p.id === personelId);
+      const santiyeAd = santiyeler.find((s) => s.id === santiyeId)?.is_adi;
+      if (personel && !bitis) {
+        kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId });
+        toast.success(`Atama eklendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
+      } else {
+        toast.success("Atama eklendi");
+      }
       setGunEdit(null); // Ekle sonrası pencereyi kapat
       await loadData();
     } catch (err) {
@@ -1874,6 +1935,18 @@ export default function BordroTakibi() {
     const ozelGun = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY
       ? gunMap.get(p.id)?.get(sutunKey) ?? 0
       : 0;
+    // Manuel gün girildi mi?
+    const manuelEntry = manuelGunler.find(
+      (m) => m.personel_id === p.id && m.santiye_id === sutunKey && m.ay === seciliAy,
+    );
+    const hasManuel = !!manuelEntry;
+    // Doğal hesap (atama tarihlerinden) — manuel girilmediğinde tutar bunun üzerinden silik gri gösterilir
+    const naturalGun = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY
+      ? naturalGunMap.get(p.id)?.get(sutunKey) ?? 0
+      : 0;
+    // Tutar hesabı: manuel varsa manuel gün × ücret, yoksa doğal gün × ücret
+    const tutarGun = hasManuel ? ozelGun : naturalGun;
+    const tutarHesap = tutarGun * ucret;
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
     const showCikis = !inPasifCol && !inAtanmamisCol;
@@ -1902,7 +1975,6 @@ export default function BordroTakibi() {
     };
 
     const isAktifKolon = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY;
-    const tutar = ozelGun * ucret;
     return (
       <tr
         data-personel-row
@@ -1950,8 +2022,11 @@ export default function BordroTakibi() {
               ) : <span className="text-gray-300">—</span>}
             </td>
             {ucret > 0 && (
-              <td className="px-2 py-1.5 text-right text-gray-400 font-mono text-[11px]" title={`${ozelGun} gün × ${ucret.toLocaleString("tr-TR")} TL`}>
-                {tutar > 0 ? `${tutar.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL` : "—"}
+              <td
+                className={`px-2 py-1.5 text-right font-mono text-[11px] ${hasManuel ? "text-gray-900 font-semibold" : "text-gray-400"}`}
+                title={`${tutarGun} gün × ${ucret.toLocaleString("tr-TR")} TL ${hasManuel ? "(manuel)" : "(otomatik hesap)"}`}
+              >
+                {tutarHesap > 0 ? `${tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL` : "—"}
               </td>
             )}
           </>
