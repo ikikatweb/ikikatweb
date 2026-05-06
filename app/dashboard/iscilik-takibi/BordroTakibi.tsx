@@ -212,14 +212,16 @@ function BilgiNotuKarti({
   );
 }
 
-// Atama satır editörü (gün düzenle dialogu için) — KULLANILMIYOR ARTIK ama referans için duruyor
+// Atama satır editörü (gün düzenle dialogu için)
 function AtamaSatir({
-  atama, gunSayisi, onSave, onDelete,
+  atama, gunSayisi, onSave, onDelete, isYonetici,
 }: {
   atama: PersonelAtamaGecmisi;
   gunSayisi: number;
   onSave: (baslangic: string, bitis: string | null) => void;
   onDelete: () => void;
+  // Yönetici → tarihte kısıtlama yok. Diğerleri (şantiye yöneticisi dahil): max bugün, min bugünden 10 gün önce.
+  isYonetici: boolean;
 }) {
   const [bas, setBas] = useState(atama.baslangic_tarihi);
   const [bit, setBit] = useState(atama.bitis_tarihi ?? "");
@@ -229,12 +231,19 @@ function AtamaSatir({
   // Çıkış tarihi başlangıçtan önce olamaz
   const tarihHatasi = !halen && bit && bas && bit < bas;
   const kaydedilebilir = degisti && !tarihHatasi;
+  // Yönetici hariç tüm kullanıcılar için tarih kısıtlaması: bugünden max 10 gün geri, bugünden ileri yok
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+  const minDateStr = minDate.toISOString().slice(0, 10);
   return (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label className="text-[10px] text-gray-500">İşe Başlama</label>
           <input type="date" value={bas} onChange={(e) => setBas(e.target.value)}
+            min={isYonetici ? undefined : minDateStr}
+            max={isYonetici ? undefined : todayStr}
             className="w-full h-8 border rounded px-2 text-xs" />
         </div>
         <div>
@@ -246,7 +255,8 @@ function AtamaSatir({
             </span>
           </label>
           <input type="date" value={halen ? "" : bit} onChange={(e) => setBit(e.target.value)}
-            min={bas || undefined}
+            min={isYonetici ? (bas || undefined) : (bas && bas > minDateStr ? bas : minDateStr)}
+            max={isYonetici ? undefined : todayStr}
             disabled={halen}
             className={`w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100 ${tarihHatasi ? "border-red-400 bg-red-50" : ""}`} />
         </div>
@@ -276,11 +286,12 @@ function AtamaSatir({
 
 // Yeni atama ekleme satırı
 function YeniAtamaSatir({
-  defaultBaslangic, defaultBitis, onEkle,
+  defaultBaslangic, defaultBitis, onEkle, isYonetici,
 }: {
   defaultBaslangic: string;
   defaultBitis: string;
   onEkle: (baslangic: string, bitis: string | null) => void;
+  isYonetici: boolean;
 }) {
   const [acik, setAcik] = useState(false);
   const [bas, setBas] = useState(defaultBaslangic);
@@ -288,6 +299,11 @@ function YeniAtamaSatir({
   const [halen, setHalen] = useState(false);
   // Çıkış tarihi başlangıçtan önce olamaz
   const tarihHatasi = !halen && bit && bas && bit < bas;
+  // Yönetici hariç tarih kısıtlaması
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().slice(0, 10);
+  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+  const minDateStr = minDate.toISOString().slice(0, 10);
   if (!acik) {
     return (
       <button type="button" onClick={() => setAcik(true)}
@@ -302,6 +318,8 @@ function YeniAtamaSatir({
         <div>
           <label className="text-[10px] text-gray-500">İşe Başlama</label>
           <input type="date" value={bas} onChange={(e) => setBas(e.target.value)}
+            min={isYonetici ? undefined : minDateStr}
+            max={isYonetici ? undefined : todayStr}
             className="w-full h-8 border rounded px-2 text-xs" />
         </div>
         <div>
@@ -313,7 +331,8 @@ function YeniAtamaSatir({
             </span>
           </label>
           <input type="date" value={halen ? "" : bit} onChange={(e) => setBit(e.target.value)}
-            min={bas || undefined}
+            min={isYonetici ? (bas || undefined) : (bas && bas > minDateStr ? bas : minDateStr)}
+            max={isYonetici ? undefined : todayStr}
             disabled={halen}
             className={`w-full h-8 border rounded px-2 text-xs disabled:bg-gray-100 ${tarihHatasi ? "border-red-400 bg-red-50" : ""}`} />
         </div>
@@ -979,6 +998,21 @@ export default function BordroTakibi() {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
     }
+    // Yönetici hariç: bugünden max 10 gün geri, gelecek tarih yok
+    if (!isYonetici) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().slice(0, 10);
+      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+      const minDateStr = minDate.toISOString().slice(0, 10);
+      if (baslangic > todayStr || (bitis && bitis > todayStr)) {
+        toast.error("Gelecek tarih girilemez.");
+        return;
+      }
+      if (baslangic < minDateStr || (bitis && bitis < minDateStr)) {
+        toast.error("En fazla 10 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
+        return;
+      }
+    }
     try {
       // Mail kuyruğu mantığı için ESKİ haline bak
       const eskiAtama = atamalar.find((a) => a.id === atamaId);
@@ -1026,6 +1060,21 @@ export default function BordroTakibi() {
     if (bitis && bitis < baslangic) {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
+    }
+    // Yönetici hariç: bugünden max 10 gün geri, gelecek tarih yok
+    if (!isYonetici) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().slice(0, 10);
+      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+      const minDateStr = minDate.toISOString().slice(0, 10);
+      if (baslangic > todayStr || (bitis && bitis > todayStr)) {
+        toast.error("Gelecek tarih girilemez.");
+        return;
+      }
+      if (baslangic < minDateStr || (bitis && bitis < minDateStr)) {
+        toast.error("En fazla 10 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
+        return;
+      }
     }
     try {
       await insertAtama(personelId, santiyeId, baslangic, bitis);
@@ -2421,71 +2470,9 @@ export default function BordroTakibi() {
           });
         })()}
 
-        {/* Atanmamış */}
-        {(() => {
-          const liste = kanbanMap.get(ATANMAMIS_KEY) ?? [];
-          if (liste.length === 0) return null;
-          const acik = expandedSantiyeler.has(ATANMAMIS_KEY);
-          const tumSecili = liste.every((p) => selectedKeys.has(`${p.id}:${ATANMAMIS_KEY}`));
-          return (
-            <SantiyeAccordion
-              santiyeId={ATANMAMIS_KEY}
-              baslik="Atanmamış"
-              renk="#9ca3af"
-              count={liste.length}
-              tumGun={0}
-              acik={acik}
-              tumSecili={tumSecili}
-              onToggle={() => {
-                setExpandedSantiyeler((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(ATANMAMIS_KEY)) next.delete(ATANMAMIS_KEY);
-                  else next.add(ATANMAMIS_KEY);
-                  return next;
-                });
-              }}
-              onTumunuSecToggle={() => {
-                if (tumSecili) tumunuKaldir(liste.map((p) => ({ id: p.id, sutunKey: ATANMAMIS_KEY })));
-                else tumunuSec(liste.map((p) => ({ id: p.id, sutunKey: ATANMAMIS_KEY })));
-              }}
-            >
-              <PersonelTablo liste={liste} sutunKey={ATANMAMIS_KEY} />
-            </SantiyeAccordion>
-          );
-        })()}
-
-        {/* Pasif */}
-        {(() => {
-          const liste = kanbanMap.get(PASIF_KEY) ?? [];
-          if (liste.length === 0) return null;
-          const acik = expandedSantiyeler.has(PASIF_KEY);
-          const tumSecili = liste.every((p) => selectedKeys.has(`${p.id}:${PASIF_KEY}`));
-          return (
-            <SantiyeAccordion
-              santiyeId={PASIF_KEY}
-              baslik="İşten Çıkarılanlar"
-              renk="#ef4444"
-              count={liste.length}
-              tumGun={0}
-              acik={acik}
-              tumSecili={tumSecili}
-              onToggle={() => {
-                setExpandedSantiyeler((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(PASIF_KEY)) next.delete(PASIF_KEY);
-                  else next.add(PASIF_KEY);
-                  return next;
-                });
-              }}
-              onTumunuSecToggle={() => {
-                if (tumSecili) tumunuKaldir(liste.map((p) => ({ id: p.id, sutunKey: PASIF_KEY })));
-                else tumunuSec(liste.map((p) => ({ id: p.id, sutunKey: PASIF_KEY })));
-              }}
-            >
-              <PersonelTablo liste={liste} sutunKey={PASIF_KEY} />
-            </SantiyeAccordion>
-          );
-        })()}
+        {/* Atanmamış ve İşten Çıkarılanlar listeleri kullanıcı isteği üzerine kaldırıldı.
+            Personeller hala kanban'a eklenirken sınıflandırılır (kanbanMap üzerinde),
+            sadece UI'da gösterilmiyor. */}
       </div>
 
       {/* Ekle Dialog */}
@@ -2775,6 +2762,7 @@ export default function BordroTakibi() {
                             gunSayisi={aylikGun}
                             onSave={(bas, bit) => gunEditAtamaUpdate(a.id, bas, bit)}
                             onDelete={() => gunEditAtamaSil(a.id)}
+                            isYonetici={isYonetici}
                           />
                         );
                       })}
@@ -2782,6 +2770,7 @@ export default function BordroTakibi() {
                         defaultBaslangic={ayBas}
                         defaultBitis={ayBit}
                         onEkle={(bas, bit) => gunEditAtamaEkle(gunEdit.personel.id, gunEdit.santiyeId, bas, bit)}
+                        isYonetici={isYonetici}
                       />
                     </div>
                   );
