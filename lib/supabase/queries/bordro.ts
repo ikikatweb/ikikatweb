@@ -213,6 +213,30 @@ export function gunHesaplaAyBazli(
   return result;
 }
 
+// --- Günlük ücret (yıl bazlı) ---
+export type GunlukUcret = { id: string; yil: number; ucret: number; created_at: string; updated_at: string };
+
+export async function getGunlukUcretler(): Promise<GunlukUcret[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("bordro_gunluk_ucret").select("*").order("yil", { ascending: false });
+  if (error) return [];
+  return (data ?? []) as GunlukUcret[];
+}
+
+export async function setGunlukUcret(yil: number, ucret: number): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("bordro_gunluk_ucret")
+    .upsert({ yil, ucret, updated_at: new Date().toISOString() }, { onConflict: "yil" });
+  if (error) throw error;
+}
+
+export async function deleteGunlukUcret(yil: number): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("bordro_gunluk_ucret").delete().eq("yil", yil);
+  if (error) throw error;
+}
+
 // --- Manuel gün override (tarihleri etkilemez, sadece görüntü/raporlama) ---
 
 export async function getManuelGunler(): Promise<PersonelAtamaManuelGun[]> {
@@ -248,6 +272,39 @@ export async function deleteManuelGun(
     .eq("personel_id", personelId)
     .eq("santiye_id", santiyeId)
     .eq("ay", ay);
+  if (error) throw error;
+}
+
+// --- Bilgi notu (personel × şantiye) ---
+// Ay-bazlı DEĞİL — kullanıcı silmedikçe her ayda görünür (kalıcı not).
+// DB column: icerik ('not' Postgres reserved keyword olduğu için icerik kullanıldı)
+export type BilgiNotu = { id: string; personel_id: string; santiye_id: string; icerik: string | null };
+
+export async function getBilgiNotlari(): Promise<BilgiNotu[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("personel_atama_bilgi_notu").select("*");
+  if (error) return [];
+  return (data ?? []) as BilgiNotu[];
+}
+
+export async function setBilgiNotu(personelId: string, santiyeId: string, icerik: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("personel_atama_bilgi_notu")
+    .upsert(
+      { personel_id: personelId, santiye_id: santiyeId, icerik, updated_at: new Date().toISOString() },
+      { onConflict: "personel_id,santiye_id" },
+    );
+  if (error) throw error;
+}
+
+export async function deleteBilgiNotu(personelId: string, santiyeId: string): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("personel_atama_bilgi_notu")
+    .delete()
+    .eq("personel_id", personelId)
+    .eq("santiye_id", santiyeId);
   if (error) throw error;
 }
 

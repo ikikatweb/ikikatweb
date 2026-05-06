@@ -33,7 +33,7 @@ export async function getSantiyelerAll() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiyeler")
-    .select("id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi")
+    .select("id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id")
     .order("is_adi", { ascending: true });
 
   if (error) throw error;

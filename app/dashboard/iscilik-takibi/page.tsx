@@ -32,6 +32,8 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { getManuelGunler, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
+import type { PersonelAtamaManuelGun } from "@/lib/supabase/types";
 
 type EditingCell = { id: string; santiyeId: string; field: string } | null;
 
@@ -159,6 +161,10 @@ export default function IscilikTakibiPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [sekme, setSekme] = useState<"aktif" | "cop">("aktif");
   const [silinenler, setSilinenler] = useState<IscilikTakibiWithSantiye[]>([]);
+  const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
+  const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
+  // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
+  const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -174,12 +180,16 @@ export default function IscilikTakibiPage() {
     if (authLoading) return;
     try {
       await ensureAktifSantiyeler();
-      const [data, tData, ayliklarData, firmalarData] = await Promise.all([
+      const [data, tData, ayliklarData, firmalarData, mGunler, ucretler] = await Promise.all([
         getIscilikTakibi(),
         getTanimlamalar("is_grubu"),
         getTumIscilikAyliklari().catch(() => []),
         getFirmalar().catch(() => []),
+        getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
+        getGunlukUcretler().catch(() => [] as GunlukUcret[]),
       ]);
+      setManuelGunler(mGunler);
+      setGunlukUcretler(ucretler);
       // Firma renk map'i
       const renkMap = new Map<string, string>();
       for (const f of (firmalarData as { id: string; renk: string | null }[]) ?? []) {
@@ -226,6 +236,10 @@ export default function IscilikTakibiPage() {
           });
         }
       }
+      // En son ay map'ini state'e taşı (yatan prim altındaki bordro toplamı için)
+      const sonAyMap = new Map<string, string>();
+      for (const [id, son] of enSonAyliklar) sonAyMap.set(id, son.ay);
+      setIscilikSonAyMap(sonAyMap);
 
       // Kısıtlı / Şantiye admini: sadece atandığı şantiyeler görünür
       const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
@@ -797,6 +811,49 @@ export default function IscilikTakibiPage() {
                             {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: firmaRengi }} />}
                             <span>{col.getValue(row)}</span>
                           </span>
+                        </TableCell>
+                      );
+                    }
+
+                    // yatan_prim altında bordro toplamı: SADECE en son girilen aydan SONRAKİ ayların manuel gün×ücreti
+                    if (col.key === "yatan_prim") {
+                      const santiyeId = row.santiye_id;
+                      let bordroToplam = 0;
+                      // İscilik_aylik tablosundaki en son ait_oldugu_ay → bu aydan SONRAKİ aylar bordro toplamına dahil
+                      const sonAy = iscilikSonAyMap.get(row.id) ?? null;
+                      // ait_oldugu_ay format: "MM.YYYY" → numerik karşılaştırma için YYYYMM
+                      const ayYilNum = (s: string): number => {
+                        if (!s) return 0;
+                        const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+                        if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+                        const iso = s.match(/^(\d{4})-(\d{2})/);
+                        if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+                        return 0;
+                      };
+                      const sonAyNum = sonAy ? ayYilNum(sonAy) : 0;
+                      if (santiyeId) {
+                        for (const m of manuelGunler) {
+                          if (m.santiye_id !== santiyeId) continue;
+                          // Manuel gün ay'ı (YYYY-MM) sonAyNum'dan büyük olmalı (sonra gelen aylar)
+                          const mAyNum = ayYilNum(m.ay);
+                          if (sonAyNum > 0 && mAyNum <= sonAyNum) continue; // sonAy ve öncesi prim'e yazılmış sayılır
+                          const yil = parseInt(m.ay.split("-")[0], 10);
+                          const ucret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+                          if (ucret > 0) bordroToplam += m.gun * ucret;
+                        }
+                      }
+                      return (
+                        <TableCell key={col.key} style={stickyStyle} className={cellClass}
+                          onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
+                          <div className="flex flex-col items-end leading-tight">
+                            <span>{col.getValue(row)}</span>
+                            {bordroToplam > 0 && (
+                              <span className="text-[10px] text-gray-400 font-mono"
+                                title={`${sonAy ? `${sonAy} sonrası ` : ""}bordro tahmini (manuel gün × günlük ücret)`}>
+                                {bordroToplam.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                       );
                     }

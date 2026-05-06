@@ -87,40 +87,98 @@ export async function POST(request: Request) {
     if (transfer) parcalar.push(`${transfer} transfer`);
     const konu = `Personel Bordro Bildirimi — ${parcalar.join(", ")}`;
 
-    // Metin: kategori bazlı gruplandırılmış
-    const blok = (baslik: string, liste: Change[], formatter: (c: Change) => string) => {
-      if (liste.length === 0) return "";
-      return `\n${baslik}:\n${liste.map((c, i) => `  ${i + 1}. ${formatter(c)}`).join("\n")}\n`;
-    };
+    // Yardımcı: personel listesini doğal Türkçe formatta birleştir.
+    //  1 personel: "12345 TC Numaralı Ahmet ÇELİK İsimli personelin"
+    //  2+ personel: "12345 TC Numaralı Ahmet ÇELİK ve 67890 TC Numaralı Ali VELİ İsimli personellerin"
+    function personelListesiMetni(liste: Change[], tekil: string, cogul: string): string {
+      const isimler = liste.map((c) =>
+        c.personelTc
+          ? `${c.personelTc} TC Numaralı ${c.personelAd}`
+          : c.personelAd
+      );
+      if (isimler.length === 0) return "";
+      let birlestirilmis: string;
+      if (isimler.length === 1) birlestirilmis = isimler[0];
+      else if (isimler.length === 2) birlestirilmis = `${isimler[0]} ve ${isimler[1]}`;
+      else birlestirilmis = `${isimler.slice(0, -1).join(", ")} ve ${isimler[isimler.length - 1]}`;
+      return `${birlestirilmis} İsimli ${isimler.length === 1 ? tekil : cogul}`;
+    }
 
-    const formatGiris = (c: Change) =>
-      `${c.personelAd}` +
-      (c.personelTc ? ` (TC: ${c.personelTc})` : "") +
-      (c.personelGorev ? ` — ${c.personelGorev}` : "") +
-      (c.santiyeAd ? ` → ${c.santiyeAd}` : "") +
-      ` (${c.tarih})`;
+    // Giriş cümleleri (şantiyeye göre grupla — aynı şantiyeye giren personeller tek cümlede)
+    const girisCumleleri: string[] = [];
+    {
+      const grup = new Map<string, Change[]>();
+      for (const c of changes.filter((c) => c.tip === "giris")) {
+        const key = c.santiyeAd || "(şantiye yok)";
+        if (!grup.has(key)) grup.set(key, []);
+        grup.get(key)!.push(c);
+      }
+      for (const [santiyeAd, list] of grup) {
+        const kisi = personelListesiMetni(list, "personelin", "personellerin");
+        if (list.length === 1) {
+          girisCumleleri.push(
+            `${kisi} ${santiyeAd} şantiyesine bugün tarihli girişinin yapılmasında yardımcı olur musunuz?`
+          );
+        } else {
+          girisCumleleri.push(
+            `${kisi} ${santiyeAd} şantiyesine bugün tarihli girişlerinin yapılmasında yardımcı olur musunuz?`
+          );
+        }
+      }
+    }
 
-    const formatCikis = (c: Change) =>
-      `${c.personelAd}` +
-      (c.personelTc ? ` (TC: ${c.personelTc})` : "") +
-      (c.onceSantiyeAd ? ` (son şantiye: ${c.onceSantiyeAd})` : "") +
-      ` (${c.tarih})`;
+    // Çıkış cümleleri (tek cümle — herkes aynı tarihte ayrılmış sayılır)
+    const cikisCumleleri: string[] = [];
+    {
+      const liste = changes.filter((c) => c.tip === "cikis");
+      if (liste.length === 1) {
+        const kisi = personelListesiMetni(liste, "personel", "personeller");
+        cikisCumleleri.push(
+          `${kisi} bugün tarihli işten ayrılmıştır, çıkışını yapabilir misiniz?`
+        );
+      } else if (liste.length > 1) {
+        const kisi = personelListesiMetni(liste, "personel", "personeller");
+        cikisCumleleri.push(
+          `${kisi} bugün tarihli işten ayrılmışlardır, çıkışlarını yapabilir misiniz?`
+        );
+      }
+    }
 
-    const formatTransfer = (c: Change) =>
-      `${c.personelAd}` +
-      (c.personelTc ? ` (TC: ${c.personelTc})` : "") +
-      `: ${c.onceSantiyeAd ?? "—"} → ${c.santiyeAd ?? "—"}` +
-      ` (${c.tarih})`;
+    // Transfer cümleleri (eski şantiye → yeni şantiye bazında grupla)
+    // Format:
+    //  Tek kişi: "... isimli personelin X şantiyesinden çıkışının yapılması, Y şantiyesine girişinin yapılmasında yardımcı olur musunuz?"
+    //  Çoklu  : "... isimli personellerin X şantiyesinden çıkışlarının yapılması, Y şantiyesine girişlerinin yapılmasında yardımcı olur musunuz?"
+    const transferCumleleri: string[] = [];
+    {
+      const grup = new Map<string, Change[]>();
+      for (const c of changes.filter((c) => c.tip === "transfer")) {
+        const key = `${c.onceSantiyeAd || "?"}→${c.santiyeAd || "?"}`;
+        if (!grup.has(key)) grup.set(key, []);
+        grup.get(key)!.push(c);
+      }
+      for (const [, list] of grup) {
+        const kisi = personelListesiMetni(list, "personelin", "personellerin");
+        const ilk = list[0];
+        const eski = ilk.onceSantiyeAd ?? "—";
+        const yeni = ilk.santiyeAd ?? "—";
+        if (list.length === 1) {
+          transferCumleleri.push(
+            `${kisi} ${eski} şantiyesinden çıkışının yapılması, ${yeni} şantiyesine girişinin yapılmasında yardımcı olur musunuz?`
+          );
+        } else {
+          transferCumleleri.push(
+            `${kisi} ${eski} şantiyesinden çıkışlarının yapılması, ${yeni} şantiyesine girişlerinin yapılmasında yardımcı olur musunuz?`
+          );
+        }
+      }
+    }
 
-    let metin = `Sayın Muhasebe,\n\nAşağıdaki personel hareketleri gerçekleşmiştir:\n`;
-    metin += blok("İŞE GİRİŞLER (sigorta giriş işlemi yapılması rica olunur)",
-      changes.filter((c) => c.tip === "giris"), formatGiris);
-    metin += blok("İŞTEN ÇIKIŞLAR (sigorta çıkış işlemi yapılması rica olunur)",
-      changes.filter((c) => c.tip === "cikis"), formatCikis);
-    metin += blok("ŞANTİYE TRANSFERLERİ (bilgilerinize)",
-      changes.filter((c) => c.tip === "transfer"), formatTransfer);
-    if (ekBilgi && ekBilgi.trim()) metin += `\n${ekBilgi.trim()}\n`;
-    metin += `\nİyi çalışmalar.`;
+    let metin = `Sayın Muhasebe,\n\n`;
+    if (girisCumleleri.length > 0) metin += girisCumleleri.join("\n\n") + "\n\n";
+    if (cikisCumleleri.length > 0) metin += cikisCumleleri.join("\n\n") + "\n\n";
+    if (transferCumleleri.length > 0) metin += transferCumleleri.join("\n\n") + "\n\n";
+    if (ekBilgi && ekBilgi.trim()) metin += `${ekBilgi.trim()}\n\n`;
+    metin += `İyi çalışmalar.`;
 
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
     const gonderenEmail = firma.smtp_sender_email || firma.smtp_user;

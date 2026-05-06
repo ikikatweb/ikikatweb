@@ -1,10 +1,16 @@
 // Bordro Takibi sayfası — kanban + drag-drop personel yönetimi
 "use client";
 
-import { UserPlus } from "lucide-react";
+import { useState } from "react";
+import { UserPlus, Calendar } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import BordroTakibi from "../iscilik-takibi/BordroTakibi";
+import GunlukUcretSayfasi from "./GunlukUcret";
+
+type Sekme = "bordro" | "gunluk-ucret";
 
 export default function BordroTakibiPage() {
+  const [sekme, setSekme] = useState<Sekme>("bordro");
   return (
     <div>
       <div className="flex items-center gap-3 mb-6">
@@ -14,7 +20,27 @@ export default function BordroTakibiPage() {
           <p className="text-sm text-gray-500">Personel atama, transfer ve giriş/çıkış yönetimi</p>
         </div>
       </div>
-      <BordroTakibi />
+
+      <div className="flex gap-2 mb-4 border-b">
+        <Button
+          variant={sekme === "bordro" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSekme("bordro")}
+          className={sekme === "bordro" ? "bg-[#1E3A5F]" : ""}
+        >
+          <UserPlus size={14} className="mr-1" /> Bordro
+        </Button>
+        <Button
+          variant={sekme === "gunluk-ucret" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSekme("gunluk-ucret")}
+          className={sekme === "gunluk-ucret" ? "bg-[#1E3A5F]" : ""}
+        >
+          <Calendar size={14} className="mr-1" /> Günlük Ücret
+        </Button>
+      </div>
+
+      {sekme === "bordro" ? <BordroTakibi /> : <GunlukUcretSayfasi />}
     </div>
   );
 }
