@@ -10,6 +10,7 @@ import SantiyeSelect from "@/components/shared/santiye-select";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { formatKisiAdi, formatBaslik } from "@/lib/utils/isim";
+import { useAuth } from "@/hooks";
 import type { Personel, PersonelInsert } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,9 @@ const selectClass =
 export default function PersonelForm({ personel, onSuccess, onCancel }: PersonelFormProps) {
   const isEdit = !!personel;
   const router = useRouter();
+  const { isYonetici, isShantiyeAdmin } = useAuth();
+  // Brüt ücret sadece admin (yönetici) ve şantiye yöneticisi tarafından görülür/düzenlenir
+  const brutUcretYetkili = isYonetici || isShantiyeAdmin;
 
   const [loading, setLoading] = useState(false);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -51,6 +55,10 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
   // Maaş için ayrı gösterim state'i (input cursor'unun bozulmaması için)
   const [maasInput, setMaasInput] = useState<string>(
     personel?.maas != null ? formatParaInput(personel.maas.toFixed(2).replace(".", ",")) : ""
+  );
+  // Brüt ücret için ayrı gösterim state'i
+  const [brutUcretInput, setBrutUcretInput] = useState<string>(
+    personel?.brut_ucret != null ? formatParaInput(personel.brut_ucret.toFixed(2).replace(".", ",")) : ""
   );
   const [gorevler, setGorevler] = useState<string[]>([]);
   // Pasif personel yeniden işe alma: TC ile bulunan pasif personel ID'si
@@ -64,6 +72,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     gorev: personel?.gorev ?? "",
     santiye_id: personel?.santiye_id ?? null,
     maas: personel?.maas ?? null,
+    brut_ucret: personel?.brut_ucret ?? null,
     izin_hakki: personel?.izin_hakki ?? null,
     mesai_ucreti_var: personel?.mesai_ucreti_var ?? false,
     ise_giris_tarihi: personel?.ise_giris_tarihi ?? null,
@@ -442,6 +451,27 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                 disabled={loading}
                 className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
             </div>
+
+            {/* Brüt Ücret — sadece yönetici / şantiye yöneticisi görür ve düzenler */}
+            {brutUcretYetkili && (
+              <div className="space-y-2">
+                <Label htmlFor="brut_ucret" className="flex items-center gap-1">
+                  Brüt Ücret (₺)
+                  <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">YÖNETİCİ</span>
+                </Label>
+                <input id="brut_ucret" name="brut_ucret" type="text" inputMode="decimal" placeholder="0,00"
+                  value={brutUcretInput}
+                  onChange={(e) => {
+                    const formatted = formatParaInput(e.target.value);
+                    setBrutUcretInput(formatted);
+                    const parsed = parseParaInput(formatted);
+                    setFormData((p) => ({ ...p, brut_ucret: formatted.trim() === "" ? null : parsed }));
+                  }}
+                  disabled={loading}
+                  className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50" />
+                <p className="text-[10px] text-amber-700">Bu alanı sadece yönetici ve şantiye yöneticisi görebilir/düzenleyebilir.</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="izin_hakki">İzin Hakkı (Gün)</Label>

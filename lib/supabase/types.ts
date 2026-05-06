@@ -111,6 +111,9 @@ export type Personel = {
   gorev: string | null;
   santiye_id: string | null;
   maas: number | null;
+  // Brüt ücret — sadece admin (yönetici) ve şantiye yöneticisi görür/düzenler.
+  // DB sütunu: brut_ucret NUMERIC NULL. Eski kayıtlarda olmayabilir → optional.
+  brut_ucret?: number | null;
   izin_hakki: number | null;
   mesai_ucreti_var: boolean;
   ise_giris_tarihi: string | null;
