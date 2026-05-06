@@ -1253,16 +1253,18 @@ export default function BordroTakibi() {
     return rows;
   }
 
-  function exportExcel() {
+  // Yeni formatlı bordro Excel'ini üreten ortak yardımcı.
+  // Hem indirme (exportExcel) hem mail eki (bordroGonder) için kullanılır.
+  // exportExcel "writeFile" der, bordroGonder ise base64 olarak alır.
+  function buildBordroWorkbook(): XLSX.WorkBook | null {
     const rows = exportSantiyeBazli();
-    if (rows.length === 0) { toast.error("İndirilecek kayıt yok."); return; }
+    if (rows.length === 0) return null;
 
     // hex → ARGB (xlsx-js-style 8-haneli renk bekler)
     const hexToArgb = (hex: string) => {
       const h = hex.replace("#", "").trim();
       return ("FF" + (h.length === 6 ? h : h.slice(0, 6))).toUpperCase();
     };
-    // Renk açık mı koyu mu? (yazı rengini ayarlamak için basit luminance)
     const isLight = (hex: string) => {
       const h = hex.replace("#", "");
       const r = parseInt(h.slice(0, 2), 16);
@@ -1282,7 +1284,6 @@ export default function BordroTakibi() {
       sheet[XLSX.utils.encode_cell({ r, c })] = { v, s };
     };
 
-    // ─── Başlık (büyük, ortalı, mavi) ───
     setCell(curRow, 0, `Bordro Raporu — ${ayLabel(seciliAy)}`, {
       font: { bold: true, sz: 22, color: { rgb: "1E3A5F" } },
       alignment: { horizontal: "center", vertical: "center" },
@@ -1290,16 +1291,14 @@ export default function BordroTakibi() {
     });
     merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
     curRow++;
-    // Boş satır
     curRow++;
 
-    // ─── Firma → Şantiye → Personeller hiyerarşisi ───
     const firmaGruplari = new Map<string, Map<string, typeof rows>>();
     for (const r of rows) {
       if (!firmaGruplari.has(r.firmaAd)) firmaGruplari.set(r.firmaAd, new Map());
-      const santiyeMap = firmaGruplari.get(r.firmaAd)!;
-      if (!santiyeMap.has(r.santiyeAd)) santiyeMap.set(r.santiyeAd, []);
-      santiyeMap.get(r.santiyeAd)!.push(r);
+      const sm = firmaGruplari.get(r.firmaAd)!;
+      if (!sm.has(r.santiyeAd)) sm.set(r.santiyeAd, []);
+      sm.get(r.santiyeAd)!.push(r);
     }
 
     for (const [firmaAd, santiyeMap] of firmaGruplari) {
@@ -1310,7 +1309,6 @@ export default function BordroTakibi() {
       const firmaToplamKisi = Array.from(santiyeMap.values()).reduce((s, l) => s + l.length, 0);
       const firmaToplamGun = Array.from(santiyeMap.values()).flat().reduce((s, r) => s + r.gun, 0);
 
-      // Firma satırı — büyük, kalın, firma rengi arka plan
       setCell(curRow, 0, `${firmaAd}  (${santiyeMap.size} iş · ${firmaToplamKisi} kişi · ${firmaToplamGun} gün)`, {
         font: { bold: true, sz: 16, color: { rgb: yaziArgb } },
         alignment: { horizontal: "left", vertical: "center" },
@@ -1321,7 +1319,6 @@ export default function BordroTakibi() {
 
       for (const [santiyeAd, list] of santiyeMap) {
         const sToplam = list.reduce((s, r) => s + r.gun, 0);
-        // Şantiye satırı — slate gri vurgu
         setCell(curRow, 0, `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)`, {
           font: { bold: true, sz: 12, color: { rgb: "1E3A5F" } },
           alignment: { horizontal: "left" },
@@ -1330,7 +1327,6 @@ export default function BordroTakibi() {
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
-        // Tablo başlığı
         const headers = ["Ad Soyad", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
         for (let c = 0; c < headers.length; c++) {
           setCell(curRow, c, headers[c], {
@@ -1347,7 +1343,6 @@ export default function BordroTakibi() {
         }
         curRow++;
 
-        // Personel satırları — zebra
         for (let i = 0; i < list.length; i++) {
           const r = list[i];
           const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF1F5F9";
@@ -1367,8 +1362,6 @@ export default function BordroTakibi() {
           }
           curRow++;
         }
-
-        // Boş satır
         curRow++;
       }
       curRow++;
@@ -1379,17 +1372,23 @@ export default function BordroTakibi() {
     ws["!cols"] = [
       { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 30 },
     ];
-    ws["!rows"] = [{ hpt: 32 }]; // başlık satırı yüksek
+    ws["!rows"] = [{ hpt: 32 }];
     ws["!merges"] = merges;
-    // A4, fit to 1 sayfa eni × 10 sayfa boy
     ws["!pageSetup"] = { paperSize: 9, fitToWidth: 1, fitToHeight: 10, orientation: "portrait" };
     ws["!margins"] = { left: 0.5, right: 0.5, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
     ws["!printOptions"] = { headings: false, gridLines: false };
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws as XLSX.WorkSheet, `Bordro ${ayLabel(seciliAy)}`);
+    return wb;
+  }
+
+  function exportExcel() {
+    const wb = buildBordroWorkbook();
+    if (!wb) { toast.error("İndirilecek kayıt yok."); return; }
     XLSX.writeFile(wb, `bordro-${seciliAy}.xlsx`);
   }
+
 
   // Seçili personellerin (key formatı `personelId:sutunKey`) personel + sütun bilgilerini çıkart
   function selectedItems() {
@@ -1528,42 +1527,11 @@ export default function BordroTakibi() {
       toast.error("Hiçbir firmada SMTP ayarları yok. Yönetim > Firmalar'dan girin.");
       return;
     }
-    const rows = exportSantiyeBazli();
-    if (rows.length === 0) {
-      toast.error("Gönderilecek bordro verisi yok.");
-      return;
-    }
     if (!confirm(`${ayLabel(seciliAy)} bordro raporunu ${muhasebeEmail} adresine göndermek istiyor musunuz?`)) return;
     try {
-      // Excel buffer oluştur
-      const aoa: (string | number)[][] = [];
-      aoa.push([`Bordro Raporu — ${ayLabel(seciliAy)}`]);
-      aoa.push([]);
-      const firmaGruplari = new Map<string, Map<string, typeof rows>>();
-      for (const r of rows) {
-        if (!firmaGruplari.has(r.firmaAd)) firmaGruplari.set(r.firmaAd, new Map());
-        const sm = firmaGruplari.get(r.firmaAd)!;
-        if (!sm.has(r.santiyeAd)) sm.set(r.santiyeAd, []);
-        sm.get(r.santiyeAd)!.push(r);
-      }
-      for (const [firmaAd, sm] of firmaGruplari) {
-        const fk = Array.from(sm.values()).reduce((s, l) => s + l.length, 0);
-        const fg = Array.from(sm.values()).flat().reduce((s, r) => s + r.gun, 0);
-        aoa.push([`▶▶ FİRMA: ${firmaAd} (${sm.size} iş, ${fk} kişi, ${fg} gün)`]);
-        aoa.push([]);
-        for (const [santiyeAd, list] of sm) {
-          const sToplam = list.reduce((s, r) => s + r.gun, 0);
-          aoa.push([`  ▼ ${santiyeAd} (${list.length} kişi, ${sToplam} gün)`]);
-          aoa.push(["Ad Soyad", "TC", "Görev", "İşe Başlama", "İşten Çıkış", `${ayLabel(seciliAy)} Gün`, "Not"]);
-          for (const r of list) aoa.push([r.adSoyad, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not]);
-          aoa.push([]);
-        }
-        aoa.push([]);
-      }
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 30 }];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, `Bordro ${ayLabel(seciliAy)}`);
+      // Yeni formatlı Excel'i ortak helper ile üret (indirme ile aynı görünüm + renkler).
+      const wb = buildBordroWorkbook();
+      if (!wb) { toast.error("Gönderilecek bordro verisi yok."); return; }
       // base64 olarak çıkart
       const b64 = XLSX.write(wb, { bookType: "xlsx", type: "base64" }) as string;
       // API'ye gönder
