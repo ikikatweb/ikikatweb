@@ -364,6 +364,9 @@ export default function BordroTakibi() {
   const [topluArama, setTopluArama] = useState("");
   const [topluTarih, setTopluTarih] = useState(() => new Date().toISOString().slice(0, 10));
   const [topluEkleniyor, setTopluEkleniyor] = useState(false);
+  // Paralel atama: TRUE iken eski şantiyedeki atama KAPANMAZ — personel hem eski hem yeni şantiyede gözükür.
+  // FALSE (default) eski "transfer" davranışı: eski atama kapanır.
+  const [topluParalel, setTopluParalel] = useState(false);
 
   // Ay seçici (default: bu ay). Tüm aylar düzenlenebilir — kullanıcı geçmiş ve gelecek
   // ayların kayıtları üzerinde de işlem yapabilir.
@@ -866,6 +869,7 @@ export default function BordroTakibi() {
     try {
       await updateAtama(atamaId, { baslangic_tarihi: baslangic, bitis_tarihi: bitis });
       toast.success("Atama güncellendi");
+      setGunEdit(null); // Kaydet sonrası pencereyi kapat
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -876,6 +880,7 @@ export default function BordroTakibi() {
     try {
       await deleteAtama(atamaId);
       toast.success("Atama silindi");
+      setGunEdit(null); // Sil sonrası pencereyi kapat
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -885,6 +890,7 @@ export default function BordroTakibi() {
     try {
       await insertAtama(personelId, santiyeId, baslangic, bitis);
       toast.success("Atama eklendi");
+      setGunEdit(null); // Ekle sonrası pencereyi kapat
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -950,14 +956,16 @@ export default function BordroTakibi() {
           const onceSantiyeAd = aktifAtama
             ? santiyeler.find((s) => s.id === aktifAtama.santiye_id)?.is_adi
             : undefined;
-          if (aktifAtama && aktifAtama.santiye_id !== topluEkleSantiyeId) {
+          // Transfer (default) → eski atamayı kapat. Paralel ise kapatma — personel her iki şantiyede de aktif kalır.
+          if (!topluParalel && aktifAtama && aktifAtama.santiye_id !== topluEkleSantiyeId) {
             await updateAtama(aktifAtama.id, { bitis_tarihi: kullanilanTarih });
           }
           await insertAtama(personelId, topluEkleSantiyeId, kullanilanTarih, null);
           // Mail kuyruğa
-          if (aktifAtama && aktifAtama.santiye_id !== topluEkleSantiyeId) {
+          if (!topluParalel && aktifAtama && aktifAtama.santiye_id !== topluEkleSantiyeId) {
             kuyrugaEkle({ tip: "transfer", personel, santiyeAd, onceSantiyeAd, santiyeId: topluEkleSantiyeId, onceSantiyeId: aktifAtama.santiye_id });
-          } else if (!aktifAtama) {
+          } else if (!aktifAtama || topluParalel) {
+            // Paralel atama veya hiç atama yoksa → "giriş" maili (yeni şantiyenin firmasına)
             kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId });
           }
           basari++;
@@ -969,6 +977,7 @@ export default function BordroTakibi() {
       setTopluEkleSantiyeId(null);
       setTopluSecilenler(new Set());
       setTopluArama("");
+      setTopluParalel(false);
       await loadData();
     } finally {
       setTopluEkleniyor(false);
@@ -1911,12 +1920,12 @@ export default function BordroTakibi() {
     return (
       <tr
         data-personel-row
-        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""} ${tiklanabilir ? "cursor-pointer" : ""}`}
-        onClick={(e) => {
+        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""}`}
+        onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
           if (tiklanabilir) setGunEdit({ personel: p, santiyeId: sutunKey });
         }}
-        title={tiklanabilir ? "Tıkla: giriş/çıkış tarihleri ve gün düzenle" : ""}
+        title={tiklanabilir ? "Çift tıkla: giriş/çıkış tarihleri ve gün düzenle" : ""}
       >
         <td className="px-2 py-1.5 text-center">
           <input
@@ -2462,6 +2471,22 @@ export default function BordroTakibi() {
                     <Input type="date" value={topluTarih} onChange={(e) => setTopluTarih(e.target.value)} />
                   </div>
                 )}
+                {/* Paralel atama seçeneği — personel başka şantiyede aktifken bile orada kapatmasın */}
+                <label className="flex items-start gap-2 bg-blue-50 border-2 border-blue-200 rounded-lg p-2 cursor-pointer hover:bg-blue-100">
+                  <input
+                    type="checkbox"
+                    checked={topluParalel}
+                    onChange={(e) => setTopluParalel(e.target.checked)}
+                    className="mt-0.5 cursor-pointer"
+                  />
+                  <div className="text-[11px] leading-relaxed">
+                    <div className="font-semibold text-blue-700">Paralel Atama (eski şantiyeyi kapatma)</div>
+                    <div className="text-blue-600">
+                      İşaretliyken personel <strong>aynı ay içinde birden fazla şantiyede</strong> aynı anda aktif kalır.
+                      İşaretsizken eski atama kapanır (transfer).
+                    </div>
+                  </div>
+                </label>
                 <div>
                   <Label className="text-xs">Personel Ara</Label>
                   <Input value={topluArama} onChange={(e) => setTopluArama(e.target.value)}
