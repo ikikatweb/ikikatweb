@@ -32,6 +32,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "puantaj-arac", label: "Araç Puantaj", grup: "Puantaj" },
   // Tek sayfalar
   { key: "iscilik-takibi", label: "İşçilik Takibi", grup: "Tek Sayfa" },
+  { key: "bordro-takibi", label: "Bordro Takibi", grup: "Tek Sayfa" },
   { key: "yakit", label: "Yakıt", grup: "Tek Sayfa" },
   { key: "kasa-defteri", label: "Kasa Defteri", grup: "Tek Sayfa" },
   { key: "santiye-defteri", label: "Şantiye Defteri", grup: "Tek Sayfa" },

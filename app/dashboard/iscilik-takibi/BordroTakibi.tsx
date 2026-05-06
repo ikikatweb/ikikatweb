@@ -40,6 +40,13 @@ import {
   type GunlukUcret,
 } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import {
+  getPendingMailler,
+  insertPendingMail,
+  deletePendingMail,
+  deletePendingMailler,
+  type BordroPendingDB,
+} from "@/lib/supabase/queries/bordro-pending";
 import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi } from "@/lib/utils/isim";
 
@@ -393,18 +400,77 @@ export default function BordroTakibi() {
   const buAy = su_an_ay();
   const isReadOnly = false;
 
-  // Bekleyen değişiklikler — mail kuyruğu (localStorage'da kalıcı)
+  // Bekleyen değişiklikler — mail kuyruğu (DB'de paylaşımlı, tüm adminler aynı kuyruğu görür)
   const [pending, setPending] = useState<PendingChange[]>([]);
   const [mailDialogAcik, setMailDialogAcik] = useState(false);
   const [mailGonderiliyor, setMailGonderiliyor] = useState(false);
   const [ekMailNotu, setEkMailNotu] = useState("");
 
-  // localStorage'tan kuyruk yükle
+  // DB row → PendingChange dönüşümü (UI tarafı kayıt yapısı koruyor)
+  const dbRowToPending = (r: BordroPendingDB): PendingChange => ({
+    id: r.id,
+    tip: r.tip,
+    personelAd: r.personel_ad,
+    personelTc: r.personel_tc ?? undefined,
+    personelGorev: r.personel_gorev ?? undefined,
+    santiyeAd: r.santiye_ad ?? undefined,
+    onceSantiyeAd: r.once_santiye_ad ?? undefined,
+    tarih: r.tarih,
+    firmaId: r.firma_id ?? undefined,
+  });
+
+  // DB'den kuyruğu çek — tüm adminler aynı liste
+  const refreshPending = useCallback(async () => {
+    try {
+      const rows = await getPendingMailler();
+      setPending(rows.map(dbRowToPending));
+    } catch { /* sessiz */ }
+  }, []);
+
+  // İlk yüklemede + her 30 saniyede bir yenile (diğer adminlerin işlemleri görünsün)
+  useEffect(() => {
+    refreshPending();
+    const intv = setInterval(refreshPending, 30_000);
+    // Sekme tekrar fokuslanınca da yenile
+    const onFocus = () => refreshPending();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(intv);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshPending]);
+
+  // (Eski localStorage kuyruğu varsa migrate et — tek seferlik)
   useEffect(() => {
     try {
       const saved = localStorage.getItem(PENDING_LS_KEY);
-      if (saved) setPending(JSON.parse(saved));
+      if (!saved) return;
+      const eski = JSON.parse(saved) as PendingChange[];
+      if (!Array.isArray(eski) || eski.length === 0) {
+        localStorage.removeItem(PENDING_LS_KEY);
+        return;
+      }
+      // DB'ye taşı
+      (async () => {
+        for (const p of eski) {
+          await insertPendingMail({
+            tip: p.tip,
+            personel_ad: p.personelAd,
+            personel_tc: p.personelTc ?? null,
+            personel_gorev: p.personelGorev ?? null,
+            santiye_ad: p.santiyeAd ?? null,
+            once_santiye_ad: p.onceSantiyeAd ?? null,
+            tarih: p.tarih,
+            firma_id: p.firmaId ?? null,
+            created_by: kullanici?.id ?? null,
+            created_by_ad: kullanici?.ad_soyad ?? null,
+          }).catch(() => {});
+        }
+        localStorage.removeItem(PENDING_LS_KEY);
+        await refreshPending();
+      })();
     } catch { /* sessiz */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 17:00'da otomatik mail gönder — kuyrukta bekleyen varsa muhasebeye iletilir.
@@ -458,19 +524,34 @@ export default function BordroTakibi() {
       document.removeEventListener("keydown", keyHandler);
     };
   }, [selectedKeys.size]);
-  // Kuyruğu localStorage'a yaz
-  useEffect(() => {
-    try {
-      if (pending.length > 0) localStorage.setItem(PENDING_LS_KEY, JSON.stringify(pending));
-      else localStorage.removeItem(PENDING_LS_KEY);
-    } catch { /* sessiz */ }
-  }, [pending]);
-
-  function pendingEkle(p: Omit<PendingChange, "id">) {
-    setPending((prev) => [
-      ...prev,
-      { ...p, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
-    ]);
+  // pendingEkle: önce optimistic olarak yerel state'e ekle, sonra DB'ye yaz.
+  // Diğer adminler 30sn'lik refresh ile görür.
+  async function pendingEkle(p: Omit<PendingChange, "id">) {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setPending((prev) => [...prev, { ...p, id: tempId }]);
+    const inserted = await insertPendingMail({
+      tip: p.tip,
+      personel_ad: p.personelAd,
+      personel_tc: p.personelTc ?? null,
+      personel_gorev: p.personelGorev ?? null,
+      santiye_ad: p.santiyeAd ?? null,
+      once_santiye_ad: p.onceSantiyeAd ?? null,
+      tarih: p.tarih,
+      firma_id: p.firmaId ?? null,
+      created_by: kullanici?.id ?? null,
+      created_by_ad: kullanici?.ad_soyad ?? null,
+    });
+    if (inserted) {
+      // Temp ID yerine gerçek DB row'una geç
+      setPending((prev) => prev.map((x) => (x.id === tempId ? dbRowToPending(inserted) : x)));
+    } else {
+      // Insert başarısız → temp kaydı geri al, kullanıcıyı uyar
+      setPending((prev) => prev.filter((x) => x.id !== tempId));
+      toast.error(
+        "Mail kuyruğuna eklenemedi. Veritabanında 'bordro_pending_mail' tablosu yoksa Supabase SQL editöründe oluşturun.",
+        { duration: 10000 },
+      );
+    }
   }
 
   const loadData = useCallback(async () => {
@@ -782,8 +863,10 @@ export default function BordroTakibi() {
       if (hataMesajlari.length > 0) {
         toast.error(hataMesajlari[0], { duration: 8000 });
       }
-      // Sadece BAŞARILI gönderilenleri kuyruktan çıkar
+      // Sadece BAŞARILI gönderilenleri kuyruktan çıkar (DB + yerel)
       if (basari > 0) {
+        const ids = Array.from(basariliKeys).filter((id) => !id.startsWith("temp-"));
+        deletePendingMailler(ids).catch(() => { /* sessiz — bir sonraki refresh düzeltir */ });
         setPending((prev) => prev.filter((p) => !basariliKeys.has(p.id)));
       }
       if (basari > 0 && basarisiz === 0) {
@@ -874,6 +957,11 @@ export default function BordroTakibi() {
       }
 
       const idsToRemove = new Set([id, ...linked.map((l) => l.id)]);
+      // DB'den de sil (temp olmayanları); paylaşımlı kuyruk → diğer adminler de görür.
+      const dbIds = Array.from(idsToRemove).filter((x) => !x.startsWith("temp-"));
+      if (dbIds.length > 0) {
+        deletePendingMailler(dbIds).catch(() => { /* sessiz */ });
+      }
       setPending((prev) => prev.filter((p) => !idsToRemove.has(p.id)));
       toast.success(linked.length > 0
         ? `Transfer geri alındı (${1 + linked.length} bağlı kayıt: hem giriş hem çıkış DB'den silindi)`
