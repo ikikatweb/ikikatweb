@@ -493,7 +493,8 @@ export default function BordroTakibi() {
       setSantiyeler(aktifSantiyeler);
       setPersoneller(p);
       setAtamalar(a);
-      setMuhasebeEmail(m[0] ?? "");
+      // Birden fazla muhasebe email tanımlanmışsa hepsine gönder (virgülle ayrılmış)
+      setMuhasebeEmail((m ?? []).filter(Boolean).join(", "));
       setFirmalar((f as Firma[]) ?? []);
     } catch (err) {
       console.error(err);
@@ -1910,12 +1911,12 @@ export default function BordroTakibi() {
     return (
       <tr
         data-personel-row
-        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""}`}
-        onDoubleClick={(e) => {
+        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""} ${tiklanabilir ? "cursor-pointer" : ""}`}
+        onClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
           if (tiklanabilir) setGunEdit({ personel: p, santiyeId: sutunKey });
         }}
-        title={tiklanabilir ? "Çift tıkla: gün düzenle" : ""}
+        title={tiklanabilir ? "Tıkla: giriş/çıkış tarihleri ve gün düzenle" : ""}
       >
         <td className="px-2 py-1.5 text-center">
           <input
@@ -2077,10 +2078,6 @@ export default function BordroTakibi() {
               <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded ml-1 flex-shrink-0">
                 <Lock size={10} /> salt-okunur
               </span>
-            )}
-            {!isReadOnly && seciliAy !== buAy && (
-              <button type="button" onClick={() => setSeciliAy(buAy)}
-                className="text-[10px] text-blue-600 underline ml-1 flex-shrink-0 whitespace-nowrap">Bu aya dön</button>
             )}
           </div>
           <span className="text-[11px] text-gray-500 inline-flex items-center gap-1">
@@ -2606,6 +2603,43 @@ export default function BordroTakibi() {
                       aySonGun={max}
                       onSave={(N) => kaydetManuelGun(gunEdit.personel.id, gunEdit.santiyeId, seciliAy, N)}
                     />
+                  );
+                })()}
+
+                {/* Giriş / Çıkış Tarihleri — atama editörü.
+                    Tüm atamalar gösterilir (sadece bu ay değil), tarih sırasına göre yenidan eskiye. */}
+                {!isReadOnly && (() => {
+                  const tumAtamalar = atamalar
+                    .filter((a) => a.personel_id === gunEdit.personel.id && a.santiye_id === gunEdit.santiyeId)
+                    .sort((a, b) => b.baslangic_tarihi.localeCompare(a.baslangic_tarihi));
+                  return (
+                    <div className="border-2 border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-semibold text-gray-700">📅 Giriş / Çıkış Tarihleri</div>
+                        <span className="text-[10px] text-gray-500">{tumAtamalar.length} atama</span>
+                      </div>
+                      {tumAtamalar.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Henüz atama yok. Aşağıdan yeni atama ekleyebilirsiniz.</p>
+                      )}
+                      {tumAtamalar.map((a) => {
+                        const cakisanAyDa = liste.find((l) => l.id === a.id);
+                        const aylikGun = cakisanAyDa ? ayInGun(a) : 0;
+                        return (
+                          <AtamaSatir
+                            key={a.id}
+                            atama={a}
+                            gunSayisi={aylikGun}
+                            onSave={(bas, bit) => gunEditAtamaUpdate(a.id, bas, bit)}
+                            onDelete={() => gunEditAtamaSil(a.id)}
+                          />
+                        );
+                      })}
+                      <YeniAtamaSatir
+                        defaultBaslangic={ayBas}
+                        defaultBitis={ayBit}
+                        onEkle={(bas, bit) => gunEditAtamaEkle(gunEdit.personel.id, gunEdit.santiyeId, bas, bit)}
+                      />
+                    </div>
                   );
                 })()}
 
