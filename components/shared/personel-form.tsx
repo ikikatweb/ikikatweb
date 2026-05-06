@@ -232,12 +232,18 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
         }
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
+      const msg = err instanceof Error ? err.message : String(err);
       // Query seviyesindeki tekillik hatası (TC ya da ad_soyad zaten kayıtlı)
       if (msg.includes("zaten") || msg.includes("duplicate") || msg.includes("unique")) {
         toast.error(msg || "Bu personel zaten kayıtlı.", { duration: 6000 });
+      } else if (msg.includes("brut_ucret") || msg.includes("column") && msg.includes("not exist")) {
+        toast.error(
+          `Veritabanında 'brut_ucret' sütunu yok. Supabase SQL editöründe şunu çalıştırın:\n\n` +
+          `ALTER TABLE personel ADD COLUMN IF NOT EXISTS brut_ucret NUMERIC NULL;`,
+          { duration: 12000 },
+        );
       } else {
-        toast.error(isEdit ? "Personel güncellenirken hata oluştu." : "Personel eklenirken hata oluştu.");
+        toast.error(`${isEdit ? "Güncelleme" : "Ekleme"} hatası: ${msg}`, { duration: 8000 });
       }
       setLoading(false);
     }
