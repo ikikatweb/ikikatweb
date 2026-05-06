@@ -744,8 +744,12 @@ export default function BordroTakibi() {
     onceSantiyeAd?: string;
     santiyeId?: string;
     onceSantiyeId?: string;
+    // DB'ye yazılan ASIL tarih — backdated (eski tarihli) işlemlerde verilir.
+    // Bu tarih revert sırasında DB satırını bulmak için kullanılır.
+    // Verilmezse bugünün tarihi kullanılır.
+    tarih?: string;
   }) {
-    const tarih = new Date().toISOString().slice(0, 10);
+    const tarih = payload.tarih ?? new Date().toISOString().slice(0, 10);
     const baseFields = {
       personelAd: payload.personel.ad_soyad,
       personelTc: payload.personel.tc_kimlik_no,
@@ -1021,17 +1025,18 @@ export default function BordroTakibi() {
 
       await updateAtama(atamaId, { baslangic_tarihi: baslangic, bitis_tarihi: bitis });
 
-      // Mail kuyruğuna ekle (önceki durum → yeni durum)
+      // Mail kuyruğuna ekle (önceki durum → yeni durum).
+      // ÖNEMLİ: kuyruğa DB'ye yazılan ASIL tarihi (revert sırasında satırı bulmak için) iletiyoruz.
       if (eskiAtama && personel) {
         const eskiAcik = !eskiAtama.bitis_tarihi;
         const yeniAcik = !bitis;
-        if (eskiAcik && !yeniAcik) {
-          // Açık atama kapatıldı → işten çıkış maili
-          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: santiyeAd, onceSantiyeId: eskiAtama.santiye_id });
+        if (eskiAcik && !yeniAcik && bitis) {
+          // Açık atama kapatıldı → işten çıkış maili (revert: bitis_tarihi = bitis)
+          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: santiyeAd, onceSantiyeId: eskiAtama.santiye_id, tarih: bitis });
           toast.success(`Atama güncellendi · ${personel.ad_soyad} işten çıkış maili kuyruğa eklendi`);
         } else if (!eskiAcik && yeniAcik) {
-          // Kapalı atama yeniden açıldı → işe geri giriş maili
-          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: eskiAtama.santiye_id });
+          // Kapalı atama yeniden açıldı → işe geri giriş maili (revert: baslangic_tarihi = baslangic)
+          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: eskiAtama.santiye_id, tarih: baslangic });
           toast.success(`Atama güncellendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
         } else {
           toast.success("Atama güncellendi");
@@ -1084,7 +1089,8 @@ export default function BordroTakibi() {
       const personel = personeller.find((p) => p.id === personelId);
       const santiyeAd = santiyeler.find((s) => s.id === santiyeId)?.is_adi;
       if (personel && !bitis) {
-        kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId });
+        // Revert için DB'ye yazılan ASIL baslangic_tarihi tarihini ilet
+        kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId, tarih: baslangic });
         toast.success(`Atama eklendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
       } else {
         toast.success("Atama eklendi");
@@ -1155,8 +1161,8 @@ export default function BordroTakibi() {
           // Bir personel aynı anda birden fazla şantiyede aktif olabilir — bu normaldir.
           // Transfer (eski şantiyeyi kapatma) için ayrı "Toplu Transfer" butonu veya drag-drop kullanılır.
           await insertAtama(personelId, topluEkleSantiyeId, kullanilanTarih, null);
-          // Mail kuyruğa: her zaman "giriş" — yeni şantiyenin firmasına
-          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId });
+          // Mail kuyruğa: her zaman "giriş" — yeni şantiyenin firmasına. Tarih: DB'ye yazılan ASIL tarih.
+          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: kullanilanTarih });
           basari++;
         } catch (e) {
           console.error("Toplu ekleme hatası:", e);
@@ -1741,7 +1747,8 @@ export default function BordroTakibi() {
         : undefined;
       await isenCikar(cikisOnay.id, cikisTarih);
       toast.success(`${cikisOnay.ad_soyad} işten çıkarıldı (${cikisTarih}, mail kuyruğa)`);
-      kuyrugaEkle({ tip: "cikis", personel: cikisOnay, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: oldSantiyeId });
+      // ÖNEMLİ: DB'ye yazılan ASIL tarihi (cikisTarih) kuyruğa ilet — revert için gerekli.
+      kuyrugaEkle({ tip: "cikis", personel: cikisOnay, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: oldSantiyeId, tarih: cikisTarih });
       setCikisOnay(null);
       setCikisTarih(new Date().toISOString().slice(0, 10));
       await loadData();
