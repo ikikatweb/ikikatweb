@@ -1897,7 +1897,10 @@ export default function BordroTakibi() {
   // Personeller için tablo wrapper'ı
   function PersonelTablo({ liste, sutunKey }: { liste: Personel[]; sutunKey: string }) {
     const yil = parseInt(seciliAy.split("-")[0], 10);
-    const ucret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    // Yıllık varsayılan günlük ücret (Bordro Takibi > Günlük Ücret sekmesinden)
+    const defaultUcret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    // Tutar sütununu göster: varsayılan ücret >0 veya listedeki herhangi bir personelin brüt ücreti varsa
+    const tutarSutunuGoster = defaultUcret > 0 || liste.some((p) => (p.brut_ucret ?? 0) > 0);
     const isAtanmamis = sutunKey === ATANMAMIS_KEY;
     const isPasif = sutunKey === PASIF_KEY;
     return (
@@ -1914,7 +1917,7 @@ export default function BordroTakibi() {
                   <th className="text-left px-2 py-1.5 font-semibold text-gray-600 whitespace-nowrap">İşe Başlama</th>
                   <th className="text-left px-2 py-1.5 font-semibold text-gray-600 whitespace-nowrap">Çıkış</th>
                   <th className="text-right px-2 py-1.5 font-semibold text-gray-600 whitespace-nowrap">Gün</th>
-                  {ucret > 0 && (
+                  {tutarSutunuGoster && (
                     <th className="text-right px-2 py-1.5 font-semibold text-gray-600 whitespace-nowrap">Tutar</th>
                   )}
                 </>
@@ -1923,7 +1926,7 @@ export default function BordroTakibi() {
             </tr>
           </thead>
           <tbody>
-            {liste.map((p) => <PersonelSatir key={p.id} p={p} sutunKey={sutunKey} ucret={ucret} />)}
+            {liste.map((p) => <PersonelSatir key={p.id} p={p} sutunKey={sutunKey} ucret={defaultUcret} tutarGoster={tutarSutunuGoster} />)}
           </tbody>
         </table>
       </div>
@@ -1931,7 +1934,11 @@ export default function BordroTakibi() {
   }
 
   // Tek satır personel: <tr> formatında, checkbox + sütunlar + butonlar
-  function PersonelSatir({ p, sutunKey, ucret }: { p: Personel; sutunKey: string; ucret: number }) {
+  function PersonelSatir({ p, sutunKey, ucret, tutarGoster }: { p: Personel; sutunKey: string; ucret: number; tutarGoster: boolean }) {
+    // Personelin brüt ücreti varsa onu günlük ücret olarak kullan, yoksa yıl bazlı varsayılan ücret
+    const personelBrut = p.brut_ucret ?? 0;
+    const kullanilanUcret = personelBrut > 0 ? personelBrut : ucret;
+    const brutKullanildi = personelBrut > 0;
     const ozelGun = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY
       ? gunMap.get(p.id)?.get(sutunKey) ?? 0
       : 0;
@@ -1945,8 +1952,9 @@ export default function BordroTakibi() {
       ? naturalGunMap.get(p.id)?.get(sutunKey) ?? 0
       : 0;
     // Tutar hesabı: manuel varsa manuel gün × ücret, yoksa doğal gün × ücret
+    // Ücret: personelin brüt ücreti varsa o, yoksa yıl bazlı varsayılan
     const tutarGun = hasManuel ? ozelGun : naturalGun;
-    const tutarHesap = tutarGun * ucret;
+    const tutarHesap = tutarGun * kullanilanUcret;
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
     const showCikis = !inPasifCol && !inAtanmamisCol;
@@ -2021,12 +2029,17 @@ export default function BordroTakibi() {
                 </span>
               ) : <span className="text-gray-300">—</span>}
             </td>
-            {ucret > 0 && (
+            {tutarGoster && (
               <td
                 className={`px-2 py-1.5 text-right font-mono text-[11px] ${hasManuel ? "text-gray-900 font-semibold" : "text-gray-400"}`}
-                title={`${tutarGun} gün × ${ucret.toLocaleString("tr-TR")} TL ${hasManuel ? "(manuel)" : "(otomatik hesap)"}`}
+                title={`${tutarGun} gün × ${kullanilanUcret.toLocaleString("tr-TR")} TL ${hasManuel ? "(manuel)" : "(otomatik hesap)"}${brutKullanildi ? " · brüt ücret" : " · yıl bazlı ücret"}`}
               >
-                {tutarHesap > 0 ? `${tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL` : "—"}
+                {tutarHesap > 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    {brutKullanildi && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold" title="Brüt ücretten">B</span>}
+                    {tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                  </span>
+                ) : "—"}
               </td>
             )}
           </>

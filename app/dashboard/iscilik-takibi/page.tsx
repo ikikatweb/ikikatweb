@@ -32,8 +32,8 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
-import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
-import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi } from "@/lib/supabase/types";
+import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
+import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi, Personel } from "@/lib/supabase/types";
 
 type EditingCell = { id: string; santiyeId: string; field: string } | null;
 
@@ -164,6 +164,7 @@ export default function IscilikTakibiPage() {
   const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
+  const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
   // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
   const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
@@ -181,7 +182,7 @@ export default function IscilikTakibiPage() {
     if (authLoading) return;
     try {
       await ensureAktifSantiyeler();
-      const [data, tData, ayliklarData, firmalarData, mGunler, ucretler, atamaData] = await Promise.all([
+      const [data, tData, ayliklarData, firmalarData, mGunler, ucretler, atamaData, persData] = await Promise.all([
         getIscilikTakibi(),
         getTanimlamalar("is_grubu"),
         getTumIscilikAyliklari().catch(() => []),
@@ -189,10 +190,12 @@ export default function IscilikTakibiPage() {
         getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
         getGunlukUcretler().catch(() => [] as GunlukUcret[]),
         getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
+        getBordroPersoneller().catch(() => [] as Personel[]),
       ]);
       setManuelGunler(mGunler);
       setGunlukUcretler(ucretler);
       setAtamalar(atamaData);
+      setBordroPersoneller(persData);
       // Firma renk map'i
       const renkMap = new Map<string, string>();
       for (const f of (firmalarData as { id: string; renk: string | null }[]) ?? []) {
@@ -843,13 +846,21 @@ export default function IscilikTakibiPage() {
                         // Format: "personelId|YYYY-MM"
                         const dahilEdilen = new Set<string>();
 
+                        // Personel bazlı ücret çözümü: brüt ücret > 0 ise onu kullan, yoksa yıl bazlı varsayılan ücret
+                        const personelUcret = (personelId: string, yil: number): number => {
+                          const p = bordroPersoneller.find((x) => x.id === personelId);
+                          const brut = p?.brut_ucret ?? 0;
+                          if (brut > 0) return brut;
+                          return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+                        };
+
                         // 1) Manuel girişler — sonAy'dan sonraki olanlar
                         for (const m of manuelGunler) {
                           if (m.santiye_id !== santiyeId) continue;
                           const mAyNum = ayYilNum(m.ay);
                           if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
                           const yil = parseInt(m.ay.split("-")[0], 10);
-                          const ucret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+                          const ucret = personelUcret(m.personel_id, yil);
                           if (ucret > 0) {
                             bordroToplam += m.gun * ucret;
                             dahilEdilen.add(`${m.personel_id}|${m.ay}`);
@@ -879,14 +890,12 @@ export default function IscilikTakibiPage() {
                           while (yil * 100 + ay <= buYilAyNum) {
                             const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
                             const ayHesap = gunHesaplaAyBazli(santiyeAtamalari, ayStr);
-                            const ucret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
-                            if (ucret > 0) {
-                              for (const [pId, sMap] of ayHesap) {
-                                const gun = sMap.get(santiyeId) ?? 0;
-                                if (gun <= 0) continue;
-                                if (dahilEdilen.has(`${pId}|${ayStr}`)) continue; // manuel olarak zaten eklendi
-                                bordroToplam += gun * ucret;
-                              }
+                            for (const [pId, sMap] of ayHesap) {
+                              const gun = sMap.get(santiyeId) ?? 0;
+                              if (gun <= 0) continue;
+                              if (dahilEdilen.has(`${pId}|${ayStr}`)) continue; // manuel olarak zaten eklendi
+                              const ucret = personelUcret(pId, yil);
+                              if (ucret > 0) bordroToplam += gun * ucret;
                             }
                             ay += 1;
                             if (ay > 12) { ay = 1; yil += 1; }
