@@ -406,6 +406,14 @@ export default function IscilikDetayPage() {
 
       {/* Aylık Tablo */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        {/* Yeni ay ekle butonu — tablonun üstünde (en son ay en üstte sıralama ile uyumlu) */}
+        <div className="border-b p-2 flex justify-center">
+          {yEkle && (
+            <Button variant="outline" size="sm" onClick={handleYeniAy} className="text-[#F97316] border-[#F97316] hover:bg-[#F97316] hover:text-white">
+              <Plus size={16} className="mr-1" /> Yeni Ay Ekle
+            </Button>
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow className="bg-[#64748B]">
@@ -417,7 +425,11 @@ export default function IscilikDetayPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {ayliklar.map((a, idx) => (
+            {/* Görüntüleme sırasını ters çevir: en son ay en üstte, ilk ay en altta.
+                idx hesaplamasını orijinal sıraya göre yapıyoruz ki sıra numarası karışmasın. */}
+            {[...ayliklar].reverse().map((a) => {
+              const idx = ayliklar.findIndex((x) => x.id === a.id);
+              return (
               <TableRow key={a.id} className="text-sm hover:bg-gray-50">
                 <TableCell className="text-center px-3">{idx + 1}</TableCell>
                 <TableCell className="text-center px-3 cursor-pointer hover:bg-blue-50"
@@ -470,7 +482,8 @@ export default function IscilikDetayPage() {
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
 
             {ayliklar.length === 0 && (
               <TableRow>
@@ -495,14 +508,6 @@ export default function IscilikDetayPage() {
           </TableBody>
         </Table>
 
-        {/* Yeni ay ekle butonu */}
-        <div className="border-t p-2 flex justify-center">
-          {yEkle && (
-            <Button variant="outline" size="sm" onClick={handleYeniAy} className="text-[#F97316] border-[#F97316] hover:bg-[#F97316] hover:text-white">
-              <Plus size={16} className="mr-1" /> Yeni Ay Ekle
-            </Button>
-          )}
-        </div>
       </div>
     </div>
   );
