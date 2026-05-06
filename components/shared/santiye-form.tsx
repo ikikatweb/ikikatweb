@@ -493,6 +493,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </span>
               </div>
 
+
               {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">

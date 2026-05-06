@@ -27,6 +27,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -154,8 +157,11 @@ export default function IscilikTakibiPage() {
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [arama, setArama] = useState("");
+  // Aktif işler için çoklu seçim filtresi — kullanıcı görmek istediği işleri seçer
+  // Set boş ise tümü gösterilir (varsayılan davranış); doluysa sadece seçilenler.
+  const [seciliSantiyeIds, setSeciliSantiyeIds] = useState<Set<string>>(new Set());
+  const [santiyeFiltreAcik, setSantiyeFiltreAcik] = useState(false);
   // Günlük ücret tutarı (manuel — sadece rakam, localStorage'da saklanır)
-  const [gunlukUcret, setGunlukUcret] = useState<string>("");
   // Mobilde iş adı sütununu sabitleme (sticky) açık/kapalı toggle
   const [isAdiSabit, setIsAdiSabit] = useState(true);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
@@ -287,19 +293,6 @@ export default function IscilikTakibiPage() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if (editing && inputRef.current) inputRef.current.focus(); }, [editing]);
 
-  // Günlük ücret tutarı — localStorage'tan yükle / kaydet
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("iscilik-gunluk-ucret");
-      if (saved != null) setGunlukUcret(saved);
-    } catch { /* sessiz */ }
-  }, []);
-  useEffect(() => {
-    try {
-      if (gunlukUcret !== "") localStorage.setItem("iscilik-gunluk-ucret", gunlukUcret);
-      else localStorage.removeItem("iscilik-gunluk-ucret");
-    } catch { /* sessiz */ }
-  }, [gunlukUcret]);
 
   function handleCellClick(row: IscilikTakibiWithSantiye, col: ColDef) {
     if (!col.editable) return;
@@ -381,12 +374,17 @@ export default function IscilikTakibiPage() {
     } catch { /* sessiz */ }
   }
 
-  // Arama + bitmiş iş filtresi (geçici/kesin kabul, tasfiye, devir olan işler gizlenir)
-  const filtrelenmis = rows.filter((r) => {
+  // Aktif işler listesi (filtre paneli + filtrelenmiş listede ortak baz)
+  const aktifIsler = rows.filter((r) => {
     const s = r.santiyeler;
-    // Bitmiş / devredilmiş / tasfiye edilmiş işleri gizle
     const bitmis = !!(s?.gecici_kabul_tarihi || s?.kesin_kabul_tarihi || s?.tasfiye_tarihi || s?.devir_tarihi);
-    if (bitmis) return false;
+    return !bitmis;
+  });
+
+  // Arama + çoklu seçim filtresi (geçici/kesin kabul, tasfiye, devir olan işler gizlenir)
+  const filtrelenmis = aktifIsler.filter((r) => {
+    // Çoklu seçim filtresi: Set doluysa sadece seçilen şantiyeler gösterilir
+    if (seciliSantiyeIds.size > 0 && !seciliSantiyeIds.has(r.santiye_id)) return false;
     // Arama filtresi
     if (!arama.trim()) return true;
     const q = trAramaNormalize(arama);
@@ -595,6 +593,32 @@ export default function IscilikTakibiPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input placeholder="İş adı, sicil no ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
         </div>
+        {/* Aktif işler için çoklu seçim filtre butonu */}
+        <Button
+          variant={seciliSantiyeIds.size > 0 ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSantiyeFiltreAcik(true)}
+          className={seciliSantiyeIds.size > 0 ? "bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap" : "whitespace-nowrap"}
+          title="Görmek istediğin işleri seç"
+        >
+          📋 İş Filtresi
+          {seciliSantiyeIds.size > 0 && (
+            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-white/30 text-white">
+              {seciliSantiyeIds.size}
+            </span>
+          )}
+        </Button>
+        {seciliSantiyeIds.size > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSeciliSantiyeIds(new Set())}
+            title="Filtreyi temizle (tüm aktif işleri göster)"
+            className="text-gray-500 whitespace-nowrap"
+          >
+            ✕ Temizle
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           {/* Mobilde iş adı sabit/kayar toggle — masaüstünde gizli */}
           <Button
@@ -606,30 +630,13 @@ export default function IscilikTakibiPage() {
           >
             {isAdiSabit ? "🔒 İş Adı Sabit" : "🔓 İş Adı Kayar"}
           </Button>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
-                <FileDown size={16} className="mr-1" /> PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
-                <FileSpreadsheet size={16} className="mr-1" /> Excel
-              </Button>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <span>Günlük Ücret:</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={gunlukUcret}
-                onChange={(e) => {
-                  // Sadece rakam ve virgül kabul et
-                  const v = e.target.value.replace(/[^\d,]/g, "");
-                  setGunlukUcret(v);
-                }}
-                placeholder="0"
-                className="h-8 w-28 px-2 text-sm text-right font-semibold text-[#1E3A5F] border border-gray-300 rounded outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30"
-              />
-            </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
+              <FileDown size={16} className="mr-1" /> PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportExcel} disabled={filtrelenmis.length === 0}>
+              <FileSpreadsheet size={16} className="mr-1" /> Excel
+            </Button>
           </div>
         </div>
       </div>
@@ -1029,6 +1036,96 @@ export default function IscilikTakibiPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Aktif İşler Çoklu Seçim Filtresi Dialog */}
+      <Dialog open={santiyeFiltreAcik} onOpenChange={setSantiyeFiltreAcik}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>İş Filtresi — Görmek istediğin işleri seç</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-xs text-gray-500">
+              Aşağıdan birden fazla iş seçebilirsin. Hiçbir şey seçmezsen tüm aktif işler gösterilir.
+            </p>
+            <div className="flex items-center justify-between gap-2 sticky top-0 bg-white py-2 border-b z-10">
+              <div className="text-xs font-semibold">
+                Aktif İşler ({aktifIsler.length})
+                {seciliSantiyeIds.size > 0 && (
+                  <span className="ml-2 text-blue-600">· {seciliSantiyeIds.size} seçili</span>
+                )}
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setSeciliSantiyeIds(new Set(aktifIsler.map((r) => r.santiye_id)))}
+                >
+                  Tümünü Seç
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setSeciliSantiyeIds(new Set())}
+                >
+                  Temizle
+                </Button>
+              </div>
+            </div>
+            <ul className="space-y-1">
+              {aktifIsler
+                .slice()
+                .sort((a, b) => (a.santiyeler?.is_adi ?? "").localeCompare(b.santiyeler?.is_adi ?? "", "tr"))
+                .map((r) => {
+                  const sec = seciliSantiyeIds.has(r.santiye_id);
+                  return (
+                    <li
+                      key={r.id}
+                      className={`border rounded px-3 py-2 cursor-pointer transition-colors ${sec ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"}`}
+                      onClick={() => {
+                        setSeciliSantiyeIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(r.santiye_id)) next.delete(r.santiye_id);
+                          else next.add(r.santiye_id);
+                          return next;
+                        });
+                      }}
+                    >
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={sec}
+                          readOnly
+                          className="mt-1 w-4 h-4 cursor-pointer accent-blue-600"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-[#1E3A5F] truncate">
+                            {r.santiyeler?.is_adi ?? "—"}
+                          </div>
+                          <div className="text-[10px] text-gray-500 truncate">
+                            {r.sicil_no && <span className="font-mono">{r.sicil_no}</span>}
+                            {r.santiyeler?.is_grubu && <span> · {r.santiyeler.is_grubu}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+            <div className="flex justify-end gap-2 pt-3 border-t sticky bottom-0 bg-white">
+              <Button variant="outline" size="sm" onClick={() => setSantiyeFiltreAcik(false)}>Kapat</Button>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => setSantiyeFiltreAcik(false)}
+              >
+                Uygula ({seciliSantiyeIds.size > 0 ? seciliSantiyeIds.size : "tümü"})
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
