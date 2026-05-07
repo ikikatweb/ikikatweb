@@ -467,16 +467,32 @@ export default function BordroTakibi() {
     } catch { /* sessiz */ }
   }, []);
 
+  // loadData ref — daha aşağıda tanımlanan loadData'yı focus listener içinden çağırabilmek için
+  const loadDataRef = useRef<(() => void) | null>(null);
+
   // İlk yüklemede + her 30 saniyede bir yenile (diğer adminlerin işlemleri görünsün)
   useEffect(() => {
     refreshPending();
     const intv = setInterval(refreshPending, 30_000);
-    // Sekme tekrar fokuslanınca da yenile
-    const onFocus = () => refreshPending();
+    // Sekme tekrar fokuslanınca pending kuyruğunu + tüm sayfa verisini (santiye, atama, brüt vs.)
+    // tazele. Kullanıcı başka sekmede şantiye düzenleyip dönerse veriler otomatik yenilenir.
+    const onFocus = () => {
+      refreshPending();
+      loadDataRef.current?.();
+    };
     window.addEventListener("focus", onFocus);
+    // Mobile için: sayfa visibility değiştiğinde de yenile (focus eventi mobilde yetersiz olabilir)
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshPending();
+        loadDataRef.current?.();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       clearInterval(intv);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [refreshPending]);
 
@@ -704,6 +720,9 @@ export default function BordroTakibi() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // loadData'yı ref'e bağla — focus/visibility listener'larından çağrılabilsin
+  useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
 
   // Tüm aktif şantiyeler (firma filtresi kaldırıldı — accordion firma hiyerarşisi yeterli)
   const filtreliSantiyeler = santiyeler;
@@ -1335,10 +1354,45 @@ export default function BordroTakibi() {
 
       if (teknikPersonelSayisi > 0 && kalanSlot > 0) {
         if (!teslim) {
-          toast.error(
-            `⚠️ "${santiyeAd}" işine teknik personel girişi yapılamıyor: İşyeri teslim tarihi belirtilmemiş. ` +
-            `Şantiye düzenleme ekranından işyeri teslim tarihini girin.`,
-            { duration: 10000 },
+          // Tıklanabilir custom toast — tıklayınca şantiye düzenleme sayfasını açar
+          const santiyeId = santiye.id;
+          const duzenleUrl = `/dashboard/yonetim/santiyeler/${santiyeId}/duzenle`;
+          toast.custom(
+            (tt) => (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  window.open(duzenleUrl, "_blank", "noopener,noreferrer");
+                  toast.dismiss(tt.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    window.open(duzenleUrl, "_blank", "noopener,noreferrer");
+                    toast.dismiss(tt.id);
+                  }
+                }}
+                className={`${tt.visible ? "animate-in slide-in-from-top-4" : "animate-out slide-out-to-top-4"} cursor-pointer bg-red-500 text-white shadow-2xl rounded-lg px-4 py-3 max-w-md flex items-start gap-2.5 hover:bg-red-600 transition-colors`}
+              >
+                <span className="text-xl flex-shrink-0">⚠️</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm">İşyeri teslim tarihi belirtilmemiş</div>
+                  <div className="text-xs mt-1 leading-relaxed">
+                    <strong>{santiyeAd}</strong> işine teknik personel girişi yapılamıyor.
+                  </div>
+                  <div className="text-[11px] mt-1.5 underline font-semibold">
+                    👉 Tıkla: Şantiye düzenleme ekranını yeni sekmede aç
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); toast.dismiss(tt.id); }}
+                  className="text-white/70 hover:text-white text-lg leading-none flex-shrink-0"
+                  aria-label="Kapat"
+                >×</button>
+              </div>
+            ),
+            { duration: 12000 },
           );
           return;
         }
