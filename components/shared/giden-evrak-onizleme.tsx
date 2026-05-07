@@ -288,7 +288,9 @@ export default function GidenEvrakOnIzleme({
       {/* 2 boş satır */}
       <div style={{ height: "2em" }} />
 
-      {/* ===== 7. METİN — editör çıktısı birebir (tab'lar, boş satırlar, paragraflar korunur) ===== */}
+      {/* ===== 7. METİN — editör çıktısı birebir (tab'lar, boş satırlar, paragraflar korunur)
+            ÖNEMLİ: tab-size mutlak birim (em) olmalı — yoksa font fallback'e bağlı genişlik
+            farklılığı oluşur (mobil/desktop farkı). 8em ≈ 16 karakter (Arial fallback dahil). */}
       {metinTemiz && (
         <div
           style={{
@@ -297,8 +299,8 @@ export default function GidenEvrakOnIzleme({
             lineHeight: "1.5",
             textAlign: "justify",
             whiteSpace: "pre-wrap",
-            tabSize: 16,
-            MozTabSize: 16,
+            tabSize: "8em",
+            MozTabSize: "8em",
             orphans: 3,
             widows: 3,
           } as React.CSSProperties}
