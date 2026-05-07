@@ -1,7 +1,7 @@
 // Root layout - Inter font, Toaster, global meta bilgileri
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Toaster } from "react-hot-toast";
+import ToasterX from "@/components/shared/toaster-x";
 import "./globals.css";
 
 const inter = Inter({
@@ -51,22 +51,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-sans">
         {children}
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: "#1E3A5F",
-              color: "#fff",
-            },
-            error: {
-              style: {
-                background: "#ef4444",
-                color: "#fff",
-              },
-            },
-          }}
-        />
+        <ToasterX />
       </body>
     </html>
   );

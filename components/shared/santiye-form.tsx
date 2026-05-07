@@ -14,6 +14,7 @@ import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/queries/santiyeler";
 import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { getKullanicilar, updateKullanici } from "@/lib/supabase/queries/kullanicilar";
+import { getSantiyePrimHesabi } from "@/lib/supabase/queries/prim-hesap";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
@@ -68,6 +69,14 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   const [seciliKullaniciIds, setSeciliKullaniciIds] = useState<Set<string>>(new Set());
   const [yeniKaydedilenSantiyeId, setYeniKaydedilenSantiyeId] = useState<string | null>(null);
   const [kullaniciAtamaYukleniyor, setKullaniciAtamaYukleniyor] = useState(false);
+  // Geçici kabul prim onay dialogu — eksik prim varsa yine de onaylasın mı?
+  const [primOnayDialog, setPrimOnayDialog] = useState<{
+    yatmasiGereken: number;
+    yatan: number;
+    bordro: number;
+    sonuc: number;
+    resolve: (cevap: "evet" | "hayir") => void;
+  } | null>(null);
   const [ortaklar, setOrtaklar] = useState<OrtakRow[]>([]);
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrupListesi, setIsGrupListesi] = useState<string[]>([]);
@@ -295,6 +304,32 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         && formData.isyeri_teslim_tarihi < formData.sozlesme_tarihi) {
       toast.error("İşyeri teslim tarihi sözleşme tarihinden önce olamaz.");
       return;
+    }
+
+    // Geçici Kabul Tarihi YENİ ATANMIŞSA — eksik prim varsa kullanıcıya sor (Evet/Hayır).
+    // Evet'e basarsa devam, Hayır'a basarsa iptal. Sadece edit modunda + santiye id varsa.
+    if (santiye?.id && formData.gecici_kabul_tarihi
+        && formData.gecici_kabul_tarihi !== (santiye.gecici_kabul_tarihi ?? "")) {
+      try {
+        const prim = await getSantiyePrimHesabi(santiye.id);
+        if (prim.sonuc > 0.01) {
+          // Sayfa ortasında dialog aç → kullanıcının cevabını bekle
+          const cevap = await new Promise<"evet" | "hayir">((resolve) => {
+            setPrimOnayDialog({
+              yatmasiGereken: prim.yatmasiGereken,
+              yatan: prim.yatan,
+              bordro: prim.bordroTahmini,
+              sonuc: prim.sonuc,
+              resolve,
+            });
+          });
+          setPrimOnayDialog(null);
+          if (cevap === "hayir") return; // iptal — kayıt yapma
+          // "evet" → uyarıya rağmen kayıt yapılır, akış devam eder
+        }
+      } catch (err) {
+        console.warn("Prim hesabı kontrolü başarısız:", err);
+      }
     }
 
     setLoading(true);
@@ -1015,6 +1050,62 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>
+
+      {/* Geçici Kabul Prim Onay Dialogu — eksik prim varsa kullanıcıya sorulur */}
+      <Dialog
+        open={!!primOnayDialog}
+        onOpenChange={(o) => {
+          if (!o && primOnayDialog) {
+            // Dış tıklama / ESC → "hayır" (iptal) say
+            primOnayDialog.resolve("hayir");
+            setPrimOnayDialog(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Geçici Kabul Onayı — Eksik Prim Uyarısı</DialogTitle></DialogHeader>
+          {primOnayDialog && (() => {
+            const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return (
+              <div className="space-y-4 py-2">
+                <div className="bg-amber-50 border-2 border-amber-300 rounded p-3">
+                  <p className="text-sm text-amber-900 leading-relaxed">
+                    Asgari işçilik tutarı olan{" "}
+                    <span className="font-mono font-bold">
+                      {fmt(primOnayDialog.yatmasiGereken)} − {fmt(primOnayDialog.yatan)} − {fmt(primOnayDialog.bordro)} ={" "}
+                      <span className="text-red-600">{fmt(primOnayDialog.sonuc)} TL</span>
+                    </span>
+                    {" "}<strong>yatırılmamıştır</strong>, buna rağmen geçici kabul tarihini onaylıyor musunuz?
+                  </p>
+                </div>
+                <div className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-blue-300 pl-2">
+                  <strong>Yatması Gereken</strong>: (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100<br />
+                  <strong>Yatan</strong>: işçilik takibinde girilen yatan prim<br />
+                  <strong>Bordro Tahmini</strong>: en son veri girilen aydan sonra ki ayların manuel + atama günleri × günlük ücret
+                </div>
+                <div className="flex gap-2 justify-end pt-2 border-t flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { primOnayDialog.resolve("hayir"); setPrimOnayDialog(null); }}
+                  >
+                    Hayır (İptal)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => { primOnayDialog.resolve("evet"); setPrimOnayDialog(null); }}
+                  >
+                    Evet (Yine de Onayla)
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Kullanıcı Atama Dialogu — yeni iş eklendikten sonra açılır */}
       <Dialog

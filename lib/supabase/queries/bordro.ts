@@ -31,6 +31,39 @@ export async function insertBordroPersonel(p: PersonelInsert): Promise<Personel>
   // Şantiye atamasını personel tablosunda BIRAKMA — sadece atama geçmişine yaz
   // (bordro bağımsızlığı için). Personeller listesinde "Atanmamış" görünebilir,
   // ama bordro kanban'ı atama geçmişinden okur.
+
+  // TC + Ad Soyad tekillik kontrolü — aynı TC veya aynı ad ile kayıtlı personel varsa engelle
+  if (p.tc_kimlik_no && p.tc_kimlik_no.trim()) {
+    const { data: tcDup } = await supabase
+      .from("personel")
+      .select("id, ad_soyad, personel_tipi")
+      .eq("tc_kimlik_no", p.tc_kimlik_no.trim())
+      .limit(1);
+    if (tcDup && tcDup.length > 0) {
+      const mevcut = tcDup[0] as { ad_soyad: string; personel_tipi: string | null };
+      const tipEtiket = mevcut.personel_tipi === "taseron" ? " (taşeron)" : "";
+      throw new Error(
+        `Bu TC Kimlik No (${p.tc_kimlik_no.trim()}) zaten "${mevcut.ad_soyad}"${tipEtiket} adıyla kayıtlı. ` +
+        `Aynı personel sistemde yalnızca bir kez bulunabilir.`,
+      );
+    }
+  }
+  if (p.ad_soyad && p.ad_soyad.trim()) {
+    const { data: adDup } = await supabase
+      .from("personel")
+      .select("id, tc_kimlik_no, personel_tipi")
+      .eq("ad_soyad", p.ad_soyad.trim())
+      .limit(1);
+    if (adDup && adDup.length > 0) {
+      const mevcut = adDup[0] as { tc_kimlik_no: string; personel_tipi: string | null };
+      const tipEtiket = mevcut.personel_tipi === "taseron" ? " (taşeron)" : "";
+      throw new Error(
+        `Bu isimde ("${p.ad_soyad.trim()}")${tipEtiket} bir personel zaten kayıtlı (TC: ${mevcut.tc_kimlik_no}). ` +
+        `Aynı personel sistemde yalnızca bir kez bulunabilir.`,
+      );
+    }
+  }
+
   const istenenSantiyeId = p.santiye_id;
   const { data, error } = await supabase
     .from("personel")
