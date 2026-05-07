@@ -229,11 +229,30 @@ thead th {
   /* Sayfayı 210mm genişlikte bırak ama orantılı küçült.
      Farklı ekran genişlikleri için farklı zoom oranları. */
   .evrak-preview-page {
-    /* 800px = 210mm yaklaşık. 360px ekrana sığdır → 0.45 */
     zoom: 0.45;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    background: #fff !important;
+    /* Mobil dokunma ışığını / gri vurgulamayı kapat */
+    -webkit-tap-highlight-color: transparent !important;
+    /* Yazıyı daha net render et (zoom ile bulanıklık olmasın) */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+  }
+
+  /* İç tüm öğelerde tap-highlight'ı kapat — yazıların altındaki gri tabakayı engeller */
+  .evrak-preview-page,
+  .evrak-preview-page * {
+    -webkit-tap-highlight-color: transparent !important;
+    background-color: transparent;
+  }
+
+  /* Sadece ana sayfa beyaz olsun (içerik şeffaf, sayfaya geçer) */
+  .evrak-preview-page > *:first-child,
+  .evrak-onizleme {
+    background: #fff !important;
   }
 
   /* Dialog içinde yatay scrollbar çıkmasın */
