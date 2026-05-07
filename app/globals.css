@@ -206,9 +206,71 @@ thead th {
     print-color-adjust: exact !important;
   }
 
+  /* Form ön izlemedeki "A4 sayfa" wrapper'ı: ekranda görsel padding'i var,
+     ama yazdırma sırasında bu padding @page margin ile çakışır → sıfırla. */
+  .evrak-print-area > div {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    background: transparent !important;
+  }
+
   .evrak-print-area * {
     -webkit-font-smoothing: antialiased;
     text-rendering: geometricPrecision;
+  }
+}
+
+/* Mobil ön izlemede yatay scroll olmasın — hem direkt sayfada hem dialog içinde */
+@media screen and (max-width: 767px) {
+  .evrak-preview-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Tüm iç içerik parent genişliğini aşmasın */
+  .evrak-preview-page,
+  .evrak-preview-page * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Resimler responsive */
+  .evrak-preview-page img {
+    max-width: 100% !important;
+    height: auto !important;
+    object-fit: contain !important;
+  }
+
+  /* Tablolar dar ekrana sığar (sabit kolon genişliği yerine) */
+  .evrak-preview-page table {
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+
+  /* Uzun metinler/URL'ler kırılabilsin */
+  .evrak-preview-page td,
+  .evrak-preview-page th,
+  .evrak-preview-page p,
+  .evrak-preview-page span,
+  .evrak-preview-page div {
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* Dialog içinde yatay scroll engellensin — dialog content'i ve evrak-print-area hide */
+  [data-slot="dialog-content"] {
+    overflow-x: hidden !important;
+  }
+  .evrak-print-area {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
   }
 }
 

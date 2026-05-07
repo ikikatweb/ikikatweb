@@ -164,8 +164,9 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
 
         {/* Yazışma Şablonu - paylaşılan ön izleme bileşeni */}
-        <div className="evrak-print-area shadow-sm border rounded-lg overflow-hidden">
-          <GelenEvrakOnIzleme
+        <div className="evrak-print-area">
+          <div className="evrak-preview-page shadow-sm border rounded-lg overflow-hidden mx-auto" style={{ width: "210mm", maxWidth: "100%" }}>
+            <GelenEvrakOnIzleme
             firma={seciliFirma ? {
               firma_adi: seciliFirma.firma_adi,
               kisa_adi: seciliFirma.kisa_adi ?? null,
@@ -181,6 +182,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             icerik={icerik}
             ekler={ekler}
           />
+          </div>
         </div>
 
         {/* Butonlar */}

@@ -212,7 +212,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         </div>
 
         <div className="evrak-print-area">
-          <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+          <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm", maxWidth: "100%" }}>
             <BankaYazismaOnIzleme
               firma={seciliFirma}
               evrakTarihi={evrakTarihi}

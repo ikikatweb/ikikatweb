@@ -242,7 +242,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
         {/* Print alanı - yazdırıldığında sadece bu görünür */}
         <div className="evrak-print-area">
-          <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+          <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm", maxWidth: "100%" }}>
             <GidenEvrakOnIzleme
               firma={seciliFirma}
               evrakTarihi={evrakTarihi}
