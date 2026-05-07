@@ -40,6 +40,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" className={`${inter.variable} h-full antialiased`}>
+      <head>
+        {/* Yazı boyutu tercihi: sayfa açılır açılmaz uygulansın (flicker olmasın).
+             FontSizeAyari komponenti localStorage'a "site-font-zoom" anahtarıyla yazıyor. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var z=localStorage.getItem("site-font-zoom");if(z){var p=parseInt(z,10);if(p>=50&&p<=200){document.documentElement.style.fontSize=(p/100*16)+"px";}}}catch(e){}`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col font-sans">
         {children}
         <Toaster

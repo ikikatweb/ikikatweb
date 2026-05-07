@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, LogOut, Clock, Mail, MessageSquare, X } from "lucide-react";
 import toast from "react-hot-toast";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
+import FontSizeAyari from "@/components/shared/font-size-ayari";
 import { getKonusmalar } from "@/lib/supabase/queries/mesajlasma";
 
 type TopbarProps = {
@@ -174,6 +175,9 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
         </div>
+
+        {/* Yazı boyutu ayarı (Safari Webpage Zoom benzeri) */}
+        <FontSizeAyari />
 
         {/* Mesajlaşma ikonu — tüm kullanıcılar */}
         <button
