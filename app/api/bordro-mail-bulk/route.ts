@@ -104,44 +104,38 @@ export async function POST(request: Request) {
       return `${birlestirilmis} İsimli ${isimler.length === 1 ? tekil : cogul}`;
     }
 
-    // Giriş cümleleri (şantiyeye göre grupla — aynı şantiyeye giren personeller tek cümlede)
+    // Tarih formatı: YYYY-MM-DD → DD.MM.YYYY
+    function tarihFormatla(s: string): string {
+      const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return s;
+      return `${m[3]}.${m[2]}.${m[1]}`;
+    }
+    const firmaAdi = firma.firma_adi ?? "";
+
+    // Giriş cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE adı dahil
+    // "TC kimlik numaralı AD SOYAD isimli personelin DD.MM.YYYY tarihi itibariyle
+    //  FİRMA bünyesinde bulunan ŞANTİYE işine DD.MM.YYYY tarihinde giriş işlemlerinin yapılmasını rica ederiz."
     const girisCumleleri: string[] = [];
-    {
-      const grup = new Map<string, Change[]>();
-      for (const c of changes.filter((c) => c.tip === "giris")) {
-        const key = c.santiyeAd || "(şantiye yok)";
-        if (!grup.has(key)) grup.set(key, []);
-        grup.get(key)!.push(c);
-      }
-      for (const [santiyeAd, list] of grup) {
-        const kisi = personelListesiMetni(list, "personelin", "personellerin");
-        if (list.length === 1) {
-          girisCumleleri.push(
-            `${kisi} ${santiyeAd} şantiyesine bugün tarihli girişinin yapılmasında yardımcı olur musunuz?`
-          );
-        } else {
-          girisCumleleri.push(
-            `${kisi} ${santiyeAd} şantiyesine bugün tarihli girişlerinin yapılmasında yardımcı olur musunuz?`
-          );
-        }
-      }
+    for (const c of changes.filter((c) => c.tip === "giris")) {
+      const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
+      const tarihStr = tarihFormatla(c.tarih);
+      const santiye = c.santiyeAd ?? "—";
+      girisCumleleri.push(
+        `${tc}${c.personelAd} isimli personelin ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine ${tarihStr} tarihinde giriş işlemlerinin yapılmasını rica ederiz.`
+      );
     }
 
-    // Çıkış cümleleri (tek cümle — herkes aynı tarihte ayrılmış sayılır)
+    // Çıkış cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE adı dahil
+    // "TC kimlik numaralı AD SOYAD isimli personel DD.MM.YYYY tarihi itibariyle
+    //  FİRMA bünyesinde bulunan ŞANTİYE işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz."
     const cikisCumleleri: string[] = [];
-    {
-      const liste = changes.filter((c) => c.tip === "cikis");
-      if (liste.length === 1) {
-        const kisi = personelListesiMetni(liste, "personel", "personeller");
-        cikisCumleleri.push(
-          `${kisi} bugün tarihli işten ayrılmıştır, çıkışını yapabilir misiniz?`
-        );
-      } else if (liste.length > 1) {
-        const kisi = personelListesiMetni(liste, "personel", "personeller");
-        cikisCumleleri.push(
-          `${kisi} bugün tarihli işten ayrılmışlardır, çıkışlarını yapabilir misiniz?`
-        );
-      }
+    for (const c of changes.filter((c) => c.tip === "cikis")) {
+      const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
+      const tarihStr = tarihFormatla(c.tarih);
+      const santiye = c.onceSantiyeAd ?? "—";
+      cikisCumleleri.push(
+        `${tc}${c.personelAd} isimli personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`
+      );
     }
 
     // Transfer cümleleri (eski şantiye → yeni şantiye bazında grupla)
