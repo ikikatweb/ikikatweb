@@ -160,16 +160,28 @@ thead th {
   @page {
     size: A4;
     margin: 1.25cm 2.25cm 2.5cm 2.25cm;
+    marks: none;
 
-    /* Tüm margin box'ları boş bırak — tarayıcının kendi URL/tarih/sayfa header'ları
-       eklemesini engellemeye çalış. iOS Safari kendi header'ını yine de ekleyebilir,
-       o durumda kullanıcı yazdırma diyaloğunda "Headers and Footers" toggle'ını kapatmalı */
-    @top-left { content: ""; }
-    @top-center { content: ""; }
-    @top-right { content: ""; }
-    @bottom-left { content: ""; }
-    @bottom-center { content: ""; }
-    @bottom-right { content: ""; }
+    /* Tüm margin box'larını agresif şekilde temizle — browser URL/tarih/sayfa
+       header'larını engelle. Bazı tarayıcılar (Chrome) bunları yok sayıp kendi
+       diyaloğundaki "Üst bilgiler ve alt bilgiler" ayarına bakar, kullanıcı
+       buradan manuel kapatmalı. iOS Safari ve Firefox bu kuralları daha çok dinler. */
+    @top-left { content: none; }
+    @top-center { content: none; }
+    @top-right { content: none; }
+    @top-left-corner { content: none; }
+    @top-right-corner { content: none; }
+    @bottom-left { content: none; }
+    @bottom-center { content: none; }
+    @bottom-right { content: none; }
+    @bottom-left-corner { content: none; }
+    @bottom-right-corner { content: none; }
+    @left-top { content: none; }
+    @left-middle { content: none; }
+    @left-bottom { content: none; }
+    @right-top { content: none; }
+    @right-middle { content: none; }
+    @right-bottom { content: none; }
   }
 
 
