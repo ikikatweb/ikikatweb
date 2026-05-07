@@ -428,6 +428,8 @@ export default function BordroTakibi() {
     teknikSayisi: number;
     kalanSlot: number;
     eklenecekKisiSayisi: number;
+    // Eklenecek kişilerin isim listesi (seçim sırasına göre)
+    kisiAdlari: string[];
     resolve: (cevap: "evet" | "hayir" | "iptal") => void;
   } | null>(null);
   const [topluEkleniyor, setTopluEkleniyor] = useState(false);
@@ -1316,10 +1318,12 @@ export default function BordroTakibi() {
 
     // Teknik personel kotası dolmadıysa "Bu kişi(ler) teknik personel mi?" sor.
     // Teknik personel sayımı: bu şantiyenin işyeri_teslim_tarihi'nde başlayan açık atamalar.
+    // teknikSayisi: bu batch'te kaç kişiyi teknik personel olarak işaretleyeceğiz (split için)
+    let teknikIlkN = 0; // 0 = hiçbiri teknik (hayır), N = ilk N kişi teknik
+    let teknikTeslim: string | null = null;
     if (santiye) {
       const teknikPersonelSayisi = santiye.teknik_personel_sayisi ?? 0;
       const teslim = santiye.isyeri_teslim_tarihi ?? null;
-      // Mevcut "teknik personel": baslangic_tarihi == işyeri teslim tarihi olan açık atamalar
       const mevcutTeknikSayisi = teslim
         ? atamalar.filter(
             (a) => a.santiye_id === topluEkleSantiyeId
@@ -1330,7 +1334,6 @@ export default function BordroTakibi() {
       const kalanSlot = Math.max(0, teknikPersonelSayisi - mevcutTeknikSayisi);
 
       if (teknikPersonelSayisi > 0 && kalanSlot > 0) {
-        // İşyeri teslim tarihi yoksa engel — admin için de soruyu gösterme, hata ver
         if (!teslim) {
           toast.error(
             `⚠️ "${santiyeAd}" işine teknik personel girişi yapılamıyor: İşyeri teslim tarihi belirtilmemiş. ` +
@@ -1339,7 +1342,12 @@ export default function BordroTakibi() {
           );
           return;
         }
-        // Soru sor — Promise ile kullanıcının cevabını bekle
+        // Seçim sırasına göre kişi adlarını çıkar — split sırasında ilk N teknik olur
+        const kisiAdlari: string[] = [];
+        for (const pid of topluSecilenler) {
+          const p = personeller.find((x) => x.id === pid);
+          if (p) kisiAdlari.push(p.ad_soyad);
+        }
         const cevap = await new Promise<"evet" | "hayir" | "iptal">((resolve) => {
           setTeknikSorusu({
             santiyeAd: santiyeAd ?? "",
@@ -1347,16 +1355,19 @@ export default function BordroTakibi() {
             teknikSayisi: teknikPersonelSayisi,
             kalanSlot,
             eklenecekKisiSayisi: topluSecilenler.size,
+            kisiAdlari,
             resolve,
           });
         });
         setTeknikSorusu(null);
         if (cevap === "iptal") return;
         if (cevap === "evet") {
-          // Eklenenler teknik personel — başlangıç tarihi = işyeri teslim tarihi
-          kullanilanTarih = teslim;
+          // Evet: ilk min(kalanSlot, secilenSayisi) kişi teknik personel olur
+          teknikIlkN = Math.min(kalanSlot, topluSecilenler.size);
+          teknikTeslim = teslim;
+          // kalan kişiler default tarih (admin: topluTarih veya bugün; non-admin: bugün) ile eklenir
         }
-        // "hayir" → kullanilanTarih default kalsın (admin: topluTarih veya bugün; non-admin: bugün)
+        // "hayir" → teknikIlkN = 0 → herkes default tarih
       }
     }
 
@@ -1384,22 +1395,35 @@ export default function BordroTakibi() {
     setTopluEkleniyor(true);
     try {
       let basari = 0;
+      let teknikSayilan = 0;
+      let normalSayilan = 0;
+      let idx = 0;
       for (const personelId of topluSecilenler) {
         try {
           const personel = personeller.find((p) => p.id === personelId);
-          if (!personel) continue;
-          // Toplu Personel Ekle: yeni atama ekler, mevcut atamaları KAPATMAZ.
-          // Bir personel aynı anda birden fazla şantiyede aktif olabilir — bu normaldir.
-          // Transfer (eski şantiyeyi kapatma) için ayrı "Toplu Transfer" butonu veya drag-drop kullanılır.
-          await insertAtama(personelId, topluEkleSantiyeId, kullanilanTarih, null);
-          // Mail kuyruğa: her zaman "giriş" — yeni şantiyenin firmasına. Tarih: DB'ye yazılan ASIL tarih.
-          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: kullanilanTarih });
+          if (!personel) { idx++; continue; }
+          // Split: ilk teknikIlkN kişi teknik personel (teslim tarihi), kalan default tarih
+          const buKisininTarihi = (idx < teknikIlkN && teknikTeslim) ? teknikTeslim : kullanilanTarih;
+          await insertAtama(personelId, topluEkleSantiyeId, buKisininTarihi, null);
+          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: buKisininTarihi });
           basari++;
+          if (idx < teknikIlkN) teknikSayilan++; else normalSayilan++;
         } catch (e) {
           console.error("Toplu ekleme hatası:", e);
         }
+        idx++;
       }
-      toast.success(`${basari}/${topluSecilenler.size} personel eklendi`);
+      // Toast'da bölme bilgisini ver
+      if (teknikSayilan > 0 && normalSayilan > 0) {
+        toast.success(
+          `${basari}/${topluSecilenler.size} personel eklendi (${teknikSayilan} teknik · ${normalSayilan} bugün)`,
+          { duration: 6000 },
+        );
+      } else if (teknikSayilan > 0) {
+        toast.success(`${basari}/${topluSecilenler.size} teknik personel eklendi (teslim tarihi)`);
+      } else {
+        toast.success(`${basari}/${topluSecilenler.size} personel eklendi`);
+      }
       setTopluEkleSantiyeId(null);
       setTopluSecilenler(new Set());
       setTopluArama("");
@@ -3258,6 +3282,9 @@ export default function BordroTakibi() {
               if (!m) return iso;
               return `${m[3]}.${m[2]}.${m[1]}`;
             };
+            const overflow = t.eklenecekKisiSayisi > t.kalanSlot;
+            const teknikN = Math.min(t.kalanSlot, t.eklenecekKisiSayisi);
+            const normalN = Math.max(0, t.eklenecekKisiSayisi - t.kalanSlot);
             return (
               <div className="space-y-3 py-2">
                 <div className="bg-amber-50 border border-amber-200 rounded p-2.5 text-sm leading-relaxed">
@@ -3267,15 +3294,64 @@ export default function BordroTakibi() {
                   </p>
                   <p className="mt-2 text-xs text-amber-800">
                     Kalan teknik personel kontenjanı: <strong>{t.kalanSlot} kişi</strong>
+                    {" · "}
+                    Eklediğiniz: <strong>{t.eklenecekKisiSayisi} kişi</strong>
                   </p>
                 </div>
+
+                {overflow && (
+                  <div className="bg-blue-50 border-2 border-blue-300 rounded p-2.5 text-xs leading-relaxed">
+                    <p className="font-semibold text-blue-900 mb-1">⚠️ Kontenjan aşımı: kişiler bölünecek</p>
+                    <p className="text-blue-800">
+                      Evet derseniz <strong>ilk {teknikN} kişi</strong> teknik personel olarak (teslim tarihi: <strong>{fmtTr(t.teslimTarihi)}</strong>),
+                      kalan <strong>{normalN} kişi</strong> ise <strong>bugün</strong> tarihi ile eklenecek.
+                    </p>
+                    <p className="text-[10px] text-blue-700 mt-1">
+                      Hangi kişilerin teknik personel olacağına karar vermek istiyorsanız İptal'e basın ve daha az kişi seçerek tekrar deneyin.
+                    </p>
+                  </div>
+                )}
+
+                {/* Seçilen kişilerin listesi — kim teknik kim normal olacak */}
+                <div className="bg-white border border-gray-200 rounded p-2.5 text-xs space-y-2">
+                  {teknikN > 0 && (
+                    <div>
+                      <div className="font-semibold text-emerald-700 mb-1">
+                        ✓ Teknik personel olacak ({teknikN} kişi · teslim tarihi {fmtTr(t.teslimTarihi)}):
+                      </div>
+                      <ul className="space-y-0.5 ml-3">
+                        {t.kisiAdlari.slice(0, teknikN).map((ad, i) => (
+                          <li key={`tek-${i}`} className="text-emerald-800">• {ad}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {normalN > 0 && (
+                    <div className={teknikN > 0 ? "border-t pt-2" : ""}>
+                      <div className="font-semibold text-gray-700 mb-1">
+                        — Bugün tarihi ile eklenecek ({normalN} kişi):
+                      </div>
+                      <ul className="space-y-0.5 ml-3">
+                        {t.kisiAdlari.slice(teknikN).map((ad, i) => (
+                          <li key={`nor-${i}`} className="text-gray-700">• {ad}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
                 <p className="text-sm text-gray-700">
                   Şu an eklediğiniz <strong>{t.eklenecekKisiSayisi} kişi</strong> teknik personel mi?
                 </p>
                 <div className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-blue-300 pl-2">
-                  <strong className="text-emerald-700">Evet</strong>: İşe başlama tarihi = İşyeri teslim tarihi (<strong>{fmtTr(t.teslimTarihi)}</strong>)
+                  <strong className="text-emerald-700">Evet</strong>:
+                  {overflow ? (
+                    <> İlk {teknikN} kişi teknik personel (teslim tarihi <strong>{fmtTr(t.teslimTarihi)}</strong>), kalan {normalN} kişi bugün</>
+                  ) : (
+                    <> Hepsi teknik personel — başlangıç tarihi = İşyeri teslim tarihi (<strong>{fmtTr(t.teslimTarihi)}</strong>)</>
+                  )}
                   <br />
-                  <strong className="text-gray-700">Hayır</strong>: İşe başlama tarihi = Bugün (normal giriş)
+                  <strong className="text-gray-700">Hayır</strong>: Hepsi bugün tarihi (normal giriş)
                 </div>
                 <div className="flex gap-2 justify-end pt-2 border-t flex-wrap">
                   <Button
@@ -3290,14 +3366,14 @@ export default function BordroTakibi() {
                     size="sm"
                     onClick={() => { t.resolve("hayir"); setTeknikSorusu(null); }}
                   >
-                    Hayır (Bugün)
+                    Hayır (Hepsi Bugün)
                   </Button>
                   <Button
                     size="sm"
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => { t.resolve("evet"); setTeknikSorusu(null); }}
                   >
-                    Evet (Teslim Tarihi)
+                    {overflow ? `Evet (İlk ${teknikN} Teknik)` : "Evet (Teslim Tarihi)"}
                   </Button>
                 </div>
               </div>
