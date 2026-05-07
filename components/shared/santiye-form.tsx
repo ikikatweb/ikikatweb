@@ -260,6 +260,12 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         return;
       }
     }
+    // İşyeri teslim tarihi sözleşme tarihinden önce olamaz
+    if (formData.sozlesme_tarihi && formData.isyeri_teslim_tarihi
+        && formData.isyeri_teslim_tarihi < formData.sozlesme_tarihi) {
+      toast.error("İşyeri teslim tarihi sözleşme tarihinden önce olamaz.");
+      return;
+    }
 
     setLoading(true);
     let basarili = false;
@@ -585,12 +591,20 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                     name="isyeri_teslim_tarihi"
                     type="date"
                     value={formData.isyeri_teslim_tarihi ?? ""}
-                    min={formData.ihale_tarihi ?? undefined}
+                    // Min: hem ihale hem sözleşme tarihinden büyük/eşit olmalı → max'larını al
+                    min={(() => {
+                      const candidates = [formData.ihale_tarihi, formData.sozlesme_tarihi].filter(Boolean) as string[];
+                      if (candidates.length === 0) return undefined;
+                      return candidates.reduce((a, b) => (a > b ? a : b));
+                    })()}
                     onChange={handleChange}
                     disabled={loading}
                   />
                   {formData.ihale_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.ihale_tarihi && (
                     <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi ihale tarihinden önce olamaz.</p>
+                  )}
+                  {formData.sozlesme_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.sozlesme_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi sözleşme tarihinden önce olamaz.</p>
                   )}
                 </div>
                 <div className="space-y-2">
