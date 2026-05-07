@@ -758,6 +758,18 @@ export default function BordroTakibi() {
   const gunMapToplam = useMemo(() => gunHesapla(atamalar), [atamalar]);
   void gunMapToplam;
 
+  // Personel başına AYLIK TOPLAM gün (tüm şantiyelerde): 30 üzeri uyarı için kullanılır.
+  // Sadece bilgi amaçlı; hiçbir işleme etkisi yok.
+  const personelAylikToplamMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [pid, sMap] of gunMap) {
+      let toplam = 0;
+      for (const v of sMap.values()) toplam += v;
+      map.set(pid, toplam);
+    }
+    return map;
+  }, [gunMap]);
+
   // Filtrele: arama
   const filtreli = useMemo(() => {
     const q = arama.trim().toLocaleLowerCase("tr-TR");
@@ -2471,6 +2483,14 @@ export default function BordroTakibi() {
         <td className="px-2 py-1.5 font-semibold text-[#1E3A5F]">
           <div className="flex items-center gap-1">
             <span className="truncate">{p.ad_soyad}</span>
+            {(personelAylikToplamMap.get(p.id) ?? 0) > 30 && (
+              <span
+                className="flex-shrink-0 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold cursor-help"
+                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelAylikToplamMap.get(p.id)} gün çalışıyor — 30 günü aşıyor (sadece bilgi)`}
+              >
+                ⚠️ {personelAylikToplamMap.get(p.id)}g
+              </span>
+            )}
             {p.personel_tipi === "taseron" && (
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
@@ -3122,8 +3142,10 @@ export default function BordroTakibi() {
                 })()}
 
                 {/* Giriş / Çıkış Tarihleri — atama editörü.
-                    Tüm atamalar gösterilir (sadece bu ay değil), tarih sırasına göre yenidan eskiye. */}
-                {!isReadOnly && (() => {
+                    Tüm atamalar gösterilir (sadece bu ay değil), tarih sırasına göre yenidan eskiye.
+                    SADECE ADMIN (yönetici) görebilir/düzenleyebilir. Kısıtlı kullanıcı ve şantiye
+                    yöneticisi bu bölümü görmez — onlar atamalara giriş/çıkış tarihi giremez. */}
+                {!isReadOnly && isYonetici && (() => {
                   const tumAtamalar = atamalar
                     .filter((a) => a.personel_id === gunEdit.personel.id && a.santiye_id === gunEdit.santiyeId)
                     .sort((a, b) => b.baslangic_tarihi.localeCompare(a.baslangic_tarihi));
