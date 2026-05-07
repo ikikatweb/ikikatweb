@@ -98,6 +98,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     sozlesme_bedeli: santiye?.sozlesme_bedeli ?? null,
     para_birimi: santiye?.para_birimi ?? "TRY",
     ff_hesaplanacak: santiye?.ff_hesaplanacak ?? true,
+    teknik_personel_sayisi: santiye?.teknik_personel_sayisi ?? null,
     sozlesme_tarihi: santiye?.sozlesme_tarihi ?? null,
     isyeri_teslim_tarihi: santiye?.isyeri_teslim_tarihi ?? null,
     is_suresi: santiye?.is_suresi ?? null,
@@ -243,6 +244,11 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
+    // Teknik personel sayısı zorunlu — sadece pozitif tam sayı
+    if (formData.teknik_personel_sayisi == null || formData.teknik_personel_sayisi <= 0) {
+      toast.error("Teknik personel sayısı zorunludur (pozitif tam sayı).");
+      return;
+    }
 
     setLoading(true);
     let basarili = false;
@@ -493,6 +499,34 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </span>
               </div>
 
+              {/* Teknik Personel Sayısı — yeni iş açıldığında işyeri teslim tarihinden itibariyle
+                   bordroya girilebilecek max personel sayısı (admin olmayanlar için kısıt). */}
+              <div className="space-y-2">
+                <Label htmlFor="teknik_personel_sayisi">
+                  Teknik Personel Sayısı <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="teknik_personel_sayisi"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Örn. 3"
+                  value={formData.teknik_personel_sayisi ?? ""}
+                  onChange={(e) => {
+                    // Sadece rakam kabul et
+                    const v = e.target.value.replace(/\D/g, "");
+                    setFormData((prev) => ({
+                      ...prev,
+                      teknik_personel_sayisi: v === "" ? null : parseInt(v, 10),
+                    }));
+                  }}
+                  disabled={loading}
+                />
+                <p className="text-[10px] text-gray-500">
+                  Yeni iş eklendiğinde, admin olmayan kullanıcılar bu sayı kadar teknik personeli
+                  <strong> işyeri teslim tarihinden itibariyle</strong> bordro takibine girebilir.
+                  İşyeri teslim tarihi belirtilmemişse bu kullanıcılar yeni giriş yapamaz.
+                </p>
+              </div>
 
               {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

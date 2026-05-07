@@ -57,6 +57,8 @@ type SantiyeBasic = {
   tasfiye_tarihi?: string | null;
   devir_tarihi?: string | null;
   yuklenici_firma_id?: string | null;
+  isyeri_teslim_tarihi?: string | null;
+  teknik_personel_sayisi?: number | null;
 };
 type Firma = {
   id: string;
@@ -220,7 +222,7 @@ function AtamaSatir({
   gunSayisi: number;
   onSave: (baslangic: string, bitis: string | null) => void;
   onDelete: () => void;
-  // Yönetici → tarihte kısıtlama yok. Diğerleri (şantiye yöneticisi dahil): max bugün, min bugünden 10 gün önce.
+  // Yönetici → tarihte kısıtlama yok. Diğerleri (şantiye yöneticisi dahil): max bugün, min bugünden 9 gün önce.
   isYonetici: boolean;
 }) {
   const [bas, setBas] = useState(atama.baslangic_tarihi);
@@ -231,10 +233,10 @@ function AtamaSatir({
   // Çıkış tarihi başlangıçtan önce olamaz
   const tarihHatasi = !halen && bit && bas && bit < bas;
   const kaydedilebilir = degisti && !tarihHatasi;
-  // Yönetici hariç tüm kullanıcılar için tarih kısıtlaması: bugünden max 10 gün geri, bugünden ileri yok
+  // Yönetici hariç tüm kullanıcılar için tarih kısıtlaması: bugünden max 9 gün geri, bugünden ileri yok
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().slice(0, 10);
-  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
   const minDateStr = minDate.toISOString().slice(0, 10);
   return (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
@@ -302,7 +304,7 @@ function YeniAtamaSatir({
   // Yönetici hariç tarih kısıtlaması
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().slice(0, 10);
-  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+  const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
   const minDateStr = minDate.toISOString().slice(0, 10);
   if (!acik) {
     return (
@@ -1148,18 +1150,18 @@ export default function BordroTakibi() {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
     }
-    // Yönetici hariç: bugünden max 10 gün geri, gelecek tarih yok
+    // Yönetici hariç: bugünden max 9 gün geri, gelecek tarih yok
     if (!isYonetici) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString().slice(0, 10);
-      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
       const minDateStr = minDate.toISOString().slice(0, 10);
       if (baslangic > todayStr || (bitis && bitis > todayStr)) {
         toast.error("Gelecek tarih girilemez.");
         return;
       }
       if (baslangic < minDateStr || (bitis && bitis < minDateStr)) {
-        toast.error("En fazla 10 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
+        toast.error("En fazla 9 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
         return;
       }
     }
@@ -1212,18 +1214,18 @@ export default function BordroTakibi() {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
     }
-    // Yönetici hariç: bugünden max 10 gün geri, gelecek tarih yok
+    // Yönetici hariç: bugünden max 9 gün geri, gelecek tarih yok
     if (!isYonetici) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString().slice(0, 10);
-      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 10);
+      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
       const minDateStr = minDate.toISOString().slice(0, 10);
       if (baslangic > todayStr || (bitis && bitis > todayStr)) {
         toast.error("Gelecek tarih girilemez.");
         return;
       }
       if (baslangic < minDateStr || (bitis && bitis < minDateStr)) {
-        toast.error("En fazla 10 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
+        toast.error("En fazla 9 gün geriye tarih girilebilir. Daha eski tarihler için yöneticinize başvurun.");
         return;
       }
     }
@@ -1292,13 +1294,61 @@ export default function BordroTakibi() {
   // Toplu personel ekle: dialog'dan seçili personelleri belirtilen şantiyeye atama açar
   async function topluPersonelEkle() {
     if (!topluEkleSantiyeId || topluSecilenler.size === 0) return;
-    const santiyeAd = santiyeler.find((s) => s.id === topluEkleSantiyeId)?.is_adi;
+    const santiye = santiyeler.find((s) => s.id === topluEkleSantiyeId);
+    const santiyeAd = santiye?.is_adi;
+
+    // Admin olmayan kullanıcılar için: Yeni iş kuralı
+    //  - Şantiye boşsa (henüz atama yok) → işyeri teslim tarihi olmalı
+    //  - İşyeri teslim tarihi boşsa → giriş engelli
+    //  - Henüz dolmamışsa: max teknik_personel_sayisi kadar personel ekleyebilir; tarih=isyeri_teslim_tarihi
+    const buGun = new Date().toISOString().slice(0, 10);
+    let kullanilanTarih = isYonetici && topluTarih ? topluTarih : buGun;
+
+    if (!isYonetici && santiye) {
+      // Bu şantiyedeki şu anda atanmış personel sayısı (açık atamalar)
+      const mevcutAtamaSayisi = atamalar.filter(
+        (a) => a.santiye_id === topluEkleSantiyeId && !a.bitis_tarihi,
+      ).length;
+      const teknikPersonelSayisi = santiye.teknik_personel_sayisi ?? 0;
+      // Eğer henüz teknik personel limiti dolmamışsa: işyeri teslim tarihi şartı uygulanır
+      if (mevcutAtamaSayisi < teknikPersonelSayisi) {
+        if (!santiye.isyeri_teslim_tarihi) {
+          toast.error(
+            `⚠️ "${santiyeAd}" işine giriş yapılamıyor: İşyeri teslim tarihi belirtilmemiş. ` +
+            `Şantiye düzenleme ekranından işyeri teslim tarihini girin veya yöneticinize başvurun.`,
+            { duration: 12000 },
+          );
+          return;
+        }
+        // Yeni eklenecekler dahil teknik personel limitini aşmasın
+        if (mevcutAtamaSayisi + topluSecilenler.size > teknikPersonelSayisi) {
+          const kalan = teknikPersonelSayisi - mevcutAtamaSayisi;
+          toast.error(
+            `⚠️ Bu işe en fazla ${kalan} teknik personel daha ekleyebilirsiniz ` +
+            `(toplam ${teknikPersonelSayisi} kişi sınırı). Daha fazlası için yöneticinize başvurun.`,
+            { duration: 10000 },
+          );
+          return;
+        }
+        // Tarih: işyeri teslim tarihi
+        kullanilanTarih = santiye.isyeri_teslim_tarihi;
+      }
+      // mevcutAtamaSayisi >= teknikPersonelSayisi durumunda artık standart kurallar uygulanır
+      // (admin olmayan kullanıcılar bugünden -9..bugün aralığında giriş yapabilir).
+      // Yani teknik personel kotası dolduktan sonra fazla personel eklenmesi yöneticiye bırakılır.
+      else if (teknikPersonelSayisi > 0) {
+        toast.error(
+          `⚠️ "${santiyeAd}" işinin teknik personel kotası (${teknikPersonelSayisi} kişi) dolu. ` +
+          `Ek personel eklemek için yöneticinize başvurun.`,
+          { duration: 10000 },
+        );
+        return;
+      }
+    }
+
     setTopluEkleniyor(true);
     try {
       let basari = 0;
-      // Admin'se topluTarih (kullanıcının seçtiği) — değilse her zaman bugün
-      const buGun = new Date().toISOString().slice(0, 10);
-      const kullanilanTarih = isYonetici && topluTarih ? topluTarih : buGun;
       for (const personelId of topluSecilenler) {
         try {
           const personel = personeller.find((p) => p.id === personelId);
@@ -1874,16 +1924,16 @@ export default function BordroTakibi() {
 
   // İşten çıkar — kullanıcı tarafından seçilen tarih ile.
   // Admin (isYonetici): herhangi bir tarih girebilir.
-  // Diğer kullanıcılar: bugünden max 10 gün geri.
+  // Diğer kullanıcılar: bugünden max 9 gün geri.
   async function cikisYap() {
     if (!cikisOnay) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const secilenTarih = new Date(cikisTarih + "T00:00:00");
     if (isNaN(secilenTarih.getTime())) { toast.error("Geçerli bir tarih girin"); return; }
     if (!isYonetici) {
-      const minTarih = new Date(today); minTarih.setDate(minTarih.getDate() - 10);
+      const minTarih = new Date(today); minTarih.setDate(minTarih.getDate() - 9);
       if (secilenTarih > today) { toast.error("Çıkış tarihi gelecek olamaz"); return; }
-      if (secilenTarih < minTarih) { toast.error("Çıkış tarihi en fazla 10 gün geriye olabilir"); return; }
+      if (secilenTarih < minTarih) { toast.error("Çıkış tarihi en fazla 9 gün geriye olabilir"); return; }
     }
     try {
       // ŞANTİYE BAZLI çıkış: SADECE bu personelin BU ŞANTİYEDEKİ açık atamasını kapat.
@@ -3126,7 +3176,7 @@ export default function BordroTakibi() {
               <Label className="text-xs">Çıkış Tarihi <span className="text-red-500">*</span></Label>
               {(() => {
                 const today = new Date();
-                const min = new Date(); min.setDate(min.getDate() - 10);
+                const min = new Date(); min.setDate(min.getDate() - 9);
                 const fmtIso = (d: Date) => d.toISOString().slice(0, 10);
                 return (
                   <Input
@@ -3141,7 +3191,7 @@ export default function BordroTakibi() {
               <p className="text-[10px] text-gray-500 mt-0.5">
                 {isYonetici
                   ? "🔓 Admin: istediğiniz tarihi girebilirsiniz."
-                  : "Bugünden en fazla 10 gün geriye tarih girebilirsiniz."}
+                  : "Bugünden en fazla 9 gün geriye tarih girebilirsiniz."}
               </p>
             </div>
             <div className="flex gap-2 justify-end pt-2 border-t">

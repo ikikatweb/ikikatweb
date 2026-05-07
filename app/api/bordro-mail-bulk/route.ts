@@ -167,12 +167,35 @@ export async function POST(request: Request) {
       }
     }
 
+    // Plain text fallback (HTML desteklemeyen istemciler için)
     let metin = `Sayın Muhasebe,\n\n`;
     if (girisCumleleri.length > 0) metin += girisCumleleri.join("\n\n") + "\n\n";
     if (cikisCumleleri.length > 0) metin += cikisCumleleri.join("\n\n") + "\n\n";
     if (transferCumleleri.length > 0) metin += transferCumleleri.join("\n\n") + "\n\n";
     if (ekBilgi && ekBilgi.trim()) metin += `${ekBilgi.trim()}\n\n`;
     metin += `İyi çalışmalar.`;
+
+    // HTML versiyon — ek not (ekBilgi) KIRMIZI ile vurgulanır
+    function htmlEscape(s: string): string {
+      return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    const baseStyle = "font-family:Arial,sans-serif;font-size:14px;color:#1F2937;line-height:1.6;";
+    let html = `<div style="${baseStyle}">`;
+    html += `<p>Sayın Muhasebe,</p>`;
+    for (const c of girisCumleleri) html += `<p>${htmlEscape(c)}</p>`;
+    for (const c of cikisCumleleri) html += `<p>${htmlEscape(c)}</p>`;
+    for (const c of transferCumleleri) html += `<p>${htmlEscape(c)}</p>`;
+    if (ekBilgi && ekBilgi.trim()) {
+      // Ek not: kırmızı, kalın
+      const ekHtml = htmlEscape(ekBilgi.trim()).replace(/\n/g, "<br/>");
+      html += `<p style="color:#DC2626;font-weight:600;">${ekHtml}</p>`;
+    }
+    html += `<p>İyi çalışmalar.</p>`;
+    html += `</div>`;
 
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
     const gonderenEmail = firma.smtp_sender_email || firma.smtp_user;
@@ -183,6 +206,7 @@ export async function POST(request: Request) {
         to: muhasebeEmail,
         subject: konu,
         text: metin,
+        html,
       });
       return NextResponse.json({
         mesaj: `${changes.length} değişiklik tek mailde gönderildi`,
