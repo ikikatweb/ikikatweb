@@ -1,7 +1,7 @@
 // Bordro Takibi — şantiye kanban + drag-drop personel transferi
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import autoTable from "jspdf-autotable";
 import XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
-import { getIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
+import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import {
@@ -364,6 +364,9 @@ export default function BordroTakibi() {
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
+  // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
+  // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
+  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null }>>(new Map());
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [muhasebeEmail, setMuhasebeEmail] = useState<string>("");
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
@@ -371,6 +374,8 @@ export default function BordroTakibi() {
 
   // Drag state
   const [dragPersonelId, setDragPersonelId] = useState<string | null>(null);
+  // Drag başlatılan kaynak şantiye id — drag-to-PASIF işleminde sadece bu atama kapatılsın
+  const [dragSourceSantiyeId, setDragSourceSantiyeId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
 
   // Ekle dialog (sadeleştirildi: ad soyad + TC + görev select + şantiye select + tarih)
@@ -383,7 +388,9 @@ export default function BordroTakibi() {
   const [kaydetYukleniyor, setKaydetYukleniyor] = useState(false);
 
   // Çıkış onayı + çıkış tarihi
-  const [cikisOnay, setCikisOnay] = useState<Personel | null>(null);
+  // İşten çıkış onayı: ŞANTİYE BAZLI — sadece o atamayı kapatır.
+  // Aynı personel başka şantiyelerde aktif kalır.
+  const [cikisOnay, setCikisOnay] = useState<{ personel: Personel; santiyeId: string } | null>(null);
   const [cikisTarih, setCikisTarih] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // Geri alma seç dialog (pasif personeli hangi şantiyeye)
@@ -573,10 +580,15 @@ export default function BordroTakibi() {
     }
   }
 
+  // İlk yüklemeden sonra loadData spinner göstermez — kanban mevcut yerinde kalır,
+  // arka planda data tazelenir, scroll sıfırlanmaz.
+  const ilkYuklemeYapildi = useRef(false);
   const loadData = useCallback(async () => {
-    setLoading(true);
+    if (!ilkYuklemeYapildi.current) {
+      setLoading(true);
+    }
     try {
-      const [s, p, a, m, f, iscilik, gorevler, mGunler, notlar, ucretler, brutGecmis] = await Promise.all([
+      const [s, p, a, m, f, iscilik, gorevler, mGunler, notlar, ucretler, brutGecmis, ayliklar] = await Promise.all([
         getSantiyelerAll().catch(() => []),
         getBordroPersoneller().catch(() => []),
         getAtamaGecmisiTumu().catch(() => []),
@@ -588,6 +600,7 @@ export default function BordroTakibi() {
         getBilgiNotlari().catch(() => []),
         getGunlukUcretler().catch(() => []),
         getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
+        getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
       ]);
       setGorevSecenekleri(gorevler ?? []);
       setManuelGunler(mGunler);
@@ -597,7 +610,27 @@ export default function BordroTakibi() {
       // İşçilik Durum Raporu'ndaki filtreyle BİREBİR AYNI + firma_id mapleme.
       const iscilikRaporSantiyeIds = new Set<string>();
       const firmaIdMap = new Map<string, string>(); // santiye_id → firma_id
-      for (const r of (iscilik as { santiye_id: string; santiyeler?: SantiyeBasic | null }[]) ?? []) {
+      // Prim hesabı için santiye_id → { yatmasiGereken, yatan, sonAy } map'i
+      // Aynı şantiyenin birden fazla iscilik_takibi kaydı olabilir → toplam alınır.
+      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null }>();
+      // ait_oldugu_ay "MM.YYYY" → numerik karşılaştırma için YYYYMM
+      const ayYilNum = (s: string): number => {
+        if (!s) return 0;
+        const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+        if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+        const iso = s.match(/^(\d{4})-(\d{2})/);
+        if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+        return 0;
+      };
+      // iscilik_takibi_id → en son ait_oldugu_ay
+      const sonAyByTakibi = new Map<string, string>();
+      for (const ay of (ayliklar as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]) ?? []) {
+        const mevcut = sonAyByTakibi.get(ay.iscilik_takibi_id);
+        if (!mevcut || ayYilNum(ay.ait_oldugu_ay) > ayYilNum(mevcut)) {
+          sonAyByTakibi.set(ay.iscilik_takibi_id, ay.ait_oldugu_ay);
+        }
+      }
+      for (const r of (iscilik as { id: string; santiye_id: string; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null }) | null }[]) ?? []) {
         const sant = r.santiyeler ?? null;
         const bitmis = !!(sant && (
           sant.gecici_kabul_tarihi ||
@@ -608,8 +641,35 @@ export default function BordroTakibi() {
         if (!bitmis && r.santiye_id) {
           iscilikRaporSantiyeIds.add(r.santiye_id);
           if (sant?.yuklenici_firma_id) firmaIdMap.set(r.santiye_id, sant.yuklenici_firma_id);
+          // Prim hesapla: yatması gereken = (sözleşme bedeli + keşif + ff) × oran / 100
+          const bedel = sant?.sozlesme_bedeli ?? 0;
+          const kesif = r.kesif_artisi ?? 0;
+          const ff = r.fiyat_farki ?? 0;
+          const oran = r.iscilik_orani ?? 0;
+          const yatacak = (bedel + kesif + ff) * oran / 100;
+          const yatan = r.yatan_prim ?? 0;
+          const sonAy = sonAyByTakibi.get(r.id) ?? null;
+          const sonAyN = sonAy ? ayYilNum(sonAy) : 0;
+          const mevcut = primInfo.get(r.santiye_id);
+          if (mevcut) {
+            mevcut.yatmasiGereken += yatacak;
+            mevcut.yatan += yatan;
+            // Birden fazla takibi varsa max sonAyNum'u tut
+            if (sonAyN > mevcut.sonAyNum) {
+              mevcut.sonAyNum = sonAyN;
+              mevcut.sonAy = sonAy;
+            }
+          } else {
+            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy });
+          }
         }
       }
+      // Final map: sonAyNum'u dışarı taşımadan sadece görünen alanları sakla
+      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null }>();
+      for (const [k, v] of primInfo) {
+        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy });
+      }
+      setPrimMap(finalPrimMap);
       const tumSantiyeler = (s as SantiyeBasic[]) ?? [];
       const aktifSantiyeler = tumSantiyeler
         .filter((x) => iscilikRaporSantiyeIds.has(x.id))
@@ -625,6 +685,7 @@ export default function BordroTakibi() {
       toast.error(`Yükleme hatası: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
+      ilkYuklemeYapildi.current = true;
     }
   }, []);
 
@@ -997,6 +1058,91 @@ export default function BordroTakibi() {
   }
 
   // Gün düzenle: bir personelin belirli şantiyedeki atamaları + ay sınırlarına çakışan günler
+  // Şantiye bazlı bordro tahmini: işçilik takibinde yatan_prim altındaki silik gri rakamla AYNI mantık.
+  // sonAy'dan sonraki ayların (manuel + doğal atama gün) × ücret toplamı.
+  function bordroToplamForSantiye(santiyeId: string): number {
+    const ayYilNum = (s: string): number => {
+      if (!s) return 0;
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+      const iso = s.match(/^(\d{4})-(\d{2})/);
+      if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+      return 0;
+    };
+    const sonAy = primMap.get(santiyeId)?.sonAy ?? null;
+    const sonAyNum = sonAy ? ayYilNum(sonAy) : 0;
+    const dahilEdilen = new Set<string>();
+    let toplam = 0;
+    const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
+      const brut = brutUcretForAy(brutUcretGecmisi, personelId, ayStr);
+      if (brut > 0) return brut;
+      return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    };
+    // 1) Manuel girişler — sonAy sonrası
+    for (const m of manuelGunler) {
+      if (m.santiye_id !== santiyeId) continue;
+      const mAyNum = ayYilNum(m.ay);
+      if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
+      const yil = parseInt(m.ay.split("-")[0], 10);
+      const ucret = personelUcret(m.personel_id, m.ay, yil);
+      if (ucret > 0) {
+        toplam += m.gun * ucret;
+        dahilEdilen.add(`${m.personel_id}|${m.ay}`);
+      }
+    }
+    // 2) Doğal hesap — sonAy sonrası ve manuel girilmemiş aylar
+    const santiyeAtamalari = atamalar.filter((a) => a.santiye_id === santiyeId);
+    if (santiyeAtamalari.length === 0) return toplam;
+    const bugun = new Date();
+    const buYilAy = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}`;
+    const buYilAyNum = ayYilNum(buYilAy);
+    if (buYilAyNum <= sonAyNum) return toplam;
+    const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
+      let enErken = Infinity;
+      for (const a of santiyeAtamalari) {
+        const aNum = ayYilNum(a.baslangic_tarihi.slice(0, 7));
+        if (aNum < enErken) enErken = aNum;
+      }
+      return enErken === Infinity ? buYilAyNum : enErken;
+    })();
+    let yil = Math.floor(baslangic / 100);
+    let ay = baslangic % 100;
+    if (ay === 0) { yil -= 1; ay = 12; }
+    while (yil * 100 + ay <= buYilAyNum) {
+      const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
+      // gunHesaplaAyBazli benzeri: iscilik-takibi/page.tsx'teki gibi tek tek hesap
+      // Burada inline yapıyoruz — atama tarih aralığını bu ay ile clamp et.
+      const [yLs, mLs] = [yil, ay];
+      const ayBaslangic = `${yLs}-${String(mLs).padStart(2, "0")}-01`;
+      const sonGun = new Date(yLs, mLs, 0).getDate();
+      const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+      const today = new Date().toISOString().slice(0, 10);
+      const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
+      // Personel × ay bazında gün topla
+      const ayHesap = new Map<string, number>();
+      for (const at of santiyeAtamalari) {
+        const bH = at.bitis_tarihi ?? aktifSanal;
+        if (at.baslangic_tarihi > ayBitis) continue;
+        if (bH < ayBaslangic) continue;
+        const cb = at.baslangic_tarihi > ayBaslangic ? at.baslangic_tarihi : ayBaslangic;
+        const cbt = bH < ayBitis ? bH : ayBitis;
+        const ta = new Date(cb + "T00:00:00").getTime();
+        const tb = new Date(cbt + "T00:00:00").getTime();
+        const gun = Math.max(0, Math.round((tb - ta) / 86400000) + 1);
+        ayHesap.set(at.personel_id, (ayHesap.get(at.personel_id) ?? 0) + gun);
+      }
+      for (const [pId, gun] of ayHesap) {
+        if (gun <= 0) continue;
+        if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
+        const ucret = personelUcret(pId, ayStr, yil);
+        if (ucret > 0) toplam += gun * ucret;
+      }
+      ay += 1;
+      if (ay > 12) { ay = 1; yil += 1; }
+    }
+    return toplam;
+  }
+
   async function gunEditAtamaUpdate(atamaId: string, baslangic: string, bitis: string | null) {
     if (bitis && bitis < baslangic) {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
@@ -1740,15 +1886,21 @@ export default function BordroTakibi() {
       if (secilenTarih < minTarih) { toast.error("Çıkış tarihi en fazla 10 gün geriye olabilir"); return; }
     }
     try {
-      const aktifAtama = atamalar.find((a) => a.personel_id === cikisOnay.id && !a.bitis_tarihi);
-      const oldSantiyeId = aktifAtama?.santiye_id ?? cikisOnay.santiye_id ?? undefined;
-      const oldSantiyeAd = oldSantiyeId
-        ? santiyeler.find((s) => s.id === oldSantiyeId)?.is_adi
-        : undefined;
-      await isenCikar(cikisOnay.id, cikisTarih);
-      toast.success(`${cikisOnay.ad_soyad} işten çıkarıldı (${cikisTarih}, mail kuyruğa)`);
+      // ŞANTİYE BAZLI çıkış: SADECE bu personelin BU ŞANTİYEDEKİ açık atamasını kapat.
+      // Personel başka şantiyelerde aktifse onlar etkilenmez.
+      const { personel, santiyeId } = cikisOnay;
+      const oldSantiyeAd = santiyeler.find((s) => s.id === santiyeId)?.is_adi;
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { error } = await supabase
+        .from("personel_atama_gecmisi")
+        .update({ bitis_tarihi: cikisTarih })
+        .eq("personel_id", personel.id)
+        .eq("santiye_id", santiyeId)
+        .is("bitis_tarihi", null);
+      if (error) throw error;
+      toast.success(`${personel.ad_soyad} ${oldSantiyeAd ?? ""} şantiyesinden çıkarıldı (${cikisTarih}, mail kuyruğa)`);
       // ÖNEMLİ: DB'ye yazılan ASIL tarihi (cikisTarih) kuyruğa ilet — revert için gerekli.
-      kuyrugaEkle({ tip: "cikis", personel: cikisOnay, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: oldSantiyeId, tarih: cikisTarih });
+      kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
       setCikisOnay(null);
       setCikisTarih(new Date().toISOString().slice(0, 10));
       await loadData();
@@ -1773,9 +1925,10 @@ export default function BordroTakibi() {
   }
 
   // Drag-drop
-  function onDragStart(personelId: string) {
+  function onDragStart(personelId: string, kaynakSantiyeId?: string) {
     if (isReadOnly) return;
     setDragPersonelId(personelId);
+    setDragSourceSantiyeId(kaynakSantiyeId ?? null);
   }
   function onDragOver(e: React.DragEvent, key: string) {
     if (isReadOnly) return;
@@ -1808,9 +1961,13 @@ export default function BordroTakibi() {
 
     try {
       if (hedefKey === PASIF_KEY) {
-        // İşten çıkar (drag ile)
-        setCikisOnay(personel);
+        // İşten çıkar (drag ile) — SADECE drag kaynağı şantiyedeki atamayı kapat
+        const kaynakSantiyeId = dragSourceSantiyeId ?? aktifSantiyeId;
+        if (kaynakSantiyeId) {
+          setCikisOnay({ personel, santiyeId: kaynakSantiyeId });
+        }
         setDragPersonelId(null);
+        setDragSourceSantiyeId(null);
         return;
       }
       if (hedefKey === ATANMAMIS_KEY) {
@@ -1881,7 +2038,7 @@ export default function BordroTakibi() {
           if (!sürüklenebilir) return;
           // Drag verisi (gerekli değil ama bazı tarayıcılarda drag tetiklemesi için)
           try { e.dataTransfer.setData("text/plain", p.id); } catch { /* sessiz */ }
-          onDragStart(p.id);
+          onDragStart(p.id, sutunKey);
         }}
         onDoubleClick={(e) => {
           // Buton üzerindeki çift tıklamaları yakala değil
@@ -1921,8 +2078,8 @@ export default function BordroTakibi() {
               {showCikis && (
                 <button
                   type="button"
-                  onClick={() => setCikisOnay(p)}
-                  title="İşten çıkar"
+                  onClick={() => setCikisOnay({ personel: p, santiyeId: sutunKey })}
+                  title="Bu şantiyeden işten çıkar (diğer şantiyelerdeki atamaları etkilemez)"
                   className="p-1 text-red-500 hover:bg-red-50 rounded"
                 >
                   <Trash2 size={12} />
@@ -1971,9 +2128,36 @@ export default function BordroTakibi() {
           onClick={onToggle}
         >
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
-          <h3 className="font-bold text-sm text-[#1E3A5F] flex-1 truncate" title={baslik}>{baslik}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
+            {(() => {
+              // Prim hesabı: yatması gereken - yatan - bordroToplam = sonuç
+              if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
+              const prim = primMap.get(santiyeId);
+              if (!prim) return null;
+              const yatmasi = prim.yatmasiGereken;
+              const yatan = prim.yatan;
+              const bordro = bordroToplamForSantiye(santiyeId);
+              if (yatmasi === 0 && yatan === 0 && bordro === 0) return null;
+              const sonuc = yatmasi - yatan - bordro;
+              const fmt = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+              const sonucClass = sonuc < 0 ? "text-red-600" : sonuc > 0 ? "text-emerald-700" : "text-gray-600";
+              return (
+                <div className="text-[10px] text-gray-500 font-mono mt-0.5 truncate"
+                  title={`Yatması Gereken − Yatan − Bordro Tahmini = Sonuç`}>
+                  <span className="text-[#1E3A5F]">{fmt(yatmasi)}</span>
+                  <span> − </span>
+                  <span className="text-emerald-700">{fmt(yatan)}</span>
+                  <span> − </span>
+                  <span className="text-gray-400">{fmt(bordro)}</span>
+                  <span> = </span>
+                  <span className={`font-bold ${sonucClass}`}>{fmt(sonuc)}</span>
+                </div>
+              );
+            })()}
+          </div>
           {tumGun > 0 && (
-            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold">
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
               {tumGun} gün
             </span>
           )}
@@ -2167,8 +2351,8 @@ export default function BordroTakibi() {
               {showCikis && (
                 <button
                   type="button"
-                  onClick={() => setCikisOnay(p)}
-                  title="İşten çıkar"
+                  onClick={() => setCikisOnay({ personel: p, santiyeId: sutunKey })}
+                  title="Bu şantiyeden işten çıkar (diğer şantiyelerdeki atamaları etkilemez)"
                   className="p-1 text-red-500 hover:bg-red-50 rounded"
                 >
                   <Trash2 size={14} />
@@ -2368,14 +2552,26 @@ export default function BordroTakibi() {
             const firmaAd = firma?.firma_adi ?? "(Firma atanmamış)";
             const firmaSantiyeler = firmaGrup.get(fId) ?? [];
             const firmaAcik = expandedFirmalar.has(fId);
-            // Firma toplam: kişi sayısı + gün
+            // Firma toplam: kişi sayısı + gün + prim hesabı toplamı
             let firmaToplamKisi = 0;
             let firmaToplamGun = 0;
+            // Firmanın tüm şantiyelerinin prim hesabı (her şantiyenin yanındaki rakamların toplamı)
+            let firmaYatmasiGereken = 0;
+            let firmaYatan = 0;
+            let firmaBordro = 0;
             for (const s of firmaSantiyeler) {
               const liste = kanbanMap.get(s.id) ?? [];
               firmaToplamKisi += liste.length;
               for (const p of liste) firmaToplamGun += gunMap.get(p.id)?.get(s.id) ?? 0;
+              const prim = primMap.get(s.id);
+              if (prim) {
+                firmaYatmasiGereken += prim.yatmasiGereken;
+                firmaYatan += prim.yatan;
+              }
+              firmaBordro += bordroToplamForSantiye(s.id);
             }
+            const firmaSonuc = firmaYatmasiGereken - firmaYatan - firmaBordro;
+            const firmaPrimVar = firmaYatmasiGereken !== 0 || firmaYatan !== 0 || firmaBordro !== 0;
             // Firmanın kayıtlı rengi varsa onu kullan, yoksa fallback paleti
             const fallbackRenkler = ["#1E3A5F", "#7c3aed", "#dc2626", "#059669", "#d97706", "#0891b2"];
             const firmaRenk = firma?.renk || fallbackRenkler[fIdx % fallbackRenkler.length];
@@ -2402,15 +2598,33 @@ export default function BordroTakibi() {
                     : <ChevronRight size={20} className="text-white flex-shrink-0" />}
                   <Building2 size={18} className="text-white flex-shrink-0" />
                   <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">FİRMA</span>
-                  <h2 className="font-bold text-base text-white flex-1 truncate" title={firmaAd}>{firmaAd}</h2>
-                  <span className="text-[11px] bg-white/20 backdrop-blur text-white px-2 py-0.5 rounded-full font-semibold">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="font-bold text-base text-white truncate" title={firmaAd}>{firmaAd}</h2>
+                    {firmaPrimVar && (() => {
+                      const fmt = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+                      const sonucClass = firmaSonuc < 0 ? "text-red-200" : firmaSonuc > 0 ? "text-emerald-200" : "text-white/80";
+                      return (
+                        <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate"
+                          title="Tüm işlerin yatması gereken − yatan − bordro tahmini = sonuç (toplam)">
+                          <span className="text-white">{fmt(firmaYatmasiGereken)}</span>
+                          <span> − </span>
+                          <span className="text-emerald-200">{fmt(firmaYatan)}</span>
+                          <span> − </span>
+                          <span className="text-white/60">{fmt(firmaBordro)}</span>
+                          <span> = </span>
+                          <span className={`font-bold ${sonucClass}`}>{fmt(firmaSonuc)}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <span className="text-[11px] bg-white/20 backdrop-blur text-white px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
                     {firmaSantiyeler.length} iş
                   </span>
-                  <span className="text-[11px] bg-white/20 backdrop-blur text-white px-2 py-0.5 rounded-full font-semibold">
+                  <span className="text-[11px] bg-white/20 backdrop-blur text-white px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
                     {firmaToplamKisi} kişi
                   </span>
                   {firmaToplamGun > 0 && (
-                    <span className="text-[11px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">
+                    <span className="text-[11px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold flex-shrink-0">
                       {firmaToplamGun} gün
                     </span>
                   )}
@@ -2899,7 +3113,14 @@ export default function BordroTakibi() {
           <DialogHeader><DialogTitle>İşten Çıkar</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-gray-700">
-              <span className="font-bold">{cikisOnay?.ad_soyad}</span> işten çıkarılacak.
+              <span className="font-bold">{cikisOnay?.personel.ad_soyad}</span>
+              {cikisOnay && (() => {
+                const sAd = santiyeler.find((s) => s.id === cikisOnay.santiyeId)?.is_adi;
+                return sAd ? <span> · <span className="text-red-600 font-semibold">{sAd}</span> şantiyesinden çıkarılacak.</span> : null;
+              })()}
+            </p>
+            <p className="text-[10px] text-gray-500">
+              ℹ️ Bu işlem yalnızca seçilen şantiyedeki atamayı kapatır — personel diğer şantiyelerde aktifse orada kalır.
             </p>
             <div>
               <Label className="text-xs">Çıkış Tarihi <span className="text-red-500">*</span></Label>
