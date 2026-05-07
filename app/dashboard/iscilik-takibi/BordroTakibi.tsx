@@ -1361,10 +1361,11 @@ export default function BordroTakibi() {
     }
 
     // Admin olmayan kullanıcı için tarih kısıtlaması (eski 9-gün kuralı korunuyor)
+    // ÖNEMLİ: Tüm tarihler UTC ISO slice ile karşılaştırılır (timezone tutarsızlığını önle).
     if (!isYonetici && santiye) {
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().slice(0, 10);
-      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
+      const todayStr = buGun; // UTC ile aynı kaynak
+      const minDate = new Date();
+      minDate.setUTCDate(minDate.getUTCDate() - 9);
       const minDateStr = minDate.toISOString().slice(0, 10);
       // Teknik personel cevabı evet'se kullanilanTarih = teslim tarihi olabilir; bu istisna kabul.
       // Aksi tarihler 9 gün-bugün aralığında olmalı.
