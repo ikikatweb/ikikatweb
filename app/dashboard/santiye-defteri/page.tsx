@@ -438,21 +438,32 @@ function SantiyeDefContent() {
 
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     let cl = 0;
-    // Aynı yazan_id kayıtlarını grupla (ilk göründüğü sıraya göre), metni birleştir
-    type KGrup = { yazan_id: string; metin: string };
+    // Aynı yazan kişi (ad_soyad) kayıtlarını grupla (ilk göründüğü sıraya göre), metni birleştir.
+    // ad_soyad bazlı gruplama: aynı kişi farklı oturumlardan yazsa bile yine birleşir.
+    type KGrup = { yazan_id: string; yazanAd: string; metin: string };
     const kgruplar: KGrup[] = [];
     const kIdxMap = new Map<string, number>();
     for (const k of d.kayitlar) {
-      const idx = kIdxMap.get(k.yazan_id);
+      const yazanAd = kullaniciMap.get(k.yazan_id) ?? "";
+      // Gruplama anahtarı: ad_soyad varsa onu kullan; yoksa yazan_id (boş ise farklı gruplara düşmesin diye fallback)
+      const grupAnahtari = yazanAd || `__noad__${k.yazan_id}`;
+      const idx = kIdxMap.get(grupAnahtari);
+      // Birleştirme ayırıcı: önceki metin nokta ile bitmiyorsa ". " ekle, bitiyorsa " "
+      const ekle = (mevcut: string, yeni: string) => {
+        const trimmed = mevcut.trimEnd();
+        const sonKarakter = trimmed.slice(-1);
+        const noktayaBenziyorMu = sonKarakter === "." || sonKarakter === "!" || sonKarakter === "?";
+        return trimmed + (noktayaBenziyorMu ? " " : ". ") + yeni;
+      };
       if (idx === undefined) {
-        kIdxMap.set(k.yazan_id, kgruplar.length);
-        kgruplar.push({ yazan_id: k.yazan_id, metin: k.icerik });
+        kIdxMap.set(grupAnahtari, kgruplar.length);
+        kgruplar.push({ yazan_id: k.yazan_id, yazanAd, metin: k.icerik });
       } else {
-        kgruplar[idx].metin += " " + k.icerik;
+        kgruplar[idx].metin = ekle(kgruplar[idx].metin, k.icerik);
       }
     }
     for (const g of kgruplar) {
-      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "";
+      const yazanAd = g.yazanAd;
       const suffix = yazanAd ? `  — ${tr(yazanAd)}` : "";
       const fullText = `• ${tr(g.metin)}${suffix}`;
       const lines = doc.splitTextToSize(fullText, contentW - 8) as string[];
@@ -566,23 +577,31 @@ function SantiyeDefContent() {
     }
     doc.setDrawColor(0, 0, 0);
 
-    // Kayıtları yaz — aynı yazan_id kayıtlarını grupla
+    // Kayıtları yaz — aynı kişi (ad_soyad) tarafından aynı gün yazılan girdileri birleştir
     doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     let cl = 0;
-    type KGrup = { yazan_id: string; metin: string };
+    type KGrup = { yazan_id: string; yazanAd: string; metin: string };
     const kgruplar: KGrup[] = [];
     const kIdxMap = new Map<string, number>();
     for (const k of kayitlar) {
-      const idx = kIdxMap.get(k.yazan_id);
+      const yazanAd = kullaniciMap.get(k.yazan_id) ?? "";
+      const grupAnahtari = yazanAd || `__noad__${k.yazan_id}`;
+      const idx = kIdxMap.get(grupAnahtari);
+      const ekle = (mevcut: string, yeni: string) => {
+        const trimmed = mevcut.trimEnd();
+        const sonKarakter = trimmed.slice(-1);
+        const noktayaBenziyorMu = sonKarakter === "." || sonKarakter === "!" || sonKarakter === "?";
+        return trimmed + (noktayaBenziyorMu ? " " : ". ") + yeni;
+      };
       if (idx === undefined) {
-        kIdxMap.set(k.yazan_id, kgruplar.length);
-        kgruplar.push({ yazan_id: k.yazan_id, metin: k.icerik });
+        kIdxMap.set(grupAnahtari, kgruplar.length);
+        kgruplar.push({ yazan_id: k.yazan_id, yazanAd, metin: k.icerik });
       } else {
-        kgruplar[idx].metin += " " + k.icerik;
+        kgruplar[idx].metin = ekle(kgruplar[idx].metin, k.icerik);
       }
     }
     for (const g of kgruplar) {
-      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "";
+      const yazanAd = g.yazanAd;
       const suffix = yazanAd ? `  — ${tr(yazanAd)}` : "";
       const fullText = `• ${tr(g.metin)}${suffix}`;
       const lines = doc.splitTextToSize(fullText, contentW - 8) as string[];
@@ -871,22 +890,24 @@ function SantiyeDefContent() {
               ) : (
                 <div className="space-y-2">
                   {(() => {
-                    // Aynı gün içinde aynı kullanıcının TÜM kayıtlarını birleştir
-                    // (ardışık olmasa bile, ilk göründüğü sırayı koru)
-                    type KayitGrup = { yazan_id: string; kayitlar: typeof kayitlar };
+                    // Aynı gün içinde aynı kişiye (ad_soyad) ait TÜM kayıtları birleştir
+                    // (ardışık olmasa bile, ilk göründüğü sırayı koru). Farklı kişiler ayrı satırda.
+                    type KayitGrup = { yazan_id: string; yazanAd: string; kayitlar: typeof kayitlar };
                     const gruplar: KayitGrup[] = [];
                     const idxMap = new Map<string, number>();
                     for (const k of kayitlar) {
-                      const idx = idxMap.get(k.yazan_id);
+                      const yazanAd = kullaniciMap.get(k.yazan_id) ?? "Bilinmeyen";
+                      const grupAnahtari = yazanAd !== "Bilinmeyen" ? yazanAd : `__noad__${k.yazan_id}`;
+                      const idx = idxMap.get(grupAnahtari);
                       if (idx === undefined) {
-                        idxMap.set(k.yazan_id, gruplar.length);
-                        gruplar.push({ yazan_id: k.yazan_id, kayitlar: [k] });
+                        idxMap.set(grupAnahtari, gruplar.length);
+                        gruplar.push({ yazan_id: k.yazan_id, yazanAd, kayitlar: [k] });
                       } else {
                         gruplar[idx].kayitlar.push(k);
                       }
                     }
                     return gruplar.map((g, gIdx) => {
-                      const yazanAd = kullaniciMap.get(g.yazan_id) ?? "Bilinmeyen";
+                      const yazanAd = g.yazanAd;
                       const isOwn = g.yazan_id === kullanici?.id;
                       // Grup içinde düzenlenen kayıt var mı?
                       const editKayitIdx = g.kayitlar.findIndex((k) => k.id === editId);

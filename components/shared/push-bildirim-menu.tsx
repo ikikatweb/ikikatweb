@@ -44,6 +44,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Her 10 girişte 1" },
   { tag: "arac-puantaj", label: "Araç Puantaj", emoji: "🚚", desc: "Her 10 girişte 1" },
   { tag: "iscilik-takibi", label: "İşçilik Takibi", emoji: "📊", desc: "Her veri girişi / güncellemede" },
+  { tag: "bordro-takibi", label: "Bordro Takibi", emoji: "🧾", desc: "Personel giriş / çıkış / transfer işlemleri" },
   { tag: "yakit", label: "Yakıt", emoji: "⛽", desc: "Yeni yakıt alımı" },
   { tag: "kasa", label: "Kasa Defteri", emoji: "💰", desc: "Yeni gelir/gider" },
   { tag: "santiye-defteri", label: "Şantiye Defteri", emoji: "📓", desc: "Yeni günlük defter açılışı" },

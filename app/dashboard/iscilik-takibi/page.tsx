@@ -27,9 +27,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -159,8 +156,6 @@ export default function IscilikTakibiPage() {
   const [arama, setArama] = useState("");
   // Aktif işler için çoklu seçim filtresi — kullanıcı görmek istediği işleri seçer
   // Set boş ise tümü gösterilir (varsayılan davranış); doluysa sadece seçilenler.
-  const [seciliSantiyeIds, setSeciliSantiyeIds] = useState<Set<string>>(new Set());
-  const [santiyeFiltreAcik, setSantiyeFiltreAcik] = useState(false);
   // Günlük ücret tutarı (manuel — sadece rakam, localStorage'da saklanır)
   // Mobilde iş adı sütununu sabitleme (sticky) açık/kapalı toggle
   const [isAdiSabit, setIsAdiSabit] = useState(true);
@@ -332,6 +327,24 @@ export default function IscilikTakibiPage() {
   async function handleDelete() {
     if (!deleteId) return;
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
+    // Bordro takibinde bu işte aktif atanmış personel varsa silmeyi engelle
+    const silinenSatir = rows.find((r) => r.id === deleteId);
+    const santiyeId = silinenSatir?.santiye_id;
+    if (santiyeId) {
+      const aktifPersonelSayisi = atamalar.filter(
+        (a) => a.santiye_id === santiyeId && !a.bitis_tarihi,
+      ).length;
+      if (aktifPersonelSayisi > 0) {
+        const isAdi = silinenSatir?.santiyeler?.is_adi ?? "Bu iş";
+        toast.error(
+          `⚠️ "${isAdi}" silinemiyor: Bordro takibinde aktif ${aktifPersonelSayisi} personel atanmış. ` +
+          `Önce bordro takibinden bu personelleri çıkarın veya başka şantiyeye transfer edin.`,
+          { duration: 12000 },
+        );
+        setDeleteId(null);
+        return;
+      }
+    }
     try {
       await deleteIscilikTakibi(deleteId);
       const silinen = rows.find((r) => r.id === deleteId);
@@ -381,11 +394,8 @@ export default function IscilikTakibiPage() {
     return !bitmis;
   });
 
-  // Arama + çoklu seçim filtresi (geçici/kesin kabul, tasfiye, devir olan işler gizlenir)
+  // Arama filtresi (bitmiş işler aktifIsler'da zaten gizlendi)
   const filtrelenmis = aktifIsler.filter((r) => {
-    // Çoklu seçim filtresi: Set doluysa sadece seçilen şantiyeler gösterilir
-    if (seciliSantiyeIds.size > 0 && !seciliSantiyeIds.has(r.santiye_id)) return false;
-    // Arama filtresi
     if (!arama.trim()) return true;
     const q = trAramaNormalize(arama);
     const text = trAramaNormalize([
@@ -674,32 +684,6 @@ export default function IscilikTakibiPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input placeholder="İş adı, sicil no ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
         </div>
-        {/* Aktif işler için çoklu seçim filtre butonu */}
-        <Button
-          variant={seciliSantiyeIds.size > 0 ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSantiyeFiltreAcik(true)}
-          className={seciliSantiyeIds.size > 0 ? "bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap" : "whitespace-nowrap"}
-          title="Görmek istediğin işleri seç"
-        >
-          📋 İş Filtresi
-          {seciliSantiyeIds.size > 0 && (
-            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-white/30 text-white">
-              {seciliSantiyeIds.size}
-            </span>
-          )}
-        </Button>
-        {seciliSantiyeIds.size > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSeciliSantiyeIds(new Set())}
-            title="Filtreyi temizle (tüm aktif işleri göster)"
-            className="text-gray-500 whitespace-nowrap"
-          >
-            ✕ Temizle
-          </Button>
-        )}
         <div className="flex items-center gap-2">
           {/* Mobilde iş adı sabit/kayar toggle — masaüstünde gizli */}
           <Button
@@ -940,13 +924,29 @@ export default function IscilikTakibiPage() {
                       </TableCell>
                     );
                   })}
-                  {/* Silme butonu */}
+                  {/* Silme butonu — bordroda aktif personel varsa kilit ikonu, tıklanınca uyarı */}
                   <TableCell className="text-center px-1">
-                    {ySil && (
-                      <button onClick={() => setDeleteId(row.id)} className="text-gray-300 hover:text-red-500 p-0.5" title="Sil">
-                        <Trash2 size={13} />
-                      </button>
-                    )}
+                    {ySil && (() => {
+                      const aktifPersonel = atamalar.filter(
+                        (a) => a.santiye_id === row.santiye_id && !a.bitis_tarihi,
+                      ).length;
+                      if (aktifPersonel > 0) {
+                        return (
+                          <button
+                            onClick={() => setDeleteId(row.id)}
+                            className="text-gray-300 hover:text-amber-500 p-0.5 cursor-help"
+                            title={`Bordro takibinde ${aktifPersonel} aktif personel atanmış — silmek için önce çıkarın`}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        );
+                      }
+                      return (
+                        <button onClick={() => setDeleteId(row.id)} className="text-gray-300 hover:text-red-500 p-0.5" title="Sil">
+                          <Trash2 size={13} />
+                        </button>
+                      );
+                    })()}
                   </TableCell>
                 </TableRow>
                 );
@@ -1038,95 +1038,6 @@ export default function IscilikTakibiPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Aktif İşler Çoklu Seçim Filtresi Dialog */}
-      <Dialog open={santiyeFiltreAcik} onOpenChange={setSantiyeFiltreAcik}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>İş Filtresi — Görmek istediğin işleri seç</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <p className="text-xs text-gray-500">
-              Aşağıdan birden fazla iş seçebilirsin. Hiçbir şey seçmezsen tüm aktif işler gösterilir.
-            </p>
-            <div className="flex items-center justify-between gap-2 sticky top-0 bg-white py-2 border-b z-10">
-              <div className="text-xs font-semibold">
-                Aktif İşler ({aktifIsler.length})
-                {seciliSantiyeIds.size > 0 && (
-                  <span className="ml-2 text-blue-600">· {seciliSantiyeIds.size} seçili</span>
-                )}
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setSeciliSantiyeIds(new Set(aktifIsler.map((r) => r.santiye_id)))}
-                >
-                  Tümünü Seç
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setSeciliSantiyeIds(new Set())}
-                >
-                  Temizle
-                </Button>
-              </div>
-            </div>
-            <ul className="space-y-1">
-              {aktifIsler
-                .slice()
-                .sort((a, b) => (a.santiyeler?.is_adi ?? "").localeCompare(b.santiyeler?.is_adi ?? "", "tr"))
-                .map((r) => {
-                  const sec = seciliSantiyeIds.has(r.santiye_id);
-                  return (
-                    <li
-                      key={r.id}
-                      className={`border rounded px-3 py-2 cursor-pointer transition-colors ${sec ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"}`}
-                      onClick={() => {
-                        setSeciliSantiyeIds((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(r.santiye_id)) next.delete(r.santiye_id);
-                          else next.add(r.santiye_id);
-                          return next;
-                        });
-                      }}
-                    >
-                      <div className="flex items-start gap-2">
-                        <input
-                          type="checkbox"
-                          checked={sec}
-                          readOnly
-                          className="mt-1 w-4 h-4 cursor-pointer accent-blue-600"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-[#1E3A5F] truncate">
-                            {r.santiyeler?.is_adi ?? "—"}
-                          </div>
-                          <div className="text-[10px] text-gray-500 truncate">
-                            {r.sicil_no && <span className="font-mono">{r.sicil_no}</span>}
-                            {r.santiyeler?.is_grubu && <span> · {r.santiyeler.is_grubu}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-            </ul>
-            <div className="flex justify-end gap-2 pt-3 border-t sticky bottom-0 bg-white">
-              <Button variant="outline" size="sm" onClick={() => setSantiyeFiltreAcik(false)}>Kapat</Button>
-              <Button
-                size="sm"
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={() => setSantiyeFiltreAcik(false)}
-              >
-                Uygula ({seciliSantiyeIds.size > 0 ? seciliSantiyeIds.size : "tümü"})
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

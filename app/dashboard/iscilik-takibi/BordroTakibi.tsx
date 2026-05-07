@@ -856,6 +856,33 @@ export default function BordroTakibi() {
     tarih?: string;
   }) {
     const tarih = payload.tarih ?? new Date().toISOString().slice(0, 10);
+
+    // Push bildirim — diğer admin'lere/yetkililere "bu işlem yapıldı" bilgisini ver.
+    // Tag: "bordro-takibi". Tıklayınca bordro takibi sayfasına götürür.
+    try {
+      // Async import — sayfada extra bağımlılık yaratmasın
+      import("@/lib/bildirim").then(({ bildirimGonder }) => {
+        const tipLabel = payload.tip === "giris" ? "🟢 İşe Giriş"
+          : payload.tip === "cikis" ? "🔴 İşten Çıkış"
+          : "🔄 Şantiye Transferi";
+        let govde = payload.personel.ad_soyad;
+        if (payload.tip === "transfer" && payload.onceSantiyeAd && payload.santiyeAd) {
+          govde += ` · ${payload.onceSantiyeAd} → ${payload.santiyeAd}`;
+        } else if (payload.santiyeAd) {
+          govde += ` · ${payload.santiyeAd}`;
+        } else if (payload.onceSantiyeAd) {
+          govde += ` · ${payload.onceSantiyeAd}`;
+        }
+        bildirimGonder({
+          baslik: `${tipLabel} — Bordro Takibi`,
+          govde: govde.slice(0, 150),
+          url: "/dashboard/bordro-takibi",
+          tag: "bordro-takibi",
+          santiye_id: payload.santiyeId ?? payload.onceSantiyeId ?? null,
+        });
+      }).catch(() => { /* sessiz */ });
+    } catch { /* sessiz */ }
+
     const baseFields = {
       personelAd: payload.personel.ad_soyad,
       personelTc: payload.personel.tc_kimlik_no,
@@ -2690,7 +2717,9 @@ export default function BordroTakibi() {
         </div>
       )}
 
-      {/* Toplu işlem barı — fixed position. Boşluğa tıkla / ESC ile temizlenir. */}
+      {/* İşlem barı — fixed position. Boşluğa tıkla / ESC ile temizlenir.
+           1 kişi: "Transfer / İşten Çıkar"
+           Birden fazla: "Toplu Transfer / Toplu İşten Çıkar" */}
       <div
         data-toplu-bar
         className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-blue-50 border border-blue-300 rounded-lg p-2 flex items-center gap-2 shadow-lg transition-opacity ${
@@ -2704,12 +2733,12 @@ export default function BordroTakibi() {
         <Button size="sm" variant="outline"
           onClick={() => setTopluTransferAcik(true)}
           className="border-blue-400 text-blue-700 hover:bg-blue-100">
-          Toplu Transfer
+          {selectedKeys.size > 1 ? "Toplu Transfer" : "Transfer"}
         </Button>
         <Button size="sm" variant="outline"
           onClick={() => setTopluCikisOnay(true)}
           className="border-red-400 text-red-700 hover:bg-red-100">
-          Toplu İşten Çıkar
+          {selectedKeys.size > 1 ? "Toplu İşten Çıkar" : "İşten Çıkar"}
         </Button>
       </div>
 
@@ -3220,7 +3249,7 @@ export default function BordroTakibi() {
       {/* Toplu Transfer Dialog */}
       <Dialog open={topluTransferAcik} onOpenChange={(o) => !o && setTopluTransferAcik(false)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Toplu Transfer ({selectedKeys.size} kişi)</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{selectedKeys.size > 1 ? "Toplu Transfer" : "Transfer"} ({selectedKeys.size} kişi)</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-gray-600">
               Seçili personeller hangi şantiyeye transfer edilsin?
@@ -3279,9 +3308,9 @@ export default function BordroTakibi() {
       {/* Toplu Çıkış Onayı */}
       <Dialog open={topluCikisOnay} onOpenChange={(o) => !o && setTopluCikisOnay(false)}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Toplu İşten Çıkar</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{selectedKeys.size > 1 ? "Toplu İşten Çıkar" : "İşten Çıkar"}</DialogTitle></DialogHeader>
           <p className="text-sm text-gray-600 py-2">
-            <span className="font-bold">{selectedKeys.size} kişi</span> işten çıkarılacak ve muhasebeye toplu mail kuyruğuna eklenecek. Onaylıyor musunuz?
+            <span className="font-bold">{selectedKeys.size} kişi</span> işten çıkarılacak ve muhasebeye{selectedKeys.size > 1 ? " toplu" : ""} mail kuyruğuna eklenecek. Onaylıyor musunuz?
           </p>
           <div className="flex gap-2 justify-end">
             <Button variant="outline" size="sm" onClick={() => setTopluCikisOnay(false)}>İptal</Button>

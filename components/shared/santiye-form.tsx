@@ -13,9 +13,13 @@ import {
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/queries/santiyeler";
 import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
+import { getKullanicilar, updateKullanici } from "@/lib/supabase/queries/kullanicilar";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
-import type { Santiye, SantiyeInsert, Firma, Tanimlama } from "@/lib/supabase/types";
+import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -58,6 +62,12 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
 
   const [loading, setLoading] = useState(false);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
+  // Kullanıcı atama dialogu — yeni iş kaydı sonrası açılır, hangi kullanıcılara atanacak
+  const [kullaniciDialogAcik, setKullaniciDialogAcik] = useState(false);
+  const [kullaniciListesi, setKullaniciListesi] = useState<Kullanici[]>([]);
+  const [seciliKullaniciIds, setSeciliKullaniciIds] = useState<Set<string>>(new Set());
+  const [yeniKaydedilenSantiyeId, setYeniKaydedilenSantiyeId] = useState<string | null>(null);
+  const [kullaniciAtamaYukleniyor, setKullaniciAtamaYukleniyor] = useState(false);
   const [ortaklar, setOrtaklar] = useState<OrtakRow[]>([]);
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrupListesi, setIsGrupListesi] = useState<string[]>([]);
@@ -269,6 +279,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
 
     setLoading(true);
     let basarili = false;
+    let savedId: string | null = null;
 
     try {
       const submitData: SantiyeInsert = {
@@ -278,7 +289,6 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         depo_kapasitesi: depoVar ? formData.depo_kapasitesi : null,
       };
 
-      let savedId: string;
       if (isEdit) {
         await updateSantiye(santiye.id, submitData);
         savedId = santiye.id;
@@ -286,10 +296,12 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         const created = await createSantiye(submitData);
         savedId = created.id;
       }
+      // Local non-null kopyası — try block içinde geri kalan operasyonlar için
+      const sId: string = savedId!;
 
       // Ortakları kaydet
       if (formData.is_ortak_girisim && ortaklar.length > 0) {
-        await saveOrtaklar(savedId, ortaklar.filter((o) => o.firma_id));
+        await saveOrtaklar(sId, ortaklar.filter((o) => o.firma_id));
       }
 
       // İş grubu dağılımını kaydet
@@ -308,13 +320,13 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         })
         .filter((d) => d.tutar > 0);
       try {
-        await saveSantiyeIsGruplari(savedId, gecerliDagilim);
+        await saveSantiyeIsGruplari(sId, gecerliDagilim);
       } catch { /* tablo yoksa sessiz atla */ }
 
       // Keşif Artışı — iscilik_takibi tablosuna upsert (işçilik takibi sayfasıyla ortak veri)
       try {
         const kesifArtisi = parseParaInput(kesifArtisiStr);
-        await upsertIscilikTakibi(savedId, { kesif_artisi: kesifArtisi });
+        await upsertIscilikTakibi(sId, { kesif_artisi: kesifArtisi });
       } catch (err) {
         // Kesif artışı kaydı başarısız olursa form genel başarısını bozma, sadece uyarı göster
         console.warn("Keşif artışı kaydedilemedi:", err);
@@ -322,16 +334,16 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
 
       // Dosya yüklemeleri
       if (geciciKabulFile) {
-        const url = await uploadSantiyeFile(geciciKabulFile, savedId, "gecici_kabul");
-        await updateSantiye(savedId, { gecici_kabul_url: url });
+        const url = await uploadSantiyeFile(geciciKabulFile, sId, "gecici_kabul");
+        await updateSantiye(sId, { gecici_kabul_url: url });
       }
       if (kesinKabulFile) {
-        const url = await uploadSantiyeFile(kesinKabulFile, savedId, "kesin_kabul");
-        await updateSantiye(savedId, { kesin_kabul_url: url });
+        const url = await uploadSantiyeFile(kesinKabulFile, sId, "kesin_kabul");
+        await updateSantiye(sId, { kesin_kabul_url: url });
       }
       if (isDeneyimFile) {
-        const url = await uploadSantiyeFile(isDeneyimFile, savedId, "is_deneyim");
-        await updateSantiye(savedId, { is_deneyim_url: url });
+        const url = await uploadSantiyeFile(isDeneyimFile, sId, "is_deneyim");
+        await updateSantiye(sId, { is_deneyim_url: url });
       }
 
       basarili = true;
@@ -340,9 +352,66 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
       setLoading(false);
     }
 
-    if (basarili) {
+    if (basarili && savedId) {
       toast.success(isEdit ? "İş başarıyla güncellendi." : "İş başarıyla eklendi.");
+      // Yeni iş eklendiyse: kullanıcı atama dialogu aç, kullanıcı seçimi sonrası yönlendir.
+      // Düzenleme ise direkt yönlendir.
+      if (!isEdit) {
+        try {
+          // Kullanıcı listesini çek (sadece santiye_admin + kisitli)
+          const tumKullanicilar = await getKullanicilar();
+          const filtreli = tumKullanicilar.filter(
+            (k) => (k.rol === "santiye_admin" || k.rol === "kisitli") && k.aktif,
+          );
+          if (filtreli.length === 0) {
+            // Hiç atanacak kullanıcı yok → direkt yönlendir
+            window.location.href = "/dashboard/yonetim/santiyeler";
+            return;
+          }
+          setKullaniciListesi(filtreli);
+          setSeciliKullaniciIds(new Set());
+          setYeniKaydedilenSantiyeId(savedId);
+          setKullaniciDialogAcik(true);
+          // Loading durumunu bırak — dialog açıldı, kullanıcı seçim yapacak
+          setLoading(false);
+          return;
+        } catch (err) {
+          console.warn("Kullanıcı listesi yüklenemedi:", err);
+          // Yine de yönlendir
+          window.location.href = "/dashboard/yonetim/santiyeler";
+        }
+      } else {
+        window.location.href = "/dashboard/yonetim/santiyeler";
+      }
+    }
+  }
+
+  // Kullanıcı atama: seçili kullanıcılara bu yeni şantiyeyi ata
+  async function kullaniciAtamasiKaydet() {
+    if (!yeniKaydedilenSantiyeId) return;
+    setKullaniciAtamaYukleniyor(true);
+    try {
+      let basari = 0;
+      for (const kullaniciId of seciliKullaniciIds) {
+        try {
+          const k = kullaniciListesi.find((x) => x.id === kullaniciId);
+          if (!k) continue;
+          const yeniSantiyeIds = Array.from(new Set([...(k.santiye_ids ?? []), yeniKaydedilenSantiyeId]));
+          await updateKullanici(kullaniciId, { santiye_ids: yeniSantiyeIds });
+          basari++;
+        } catch (e) {
+          console.warn("Kullanıcı atama hatası:", e);
+        }
+      }
+      if (seciliKullaniciIds.size > 0) {
+        toast.success(`${basari}/${seciliKullaniciIds.size} kullanıcıya iş atandı.`);
+      } else {
+        toast("Hiç kullanıcı seçilmedi — atama yapılmadı.", { icon: "ℹ️" });
+      }
+      setKullaniciDialogAcik(false);
       window.location.href = "/dashboard/yonetim/santiyeler";
+    } finally {
+      setKullaniciAtamaYukleniyor(false);
     }
   }
 
@@ -507,53 +576,48 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </div>
               </div>
 
-              {/* Fiyat Farkı Hesaplaması Toggle */}
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
-                <input
-                  type="checkbox"
-                  id="ff_hesaplanacak"
-                  checked={formData.ff_hesaplanacak ?? true}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, ff_hesaplanacak: e.target.checked }))}
-                  disabled={loading}
-                  className="w-4 h-4 accent-[#1E3A5F]"
-                />
-                <Label htmlFor="ff_hesaplanacak" className="text-sm cursor-pointer flex-1">
-                  Fiyat Farkı Hesaplanacaktır
-                </Label>
-                <span className="text-[10px] text-gray-500">
-                  {(formData.ff_hesaplanacak ?? true)
-                    ? "FF Dahil Kalan Tutar ve Fiyat Farkı sütunlarında Yi-ÜFE hesabı yapılır"
-                    : "FF hesaplaması atlanır — sadece sözleşme bedeli baz alınır"}
-                </span>
-              </div>
+              {/* Fiyat Farkı + Teknik Personel Sayısı — yan yana */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Fiyat Farkı Hesaplaması Toggle */}
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2 h-full">
+                  <input
+                    type="checkbox"
+                    id="ff_hesaplanacak"
+                    checked={formData.ff_hesaplanacak ?? true}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, ff_hesaplanacak: e.target.checked }))}
+                    disabled={loading}
+                    className="w-4 h-4 accent-[#1E3A5F] flex-shrink-0"
+                  />
+                  <Label htmlFor="ff_hesaplanacak" className="text-sm cursor-pointer flex-1"
+                    title={(formData.ff_hesaplanacak ?? true)
+                      ? "FF Dahil Kalan Tutar ve Fiyat Farkı sütunlarında Yi-ÜFE hesabı yapılır"
+                      : "FF hesaplaması atlanır — sadece sözleşme bedeli baz alınır"}>
+                    Fiyat Farkı Hesaplanacaktır
+                  </Label>
+                </div>
 
-              {/* Teknik Personel Sayısı — yeni iş açıldığında işyeri teslim tarihinden itibariyle
-                   bordroya girilebilecek max personel sayısı (admin olmayanlar için kısıt). */}
-              <div className="space-y-2">
-                <Label htmlFor="teknik_personel_sayisi">
-                  Teknik Personel Sayısı <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="teknik_personel_sayisi"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="Örn. 3"
-                  value={formData.teknik_personel_sayisi ?? ""}
-                  onChange={(e) => {
-                    // Sadece rakam kabul et
-                    const v = e.target.value.replace(/\D/g, "");
-                    setFormData((prev) => ({
-                      ...prev,
-                      teknik_personel_sayisi: v === "" ? null : parseInt(v, 10),
-                    }));
-                  }}
-                  disabled={loading}
-                />
-                <p className="text-[10px] text-gray-500">
-                  Yeni iş eklendiğinde, admin olmayan kullanıcılar bu sayı kadar teknik personeli
-                  <strong> işyeri teslim tarihinden itibariyle</strong> bordro takibine girebilir.
-                  İşyeri teslim tarihi belirtilmemişse bu kullanıcılar yeni giriş yapamaz.
-                </p>
+                {/* Teknik Personel Sayısı */}
+                <div className="space-y-1">
+                  <Label htmlFor="teknik_personel_sayisi" className="text-sm">
+                    Teknik Personel Sayısı <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="teknik_personel_sayisi"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Örn. 3"
+                    value={formData.teknik_personel_sayisi ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "");
+                      setFormData((prev) => ({
+                        ...prev,
+                        teknik_personel_sayisi: v === "" ? null : parseInt(v, 10),
+                      }));
+                    }}
+                    disabled={loading}
+                    title="Admin olmayan kullanıcılar, bu sayı kadar teknik personeli işyeri teslim tarihinden itibariyle bordroya girebilir."
+                  />
+                </div>
               </div>
 
               {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
@@ -886,6 +950,150 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>
+
+      {/* Kullanıcı Atama Dialogu — yeni iş eklendikten sonra açılır */}
+      <Dialog
+        open={kullaniciDialogAcik}
+        onOpenChange={(o) => {
+          // Dialog dışına tıklayarak kapatma — atama yapmadan çık
+          if (!o) {
+            setKullaniciDialogAcik(false);
+            window.location.href = "/dashboard/yonetim/santiyeler";
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Kullanıcı Atama — Yeni İş</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-gray-600">
+              Bu işi hangi <strong>şantiye yöneticisi</strong> ve <strong>kısıtlı kullanıcı</strong>lara atamak istiyorsunuz?
+              Seçilen kullanıcılar bu işi sayfalarında görüp işlem yapabilir.
+              Atama yapmadan da geçebilirsiniz, sonradan kullanıcı düzenleme ekranından atayabilirsiniz.
+            </p>
+
+            {kullaniciListesi.length === 0 ? (
+              <p className="text-sm text-gray-500 italic text-center py-4">
+                Atanacak kullanıcı yok.
+              </p>
+            ) : (
+              <>
+                {/* Tümünü Seç */}
+                <div className="flex items-center justify-between border-b pb-2 sticky top-0 bg-white z-10">
+                  <div className="text-xs font-semibold">
+                    Kullanıcılar ({kullaniciListesi.length})
+                    {seciliKullaniciIds.size > 0 && (
+                      <span className="ml-2 text-blue-600">· {seciliKullaniciIds.size} seçili</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setSeciliKullaniciIds(new Set(kullaniciListesi.map((k) => k.id)))}
+                    >
+                      Tümünü Seç
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setSeciliKullaniciIds(new Set())}
+                    >
+                      Temizle
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Liste — rol bazlı gruplandı */}
+                <ul className="space-y-1">
+                  {kullaniciListesi
+                    .slice()
+                    .sort((a, b) => {
+                      // Şantiye admin önde, kısıtlı arkada; aynı rol içinde isim sırası
+                      if (a.rol !== b.rol) return a.rol === "santiye_admin" ? -1 : 1;
+                      return a.ad_soyad.localeCompare(b.ad_soyad, "tr");
+                    })
+                    .map((k) => {
+                      const sec = seciliKullaniciIds.has(k.id);
+                      const rolEtiket = k.rol === "santiye_admin" ? "Şantiye Yöneticisi" : "Kısıtlı";
+                      const rolRenk = k.rol === "santiye_admin" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700";
+                      return (
+                        <li
+                          key={k.id}
+                          onClick={() => {
+                            setSeciliKullaniciIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(k.id)) next.delete(k.id);
+                              else next.add(k.id);
+                              return next;
+                            });
+                          }}
+                          className={`border rounded px-3 py-2 cursor-pointer transition-colors ${sec ? "bg-blue-50 border-blue-300" : "hover:bg-gray-50"}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={sec}
+                              readOnly
+                              className="mt-1 w-4 h-4 cursor-pointer accent-blue-600"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-semibold text-[#1E3A5F] truncate">{k.ad_soyad}</span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${rolRenk}`}>
+                                  {rolEtiket}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-gray-500 truncate">
+                                {k.kullanici_adi}
+                                {k.santiye_ids && k.santiye_ids.length > 0 && (
+                                  <> · {k.santiye_ids.length} işe atanmış</>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-end pt-3 border-t sticky bottom-0 bg-white">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setKullaniciDialogAcik(false);
+                  window.location.href = "/dashboard/yonetim/santiyeler";
+                }}
+                disabled={kullaniciAtamaYukleniyor}
+              >
+                Atama Yapma (Geç)
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={kullaniciAtamasiKaydet}
+                disabled={kullaniciAtamaYukleniyor}
+              >
+                {kullaniciAtamaYukleniyor
+                  ? "Kaydediliyor..."
+                  : seciliKullaniciIds.size > 0
+                  ? `Ata (${seciliKullaniciIds.size})`
+                  : "Hiçbirine Atama"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }
