@@ -414,6 +414,8 @@ export default function BordroTakibi() {
   const [topluTransferIsleniyor, setTopluTransferIsleniyor] = useState(false);
   const [topluCikisOnay, setTopluCikisOnay] = useState(false);
   const [topluCikisIsleniyor, setTopluCikisIsleniyor] = useState(false);
+  // Toplu çıkış tarihi — admin: serbest, diğer: bugünden 9 gün geriye
+  const [topluCikisTarih, setTopluCikisTarih] = useState(() => new Date().toISOString().slice(0, 10));
 
   // Toplu personel ekleme dialog: şantiye sütununun + butonu
   const [topluEkleSantiyeId, setTopluEkleSantiyeId] = useState<string | null>(null);
@@ -1848,28 +1850,43 @@ export default function BordroTakibi() {
       toast.error("Çıkarılacak aktif personel seçilmedi.");
       return;
     }
+    // Tarih doğrulama (admin hariç)
+    const cikisTarih = topluCikisTarih;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const secilen = new Date(cikisTarih + "T00:00:00");
+    if (isNaN(secilen.getTime())) { toast.error("Geçerli bir tarih girin"); return; }
+    if (!isYonetici) {
+      const minTarih = new Date(today); minTarih.setDate(minTarih.getDate() - 9);
+      if (secilen > today) { toast.error("Çıkış tarihi gelecek olamaz"); return; }
+      if (secilen < minTarih) { toast.error("Çıkış tarihi en fazla 9 gün geriye olabilir"); return; }
+    }
     setTopluCikisIsleniyor(true);
     try {
       let basari = 0;
-      // Aynı personel birden fazla şantiye sütununda seçilmiş olabilir — id bazlı tekilleştir
-      const tekIds = new Set<string>();
-      for (const it of aktifOlanlar) tekIds.add(it.personel.id);
-      for (const pid of tekIds) {
-        const personel = personeller.find((p) => p.id === pid);
-        if (!personel) continue;
+      // Şantiye bazlı çıkış: aynı personel birden fazla şantiye sütununda seçilmişse
+      // her sütun için ayrı çıkış uygulanır (sadece o şantiyenin ataması kapanır).
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      for (const it of aktifOlanlar) {
+        const personel = it.personel;
+        const santiyeId = it.sutunKey;
+        const onceSantiyeAd = santiyeler.find((s) => s.id === santiyeId)?.is_adi;
         try {
-          const aktifAtama = atamalar.find((a) => a.personel_id === pid && !a.bitis_tarihi);
-          const onceSantiyeAd = aktifAtama
-            ? santiyeler.find((s) => s.id === aktifAtama.santiye_id)?.is_adi
-            : undefined;
-          await isenCikar(pid);
-          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd, onceSantiyeId: aktifAtama?.santiye_id });
+          const { error } = await supabase
+            .from("personel_atama_gecmisi")
+            .update({ bitis_tarihi: cikisTarih })
+            .eq("personel_id", personel.id)
+            .eq("santiye_id", santiyeId)
+            .is("bitis_tarihi", null);
+          if (error) throw error;
+          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
           basari++;
         } catch (e) { console.error(e); }
       }
-      toast.success(`${basari} personel işten çıkarıldı (mail kuyruğuna eklendi)`);
+      toast.success(`${basari} personel işten çıkarıldı (${cikisTarih}, mail kuyruğuna eklendi)`);
       setSelectedKeys(new Set());
       setTopluCikisOnay(false);
+      // Tarihi bugüne sıfırla
+      setTopluCikisTarih(new Date().toISOString().slice(0, 10));
       await loadData();
     } finally {
       setTopluCikisIsleniyor(false);
@@ -3201,12 +3218,6 @@ export default function BordroTakibi() {
                           />
                         );
                       })}
-                      <YeniAtamaSatir
-                        defaultBaslangic={ayBas}
-                        defaultBitis={ayBit}
-                        onEkle={(bas, bit) => gunEditAtamaEkle(gunEdit.personel.id, gunEdit.santiyeId, bas, bit)}
-                        isYonetici={isYonetici}
-                      />
                     </div>
                   );
                 })()}
@@ -3305,18 +3316,42 @@ export default function BordroTakibi() {
         </DialogContent>
       </Dialog>
 
-      {/* Toplu Çıkış Onayı */}
+      {/* Toplu Çıkış Onayı + Tarih */}
       <Dialog open={topluCikisOnay} onOpenChange={(o) => !o && setTopluCikisOnay(false)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>{selectedKeys.size > 1 ? "Toplu İşten Çıkar" : "İşten Çıkar"}</DialogTitle></DialogHeader>
-          <p className="text-sm text-gray-600 py-2">
-            <span className="font-bold">{selectedKeys.size} kişi</span> işten çıkarılacak ve muhasebeye{selectedKeys.size > 1 ? " toplu" : ""} mail kuyruğuna eklenecek. Onaylıyor musunuz?
-          </p>
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => setTopluCikisOnay(false)}>İptal</Button>
-            <Button variant="destructive" size="sm" disabled={topluCikisIsleniyor} onClick={topluCikarYap}>
-              {topluCikisIsleniyor ? "İşleniyor..." : "Çıkar (Mail Kuyruğa)"}
-            </Button>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-gray-700">
+              <span className="font-bold">{selectedKeys.size} kişi</span> işten çıkarılacak ve muhasebeye{selectedKeys.size > 1 ? " toplu" : ""} mail kuyruğuna eklenecek.
+            </p>
+            <div>
+              <Label className="text-xs">Çıkış Tarihi <span className="text-red-500">*</span></Label>
+              {(() => {
+                const today = new Date();
+                const min = new Date(); min.setDate(min.getDate() - 9);
+                const fmtIso = (d: Date) => d.toISOString().slice(0, 10);
+                return (
+                  <Input
+                    type="date"
+                    value={topluCikisTarih}
+                    min={isYonetici ? undefined : fmtIso(min)}
+                    max={isYonetici ? undefined : fmtIso(today)}
+                    onChange={(e) => setTopluCikisTarih(e.target.value)}
+                  />
+                );
+              })()}
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                {isYonetici
+                  ? "🔓 Admin: istediğiniz tarihi girebilirsiniz."
+                  : "Bugünden en fazla 9 gün geriye tarih girebilirsiniz."}
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => setTopluCikisOnay(false)}>İptal</Button>
+              <Button variant="destructive" size="sm" disabled={topluCikisIsleniyor} onClick={topluCikarYap}>
+                {topluCikisIsleniyor ? "İşleniyor..." : "Çıkar (Mail Kuyruğa)"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
