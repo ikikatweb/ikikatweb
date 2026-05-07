@@ -420,6 +420,16 @@ export default function BordroTakibi() {
   const [topluSecilenler, setTopluSecilenler] = useState<Set<string>>(new Set());
   const [topluArama, setTopluArama] = useState("");
   const [topluTarih, setTopluTarih] = useState(() => new Date().toISOString().slice(0, 10));
+  // Teknik personel onayı: yeni iş eklendiğinde, kota dolmadan eklenen kişiler için soru dialogu
+  // resolve callback'i ile Promise tabanlı çalışıyor → topluPersonelEkle bekler.
+  const [teknikSorusu, setTeknikSorusu] = useState<{
+    santiyeAd: string;
+    teslimTarihi: string;
+    teknikSayisi: number;
+    kalanSlot: number;
+    eklenecekKisiSayisi: number;
+    resolve: (cevap: "evet" | "hayir" | "iptal") => void;
+  } | null>(null);
   const [topluEkleniyor, setTopluEkleniyor] = useState(false);
 
   // Ay seçici (default: bu ay). Tüm aylar düzenlenebilir — kullanıcı geçmiş ve gelecek
@@ -1304,45 +1314,69 @@ export default function BordroTakibi() {
     const buGun = new Date().toISOString().slice(0, 10);
     let kullanilanTarih = isYonetici && topluTarih ? topluTarih : buGun;
 
-    if (!isYonetici && santiye) {
-      // Bu şantiyedeki şu anda atanmış personel sayısı (açık atamalar)
-      const mevcutAtamaSayisi = atamalar.filter(
-        (a) => a.santiye_id === topluEkleSantiyeId && !a.bitis_tarihi,
-      ).length;
+    // Teknik personel kotası dolmadıysa "Bu kişi(ler) teknik personel mi?" sor.
+    // Teknik personel sayımı: bu şantiyenin işyeri_teslim_tarihi'nde başlayan açık atamalar.
+    if (santiye) {
       const teknikPersonelSayisi = santiye.teknik_personel_sayisi ?? 0;
-      // Eğer henüz teknik personel limiti dolmamışsa: işyeri teslim tarihi şartı uygulanır
-      if (mevcutAtamaSayisi < teknikPersonelSayisi) {
-        if (!santiye.isyeri_teslim_tarihi) {
+      const teslim = santiye.isyeri_teslim_tarihi ?? null;
+      // Mevcut "teknik personel": baslangic_tarihi == işyeri teslim tarihi olan açık atamalar
+      const mevcutTeknikSayisi = teslim
+        ? atamalar.filter(
+            (a) => a.santiye_id === topluEkleSantiyeId
+              && !a.bitis_tarihi
+              && a.baslangic_tarihi === teslim,
+          ).length
+        : 0;
+      const kalanSlot = Math.max(0, teknikPersonelSayisi - mevcutTeknikSayisi);
+
+      if (teknikPersonelSayisi > 0 && kalanSlot > 0) {
+        // İşyeri teslim tarihi yoksa engel — admin için de soruyu gösterme, hata ver
+        if (!teslim) {
           toast.error(
-            `⚠️ "${santiyeAd}" işine giriş yapılamıyor: İşyeri teslim tarihi belirtilmemiş. ` +
-            `Şantiye düzenleme ekranından işyeri teslim tarihini girin veya yöneticinize başvurun.`,
-            { duration: 12000 },
-          );
-          return;
-        }
-        // Yeni eklenecekler dahil teknik personel limitini aşmasın
-        if (mevcutAtamaSayisi + topluSecilenler.size > teknikPersonelSayisi) {
-          const kalan = teknikPersonelSayisi - mevcutAtamaSayisi;
-          toast.error(
-            `⚠️ Bu işe en fazla ${kalan} teknik personel daha ekleyebilirsiniz ` +
-            `(toplam ${teknikPersonelSayisi} kişi sınırı). Daha fazlası için yöneticinize başvurun.`,
+            `⚠️ "${santiyeAd}" işine teknik personel girişi yapılamıyor: İşyeri teslim tarihi belirtilmemiş. ` +
+            `Şantiye düzenleme ekranından işyeri teslim tarihini girin.`,
             { duration: 10000 },
           );
           return;
         }
-        // Tarih: işyeri teslim tarihi
-        kullanilanTarih = santiye.isyeri_teslim_tarihi;
+        // Soru sor — Promise ile kullanıcının cevabını bekle
+        const cevap = await new Promise<"evet" | "hayir" | "iptal">((resolve) => {
+          setTeknikSorusu({
+            santiyeAd: santiyeAd ?? "",
+            teslimTarihi: teslim,
+            teknikSayisi: teknikPersonelSayisi,
+            kalanSlot,
+            eklenecekKisiSayisi: topluSecilenler.size,
+            resolve,
+          });
+        });
+        setTeknikSorusu(null);
+        if (cevap === "iptal") return;
+        if (cevap === "evet") {
+          // Eklenenler teknik personel — başlangıç tarihi = işyeri teslim tarihi
+          kullanilanTarih = teslim;
+        }
+        // "hayir" → kullanilanTarih default kalsın (admin: topluTarih veya bugün; non-admin: bugün)
       }
-      // mevcutAtamaSayisi >= teknikPersonelSayisi durumunda artık standart kurallar uygulanır
-      // (admin olmayan kullanıcılar bugünden -9..bugün aralığında giriş yapabilir).
-      // Yani teknik personel kotası dolduktan sonra fazla personel eklenmesi yöneticiye bırakılır.
-      else if (teknikPersonelSayisi > 0) {
-        toast.error(
-          `⚠️ "${santiyeAd}" işinin teknik personel kotası (${teknikPersonelSayisi} kişi) dolu. ` +
-          `Ek personel eklemek için yöneticinize başvurun.`,
-          { duration: 10000 },
-        );
-        return;
+    }
+
+    // Admin olmayan kullanıcı için tarih kısıtlaması (eski 9-gün kuralı korunuyor)
+    if (!isYonetici && santiye) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().slice(0, 10);
+      const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
+      const minDateStr = minDate.toISOString().slice(0, 10);
+      // Teknik personel cevabı evet'se kullanilanTarih = teslim tarihi olabilir; bu istisna kabul.
+      // Aksi tarihler 9 gün-bugün aralığında olmalı.
+      if (kullanilanTarih !== santiye.isyeri_teslim_tarihi) {
+        if (kullanilanTarih > todayStr) {
+          toast.error("Gelecek tarih girilemez.");
+          return;
+        }
+        if (kullanilanTarih < minDateStr) {
+          toast.error("En fazla 9 gün geriye tarih girilebilir.");
+          return;
+        }
       }
     }
 
@@ -3199,6 +3233,75 @@ export default function BordroTakibi() {
               <Button variant="destructive" size="sm" onClick={cikisYap}>Çıkar + Mail Kuyruğa</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Teknik Personel Sorusu — yeni iş eklendiğinde işyeri teslim tarihi ile giriş için */}
+      <Dialog
+        open={!!teknikSorusu}
+        onOpenChange={(o) => {
+          if (!o && teknikSorusu) {
+            teknikSorusu.resolve("iptal");
+            setTeknikSorusu(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Teknik Personel Onayı</DialogTitle>
+          </DialogHeader>
+          {teknikSorusu && (() => {
+            const t = teknikSorusu;
+            const fmtTr = (iso: string) => {
+              const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+              if (!m) return iso;
+              return `${m[3]}.${m[2]}.${m[1]}`;
+            };
+            return (
+              <div className="space-y-3 py-2">
+                <div className="bg-amber-50 border border-amber-200 rounded p-2.5 text-sm leading-relaxed">
+                  <p>
+                    <span className="font-bold text-[#1E3A5F]">{t.santiyeAd}</span> işi için
+                    <strong> {t.teknikSayisi} kişi teknik personel</strong> olarak işe alınmalıdır.
+                  </p>
+                  <p className="mt-2 text-xs text-amber-800">
+                    Kalan teknik personel kontenjanı: <strong>{t.kalanSlot} kişi</strong>
+                  </p>
+                </div>
+                <p className="text-sm text-gray-700">
+                  Şu an eklediğiniz <strong>{t.eklenecekKisiSayisi} kişi</strong> teknik personel mi?
+                </p>
+                <div className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-blue-300 pl-2">
+                  <strong className="text-emerald-700">Evet</strong>: İşe başlama tarihi = İşyeri teslim tarihi (<strong>{fmtTr(t.teslimTarihi)}</strong>)
+                  <br />
+                  <strong className="text-gray-700">Hayır</strong>: İşe başlama tarihi = Bugün (normal giriş)
+                </div>
+                <div className="flex gap-2 justify-end pt-2 border-t flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { t.resolve("iptal"); setTeknikSorusu(null); }}
+                  >
+                    İptal
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { t.resolve("hayir"); setTeknikSorusu(null); }}
+                  >
+                    Hayır (Bugün)
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => { t.resolve("evet"); setTeknikSorusu(null); }}
+                  >
+                    Evet (Teslim Tarihi)
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

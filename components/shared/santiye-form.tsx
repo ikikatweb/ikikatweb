@@ -249,6 +249,17 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
       toast.error("Teknik personel sayısı zorunludur (pozitif tam sayı).");
       return;
     }
+    // Sözleşme ve işyeri teslim tarihi ihale tarihinden önce olamaz
+    if (formData.ihale_tarihi) {
+      if (formData.sozlesme_tarihi && formData.sozlesme_tarihi < formData.ihale_tarihi) {
+        toast.error("Sözleşme tarihi ihale tarihinden önce olamaz.");
+        return;
+      }
+      if (formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.ihale_tarihi) {
+        toast.error("İşyeri teslim tarihi ihale tarihinden önce olamaz.");
+        return;
+      }
+    }
 
     setLoading(true);
     let basarili = false;
@@ -475,7 +486,18 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi</Label>
-                  <Input id="sozlesme_tarihi" name="sozlesme_tarihi" type="date" value={formData.sozlesme_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                  <Input
+                    id="sozlesme_tarihi"
+                    name="sozlesme_tarihi"
+                    type="date"
+                    value={formData.sozlesme_tarihi ?? ""}
+                    min={formData.ihale_tarihi ?? undefined}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {formData.ihale_tarihi && formData.sozlesme_tarihi && formData.sozlesme_tarihi < formData.ihale_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ Sözleşme tarihi ihale tarihinden önce olamaz.</p>
+                  )}
                 </div>
               </div>
 
@@ -558,7 +580,18 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="isyeri_teslim_tarihi">İş Yeri Teslim Tarihi</Label>
-                  <Input id="isyeri_teslim_tarihi" name="isyeri_teslim_tarihi" type="date" value={formData.isyeri_teslim_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                  <Input
+                    id="isyeri_teslim_tarihi"
+                    name="isyeri_teslim_tarihi"
+                    type="date"
+                    value={formData.isyeri_teslim_tarihi ?? ""}
+                    min={formData.ihale_tarihi ?? undefined}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {formData.ihale_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.ihale_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi ihale tarihinden önce olamaz.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="is_suresi">İş Süresi (Gün)</Label>
