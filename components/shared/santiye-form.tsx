@@ -251,6 +251,26 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     setOrtaklar((prev) => prev.map((o, i) => i === index ? { ...o, [field]: value } : o));
   }
 
+  // Yüklenmiş PDF'i sil — sadece url alanını NULL yap (storage'da dosya kalır ama bağlı değil).
+  // Ya da storage'dan da silmek istersek ekstra adım gerekir; şimdilik hızlı çözüm.
+  async function pdfSil(field: "gecici_kabul_url" | "kesin_kabul_url" | "is_deneyim_url") {
+    if (!santiye?.id) return;
+    if (!confirm("Bu PDF'i silmek istediğinize emin misiniz? Yeni bir dosya yükleyebilirsiniz.")) return;
+    try {
+      await updateSantiye(santiye.id, { [field]: null });
+      // Form state'ini de güncelle
+      setFormData((prev) => ({ ...prev, [field]: null }));
+      // Mevcut santiye objesini de güncellemek için (santiye prop'u mutable değil ama UI'ı yenilemek için)
+      if (santiye) {
+        // Bu obje read-only — sayfayı yenileyince yeni veri gelir
+        (santiye as Record<string, unknown>)[field] = null;
+      }
+      toast.success("PDF silindi.");
+    } catch (err) {
+      toast.error(`Silme hatası: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
@@ -765,12 +785,27 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </div>
                 <div className="space-y-2">
                   <Label>Geçici Kabul Belgesi (PDF)</Label>
-                  <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
-                    <Upload size={16} />
-                    {geciciKabulFile ? geciciKabulFile.name : "PDF Yükle"}
-                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => setGeciciKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
-                  </label>
-                  {santiye?.gecici_kabul_url && !geciciKabulFile && <span className="text-xs text-green-600">Mevcut dosya yüklü</span>}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
+                      <Upload size={16} />
+                      {geciciKabulFile ? geciciKabulFile.name : "PDF Yükle"}
+                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => setGeciciKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                    </label>
+                    {formData.gecici_kabul_url && !geciciKabulFile && (
+                      <>
+                        <a href={formData.gecici_kabul_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-green-700 underline hover:text-green-800">
+                          Mevcut PDF
+                        </a>
+                        <button type="button" onClick={() => pdfSil("gecici_kabul_url")}
+                          disabled={loading}
+                          className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                          title="Yüklenmiş PDF'i sil">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -781,23 +816,53 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 </div>
                 <div className="space-y-2">
                   <Label>Kesin Kabul Belgesi (PDF)</Label>
-                  <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
-                    <Upload size={16} />
-                    {kesinKabulFile ? kesinKabulFile.name : "PDF Yükle"}
-                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => setKesinKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
-                  </label>
-                  {santiye?.kesin_kabul_url && !kesinKabulFile && <span className="text-xs text-green-600">Mevcut dosya yüklü</span>}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
+                      <Upload size={16} />
+                      {kesinKabulFile ? kesinKabulFile.name : "PDF Yükle"}
+                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => setKesinKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                    </label>
+                    {formData.kesin_kabul_url && !kesinKabulFile && (
+                      <>
+                        <a href={formData.kesin_kabul_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-green-700 underline hover:text-green-800">
+                          Mevcut PDF
+                        </a>
+                        <button type="button" onClick={() => pdfSil("kesin_kabul_url")}
+                          disabled={loading}
+                          className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                          title="Yüklenmiş PDF'i sil">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label>İş Deneyim Belgesi (PDF)</Label>
-                <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
-                  <Upload size={16} />
-                  {isDeneyimFile ? isDeneyimFile.name : "PDF Yükle"}
-                  <input type="file" accept=".pdf" className="hidden" onChange={(e) => setIsDeneyimFile(e.target.files?.[0] ?? null)} disabled={loading} />
-                </label>
-                {santiye?.is_deneyim_url && !isDeneyimFile && <span className="text-xs text-green-600">Mevcut dosya yüklü</span>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
+                    <Upload size={16} />
+                    {isDeneyimFile ? isDeneyimFile.name : "PDF Yükle"}
+                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => setIsDeneyimFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                  </label>
+                  {formData.is_deneyim_url && !isDeneyimFile && (
+                    <>
+                      <a href={formData.is_deneyim_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-green-700 underline hover:text-green-800">
+                        Mevcut PDF
+                      </a>
+                      <button type="button" onClick={() => pdfSil("is_deneyim_url")}
+                        disabled={loading}
+                        className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                        title="Yüklenmiş PDF'i sil">
+                        <Trash2 size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* İş Grubu Dağılımı — 3 kademeli seçim */}

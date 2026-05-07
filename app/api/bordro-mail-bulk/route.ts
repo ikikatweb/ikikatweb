@@ -10,6 +10,7 @@ type Change = {
   personelAd: string;
   personelTc?: string;
   personelGorev?: string;
+  personelMeslek?: string;
   santiyeAd?: string;
   onceSantiyeAd?: string;
   tarih: string;
@@ -88,14 +89,16 @@ export async function POST(request: Request) {
     const konu = `Personel Bordro Bildirimi — ${parcalar.join(", ")}`;
 
     // Yardımcı: personel listesini doğal Türkçe formatta birleştir.
-    //  1 personel: "12345 TC Numaralı Ahmet ÇELİK İsimli personelin"
-    //  2+ personel: "12345 TC Numaralı Ahmet ÇELİK ve 67890 TC Numaralı Ali VELİ İsimli personellerin"
+    //  1 personel: "12345 TC Numaralı Ahmet ÇELİK (Operatör) İsimli personelin"
+    //  2+ personel: "... ve ... İsimli personellerin"
+    // Meslek varsa parantez içinde isim sonrasına eklenir.
     function personelListesiMetni(liste: Change[], tekil: string, cogul: string): string {
-      const isimler = liste.map((c) =>
-        c.personelTc
+      const isimler = liste.map((c) => {
+        const adKismi = c.personelTc
           ? `${c.personelTc} TC Numaralı ${c.personelAd}`
-          : c.personelAd
-      );
+          : c.personelAd;
+        return c.personelMeslek ? `${adKismi} (${c.personelMeslek})` : adKismi;
+      });
       if (isimler.length === 0) return "";
       let birlestirilmis: string;
       if (isimler.length === 1) birlestirilmis = isimler[0];
@@ -112,29 +115,27 @@ export async function POST(request: Request) {
     }
     const firmaAdi = firma.firma_adi ?? "";
 
-    // Giriş cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE adı dahil
-    // "TC kimlik numaralı AD SOYAD isimli personelin DD.MM.YYYY tarihi itibariyle
-    //  FİRMA bünyesinde bulunan ŞANTİYE işine DD.MM.YYYY tarihinde giriş işlemlerinin yapılmasını rica ederiz."
+    // Giriş cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
     const girisCumleleri: string[] = [];
     for (const c of changes.filter((c) => c.tip === "giris")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
+      const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.santiyeAd ?? "—";
       girisCumleleri.push(
-        `${tc}${c.personelAd} isimli personelin ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine ${tarihStr} tarihinde giriş işlemlerinin yapılmasını rica ederiz.`
+        `${tc}${c.personelAd} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`
       );
     }
 
-    // Çıkış cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE adı dahil
-    // "TC kimlik numaralı AD SOYAD isimli personel DD.MM.YYYY tarihi itibariyle
-    //  FİRMA bünyesinde bulunan ŞANTİYE işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz."
+    // Çıkış cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
     const cikisCumleleri: string[] = [];
     for (const c of changes.filter((c) => c.tip === "cikis")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
+      const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.onceSantiyeAd ?? "—";
       cikisCumleleri.push(
-        `${tc}${c.personelAd} isimli personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`
+        `${tc}${c.personelAd} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`
       );
     }
 
@@ -157,11 +158,11 @@ export async function POST(request: Request) {
         const yeni = ilk.santiyeAd ?? "—";
         if (list.length === 1) {
           transferCumleleri.push(
-            `${kisi} ${eski} şantiyesinden çıkışının yapılması, ${yeni} şantiyesine girişinin yapılmasında yardımcı olur musunuz?`
+            `${kisi} ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`
           );
         } else {
           transferCumleleri.push(
-            `${kisi} ${eski} şantiyesinden çıkışlarının yapılması, ${yeni} şantiyesine girişlerinin yapılmasında yardımcı olur musunuz?`
+            `${kisi} ${eski} şantiyesinden çıkışlarının yapılarak, ${yeni} şantiyesine girişlerinin yapılmasını rica ederiz.`
           );
         }
       }

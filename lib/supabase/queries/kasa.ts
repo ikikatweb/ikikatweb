@@ -167,16 +167,14 @@ export async function deleteKasaHareketi(id: string): Promise<void> {
 }
 
 export async function uploadSlip(file: File, hareketId: string): Promise<string> {
-  const ext = file.name.split(".").pop() ?? "jpg";
+  // Resim dosyaları için otomatik sıkıştırma — uploadDosya helper'ı kullanılır
+  // (telefondan çekilen büyük fotoğraflar 4MB sınırını aşmasın diye)
+  const { uploadDosya } = await import("./upload");
+  // JPG uzantısı zorla — sıkıştırma sonrası JPEG olarak gelecek
+  const isImage = file.type.startsWith("image/");
+  const ext = isImage ? "jpg" : (file.name.split(".").pop() ?? "jpg");
   const filePath = `${hareketId}/slip.${ext}`;
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("bucket", "kasa-slipleri");
-  formData.append("path", filePath);
-  const res = await fetch("/api/upload", { method: "POST", body: formData });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Slip yüklenemedi");
-  return data.url;
+  return uploadDosya(file, "kasa-slipleri", filePath);
 }
 
 // ==================== KASA HAREKET ÜST LİMİT ====================

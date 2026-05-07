@@ -76,6 +76,7 @@ type PendingChange = {
   personelAd: string;
   personelTc?: string;
   personelGorev?: string;
+  personelMeslek?: string;
   santiyeAd?: string;     // hedef şantiye (giriş/transfer)
   onceSantiyeAd?: string; // önceki şantiye (çıkış/transfer)
   tarih: string;          // YYYY-MM-DD
@@ -372,6 +373,7 @@ export default function BordroTakibi() {
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [muhasebeEmail, setMuhasebeEmail] = useState<string>("");
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
+  const [meslekSecenekleri, setMeslekSecenekleri] = useState<string[]>([]);
   const [arama, setArama] = useState("");
 
   // Drag state
@@ -385,6 +387,7 @@ export default function BordroTakibi() {
   const [ekleAd, setEkleAd] = useState("");
   const [ekleTc, setEkleTc] = useState("");
   const [ekleGorev, setEkleGorev] = useState("");
+  const [ekleMeslek, setEkleMeslek] = useState("");
   const [ekleSantiye, setEkleSantiye] = useState("");
   const [ekleTarih, setEkleTarih] = useState(() => new Date().toISOString().slice(0, 10));
   const [kaydetYukleniyor, setKaydetYukleniyor] = useState(false);
@@ -455,6 +458,7 @@ export default function BordroTakibi() {
     personelAd: r.personel_ad,
     personelTc: r.personel_tc ?? undefined,
     personelGorev: r.personel_gorev ?? undefined,
+    personelMeslek: r.personel_meslek ?? undefined,
     santiyeAd: r.santiye_ad ?? undefined,
     onceSantiyeAd: r.once_santiye_ad ?? undefined,
     tarih: r.tarih,
@@ -516,6 +520,7 @@ export default function BordroTakibi() {
             personel_ad: p.personelAd,
             personel_tc: p.personelTc ?? null,
             personel_gorev: p.personelGorev ?? null,
+            personel_meslek: p.personelMeslek ?? null,
             santiye_ad: p.santiyeAd ?? null,
             once_santiye_ad: p.onceSantiyeAd ?? null,
             tarih: p.tarih,
@@ -592,6 +597,7 @@ export default function BordroTakibi() {
       personel_ad: p.personelAd,
       personel_tc: p.personelTc ?? null,
       personel_gorev: p.personelGorev ?? null,
+      personel_meslek: p.personelMeslek ?? null,
       santiye_ad: p.santiyeAd ?? null,
       once_santiye_ad: p.onceSantiyeAd ?? null,
       tarih: p.tarih,
@@ -620,7 +626,7 @@ export default function BordroTakibi() {
       setLoading(true);
     }
     try {
-      const [s, p, a, m, f, iscilik, gorevler, mGunler, notlar, ucretler, brutGecmis, ayliklar] = await Promise.all([
+      const [s, p, a, m, f, iscilik, gorevler, meslekler, mGunler, notlar, ucretler, brutGecmis, ayliklar] = await Promise.all([
         getSantiyelerAll().catch(() => []),
         getBordroPersoneller().catch(() => []),
         getAtamaGecmisiTumu().catch(() => []),
@@ -628,6 +634,7 @@ export default function BordroTakibi() {
         getFirmalar().catch(() => []),
         getIscilikTakibi(false).catch(() => [] as { santiye_id: string; santiyeler?: SantiyeBasic | null }[]),
         getDegerler("personel_gorev").catch(() => []),
+        getDegerler("personel_meslek").catch(() => []),
         getManuelGunler().catch(() => []),
         getBilgiNotlari().catch(() => []),
         getGunlukUcretler().catch(() => []),
@@ -635,6 +642,7 @@ export default function BordroTakibi() {
         getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
       ]);
       setGorevSecenekleri(gorevler ?? []);
+      setMeslekSecenekleri(meslekler ?? []);
       setManuelGunler(mGunler);
       setBilgiNotlari(notlar);
       setGunlukUcretler(ucretler);
@@ -888,7 +896,9 @@ export default function BordroTakibi() {
     const baseFields = {
       personelAd: payload.personel.ad_soyad,
       personelTc: payload.personel.tc_kimlik_no,
-      personelGorev: payload.personel.gorev ?? undefined,
+      // Görev alanı bordroda gösterilmez/iletilmez — sadece meslek kullanılır
+      personelGorev: undefined,
+      personelMeslek: payload.personel.meslek ?? undefined,
       tarih,
     };
 
@@ -1584,7 +1594,7 @@ export default function BordroTakibi() {
         santiyeAd: sant.is_adi,
         adSoyad: personel.ad_soyad,
         tc: personel.tc_kimlik_no ?? "",
-        gorev: personel.gorev ?? "",
+        gorev: personel.meslek ?? "",
         iseBaslama: fmt(a.baslangic_tarihi),
         isenCikis: a.bitis_tarihi ? fmt(a.bitis_tarihi) : "Halen",
         gun: gFark(clampBas, clampBit),
@@ -1732,7 +1742,7 @@ export default function BordroTakibi() {
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
-        const headers = ["Ad Soyad", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+        const headers = ["Ad Soyad", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
         for (let c = 0; c < headers.length; c++) {
           setCell(curRow, c, headers[c], {
             font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
@@ -2063,8 +2073,8 @@ export default function BordroTakibi() {
       const yeni = await insertBordroPersonel({
         ad_soyad: formatKisiAdi(ekleAd),
         tc_kimlik_no: ekleTc.trim(),
-        gorev: ekleGorev || null,
-        meslek: null,
+        gorev: null,
+        meslek: ekleMeslek || null,
         santiye_id: ekleSantiye || null,
         maas: null,
         izin_hakki: null,
@@ -2081,7 +2091,7 @@ export default function BordroTakibi() {
       kuyrugaEkle({ tip: "giris", personel: yeni, santiyeAd, santiyeId: ekleSantiye || undefined });
       // Kapat + reload
       setEkleAcik(false);
-      setEkleAd(""); setEkleTc(""); setEkleGorev("");
+      setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
       setEkleSantiye(""); setEkleTarih(new Date().toISOString().slice(0, 10));
       await loadData();
     } catch (err) {
@@ -2279,7 +2289,7 @@ export default function BordroTakibi() {
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
             </div>
-            {p.gorev && <div className="text-[10px] text-gray-500 truncate">{p.gorev}</div>}
+            {p.meslek && <div className="text-[10px] text-gray-500 truncate">{p.meslek}</div>}
             {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400">{p.tc_kimlik_no}</div>}
             {iseBaslama && (
               <div className="text-[9px] text-gray-400 mt-0.5">
@@ -2429,7 +2439,7 @@ export default function BordroTakibi() {
             <tr className="bg-gray-100 border-y border-gray-200">
               <th className="w-8 px-2 py-1.5"></th>
               <th className="text-left px-2 py-1.5 font-semibold text-gray-600">Ad Soyad</th>
-              <th className="text-left px-2 py-1.5 font-semibold text-gray-600">Görev</th>
+              <th className="text-left px-2 py-1.5 font-semibold text-gray-600">Meslek</th>
               <th className="text-left px-2 py-1.5 font-semibold text-gray-600 hidden md:table-cell">TC</th>
               {!isAtanmamis && !isPasif && (
                 <>
@@ -2540,7 +2550,7 @@ export default function BordroTakibi() {
             )}
           </div>
         </td>
-        <td className="px-2 py-1.5 text-gray-600 text-[11px]">{p.gorev ?? "—"}</td>
+        <td className="px-2 py-1.5 text-gray-600 text-[11px]">{p.meslek ?? "—"}</td>
         <td className="px-2 py-1.5 text-gray-500 font-mono text-[11px] hidden md:table-cell">{p.tc_kimlik_no ?? "—"}</td>
         {isAktifKolon && (
           <>
@@ -2952,15 +2962,15 @@ export default function BordroTakibi() {
                 placeholder="11 haneli TC" inputMode="numeric" />
             </div>
             <div>
-              <Label className="text-xs">Görev</Label>
-              <select value={ekleGorev} onChange={(e) => setEkleGorev(e.target.value)}
+              <Label className="text-xs">Meslek</Label>
+              <select value={ekleMeslek} onChange={(e) => setEkleMeslek(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm">
                 <option value="">Seçiniz</option>
-                {gorevSecenekleri.map((g) => <option key={g} value={g}>{g}</option>)}
+                {meslekSecenekleri.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-              {gorevSecenekleri.length === 0 && (
+              {meslekSecenekleri.length === 0 && (
                 <p className="text-[10px] text-amber-600 mt-1">
-                  Görev listesi boş. Tanımlamalar &gt; <code>personel_gorev</code> kategorisinden ekleyin.
+                  Meslek listesi boş. Tanımlamalar &gt; <code>personel_meslek</code> kategorisinden ekleyin.
                 </p>
               )}
             </div>
@@ -3098,7 +3108,7 @@ export default function BordroTakibi() {
                               )}
                             </div>
                             <div className="text-[10px] text-gray-500 truncate">
-                              {p.gorev ?? ""}
+                              {p.meslek ?? ""}
                               {p.tc_kimlik_no && ` · ${p.tc_kimlik_no}`}
                             </div>
                           </div>
@@ -3598,7 +3608,7 @@ export default function BordroTakibi() {
                             <div className="font-semibold text-gray-800 truncate" title={c.personelAd}>{c.personelAd}</div>
                             <div className="text-gray-500 text-[10px] break-words">
                               {c.personelTc && <span className="font-mono">{c.personelTc}</span>}
-                              {c.personelGorev && <span> · {c.personelGorev}</span>}
+                              {c.personelMeslek && <span> · {c.personelMeslek}</span>}
                               <br />
                               {c.tip === "transfer" ? (
                                 <span><span className="text-red-600">{c.onceSantiyeAd ?? "—"}</span> <ArrowRight size={10} className="inline" /> <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span></span>

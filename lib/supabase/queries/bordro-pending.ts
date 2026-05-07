@@ -12,6 +12,7 @@ export type BordroPendingDB = {
   personel_ad: string;
   personel_tc: string | null;
   personel_gorev: string | null;
+  personel_meslek?: string | null;
   santiye_ad: string | null;
   once_santiye_ad: string | null;
   tarih: string; // YYYY-MM-DD
