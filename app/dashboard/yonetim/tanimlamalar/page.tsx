@@ -842,7 +842,7 @@ export default function TanimlamalarPage() {
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleSiraDegistir(kat.key, idx, "yukari")}
                               disabled={idx === 0}
                               className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20">
@@ -1039,7 +1039,7 @@ export default function TanimlamalarPage() {
                     <button
                       type="button"
                       onClick={() => setYakitLimitSilId(l.id)}
-                      className="p-1 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="p-1 text-gray-400 hover:text-red-600 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                       title="Sil"
                     >
                       <Trash2 size={12} />
