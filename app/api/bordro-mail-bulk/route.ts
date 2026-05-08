@@ -14,6 +14,9 @@ type Change = {
   santiyeAd?: string;
   onceSantiyeAd?: string;
   tarih: string;
+  // Kullanıcının mail önizlemede her satıra yazabildiği özel not
+  // Mailde personelin altında KIRMIZI renkle gösterilir
+  not?: string;
 };
 
 export async function POST(request: Request) {
@@ -115,35 +118,38 @@ export async function POST(request: Request) {
     }
     const firmaAdi = firma.firma_adi ?? "";
 
+    // Her cümleyle birlikte personel notlarını da taşı (varsa)
+    type CumleNot = { cumle: string; notlar: { personel: string; not: string }[] };
+
     // Giriş cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
-    const girisCumleleri: string[] = [];
+    const girisCumleleri: CumleNot[] = [];
     for (const c of changes.filter((c) => c.tip === "giris")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.santiyeAd ?? "—";
-      girisCumleleri.push(
-        `${tc}${c.personelAd} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`
-      );
+      girisCumleleri.push({
+        cumle: `${tc}${c.personelAd} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`,
+        notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
+      });
     }
 
     // Çıkış cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
-    const cikisCumleleri: string[] = [];
+    const cikisCumleleri: CumleNot[] = [];
     for (const c of changes.filter((c) => c.tip === "cikis")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.onceSantiyeAd ?? "—";
-      cikisCumleleri.push(
-        `${tc}${c.personelAd} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`
-      );
+      cikisCumleleri.push({
+        cumle: `${tc}${c.personelAd} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`,
+        notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
+      });
     }
 
     // Transfer cümleleri (eski şantiye → yeni şantiye bazında grupla)
-    // Format:
-    //  Tek kişi: "... isimli personelin X şantiyesinden çıkışının yapılması, Y şantiyesine girişinin yapılmasında yardımcı olur musunuz?"
-    //  Çoklu  : "... isimli personellerin X şantiyesinden çıkışlarının yapılması, Y şantiyesine girişlerinin yapılmasında yardımcı olur musunuz?"
-    const transferCumleleri: string[] = [];
+    // Notlar gruplanmış cümlenin altında kişi-kişi listelenir.
+    const transferCumleleri: CumleNot[] = [];
     {
       const grup = new Map<string, Change[]>();
       for (const c of changes.filter((c) => c.tip === "transfer")) {
@@ -156,27 +162,39 @@ export async function POST(request: Request) {
         const ilk = list[0];
         const eski = ilk.onceSantiyeAd ?? "—";
         const yeni = ilk.santiyeAd ?? "—";
-        if (list.length === 1) {
-          transferCumleleri.push(
-            `${kisi} ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`
-          );
-        } else {
-          transferCumleleri.push(
-            `${kisi} ${eski} şantiyesinden çıkışlarının yapılarak, ${yeni} şantiyesine girişlerinin yapılmasını rica ederiz.`
-          );
-        }
+        const cumle = list.length === 1
+          ? `${kisi} ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`
+          : `${kisi} ${eski} şantiyesinden çıkışlarının yapılarak, ${yeni} şantiyesine girişlerinin yapılmasını rica ederiz.`;
+        const notlar = list
+          .filter((c) => c.not && c.not.trim())
+          .map((c) => ({ personel: c.personelAd, not: c.not!.trim() }));
+        transferCumleleri.push({ cumle, notlar });
       }
     }
 
     // Plain text fallback (HTML desteklemeyen istemciler için)
+    // Her personel notu, ait olduğu cümlenin hemen altında "Not (Ad Soyad): ..." şeklinde belirir.
+    // Notlardan sonra 1 boş satır.
+    function cumleleriMetne(items: CumleNot[]): string {
+      return items.map((it) => {
+        let s = it.cumle;
+        for (const n of it.notlar) {
+          s += `\n${n.personel}: ${n.not}`;
+        }
+        // Notu olan satırın sonuna 1 ek boş satır (ayırıcı görsel boşluk)
+        if (it.notlar.length > 0) s += "\n";
+        return s;
+      }).join("\n\n");
+    }
+
     let metin = `Sayın Muhasebe,\n\n`;
-    if (girisCumleleri.length > 0) metin += girisCumleleri.join("\n\n") + "\n\n";
-    if (cikisCumleleri.length > 0) metin += cikisCumleleri.join("\n\n") + "\n\n";
-    if (transferCumleleri.length > 0) metin += transferCumleleri.join("\n\n") + "\n\n";
+    if (girisCumleleri.length > 0) metin += cumleleriMetne(girisCumleleri) + "\n\n";
+    if (cikisCumleleri.length > 0) metin += cumleleriMetne(cikisCumleleri) + "\n\n";
+    if (transferCumleleri.length > 0) metin += cumleleriMetne(transferCumleleri) + "\n\n";
     if (ekBilgi && ekBilgi.trim()) metin += `${ekBilgi.trim()}\n\n`;
     metin += `İyi çalışmalar.`;
 
-    // HTML versiyon — ek not (ekBilgi) KIRMIZI ile vurgulanır
+    // HTML versiyon — her personelin notu KIRMIZI ile satır altında çıkar
     function htmlEscape(s: string): string {
       return s
         .replace(/&/g, "&amp;")
@@ -185,13 +203,29 @@ export async function POST(request: Request) {
         .replace(/"/g, "&quot;");
     }
     const baseStyle = "font-family:Arial,sans-serif;font-size:14px;color:#1F2937;line-height:1.6;";
+    // Sade kırmızı not stili — kutu yok, sadece kırmızı yazı + altta boşluk
+    const noteStyle = "color:#DC2626;font-weight:600;margin:0 0 16px 0;";
+
+    function cumleleriHtmle(items: CumleNot[]): string {
+      let out = "";
+      for (const it of items) {
+        // Notu olan satırda alt boşluğu nota bırakıyoruz
+        const cumleMargin = it.notlar.length > 0 ? "0 0 4px 0" : "0 0 12px 0";
+        out += `<p style="margin:${cumleMargin};">${htmlEscape(it.cumle)}</p>`;
+        for (const n of it.notlar) {
+          const safe = htmlEscape(n.not).replace(/\n/g, "<br/>");
+          out += `<p style="${noteStyle}"><strong>${htmlEscape(n.personel)}:</strong> ${safe}</p>`;
+        }
+      }
+      return out;
+    }
+
     let html = `<div style="${baseStyle}">`;
     html += `<p>Sayın Muhasebe,</p>`;
-    for (const c of girisCumleleri) html += `<p>${htmlEscape(c)}</p>`;
-    for (const c of cikisCumleleri) html += `<p>${htmlEscape(c)}</p>`;
-    for (const c of transferCumleleri) html += `<p>${htmlEscape(c)}</p>`;
+    html += cumleleriHtmle(girisCumleleri);
+    html += cumleleriHtmle(cikisCumleleri);
+    html += cumleleriHtmle(transferCumleleri);
     if (ekBilgi && ekBilgi.trim()) {
-      // Ek not: kırmızı, kalın
       const ekHtml = htmlEscape(ekBilgi.trim()).replace(/\n/g, "<br/>");
       html += `<p style="color:#DC2626;font-weight:600;">${ekHtml}</p>`;
     }

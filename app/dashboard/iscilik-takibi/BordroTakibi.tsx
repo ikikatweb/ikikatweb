@@ -83,6 +83,8 @@ type PendingChange = {
   tarih: string;          // YYYY-MM-DD
   // Mail bu firmadan gönderilir (giriş/transfer→hedef şantiyenin firması; çıkış→eski şantiyenin firması)
   firmaId?: string;
+  // Mail önizlemesinde her satıra eklenebilen not (kırmızı renkte gönderilir)
+  not?: string;
 };
 
 const PASIF_KEY = "__pasif__";
@@ -92,6 +94,17 @@ const PENDING_LS_KEY = "bordro-pending-changes";
 function su_an_ay(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// YEREL tarihi YYYY-MM-DD'ye çevir — toISOString() UTC verir, gece kayması olur.
+function tarihStr(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function yerelBugun(): string {
+  return tarihStr(new Date());
 }
 function ayDegistir(ayStr: string, delta: number): string {
   const [y, m] = ayStr.split("-").map(Number);
@@ -237,9 +250,9 @@ function AtamaSatir({
   const kaydedilebilir = degisti && !tarihHatasi;
   // Yönetici hariç tüm kullanıcılar için tarih kısıtlaması: bugünden max 9 gün geri, bugünden ileri yok
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = tarihStr(today);
   const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
-  const minDateStr = minDate.toISOString().slice(0, 10);
+  const minDateStr = tarihStr(minDate);
   return (
     <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
       <div className="grid grid-cols-2 gap-2 mb-2">
@@ -305,9 +318,9 @@ function YeniAtamaSatir({
   const tarihHatasi = !halen && bit && bas && bit < bas;
   // Yönetici hariç tarih kısıtlaması
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = tarihStr(today);
   const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
-  const minDateStr = minDate.toISOString().slice(0, 10);
+  const minDateStr = tarihStr(minDate);
   if (!acik) {
     return (
       <button type="button" onClick={() => setAcik(true)}
@@ -394,14 +407,14 @@ export default function BordroTakibi() {
   const [ekleGorev, setEkleGorev] = useState("");
   const [ekleMeslek, setEkleMeslek] = useState("");
   const [ekleSantiye, setEkleSantiye] = useState("");
-  const [ekleTarih, setEkleTarih] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ekleTarih, setEkleTarih] = useState(() => yerelBugun());
   const [kaydetYukleniyor, setKaydetYukleniyor] = useState(false);
 
   // Çıkış onayı + çıkış tarihi
   // İşten çıkış onayı: ŞANTİYE BAZLI — sadece o atamayı kapatır.
   // Aynı personel başka şantiyelerde aktif kalır.
   const [cikisOnay, setCikisOnay] = useState<{ personel: Personel; santiyeId: string } | null>(null);
-  const [cikisTarih, setCikisTarih] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [cikisTarih, setCikisTarih] = useState<string>(() => yerelBugun());
 
   // Geri alma seç dialog (pasif personeli hangi şantiyeye)
   const [geriAlPersonel, setGeriAlPersonel] = useState<Personel | null>(null);
@@ -420,16 +433,18 @@ export default function BordroTakibi() {
   const [topluTransferAcik, setTopluTransferAcik] = useState(false);
   const [topluTransferHedef, setTopluTransferHedef] = useState("");
   const [topluTransferIsleniyor, setTopluTransferIsleniyor] = useState(false);
+  // Toplu transfer tarihi — admin: serbest, diğer: bugünden 9 gün geriye
+  const [topluTransferTarih, setTopluTransferTarih] = useState(() => yerelBugun());
   const [topluCikisOnay, setTopluCikisOnay] = useState(false);
   const [topluCikisIsleniyor, setTopluCikisIsleniyor] = useState(false);
   // Toplu çıkış tarihi — admin: serbest, diğer: bugünden 9 gün geriye
-  const [topluCikisTarih, setTopluCikisTarih] = useState(() => new Date().toISOString().slice(0, 10));
+  const [topluCikisTarih, setTopluCikisTarih] = useState(() => yerelBugun());
 
   // Toplu personel ekleme dialog: şantiye sütununun + butonu
   const [topluEkleSantiyeId, setTopluEkleSantiyeId] = useState<string | null>(null);
   const [topluSecilenler, setTopluSecilenler] = useState<Set<string>>(new Set());
   const [topluArama, setTopluArama] = useState("");
-  const [topluTarih, setTopluTarih] = useState(() => new Date().toISOString().slice(0, 10));
+  const [topluTarih, setTopluTarih] = useState(() => yerelBugun());
   // Teknik personel onayı: yeni iş eklendiğinde, kota dolmadan eklenen kişiler için soru dialogu
   // resolve callback'i ile Promise tabanlı çalışıyor → topluPersonelEkle bekler.
   const [teknikSorusu, setTeknikSorusu] = useState<{
@@ -457,6 +472,9 @@ export default function BordroTakibi() {
   const [mailDialogAcik, setMailDialogAcik] = useState(false);
   const [mailGonderiliyor, setMailGonderiliyor] = useState(false);
   const [ekMailNotu, setEkMailNotu] = useState("");
+  // Her pending kayıt için ek not (mailde kırmızı renkle satırın altında çıkar)
+  // Kalıcı değil — mail gönderildikten sonra temizlenir.
+  const [satirNotlari, setSatirNotlari] = useState<Record<string, string>>({});
 
   // DB row → PendingChange dönüşümü (UI tarafı kayıt yapısı koruyor)
   const dbRowToPending = (r: BordroPendingDB): PendingChange => ({
@@ -551,7 +569,7 @@ export default function BordroTakibi() {
     const checkAndSend = async () => {
       if (cancelled) return;
       const now = new Date();
-      const todayKey = now.toISOString().slice(0, 10);
+      const todayKey = tarihStr(now);
       const lastSentKey = localStorage.getItem("bordro-auto-mail-tarih");
       // Bugün zaten otomatik gönderilmişse skip
       if (lastSentKey === todayKey) return;
@@ -883,9 +901,14 @@ export default function BordroTakibi() {
     // DB'ye yazılan ASIL tarih — backdated (eski tarihli) işlemlerde verilir.
     // Bu tarih revert sırasında DB satırını bulmak için kullanılır.
     // Verilmezse bugünün tarihi kullanılır.
+    // Transfer için: bu giriş tarihi (yeni şantiyeye giriş).
     tarih?: string;
+    // Transfer farklı firmalar arası ise, eski firmadaki ÇIKIŞ tarihi.
+    // Verilmezse `tarih` kullanılır (eski davranış).
+    cikisTarih?: string;
   }) {
-    const tarih = payload.tarih ?? new Date().toISOString().slice(0, 10);
+    const tarih = payload.tarih ?? yerelBugun();
+    const cikisTarih = payload.cikisTarih ?? tarih;
 
     // Push bildirim — diğer admin'lere/yetkililere "bu işlem yapıldı" bilgisini ver.
     // Tag: "bordro-takibi". Tıklayınca bordro takibi sayfasına götürür.
@@ -929,17 +952,19 @@ export default function BordroTakibi() {
         ?? firmaIdFromSantiyeAd(payload.santiyeAd);
 
       if (eskiFirmaId && yeniFirmaId && eskiFirmaId !== yeniFirmaId) {
-        // FARKLI FİRMA → 2 ayrı kayıt
-        // Eski firma muhasebesine çıkış maili
+        // FARKLI FİRMA → 2 ayrı kayıt (her birinin kendi tarihi)
+        // Eski firma muhasebesine ÇIKIŞ maili — çıkış tarihi
         pendingEkle({
           ...baseFields,
+          tarih: cikisTarih,
           tip: "cikis",
           onceSantiyeAd: payload.onceSantiyeAd,
           firmaId: eskiFirmaId,
         });
-        // Yeni firma muhasebesine giriş maili
+        // Yeni firma muhasebesine GİRİŞ maili — giriş tarihi (çıkış+1 ya da bugün)
         pendingEkle({
           ...baseFields,
+          tarih, // giriş tarihi
           tip: "giris",
           santiyeAd: payload.santiyeAd,
           firmaId: yeniFirmaId,
@@ -994,9 +1019,12 @@ export default function BordroTakibi() {
     const FALLBACK_KEY = "__fallback__";
     const grup = new Map<string, PendingChange[]>();
     for (const p of pending) {
+      // Her satıra varsa kullanıcının yazdığı notu iliştir (mailde kırmızı çıkacak)
+      const notu = (satirNotlari[p.id] ?? "").trim();
+      const enriched: PendingChange = notu ? { ...p, not: notu } : p;
       const k = p.firmaId || FALLBACK_KEY;
       if (!grup.has(k)) grup.set(k, []);
-      grup.get(k)!.push(p);
+      grup.get(k)!.push(enriched);
     }
 
     setMailGonderiliyor(true);
@@ -1056,6 +1084,12 @@ export default function BordroTakibi() {
         const ids = Array.from(basariliKeys).filter((id) => !id.startsWith("temp-"));
         deletePendingMailler(ids).catch(() => { /* sessiz — bir sonraki refresh düzeltir */ });
         setPending((prev) => prev.filter((p) => !basariliKeys.has(p.id)));
+        // Gönderilmiş kayıtların satır notlarını sil
+        setSatirNotlari((prev) => {
+          const next = { ...prev };
+          for (const id of basariliKeys) delete next[id];
+          return next;
+        });
       }
       if (basari > 0 && basarisiz === 0) {
         setEkMailNotu("");
@@ -1220,7 +1254,7 @@ export default function BordroTakibi() {
       const ayBaslangic = `${yLs}-${String(mLs).padStart(2, "0")}-01`;
       const sonGun = new Date(yLs, mLs, 0).getDate();
       const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = yerelBugun();
       const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
       // Personel × ay bazında gün topla
       const ayHesap = new Map<string, number>();
@@ -1256,9 +1290,9 @@ export default function BordroTakibi() {
     // Yönetici hariç: bugünden max 9 gün geri, gelecek tarih yok
     if (!isYonetici) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().slice(0, 10);
+      const todayStr = tarihStr(today);
       const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
-      const minDateStr = minDate.toISOString().slice(0, 10);
+      const minDateStr = tarihStr(minDate);
       if (baslangic > todayStr || (bitis && bitis > todayStr)) {
         toast.error("Gelecek tarih girilemez.");
         return;
@@ -1322,9 +1356,9 @@ export default function BordroTakibi() {
     // Yönetici hariç: bugünden max 9 gün geri, gelecek tarih yok
     if (!isYonetici) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().slice(0, 10);
+      const todayStr = tarihStr(today);
       const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
-      const minDateStr = minDate.toISOString().slice(0, 10);
+      const minDateStr = tarihStr(minDate);
       if (baslangic > todayStr || (bitis && bitis > todayStr)) {
         toast.error("Gelecek tarih girilemez.");
         return;
@@ -1366,7 +1400,7 @@ export default function BordroTakibi() {
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
     const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = yerelBugun();
     const aktifSanal = today >= ayBas && today <= ayBit ? today : ayBit;
 
     const liste = atamalar.filter((a) => {
@@ -1408,7 +1442,7 @@ export default function BordroTakibi() {
     //  - Şantiye boşsa (henüz atama yok) → işyeri teslim tarihi olmalı
     //  - İşyeri teslim tarihi boşsa → giriş engelli
     //  - Henüz dolmamışsa: max teknik_personel_sayisi kadar personel ekleyebilir; tarih=isyeri_teslim_tarihi
-    const buGun = new Date().toISOString().slice(0, 10);
+    const buGun = yerelBugun();
     let kullanilanTarih = isYonetici && topluTarih ? topluTarih : buGun;
 
     // Teknik personel kotası dolmadıysa "Bu kişi(ler) teknik personel mi?" sor.
@@ -1507,7 +1541,7 @@ export default function BordroTakibi() {
       const todayStr = buGun; // UTC ile aynı kaynak
       const minDate = new Date();
       minDate.setUTCDate(minDate.getUTCDate() - 9);
-      const minDateStr = minDate.toISOString().slice(0, 10);
+      const minDateStr = tarihStr(minDate);
       // Teknik personel cevabı evet'se kullanilanTarih = teslim tarihi olabilir; bu istisna kabul.
       // Aksi tarihler 9 gün-bugün aralığında olmalı.
       if (kullanilanTarih !== santiye.isyeri_teslim_tarihi) {
@@ -1581,7 +1615,7 @@ export default function BordroTakibi() {
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
     const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = yerelBugun();
     // Aktif atama (bitis_tarihi=null) için sanal bitiş: ay sınırı veya bugün
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
     const fmt = (d: string) => {
@@ -1879,7 +1913,8 @@ export default function BordroTakibi() {
   }
 
   async function topluCikarYap() {
-    if (!ySil) { toast.error("Silme/çıkarma yetkiniz yok."); return; }
+    // İşten çıkarma = atama kaydının bitiş tarihini yazmak → DÜZENLEME yetkisi
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const items = selectedItems();
     const aktifOlanlar = items.filter((it) => it.sutunKey !== PASIF_KEY && it.sutunKey !== ATANMAMIS_KEY);
     if (aktifOlanlar.length === 0) {
@@ -1922,7 +1957,7 @@ export default function BordroTakibi() {
       setSelectedKeys(new Set());
       setTopluCikisOnay(false);
       // Tarihi bugüne sıfırla
-      setTopluCikisTarih(new Date().toISOString().slice(0, 10));
+      setTopluCikisTarih(yerelBugun());
       await loadData();
     } finally {
       setTopluCikisIsleniyor(false);
@@ -1934,6 +1969,20 @@ export default function BordroTakibi() {
     if (!topluTransferHedef) { toast.error("Hedef şantiye seçin"); return; }
     const items = selectedItems();
     if (items.length === 0) { toast.error("Personel seçilmedi"); return; }
+
+    // Tarih doğrulaması: admin değilse bugünden max 9 gün geriye, gelecek yok
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = tarihStr(today);
+    const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
+    const minDateStr = tarihStr(minDate);
+    if (!isYonetici) {
+      if (topluTransferTarih > todayStr) { toast.error("Gelecek tarih girilemez."); return; }
+      if (topluTransferTarih < minDateStr) {
+        toast.error("En fazla 9 gün geriye tarih girilebilir. Daha eski için yöneticinize başvurun.");
+        return;
+      }
+    }
+
     const hedefAd = santiyeler.find((s) => s.id === topluTransferHedef)?.is_adi;
     setTopluTransferIsleniyor(true);
     try {
@@ -1950,16 +1999,17 @@ export default function BordroTakibi() {
             : undefined;
           if (aktifAtama && aktifAtama.santiye_id === topluTransferHedef) continue; // zaten orada
           if (aktifAtama) {
-            await transferEt(pid, topluTransferHedef);
-            kuyrugaEkle({ tip: "transfer", personel, santiyeAd: hedefAd, onceSantiyeAd, santiyeId: topluTransferHedef, onceSantiyeId: aktifAtama.santiye_id });
+            // transferEt artık {cikis, giris} döner — mail önizlemesinde gerçek giriş tarihi
+            const r = await transferEt(pid, topluTransferHedef, topluTransferTarih);
+            kuyrugaEkle({ tip: "transfer", personel, santiyeAd: hedefAd, onceSantiyeAd, santiyeId: topluTransferHedef, onceSantiyeId: aktifAtama.santiye_id, tarih: r.giris, cikisTarih: r.cikis });
           } else {
-            await iseGeriAl(pid, topluTransferHedef);
-            kuyrugaEkle({ tip: "giris", personel, santiyeAd: hedefAd, santiyeId: topluTransferHedef });
+            const girisTarih = await iseGeriAl(pid, topluTransferHedef, topluTransferTarih);
+            kuyrugaEkle({ tip: "giris", personel, santiyeAd: hedefAd, santiyeId: topluTransferHedef, tarih: girisTarih });
           }
           basari++;
         } catch (e) { console.error(e); }
       }
-      toast.success(`${basari} personel ${hedefAd} şantiyesine transfer edildi (mail kuyruğuna eklendi)`);
+      toast.success(`${basari} personel ${hedefAd} şantiyesine transfer edildi (${topluTransferTarih}, mail kuyruğuna eklendi)`);
       setSelectedKeys(new Set());
       setTopluTransferAcik(false);
       setTopluTransferHedef("");
@@ -2096,7 +2146,7 @@ export default function BordroTakibi() {
     setKaydetYukleniyor(true);
     try {
       // Admin'se ekleTarih (eski tarih girebilir), değilse her zaman bugün
-      const buGun = new Date().toISOString().slice(0, 10);
+      const buGun = yerelBugun();
       const kullanilanTarih = isYonetici && ekleTarih ? ekleTarih : buGun;
       const yeni = await insertBordroPersonel({
         ad_soyad: formatKisiAdi(ekleAd),
@@ -2120,7 +2170,7 @@ export default function BordroTakibi() {
       // Kapat + reload
       setEkleAcik(false);
       setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
-      setEkleSantiye(""); setEkleTarih(new Date().toISOString().slice(0, 10));
+      setEkleSantiye(""); setEkleTarih(yerelBugun());
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -2133,7 +2183,8 @@ export default function BordroTakibi() {
   // Admin (isYonetici): herhangi bir tarih girebilir.
   // Diğer kullanıcılar: bugünden max 9 gün geri.
   async function cikisYap() {
-    if (!ySil) { toast.error("İşten çıkarma yetkiniz yok."); return; }
+    // İşten çıkarma = atama kaydının bitiş tarihini yazmak → DÜZENLEME yetkisi
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (!cikisOnay) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const secilenTarih = new Date(cikisTarih + "T00:00:00");
@@ -2160,7 +2211,7 @@ export default function BordroTakibi() {
       // ÖNEMLİ: DB'ye yazılan ASIL tarihi (cikisTarih) kuyruğa ilet — revert için gerekli.
       kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
       setCikisOnay(null);
-      setCikisTarih(new Date().toISOString().slice(0, 10));
+      setCikisTarih(yerelBugun());
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -2172,10 +2223,10 @@ export default function BordroTakibi() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!geriAlPersonel || !geriAlSantiye) return;
     try {
-      await iseGeriAl(geriAlPersonel.id, geriAlSantiye);
+      const girisTarih = await iseGeriAl(geriAlPersonel.id, geriAlSantiye);
       const yeniSantiyeAd = santiyeler.find((s) => s.id === geriAlSantiye)?.is_adi;
-      toast.success(`${geriAlPersonel.ad_soyad} işe geri alındı (mail kuyruğa)`);
-      kuyrugaEkle({ tip: "giris", personel: geriAlPersonel, santiyeAd: yeniSantiyeAd, santiyeId: geriAlSantiye });
+      toast.success(`${geriAlPersonel.ad_soyad} işe geri alındı (${girisTarih}, mail kuyruğa)`);
+      kuyrugaEkle({ tip: "giris", personel: geriAlPersonel, santiyeAd: yeniSantiyeAd, santiyeId: geriAlSantiye, tarih: girisTarih });
       setGeriAlPersonel(null); setGeriAlSantiye("");
       await loadData();
     } catch (err) {
@@ -2243,11 +2294,11 @@ export default function BordroTakibi() {
       const yeniSantiyeAd = santiyeler.find((s) => s.id === hedefKey)?.is_adi;
       if (bordroDurum === "pasif" || bordroDurum === "atanmamis") {
         // Pasif veya atanmamış → yeni atama aç (giriş maili)
-        await iseGeriAl(personel.id, hedefKey);
-        kuyrugaEkle({ tip: "giris", personel, santiyeAd: yeniSantiyeAd, santiyeId: hedefKey });
+        const girisTarih = await iseGeriAl(personel.id, hedefKey);
+        kuyrugaEkle({ tip: "giris", personel, santiyeAd: yeniSantiyeAd, santiyeId: hedefKey, tarih: girisTarih });
       } else {
-        await transferEt(personel.id, hedefKey);
-        kuyrugaEkle({ tip: "transfer", personel, santiyeAd: yeniSantiyeAd, onceSantiyeAd, santiyeId: hedefKey, onceSantiyeId: aktifSantiyeId ?? undefined });
+        const r = await transferEt(personel.id, hedefKey);
+        kuyrugaEkle({ tip: "transfer", personel, santiyeAd: yeniSantiyeAd, onceSantiyeAd, santiyeId: hedefKey, onceSantiyeId: aktifSantiyeId ?? undefined, tarih: r.giris, cikisTarih: r.cikis });
       }
       toast.success(`${personel.ad_soyad} → ${yeniSantiyeAd} (mail kuyruğa)`);
       await loadData();
@@ -2281,9 +2332,10 @@ export default function BordroTakibi() {
     // Bordro durumu, atama_gecmisi'ne göre — personel.durum'a bakılmaz.
     // Pasif sütununda gri görünüm uygulanır; diğer sütunlarda normal renk.
     const grileştir = inPasifCol && !isReadOnly;
-    // Aktif şantiye sütununda → "Çıkar" butonu (atamayı kapat) — ySil ister
+    // Aktif şantiye sütununda → "Çıkar" butonu (atamayı kapat) — yDuzenle ister
+    //   (atama bitiş tarihi yazma → düzenleme niteliği, silme değil)
     // PASIF sütununda → "İşe Geri Al" butonu (yeni atama aç) — yEkle ister
-    const showCikis = !inPasifCol && !inAtanmamisCol && ySil;
+    const showCikis = !inPasifCol && !inAtanmamisCol && yDuzenle;
     const showGeriAl = inPasifCol && yEkle;
     // Sürüklenebilir: yDuzenle veya yEkle yetkisi gerekli — drag transfer/atama yapar
     const sürüklenebilir = !isReadOnly && (yDuzenle || yEkle);
@@ -2518,8 +2570,8 @@ export default function BordroTakibi() {
     const tutarHesap = tutarGun * kullanilanUcret;
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
-    // Sil butonu: ySil yetkisi gerekli; Geri al: yEkle gerekli
-    const showCikis = !inPasifCol && !inAtanmamisCol && ySil;
+    // İşten çıkar: atama düzenlemesi → yDuzenle. Geri al: yeni atama → yEkle.
+    const showCikis = !inPasifCol && !inAtanmamisCol && yDuzenle;
     const showGeriAl = inPasifCol && yEkle;
     // Çift tık ile gün düzenle: yDuzenle veya yEkle gerekli
     const tiklanabilir = !isReadOnly && !inPasifCol && !inAtanmamisCol && (yDuzenle || yEkle);
@@ -2797,7 +2849,7 @@ export default function BordroTakibi() {
             {selectedKeys.size > 1 ? "Toplu Transfer" : "Transfer"}
           </Button>
         )}
-        {ySil && (
+        {yDuzenle && (
           <Button size="sm" variant="outline"
             onClick={() => setTopluCikisOnay(true)}
             className="border-red-400 text-red-700 hover:bg-red-100">
@@ -2945,7 +2997,7 @@ export default function BordroTakibi() {
                               setTopluEkleSantiyeId(s.id);
                               setTopluSecilenler(new Set());
                               setTopluArama("");
-                              setTopluTarih(new Date().toISOString().slice(0, 10));
+                              setTopluTarih(yerelBugun());
                             } : undefined}
                           >
                             {liste.length === 0 ? (
@@ -3186,7 +3238,7 @@ export default function BordroTakibi() {
             const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
             const sonGun = new Date(yil, ay, 0).getDate();
             const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-            const today = new Date().toISOString().slice(0, 10);
+            const today = yerelBugun();
             // Aktif atama için sanal bitiş: ay sınırı veya bugün
             const aktifSanal = today >= ayBas && today <= ayBit ? today : ayBit;
             // Bu personel × şantiye için, seçili ay ile çakışan atamalar
@@ -3349,6 +3401,28 @@ export default function BordroTakibi() {
                 })()}
               </select>
             </div>
+            <div>
+              <Label className="text-xs">Transfer Tarihi <span className="text-red-500">*</span></Label>
+              {(() => {
+                const today = new Date();
+                const min = new Date(); min.setDate(min.getDate() - 9);
+                const fmtIso = (d: Date) => tarihStr(d);
+                return (
+                  <Input
+                    type="date"
+                    value={topluTransferTarih}
+                    min={isYonetici ? undefined : fmtIso(min)}
+                    max={isYonetici ? undefined : fmtIso(today)}
+                    onChange={(e) => setTopluTransferTarih(e.target.value)}
+                  />
+                );
+              })()}
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                {isYonetici
+                  ? "🔓 Admin: istediğiniz tarihi girebilirsiniz."
+                  : "Bugünden en fazla 9 gün geriye tarih girebilirsiniz."}
+              </p>
+            </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <Button variant="outline" size="sm" onClick={() => setTopluTransferAcik(false)}>İptal</Button>
               <Button
@@ -3377,7 +3451,7 @@ export default function BordroTakibi() {
               {(() => {
                 const today = new Date();
                 const min = new Date(); min.setDate(min.getDate() - 9);
-                const fmtIso = (d: Date) => d.toISOString().slice(0, 10);
+                const fmtIso = (d: Date) => tarihStr(d);
                 return (
                   <Input
                     type="date"
@@ -3424,7 +3498,7 @@ export default function BordroTakibi() {
               {(() => {
                 const today = new Date();
                 const min = new Date(); min.setDate(min.getDate() - 9);
-                const fmtIso = (d: Date) => d.toISOString().slice(0, 10);
+                const fmtIso = (d: Date) => tarihStr(d);
                 return (
                   <Input
                     type="date"
@@ -3640,34 +3714,47 @@ export default function BordroTakibi() {
                   <div key={tip} className={`border rounded-lg p-3 ${renk}`}>
                     <div className="font-bold text-sm mb-2">{baslik} ({liste.length})</div>
                     <ul className="space-y-1.5">
-                      {liste.map((c) => (
-                        <li key={c.id} className="text-xs flex items-start gap-2 bg-white/70 rounded px-2 py-1.5 min-w-0">
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <div className="font-semibold text-gray-800 truncate" title={c.personelAd}>{c.personelAd}</div>
-                            <div className="text-gray-500 text-[10px] break-words">
-                              {c.personelTc && <span className="font-mono">{c.personelTc}</span>}
-                              {c.personelMeslek && <span> · {c.personelMeslek}</span>}
-                              <br />
-                              {c.tip === "transfer" ? (
-                                <span><span className="text-red-600">{c.onceSantiyeAd ?? "—"}</span> <ArrowRight size={10} className="inline" /> <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span></span>
-                              ) : c.tip === "giris" ? (
-                                <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span>
-                              ) : (
-                                <span className="text-red-600">son: {c.onceSantiyeAd ?? "—"}</span>
-                              )}
-                              <span className="ml-1 text-gray-400">({c.tarih})</span>
+                      {liste.map((c) => {
+                        const not = satirNotlari[c.id] ?? "";
+                        return (
+                        <li key={c.id} className="text-xs bg-white/70 rounded px-2 py-1.5 min-w-0">
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                              <div className="font-semibold text-gray-800 truncate" title={c.personelAd}>{c.personelAd}</div>
+                              <div className="text-gray-500 text-[10px] break-words">
+                                {c.personelTc && <span className="font-mono">{c.personelTc}</span>}
+                                {c.personelMeslek && <span> · {c.personelMeslek}</span>}
+                                <br />
+                                {c.tip === "transfer" ? (
+                                  <span><span className="text-red-600">{c.onceSantiyeAd ?? "—"}</span> <ArrowRight size={10} className="inline" /> <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span></span>
+                                ) : c.tip === "giris" ? (
+                                  <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span>
+                                ) : (
+                                  <span className="text-red-600">son: {c.onceSantiyeAd ?? "—"}</span>
+                                )}
+                                <span className="ml-1 text-gray-400">({c.tarih})</span>
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => pendingSil(c.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 flex-shrink-0"
+                              title="Bu satırı kuyruktan kaldır + DB geri al"
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => pendingSil(c.id)}
-                            className="p-1 text-gray-400 hover:text-red-600 flex-shrink-0"
-                            title="Bu satırı kuyruktan kaldır + DB geri al"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          {/* Personel bazlı not — mailde kırmızı renkle satırın altında çıkar */}
+                          <input
+                            type="text"
+                            value={not}
+                            onChange={(e) => setSatirNotlari((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                            placeholder="Bu personel için not (mailde kırmızı renkle gözükür)"
+                            className="mt-1 w-full text-[11px] border border-red-200 bg-red-50/40 rounded px-1.5 py-1 outline-none placeholder:text-red-300 text-red-700 focus:border-red-500 focus:bg-white"
+                          />
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   </div>
                 );

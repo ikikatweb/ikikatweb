@@ -2232,15 +2232,63 @@ function IhalePageContent() {
             </div>
           ) : (
             <div className="bg-white rounded-lg border">
-              <Table className="text-[11px] w-full" containerClassName="overflow-x-hidden max-h-[75vh]">
-                <TableHeader className="sticky top-0 z-20">
+              <Table className="text-[11px]" containerClassName="overflow-auto max-h-[75vh]">
+                <TableHeader className="sticky top-0 z-30 [&_th]:sticky [&_th]:top-0">
                   <TableRow style={{ backgroundColor: "#64748B" }}>
-                    <TableHead style={{ backgroundColor: "#64748B" }} className="text-white text-[10px] px-1.5 text-center w-[34px] whitespace-nowrap">#</TableHead>
+                    {/* # — desktop'ta sticky-left de var, mobilde sadece sticky-top */}
+                    <TableHead
+                      style={{ backgroundColor: "#64748B", width: 28, minWidth: 28 }}
+                      className="text-white text-[10px] px-1 text-center whitespace-nowrap top-0 md:left-0 md:z-[31]">
+                      #
+                    </TableHead>
+                    {/* İhale Tarihi — desktop'ta sticky-left, mobilde sadece sticky-top */}
+                    {(() => {
+                      const sortIdx = sortConfig.findIndex((s) => s.field === "ihale_tarihi");
+                      const sortItem = sortIdx >= 0 ? sortConfig[sortIdx] : null;
+                      return (
+                        <TableHead
+                          onClick={(e) => toggleSort("ihale_tarihi", e.shiftKey)}
+                          title="Tıkla: sırala. Shift+tıkla: çoklu sıralama."
+                          style={{ backgroundColor: "#64748B", minWidth: 92 }}
+                          className="text-white text-[10px] px-1.5 whitespace-nowrap cursor-pointer select-none hover:brightness-110 top-0 md:left-7 md:z-[31]">
+                          <span className="inline-flex items-center gap-1">
+                            İhale Tarihi
+                            {sortItem && (
+                              <span className="inline-flex items-center text-[8px] text-amber-300 font-semibold">
+                                {sortItem.dir === "asc" ? "▲" : "▼"}
+                                {sortConfig.length > 1 && <span className="ml-0.5">{sortIdx + 1}</span>}
+                              </span>
+                            )}
+                          </span>
+                        </TableHead>
+                      );
+                    })()}
+                    {/* İşin Adı — HER ZAMAN sticky-left + her zaman sticky-top */}
+                    {(() => {
+                      const sortIdx = sortConfig.findIndex((s) => s.field === "is_adi");
+                      const sortItem = sortIdx >= 0 ? sortConfig[sortIdx] : null;
+                      return (
+                        <TableHead
+                          onClick={(e) => toggleSort("is_adi", e.shiftKey)}
+                          title="Tıkla: sırala. Shift+tıkla: çoklu sıralama."
+                          style={{ backgroundColor: "#64748B", minWidth: 160, maxWidth: 200 }}
+                          className="text-white text-[10px] px-1.5 whitespace-nowrap cursor-pointer select-none hover:brightness-110 top-0 left-0 md:left-[120px] z-[31] shadow-[2px_0_3px_rgba(0,0,0,0.2)]">
+                          <span className="inline-flex items-center gap-1">
+                            İşin Adı
+                            {sortItem && (
+                              <span className="inline-flex items-center text-[8px] text-amber-300 font-semibold">
+                                {sortItem.dir === "asc" ? "▲" : "▼"}
+                                {sortConfig.length > 1 && <span className="ml-0.5">{sortIdx + 1}</span>}
+                              </span>
+                            )}
+                          </span>
+                        </TableHead>
+                      );
+                    })()}
+                    {/* KAYDIRILABİLİR kolonlar */}
                     {([
-                      { f: "ihale_tarihi" as SortField, label: "İhale Tarihi", align: "left" },
                       { f: "ihale_kayit_no" as SortField, label: "İKN", align: "left" },
                       { f: "idare_adi" as SortField, label: "İdare", align: "left" },
-                      { f: "is_adi" as SortField, label: "İşin Adı", align: "left" },
                       { f: "hesaplanan_yaklasik_maliyet" as SortField, label: "Hesaplanan Y. Maliyet", align: "right" },
                       { f: "yaklasik_maliyet" as SortField, label: "Y. Maliyet", align: "right" },
                       { f: "muhtemel_kazanan_tutar" as SortField, label: "Kazanan Tutar", align: "right" },
@@ -2322,11 +2370,17 @@ function IhalePageContent() {
                       : "—";
                     const katSayisi = (i as Ihale & { katilimci_sayisi?: number }).katilimci_sayisi ?? 0;
                     return (
-                    <TableRow key={i.id} className="hover:bg-gray-50">
-                      <TableCell className="px-1.5 text-center text-gray-400 font-mono">{ix + 1}</TableCell>
-                      {/* İhale Tarihi + saat — tıklayınca inline date input açılır.
-                          Saat muhtemel_kazanan suffix'inden çıkartılıyor (DB'de saat alanı yok). */}
-                      <TableCell className="px-1.5 whitespace-nowrap">
+                    <TableRow key={i.id} className="hover:bg-gray-50 group">
+                      {/* # — desktop'ta sticky, mobilde scroll */}
+                      <TableCell
+                        style={{ width: 28, minWidth: 28 }}
+                        className="px-1 text-center text-gray-400 font-mono md:sticky md:left-0 md:z-10 md:bg-white md:group-hover:!bg-gray-50">
+                        {ix + 1}
+                      </TableCell>
+                      {/* İhale Tarihi — desktop'ta sticky (left:28), mobilde scroll */}
+                      <TableCell
+                        style={{ minWidth: 92 }}
+                        className="px-1.5 whitespace-nowrap md:sticky md:left-7 md:z-10 md:bg-white md:group-hover:!bg-gray-50">
                         {gecmisEditId === i.id && gecmisEditField === "ihale_tarihi" ? (
                           <input
                             type="date"
@@ -2352,9 +2406,16 @@ function IhalePageContent() {
                           </button>
                         )}
                       </TableCell>
+                      {/* İşin Adı — HER ZAMAN sticky (mobilde left:0, desktopta left:120) */}
+                      <TableCell
+                        style={{ minWidth: 160, maxWidth: 200 }}
+                        className="px-1.5 truncate sticky left-0 md:left-[120px] z-10 bg-white group-hover:!bg-gray-50 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                        title={i.is_adi ?? ""}>
+                        {isAdiKisa}
+                      </TableCell>
+                      {/* KAYDIRILABİLİR */}
                       <TableCell className="px-1.5 font-mono whitespace-nowrap">{i.ihale_kayit_no ?? "—"}</TableCell>
                       <TableCell className="px-1.5 truncate max-w-[140px]" title={i.idare_adi ?? ""}>{idareKisa}</TableCell>
-                      <TableCell className="px-1.5 truncate max-w-[180px]" title={i.is_adi ?? ""}>{isAdiKisa}</TableCell>
                       {/* Hesaplanan YM — tıklayınca inline para input açılır */}
                       <TableCell className="px-1.5 text-right whitespace-nowrap text-blue-700">
                         {gecmisEditId === i.id && gecmisEditField === "hesaplanan_ym" ? (

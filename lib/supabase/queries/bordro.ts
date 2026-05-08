@@ -7,7 +7,24 @@ function getSupabase() {
 }
 
 function bugun(): string {
-  return new Date().toISOString().slice(0, 10);
+  // YEREL tarih (Türkiye saati). toISOString() UTC verir, gece kayması olur.
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Bir YYYY-MM-DD tarihine N gün ekle (saat diliminden bağımsız, saf takvim aritmetiği).
+function gunEkle(yyyymmdd: string, gun: number): string {
+  const [y, m, d] = yyyymmdd.split("-").map(Number);
+  // UTC üzerinden hesapla, saat dilimi bulaşmasın
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + gun);
+  const yyyy = dt.getUTCFullYear();
+  const mmO = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const ddO = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mmO}-${ddO}`;
 }
 
 function gunFarki(baslangic: string, bitis: string): number {
@@ -95,41 +112,102 @@ export async function isenCikar(personelId: string, cikisTarihi?: string): Promi
 }
 
 // İşe geri al — SADECE yeni atama aç. Personel tablosu değişmez.
-export async function iseGeriAl(personelId: string, santiyeId: string): Promise<void> {
+// `tarih` verilmezse bugün, verilirse geriye dönük tarih kullanılır.
+//
+// Giriş tarihi mantığı (transferEt ile aynı):
+//  • Personelin son çıkış tarihi BUGÜN veya gelecekteyse → giriş = çıkış + 1
+//    (örn: bugün çıkar yap + drag ile yeni şantiyeye → giriş = yarın)
+//  • Geçmişe gidiş yapılıyorsa (input < bugün) → giriş = bugün
+//  • Diğer hâlde → giriş = input tarih
+//
+// Returns: yeni atamanın gerçek baslangic_tarihi (mail önizlemesi vb. için).
+export async function iseGeriAl(personelId: string, santiyeId: string, tarih?: string): Promise<string> {
   const supabase = getSupabase();
-  const tarih = bugun();
-  // Eğer yanlışlıkla aktif atama varsa onu da kapat (savunma)
+  const inputTarih = tarih ?? bugun();
+  const today = bugun();
+
+  // 1) Aktif atama varsa onu kapat (savunma — input tarih ile)
   await supabase
     .from("personel_atama_gecmisi")
-    .update({ bitis_tarihi: tarih })
+    .update({ bitis_tarihi: inputTarih })
     .eq("personel_id", personelId)
     .is("bitis_tarihi", null);
+
+  // 2) Bu personelin EN GÜNCEL çıkış tarihini bul (yeni kapatılan dahil)
+  const { data: enSon } = await supabase
+    .from("personel_atama_gecmisi")
+    .select("bitis_tarihi")
+    .eq("personel_id", personelId)
+    .not("bitis_tarihi", "is", null)
+    .order("bitis_tarihi", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const sonCikis = enSon?.bitis_tarihi ?? null;
+
+  // 3) Giriş tarihini hesapla
+  let girisTarih: string;
+  if (sonCikis && sonCikis >= today) {
+    // Son çıkış bugün veya gelecekte → giriş = çıkış + 1 gün
+    girisTarih = gunEkle(sonCikis, 1);
+  } else if (inputTarih < today) {
+    // Geçmiş tarih girişi → bugünden başla
+    girisTarih = today;
+  } else {
+    // Bugün/gelecek input + son çıkış geçmişte (veya hiç yok) → input tarih
+    girisTarih = inputTarih;
+  }
+
   const { error } = await supabase.from("personel_atama_gecmisi").insert({
     personel_id: personelId,
     santiye_id: santiyeId,
-    baslangic_tarihi: tarih,
+    baslangic_tarihi: girisTarih,
     bitis_tarihi: null,
   });
   if (error) throw error;
+  return girisTarih;
 }
 
 // Şantiye transferi — SADECE atama geçmişine yansır. Personel tablosu değişmez.
-// Eski atama kapanır (bitis=transfer tarihi), yeni atama açılır.
-export async function transferEt(personelId: string, yeniSantiyeId: string): Promise<void> {
+// Eski atama kapanır (bitis=transfer tarihi), yeni şantiyeye giriş tarihi:
+//   • çıkış bugünse  → giriş = yarın (bugün + 1)
+//   • çıkış geçmişse → giriş = bugün
+//   • çıkış gelecekse (admin) → giriş = çıkış + 1
+// `tarih` verilmezse bugün kabul edilir.
+// NOT: Saf string tarih aritmetiği — saat diliminden bağımsız.
+//
+// Returns: { cikis: yyyy-mm-dd, giris: yyyy-mm-dd } — mail önizleme vb. için.
+export async function transferEt(
+  personelId: string,
+  yeniSantiyeId: string,
+  tarih?: string,
+): Promise<{ cikis: string; giris: string }> {
   const supabase = getSupabase();
-  const tarih = bugun();
+  const cikisTarih = tarih ?? bugun();
+  const today = bugun();
+
+  // Yeni şantiyeye giriş tarihini hesapla
+  let girisTarih: string;
+  if (cikisTarih < today) {
+    // Geçmiş tarihe transfer → bugünden işbaşı
+    girisTarih = today;
+  } else {
+    // Bugün veya gelecek tarih → çıkış + 1 gün
+    girisTarih = gunEkle(cikisTarih, 1);
+  }
+
   await supabase
     .from("personel_atama_gecmisi")
-    .update({ bitis_tarihi: tarih })
+    .update({ bitis_tarihi: cikisTarih })
     .eq("personel_id", personelId)
     .is("bitis_tarihi", null);
   const { error } = await supabase.from("personel_atama_gecmisi").insert({
     personel_id: personelId,
     santiye_id: yeniSantiyeId,
-    baslangic_tarihi: tarih,
+    baslangic_tarihi: girisTarih,
     bitis_tarihi: null,
   });
   if (error) throw error;
+  return { cikis: cikisTarih, giris: girisTarih };
 }
 
 // --- Atama düzenleme / silme / ekleme (manuel gün girişi için) ---
