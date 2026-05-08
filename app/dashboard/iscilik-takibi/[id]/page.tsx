@@ -1,11 +1,13 @@
 // İşçilik Takibi Detay Sayfası - İş bilgileri + aylık prim veri girişi
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getIscilikTakibi, upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { getAylikVeriler, createAylikVeri, updateAylikVeri, deleteAylikVeri } from "@/lib/supabase/queries/iscilik-aylik";
-import type { IscilikTakibiWithSantiye, IscilikAylik } from "@/lib/supabase/types";
+import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
+import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import type { IscilikTakibiWithSantiye, IscilikAylik, PersonelAtamaManuelGun, PersonelAtamaGecmisi, PersonelBrutUcret } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,14 +49,27 @@ export default function IscilikDetayPage() {
   const [editValue, setEditValue] = useState("");
   const [editingHeader, setEditingHeader] = useState<string | null>(null);
   const [headerEditValue, setHeaderEditValue] = useState("");
+  // Bordro tahmini için gerekli veriler (yatan prim altındaki silik gri rakamla aynı mantık)
+  const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
+  const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
+  const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
+  const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [allTakip, aylikData] = await Promise.all([
+      const [allTakip, aylikData, mGunler, ucretler, atamaData, brutData] = await Promise.all([
         getIscilikTakibi(),
         getAylikVeriler(takipId),
+        getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
+        getGunlukUcretler().catch(() => [] as GunlukUcret[]),
+        getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
+        getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
       ]);
+      setManuelGunler(mGunler);
+      setGunlukUcretler(ucretler);
+      setAtamalar(atamaData);
+      setBrutUcretGecmisi(brutData);
       const found = (allTakip as IscilikTakibiWithSantiye[])?.find((t) => t.id === takipId);
       const aylik = aylikData ?? [];
       setTakip(found ?? null);
@@ -80,6 +95,102 @@ export default function IscilikDetayPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if ((editing || editingHeader) && inputRef.current) inputRef.current.focus(); }, [editing, editingHeader]);
+
+  // Bordro tahmini (Yatan Prim altındaki silik gri rakamla aynı mantık)
+  // Sonuç: sonAy (en son veri girilen ay) sonrasındaki ayları kapsar — manuel + otomatik atama gün × günlük ücret
+  const bordroToplam = useMemo(() => {
+    if (!takip?.santiye_id) return 0;
+    const santiyeId = takip.santiye_id;
+
+    const ayYilNum = (s: string): number => {
+      if (!s) return 0;
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+      const iso = s.match(/^(\d{4})-(\d{2})/);
+      if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+      return 0;
+    };
+
+    // sonAy = veri girilen aylardan en büyüğü (alt veya yüklenici tutarı > 0 olan)
+    let sonAyNum = 0;
+    for (const a of ayliklar) {
+      if ((a.alt_yuklenici_tutar ?? 0) > 0 || (a.yuklenici_tutar ?? 0) > 0) {
+        const num = ayYilNum(a.ait_oldugu_ay);
+        if (num > sonAyNum) sonAyNum = num;
+      }
+    }
+
+    let toplam = 0;
+    const santiyeAtamalari = atamalar.filter((a) => a.santiye_id === santiyeId);
+    const dahilEdilen = new Set<string>();
+    const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
+      const brut = brutUcretForAy(brutUcretGecmisi, personelId, ayStr);
+      if (brut > 0) return brut;
+      return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    };
+
+    // 1) Manuel girişler — sonAy'dan sonra
+    for (const m of manuelGunler) {
+      if (m.santiye_id !== santiyeId) continue;
+      const mAyNum = ayYilNum(m.ay);
+      if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
+      const yil = parseInt(m.ay.split("-")[0], 10);
+      const ucret = personelUcret(m.personel_id, m.ay, yil);
+      if (ucret > 0) {
+        toplam += m.gun * ucret;
+        dahilEdilen.add(`${m.personel_id}|${m.ay}`);
+      }
+    }
+
+    // 2) Doğal hesap (atama tarihlerinden)
+    const bugun = new Date();
+    const buYilAy = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}`;
+    const buYilAyNum = ayYilNum(buYilAy);
+    if (santiyeAtamalari.length > 0 && buYilAyNum > sonAyNum) {
+      const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
+        let enErken = Infinity;
+        for (const a of santiyeAtamalari) {
+          const aNum = ayYilNum(a.baslangic_tarihi.slice(0, 7));
+          if (aNum < enErken) enErken = aNum;
+        }
+        return enErken === Infinity ? buYilAyNum : enErken;
+      })();
+      let yil = Math.floor(baslangic / 100);
+      let ay = baslangic % 100;
+      if (ay === 0) { yil -= 1; ay = 12; }
+      while (yil * 100 + ay <= buYilAyNum) {
+        const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
+        const ayHesap = gunHesaplaAyBazli(santiyeAtamalari, ayStr);
+        for (const [pId, sMap] of ayHesap) {
+          const gun = sMap.get(santiyeId) ?? 0;
+          if (gun <= 0) continue;
+          if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
+          const ucret = personelUcret(pId, ayStr, yil);
+          if (ucret > 0) toplam += gun * ucret;
+        }
+        ay += 1;
+        if (ay > 12) { ay = 1; yil += 1; }
+      }
+    }
+    return toplam;
+  }, [takip?.santiye_id, ayliklar, manuelGunler, gunlukUcretler, atamalar, brutUcretGecmisi]);
+
+  // En son ait_oldugu_ay (yüklenici tutarı boş olan satırda bordro placeholder göstermek için)
+  const enYeniAyId = useMemo(() => {
+    if (ayliklar.length === 0) return null;
+    const ayYilNum = (s: string): number => {
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+      return 0;
+    };
+    let enBuyukNum = 0;
+    let enBuyukId: string | null = null;
+    for (const a of ayliklar) {
+      const n = ayYilNum(a.ait_oldugu_ay);
+      if (n > enBuyukNum) { enBuyukNum = n; enBuyukId = a.id; }
+    }
+    return enBuyukId;
+  }, [ayliklar]);
 
   if (loading) {
     return <div className="space-y-4">{[...Array(5)].map((_, i) => <div key={i} className="h-10 bg-gray-200 rounded animate-pulse" />)}</div>;
@@ -465,12 +576,17 @@ export default function IscilikDetayPage() {
                     setEditValue(a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : "");
                   }}>
                   {editing?.id === a.id && editing.field === "yuklenici_tutar" ? (
-                    <Input ref={inputRef} value={editValue} placeholder="0,00"
+                    <Input ref={inputRef} value={editValue}
+                      placeholder={a.id === enYeniAyId && bordroToplam > 0 ? formatPara(bordroToplam) : "0,00"}
                       onChange={(e) => setEditValue(e.target.value)}
                       onBlur={saveAylikEdit}
                       onKeyDown={(e) => { if (e.key === "Enter") saveAylikEdit(); if (e.key === "Escape") setEditing(null); }}
                       className="h-6 text-xs px-1 text-right min-w-[120px]" />
-                  ) : a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : <span className="text-gray-300">0,00</span>}
+                  ) : a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : (
+                    a.id === enYeniAyId && bordroToplam > 0
+                      ? <span className="text-gray-300" title="Bordro tahmini (manuel + otomatik atama gün × günlük ücret)">{formatPara(bordroToplam)}</span>
+                      : <span className="text-gray-300">0,00</span>
+                  )}
                 </TableCell>
 
                 {/* Sil */}
