@@ -1338,11 +1338,13 @@ function IhalePageContent() {
 
   // Inline tutar düzenleme
   function startEdit(idx: number) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     setEditIdx(idx);
     setEditTutar(formatParaInput(String(Math.round(siraliKatilimcilar[idx].teklif))));
   }
   function saveEdit() {
     if (editIdx === null) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const val = parseParaInput(editTutar);
     if (val <= 0) { toast.error("Geçerli tutar girin."); return; }
     const target = siraliKatilimcilar[editIdx];

@@ -376,12 +376,14 @@ export default function SantiyelerPage() {
 
   // Inline düzenleme (sadece gerçekleşen tutar)
   function handleGerceklesenClick(id: string, raw: number | null) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     setEditing({ id, field: "sozlesme_fiyatlariyla_gerceklesen" });
     setEditValue(raw != null ? formatPara(raw) : "");
   }
 
   async function saveEdit() {
     if (!editing) return;
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     // editKey formatı: "santiyeId-oran" veya "santiyeId-ana"
     const santiyeId = editing.id.replace(/-[^-]+$/, "");
     const cleaned = editValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");

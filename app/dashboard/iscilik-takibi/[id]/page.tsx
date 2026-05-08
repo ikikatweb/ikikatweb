@@ -268,6 +268,8 @@ export default function IscilikDetayPage() {
 
   function headerField(label: string, field: string, value: number | null, editable = true) {
     const isEd = editingHeader === field;
+    // Yetki: yDuzenle yoksa düzenleme tamamen kapalı
+    const duzenlenebilir = editable && yDuzenle;
     return (
       <div className="flex items-center justify-between py-1 border-b border-gray-100">
         <span className="text-xs text-gray-500 font-medium">{label}</span>
@@ -278,9 +280,9 @@ export default function IscilikDetayPage() {
             onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
             className="h-6 text-xs w-32 text-right" />
         ) : (
-          <span className={`text-xs font-semibold ${editable ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+          <span className={`text-xs font-semibold ${duzenlenebilir ? "cursor-pointer hover:text-[#F97316]" : ""}`}
             onClick={() => {
-              if (!editable) return;
+              if (!duzenlenebilir) return;
               setEditingHeader(field);
               setHeaderEditValue(value != null ? formatPara(value) : "");
             }}>
@@ -405,8 +407,9 @@ export default function IscilikDetayPage() {
                     onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
                     className="h-6 text-xs w-32 text-right" />
                 ) : (
-                  <span className="text-xs font-semibold cursor-pointer hover:text-[#F97316]"
+                  <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
                     onClick={() => {
+                      if (!yDuzenle) return;
                       setEditingHeader("sicil_no");
                       setHeaderEditValue(takip.sicil_no ?? "");
                     }}>
@@ -447,6 +450,7 @@ export default function IscilikDetayPage() {
                       <Input ref={inputRef} type="date" value={headerEditValue}
                         onChange={(e) => setHeaderEditValue(e.target.value)}
                         onBlur={async () => {
+                          if (!yDuzenle) { setEditingHeader(null); return; }
                           try {
                             await upsertIscilikTakibi(takip.santiye_id, { baslangic_tarihi: headerEditValue || null });
                             setTakip((p) => p ? { ...p, baslangic_tarihi: headerEditValue || null } : p);
@@ -456,8 +460,8 @@ export default function IscilikDetayPage() {
                         onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
                         className="h-6 text-xs w-36" />
                     ) : (
-                      <span className="text-xs font-semibold cursor-pointer hover:text-[#F97316]"
-                        onClick={() => { setEditingHeader("baslangic_tarihi"); setHeaderEditValue(takip.baslangic_tarihi ?? ""); }}>
+                      <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                        onClick={() => { if (!yDuzenle) return; setEditingHeader("baslangic_tarihi"); setHeaderEditValue(takip.baslangic_tarihi ?? ""); }}>
                         {takip.baslangic_tarihi ? formatTarih(takip.baslangic_tarihi) : "—"}
                       </span>
                     )}
@@ -476,6 +480,7 @@ export default function IscilikDetayPage() {
                       <Input ref={inputRef} value={headerEditValue} placeholder="100 + 200 + 300"
                         onChange={(e) => setHeaderEditValue(e.target.value)}
                         onBlur={async () => {
+                          if (!yDuzenle) { setEditingHeader(null); return; }
                           try {
                             await upsertIscilikTakibi(takip.santiye_id, { sure_text: headerEditValue || null });
                             setTakip((p) => p ? { ...p, sure_text: headerEditValue || null } : p);
@@ -485,8 +490,8 @@ export default function IscilikDetayPage() {
                         onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
                         className="h-6 text-xs w-40" />
                     ) : (
-                      <span className="text-xs font-semibold cursor-pointer hover:text-[#F97316]"
-                        onClick={() => { setEditingHeader("sure_text"); setHeaderEditValue(sureText); }}>
+                      <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                        onClick={() => { if (!yDuzenle) return; setEditingHeader("sure_text"); setHeaderEditValue(sureText); }}>
                         {sureText ? `${sureText} = ${sureToplam} gün` : "—"}
                       </span>
                     )}
@@ -543,8 +548,8 @@ export default function IscilikDetayPage() {
               return (
               <TableRow key={a.id} className="text-sm hover:bg-gray-50">
                 <TableCell className="text-center px-3">{idx + 1}</TableCell>
-                <TableCell className="text-center px-3 cursor-pointer hover:bg-blue-50"
-                  onClick={() => { setEditing({ id: a.id, field: "ait_oldugu_ay" }); setEditValue(a.ait_oldugu_ay); }}>
+                <TableCell className={`text-center px-3 ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
+                  onClick={() => { if (!yDuzenle) return; setEditing({ id: a.id, field: "ait_oldugu_ay" }); setEditValue(a.ait_oldugu_ay); }}>
                   {editing?.id === a.id && editing.field === "ait_oldugu_ay" ? (
                     <Input ref={inputRef} value={editValue} placeholder="MM.YYYY"
                       onChange={(e) => setEditValue(e.target.value)}
@@ -555,8 +560,9 @@ export default function IscilikDetayPage() {
                 </TableCell>
 
                 {/* Alt Yüklenici */}
-                <TableCell className="text-right px-3 tabular-nums cursor-pointer hover:bg-blue-50"
+                <TableCell className={`text-right px-3 tabular-nums ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
                   onClick={() => {
+                    if (!yDuzenle) return;
                     setEditing({ id: a.id, field: "alt_yuklenici_tutar" });
                     setEditValue(a.alt_yuklenici_tutar ? formatPara(a.alt_yuklenici_tutar) : "");
                   }}>
@@ -570,8 +576,9 @@ export default function IscilikDetayPage() {
                 </TableCell>
 
                 {/* Yüklenici */}
-                <TableCell className="text-right px-3 tabular-nums cursor-pointer hover:bg-blue-50"
+                <TableCell className={`text-right px-3 tabular-nums ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
                   onClick={() => {
+                    if (!yDuzenle) return;
                     setEditing({ id: a.id, field: "yuklenici_tutar" });
                     setEditValue(a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : "");
                   }}>

@@ -272,6 +272,7 @@ export default function TanimlamalarPage() {
   }
 
   async function handleEkle(kategori: string) {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     const ham = yeniDegerler[kategori]?.trim();
     if (!ham) { toast.error("Değer boş olamaz."); return; }
 
@@ -401,6 +402,7 @@ export default function TanimlamalarPage() {
 
   // İnline değer düzenleme — formatlayıp kaydeder
   async function handleDuzenleKaydet(t: Tanimlama) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); setDuzenleId(null); return; }
     const ham = duzenleDeger.trim();
     if (!ham) { toast.error("Değer boş olamaz."); setDuzenleId(null); return; }
     const yeni = formatTanimlamaDeger(t.kategori, ham);
@@ -414,6 +416,7 @@ export default function TanimlamalarPage() {
   }
 
   async function handleSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!deleteId) return;
     try {
       await deleteTanimlama(deleteId);
@@ -425,6 +428,7 @@ export default function TanimlamalarPage() {
   }
 
   async function handleToggleAktif(t: Tanimlama) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     try {
       await updateTanimlama(t.id, { aktif: !t.aktif });
       await loadData();
@@ -469,6 +473,7 @@ export default function TanimlamalarPage() {
   }
 
   async function handleSiraDegistir(kategori: string, index: number, yon: "yukari" | "asagi") {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const items = getKategoriItems(kategori).filter((t) => t.deger !== "(boş)");
     const hedefIndex = yon === "yukari" ? index - 1 : index + 1;
     if (hedefIndex < 0 || hedefIndex >= items.length) return;
@@ -633,9 +638,9 @@ export default function TanimlamalarPage() {
                                   />
                                 ) : (
                                   <div
-                                    className="text-xs leading-snug truncate cursor-pointer hover:text-[#F97316]"
-                                    title={tekSatirMuhatap(t.deger) + " (Düzenlemek için tıklayın)"}
-                                    onClick={() => { setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
+                                    className={`text-xs leading-snug truncate ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                                    title={yDuzenle ? tekSatirMuhatap(t.deger) + " (Düzenlemek için tıklayın)" : tekSatirMuhatap(t.deger)}
+                                    onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
                                   >
                                     {tekSatirMuhatap(t.deger)}
                                   </div>
@@ -644,7 +649,9 @@ export default function TanimlamalarPage() {
                                   type="text"
                                   defaultValue={t.kisa_ad ?? ""}
                                   placeholder="Kısa ad (örn: DSİ)"
+                                  readOnly={!yDuzenle}
                                   onBlur={async (e) => {
+                                    if (!yDuzenle) return;
                                     const yeni = formatBuyukHarf(e.target.value);
                                     if (yeni !== (t.kisa_ad ?? "")) {
                                       try {
@@ -654,7 +661,7 @@ export default function TanimlamalarPage() {
                                       } catch { toast.error("Güncelleme hatası."); }
                                     }
                                   }}
-                                  className="w-full text-[10px] border rounded px-1.5 py-0.5 uppercase"
+                                  className={`w-full text-[10px] border rounded px-1.5 py-0.5 uppercase ${!yDuzenle ? "bg-gray-50 cursor-not-allowed" : ""}`}
                                 />
                               </div>
                             ) : isAcente ? (() => {
@@ -693,7 +700,7 @@ export default function TanimlamalarPage() {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="cursor-pointer hover:text-[#F97316]" onClick={() => setDuzenleId(t.id)}>
+                                  <div className={yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""} onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); }}>
                                     <div className="text-xs font-semibold">{t.deger}</div>
                                     {ac.ilgili_kisi && <div className="text-[10px] text-gray-400">{ac.ilgili_kisi}</div>}
                                     {ac.cep && <div className="text-[10px] text-gray-400">{ac.cep}</div>}
@@ -705,9 +712,10 @@ export default function TanimlamalarPage() {
                               );
                             })() : isBankaHesap ? (
                               <div
-                                className={`flex flex-col gap-0.5 flex-1 min-w-0 cursor-pointer hover:bg-blue-50 -mx-2 -my-1 px-2 py-1 rounded ${duzenlenenHesapId === t.id ? "bg-blue-50 ring-1 ring-blue-200" : ""}`}
-                                title="Düzenlemek için tıklayın"
+                                className={`flex flex-col gap-0.5 flex-1 min-w-0 -mx-2 -my-1 px-2 py-1 rounded ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""} ${duzenlenenHesapId === t.id ? "bg-blue-50 ring-1 ring-blue-200" : ""}`}
+                                title={yDuzenle ? "Düzenlemek için tıklayın" : ""}
                                 onClick={() => {
+                                  if (!yDuzenle) return;
                                   setDuzenlenenHesapId(t.id);
                                   setYeniHesapNo(t.deger);
                                   const ad = unpackHesapKisaAd(t.kisa_ad ?? "");
@@ -749,23 +757,25 @@ export default function TanimlamalarPage() {
                                   />
                                 ) : (
                                   <span
-                                    className="truncate cursor-pointer hover:text-[#F97316]"
-                                    title="Düzenlemek için tıklayın"
-                                    onClick={() => { setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
+                                    className={`truncate ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                                    title={yDuzenle ? "Düzenlemek için tıklayın" : ""}
+                                    onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
                                   >
                                     {t.deger}
                                   </span>
                                 )}
                                 <select
                                   value={t.kisa_ad ?? "km"}
+                                  disabled={!yDuzenle}
                                   onChange={async (e) => {
+                                    if (!yDuzenle) return;
                                     try {
                                       await updateTanimlama(t.id, { kisa_ad: e.target.value });
                                       await loadData();
                                       toast.success(`${t.deger}: ${e.target.value === "saat" ? "Saat" : "KM"} olarak ayarlandı.`);
                                     } catch { toast.error("Güncellenemedi."); }
                                   }}
-                                  className="text-[10px] border rounded px-1 py-0.5 bg-white shrink-0"
+                                  className={`text-[10px] border rounded px-1 py-0.5 bg-white shrink-0 ${!yDuzenle ? "cursor-not-allowed bg-gray-50" : ""}`}
                                 >
                                   <option value="km">KM</option>
                                   <option value="saat">Saat</option>
@@ -833,9 +843,9 @@ export default function TanimlamalarPage() {
                                   </div>
                                 )}
                                 <span
-                                  className="truncate cursor-pointer hover:text-[#F97316]"
-                                  title="Düzenlemek için tıklayın"
-                                  onClick={() => { setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
+                                  className={`truncate ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                                  title={yDuzenle ? "Düzenlemek için tıklayın" : ""}
+                                  onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
                                 >
                                   {t.deger}
                                 </span>
@@ -843,23 +853,29 @@ export default function TanimlamalarPage() {
                             )}
                           </div>
                           <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => handleSiraDegistir(kat.key, idx, "yukari")}
-                              disabled={idx === 0}
-                              className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20">
-                              <ArrowUp size={12} />
-                            </button>
-                            <button onClick={() => handleSiraDegistir(kat.key, idx, "asagi")}
-                              disabled={idx === items.length - 1}
-                              className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20">
-                              <ArrowDown size={12} />
-                            </button>
-                            <button onClick={() => handleToggleAktif(t)}
-                              className={`text-xs px-1 py-0.5 rounded ${t.aktif ? "text-yellow-600 hover:bg-yellow-50" : "text-green-600 hover:bg-green-50"}`}>
-                              {t.aktif ? "Pasif" : "Aktif"}
-                            </button>
-                            <button onClick={() => setDeleteId(t.id)} className="text-red-400 hover:text-red-600 p-0.5">
-                              <Trash2 size={12} />
-                            </button>
+                            {yDuzenle && (
+                              <>
+                                <button onClick={() => handleSiraDegistir(kat.key, idx, "yukari")}
+                                  disabled={idx === 0}
+                                  className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20">
+                                  <ArrowUp size={12} />
+                                </button>
+                                <button onClick={() => handleSiraDegistir(kat.key, idx, "asagi")}
+                                  disabled={idx === items.length - 1}
+                                  className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20">
+                                  <ArrowDown size={12} />
+                                </button>
+                                <button onClick={() => handleToggleAktif(t)}
+                                  className={`text-xs px-1 py-0.5 rounded ${t.aktif ? "text-yellow-600 hover:bg-yellow-50" : "text-green-600 hover:bg-green-50"}`}>
+                                  {t.aktif ? "Pasif" : "Aktif"}
+                                </button>
+                              </>
+                            )}
+                            {ySil && (
+                              <button onClick={() => setDeleteId(t.id)} className="text-red-400 hover:text-red-600 p-0.5">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
