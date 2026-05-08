@@ -75,15 +75,20 @@ export default function GelenEvrakPage() {
 
   const loadData = useCallback(async () => {
     try {
+      // Kısıtlı: kendi yazdıklarını + atandığı şantiyelerin evraklarını
+      // Şantiye admin: atandığı şantiyelerin tüm evraklarını
+      // Yönetici: hepsi
+      const olusturan = (kullanici?.rol === "kisitli") ? kullanici.id : undefined;
+      const santiyeFilter = (!isYonetici && kullanici?.santiye_ids) ? kullanici.santiye_ids : undefined;
       const [eData, fData] = await Promise.all([
-        getGelenEvraklar(isYonetici ? undefined : kullanici?.id),
+        getGelenEvraklar(olusturan, santiyeFilter),
         getFirmalar(),
       ]);
       setEvraklar((eData as GelenEvrakWithRelations[]) ?? []);
       setFirmalar(fData ?? []);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
-  }, [isYonetici, kullanici?.id]);
+  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

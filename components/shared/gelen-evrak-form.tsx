@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/queries/gelen-evrak";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
+import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
@@ -69,12 +70,15 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           getFirmalar(), getSantiyelerAll(), getDegerler("muhatap"),
         ]);
         setFirmalar(fData ?? []);
-        setSantiyeler((sData as SantiyeBasic[]) ?? []);
+        // Kısıtlı/şantiye_admin sadece atandığı şantiyeleri görür
+        const tumSantiyeler = (sData as SantiyeBasic[]) ?? [];
+        setSantiyeler(filtreliSantiyeler(tumSantiyeler, kullanici));
         setMuhataplar(mData);
       } catch { /* sessiz */ }
     }
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kullanici?.id]);
 
   async function handleYeniMuhatap() {
     if (!yeniMuhatap.trim()) { toast.error("Muhatap adı boş olamaz."); return; }

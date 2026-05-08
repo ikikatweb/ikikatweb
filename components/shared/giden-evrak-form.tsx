@@ -11,9 +11,10 @@ import {
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
+import { useAuth } from "@/hooks";
+import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import TarihInput from "@/components/shared/tarih-input";
 import { getMuhataplarFull, createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
-import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,12 +89,15 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           getFirmalar(), getSantiyelerAll(), getMuhataplarFull(),
         ]);
         setFirmalar(fData ?? []);
-        setSantiyeler((sData as SantiyeBasic[]) ?? []);
+        // Şantiye filtre — kısıtlı/şantiye_admin sadece atandığı şantiyeleri görür
+        const tumSantiyeler = (sData as SantiyeBasic[]) ?? [];
+        setSantiyeler(filtreliSantiyeler(tumSantiyeler, kullanici));
         setMuhataplar(mData);
       } catch { /* sessiz */ }
     }
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kullanici?.id]);
 
   // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {

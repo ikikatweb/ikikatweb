@@ -6,7 +6,7 @@ function getSupabase() {
   return createClient();
 }
 
-export async function getGidenEvraklar(olusturanId?: string) {
+export async function getGidenEvraklar(olusturanId?: string, santiyeIds?: string[]) {
   const supabase = getSupabase();
   let query = supabase
     .from("giden_evrak")
@@ -16,6 +16,15 @@ export async function getGidenEvraklar(olusturanId?: string) {
 
   if (olusturanId) {
     query = query.eq("olusturan_id", olusturanId);
+  }
+  // Şantiye kısıtı — kısıtlı kullanıcı veya şantiye yöneticisi: sadece atandığı şantiyeler
+  // + şantiyesiz (genel) evraklar görünür. Yönetici için bu parametre verilmez.
+  if (santiyeIds && santiyeIds.length > 0) {
+    const idList = santiyeIds.map((id) => `"${id}"`).join(",");
+    query = query.or(`santiye_id.is.null,santiye_id.in.(${idList})`);
+  } else if (santiyeIds && santiyeIds.length === 0) {
+    // Hiç şantiye atanmamış kısıtlı kullanıcı: sadece genel (şantiyesiz) evraklar görünür
+    query = query.is("santiye_id", null);
   }
 
   const { data, error } = await query;

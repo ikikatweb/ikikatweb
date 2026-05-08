@@ -737,11 +737,11 @@ export default function DashboardPage() {
     setTeklifArac(y);
     setSeciliAcenteler(new Set());
     setTeklifEkBilgi("");
-    // Acente listesini yükle
+    // Acente listesini yükle — SADECE aktif olanlar
     try {
       const tum = await getTumTanimlamalar();
       const acenteler = tum
-        .filter((t) => t.kategori === "sigorta_acente")
+        .filter((t) => t.kategori === "sigorta_acente" && t.aktif)
         .map((t) => {
           const info = unpackAcenteKisaAd(t.kisa_ad);
           return { id: t.id, ad: t.deger, eposta: info.eposta };
