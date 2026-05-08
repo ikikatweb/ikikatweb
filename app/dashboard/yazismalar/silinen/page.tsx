@@ -81,7 +81,10 @@ const TUR_ETIKET: Record<YazismaTuru, { label: string; color: string }> = {
 };
 
 export default function SilinenPage() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  // Silinen yazışmalar modülü yetkileri
+  const ySil = hasPermission("yazismalar-silinen", "sil");
+  const yEkle = hasPermission("yazismalar-silinen", "ekle"); // geri yükle = ekleme niteliği
   const [kayitlar, setKayitlar] = useState<BirlesikSilinen[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -195,6 +198,7 @@ export default function SilinenPage() {
   };
 
   async function handleGeriYukle() {
+    if (!yEkle) { toast.error("Geri yükleme yetkiniz yok."); return; }
     if (!geriYukleDialog) return;
     try {
       if (geriYukleDialog.tur === "gelen") await restoreGelenEvrak(geriYukleDialog.id);
@@ -207,6 +211,7 @@ export default function SilinenPage() {
   }
 
   async function handleKaliciSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!kaliciSilDialog) return;
     try {
       if (kaliciSilDialog.tur === "gelen") await hardDeleteGelenEvrak(kaliciSilDialog.id);
@@ -324,20 +329,24 @@ export default function SilinenPage() {
                         >
                           <Eye size={14} />
                         </button>
-                        <button
-                          onClick={() => setGeriYukleDialog(k)}
-                          className="p-1 text-gray-400 hover:text-green-600"
-                          title="Geri Yükle"
-                        >
-                          <RotateCcw size={14} />
-                        </button>
-                        <button
-                          onClick={() => setKaliciSilDialog(k)}
-                          className="p-1 text-gray-400 hover:text-red-600"
-                          title="Kalıcı Olarak Sil"
-                        >
-                          <Trash size={14} />
-                        </button>
+                        {yEkle && (
+                          <button
+                            onClick={() => setGeriYukleDialog(k)}
+                            className="p-1 text-gray-400 hover:text-green-600"
+                            title="Geri Yükle"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+                        {ySil && (
+                          <button
+                            onClick={() => setKaliciSilDialog(k)}
+                            className="p-1 text-gray-400 hover:text-red-600"
+                            title="Kalıcı Olarak Sil"
+                          >
+                            <Trash size={14} />
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

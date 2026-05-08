@@ -127,6 +127,7 @@ export default function GelenEvrakPage() {
   }
 
   async function handleSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silDialog || !silmeNedeni.trim()) { toast.error("Silme nedeni zorunludur."); return; }
     try {
       await softDeleteGelenEvrak(silDialog, silmeNedeni, kullanici?.id ?? null);

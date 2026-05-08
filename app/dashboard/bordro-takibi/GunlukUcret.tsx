@@ -12,8 +12,14 @@ import {
   type GunlukUcret,
 } from "@/lib/supabase/queries/bordro";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { useAuth } from "@/hooks";
 
 export default function GunlukUcretSayfasi() {
+  const { hasPermission } = useAuth();
+  // Bordro takibi modülü yetkileri (Günlük Ücret de bu modülün altında)
+  const yEkle = hasPermission("bordro-takibi", "ekle");
+  const yDuzenle = hasPermission("bordro-takibi", "duzenle");
+  const ySil = hasPermission("bordro-takibi", "sil");
   const [list, setList] = useState<GunlukUcret[]>([]);
   const [loading, setLoading] = useState(true);
   const [yeniYil, setYeniYil] = useState<string>(String(new Date().getFullYear()));
@@ -36,6 +42,7 @@ export default function GunlukUcretSayfasi() {
   useEffect(() => { load(); }, [load]);
 
   async function ekle() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     const yil = parseInt(yeniYil, 10);
     const ucret = parseParaInput(yeniUcret);
     if (!yil || yil < 2000 || yil > 2100) { toast.error("Geçerli yıl girin (2000-2100)"); return; }
@@ -51,6 +58,7 @@ export default function GunlukUcretSayfasi() {
   }
 
   async function kaydetEdit() {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (editYil == null) return;
     const ucret = parseParaInput(editUcret);
     if (ucret <= 0) { toast.error("Ücret 0'dan büyük olmalı"); return; }
@@ -66,6 +74,7 @@ export default function GunlukUcretSayfasi() {
   }
 
   async function sil(yil: number) {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!confirm(`${yil} yılı günlük ücretini silmek istediğinize emin misiniz?`)) return;
     try {
       await deleteGunlukUcret(yil);
@@ -88,7 +97,8 @@ export default function GunlukUcretSayfasi() {
         </div>
       </div>
 
-      {/* Yeni ekle */}
+      {/* Yeni ekle — sadece ekleme yetkisi olanlar görür */}
+      {yEkle && (
       <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
         <div className="text-xs font-semibold text-blue-700 mb-2">Yeni Yıl Ekle / Güncelle</div>
         <div className="grid grid-cols-2 gap-3 mb-2">
@@ -109,6 +119,7 @@ export default function GunlukUcretSayfasi() {
           <Plus size={14} className="mr-1" /> Kaydet
         </Button>
       </div>
+      )}
 
       {/* Liste */}
       {loading ? (
@@ -151,13 +162,17 @@ export default function GunlukUcretSayfasi() {
                       </div>
                     ) : (
                       <div className="flex gap-1 justify-center">
-                        <button onClick={() => { setEditYil(u.yil); setEditUcret(formatParaInput(String(u.ucret).replace(".", ","))); }}
-                          className="p-1.5 text-gray-400 hover:text-blue-600" title="Düzenle">
-                          <Pencil size={14} />
-                        </button>
-                        <button onClick={() => sil(u.yil)} className="p-1.5 text-gray-400 hover:text-red-600" title="Sil">
-                          <Trash2 size={14} />
-                        </button>
+                        {yDuzenle && (
+                          <button onClick={() => { setEditYil(u.yil); setEditUcret(formatParaInput(String(u.ucret).replace(".", ","))); }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600" title="Düzenle">
+                            <Pencil size={14} />
+                          </button>
+                        )}
+                        {ySil && (
+                          <button onClick={() => sil(u.yil)} className="p-1.5 text-gray-400 hover:text-red-600" title="Sil">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

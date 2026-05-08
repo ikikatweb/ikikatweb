@@ -75,6 +75,7 @@ function formatTarih(tarih: string | null): string {
 export default function SigortaMuayenePage() {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("araclar-sigorta-muayene", "ekle");
+  const yDuzenle = hasPermission("araclar-sigorta-muayene", "duzenle");
   const ySil = hasPermission("araclar-sigorta-muayene", "sil");
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -203,6 +204,7 @@ export default function SigortaMuayenePage() {
 
   // Inline tarih kaydetme (muayene/taşıt kartı)
   async function saveDate(aracId: string, field: string, value: string) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     try {
       await updateArac(aracId, { [field]: value || null });
       await loadData();
@@ -225,6 +227,7 @@ export default function SigortaMuayenePage() {
 
   // Poliçe kaydet
   async function policeKaydet() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!policeAracId) return;
     if (!pBitisTarih) { toast.error("Bitiş tarihi girin."); return; }
     setPoliceSaving(true);
@@ -275,6 +278,7 @@ export default function SigortaMuayenePage() {
 
   // Poliçe sil — silinen poliçeye göre araç bitiş tarihini de güncelle
   async function policeSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silOnay) return;
     try {
       // Silinmeden önce poliçe bilgilerini al

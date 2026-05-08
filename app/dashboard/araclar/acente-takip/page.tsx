@@ -138,6 +138,7 @@ export default function AcenteTakipPage() {
   }
 
   async function duzenleKaydet() {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (!editPolice) return;
     setEditSaving(true);
     try {
@@ -167,6 +168,7 @@ export default function AcenteTakipPage() {
   }
 
   async function policeSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silOnay) return;
     try {
       await deleteAracPolice(silOnay);

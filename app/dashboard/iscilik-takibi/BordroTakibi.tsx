@@ -40,6 +40,7 @@ import {
   type GunlukUcret,
 } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import { filtreliSantiyeler as filtreliSantiyelerHelper } from "@/lib/utils/santiye-filtre";
 import {
   getPendingMailler,
   insertPendingMail,
@@ -358,7 +359,11 @@ function YeniAtamaSatir({
 }
 
 export default function BordroTakibi() {
-  const { kullanici, isYonetici } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
+  // Modül yetkileri (bordro-takibi modülü): ekle / duzenle / sil
+  const yEkle = hasPermission("bordro-takibi", "ekle");
+  const yDuzenle = hasPermission("bordro-takibi", "duzenle");
+  const ySil = hasPermission("bordro-takibi", "sil");
   const [loading, setLoading] = useState(true);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [personeller, setPersoneller] = useState<Personel[]>([]);
@@ -443,7 +448,9 @@ export default function BordroTakibi() {
   // ayların kayıtları üzerinde de işlem yapabilir.
   const [seciliAy, setSeciliAy] = useState<string>(su_an_ay);
   const buAy = su_an_ay();
-  const isReadOnly = false;
+  // Sadece görüntüleme yetkisi olan kullanıcılar için tüm yazma aksiyonları kapalı
+  // (drag-drop, çift tıkla gün düzenle, sil/geri al butonları, plus butonları)
+  const isReadOnly = !yEkle && !yDuzenle && !ySil;
 
   // Bekleyen değişiklikler — mail kuyruğu (DB'de paylaşımlı, tüm adminler aynı kuyruğu görür)
   const [pending, setPending] = useState<PendingChange[]>([]);
@@ -734,8 +741,13 @@ export default function BordroTakibi() {
   // loadData'yı ref'e bağla — focus/visibility listener'larından çağrılabilsin
   useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
 
-  // Tüm aktif şantiyeler (firma filtresi kaldırıldı — accordion firma hiyerarşisi yeterli)
-  const filtreliSantiyeler = santiyeler;
+  // Yetki bazlı şantiye filtresi:
+  // - Yönetici: tüm şantiyeler
+  // - Şantiye admini / Kısıtlı: sadece atandığı şantiye(ler)
+  const filtreliSantiyeler = useMemo(
+    () => filtreliSantiyelerHelper(santiyeler, kullanici),
+    [santiyeler, kullanici],
+  );
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır
   const naturalGunMap = useMemo(
@@ -804,6 +816,10 @@ export default function BordroTakibi() {
     map.set(PASIF_KEY, []);
     map.set(ATANMAMIS_KEY, []);
 
+    // Yetki bazlı: kısıtlı/şantiye admini sadece kendi şantiyelerindeki personelleri görür
+    // Yönetici: tüm şantiyeler izinli
+    const izinliSantiyeIds = new Set(filtreliSantiyeler.map((s) => s.id));
+
     // Her personel için tüm atamalar
     const personelAtamalari = new Map<string, PersonelAtamaGecmisi[]>();
     for (const a of atamalar) {
@@ -823,13 +839,17 @@ export default function BordroTakibi() {
         }
       } else {
         const tumAtamalari = personelAtamalari.get(p.id) ?? [];
-        if (tumAtamalari.length > 0) {
-          // Geçmişte atama vardı, şu an aktif yok → PASIF (bordro bağlamında)
+        // Geçmişte atama vardı mı? — sadece izinli şantiyelerdeki atamaları say
+        // (Aksi halde kısıtlı kullanıcı, başka şantiyelerdeki personeli PASİF'te görür)
+        const izinliAtamalari = tumAtamalari.filter((a) => izinliSantiyeIds.has(a.santiye_id));
+        if (izinliAtamalari.length > 0) {
+          // Kullanıcının izinli şantiyelerinden geçmiş, şu an aktif değil → PASIF
           map.get(PASIF_KEY)!.push(p);
-        } else {
-          // Hiç atama yok → ATANMAMIŞ
+        } else if (tumAtamalari.length === 0) {
+          // Hiç atama yok → ATANMAMIŞ (yeni kayıt veya hiç bordroya alınmamış)
           map.get(ATANMAMIS_KEY)!.push(p);
         }
+        // Aksi halde: bu personel başka şantiyelere ait, kullanıcıya gösterme
       }
     }
     void aySonuSantiyeMap;
@@ -1228,6 +1248,7 @@ export default function BordroTakibi() {
   }
 
   async function gunEditAtamaUpdate(atamaId: string, baslangic: string, bitis: string | null) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (bitis && bitis < baslangic) {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
@@ -1281,6 +1302,7 @@ export default function BordroTakibi() {
     }
   }
   async function gunEditAtamaSil(atamaId: string) {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!confirm("Bu atamayı silmek istediğinize emin misiniz?")) return;
     try {
       await deleteAtama(atamaId);
@@ -1292,6 +1314,7 @@ export default function BordroTakibi() {
     }
   }
   async function gunEditAtamaEkle(personelId: string, santiyeId: string, baslangic: string, bitis: string | null) {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (bitis && bitis < baslangic) {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
       return;
@@ -1338,6 +1361,7 @@ export default function BordroTakibi() {
   //  - Atama henüz yoksa açık bir atama (bitis_tarihi=null) oluşturulur.
   //  - 0 girilirse override silinir → doğal hesaplamaya döner.
   async function kaydetManuelGun(personelId: string, santiyeId: string, ayStr: string, N: number) {
+    if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
     const [yil, ay] = ayStr.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
@@ -1375,6 +1399,7 @@ export default function BordroTakibi() {
 
   // Toplu personel ekle: dialog'dan seçili personelleri belirtilen şantiyeye atama açar
   async function topluPersonelEkle() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!topluEkleSantiyeId || topluSecilenler.size === 0) return;
     const santiye = santiyeler.find((s) => s.id === topluEkleSantiyeId);
     const santiyeAd = santiye?.is_adi;
@@ -1854,6 +1879,7 @@ export default function BordroTakibi() {
   }
 
   async function topluCikarYap() {
+    if (!ySil) { toast.error("Silme/çıkarma yetkiniz yok."); return; }
     const items = selectedItems();
     const aktifOlanlar = items.filter((it) => it.sutunKey !== PASIF_KEY && it.sutunKey !== ATANMAMIS_KEY);
     if (aktifOlanlar.length === 0) {
@@ -1904,6 +1930,7 @@ export default function BordroTakibi() {
   }
 
   async function topluTransferYap() {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (!topluTransferHedef) { toast.error("Hedef şantiye seçin"); return; }
     const items = selectedItems();
     if (items.length === 0) { toast.error("Personel seçilmedi"); return; }
@@ -2063,6 +2090,7 @@ export default function BordroTakibi() {
 
   // Personel ekle
   async function personelEkle() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!ekleAd.trim()) { toast.error("Ad soyad gerekli"); return; }
     if (!ekleTc.trim() || ekleTc.length !== 11) { toast.error("11 haneli TC gerekli"); return; }
     setKaydetYukleniyor(true);
@@ -2105,6 +2133,7 @@ export default function BordroTakibi() {
   // Admin (isYonetici): herhangi bir tarih girebilir.
   // Diğer kullanıcılar: bugünden max 9 gün geri.
   async function cikisYap() {
+    if (!ySil) { toast.error("İşten çıkarma yetkiniz yok."); return; }
     if (!cikisOnay) return;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const secilenTarih = new Date(cikisTarih + "T00:00:00");
@@ -2140,6 +2169,7 @@ export default function BordroTakibi() {
 
   // İşe geri al
   async function geriAlYap() {
+    if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!geriAlPersonel || !geriAlSantiye) return;
     try {
       await iseGeriAl(geriAlPersonel.id, geriAlSantiye);
@@ -2171,6 +2201,7 @@ export default function BordroTakibi() {
     e.preventDefault();
     setDragOverKey(null);
     if (isReadOnly) return;
+    if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
     if (!dragPersonelId) return;
     const personel = personeller.find((p) => p.id === dragPersonelId);
     if (!personel) { setDragPersonelId(null); return; }
@@ -2250,15 +2281,15 @@ export default function BordroTakibi() {
     // Bordro durumu, atama_gecmisi'ne göre — personel.durum'a bakılmaz.
     // Pasif sütununda gri görünüm uygulanır; diğer sütunlarda normal renk.
     const grileştir = inPasifCol && !isReadOnly;
-    // Aktif şantiye sütununda → "Çıkar" butonu (atamayı kapat)
-    // PASIF sütununda → "İşe Geri Al" butonu (yeni atama aç)
-    const showCikis = !inPasifCol && !inAtanmamisCol;
-    const showGeriAl = inPasifCol;
-    // Sürüklenebilir: salt-okunur değilse — pasif sütundaki kart da sürüklenip
-    // başka bir şantiyeye bırakılabilir (= o şantiyede yeni atama açılır).
-    const sürüklenebilir = !isReadOnly;
+    // Aktif şantiye sütununda → "Çıkar" butonu (atamayı kapat) — ySil ister
+    // PASIF sütununda → "İşe Geri Al" butonu (yeni atama aç) — yEkle ister
+    const showCikis = !inPasifCol && !inAtanmamisCol && ySil;
+    const showGeriAl = inPasifCol && yEkle;
+    // Sürüklenebilir: yDuzenle veya yEkle yetkisi gerekli — drag transfer/atama yapar
+    const sürüklenebilir = !isReadOnly && (yDuzenle || yEkle);
     // Tıklayınca gün düzenle dialog (atama tarihi yok ise dialogda yeni ekleme açılır)
-    const tiklanabilir = !isReadOnly && !inPasifCol && !inAtanmamisCol;
+    // yDuzenle veya yEkle gerekli (atama düzenleme/oluşturma)
+    const tiklanabilir = !isReadOnly && !inPasifCol && !inAtanmamisCol && (yDuzenle || yEkle);
     // Mouse ile yakalanmayı engelleyen iç text seçimini bastırmak için select-none
     return (
       <div
@@ -2487,9 +2518,11 @@ export default function BordroTakibi() {
     const tutarHesap = tutarGun * kullanilanUcret;
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
-    const showCikis = !inPasifCol && !inAtanmamisCol;
-    const showGeriAl = inPasifCol;
-    const tiklanabilir = !isReadOnly && !inPasifCol && !inAtanmamisCol;
+    // Sil butonu: ySil yetkisi gerekli; Geri al: yEkle gerekli
+    const showCikis = !inPasifCol && !inAtanmamisCol && ySil;
+    const showGeriAl = inPasifCol && yEkle;
+    // Çift tık ile gün düzenle: yDuzenle veya yEkle gerekli
+    const tiklanabilir = !isReadOnly && !inPasifCol && !inAtanmamisCol && (yDuzenle || yEkle);
     const key = `${p.id}:${sutunKey}`;
     const secili = selectedKeys.has(key);
 
@@ -2634,7 +2667,7 @@ export default function BordroTakibi() {
               <span className="text-[10px] bg-white border border-gray-300 px-1.5 py-0.5 rounded-full font-semibold text-gray-600">
                 {count}
               </span>
-              {onPlus && !isReadOnly && (
+              {onPlus && !isReadOnly && yEkle && (
                 <button
                   type="button"
                   onClick={onPlus}
@@ -2757,16 +2790,20 @@ export default function BordroTakibi() {
           {selectedKeys.size} kişi seçildi
           <span className="ml-2 text-[10px] text-blue-600 font-normal">(ESC veya boşluğa tıkla → temizle)</span>
         </div>
-        <Button size="sm" variant="outline"
-          onClick={() => setTopluTransferAcik(true)}
-          className="border-blue-400 text-blue-700 hover:bg-blue-100">
-          {selectedKeys.size > 1 ? "Toplu Transfer" : "Transfer"}
-        </Button>
-        <Button size="sm" variant="outline"
-          onClick={() => setTopluCikisOnay(true)}
-          className="border-red-400 text-red-700 hover:bg-red-100">
-          {selectedKeys.size > 1 ? "Toplu İşten Çıkar" : "İşten Çıkar"}
-        </Button>
+        {yDuzenle && (
+          <Button size="sm" variant="outline"
+            onClick={() => setTopluTransferAcik(true)}
+            className="border-blue-400 text-blue-700 hover:bg-blue-100">
+            {selectedKeys.size > 1 ? "Toplu Transfer" : "Transfer"}
+          </Button>
+        )}
+        {ySil && (
+          <Button size="sm" variant="outline"
+            onClick={() => setTopluCikisOnay(true)}
+            className="border-red-400 text-red-700 hover:bg-red-100">
+            {selectedKeys.size > 1 ? "Toplu İşten Çıkar" : "İşten Çıkar"}
+          </Button>
+        )}
       </div>
 
       {/* Accordion görünüm: Firma → İş (Şantiye) → Personel */}
@@ -2904,7 +2941,7 @@ export default function BordroTakibi() {
                               if (tumSecili) tumunuKaldir(liste.map((p) => ({ id: p.id, sutunKey: s.id })));
                               else tumunuSec(liste.map((p) => ({ id: p.id, sutunKey: s.id })));
                             }}
-                            onPlus={!isReadOnly ? () => {
+                            onPlus={!isReadOnly && yEkle ? () => {
                               setTopluEkleSantiyeId(s.id);
                               setTopluSecilenler(new Set());
                               setTopluArama("");
@@ -3185,7 +3222,7 @@ export default function BordroTakibi() {
                 {/* Hızlı manuel gün girişi — atama tarihlerini DEĞİŞTİRMEZ.
                     Admin: max sınırsız (ay'ın gün sayısı veya yüksek bir limit).
                     Diğerleri: doğal hesap × ay sonu (çıkış tarihi varsa o tarihe kadar). */}
-                {!isReadOnly && (() => {
+                {!isReadOnly && (yDuzenle || yEkle) && (() => {
                   const naturalMax = naturalGunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? sonGun;
                   const max = isYonetici ? sonGun : Math.min(sonGun, naturalMax);
                   return (
@@ -3242,6 +3279,7 @@ export default function BordroTakibi() {
                   santiyeId={gunEdit.santiyeId}
                   notlar={bilgiNotlari}
                   onKaydet={async (yeniNot) => {
+                    if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
                     try {
                       if (yeniNot.trim()) {
                         await setBilgiNotu(gunEdit.personel.id, gunEdit.santiyeId, yeniNot);

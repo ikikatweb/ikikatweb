@@ -160,6 +160,7 @@ export default function BankaYazismalariPage() {
   }
 
   async function handleSil() {
+    if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silDialog || !silmeNedeni.trim()) { toast.error("Silme nedeni zorunludur."); return; }
     try {
       await softDeleteBankaYazisma(silDialog.id, silmeNedeni, kullanici?.id ?? null);
@@ -326,7 +327,9 @@ export default function BankaYazismalariPage() {
                   <TableCell className="px-2">
                     <div className="flex items-center justify-center gap-0.5">
                       <button onClick={() => printYazisma(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Yazdır"><Printer size={14} /></button>
-                      <button onClick={() => handleCogalt(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
+                      {yEkle && (
+                        <button onClick={() => handleCogalt(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
+                      )}
                       {y.pdf_url && (
                         <a href={y.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
                       )}
