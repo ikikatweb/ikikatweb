@@ -1402,17 +1402,17 @@ function YakitPageContent() {
           <Table className="text-xs">
             <TableHeader>
               <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Tarih/Saat</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[180px] sticky left-0 z-10 bg-[#64748B]">Araç / Kaynak</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">Gösterge</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px]">Fark</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Miktar</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Anlık Ort.</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Genel Ort.</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] bg-[#0f2540]">Stok</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Kullanıcı Adı</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Not</TableHead>
-                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
+                <TableHead className="text-white text-[11px] px-2 whitespace-nowrap sticky top-0 z-20 bg-[#64748B]">Tarih/Saat</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[180px] sticky top-0 left-0 z-30 bg-[#64748B]">Araç / Kaynak</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px] sticky top-0 z-20 bg-[#64748B]">Gösterge</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] sticky top-0 z-20 bg-[#64748B]">Fark</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-20 bg-[#64748B]">Miktar</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-20 bg-[#64748B]">Anlık Ort.</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-20 bg-[#64748B]">Genel Ort.</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] sticky top-0 z-20 bg-[#0f2540]">Stok</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[120px] sticky top-0 z-20 bg-[#64748B]">Kullanıcı Adı</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[120px] sticky top-0 z-20 bg-[#64748B]">Not</TableHead>
+                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px] sticky top-0 z-20 bg-[#64748B]">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
