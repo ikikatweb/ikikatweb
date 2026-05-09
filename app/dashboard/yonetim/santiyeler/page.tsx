@@ -187,10 +187,20 @@ export default function SantiyelerPage() {
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>("aktif");
-  const [isGrupFiltre, setIsGrupFiltre] = useState<string>("tumu");
-  const [firmaFiltre, setFirmaFiltre] = useState<string>("tumu");
-  const [arama, setArama] = useState("");
+  // Filtre durumu sessionStorage'da saklanır — PDF açıp dönünce sıfırlanmasın
+  const SS_KEY = "santiyeler_state";
+  type SavedState = { filtre: Filtre; isGrupFiltre: string; firmaFiltre: string; arama: string; scrollY: number };
+  const initialSaved: Partial<SavedState> = (() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.sessionStorage.getItem(SS_KEY);
+      return raw ? (JSON.parse(raw) as Partial<SavedState>) : {};
+    } catch { return {}; }
+  })();
+  const [filtre, setFiltre] = useState<Filtre>(initialSaved.filtre ?? "aktif");
+  const [isGrupFiltre, setIsGrupFiltre] = useState<string>(initialSaved.isGrupFiltre ?? "tumu");
+  const [firmaFiltre, setFirmaFiltre] = useState<string>(initialSaved.firmaFiltre ?? "tumu");
+  const [arama, setArama] = useState(initialSaved.arama ?? "");
   const [sorts, setSorts] = useState<SortConfig[]>([]);
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
@@ -200,6 +210,49 @@ export default function SantiyelerPage() {
   const [katsayiSeciliAy, setKatsayiSeciliAy] = useState<string>("");
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Filtre durumu değişince sessionStorage'a yaz
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const mevcut = window.sessionStorage.getItem(SS_KEY);
+      const obj = mevcut ? JSON.parse(mevcut) : {};
+      window.sessionStorage.setItem(SS_KEY, JSON.stringify({
+        ...obj, filtre, isGrupFiltre, firmaFiltre, arama,
+      }));
+    } catch { /* sessiz */ }
+  }, [filtre, isGrupFiltre, firmaFiltre, arama]);
+
+  // Scroll pozisyonu — sayfa kapanırken kaydet, ilk render'da geri yükle
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Geri yükle (dataset yüklendikten sonra)
+    if (loading) return;
+    try {
+      const raw = window.sessionStorage.getItem(SS_KEY);
+      const saved = raw ? (JSON.parse(raw) as Partial<SavedState>) : {};
+      if (typeof saved.scrollY === "number") {
+        // requestAnimationFrame ile ekran çizimi sonrası uygula
+        requestAnimationFrame(() => window.scrollTo({ top: saved.scrollY, behavior: "auto" }));
+      }
+    } catch { /* sessiz */ }
+    // Sayfa kapanırken/değişirken pozisyonu kaydet
+    const handler = () => {
+      try {
+        const raw = window.sessionStorage.getItem(SS_KEY);
+        const obj = raw ? JSON.parse(raw) : {};
+        window.sessionStorage.setItem(SS_KEY, JSON.stringify({ ...obj, scrollY: window.scrollY }));
+      } catch { /* sessiz */ }
+    };
+    window.addEventListener("beforeunload", handler);
+    window.addEventListener("pagehide", handler);
+    return () => {
+      handler(); // Component unmount olurken son pozisyonu kaydet
+      window.removeEventListener("beforeunload", handler);
+      window.removeEventListener("pagehide", handler);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const loadData = useCallback(async () => {
     try {
