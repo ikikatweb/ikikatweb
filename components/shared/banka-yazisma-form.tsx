@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
+import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import toast from "react-hot-toast";
 
@@ -179,7 +179,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         evrak_tarihi: evrakTarihi,
         firma_id: firmaId,
         evrak_sayi_no: evrakSayiNo,
-        konu: formatCumle(konu),
+        konu: formatBaslik(konu),
         muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
@@ -294,7 +294,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         <Input
           value={konu}
           onChange={(e) => setKonu(e.target.value)}
-          onBlur={(e) => setKonu(formatCumle(e.target.value))}
+          onBlur={(e) => setKonu(formatBaslik(e.target.value))}
           placeholder="Yazışma konusu"
           disabled={loading}
         />

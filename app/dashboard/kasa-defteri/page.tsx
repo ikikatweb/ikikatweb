@@ -792,6 +792,21 @@ function KasaDefContent() {
                   {b.l}
                 </button>
               ))}
+              <button type="button" onClick={() => {
+                // En eski kasa hareketi tarihi — şantiye/personel/ödeme filtreleri uygulanır
+                let enEski = "";
+                for (const h of hareketler) {
+                  if (filtreSantiye && h.santiye_id !== filtreSantiye) continue;
+                  if (filtrePersonel && h.personel_id !== filtrePersonel) continue;
+                  if (filtreOdeme && h.odeme_yontemi !== filtreOdeme) continue;
+                  if (h.tarih && (!enEski || h.tarih < enEski)) enEski = h.tarih;
+                }
+                setFiltreBaslangic(enEski || "");
+                setFiltreBitis(new Date().toISOString().slice(0, 10));
+              }}
+                className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+                Tümü
+              </button>
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Arama</Label>

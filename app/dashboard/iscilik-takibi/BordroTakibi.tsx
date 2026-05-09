@@ -2249,11 +2249,37 @@ export default function BordroTakibi() {
       santiyeMap.get(r.santiyeAd)!.push(r);
     }
 
+    // hex (#RRGGBB) → [r,g,b] tuple. Geçersiz ise default lacivert.
+    const hexToRgb = (hex: string | null | undefined): [number, number, number] => {
+      if (!hex) return [30, 58, 95];
+      const h = hex.replace("#", "").trim();
+      if (!/^[0-9a-fA-F]{6}$/.test(h)) return [30, 58, 95];
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+    // Renk açıksa siyah, koyuysa beyaz yazı
+    const yaziRengi = (rgb: [number, number, number]): [number, number, number] => {
+      const [r, g, b] = rgb;
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return lum > 0.6 ? [0, 0, 0] : [255, 255, 255];
+    };
+    // Renk için soft alternate satır rengi (firmanın renginin %92 açık tonu)
+    const altSatirRengi = (rgb: [number, number, number]): [number, number, number] => {
+      const [r, g, b] = rgb;
+      // Beyaza yaklaştır
+      return [Math.round(r + (255 - r) * 0.88), Math.round(g + (255 - g) * 0.88), Math.round(b + (255 - b) * 0.88)];
+    };
+
     let cursorY = 25;
     const pageHeight = doc.internal.pageSize.getHeight();
     for (const [firmaAd, santiyeMap] of firmaGruplari) {
       const firmaToplamKisi = Array.from(santiyeMap.values()).reduce((s, l) => s + l.length, 0);
       const firmaToplamGun = Array.from(santiyeMap.values()).flat().reduce((s, r) => s + r.gun, 0);
+
+      // Firmanın özel rengini al (Yönetim > Firmalar'dan ayarlanan)
+      const firma = firmalar.find((f) => f.firma_adi === firmaAd);
+      const firmaRgb = hexToRgb(firma?.renk);
+      const firmaYazi = yaziRengi(firmaRgb);
+      const altRgb = altSatirRengi(firmaRgb);
 
       // Yeni sayfaya geçmek gerekirse
       if (cursorY > pageHeight - 40) {
@@ -2261,11 +2287,11 @@ export default function BordroTakibi() {
         cursorY = 15;
       }
 
-      // Firma başlığı (büyük, koyu)
-      doc.setFillColor(30, 58, 95);
+      // Firma başlığı (firmanın kendi renginde)
+      doc.setFillColor(firmaRgb[0], firmaRgb[1], firmaRgb[2]);
       doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 7, "F");
       doc.setFont("helvetica", "bold"); doc.setFontSize(11);
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(firmaYazi[0], firmaYazi[1], firmaYazi[2]);
       doc.text(trAscii(`FIRMA: ${firmaAd}  (${santiyeMap.size} is, ${firmaToplamKisi} kisi, ${firmaToplamGun} gun)`), 17, cursorY + 1);
       doc.setTextColor(0, 0, 0);
       cursorY += 8;
@@ -2294,8 +2320,11 @@ export default function BordroTakibi() {
             trAscii(r.not),
           ]),
           styles: { fontSize: 8, cellPadding: 1.5 },
-          headStyles: { fillColor: [100, 116, 139] },
-          alternateRowStyles: { fillColor: [241, 245, 249] },
+          headStyles: {
+            fillColor: firmaRgb,
+            textColor: firmaYazi,
+          },
+          alternateRowStyles: { fillColor: altRgb },
           margin: { left: 14, right: 14 },
         });
         // @ts-expect-error autoTable lastAutoTable typing

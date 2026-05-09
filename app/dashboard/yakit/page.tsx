@@ -1273,6 +1273,26 @@ function YakitPageContent() {
                   {b.l}
                 </button>
               ))}
+              <button type="button" onClick={() => {
+                // En eski yakıt hareketi tarihi — şantiye seçiliyse o şantiyeye filtrelenir,
+                // değilse tüm şantiyeler kapsanır.
+                let enEski = "";
+                for (const a of alimlar) {
+                  if (filtreSantiyeId && a.santiye_id !== filtreSantiyeId) continue;
+                  if (a.tarih && (!enEski || a.tarih < enEski)) enEski = a.tarih;
+                }
+                for (const v of virmanlar) {
+                  if (filtreSantiyeId &&
+                      v.gonderen_santiye_id !== filtreSantiyeId &&
+                      v.alan_santiye_id !== filtreSantiyeId) continue;
+                  if (v.tarih && (!enEski || v.tarih < enEski)) enEski = v.tarih;
+                }
+                setFiltreBaslangic(enEski || "");
+                setFiltreBitis(new Date().toISOString().slice(0, 10));
+              }}
+                className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+                Tümü
+              </button>
             </div>
             <div className="md:col-span-2 space-y-1">
               <Label className="text-[10px] text-gray-500">Arama</Label>

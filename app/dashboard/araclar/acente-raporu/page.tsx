@@ -1,16 +1,17 @@
 // Acente Raporu — Acente > Şirket > Poliçe Detayı gruplu, tarih filtreli özet tablo
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, Fragment } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { getTumPoliceler, getAraclar } from "@/lib/supabase/queries/araclar";
-import type { AracPolice, AracWithRelations } from "@/lib/supabase/types";
+import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import type { AracPolice, AracWithRelations, Tanimlama } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Headphones, Search, FileDown, FileSpreadsheet, ChevronDown, ChevronRight } from "lucide-react";
+import { Headphones, Search, FileDown, FileSpreadsheet, ChevronDown, ChevronRight, Building2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -66,16 +67,30 @@ export default function AcenteRaporuPage() {
   const [fBitis, setFBitis] = useState("");
   const [acikAcenteler, setAcikAcenteler] = useState<Record<string, boolean>>({});
   const [acikSirketler, setAcikSirketler] = useState<Record<string, boolean>>({});
+  // Tanımlamalardaki sıra (Yönetim > Tanımlamalar)
+  const [acenteSiraMap, setAcenteSiraMap] = useState<Map<string, number>>(new Map());
+  const [sirketSiraMap, setSirketSiraMap] = useState<Map<string, number>>(new Map());
+  // Aktif/Pasif filtresi — varsayılan: aktif (bitis_tarihi >= bugün)
+  const [pasifGoster, setPasifGoster] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pData, aData] = await Promise.all([
+      const [pData, aData, acenteTan, sirketTan] = await Promise.all([
         getTumPoliceler().catch(() => []),
         getAraclar().catch(() => []),
+        getTanimlamalar("sigorta_acente").catch(() => [] as Tanimlama[]),
+        getTanimlamalar("sigorta_firmasi").catch(() => [] as Tanimlama[]),
       ]);
       setPoliceler(pData as AracPolice[]);
       setAraclar((aData as AracWithRelations[]) ?? []);
+      // Tanımlama sırası — getTanimlamalar genellikle sira ASC döner
+      const acMap = new Map<string, number>();
+      (acenteTan as Tanimlama[]).forEach((t, i) => acMap.set(t.deger.trim(), i));
+      setAcenteSiraMap(acMap);
+      const sMap = new Map<string, number>();
+      (sirketTan as Tanimlama[]).forEach((t, i) => sMap.set(t.deger.trim(), i));
+      setSirketSiraMap(sMap);
     } catch (err) {
       console.error(err);
     } finally {
@@ -114,8 +129,11 @@ export default function AcenteRaporuPage() {
   const ozetler = useMemo<AcenteOzet[]>(() => {
     // Acente > Şirket bazlı toplama, poliçe detaylarını topla
     const acenteMap = new Map<string, Map<string, SirketOzet>>();
+    const bugun = new Date().toISOString().slice(0, 10);
 
     for (const p of policeler) {
+      // Aktif/Pasif filtresi — pasif = bitiş tarihi geçmiş poliçe
+      if (!pasifGoster && p.bitis_tarihi && p.bitis_tarihi < bugun) continue;
       // Filtreleme tarihi: poliçenin işlem (giriş) tarihi → yoksa kaydedilme tarihi
       // baslangic_tarihi gelecek bir tarih olabilir, bu yüzden ona fallback YAPMA
       const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
@@ -145,12 +163,18 @@ export default function AcenteRaporuPage() {
 
     const result: AcenteOzet[] = [];
     for (const [acenteAdi, sMap] of acenteMap.entries()) {
+      // Şirketler: tanımlamalardaki sıraya göre (Yönetim > Tanımlamalar > sigorta_firmasi)
       const sirketler = Array.from(sMap.values())
         .map((s) => ({
           ...s,
           policeler: s.policeler.sort((a, b) => (b.baslangic ?? "").localeCompare(a.baslangic ?? "")),
         }))
-        .sort((a, b) => b.toplam - a.toplam);
+        .sort((a, b) => {
+          const sa = sirketSiraMap.get(a.sirket.trim()) ?? Number.MAX_SAFE_INTEGER;
+          const sb = sirketSiraMap.get(b.sirket.trim()) ?? Number.MAX_SAFE_INTEGER;
+          if (sa !== sb) return sa - sb;
+          return a.sirket.localeCompare(b.sirket, "tr");
+        });
       const kaskoTutar = sirketler.reduce((s, x) => s + x.kaskoTutar, 0);
       const trafikTutar = sirketler.reduce((s, x) => s + x.trafikTutar, 0);
       result.push({
@@ -165,19 +189,59 @@ export default function AcenteRaporuPage() {
     const q = trAramaNormalize(arama.trim());
     let filtered = result;
     if (q) {
-      filtered = filtered.filter((o) =>
-        trAramaNormalize(o.acente).includes(q) ||
-        o.sirketler.some((s) =>
-          trAramaNormalize(s.sirket).includes(q) ||
-          s.policeler.some((p) =>
-            trAramaNormalize(p.aracAdi).includes(q) ||
-            trAramaNormalize(p.policeNo).includes(q)
-          )
-        )
-      );
+      // Akıllı filtreleme: arama plaka/poliçe gibi alt seviye eşleşirse,
+      // sadece o poliçeleri içeren şirketleri ve onları içeren acenteleri tut.
+      // Tutarlar filtrelenmiş poliçelere göre yeniden hesaplanır.
+      filtered = result
+        .map((o) => {
+          // Acente adı doğrudan eşleşiyorsa içeriğe dokunma — tüm acente görünsün
+          const acenteEslesti = trAramaNormalize(o.acente).includes(q);
+
+          const yeniSirketler = o.sirketler
+            .map((s) => {
+              const sirketEslesti = acenteEslesti || trAramaNormalize(s.sirket).includes(q);
+              // Şirket eşleştiyse tüm poliçeler kalsın; eşleşmediyse sadece eşleşen poliçeler
+              const yeniPoliceler = sirketEslesti
+                ? s.policeler
+                : s.policeler.filter((p) =>
+                    trAramaNormalize(p.aracAdi).includes(q) ||
+                    trAramaNormalize(p.policeNo).includes(q)
+                  );
+              if (yeniPoliceler.length === 0) return null;
+              // Tutarları yeniden hesapla (filtrelenmiş poliçelere göre)
+              const kaskoT = yeniPoliceler.filter((p) => p.tip === "kasko").reduce((s, p) => s + p.tutar, 0);
+              const trafikT = yeniPoliceler.filter((p) => p.tip === "trafik").reduce((s, p) => s + p.tutar, 0);
+              return {
+                ...s,
+                policeler: yeniPoliceler,
+                kaskoTutar: kaskoT,
+                trafikTutar: trafikT,
+                toplam: kaskoT + trafikT,
+              };
+            })
+            .filter((s): s is SirketOzet => s !== null);
+
+          if (yeniSirketler.length === 0) return null;
+          const kaskoT = yeniSirketler.reduce((s, x) => s + x.kaskoTutar, 0);
+          const trafikT = yeniSirketler.reduce((s, x) => s + x.trafikTutar, 0);
+          return {
+            acente: o.acente,
+            sirketler: yeniSirketler,
+            kaskoTutar: kaskoT,
+            trafikTutar: trafikT,
+            toplam: kaskoT + trafikT,
+          };
+        })
+        .filter((o): o is AcenteOzet => o !== null);
     }
-    return filtered.sort((a, b) => b.toplam - a.toplam);
-  }, [policeler, fBaslangic, fBitis, arama, aracMap]);
+    // Acenteler: tanımlamalardaki sıraya göre (Yönetim > Tanımlamalar > sigorta_acente)
+    return filtered.sort((a, b) => {
+      const sa = acenteSiraMap.get(a.acente.trim()) ?? Number.MAX_SAFE_INTEGER;
+      const sb = acenteSiraMap.get(b.acente.trim()) ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return a.acente.localeCompare(b.acente, "tr");
+    });
+  }, [policeler, fBaslangic, fBitis, arama, aracMap, acenteSiraMap, sirketSiraMap, pasifGoster]);
 
   // Genel toplam
   const genelToplam = useMemo(() => {
@@ -344,7 +408,7 @@ export default function AcenteRaporuPage() {
           <Label className="text-[10px] text-gray-500">Bitiş</Label>
           <input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className={selectClass} />
         </div>
-        <div className="flex gap-1 items-end">
+        <div className="flex gap-1 items-end flex-wrap">
           {[
             { l: "Bu Ay", s: "bu-ay" as const },
             { l: "3 Ay", s: "3-ay" as const },
@@ -356,6 +420,32 @@ export default function AcenteRaporuPage() {
               {b.l}
             </button>
           ))}
+          <button type="button" onClick={() => {
+            // En eski poliçe tarihi — arama yapılmışsa eşleşen poliçelere göre
+            const q = trAramaNormalize(arama.trim());
+            let enEski = "";
+            for (const p of policeler) {
+              // Arama filtresi varsa: araç adı veya poliçe no eşleşmeli
+              if (q) {
+                const aracAdi = aracMap.get(p.arac_id) ?? "";
+                const acente = (p.acente ?? "").trim();
+                const sirket = (p.sigorta_firmasi ?? "").trim();
+                const text = `${aracAdi} ${p.police_no ?? ""} ${acente} ${sirket}`;
+                if (!trAramaNormalize(text).includes(q)) continue;
+              }
+              const t = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
+              if (t && (!enEski || t < enEski)) enEski = t;
+            }
+            setFBaslangic(enEski || "");
+            setFBitis(new Date().toISOString().slice(0, 10));
+          }}
+            className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+            Tümü
+          </button>
+          <label className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 inline-flex items-center gap-1.5 cursor-pointer hover:bg-gray-100">
+            <input type="checkbox" checked={pasifGoster} onChange={(e) => setPasifGoster(e.target.checked)} className="w-3 h-3" />
+            Pasifleri Gör
+          </label>
         </div>
         <div className="flex gap-1 items-end ml-auto">
           <button type="button" onClick={tumunuAc}
@@ -381,113 +471,131 @@ export default function AcenteRaporuPage() {
           <p className="text-gray-500">Seçilen tarih aralığında poliçe bulunamadı.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border overflow-x-auto">
-          <Table className="text-xs">
-            <TableHeader>
-              <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2 w-[28%]">Acente</TableHead>
-                <TableHead className="text-white text-[11px] px-2 w-[22%]">Şirket</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right">KASKO</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right">TRAFİK SİGORTASI</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right">Genel Toplam</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ozetler.map((o) => {
-                const acenteAcik = !!acikAcenteler[o.acente];
-                return (
-                  <Fragment key={`a-${o.acente}`}>
-                    {/* Acente başlık satırı — tıklanınca açılır/kapanır */}
-                    <TableRow
-                      onClick={() => toggleAcente(o.acente)}
-                      className="cursor-pointer bg-[#1E3A5F] hover:bg-[#274a76]">
-                      <TableCell className="px-2 py-1.5 text-white font-bold whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1">
-                          {acenteAcik ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          {o.acente}
-                        </span>
-                      </TableCell>
-                      <TableCell className="px-2 py-1.5 text-white" />
-                      <TableCell className="px-2 py-1.5 text-white text-right font-bold whitespace-nowrap">{formatPara(o.kaskoTutar)}</TableCell>
-                      <TableCell className="px-2 py-1.5 text-white text-right font-bold whitespace-nowrap">{formatPara(o.trafikTutar)}</TableCell>
-                      <TableCell className="px-2 py-1.5 text-white text-right font-bold whitespace-nowrap">{formatPara(o.toplam)}</TableCell>
-                    </TableRow>
+        <div className="space-y-3">
+          {(() => {
+            // Acentenin kendi rengi olmadığından, sıraya göre renk paleti uygulanır.
+            // Bordro takibindeki firma kartlarıyla aynı görsel dil.
+            const fallbackRenkler = ["#1E3A5F", "#7c3aed", "#dc2626", "#059669", "#d97706", "#0891b2", "#be185d", "#0d9488"];
+            return ozetler.map((o, aIdx) => {
+              const acenteAcik = !!acikAcenteler[o.acente];
+              const acenteRenk = fallbackRenkler[aIdx % fallbackRenkler.length];
+              return (
+                <div key={`a-${o.acente}`} className="rounded-lg overflow-hidden shadow-md ring-1 ring-gray-200">
+                  {/* Acente başlığı — gradient renkli kart */}
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-opacity hover:opacity-95"
+                    style={{ background: `linear-gradient(135deg, ${acenteRenk} 0%, ${acenteRenk}dd 100%)` }}
+                    onClick={() => toggleAcente(o.acente)}
+                  >
+                    {acenteAcik
+                      ? <ChevronDown size={20} className="text-white flex-shrink-0" />
+                      : <ChevronRight size={20} className="text-white flex-shrink-0" />}
+                    <Building2 size={18} className="text-white flex-shrink-0" />
+                    <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">ACENTE</span>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-bold text-base text-white truncate" title={o.acente}>{o.acente}</h2>
+                      <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate">
+                        Kasko: <span className="text-white font-semibold">{formatPara(o.kaskoTutar)}</span>
+                        <span className="mx-2 text-white/40">•</span>
+                        Trafik: <span className="text-white font-semibold">{formatPara(o.trafikTutar)}</span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] bg-white/20 backdrop-blur text-white px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+                      {o.sirketler.length} şirket
+                    </span>
+                    <span className="text-[11px] bg-white/25 backdrop-blur text-white px-2.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                      {formatPara(o.toplam)} ₺
+                    </span>
+                  </div>
 
-                    {/* Şirket alt satırları */}
-                    {acenteAcik && o.sirketler.map((s) => {
-                      const sirketKey = `${o.acente}__${s.sirket}`;
-                      const sirketAcik = !!acikSirketler[sirketKey];
-                      return (
-                        <Fragment key={`s-${sirketKey}`}>
-                          <TableRow
-                            onClick={() => toggleSirket(sirketKey)}
-                            className="cursor-pointer bg-slate-50 hover:bg-slate-100">
-                            <TableCell className="px-2" />
-                            <TableCell className="px-2 text-gray-800 font-semibold whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1">
-                                {sirketAcik ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                {s.sirket}
-                              </span>
-                            </TableCell>
-                            <TableCell className="px-2 text-right whitespace-nowrap">{formatPara(s.kaskoTutar)}</TableCell>
-                            <TableCell className="px-2 text-right whitespace-nowrap">{formatPara(s.trafikTutar)}</TableCell>
-                            <TableCell className="px-2 text-right whitespace-nowrap font-semibold">{formatPara(s.toplam)}</TableCell>
-                          </TableRow>
+                  {/* Acente içeriği — şirketler */}
+                  {acenteAcik && (
+                    <div className="bg-slate-50 border-t border-slate-200 p-3 space-y-2 pl-6">
+                      {o.sirketler.length === 0 ? (
+                        <div className="text-center py-3 text-gray-400 text-xs italic">Bu acentede şirket yok</div>
+                      ) : (
+                        o.sirketler.map((s) => {
+                          const sirketKey = `${o.acente}__${s.sirket}`;
+                          const sirketAcik = !!acikSirketler[sirketKey];
+                          return (
+                            <div key={`s-${sirketKey}`} className="rounded-md overflow-hidden bg-white ring-1 ring-slate-200">
+                              <div
+                                className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 border-l-4"
+                                style={{ borderLeftColor: acenteRenk }}
+                                onClick={() => toggleSirket(sirketKey)}
+                              >
+                                {sirketAcik
+                                  ? <ChevronDown size={14} className="text-gray-500 flex-shrink-0" />
+                                  : <ChevronRight size={14} className="text-gray-500 flex-shrink-0" />}
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">ŞİRKET</span>
+                                <span className="font-semibold text-gray-800 text-sm truncate flex-1" title={s.sirket}>{s.sirket}</span>
+                                <span className="text-[10px] text-gray-500 font-medium flex-shrink-0">
+                                  {s.policeler.length} poliçe
+                                </span>
+                                <div className="flex items-center gap-2 text-[11px] font-mono flex-shrink-0">
+                                  <span className="text-blue-600" title="Kasko">{formatPara(s.kaskoTutar)}</span>
+                                  <span className="text-emerald-600" title="Trafik">{formatPara(s.trafikTutar)}</span>
+                                  <span className="font-bold text-gray-900 px-2 py-0.5 bg-gray-100 rounded">{formatPara(s.toplam)} ₺</span>
+                                </div>
+                              </div>
 
-                          {/* Poliçe detay tablosu — şirket açıldığında görünür */}
-                          {sirketAcik && (
-                            <TableRow key={`d-${sirketKey}`} className="bg-white">
-                              <TableCell colSpan={5} className="p-0">
-                                <div className="border-t border-b border-gray-200 bg-gray-50 px-2 py-2">
+                              {/* Poliçe detayları */}
+                              {sirketAcik && (
+                                <div className="border-t border-slate-200 bg-white">
                                   <Table className="text-[11px]">
                                     <TableHeader>
-                                      <TableRow className="bg-gray-200 hover:bg-gray-200">
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5 w-[140px]">Poliçe No</TableHead>
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5">Plaka</TableHead>
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5 w-[110px]">Belge Tipi</TableHead>
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5 w-[110px] text-center">Başlangıç</TableHead>
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5 w-[110px] text-center">Bitiş</TableHead>
-                                        <TableHead className="text-gray-700 text-[10px] px-2 py-1.5 w-[120px] text-right">Tutar</TableHead>
+                                      <TableRow className="bg-slate-50 hover:bg-slate-50 border-b border-slate-200">
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 w-[140px] font-semibold">Poliçe No</TableHead>
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 font-semibold">Plaka</TableHead>
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 w-[110px] font-semibold">Belge Tipi</TableHead>
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 w-[110px] text-center font-semibold">Başlangıç</TableHead>
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 w-[110px] text-center font-semibold">Bitiş</TableHead>
+                                        <TableHead className="text-gray-500 text-[10px] uppercase tracking-wide px-3 py-1.5 w-[120px] text-right font-semibold">Tutar</TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                       {s.policeler.map((p, i) => (
-                                        <TableRow key={`p-${sirketKey}-${i}`} className="bg-white hover:bg-gray-50">
-                                          <TableCell className="px-2 py-1 font-mono text-gray-800">{p.policeNo || "—"}</TableCell>
-                                          <TableCell className="px-2 py-1 text-gray-800">{p.aracAdi}</TableCell>
-                                          <TableCell className="px-2 py-1">
-                                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold text-white ${p.tip === "kasko" ? "bg-blue-600" : "bg-emerald-600"}`}>
+                                        <TableRow key={`p-${sirketKey}-${i}`} className="hover:bg-slate-50 border-b border-gray-100">
+                                          <TableCell className="px-3 py-1.5 font-mono text-gray-700">{p.policeNo || "—"}</TableCell>
+                                          <TableCell className="px-3 py-1.5 text-gray-700">{p.aracAdi}</TableCell>
+                                          <TableCell className="px-3 py-1.5">
+                                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${p.tip === "kasko" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
                                               {p.tip === "kasko" ? "KASKO" : "TRAFİK"}
                                             </span>
                                           </TableCell>
-                                          <TableCell className="px-2 py-1 text-center whitespace-nowrap">{formatTarih(p.baslangic)}</TableCell>
-                                          <TableCell className="px-2 py-1 text-center whitespace-nowrap">{formatTarih(p.bitis)}</TableCell>
-                                          <TableCell className="px-2 py-1 text-right whitespace-nowrap">{formatPara(p.tutar)}</TableCell>
+                                          <TableCell className="px-3 py-1.5 text-center whitespace-nowrap text-gray-600 tabular-nums">{formatTarih(p.baslangic)}</TableCell>
+                                          <TableCell className="px-3 py-1.5 text-center whitespace-nowrap text-gray-600 tabular-nums">{formatTarih(p.bitis)}</TableCell>
+                                          <TableCell className="px-3 py-1.5 text-right whitespace-nowrap text-gray-800 tabular-nums font-medium">{formatPara(p.tutar)}</TableCell>
                                         </TableRow>
                                       ))}
                                     </TableBody>
                                   </Table>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
 
-              {/* Genel Toplam satırı */}
-              <TableRow className="bg-[#1E3A5F]/10 font-bold">
-                <TableCell className="px-2 text-[#1E3A5F]">GENEL TOPLAM</TableCell>
-                <TableCell className="px-2" />
-                <TableCell className="px-2 text-right whitespace-nowrap text-[#1E3A5F]">{formatPara(genelToplam.kaskoTutar)}</TableCell>
-                <TableCell className="px-2 text-right whitespace-nowrap text-[#1E3A5F]">{formatPara(genelToplam.trafikTutar)}</TableCell>
-                <TableCell className="px-2 text-right whitespace-nowrap text-[#1E3A5F]">{formatPara(genelToplam.toplam)}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+          {/* Genel toplam — alt kart */}
+          <div className="rounded-lg bg-gradient-to-r from-gray-800 to-gray-900 px-4 py-3 flex items-center gap-4 shadow-md">
+            <span className="text-white font-bold text-sm uppercase tracking-wider flex-1">Genel Toplam</span>
+            <span className="text-[11px] bg-white/20 text-white px-3 py-1 rounded-full font-mono">
+              Kasko: <span className="font-semibold">{formatPara(genelToplam.kaskoTutar)}</span>
+            </span>
+            <span className="text-[11px] bg-white/20 text-white px-3 py-1 rounded-full font-mono">
+              Trafik: <span className="font-semibold">{formatPara(genelToplam.trafikTutar)}</span>
+            </span>
+            <span className="text-sm bg-white text-gray-900 px-3 py-1 rounded-full font-bold tabular-nums">
+              {formatPara(genelToplam.toplam)} ₺
+            </span>
+          </div>
         </div>
       )}
     </div>

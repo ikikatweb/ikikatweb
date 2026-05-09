@@ -271,13 +271,27 @@ export default function AcenteTakipPage() {
           <Label className="text-[10px] text-gray-500">Bitiş</Label>
           <input type="date" value={fBitis} onChange={(e) => setFBitis(e.target.value)} className={selectClass} />
         </div>
-        <div className="flex gap-1 items-end">
+        <div className="flex gap-1 items-end flex-wrap">
           {[{ l: "Bu Ay", a: 1 }, { l: "3 Ay", a: 3 }, { l: "6 Ay", a: 6 }, { l: "1 Yıl", a: 12 }].map((b) => (
             <button key={b.l} type="button" onClick={() => hizliTarih(b.a)}
               className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
               {b.l}
             </button>
           ))}
+          <button type="button" onClick={() => {
+            // En eski poliçe tarihi — tip filtresi uygulanır
+            let enEski = "";
+            for (const p of policeler) {
+              if (tipFiltre && p.police_tipi !== tipFiltre) continue;
+              const t = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
+              if (t && (!enEski || t < enEski)) enEski = t;
+            }
+            setFBaslangic(enEski || "");
+            setFBitis(new Date().toISOString().slice(0, 10));
+          }}
+            className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+            Tümü
+          </button>
         </div>
         <div className="flex gap-1 items-end ml-auto">
           <Button variant="outline" size="sm" onClick={exportPDF} className="h-9 gap-1 text-xs">

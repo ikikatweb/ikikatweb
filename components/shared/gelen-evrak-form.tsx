@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
+import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -141,7 +141,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         firma_id: firmaId,
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
-        konu: formatCumle(konu),
+        konu: formatBaslik(konu),
         ilgi: ilgi || null,
         icerik: icerik || null,
         muhatap: muhatap?.trim() || null,
@@ -252,7 +252,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <Input
             value={konu}
             onChange={(e) => setKonu(e.target.value)}
-            onBlur={(e) => setKonu(formatCumle(e.target.value))}
+            onBlur={(e) => setKonu(formatBaslik(e.target.value))}
             placeholder="Evrak konusu"
             disabled={loading}
           />

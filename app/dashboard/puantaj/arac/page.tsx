@@ -2171,6 +2171,31 @@ export default function AracPuantajPage() {
             >
               Bu Yıl
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                // En eski tarih — şantiye seçildiyse o şantiyedeki araç puantajlarına göre,
+                // değilse aynı kapsamdaki araçların created_at'ine göre.
+                let enEski = "";
+                // Önce mevcut range'deki puantajlardan dene (en doğru sinyal)
+                for (const p of ozetRangePuantajlar) {
+                  if (p.tarih && (!enEski || p.tarih < enEski)) enEski = p.tarih;
+                }
+                // Yoksa şantiyedeki araçların oluşturma tarihinden tahmin et
+                if (!enEski) {
+                  for (const a of araclar) {
+                    if (santiyeId && a.santiye_id !== santiyeId) continue;
+                    const t = a.created_at?.slice(0, 10);
+                    if (t && (!enEski || t < enEski)) enEski = t;
+                  }
+                }
+                setOzetBaslangic(enEski || "");
+                setOzetBitis(new Date().toISOString().slice(0, 10));
+              }}
+              className="px-2 py-1 border rounded hover:bg-gray-50"
+            >
+              Tümü
+            </button>
           </div>
 
           {!santiyeId ? (

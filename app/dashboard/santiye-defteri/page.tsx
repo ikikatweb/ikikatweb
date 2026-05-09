@@ -732,13 +732,17 @@ function SantiyeDefContent() {
           <Label className="text-[10px] text-gray-500">Ay</Label>
           <input type="month" value={filtreAy} onChange={(e) => setFiltreAy(e.target.value)} className={selectClass} />
         </div>
-        <div className="flex gap-1 items-end">
+        <div className="flex gap-1 items-end flex-wrap">
           {[{ l: "Bu Ay", a: 0 }, { l: "3 Ay", a: 2 }, { l: "6 Ay", a: 5 }, { l: "1 Yıl", a: 11 }].map((b) => (
             <button key={b.l} type="button" onClick={() => hizliAy(b.a)}
               className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
               {b.l}
             </button>
           ))}
+          <button type="button" onClick={() => setFiltreAy("")}
+            className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+            Tümü
+          </button>
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Arama</Label>

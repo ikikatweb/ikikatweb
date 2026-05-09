@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
+import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -219,7 +219,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
-        konu: formatCumle(konu),
+        konu: formatBaslik(konu),
         // Sadece trim — kullanıcı nasıl yazdıysa öyle kaydedilir
         muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
@@ -328,30 +328,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Evrak Sayı No</Label>
-          <div className="flex gap-2">
-            <Input value={evrakSayiNo} disabled className="bg-gray-100 font-mono text-xs flex-1" />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9"
-              disabled={!firmaId}
-              onClick={async () => {
-                if (!firmaId) return;
-                try {
-                  const no = await getGidenEvrakSayiNo(firmaId, muhatapId || null, muhatap || null);
-                  setEvrakSayiNo(no);
-                  toast.success("Sayı no yenilendi.");
-                } catch {
-                  toast.error("Sayı no üretilemedi.");
-                }
-              }}
-              title="Sayı no'yu yeniden üret (kısa ad değişmişse uygulanır)"
-            >
-              🔄 Yenile
-            </Button>
-          </div>
-          <p className="text-[10px] text-gray-400">Firma/muhatap değişince otomatik; manuel için Yenile</p>
+          <Input value={evrakSayiNo} disabled className="bg-gray-100 font-mono text-xs" />
+          <p className="text-[10px] text-gray-400">Firma/muhatap değişince otomatik üretilir.</p>
         </div>
         <div className="space-y-2">
           <Label>Kaşe</Label>
@@ -372,7 +350,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <Input
           value={konu}
           onChange={(e) => setKonu(e.target.value)}
-          onBlur={(e) => setKonu(formatCumle(e.target.value))}
+          onBlur={(e) => setKonu(formatBaslik(e.target.value))}
           placeholder="Evrak konusu"
           disabled={loading}
         />
