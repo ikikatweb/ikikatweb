@@ -1398,21 +1398,21 @@ function YakitPageContent() {
           <p className="text-[11px] text-gray-400 mt-1">Filtreleri değiştirin veya yeni kayıt ekleyin.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table className="text-xs">
-            <TableHeader className="!z-30">
+            <TableHeader>
               <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2 whitespace-nowrap sticky top-0 z-30 bg-[#64748B]">Tarih/Saat</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[180px] sticky top-0 left-0 z-50 bg-[#64748B] shadow-[6px_0_8px_-4px_rgba(0,0,0,0.15)]">Araç / Kaynak</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px] sticky top-0 z-30 bg-[#64748B]">Gösterge</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] sticky top-0 z-30 bg-[#64748B]">Fark</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-30 bg-[#64748B]">Miktar</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-30 bg-[#64748B]">Anlık Ort.</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px] sticky top-0 z-30 bg-[#64748B]">Genel Ort.</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] sticky top-0 z-30 bg-[#0f2540]">Stok</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[120px] sticky top-0 z-30 bg-[#64748B]">Kullanıcı Adı</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[120px] sticky top-0 z-30 bg-[#64748B]">Not</TableHead>
-                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px] sticky top-0 z-30 bg-[#64748B]">İşlem</TableHead>}
+                <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Tarih/Saat</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[180px]">Araç / Kaynak</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">Gösterge</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px]">Fark</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Miktar</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Anlık Ort.</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Genel Ort.</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px] bg-[#0f2540]">Stok</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Kullanıcı Adı</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[120px]">Not</TableHead>
+                {(yDuzenle || ySil) && <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1464,12 +1464,12 @@ function YakitPageContent() {
                   s.virmanYon === "giden" ? "border-l-4 border-l-red-400" :
                   "border-l-4 border-l-purple-400";
                 return (
-                  <TableRow key={s.satirKey} className={`group hover:bg-gray-50 ${rowRenk}`}>
+                  <TableRow key={s.satirKey} className={`hover:bg-gray-50 ${rowRenk}`}>
                     <TableCell className="px-2 whitespace-nowrap">
                       <div className="text-[11px] font-semibold">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
                       <div className="text-[10px] text-gray-500">{h.saat.slice(0, 5)}</div>
                     </TableCell>
-                    <TableCell className="px-2 max-w-[140px] sticky left-0 z-10 bg-white group-hover:bg-gray-50 shadow-[6px_0_8px_-4px_rgba(0,0,0,0.1)]">
+                    <TableCell className="px-2 max-w-[140px]">
                       <div className="truncate" style={{ maxWidth: "20ch" }} title={
                         h.tip === "arac_yakit"
                           ? `${aracMap.get(h.arac_id)?.plaka ?? ""} ${[aracMap.get(h.arac_id)?.marka, aracMap.get(h.arac_id)?.model, aracMap.get(h.arac_id)?.cinsi].filter(Boolean).join(" · ")}`
