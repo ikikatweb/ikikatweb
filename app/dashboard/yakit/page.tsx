@@ -1403,7 +1403,7 @@ function YakitPageContent() {
             <TableHeader>
               <TableRow className="bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 whitespace-nowrap">Tarih/Saat</TableHead>
-                <TableHead className="text-white text-[11px] px-2 min-w-[180px]">Araç / Kaynak</TableHead>
+                <TableHead className="text-white text-[11px] px-2 min-w-[180px] sticky left-0 z-10 bg-[#64748B]">Araç / Kaynak</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px]">Gösterge</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[70px]">Fark</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[90px]">Miktar</TableHead>
@@ -1469,7 +1469,7 @@ function YakitPageContent() {
                       <div className="text-[11px] font-semibold">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
                       <div className="text-[10px] text-gray-500">{h.saat.slice(0, 5)}</div>
                     </TableCell>
-                    <TableCell className="px-2 max-w-[140px]">
+                    <TableCell className="px-2 max-w-[140px] sticky left-0 z-10 bg-white">
                       <div className="truncate" style={{ maxWidth: "20ch" }} title={
                         h.tip === "arac_yakit"
                           ? `${aracMap.get(h.arac_id)?.plaka ?? ""} ${[aracMap.get(h.arac_id)?.marka, aracMap.get(h.arac_id)?.model, aracMap.get(h.arac_id)?.cinsi].filter(Boolean).join(" · ")}`
