@@ -14,7 +14,9 @@ import { getKonusmalar } from "@/lib/supabase/queries/mesajlasma";
 // Yazı boyutu ayarları (eski FontSizeAyari component'inden taşındı)
 const FONT_LS_KEY = "site-font-zoom";
 const FONT_VARSAYILAN_PX = 16;
-const FONT_SECENEKLER = [50, 75, 90, 100, 110, 125, 150];
+// 10'ar 10'ar artan/azalan adımlar
+const FONT_SECENEKLER = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+const FONT_ADIM = 10;
 
 function uygulaFontPx(zoomYuzde: number) {
   if (typeof document === "undefined") return;
@@ -115,13 +117,11 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
     try { window.localStorage.setItem(FONT_LS_KEY, String(clamp)); } catch { /* sessiz */ }
   }
   function azaltZoom() {
-    const idx = FONT_SECENEKLER.findIndex((s) => s >= zoomYuzde);
-    const yeni = idx <= 0 ? FONT_SECENEKLER[0] : FONT_SECENEKLER[idx - 1];
+    const yeni = Math.round((zoomYuzde - FONT_ADIM) / FONT_ADIM) * FONT_ADIM;
     ayarlaZoom(yeni);
   }
   function arttirZoom() {
-    const idx = FONT_SECENEKLER.findIndex((s) => s > zoomYuzde);
-    const yeni = idx === -1 ? FONT_SECENEKLER[FONT_SECENEKLER.length - 1] : FONT_SECENEKLER[idx];
+    const yeni = Math.round((zoomYuzde + FONT_ADIM) / FONT_ADIM) * FONT_ADIM;
     ayarlaZoom(yeni);
   }
 

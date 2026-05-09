@@ -491,7 +491,6 @@ export default function AcenteRaporuPage() {
                       ? <ChevronDown size={20} className="text-white flex-shrink-0" />
                       : <ChevronRight size={20} className="text-white flex-shrink-0" />}
                     <Building2 size={18} className="text-white flex-shrink-0" />
-                    <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">ACENTE</span>
                     <div className="flex-1 min-w-0">
                       <h2 className="font-bold text-base text-white truncate" title={o.acente}>{o.acente}</h2>
                       <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate">

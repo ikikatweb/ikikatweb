@@ -10,7 +10,9 @@ import { ZoomIn, Plus, Minus } from "lucide-react";
 const LS_KEY = "site-font-zoom";
 // Tarayıcının varsayılan kök font-size'ı 16px. Yüzde × 16 ile çarpıyoruz.
 const VARSAYILAN_PX = 16;
-const SECENEKLER = [50, 75, 90, 100, 110, 125, 150];
+// 10'ar 10'ar artan/azalan adımlar
+const SECENEKLER = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200];
+const ADIM = 10;
 
 function uygulaPx(zoomYuzde: number) {
   if (typeof document === "undefined") return;
@@ -69,13 +71,13 @@ export default function FontSizeAyari() {
   }
 
   function azalt() {
-    const idx = SECENEKLER.findIndex((s) => s >= zoomYuzde);
-    const yeni = idx <= 0 ? SECENEKLER[0] : SECENEKLER[idx - 1];
+    // Mevcut değerden ADIM kadar azalt (10'a yuvarla)
+    const yeni = Math.round((zoomYuzde - ADIM) / ADIM) * ADIM;
     ayarla(yeni);
   }
   function arttir() {
-    const idx = SECENEKLER.findIndex((s) => s > zoomYuzde);
-    const yeni = idx === -1 ? SECENEKLER[SECENEKLER.length - 1] : SECENEKLER[idx];
+    // Mevcut değerden ADIM kadar arttır (10'a yuvarla)
+    const yeni = Math.round((zoomYuzde + ADIM) / ADIM) * ADIM;
     ayarla(yeni);
   }
 
@@ -119,8 +121,8 @@ export default function FontSizeAyari() {
             </button>
           </div>
 
-          {/* Hazır seçenekler */}
-          <div className="grid grid-cols-3 gap-1">
+          {/* Hazır seçenekler — 10'ar 10'ar */}
+          <div className="grid grid-cols-4 gap-1 max-h-[200px] overflow-y-auto">
             {SECENEKLER.map((s) => (
               <button
                 key={s}
