@@ -223,33 +223,52 @@ export default function SantiyelerPage() {
     } catch { /* sessiz */ }
   }, [filtre, isGrupFiltre, firmaFiltre, arama]);
 
-  // Scroll pozisyonu — sayfa kapanırken kaydet, ilk render'da geri yükle
+  // Scroll pozisyonu — Dashboard layout'taki <main id="dashboard-main"> üzerinde scroll var
+  // (window değil). PDF/yeni sekme açıp geri dönünce pozisyon korunsun.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || loading) return;
+    const main = document.getElementById("dashboard-main");
+    if (!main) return;
+
     // Geri yükle (dataset yüklendikten sonra)
-    if (loading) return;
     try {
       const raw = window.sessionStorage.getItem(SS_KEY);
       const saved = raw ? (JSON.parse(raw) as Partial<SavedState>) : {};
-      if (typeof saved.scrollY === "number") {
-        // requestAnimationFrame ile ekran çizimi sonrası uygula
-        requestAnimationFrame(() => window.scrollTo({ top: saved.scrollY, behavior: "auto" }));
+      if (typeof saved.scrollY === "number" && saved.scrollY > 0) {
+        // Birkaç frame bekle — DOM tam render olsun (özellikle mobilde)
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            main.scrollTop = saved.scrollY!;
+          });
+        });
       }
     } catch { /* sessiz */ }
-    // Sayfa kapanırken/değişirken pozisyonu kaydet
-    const handler = () => {
+
+    // Anlık kaydet — scroll değişiminde debounced
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const kaydet = () => {
       try {
         const raw = window.sessionStorage.getItem(SS_KEY);
         const obj = raw ? JSON.parse(raw) : {};
-        window.sessionStorage.setItem(SS_KEY, JSON.stringify({ ...obj, scrollY: window.scrollY }));
+        window.sessionStorage.setItem(SS_KEY, JSON.stringify({ ...obj, scrollY: main.scrollTop }));
       } catch { /* sessiz */ }
     };
-    window.addEventListener("beforeunload", handler);
-    window.addEventListener("pagehide", handler);
+    const debounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(kaydet, 150);
+    };
+    main.addEventListener("scroll", debounced, { passive: true });
+    // Sayfa gizlenirken (mobilde de tetiklenir) anında kaydet
+    const onHide = () => kaydet();
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+
     return () => {
-      handler(); // Component unmount olurken son pozisyonu kaydet
-      window.removeEventListener("beforeunload", handler);
-      window.removeEventListener("pagehide", handler);
+      kaydet();
+      if (timer) clearTimeout(timer);
+      main.removeEventListener("scroll", debounced);
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
