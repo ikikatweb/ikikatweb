@@ -187,20 +187,10 @@ export default function SantiyelerPage() {
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
-  // Filtre durumu sessionStorage'da saklanır — PDF açıp dönünce sıfırlanmasın
-  const SS_KEY = "santiyeler_state";
-  type SavedState = { filtre: Filtre; isGrupFiltre: string; firmaFiltre: string; arama: string; scrollY: number };
-  const initialSaved: Partial<SavedState> = (() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.sessionStorage.getItem(SS_KEY);
-      return raw ? (JSON.parse(raw) as Partial<SavedState>) : {};
-    } catch { return {}; }
-  })();
-  const [filtre, setFiltre] = useState<Filtre>(initialSaved.filtre ?? "aktif");
-  const [isGrupFiltre, setIsGrupFiltre] = useState<string>(initialSaved.isGrupFiltre ?? "tumu");
-  const [firmaFiltre, setFirmaFiltre] = useState<string>(initialSaved.firmaFiltre ?? "tumu");
-  const [arama, setArama] = useState(initialSaved.arama ?? "");
+  const [filtre, setFiltre] = useState<Filtre>("aktif");
+  const [isGrupFiltre, setIsGrupFiltre] = useState<string>("tumu");
+  const [firmaFiltre, setFirmaFiltre] = useState<string>("tumu");
+  const [arama, setArama] = useState("");
   const [sorts, setSorts] = useState<SortConfig[]>([]);
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
@@ -210,68 +200,6 @@ export default function SantiyelerPage() {
   const [katsayiSeciliAy, setKatsayiSeciliAy] = useState<string>("");
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // Filtre durumu değişince sessionStorage'a yaz
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const mevcut = window.sessionStorage.getItem(SS_KEY);
-      const obj = mevcut ? JSON.parse(mevcut) : {};
-      window.sessionStorage.setItem(SS_KEY, JSON.stringify({
-        ...obj, filtre, isGrupFiltre, firmaFiltre, arama,
-      }));
-    } catch { /* sessiz */ }
-  }, [filtre, isGrupFiltre, firmaFiltre, arama]);
-
-  // Scroll pozisyonu — Dashboard layout'taki <main id="dashboard-main"> üzerinde scroll var
-  // (window değil). PDF/yeni sekme açıp geri dönünce pozisyon korunsun.
-  useEffect(() => {
-    if (typeof window === "undefined" || loading) return;
-    const main = document.getElementById("dashboard-main");
-    if (!main) return;
-
-    // Geri yükle (dataset yüklendikten sonra)
-    try {
-      const raw = window.sessionStorage.getItem(SS_KEY);
-      const saved = raw ? (JSON.parse(raw) as Partial<SavedState>) : {};
-      if (typeof saved.scrollY === "number" && saved.scrollY > 0) {
-        // Birkaç frame bekle — DOM tam render olsun (özellikle mobilde)
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            main.scrollTop = saved.scrollY!;
-          });
-        });
-      }
-    } catch { /* sessiz */ }
-
-    // Anlık kaydet — scroll değişiminde debounced
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const kaydet = () => {
-      try {
-        const raw = window.sessionStorage.getItem(SS_KEY);
-        const obj = raw ? JSON.parse(raw) : {};
-        window.sessionStorage.setItem(SS_KEY, JSON.stringify({ ...obj, scrollY: main.scrollTop }));
-      } catch { /* sessiz */ }
-    };
-    const debounced = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(kaydet, 150);
-    };
-    main.addEventListener("scroll", debounced, { passive: true });
-    // Sayfa gizlenirken (mobilde de tetiklenir) anında kaydet
-    const onHide = () => kaydet();
-    window.addEventListener("pagehide", onHide);
-    document.addEventListener("visibilitychange", onHide);
-
-    return () => {
-      kaydet();
-      if (timer) clearTimeout(timer);
-      main.removeEventListener("scroll", debounced);
-      window.removeEventListener("pagehide", onHide);
-      document.removeEventListener("visibilitychange", onHide);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
 
   const loadData = useCallback(async () => {
     try {
