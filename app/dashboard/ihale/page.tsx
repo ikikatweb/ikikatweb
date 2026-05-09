@@ -2232,8 +2232,8 @@ function IhalePageContent() {
             </div>
           ) : (
             <div className="bg-white rounded-lg border">
-              <Table className="text-[11px]" containerClassName="overflow-auto max-h-[75vh]">
-                <TableHeader className="sticky top-0 z-30 [&_th]:sticky [&_th]:top-0">
+              <Table className="text-[11px]" containerClassName="overflow-x-auto">
+                <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-30">
                   <TableRow style={{ backgroundColor: "#64748B" }}>
                     {/* # — desktop'ta sticky-left de var, mobilde sadece sticky-top */}
                     <TableHead

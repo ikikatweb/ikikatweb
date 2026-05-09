@@ -303,7 +303,7 @@ export default function PersonelPage() {
           <p className="text-gray-500 text-lg">Henüz personel eklenmemiş.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
@@ -335,26 +335,38 @@ export default function PersonelPage() {
                       {(() => {
                         const adlar = personelSantiyeAdlari(p.id);
                         if (adlar.length === 0) return "—";
+                        // Tıklayınca tam ad'ı toast ile göster (mobilde tooltip yok)
+                        const goster = () => toast(adlar.join("\n"), { duration: 5000, icon: "🏗" });
                         if (adlar.length === 1) {
                           return (
-                            <span className="block truncate" title={adlar[0]}>
+                            <button
+                              type="button"
+                              onClick={goster}
+                              className="block truncate text-left w-full hover:text-[#F97316] cursor-pointer"
+                              title={adlar[0]}
+                            >
                               {adlar[0]}
-                            </span>
+                            </button>
                           );
                         }
                         // Birden fazla şantiye — her chip ayrı satır, kısaltılmış
                         return (
-                          <div className="flex flex-col gap-0.5 max-w-full" title={adlar.join("\n")}>
+                          <button
+                            type="button"
+                            onClick={goster}
+                            className="flex flex-col gap-0.5 max-w-full text-left w-full"
+                            title={adlar.join("\n")}
+                          >
                             {adlar.map((ad) => (
                               <span
                                 key={ad}
-                                className="block px-1.5 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded border border-blue-200 truncate"
+                                className="block px-1.5 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded border border-blue-200 truncate hover:bg-blue-100"
                                 title={ad}
                               >
                                 {ad}
                               </span>
                             ))}
-                          </div>
+                          </button>
                         );
                       })()}
                     </TableCell>
