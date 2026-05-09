@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap } from "@/lib/utils/isim";
+import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -88,16 +88,37 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         const [fData, sData, mData] = await Promise.all([
           getFirmalar(), getSantiyelerAll(), getMuhataplarFull(),
         ]);
-        setFirmalar(fData ?? []);
+        // Firma kapsamı: kullanıcının firma_ids tanımlıysa sadece o firmalar görünür.
+        // (Rol fark etmez — yönetici de kendine firma_ids tanımlayabilir.
+        // firma_ids boş/null ise tümüne erişir.)
+        const izinliFirmaIds = (kullanici?.firma_ids && kullanici.firma_ids.length > 0)
+          ? new Set(kullanici.firma_ids) : null;
+        const filtreliFirmalar = izinliFirmaIds
+          ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
+          : (fData ?? []);
+        setFirmalar(filtreliFirmalar);
+
         // Şantiye filtre — kısıtlı/şantiye_admin sadece atandığı şantiyeleri görür
         const tumSantiyeler = (sData as SantiyeBasic[]) ?? [];
-        setSantiyeler(filtreliSantiyeler(tumSantiyeler, kullanici));
+        const filtreliSants = filtreliSantiyeler(tumSantiyeler, kullanici);
+        setSantiyeler(filtreliSants);
         setMuhataplar(mData);
+
+        // Otomatik default seçim — sadece yeni kayıt için, kullanıcının tek izinli
+        // firması/şantiyesi varsa onu seç (form daha hızlı doldurulur).
+        if (!isEdit) {
+          if (filtreliFirmalar.length === 1) {
+            setFirmaId((prev) => prev || filtreliFirmalar[0].id);
+          }
+          if (filtreliSants.length === 1) {
+            setSantiyeId((prev) => prev || filtreliSants[0].id);
+          }
+        }
       } catch { /* sessiz */ }
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kullanici?.id]);
+  }, [kullanici?.id, kullanici?.rol, kullanici?.firma_ids, kullanici?.santiye_ids]);
 
   // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {
@@ -198,7 +219,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
-        konu,
+        konu: formatCumle(konu),
         // Sadece trim — kullanıcı nasıl yazdıysa öyle kaydedilir
         muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
@@ -278,10 +299,14 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>Evrak Tarihi <span className="text-red-500">*</span></Label>
-          <TarihInput
-            value={evrakTarihi}
-            gosterim={tarihGosterim}
-            onChange={({ tarih, gosterim }) => { setEvrakTarihi(tarih); setTarihGosterim(gosterim); }}
+          <Input
+            type="date"
+            value={evrakTarihi ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEvrakTarihi(v || null);
+              setTarihGosterim(null);
+            }}
             disabled={loading}
           />
         </div>
@@ -344,7 +369,13 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
       <div className="space-y-2">
         <Label>Konu <span className="text-red-500">*</span></Label>
-        <Input value={konu} onChange={(e) => setKonu(basHarfBuyuk(e.target.value))} placeholder="Evrak konusu" disabled={loading} />
+        <Input
+          value={konu}
+          onChange={(e) => setKonu(e.target.value)}
+          onBlur={(e) => setKonu(formatCumle(e.target.value))}
+          placeholder="Evrak konusu"
+          disabled={loading}
+        />
       </div>
 
       {/* Muhatap - aranabilir dropdown + ekle butonu */}

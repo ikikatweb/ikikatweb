@@ -524,7 +524,7 @@ export default function TanimlamalarPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_cinsi_yakit_limit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("arac_cinsi_yakit_limit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
         toast.error(`Kaydetme hatası: ${msg}`);
       }
@@ -1207,7 +1207,7 @@ export default function TanimlamalarPage() {
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("column")) {
-                      toast.error("Tablo / sütun eksik. Migrasyon SQL'ini çalıştırın.", { duration: 8000 });
+                      toast.error("Tablo / sütun eksik. Migrasyon SQL'ini çalıştırın.", { duration: 5000 });
                     } else {
                       toast.error("Kaydedilemedi: " + msg);
                     }

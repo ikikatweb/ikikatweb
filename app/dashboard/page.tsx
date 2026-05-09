@@ -785,9 +785,9 @@ export default function DashboardPage() {
         if (data.sonuclar) {
           for (const s of data.sonuclar) {
             if (s.basarili) {
-              toast.success(`${s.email} → Gönderildi\nSMTP: ${s.hata ?? "OK"}`, { duration: 6000 });
+              toast.success(`${s.email} → Gönderildi\nSMTP: ${s.hata ?? "OK"}`, { duration: 5000 });
             } else {
-              toast.error(`${s.email} → HATA: ${s.hata}`, { duration: 10000 });
+              toast.error(`${s.email} → HATA: ${s.hata}`, { duration: 5000 });
             }
           }
         } else {
@@ -807,7 +807,7 @@ export default function DashboardPage() {
         } catch { /* sessiz */ }
         setTeklifDialogOpen(false);
       } else {
-        toast.error(data.error || "Mail gönderilemedi", { duration: 10000 });
+        toast.error(data.error || "Mail gönderilemedi", { duration: 5000 });
         console.error("Teklif mail hatası:", data);
       }
     } catch (err) {

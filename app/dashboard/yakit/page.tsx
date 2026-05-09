@@ -314,7 +314,7 @@ function YakitPageContent() {
       console.error("Yakıt verileri yüklenirken hata:", err);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("Yakıt tabloları Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 10000 });
+        toast.error("Yakıt tabloları Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       }
     } finally {
       setLoading(false);
@@ -819,7 +819,7 @@ function YakitPageContent() {
         const birim = arac?.sayac_tipi === "saat" ? "saat" : "km";
         toast.error(
           `Girilen ${birim} değeri (${formatSayi(km, 0)}) son kayıttaki değerden (${formatSayi(son.km_saat, 0)}) küçük olamaz.`,
-          { duration: 8000 },
+          { duration: 5000 },
         );
         return;
       }
@@ -873,9 +873,9 @@ function YakitPageContent() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_yakit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("arac_yakit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 6000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
       }
     } finally {
       setVerDialogLoading(false);
@@ -931,9 +931,9 @@ function YakitPageContent() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("yakit_alim tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("yakit_alim tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 6000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
       }
     } finally {
       setAlDialogLoading(false);
@@ -985,9 +985,9 @@ function YakitPageContent() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("yakit_virman tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("yakit_virman tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 6000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
       }
     } finally {
       setVirDialogLoading(false);

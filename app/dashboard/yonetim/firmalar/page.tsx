@@ -294,9 +294,9 @@ export default function FirmalarPage() {
                             } catch (err) {
                               const msg = err instanceof Error ? err.message : String(err);
                               if (msg.includes("violates foreign key") || msg.includes("referenced") || msg.includes("constraint")) {
-                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: 8000 });
+                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: 5000 });
                               } else {
-                                toast.error(`Silme hatası: ${msg}`, { duration: 6000 });
+                                toast.error(`Silme hatası: ${msg}`, { duration: 5000 });
                               }
                             }
                           }}>
@@ -399,7 +399,7 @@ export default function FirmalarPage() {
                               className="text-red-500 hover:text-red-700"
                               onClick={() => {
                                 if (aracListesi.length > 0) {
-                                  toast.error(`"${firmaAdi}" firmasına ait ${aracListesi.length} araç bulunuyor. Firma silinemez.`, { duration: 6000 });
+                                  toast.error(`"${firmaAdi}" firmasına ait ${aracListesi.length} araç bulunuyor. Firma silinemez.`, { duration: 5000 });
                                   return;
                                 }
                                 if (confirm(`"${firmaAdi}" firma bilgisini silmek istediğinize emin misiniz?`)) {

@@ -95,11 +95,22 @@ export default function GidenEvrakPage() {
         getGidenEvraklar(olusturan, santiyeFilter),
         getFirmalar(),
       ]);
-      setEvraklar((eData as GidenEvrakWithRelations[]) ?? []);
-      setFirmalar(fData ?? []);
+      // Firma kapsamı: kullanıcının firma_ids'i tanımlıysa sadece o firmalar görünür.
+      // (Rol fark etmez — yönetici de kendine firma_ids tanımlayabilir.
+      // firma_ids null/boş ise tümüne erişir.)
+      const izinliFirmaIds = (kullanici?.firma_ids && kullanici.firma_ids.length > 0)
+        ? new Set(kullanici.firma_ids)
+        : null;
+      const filtreliFirmalar = izinliFirmaIds
+        ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
+        : (fData ?? []);
+      setEvraklar(((eData as GidenEvrakWithRelations[]) ?? []).filter((e) =>
+        izinliFirmaIds ? (!e.firma_id || izinliFirmaIds.has(e.firma_id)) : true,
+      ));
+      setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
-  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids]);
+  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

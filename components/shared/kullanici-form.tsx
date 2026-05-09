@@ -1,7 +1,7 @@
 // Kullanıcı ekleme/düzenleme formu - Rol, şantiye ataması, izin matrisi, şablon desteği
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   createKullanici,
   updateKullanici,
@@ -11,9 +11,10 @@ import {
   type IzinSablonu,
 } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
+import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getGrupluModuller } from "@/lib/permissions";
 import { formatKisiAdi } from "@/lib/utils/isim";
-import type { Kullanici, Izinler, ModulIzinleri, SantiyeWithRelations } from "@/lib/supabase/types";
+import type { Kullanici, Izinler, ModulIzinleri, SantiyeWithRelations, Firma } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +55,17 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kullanici?.rol ?? "kisitli");
   const [izinler, setIzinler] = useState<Izinler>(kullanici?.izinler ?? {});
   const [seciliSantiyeler, setSeciliSantiyeler] = useState<string[]>(kullanici?.santiye_ids ?? []);
+  // Firma kapsamı: kullanıcı sadece bu firmaların yazışmalarını ve antetlerini görür.
+  // Yönetici rolü için bu alan görmezden gelinir (her firmaya erişir).
+  //
+  // İki kaynak var:
+  //   - manuelFirmalar: kullanıcının formdan açıkça (checkbox ile) eklediği firmalar
+  //   - santiyedenGelenFirmalar: seciliSantiyeler'in yuklenici_firma_id'leri (computed)
+  // Gerçek seciliFirmalar = (manuelFirmalar ∪ santiyedenGelenFirmalar)
+  //
+  // Bu sayede şantiye eklenince → o firma görünür, şantiye kaldırılınca → otomatik kalkar
+  // (kullanıcı manuel tıklamadıysa). Manuel tıklama korunur.
+  const [manuelFirmalar, setManuelFirmalar] = useState<string[]>(kullanici?.firma_ids ?? []);
   const [geriyeDonusGun, setGeriyeDonusGun] = useState<string>(
     kullanici?.geriye_donus_gun != null ? String(kullanici.geriye_donus_gun) : "",
   );
@@ -71,21 +83,40 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   // Mesajlaşmada tüm konuşmaları görme yetkisi (sadece santiye_admin için ayarlanır)
   const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kullanici?.tum_mesajlari_gor ?? false);
 
-  // Şantiye ve şablon listeleri
+  // Şantiye, firma ve şablon listeleri
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
+  const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [sablonlar, setSablonlar] = useState<IzinSablonu[]>([]);
   const [sablonAdi, setSablonAdi] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const data = await getSantiyeler();
-        setSantiyeler((data as SantiyeWithRelations[]) ?? []);
+        const [sData, fData] = await Promise.all([getSantiyeler(), getFirmalar()]);
+        setSantiyeler((sData as SantiyeWithRelations[]) ?? []);
+        setFirmalar(((fData as Firma[]) ?? []).filter((f) => (f.durum ?? "aktif") === "aktif"));
       } catch { /* sessiz */ }
       setSablonlar(getSablonlar());
     }
     load();
   }, []);
+
+  // Şantiye seçiminden hesaplanan "otomatik" firma id'leri.
+  // Şantiye seçilince burada görünür, kaldırılınca buradan da kalkar.
+  const santiyedenGelenFirmalar = useMemo(() => {
+    const set = new Set<string>();
+    for (const sid of seciliSantiyeler) {
+      const s = santiyeler.find((x) => x.id === sid);
+      if (s?.yuklenici_firma_id) set.add(s.yuklenici_firma_id);
+    }
+    return set;
+  }, [seciliSantiyeler, santiyeler]);
+
+  // Form üzerinde gösterilecek seçili firma listesi (manuel ∪ otomatik).
+  const seciliFirmalar = useMemo(
+    () => Array.from(new Set([...manuelFirmalar, ...santiyedenGelenFirmalar])),
+    [manuelFirmalar, santiyedenGelenFirmalar],
+  );
 
   function getIzin(key: string, aksiyon: keyof ModulIzinleri): boolean {
     return izinler[key]?.[aksiyon] === true;
@@ -132,6 +163,14 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   function toggleSantiye(id: string) {
     setSeciliSantiyeler((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
+    );
+  }
+
+  function toggleFirma(id: string) {
+    // Şantiyeden geliyorsa kullanıcı checkbox'ı tıklayarak kaldıramaz
+    // (önce ilgili şantiyeyi kaldırması gerek). Sadece manuel listeyi değiştir.
+    setManuelFirmalar((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
     );
   }
 
@@ -185,12 +224,16 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
       // - kısıtlı: her zaman false
       const tumMesajlariGorFinal = rol === "yonetici" ? true : (rol === "santiye_admin" ? tumMesajlariGor : false);
 
+      // Firma kapsamı: yönetici hariç herkes için kaydedilir (boş = tümüne erişim)
+      const firma_ids = rol === "yonetici" ? null : (seciliFirmalar.length > 0 ? seciliFirmalar : null);
+
       if (isEdit) {
         await updateKullanici(kullanici.id, {
           ad_soyad: formatliAdSoyad,
           rol,
           izinler: izinKullanir ? izinler : {},
           santiye_ids: santiyeKullanir ? seciliSantiyeler : [],
+          firma_ids,
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null, // legacy
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
@@ -206,6 +249,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           rol,
           izinler: izinKullanir ? izinler : {},
           santiye_ids: santiyeKullanir ? seciliSantiyeler : [],
+          firma_ids,
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null,
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
@@ -335,6 +379,72 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                   </label>
                 ))}
                 {aktifSantiyeler.length === 0 && <p className="text-sm text-gray-400">Henüz aktif şantiye yok.</p>}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Firma Kapsamı */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-[#1E3A5F]">Firma Kapsamı</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Kullanıcı sadece seçilen firmaların yazışmalarını ve antetlerini görür.
+                    Şantiye seçtiğinizde o şantiyenin yüklenici firması otomatik eklenir.
+                    Seçim yapılmazsa tüm firmalara erişebilir.
+                  </p>
+                </div>
+                {firmalar.length > 0 && (
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => {
+                      if (seciliFirmalar.length === firmalar.length) {
+                        // Temizle — sadece manuel listeyi boşalt
+                        // (otomatik gelenler ilgili şantiyeler kalktığında otomatik kalkar)
+                        setManuelFirmalar([]);
+                      } else {
+                        setManuelFirmalar(firmalar.map((f) => f.id));
+                      }
+                    }}>
+                    {seciliFirmalar.length === firmalar.length ? "Temizle" : "Hepsini Seç"}
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {firmalar.map((f) => {
+                  const seciliMi = seciliFirmalar.includes(f.id);
+                  // Otomatik (şantiye'den gelen) işaretleme
+                  const otoSantiye = santiyeler.find(
+                    (s) => s.yuklenici_firma_id === f.id && seciliSantiyeler.includes(s.id),
+                  );
+                  // Şantiyeden geliyorsa kullanıcı checkbox ile kaldıramaz —
+                  // önce ilgili şantiyeyi kaldırması gerek.
+                  const otomatikLi = !!otoSantiye;
+                  return (
+                    <label
+                      key={f.id}
+                      className={`flex items-center gap-2 p-2 rounded border transition-colors ${
+                        otomatikLi ? "cursor-not-allowed" : "cursor-pointer"
+                      } ${seciliMi ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}
+                      title={otomatikLi ? `Bu firma "${otoSantiye!.is_adi}" şantiyesinin yüklenicisi — şantiyeyi kaldırınca firma da kalkar` : undefined}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={seciliMi}
+                        onChange={() => !otomatikLi && toggleFirma(f.id)}
+                        disabled={otomatikLi}
+                        className="w-4 h-4 accent-[#F97316] disabled:opacity-70"
+                      />
+                      <span className="text-sm flex-1">{f.firma_adi}</span>
+                      {otomatikLi && (
+                        <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-medium" title={`Şantiye: ${otoSantiye!.is_adi}`}>
+                          OTOMATİK
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+                {firmalar.length === 0 && <p className="text-sm text-gray-400">Henüz aktif firma yok.</p>}
               </div>
             </CardContent>
           </Card>

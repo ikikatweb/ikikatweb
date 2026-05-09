@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap } from "@/lib/utils/isim";
+import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import toast from "react-hot-toast";
 
@@ -68,12 +68,25 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         const [fData, mData] = await Promise.all([
           getFirmalar(), getBankaMuhataplarFull(),
         ]);
-        setFirmalar(fData ?? []);
+        // Firma kapsamı: kullanıcının firma_ids tanımlıysa sadece o firmalar görünür
+        // (Rol fark etmez. firma_ids boş/null ise tümüne erişir.)
+        const izinliFirmaIds = (kullanici?.firma_ids && kullanici.firma_ids.length > 0)
+          ? new Set(kullanici.firma_ids) : null;
+        const filtreliFirmalar = izinliFirmaIds
+          ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
+          : (fData ?? []);
+        setFirmalar(filtreliFirmalar);
         setMuhataplar(mData);
+
+        // Otomatik default — yeni kayıtta tek izinli firma varsa seç
+        if (!isEdit && filtreliFirmalar.length === 1) {
+          setFirmaId((prev) => prev || filtreliFirmalar[0].id);
+        }
       } catch { /* sessiz */ }
     }
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kullanici?.id, kullanici?.rol, kullanici?.firma_ids]);
 
   // Firma veya muhatap değişince sayı no'yu yeniden üret
   useEffect(() => {
@@ -166,7 +179,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         evrak_tarihi: evrakTarihi,
         firma_id: firmaId,
         evrak_sayi_no: evrakSayiNo,
-        konu,
+        konu: formatCumle(konu),
         muhatap: muhatap?.trim() || null,
         muhatap_id: muhatapId || null,
         ilgi_listesi: ilgiListesi.filter((i) => i.trim()),
@@ -278,7 +291,13 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
       <div className="space-y-2">
         <Label>Konu <span className="text-red-500">*</span></Label>
-        <Input value={konu} onChange={(e) => setKonu(basHarfBuyuk(e.target.value))} placeholder="Yazışma konusu" disabled={loading} />
+        <Input
+          value={konu}
+          onChange={(e) => setKonu(e.target.value)}
+          onBlur={(e) => setKonu(formatCumle(e.target.value))}
+          placeholder="Yazışma konusu"
+          disabled={loading}
+        />
       </div>
 
       {/* Muhatap - aranabilir dropdown */}

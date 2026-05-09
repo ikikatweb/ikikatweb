@@ -250,7 +250,7 @@ function SantiyeDefContent() {
       console.error("Defter yükleme hatası:", err);
       const msg = hataMesaji(err);
       if (msg.includes("does not exist")) {
-        toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: 8000 });
+        toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: 5000 });
       }
     }
   }, [filtreSantiye, seciliTarih, sadeceKendiKayitlari, kullanici?.id]);
@@ -316,7 +316,7 @@ function SantiyeDefContent() {
       }
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     }
   }
 
@@ -348,7 +348,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt eklendi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     } finally { setSaving(false); }
   }
 
@@ -362,7 +362,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt güncellendi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     }
   }
 
@@ -376,7 +376,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt silindi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     }
   }
 
@@ -391,7 +391,7 @@ function SantiyeDefContent() {
       toast.success("Defter silindi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     }
   }
 

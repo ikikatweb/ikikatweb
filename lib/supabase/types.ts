@@ -745,6 +745,10 @@ export type Kullanici = {
   aktif: boolean;
   izinler: Izinler;
   santiye_ids: string[];
+  // Kullanıcı kapsamı: bu kullanıcı sadece burada listelenen firmaların yazışmalarını,
+  // antetlerini vb. görebilir. Yönetici rolü bu alanı yok sayar (her firmaya erişir).
+  // Şantiye seçildiğinde santiye.yuklenici_firma_id otomatik bu listeye eklenir.
+  firma_ids?: string[] | null;
   // Kısıtlı kullanıcı: legacy — kullanılmıyor (geriye uyumluluk için bırakıldı)
   geriye_donus_gun: number | null;
   // Modül bazlı geriye dönük sınırlar — her modül için 2 sınır:

@@ -375,8 +375,10 @@ export default function SantiyelerPage() {
   }
 
   // Inline düzenleme (sadece gerçekleşen tutar)
-  function handleGerceklesenClick(id: string, raw: number | null) {
+  // Geçici kabul yapılmış işler tamamlandı kabul edilir; tutar değişikliğine sessizce kapalıdır.
+  function handleGerceklesenClick(id: string, raw: number | null, kilitli: boolean) {
     if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
+    if (kilitli) return; // Geçici kabul yapıldı — sessizce yoksay
     setEditing({ id, field: "sozlesme_fiyatlariyla_gerceklesen" });
     setEditValue(raw != null ? formatPara(raw) : "");
   }
@@ -788,9 +790,12 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2 whitespace-nowrap">{formatTarih(s.sozlesme_tarihi)}</TableCell>
                     {/* FF Dahil Kalan - otomatik (FF kapalıysa kalan tutar gösterilir) */}
                     <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">{c.ffDahilKalan != null ? formatParaIle(c.ffDahilKalan, s.para_birimi) : "—"}</TableCell>
-                    {/* Sözl. Fiy. Gerçekleşen - tıklanabilir */}
-                    <TableCell className="text-right px-2 tabular-nums whitespace-nowrap cursor-pointer hover:bg-blue-50"
-                      onClick={() => !isEditingThis && handleGerceklesenClick(editKey, s.sozlesme_fiyatlariyla_gerceklesen)}>
+                    {/* Sözl. Fiy. Gerçekleşen - tıklanabilir (geçici kabul yapıldıysa sessizce kapalı, görsel olarak diğer sütunlar gibi) */}
+                    <TableCell
+                      className={`text-right px-2 tabular-nums whitespace-nowrap ${
+                        s.gecici_kabul_tarihi ? "" : "cursor-pointer hover:bg-blue-50"
+                      }`}
+                      onClick={() => !isEditingThis && handleGerceklesenClick(editKey, s.sozlesme_fiyatlariyla_gerceklesen, !!s.gecici_kabul_tarihi)}>
                       {isEditingThis ? (
                         <Input ref={inputRef} value={editValue}
                           inputMode="decimal"

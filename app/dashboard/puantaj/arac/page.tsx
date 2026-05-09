@@ -809,9 +809,9 @@ export default function AracPuantajPage() {
       console.error("Kira bedeli kaydetme hatası:", err);
       // "relation does not exist" -> tablo yok
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_kira_bedeli tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("arac_kira_bedeli tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 6000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
       }
     }
     finally { setKiraDialogLoading(false); }
@@ -910,7 +910,7 @@ export default function AracPuantajPage() {
     if (tumDurumlarToplami > donemGunSayisi) {
       toast.error(
         `Toplam gün sayısı (${tumDurumlarToplami}) dönemdeki gün sayısını (${donemGunSayisi}) aşamaz.`,
-        { duration: 6000 },
+        { duration: 5000 },
       );
       return;
     }
@@ -936,9 +936,9 @@ export default function AracPuantajPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Override kaydetme hatası:", err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_puantaj_override tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 8000 });
+        toast.error("arac_puantaj_override tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 6000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
       }
     } finally {
       setOverrideDialogLoading(false);
@@ -1040,7 +1040,7 @@ export default function AracPuantajPage() {
         toast.error(
           `Kayıt DB'ye yazılamadı! (${tarih} tarihinde ${seciliArac.plaka}). ` +
           "RLS veya bir DB kısıtlaması engelliyor olabilir. Console'u kontrol edin.",
-          { duration: 10000 },
+          { duration: 5000 },
         );
         return;
       }

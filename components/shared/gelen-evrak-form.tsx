@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap } from "@/lib/utils/isim";
+import { formatMuhatap, formatCumle } from "@/lib/utils/isim";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -69,16 +69,35 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         const [fData, sData, mData] = await Promise.all([
           getFirmalar(), getSantiyelerAll(), getDegerler("muhatap"),
         ]);
-        setFirmalar(fData ?? []);
+        // Firma kapsamı: kullanıcının firma_ids'i tanımlıysa sadece o firmalar görünür
+        // (Rol fark etmez. firma_ids boş/null ise tümüne erişir.)
+        const izinliFirmaIds = (kullanici?.firma_ids && kullanici.firma_ids.length > 0)
+          ? new Set(kullanici.firma_ids) : null;
+        const filtreliFirmalar = izinliFirmaIds
+          ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
+          : (fData ?? []);
+        setFirmalar(filtreliFirmalar);
+
         // Kısıtlı/şantiye_admin sadece atandığı şantiyeleri görür
         const tumSantiyeler = (sData as SantiyeBasic[]) ?? [];
-        setSantiyeler(filtreliSantiyeler(tumSantiyeler, kullanici));
+        const filtreliSants = filtreliSantiyeler(tumSantiyeler, kullanici);
+        setSantiyeler(filtreliSants);
         setMuhataplar(mData);
+
+        // Otomatik default — yeni kayıtta tek izinli firma/şantiye varsa seç
+        if (!isEdit) {
+          if (filtreliFirmalar.length === 1) {
+            setFirmaId((prev) => prev || filtreliFirmalar[0].id);
+          }
+          if (filtreliSants.length === 1) {
+            setSantiyeId((prev) => prev || filtreliSants[0].id);
+          }
+        }
       } catch { /* sessiz */ }
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kullanici?.id]);
+  }, [kullanici?.id, kullanici?.rol, kullanici?.firma_ids, kullanici?.santiye_ids]);
 
   async function handleYeniMuhatap() {
     if (!yeniMuhatap.trim()) { toast.error("Muhatap adı boş olamaz."); return; }
@@ -122,7 +141,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         firma_id: firmaId,
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
-        konu,
+        konu: formatCumle(konu),
         ilgi: ilgi || null,
         icerik: icerik || null,
         muhatap: muhatap?.trim() || null,
@@ -230,7 +249,13 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Konu <span className="text-red-500">*</span></Label>
-          <Input value={konu} onChange={(e) => setKonu(e.target.value)} placeholder="Evrak konusu" disabled={loading} />
+          <Input
+            value={konu}
+            onChange={(e) => setKonu(e.target.value)}
+            onBlur={(e) => setKonu(formatCumle(e.target.value))}
+            placeholder="Evrak konusu"
+            disabled={loading}
+          />
         </div>
       </div>
 

@@ -64,7 +64,7 @@ function yeniMesajToastGoster(p: {
     ),
     {
       position: "bottom-right",
-      duration: 6000,
+      duration: 5000,
       id: `mesaj-${p.konusmaId}-${Date.now()}`,
     },
   );

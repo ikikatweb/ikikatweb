@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPersoneller, deletePersonel } from "@/lib/supabase/queries/personel";
 import { getPersonelSantiyeler } from "@/lib/supabase/queries/personel-santiye";
-import type { PersonelWithRelations, PersonelSantiye } from "@/lib/supabase/types";
+import { getAtamaGecmisiTumu } from "@/lib/supabase/queries/bordro";
+import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
+import type { PersonelWithRelations, PersonelSantiye, PersonelAtamaGecmisi } from "@/lib/supabase/types";
 import { useAuth } from "@/hooks";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -30,14 +32,39 @@ function tr(s: string): string {
     .replace(/ç/g, "c").replace(/Ç/g, "C").replace(/ı/g, "i").replace(/İ/g, "I").replace(/—/g, "-");
 }
 
+// Bir personelin "şu an aktif olduğu" şantiye id'lerini hesapla.
+// Kural:
+//   1. bitis_tarihi NULL olan tüm atamalar = aktif (birden fazla olabilir → çoklu şantiye)
+//   2. Hiç aktif yoksa: en son baslangic_tarihi'ne sahip atamayı son şantiye olarak göster
+function aktifSantiyeIdleri(atamalar: PersonelAtamaGecmisi[]): string[] {
+  const aktifler = atamalar.filter((a) => !a.bitis_tarihi);
+  if (aktifler.length > 0) {
+    // Aynı şantiye birden çok kez varsa unique
+    return Array.from(new Set(aktifler.map((a) => a.santiye_id)));
+  }
+  if (atamalar.length === 0) return [];
+  // En son atanılan (kapanmış) şantiye(ler)
+  const sortedDesc = [...atamalar].sort((a, b) =>
+    (b.baslangic_tarihi || "").localeCompare(a.baslangic_tarihi || ""),
+  );
+  const enYeniBaslangic = sortedDesc[0].baslangic_tarihi;
+  return Array.from(new Set(
+    sortedDesc.filter((a) => a.baslangic_tarihi === enYeniBaslangic).map((a) => a.santiye_id),
+  ));
+}
+
 export default function PersonelPage() {
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
   const [personelSantiyeler, setPersonelSantiyeler] = useState<PersonelSantiye[]>([]);
+  const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
+  const [santiyeAdMap, setSantiyeAdMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   // Personel tipi filtresi: "tumu" | "kadro" | "taseron"
   const [tipFiltre, setTipFiltre] = useState<"tumu" | "kadro" | "taseron">("tumu");
+  // Durum filtresi: varsayılan "aktif" — sayfa açılışında pasifler gizli
+  const [durumFiltre, setDurumFiltre] = useState<"aktif" | "pasif" | "tumu">("aktif");
   const router = useRouter();
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-personel", "ekle");
@@ -46,18 +73,37 @@ export default function PersonelPage() {
 
   async function loadPersoneller() {
     try {
-      const [data, ps] = await Promise.all([
+      const [data, ps, ag, sList] = await Promise.all([
         getPersoneller(),
         getPersonelSantiyeler().catch(() => []),
+        getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
+        getSantiyelerAll().catch(() => [] as { id: string; is_adi: string }[]),
       ]);
       setPersoneller((data as PersonelWithRelations[]) ?? []);
       setPersonelSantiyeler(ps as PersonelSantiye[]);
+      setAtamalar(ag as PersonelAtamaGecmisi[]);
+      const adMap: Record<string, string> = {};
+      for (const s of (sList as { id: string; is_adi: string }[])) {
+        adMap[s.id] = s.is_adi;
+      }
+      setSantiyeAdMap(adMap);
     } catch {
       toast.error("Personeller yüklenirken hata oluştu.");
     } finally {
       setLoading(false);
     }
   }
+
+  // Personel id → şantiye adı listesi (aktif veya en son atama)
+  // Pasif personellerde gösterilmez — bordro takiple aynı davranış (atama kayıtları
+  // genellikle pasife alınırken kapatılmıyor; bu yüzden personel.durum'a güveniyoruz).
+  const personelSantiyeAdlari = (personelId: string): string[] => {
+    const personel = personeller.find((p) => p.id === personelId);
+    if (personel?.durum === "pasif") return [];
+    const personelAtamalari = atamalar.filter((a) => a.personel_id === personelId);
+    const ids = aktifSantiyeIdleri(personelAtamalari);
+    return ids.map((id) => santiyeAdMap[id]).filter(Boolean);
+  };
 
   useEffect(() => { loadPersoneller(); }, []);
 
@@ -75,7 +121,7 @@ export default function PersonelPage() {
   }
 
   // Kısıtlı / Şantiye admini: sadece atandığı şantiyelerdeki personeller
-  // (primary santiye_id VEYA personel_santiye junction üzerinden)
+  // (primary santiye_id VEYA personel_santiye junction VEYA atama_gecmisi üzerinden)
   const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
     ? new Set(kullanici.santiye_ids)
     : null;
@@ -83,24 +129,31 @@ export default function PersonelPage() {
     if (!izinliSantiyeler) return true;
     if (primarySantiyeId && izinliSantiyeler.has(primarySantiyeId)) return true;
     // Junction tablosunda atanmış mı?
-    return personelSantiyeler.some(
+    if (personelSantiyeler.some(
       (ps) => ps.personel_id === personelId && izinliSantiyeler.has(ps.santiye_id),
-    );
+    )) return true;
+    // Atama geçmişinde aktif/son atama izinli şantiye mi?
+    const aktifSIds = aktifSantiyeIdleri(atamalar.filter((a) => a.personel_id === personelId));
+    return aktifSIds.some((sid) => izinliSantiyeler.has(sid));
   };
 
   const filtrelenmis = personeller.filter((p) => {
     if (!personelIzinliSantiyedeMi(p.id, p.santiye_id)) return false;
+    // Durum filtresi (varsayılan: aktif)
+    if (durumFiltre === "aktif" && p.durum === "pasif") return false;
+    if (durumFiltre === "pasif" && p.durum !== "pasif") return false;
     // Tip filtresi: kadro = personel_tipi !== "taseron" (boş veya "kadro"); taseron = "taseron"
     if (tipFiltre === "kadro" && p.personel_tipi === "taseron") return false;
     if (tipFiltre === "taseron" && p.personel_tipi !== "taseron") return false;
     if (!arama.trim()) return true;
     const q = trAramaNormalize(arama);
+    const santiyeAdlari = personelSantiyeAdlari(p.id).join(" ");
     return (
       trAramaNormalize(p.ad_soyad).includes(q) ||
       p.tc_kimlik_no.includes(q) ||
       trAramaNormalize(p.meslek).includes(q) ||
       trAramaNormalize(p.gorev).includes(q) ||
-      trAramaNormalize(p.santiyeler?.is_adi).includes(q) ||
+      trAramaNormalize(santiyeAdlari).includes(q) ||
       (p.cep_telefon?.includes(q) ?? false)
     );
   });
@@ -114,15 +167,18 @@ export default function PersonelPage() {
     autoTable(doc, {
       startY: 22,
       head: [["Ad Soyad", "TC Kimlik No", "Santiye", "Cep Telefonu", "Meslek", "Gorev", "Maas", "Izin Hakki", "Durum"]],
-      body: filtrelenmis.map((p) => [
-        tr(p.ad_soyad), p.tc_kimlik_no,
-        tr(p.santiyeler?.is_adi ?? "—"),
-        p.cep_telefon ?? "—",
-        tr(p.meslek ?? "—"), tr(p.gorev ?? "—"),
-        p.maas != null ? p.maas.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "—",
-        p.izin_hakki != null ? String(p.izin_hakki) : "—",
-        p.durum === "pasif" ? "Pasif" : "Aktif",
-      ]),
+      body: filtrelenmis.map((p) => {
+        const santiyeAdlari = personelSantiyeAdlari(p.id);
+        return [
+          tr(p.ad_soyad), p.tc_kimlik_no,
+          tr(santiyeAdlari.length > 0 ? santiyeAdlari.join(", ") : "—"),
+          p.cep_telefon ?? "—",
+          tr(p.meslek ?? "—"), tr(p.gorev ?? "—"),
+          p.maas != null ? p.maas.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) : "—",
+          p.izin_hakki != null ? String(p.izin_hakki) : "—",
+          p.durum === "pasif" ? "Pasif" : "Aktif",
+        ];
+      }),
       styles: { fontSize: 7, cellPadding: 1.5 },
       headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 7 },
     });
@@ -131,14 +187,17 @@ export default function PersonelPage() {
 
   function exportExcel() {
     const headers = ["Ad Soyad", "TC Kimlik No", "Şantiye", "Cep Telefonu", "Meslek", "Görev", "Maaş", "İzin Hakkı", "Durum"];
-    const data = filtrelenmis.map((p) => [
-      p.ad_soyad, p.tc_kimlik_no,
-      p.santiyeler?.is_adi ?? "",
-      p.cep_telefon ?? "",
-      p.meslek ?? "", p.gorev ?? "",
-      p.maas ?? "", p.izin_hakki ?? "",
-      p.durum === "pasif" ? "Pasif" : "Aktif",
-    ]);
+    const data = filtrelenmis.map((p) => {
+      const santiyeAdlari = personelSantiyeAdlari(p.id);
+      return [
+        p.ad_soyad, p.tc_kimlik_no,
+        santiyeAdlari.join(", "),
+        p.cep_telefon ?? "",
+        p.meslek ?? "", p.gorev ?? "",
+        p.maas ?? "", p.izin_hakki ?? "",
+        p.durum === "pasif" ? "Pasif" : "Aktif",
+      ];
+    });
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -172,10 +231,42 @@ export default function PersonelPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input placeholder="Ad, TC, meslek, görev ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
         </div>
-        {/* Tip filtresi: Tümü / Kadro / Taşeron */}
-        <div className="flex gap-1">
+        {/* Durum filtresi: Aktif / Pasif / Tümü (varsayılan: Aktif) */}
+        <div className="inline-flex items-center bg-white border border-gray-300 rounded-md overflow-hidden">
+          <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold px-2.5 border-r border-gray-200">
+            Durum
+          </span>
           {([
-            { k: "tumu", l: "Tümü" },
+            { k: "aktif", l: "Aktif" },
+            { k: "pasif", l: "Pasif" },
+            { k: "tumu", l: "Hepsi" },
+          ] as const).map((b) => {
+            const aktif = durumFiltre === b.k;
+            const sayi =
+              b.k === "aktif" ? personeller.filter((p) => p.durum !== "pasif").length :
+              b.k === "pasif" ? personeller.filter((p) => p.durum === "pasif").length :
+              personeller.length;
+            return (
+              <button key={b.k} type="button" onClick={() => setDurumFiltre(b.k)}
+                className={`text-xs px-3 py-2 transition-colors inline-flex items-center gap-1.5 border-r border-gray-200 last:border-r-0 ${
+                  aktif ? "bg-emerald-600 text-white"
+                    : "bg-white text-gray-600 hover:bg-emerald-50"
+                }`}>
+                {b.l}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                  aktif ? "bg-white/20" : "bg-gray-100 text-gray-500"
+                }`}>{sayi}</span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Tip filtresi: Tümü / Kadro / Taşeron */}
+        <div className="inline-flex items-center bg-white border border-gray-300 rounded-md overflow-hidden">
+          <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold px-2.5 border-r border-gray-200">
+            Tip
+          </span>
+          {([
+            { k: "tumu", l: "Hepsi" },
             { k: "kadro", l: "Kadro" },
             { k: "taseron", l: "Taşeron" },
           ] as const).map((b) => {
@@ -186,9 +277,9 @@ export default function PersonelPage() {
               personeller.filter((p) => p.personel_tipi === "taseron").length;
             return (
               <button key={b.k} type="button" onClick={() => setTipFiltre(b.k)}
-                className={`text-xs px-3 py-2 rounded-md border transition-colors inline-flex items-center gap-1.5 ${
-                  aktif ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
-                    : "bg-white border-gray-300 text-gray-600 hover:border-[#1E3A5F]"
+                className={`text-xs px-3 py-2 transition-colors inline-flex items-center gap-1.5 border-r border-gray-200 last:border-r-0 ${
+                  aktif ? "bg-[#1E3A5F] text-white"
+                    : "bg-white text-gray-600 hover:bg-blue-50"
                 }`}>
                 {b.l}
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
@@ -212,7 +303,7 @@ export default function PersonelPage() {
           <p className="text-gray-500 text-lg">Henüz personel eklenmemiş.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
@@ -223,7 +314,7 @@ export default function PersonelPage() {
                 <TableHead className="hidden md:table-cell">Meslek</TableHead>
                 <TableHead className="hidden md:table-cell">Görev</TableHead>
                 <TableHead className="hidden lg:table-cell">Maaş</TableHead>
-                <TableHead className="text-right">İşlemler</TableHead>
+                <TableHead className="text-right whitespace-nowrap w-px">İşlemler</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -231,23 +322,49 @@ export default function PersonelPage() {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={pasif ? "opacity-60 bg-gray-50" : undefined}>
-                    <TableCell className="tabular-nums">{p.tc_kimlik_no}</TableCell>
-                    <TableCell className="font-medium">
+                    <TableCell className="tabular-nums whitespace-nowrap w-px">{p.tc_kimlik_no}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap w-px">
                       <div className="flex items-center gap-1.5">
                         <span className={pasif ? "text-gray-500" : undefined}>{p.ad_soyad}</span>
                         {p.personel_tipi === "taseron" && (
-                          <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">TAŞERON</span>
+                          <span className="shrink-0 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold" title="Taşeron">TŞ</span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{p.santiyeler?.is_adi ?? "—"}</TableCell>
-                    <TableCell className="hidden sm:table-cell tabular-nums">{p.cep_telefon ?? "—"}</TableCell>
-                    <TableCell className="hidden md:table-cell">{p.meslek ?? "—"}</TableCell>
-                    <TableCell className="hidden md:table-cell">{p.gorev ?? "—"}</TableCell>
-                    <TableCell className="hidden lg:table-cell tabular-nums">
+                    <TableCell className="w-auto min-w-0 max-w-0">
+                      {(() => {
+                        const adlar = personelSantiyeAdlari(p.id);
+                        if (adlar.length === 0) return "—";
+                        if (adlar.length === 1) {
+                          return (
+                            <span className="block truncate" title={adlar[0]}>
+                              {adlar[0]}
+                            </span>
+                          );
+                        }
+                        // Birden fazla şantiye — her chip ayrı satır, kısaltılmış
+                        return (
+                          <div className="flex flex-col gap-0.5 max-w-full" title={adlar.join("\n")}>
+                            {adlar.map((ad) => (
+                              <span
+                                key={ad}
+                                className="block px-1.5 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded border border-blue-200 truncate"
+                                title={ad}
+                              >
+                                {ad}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell tabular-nums whitespace-nowrap w-px">{p.cep_telefon ?? "—"}</TableCell>
+                    <TableCell className="hidden md:table-cell whitespace-nowrap w-px">{p.meslek ?? "—"}</TableCell>
+                    <TableCell className="hidden md:table-cell whitespace-nowrap w-px">{p.gorev ?? "—"}</TableCell>
+                    <TableCell className="hidden lg:table-cell tabular-nums whitespace-nowrap w-px text-right">
                       {p.maas != null ? `${p.maas.toLocaleString("tr-TR")} ₺` : "—"}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right whitespace-nowrap w-px">
                       <div className="flex items-center justify-end gap-1">
                         {yDuzenle && (
                           <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/yonetim/personel/${p.id}/duzenle`)}>

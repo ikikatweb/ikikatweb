@@ -151,6 +151,8 @@ export default function IscilikTakibiPage() {
   const [rows, setRows] = useState<IscilikTakibiWithSantiye[]>([]);
   const [loading, setLoading] = useState(true);
   const [firmaRenkMap, setFirmaRenkMap] = useState<Map<string, string>>(new Map());
+  // Firma sırası — Yönetim > Firmalar sayfasındaki sira_no'ya göre.
+  const [firmaSiraMap, setFirmaSiraMap] = useState<Map<string, number>>(new Map());
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [arama, setArama] = useState("");
@@ -201,12 +203,16 @@ export default function IscilikTakibiPage() {
       setAtamalar(atamaData);
       setBordroPersoneller(persData);
       setBrutUcretGecmisi(brutData);
-      // Firma renk map'i
+      // Firma renk + sıra map'leri
+      // (getFirmalar zaten sira_no ASC döner — index = sıra)
       const renkMap = new Map<string, string>();
-      for (const f of (firmalarData as { id: string; renk: string | null }[]) ?? []) {
+      const siraMap = new Map<string, number>();
+      ((firmalarData as { id: string; renk: string | null }[]) ?? []).forEach((f, i) => {
         if (f.renk) renkMap.set(f.id, f.renk);
-      }
+        siraMap.set(f.id, i);
+      });
       setFirmaRenkMap(renkMap);
+      setFirmaSiraMap(siraMap);
       // İş grubu sıralama map'i
       const sMap = new Map<string, number>();
       ((tData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
@@ -270,9 +276,15 @@ export default function IscilikTakibiPage() {
           };
         })
         .sort((a, b) => {
+          // 1. Firma sira_no (Yönetim > Firmalar sayfasındaki sıra)
+          const fa = siraMap.get(a.santiyeler?.yuklenici_firma_id ?? "") ?? Number.MAX_SAFE_INTEGER;
+          const fb = siraMap.get(b.santiyeler?.yuklenici_firma_id ?? "") ?? Number.MAX_SAFE_INTEGER;
+          if (fa !== fb) return fa - fb;
+          // 2. İş grubu sırası
           const sa = sMap.get(a.santiyeler?.is_grubu ?? "") ?? 999;
           const sb = sMap.get(b.santiyeler?.is_grubu ?? "") ?? 999;
           if (sa !== sb) return sa - sb;
+          // 3. Oluşturulma tarihi
           const da = a.santiyeler?.created_at ?? "";
           const db = b.santiyeler?.created_at ?? "";
           return da.localeCompare(db);
@@ -339,7 +351,7 @@ export default function IscilikTakibiPage() {
         toast.error(
           `⚠️ "${isAdi}" silinemiyor: Bordro takibinde aktif ${aktifPersonelSayisi} personel atanmış. ` +
           `Önce bordro takibinden bu personelleri çıkarın veya başka şantiyeye transfer edin.`,
-          { duration: 12000 },
+          { duration: 5000 },
         );
         setDeleteId(null);
         return;

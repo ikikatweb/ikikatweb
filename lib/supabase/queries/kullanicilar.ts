@@ -8,6 +8,8 @@ export type KullaniciCreatePayload = {
   rol: "yonetici" | "santiye_admin" | "kisitli";
   izinler?: Izinler;
   santiye_ids?: string[];
+  // Firma kapsamı: kullanıcı sadece bu firmaların yazışmalarını görür (yönetici hariç)
+  firma_ids?: string[] | null;
   geriye_donus_gun?: number | null;
   // Modül bazlı işlem/görüntüleme gün limitleri
   puantaj_islem_gun?: number | null;
@@ -29,6 +31,7 @@ export type KullaniciUpdatePayload = {
   sifre?: string;
   izinler?: Izinler;
   santiye_ids?: string[];
+  firma_ids?: string[] | null;
   geriye_donus_gun?: number | null;
   // Modül bazlı işlem/görüntüleme gün limitleri
   puantaj_islem_gun?: number | null;

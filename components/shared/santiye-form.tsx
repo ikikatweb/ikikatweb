@@ -90,6 +90,11 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     santiye?.depo_kapasitesi != null && santiye.depo_kapasitesi > 0
   );
 
+  // Geçici kabulü yapılmış işler tamamlandı kabul edilir.
+  // Sözleşme bedeli, gerçekleşen tutar ve iş grubu dağılımı bu durumda kilitlidir.
+  // (Geçici kabul tarihi/PDF, kesin kabul vb. kabul-sonrası alanlar düzenlenebilir kalır.)
+  const tutarKilitli = !!santiye?.gecici_kabul_tarihi;
+
   // Sözleşme bedeli ayrı tutulur (formatlı gösterim)
   const [sozlesmeBedeliStr, setSozlesmeBedeliStr] = useState(
     formatParaInput(santiye?.sozlesme_bedeli ?? null)
@@ -595,7 +600,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                           const val = parseParaInput(sozlesmeBedeliStr);
                           setSozlesmeBedeliStr(val != null ? formatParaInput(val) : "");
                         }}
-                        disabled={loading}
+                        disabled={loading || tutarKilitli}
+                        title={tutarKilitli ? "Geçici kabulü yapılmış işin sözleşme bedeli değiştirilemez" : undefined}
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
                         {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
@@ -604,9 +610,9 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                     <select
                       value={formData.para_birimi ?? "TRY"}
                       onChange={(e) => setFormData((prev) => ({ ...prev, para_birimi: e.target.value as "TRY" | "USD" | "EUR" }))}
-                      disabled={loading}
-                      className="h-10 px-2 text-sm border border-gray-300 rounded-md bg-white outline-none focus:border-[#1E3A5F] w-20"
-                      title="Para birimi"
+                      disabled={loading || tutarKilitli}
+                      className="h-10 px-2 text-sm border border-gray-300 rounded-md bg-white outline-none focus:border-[#1E3A5F] w-20 disabled:opacity-60 disabled:cursor-not-allowed"
+                      title={tutarKilitli ? "Kilitli" : "Para birimi"}
                     >
                       <option value="TRY">TL</option>
                       <option value="USD">USD</option>
@@ -905,12 +911,14 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                 <div className="space-y-3 p-4 bg-gray-50 rounded-lg border mt-4">
                   <div className="flex items-center justify-between">
                     <Label className="font-semibold text-[#1E3A5F]">İş Grubu Dağılımı</Label>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setIsGrupDagilimi((prev) => [...prev, { ana: "", alt: "", detay: "", tutar: "" }])} disabled={loading}>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setIsGrupDagilimi((prev) => [...prev, { ana: "", alt: "", detay: "", tutar: "" }])} disabled={loading || tutarKilitli}>
                       <Plus size={14} className="mr-1" /> İş Grubu Ekle
                     </Button>
                   </div>
                   <p className="text-[10px] text-gray-500">
-                    Sözleşme fiyatlarıyla gerçekleşen tutarın iş gruplarına dağılımını girin. Toplamları gerçekleşen tutara eşit olmalıdır.
+                    {tutarKilitli
+                      ? "Geçici kabulü yapılmış işin dağılımı kilitlidir."
+                      : "Sözleşme fiyatlarıyla gerçekleşen tutarın iş gruplarına dağılımını girin. Toplamları gerçekleşen tutara eşit olmalıdır."}
                   </p>
                   {isGrupDagilimi.map((d, i) => {
                     const isDigerGrup = d.ana.startsWith("DGR-");
@@ -927,8 +935,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                             <select
                               value={d.ana}
                               onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, ana: e.target.value, alt: "", detay: "" } : x))}
-                              disabled={loading}
-                              className={selectClass + " text-xs"}
+                              disabled={loading || tutarKilitli}
+                              className={selectClass + " text-xs disabled:opacity-60 disabled:cursor-not-allowed"}
                             >
                               <option value="">Seçiniz</option>
                               {isGrupAnaList.map((a) => (
@@ -950,8 +958,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                               <select
                                 value={d.alt}
                                 onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, alt: e.target.value, detay: "" } : x))}
-                                disabled={loading || !d.ana}
-                                className={selectClass + " text-xs"}
+                                disabled={loading || !d.ana || tutarKilitli}
+                                className={selectClass + " text-xs disabled:opacity-60 disabled:cursor-not-allowed"}
                               >
                                 <option value="">Seçiniz</option>
                                 {filtreliAlt.map((a) => (
@@ -967,8 +975,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                               <select
                                 value={d.detay}
                                 onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, detay: e.target.value } : x))}
-                                disabled={loading || !d.alt || filtreliDetay.length === 0}
-                                className={selectClass + " text-xs"}
+                                disabled={loading || !d.alt || filtreliDetay.length === 0 || tutarKilitli}
+                                className={selectClass + " text-xs disabled:opacity-60 disabled:cursor-not-allowed"}
                               >
                                 <option value="">{filtreliDetay.length === 0 ? "Detay yok" : "Seçiniz"}</option>
                                 {filtreliDetay.map((dt) => (
@@ -979,7 +987,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                           )}
                           {/* Sil */}
                           <Button type="button" variant="ghost" size="sm" className="text-red-500"
-                            onClick={() => setIsGrupDagilimi((prev) => prev.filter((_, j) => j !== i))} disabled={loading}>
+                            onClick={() => setIsGrupDagilimi((prev) => prev.filter((_, j) => j !== i))} disabled={loading || tutarKilitli}>
                             <Trash2 size={14} />
                           </Button>
                         </div>
@@ -992,7 +1000,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                             value={d.tutar}
                             onChange={(e) => setIsGrupDagilimi((prev) => prev.map((x, j) => j === i ? { ...x, tutar: e.target.value } : x))}
                             placeholder="0,00"
-                            disabled={loading}
+                            disabled={loading || tutarKilitli}
+                            title={tutarKilitli ? "Geçici kabul yapıldı — kilitli" : undefined}
                           />
                         </div>
                       </div>

@@ -16,6 +16,7 @@ import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
+import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
 import {
   getBordroPersoneller,
   insertBordroPersonel,
@@ -50,6 +51,15 @@ import {
 } from "@/lib/supabase/queries/bordro-pending";
 import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi } from "@/lib/utils/isim";
+
+// Telefon formatlama: 0535 535 35 35
+function formatTelefon(val: string): string {
+  const digits = val.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
+}
 
 type SantiyeBasic = {
   id: string; is_adi: string; durum: string;
@@ -408,6 +418,7 @@ export default function BordroTakibi() {
   const [ekleMeslek, setEkleMeslek] = useState("");
   const [ekleSantiye, setEkleSantiye] = useState("");
   const [ekleTarih, setEkleTarih] = useState(() => yerelBugun());
+  const [ekleCepTelefon, setEkleCepTelefon] = useState("");
   const [kaydetYukleniyor, setKaydetYukleniyor] = useState(false);
 
   // Çıkış onayı + çıkış tarihi
@@ -579,7 +590,7 @@ export default function BordroTakibi() {
         localStorage.setItem("bordro-auto-mail-tarih", todayKey); // duplicate önle
         try {
           await bulkMailGonder();
-          toast.success("⏰ 17:00 otomatik mail gönderimi tamamlandı", { duration: 6000 });
+          toast.success("⏰ 17:00 otomatik mail gönderimi tamamlandı", { duration: 5000 });
         } catch {
           // bulkMailGonder kendi hata mesajını gösterir
         }
@@ -638,7 +649,7 @@ export default function BordroTakibi() {
       setPending((prev) => prev.filter((x) => x.id !== tempId));
       toast.error(
         "Mail kuyruğuna eklenemedi. Veritabanında 'bordro_pending_mail' tablosu yoksa Supabase SQL editöründe oluşturun.",
-        { duration: 10000 },
+        { duration: 5000 },
       );
     }
   }
@@ -1073,11 +1084,11 @@ export default function BordroTakibi() {
         toast.error(
           `Bu firmalar için SMTP ayarları eksik (mail gönderilemedi): ${eksikSmtpFirmaAdlari.join(", ")}. ` +
           `Yönetim > Firmalar sayfasından SMTP Host/User/Password alanlarını doldurun.`,
-          { duration: 12000 },
+          { duration: 5000 },
         );
       }
       if (hataMesajlari.length > 0) {
-        toast.error(hataMesajlari[0], { duration: 8000 });
+        toast.error(hataMesajlari[0], { duration: 5000 });
       }
       // Sadece BAŞARILI gönderilenleri kuyruktan çıkar (DB + yerel)
       if (basari > 0) {
@@ -1424,6 +1435,34 @@ export default function BordroTakibi() {
         await setManuelGun(personelId, santiyeId, ayStr, N);
       }
       toast.success(`Gün sayısı ${N} olarak kaydedildi (atama açık kaldı)`);
+
+      // SGK 30 gün uyarısı — bildirim amaçlı (kayıt iptal edilmez)
+      if (N > 30) {
+        toast(
+          `⚠️ Bu şantiyede ${N} gün girdiniz. SGK'da bir ay için en fazla 30 gün sayılır.`,
+          { icon: "⚠️", duration: 5000, style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
+        );
+      } else {
+        // Birden fazla şantiyede çalışıyorsa toplamı kontrol et
+        const personel = personeller.find((p) => p.id === personelId);
+        const personelAd = personel?.ad_soyad ?? "Personel";
+        const mevcutGunMap = gunMap.get(personelId);
+        if (mevcutGunMap) {
+          // Bu şantiye dışındaki şantiyelerin gün toplamı + yeni N
+          let digerToplam = 0;
+          for (const [sId, gun] of mevcutGunMap) {
+            if (sId !== santiyeId) digerToplam += gun;
+          }
+          const yeniToplam = N + digerToplam;
+          if (yeniToplam > 30) {
+            toast(
+              `⚠️ ${personelAd} için ${ayLabel(ayStr)} toplamı ${yeniToplam} gün — SGK 30 günü aşıyor (bu şantiye: ${N}, diğerleri: ${digerToplam})`,
+              { icon: "⚠️", duration: 5000, style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
+            );
+          }
+        }
+      }
+
       setGunEdit(null); // Pencereyi kapat
       await loadData();
     } catch (err) {
@@ -1502,7 +1541,7 @@ export default function BordroTakibi() {
                 >×</button>
               </div>
             ),
-            { duration: 12000 },
+            { duration: 5000 },
           );
           return;
         }
@@ -1581,7 +1620,7 @@ export default function BordroTakibi() {
       if (teknikSayilan > 0 && normalSayilan > 0) {
         toast.success(
           `${basari}/${topluSecilenler.size} personel eklendi (${teknikSayilan} teknik · ${normalSayilan} bugün)`,
-          { duration: 6000 },
+          { duration: 5000 },
         );
       } else if (teknikSayilan > 0) {
         toast.success(`${basari}/${topluSecilenler.size} teknik personel eklendi (teslim tarihi)`);
@@ -1717,14 +1756,89 @@ export default function BordroTakibi() {
     }
 
     // Firma → şantiye → personel sırası
+    // Firmalar: "Yönetim > Firmalar" sayfasındaki sıraya göre (sira_no).
+    // Bu sıra `firmalar` state'inde zaten korunuyor (getFirmalar sira_no ile döner).
+    const firmaSiraMap = new Map<string, number>();
+    firmalar.forEach((f, i) => firmaSiraMap.set(f.firma_adi, i));
     rows.sort((a, b) => {
-      const fc = a.firmaAd.localeCompare(b.firmaAd, "tr");
-      if (fc !== 0) return fc;
+      const fa = firmaSiraMap.get(a.firmaAd) ?? Number.MAX_SAFE_INTEGER;
+      const fb = firmaSiraMap.get(b.firmaAd) ?? Number.MAX_SAFE_INTEGER;
+      if (fa !== fb) return fa - fb;
+      // Aynı firmada şantiye ve personel alfabetik (Türkçe locale)
       const sc = a.santiyeAd.localeCompare(b.santiyeAd, "tr");
       if (sc !== 0) return sc;
       return a.adSoyad.localeCompare(b.adSoyad, "tr");
     });
     return rows;
+  }
+
+  // Bordro export rows'undan, ay içinde TOPLAM gün sayısı 30'u GEÇEN
+  // personelleri çıkar. Her personel için tek satır (toplam gün gösterilir).
+  // SGK günü 30'a sınırlıdır; manuel girişler veya birden fazla şantiyedeki
+  // çakışan atamalar nedeniyle bu sınır aşılabilir → uyarı tablosunda gösterilir.
+  type OtuzAsanRow = {
+    adSoyad: string;
+    tc: string;
+    gorev: string;
+    iseBaslama: string;
+    isenCikis: string;
+    toplamGun: number;
+    not: string;
+  };
+  function otuzGununAsanlar(): OtuzAsanRow[] {
+    const rows = exportSantiyeBazli();
+    // Personel bazında topla (TC + ad birleşimi key)
+    type Acc = {
+      adSoyad: string; tc: string; gorev: string;
+      iseBaslama: string; isenCikis: string;
+      toplamGun: number; notlar: string[];
+    };
+    const map = new Map<string, Acc>();
+    for (const r of rows) {
+      const key = r.tc || r.adSoyad;
+      const mevcut = map.get(key);
+      if (!mevcut) {
+        map.set(key, {
+          adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
+          iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
+          toplamGun: r.gun, notlar: r.not ? [r.not] : [],
+        });
+      } else {
+        mevcut.toplamGun += r.gun;
+        // En erken işe başlama, en geç çıkış
+        if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
+          mevcut.iseBaslama = r.iseBaslama;
+        }
+        if (r.isenCikis === "Halen" || mevcut.isenCikis === "Halen") {
+          mevcut.isenCikis = "Halen";
+        } else if (r.isenCikis > mevcut.isenCikis) {
+          mevcut.isenCikis = r.isenCikis;
+        }
+        if (r.not) mevcut.notlar.push(r.not);
+      }
+    }
+    const sonuc: OtuzAsanRow[] = [];
+    for (const acc of map.values()) {
+      if (acc.toplamGun > 30) {
+        sonuc.push({
+          adSoyad: acc.adSoyad,
+          tc: acc.tc,
+          gorev: acc.gorev,
+          iseBaslama: acc.iseBaslama,
+          isenCikis: acc.isenCikis,
+          toplamGun: acc.toplamGun,
+          not: acc.notlar.join(" / "),
+        });
+      }
+    }
+    sonuc.sort((a, b) => b.toplamGun - a.toplamGun);
+    return sonuc;
+  }
+
+  // "MAYIS 2026" gibi büyük harfli ay başlığı (ay başlığında kullanılır)
+  function ayBuyukLabel(ayStr: string): string {
+    const lbl = ayLabel(ayStr);
+    return lbl.toLocaleUpperCase("tr-TR");
   }
 
   // Yeni formatlı bordro Excel'ini üreten ortak yardımcı.
@@ -1839,6 +1953,60 @@ export default function BordroTakibi() {
         curRow++;
       }
       curRow++;
+    }
+
+    // En altta: 30 günü aşan personel uyarı tablosu (sigortalılık ihlali)
+    const otuzAsanlar = otuzGununAsanlar();
+    if (otuzAsanlar.length > 0) {
+      curRow++; // boş satır
+
+      // Siyah başlık
+      setCell(curRow, 0,
+        `${ayBuyukLabel(seciliAy)} AYINDA SİGORTALILIK SÜRESİ 30 GÜNÜ GEÇEN PERSONEL LİSTESİ`,
+        {
+          font: { bold: true, sz: 12, color: { rgb: "FFFFFFFF" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          fill: { fgColor: { rgb: "FF000000" }, patternType: "solid" },
+        },
+      );
+      merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
+      curRow++;
+
+      const otHeaders = ["Ad Soyad", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+      for (let c = 0; c < otHeaders.length; c++) {
+        setCell(curRow, c, otHeaders[c], {
+          font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          fill: { fgColor: { rgb: "FF323232" }, patternType: "solid" },
+          border: {
+            top: { style: "thin", color: { rgb: "FF000000" } },
+            bottom: { style: "thin", color: { rgb: "FF000000" } },
+            left: { style: "thin", color: { rgb: "FF000000" } },
+            right: { style: "thin", color: { rgb: "FF000000" } },
+          },
+        });
+      }
+      curRow++;
+
+      for (let i = 0; i < otuzAsanlar.length; i++) {
+        const r = otuzAsanlar[i];
+        const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF5F5F5";
+        const rowVals: (string | number)[] = [r.adSoyad, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
+        for (let c = 0; c < rowVals.length; c++) {
+          setCell(curRow, c, rowVals[c], {
+            font: { sz: 10 },
+            alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
+            fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+            border: {
+              top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+            },
+          });
+        }
+        curRow++;
+      }
     }
 
     const ws: Record<string, unknown> = sheet;
@@ -2135,6 +2303,47 @@ export default function BordroTakibi() {
       }
       cursorY += 4;
     }
+
+    // En altta: 30 günü aşan personel uyarı tablosu
+    const otuzAsanlar = otuzGununAsanlar();
+    if (otuzAsanlar.length > 0) {
+      // Yeterli yer yoksa yeni sayfa
+      if (cursorY > pageHeight - 40) {
+        doc.addPage();
+        cursorY = 15;
+      } else {
+        cursorY += 4;
+      }
+      // Siyah başlık bandı
+      doc.setFillColor(0, 0, 0);
+      doc.rect(14, cursorY, doc.internal.pageSize.getWidth() - 28, 7, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text(
+        trAscii(`${ayBuyukLabel(seciliAy)} AYINDA SIGORTALILIK SURESI 30 GUNU GECEN PERSONEL LISTESI`),
+        17, cursorY + 5,
+      );
+      doc.setTextColor(0, 0, 0);
+      cursorY += 9;
+      autoTable(doc, {
+        startY: cursorY,
+        head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
+        body: otuzAsanlar.map((r) => [
+          trAscii(r.adSoyad),
+          r.tc,
+          trAscii(r.gorev),
+          r.iseBaslama,
+          r.isenCikis,
+          String(r.toplamGun),
+          trAscii(r.not),
+        ]),
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        headStyles: { fillColor: [50, 50, 50], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        margin: { left: 14, right: 14 },
+      });
+    }
+
     doc.save(`bordro-${seciliAy}.pdf`);
   }
 
@@ -2143,6 +2352,8 @@ export default function BordroTakibi() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!ekleAd.trim()) { toast.error("Ad soyad gerekli"); return; }
     if (!ekleTc.trim() || ekleTc.length !== 11) { toast.error("11 haneli TC gerekli"); return; }
+    if (!ekleCepTelefon.trim()) { toast.error("Cep telefonu zorunlu"); return; }
+    if (!ekleMeslek.trim()) { toast.error("Meslek zorunlu"); return; }
     setKaydetYukleniyor(true);
     try {
       // Admin'se ekleTarih (eski tarih girebilir), değilse her zaman bugün
@@ -2159,10 +2370,19 @@ export default function BordroTakibi() {
         mesai_ucreti_var: false,
         ise_giris_tarihi: kullanilanTarih,
         ev_telefon: null,
-        cep_telefon: null,
+        cep_telefon: ekleCepTelefon.trim() || null,
         durum: "aktif",
         pasif_tarihi: null,
       });
+      // Şantiye seçildiyse personel_santiye junction tablosuna da ekle
+      // (Personeller sayfasında listede görünmesi + puantaj listesi için gerekli)
+      if (ekleSantiye && yeni?.id) {
+        try {
+          await addPersonelSantiye(yeni.id, ekleSantiye);
+        } catch (atErr) {
+          console.warn("Otomatik şantiye ataması başarısız:", atErr);
+        }
+      }
       toast.success("Personel eklendi (mail kuyruğa eklendi)");
       // Mail kuyruğuna ekle
       const santiyeAd = ekleSantiye ? santiyeler.find((s) => s.id === ekleSantiye)?.is_adi : undefined;
@@ -2170,7 +2390,7 @@ export default function BordroTakibi() {
       // Kapat + reload
       setEkleAcik(false);
       setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
-      setEkleSantiye(""); setEkleTarih(yerelBugun());
+      setEkleSantiye(""); setEkleTarih(yerelBugun()); setEkleCepTelefon("");
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -2868,11 +3088,14 @@ export default function BordroTakibi() {
             if (!firmaGrup.has(fId)) firmaGrup.set(fId, []);
             firmaGrup.get(fId)!.push(s);
           }
-          // Firma sırasını korumak için firmalar listesindeki sırayı kullan
+          // Firma sırasını korumak için firmalar listesindeki sira_no'ya göre sırala
+          // (Yönetim > Firmalar sayfasındaki sıra burada da kullanılır)
+          const firmaSiraMap = new Map<string, number>();
+          firmalar.forEach((f, i) => firmaSiraMap.set(f.id, i));
           const firmaIds = Array.from(firmaGrup.keys()).sort((a, b) => {
-            const fa = firmalar.find((f) => f.id === a)?.firma_adi ?? "Z";
-            const fb = firmalar.find((f) => f.id === b)?.firma_adi ?? "Z";
-            return fa.localeCompare(fb, "tr");
+            const fa = firmaSiraMap.get(a) ?? Number.MAX_SAFE_INTEGER;
+            const fb = firmaSiraMap.get(b) ?? Number.MAX_SAFE_INTEGER;
+            return fa - fb;
           });
 
           return firmaIds.map((fId, fIdx) => {
@@ -3051,7 +3274,17 @@ export default function BordroTakibi() {
                 placeholder="11 haneli TC" inputMode="numeric" />
             </div>
             <div>
-              <Label className="text-xs">Meslek</Label>
+              <Label className="text-xs">Cep Telefonu <span className="text-red-500">*</span></Label>
+              <Input
+                type="tel"
+                value={ekleCepTelefon}
+                onChange={(e) => setEkleCepTelefon(formatTelefon(e.target.value))}
+                placeholder="0535 535 35 35"
+                required
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Meslek <span className="text-red-500">*</span></Label>
               <select value={ekleMeslek} onChange={(e) => setEkleMeslek(e.target.value)}
                 className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm">
                 <option value="">Seçiniz</option>
@@ -3381,11 +3614,13 @@ export default function BordroTakibi() {
                     if (!grup.has(fId)) grup.set(fId, []);
                     grup.get(fId)!.push(s);
                   }
-                  // Firma adına göre sıralı
+                  // Firma sırasını korumak için sira_no'ya göre (Yönetim > Firmalar sırası)
+                  const firmaSiraMap = new Map<string, number>();
+                  firmalar.forEach((f, i) => firmaSiraMap.set(f.id, i));
                   const firmaIds = Array.from(grup.keys()).sort((a, b) => {
-                    const fa = firmalar.find((f) => f.id === a)?.firma_adi ?? "Z";
-                    const fb = firmalar.find((f) => f.id === b)?.firma_adi ?? "Z";
-                    return fa.localeCompare(fb, "tr");
+                    const fa = firmaSiraMap.get(a) ?? Number.MAX_SAFE_INTEGER;
+                    const fb = firmaSiraMap.get(b) ?? Number.MAX_SAFE_INTEGER;
+                    return fa - fb;
                   });
                   return firmaIds.map((fId) => {
                     const firma = firmalar.find((f) => f.id === fId);

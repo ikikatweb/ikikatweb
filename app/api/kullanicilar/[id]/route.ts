@@ -46,7 +46,7 @@ export async function PUT(
 
   const body = await request.json();
   const {
-    ad_soyad, rol, aktif, sifre, izinler, santiye_ids,
+    ad_soyad, rol, aktif, sifre, izinler, santiye_ids, firma_ids,
     geriye_donus_gun, dashboard_widgets, tum_mesajlari_gor,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
@@ -98,6 +98,7 @@ export async function PUT(
   if (aktif !== undefined) updateData.aktif = aktif;
   if (izinler !== undefined) updateData.izinler = izinler;
   if (santiye_ids !== undefined) updateData.santiye_ids = santiye_ids;
+  if (firma_ids !== undefined) updateData.firma_ids = firma_ids;
   if (geriye_donus_gun !== undefined) updateData.geriye_donus_gun = geriye_donus_gun;
   if (puantaj_islem_gun !== undefined) updateData.puantaj_islem_gun = puantaj_islem_gun;
   if (puantaj_goruntuleme_gun !== undefined) updateData.puantaj_goruntuleme_gun = puantaj_goruntuleme_gun;
@@ -118,7 +119,14 @@ export async function PUT(
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (/column .*firma_ids.* does not exist/i.test(error.message)) {
+      return NextResponse.json({
+        error: "Veritabanında 'firma_ids' kolonu yok. Supabase SQL Editor'da şunu çalıştırın:\n\nALTER TABLE kullanicilar ADD COLUMN IF NOT EXISTS firma_ids UUID[] NULL;",
+      }, { status: 500 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json(data);
 }
 

@@ -193,9 +193,9 @@ export default function AracBakimPage() {
       console.error("Bakım yükleme hatası:", err);
       const msg = hataMesaji(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_bakim tablosu Supabase'de yok. SQL migrasyonunu çalıştırın.", { duration: 8000 });
+        toast.error("arac_bakim tablosu Supabase'de yok. SQL migrasyonunu çalıştırın.", { duration: 5000 });
       } else {
-        toast.error(`Yükleme hatası: ${msg}`, { duration: 8000 });
+        toast.error(`Yükleme hatası: ${msg}`, { duration: 5000 });
       }
     } finally {
       setLoading(false);
@@ -418,7 +418,7 @@ export default function AracBakimPage() {
       setDialogOpen(false);
     } catch (err) {
       console.error("Bakım kaydet hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     } finally {
       setDialogLoading(false);
     }
@@ -434,7 +434,7 @@ export default function AracBakimPage() {
       toast.success("Silindi.");
     } catch (err) {
       console.error("Silme hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 8000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
     }
   }
 

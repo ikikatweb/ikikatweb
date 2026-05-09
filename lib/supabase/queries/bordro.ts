@@ -299,6 +299,9 @@ function aktifBitisHam(ayBaslangic: string, ayBitis: string): string {
 
 // Belirli bir ay (YYYY-MM) içinde her personelin her şantiyede kaç gün olduğu.
 // Atama dönemleri ayın sınırlarına clamplenir.
+//
+// SGK kuralı: Bir ay tam (ayın 1'inden son gününe) kapsanıyorsa 30 gün sayılır
+// (ay 28, 30 veya 31 gün olsun fark etmez). Kısmi kapsamda gerçek gün sayılır.
 export function gunHesaplaAyBazli(
   atamalar: PersonelAtamaGecmisi[],
   ayStr: string,
@@ -316,7 +319,10 @@ export function gunHesaplaAyBazli(
     if (bitisHam < ayBaslangic) continue;
     const clampBaslangic = a.baslangic_tarihi > ayBaslangic ? a.baslangic_tarihi : ayBaslangic;
     const clampBitis = bitisHam < ayBitis ? bitisHam : ayBitis;
-    const gun = gunFarki(clampBaslangic, clampBitis);
+    let gun = gunFarki(clampBaslangic, clampBitis);
+    // SGK 30 gün kuralı: ayı tam kapsayan atama → 30 gün
+    const tamAyKapsanmis = clampBaslangic === ayBaslangic && clampBitis === ayBitis;
+    if (tamAyKapsanmis) gun = 30;
     if (!result.has(a.personel_id)) result.set(a.personel_id, new Map());
     const inner = result.get(a.personel_id)!;
     inner.set(a.santiye_id, (inner.get(a.santiye_id) ?? 0) + gun);

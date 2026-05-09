@@ -86,11 +86,21 @@ export default function BankaYazismalariPage() {
         getBankaYazismalari(isYonetici ? undefined : kullanici?.id),
         getFirmalar(),
       ]);
-      setYazismalar((yData as BankaYazismaWithRelations[]) ?? []);
-      setFirmalar(fData ?? []);
+      // Firma kapsamı: kullanıcının firma_ids'i tanımlıysa sadece o firmalar görünür.
+      // (Rol fark etmez. firma_ids null/boş ise tümüne erişir.)
+      const izinliFirmaIds = (kullanici?.firma_ids && kullanici.firma_ids.length > 0)
+        ? new Set(kullanici.firma_ids)
+        : null;
+      const filtreliFirmalar = izinliFirmaIds
+        ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
+        : (fData ?? []);
+      setYazismalar(((yData as BankaYazismaWithRelations[]) ?? []).filter((y) =>
+        izinliFirmaIds ? (!y.firma_id || izinliFirmaIds.has(y.firma_id)) : true,
+      ));
+      setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
-  }, [isYonetici, kullanici?.id]);
+  }, [isYonetici, kullanici?.id, kullanici?.firma_ids]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

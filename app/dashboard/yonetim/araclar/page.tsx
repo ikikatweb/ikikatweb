@@ -378,9 +378,9 @@ export default function AraclarPage() {
                           } catch (err) {
                             const msg = err instanceof Error ? err.message : String(err);
                             if (msg.includes("violates foreign key") || msg.includes("referenced")) {
-                              toast.error("Bu araca ait puantaj, yakıt veya kira verisi var. Önce ilişkili verileri silin.", { duration: 8000 });
+                              toast.error("Bu araca ait puantaj, yakıt veya kira verisi var. Önce ilişkili verileri silin.", { duration: 5000 });
                             } else {
-                              toast.error(`Silme hatası: ${msg}`, { duration: 6000 });
+                              toast.error(`Silme hatası: ${msg}`, { duration: 5000 });
                             }
                           }
                         }}>

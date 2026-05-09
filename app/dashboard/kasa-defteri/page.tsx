@@ -208,7 +208,7 @@ function KasaDefContent() {
       console.error(err);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("kasa_hareketi tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 10000 });
+        toast.error("kasa_hareketi tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       }
     } finally {
       setLoading(false);
@@ -425,7 +425,7 @@ function KasaDefContent() {
       const tip = nihaiOdeme === "nakit" ? "Nakit" : "Kredi kartı";
       if (ilgiliLimit > 0 && Math.abs(tutar) > ilgiliLimit) {
         toast(`Dikkat: ${tip} üst limiti (${ilgiliLimit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })} TL) aşıldı.`, {
-          icon: "⚠️", duration: 6000,
+          icon: "⚠️", duration: 5000,
           style: { background: "#FEF3C7", color: "#92400E", fontWeight: "bold" },
         });
       }
@@ -491,11 +491,11 @@ function KasaDefContent() {
         msg = e.message || e.details || e.hint || e.code || JSON.stringify(err);
       }
       if (msg.includes("does not exist")) {
-        toast.error("kasa_hareketi tablosu yok. SQL çalıştırın.", { duration: 8000 });
+        toast.error("kasa_hareketi tablosu yok. SQL çalıştırın.", { duration: 5000 });
       } else if (msg.includes("foreign key") || msg.includes("violates")) {
-        toast.error("Seçilen kullanıcı/şantiye geçersiz. Muhtemelen kullanıcı silinmiş veya şantiye pasif.", { duration: 8000 });
+        toast.error("Seçilen kullanıcı/şantiye geçersiz. Muhtemelen kullanıcı silinmiş veya şantiye pasif.", { duration: 5000 });
       } else {
-        toast.error(`Hata: ${msg}`, { duration: 6000 });
+        toast.error(`Hata: ${msg}`, { duration: 5000 });
       }
     } finally { setDialogLoading(false); }
   }

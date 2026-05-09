@@ -196,7 +196,7 @@ export default function PersonelPuantajPage() {
       } catch (err) {
         console.error("getPersoneller hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Personel yüklenemedi: ${msg}`, { duration: 8000 });
+        toast.error(`Personel yüklenemedi: ${msg}`, { duration: 5000 });
       }
 
       try {
@@ -204,7 +204,7 @@ export default function PersonelPuantajPage() {
       } catch (err) {
         console.error("getSantiyelerBasic hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Şantiyeler yüklenemedi: ${msg}`, { duration: 8000 });
+        toast.error(`Şantiyeler yüklenemedi: ${msg}`, { duration: 5000 });
       }
 
       try {
@@ -213,9 +213,9 @@ export default function PersonelPuantajPage() {
         console.error("getPersonelSantiyeler hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("personel_santiye")) {
-          toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 10000 });
+          toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
         } else {
-          toast.error(`Personel atamaları yüklenemedi: ${msg}`, { duration: 8000 });
+          toast.error(`Personel atamaları yüklenemedi: ${msg}`, { duration: 5000 });
         }
       }
 
@@ -246,7 +246,7 @@ export default function PersonelPuantajPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 10000 });
+        toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
       } else {
         toast.error("Atama sırasında hata oluştu.");
       }
@@ -715,7 +715,7 @@ export default function PersonelPuantajPage() {
       setHucreDialogOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
-      toast.error(`Kaydedilirken hata: ${msg}`, { duration: 6000 });
+      toast.error(`Kaydedilirken hata: ${msg}`, { duration: 5000 });
     } finally {
       setDialogKaydediliyor(false);
     }

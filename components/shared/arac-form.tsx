@@ -159,7 +159,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
         } catch (uploadErr) {
           const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
           console.error("RUHSAT YÜKLEME HATASI:", msg);
-          toast.error(`Ruhsat yükleme hatası: ${msg}`, { duration: 10000 });
+          toast.error(`Ruhsat yükleme hatası: ${msg}`, { duration: 5000 });
         }
       }
 

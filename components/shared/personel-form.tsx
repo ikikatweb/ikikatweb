@@ -170,7 +170,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           ? new Date(pasif.pasif_tarihi).toLocaleDateString("tr-TR")
           : "";
         setPasifBilgi(`${pasif.ad_soyad}${tarihStr ? ` — ${tarihStr} tarihinde ayrılmış` : ""}`);
-        toast.success(`Pasif personel bulundu: ${pasif.ad_soyad}. Maaşı girip kaydedin.`, { duration: 6000 });
+        toast.success(`Pasif personel bulundu: ${pasif.ad_soyad}. Maaşı girip kaydedin.`, { duration: 5000 });
       } else {
         setPasifBulunanId(null);
         setPasifBilgi("");
@@ -259,15 +259,15 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
       const msg = err instanceof Error ? err.message : String(err);
       // Query seviyesindeki tekillik hatası (TC ya da ad_soyad zaten kayıtlı)
       if (msg.includes("zaten") || msg.includes("duplicate") || msg.includes("unique")) {
-        toast.error(msg || "Bu personel zaten kayıtlı.", { duration: 6000 });
+        toast.error(msg || "Bu personel zaten kayıtlı.", { duration: 5000 });
       } else if (msg.includes("brut_ucret") || msg.includes("column") && msg.includes("not exist")) {
         toast.error(
           `Veritabanında 'brut_ucret' sütunu yok. Supabase SQL editöründe şunu çalıştırın:\n\n` +
           `ALTER TABLE personel ADD COLUMN IF NOT EXISTS brut_ucret NUMERIC NULL;`,
-          { duration: 12000 },
+          { duration: 5000 },
         );
       } else {
-        toast.error(`${isEdit ? "Güncelleme" : "Ekleme"} hatası: ${msg}`, { duration: 8000 });
+        toast.error(`${isEdit ? "Güncelleme" : "Ekleme"} hatası: ${msg}`, { duration: 5000 });
       }
       setLoading(false);
     }
@@ -561,17 +561,17 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                           toast.error(
                             `Veritabanında 'personel_brut_ucret' tablosu yok. Supabase SQL Editor'da şunu çalıştırın:\n\n` +
                             `CREATE TABLE personel_brut_ucret (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE, ucret NUMERIC NOT NULL CHECK (ucret >= 0), gecerli_tarih DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), created_by UUID); ALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
-                            { duration: 18000 },
+                            { duration: 5000 },
                           );
                         } else if (rlsHatasi) {
                           toast.error(
                             `RLS engelliyor. Supabase SQL Editor'da şunu çalıştırın:\n\nALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
-                            { duration: 14000 },
+                            { duration: 5000 },
                           );
                         } else {
                           toast.error(
                             `Kayıt hatası${code ? ` (${code})` : ""}${status ? ` [HTTP ${status}]` : ""}: ${msgText || "Boş hata — F12 Console'a bakın"}`,
-                            { duration: 12000 },
+                            { duration: 5000 },
                           );
                         }
                       } finally {

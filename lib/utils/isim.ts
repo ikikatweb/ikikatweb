@@ -85,6 +85,24 @@ export function formatBaslik(metin: string | null | undefined): string {
 }
 
 /**
+ * Cümle biçimi: sadece ilk harf büyük, geri kalan tamamı küçük (Türkçe locale).
+ * Yazışma evrak konuları için kullanılır.
+ *
+ * Örnekler:
+ *   "PUAN İADESİ"        -> "Puan iadesi"
+ *   "iş emri"            -> "İş emri"
+ *   "TAahhüt MEKTUBu"    -> "Taahhüt mektubu"
+ */
+export function formatCumle(metin: string | null | undefined): string {
+  if (!metin) return "";
+  const trimmed = metin.trim();
+  if (!trimmed) return "";
+  const ilk = trimmed.charAt(0).toLocaleUpperCase(TR);
+  const kalan = trimmed.slice(1).toLocaleLowerCase(TR);
+  return ilk + kalan;
+}
+
+/**
  * Türkçe karakter farkına bakmayan ASCII-arama normalizasyonu.
  * "BİLECİK", "bilecik", "Bilecık", "BILECIK" hepsi → "bilecik"
  *

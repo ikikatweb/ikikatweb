@@ -269,11 +269,11 @@ function MesajlasmaContent() {
       console.error("Konuşma başlatılamadı:", err);
       // SQL migration henüz çalışmadıysa anlamlı bilgi ver
       if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("schema")) {
-        toast.error("Mesajlaşma tabloları Supabase'de yok. SQL migration çalıştırılmalı.", { duration: 10000 });
+        toast.error("Mesajlaşma tabloları Supabase'de yok. SQL migration çalıştırılmalı.", { duration: 5000 });
       } else if (msg.includes("policy") || msg.includes("RLS") || msg.includes("row-level security")) {
-        toast.error("RLS politikası izin vermiyor. Supabase'de policy ayarlarını kontrol et.", { duration: 10000 });
+        toast.error("RLS politikası izin vermiyor. Supabase'de policy ayarlarını kontrol et.", { duration: 5000 });
       } else {
-        toast.error("Konuşma başlatılamadı: " + msg, { duration: 10000 });
+        toast.error("Konuşma başlatılamadı: " + msg, { duration: 5000 });
       }
     }
   }
