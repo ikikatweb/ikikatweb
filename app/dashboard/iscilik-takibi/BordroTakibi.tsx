@@ -2703,9 +2703,15 @@ export default function BordroTakibi() {
               const sonuc = yatmasi - yatan - bordro;
               const fmt = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
               const sonucClass = sonuc < 0 ? "text-red-600" : sonuc > 0 ? "text-emerald-700" : "text-gray-600";
+              // Title: mobilde TruncateTooltip bunu toast olarak gösterir — formülün adı yerine
+              // gerçek rakamları (etiketli olarak) göster ki kullanıcı hesabı görebilsin.
+              const titleMetni =
+                `Yatması Gereken: ${fmt(yatmasi)} ₺\n` +
+                `Yatan: ${fmt(yatan)} ₺\n` +
+                `Bordro Tahmini: ${fmt(bordro)} ₺\n` +
+                `Sonuç: ${fmt(sonuc)} ₺`;
               return (
-                <div className="text-[10px] text-gray-500 font-mono mt-0.5 truncate"
-                  title={`Yatması Gereken − Yatan − Bordro Tahmini = Sonuç`}>
+                <div className="text-[10px] text-gray-500 font-mono mt-0.5 truncate" title={titleMetni}>
                   <span className="text-[#1E3A5F]">{fmt(yatmasi)}</span>
                   <span> − </span>
                   <span className="text-emerald-700">{fmt(yatan)}</span>
@@ -3183,9 +3189,15 @@ export default function BordroTakibi() {
                     {firmaPrimVar && (() => {
                       const fmt = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
                       const sonucClass = firmaSonuc < 0 ? "text-red-200" : firmaSonuc > 0 ? "text-emerald-200" : "text-white/80";
+                      // Title: mobilde TruncateTooltip toast ile gösterir — formül yerine gerçek rakamlar.
+                      const titleMetni =
+                        `Tüm işlerin toplamı (${firmaAd}):\n` +
+                        `Yatması Gereken: ${fmt(firmaYatmasiGereken)} ₺\n` +
+                        `Yatan: ${fmt(firmaYatan)} ₺\n` +
+                        `Bordro Tahmini: ${fmt(firmaBordro)} ₺\n` +
+                        `Sonuç: ${fmt(firmaSonuc)} ₺`;
                       return (
-                        <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate"
-                          title="Tüm işlerin yatması gereken − yatan − bordro tahmini = sonuç (toplam)">
+                        <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate" title={titleMetni}>
                           <span className="text-white">{fmt(firmaYatmasiGereken)}</span>
                           <span> − </span>
                           <span className="text-emerald-200">{fmt(firmaYatan)}</span>
