@@ -150,6 +150,19 @@ export default function AracPuantajPage() {
   const [ozetFiltreFirma, setOzetFiltreFirma] = useState<string>("tumu");
   // Özet rapor — arama (sondaki boşluk: tam kelime modu — yakıt sayfasındaki gibi)
   const [ozetArama, setOzetArama] = useState<string>("");
+  // Puantaj sekmesi için genel arama (plaka, marka, model, cinsi)
+  const [puantajArama, setPuantajArama] = useState<string>("");
+  // Mobil/dokunmatik cihaz tespiti — masaüstünde tek tık ile puantaj,
+  // mobilde tek tık not gösterir, çift tık ile puantajlanır.
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(hover: none) or (pointer: coarse)");
+    setIsTouch(mql.matches);
+    const h = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mql.addEventListener("change", h);
+    return () => mql.removeEventListener("change", h);
+  }, []);
   const [ozetBaslangic, setOzetBaslangic] = useState(() => {
     const y = bugun.getFullYear();
     const m = bugun.getMonth() + 1;
@@ -489,11 +502,24 @@ export default function AracPuantajPage() {
     // "trafikten_cekildi" araçlar da dahil — sadece "pasif" hariç
     const kullanilabilir = araclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
     const buAyPuantajVerilmis = new Set(puantajlar.map((p) => p.arac_id));
-    const liste = kullanilabilir.filter(
+    let liste = kullanilabilir.filter(
       (a) => a.santiye_id === santiyeId || buAyPuantajVerilmis.has(a.id)
     );
+    // Genel arama filtresi (Türkçe karakter duyarsız)
+    const q = trAramaNormalize(puantajArama);
+    if (q) {
+      liste = liste.filter((a) => {
+        const sahibi = a.tip === "ozmal"
+          ? (a.firmalar?.firma_adi ?? "")
+          : (a.kiralama_firmasi ?? "");
+        const text = trAramaNormalize(
+          [a.plaka, a.marka, a.model, a.cinsi, sahibi].filter(Boolean).join(" "),
+        );
+        return text.includes(q);
+      });
+    }
     return liste.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
-  }, [araclar, puantajlar, santiyeId]);
+  }, [araclar, puantajlar, santiyeId, puantajArama]);
 
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
   const aracGunMap = useMemo(() => {
@@ -1801,19 +1827,42 @@ export default function AracPuantajPage() {
             </div>
           </div>
 
-          {/* Yakıt göster/gizle butonu */}
-          {santiyeId && goruntulenenAraclar.length > 0 && (
-            <div className="flex justify-end mb-2">
-              <button
-                type="button"
-                onClick={() => setYakitGoster((p) => !p)}
-                className={`flex items-center gap-1.5 px-3 h-8 text-xs rounded-lg border transition-colors ${
-                  yakitGoster ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                }`}
-              >
-                <Fuel size={14} />
-                {yakitGoster ? "Yakıtı Gizle" : "Yakıtı Göster"}
-              </button>
+          {/* Genel arama + Yakıt göster/gizle */}
+          {santiyeId && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+              <div className="relative flex-1 max-w-md">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={puantajArama}
+                  onChange={(e) => setPuantajArama(e.target.value)}
+                  placeholder="Plaka, marka, model, cinsi, firma..."
+                  className={selectClass + " w-full pl-8"}
+                />
+                {puantajArama && (
+                  <button
+                    type="button"
+                    onClick={() => setPuantajArama("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                    title="Aramayı temizle"
+                  >
+                    <XIcon size={14} />
+                  </button>
+                )}
+              </div>
+              {goruntulenenAraclar.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setYakitGoster((p) => !p)}
+                  className={`px-3 h-9 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors sm:ml-auto ${
+                    yakitGoster ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                  }`}
+                  title={yakitGoster ? "Yakıt değerlerini gizle" : "Yakıt değerlerini göster"}
+                >
+                  <Fuel size={14} />
+                  {yakitGoster ? "Yakıtı Gizle" : "Yakıtı Göster"}
+                </button>
+              )}
             </div>
           )}
 
@@ -1895,7 +1944,30 @@ export default function AracPuantajPage() {
                         <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                           <button
                             type="button"
-                            onClick={() => hucreTikla(a, g)}
+                            onClick={(e) => {
+                              // MASAÜSTÜ: tek tık → puantajla (hover zaten notu gösteriyor)
+                              // MOBİL: tek tık → notu göster (hover yok), çift tık → puantajla
+                              if (!isTouch) {
+                                hucreTikla(a, g);
+                                return;
+                              }
+                              if (p && dBilgi) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const tahminiYukseklik = 220;
+                                const altBosluk = window.innerHeight - rect.bottom;
+                                const yukari = altBosluk < tahminiYukseklik + 16;
+                                setTooltip({
+                                  x: rect.left + rect.width / 2,
+                                  y: yukari ? rect.top - 8 : rect.bottom + 8,
+                                  yukari,
+                                  plaka: a.plaka,
+                                  isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
+                                  durum: p.durum,
+                                  aciklama: p.aciklama ?? null,
+                                });
+                              }
+                            }}
+                            onDoubleClick={() => { if (isTouch) hucreTikla(a, g); }}
                             onMouseEnter={(e) => {
                               if (p && dBilgi) {
                                 const rect = e.currentTarget.getBoundingClientRect();

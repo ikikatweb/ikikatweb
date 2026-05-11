@@ -38,8 +38,9 @@ import {
   ClipboardList, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight,
   Check, X as XIcon, Trash2, Plane, Cross, Sun, Lock,
   Car, CloudRain, Clock3,
-  Link2, Link2Off, ArrowRight, ArrowLeft as ArrowLeftIcon, UserPlus,
+  Link2, Link2Off, ArrowRight, ArrowLeft as ArrowLeftIcon, UserPlus, Search,
 } from "lucide-react";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -115,6 +116,19 @@ export default function PersonelPuantajPage() {
 
   const [loading, setLoading] = useState(true);
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
+  // Genel arama (ad soyad, TC, görev, meslek)
+  const [puantajArama, setPuantajArama] = useState("");
+  // Mobil/dokunmatik cihaz tespiti — masaüstünde tek tık ile puantaj,
+  // mobilde tek tık not gösterir, çift tık ile puantajlanır.
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia("(hover: none) or (pointer: coarse)");
+    setIsTouch(mql.matches);
+    const h = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mql.addEventListener("change", h);
+    return () => mql.removeEventListener("change", h);
+  }, []);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [santiyeId, setSantiyeId] = useState<string>(urlSantiye);
   // Çoklu atama: personel_id -> Set<santiye_id>
@@ -319,6 +333,7 @@ export default function PersonelPuantajPage() {
       if (p.tarih < ayBaslangici || p.tarih > ayBitisi) continue;
       ayinPuantajPersonelleri.add(p.personel_id);
     }
+    const q = trAramaNormalize(puantajArama);
     return personeller
       .filter((p) => {
         // 1) Şu an bu şantiyeye atanmış → göster
@@ -334,8 +349,16 @@ export default function PersonelPuantajPage() {
         // Pasif personel: pasife alındığı ay ve öncesinde göster
         return p.pasif_tarihi >= ayBaslangici;
       })
+      .filter((p) => {
+        // Genel arama (Türkçe karakter duyarsız)
+        if (!q) return true;
+        const text = trAramaNormalize(
+          [p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "),
+        );
+        return text.includes(q);
+      })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
-  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay]);
+  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, puantajArama]);
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
   const personelliSantiyeler = useMemo(() => {
@@ -1021,6 +1044,32 @@ export default function PersonelPuantajPage() {
         </div>
       </div>
 
+      {/* Genel arama */}
+      {santiyeId && (
+        <div className="mb-2">
+          <div className="relative max-w-md">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={puantajArama}
+              onChange={(e) => setPuantajArama(e.target.value)}
+              placeholder="Ad soyad, TC, görev, meslek..."
+              className="h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 w-full pl-8"
+            />
+            {puantajArama && (
+              <button
+                type="button"
+                onClick={() => setPuantajArama("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                title="Aramayı temizle"
+              >
+                <XIcon size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Tablo */}
       {loading ? (
         <div className="space-y-3">
@@ -1122,7 +1171,31 @@ export default function PersonelPuantajPage() {
                         <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                           <button
                             type="button"
-                            onClick={() => hucreTikla(p, g)}
+                            onClick={(e) => {
+                              // MASAÜSTÜ: tek tık → puantajla (hover zaten notu gösteriyor)
+                              // MOBİL: tek tık → notu göster (hover yok), çift tık → puantajla
+                              if (!isTouch) {
+                                hucreTikla(p, g);
+                                return;
+                              }
+                              if (pg && dBilgi) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const tahminiYukseklik = 220;
+                                const altBosluk = window.innerHeight - rect.bottom;
+                                const yukari = altBosluk < tahminiYukseklik + 16;
+                                setTooltip({
+                                  x: rect.left + rect.width / 2,
+                                  y: yukari ? rect.top - 8 : rect.bottom + 8,
+                                  yukari,
+                                  ad: p.ad_soyad,
+                                  isleyenAd: pg.created_by_ad || (pg.created_by ? "Bilinmiyor" : "—"),
+                                  durum: pg.durum,
+                                  aciklama: pg.aciklama ?? null,
+                                  mesaiSaat: pg.mesai_saat,
+                                });
+                              }
+                            }}
+                            onDoubleClick={() => { if (isTouch) hucreTikla(p, g); }}
                             onMouseEnter={(e) => {
                               if (pg && dBilgi) {
                                 const rect = e.currentTarget.getBoundingClientRect();

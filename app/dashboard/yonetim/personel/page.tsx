@@ -373,38 +373,32 @@ export default function PersonelPage() {
                       {(() => {
                         const adlar = personelSantiyeAdlari(p.id);
                         if (adlar.length === 0) return "—";
-                        // Tıklayınca tam ad'ı toast ile göster (mobilde tooltip yok)
-                        const goster = () => toast(adlar.join("\n"), { duration: 5000, icon: "🏗" });
+                        // Tek şantiye: truncate + title — TruncateTooltip global handler
+                        // tıklamayı yakalayıp toast gösterir (çift toast olmasın diye onClick eklenmez).
                         if (adlar.length === 1) {
                           return (
-                            <button
-                              type="button"
-                              onClick={goster}
+                            <div
                               className="block truncate text-left w-full hover:text-[#F97316] cursor-pointer"
                               title={adlar[0]}
                             >
                               {adlar[0]}
-                            </button>
+                            </div>
                           );
                         }
-                        // Birden fazla şantiye — her chip ayrı satır, kısaltılmış
+                        // Birden fazla şantiye — her chip ayrı satır, kısaltılmış.
+                        // Her chip'in kendi title'ı var, TruncateTooltip tıklananı gösterir.
                         return (
-                          <button
-                            type="button"
-                            onClick={goster}
-                            className="flex flex-col gap-0.5 max-w-full text-left w-full"
-                            title={adlar.join("\n")}
-                          >
+                          <div className="flex flex-col gap-0.5 max-w-full text-left w-full">
                             {adlar.map((ad) => (
                               <span
                                 key={ad}
-                                className="block px-1.5 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded border border-blue-200 truncate hover:bg-blue-100"
+                                className="block px-1.5 py-0.5 bg-blue-50 text-blue-800 text-[11px] rounded border border-blue-200 truncate hover:bg-blue-100 cursor-pointer"
                                 title={ad}
                               >
                                 {ad}
                               </span>
                             ))}
-                          </button>
+                          </div>
                         );
                       })()}
                     </TableCell>

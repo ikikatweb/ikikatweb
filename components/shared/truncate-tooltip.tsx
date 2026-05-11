@@ -12,8 +12,23 @@
 import { useEffect } from "react";
 import toast from "react-hot-toast";
 
+// Aynı içeriği üst üste birden fazla göstermeyi engelle.
+// react-hot-toast id'si ile: aynı id'li toast varsa onu günceller, yeni oluşturmaz.
+// Ayrıca son 800ms içinde gösterilen aynı içerik tekrar gönderilmez (çift event guard).
+let sonToastIcerik = "";
+let sonToastZaman = 0;
 function gosterToast(metin: string) {
+  const simdi = Date.now();
+  if (metin === sonToastIcerik && simdi - sonToastZaman < 800) {
+    return; // 800ms içinde aynı içerik tekrar gelmez (çift click/event koruması)
+  }
+  sonToastIcerik = metin;
+  sonToastZaman = simdi;
+  // İçerik bazlı id ile çağır — aynı metin görüntüleniyorsa yeni toast eklenmez,
+  // mevcut olanın süresi yenilenir.
+  const id = `truncate-${metin.slice(0, 64)}`;
   toast(metin, {
+    id,
     duration: 5000,
     icon: "📋",
     style: {

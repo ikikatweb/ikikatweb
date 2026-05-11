@@ -1736,11 +1736,7 @@ export default function DashboardPage() {
                       odenmisOran >= 40 ? "Yarı yolda" :
                       odenmisOran > 0 ? "Başlangıç" : "Hiç yatmamış";
                     return (
-                      <TableRow
-                        key={row.santiyeId}
-                        className="hover:bg-blue-50 cursor-pointer"
-                        onClick={() => router.push(`/dashboard/iscilik-takibi?santiye=${row.santiyeId}`)}
-                      >
+                      <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
                         <TableCell className="px-2 py-1.5">
                           <div className="font-medium text-[#1E3A5F] truncate max-w-[200px]" title={row.santiyeAd}>
                             {row.santiyeAd}
