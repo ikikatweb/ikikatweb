@@ -1724,17 +1724,20 @@ export default function DashboardPage() {
                     const kalan = row.yatmasiGereken - row.yatanPrim;
                     const odenmisOran = row.yatmasiGereken > 0 ? (row.yatanPrim / row.yatmasiGereken) * 100 : 0;
                     const oranKap = Math.min(odenmisOran, 100);
-                    // Renk mantığı: %100+ tamamlanmış → KIRMIZI (fazla yatım uyarısı / iş bitti)
-                    //               <%40 → YEŞİL (yatım yapılmadı / hedef hâlâ uzakta — daha fazla bordro ödenebilir)
+                    // Renk eşikleri:
+                    //   %100+   "Tamamlandı"          → kırmızı
+                    //   %80-99  "Tamamlanmak üzere"   → kırmızı
+                    //   %40-79  "Yarı yolda"          → amber
+                    //   %1-39   "Başlangıç"           → yeşil
+                    //   %0      "Hiç yatmamış"        → yeşil
                     const barRenk =
                       row.yatmasiGereken === 0 ? "bg-gray-300" :
-                      odenmisOran >= 100 ? "bg-red-500" :
-                      odenmisOran >= 70 ? "bg-blue-500" :
+                      odenmisOran >= 80 ? "bg-red-500" :
                       odenmisOran >= 40 ? "bg-amber-500" : "bg-emerald-500";
                     const etiket =
                       row.yatmasiGereken === 0 ? "Tanımsız" :
-                      odenmisOran >= 100 ? "Bitti" :
-                      odenmisOran >= 70 ? "İlerliyor" :
+                      odenmisOran >= 100 ? "Tamamlandı" :
+                      odenmisOran >= 80 ? "Tamamlanmak üzere" :
                       odenmisOran >= 40 ? "Yarı yolda" :
                       odenmisOran > 0 ? "Başlangıç" : "Hiç yatmamış";
                     return (
@@ -1792,9 +1795,7 @@ export default function DashboardPage() {
                             <div className="min-w-[110px]">
                               <div className="flex items-center justify-between text-[9px] mb-0.5">
                                 <span className={
-                                  // Renkler tersine: %100+ → kırmızı, <%40 → yeşil
-                                  odenmisOran >= 100 ? "text-red-700 font-semibold" :
-                                  odenmisOran >= 70 ? "text-blue-700" :
+                                  odenmisOran >= 80 ? "text-red-700 font-semibold" :
                                   odenmisOran >= 40 ? "text-amber-700" : "text-emerald-700"
                                 }>{etiket}</span>
                                 <span className="text-gray-500 tabular-nums">%{formatSayi(odenmisOran, 0)}</span>
@@ -1854,8 +1855,7 @@ export default function DashboardPage() {
                         const oran = (bordroOzet.toplamYatan / bordroOzet.toplamYatmasiGereken) * 100;
                         const oranKap = Math.min(oran, 100);
                         const barRenk =
-                          oran >= 100 ? "bg-red-500" :
-                          oran >= 70 ? "bg-blue-500" :
+                          oran >= 80 ? "bg-red-500" :
                           oran >= 40 ? "bg-amber-500" : "bg-emerald-500";
                         return (
                           <div className="min-w-[110px]">
