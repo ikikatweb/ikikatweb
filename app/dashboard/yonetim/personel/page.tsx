@@ -34,23 +34,14 @@ function tr(s: string): string {
 
 // Bir personelin "şu an aktif olduğu" şantiye id'lerini hesapla.
 // Kural:
-//   1. bitis_tarihi NULL olan tüm atamalar = aktif (birden fazla olabilir → çoklu şantiye)
-//   2. Hiç aktif yoksa: en son baslangic_tarihi'ne sahip atamayı son şantiye olarak göster
+//   - bitis_tarihi NULL olan tüm atamalar = aktif (birden fazla olabilir → çoklu şantiye)
+//   - Hiç aktif atama yoksa boş döner → personel listesinde "—" görünür
+//     (eski davranış: en son kapanmış atamayı gösterirdi; artık çıkış sonrası şantiye adı görünmüyor)
 function aktifSantiyeIdleri(atamalar: PersonelAtamaGecmisi[]): string[] {
   const aktifler = atamalar.filter((a) => !a.bitis_tarihi);
-  if (aktifler.length > 0) {
-    // Aynı şantiye birden çok kez varsa unique
-    return Array.from(new Set(aktifler.map((a) => a.santiye_id)));
-  }
-  if (atamalar.length === 0) return [];
-  // En son atanılan (kapanmış) şantiye(ler)
-  const sortedDesc = [...atamalar].sort((a, b) =>
-    (b.baslangic_tarihi || "").localeCompare(a.baslangic_tarihi || ""),
-  );
-  const enYeniBaslangic = sortedDesc[0].baslangic_tarihi;
-  return Array.from(new Set(
-    sortedDesc.filter((a) => a.baslangic_tarihi === enYeniBaslangic).map((a) => a.santiye_id),
-  ));
+  if (aktifler.length === 0) return [];
+  // Aynı şantiye birden çok kez varsa unique
+  return Array.from(new Set(aktifler.map((a) => a.santiye_id)));
 }
 
 export default function PersonelPage() {
@@ -170,9 +161,12 @@ export default function PersonelPage() {
     if (personelSantiyeler.some(
       (ps) => ps.personel_id === personelId && izinliSantiyeler.has(ps.santiye_id),
     )) return true;
-    // Atama geçmişinde aktif/son atama izinli şantiye mi?
-    const aktifSIds = aktifSantiyeIdleri(atamalar.filter((a) => a.personel_id === personelId));
-    return aktifSIds.some((sid) => izinliSantiyeler.has(sid));
+    // Atama geçmişinde herhangi bir izinli şantiye var mı? (aktif veya kapanmış)
+    // İZİN kontrolü için TÜM geçmişe bakar — çıkışı verilmiş bile olsa o şantiyede çalışmış
+    // personeli kısıtlı kullanıcı görebilsin.
+    return atamalar.some((a) =>
+      a.personel_id === personelId && izinliSantiyeler.has(a.santiye_id),
+    );
   };
 
   const filtrelenmis = personeller.filter((p) => {
