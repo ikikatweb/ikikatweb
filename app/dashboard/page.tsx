@@ -1724,11 +1724,13 @@ export default function DashboardPage() {
                     const kalan = row.yatmasiGereken - row.yatanPrim;
                     const odenmisOran = row.yatmasiGereken > 0 ? (row.yatanPrim / row.yatmasiGereken) * 100 : 0;
                     const oranKap = Math.min(odenmisOran, 100);
+                    // Renk mantığı: %100+ tamamlanmış → KIRMIZI (fazla yatım uyarısı / iş bitti)
+                    //               <%40 → YEŞİL (yatım yapılmadı / hedef hâlâ uzakta — daha fazla bordro ödenebilir)
                     const barRenk =
                       row.yatmasiGereken === 0 ? "bg-gray-300" :
-                      odenmisOran >= 100 ? "bg-emerald-500" :
+                      odenmisOran >= 100 ? "bg-red-500" :
                       odenmisOran >= 70 ? "bg-blue-500" :
-                      odenmisOran >= 40 ? "bg-amber-500" : "bg-red-500";
+                      odenmisOran >= 40 ? "bg-amber-500" : "bg-emerald-500";
                     const etiket =
                       row.yatmasiGereken === 0 ? "Tanımsız" :
                       odenmisOran >= 100 ? "Bitti" :
@@ -1775,7 +1777,8 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-right tabular-nums font-semibold">
                           {row.yatmasiGereken > 0 ? (
-                            <span className={kalan > 0 ? "text-red-600" : "text-emerald-700"}>
+                            // Renkler tersine çevrildi: eksik (kalan>0) → YEŞİL, fazla yatım (kalan<0) → KIRMIZI
+                            <span className={kalan > 0 ? "text-emerald-700" : "text-red-600"}>
                               {kalan > 0 ? formatSayi(kalan, 0) : `-${formatSayi(-kalan, 0)}`} ₺
                             </span>
                           ) : (
@@ -1789,9 +1792,10 @@ export default function DashboardPage() {
                             <div className="min-w-[110px]">
                               <div className="flex items-center justify-between text-[9px] mb-0.5">
                                 <span className={
-                                  odenmisOran >= 100 ? "text-emerald-700 font-semibold" :
+                                  // Renkler tersine: %100+ → kırmızı, <%40 → yeşil
+                                  odenmisOran >= 100 ? "text-red-700 font-semibold" :
                                   odenmisOran >= 70 ? "text-blue-700" :
-                                  odenmisOran >= 40 ? "text-amber-700" : "text-red-700"
+                                  odenmisOran >= 40 ? "text-amber-700" : "text-emerald-700"
                                 }>{etiket}</span>
                                 <span className="text-gray-500 tabular-nums">%{formatSayi(odenmisOran, 0)}</span>
                               </div>
