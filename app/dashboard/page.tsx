@@ -1842,7 +1842,8 @@ export default function DashboardPage() {
                       {(() => {
                         const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan;
                         return (
-                          <span className={tk > 0 ? "text-red-600" : "text-emerald-700"}>
+                          // Renkler tersine: eksik (tk>0) → yeşil, fazla yatım (tk<0) → kırmızı
+                          <span className={tk > 0 ? "text-emerald-700" : "text-red-600"}>
                             {tk > 0 ? formatSayi(tk, 0) : `-${formatSayi(-tk, 0)}`} ₺
                           </span>
                         );
@@ -1853,9 +1854,9 @@ export default function DashboardPage() {
                         const oran = (bordroOzet.toplamYatan / bordroOzet.toplamYatmasiGereken) * 100;
                         const oranKap = Math.min(oran, 100);
                         const barRenk =
-                          oran >= 100 ? "bg-emerald-500" :
+                          oran >= 100 ? "bg-red-500" :
                           oran >= 70 ? "bg-blue-500" :
-                          oran >= 40 ? "bg-amber-500" : "bg-red-500";
+                          oran >= 40 ? "bg-amber-500" : "bg-emerald-500";
                         return (
                           <div className="min-w-[110px]">
                             <div className="text-[9px] text-gray-500 text-right tabular-nums mb-0.5">
