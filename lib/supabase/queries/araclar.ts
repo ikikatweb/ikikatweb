@@ -9,12 +9,27 @@ function getSupabase() {
 // Plaka / şase no / motor no tekilliğini kontrol et.
 // haricAracId verilirse (düzenleme modunda) o araç hariç tutulur.
 // Çakışma varsa açıklayıcı bir Error fırlatır.
+// Plaka/şase/motor normalize — küçük büyük harf, boşluk ve tire farkından
+// bağımsız karşılaştırma için. "60 ADR 790" == "60adr790" == "60-ADR-790".
+function aracAlanNormalize(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .replace(/[İIıi]/g, "i")
+    .replace(/[şŞ]/g, "s")
+    .replace(/[ğĞ]/g, "g")
+    .replace(/[üÜ]/g, "u")
+    .replace(/[öÖ]/g, "o")
+    .replace(/[çÇ]/g, "c")
+    .toLowerCase()
+    .replace(/[\s\-_]+/g, "");
+}
+
 async function checkAracTekillik(
   fields: { plaka?: string | null; sase_no?: string | null; motor_no?: string | null },
   haricAracId?: string
 ) {
   const supabase = getSupabase();
-  const checks: { alan: string; label: string; deger: string }[] = [];
+  const checks: { alan: "plaka" | "sase_no" | "motor_no"; label: string; deger: string }[] = [];
   if (fields.plaka && fields.plaka.trim()) {
     checks.push({ alan: "plaka", label: "Plaka", deger: fields.plaka.trim() });
   }
@@ -25,14 +40,24 @@ async function checkAracTekillik(
     checks.push({ alan: "motor_no", label: "Motor No", deger: fields.motor_no.trim() });
   }
 
+  if (checks.length === 0) return;
+
+  // Tüm araçların kontrol edilen alanlarını çek — case/boşluk/tire farkına bakmadan
+  // istemci tarafında karşılaştır. (PostgreSQL'de tek sorguyla "normalize edilmiş eşit"
+  // demek karmaşık; veri seti küçük olduğu için bu daha güvenilir.)
+  let query = supabase.from("araclar").select("id, plaka, sase_no, motor_no");
+  if (haricAracId) query = query.neq("id", haricAracId);
+  const { data, error } = await query;
+  if (error) throw error;
+  const mevcutAraclar = (data ?? []) as Array<{ id: string; plaka: string | null; sase_no: string | null; motor_no: string | null }>;
+
   for (const c of checks) {
-    let query = supabase.from("araclar").select("id, plaka").eq(c.alan, c.deger).limit(1);
-    if (haricAracId) query = query.neq("id", haricAracId);
-    const { data, error } = await query;
-    if (error) throw error;
-    if (data && data.length > 0) {
+    const yeniNorm = aracAlanNormalize(c.deger);
+    if (!yeniNorm) continue;
+    const eslesen = mevcutAraclar.find((a) => aracAlanNormalize(a[c.alan]) === yeniNorm);
+    if (eslesen) {
       throw new Error(
-        `Bu ${c.label} ("${c.deger}") zaten "${data[0].plaka}" plakalı araçta kayıtlı. Aynı ${c.label} iki farklı araçta olamaz.`
+        `Bu ${c.label} ("${c.deger}") zaten "${eslesen.plaka}" plakalı araçta kayıtlı. Aynı ${c.label} iki farklı araçta olamaz.`,
       );
     }
   }

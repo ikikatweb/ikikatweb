@@ -47,7 +47,7 @@ import {
   ChevronUp, ChevronDown,
   Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3, Plane,
   ArrowRight, ArrowLeft as ArrowLeftIcon, Link2, Link2Off, Lock,
-  FileBarChart, Pencil, Fuel,
+  FileBarChart, Pencil, Fuel, Search,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -2158,14 +2158,27 @@ export default function AracPuantajPage() {
 
           {/* Arama — kamyon, plaka, marka model gibi alanlarda. Sondaki boşluk = tam kelime */}
           <div className="mb-3">
-            <Label className="text-[10px] text-gray-400">Arama</Label>
-            <input
-              type="text"
-              value={ozetArama}
-              onChange={(e) => setOzetArama(e.target.value)}
-              placeholder="Plaka, marka, model, cinsi, firma... (sonuna boşluk: tam kelime)"
-              className={selectClass + " w-full"}
-            />
+            <Label className="text-[10px] text-gray-400">Genel Arama</Label>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                value={ozetArama}
+                onChange={(e) => setOzetArama(e.target.value)}
+                placeholder="Plaka, marka, model, cinsi, firma adı... (sonuna boşluk: tam kelime)"
+                className={selectClass + " w-full pl-8"}
+              />
+              {ozetArama && (
+                <button
+                  type="button"
+                  onClick={() => setOzetArama("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                  title="Aramayı temizle"
+                >
+                  <XIcon size={14} />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Hızlı aralık butonları */}
