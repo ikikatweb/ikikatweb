@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import {
   getSilinenGelenEvraklar,
   restoreGelenEvrak,
@@ -177,16 +178,17 @@ export default function SilinenPage() {
     if (fBaslangic && k.evrak_tarihi < fBaslangic) return false;
     if (fBitis && k.evrak_tarihi > fBitis) return false;
     if (fArama.trim()) {
-      const q = fArama.toLowerCase();
-      const hit =
-        k.evrak_sayi_no?.toLowerCase().includes(q) ||
-        k.konu?.toLowerCase().includes(q) ||
-        (k.muhatap?.toLowerCase().includes(q) ?? false) ||
-        (k.firma_adi?.toLowerCase().includes(q) ?? false) ||
-        (k.olusturan_ad?.toLowerCase().includes(q) ?? false) ||
-        (k.silen_ad?.toLowerCase().includes(q) ?? false) ||
-        (k.silme_nedeni?.toLowerCase().includes(q) ?? false);
-      if (!hit) return false;
+      const q = trAramaNormalize(fArama);
+      const text = trAramaNormalize([
+        k.evrak_sayi_no,
+        k.konu,
+        k.muhatap,
+        k.firma_adi,
+        k.olusturan_ad,
+        k.silen_ad,
+        k.silme_nedeni,
+      ].filter(Boolean).join(" "));
+      if (!text.includes(q)) return false;
     }
     return true;
   });

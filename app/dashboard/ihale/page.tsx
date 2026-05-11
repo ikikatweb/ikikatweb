@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import {
   getTumTanimlamalar,
   createTanimlama,
@@ -1701,14 +1702,14 @@ function IhalePageContent() {
   // "nisa harita" yazınca, Nisa Harita'nın katıldığı tüm ihaleler süzülür.
   // Çoklu sıralama: sortConfig dolu ise sırayla uygulanır (öncelik: ilk öğe).
   const filtreliGecmis = useMemo(() => {
-    const q = gecmisArama.trim().toLocaleLowerCase("tr-TR");
+    const q = trAramaNormalize(gecmisArama);
     let filtered = !q ? gecmisIhaleler : gecmisIhaleler.filter((i) => {
       const firmaList = (i as Ihale & { firma_adlari?: string[] }).firma_adlari ?? [];
-      const haystack = [
+      const haystack = trAramaNormalize([
         i.idare_adi, i.is_adi, i.ihale_kayit_no, i.muhtemel_kazanan,
         String(i.yaklasik_maliyet ?? ""),
         ...firmaList,
-      ].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+      ].filter(Boolean).join(" "));
       return haystack.includes(q);
     });
 

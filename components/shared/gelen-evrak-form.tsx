@@ -13,6 +13,7 @@ import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import { useAuth } from "@/hooks";
 import type { GelenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -280,8 +281,8 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               className={selectClass}
             />
             {muhatapDropdownAcik && (() => {
-              const q = muhatapArama.toLowerCase();
-              const filtreli = q ? muhataplar.filter((m) => tekSatirMuhatap(m).toLowerCase().includes(q)) : muhataplar;
+              const q = trAramaNormalize(muhatapArama);
+              const filtreli = q ? muhataplar.filter((m) => trAramaNormalize(tekSatirMuhatap(m)).includes(q)) : muhataplar;
               if (filtreli.length === 0) return null;
               return (
                 <div

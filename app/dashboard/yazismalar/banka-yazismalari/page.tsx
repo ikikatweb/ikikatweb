@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma, createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { BankaYazismaWithRelations, Firma } from "@/lib/supabase/types";
@@ -116,19 +117,20 @@ export default function BankaYazismalariPage() {
     if (fBaslangic && y.evrak_tarihi < fBaslangic) return false;
     if (fBitis && y.evrak_tarihi > fBitis) return false;
     if (fFirma && y.firma_id !== fFirma) return false;
-    if (fMuhatap && !(y.muhatap?.toLowerCase().includes(fMuhatap.toLowerCase()) ?? false)) return false;
+    if (fMuhatap && !trAramaNormalize(y.muhatap ?? "").includes(trAramaNormalize(fMuhatap))) return false;
     if (fOlusturan && y.olusturan_id !== fOlusturan) return false;
     if (fArama.trim()) {
-      const q = fArama.toLowerCase();
-      const hit =
-        y.evrak_sayi_no?.toLowerCase().includes(q) ||
-        y.konu?.toLowerCase().includes(q) ||
-        (y.muhatap?.toLowerCase().includes(q) ?? false) ||
-        (y.firmalar?.firma_adi?.toLowerCase().includes(q) ?? false) ||
-        (y.kullanicilar?.ad_soyad?.toLowerCase().includes(q) ?? false) ||
-        (y.metin?.toLowerCase().includes(q) ?? false) ||
-        formatTarih(y.evrak_tarihi).includes(q);
-      if (!hit) return false;
+      const q = trAramaNormalize(fArama);
+      const text = trAramaNormalize([
+        y.evrak_sayi_no,
+        y.konu,
+        y.muhatap,
+        y.firmalar?.firma_adi,
+        y.kullanicilar?.ad_soyad,
+        y.metin,
+        formatTarih(y.evrak_tarihi),
+      ].filter(Boolean).join(" "));
+      if (!text.includes(q)) return false;
     }
     return true;
   });

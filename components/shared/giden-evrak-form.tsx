@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
+import { formatMuhatap, formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -372,10 +372,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               className={selectClass}
             />
             {muhatapDropdownAcik && (() => {
-              const q = muhatapArama.toLowerCase();
+              const q = trAramaNormalize(muhatapArama);
               const filtreli = q ? muhataplar.filter((m) =>
-                tekSatirMuhatap(m.deger).toLowerCase().includes(q) ||
-                (m.kisa_ad?.toLowerCase().includes(q) ?? false)
+                trAramaNormalize(tekSatirMuhatap(m.deger)).includes(q) ||
+                trAramaNormalize(m.kisa_ad ?? "").includes(q)
               ) : muhataplar;
               if (filtreli.length === 0) return null;
               return (

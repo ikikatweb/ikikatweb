@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
 import { createClient } from "@/lib/supabase/client";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import type { AracYakit } from "@/lib/supabase/types";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -323,9 +324,12 @@ export default function AracPuantajPage() {
     }
     try {
       const baslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
-      const sonrakiAy = ay === 12 ? 1 : ay + 1;
-      const sonrakiYil = ay === 12 ? yil + 1 : yil;
-      const bitis = `${sonrakiYil}-${String(sonrakiAy).padStart(2, "0")}-01`;
+      // Bitiş: ayın SON GÜNÜ (kapsayıcı). Önceden sonraki ayın 1'i kullanılıyordu
+      // ama getAracYakitlarByRange .lte ile çalıştığı için sonraki ayın 1'indeki
+      // kayıtlar da bu aya dahil ediliyordu (örn. 1 Ağustos'taki yakıt 1 Temmuz'a
+      // düşüyordu — gün hesabı tarih.slice(8,10) ile yapıldığı için).
+      const ayinSonGunu = new Date(yil, ay, 0).getDate();
+      const bitis = `${yil}-${String(ay).padStart(2, "0")}-${String(ayinSonGunu).padStart(2, "0")}`;
       const [data, yakitData] = await Promise.all([
         getAracPuantajByAySantiye(santiyeId, yil, ay),
         getAracYakitlarByRange(null, baslangic, bitis).catch(() => [] as AracYakit[]),
@@ -556,13 +560,14 @@ export default function AracPuantajPage() {
     for (const y of ozetRangeYakitlar) idsInRange.add(y.arac_id);
 
     // Arama — sondaki boşluk varsa tam kelime modu (örn. "kamyon " sadece kamyonu, kamyoneti getirmez)
-    const aramaRaw = ozetArama.toLowerCase();
-    const tamKelime = aramaRaw.trim().length > 0 && aramaRaw !== aramaRaw.trimEnd();
-    const aramaQ = aramaRaw.trim();
+    // Türkçe karakter ve büyük/küçük harf duyarlılığı yok (İ/I/ı/i hepsi eşleşir).
+    const aramaTrimmedSon = ozetArama.replace(/\s+$/, "");
+    const tamKelime = ozetArama.trim().length > 0 && ozetArama !== aramaTrimmedSon;
+    const aramaQ = trAramaNormalize(ozetArama.trim());
     let aramaRegex: RegExp | null = null;
     if (tamKelime && aramaQ) {
       const escaped = aramaQ.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      aramaRegex = new RegExp(`(^|[^a-z0-9çğıöşü])${escaped}([^a-z0-9çğıöşü]|$)`, "i");
+      aramaRegex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
     }
 
     return araclar
@@ -580,7 +585,7 @@ export default function AracPuantajPage() {
         const sahibi = a.tip === "ozmal"
           ? (a.firmalar?.firma_adi ?? "")
           : (a.kiralama_firmasi ?? "");
-        const text = [a.plaka, a.marka, a.model, a.cinsi, sahibi].filter(Boolean).join(" ").toLowerCase();
+        const text = trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi, sahibi].filter(Boolean).join(" "));
         if (aramaRegex) return aramaRegex.test(text);
         return text.includes(aramaQ);
       })

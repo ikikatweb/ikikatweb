@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { AuthProvider } from "@/lib/auth-context";
 import Sidebar from "@/components/shared/sidebar";
 import Topbar from "@/components/shared/topbar";
@@ -14,6 +15,21 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Navigasyon geçmişi takibi — bazı sayfalar (örn. personel) düzenleme alt-route'undan
+  // dönüldüğünde filtreleri korumak için "önceki yol" bilgisine ihtiyaç duyar.
+  // sessionStorage.nav-prev-path = bir önceki pathname, nav-current-path = mevcut.
+  const pathname = usePathname();
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const current = sessionStorage.getItem("nav-current-path") ?? "";
+      if (current && current !== pathname) {
+        sessionStorage.setItem("nav-prev-path", current);
+      }
+      sessionStorage.setItem("nav-current-path", pathname);
+    } catch { /* sessiz */ }
+  }, [pathname]);
 
   // Service worker'dan gelen "BILDIRIM_NAVIGATE" mesajını dinle.
   // Bildirime tıklayınca SW bu mesajı yollar; biz window.location.href ile

@@ -60,11 +60,49 @@ export default function PersonelPage() {
   const [santiyeAdMap, setSantiyeAdMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  // Filtre seçimleri sessionStorage ile korunur — düzenleme sayfasından dönünce
+  // (mount→unmount→mount) seçimler kaybolmasın diye.
+  // ÖNEMLİ: sessionStorage SSR'de yok — init'te okumak hydration mismatch'e neden olur.
+  // Bu yüzden varsayılanlarla başlıyoruz, mount sonrası useEffect'te restore ediyoruz.
+  const FILTRE_KEY = "personel-page-filters";
   const [arama, setArama] = useState("");
   // Personel tipi filtresi: "tumu" | "kadro" | "taseron"
   const [tipFiltre, setTipFiltre] = useState<"tumu" | "kadro" | "taseron">("tumu");
   // Durum filtresi: varsayılan "aktif" — sayfa açılışında pasifler gizli
   const [durumFiltre, setDurumFiltre] = useState<"aktif" | "pasif" | "tumu">("aktif");
+  // sessionStorage hidrasyon hazır olduktan SONRA okunur (initial render server ile aynı kalsın diye).
+  // ÖNEMLİ: Sadece personel alt-route'undan (ekle/duzenle) dönüldüğünde restore edilir.
+  // Sidebar üzerinden başka bir sayfaya gidip dönülürse varsayılanlar kullanılır.
+  const PERSONEL_PATH_PREFIX = "/dashboard/yonetim/personel";
+  const [filtreYuklendi, setFiltreYuklendi] = useState(false);
+  useEffect(() => {
+    try {
+      const prevPath = sessionStorage.getItem("nav-prev-path") ?? "";
+      const personelAltRouteIdiMi =
+        prevPath.startsWith(PERSONEL_PATH_PREFIX) && prevPath.length > PERSONEL_PATH_PREFIX.length;
+      if (personelAltRouteIdiMi) {
+        // Personel düzenleme/ekleme sayfasından dönüş → filtreleri restore et
+        const stored = sessionStorage.getItem(FILTRE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Partial<{ arama: string; tipFiltre: typeof tipFiltre; durumFiltre: typeof durumFiltre }>;
+          if (typeof parsed.arama === "string") setArama(parsed.arama);
+          if (parsed.tipFiltre === "tumu" || parsed.tipFiltre === "kadro" || parsed.tipFiltre === "taseron") setTipFiltre(parsed.tipFiltre);
+          if (parsed.durumFiltre === "aktif" || parsed.durumFiltre === "pasif" || parsed.durumFiltre === "tumu") setDurumFiltre(parsed.durumFiltre);
+        }
+      } else {
+        // Başka bir yerden geldi → eski snapshot'ı temizle, varsayılanlar kullanılsın
+        sessionStorage.removeItem(FILTRE_KEY);
+      }
+    } catch { /* sessiz */ }
+    setFiltreYuklendi(true);
+  }, []);
+  // Filtre değişince sessionStorage'a kaydet (sadece restore tamamlandıktan sonra)
+  useEffect(() => {
+    if (!filtreYuklendi) return;
+    try {
+      sessionStorage.setItem(FILTRE_KEY, JSON.stringify({ arama, tipFiltre, durumFiltre }));
+    } catch { /* sessiz */ }
+  }, [arama, tipFiltre, durumFiltre, filtreYuklendi]);
   const router = useRouter();
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-personel", "ekle");

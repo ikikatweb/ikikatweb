@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Save, X, Upload, Download, FileCheck } from "lucide-react";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
-import { formatBaslik, formatPlaka } from "@/lib/utils/isim";
+import { formatBaslik, formatPlaka, trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
 
 type AracFormProps = {
@@ -34,12 +34,10 @@ const selectClass =
   "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
 
 // Türkçe duyarlı case-insensitive arama için normalize fonksiyonu
-// "İkikat" == "ikikat" == "IKIKAT" eşleşir
+// "İkikat" == "ikikat" == "IKIKAT" == "ıkıkat" hepsi eşleşir.
+// İ/I/ı/i tek karaktere indirilir + tüm diğer Türkçe harfler ASCII'ye çevrilir.
 function normalizeArama(s: string): string {
-  return s
-    .toLocaleLowerCase("tr-TR")
-    .replace(/i̇/g, "i") // combining karakteri temizle
-    .trim();
+  return trAramaNormalize(s);
 }
 
 export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormProps) {

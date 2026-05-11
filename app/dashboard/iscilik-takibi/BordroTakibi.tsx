@@ -50,7 +50,7 @@ import {
   type BordroPendingDB,
 } from "@/lib/supabase/queries/bordro-pending";
 import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
-import { formatKisiAdi } from "@/lib/utils/isim";
+import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -821,12 +821,12 @@ export default function BordroTakibi() {
     return map;
   }, [gunMap]);
 
-  // Filtrele: arama
+  // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   const filtreli = useMemo(() => {
-    const q = arama.trim().toLocaleLowerCase("tr-TR");
+    const q = trAramaNormalize(arama);
     if (!q) return personeller;
     return personeller.filter((p) => {
-      const text = [p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+      const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
       return text.includes(q);
     });
   }, [personeller, arama]);
@@ -3371,9 +3371,9 @@ export default function BordroTakibi() {
                 .map((a) => a.personel_id)
             );
             const aday = personeller.filter((p) => !buSantiyedeAktifIds.has(p.id));
-            const q = topluArama.trim().toLocaleLowerCase("tr-TR");
+            const q = trAramaNormalize(topluArama);
             const goruntulenen = q ? aday.filter((p) => {
-              const text = [p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" ").toLocaleLowerCase("tr-TR");
+              const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
               return text.includes(q);
             }) : aday;
             const tumuSecili = goruntulenen.length > 0 && goruntulenen.every((p) => topluSecilenler.has(p.id));

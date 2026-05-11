@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak, createGidenEvrak, getGidenEvrakSayiNo } from "@/lib/supabase/queries/giden-evrak";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -122,19 +123,20 @@ export default function GidenEvrakPage() {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
     if (fBitis && e.evrak_tarihi > fBitis) return false;
     if (fFirma && e.firma_id !== fFirma) return false;
-    if (fMuhatap && !(e.muhatap?.toLowerCase().includes(fMuhatap.toLowerCase()) ?? false)) return false;
+    if (fMuhatap && !trAramaNormalize(e.muhatap ?? "").includes(trAramaNormalize(fMuhatap))) return false;
     if (fArama.trim()) {
-      const q = fArama.toLowerCase();
-      const hit =
-        e.evrak_sayi_no?.toLowerCase().includes(q) ||
-        (e.evrak_kayit_no?.toLowerCase().includes(q) ?? false) ||
-        e.konu?.toLowerCase().includes(q) ||
-        (e.muhatap?.toLowerCase().includes(q) ?? false) ||
-        (e.firmalar?.firma_adi?.toLowerCase().includes(q) ?? false) ||
-        (e.kullanicilar?.ad_soyad?.toLowerCase().includes(q) ?? false) ||
-        (e.metin?.toLowerCase().includes(q) ?? false) ||
-        formatTarih(e.evrak_tarihi).includes(q);
-      if (!hit) return false;
+      const q = trAramaNormalize(fArama);
+      const text = trAramaNormalize([
+        e.evrak_sayi_no,
+        e.evrak_kayit_no,
+        e.konu,
+        e.muhatap,
+        e.firmalar?.firma_adi,
+        e.kullanicilar?.ad_soyad,
+        e.metin,
+        formatTarih(e.evrak_tarihi),
+      ].filter(Boolean).join(" "));
+      if (!text.includes(q)) return false;
     }
     return true;
   });
