@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
+import { createClient } from "@/lib/supabase/client";
 import type { AracYakit } from "@/lib/supabase/types";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -2224,15 +2225,23 @@ export default function AracPuantajPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                // En eski tarih — şantiye seçildiyse o şantiyedeki araç puantajlarına göre,
-                // değilse aynı kapsamdaki araçların created_at'ine göre.
+              onClick={async () => {
+                // En eski puantaj tarihini DOĞRUDAN veritabanından sorgula.
+                // ozetRangePuantajlar mevcut tarih aralığıyla sınırlı olduğundan
+                // daha eski kayıtlar için yetmiyordu.
                 let enEski = "";
-                // Önce mevcut range'deki puantajlardan dene (en doğru sinyal)
-                for (const p of ozetRangePuantajlar) {
-                  if (p.tarih && (!enEski || p.tarih < enEski)) enEski = p.tarih;
-                }
-                // Yoksa şantiyedeki araçların oluşturma tarihinden tahmin et
+                try {
+                  const supabase = createClient();
+                  let q = supabase
+                    .from("arac_puantaj")
+                    .select("tarih")
+                    .order("tarih", { ascending: true })
+                    .limit(1);
+                  if (santiyeId) q = q.eq("santiye_id", santiyeId);
+                  const { data } = await q;
+                  if (data && data.length > 0) enEski = data[0].tarih;
+                } catch { /* sessiz — fallback */ }
+                // Fallback: şantiyedeki araçların oluşturma tarihinden tahmin
                 if (!enEski) {
                   for (const a of araclar) {
                     if (santiyeId && a.santiye_id !== santiyeId) continue;
@@ -2240,7 +2249,7 @@ export default function AracPuantajPage() {
                     if (t && (!enEski || t < enEski)) enEski = t;
                   }
                 }
-                setOzetBaslangic(enEski || "");
+                setOzetBaslangic(enEski || "2020-01-01");
                 setOzetBitis(new Date().toISOString().slice(0, 10));
               }}
               className="px-2 py-1 border rounded hover:bg-gray-50"
