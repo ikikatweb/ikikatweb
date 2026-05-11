@@ -268,7 +268,7 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
           </button>
 
           {menuAcik && (
-            <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] overflow-hidden">
+            <div className="absolute right-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] overflow-hidden">
               {/* Yazı Boyutu — varsayılan kapalı, başlığa tıklayınca açılır */}
               <button
                 type="button"

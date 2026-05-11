@@ -95,7 +95,7 @@ export default function FontSizeAyari() {
       </button>
 
       {acik && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-2 min-w-[180px]">
+        <div className="absolute right-0 top-full mt-1 z-[100] bg-white border border-gray-200 rounded-lg shadow-xl p-2 min-w-[180px]">
           <div className="text-[10px] text-gray-500 px-2 pb-1.5 font-semibold">Yazı Boyutu</div>
 
           {/* − / + ile hızlı ayarlama */}

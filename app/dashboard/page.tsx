@@ -10,6 +10,10 @@ import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTe
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
+import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
+import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
+import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import type { PersonelAtamaGecmisi, PersonelAtamaManuelGun, Personel, IscilikTakibiWithSantiye, PersonelBrutUcret } from "@/lib/supabase/types";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
@@ -101,6 +105,15 @@ export default function DashboardPage() {
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [defterOzetler, setDefterOzetler] = useState<DefterOzet[]>([]);
   const [defterDetaylar, setDefterDetaylar] = useState<DefterDetay[]>([]);
+  // Bordro Takibi widget'ı
+  const [bordroAtamalar, setBordroAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
+  const [bordroManuelGunler, setBordroManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
+  const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
+  const [bordroGunlukUcretler, setBordroGunlukUcretler] = useState<GunlukUcret[]>([]);
+  const [bordroIscilikTakibi, setBordroIscilikTakibi] = useState<IscilikTakibiWithSantiye[]>([]);
+  const [bordroAyliklar, setBordroAyliklar] = useState<{ iscilik_takibi_id: string; ait_oldugu_ay: string }[]>([]);
+  const [bordroBrutUcretler, setBordroBrutUcretler] = useState<PersonelBrutUcret[]>([]);
+  const [bordroLoading, setBordroLoading] = useState(true);
   const [yaklasirGun, setYaklasirGun] = useState(30);
   const [editEvrakId, setEditEvrakId] = useState<string | null>(null);
   const [editSigortaKey, setEditSigortaKey] = useState<string | null>(null);
@@ -224,6 +237,32 @@ export default function DashboardPage() {
         setPersoneller(pers as PersonelWithRelations[]);
         setYiUfeData(yi as YiUfe[]);
       } catch { /* sessiz */ }
+    })();
+
+    // BACKGROUND BATCH 3: Bordro takibi widget verileri
+    (async () => {
+      setBordroLoading(true);
+      try {
+        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData] = await Promise.all([
+          getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
+          getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
+          getBordroPersoneller().catch(() => [] as Personel[]),
+          getGunlukUcretler().catch(() => [] as GunlukUcret[]),
+          getIscilikTakibi().catch(() => [] as IscilikTakibiWithSantiye[]),
+          getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
+          getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
+        ]);
+        setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
+        setBordroManuelGunler(manuelData as PersonelAtamaManuelGun[]);
+        setBordroPersoneller(bPers as Personel[]);
+        setBordroGunlukUcretler(ucretData as GunlukUcret[]);
+        setBordroIscilikTakibi(iscilikData as IscilikTakibiWithSantiye[]);
+        setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]);
+        setBordroBrutUcretler(brutData as PersonelBrutUcret[]);
+      } catch { /* sessiz */ }
+      finally {
+        setBordroLoading(false);
+      }
     })();
 
     try {
@@ -569,6 +608,268 @@ export default function DashboardPage() {
     }
     return kaynak.filter((e) => !e.evrak_kayit_no || e.evrak_kayit_no.trim() === "").slice(0, 15);
   }, [gidenEvraklar, isYonetici, kullanici]);
+
+  // Widget: Bordro Takibi — BordroTakibi sayfasıyla AYNI hesap mantığı (birebir)
+  // - Yatması gereken: (sözleşme + keşif + ff) × oran / 100 (aynı şantiye birden fazla kayıt → topla)
+  // - Tahmini bordro: son ödenen prim ayından (sonAy) sonra her ay için
+  //   • Manuel gün varsa onu kullanır, yoksa atama tarihlerinden gerçek günü hesaplar
+  //   • Personel brüt ücreti varsa onu kullanır, yoksa yıl bazlı default ücret
+  const bordroOzet = useMemo(() => {
+    if (bordroLoading) return null;
+
+    const buYil = bugun.getFullYear();
+    const buAy = bugun.getMonth() + 1;
+    const buYilAyNum = buYil * 100 + buAy;
+
+    // ait_oldugu_ay "MM.YYYY" veya "YYYY-MM-..." → YYYYMM numerik
+    const ayYilNum = (s: string): number => {
+      if (!s) return 0;
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
+      const iso = s.match(/^(\d{4})-(\d{2})/);
+      if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
+      return 0;
+    };
+    const yerelBugun = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
+      const brut = brutUcretForAy(bordroBrutUcretler, personelId, ayStr);
+      if (brut > 0) return brut;
+      return bordroGunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    };
+
+    // iscilik_takibi_id → en son ait_oldugu_ay
+    const sonAyByTakibi = new Map<string, string>();
+    for (const ay of bordroAyliklar) {
+      const mevcut = sonAyByTakibi.get(ay.iscilik_takibi_id);
+      if (!mevcut || ayYilNum(ay.ait_oldugu_ay) > ayYilNum(mevcut)) {
+        sonAyByTakibi.set(ay.iscilik_takibi_id, ay.ait_oldugu_ay);
+      }
+    }
+
+    // primInfo: aynı şantiyenin birden fazla iscilik_takibi kaydı toplanır
+    type PrimInfo = {
+      yatmasiGereken: number;
+      yatan: number;
+      sonAyNum: number;
+      sonAy: string | null;
+      sozlesmeBedeli: number;
+      iscilikOrani: number;
+      kesifVeFiyatFarki: number;
+    };
+    const primInfo = new Map<string, PrimInfo>();
+    for (const r of bordroIscilikTakibi) {
+      const sant = r.santiyeler;
+      const bitmis = !!(sant && (
+        sant.gecici_kabul_tarihi || sant.kesin_kabul_tarihi ||
+        sant.tasfiye_tarihi || sant.devir_tarihi
+      ));
+      if (bitmis || !r.santiye_id) continue;
+
+      const bedel = sant?.sozlesme_bedeli ?? 0;
+      const kesif = r.kesif_artisi ?? 0;
+      const ff = r.fiyat_farki ?? 0;
+      const oran = r.iscilik_orani ?? 0;
+      const yatacak = (bedel + kesif + ff) * oran / 100;
+      const yatan = r.yatan_prim ?? 0;
+      const sonAy = sonAyByTakibi.get(r.id) ?? null;
+      const sonAyN = sonAy ? ayYilNum(sonAy) : 0;
+
+      const mevcut = primInfo.get(r.santiye_id);
+      if (mevcut) {
+        mevcut.yatmasiGereken += yatacak;
+        mevcut.yatan += yatan;
+        mevcut.kesifVeFiyatFarki += kesif + ff;
+        if (sonAyN > mevcut.sonAyNum) {
+          mevcut.sonAyNum = sonAyN;
+          mevcut.sonAy = sonAy;
+        }
+      } else {
+        primInfo.set(r.santiye_id, {
+          yatmasiGereken: yatacak,
+          yatan,
+          sonAyNum: sonAyN,
+          sonAy,
+          sozlesmeBedeli: bedel,
+          iscilikOrani: oran,
+          kesifVeFiyatFarki: kesif + ff,
+        });
+      }
+    }
+
+    // Şantiye bazlı bordro tahmini — BordroTakibi.bordroToplamForSantiye birebir
+    function bordroTahmini(santiyeId: string): number {
+      const info = primInfo.get(santiyeId);
+      const sonAyNum = info?.sonAyNum ?? 0;
+      const dahilEdilen = new Set<string>();
+      let toplam = 0;
+
+      // 1) Manuel girişler — sonAy sonrası
+      for (const m of bordroManuelGunler) {
+        if (m.santiye_id !== santiyeId) continue;
+        const mAyNum = ayYilNum(m.ay);
+        if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
+        const yil = parseInt(m.ay.split("-")[0], 10);
+        const ucret = personelUcret(m.personel_id, m.ay, yil);
+        if (ucret > 0) {
+          toplam += m.gun * ucret;
+          dahilEdilen.add(`${m.personel_id}|${m.ay}`);
+        }
+      }
+
+      // 2) Doğal hesap — sonAy sonrası, manuel girilmemiş aylar
+      const santiyeAtamalari = bordroAtamalar.filter((a) => a.santiye_id === santiyeId);
+      if (santiyeAtamalari.length === 0) return toplam;
+      if (buYilAyNum <= sonAyNum) return toplam;
+      const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
+        let enErken = Infinity;
+        for (const a of santiyeAtamalari) {
+          const aNum = ayYilNum(a.baslangic_tarihi.slice(0, 7));
+          if (aNum < enErken) enErken = aNum;
+        }
+        return enErken === Infinity ? buYilAyNum : enErken;
+      })();
+      let yil = Math.floor(baslangic / 100);
+      let ay = baslangic % 100;
+      if (ay === 0) { yil -= 1; ay = 12; }
+      while (yil * 100 + ay <= buYilAyNum) {
+        const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
+        const ayBaslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
+        const sonGun = new Date(yil, ay, 0).getDate();
+        const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+        const today = yerelBugun();
+        const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
+
+        const ayHesap = new Map<string, number>();
+        for (const at of santiyeAtamalari) {
+          const bH = at.bitis_tarihi ?? aktifSanal;
+          if (at.baslangic_tarihi > ayBitis) continue;
+          if (bH < ayBaslangic) continue;
+          const cb = at.baslangic_tarihi > ayBaslangic ? at.baslangic_tarihi : ayBaslangic;
+          const cbt = bH < ayBitis ? bH : ayBitis;
+          const ta = new Date(cb + "T00:00:00").getTime();
+          const tb = new Date(cbt + "T00:00:00").getTime();
+          const gun = Math.max(0, Math.round((tb - ta) / 86400000) + 1);
+          ayHesap.set(at.personel_id, (ayHesap.get(at.personel_id) ?? 0) + gun);
+        }
+        for (const [pId, gun] of ayHesap) {
+          if (gun <= 0) continue;
+          if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
+          const ucret = personelUcret(pId, ayStr, yil);
+          if (ucret > 0) toplam += gun * ucret;
+        }
+        ay += 1;
+        if (ay > 12) { ay = 1; yil += 1; }
+      }
+      return toplam;
+    }
+
+    // Bu ay aktif kişi sayısı + atama günleri (sadece bilgi sütunu için)
+    const buAyStr = `${buYil}-${String(buAy).padStart(2, "0")}`;
+    const buAyBaslangic = `${buAyStr}-01`;
+    const buAySonGun = new Date(buYil, buAy, 0).getDate();
+    const buAyBitis = `${buAyStr}-${String(buAySonGun).padStart(2, "0")}`;
+    const today = yerelBugun();
+    const aktifSanal = today >= buAyBaslangic && today <= buAyBitis ? today : buAyBitis;
+
+    const buAyGunMap = new Map<string, Map<string, number>>();
+    const buAyPersonelKumeleri = new Map<string, Set<string>>();
+    for (const at of bordroAtamalar) {
+      const bH = at.bitis_tarihi ?? aktifSanal;
+      if (at.baslangic_tarihi > buAyBitis) continue;
+      if (bH < buAyBaslangic) continue;
+      const cb = at.baslangic_tarihi > buAyBaslangic ? at.baslangic_tarihi : buAyBaslangic;
+      const cbt = bH < buAyBitis ? bH : buAyBitis;
+      const ta = new Date(cb + "T00:00:00").getTime();
+      const tb = new Date(cbt + "T00:00:00").getTime();
+      const gun = Math.max(0, Math.round((tb - ta) / 86400000) + 1);
+      if (gun <= 0) continue;
+      if (!buAyGunMap.has(at.santiye_id)) buAyGunMap.set(at.santiye_id, new Map());
+      const inner = buAyGunMap.get(at.santiye_id)!;
+      inner.set(at.personel_id, (inner.get(at.personel_id) ?? 0) + gun);
+      if (!buAyPersonelKumeleri.has(at.santiye_id)) buAyPersonelKumeleri.set(at.santiye_id, new Set());
+      buAyPersonelKumeleri.get(at.santiye_id)!.add(at.personel_id);
+    }
+    for (const m of bordroManuelGunler) {
+      if (m.ay !== buAyStr) continue;
+      if (m.gun <= 0) continue;
+      if (!buAyGunMap.has(m.santiye_id)) buAyGunMap.set(m.santiye_id, new Map());
+      buAyGunMap.get(m.santiye_id)!.set(m.personel_id, m.gun);
+      if (!buAyPersonelKumeleri.has(m.santiye_id)) buAyPersonelKumeleri.set(m.santiye_id, new Set());
+      buAyPersonelKumeleri.get(m.santiye_id)!.add(m.personel_id);
+    }
+
+    function buAyGun(santiyeId: string): number {
+      const personelGun = buAyGunMap.get(santiyeId);
+      if (!personelGun) return 0;
+      let toplam = 0;
+      for (const [, gun] of personelGun) toplam += gun;
+      return toplam;
+    }
+
+    // Şantiye satırları
+    type SantiyeSatir = {
+      santiyeId: string;
+      santiyeAd: string;
+      kisi: number;
+      gun: number;
+      tahminiBordro: number;
+      yatmasiGereken: number;
+      yatanPrim: number;
+      iscilikOrani: number;
+      sozlesmeBedeli: number;
+    };
+    const satirlar: SantiyeSatir[] = [];
+    const tumIds = new Set<string>([...primInfo.keys(), ...buAyPersonelKumeleri.keys()]);
+    for (const sid of tumIds) {
+      const info = primInfo.get(sid);
+      // info yoksa (yani aktif iscilik_takibi kaydı yoksa) şantiyeyi atla
+      if (!info) continue;
+      const sant = santiyeler.find((s) => s.id === sid);
+      if (!sant) continue;
+      const kisi = buAyPersonelKumeleri.get(sid)?.size ?? 0;
+      satirlar.push({
+        santiyeId: sid,
+        santiyeAd: sant.is_adi,
+        kisi,
+        gun: buAyGun(sid),
+        tahminiBordro: bordroTahmini(sid),
+        yatmasiGereken: info.yatmasiGereken,
+        yatanPrim: info.yatan,
+        iscilikOrani: info.iscilikOrani,
+        sozlesmeBedeli: info.sozlesmeBedeli,
+      });
+    }
+    // Sıralama: aktif kişi varsa öne, sonra yatması gereken büyük olan
+    satirlar.sort((a, b) => {
+      if ((b.kisi > 0 ? 1 : 0) !== (a.kisi > 0 ? 1 : 0)) return (b.kisi > 0 ? 1 : 0) - (a.kisi > 0 ? 1 : 0);
+      if (b.kisi !== a.kisi) return b.kisi - a.kisi;
+      return b.yatmasiGereken - a.yatmasiGereken;
+    });
+
+    const toplamKisiSet = new Set<string>();
+    for (const [, kume] of buAyPersonelKumeleri) {
+      for (const p of kume) toplamKisiSet.add(p);
+    }
+    const toplamKisi = toplamKisiSet.size;
+    const toplamBordro = satirlar.reduce((s, r) => s + r.tahminiBordro, 0);
+    const toplamYatmasiGereken = satirlar.reduce((s, r) => s + r.yatmasiGereken, 0);
+    const toplamYatan = satirlar.reduce((s, r) => s + r.yatanPrim, 0);
+    // Default yıllık günlük ücret (alt nota gösteriyoruz)
+    const defaultGunlukUcret = bordroGunlukUcretler.find((u) => u.yil === buYil)?.ucret ?? 0;
+
+    return {
+      satirlar,
+      toplamKisi,
+      toplamBordro,
+      toplamYatmasiGereken,
+      toplamYatan,
+      gunlukUcret: defaultGunlukUcret,
+      ayLabel: `${AY_ADLARI[bugun.getMonth()]} ${bugun.getFullYear()}`,
+    };
+  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, bugun]);
 
   function alimDuzenleAc(a: YakitAlim) {
     setEditAlim(a);
@@ -1366,6 +1667,216 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </div>
+            </div>
+          )}
+        </div> : null}
+
+        {/* Widget: Bordro Takibi — Şantiye bazlı mali tablo */}
+        {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-9">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <MapPin size={16} className="text-[#1E3A5F]" />
+              <h3 className="font-bold text-sm text-[#1E3A5F]">Bordro Takibi — Şantiye Özeti</h3>
+              <span className="text-xs text-gray-400">{bordroOzet?.ayLabel ?? "—"}</span>
+              {bordroOzet && (
+                <>
+                  <span className="text-[10px] text-gray-300">•</span>
+                  <span className="text-[10px] text-gray-500">
+                    <span className="font-semibold text-[#1E3A5F]">{bordroOzet.satirlar.length}</span> şantiye
+                  </span>
+                  <span className="text-[10px] text-gray-300">•</span>
+                  <span className="text-[10px] text-gray-500">
+                    <span className="font-semibold text-[#1E3A5F]">{bordroOzet.toplamKisi}</span> kişi
+                  </span>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/iscilik-takibi")}
+              className="text-[10px] text-[#1E3A5F] hover:text-[#F97316] underline whitespace-nowrap"
+            >
+              Detay sayfası →
+            </button>
+          </div>
+
+          {bordroLoading ? (
+            <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
+          ) : !bordroOzet || bordroOzet.satirlar.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">Bu ay aktif şantiye yok.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="px-2 text-[10px] text-gray-600">Şantiye</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Kişi</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Bu Ay Gün</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(ödenmemiş)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatan Prim</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Kalan</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Durum</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bordroOzet.satirlar.map((row) => {
+                    const kalan = row.yatmasiGereken - row.yatanPrim;
+                    const odenmisOran = row.yatmasiGereken > 0 ? (row.yatanPrim / row.yatmasiGereken) * 100 : 0;
+                    const oranKap = Math.min(odenmisOran, 100);
+                    const barRenk =
+                      row.yatmasiGereken === 0 ? "bg-gray-300" :
+                      odenmisOran >= 100 ? "bg-emerald-500" :
+                      odenmisOran >= 70 ? "bg-blue-500" :
+                      odenmisOran >= 40 ? "bg-amber-500" : "bg-red-500";
+                    const etiket =
+                      row.yatmasiGereken === 0 ? "Tanımsız" :
+                      odenmisOran >= 100 ? "Bitti" :
+                      odenmisOran >= 70 ? "İlerliyor" :
+                      odenmisOran >= 40 ? "Yarı yolda" :
+                      odenmisOran > 0 ? "Başlangıç" : "Hiç yatmamış";
+                    return (
+                      <TableRow
+                        key={row.santiyeId}
+                        className="hover:bg-blue-50 cursor-pointer"
+                        onClick={() => router.push(`/dashboard/iscilik-takibi?santiye=${row.santiyeId}`)}
+                      >
+                        <TableCell className="px-2 py-1.5">
+                          <div className="font-medium text-[#1E3A5F] truncate max-w-[200px]" title={row.santiyeAd}>
+                            {row.santiyeAd}
+                          </div>
+                          {row.iscilikOrani > 0 && (
+                            <div className="text-[9px] text-gray-400">
+                              %{formatSayi(row.iscilikOrani, 1)} işçilik · {formatSayi(row.sozlesmeBedeli, 0)} ₺ sözleşme
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-center font-semibold tabular-nums text-[#1E3A5F]">
+                          {row.kisi}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-center tabular-nums text-emerald-700 font-semibold">
+                          {formatSayi(row.gun, 0)}
+                        </TableCell>
+                        <TableCell
+                          className="px-2 py-1.5 text-right tabular-nums"
+                          title={bordroOzet.gunlukUcret > 0 ? `${formatSayi(row.gun, 0)} gün × ${formatSayi(bordroOzet.gunlukUcret, 0)} ₺ = ${formatSayi(row.tahminiBordro, 0)} ₺` : "Günlük ücret tanımlı değil"}
+                        >
+                          {row.tahminiBordro > 0 ? (
+                            <span className="text-gray-400">{formatSayi(row.tahminiBordro, 0)} ₺</span>
+                          ) : (
+                            <span className="text-gray-300 italic text-[10px]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right tabular-nums">
+                          {row.yatmasiGereken > 0 ? (
+                            <span className="text-[#1E3A5F] font-semibold">{formatSayi(row.yatmasiGereken, 0)} ₺</span>
+                          ) : (
+                            <span className="text-gray-300 italic text-[10px]">tanımsız</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right tabular-nums">
+                          <span className="text-emerald-700">{formatSayi(row.yatanPrim, 0)} ₺</span>
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                          {row.yatmasiGereken > 0 ? (
+                            <span className={kalan > 0 ? "text-red-600" : "text-emerald-700"}>
+                              {kalan > 0 ? formatSayi(kalan, 0) : `-${formatSayi(-kalan, 0)}`} ₺
+                            </span>
+                          ) : (
+                            <span className="text-gray-300 italic text-[10px]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5">
+                          {row.yatmasiGereken === 0 ? (
+                            <div className="text-[9px] text-gray-400 italic text-center">tanımsız</div>
+                          ) : (
+                            <div className="min-w-[110px]">
+                              <div className="flex items-center justify-between text-[9px] mb-0.5">
+                                <span className={
+                                  odenmisOran >= 100 ? "text-emerald-700 font-semibold" :
+                                  odenmisOran >= 70 ? "text-blue-700" :
+                                  odenmisOran >= 40 ? "text-amber-700" : "text-red-700"
+                                }>{etiket}</span>
+                                <span className="text-gray-500 tabular-nums">%{formatSayi(odenmisOran, 0)}</span>
+                              </div>
+                              <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${barRenk} transition-all`}
+                                  style={{ width: `${oranKap}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+                {/* Toplam satırı */}
+                <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                  <tr className="font-bold">
+                    <td className="px-2 py-2 text-[11px] text-[#1E3A5F]">
+                      TOPLAM
+                      <span className="text-[9px] text-gray-400 font-normal ml-1">({bordroOzet.satirlar.length} şantiye)</span>
+                    </td>
+                    <td className="px-2 py-2 text-center text-[11px] text-[#1E3A5F] tabular-nums">
+                      {bordroOzet.toplamKisi}
+                    </td>
+                    <td className="px-2 py-2 text-center text-[11px] text-emerald-700 tabular-nums">
+                      {formatSayi(bordroOzet.satirlar.reduce((s, r) => s + r.gun, 0), 0)}
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">
+                      {bordroOzet.toplamBordro > 0 ? (
+                        <span className="text-gray-500">{formatSayi(bordroOzet.toplamBordro, 0)} ₺</span>
+                      ) : (
+                        <span className="text-gray-300 italic text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] text-[#1E3A5F] tabular-nums">
+                      {formatSayi(bordroOzet.toplamYatmasiGereken, 0)} ₺
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] text-emerald-700 tabular-nums">
+                      {formatSayi(bordroOzet.toplamYatan, 0)} ₺
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">
+                      {(() => {
+                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan;
+                        return (
+                          <span className={tk > 0 ? "text-red-600" : "text-emerald-700"}>
+                            {tk > 0 ? formatSayi(tk, 0) : `-${formatSayi(-tk, 0)}`} ₺
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-2 py-2">
+                      {bordroOzet.toplamYatmasiGereken > 0 && (() => {
+                        const oran = (bordroOzet.toplamYatan / bordroOzet.toplamYatmasiGereken) * 100;
+                        const oranKap = Math.min(oran, 100);
+                        const barRenk =
+                          oran >= 100 ? "bg-emerald-500" :
+                          oran >= 70 ? "bg-blue-500" :
+                          oran >= 40 ? "bg-amber-500" : "bg-red-500";
+                        return (
+                          <div className="min-w-[110px]">
+                            <div className="text-[9px] text-gray-500 text-right tabular-nums mb-0.5">
+                              %{formatSayi(oran, 0)} ödenmiş
+                            </div>
+                            <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+                              <div className={`h-full ${barRenk}`} style={{ width: `${oranKap}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                </tfoot>
+              </Table>
+              <div className="text-[9px] text-gray-400 text-right mt-1.5 px-2">
+                Tahmini bordro: son ödenen aydan sonraki tüm aylar (Bordro Takibi sayfasıyla aynı hesap).
+                Personel brüt ücreti varsa onu, yoksa yıllık günlük ücreti kullanır
+                {bordroOzet.gunlukUcret > 0 && <> ({bugun.getFullYear()}: <span className="font-semibold">{formatSayi(bordroOzet.gunlukUcret, 0)} ₺/gün</span>)</>}
+                .
+              </div>
             </div>
           )}
         </div> : null}
