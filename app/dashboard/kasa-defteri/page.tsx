@@ -386,8 +386,14 @@ function KasaDefContent() {
   // Dialog açma
   function dialogAc() {
     setEditId(null);
-    // Kısıtlı kullanıcı ise otomatik olarak kendisi seçili (şantiye admini değil)
-    setDPersonel(sadeceKendiKayitlari && kullanici ? kullanici.id : (filtrePersonel || ""));
+    // Varsayılan kullanıcı seçimi:
+    //  - Tam kısıtlı: kendi (zaten zorunlu, değiştiremez)
+    //  - Şantiye admini: kendi (default — istediği gibi değiştirebilir)
+    //  - Yönetici: filtre seçimi (yoksa boş)
+    const varsayilanPersonel = (sadeceKendiKayitlari || isShantiyeAdmin) && kullanici
+      ? kullanici.id
+      : (filtrePersonel || "");
+    setDPersonel(varsayilanPersonel);
     setDSantiye(filtreSantiye || "");
     const bugunStr = new Date().toISOString().slice(0, 10);
     setDTarih(bugunStr);
