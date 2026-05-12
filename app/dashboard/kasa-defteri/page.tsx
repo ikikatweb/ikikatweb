@@ -336,12 +336,19 @@ function KasaDefContent() {
   // Filtre dropdown'u için — sadece en az bir kasa hareketi girmiş kullanıcılar
   const veriGirenPersoneller = useMemo(() => {
     const ids = new Set<string>();
-    for (const h of hareketler) if (h.personel_id) ids.add(h.personel_id);
+    // Şantiye admini için sadece izinli şantiyelerdeki hareketlerden topla
+    const izinli = isShantiyeAdmin && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
+    for (const h of hareketler) {
+      if (izinli && !izinli.has(h.santiye_id)) continue;
+      if (h.personel_id) ids.add(h.personel_id);
+    }
     return personeller
       .filter((p) => ids.has(p.id))
       .slice()
       .sort((a, b) => (a.ad_soyad ?? "").localeCompare(b.ad_soyad ?? "", "tr"));
-  }, [hareketler, personeller]);
+  }, [hareketler, personeller, isShantiyeAdmin, kullanici]);
 
   // Özet
   const ozet = useMemo(() => {
@@ -1016,12 +1023,34 @@ function KasaDefContent() {
           <div className="space-y-3 py-2">
             <div className="space-y-1">
               <Label className="text-xs">Kullanıcı <span className="text-red-500">*</span></Label>
-              <select value={dPersonel} onChange={(e) => setDPersonel(e.target.value)} className={selectClass + " w-full"} disabled={dialogLoading || !isYonetici}>
+              <select
+                value={dPersonel}
+                onChange={(e) => setDPersonel(e.target.value)}
+                className={selectClass + " w-full"}
+                // Sadece TAM kısıtlı kullanıcılar için kilitli (sadeceKendiKayitlari).
+                // Yönetici ve Şantiye admini istediği kullanıcıyı seçebilir.
+                disabled={dialogLoading || sadeceKendiKayitlari}
+              >
                 <option value="">Kullanıcı seçiniz</option>
-                {(!isYonetici && kullanici
-                  ? personeller.filter((p) => p.id === kullanici.id)
-                  : personeller.filter((p) => p.aktif !== false)
-                ).map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
+                {(() => {
+                  // Tam kısıtlı: sadece kendisi
+                  if (sadeceKendiKayitlari && kullanici) {
+                    return personeller.filter((p) => p.id === kullanici.id);
+                  }
+                  // Şantiye admini: kendi şantiyelerinde geçmişte işlem yapmış kullanıcılar + kendisi
+                  if (isShantiyeAdmin && kullanici?.santiye_ids && kullanici.santiye_ids.length > 0) {
+                    const izinli = new Set(kullanici.santiye_ids);
+                    const islemYapanIds = new Set<string>();
+                    for (const h of hareketler) {
+                      if (izinli.has(h.santiye_id)) islemYapanIds.add(h.personel_id);
+                    }
+                    // Kullanıcının kendisi her zaman ekli
+                    islemYapanIds.add(kullanici.id);
+                    return personeller.filter((p) => p.aktif !== false && islemYapanIds.has(p.id));
+                  }
+                  // Yönetici: tüm aktif personeller
+                  return personeller.filter((p) => p.aktif !== false);
+                })().map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>
             </div>
             <div className="space-y-1">

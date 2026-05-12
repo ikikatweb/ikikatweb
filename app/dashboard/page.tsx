@@ -1712,16 +1712,18 @@ export default function DashboardPage() {
                     <TableHead className="px-2 text-[10px] text-gray-600">Şantiye</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Kişi</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Bu Ay Gün</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(ödenmemiş)</span></TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatan Prim</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Kalan</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(bu ay ödenecek)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Kalan<br/><span className="text-[8px] text-gray-400 font-normal">(gereken − yatan − tahmin)</span></TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Durum</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bordroOzet.satirlar.map((row) => {
-                    const kalan = row.yatmasiGereken - row.yatanPrim;
+                    // Kalan: Yatması gereken'den hem yatan'ı hem tahmini bordro'yu düş
+                    const kalan = row.yatmasiGereken - row.yatanPrim - row.tahminiBordro;
+                    // İlerleme oranı: sadece gerçek yatan üzerinden hesaplanır (tahmin dahil değil — sınırı yumuşatmasın)
                     const odenmisOran = row.yatmasiGereken > 0 ? (row.yatanPrim / row.yatmasiGereken) * 100 : 0;
                     const oranKap = Math.min(odenmisOran, 100);
                     // Renk eşikleri:
@@ -1758,16 +1760,6 @@ export default function DashboardPage() {
                         <TableCell className="px-2 py-1.5 text-center tabular-nums text-emerald-700 font-semibold">
                           {formatSayi(row.gun, 0)}
                         </TableCell>
-                        <TableCell
-                          className="px-2 py-1.5 text-right tabular-nums"
-                          title={bordroOzet.gunlukUcret > 0 ? `${formatSayi(row.gun, 0)} gün × ${formatSayi(bordroOzet.gunlukUcret, 0)} ₺ = ${formatSayi(row.tahminiBordro, 0)} ₺` : "Günlük ücret tanımlı değil"}
-                        >
-                          {row.tahminiBordro > 0 ? (
-                            <span className="text-gray-400">{formatSayi(row.tahminiBordro, 0)} ₺</span>
-                          ) : (
-                            <span className="text-gray-300 italic text-[10px]">—</span>
-                          )}
-                        </TableCell>
                         <TableCell className="px-2 py-1.5 text-right tabular-nums">
                           {row.yatmasiGereken > 0 ? (
                             <span className="text-[#1E3A5F] font-semibold">{formatSayi(row.yatmasiGereken, 0)} ₺</span>
@@ -1778,9 +1770,24 @@ export default function DashboardPage() {
                         <TableCell className="px-2 py-1.5 text-right tabular-nums">
                           <span className="text-emerald-700">{formatSayi(row.yatanPrim, 0)} ₺</span>
                         </TableCell>
-                        <TableCell className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                        <TableCell
+                          className="px-2 py-1.5 text-right tabular-nums"
+                          title={bordroOzet.gunlukUcret > 0 ? `${formatSayi(row.gun, 0)} gün × ${formatSayi(bordroOzet.gunlukUcret, 0)} ₺ = ${formatSayi(row.tahminiBordro, 0)} ₺` : "Günlük ücret tanımlı değil"}
+                        >
+                          {row.tahminiBordro > 0 ? (
+                            <span className="text-gray-400">{formatSayi(row.tahminiBordro, 0)} ₺</span>
+                          ) : (
+                            <span className="text-gray-300 italic text-[10px]">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className="px-2 py-1.5 text-right tabular-nums font-semibold"
+                          title={row.yatmasiGereken > 0
+                            ? `${formatSayi(row.yatmasiGereken, 0)} − ${formatSayi(row.yatanPrim, 0)} − ${formatSayi(row.tahminiBordro, 0)} = ${formatSayi(kalan, 0)} ₺`
+                            : undefined}
+                        >
                           {row.yatmasiGereken > 0 ? (
-                            // Renkler tersine çevrildi: eksik (kalan>0) → YEŞİL, fazla yatım (kalan<0) → KIRMIZI
+                            // Renkler tersine: eksik (kalan>0) → YEŞİL, fazla yatım (kalan<0) → KIRMIZI
                             <span className={kalan > 0 ? "text-emerald-700" : "text-red-600"}>
                               {kalan > 0 ? formatSayi(kalan, 0) : `-${formatSayi(-kalan, 0)}`} ₺
                             </span>
@@ -1826,13 +1833,6 @@ export default function DashboardPage() {
                     <td className="px-2 py-2 text-center text-[11px] text-emerald-700 tabular-nums">
                       {formatSayi(bordroOzet.satirlar.reduce((s, r) => s + r.gun, 0), 0)}
                     </td>
-                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">
-                      {bordroOzet.toplamBordro > 0 ? (
-                        <span className="text-gray-500">{formatSayi(bordroOzet.toplamBordro, 0)} ₺</span>
-                      ) : (
-                        <span className="text-gray-300 italic text-[10px]">—</span>
-                      )}
-                    </td>
                     <td className="px-2 py-2 text-right text-[11px] text-[#1E3A5F] tabular-nums">
                       {formatSayi(bordroOzet.toplamYatmasiGereken, 0)} ₺
                     </td>
@@ -1840,8 +1840,16 @@ export default function DashboardPage() {
                       {formatSayi(bordroOzet.toplamYatan, 0)} ₺
                     </td>
                     <td className="px-2 py-2 text-right text-[11px] tabular-nums">
+                      {bordroOzet.toplamBordro > 0 ? (
+                        <span className="text-gray-500">{formatSayi(bordroOzet.toplamBordro, 0)} ₺</span>
+                      ) : (
+                        <span className="text-gray-300 italic text-[10px]">—</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-2 text-right text-[11px] tabular-nums">
                       {(() => {
-                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan;
+                        // Kalan = Yatması gereken - Yatan - Tahmini bordro
+                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
                         return (
                           // Renkler tersine: eksik (tk>0) → yeşil, fazla yatım (tk<0) → kırmızı
                           <span className={tk > 0 ? "text-emerald-700" : "text-red-600"}>
