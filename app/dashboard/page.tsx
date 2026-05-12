@@ -1742,8 +1742,12 @@ export default function DashboardPage() {
                   {bordroOzet.satirlar.map((row) => {
                     // Kalan: Yatması gereken'den hem yatan'ı hem tahmini bordro'yu düş
                     const kalan = row.yatmasiGereken - row.yatanPrim - row.tahminiBordro;
-                    // İlerleme oranı: sadece gerçek yatan üzerinden hesaplanır (tahmin dahil değil — sınırı yumuşatmasın)
-                    const odenmisOran = row.yatmasiGereken > 0 ? (row.yatanPrim / row.yatmasiGereken) * 100 : 0;
+                    // Durum oranı: KALAN'a göre hesaplanır (tahmini bordro dahil).
+                    //   Tamamlanma = (Yatması Gereken − Kalan) / Yatması Gereken × 100
+                    //              = (Yatan + Tahmini Bordro) / Yatması Gereken × 100
+                    const odenmisOran = row.yatmasiGereken > 0
+                      ? Math.max(0, ((row.yatmasiGereken - kalan) / row.yatmasiGereken) * 100)
+                      : 0;
                     const oranKap = Math.min(odenmisOran, 100);
                     // Renk eşikleri:
                     //   %100+   "Tamamlandı"          → kırmızı
@@ -1879,7 +1883,9 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-2 py-2">
                       {bordroOzet.toplamYatmasiGereken > 0 && (() => {
-                        const oran = (bordroOzet.toplamYatan / bordroOzet.toplamYatmasiGereken) * 100;
+                        // Kalan = gereken - yatan - tahmini bordro → tamamlanma = (yatan + tahmin) / gereken
+                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
+                        const oran = Math.max(0, ((bordroOzet.toplamYatmasiGereken - tk) / bordroOzet.toplamYatmasiGereken) * 100);
                         const oranKap = Math.min(oran, 100);
                         const barRenk =
                           oran >= 80 ? "bg-red-500" :
@@ -1887,7 +1893,7 @@ export default function DashboardPage() {
                         return (
                           <div className="min-w-[110px]">
                             <div className="text-[9px] text-gray-500 text-right tabular-nums mb-0.5">
-                              %{formatSayi(oran, 0)} ödenmiş
+                              %{formatSayi(oran, 0)} tamamlandı
                             </div>
                             <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
                               <div className={`h-full ${barRenk}`} style={{ width: `${oranKap}%` }} />
