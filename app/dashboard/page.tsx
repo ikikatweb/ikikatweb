@@ -76,7 +76,7 @@ function CardHeader({ icon: Icon, title, color = "text-[#1E3A5F]" }: { icon: typ
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { kullanici, isYonetici, loading: authLoading, hasPermission } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, loading: authLoading, hasPermission } = useAuth();
   const yakitDuzenle = hasPermission("yakit", "duzenle");
   const [loading, setLoading] = useState(true);
   const [defterLoading, setDefterLoading] = useState(true);
@@ -417,15 +417,29 @@ export default function DashboardPage() {
   }, [yiUfeData]);
 
   // Widget 2: Kasa kullanıcı özeti — devir bakiyesi (önceki ay sonu) + bu ay hareketleri
-  // Kısıtlı kullanıcı sadece kendi kayıtlarını görür; yönetici herkesi görür
+  //  - Yönetici: herkesi görür
+  //  - Şantiye admini: izinli şantiyelerindeki hareketlerin yapan kullanıcılarını görür
+  //  - Tam kısıtlı: sadece kendi kayıtlarını görür
   const kasaOzet = useMemo(() => {
-    // Bu ay hareketleri grupla
-    const aylik = kasaData.filter((h) => h.tarih >= ayBaslangic && h.tarih <= ayBitis);
+    // İzinli şantiye seti (sadece şantiye admini için)
+    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
+    const sadeceKendiKayitlari = !isYonetici && !isShantiyeAdmin;
+
+    // Bu ay hareketleri grupla (şantiye admin için izinli şantiye filtresi de uygulanır)
+    const aylik = kasaData.filter((h) => {
+      if (h.tarih < ayBaslangic || h.tarih > ayBitis) return false;
+      if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) return false;
+      return true;
+    });
     const map = new Map<string, { gelir: number; giderNakit: number; giderKart: number }>();
+    const izinliPersonelIds = new Set<string>();  // Şantiye admin için hangi kullanıcılar görünsün
     for (const h of aylik) {
       if (!kullaniciAdlari.has(h.personel_id)) continue;
-      // Kısıtlı kullanıcı sadece kendi kayıtlarını görsün
-      if (!isYonetici && kullanici && h.personel_id !== kullanici.id) continue;
+      // Tam kısıtlı kullanıcı sadece kendi kayıtlarını görsün
+      if (sadeceKendiKayitlari && kullanici && h.personel_id !== kullanici.id) continue;
+      izinliPersonelIds.add(h.personel_id);
       if (!map.has(h.personel_id)) map.set(h.personel_id, { gelir: 0, giderNakit: 0, giderKart: 0 });
       const e = map.get(h.personel_id)!;
       if (h.tip === "gelir") e.gelir += h.tutar;
@@ -436,13 +450,18 @@ export default function DashboardPage() {
     // Hem bu ay işlemi olan hem de devirden bakiyesi olan kullanıcıları dahil et
     const tumIds = new Set<string>([...map.keys(), ...devirBakiye.keys()].filter((id) => {
       if (!kullaniciAdlari.has(id)) return false;
-      // Kısıtlı kullanıcı sadece kendini görsün
-      if (!isYonetici && kullanici && id !== kullanici.id) return false;
+      // Tam kısıtlı kullanıcı sadece kendini görsün
+      if (sadeceKendiKayitlari && kullanici && id !== kullanici.id) return false;
+      // Şantiye admini: sadece izinli şantiyelerinde işlem yapmış kullanıcılar görünsün
+      // (devirden gelen ama bu izinli şantiyelerde işlem yapmamış kullanıcıları gizle)
+      if (izinliSantiyeler && !izinliPersonelIds.has(id)) return false;
       return true;
     }));
     return Array.from(tumIds).map((pid) => {
       const v = map.get(pid) ?? { gelir: 0, giderNakit: 0, giderKart: 0 };
-      const devir = devirBakiye.get(pid) ?? 0;
+      // Şantiye admin için devir bakiyesi mantıklı değil (kullanıcı bazlı, şantiye filtresiz)
+      // — sıfır olarak alırız
+      const devir = izinliSantiyeler ? 0 : (devirBakiye.get(pid) ?? 0);
       // Bakiye = devir (önceki ay sonu) + bu ay nakit gelir - bu ay nakit gider
       const nakitBakiye = devir + v.gelir - v.giderNakit;
       return {
@@ -455,7 +474,7 @@ export default function DashboardPage() {
     })
     .filter((r) => r.nakitBakiye !== 0 || r.nakitHarcama !== 0 || r.kartHarcama !== 0)
     .sort((a, b) => a.personel.localeCompare(b.personel, "tr"));
-  }, [kasaData, devirBakiye, ayBaslangic, ayBitis, kullaniciAdlari, isYonetici, kullanici]);
+  }, [kasaData, devirBakiye, ayBaslangic, ayBitis, kullaniciAdlari, isYonetici, isShantiyeAdmin, kullanici]);
 
   // Widget 3: Yaklaşan sigorta/muayene + acente bilgisi
   const yaklasanlar = useMemo(() => {
