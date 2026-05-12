@@ -17,12 +17,12 @@ export async function getGelenEvraklar(olusturanId?: string, santiyeIds?: string
   if (olusturanId) {
     query = query.eq("olusturan_id", olusturanId);
   }
-  // Şantiye kısıtı (kısıtlı kullanıcı + şantiye yöneticisi için)
+  // Şantiye kısıtı — kısıtlı veya şantiye yöneticisi: SADECE atandığı şantiyeler.
+  // Şantiyesiz (genel) evraklar dahil DEĞİL.
   if (santiyeIds && santiyeIds.length > 0) {
-    const idList = santiyeIds.map((id) => `"${id}"`).join(",");
-    query = query.or(`santiye_id.is.null,santiye_id.in.(${idList})`);
+    query = query.in("santiye_id", santiyeIds);
   } else if (santiyeIds && santiyeIds.length === 0) {
-    query = query.is("santiye_id", null);
+    query = query.eq("santiye_id", "00000000-0000-0000-0000-000000000000");
   }
 
   const { data, error } = await query;

@@ -5,6 +5,9 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import webpush from "web-push";
+import { hasPermission } from "@/lib/permissions";
+import { BILDIRIM_TAG_MODULE } from "@/lib/bildirim-mapping";
+import type { Izinler } from "@/lib/supabase/types";
 
 // VAPID setup
 const vapidConfigured = (() => {
@@ -66,23 +69,24 @@ export async function POST(req: Request) {
     : null;
   const includeAdmins = body.include_admins === true;
 
+  // Tüm aktif kullanıcılar — çağıran hariç (artık tüm roller bildirim alabilir,
+  // ancak yalnızca tag'e karşılık gelen modüle erişim izni olanlar)
   let aliciSorgusu = supabase
     .from("kullanicilar")
-    .select("id, rol, bildirim_ayarlari, santiye_ids")
+    .select("id, rol, bildirim_ayarlari, santiye_ids, izinler")
     .eq("aktif", true)
     .neq("id", caller.id);
 
   if (targetUserIds && targetUserIds.length > 0) {
     if (includeAdmins) {
-      // target_user_ids OR rol IN (admin) — Supabase'de OR için .or() kullan
+      // target_user_ids OR tüm aktif kullanıcılar
       const idsList = targetUserIds.map((id: string) => `"${id}"`).join(",");
-      aliciSorgusu = aliciSorgusu.or(`id.in.(${idsList}),rol.in.(yonetici,santiye_admin)`);
+      aliciSorgusu = aliciSorgusu.or(`id.in.(${idsList}),aktif.eq.true`);
     } else {
       aliciSorgusu = aliciSorgusu.in("id", targetUserIds);
     }
-  } else {
-    aliciSorgusu = aliciSorgusu.in("rol", ["yonetici", "santiye_admin"]);
   }
+  // Aksi takdirde TÜM aktif kullanıcılar (izin filtresi aşağıda uygulanır)
 
   const { data: aliciAdaylari } = await aliciSorgusu;
 
@@ -90,20 +94,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, sent: 0 });
   }
 
-  // Bu tag'i kapatmış olmayanları filtrele + şantiye filtrelemesi (santiye_admin için)
+  // Bu tag'i kapatmış olmayanları filtrele + şantiye filtrelemesi + izin kontrolü
   const tagStr = tag ? String(tag) : "";
   const eventSantiyeId = body.santiye_id ? String(body.santiye_id) : null;
+  // Tag → modül anahtarı eşleştirmesi (izin kontrolü için)
+  const tagModule = tagStr ? (BILDIRIM_TAG_MODULE[tagStr] ?? null) : null;
   const istekliIds = aliciAdaylari
     .filter((y) => {
-      // Tag (kategori) filtresi: kapatılmamış olmalı
+      // 1) Tag (kategori) filtresi: kullanıcı bildirimleri kapatmış mı?
       if (tagStr) {
         const ayar = (y.bildirim_ayarlari ?? {}) as Record<string, boolean>;
         if (ayar[tagStr] === false) return false;
       }
-      // Şantiye admini için: event santiye_id'si atandığı şantiyelerde olmalı
-      // (yönetici için bu kontrol yok — hepsini alır)
-      // Event santiye_id yoksa (örn. genel bildirim), şantiye admini de alır
+      // 2) İzin kontrolü: bu tag bir modüle bağlıysa kullanıcının yetkisi olmalı
+      //    (mesajlaşma gibi modülü null olan tag'ler herkese gider)
+      if (tagModule) {
+        const rol = (y.rol ?? "kisitli") as "yonetici" | "santiye_admin" | "kisitli";
+        const izinler = (y.izinler ?? {}) as Izinler;
+        if (!hasPermission(rol, izinler, tagModule, "goruntule")) return false;
+      }
+      // 3) Şantiye admini için: event santiye_id'si atandığı şantiyelerde olmalı
       if (y.rol === "santiye_admin" && eventSantiyeId) {
+        const ids = Array.isArray(y.santiye_ids) ? (y.santiye_ids as string[]) : [];
+        if (ids.length > 0 && !ids.includes(eventSantiyeId)) return false;
+      }
+      // 4) Kısıtlı kullanıcı için: event santiye_id'si onun atandığı şantiyelerde olmalı
+      if (y.rol === "kisitli" && eventSantiyeId) {
         const ids = Array.isArray(y.santiye_ids) ? (y.santiye_ids as string[]) : [];
         if (ids.length > 0 && !ids.includes(eventSantiyeId)) return false;
       }

@@ -1,13 +1,16 @@
 // Kullanıcının bildirim kategorilerini açıp kapatma dialog'u
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
+import { hasPermission } from "@/lib/permissions";
+import { BILDIRIM_TAG_MODULE } from "@/lib/bildirim-mapping";
 
-// Kategori tanımları — tag, etiket, açıklama
+// Kategori tanımları — tag, etiket, açıklama, izin modülü
 const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[] = [
   { tag: "kasa", label: "Kasa Hareketi", emoji: "💰", desc: "Yeni gelir/gider eklenince" },
   { tag: "arac-bakim", label: "Araç Bakım & Tamirat", emoji: "🛠️", desc: "Yeni bakım veya tamirat eklenince" },
@@ -26,6 +29,21 @@ export default function PushBildirimAyarlari() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ayarlar, setAyarlar] = useState<Record<string, boolean>>({});
+  const { kullanici, isYonetici } = useAuth();
+
+  // Sadece kullanıcının yetkisi olduğu modüllere ait kategoriler gösterilir.
+  // Yönetici tüm kategorileri görür.
+  const gorunenKategoriler = useMemo(() => {
+    if (isYonetici) return KATEGORILER;
+    if (!kullanici) return [];
+    const rol = (kullanici.rol ?? "kisitli") as "yonetici" | "santiye_admin" | "kisitli";
+    const izinler = kullanici.izinler ?? {};
+    return KATEGORILER.filter((k) => {
+      const moduleKey = BILDIRIM_TAG_MODULE[k.tag];
+      if (!moduleKey) return true; // modülsüz (mesajlaşma vb.) herkese
+      return hasPermission(rol, izinler, moduleKey, "goruntule");
+    });
+  }, [kullanici, isYonetici]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,12 +85,12 @@ export default function PushBildirimAyarlari() {
 
   function hepsiniKapat() {
     const yeni: Record<string, boolean> = {};
-    for (const k of KATEGORILER) yeni[k.tag] = false;
+    for (const k of gorunenKategoriler) yeni[k.tag] = false;
     setAyarlar(yeni);
   }
   function hepsiniAc() {
     const yeni: Record<string, boolean> = {};
-    for (const k of KATEGORILER) yeni[k.tag] = true;
+    for (const k of gorunenKategoriler) yeni[k.tag] = true;
     setAyarlar(yeni);
   }
 
@@ -110,9 +128,13 @@ export default function PushBildirimAyarlari() {
                 <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
               ))}
             </div>
+          ) : gorunenKategoriler.length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-400">
+              Bildirim alabileceğiniz tanımlı modül yok.
+            </div>
           ) : (
             <div className="space-y-1.5">
-              {KATEGORILER.map((k) => {
+              {gorunenKategoriler.map((k) => {
                 const acik = isAcik(ayarlar, k.tag);
                 return (
                   <label
