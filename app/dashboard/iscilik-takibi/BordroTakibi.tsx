@@ -3449,9 +3449,9 @@ export default function BordroTakibi() {
           });
 
           // Arama aktifse → eşleşen personel İÇEREN şantiyeleri göster (boşlar gizli)
-          // Dropdown filtre aktifse → tüm şantiyeler görünür (boşlar da görünür) + auto-expand
+          // Dropdown filtre aktifse → tüm şantiyeler görünür (boşlar da görünür)
+          // HİÇBİR durumda accordion'lar otomatik AÇILMAZ — kullanıcı kendi açar.
           const aramaAktif = arama.trim().length > 0;
-          const dropdownFiltreAktif = tipFiltre === "teknik";
           return firmaIds.map((fId, fIdx) => {
             const firma = firmalar.find((f) => f.id === fId);
             const firmaAd = firma?.firma_adi ?? "(Firma atanmamış)";
@@ -3462,8 +3462,8 @@ export default function BordroTakibi() {
               : tumFirmaSantiyeler;
             // Arama aktifken o firmanın eşleşen şantiyesi yoksa firmayı da gizle
             if (aramaAktif && firmaSantiyeler.length === 0) return null;
-            // Auto-expand: dropdown filtre veya arama aktifse otomatik açık göster
-            const firmaAcik = expandedFirmalar.has(fId) || aramaAktif || dropdownFiltreAktif;
+            // Firma accordion'u kullanıcı kontrollü — auto-expand yok
+            const firmaAcik = expandedFirmalar.has(fId);
             // Firma toplam: kişi sayısı + gün + prim hesabı toplamı
             let firmaToplamKisi = 0;
             let firmaToplamGun = 0;
