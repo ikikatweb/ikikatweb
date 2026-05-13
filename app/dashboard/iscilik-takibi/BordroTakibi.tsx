@@ -17,7 +17,11 @@ import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
-import { setPersonelTeknik } from "@/lib/supabase/queries/personel";
+import {
+  getTeknikPersonelKayitlari,
+  setPersonelTeknikSantiye,
+  type PersonelTeknikRow,
+} from "@/lib/supabase/queries/personel-teknik";
 import {
   getBordroPersoneller,
   insertBordroPersonel,
@@ -446,6 +450,8 @@ export default function BordroTakibi() {
   const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
+  // Personel × Şantiye bazlı teknik personel kayıtları (sadece bilgi amaçlı rozet için)
+  const [teknikKayitlari, setTeknikKayitlari] = useState<PersonelTeknikRow[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
@@ -717,7 +723,7 @@ export default function BordroTakibi() {
       setLoading(true);
     }
     try {
-      const [s, p, a, m, f, iscilik, gorevler, meslekler, mGunler, notlar, ucretler, brutGecmis, ayliklar] = await Promise.all([
+      const [s, p, a, m, f, iscilik, gorevler, meslekler, mGunler, notlar, ucretler, brutGecmis, ayliklar, teknikRows] = await Promise.all([
         getSantiyelerAll().catch(() => []),
         getBordroPersoneller().catch(() => []),
         getAtamaGecmisiTumu().catch(() => []),
@@ -731,12 +737,14 @@ export default function BordroTakibi() {
         getGunlukUcretler().catch(() => []),
         getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
         getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
+        getTeknikPersonelKayitlari().catch(() => [] as PersonelTeknikRow[]),
       ]);
       setGorevSecenekleri(gorevler ?? []);
       setMeslekSecenekleri(meslekler ?? []);
       setManuelGunler(mGunler);
       setBilgiNotlari(notlar);
       setGunlukUcretler(ucretler);
+      setTeknikKayitlari(teknikRows);
       setBrutUcretGecmisi(brutGecmis);
       // İşçilik Durum Raporu'ndaki filtreyle BİREBİR AYNI + firma_id mapleme.
       const iscilikRaporSantiyeIds = new Set<string>();
@@ -876,34 +884,62 @@ export default function BordroTakibi() {
     return map;
   }, [gunMap]);
 
-  // Teknik personel tespiti — PERSONEL BAZLI (sadece bilgi amaçlı rozet için).
-  // Öncelik: personel.is_teknik bayrağı.
-  // Geriye uyumluluk: bayrak yoksa eski mantık → atamada is_teknik=true VEYA
-  // (atama baslangic_tarihi === şantiye.isyeri_teslim_tarihi).
-  // ATAMALARI veya GİRİŞ/ÇIKIŞ tarihlerini ETKİLEMEZ.
-  const teknikPersonelIds = useMemo(() => {
-    const ids = new Set<string>();
-    // Önce personel.is_teknik açık olanları ekle
-    for (const p of personeller) {
-      if (p.is_teknik === true) ids.add(p.id);
+  // Teknik personel tespiti — PERSONEL × ŞANTİYE BAZLI (sadece bilgi amaçlı rozet için).
+  //   teknikPersonelMap.get(personelId) → Set<santiyeId>
+  // Veri kaynağı: personel_teknik tablosu (manuel toggle ile yönetilir).
+  // Geriye uyumluluk (tablo boş VEYA bayrak set edilmemişse): atamada is_teknik=true
+  // VEYA atama.baslangic_tarihi === şantiye.isyeri_teslim_tarihi varsayılan değeri kullanılır.
+  // ATAMALARA, GİRİŞ/ÇIKIŞ TARİHLERİNE VEYA GÜN HESABINA HİÇBİR ETKİSİ YOKTUR.
+  const teknikPersonelMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    const ekle = (pId: string, sId: string) => {
+      if (!map.has(pId)) map.set(pId, new Set());
+      map.get(pId)!.add(sId);
+    };
+    const sil = (pId: string, sId: string) => {
+      map.get(pId)?.delete(sId);
+    };
+    // Manuel toggle ile işaretlenenler — explicit pozitif kayıtlar
+    const explicitPozitif = new Set<string>();
+    for (const r of teknikKayitlari) {
+      ekle(r.personel_id, r.santiye_id);
+      explicitPozitif.add(`${r.personel_id}|${r.santiye_id}`);
     }
-    // Geriye uyumluluk: is_teknik kolonu hiç yoksa veya bazı eski personeller için
-    // bayrak set edilmemişse → eski atama-bazlı mantığı uygula
-    const santiyeMap = new Map<string, string | null>();
-    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
-    for (const a of atamalar) {
-      if (a.bitis_tarihi) continue;
-      // Personelde explicit bayrak varsa (true ya da false) → atamayı atla
-      const p = personeller.find((x) => x.id === a.personel_id);
-      if (p && (p.is_teknik === true || p.is_teknik === false)) continue;
-      if (a.is_teknik === true) { ids.add(a.personel_id); continue; }
-      if (a.is_teknik === undefined || a.is_teknik === null) {
-        const teslim = santiyeMap.get(a.santiye_id);
-        if (teslim && a.baslangic_tarihi === teslim) ids.add(a.personel_id);
+    // Geriye uyumluluk: explicit toggle yapılmamış (personel,santiye) çiftleri için
+    // eski atama-bazlı varsayılanı uygula. Ama explicit pozitif olanları override etme,
+    // ve explicit negatif (kullanıcı tikini KALDIRDI) durumunu da kaybetme.
+    // Kullanıcı tikini kaldırdıysa → tabloda satır yok → varsayılan da görünmemeli.
+    // Bu durumu ayırt etmek için: önce eski varsayılanı geçici olarak ekle, sonra
+    // teknikKayitlari'daki tüm (personel,santiye) çiftleri SİL → final pozitifleri TEKRAR ekle.
+    // (Açıkça yapamayız çünkü "kullanıcı kaldırdı" durumunu DB tutmuyor.)
+    //
+    // PRATİK YAKLAŞIM: Geriye uyumluluk SADECE personel_teknik tablosu HİÇ KULLANILMAMIŞSA
+    // (yani teknikKayitlari boşsa) uygulanır. Tabloda bir kayıt varsa, kullanıcı sistemi
+    // kullanmaya başlamış demektir; o personel için varsayılana güvenmeyiz.
+    if (teknikKayitlari.length === 0) {
+      const santiyeMap = new Map<string, string | null>();
+      for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
+      for (const a of atamalar) {
+        if (a.bitis_tarihi) continue;
+        if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
+        if (a.is_teknik === undefined || a.is_teknik === null) {
+          const teslim = santiyeMap.get(a.santiye_id);
+          if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
+        }
       }
     }
+    void sil; // ileride explicit negatif kayıt eklenirse kullanılır
+    return map;
+  }, [teknikKayitlari, atamalar, santiyeler]);
+
+  // Personel'in HERHANGİ bir şantiyede teknik olup olmadığı (arama/filtre için)
+  const teknikPersonelIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [pId, set] of teknikPersonelMap) {
+      if (set.size > 0) ids.add(pId);
+    }
     return ids;
-  }, [personeller, atamalar, santiyeler]);
+  }, [teknikPersonelMap]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
@@ -2713,7 +2749,7 @@ export default function BordroTakibi() {
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
               {/* Şantiye-bazlı: rozet sadece bu sütundaki şantiyede teknikse görünür */}
-              {teknikPersonelIds.has(p.id) && (
+              {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
                 <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                   Teknik Personel
                 </span>
@@ -2987,7 +3023,7 @@ export default function BordroTakibi() {
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
             {/* Şantiye-bazlı: bu satırın şantiyesinde teknikse rozet görünür */}
-            {teknikPersonelIds.has(p.id) && (
+            {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
               <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                 Teknik Personel
               </span>
@@ -3653,9 +3689,9 @@ export default function BordroTakibi() {
 
             const toplamAylikGun = liste.reduce((s, a) => s + ayInGun(a), 0);
 
-            // Teknik mi: PERSONEL BAZLI — sadece bilgi amaçlı bayrak.
+            // Teknik mi: PERSONEL × ŞANTİYE BAZLI — sadece bilgi amaçlı bayrak.
             // Atamalar veya giriş/çıkış tarihleri ETKİLENMEZ.
-            const teknikMi = teknikPersonelIds.has(gunEdit.personel.id);
+            const teknikMi = !!teknikPersonelMap.get(gunEdit.personel.id)?.has(gunEdit.santiyeId);
 
             return (
               <div className="space-y-3 py-2">
@@ -3663,7 +3699,7 @@ export default function BordroTakibi() {
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
-                {/* Teknik Personel toggle — PERSONEL BAZLI, sadece bilgi amaçlı rozet.
+                {/* Teknik Personel toggle — PERSONEL × ŞANTİYE BAZLI, sadece bilgi amaçlı rozet.
                     Atamalara, giriş/çıkış tarihlerine veya gün hesabına HİÇBİR ETKİSİ YOKTUR. */}
                 {!isReadOnly && yDuzenle && (
                   <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
@@ -3676,13 +3712,13 @@ export default function BordroTakibi() {
                       onChange={async (e) => {
                         const yeniTeknik = e.target.checked;
                         try {
-                          // SADECE personel.is_teknik bayrağı güncellenir.
+                          // SADECE personel_teknik tablosuna satır eklenir/silinir.
                           // Atama tablosuna, giriş/çıkış kayıtlarına dokunulmaz.
-                          await setPersonelTeknik(gunEdit.personel.id, yeniTeknik);
+                          await setPersonelTeknikSantiye(gunEdit.personel.id, gunEdit.santiyeId, yeniTeknik);
                           await loadData();
                           toast.success(yeniTeknik
-                            ? "Teknik personel olarak işaretlendi."
-                            : "Teknik personel işareti kaldırıldı.");
+                            ? "Bu şantiyede teknik personel olarak işaretlendi."
+                            : "Bu şantiyede teknik personel işareti kaldırıldı.");
                         } catch (err) {
                           toast.error(err instanceof Error ? err.message : "Hata");
                         }
@@ -3696,7 +3732,7 @@ export default function BordroTakibi() {
                         )}
                       </div>
                       <div className="text-[10px] text-gray-500">
-                        Sadece bilgi amaçlı bir etikettir. Giriş/çıkış kayıtlarına, gün sayısına veya bordro hesabına etkisi yoktur.
+                        Sadece bu şantiyede bilgi amaçlı bir etikettir. Giriş/çıkış kayıtlarına, gün sayısına veya bordro hesabına etkisi yoktur.
                       </div>
                     </div>
                   </label>
