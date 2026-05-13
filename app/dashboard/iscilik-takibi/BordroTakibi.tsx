@@ -403,6 +403,8 @@ export default function BordroTakibi() {
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
   const [meslekSecenekleri, setMeslekSecenekleri] = useState<string[]>([]);
   const [arama, setArama] = useState("");
+  // Personel tipi filtresi: "tumu" | "teknik" — yalnız teknik personeli süzmek için
+  const [tipFiltre, setTipFiltre] = useState<"tumu" | "teknik">("tumu");
 
   // Drag state
   const [dragPersonelId, setDragPersonelId] = useState<string | null>(null);
@@ -821,15 +823,38 @@ export default function BordroTakibi() {
     return map;
   }, [gunMap]);
 
+  // Teknik personel tespiti: bir personelin AKTİF atamalarında
+  // baslangic_tarihi === santiye.isyeri_teslim_tarihi olan en az bir kayıt varsa teknik personeldir.
+  const teknikPersonelIds = useMemo(() => {
+    const santiyeMap = new Map<string, string | null>();
+    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
+    const ids = new Set<string>();
+    for (const a of atamalar) {
+      if (a.bitis_tarihi) continue; // sadece aktif atamalar
+      const teslim = santiyeMap.get(a.santiye_id);
+      if (teslim && a.baslangic_tarihi === teslim) {
+        ids.add(a.personel_id);
+      }
+    }
+    return ids;
+  }, [atamalar, santiyeler]);
+
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
+  // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
   const filtreli = useMemo(() => {
     const q = trAramaNormalize(arama);
-    if (!q) return personeller;
+    const qTeknikMi = q ? trAramaNormalize("teknik personel").includes(q) || q.includes("teknik") : false;
     return personeller.filter((p) => {
+      const isTeknik = teknikPersonelIds.has(p.id);
+      if (tipFiltre === "teknik" && !isTeknik) return false;
+      if (!q) return true;
+      // "teknik" veya "teknik personel" yazıldıysa sadece teknikleri getir
+      if (qTeknikMi && !isTeknik) return false;
+      if (qTeknikMi && isTeknik) return true;
       const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
       return text.includes(q);
     });
-  }, [personeller, arama]);
+  }, [personeller, arama, tipFiltre, teknikPersonelIds]);
 
   // Şantiye → personel listesi haritası — TAMAMEN atama_gecmisi'nden türetilir.
   // Personel tablosundaki santiye_id ve durum bordro tarafından KULLANILMAZ
@@ -2615,10 +2640,15 @@ export default function BordroTakibi() {
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-[#1E3A5F] truncate flex items-center gap-1">
+            <div className="font-semibold text-sm text-[#1E3A5F] truncate flex items-center gap-1 flex-wrap">
               <span className="truncate">{p.ad_soyad}</span>
               {p.personel_tipi === "taseron" && (
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
+              )}
+              {teknikPersonelIds.has(p.id) && (
+                <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
+                  Teknik Personel
+                </span>
               )}
             </div>
             {p.meslek && <div className="text-[10px] text-gray-500 truncate">{p.meslek}</div>}
@@ -2875,7 +2905,7 @@ export default function BordroTakibi() {
           />
         </td>
         <td className="px-2 py-1.5 font-semibold text-[#1E3A5F]">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             <span className="truncate">{p.ad_soyad}</span>
             {(personelAylikToplamMap.get(p.id) ?? 0) > 30 && (
               <span
@@ -2887,6 +2917,11 @@ export default function BordroTakibi() {
             )}
             {p.personel_tipi === "taseron" && (
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
+            )}
+            {teknikPersonelIds.has(p.id) && (
+              <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
+                Teknik Personel
+              </span>
             )}
           </div>
         </td>
@@ -3004,11 +3039,20 @@ export default function BordroTakibi() {
       <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
         <div className="flex-1">
           <Input
-            placeholder="Personel ara (ad, TC, görev)..."
+            placeholder="Personel ara (ad, TC, görev) — 'teknik personel' yazarak sadece teknikleri süzebilirsiniz"
             value={arama}
             onChange={(e) => setArama(e.target.value)}
           />
         </div>
+        <select
+          value={tipFiltre}
+          onChange={(e) => setTipFiltre(e.target.value as "tumu" | "teknik")}
+          className="h-9 rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+          title="Personel tipi filtresi"
+        >
+          <option value="tumu">Tüm Çalışanlar</option>
+          <option value="teknik">Teknik Personel</option>
+        </select>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Ay seçici — sabit genişlik (135px input + 36px×2 oklar + 90px etiket) */}
           <div className="flex items-center gap-1 flex-shrink-0">
