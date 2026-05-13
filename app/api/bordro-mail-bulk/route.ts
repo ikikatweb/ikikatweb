@@ -17,6 +17,11 @@ type Change = {
   // Kullanıcının mail önizlemede her satıra yazabildiği özel not
   // Mailde personelin altında KIRMIZI renkle gösterilir
   not?: string;
+  // İlgili şantiyede personel TEKNİK olarak işaretlenmiş mi?
+  // Mailde personel adının yanına "(Teknik Personel)" eklenir.
+  teknik?: boolean;
+  // (opsiyonel) Atanmış teknik personel rolü(leri) — örn. "Şantiye Şefi"
+  teknikIsim?: string | null;
 };
 
 export async function POST(request: Request) {
@@ -101,7 +106,9 @@ export async function POST(request: Request) {
         const adKismi = c.personelTc
           ? `${c.personelTc} TC Numaralı ${c.personelAd}`
           : c.personelAd;
-        return c.personelMeslek ? `${adKismi} (${c.personelMeslek})` : adKismi;
+        const meslekKismi = c.personelMeslek ? ` (${c.personelMeslek})` : "";
+        const teknikKismi = c.teknik ? " [Teknik Personel]" : "";
+        return `${adKismi}${meslekKismi}${teknikKismi}`;
       });
       if (isimler.length === 0) return "";
       let birlestirilmis: string;
@@ -127,10 +134,11 @@ export async function POST(request: Request) {
     for (const c of changes.filter((c) => c.tip === "giris")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const teknikEk = c.teknik ? " (Teknik Personel)" : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.santiyeAd ?? "—";
       girisCumleleri.push({
-        cumle: `${tc}${c.personelAd} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`,
+        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`,
         notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
       });
     }
@@ -140,10 +148,11 @@ export async function POST(request: Request) {
     for (const c of changes.filter((c) => c.tip === "cikis")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const teknikEk = c.teknik ? " (Teknik Personel)" : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.onceSantiyeAd ?? "—";
       cikisCumleleri.push({
-        cumle: `${tc}${c.personelAd} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`,
+        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`,
         notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
       });
     }

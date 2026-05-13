@@ -1239,11 +1239,30 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
 
     const FALLBACK_KEY = "__fallback__";
-    const grup = new Map<string, PendingChange[]>();
+    const grup = new Map<string, (PendingChange & { teknik?: boolean; teknikIsim?: string | null })[]>();
     for (const p of pending) {
       // Her satıra varsa kullanıcının yazdığı notu iliştir (mailde kırmızı çıkacak)
       const notu = (satirNotlari[p.id] ?? "").trim();
-      const enriched: PendingChange = notu ? { ...p, not: notu } : p;
+      // Personelin ilgili şantiyede teknik mi? (giriş/transfer için hedef şantiye, çıkış için eski şantiye)
+      const ilgiliSantiyeAd = p.tip === "cikis" ? p.onceSantiyeAd : p.santiyeAd;
+      const ilgiliSantiye = ilgiliSantiyeAd
+        ? santiyeler.find((s) => s.is_adi === ilgiliSantiyeAd)
+        : undefined;
+      const personelKayit = p.personelTc
+        ? personeller.find((pp) => pp.tc_kimlik_no === p.personelTc)
+        : personeller.find((pp) => pp.ad_soyad === p.personelAd);
+      let teknik = false;
+      let teknikIsim: string | null = null;
+      if (personelKayit && ilgiliSantiye) {
+        teknik = !!teknikPersonelMap.get(personelKayit.id)?.has(ilgiliSantiye.id);
+        teknikIsim = teknikIsimMap.get(`${personelKayit.id}|${ilgiliSantiye.id}`) ?? null;
+      }
+      const enriched: PendingChange & { teknik?: boolean; teknikIsim?: string | null } = {
+        ...p,
+        ...(notu ? { not: notu } : {}),
+        teknik,
+        teknikIsim,
+      };
       const k = p.firmaId || FALLBACK_KEY;
       if (!grup.has(k)) grup.set(k, []);
       grup.get(k)!.push(enriched);
@@ -4024,36 +4043,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const teknikMi = mevcutIsimSet.size > 0
               || !!teknikPersonelMap.get(gunEdit.personel.id)?.has(gunEdit.santiyeId);
 
-            // Bir ismi toggle et (tikle / kaldır) — optimistic update + DB'ye yazar
+            // Bir ismi seç/kaldır — TEK SEÇİM (radio button davranışı).
+            // Yeni bir isim tıklanırsa öncekiler otomatik kalkar.
+            // Aynı isim tekrar tıklanırsa kaldırılır.
             const toggleTeknikIsim = async (isim: string) => {
-              const yeniSet = new Set(mevcutIsimSet);
-              const acikti = yeniSet.has(isim);
-              if (acikti) yeniSet.delete(isim);
-              else yeniSet.add(isim);
-              const yeniIsimler = Array.from(yeniSet);
-              const yeniIsTeknik = yeniIsimler.length > 0;
-              const yeniIsimStr = yeniIsimler.join(", ");
+              const ayniIsme_yeniden_tiklandi = mevcutIsimSet.has(isim) && mevcutIsimSet.size === 1;
+              const yeniIsTeknik = !ayniIsme_yeniden_tiklandi;
+              const yeniIsimStr = yeniIsTeknik ? isim : "";
 
-              // OPTIMISTIC UPDATE: state'i hemen güncelle, kullanıcı tıklamayı hemen görsün
+              // OPTIMISTIC UPDATE: state'i hemen güncelle
               setTeknikKayitlari((prev) => {
                 const filtered = prev.filter(
                   (r) => !(r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId),
                 );
-                if (yeniIsTeknik) {
-                  filtered.push({
-                    personel_id: gunEdit.personel.id,
-                    santiye_id: gunEdit.santiyeId,
-                    is_teknik: true,
-                    teknik_isim: yeniIsimStr,
-                  });
-                } else {
-                  filtered.push({
-                    personel_id: gunEdit.personel.id,
-                    santiye_id: gunEdit.santiyeId,
-                    is_teknik: false,
-                    teknik_isim: null,
-                  });
-                }
+                filtered.push({
+                  personel_id: gunEdit.personel.id,
+                  santiye_id: gunEdit.santiyeId,
+                  is_teknik: yeniIsTeknik,
+                  teknik_isim: yeniIsTeknik ? yeniIsimStr : null,
+                });
                 return filtered;
               });
 
@@ -4064,14 +4072,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   yeniIsTeknik,
                   yeniIsTeknik ? yeniIsimStr : null,
                 );
-                toast.success(acikti
-                  ? `"${isim}" işareti kaldırıldı.`
-                  : `"${isim}" işaretlendi.`);
+                toast.success(yeniIsTeknik
+                  ? `"${isim}" seçildi.`
+                  : `"${isim}" kaldırıldı.`);
               } catch (err) {
                 console.error("[teknik personel toggle] Hata:", err);
                 const msg = err instanceof Error ? err.message : String(err);
                 toast.error(`Kayıt yapılamadı: ${msg}`);
-                // Hata olduysa loadData ile gerçek state'i geri al
                 await loadData();
               }
             };
@@ -4109,7 +4116,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         Teknik Personel
                         {mevcutIsimSet.size > 0 && (
                           <span className="ml-2 text-[9px] text-indigo-700 font-normal">
-                            ({mevcutIsimSet.size} seçili)
+                            (1 seçili)
                           </span>
                         )}
                       </div>
@@ -4159,8 +4166,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         })}
                       </div>
                       <div className="text-[10px] text-gray-500 mt-1.5">
-                        İşin teknik personel listesi. Bu personele uygulanan rolleri tikleyin.
-                        Soluk olanlar başka personellere atanmış (kilitli).
+                        İşin teknik personel listesi. Bu personele uygulanan rolü seçin (tek seçim).
+                        Yeni bir rol seçerseniz öncekinin seçimi kalkar. Soluk olanlar başka personellere atanmış (kilitli).
                       </div>
                     </div>
                   );

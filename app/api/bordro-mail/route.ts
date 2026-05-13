@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       tarih,
       ekBilgi,
       gonderenKullaniciAd,
+      teknik,
     } = body as {
       firmaId: string;
       muhasebeEmail: string;
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
       tarih: string;
       ekBilgi?: string;
       gonderenKullaniciAd?: string;
+      teknik?: boolean;
     };
 
     if (!muhasebeEmail) {
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
       konu = `Personel İşe Giriş Bildirimi — ${personelAd}`;
       metin = `Sayın Muhasebe,\n\n` +
         `Aşağıda bilgileri verilen personel firmamızda işe başlamıştır:\n\n` +
-        `Ad Soyad : ${personelAd}\n` +
+        `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
         (personelGorev ? `Görev : ${personelGorev}\n` : "") +
         (santiyeAd ? `Şantiye : ${santiyeAd}\n` : "") +
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
       konu = `Personel İşten Çıkış Bildirimi — ${personelAd}`;
       metin = `Sayın Muhasebe,\n\n` +
         `Aşağıda bilgileri verilen personel firmamızdan ayrılmıştır:\n\n` +
-        `Ad Soyad : ${personelAd}\n` +
+        `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
         (personelGorev ? `Görev : ${personelGorev}\n` : "") +
         (onceSantiyeAd ? `Son Şantiye : ${onceSantiyeAd}\n` : "") +
@@ -108,7 +110,7 @@ export async function POST(request: Request) {
       konu = `Personel Şantiye Transferi — ${personelAd}`;
       metin = `Sayın Muhasebe,\n\n` +
         `Aşağıda bilgileri verilen personel şantiye değişikliği yapmıştır:\n\n` +
-        `Ad Soyad : ${personelAd}\n` +
+        `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
         (onceSantiyeAd ? `Önceki Şantiye : ${onceSantiyeAd}\n` : "") +
         (santiyeAd ? `Yeni Şantiye : ${santiyeAd}\n` : "") +
