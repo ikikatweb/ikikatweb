@@ -52,7 +52,7 @@ const selectClass =
 export default function PersonelForm({ personel, onSuccess, onCancel }: PersonelFormProps) {
   const isEdit = !!personel;
   const router = useRouter();
-  const { isYonetici, isShantiyeAdmin } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
   // Brüt ücret sadece admin (yönetici) ve şantiye yöneticisi tarafından görülür/düzenlenir
   const brutUcretYetkili = isYonetici || isShantiyeAdmin;
 
@@ -114,13 +114,26 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           getTanimlamalar("personel_meslek").catch(() => []),
           getTanimlamalar("personel_gorev").catch(() => []),
         ]);
-        setSantiyeler((sData as SantiyeBasic[]) ?? []);
+        const tumSantiyeler = (sData as SantiyeBasic[]) ?? [];
+        // Kısıtlı/şantiye admin: sadece atandığı şantiyeler görünür
+        const izinli = !isYonetici && kullanici?.santiye_ids
+          ? new Set(kullanici.santiye_ids)
+          : null;
+        const filtreliSantiyeler = izinli
+          ? tumSantiyeler.filter((s) => izinli.has(s.id))
+          : tumSantiyeler;
+        setSantiyeler(filtreliSantiyeler);
+        // Tek şantiye atandıysa ve yeni personel ekleniyorsa: otomatik seç
+        if (!isEdit && filtreliSantiyeler.length === 1 && !isYonetici) {
+          const tekId = filtreliSantiyeler[0].id;
+          setFormData((prev) => prev.santiye_id ? prev : { ...prev, santiye_id: tekId });
+        }
         setMeslekler((mData as Tanimlama[]).map((t) => t.deger));
         setGorevler((gData as Tanimlama[]).map((t) => t.deger));
       } catch { /* sessiz */ }
     }
     loadData();
-  }, []);
+  }, [isYonetici, kullanici, isEdit]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
