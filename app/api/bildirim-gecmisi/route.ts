@@ -109,12 +109,12 @@ export async function GET(request: Request) {
     if (!tag) return true; // tag'siz bildirim (mesajlaşma vb.) herkese
     const moduleKey = BILDIRIM_TAG_MODULE[tag];
     if (moduleKey && !hasPermission(rol, izinler, moduleKey, "goruntule")) return false;
-    // Şantiye-seviyesi filtre (santiye_id kolonu varsa)
-    if (santiyeId) {
+    // Şantiye-bağlı tag'ler için:
+    if (SANTIYE_BAGLI_TAGLER.has(tag)) {
+      // santiye_id NULL → hangi şantiyeye ait olduğu bilinmiyor, GİZLE (eski/legacy bildirimler için)
+      if (!santiyeId) return false;
+      // santiye_id var → kullanıcının izinli şantiyelerinde olmalı
       if (!izinliSet.has(santiyeId)) return false;
-    } else if (SANTIYE_BAGLI_TAGLER.has(tag)) {
-      // santiye_id NULL ama tag şantiye-bağlı → atanmamış demek, gizle
-      if (santiyeIds.length === 0) return false;
     }
     return true;
   }

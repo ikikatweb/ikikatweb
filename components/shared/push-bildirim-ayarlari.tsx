@@ -33,15 +33,27 @@ export default function PushBildirimAyarlari() {
 
   // Sadece kullanıcının yetkisi olduğu modüllere ait kategoriler gösterilir.
   // Yönetici tüm kategorileri görür.
+  // Şantiye-bağlı kategoriler için: kullanıcının en az bir atanmış şantiyesi olmalı.
   const gorunenKategoriler = useMemo(() => {
     if (isYonetici) return KATEGORILER;
     if (!kullanici) return [];
     const rol = (kullanici.rol ?? "kisitli") as "yonetici" | "santiye_admin" | "kisitli";
     const izinler = kullanici.izinler ?? {};
+    const santiyeIds = Array.isArray(kullanici.santiye_ids) ? kullanici.santiye_ids : [];
+    const SANTIYE_BAGLI_TAGLER = new Set([
+      "kasa", "yakit", "arac-bakim", "yaklasan-sigorta", "yaklasan-bakim",
+      "personel-puantaj", "arac-puantaj", "gelen-evrak", "giden-evrak",
+      "iscilik-takibi", "santiye-defteri",
+    ]);
     return KATEGORILER.filter((k) => {
       const moduleKey = BILDIRIM_TAG_MODULE[k.tag];
-      if (!moduleKey) return true; // modülsüz (mesajlaşma vb.) herkese
-      return hasPermission(rol, izinler, moduleKey, "goruntule");
+      // Modülsüz (mesajlaşma vb.) herkese
+      if (!moduleKey) return true;
+      // 1) Modül izni şart
+      if (!hasPermission(rol, izinler, moduleKey, "goruntule")) return false;
+      // 2) Şantiye-bağlı kategori için en az 1 şantiye ataması olmalı
+      if (SANTIYE_BAGLI_TAGLER.has(k.tag) && santiyeIds.length === 0) return false;
+      return true;
     });
   }, [kullanici, isYonetici]);
 
