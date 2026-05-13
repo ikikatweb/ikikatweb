@@ -3,9 +3,12 @@
 // Alt: Kategori bazlı aç/kapat toggle'ları
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Bell, BellOff, History, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
+import { hasPermission } from "@/lib/permissions";
+import { BILDIRIM_TAG_MODULE } from "@/lib/bildirim-mapping";
 
 type BildirimKayit = {
   id: string;
@@ -61,6 +64,30 @@ export default function PushBildirimMenu() {
   const [ayarlar, setAyarlar] = useState<Record<string, boolean>>({});
   const [ayarlarYuklendi, setAyarlarYuklendi] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { kullanici, isYonetici } = useAuth();
+
+  // Sadece kullanıcının izinli olduğu kategorileri göster.
+  // Yönetici hepsini görür.
+  // Şantiye-bağlı kategoriler için: kullanıcının en az 1 atanmış şantiyesi olmalı.
+  const gorunenKategoriler = useMemo(() => {
+    if (isYonetici) return KATEGORILER;
+    if (!kullanici) return [];
+    const rol = (kullanici.rol ?? "kisitli") as "yonetici" | "santiye_admin" | "kisitli";
+    const izinler = kullanici.izinler ?? {};
+    const santiyeIds = Array.isArray(kullanici.santiye_ids) ? kullanici.santiye_ids : [];
+    const SANTIYE_BAGLI = new Set([
+      "kasa", "yakit", "arac-bakim", "yaklasan-sigorta", "yaklasan-bakim",
+      "personel-puantaj", "arac-puantaj", "gelen-evrak", "giden-evrak",
+      "iscilik-takibi", "santiye-defteri", "bordro-takibi", "santiye",
+    ]);
+    return KATEGORILER.filter((k) => {
+      const moduleKey = BILDIRIM_TAG_MODULE[k.tag];
+      if (!moduleKey) return true; // mesajlaşma vb. modülsüz — herkese
+      if (!hasPermission(rol, izinler, moduleKey, "goruntule")) return false;
+      if (SANTIYE_BAGLI.has(k.tag) && santiyeIds.length === 0) return false;
+      return true;
+    });
+  }, [kullanici, isYonetici]);
 
   // Geçmiş bildirimler
   const [aktifSekme, setAktifSekme] = useState<"gecmis" | "ayarlar">("gecmis");
@@ -280,8 +307,8 @@ export default function PushBildirimMenu() {
   }
 
   async function kategoriHepsi(aktif: boolean) {
-    const yeni: Record<string, boolean> = {};
-    for (const k of KATEGORILER) yeni[k.tag] = aktif;
+    const yeni: Record<string, boolean> = { ...ayarlar };
+    for (const k of gorunenKategoriler) yeni[k.tag] = aktif;
     setAyarlar(yeni);
     try {
       const res = await fetch("/api/push/settings", {
@@ -517,7 +544,12 @@ export default function PushBildirimMenu() {
             </div>
 
             <div className="max-h-[360px] overflow-y-auto space-y-0.5">
-              {KATEGORILER.map((k) => {
+              {gorunenKategoriler.length === 0 ? (
+                <div className="text-center py-6 text-xs text-gray-400">
+                  Bildirim alabileceğiniz tanımlı modül yok.
+                </div>
+              ) : null}
+              {gorunenKategoriler.map((k) => {
                 const katAcik = isAcikKat(ayarlar, k.tag);
                 return (
                   <button

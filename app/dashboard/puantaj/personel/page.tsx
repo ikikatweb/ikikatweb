@@ -970,8 +970,10 @@ export default function PersonelPuantajPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Personel Puantaj</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Personel Ekle: dialog ile sayfa içinde — yönetim menüsüne girmeden çalışır */}
-          {hasPermission("yonetim-personel", "ekle") && (
+          {/* Personel Ekle: dialog ile sayfa içinde — yönetim menüsüne girmeden çalışır.
+              Personel puantaj "ekle" yetkisi olan kullanıcılar da ekleyebilir (yonetim-personel'e
+              ek olarak puantaj-personel "ekle" izni varsa buton aktif olur). */}
+          {(hasPermission("puantaj-personel", "ekle") || hasPermission("yonetim-personel", "ekle")) && (
             <Button
               size="sm"
               className="bg-[#F97316] hover:bg-[#ea580c] text-white"
