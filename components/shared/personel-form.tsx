@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createPersonel, updatePersonel, getPasifPersonelByTc, setPersonelAktif } from "@/lib/supabase/queries/personel";
+import { createPersonel, updatePersonel, getPasifPersonelByTc, getPersonelByTc, setPersonelAktif } from "@/lib/supabase/queries/personel";
 import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -146,7 +146,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     }));
   }
 
-  // TC 11 hane olduğunda pasif personel ara ve form'u doldur
+  // TC 11 hane olduğunda mevcut personeli (aktif veya pasif) ara ve form'u doldur
   async function handleTcChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setFormData((prev) => ({ ...prev, tc_kimlik_no: value }));
@@ -159,34 +159,46 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     }
 
     try {
-      const pasif = await getPasifPersonelByTc(value);
-      if (pasif) {
-        // Tüm verileri doldur, maaş hariç (boş bırak)
-        setFormData({
-          tc_kimlik_no: pasif.tc_kimlik_no,
-          ad_soyad: pasif.ad_soyad,
-          meslek: pasif.meslek ?? "",
-          gorev: pasif.gorev ?? "",
-          santiye_id: pasif.santiye_id,
-          maas: null, // maaş boş — kullanıcı dolduracak
-          izin_hakki: pasif.izin_hakki,
-          mesai_ucreti_var: pasif.mesai_ucreti_var,
-          ise_giris_tarihi: new Date().toISOString().slice(0, 10),
-          ev_telefon: pasif.ev_telefon ?? null,
-          cep_telefon: pasif.cep_telefon ?? null,
-          durum: "aktif",
-          pasif_tarihi: null,
-        });
-        setMaasInput(""); // maaş gösterimi de sıfırla
-        setPasifBulunanId(pasif.id);
-        const tarihStr = pasif.pasif_tarihi
-          ? new Date(pasif.pasif_tarihi).toLocaleDateString("tr-TR")
-          : "";
-        setPasifBilgi(`${pasif.ad_soyad}${tarihStr ? ` — ${tarihStr} tarihinde ayrılmış` : ""}`);
-        toast.success(`Pasif personel bulundu: ${pasif.ad_soyad}. Maaşı girip kaydedin.`, { duration: 5000 });
-      } else {
+      // Önce herhangi bir personeli ara (aktif veya pasif)
+      const mevcut = await getPersonelByTc(value);
+      if (!mevcut) {
         setPasifBulunanId(null);
         setPasifBilgi("");
+        return;
+      }
+
+      const isPasif = mevcut.durum === "pasif";
+      // Tüm bilgileri form'a doldur
+      setFormData({
+        tc_kimlik_no: mevcut.tc_kimlik_no,
+        ad_soyad: mevcut.ad_soyad,
+        meslek: mevcut.meslek ?? "",
+        gorev: mevcut.gorev ?? "",
+        santiye_id: mevcut.santiye_id,
+        maas: null, // maaş boş — kullanıcı dolduracak
+        izin_hakki: mevcut.izin_hakki,
+        mesai_ucreti_var: mevcut.mesai_ucreti_var,
+        ise_giris_tarihi: isPasif ? new Date().toISOString().slice(0, 10) : (mevcut.ise_giris_tarihi ?? ""),
+        ev_telefon: mevcut.ev_telefon ?? null,
+        cep_telefon: mevcut.cep_telefon ?? null,
+        durum: "aktif",
+        pasif_tarihi: null,
+      });
+      setMaasInput("");
+
+      if (isPasif) {
+        // Pasif personel: aktife alma mantığı (kaydedince eski kayıt yeniden aktive edilir)
+        setPasifBulunanId(mevcut.id);
+        const tarihStr = mevcut.pasif_tarihi
+          ? new Date(mevcut.pasif_tarihi).toLocaleDateString("tr-TR")
+          : "";
+        setPasifBilgi(`${mevcut.ad_soyad}${tarihStr ? ` — ${tarihStr} tarihinde ayrılmış` : ""}`);
+        toast.success(`Pasif personel bulundu: ${mevcut.ad_soyad}. Maaşı girip kaydedin.`, { duration: 5000 });
+      } else {
+        // Aktif personel zaten sistemde — bilgiler dolduruldu ama kaydedince hata olur (TC tekillik)
+        setPasifBulunanId(null);
+        setPasifBilgi(`⚠ "${mevcut.ad_soyad}" bu TC ile zaten AKTİF kayıtlı — bilgileri gösterildi.`);
+        toast.error(`Bu TC zaten "${mevcut.ad_soyad}" adıyla kayıtlı (aktif personel). Bilgileri kontrol ettiniz; aynı TC ile yeni kayıt eklenemez.`, { duration: 6000 });
       }
     } catch {
       setPasifBulunanId(null);

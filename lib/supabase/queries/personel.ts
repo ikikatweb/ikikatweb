@@ -86,6 +86,19 @@ export async function getPasifPersonelByTc(tcKimlikNo: string): Promise<Personel
   return (data && data.length > 0) ? data[0] : null;
 }
 
+// TC ile herhangi bir personeli (aktif veya pasif) bul — yeni kayıt eklenirken
+// formu otomatik doldurmak ve duplicate uyarısı vermek için kullanılır.
+export async function getPersonelByTc(tcKimlikNo: string): Promise<Personel | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("personel")
+    .select("*")
+    .eq("tc_kimlik_no", tcKimlikNo.trim())
+    .limit(1);
+  if (error) throw error;
+  return (data && data.length > 0) ? data[0] : null;
+}
+
 export async function createPersonel(personel: PersonelInsert) {
   const supabase = getSupabase();
   await checkPersonelTekillik({
