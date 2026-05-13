@@ -182,10 +182,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   function removeEk(i: number) { setEkler((p) => p.filter((_, idx) => idx !== i)); }
   function updateEk(i: number, v: string) { setEkler((p) => p.map((x, idx) => idx === i ? basHarfBuyuk(v) : x)); }
 
-  // Metin değişince ilk paragraf otomatik tab + büyük harf
+  // Metin değişince ilk harf büyük (tab otomatik eklenmez)
   function handleMetinChange(val: string) {
-    if (val.length === 1 && val !== "\t") {
-      setMetin("\t" + val.toUpperCase());
+    if (val.length === 1) {
+      setMetin(val.toUpperCase());
     } else {
       setMetin(val);
     }

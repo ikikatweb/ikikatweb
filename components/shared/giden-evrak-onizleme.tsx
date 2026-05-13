@@ -294,7 +294,6 @@ export default function GidenEvrakOnIzleme({
       {metinTemiz && (
         <div
           style={{
-            marginLeft: "0.5cm",
             fontSize: "10.5pt",
             lineHeight: "1.5",
             textAlign: "justify",

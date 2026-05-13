@@ -63,14 +63,7 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
     if (e.ctrlKey && e.key === "i") { e.preventDefault(); execCmd("italic"); }
     if (e.ctrlKey && e.key === "u") { e.preventDefault(); execCmd("underline"); }
     if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
-    // Enter'a basıldığında: doğal paragraf oluşsun, sonra tab ekle
-    if (e.key === "Enter" && !e.shiftKey) {
-      // Doğal davranışa izin ver, sonra tab ekle
-      setTimeout(() => {
-        document.execCommand("insertText", false, "\t");
-        handleInput();
-      }, 0);
-    }
+    // Enter: doğal paragraf oluşur, otomatik tab eklenmez
   }
 
   // Word'den yapıştırılan içerik için temizleme — mso-* attribute'leri, conditional
@@ -282,7 +275,7 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
     handleInput();
   }
 
-  // İlk karakter girildiğinde tab + büyük harf
+  // İlk karakter girildiğinde sadece büyük harf (tab otomatik eklenmez)
   function handleBeforeInput(e: React.FormEvent<HTMLDivElement>) {
     const el = editorRef.current;
     if (!el) return;
@@ -292,7 +285,7 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
     const text = el.textContent ?? "";
     if (text.length === 0) {
       e.preventDefault();
-      document.execCommand("insertText", false, "\t" + data.toUpperCase());
+      document.execCommand("insertText", false, data.toUpperCase());
       isInternalChange.current = true;
       onChange(el.innerHTML);
     }
