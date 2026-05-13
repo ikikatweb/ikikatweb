@@ -299,8 +299,8 @@ export default function GidenEvrakOnIzleme({
             lineHeight: "1.5",
             textAlign: "justify",
             whiteSpace: "pre-wrap",
-            tabSize: "1.5em",
-            MozTabSize: "1.5em",
+            tabSize: "1.25cm",
+            MozTabSize: "1.25cm",
             orphans: 3,
             widows: 3,
           } as React.CSSProperties}

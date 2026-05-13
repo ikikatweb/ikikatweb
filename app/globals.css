@@ -14,11 +14,11 @@ thead th {
 }
 
 /* Rich text editor — tab genişliği inline style yeterli olmazsa (contentEditable child'ları
-   tab-size'i her zaman inherit etmeyebilir) burası override eder. 1.5em ≈ 5mm. */
+   tab-size'i her zaman inherit etmeyebilir) burası override eder. 1.25cm = Word varsayılanı. */
 .rich-text-editor-content,
 .rich-text-editor-content * {
-  tab-size: 1.5em !important;
-  -moz-tab-size: 1.5em !important;
+  tab-size: 1.25cm !important;
+  -moz-tab-size: 1.25cm !important;
 }
 
 /* İnce scrollbar */
