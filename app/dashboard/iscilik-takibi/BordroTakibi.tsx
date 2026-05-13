@@ -967,17 +967,24 @@ export default function BordroTakibi() {
   }, [santiyeler, aktifTeknikSayisiMap]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
-  // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
+  // SADECE şu kelimelerden biri tam olarak yazıldıysa teknik filtresi aktif:
+  //   "teknik" veya "teknik personel"
+  // Aksi halde normal metin araması (ad, TC, görev, meslek içinde geçen kelime)
   const filtreli = useMemo(() => {
     const q = trAramaNormalize(arama);
-    const qTeknikMi = q ? trAramaNormalize("teknik personel").includes(q) || q.includes("teknik") : false;
+    const teknikKelimeleri = new Set([
+      trAramaNormalize("teknik"),
+      trAramaNormalize("teknik personel"),
+      trAramaNormalize("teknikpersonel"),
+    ]);
+    const qTeknikMi = q.length > 0 && teknikKelimeleri.has(q);
     return personeller.filter((p) => {
       const isTeknik = teknikPersonelIds.has(p.id);
       if (tipFiltre === "teknik" && !isTeknik) return false;
       if (!q) return true;
-      // "teknik" veya "teknik personel" yazıldıysa sadece teknikleri getir
-      if (qTeknikMi && !isTeknik) return false;
-      if (qTeknikMi && isTeknik) return true;
+      // "teknik" veya "teknik personel" tam yazıldıysa → sadece teknik personelleri getir
+      if (qTeknikMi) return isTeknik;
+      // Normal metin araması: ad, TC, görev, meslek içinde geçer mi?
       const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
       return text.includes(q);
     });
@@ -1797,6 +1804,8 @@ export default function BordroTakibi() {
       iseBaslama: string; isenCikis: string;
       gun: number;
       not: string;
+      // Teknik personel mi? Export sırasında ad yanına "(Teknik Personel)" eklenir.
+      isTeknik?: boolean;
     };
     const rows: Row[] = [];
     const [yil, ay] = seciliAy.split("-").map(Number);
@@ -1834,12 +1843,15 @@ export default function BordroTakibi() {
       const firma = sant.yuklenici_firma_id ? firmalar.find((f) => f.id === sant.yuklenici_firma_id) : null;
       const clampBas = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;
       const clampBit = bitisHam < ayBit ? bitisHam : ayBit;
+      // Teknik personel mi? Export sırasında ad yanına "(Teknik Personel)" eklenir.
+      const isTeknik = !!teknikPersonelMap.get(personel.id)?.has(sant.id);
       ham.push({
         firmaId: firma?.id ?? "",
         firmaAd: firma?.firma_adi ?? "(Firma atanmamış)",
         santiyeId: sant.id,
         santiyeAd: sant.is_adi,
         adSoyad: personel.ad_soyad,
+        isTeknik,
         tc: personel.tc_kimlik_no ?? "",
         gorev: personel.meslek ?? "",
         iseBaslama: fmt(a.baslangic_tarihi),
@@ -1877,6 +1889,7 @@ export default function BordroTakibi() {
         isenCikis,
         gun: toplamGun,
         not: "",
+        isTeknik: ilk.isTeknik,
       });
     }
     // Manuel gün override
@@ -1933,6 +1946,7 @@ export default function BordroTakibi() {
     isenCikis: string;
     toplamGun: number;
     not: string;
+    isTeknik?: boolean;
   };
   function otuzGununAsanlar(): OtuzAsanRow[] {
     const rows = exportSantiyeBazli();
@@ -1941,6 +1955,7 @@ export default function BordroTakibi() {
       adSoyad: string; tc: string; gorev: string;
       iseBaslama: string; isenCikis: string;
       toplamGun: number; notlar: string[];
+      isTeknik: boolean;
     };
     const map = new Map<string, Acc>();
     for (const r of rows) {
@@ -1951,6 +1966,7 @@ export default function BordroTakibi() {
           adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
           iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
           toplamGun: r.gun, notlar: r.not ? [r.not] : [],
+          isTeknik: !!r.isTeknik,
         });
       } else {
         mevcut.toplamGun += r.gun;
@@ -1964,6 +1980,7 @@ export default function BordroTakibi() {
           mevcut.isenCikis = r.isenCikis;
         }
         if (r.not) mevcut.notlar.push(r.not);
+        if (r.isTeknik) mevcut.isTeknik = true;
       }
     }
     const sonuc: OtuzAsanRow[] = [];
@@ -1977,6 +1994,7 @@ export default function BordroTakibi() {
           isenCikis: acc.isenCikis,
           toplamGun: acc.toplamGun,
           not: acc.notlar.join(" / "),
+          isTeknik: acc.isTeknik,
         });
       }
     }
@@ -2083,19 +2101,36 @@ export default function BordroTakibi() {
         for (let i = 0; i < list.length; i++) {
           const r = list[i];
           const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF1F5F9";
-          const rowVals: (string | number)[] = [r.adSoyad, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not];
+          const adSoyadFmt = r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad;
+          const rowVals: (string | number)[] = [adSoyadFmt, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not];
           for (let c = 0; c < rowVals.length; c++) {
-            setCell(curRow, c, rowVals[c], {
-              font: { sz: 10 },
-              alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
-              fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
-              border: {
-                top: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                left: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+            // Teknik personel rich text: isim normal, "(Teknik Personel)" kalın+indigo
+            const isAdHucresi = c === 0 && r.isTeknik;
+            const cellObj: {
+              v: string | number;
+              s: object;
+              r?: { t: string; s: object }[];
+            } = {
+              v: rowVals[c],
+              s: {
+                font: { sz: 10 },
+                alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
+                fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+                border: {
+                  top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                  bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                  left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                  right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                },
               },
-            });
+            };
+            if (isAdHucresi) {
+              cellObj.r = [
+                { t: r.adSoyad, s: { font: { sz: 10 } } },
+                { t: " (Teknik Personel)", s: { font: { sz: 10, bold: true, color: { rgb: "FF4338CA" } } } },
+              ];
+            }
+            sheet[XLSX.utils.encode_cell({ r: curRow, c })] = cellObj as Cell;
           }
           curRow++;
         }
@@ -2140,19 +2175,35 @@ export default function BordroTakibi() {
       for (let i = 0; i < otuzAsanlar.length; i++) {
         const r = otuzAsanlar[i];
         const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF5F5F5";
-        const rowVals: (string | number)[] = [r.adSoyad, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
+        const adSoyadFmt = r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad;
+        const rowVals: (string | number)[] = [adSoyadFmt, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
         for (let c = 0; c < rowVals.length; c++) {
-          setCell(curRow, c, rowVals[c], {
-            font: { sz: 10 },
-            alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
-            fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
-            border: {
-              top: { style: "thin", color: { rgb: "FFD1D5DB" } },
-              bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
-              left: { style: "thin", color: { rgb: "FFD1D5DB" } },
-              right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+          const isAdHucresi = c === 0 && r.isTeknik;
+          const cellObj: {
+            v: string | number;
+            s: object;
+            r?: { t: string; s: object }[];
+          } = {
+            v: rowVals[c],
+            s: {
+              font: { sz: 10 },
+              alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
+              fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+              border: {
+                top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              },
             },
-          });
+          };
+          if (isAdHucresi) {
+            cellObj.r = [
+              { t: r.adSoyad, s: { font: { sz: 10 } } },
+              { t: " (Teknik Personel)", s: { font: { sz: 10, bold: true, color: { rgb: "FF4338CA" } } } },
+            ];
+          }
+          sheet[XLSX.utils.encode_cell({ r: curRow, c })] = cellObj as Cell;
         }
         curRow++;
       }
@@ -2460,7 +2511,7 @@ export default function BordroTakibi() {
           head: [["Sira", "Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
           body: list.map((r, i) => [
             String(i + 1),
-            trAscii(r.adSoyad),
+            trAscii(r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad),
             r.tc,
             trAscii(r.gorev),
             r.iseBaslama,
@@ -2475,6 +2526,48 @@ export default function BordroTakibi() {
           },
           alternateRowStyles: { fillColor: altRgb },
           margin: { left: 14, right: 14 },
+          // "(Teknik Personel)" suffix'ini SADECE kalın + indigo yap (isim normal kalır).
+          // Hücre çizildikten sonra overdraw: önce dolgu rengiyle üzerini kapat,
+          // sonra metni iki parça halinde elle çiz.
+          didDrawCell: (data) => {
+            if (data.section !== "body" || data.column.index !== 1) return;
+            const fullTxt = String(data.cell.raw ?? "");
+            const marker = " (Teknik Personel)";
+            const idx = fullTxt.lastIndexOf(marker);
+            if (idx < 0) return;
+            const namePart = fullTxt.slice(0, idx);
+            const suffixPart = fullTxt.slice(idx);
+            // Mevcut hücreyi dolgu rengiyle kapla (kenarlığı koru)
+            let fillRgb: [number, number, number] = [255, 255, 255];
+            const fc = data.cell.styles.fillColor;
+            if (Array.isArray(fc) && fc.length >= 3) {
+              fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
+            }
+            doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
+            doc.rect(
+              data.cell.x + 0.15,
+              data.cell.y + 0.15,
+              data.cell.width - 0.3,
+              data.cell.height - 0.3,
+              "F",
+            );
+            // Metni iki parça halinde çiz
+            const fontSize = (data.cell.styles.fontSize as number) ?? 8;
+            const padLeft = 1.8;
+            // jsPDF text baseline = "alphabetic"; merkez için baseline = y + h/2 + ~fontSize*0.35
+            const textY = data.cell.y + data.cell.height / 2 + fontSize * 0.35;
+            const nameX = data.cell.x + padLeft;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(fontSize);
+            doc.setTextColor(0, 0, 0);
+            doc.text(namePart, nameX, textY);
+            const nameWidth = doc.getTextWidth(namePart);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(67, 56, 202);
+            doc.text(suffixPart, nameX + nameWidth, textY);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+          },
         });
         // @ts-expect-error autoTable lastAutoTable typing
         cursorY = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
@@ -2507,7 +2600,7 @@ export default function BordroTakibi() {
         startY: cursorY,
         head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
         body: otuzAsanlar.map((r) => [
-          trAscii(r.adSoyad),
+          trAscii(r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad),
           r.tc,
           trAscii(r.gorev),
           r.iseBaslama,
@@ -2519,6 +2612,43 @@ export default function BordroTakibi() {
         headStyles: { fillColor: [50, 50, 50], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
+        // 30 günü aşanlar — ad sütunu index 0; overdraw ile iki parça çiz
+        didDrawCell: (data) => {
+          if (data.section !== "body" || data.column.index !== 0) return;
+          const fullTxt = String(data.cell.raw ?? "");
+          const marker = " (Teknik Personel)";
+          const idx = fullTxt.lastIndexOf(marker);
+          if (idx < 0) return;
+          const namePart = fullTxt.slice(0, idx);
+          const suffixPart = fullTxt.slice(idx);
+          let fillRgb: [number, number, number] = [255, 255, 255];
+          const fc = data.cell.styles.fillColor;
+          if (Array.isArray(fc) && fc.length >= 3) {
+            fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
+          }
+          doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
+          doc.rect(
+            data.cell.x + 0.15,
+            data.cell.y + 0.15,
+            data.cell.width - 0.3,
+            data.cell.height - 0.3,
+            "F",
+          );
+          const fontSize = (data.cell.styles.fontSize as number) ?? 8;
+          const padLeft = 1.8;
+          const textY = data.cell.y + data.cell.height / 2 + fontSize * 0.35;
+          const nameX = data.cell.x + padLeft;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(fontSize);
+          doc.setTextColor(0, 0, 0);
+          doc.text(namePart, nameX, textY);
+          const nameWidth = doc.getTextWidth(namePart);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(67, 56, 202);
+          doc.text(suffixPart, nameX + nameWidth, textY);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+        },
       });
     }
 
@@ -3318,11 +3448,22 @@ export default function BordroTakibi() {
             return fa - fb;
           });
 
+          // Arama aktifse → eşleşen personel İÇEREN şantiyeleri göster (boşlar gizli)
+          // Dropdown filtre aktifse → tüm şantiyeler görünür (boşlar da görünür) + auto-expand
+          const aramaAktif = arama.trim().length > 0;
+          const dropdownFiltreAktif = tipFiltre === "teknik";
           return firmaIds.map((fId, fIdx) => {
             const firma = firmalar.find((f) => f.id === fId);
             const firmaAd = firma?.firma_adi ?? "(Firma atanmamış)";
-            const firmaSantiyeler = firmaGrup.get(fId) ?? [];
-            const firmaAcik = expandedFirmalar.has(fId);
+            const tumFirmaSantiyeler = firmaGrup.get(fId) ?? [];
+            // Arama aktifken: SADECE eşleşen personel içeren şantiyeler görünür
+            const firmaSantiyeler = aramaAktif
+              ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0)
+              : tumFirmaSantiyeler;
+            // Arama aktifken o firmanın eşleşen şantiyesi yoksa firmayı da gizle
+            if (aramaAktif && firmaSantiyeler.length === 0) return null;
+            // Auto-expand: dropdown filtre veya arama aktifse otomatik açık göster
+            const firmaAcik = expandedFirmalar.has(fId) || aramaAktif || dropdownFiltreAktif;
             // Firma toplam: kişi sayısı + gün + prim hesabı toplamı
             let firmaToplamKisi = 0;
             let firmaToplamGun = 0;
@@ -3417,6 +3558,7 @@ export default function BordroTakibi() {
                         const isRenkler = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316"];
                         const renk = isRenkler[i % isRenkler.length];
                         const liste = kanbanMap.get(s.id) ?? [];
+                        // Şantiye accordion'u kullanıcı kontrollü — arama/filtre auto-expand yok.
                         const acik = expandedSantiyeler.has(s.id);
                         const tumGun = liste.reduce((acc, p) => acc + (gunMap.get(p.id)?.get(s.id) ?? 0), 0);
                         const tumSecili = liste.length > 0 && liste.every((p) => selectedKeys.has(`${p.id}:${s.id}`));
