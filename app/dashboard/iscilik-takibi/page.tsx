@@ -163,7 +163,7 @@ export default function IscilikTakibiPage() {
   const [isAdiSabit, setIsAdiSabit] = useState(true);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [sekme, setSekme] = useState<"aktif" | "cop">("aktif");
+  const [sekme, setSekme] = useState<"aktif" | "gecici-kabul" | "cop">("aktif");
   const [silinenler, setSilinenler] = useState<IscilikTakibiWithSantiye[]>([]);
   const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
@@ -399,15 +399,23 @@ export default function IscilikTakibiPage() {
     } catch { /* sessiz */ }
   }
 
-  // Aktif işler listesi (filtre paneli + filtrelenmiş listede ortak baz)
+  // Aktif işler: gecici_kabul_tarihi BOŞ olan (kesin kabul/tasfiye/devir de yok)
   const aktifIsler = rows.filter((r) => {
     const s = r.santiyeler;
     const bitmis = !!(s?.gecici_kabul_tarihi || s?.kesin_kabul_tarihi || s?.tasfiye_tarihi || s?.devir_tarihi);
     return !bitmis;
   });
 
-  // Arama filtresi (bitmiş işler aktifIsler'da zaten gizlendi)
-  const filtrelenmis = aktifIsler.filter((r) => {
+  // Geçici kabulü yapılmış işler: gecici_kabul_tarihi DOLU olan tüm işler
+  // (kesin kabul ve diğer bitiş tarihleri olsun ya da olmasın — geçici kabul almışsa burada)
+  const geciciKabulYapilmisIsler = rows.filter((r) => {
+    const s = r.santiyeler;
+    return !!s?.gecici_kabul_tarihi;
+  });
+
+  // Hangi sekme aktifse, o sekmenin listesi üzerinden arama yap
+  const aktifBazList = sekme === "gecici-kabul" ? geciciKabulYapilmisIsler : aktifIsler;
+  const filtrelenmis = aktifBazList.filter((r) => {
     if (!arama.trim()) return true;
     const q = trAramaNormalize(arama);
     const text = trAramaNormalize([
@@ -723,6 +731,11 @@ export default function IscilikTakibiPage() {
         <Button variant={sekme === "aktif" ? "default" : "outline"} size="sm"
           onClick={() => setSekme("aktif")} className={sekme === "aktif" ? "bg-[#64748B]" : ""}>
           İşçilik Takibi
+        </Button>
+        <Button variant={sekme === "gecici-kabul" ? "default" : "outline"} size="sm"
+          onClick={() => setSekme("gecici-kabul")}
+          className={sekme === "gecici-kabul" ? "bg-[#1E3A5F]" : ""}>
+          Geçici Kabulü Yapılmış İşler {geciciKabulYapilmisIsler.length > 0 && `(${geciciKabulYapilmisIsler.length})`}
         </Button>
         <Button variant={sekme === "cop" ? "default" : "outline"} size="sm"
           onClick={() => { setSekme("cop"); loadSilinenler(); }}

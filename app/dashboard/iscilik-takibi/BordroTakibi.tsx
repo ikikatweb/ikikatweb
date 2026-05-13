@@ -783,13 +783,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       }
       for (const r of (iscilik as { id: string; santiye_id: string; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null }) | null }[]) ?? []) {
         const sant = r.santiyeler ?? null;
-        const bitmis = !!(sant && (
-          sant.gecici_kabul_tarihi ||
-          sant.kesin_kabul_tarihi ||
-          sant.tasfiye_tarihi ||
-          sant.devir_tarihi
-        ));
-        if (!bitmis && r.santiye_id) {
+        // BÜTÜN iscilik_takibi'ye girmiş işleri al — sekme filtresi (Bordro / Geçici Kabulü)
+        // sonradan ayıracak. Burada "bitmiş" diye filtreleme yapmıyoruz.
+        if (r.santiye_id) {
           iscilikRaporSantiyeIds.add(r.santiye_id);
           if (sant?.yuklenici_firma_id) firmaIdMap.set(r.santiye_id, sant.yuklenici_firma_id);
           // Prim hesapla: yatması gereken = (sözleşme bedeli + keşif + ff) × oran / 100
@@ -854,21 +850,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // "aktif" sekmesi → gecici_kabul_tarihi BOŞ olan tüm işler
     // "pasif" sekmesi (Geçici Kabulü Yapılmış İşler) → gecici_kabul_tarihi DOLU olan işler
     const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
-    const sonuc = gosterilecekDurum === "aktif"
-      ? yetkili.filter((s) => !dolu(s.gecici_kabul_tarihi))
-      : yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
-    if (typeof window !== "undefined") {
-      console.log(`[BordroTakibi] sekme=${gosterilecekDurum} santiyeler.length=${santiyeler.length} yetkili=${yetkili.length} sonuc=${sonuc.length}`);
-      // Geçici kabul tarihi DOLU olan işleri listele
-      const doluOlanlar = yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
-      if (doluOlanlar.length > 0) {
-        console.log(`[BordroTakibi] Geçici kabul DOLU olan ${doluOlanlar.length} iş:`);
-        for (const s of doluOlanlar) {
-          console.log(`  • "${s.is_adi}" → ${s.gecici_kabul_tarihi}`);
-        }
-      }
+    if (gosterilecekDurum === "aktif") {
+      return yetkili.filter((s) => !dolu(s.gecici_kabul_tarihi));
     }
-    return sonuc;
+    return yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
   }, [santiyeler, kullanici, gosterilecekDurum]);
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır

@@ -666,9 +666,10 @@ export default function PersonelPuantajPage() {
 
   async function durumSec(durum: PersonelPuantajDurum) {
     if (!seciliPersonel || seciliGun === null || !santiyeId) return;
-    const dBilgi = DURUM_MAP.get(durum)!;
 
     // YAĞMUR seçildiğinde alt-seçim dialog'u: "Şantiyede" / "İzinde"
+    // - Şantiyede → durum=yagmur (şantiyede bekledi)
+    // - İzinde   → durum=izinli (eve gönderildi, izin sayılır)
     // Kullanıcı seçim yapmadan kayıt yapılmaz.
     let yagmurAciklama: string | null = null;
     if (durum === "yagmur") {
@@ -677,7 +678,14 @@ export default function PersonelPuantajPage() {
       });
       setYagmurOnay(null);
       if (cevap === "iptal") return;
-      yagmurAciklama = cevap === "santiyede" ? "Şantiyede" : "İzinde";
+      if (cevap === "izinde") {
+        // Durum'u izinli'ye değiştir, açıklamaya "Yağmur - İzinde" yazılır
+        durum = "izinli";
+        yagmurAciklama = "Yağmur - İzinde";
+      } else {
+        // Şantiyede kaldıysa durum yagmur olarak kalır
+        yagmurAciklama = "Şantiyede";
+      }
       // Mevcut açıklama varsa başına bu seçim eklenir
       const mevcutAciklama = seciliAciklama.trim();
       const yeniAciklama = mevcutAciklama
@@ -686,10 +694,12 @@ export default function PersonelPuantajPage() {
       setSeciliAciklama(yeniAciklama);
     }
 
+    // dBilgi'yi güncel durum'a göre yeniden al (izinli olarak değişmiş olabilir)
+    const dBilgiGuncel = DURUM_MAP.get(durum)!;
     // Açıklama zorunlu ama boşsa uyarı — görsel seçim değişmesin, kayıt yapılmasın
     // Yağmur durumunda yagmurAciklama dolu, atlayalım
-    if (dBilgi.aciklamaZorunlu && !yagmurAciklama && !seciliAciklama.trim()) {
-      toast.error(`"${dBilgi.label}" için açıklama girmek zorunludur.`);
+    if (dBilgiGuncel.aciklamaZorunlu && !yagmurAciklama && !seciliAciklama.trim()) {
+      toast.error(`"${dBilgiGuncel.label}" için açıklama girmek zorunludur.`);
       setTimeout(() => aciklamaRef.current?.focus(), 50);
       return;
     }
@@ -761,7 +771,7 @@ export default function PersonelPuantajPage() {
           },
         ];
       });
-      toast.success(`${dBilgi.label} olarak işaretlendi.`);
+      toast.success(`${dBilgiGuncel.label} olarak işaretlendi.`);
       setHucreDialogOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
