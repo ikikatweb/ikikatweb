@@ -75,6 +75,7 @@ type SantiyeBasic = {
   yuklenici_firma_id?: string | null;
   isyeri_teslim_tarihi?: string | null;
   teknik_personel_sayisi?: number | null;
+  teknik_personeller?: string[] | null;
 };
 type Firma = {
   id: string;
@@ -909,44 +910,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Teknik personel tespiti — PERSONEL × ŞANTİYE BAZLI (sadece bilgi amaçlı rozet için).
   //   teknikPersonelMap.get(personelId) → Set<santiyeId>
-  // Veri kaynağı: personel_teknik tablosu (manuel toggle ile yönetilir).
-  //   - is_teknik=true  satırı → AÇIKÇA teknik
-  //   - is_teknik=false satırı → AÇIKÇA teknik DEĞİL (fallback'i ezer)
-  //   - Satır yok       → eski atama-bazlı FALLBACK uygulanır
-  // ATAMALARA, GİRİŞ/ÇIKIŞ TARİHLERİNE VEYA GÜN HESABINA HİÇBİR ETKİSİ YOKTUR.
+  // Veri kaynağı: SADECE personel_teknik tablosundaki is_teknik=true satırları.
+  // Hiçbir fallback yok — kullanıcı dialog'dan tıkladıysa teknik sayılır, aksi halde DEĞİL.
   const teknikPersonelMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const ekle = (pId: string, sId: string) => {
       if (!map.has(pId)) map.set(pId, new Set());
       map.get(pId)!.add(sId);
     };
-    // Açık satırları topla: key="pId|sId" → is_teknik
-    const explicitMap = new Map<string, boolean>();
     for (const r of teknikKayitlari) {
-      explicitMap.set(`${r.personel_id}|${r.santiye_id}`, r.is_teknik);
-    }
-    // Önce explicit pozitifleri ekle
-    for (const [key, isTeknik] of explicitMap) {
-      if (!isTeknik) continue;
-      const [pId, sId] = key.split("|");
-      ekle(pId, sId);
-    }
-    // Fallback: explicit satırı OLMAYAN (personel, şantiye) çiftleri için
-    // eski atama-bazlı tespit uygulanır
-    const santiyeMap = new Map<string, string | null>();
-    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
-    for (const a of atamalar) {
-      if (a.bitis_tarihi) continue;
-      const key = `${a.personel_id}|${a.santiye_id}`;
-      if (explicitMap.has(key)) continue; // açıkça işaretliyse (true ya da false), fallback atla
-      if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
-      if (a.is_teknik === undefined || a.is_teknik === null) {
-        const teslim = santiyeMap.get(a.santiye_id);
-        if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
-      }
+      if (r.is_teknik) ekle(r.personel_id, r.santiye_id);
     }
     return map;
-  }, [teknikKayitlari, atamalar, santiyeler]);
+  }, [teknikKayitlari]);
 
   // Personel'in HERHANGİ bir şantiyede teknik olup olmadığı (arama/filtre için)
   const teknikPersonelIds = useMemo(() => {
@@ -956,6 +932,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
     return ids;
   }, [teknikPersonelMap]);
+
+  // Personel'e atanmış teknik isim haritası: "personelId|santiyeId" → atanmış isim
+  const teknikIsimMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of teknikKayitlari) {
+      if (r.is_teknik && r.teknik_isim) {
+        m.set(`${r.personel_id}|${r.santiye_id}`, r.teknik_isim);
+      }
+    }
+    return m;
+  }, [teknikKayitlari]);
 
   // Bir şantiyede şu anda kaç AKTİF teknik personel var?
   // = teknik_personel_sayisi alanına göre "kapasite" dolu mu kontrolü için.
@@ -1289,6 +1276,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               muhasebeEmail,
               changes,
               ekBilgi: ekMailNotu.trim() || undefined,
+              gonderenKullaniciAd: kullanici?.ad_soyad ?? undefined,
             }),
           });
           const data = await res.json();
@@ -2140,6 +2128,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
       for (const [santiyeAd, list] of santiyeMap) {
         const sToplam = list.reduce((s, r) => s + r.gun, 0);
+        // Teknik personel listesini şantiye kaydından çek
+        const santiyeKayit = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
+        const teknikIsimler = santiyeKayit?.teknik_personeller ?? [];
         setCell(curRow, 0, `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)`, {
           font: { bold: true, sz: 12, color: { rgb: "1E3A5F" } },
           alignment: { horizontal: "left" },
@@ -2147,6 +2138,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         });
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
+
+        // Teknik personel satırı (varsa) — başlık altında ayrı satır olarak göster
+        if (teknikIsimler.length > 0) {
+          setCell(curRow, 0, `Teknik Personel: ${teknikIsimler.join(", ")}`, {
+            font: { italic: true, sz: 10, color: { rgb: "FF4338CA" } },
+            alignment: { horizontal: "left" },
+            fill: { fgColor: { rgb: "EEF2FF" }, patternType: "solid" },
+          });
+          merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
+          curRow++;
+        }
 
         const headers = ["Ad Soyad", "", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
         for (let c = 0; c < headers.length; c++) {
@@ -2464,6 +2466,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           ay: ayLabel(seciliAy),
           ayKey: seciliAy,
           excelBase64: b64,
+          gonderenKullaniciAd: kullanici?.ad_soyad ?? undefined,
         }),
       });
       const data = await res.json();
@@ -2550,6 +2553,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         doc.setFont("helvetica", "bold"); doc.setFontSize(9);
         doc.text(trAscii(`  ${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY);
         cursorY += 2;
+        // Teknik personel listesi — şantiye başlığı altında kursiv indigo satır
+        const santiyeKayitPdf = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
+        const teknikIsimlerPdf = santiyeKayitPdf?.teknik_personeller ?? [];
+        if (teknikIsimlerPdf.length > 0) {
+          doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+          doc.setTextColor(67, 56, 202);
+          doc.text(trAscii(`  Teknik Personel: ${teknikIsimlerPdf.join(", ")}`), 17, cursorY + 3);
+          doc.setTextColor(0, 0, 0);
+          doc.setFont("helvetica", "normal");
+          cursorY += 5;
+        }
         autoTable(doc, {
           startY: cursorY + 1,
           head: [["Sira", "Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
@@ -2969,11 +2983,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
               {/* Şantiye-bazlı: rozet sadece bu sütundaki şantiyede teknikse görünür */}
-              {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
-                <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
-                  Teknik Personel
-                </span>
-              )}
+              {teknikPersonelMap.get(p.id)?.has(sutunKey) && (() => {
+                const isim = teknikIsimMap.get(`${p.id}|${sutunKey}`);
+                return (
+                  <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title={isim ? `Teknik Personel: ${isim}` : "Teknik Personel"}>
+                    Teknik Personel
+                  </span>
+                );
+              })()}
             </div>
             {p.meslek && <div className="text-[10px] text-gray-500 truncate">{p.meslek}</div>}
             {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400">{p.tc_kimlik_no}</div>}
@@ -3019,7 +3036,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Accordion satırı: işin adı + sayım + chevron, tıklayınca açılıp altta personel listesi
   function SantiyeAccordion({
-    santiyeId, baslik, renk, count, tumGun, acik, tumSecili,
+    santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller,
     onToggle, onTumunuSecToggle, onPlus, children,
   }: {
     santiyeId: string;
@@ -3029,6 +3046,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     tumGun: number;
     acik: boolean;
     tumSecili: boolean;
+    teknikPersoneller?: string[] | null;
     onToggle: () => void;
     onTumunuSecToggle: () => void;
     onPlus?: () => void;
@@ -3045,6 +3063,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
+            {/* Teknik personel listesi — ayrı sütun olarak baslık altında */}
+            {teknikPersoneller && teknikPersoneller.length > 0 && (
+              <div className="text-[10px] text-indigo-700 mt-0.5 truncate" title={`Teknik Personel: ${teknikPersoneller.join(", ")}`}>
+                <span className="font-semibold">Teknik:</span> {teknikPersoneller.join(", ")}
+              </div>
+            )}
             {(() => {
               // Prim hesabı: yatması gereken - yatan - bordroToplam = sonuç
               if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
@@ -3243,11 +3267,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
             {/* Şantiye-bazlı: bu satırın şantiyesinde teknikse rozet görünür */}
-            {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
-              <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
-                Teknik Personel
-              </span>
-            )}
+            {teknikPersonelMap.get(p.id)?.has(sutunKey) && (() => {
+              const isim = teknikIsimMap.get(`${p.id}|${sutunKey}`);
+              return (
+                <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title={isim ? `Teknik Personel: ${isim}` : "Teknik Personel"}>
+                  Teknik Personel
+                </span>
+              );
+            })()}
           </div>
         </td>
         <td className="px-2 py-1.5 text-gray-600 text-[11px]">{p.meslek ?? "—"}</td>
@@ -3643,6 +3670,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             tumGun={tumGun}
                             acik={acik}
                             tumSecili={tumSecili}
+                            teknikPersoneller={s.teknik_personeller}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
                                 const next = new Set(prev);
@@ -3983,9 +4011,70 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
             const toplamAylikGun = liste.reduce((s, a) => s + ayInGun(a), 0);
 
-            // Teknik mi: PERSONEL × ŞANTİYE BAZLI — sadece bilgi amaçlı bayrak.
-            // Atamalar veya giriş/çıkış tarihleri ETKİLENMEZ.
-            const teknikMi = !!teknikPersonelMap.get(gunEdit.personel.id)?.has(gunEdit.santiyeId);
+            // Şantiyenin teknik personel listesi (iş formunda girilen isimler)
+            const santiyeKayit = santiyeler.find((s) => s.id === gunEdit.santiyeId);
+            const santiyeTeknikIsimleri = santiyeKayit?.teknik_personeller ?? [];
+            // Şu an bu personele atanmış isimler (virgülle ayrılmış string'den array'e)
+            const mevcutIsimStr = teknikKayitlari.find(
+              (r) => r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId,
+            )?.teknik_isim ?? "";
+            const mevcutIsimSet = new Set(
+              mevcutIsimStr.split(",").map((s) => s.trim()).filter((s) => s.length > 0),
+            );
+            const teknikMi = mevcutIsimSet.size > 0
+              || !!teknikPersonelMap.get(gunEdit.personel.id)?.has(gunEdit.santiyeId);
+
+            // Bir ismi toggle et (tikle / kaldır) — optimistic update + DB'ye yazar
+            const toggleTeknikIsim = async (isim: string) => {
+              const yeniSet = new Set(mevcutIsimSet);
+              const acikti = yeniSet.has(isim);
+              if (acikti) yeniSet.delete(isim);
+              else yeniSet.add(isim);
+              const yeniIsimler = Array.from(yeniSet);
+              const yeniIsTeknik = yeniIsimler.length > 0;
+              const yeniIsimStr = yeniIsimler.join(", ");
+
+              // OPTIMISTIC UPDATE: state'i hemen güncelle, kullanıcı tıklamayı hemen görsün
+              setTeknikKayitlari((prev) => {
+                const filtered = prev.filter(
+                  (r) => !(r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId),
+                );
+                if (yeniIsTeknik) {
+                  filtered.push({
+                    personel_id: gunEdit.personel.id,
+                    santiye_id: gunEdit.santiyeId,
+                    is_teknik: true,
+                    teknik_isim: yeniIsimStr,
+                  });
+                } else {
+                  filtered.push({
+                    personel_id: gunEdit.personel.id,
+                    santiye_id: gunEdit.santiyeId,
+                    is_teknik: false,
+                    teknik_isim: null,
+                  });
+                }
+                return filtered;
+              });
+
+              try {
+                await setPersonelTeknikSantiye(
+                  gunEdit.personel.id,
+                  gunEdit.santiyeId,
+                  yeniIsTeknik,
+                  yeniIsTeknik ? yeniIsimStr : null,
+                );
+                toast.success(acikti
+                  ? `"${isim}" işareti kaldırıldı.`
+                  : `"${isim}" işaretlendi.`);
+              } catch (err) {
+                console.error("[teknik personel toggle] Hata:", err);
+                const msg = err instanceof Error ? err.message : String(err);
+                toast.error(`Kayıt yapılamadı: ${msg}`);
+                // Hata olduysa loadData ile gerçek state'i geri al
+                await loadData();
+              }
+            };
 
             return (
               <div className="space-y-3 py-2">
@@ -3993,9 +4082,92 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
-                {/* Teknik Personel toggle — PERSONEL × ŞANTİYE BAZLI, sadece bilgi amaçlı rozet.
-                    Atamalara, giriş/çıkış tarihlerine veya gün hesabına HİÇBİR ETKİSİ YOKTUR. */}
-                {!isReadOnly && yDuzenle && (
+                {/* Teknik Personel — şantiyenin teknik isim listesi, her isim ayrı checkbox.
+                    Başka personele atanmış isimler PASİF (tikli + disabled) görünür,
+                    yanlarında o personelin adı gösterilir.
+                    Atamalara, giriş/çıkış tarihlerine ETKİSİ YOKTUR. */}
+                {!isReadOnly && yDuzenle && santiyeTeknikIsimleri.length > 0 && (() => {
+                  // Başka personellerin teknik isim atamalarını topla: isim → ad_soyad
+                  const baskaPersonelinIsmi = new Map<string, string>();
+                  for (const r of teknikKayitlari) {
+                    if (r.santiye_id !== gunEdit.santiyeId) continue;
+                    if (r.personel_id === gunEdit.personel.id) continue;
+                    if (!r.is_teknik || !r.teknik_isim) continue;
+                    // Bir personele virgülle birden fazla isim atanmış olabilir → her birini ekle
+                    const isimler = r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+                    const baskaPersonel = personeller.find((p) => p.id === r.personel_id);
+                    const ad = baskaPersonel?.ad_soyad ?? "—";
+                    for (const isim of isimler) {
+                      baskaPersonelinIsmi.set(isim, ad);
+                    }
+                  }
+                  return (
+                    <div className={`p-2.5 rounded-lg border ${
+                      teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200"
+                    }`}>
+                      <div className="text-sm font-semibold text-[#1E3A5F] mb-1.5">
+                        Teknik Personel
+                        {mevcutIsimSet.size > 0 && (
+                          <span className="ml-2 text-[9px] text-indigo-700 font-normal">
+                            ({mevcutIsimSet.size} seçili)
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {santiyeTeknikIsimleri.map((isim) => {
+                          const seciliMi = mevcutIsimSet.has(isim);
+                          const baskasinda = baskaPersonelinIsmi.get(isim);
+                          // Bu isim başka birine atanmışsa → pasif (tikli + disabled)
+                          if (baskasinda) {
+                            return (
+                              <div
+                                key={isim}
+                                className="flex items-center gap-2 px-2 py-1.5 rounded border bg-gray-100 border-gray-300 opacity-70 cursor-not-allowed"
+                                title={`Bu rol şu an "${baskasinda}" personeline atanmış.`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked
+                                  disabled
+                                  className="h-4 w-4 accent-gray-400 cursor-not-allowed"
+                                />
+                                <span className="text-sm text-gray-600 flex-1 min-w-0">
+                                  <span className="line-through">{isim}</span>
+                                  <span className="ml-2 text-[10px] text-red-600 font-semibold">
+                                    {baskasinda}'da
+                                  </span>
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <label
+                              key={isim}
+                              className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer ${
+                                seciliMi ? "bg-indigo-100 border-indigo-300" : "bg-white border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-indigo-600"
+                                checked={seciliMi}
+                                onChange={() => toggleTeknikIsim(isim)}
+                              />
+                              <span className="text-sm text-[#1E3A5F]">{isim}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-1.5">
+                        İşin teknik personel listesi. Bu personele uygulanan rolleri tikleyin.
+                        Soluk olanlar başka personellere atanmış (kilitli).
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Şantiyede teknik personel listesi tanımlı değilse uyarı — eski tikleme ile geri uyumlu */}
+                {!isReadOnly && yDuzenle && santiyeTeknikIsimleri.length === 0 && (
                   <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
                     teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
                   }`}>
@@ -4006,18 +4178,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       onChange={async (e) => {
                         const yeniTeknik = e.target.checked;
                         try {
-                          // SADECE personel_teknik tablosuna satır eklenir/silinir.
-                          // Atama tablosuna, giriş/çıkış kayıtlarına dokunulmaz.
                           await setPersonelTeknikSantiye(gunEdit.personel.id, gunEdit.santiyeId, yeniTeknik);
                           await loadData();
-                          toast.success(yeniTeknik
-                            ? "Bu şantiyede teknik personel olarak işaretlendi."
-                            : "Bu şantiyede teknik personel işareti kaldırıldı.");
                         } catch (err) {
-                          // Hatayı consola da yaz, kullanıcı F12 → Console'da görebilir
                           console.error("[teknik personel toggle] Hata:", err);
                           const msg = err instanceof Error ? err.message : String(err);
-                          toast.error(`Teknik personel kaydı yapılamadı: ${msg}`);
+                          toast.error(`Kayıt yapılamadı: ${msg}`);
                         }
                       }}
                     />
@@ -4028,8 +4194,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           <span className="ml-2 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">AÇIK</span>
                         )}
                       </div>
-                      <div className="text-[10px] text-gray-500">
-                        Sadece bu şantiyede bilgi amaçlı bir etikettir. Giriş/çıkış kayıtlarına, gün sayısına veya bordro hesabına etkisi yoktur.
+                      <div className="text-[10px] text-amber-700">
+                        Bu işin teknik personel listesi tanımlı değil. Yönetim → Şantiyeler &gt; İş Düzenle'den isimler ekleyebilirsiniz.
                       </div>
                     </div>
                   </label>

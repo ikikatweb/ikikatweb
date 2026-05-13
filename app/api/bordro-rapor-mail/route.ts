@@ -20,6 +20,7 @@ export async function POST(request: Request) {
       ayKey,        // "2026-05" formatı (dosya adı için)
       excelBase64,  // base64 encoded xlsx
       ekBilgi,
+      gonderenKullaniciAd,
     } = body as {
       firmaId: string;
       muhasebeEmail: string;
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
       ayKey: string;
       excelBase64: string;
       ekBilgi?: string;
+      gonderenKullaniciAd?: string;
     };
 
     if (!firmaId) return NextResponse.json({ error: "Firma ID gerekli" }, { status: 400 });
@@ -63,7 +65,8 @@ export async function POST(request: Request) {
     const metin = `Sayın Muhasebe,\n\n` +
       `${ay} dönemine ait bordro raporu ektedir.\n\n` +
       (ekBilgi && ekBilgi.trim() ? `${ekBilgi.trim()}\n\n` : "") +
-      `İyi çalışmalar.`;
+      `İyi çalışmalar.` +
+      (gonderenKullaniciAd ? `\n\n${gonderenKullaniciAd}` : "");
 
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
     const gonderenEmail = firma.smtp_sender_email || firma.smtp_user;

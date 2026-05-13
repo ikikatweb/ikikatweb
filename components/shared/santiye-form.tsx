@@ -107,6 +107,20 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   const [kesinKabulFile, setKesinKabulFile] = useState<File | null>(null);
   const [isDeneyimFile, setIsDeneyimFile] = useState<File | null>(null);
 
+  // Teknik personel listesi — yeni form: serbest metin girişi, + tuşuyla çoğaltılabilir.
+  // Eski (sayı) verisi varsa: o sayı kadar boş input'la başlangıç.
+  const [teknikPersonelList, setTeknikPersonelList] = useState<string[]>(() => {
+    if (santiye?.teknik_personeller && santiye.teknik_personeller.length > 0) {
+      return [...santiye.teknik_personeller];
+    }
+    const eskiSayi = santiye?.teknik_personel_sayisi ?? 0;
+    if (eskiSayi > 0) {
+      // Eski sayım varsa o kadar boş slot
+      return Array(eskiSayi).fill("");
+    }
+    return [""]; // varsayılan: 1 boş input
+  });
+
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
     is_adi: santiye?.is_adi ?? "",
@@ -123,6 +137,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     para_birimi: santiye?.para_birimi ?? "TRY",
     ff_hesaplanacak: santiye?.ff_hesaplanacak ?? true,
     teknik_personel_sayisi: santiye?.teknik_personel_sayisi ?? null,
+    teknik_personeller: santiye?.teknik_personeller ?? null,
     sozlesme_tarihi: santiye?.sozlesme_tarihi ?? null,
     isyeri_teslim_tarihi: santiye?.isyeri_teslim_tarihi ?? null,
     is_suresi: santiye?.is_suresi ?? null,
@@ -288,9 +303,10 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
-    // Teknik personel sayısı zorunlu — sadece pozitif tam sayı
-    if (formData.teknik_personel_sayisi == null || formData.teknik_personel_sayisi <= 0) {
-      toast.error("Teknik personel sayısı zorunludur (pozitif tam sayı).");
+    // Teknik personel listesi zorunlu — en az 1 dolu kayıt
+    const teknikPersonellerTemiz = teknikPersonelList.map((s) => s.trim()).filter((s) => s.length > 0);
+    if (teknikPersonellerTemiz.length === 0) {
+      toast.error("En az 1 teknik personel girilmelidir.");
       return;
     }
     // Sözleşme ve işyeri teslim tarihi ihale tarihinden önce olamaz
@@ -347,6 +363,9 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         is_adi: formatBaslik(formData.is_adi),
         sozlesme_bedeli: parseParaInput(sozlesmeBedeliStr),
         depo_kapasitesi: depoVar ? formData.depo_kapasitesi : null,
+        // Teknik personel listesi ve sayım birlikte güncellenir
+        teknik_personeller: teknikPersonellerTemiz,
+        teknik_personel_sayisi: teknikPersonellerTemiz.length,
       };
 
       if (isEdit) {
@@ -657,27 +676,52 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                   </Label>
                 </div>
 
-                {/* Teknik Personel Sayısı */}
+                {/* Teknik Personel listesi — serbest metin, + ile çoğaltılabilir */}
                 <div className="space-y-1">
-                  <Label htmlFor="teknik_personel_sayisi" className="text-sm">
-                    Teknik Personel Sayısı <span className="text-red-500">*</span>
+                  <Label className="text-sm">
+                    Teknik Personel <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    id="teknik_personel_sayisi"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Örn. 3"
-                    value={formData.teknik_personel_sayisi ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/\D/g, "");
-                      setFormData((prev) => ({
-                        ...prev,
-                        teknik_personel_sayisi: v === "" ? null : parseInt(v, 10),
-                      }));
-                    }}
-                    disabled={loading}
-                    title="Admin olmayan kullanıcılar, bu sayı kadar teknik personeli işyeri teslim tarihinden itibariyle bordroya girebilir."
-                  />
+                  <div className="space-y-1.5">
+                    {teknikPersonelList.map((deger, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <Input
+                          type="text"
+                          placeholder={`Teknik personel ${i + 1}`}
+                          value={deger}
+                          onChange={(e) => {
+                            const yeni = [...teknikPersonelList];
+                            yeni[i] = e.target.value;
+                            setTeknikPersonelList(yeni);
+                          }}
+                          disabled={loading}
+                        />
+                        {teknikPersonelList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeknikPersonelList(teknikPersonelList.filter((_, idx) => idx !== i));
+                            }}
+                            disabled={loading}
+                            className="h-9 w-9 flex-shrink-0 rounded-md border border-red-200 text-red-600 hover:bg-red-50 flex items-center justify-center disabled:opacity-50"
+                            title="Bu personeli kaldır"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setTeknikPersonelList([...teknikPersonelList, ""])}
+                      disabled={loading}
+                      className="w-full h-9 rounded-md border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-sm font-semibold transition-colors disabled:opacity-50"
+                    >
+                      + Teknik personel ekle
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Boş bırakılan satırlar kaydedilmez. İsim yerine görev veya açıklama da yazabilirsiniz.
+                  </p>
                 </div>
               </div>
 

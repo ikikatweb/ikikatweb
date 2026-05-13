@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       onceSantiyeAd,
       tarih,
       ekBilgi,
+      gonderenKullaniciAd,
     } = body as {
       firmaId: string;
       muhasebeEmail: string;
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
       onceSantiyeAd?: string;
       tarih: string;
       ekBilgi?: string;
+      gonderenKullaniciAd?: string;
     };
 
     if (!muhasebeEmail) {
@@ -87,7 +89,8 @@ export async function POST(request: Request) {
         `İşe Başlama Tarihi : ${tarih}\n\n` +
         `Sigorta giriş işlemlerinin yapılmasını rica ederiz.\n\n` +
         (ekBilgi ? `${ekBilgi}\n\n` : "") +
-        `İyi çalışmalar.`;
+        `İyi çalışmalar.` +
+        (gonderenKullaniciAd ? `\n\n${gonderenKullaniciAd}` : "");
     } else if (tip === "cikis") {
       konu = `Personel İşten Çıkış Bildirimi — ${personelAd}`;
       metin = `Sayın Muhasebe,\n\n` +
@@ -99,7 +102,8 @@ export async function POST(request: Request) {
         `İşten Çıkış Tarihi : ${tarih}\n\n` +
         `Sigorta çıkış işlemlerinin yapılmasını rica ederiz.\n\n` +
         (ekBilgi ? `${ekBilgi}\n\n` : "") +
-        `İyi çalışmalar.`;
+        `İyi çalışmalar.` +
+        (gonderenKullaniciAd ? `\n\n${gonderenKullaniciAd}` : "");
     } else {
       konu = `Personel Şantiye Transferi — ${personelAd}`;
       metin = `Sayın Muhasebe,\n\n` +

@@ -1,4 +1,4 @@
-// Personel × Şantiye bazlı teknik personel bayrağı.
+// Personel × Şantiye bazlı teknik personel bayrağı + (opsiyonel) atanan isim.
 // Sadece bilgi amaçlı rozet için kullanılır — atamalara, giriş/çıkış tarihlerine
 // veya gün hesabına HİÇBİR ETKİSİ YOKTUR.
 //
@@ -7,20 +7,21 @@
 //     personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE,
 //     santiye_id UUID NOT NULL REFERENCES santiyeler(id) ON DELETE CASCADE,
 //     is_teknik BOOLEAN NOT NULL DEFAULT TRUE,
+//     teknik_isim TEXT NULL,
 //     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 //     PRIMARY KEY (personel_id, santiye_id)
 //   );
 //
-// Bir satır "kullanıcı açıkça işaretledi/kaldırdı" demektir.
-// is_teknik=true  → bu personel bu şantiyede TEKNİK
-// is_teknik=false → bu personel bu şantiyede AÇIKÇA teknik DEĞİL (fallback'i ezer)
-// Satır yok      → eski atama-bazlı fallback geçerli (tablo hiç kullanılmadıysa)
+// teknik_isim: yeni model — kullanıcı şantiyenin teknik_personeller listesinden
+// bir isim seçer ve burada saklanır. Eski model (is_teknik=true/false) hâlâ
+// çalışır; teknik_isim null kalır.
 import { createClient } from "@/lib/supabase/client";
 
 export type PersonelTeknikRow = {
   personel_id: string;
   santiye_id: string;
   is_teknik: boolean;
+  teknik_isim?: string | null;
   created_at?: string;
 };
 
@@ -39,31 +40,54 @@ function isTableMissingError(msg: string): boolean {
   );
 }
 
-function isColumnMissingError(msg: string): boolean {
+function isColumnMissingError(msg: string, col: string): boolean {
   if (!msg) return false;
   const m = msg.toLowerCase();
-  return m.includes("is_teknik") && (
+  const c = col.toLowerCase();
+  // Daha esnek: kolon adı mesajda geçiyorsa ve "missing/find/column/schema/exist" kelimelerinden biri varsa
+  if (!m.includes(c)) return false;
+  return (
     m.includes("column")
     || m.includes("could not find")
     || m.includes("schema cache")
+    || m.includes("does not exist")
+    || m.includes("unknown")
+    || m.includes("missing")
   );
 }
 
 // Tüm teknik personel × şantiye eşleşmelerini getir.
-// is_teknik kolonu yoksa fallback: her satır true sayılır.
 export async function getTeknikPersonelKayitlari(): Promise<PersonelTeknikRow[]> {
   const supabase = getSupabase();
+  // İlk denemede teknik_isim ile birlikte çek
   let { data, error } = await supabase
     .from("personel_teknik")
-    .select("personel_id, santiye_id, is_teknik");
-  if (error && isColumnMissingError(error.message)) {
-    // Eski şema: is_teknik kolonu yok → tüm satırları true say
+    .select("personel_id, santiye_id, is_teknik, teknik_isim");
+  if (error && isColumnMissingError(error.message, "teknik_isim")) {
+    // Eski şema: teknik_isim kolonu yok → onsuz çek
+    const res = await supabase.from("personel_teknik").select("personel_id, santiye_id, is_teknik");
+    if (res.error) {
+      if (isColumnMissingError(res.error.message, "is_teknik")) {
+        // Hiç is_teknik kolonu yoksa (en eski şema) → tüm satırları true say
+        const res2 = await supabase.from("personel_teknik").select("personel_id, santiye_id");
+        if (res2.error) {
+          if (isTableMissingError(res2.error.message)) return [];
+          throw res2.error;
+        }
+        return (res2.data ?? []).map((r) => ({ ...r, is_teknik: true, teknik_isim: null }));
+      }
+      if (isTableMissingError(res.error.message)) return [];
+      throw res.error;
+    }
+    return (res.data ?? []).map((r) => ({ ...r, teknik_isim: null })) as PersonelTeknikRow[];
+  }
+  if (error && isColumnMissingError(error.message, "is_teknik")) {
     const res = await supabase.from("personel_teknik").select("personel_id, santiye_id");
     if (res.error) {
       if (isTableMissingError(res.error.message)) return [];
       throw res.error;
     }
-    return (res.data ?? []).map((r) => ({ ...r, is_teknik: true }));
+    return (res.data ?? []).map((r) => ({ ...r, is_teknik: true, teknik_isim: null }));
   }
   if (error) {
     if (isTableMissingError(error.message)) return [];
@@ -72,24 +96,35 @@ export async function getTeknikPersonelKayitlari(): Promise<PersonelTeknikRow[]>
   return (data ?? []) as PersonelTeknikRow[];
 }
 
-// Bir personeli BELİRLİ bir şantiyede teknik olarak işaretle veya işareti kaldır.
-// Tablo'ya açık bir satır yazar — fallback artık o (personel, şantiye) için devre dışı.
-// Atamalara, giriş/çıkış tarihlerine ASLA dokunmaz.
+// Bir personeli BELİRLİ bir şantiyede teknik olarak işaretle (opsiyonel isim ile)
+// veya işareti kaldır.
 export async function setPersonelTeknikSantiye(
   personelId: string,
   santiyeId: string,
   isTeknik: boolean,
+  teknikIsim?: string | null,
 ): Promise<void> {
   const supabase = getSupabase();
-  // Upsert ile both true ve false durumunu kalıcı olarak işaretle
+  // Upsert ile both true ve false durumunu kalıcı olarak işaretle, isim varsa kaydet
+  const row: Record<string, unknown> = {
+    personel_id: personelId,
+    santiye_id: santiyeId,
+    is_teknik: isTeknik,
+    teknik_isim: isTeknik ? (teknikIsim ?? null) : null,
+  };
   let { error } = await supabase
     .from("personel_teknik")
-    .upsert(
-      { personel_id: personelId, santiye_id: santiyeId, is_teknik: isTeknik },
-      { onConflict: "personel_id,santiye_id" },
-    );
-  if (error && isColumnMissingError(error.message)) {
-    // Eski şema (is_teknik kolonu yok): true → insert, false → delete
+    .upsert(row, { onConflict: "personel_id,santiye_id" });
+  if (error && isColumnMissingError(error.message, "teknik_isim")) {
+    // Eski şema: teknik_isim kolonu yok → onsuz upsert
+    delete row.teknik_isim;
+    const res = await supabase
+      .from("personel_teknik")
+      .upsert(row, { onConflict: "personel_id,santiye_id" });
+    error = res.error;
+  }
+  if (error && isColumnMissingError(error.message, "is_teknik")) {
+    // En eski şema (is_teknik kolonu yok): true → insert, false → delete
     if (isTeknik) {
       const res = await supabase
         .from("personel_teknik")
@@ -105,7 +140,9 @@ export async function setPersonelTeknikSantiye(
     }
   }
   if (error) {
-    if (isTableMissingError(error.message)) return; // tablo yoksa sessizce geç
+    if (isTableMissingError(error.message)) {
+      throw new Error("personel_teknik tablosu bulunamadı. Supabase'de SQL migration çalıştırılmalı.");
+    }
     throw error;
   }
 }

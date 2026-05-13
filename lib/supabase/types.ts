@@ -58,10 +58,12 @@ export type Santiye = {
   // - true (varsayılan): FF Dahil Kalan Tutar ve Fiyat Farkı sütunlarında hesaplanır
   // - false: hesaplama yapılmaz, sadece sözleşme bedeli baz alınır
   ff_hesaplanacak: boolean | null;
-  // Teknik personel sayısı — yeni iş açıldığında işyeri teslim tarihinden itibariyle
-  // bordroya kadar girilebilecek personel sayısı (admin olmayan kullanıcılar için kısıt).
-  // DB sütunu: teknik_personel_sayisi INTEGER NULL.
+  // Teknik personel sayısı (geriye uyumluluk).
+  // YENİ: teknik_personeller string array olarak isimleri tutar. Yeni form bunu kullanır.
+  // Eski sayım için: sayım = teknik_personeller.length (varsa). Aksi halde teknik_personel_sayisi.
+  // DB sütunu: teknik_personel_sayisi INTEGER NULL, teknik_personeller TEXT[] NULL.
   teknik_personel_sayisi?: number | null;
+  teknik_personeller?: string[] | null;
   sozlesme_tarihi: string | null;
   isyeri_teslim_tarihi: string | null;
   is_suresi: number | null;

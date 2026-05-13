@@ -29,11 +29,12 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { firmaId, muhasebeEmail, changes, ekBilgi } = body as {
+    const { firmaId, muhasebeEmail, changes, ekBilgi, gonderenKullaniciAd } = body as {
       firmaId: string;
       muhasebeEmail: string;
       changes: Change[];
       ekBilgi?: string;
+      gonderenKullaniciAd?: string;
     };
 
     if (!firmaId) return NextResponse.json({ error: "Firma ID gerekli" }, { status: 400 });
@@ -193,6 +194,7 @@ export async function POST(request: Request) {
     if (transferCumleleri.length > 0) metin += cumleleriMetne(transferCumleleri) + "\n\n";
     if (ekBilgi && ekBilgi.trim()) metin += `${ekBilgi.trim()}\n\n`;
     metin += `İyi çalışmalar.`;
+    if (gonderenKullaniciAd) metin += `\n\n${gonderenKullaniciAd}`;
 
     // HTML versiyon — her personelin notu KIRMIZI ile satır altında çıkar
     function htmlEscape(s: string): string {
@@ -230,6 +232,9 @@ export async function POST(request: Request) {
       html += `<p style="color:#DC2626;font-weight:600;">${ekHtml}</p>`;
     }
     html += `<p>İyi çalışmalar.</p>`;
+    if (gonderenKullaniciAd) {
+      html += `<p style="margin-top:16px;">${htmlEscape(gonderenKullaniciAd)}</p>`;
+    }
     html += `</div>`;
 
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
