@@ -853,7 +853,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (gosterilecekDurum === "aktif") {
       return yetkili.filter((s) => !dolu(s.gecici_kabul_tarihi));
     }
-    return yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
+    // Pasif sekmesi: en son geçici kabul tarihi yapılan en üstte (DESC sıralama)
+    return yetkili
+      .filter((s) => dolu(s.gecici_kabul_tarihi))
+      .sort((a, b) => {
+        const at = a.gecici_kabul_tarihi ?? "";
+        const bt = b.gecici_kabul_tarihi ?? "";
+        // Tarih string'i ISO formatında (YYYY-MM-DD) — string karşılaştırma yeterli
+        return bt.localeCompare(at); // descending
+      });
   }, [santiyeler, kullanici, gosterilecekDurum]);
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır
@@ -3464,7 +3472,24 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // (Yönetim > Firmalar sayfasındaki sıra burada da kullanılır)
           const firmaSiraMap = new Map<string, number>();
           firmalar.forEach((f, i) => firmaSiraMap.set(f.id, i));
+          // Geçici Kabulü Yapılmış İşler sekmesinde firmaları,
+          // o firmanın en yeni gecici_kabul_tarihi'ne göre sırala (DESC).
+          // Normal Bordro sekmesinde firma sıra numarasına göre.
           const firmaIds = Array.from(firmaGrup.keys()).sort((a, b) => {
+            if (gosterilecekDurum === "pasif") {
+              const maxTarih = (fId: string) => {
+                const list = firmaGrup.get(fId) ?? [];
+                let max = "";
+                for (const s of list) {
+                  const t = s.gecici_kabul_tarihi ?? "";
+                  if (t > max) max = t;
+                }
+                return max;
+              };
+              const at = maxTarih(a);
+              const bt = maxTarih(b);
+              return bt.localeCompare(at);
+            }
             const fa = firmaSiraMap.get(a) ?? Number.MAX_SAFE_INTEGER;
             const fb = firmaSiraMap.get(b) ?? Number.MAX_SAFE_INTEGER;
             return fa - fb;
