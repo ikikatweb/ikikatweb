@@ -3583,11 +3583,62 @@ export default function BordroTakibi() {
             };
 
             const toplamAylikGun = liste.reduce((s, a) => s + ayInGun(a), 0);
+
+            // Teknik personel toggle için: bu personel × bu şantiye için aktif atamayı bul
+            const aktifAtama = atamalar.find(
+              (a) => a.personel_id === gunEdit.personel.id
+                && a.santiye_id === gunEdit.santiyeId
+                && !a.bitis_tarihi
+            );
+            const santiyeBu = santiyeler.find((s) => s.id === gunEdit.santiyeId);
+            const teslimTarihi = santiyeBu?.isyeri_teslim_tarihi ?? null;
+            const teknikMi = !!(aktifAtama && teslimTarihi && aktifAtama.baslangic_tarihi === teslimTarihi);
+
             return (
               <div className="space-y-3 py-2">
                 <div className="text-xs text-gray-500">
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
+
+                {/* Teknik Personel toggle — sadece bu şantiye için */}
+                {!isReadOnly && yDuzenle && aktifAtama && (
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
+                      teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
+                    } ${!teslimTarihi ? "opacity-60 cursor-not-allowed" : ""}`}
+                    title={!teslimTarihi ? "Bu şantiyenin işyeri teslim tarihi tanımlı değil" : ""}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-indigo-600"
+                      checked={teknikMi}
+                      disabled={!teslimTarihi}
+                      onChange={async (e) => {
+                        if (!aktifAtama) return;
+                        if (e.target.checked && teslimTarihi) {
+                          // Teknik yap: atama tarihini teslim tarihine al
+                          await gunEditAtamaUpdate(aktifAtama.id, teslimTarihi, null);
+                        } else {
+                          // Teknik kaldır: atama tarihini bugüne al
+                          await gunEditAtamaUpdate(aktifAtama.id, yerelBugun(), null);
+                        }
+                      }}
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-[#1E3A5F]">
+                        Teknik Personel
+                        {teknikMi && (
+                          <span className="ml-2 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">AÇIK</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        {teslimTarihi
+                          ? `İşaretlendiğinde atama tarihi işyeri teslim tarihine (${new Date(teslimTarihi).toLocaleDateString("tr-TR")}) çekilir.`
+                          : "Bu şantiyede 'İşyeri Teslim Tarihi' tanımlı değil — teknik personel atanamaz."}
+                      </div>
+                    </div>
+                  </label>
+                )}
 
                 {/* Hızlı manuel gün girişi — atama tarihlerini DEĞİŞTİRMEZ.
                     Admin: max sınırsız (ay'ın gün sayısı veya yüksek bir limit).
