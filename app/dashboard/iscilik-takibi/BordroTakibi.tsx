@@ -1878,6 +1878,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       not: string;
       // Teknik personel mi? Export sırasında ad yanına "(Teknik Personel)" eklenir.
       isTeknik?: boolean;
+      // Atanmış teknik rolü ismi (örn. "Şantiye Şefi") — Gün ile Not arasında ayrı sütun
+      teknikIsim?: string | null;
     };
     const rows: Row[] = [];
     const [yil, ay] = seciliAy.split("-").map(Number);
@@ -1917,6 +1919,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const clampBit = bitisHam < ayBit ? bitisHam : ayBit;
       // Teknik personel mi? Export sırasında ad yanına "(Teknik Personel)" eklenir.
       const isTeknik = !!teknikPersonelMap.get(personel.id)?.has(sant.id);
+      const teknikIsim = teknikIsimMap.get(`${personel.id}|${sant.id}`) ?? null;
       ham.push({
         firmaId: firma?.id ?? "",
         firmaAd: firma?.firma_adi ?? "(Firma atanmamış)",
@@ -1924,6 +1927,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         santiyeAd: sant.is_adi,
         adSoyad: personel.ad_soyad,
         isTeknik,
+        teknikIsim,
         tc: personel.tc_kimlik_no ?? "",
         gorev: personel.meslek ?? "",
         iseBaslama: fmt(a.baslangic_tarihi),
@@ -1962,6 +1966,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         gun: toplamGun,
         not: "",
         isTeknik: ilk.isTeknik,
+        teknikIsim: ilk.teknikIsim,
       });
     }
     // Manuel gün override
@@ -2019,6 +2024,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     toplamGun: number;
     not: string;
     isTeknik?: boolean;
+    teknikIsim?: string | null;
   };
   function otuzGununAsanlar(): OtuzAsanRow[] {
     const rows = exportSantiyeBazli();
@@ -2028,6 +2034,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       iseBaslama: string; isenCikis: string;
       toplamGun: number; notlar: string[];
       isTeknik: boolean;
+      teknikIsimler: Set<string>;
     };
     const map = new Map<string, Acc>();
     for (const r of rows) {
@@ -2039,6 +2046,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
           toplamGun: r.gun, notlar: r.not ? [r.not] : [],
           isTeknik: !!r.isTeknik,
+          teknikIsimler: new Set(r.teknikIsim ? [r.teknikIsim] : []),
         });
       } else {
         mevcut.toplamGun += r.gun;
@@ -2053,6 +2061,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         }
         if (r.not) mevcut.notlar.push(r.not);
         if (r.isTeknik) mevcut.isTeknik = true;
+        if (r.teknikIsim) mevcut.teknikIsimler.add(r.teknikIsim);
       }
     }
     const sonuc: OtuzAsanRow[] = [];
@@ -2067,6 +2076,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           toplamGun: acc.toplamGun,
           not: acc.notlar.join(" / "),
           isTeknik: acc.isTeknik,
+          teknikIsim: acc.teknikIsimler.size > 0 ? Array.from(acc.teknikIsimler).join(", ") : null,
         });
       }
     }
@@ -2105,8 +2115,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const sheet: Record<string, Cell> = {};
     let curRow = 0;
     const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
-    // 8 sütun: Ad Soyad, (Teknik etiket), TC, Meslek, İşe Başlama, İşten Çıkış, Gün, Not
-    const NUM_COLS = 8;
+    // 9 sütun: Ad Soyad | (Teknik etiket) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Teknik Personel | Not
+    const NUM_COLS = 9;
 
     const setCell = (r: number, c: number, v: string | number, s?: object) => {
       sheet[XLSX.utils.encode_cell({ r, c })] = { v, s };
@@ -2169,7 +2179,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           curRow++;
         }
 
-        const headers = ["Ad Soyad", "", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+        const headers = ["Ad Soyad", "", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Teknik Personel", "Not"];
         for (let c = 0; c < headers.length; c++) {
           setCell(curRow, c, headers[c], {
             font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
@@ -2188,17 +2198,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         for (let i = 0; i < list.length; i++) {
           const r = list[i];
           const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF1F5F9";
-          // 8 sütun: Ad Soyad | (Teknik) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Not
+          // 9 sütun: Ad Soyad | (Teknik) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Teknik Personel | Not
           const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
-          const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not];
+          const teknikIsimVal = r.teknikIsim ?? "";
+          const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, teknikIsimVal, r.not];
           for (let c = 0; c < rowVals.length; c++) {
             // c === 1 = Teknik etiket sütunu (sadece teknikse dolu, kalın + indigo)
-            const isTeknikSutun = c === 1 && r.isTeknik;
+            const isTeknikEtiketSutun = c === 1 && r.isTeknik;
+            // c === 7 = Teknik personel rolü sütunu (varsa kalın + indigo)
+            const isTeknikIsimSutun = c === 7 && !!teknikIsimVal;
             setCell(curRow, c, rowVals[c], {
-              font: isTeknikSutun
+              font: isTeknikEtiketSutun || isTeknikIsimSutun
                 ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
                 : { sz: 10 },
-              alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 7 },
+              alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 8 },
               fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
               border: {
                 top: { style: "thin", color: { rgb: "FFD1D5DB" } },
@@ -2232,7 +2245,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
       curRow++;
 
-      const otHeaders = ["Ad Soyad", "", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+      const otHeaders = ["Ad Soyad", "", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Teknik Personel", "Not"];
       for (let c = 0; c < otHeaders.length; c++) {
         setCell(curRow, c, otHeaders[c], {
           font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
@@ -2252,14 +2265,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const r = otuzAsanlar[i];
         const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF5F5F5";
         const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
-        const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
+        const teknikIsimVal = r.teknikIsim ?? "";
+        const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, teknikIsimVal, r.not];
         for (let c = 0; c < rowVals.length; c++) {
-          const isTeknikSutun = c === 1 && r.isTeknik;
+          const isTeknikEtiketSutun = c === 1 && r.isTeknik;
+          const isTeknikIsimSutun = c === 7 && !!teknikIsimVal;
           setCell(curRow, c, rowVals[c], {
-            font: isTeknikSutun
+            font: isTeknikEtiketSutun || isTeknikIsimSutun
               ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
               : { sz: 10 },
-            alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 7 },
+            alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 8 },
             fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
             border: {
               top: { style: "thin", color: { rgb: "FFD1D5DB" } },
@@ -2275,9 +2290,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
     const ws: Record<string, unknown> = sheet;
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
-    // 8 sütun: Ad Soyad | Teknik | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Not
+    // 9 sütun: Ad Soyad | (Teknik) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Teknik Personel | Not
     ws["!cols"] = [
-      { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 30 },
+      { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 22 }, { wch: 30 },
     ];
     ws["!rows"] = [{ hpt: 32 }];
     ws["!merges"] = merges;
@@ -2585,7 +2600,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         }
         autoTable(doc, {
           startY: cursorY + 1,
-          head: [["Sira", "Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
+          head: [["Sira", "Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
           body: list.map((r, i) => [
             String(i + 1),
             trAscii(r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad),
@@ -2594,6 +2609,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             r.iseBaslama,
             r.isenCikis,
             String(r.gun),
+            trAscii(r.teknikIsim ?? ""),
             trAscii(r.not),
           ]),
           styles: { fontSize: 8, cellPadding: 1.5 },
@@ -2680,7 +2696,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       cursorY += 9;
       autoTable(doc, {
         startY: cursorY,
-        head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Not"]],
+        head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
         body: otuzAsanlar.map((r) => [
           trAscii(r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad),
           r.tc,
@@ -2688,6 +2704,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           r.iseBaslama,
           r.isenCikis,
           String(r.toplamGun),
+          trAscii(r.teknikIsim ?? ""),
           trAscii(r.not),
         ]),
         styles: { fontSize: 8, cellPadding: 1.5 },
