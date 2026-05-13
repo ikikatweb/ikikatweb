@@ -824,7 +824,12 @@ export default function IscilikTakibiPage() {
               {filtrelenmis.map((row, idx) => {
                 const gk = row.santiyeler?.gecici_kabul_tarihi;
                 const kk = row.santiyeler?.kesin_kabul_tarihi;
-                const isPasif = (!!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000)
+                // "Geçici Kabulü Yapılmış İşler" sekmesinde TÜM satırlar pasif sayılır
+                // (geçici kabul tarihi formatı 0001-01-01 veya pre-2001 olsa bile).
+                // Bu sekmedeyken silik gri stilini her zaman uygula.
+                const sekmeGeciciKabul = sekme === "gecici-kabul";
+                const isPasif = sekmeGeciciKabul
+                  || (!!gk && gk !== "0001-01-01" && new Date(gk).getFullYear() > 2000)
                   || (!!kk && kk !== "0001-01-01" && new Date(kk).getFullYear() > 2000);
                 const firmaRengi = row.santiyeler?.yuklenici_firma_id ? firmaRenkMap.get(row.santiyeler.yuklenici_firma_id) : null;
                 return (
