@@ -29,13 +29,24 @@ function getSupabase() {
 }
 
 function isTableMissingError(msg: string): boolean {
-  return /relation .*personel_teknik.* does not exist/i.test(msg)
-    || /could not find the table.*personel_teknik/i.test(msg)
-    || /table .*personel_teknik.* does not exist/i.test(msg);
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return m.includes("personel_teknik") && (
+    m.includes("does not exist")
+    || m.includes("could not find the table")
+    || m.includes("could not find a relation")
+    || m.includes("schema cache")
+  );
 }
 
 function isColumnMissingError(msg: string): boolean {
-  return /column .*is_teknik/i.test(msg);
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return m.includes("is_teknik") && (
+    m.includes("column")
+    || m.includes("could not find")
+    || m.includes("schema cache")
+  );
 }
 
 // Tüm teknik personel × şantiye eşleşmelerini getir.

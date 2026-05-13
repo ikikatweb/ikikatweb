@@ -3713,7 +3713,10 @@ export default function BordroTakibi() {
                             ? "Bu şantiyede teknik personel olarak işaretlendi."
                             : "Bu şantiyede teknik personel işareti kaldırıldı.");
                         } catch (err) {
-                          toast.error(err instanceof Error ? err.message : "Hata");
+                          // Hatayı consola da yaz, kullanıcı F12 → Console'da görebilir
+                          console.error("[teknik personel toggle] Hata:", err);
+                          const msg = err instanceof Error ? err.message : String(err);
+                          toast.error(`Teknik personel kaydı yapılamadı: ${msg}`);
                         }
                       }}
                     />
