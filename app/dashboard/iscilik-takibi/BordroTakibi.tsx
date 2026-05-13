@@ -887,8 +887,9 @@ export default function BordroTakibi() {
   // Teknik personel tespiti — PERSONEL × ŞANTİYE BAZLI (sadece bilgi amaçlı rozet için).
   //   teknikPersonelMap.get(personelId) → Set<santiyeId>
   // Veri kaynağı: personel_teknik tablosu (manuel toggle ile yönetilir).
-  // Geriye uyumluluk (tablo boş VEYA bayrak set edilmemişse): atamada is_teknik=true
-  // VEYA atama.baslangic_tarihi === şantiye.isyeri_teslim_tarihi varsayılan değeri kullanılır.
+  //   - is_teknik=true  satırı → AÇIKÇA teknik
+  //   - is_teknik=false satırı → AÇIKÇA teknik DEĞİL (fallback'i ezer)
+  //   - Satır yok       → eski atama-bazlı FALLBACK uygulanır
   // ATAMALARA, GİRİŞ/ÇIKIŞ TARİHLERİNE VEYA GÜN HESABINA HİÇBİR ETKİSİ YOKTUR.
   const teknikPersonelMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -896,39 +897,31 @@ export default function BordroTakibi() {
       if (!map.has(pId)) map.set(pId, new Set());
       map.get(pId)!.add(sId);
     };
-    const sil = (pId: string, sId: string) => {
-      map.get(pId)?.delete(sId);
-    };
-    // Manuel toggle ile işaretlenenler — explicit pozitif kayıtlar
-    const explicitPozitif = new Set<string>();
+    // Açık satırları topla: key="pId|sId" → is_teknik
+    const explicitMap = new Map<string, boolean>();
     for (const r of teknikKayitlari) {
-      ekle(r.personel_id, r.santiye_id);
-      explicitPozitif.add(`${r.personel_id}|${r.santiye_id}`);
+      explicitMap.set(`${r.personel_id}|${r.santiye_id}`, r.is_teknik);
     }
-    // Geriye uyumluluk: explicit toggle yapılmamış (personel,santiye) çiftleri için
-    // eski atama-bazlı varsayılanı uygula. Ama explicit pozitif olanları override etme,
-    // ve explicit negatif (kullanıcı tikini KALDIRDI) durumunu da kaybetme.
-    // Kullanıcı tikini kaldırdıysa → tabloda satır yok → varsayılan da görünmemeli.
-    // Bu durumu ayırt etmek için: önce eski varsayılanı geçici olarak ekle, sonra
-    // teknikKayitlari'daki tüm (personel,santiye) çiftleri SİL → final pozitifleri TEKRAR ekle.
-    // (Açıkça yapamayız çünkü "kullanıcı kaldırdı" durumunu DB tutmuyor.)
-    //
-    // PRATİK YAKLAŞIM: Geriye uyumluluk SADECE personel_teknik tablosu HİÇ KULLANILMAMIŞSA
-    // (yani teknikKayitlari boşsa) uygulanır. Tabloda bir kayıt varsa, kullanıcı sistemi
-    // kullanmaya başlamış demektir; o personel için varsayılana güvenmeyiz.
-    if (teknikKayitlari.length === 0) {
-      const santiyeMap = new Map<string, string | null>();
-      for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
-      for (const a of atamalar) {
-        if (a.bitis_tarihi) continue;
-        if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
-        if (a.is_teknik === undefined || a.is_teknik === null) {
-          const teslim = santiyeMap.get(a.santiye_id);
-          if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
-        }
+    // Önce explicit pozitifleri ekle
+    for (const [key, isTeknik] of explicitMap) {
+      if (!isTeknik) continue;
+      const [pId, sId] = key.split("|");
+      ekle(pId, sId);
+    }
+    // Fallback: explicit satırı OLMAYAN (personel, şantiye) çiftleri için
+    // eski atama-bazlı tespit uygulanır
+    const santiyeMap = new Map<string, string | null>();
+    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
+    for (const a of atamalar) {
+      if (a.bitis_tarihi) continue;
+      const key = `${a.personel_id}|${a.santiye_id}`;
+      if (explicitMap.has(key)) continue; // açıkça işaretliyse (true ya da false), fallback atla
+      if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
+      if (a.is_teknik === undefined || a.is_teknik === null) {
+        const teslim = santiyeMap.get(a.santiye_id);
+        if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
       }
     }
-    void sil; // ileride explicit negatif kayıt eklenirse kullanılır
     return map;
   }, [teknikKayitlari, atamalar, santiyeler]);
 
