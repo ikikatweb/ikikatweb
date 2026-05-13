@@ -643,10 +643,11 @@ export default function DashboardPage() {
     if (!isYonetici && !isShantiyeAdmin && kullanici?.id) {
       kaynak = gidenEvraklar.filter((e) => e.olusturan_id === kullanici.id);
     }
-    // Şantiye admin/kısıtlı: izinli şantiyelerin evrakları (atanmamış şantiyelerinki gizli)
-    if (!isYonetici && kullanici?.santiye_ids && kullanici.santiye_ids.length > 0) {
-      const izinli = new Set(kullanici.santiye_ids);
-      kaynak = kaynak.filter((e) => !e.santiye_id || izinli.has(e.santiye_id));
+    // Şantiye admin/kısıtlı: SADECE atandığı şantiyelerin evrakları.
+    // Şantiyesiz (NULL) evraklar dahil DEĞİL — kullanıcının görmemesi gerek.
+    if (!isYonetici) {
+      const izinli = kullanici?.santiye_ids ? new Set(kullanici.santiye_ids) : new Set<string>();
+      kaynak = kaynak.filter((e) => e.santiye_id && izinli.has(e.santiye_id));
     }
     return kaynak.filter((e) => !e.evrak_kayit_no || e.evrak_kayit_no.trim() === "").slice(0, 15);
   }, [gidenEvraklar, isYonetici, isShantiyeAdmin, kullanici]);
