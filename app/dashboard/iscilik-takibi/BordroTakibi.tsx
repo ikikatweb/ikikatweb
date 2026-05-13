@@ -2033,7 +2033,8 @@ export default function BordroTakibi() {
     const sheet: Record<string, Cell> = {};
     let curRow = 0;
     const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
-    const NUM_COLS = 7;
+    // 8 sütun: Ad Soyad, (Teknik etiket), TC, Meslek, İşe Başlama, İşten Çıkış, Gün, Not
+    const NUM_COLS = 8;
 
     const setCell = (r: number, c: number, v: string | number, s?: object) => {
       sheet[XLSX.utils.encode_cell({ r, c })] = { v, s };
@@ -2082,7 +2083,7 @@ export default function BordroTakibi() {
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
-        const headers = ["Ad Soyad", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+        const headers = ["Ad Soyad", "", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
         for (let c = 0; c < headers.length; c++) {
           setCell(curRow, c, headers[c], {
             font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
@@ -2101,36 +2102,25 @@ export default function BordroTakibi() {
         for (let i = 0; i < list.length; i++) {
           const r = list[i];
           const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF1F5F9";
-          const adSoyadFmt = r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad;
-          const rowVals: (string | number)[] = [adSoyadFmt, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not];
+          // 8 sütun: Ad Soyad | (Teknik) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Not
+          const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
+          const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.gun, r.not];
           for (let c = 0; c < rowVals.length; c++) {
-            // Teknik personel rich text: isim normal, "(Teknik Personel)" kalın+indigo
-            const isAdHucresi = c === 0 && r.isTeknik;
-            const cellObj: {
-              v: string | number;
-              s: object;
-              r?: { t: string; s: object }[];
-            } = {
-              v: rowVals[c],
-              s: {
-                font: { sz: 10 },
-                alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
-                fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
-                border: {
-                  top: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                  bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                  left: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                  right: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                },
+            // c === 1 = Teknik etiket sütunu (sadece teknikse dolu, kalın + indigo)
+            const isTeknikSutun = c === 1 && r.isTeknik;
+            setCell(curRow, c, rowVals[c], {
+              font: isTeknikSutun
+                ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
+                : { sz: 10 },
+              alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 7 },
+              fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+              border: {
+                top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                right: { style: "thin", color: { rgb: "FFD1D5DB" } },
               },
-            };
-            if (isAdHucresi) {
-              cellObj.r = [
-                { t: r.adSoyad, s: { font: { sz: 10 } } },
-                { t: " (Teknik Personel)", s: { font: { sz: 10, bold: true, color: { rgb: "FF4338CA" } } } },
-              ];
-            }
-            sheet[XLSX.utils.encode_cell({ r: curRow, c })] = cellObj as Cell;
+            });
           }
           curRow++;
         }
@@ -2156,7 +2146,7 @@ export default function BordroTakibi() {
       merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
       curRow++;
 
-      const otHeaders = ["Ad Soyad", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
+      const otHeaders = ["Ad Soyad", "", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Not"];
       for (let c = 0; c < otHeaders.length; c++) {
         setCell(curRow, c, otHeaders[c], {
           font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
@@ -2175,35 +2165,23 @@ export default function BordroTakibi() {
       for (let i = 0; i < otuzAsanlar.length; i++) {
         const r = otuzAsanlar[i];
         const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF5F5F5";
-        const adSoyadFmt = r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad;
-        const rowVals: (string | number)[] = [adSoyadFmt, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
+        const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
+        const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, r.not];
         for (let c = 0; c < rowVals.length; c++) {
-          const isAdHucresi = c === 0 && r.isTeknik;
-          const cellObj: {
-            v: string | number;
-            s: object;
-            r?: { t: string; s: object }[];
-          } = {
-            v: rowVals[c],
-            s: {
-              font: { sz: 10 },
-              alignment: { horizontal: c === 5 ? "right" : "left", vertical: "center", wrapText: c === 6 },
-              fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
-              border: {
-                top: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                left: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                right: { style: "thin", color: { rgb: "FFD1D5DB" } },
-              },
+          const isTeknikSutun = c === 1 && r.isTeknik;
+          setCell(curRow, c, rowVals[c], {
+            font: isTeknikSutun
+              ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
+              : { sz: 10 },
+            alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 7 },
+            fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+            border: {
+              top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              right: { style: "thin", color: { rgb: "FFD1D5DB" } },
             },
-          };
-          if (isAdHucresi) {
-            cellObj.r = [
-              { t: r.adSoyad, s: { font: { sz: 10 } } },
-              { t: " (Teknik Personel)", s: { font: { sz: 10, bold: true, color: { rgb: "FF4338CA" } } } },
-            ];
-          }
-          sheet[XLSX.utils.encode_cell({ r: curRow, c })] = cellObj as Cell;
+          });
         }
         curRow++;
       }
@@ -2211,8 +2189,9 @@ export default function BordroTakibi() {
 
     const ws: Record<string, unknown> = sheet;
     ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
+    // 8 sütun: Ad Soyad | Teknik | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Not
     ws["!cols"] = [
-      { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 30 },
+      { wch: 28 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 8 }, { wch: 30 },
     ];
     ws["!rows"] = [{ hpt: 32 }];
     ws["!merges"] = merges;
