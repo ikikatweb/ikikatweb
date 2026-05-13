@@ -480,6 +480,9 @@ export default function BordroTakibi() {
   const [ekleSantiye, setEkleSantiye] = useState("");
   const [ekleTarih, setEkleTarih] = useState(() => yerelBugun());
   const [ekleCepTelefon, setEkleCepTelefon] = useState("");
+  // Ekleme sırasında teknik personel mi sorusu — sadece personel_teknik tablosuna kayıt için.
+  // Atamalara, giriş/çıkış tarihlerine etkisi yoktur.
+  const [ekleTeknik, setEkleTeknik] = useState(false);
   const [kaydetYukleniyor, setKaydetYukleniyor] = useState(false);
 
   // Çıkış onayı + çıkış tarihi
@@ -933,6 +936,35 @@ export default function BordroTakibi() {
     }
     return ids;
   }, [teknikPersonelMap]);
+
+  // Bir şantiyede şu anda kaç AKTİF teknik personel var?
+  // = teknik_personel_sayisi alanına göre "kapasite" dolu mu kontrolü için.
+  // Personel hem teknik işaretli OLMALI hem de o şantiyede bitiş_tarihi=null aktif atamaya sahip OLMALI.
+  const aktifTeknikSayisiMap = useMemo(() => {
+    const aktifAtamaSet = new Set<string>(); // "pId|sId" — aktif atamalı
+    for (const a of atamalar) {
+      if (!a.bitis_tarihi) aktifAtamaSet.add(`${a.personel_id}|${a.santiye_id}`);
+    }
+    const map = new Map<string, number>();
+    for (const [pId, set] of teknikPersonelMap) {
+      for (const sId of set) {
+        if (!aktifAtamaSet.has(`${pId}|${sId}`)) continue;
+        map.set(sId, (map.get(sId) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [teknikPersonelMap, atamalar]);
+
+  // Bir şantiyede teknik personel kalan kontenjanı: target - mevcut.
+  // Kullanım: ekle dialog'da "Teknik Personel mi?" sorusunu göstermek için.
+  const teknikKalanSlot = useCallback((santiyeId: string): number => {
+    const santiye = santiyeler.find((s) => s.id === santiyeId);
+    if (!santiye) return 0;
+    const target = santiye.teknik_personel_sayisi ?? 0;
+    if (target <= 0) return 0;
+    const mevcut = aktifTeknikSayisiMap.get(santiyeId) ?? 0;
+    return Math.max(0, target - mevcut);
+  }, [santiyeler, aktifTeknikSayisiMap]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
@@ -1612,13 +1644,9 @@ export default function BordroTakibi() {
     if (santiye) {
       const teknikPersonelSayisi = santiye.teknik_personel_sayisi ?? 0;
       const teslim = santiye.isyeri_teslim_tarihi ?? null;
-      const mevcutTeknikSayisi = teslim
-        ? atamalar.filter(
-            (a) => a.santiye_id === topluEkleSantiyeId
-              && !a.bitis_tarihi
-              && a.baslangic_tarihi === teslim,
-          ).length
-        : 0;
+      // YENİ: Mevcut teknik personel sayısı personel_teknik tablosundan (aktif atamalı) gelir.
+      // Eski (atama.baslangic === teslim) heuristic'i fallback olarak teknikPersonelMap içinde uygulanmış durumda.
+      const mevcutTeknikSayisi = aktifTeknikSayisiMap.get(topluEkleSantiyeId) ?? 0;
       const kalanSlot = Math.max(0, teknikPersonelSayisi - mevcutTeknikSayisi);
 
       if (teknikPersonelSayisi > 0 && kalanSlot > 0) {
@@ -2533,6 +2561,20 @@ export default function BordroTakibi() {
           console.warn("Otomatik şantiye ataması başarısız:", atErr);
         }
       }
+      // Teknik personel işaretliyse personel_teknik tablosuna kayıt aç (sadece bilgi amaçlı)
+      // Kalan slot yoksa atla (kullanıcı dialog açıkken araya başka kayıt sıkışmış olabilir)
+      if (ekleTeknik && ekleSantiye && yeni?.id) {
+        const kalan = teknikKalanSlot(ekleSantiye);
+        if (kalan > 0) {
+          try {
+            await setPersonelTeknikSantiye(yeni.id, ekleSantiye, true);
+          } catch (tknErr) {
+            console.warn("Teknik personel kaydı başarısız:", tknErr);
+          }
+        } else {
+          toast(`Teknik personel kontenjanı dolu, rozet eklenmedi.`, { icon: "ℹ️" });
+        }
+      }
       toast.success("Personel eklendi (mail kuyruğa eklendi)");
       // Mail kuyruğuna ekle
       const santiyeAd = ekleSantiye ? santiyeler.find((s) => s.id === ekleSantiye)?.is_adi : undefined;
@@ -2541,6 +2583,7 @@ export default function BordroTakibi() {
       setEkleAcik(false);
       setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
       setEkleSantiye(""); setEkleTarih(yerelBugun()); setEkleCepTelefon("");
+      setEkleTeknik(false);
       await loadData();
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
@@ -3481,7 +3524,9 @@ export default function BordroTakibi() {
             </div>
             <div>
               <Label className="text-xs">Şantiye <span className="text-red-500">*</span></Label>
-              <select value={ekleSantiye} onChange={(e) => setEkleSantiye(e.target.value)}
+              <select
+                value={ekleSantiye}
+                onChange={(e) => { setEkleSantiye(e.target.value); setEkleTeknik(false); }}
                 className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm">
                 <option value="">Şantiye seçin</option>
                 {santiyeler.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
@@ -3495,6 +3540,49 @@ export default function BordroTakibi() {
                 <p className="text-[10px] text-gray-400 mt-0.5">Boş bırakılırsa bugün kullanılır.</p>
               </div>
             )}
+            {/* Teknik Personel sorusu — şantiyenin "teknik_personel_sayisi" hedefine göre
+                kalan slot varsa sorulur. Atamalara, giriş/çıkış tarihlerine ETKİSİ YOKTUR. */}
+            {(() => {
+              if (!ekleSantiye) return null;
+              const santiye = santiyeler.find((s) => s.id === ekleSantiye);
+              const target = santiye?.teknik_personel_sayisi ?? 0;
+              const mevcut = aktifTeknikSayisiMap.get(ekleSantiye) ?? 0;
+              const kalan = teknikKalanSlot(ekleSantiye);
+              // Şantiyede teknik personel hedefi tanımlı değilse soru gösterme
+              if (target <= 0) return null;
+              // Kontenjan dolduysa bilgi mesajı göster
+              if (kalan <= 0) {
+                return (
+                  <div className="text-[11px] text-gray-500 p-2 bg-gray-50 border border-gray-200 rounded">
+                    Bu şantiye için teknik personel kontenjanı dolu ({mevcut}/{target}). Teknik personel olarak işaretlenemez.
+                  </div>
+                );
+              }
+              return (
+                <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
+                  ekleTeknik ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
+                }`}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-indigo-600"
+                    checked={ekleTeknik}
+                    onChange={(e) => setEkleTeknik(e.target.checked)}
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-[#1E3A5F]">
+                      Teknik Personel mi?
+                      {ekleTeknik && (
+                        <span className="ml-2 text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold">EVET</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-gray-500">
+                      Bu şantiyede teknik personel kotası: <strong>{mevcut}/{target}</strong> dolu, <strong>{kalan}</strong> slot kaldı.
+                      İşaretlerseniz personelin adı yanında &quot;Teknik Personel&quot; rozeti görünür.
+                    </div>
+                  </div>
+                </label>
+              );
+            })()}
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setEkleAcik(false)}>İptal</Button>
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
