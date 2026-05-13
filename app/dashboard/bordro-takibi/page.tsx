@@ -2,12 +2,12 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, Calendar } from "lucide-react";
+import { UserPlus, Calendar, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BordroTakibi from "../iscilik-takibi/BordroTakibi";
 import GunlukUcretSayfasi from "./GunlukUcret";
 
-type Sekme = "bordro" | "gunluk-ucret";
+type Sekme = "bordro" | "pasif-isler" | "gunluk-ucret";
 
 export default function BordroTakibiPage() {
   const [sekme, setSekme] = useState<Sekme>("bordro");
@@ -31,6 +31,14 @@ export default function BordroTakibiPage() {
           <UserPlus size={14} className="mr-1" /> Bordro
         </Button>
         <Button
+          variant={sekme === "pasif-isler" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSekme("pasif-isler")}
+          className={sekme === "pasif-isler" ? "bg-[#64748B]" : ""}
+        >
+          <Archive size={14} className="mr-1" /> Geçici Kabulü Yapılmış İşler
+        </Button>
+        <Button
           variant={sekme === "gunluk-ucret" ? "default" : "outline"}
           size="sm"
           onClick={() => setSekme("gunluk-ucret")}
@@ -40,7 +48,9 @@ export default function BordroTakibiPage() {
         </Button>
       </div>
 
-      {sekme === "bordro" ? <BordroTakibi /> : <GunlukUcretSayfasi />}
+      {sekme === "bordro" && <BordroTakibi gosterilecekDurum="aktif" />}
+      {sekme === "pasif-isler" && <BordroTakibi gosterilecekDurum="pasif" />}
+      {sekme === "gunluk-ucret" && <GunlukUcretSayfasi />}
     </div>
   );
 }

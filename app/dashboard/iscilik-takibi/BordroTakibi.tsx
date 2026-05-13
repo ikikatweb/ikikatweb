@@ -438,7 +438,16 @@ function AtamaListesi({
   );
 }
 
-export default function BordroTakibi() {
+// Hangi durumdaki şantiyeler gösterilecek:
+//  - "aktif" → sadece durum=aktif
+//  - "pasif" → durum=tamamlandi / tasfiye / devir (yani aktif olmayan tüm işler)
+type GosterilecekDurum = "aktif" | "pasif";
+
+type BordroTakibiProps = {
+  gosterilecekDurum?: GosterilecekDurum;
+};
+
+export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTakibiProps = {}) {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   // Modül yetkileri (bordro-takibi modülü): ekle / duzenle / sil
   const yEkle = hasPermission("bordro-takibi", "ekle");
@@ -839,10 +848,28 @@ export default function BordroTakibi() {
   // Yetki bazlı şantiye filtresi:
   // - Yönetici: tüm şantiyeler
   // - Şantiye admini / Kısıtlı: sadece atandığı şantiye(ler)
-  const filtreliSantiyeler = useMemo(
-    () => filtreliSantiyelerHelper(santiyeler, kullanici),
-    [santiyeler, kullanici],
-  );
+  const filtreliSantiyeler = useMemo(() => {
+    // Önce yetki bazlı (kısıtlı kullanıcı sadece izinli şantiyeler) filtre
+    const yetkili = filtreliSantiyelerHelper(santiyeler, kullanici);
+    // "aktif" sekmesi → gecici_kabul_tarihi BOŞ olan tüm işler
+    // "pasif" sekmesi (Geçici Kabulü Yapılmış İşler) → gecici_kabul_tarihi DOLU olan işler
+    const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
+    const sonuc = gosterilecekDurum === "aktif"
+      ? yetkili.filter((s) => !dolu(s.gecici_kabul_tarihi))
+      : yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
+    if (typeof window !== "undefined") {
+      console.log(`[BordroTakibi] sekme=${gosterilecekDurum} santiyeler.length=${santiyeler.length} yetkili=${yetkili.length} sonuc=${sonuc.length}`);
+      // Geçici kabul tarihi DOLU olan işleri listele
+      const doluOlanlar = yetkili.filter((s) => dolu(s.gecici_kabul_tarihi));
+      if (doluOlanlar.length > 0) {
+        console.log(`[BordroTakibi] Geçici kabul DOLU olan ${doluOlanlar.length} iş:`);
+        for (const s of doluOlanlar) {
+          console.log(`  • "${s.is_adi}" → ${s.gecici_kabul_tarihi}`);
+        }
+      }
+    }
+    return sonuc;
+  }, [santiyeler, kullanici, gosterilecekDurum]);
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır
   const naturalGunMap = useMemo(

@@ -37,7 +37,7 @@ import {
 import {
   ClipboardList, FileDown, FileSpreadsheet, ChevronLeft, ChevronRight,
   Check, X as XIcon, Trash2, Plane, Cross, Sun, Lock,
-  Car, CloudRain, Clock3,
+  Car, CloudRain, Clock3, Building2,
   Link2, Link2Off, ArrowRight, ArrowLeft as ArrowLeftIcon, UserPlus, Search,
 } from "lucide-react";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -72,11 +72,11 @@ type DurumBilgi = {
 
 const DURUM_LISTESI: DurumBilgi[] = [
   { kod: "calisti",     label: "Çalıştı",      bgClass: "bg-emerald-500", textClass: "text-emerald-700", pdfShort: "+",  pdfRGB: [16, 185, 129],  aciklamaZorunlu: false, IconComponent: Check },
-  { kod: "yarim_gun",   label: "Yarım Gün",    bgClass: "bg-lime-500",    textClass: "text-lime-700",    pdfShort: "½",  pdfRGB: [132, 204, 22],  aciklamaZorunlu: false, IconComponent: Clock3 },
+  { kod: "yarim_gun",   label: "Yarım Gün",    bgClass: "bg-lime-500",    textClass: "text-lime-700",    pdfShort: "½",  pdfRGB: [132, 204, 22],  aciklamaZorunlu: true,  IconComponent: Clock3 },
   { kod: "gelmedi",     label: "Gelmedi",      bgClass: "bg-red-500",     textClass: "text-red-700",     pdfShort: "-",  pdfRGB: [239, 68, 68],   aciklamaZorunlu: true,  IconComponent: XIcon },
   { kod: "izinli",      label: "İzinli",       bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "I",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: Plane },
   { kod: "raporlu",     label: "Raporlu",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "R",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: false, IconComponent: Cross },
-  { kod: "dis_gorev",   label: "Dış Görev",    bgClass: "bg-indigo-500",  textClass: "text-indigo-700",  pdfShort: "D",  pdfRGB: [99, 102, 241],  aciklamaZorunlu: false, IconComponent: Car },
+  { kod: "dis_gorev",   label: "Dış Görev",    bgClass: "bg-indigo-500",  textClass: "text-indigo-700",  pdfShort: "D",  pdfRGB: [99, 102, 241],  aciklamaZorunlu: true,  IconComponent: Car },
   { kod: "yagmur",      label: "Yağmur",       bgClass: "bg-sky-500",     textClass: "text-sky-700",     pdfShort: "Y",  pdfRGB: [14, 165, 233],  aciklamaZorunlu: false, IconComponent: CloudRain },
   { kod: "resmi_tatil", label: "Resmi Tatil",  bgClass: "bg-cyan-500",    textClass: "text-cyan-700",    pdfShort: "T",  pdfRGB: [6, 182, 212],   aciklamaZorunlu: false, IconComponent: Sun },
 ];
@@ -161,6 +161,10 @@ export default function PersonelPuantajPage() {
   const [seciliMesaiSaat, setSeciliMesaiSaat] = useState("");
   const [dialogKaydediliyor, setDialogKaydediliyor] = useState(false);
   const aciklamaRef = useRef<HTMLTextAreaElement>(null);
+  // Yağmur seçildiğinde "Şantiyede / İzinde" alt-seçim dialog'u
+  const [yagmurOnay, setYagmurOnay] = useState<{
+    resolve: (cevap: "santiyede" | "izinde" | "iptal") => void;
+  } | null>(null);
 
   // Tooltip state (hover için)
   const [tooltip, setTooltip] = useState<{
@@ -664,9 +668,27 @@ export default function PersonelPuantajPage() {
     if (!seciliPersonel || seciliGun === null || !santiyeId) return;
     const dBilgi = DURUM_MAP.get(durum)!;
 
-    // Açıklama zorunlu ama boşsa uyarı
-    if (dBilgi.aciklamaZorunlu && !seciliAciklama.trim()) {
-      setSeciliDurum(durum);
+    // YAĞMUR seçildiğinde alt-seçim dialog'u: "Şantiyede" / "İzinde"
+    // Kullanıcı seçim yapmadan kayıt yapılmaz.
+    let yagmurAciklama: string | null = null;
+    if (durum === "yagmur") {
+      const cevap = await new Promise<"santiyede" | "izinde" | "iptal">((resolve) => {
+        setYagmurOnay({ resolve });
+      });
+      setYagmurOnay(null);
+      if (cevap === "iptal") return;
+      yagmurAciklama = cevap === "santiyede" ? "Şantiyede" : "İzinde";
+      // Mevcut açıklama varsa başına bu seçim eklenir
+      const mevcutAciklama = seciliAciklama.trim();
+      const yeniAciklama = mevcutAciklama
+        ? `${yagmurAciklama} — ${mevcutAciklama}`
+        : yagmurAciklama;
+      setSeciliAciklama(yeniAciklama);
+    }
+
+    // Açıklama zorunlu ama boşsa uyarı — görsel seçim değişmesin, kayıt yapılmasın
+    // Yağmur durumunda yagmurAciklama dolu, atlayalım
+    if (dBilgi.aciklamaZorunlu && !yagmurAciklama && !seciliAciklama.trim()) {
       toast.error(`"${dBilgi.label}" için açıklama girmek zorunludur.`);
       setTimeout(() => aciklamaRef.current?.focus(), 50);
       return;
@@ -674,7 +696,6 @@ export default function PersonelPuantajPage() {
 
     // Mesai saati yazıldıysa açıklama zorunlu
     if (seciliMesaiSaat.trim() && !seciliAciklama.trim()) {
-      setSeciliDurum(durum);
       toast.error("Mesai yazıldığında açıklama girmek zorunludur.");
       setTimeout(() => aciklamaRef.current?.focus(), 50);
       return;
@@ -692,7 +713,13 @@ export default function PersonelPuantajPage() {
         return;
       }
 
-      const aciklamaToSave = seciliAciklama.trim() || null;
+      // Yağmur seçildiyse "Şantiyede" / "İzinde" prefix'i mevcut açıklamaya eklenir.
+      // setSeciliAciklama async olduğu için yerel hesaplayalım.
+      let aciklamaToSave: string | null = seciliAciklama.trim() || null;
+      if (yagmurAciklama) {
+        const mevcut = seciliAciklama.trim();
+        aciklamaToSave = mevcut ? `${yagmurAciklama} — ${mevcut}` : yagmurAciklama;
+      }
       // Mesai saati: sadece "calisti" veya "yarim_gun" durumunda ve mesai_ucreti_var ise saklanır
       let mesaiToSave: number | null = null;
       if ((durum === "calisti" || durum === "yarim_gun") && seciliPersonel.mesai_ucreti_var && seciliMesaiSaat.trim() !== "") {
@@ -1556,6 +1583,48 @@ export default function PersonelPuantajPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Yağmur seçildiğinde alt-seçim: Şantiyede / İzinde */}
+      <Dialog open={!!yagmurOnay} onOpenChange={(o) => { if (!o) yagmurOnay?.resolve("iptal"); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CloudRain size={20} className="text-sky-600" />
+              Yağmur — Personel Nerede?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <p className="text-sm text-gray-600">
+              Bu personel yağmur nedeniyle çalışamadı. Personelin durumunu seçin:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => yagmurOnay?.resolve("santiyede")}
+                className="flex flex-col items-center gap-1 p-4 border-2 border-sky-200 rounded-lg hover:border-sky-500 hover:bg-sky-50 transition-all cursor-pointer"
+              >
+                <Building2 size={24} className="text-sky-600" />
+                <span className="font-semibold text-sky-700">Şantiyede</span>
+                <span className="text-[10px] text-gray-500">Personel şantiyede bekledi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => yagmurOnay?.resolve("izinde")}
+                className="flex flex-col items-center gap-1 p-4 border-2 border-amber-200 rounded-lg hover:border-amber-500 hover:bg-amber-50 transition-all cursor-pointer"
+              >
+                <Plane size={24} className="text-amber-600" />
+                <span className="font-semibold text-amber-700">İzinde</span>
+                <span className="text-[10px] text-gray-500">Personel evine gönderildi</span>
+              </button>
+            </div>
+            <div className="flex justify-end pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => yagmurOnay?.resolve("iptal")}>
+                İptal
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

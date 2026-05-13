@@ -102,7 +102,7 @@ type DurumBilgi = {
 
 const DURUM_LISTESI: DurumBilgi[] = [
   { kod: "calisti",      label: "Çalıştı",      bgClass: "bg-emerald-500", textClass: "text-emerald-700", pdfShort: "+",  pdfRGB: [16, 185, 129],  aciklamaZorunlu: false, IconComponent: Check },
-  { kod: "yarim_gun",    label: "Yarım Gün",    bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "½",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: false, IconComponent: Clock3 },
+  { kod: "yarim_gun",    label: "Yarım Gün",    bgClass: "bg-amber-500",   textClass: "text-amber-700",   pdfShort: "½",  pdfRGB: [245, 158, 11],  aciklamaZorunlu: true,  IconComponent: Clock3 },
   { kod: "calismadi",    label: "Çalışmadı",    bgClass: "bg-red-500",     textClass: "text-red-700",     pdfShort: "-",  pdfRGB: [239, 68, 68],   aciklamaZorunlu: true,  IconComponent: XIcon },
   { kod: "arizali",      label: "Arızalı",      bgClass: "bg-purple-500",  textClass: "text-purple-700",  pdfShort: "A",  pdfRGB: [168, 85, 247],  aciklamaZorunlu: true,  IconComponent: Wrench },
   { kod: "operator_yok", label: "Operatör Yok", bgClass: "bg-slate-500",   textClass: "text-slate-700",   pdfShort: "O",  pdfRGB: [100, 116, 139], aciklamaZorunlu: true,  IconComponent: UserX },
@@ -1066,8 +1066,8 @@ export default function AracPuantajPage() {
     const dBilgi = DURUM_MAP.get(durum)!;
 
     // Açıklama zorunlu ama boşsa -> uyarı + textarea focus
+    // Görsel seçim değiştirilmez, kayıt yapılmaz; kullanıcı açıklama yazıp tekrar tıklamalı
     if (dBilgi.aciklamaZorunlu && !seciliAciklama.trim()) {
-      setSeciliDurum(durum); // Highlight için
       toast.error(`"${dBilgi.label}" için açıklama girmek zorunludur.`);
       // Render sonrası focus için bir tick bekle
       setTimeout(() => aciklamaRef.current?.focus(), 50);
