@@ -209,6 +209,22 @@ export async function setPersonelPasif(id: string, pasifTarihi: string) {
   } catch { /* sessiz */ }
 }
 
+// Personelin teknik personel bayrağını günceller — SADECE bilgi amaçlı (rozet için).
+// Atamalara, giriş/çıkış tarihlerine veya gün hesabına HİÇBİR ETKİSİ YOKTUR.
+// Eski şemada is_teknik kolonu yoksa sessizce yutulur (no-op).
+export async function setPersonelTeknik(id: string, isTeknik: boolean) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("personel")
+    .update({ is_teknik: isTeknik, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) {
+    // is_teknik kolonu yoksa sessizce geç — kullanıcı SQL migration çalıştırmamış olabilir
+    if (/column .*is_teknik/i.test(error.message)) return;
+    throw error;
+  }
+}
+
 // Personeli tekrar aktife al
 export async function setPersonelAktif(id: string) {
   const supabase = getSupabase();

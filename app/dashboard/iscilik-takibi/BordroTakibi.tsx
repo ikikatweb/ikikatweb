@@ -17,6 +17,7 @@ import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
+import { setPersonelTeknik } from "@/lib/supabase/queries/personel";
 import {
   getBordroPersoneller,
   insertBordroPersonel,
@@ -28,7 +29,6 @@ import {
   gunHesaplaAyBazliOverride,
   aySonuSantiyeMap,
   updateAtama,
-  updateAtamaTeknik,
   deleteAtama,
   insertAtama,
   getManuelGunler,
@@ -876,36 +876,34 @@ export default function BordroTakibi() {
     return map;
   }, [gunMap]);
 
-  // Teknik personel tespiti — ŞANTİYE BAZLI.
-  //   teknikPersonelMap.get(personelId) → Set<santiyeId> (o personel hangi şantiyelerde teknik)
-  // Geriye uyumluluk: is_teknik kolonu yoksa baslangic_tarihi === isyeri_teslim_tarihi
-  const teknikPersonelMap = useMemo(() => {
-    const santiyeMap = new Map<string, string | null>();
-    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
-    const map = new Map<string, Set<string>>();
-    const ekle = (pId: string, sId: string) => {
-      if (!map.has(pId)) map.set(pId, new Set());
-      map.get(pId)!.add(sId);
-    };
-    for (const a of atamalar) {
-      if (a.bitis_tarihi) continue;
-      if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
-      if (a.is_teknik === undefined || a.is_teknik === null) {
-        const teslim = santiyeMap.get(a.santiye_id);
-        if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
-      }
-    }
-    return map;
-  }, [atamalar, santiyeler]);
-
-  // Personel'in herhangi bir aktif şantiyede teknik mi (arama/filtre için)
+  // Teknik personel tespiti — PERSONEL BAZLI (sadece bilgi amaçlı rozet için).
+  // Öncelik: personel.is_teknik bayrağı.
+  // Geriye uyumluluk: bayrak yoksa eski mantık → atamada is_teknik=true VEYA
+  // (atama baslangic_tarihi === şantiye.isyeri_teslim_tarihi).
+  // ATAMALARI veya GİRİŞ/ÇIKIŞ tarihlerini ETKİLEMEZ.
   const teknikPersonelIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const [pId, set] of teknikPersonelMap) {
-      if (set.size > 0) ids.add(pId);
+    // Önce personel.is_teknik açık olanları ekle
+    for (const p of personeller) {
+      if (p.is_teknik === true) ids.add(p.id);
+    }
+    // Geriye uyumluluk: is_teknik kolonu hiç yoksa veya bazı eski personeller için
+    // bayrak set edilmemişse → eski atama-bazlı mantığı uygula
+    const santiyeMap = new Map<string, string | null>();
+    for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
+    for (const a of atamalar) {
+      if (a.bitis_tarihi) continue;
+      // Personelde explicit bayrak varsa (true ya da false) → atamayı atla
+      const p = personeller.find((x) => x.id === a.personel_id);
+      if (p && (p.is_teknik === true || p.is_teknik === false)) continue;
+      if (a.is_teknik === true) { ids.add(a.personel_id); continue; }
+      if (a.is_teknik === undefined || a.is_teknik === null) {
+        const teslim = santiyeMap.get(a.santiye_id);
+        if (teslim && a.baslangic_tarihi === teslim) ids.add(a.personel_id);
+      }
     }
     return ids;
-  }, [teknikPersonelMap]);
+  }, [personeller, atamalar, santiyeler]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
@@ -2715,7 +2713,7 @@ export default function BordroTakibi() {
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
               {/* Şantiye-bazlı: rozet sadece bu sütundaki şantiyede teknikse görünür */}
-              {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
+              {teknikPersonelIds.has(p.id) && (
                 <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                   Teknik Personel
                 </span>
@@ -2989,7 +2987,7 @@ export default function BordroTakibi() {
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
             {/* Şantiye-bazlı: bu satırın şantiyesinde teknikse rozet görünür */}
-            {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
+            {teknikPersonelIds.has(p.id) && (
               <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                 Teknik Personel
               </span>
@@ -3655,20 +3653,9 @@ export default function BordroTakibi() {
 
             const toplamAylikGun = liste.reduce((s, a) => s + ayInGun(a), 0);
 
-            // Teknik personel toggle için: bu personel × bu şantiye için aktif atamayı bul
-            const aktifAtama = atamalar.find(
-              (a) => a.personel_id === gunEdit.personel.id
-                && a.santiye_id === gunEdit.santiyeId
-                && !a.bitis_tarihi
-            );
-            const santiyeBu = santiyeler.find((s) => s.id === gunEdit.santiyeId);
-            const teslimTarihi = santiyeBu?.isyeri_teslim_tarihi ?? null;
-            // Teknik mi: is_teknik flag'i öncelikli; yoksa geriye uyumluluk olarak baslangic === teslim
-            const teknikMi = !!(aktifAtama && (
-              aktifAtama.is_teknik === true ||
-              ((aktifAtama.is_teknik === undefined || aktifAtama.is_teknik === null) &&
-                teslimTarihi && aktifAtama.baslangic_tarihi === teslimTarihi)
-            ));
+            // Teknik mi: PERSONEL BAZLI — sadece bilgi amaçlı bayrak.
+            // Atamalar veya giriş/çıkış tarihleri ETKİLENMEZ.
+            const teknikMi = teknikPersonelIds.has(gunEdit.personel.id);
 
             return (
               <div className="space-y-3 py-2">
@@ -3676,10 +3663,9 @@ export default function BordroTakibi() {
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
-                {/* Teknik Personel toggle — bu personel × bu şantiye için.
-                    Sadece aktif atamanın is_teknik bayrağını güncelliyoruz.
-                    Atama KAPATILMAZ (işten çıkış verilmez), tarihler değişmez. */}
-                {!isReadOnly && yDuzenle && aktifAtama && (
+                {/* Teknik Personel toggle — PERSONEL BAZLI, sadece bilgi amaçlı rozet.
+                    Atamalara, giriş/çıkış tarihlerine veya gün hesabına HİÇBİR ETKİSİ YOKTUR. */}
+                {!isReadOnly && yDuzenle && (
                   <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
                     teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
                   }`}>
@@ -3688,11 +3674,11 @@ export default function BordroTakibi() {
                       className="h-4 w-4 accent-indigo-600"
                       checked={teknikMi}
                       onChange={async (e) => {
-                        if (!aktifAtama) return;
                         const yeniTeknik = e.target.checked;
                         try {
-                          // Atamayı kapatma — yalnız is_teknik bayrağını güncelle
-                          await updateAtamaTeknik(aktifAtama.id, yeniTeknik);
+                          // SADECE personel.is_teknik bayrağı güncellenir.
+                          // Atama tablosuna, giriş/çıkış kayıtlarına dokunulmaz.
+                          await setPersonelTeknik(gunEdit.personel.id, yeniTeknik);
                           await loadData();
                           toast.success(yeniTeknik
                             ? "Teknik personel olarak işaretlendi."
@@ -3710,9 +3696,7 @@ export default function BordroTakibi() {
                         )}
                       </div>
                       <div className="text-[10px] text-gray-500">
-                        {teknikMi
-                          ? "İşareti kaldırırsanız bu personel artık teknik personel sayılmaz. İşten çıkış verilmez."
-                          : "İşaretlerseniz bu personel teknik personel olarak sayılır. İşten çıkış verilmez."}
+                        Sadece bilgi amaçlı bir etikettir. Giriş/çıkış kayıtlarına, gün sayısına veya bordro hesabına etkisi yoktur.
                       </div>
                     </div>
                   </label>

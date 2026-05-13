@@ -129,6 +129,9 @@ export type Personel = {
   // Bordro Takibi'nden eklenenler "taseron" olarak işaretlenir; her ikisi de
   // bordro kanban'ında görünür ama Personeller sayfasında filtrelenebilir.
   personel_tipi?: "kadro" | "taseron";
+  // Teknik personel bayrağı — sadece bilgi amaçlı (rozet için).
+  // Giriş/çıkış/atama mantığını ETKİLEMEZ. Eski şemada bu kolon yoksa undefined gelir.
+  is_teknik?: boolean;
   created_at: string;
   updated_at: string;
 };
