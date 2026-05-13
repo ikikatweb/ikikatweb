@@ -336,7 +336,7 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
         onKeyUp={updateActiveStates}
         data-placeholder={placeholder}
         className="rich-text-editor-content w-full border border-t-0 border-gray-200 rounded-b-lg px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 overflow-y-auto whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_div]:text-justify [&_p]:text-justify [&_p]:my-0 [&_div]:my-0"
-        style={{ minHeight: `${rows * 1.5}rem`, textAlign: "justify", tabSize: "2.5em", MozTabSize: "2.5em" } as React.CSSProperties}
+        style={{ minHeight: `${rows * 1.5}rem`, textAlign: "justify", tabSize: "2em", MozTabSize: "2em" } as React.CSSProperties}
       />
     </div>
   );
