@@ -157,6 +157,7 @@ export type PersonelAtamaGecmisi = {
   santiye_id: string;
   baslangic_tarihi: string;       // YYYY-MM-DD
   bitis_tarihi: string | null;     // YYYY-MM-DD veya NULL
+  is_teknik?: boolean;             // Bu atama döneminde personel teknik personel mi
   created_at: string;
 };
 export type PersonelAtamaGecmisiInsert = Omit<PersonelAtamaGecmisi, "id" | "created_at">;

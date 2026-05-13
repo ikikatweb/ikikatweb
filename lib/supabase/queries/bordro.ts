@@ -235,17 +235,33 @@ export async function insertAtama(
   santiyeId: string,
   baslangic: string,
   bitis: string | null,
+  isTeknik = false,
 ): Promise<void> {
+  const supabase = getSupabase();
+  const row: Record<string, unknown> = {
+    personel_id: personelId,
+    santiye_id: santiyeId,
+    baslangic_tarihi: baslangic,
+    bitis_tarihi: bitis,
+  };
+  if (isTeknik) row.is_teknik = true;
+  let { error } = await supabase.from("personel_atama_gecmisi").insert(row);
+  // Eski şema (is_teknik kolonu yok) durumu için fallback
+  if (error && /column .*is_teknik/i.test(error.message)) {
+    delete row.is_teknik;
+    ({ error } = await supabase.from("personel_atama_gecmisi").insert(row));
+  }
+  if (error) throw error;
+}
+
+// Mevcut atama için is_teknik bayrağını güncelle
+export async function updateAtamaTeknik(atamaId: string, isTeknik: boolean): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase
     .from("personel_atama_gecmisi")
-    .insert({
-      personel_id: personelId,
-      santiye_id: santiyeId,
-      baslangic_tarihi: baslangic,
-      bitis_tarihi: bitis,
-    });
-  if (error) throw error;
+    .update({ is_teknik: isTeknik })
+    .eq("id", atamaId);
+  if (error && !/column .*is_teknik/i.test(error.message)) throw error;
 }
 
 // --- Atama geçmişi & gün hesaplama ---

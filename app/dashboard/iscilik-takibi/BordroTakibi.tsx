@@ -28,6 +28,7 @@ import {
   gunHesaplaAyBazliOverride,
   aySonuSantiyeMap,
   updateAtama,
+  updateAtamaTeknik,
   deleteAtama,
   insertAtama,
   getManuelGunler,
@@ -377,6 +378,58 @@ function YeniAtamaSatir({
           onClick={() => { onEkle(bas, halen ? null : (bit || null)); setAcik(false); }}
           className="px-3 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed">Ekle</button>
       </div>
+    </div>
+  );
+}
+
+// Atama listesi — şantiye-bazlı atamaları gösterir.
+// Varsayılan: en yeni 2 tanesini gösterir. Daha fazlası varsa "Devamını Gör" butonu çıkar.
+function AtamaListesi({
+  atamalar, liste, ayInGun, onSave, onDelete, isYonetici,
+}: {
+  atamalar: PersonelAtamaGecmisi[];
+  liste: PersonelAtamaGecmisi[];
+  ayInGun: (a: PersonelAtamaGecmisi) => number;
+  onSave: (atamaId: string, baslangic: string, bitis: string | null) => void;
+  onDelete: (atamaId: string) => void;
+  isYonetici: boolean;
+}) {
+  const [hepsiniGoster, setHepsiniGoster] = useState(false);
+  const VARSAYILAN_LIMIT = 2;
+  const gosterilenler = hepsiniGoster ? atamalar : atamalar.slice(0, VARSAYILAN_LIMIT);
+  const gizliSayi = Math.max(0, atamalar.length - VARSAYILAN_LIMIT);
+  return (
+    <div className="border-2 border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold text-gray-700">📅 Giriş / Çıkış Tarihleri</div>
+        <span className="text-[10px] text-gray-500">{atamalar.length} atama</span>
+      </div>
+      {atamalar.length === 0 && (
+        <p className="text-xs text-gray-400 italic">Bu şantiyede henüz atama yok. Aşağıdan yeni atama ekleyebilirsiniz.</p>
+      )}
+      {gosterilenler.map((a) => {
+        const cakisanAyDa = liste.find((l) => l.id === a.id);
+        const aylikGun = cakisanAyDa ? ayInGun(a) : 0;
+        return (
+          <AtamaSatir
+            key={a.id}
+            atama={a}
+            gunSayisi={aylikGun}
+            onSave={(bas, bit) => onSave(a.id, bas, bit)}
+            onDelete={() => onDelete(a.id)}
+            isYonetici={isYonetici}
+          />
+        );
+      })}
+      {gizliSayi > 0 && (
+        <button
+          type="button"
+          onClick={() => setHepsiniGoster((v) => !v)}
+          className="w-full text-xs py-2 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 font-semibold"
+        >
+          {hepsiniGoster ? "▲ Daha Az Göster" : `▼ Devamını Gör (${gizliSayi} atama daha)`}
+        </button>
+      )}
     </div>
   );
 }
@@ -823,21 +876,36 @@ export default function BordroTakibi() {
     return map;
   }, [gunMap]);
 
-  // Teknik personel tespiti: bir personelin AKTİF atamalarında
-  // baslangic_tarihi === santiye.isyeri_teslim_tarihi olan en az bir kayıt varsa teknik personeldir.
-  const teknikPersonelIds = useMemo(() => {
+  // Teknik personel tespiti — ŞANTİYE BAZLI.
+  //   teknikPersonelMap.get(personelId) → Set<santiyeId> (o personel hangi şantiyelerde teknik)
+  // Geriye uyumluluk: is_teknik kolonu yoksa baslangic_tarihi === isyeri_teslim_tarihi
+  const teknikPersonelMap = useMemo(() => {
     const santiyeMap = new Map<string, string | null>();
     for (const s of santiyeler) santiyeMap.set(s.id, s.isyeri_teslim_tarihi ?? null);
-    const ids = new Set<string>();
+    const map = new Map<string, Set<string>>();
+    const ekle = (pId: string, sId: string) => {
+      if (!map.has(pId)) map.set(pId, new Set());
+      map.get(pId)!.add(sId);
+    };
     for (const a of atamalar) {
-      if (a.bitis_tarihi) continue; // sadece aktif atamalar
-      const teslim = santiyeMap.get(a.santiye_id);
-      if (teslim && a.baslangic_tarihi === teslim) {
-        ids.add(a.personel_id);
+      if (a.bitis_tarihi) continue;
+      if (a.is_teknik === true) { ekle(a.personel_id, a.santiye_id); continue; }
+      if (a.is_teknik === undefined || a.is_teknik === null) {
+        const teslim = santiyeMap.get(a.santiye_id);
+        if (teslim && a.baslangic_tarihi === teslim) ekle(a.personel_id, a.santiye_id);
       }
     }
-    return ids;
+    return map;
   }, [atamalar, santiyeler]);
+
+  // Personel'in herhangi bir aktif şantiyede teknik mi (arama/filtre için)
+  const teknikPersonelIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [pId, set] of teknikPersonelMap) {
+      if (set.size > 0) ids.add(pId);
+    }
+    return ids;
+  }, [teknikPersonelMap]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   // "teknik personel" yazısı yazıldığında veya tipFiltre teknik ise yalnız teknikler döner.
@@ -1632,7 +1700,8 @@ export default function BordroTakibi() {
           if (!personel) { idx++; continue; }
           // Split: ilk teknikIlkN kişi teknik personel (teslim tarihi), kalan default tarih
           const buKisininTarihi = (idx < teknikIlkN && teknikTeslim) ? teknikTeslim : kullanilanTarih;
-          await insertAtama(personelId, topluEkleSantiyeId, buKisininTarihi, null);
+          const buKisininTeknikMi = idx < teknikIlkN;
+          await insertAtama(personelId, topluEkleSantiyeId, buKisininTarihi, null, buKisininTeknikMi);
           kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: buKisininTarihi });
           basari++;
           if (idx < teknikIlkN) teknikSayilan++; else normalSayilan++;
@@ -2645,7 +2714,8 @@ export default function BordroTakibi() {
               {p.personel_tipi === "taseron" && (
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
-              {teknikPersonelIds.has(p.id) && (
+              {/* Şantiye-bazlı: rozet sadece bu sütundaki şantiyede teknikse görünür */}
+              {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
                 <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                   Teknik Personel
                 </span>
@@ -2918,7 +2988,8 @@ export default function BordroTakibi() {
             {p.personel_tipi === "taseron" && (
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
-            {teknikPersonelIds.has(p.id) && (
+            {/* Şantiye-bazlı: bu satırın şantiyesinde teknikse rozet görünür */}
+            {teknikPersonelMap.get(p.id)?.has(sutunKey) && (
               <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold flex-shrink-0" title="Teknik Personel">
                 Teknik Personel
               </span>
@@ -3592,7 +3663,12 @@ export default function BordroTakibi() {
             );
             const santiyeBu = santiyeler.find((s) => s.id === gunEdit.santiyeId);
             const teslimTarihi = santiyeBu?.isyeri_teslim_tarihi ?? null;
-            const teknikMi = !!(aktifAtama && teslimTarihi && aktifAtama.baslangic_tarihi === teslimTarihi);
+            // Teknik mi: is_teknik flag'i öncelikli; yoksa geriye uyumluluk olarak baslangic === teslim
+            const teknikMi = !!(aktifAtama && (
+              aktifAtama.is_teknik === true ||
+              ((aktifAtama.is_teknik === undefined || aktifAtama.is_teknik === null) &&
+                teslimTarihi && aktifAtama.baslangic_tarihi === teslimTarihi)
+            ));
 
             return (
               <div className="space-y-3 py-2">
@@ -3600,27 +3676,29 @@ export default function BordroTakibi() {
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
-                {/* Teknik Personel toggle — sadece bu şantiye için */}
+                {/* Teknik Personel toggle — bu personel × bu şantiye için.
+                    Sadece aktif atamanın is_teknik bayrağını güncelliyoruz.
+                    Atama KAPATILMAZ (işten çıkış verilmez), tarihler değişmez. */}
                 {!isReadOnly && yDuzenle && aktifAtama && (
-                  <label
-                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
-                      teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
-                    } ${!teslimTarihi ? "opacity-60 cursor-not-allowed" : ""}`}
-                    title={!teslimTarihi ? "Bu şantiyenin işyeri teslim tarihi tanımlı değil" : ""}
-                  >
+                  <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
+                    teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
+                  }`}>
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-indigo-600"
                       checked={teknikMi}
-                      disabled={!teslimTarihi}
                       onChange={async (e) => {
                         if (!aktifAtama) return;
-                        if (e.target.checked && teslimTarihi) {
-                          // Teknik yap: atama tarihini teslim tarihine al
-                          await gunEditAtamaUpdate(aktifAtama.id, teslimTarihi, null);
-                        } else {
-                          // Teknik kaldır: atama tarihini bugüne al
-                          await gunEditAtamaUpdate(aktifAtama.id, yerelBugun(), null);
+                        const yeniTeknik = e.target.checked;
+                        try {
+                          // Atamayı kapatma — yalnız is_teknik bayrağını güncelle
+                          await updateAtamaTeknik(aktifAtama.id, yeniTeknik);
+                          await loadData();
+                          toast.success(yeniTeknik
+                            ? "Teknik personel olarak işaretlendi."
+                            : "Teknik personel işareti kaldırıldı.");
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : "Hata");
                         }
                       }}
                     />
@@ -3632,9 +3710,9 @@ export default function BordroTakibi() {
                         )}
                       </div>
                       <div className="text-[10px] text-gray-500">
-                        {teslimTarihi
-                          ? `İşaretlendiğinde atama tarihi işyeri teslim tarihine (${new Date(teslimTarihi).toLocaleDateString("tr-TR")}) çekilir.`
-                          : "Bu şantiyede 'İşyeri Teslim Tarihi' tanımlı değil — teknik personel atanamaz."}
+                        {teknikMi
+                          ? "İşareti kaldırırsanız bu personel artık teknik personel sayılmaz. İşten çıkış verilmez."
+                          : "İşaretlerseniz bu personel teknik personel olarak sayılır. İşten çıkış verilmez."}
                       </div>
                     </div>
                   </label>
@@ -3656,37 +3734,23 @@ export default function BordroTakibi() {
                 })()}
 
                 {/* Giriş / Çıkış Tarihleri — atama editörü.
-                    Tüm atamalar gösterilir (sadece bu ay değil), tarih sırasına göre yenidan eskiye.
-                    SADECE ADMIN (yönetici) görebilir/düzenleyebilir. Kısıtlı kullanıcı ve şantiye
-                    yöneticisi bu bölümü görmez — onlar atamalara giriş/çıkış tarihi giremez. */}
+                    SADECE bu şantiyedeki atamalar gösterilir (santiye_id filtresi).
+                    Tarih sırasına göre yeniden eskiye. Varsayılan: en yeni 2 atama,
+                    fazlası varsa "Devamını Gör" butonuyla açılır.
+                    SADECE ADMIN (yönetici) görebilir/düzenleyebilir. */}
                 {!isReadOnly && isYonetici && (() => {
                   const tumAtamalar = atamalar
                     .filter((a) => a.personel_id === gunEdit.personel.id && a.santiye_id === gunEdit.santiyeId)
                     .sort((a, b) => b.baslangic_tarihi.localeCompare(a.baslangic_tarihi));
                   return (
-                    <div className="border-2 border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-semibold text-gray-700">📅 Giriş / Çıkış Tarihleri</div>
-                        <span className="text-[10px] text-gray-500">{tumAtamalar.length} atama</span>
-                      </div>
-                      {tumAtamalar.length === 0 && (
-                        <p className="text-xs text-gray-400 italic">Henüz atama yok. Aşağıdan yeni atama ekleyebilirsiniz.</p>
-                      )}
-                      {tumAtamalar.map((a) => {
-                        const cakisanAyDa = liste.find((l) => l.id === a.id);
-                        const aylikGun = cakisanAyDa ? ayInGun(a) : 0;
-                        return (
-                          <AtamaSatir
-                            key={a.id}
-                            atama={a}
-                            gunSayisi={aylikGun}
-                            onSave={(bas, bit) => gunEditAtamaUpdate(a.id, bas, bit)}
-                            onDelete={() => gunEditAtamaSil(a.id)}
-                            isYonetici={isYonetici}
-                          />
-                        );
-                      })}
-                    </div>
+                    <AtamaListesi
+                      atamalar={tumAtamalar}
+                      liste={liste}
+                      ayInGun={ayInGun}
+                      onSave={(id, bas, bit) => gunEditAtamaUpdate(id, bas, bit)}
+                      onDelete={(id) => gunEditAtamaSil(id)}
+                      isYonetici={isYonetici}
+                    />
                   );
                 })()}
 
