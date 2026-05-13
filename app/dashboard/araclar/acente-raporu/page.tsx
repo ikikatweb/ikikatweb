@@ -16,6 +16,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { useAuth } from "@/hooks";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -59,6 +60,7 @@ type AcenteOzet = {
 };
 
 export default function AcenteRaporuPage() {
+  const { kullanici, isYonetici } = useAuth();
   const [loading, setLoading] = useState(true);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -110,6 +112,13 @@ export default function AcenteRaporuPage() {
     return m;
   }, [araclar]);
 
+  // Kısıtlı/şantiye admin için izinli araç id seti (atanmamış şantiyelerin araçları gizli)
+  const izinliAracIds = useMemo(() => {
+    if (isYonetici || !kullanici?.santiye_ids) return null;
+    const izinliS = new Set(kullanici.santiye_ids);
+    return new Set(araclar.filter((a) => a.santiye_id && izinliS.has(a.santiye_id)).map((a) => a.id));
+  }, [araclar, isYonetici, kullanici]);
+
   function hizliTarih(secim: "bu-ay" | "3-ay" | "6-ay" | "bu-yil") {
     const bitis = new Date();
     const baslangic = new Date();
@@ -132,10 +141,11 @@ export default function AcenteRaporuPage() {
     const bugun = new Date().toISOString().slice(0, 10);
 
     for (const p of policeler) {
+      // Kısıtlı/şantiye admin: atanmamış şantiyelerin araçlarına ait poliçeler gizli
+      if (izinliAracIds && !izinliAracIds.has(p.arac_id)) continue;
       // Aktif/Pasif filtresi — pasif = bitiş tarihi geçmiş poliçe
       if (!pasifGoster && p.bitis_tarihi && p.bitis_tarihi < bugun) continue;
       // Filtreleme tarihi: poliçenin işlem (giriş) tarihi → yoksa kaydedilme tarihi
-      // baslangic_tarihi gelecek bir tarih olabilir, bu yüzden ona fallback YAPMA
       const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
       if (fBaslangic && tarih && tarih < fBaslangic) continue;
       if (fBitis && tarih && tarih > fBitis) continue;
@@ -241,7 +251,7 @@ export default function AcenteRaporuPage() {
       if (sa !== sb) return sa - sb;
       return a.acente.localeCompare(b.acente, "tr");
     });
-  }, [policeler, fBaslangic, fBitis, arama, aracMap, acenteSiraMap, sirketSiraMap, pasifGoster]);
+  }, [policeler, fBaslangic, fBitis, arama, aracMap, acenteSiraMap, sirketSiraMap, pasifGoster, izinliAracIds]);
 
   // Genel toplam
   const genelToplam = useMemo(() => {

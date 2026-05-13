@@ -68,6 +68,7 @@ export async function createGelenEvrak(evrak: GelenEvrakInsert) {
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
       url: `/dashboard/yazismalar/gelen-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
       tag: "gelen-evrak",
+      santiye_id: evrak.santiye_id ?? null,
       kaynak_tip: "gelen-evrak",
       kaynak_id: data.id,
     });

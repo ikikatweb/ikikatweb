@@ -12,6 +12,7 @@ import {
   Shield, Headphones, BarChart3, Wrench,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus,
   ChevronDown, ChevronUp,
+  Swords, AlertTriangle, Crosshair, FileBarChart2, Network,
 } from "lucide-react";
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode };
@@ -109,6 +110,11 @@ const menuGroups: MenuGroup[] = [
     color: "text-orange-600 bg-orange-50",
     items: [
       { label: "Sınır Değer Hesabı", href: "/dashboard/ihale", icon: <Calculator size={16} /> },
+      { label: "Savaş Simülasyonu", href: "/dashboard/ihale/savas-simulasyonu", icon: <Swords size={16} /> },
+      { label: "Kartel Tespiti", href: "/dashboard/ihale/kartel-tespiti", icon: <AlertTriangle size={16} /> },
+      { label: "Sniper Firmalar", href: "/dashboard/ihale/sniper-firmalar", icon: <Crosshair size={16} /> },
+      { label: "Rakip Karneleri", href: "/dashboard/ihale/rakip-karneleri", icon: <FileBarChart2 size={16} /> },
+      { label: "Birlikte Hareket", href: "/dashboard/ihale/birlikte-hareket", icon: <Network size={16} /> },
     ],
   },
 ];

@@ -206,6 +206,7 @@ export async function insertYakitAlim(data: {
       govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${formatTL(toplam)} · ${data.tedarikci_firma}`,
       url: `/dashboard/yakit?santiye=${data.santiye_id}`,
       tag: "yakit",
+      santiye_id: data.santiye_id,
     });
   } catch { /* sessiz */ }
 }

@@ -26,7 +26,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
 export default function AraclarPage() {
-  const { hasPermission } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-araclar", "ekle");
   const yDuzenle = hasPermission("yonetim-araclar", "duzenle");
   const ySil = hasPermission("yonetim-araclar", "sil");
@@ -125,9 +125,16 @@ export default function AraclarPage() {
     }
   }
 
+  // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçlar görünür
+  const izinliSantiyelerSet = !isYonetici && kullanici?.santiye_ids
+    ? new Set(kullanici.santiye_ids)
+    : null;
+
   // Arama + durum filtresi
   const filtrelenmis = araclar
     .filter((a) => {
+      // Atanmamış şantiyelerin araçlarını gizle
+      if (izinliSantiyelerSet && (!a.santiye_id || !izinliSantiyelerSet.has(a.santiye_id))) return false;
       if (filtre !== "tumu" && a.durum !== filtre) return false;
       if (mulkiyetFiltre !== "tumu" && a.tip !== mulkiyetFiltre) return false;
       if (cinsFiltre !== "tumu" && a.cinsi !== cinsFiltre) return false;

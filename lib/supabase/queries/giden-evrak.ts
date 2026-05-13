@@ -70,6 +70,7 @@ export async function createGidenEvrak(evrak: GidenEvrakInsert) {
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
       url: `/dashboard/yazismalar/giden-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
       tag: "giden-evrak",
+      santiye_id: evrak.santiye_id ?? null,
       kaynak_tip: "giden-evrak",
       kaynak_id: data.id,
     });

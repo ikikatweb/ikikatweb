@@ -76,10 +76,10 @@ export async function insertAracBakim(data: {
   // Push bildirim
   try {
     const { bildirimGonder, formatTL } = await import("@/lib/bildirim");
-    // Araç plakasını çöz
+    // Araç plakası + şantiye id (atanmamış şantiye filtresi için)
     const { data: arac } = await supabase
       .from("araclar")
-      .select("plaka, marka, model")
+      .select("plaka, marka, model, santiye_id")
       .eq("id", data.arac_id)
       .maybeSingle();
     const plaka = arac?.plaka ?? "?";
@@ -90,6 +90,7 @@ export async function insertAracBakim(data: {
       govde: `${[arac?.marka, arac?.model].filter(Boolean).join(" ")}${data.tutar ? " · " + formatTL(data.tutar) : ""}${data.detay ? " · " + data.detay.slice(0, 80) : ""}`,
       url: `/dashboard/arac-bakim?arac=${data.arac_id}`,
       tag: "arac-bakim",
+      santiye_id: arac?.santiye_id ?? null,
     });
   } catch { /* sessiz */ }
 

@@ -125,6 +125,7 @@ export async function insertKasaHareketi(data: {
       govde: `${odeme}${data.kategori ? " · " + data.kategori : ""}${data.aciklama ? " · " + data.aciklama.slice(0, 80) : ""}`,
       url: `/dashboard/kasa-defteri?personel=${data.personel_id}`,
       tag: "kasa",
+      santiye_id: data.santiye_id,
       kaynak_tip: "kasa",
       kaynak_id: (result as { id?: string })?.id,
     });

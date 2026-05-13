@@ -496,9 +496,15 @@ export default function DashboardPage() {
         }
       }
     }
+    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçlar görünür
+    const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
     for (const a of araclar) {
       if (a.tip !== "ozmal") continue;
       if (a.durum === "trafikten_cekildi") continue;
+      // Atanmamış şantiyelerle alakalı araçları gizle
+      if (izinliSantiyeler && (!a.santiye_id || !izinliSantiyeler.has(a.santiye_id))) continue;
       const pc = policeMap.get(a.id);
       // Trafik/Kasko: sadece poliçeden gelen bitiş tarihi (araç alanına fallback YOK — stale data'yı gösterme)
       const trafikBitis = pc?.trafik?.bitis || null;
@@ -518,13 +524,25 @@ export default function DashboardPage() {
       }
     }
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
-  }, [araclar, policeler, yaklasirGun]);
+  }, [araclar, policeler, yaklasirGun, isYonetici, kullanici]);
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
   const yaklasanBakimlar = useMemo(() => {
+    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçların bakımları
+    const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
+    const aracSantiyeMap = new Map<string, string | null>();
+    for (const a of araclar) aracSantiyeMap.set(a.id, a.santiye_id);
+
     const sonBakim = new Map<string, AracBakimWithArac>();
     for (const b of aracBakimlar) {
       if ((b.tip ?? "bakim") !== "bakim") continue;
+      // Şantiye filtresi
+      if (izinliSantiyeler) {
+        const sid = aracSantiyeMap.get(b.arac_id);
+        if (!sid || !izinliSantiyeler.has(sid)) continue;
+      }
       const mevcut = sonBakim.get(b.arac_id);
       if (!mevcut || b.bakim_tarihi > mevcut.bakim_tarihi) sonBakim.set(b.arac_id, b);
     }
@@ -547,7 +565,7 @@ export default function DashboardPage() {
       const yKey = Math.min(y.kalanGun ?? 1e9, y.kmFark ?? 1e9);
       return xKey - yKey;
     });
-  }, [aracBakimlar]);
+  }, [aracBakimlar, araclar, isYonetici, kullanici]);
 
   // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
   // TÜM ZAMAN verileri kullanılır (son 30 gün değil) + virman hareketleri dahil edilir
@@ -620,13 +638,18 @@ export default function DashboardPage() {
 
   // Widget 6: Eksik evrak numaraları
   const eksikEvraklar = useMemo(() => {
-    // Kısıtlı kullanıcı: sadece kendi oluşturduğu evraklardaki eksik numaralar görünür
     let kaynak = gidenEvraklar;
-    if (!isYonetici && kullanici?.id) {
+    // Tam kısıtlı kullanıcı: sadece kendi oluşturduğu evraklardaki eksik numaralar görünür
+    if (!isYonetici && !isShantiyeAdmin && kullanici?.id) {
       kaynak = gidenEvraklar.filter((e) => e.olusturan_id === kullanici.id);
     }
+    // Şantiye admin/kısıtlı: izinli şantiyelerin evrakları (atanmamış şantiyelerinki gizli)
+    if (!isYonetici && kullanici?.santiye_ids && kullanici.santiye_ids.length > 0) {
+      const izinli = new Set(kullanici.santiye_ids);
+      kaynak = kaynak.filter((e) => !e.santiye_id || izinli.has(e.santiye_id));
+    }
     return kaynak.filter((e) => !e.evrak_kayit_no || e.evrak_kayit_no.trim() === "").slice(0, 15);
-  }, [gidenEvraklar, isYonetici, kullanici]);
+  }, [gidenEvraklar, isYonetici, isShantiyeAdmin, kullanici]);
 
   // Widget: Bordro Takibi — BordroTakibi sayfasıyla AYNI hesap mantığı (birebir)
   // - Yatması gereken: (sözleşme + keşif + ff) × oran / 100 (aynı şantiye birden fazla kayıt → topla)
@@ -635,6 +658,11 @@ export default function DashboardPage() {
   //   • Personel brüt ücreti varsa onu kullanır, yoksa yıl bazlı default ücret
   const bordroOzet = useMemo(() => {
     if (bordroLoading) return null;
+
+    // Kısıtlı/şantiye admin: sadece izinli şantiyelerin bordro bilgileri görünür
+    const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
 
     const buYil = bugun.getFullYear();
     const buAy = bugun.getMonth() + 1;
@@ -686,6 +714,8 @@ export default function DashboardPage() {
         sant.tasfiye_tarihi || sant.devir_tarihi
       ));
       if (bitmis || !r.santiye_id) continue;
+      // Atanmamış şantiyeleri gizle (kısıtlı/şantiye admin için)
+      if (izinliSantiyeler && !izinliSantiyeler.has(r.santiye_id)) continue;
 
       const bedel = sant?.sozlesme_bedeli ?? 0;
       const kesif = r.kesif_artisi ?? 0;
@@ -796,6 +826,8 @@ export default function DashboardPage() {
     const buAyGunMap = new Map<string, Map<string, number>>();
     const buAyPersonelKumeleri = new Map<string, Set<string>>();
     for (const at of bordroAtamalar) {
+      // Atanmamış şantiyeleri gizle
+      if (izinliSantiyeler && !izinliSantiyeler.has(at.santiye_id)) continue;
       const bH = at.bitis_tarihi ?? aktifSanal;
       if (at.baslangic_tarihi > buAyBitis) continue;
       if (bH < buAyBaslangic) continue;
@@ -814,6 +846,8 @@ export default function DashboardPage() {
     for (const m of bordroManuelGunler) {
       if (m.ay !== buAyStr) continue;
       if (m.gun <= 0) continue;
+      // Atanmamış şantiyeleri gizle
+      if (izinliSantiyeler && !izinliSantiyeler.has(m.santiye_id)) continue;
       if (!buAyGunMap.has(m.santiye_id)) buAyGunMap.set(m.santiye_id, new Map());
       buAyGunMap.get(m.santiye_id)!.set(m.personel_id, m.gun);
       if (!buAyPersonelKumeleri.has(m.santiye_id)) buAyPersonelKumeleri.set(m.santiye_id, new Set());
@@ -888,7 +922,7 @@ export default function DashboardPage() {
       gunlukUcret: defaultGunlukUcret,
       ayLabel: `${AY_ADLARI[bugun.getMonth()]} ${bugun.getFullYear()}`,
     };
-  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, bugun]);
+  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, bugun, isYonetici, kullanici]);
 
   function alimDuzenleAc(a: YakitAlim) {
     setEditAlim(a);

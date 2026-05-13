@@ -42,7 +42,7 @@ function formatPara(n: number | null): string {
 }
 
 export default function AcenteTakipPage() {
-  const { isYonetici, hasPermission } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
   const yDuzenle = hasPermission("araclar-acente-takip", "duzenle");
   const ySil = hasPermission("araclar-acente-takip", "sil");
   const [loading, setLoading] = useState(true);
@@ -99,11 +99,19 @@ export default function AcenteTakipPage() {
 
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
+    // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçların poliçeleri
+    const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
     return policeler
       .filter((p) => {
         if (tipFiltre && p.police_tipi !== tipFiltre) return false;
+        // Atanmamış şantiyelerin araçlarına ait poliçeleri gizle
+        if (izinliSantiyeler) {
+          const arac = aracMap.get(p.arac_id);
+          if (!arac || !arac.santiye_id || !izinliSantiyeler.has(arac.santiye_id)) return false;
+        }
         // Filtreleme tarihi: islem_tarihi → yoksa kaydedilme tarihi
-        // baslangic_tarihi gelecek tarih olabilir, ona fallback YAPMA
         const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";
         if (fBaslangic && tarih && tarih < fBaslangic) return false;
         if (fBitis && tarih && tarih > fBitis) return false;
@@ -122,7 +130,7 @@ export default function AcenteTakipPage() {
         return true;
       })
       .sort((a, b) => (b.islem_tarihi ?? b.created_at).localeCompare(a.islem_tarihi ?? a.created_at));
-  }, [policeler, tipFiltre, arama, aracMap, fBaslangic, fBitis]);
+  }, [policeler, tipFiltre, arama, aracMap, fBaslangic, fBitis, isYonetici, kullanici]);
 
   function duzenleAc(p: AracPolice) {
     setEditPolice(p);

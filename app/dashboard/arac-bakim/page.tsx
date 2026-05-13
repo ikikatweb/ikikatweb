@@ -91,7 +91,7 @@ function dosyaAd(url: string): string {
 type AdKayit = { id: string; ad_soyad: string; durum?: "aktif" | "pasif" };
 
 export default function AracBakimPage() {
-  const { kullanici, hasPermission } = useAuth();
+  const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("arac-bakim", "ekle");
   const yDuzenle = hasPermission("arac-bakim", "duzenle");
   const ySil = hasPermission("arac-bakim", "sil");
@@ -260,9 +260,18 @@ export default function AracBakimPage() {
   }, [dTarih]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filtrelenmiş liste
+  // Kısıtlı/şantiye admin için izinli araç id seti (atanmamış şantiyeler gizli)
+  const izinliAracIds = useMemo(() => {
+    if (isYonetici || !kullanici?.santiye_ids) return null;
+    const izinliS = new Set(kullanici.santiye_ids);
+    return new Set(araclar.filter((a) => a.santiye_id && izinliS.has(a.santiye_id)).map((a) => a.id));
+  }, [araclar, isYonetici, kullanici]);
+
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     return bakimlar.filter((b) => {
+      // Atanmamış şantiyelerin araç bakımlarını gizle
+      if (izinliAracIds && !izinliAracIds.has(b.arac_id)) return false;
       if (filtreArac && b.arac_id !== filtreArac) return false;
       if (filtreTip && (b.tip ?? "bakim") !== filtreTip) return false;
       if (filtreBaslangic && b.bakim_tarihi < filtreBaslangic) return false;
@@ -281,7 +290,7 @@ export default function AracBakimPage() {
       }
       return true;
     });
-  }, [bakimlar, filtreArac, filtreTip, filtreBaslangic, filtreBitis, arama]);
+  }, [bakimlar, filtreArac, filtreTip, filtreBaslangic, filtreBitis, arama, izinliAracIds]);
 
   // Özet
   const ozet = useMemo(() => {

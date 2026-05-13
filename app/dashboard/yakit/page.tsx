@@ -202,6 +202,13 @@ function YakitPageContent() {
   const [arama, setArama] = useState("");
   // Sadece limit dışı (anomali) kayıtları göster
   const [sadeceLimitDisi, setSadeceLimitDisi] = useState(false);
+  // Mobil performans için sayfalama — ilk 200 satır görünür, "Daha fazla" ile artar
+  const SAYFA_BOYUTU = 200;
+  const [gosterilenSayi, setGosterilenSayi] = useState(SAYFA_BOYUTU);
+  // Filtre değişimi sayfayı sıfırla
+  useEffect(() => {
+    setGosterilenSayi(SAYFA_BOYUTU);
+  }, [filtreSantiyeId, filtreBaslangic, filtreBitis, arama, sadeceLimitDisi]);
 
   // Dialog: Yakıt Ver
   const [verDialogOpen, setVerDialogOpen] = useState(false);
@@ -497,14 +504,14 @@ function YakitPageContent() {
       aramaRegex = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
     }
 
-    // Şantiye admini için izinli şantiye seti
-    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
+    // Yönetici dışındaki tüm kullanıcılar (şantiye admin + kısıtlı): atanmamış şantiyelerin
+    // hareketlerini göremez.
+    const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
       ? new Set(kullanici.santiye_ids)
       : null;
 
     // Filter
     const filtrelenmis = tumHareketler.filter((h) => {
-      // Şantiye admini: sadece atandığı şantiyelerin hareketleri
       if (izinliSantiyeler) {
         if (h.tip === "arac_yakit" || h.tip === "alim") {
           if (!izinliSantiyeler.has(h.santiye_id)) return false;
@@ -512,7 +519,7 @@ function YakitPageContent() {
           if (!izinliSantiyeler.has(h.gonderen_santiye_id) && !izinliSantiyeler.has(h.alan_santiye_id)) return false;
         }
       }
-      // Kısıtlı kullanıcı: sadece kendi kayıtlarını ve izinli tarih aralığını görsün
+      // Kısıtlı kullanıcı: ek olarak sadece kendi kayıtlarını ve izinli tarih aralığını görsün
       if (sadeceKendiKayitlari && kullanici) {
         if (h.created_by !== kullanici.id) return false;
         if (!tarihIzinliMi(kullanici, h.tarih)) return false;
@@ -725,8 +732,10 @@ function YakitPageContent() {
     setVerDialogAracId(y.arac_id);
     setVerDialogTarih(y.tarih);
     setVerDialogSaat(y.saat.slice(0, 5));
-    setVerDialogKmSaat(String(y.km_saat));
-    setVerDialogMiktar(String(y.miktar_lt));
+    // Sayıları Türkçe formatta (virgüllü + binlik ayraçlı) yükle —
+    // parseParaInput noktayı binlik ayraç sanar, "202.1" → 2021 olur.
+    setVerDialogKmSaat(formatParaInput(String(y.km_saat).replace(".", ",")));
+    setVerDialogMiktar(formatParaInput(String(y.miktar_lt).replace(".", ",")));
     setVerDialogNotu(y.notu ?? "");
     setVerDialogDepoFull(y.depo_full ?? false);
     setVerDialogOpen(true);
@@ -779,7 +788,7 @@ function YakitPageContent() {
     setVirDialogAlan(v.alan_santiye_id);
     setVirDialogTarih(v.tarih);
     setVirDialogSaat(v.saat.slice(0, 5));
-    setVirDialogMiktar(String(v.miktar_lt));
+    setVirDialogMiktar(formatParaInput(String(v.miktar_lt).replace(".", ",")));
     setVirDialogNotu(v.notu ?? "");
     setVirDialogOpen(true);
   }
@@ -1416,7 +1425,7 @@ function YakitPageContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tabloSatirlari.map((s) => {
+              {tabloSatirlari.slice(0, gosterilenSayi).map((s) => {
                 const h = s.hareket;
                 const birimEki = s.birim === "saat" ? " L/s" : s.birim === "km" ? " L/100km" : "";
 
@@ -1597,6 +1606,30 @@ function YakitPageContent() {
               })}
             </TableBody>
           </Table>
+          {/* Pagination — daha fazla satır göster (mobilde performans için) */}
+          {tabloSatirlari.length > gosterilenSayi && (
+            <div className="flex items-center justify-between gap-3 px-3 py-3 border-t bg-gray-50">
+              <span className="text-[11px] text-gray-500">
+                {gosterilenSayi} / {tabloSatirlari.length} kayıt görünüyor
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setGosterilenSayi((n) => n + SAYFA_BOYUTU)}
+                  className="px-3 py-1.5 text-xs rounded-lg border bg-white hover:bg-gray-100 font-medium"
+                >
+                  +{SAYFA_BOYUTU} Daha Göster
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGosterilenSayi(tabloSatirlari.length)}
+                  className="px-3 py-1.5 text-xs rounded-lg border bg-[#1E3A5F] text-white hover:bg-[#274a76] font-medium"
+                >
+                  Tümünü Göster ({tabloSatirlari.length})
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
