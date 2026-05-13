@@ -7,6 +7,7 @@ import {
   createFirma,
   updateFirma,
   uploadFirmaFile,
+  deleteFirmaFile,
 } from "@/lib/supabase/queries/firmalar";
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import type { Firma, FirmaInsert } from "@/lib/supabase/types";
@@ -16,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Save, X, Upload } from "lucide-react";
+import { Save, X, Upload, Trash2 } from "lucide-react";
 import RenkSecici from "@/components/shared/renk-secici";
 import toast from "react-hot-toast";
 
@@ -31,6 +32,34 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
   const [loading, setLoading] = useState(false);
   const [kaseFile, setKaseFile] = useState<File | null>(null);
   const [antetFile, setAntetFile] = useState<File | null>(null);
+  // Mevcut yüklü dosya URL'leri — silindiğinde UI bunları null'a çeker
+  const [mevcutKaseUrl, setMevcutKaseUrl] = useState<string | null>(firma?.kase_url ?? null);
+  const [mevcutAntetUrl, setMevcutAntetUrl] = useState<string | null>(firma?.antet_url ?? null);
+
+  async function handleDosyaSil(tip: "kase" | "antet") {
+    if (!firma?.id) return;
+    const tipAd = tip === "kase" ? "kaşeyi" : "anteti";
+    if (!confirm(`Mevcut ${tipAd} silmek istediğinize emin misiniz?`)) return;
+    try {
+      setLoading(true);
+      await deleteFirmaFile(firma.id, tip);
+      if (tip === "kase") setMevcutKaseUrl(null);
+      else setMevcutAntetUrl(null);
+      // KRİTİK: formData içindeki ESKİ URL'i de NULL yap — yoksa kullanıcı
+      // formu kaydedince updateFirma eski URL'i geri yazar.
+      setFormData((p) => ({
+        ...p,
+        ...(tip === "kase" ? { kase_url: null } : { antet_url: null }),
+      }));
+      toast.success(`${tip === "kase" ? "Kaşe" : "Antet"} silindi.`);
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
+      toast.error(`Silme başarısız: ${msg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const [formData, setFormData] = useState<FirmaInsert>({
     durum: firma?.durum ?? "aktif",
@@ -92,6 +121,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
       if (kaseFile) {
         const kaseUrl = await uploadFirmaFile(kaseFile, savedFirma.id, "kase");
         await updateFirma(savedFirma.id, { kase_url: kaseUrl });
+        setMevcutKaseUrl(kaseUrl);
       }
       if (antetFile) {
         const antetUrl = await uploadFirmaFile(
@@ -100,6 +130,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
           "antet"
         );
         await updateFirma(savedFirma.id, { antet_url: antetUrl });
+        setMevcutAntetUrl(antetUrl);
       }
 
       router.push("/dashboard/yonetim/firmalar");
@@ -232,10 +263,26 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
                         disabled={loading}
                       />
                     </label>
-                    {firma?.kase_url && !kaseFile && (
-                      <span className="text-xs text-green-600">
-                        Mevcut dosya yüklü
-                      </span>
+                    {mevcutKaseUrl && !kaseFile && (
+                      <>
+                        <a
+                          href={mevcutKaseUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-600 underline hover:text-green-700"
+                        >
+                          Mevcut dosya yüklü (göster)
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleDosyaSil("kase")}
+                          disabled={loading}
+                          title="Kaşeyi sil"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1 rounded disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -256,10 +303,26 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
                         disabled={loading}
                       />
                     </label>
-                    {firma?.antet_url && !antetFile && (
-                      <span className="text-xs text-green-600">
-                        Mevcut dosya yüklü
-                      </span>
+                    {mevcutAntetUrl && !antetFile && (
+                      <>
+                        <a
+                          href={mevcutAntetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-600 underline hover:text-green-700"
+                        >
+                          Mevcut dosya yüklü (göster)
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleDosyaSil("antet")}
+                          disabled={loading}
+                          title="Anteti sil"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1 rounded disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

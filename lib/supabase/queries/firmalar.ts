@@ -115,6 +115,52 @@ export async function toggleFirmaDurum(id: string, durum: "aktif" | "pasif") {
   if (error) throw error;
 }
 
+// Storage'daki kaşe/antet dosyasını siler ve ilgili URL alanını NULL yapar.
+// Storage path'i mevcut publicUrl'den çıkarılır (firmaId/type.ext).
+export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
+  const supabase = getSupabase();
+  // Önce mevcut URL'i al — path'i çıkartmak için
+  const { data: firma, error: fetchErr } = await supabase
+    .from("firmalar")
+    .select(type === "kase" ? "kase_url" : "antet_url")
+    .eq("id", firmaId)
+    .single();
+  if (fetchErr) throw fetchErr;
+  const url = type === "kase"
+    ? (firma as { kase_url?: string | null })?.kase_url
+    : (firma as { antet_url?: string | null })?.antet_url;
+  if (url) {
+    // publicUrl formatı:
+    //   https://xxx.supabase.co/storage/v1/object/public/firmalar/<firmaId>/<type>.<ext>
+    const marker = "/firmalar/";
+    const idx = url.indexOf(marker);
+    if (idx >= 0) {
+      const path = url.slice(idx + marker.length).split("?")[0];
+      try {
+        const res = await fetch("/api/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bucket: "firmalar", path }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({} as { error?: string }));
+          // Storage'da dosya zaten yoksa hata yutulur — DB güncellenmeye devam edilir
+          console.warn("Storage silme başarısız:", data.error);
+        }
+      } catch (storErr) {
+        console.warn("Storage silme isteği başarısız:", storErr);
+      }
+    }
+  }
+  // DB'deki URL alanını NULL yap
+  const updateField = type === "kase" ? { kase_url: null } : { antet_url: null };
+  const { error: updErr } = await supabase
+    .from("firmalar")
+    .update({ ...updateField, updated_at: new Date().toISOString() })
+    .eq("id", firmaId);
+  if (updErr) throw updErr;
+}
+
 export async function uploadFirmaFile(
   file: File,
   firmaId: string,

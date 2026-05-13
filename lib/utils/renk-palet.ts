@@ -99,7 +99,7 @@ export const RENK_PALETI: PaletRengi[] = [
   { hex: "#451A03", ad: "Koyu Çikolata", bg: "#FEF3C7" },
   { hex: "#78350F", ad: "Çikolata", bg: "#FEF3C7" },
   { hex: "#92400E", ad: "Kahve", bg: "#FEF3C7" },
-  { hex: "#A16207", ad: "Açık Kahve", bg: "#FEF9C3" },
+  { hex: "#A0522D", ad: "Açık Kahve", bg: "#FAEBD7" },
   { hex: "#854D0E", ad: "Taba", bg: "#FEF9C3" },
   // ===== NÖTR TONLAR =====
   { hex: "#0F172A", ad: "Antrasit", bg: "#F1F5F9" },
