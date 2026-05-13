@@ -146,7 +146,8 @@ export async function POST(req: Request) {
     // hour bazen "24" döner, "00" yap
     const hh = get("hour") === "24" ? "00" : get("hour");
     const saat = `${hh}:${get("minute")}:${get("second")}`;
-    const gecmisRows = istekliIds.map((kid) => ({
+    // Önce santiye_id ile dene (yeni schema). Kolon yoksa hatasız fallback uygula.
+    const gecmisRowsWithSantiye = istekliIds.map((kid) => ({
       kullanici_id: kid,
       baslik: baslikFinal,
       govde: govdeFinal,
@@ -155,11 +156,27 @@ export async function POST(req: Request) {
       tarih,
       saat,
       okundu: false,
-      // Kaynak takibi — kayıt silindiğinde ilgili bildirim de silinebilsin
       kaynak_tip: kaynak_tip ?? null,
       kaynak_id: kaynak_id ?? null,
+      santiye_id: eventSantiyeId,
     }));
-    await supabase.from("bildirim_gecmisi").insert(gecmisRows);
+    const { error: insertErr } = await supabase.from("bildirim_gecmisi").insert(gecmisRowsWithSantiye);
+    if (insertErr && /column .*santiye_id/i.test(insertErr.message)) {
+      // Kolon yoksa eski şema ile tekrar dene
+      const gecmisRowsLegacy = istekliIds.map((kid) => ({
+        kullanici_id: kid,
+        baslik: baslikFinal,
+        govde: govdeFinal,
+        url: url || "/dashboard",
+        tag: tagStr || null,
+        tarih,
+        saat,
+        okundu: false,
+        kaynak_tip: kaynak_tip ?? null,
+        kaynak_id: kaynak_id ?? null,
+      }));
+      await supabase.from("bildirim_gecmisi").insert(gecmisRowsLegacy);
+    }
   } catch { /* sessiz — geçmiş kaydı başarısız olsa da push gönderimine devam et */ }
 
   // Bu kullanıcıların subscription'larını al
