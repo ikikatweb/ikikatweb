@@ -967,26 +967,25 @@ export default function BordroTakibi() {
   }, [santiyeler, aktifTeknikSayisiMap]);
 
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
-  // SADECE şu kelimelerden biri tam olarak yazıldıysa teknik filtresi aktif:
-  //   "teknik" veya "teknik personel"
-  // Aksi halde normal metin araması (ad, TC, görev, meslek içinde geçen kelime)
+  // OR mantığı:
+  //  (a) Normal metin araması: ad, TC, görev, meslek alanlarında geçer mi?
+  //  (b) "Teknik personel" sanal etiket araması: aranan q metni "teknik personel"
+  //      yazısının bir parçasıysa (min 3 karakter), teknik etiketi olan personeller
+  //      de eşleşir. Örn: "teknik", "teknik personel", "teknik per" → teknik olanlar
   const filtreli = useMemo(() => {
     const q = trAramaNormalize(arama);
-    const teknikKelimeleri = new Set([
-      trAramaNormalize("teknik"),
-      trAramaNormalize("teknik personel"),
-      trAramaNormalize("teknikpersonel"),
-    ]);
-    const qTeknikMi = q.length > 0 && teknikKelimeleri.has(q);
+    const teknikLabel = trAramaNormalize("teknik personel");
+    const qTeknikEtiketAramasi = q.length >= 3 && teknikLabel.includes(q);
     return personeller.filter((p) => {
       const isTeknik = teknikPersonelIds.has(p.id);
       if (tipFiltre === "teknik" && !isTeknik) return false;
       if (!q) return true;
-      // "teknik" veya "teknik personel" tam yazıldıysa → sadece teknik personelleri getir
-      if (qTeknikMi) return isTeknik;
-      // Normal metin araması: ad, TC, görev, meslek içinde geçer mi?
+      // Normal metin araması
       const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
-      return text.includes(q);
+      if (text.includes(q)) return true;
+      // Sanal "teknik personel" etiketi araması — sadece teknik işaretli olanlar eşleşir
+      if (isTeknik && qTeknikEtiketAramasi) return true;
+      return false;
     });
   }, [personeller, arama, tipFiltre, teknikPersonelIds]);
 
@@ -1015,34 +1014,56 @@ export default function BordroTakibi() {
       personelAtamalari.get(a.personel_id)!.push(a);
     }
 
+    // Arama durumu: aranan q metni "teknik personel" sanal etiketinin parçası mı?
+    // Eğer öyleyse VE personel metin alanlarında eşleşmiyorsa → sadece teknik etiketi
+    // olduğu şantiyelerde göster (rozet yoksa orada listelenmesin)
+    const q = trAramaNormalize(arama);
+    const teknikLabel = trAramaNormalize("teknik personel");
+    const qTeknikEtiketAramasi = q.length >= 3 && teknikLabel.includes(q);
+
     for (const p of filtreli) {
+      // Bu personel arama SONUCUNA neden eşleşti? — text mi, teknik etiketi mi?
+      let matchesViaText = false;
+      if (q) {
+        const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
+        matchesViaText = text.includes(q);
+      }
+      // Sadece teknik etiketi ile eşleşmiş (text alanlarında "teknik" yok) → şantiye kısıtla
+      const sadeceTeknikEtiketIle = !!q && qTeknikEtiketAramasi && !matchesViaText;
+
       const santiyeGunleri = gunMap.get(p.id);
-      const calistigiSantiyeler = santiyeGunleri
+      let calistigiSantiyeler = santiyeGunleri
         ? Array.from(santiyeGunleri.keys()).filter((sid) => map.has(sid))
         : [];
+
+      // Sadece teknik etiketi ile eşleştiyse → yalnız o personelin teknik OLDUĞU şantiyelerde göster
+      if (sadeceTeknikEtiketIle) {
+        const teknikSantiyeleri = teknikPersonelMap.get(p.id);
+        if (teknikSantiyeleri && teknikSantiyeleri.size > 0) {
+          calistigiSantiyeler = calistigiSantiyeler.filter((sid) => teknikSantiyeleri.has(sid));
+        } else {
+          calistigiSantiyeler = [];
+        }
+      }
 
       if (calistigiSantiyeler.length > 0) {
         for (const sid of calistigiSantiyeler) {
           map.get(sid)!.push(p);
         }
-      } else {
+      } else if (!sadeceTeknikEtiketIle) {
+        // Teknik etiketi araması değilse PASIF / ATANMAMIŞ klasmanına bakmaya devam et
         const tumAtamalari = personelAtamalari.get(p.id) ?? [];
-        // Geçmişte atama vardı mı? — sadece izinli şantiyelerdeki atamaları say
-        // (Aksi halde kısıtlı kullanıcı, başka şantiyelerdeki personeli PASİF'te görür)
         const izinliAtamalari = tumAtamalari.filter((a) => izinliSantiyeIds.has(a.santiye_id));
         if (izinliAtamalari.length > 0) {
-          // Kullanıcının izinli şantiyelerinden geçmiş, şu an aktif değil → PASIF
           map.get(PASIF_KEY)!.push(p);
         } else if (tumAtamalari.length === 0) {
-          // Hiç atama yok → ATANMAMIŞ (yeni kayıt veya hiç bordroya alınmamış)
           map.get(ATANMAMIS_KEY)!.push(p);
         }
-        // Aksi halde: bu personel başka şantiyelere ait, kullanıcıya gösterme
       }
     }
     void aySonuSantiyeMap;
     return map;
-  }, [filtreli, filtreliSantiyeler, gunMap, atamalar]);
+  }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap]);
 
   // santiye_id'den firma_id bul (yoksa undefined)
   function firmaIdFromSantiyeId(santiyeId: string | undefined | null): string | undefined {
@@ -2507,7 +2528,7 @@ export default function BordroTakibi() {
           margin: { left: 14, right: 14 },
           // "(Teknik Personel)" suffix'ini SADECE kalın + indigo yap (isim normal kalır).
           // Hücre çizildikten sonra overdraw: önce dolgu rengiyle üzerini kapat,
-          // sonra metni iki parça halinde elle çiz.
+          // sonra metni iki parça halinde elle çiz. autoTable ile aynı baseline + padding.
           didDrawCell: (data) => {
             if (data.section !== "body" || data.column.index !== 1) return;
             const fullTxt = String(data.cell.raw ?? "");
@@ -2516,7 +2537,7 @@ export default function BordroTakibi() {
             if (idx < 0) return;
             const namePart = fullTxt.slice(0, idx);
             const suffixPart = fullTxt.slice(idx);
-            // Mevcut hücreyi dolgu rengiyle kapla (kenarlığı koru)
+            // Mevcut hücreyi dolgu rengiyle kapla (kenarlığı koru — 0.15mm inset)
             let fillRgb: [number, number, number] = [255, 255, 255];
             const fc = data.cell.styles.fillColor;
             if (Array.isArray(fc) && fc.length >= 3) {
@@ -2530,20 +2551,25 @@ export default function BordroTakibi() {
               data.cell.height - 0.3,
               "F",
             );
-            // Metni iki parça halinde çiz
+            // Padding'i hücreden çek (cellPadding sayı veya obje olabilir)
+            const cp = data.cell.styles.cellPadding;
+            let padLeft = 1.5;
+            if (typeof cp === "number") padLeft = cp;
+            else if (cp && typeof cp === "object" && "left" in cp) {
+              padLeft = (cp as { left: number }).left;
+            }
             const fontSize = (data.cell.styles.fontSize as number) ?? 8;
-            const padLeft = 1.8;
-            // jsPDF text baseline = "alphabetic"; merkez için baseline = y + h/2 + ~fontSize*0.35
-            const textY = data.cell.y + data.cell.height / 2 + fontSize * 0.35;
+            // baseline:"middle" → Y = cell.y + cell.height/2 (autoTable da aynı şekilde hizalar)
+            const textY = data.cell.y + data.cell.height / 2;
             const nameX = data.cell.x + padLeft;
             doc.setFont("helvetica", "normal");
             doc.setFontSize(fontSize);
             doc.setTextColor(0, 0, 0);
-            doc.text(namePart, nameX, textY);
+            doc.text(namePart, nameX, textY, { baseline: "middle" });
             const nameWidth = doc.getTextWidth(namePart);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(67, 56, 202);
-            doc.text(suffixPart, nameX + nameWidth, textY);
+            doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
             doc.setFont("helvetica", "normal");
             doc.setTextColor(0, 0, 0);
           },
@@ -2591,7 +2617,7 @@ export default function BordroTakibi() {
         headStyles: { fillColor: [50, 50, 50], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
-        // 30 günü aşanlar — ad sütunu index 0; overdraw ile iki parça çiz
+        // 30 günü aşanlar — ad sütunu index 0; autoTable ile aynı baseline + padding kullan
         didDrawCell: (data) => {
           if (data.section !== "body" || data.column.index !== 0) return;
           const fullTxt = String(data.cell.raw ?? "");
@@ -2613,18 +2639,23 @@ export default function BordroTakibi() {
             data.cell.height - 0.3,
             "F",
           );
+          const cp = data.cell.styles.cellPadding;
+          let padLeft = 1.5;
+          if (typeof cp === "number") padLeft = cp;
+          else if (cp && typeof cp === "object" && "left" in cp) {
+            padLeft = (cp as { left: number }).left;
+          }
           const fontSize = (data.cell.styles.fontSize as number) ?? 8;
-          const padLeft = 1.8;
-          const textY = data.cell.y + data.cell.height / 2 + fontSize * 0.35;
+          const textY = data.cell.y + data.cell.height / 2;
           const nameX = data.cell.x + padLeft;
           doc.setFont("helvetica", "normal");
           doc.setFontSize(fontSize);
           doc.setTextColor(0, 0, 0);
-          doc.text(namePart, nameX, textY);
+          doc.text(namePart, nameX, textY, { baseline: "middle" });
           const nameWidth = doc.getTextWidth(namePart);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(67, 56, 202);
-          doc.text(suffixPart, nameX + nameWidth, textY);
+          doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
           doc.setFont("helvetica", "normal");
           doc.setTextColor(0, 0, 0);
         },
