@@ -19,6 +19,21 @@ thead th {
   overflow-anchor: none;
 }
 
+/* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
+   Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
+   !important ile uygulanır çünkü bazı UI kütüphaneleri kendi scrollbar style'larını ekliyor. */
+.scrollbar-hidden,
+.scrollbar-hidden * {
+  scrollbar-width: none !important;           /* Firefox */
+  -ms-overflow-style: none !important;        /* Eski IE/Edge */
+}
+.scrollbar-hidden::-webkit-scrollbar,
+.scrollbar-hidden *::-webkit-scrollbar {
+  display: none !important;                   /* Chrome, Safari, Opera */
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Rich text editor — tab genişliği inline style yeterli olmazsa (contentEditable child'ları
    tab-size'i her zaman inherit etmeyebilir) burası override eder. 1.25cm = Word varsayılanı. */
 .rich-text-editor-content,

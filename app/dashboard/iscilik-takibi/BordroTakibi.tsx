@@ -74,6 +74,8 @@ type SantiyeBasic = {
   devir_tarihi?: string | null;
   yuklenici_firma_id?: string | null;
   isyeri_teslim_tarihi?: string | null;
+  is_suresi?: number | null;  // toplam gün sayısı (bitim hesabı için)
+  is_bitim_tarihi?: string | null;  // manuel girilmişse — yoksa hesaplanır
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
 };
@@ -483,6 +485,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
   // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
   const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null }>>(new Map());
+  // İş bitim tarihi haritası — santiye_id → { baslangic_tarihi, sure_text, is_bitim_tarihi, isyeri_teslim_tarihi, is_suresi }
+  // iscilik_takibi VE santiyeler verilerinden birleşik
+  const [iscilikBitimMap, setIscilikBitimMap] = useState<Map<string, {
+    baslangic_tarihi: string | null;
+    sure_text: string | null;
+    is_bitim_tarihi: string | null;
+    isyeri_teslim_tarihi: string | null;
+    is_suresi: number | null;
+  }>>(new Map());
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [muhasebeEmail, setMuhasebeEmail] = useState<string>("");
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
@@ -834,13 +845,29 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           sonAyByTakibi.set(ay.iscilik_takibi_id, ay.ait_oldugu_ay);
         }
       }
-      for (const r of (iscilik as { id: string; santiye_id: string; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null }) | null }[]) ?? []) {
+      // İş bitim tarihi map'i — iscilik + santiye verilerinden
+      const bitimInfo = new Map<string, {
+        baslangic_tarihi: string | null;
+        sure_text: string | null;
+        is_bitim_tarihi: string | null;
+        isyeri_teslim_tarihi: string | null;
+        is_suresi: number | null;
+      }>();
+      for (const r of (iscilik as { id: string; santiye_id: string; baslangic_tarihi?: string | null; sure_text?: string | null; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null }) | null }[]) ?? []) {
         const sant = r.santiyeler ?? null;
         // BÜTÜN iscilik_takibi'ye girmiş işleri al — sekme filtresi (Bordro / Geçici Kabulü)
         // sonradan ayıracak. Burada "bitmiş" diye filtreleme yapmıyoruz.
         if (r.santiye_id) {
           iscilikRaporSantiyeIds.add(r.santiye_id);
           if (sant?.yuklenici_firma_id) firmaIdMap.set(r.santiye_id, sant.yuklenici_firma_id);
+          // Bitim için iscilik + santiye bilgilerini birleştir
+          bitimInfo.set(r.santiye_id, {
+            baslangic_tarihi: r.baslangic_tarihi ?? null,
+            sure_text: r.sure_text ?? null,
+            is_bitim_tarihi: sant?.is_bitim_tarihi ?? null,
+            isyeri_teslim_tarihi: sant?.isyeri_teslim_tarihi ?? null,
+            is_suresi: sant?.is_suresi ?? null,
+          });
           // Prim hesapla: yatması gereken = (sözleşme bedeli + keşif + ff) × oran / 100
           const bedel = sant?.sozlesme_bedeli ?? 0;
           const kesif = r.kesif_artisi ?? 0;
@@ -870,6 +897,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy });
       }
       setPrimMap(finalPrimMap);
+      setIscilikBitimMap(bitimInfo);
       const tumSantiyeler = (s as SantiyeBasic[]) ?? [];
       const aktifSantiyeler = tumSantiyeler
         .filter((x) => iscilikRaporSantiyeIds.has(x.id))
@@ -992,12 +1020,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return ids;
   }, [teknikPersonelMap]);
 
-  // Personel'e atanmış teknik isim haritası: "personelId|santiyeId" → atanmış isim
+  // Personel'e atanmış teknik isim haritası: "personelId|santiyeId" → atanmış isim (display)
+  // DB'de format "Şantiye Şefi#0" gibi index-suffix ile olabilir → display için index temizle.
   const teknikIsimMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of teknikKayitlari) {
       if (r.is_teknik && r.teknik_isim) {
-        m.set(`${r.personel_id}|${r.santiye_id}`, r.teknik_isim);
+        // İndex suffix'i kaldır: "Şantiye Şefi#0" → "Şantiye Şefi"
+        const isimler = r.teknik_isim
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+          .map((s) => s.includes("#") ? s.split("#")[0] : s);
+        m.set(`${r.personel_id}|${r.santiye_id}`, isimler.join(", "));
       }
     }
     return m;
@@ -3311,6 +3346,51 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     children: React.ReactNode;
   }) {
     void santiyeId;
+
+    // İş bitim tarihi ve kalan gün hesabı — öncelik sırası:
+    // 1) iscilik_takibi.baslangic_tarihi + sure_text toplam (işçilik durum raporu formatı)
+    // 2) santiye.is_bitim_tarihi manuel
+    // 3) santiye.isyeri_teslim_tarihi + is_suresi
+    const bitimBilgi = (() => {
+      if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
+      const info = iscilikBitimMap.get(santiyeId);
+      const s = santiyeler.find((x) => x.id === santiyeId);
+      let bitimTarihi: string | null = null;
+      // 1) iscilik_takibi: baslangic_tarihi + sure_text
+      if (info?.baslangic_tarihi && info.sure_text) {
+        const toplamGun = info.sure_text.split("+").reduce((t, p) => t + (parseInt(p.trim()) || 0), 0);
+        if (toplamGun > 0) {
+          const d = new Date(info.baslangic_tarihi + "T00:00:00");
+          d.setDate(d.getDate() + toplamGun - 1);
+          bitimTarihi = d.toISOString().slice(0, 10);
+        }
+      }
+      // 2) santiye.is_bitim_tarihi manuel
+      if (!bitimTarihi && (info?.is_bitim_tarihi || s?.is_bitim_tarihi)) {
+        bitimTarihi = info?.is_bitim_tarihi ?? s?.is_bitim_tarihi ?? null;
+      }
+      // 3) santiye.isyeri_teslim_tarihi + is_suresi
+      if (!bitimTarihi) {
+        const teslim = info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi ?? null;
+        const sure = info?.is_suresi ?? s?.is_suresi ?? null;
+        if (teslim && sure && sure > 0) {
+          const d = new Date(teslim + "T00:00:00");
+          d.setDate(d.getDate() + sure - 1);
+          bitimTarihi = d.toISOString().slice(0, 10);
+        }
+      }
+      if (!bitimTarihi) return null;
+      // Kalan gün: bitim - bugün
+      const bugun = new Date();
+      bugun.setHours(0, 0, 0, 0);
+      const bitim = new Date(bitimTarihi + "T00:00:00");
+      const kalanGun = Math.ceil((bitim.getTime() - bugun.getTime()) / 86400000);
+      const fmtTr = (d: string) => {
+        const dt = new Date(d + "T00:00:00");
+        return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("tr-TR");
+      };
+      return { bitimTarihi: fmtTr(bitimTarihi), kalanGun };
+    })();
     return (
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
         <div
@@ -3355,6 +3435,41 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   <span className="text-gray-400">{fmt(bordro)}</span>
                   <span> = </span>
                   <span className={`font-bold ${sonucClass}`}>{fmt(sonuc)}</span>
+                  {bitimBilgi && (
+                    <>
+                      <span className="mx-2 text-gray-300">|</span>
+                      <span className="text-[#1E3A5F]" title="İş bitim tarihi">📅 {bitimBilgi.bitimTarihi}</span>
+                      <span className={`ml-1.5 font-semibold ${
+                        bitimBilgi.kalanGun < 0
+                          ? "text-red-600"
+                          : bitimBilgi.kalanGun <= 30
+                            ? "text-orange-600"
+                            : "text-emerald-700"
+                      }`} title="Bugünden bitim tarihine kalan gün">
+                        ({bitimBilgi.kalanGun >= 0 ? `${bitimBilgi.kalanGun} gün kaldı` : `${Math.abs(bitimBilgi.kalanGun)} gün geçti`})
+                      </span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+            {/* Prim hesabı yoksa bile, iş bitim tarihi varsa ayrı satırda göster */}
+            {bitimBilgi && (() => {
+              const prim = primMap.get(santiyeId);
+              const primVar = prim && (prim.yatmasiGereken !== 0 || prim.yatan !== 0 || bordroToplamForSantiye(santiyeId) !== 0);
+              if (primVar) return null; // zaten yukarıda gösterildi
+              return (
+                <div className="text-[10px] text-gray-500 font-mono mt-0.5 truncate">
+                  <span className="text-[#1E3A5F]">📅 {bitimBilgi.bitimTarihi}</span>
+                  <span className={`ml-1.5 font-semibold ${
+                    bitimBilgi.kalanGun < 0
+                      ? "text-red-600"
+                      : bitimBilgi.kalanGun <= 30
+                        ? "text-orange-600"
+                        : "text-emerald-700"
+                  }`}>
+                    ({bitimBilgi.kalanGun >= 0 ? `${bitimBilgi.kalanGun} gün kaldı` : `${Math.abs(bitimBilgi.kalanGun)} gün geçti`})
+                  </span>
                 </div>
               );
             })()}
@@ -4228,9 +4343,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         </DialogContent>
       </Dialog>
 
-      {/* Gün Düzenle Dialog */}
+      {/* Gün Düzenle Dialog — scrollbar gizli (scroll çalışır ama görünmez) */}
       <Dialog open={!!gunEdit} onOpenChange={(o) => !o && setGunEdit(null)}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto scrollbar-hidden">
           <DialogHeader>
             <DialogTitle>
               {gunEdit?.personel.ad_soyad} · {santiyeler.find((s) => s.id === gunEdit?.santiyeId)?.is_adi}
@@ -4272,23 +4387,44 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             // Şantiyenin teknik personel listesi (iş formunda girilen isimler)
             const santiyeKayit = santiyeler.find((s) => s.id === gunEdit.santiyeId);
             const santiyeTeknikIsimleri = santiyeKayit?.teknik_personeller ?? [];
-            // Şu an bu personele atanmış isimler (virgülle ayrılmış string'den array'e)
-            const mevcutIsimStr = teknikKayitlari.find(
+            // "Teknik personele gerek yok" tıklı iş → DB'de teknik_personeller = []  (boş dizi).
+            // Legacy/tanımsız iş → null/undefined. Bu ikisini ayırt ederek "gerek yok" durumunda
+            // tek checkbox fallback'ini de gizleyelim — kullanıcı explicit kapatmış demektir.
+            const teknikGerekliDegil = Array.isArray(santiyeKayit?.teknik_personeller)
+              && santiyeKayit!.teknik_personeller!.length === 0;
+            // INDEX-BAZLI KEY: "Şantiye Şefi#0" gibi. Aynı isim 2 kez varsa farklı index → farklı key.
+            // DB'ye yazılırken bu format ile yazılır, görsel olarak sadece isim gösterilir.
+            const teknikSecenekleri = santiyeTeknikIsimleri.map((isim, idx) => ({
+              isim,
+              key: `${isim}#${idx}`,
+            }));
+            // Şu an bu personele atanmış keys (DB'de "Şantiye Şefi#0" gibi virgülle ayrılmış)
+            const mevcutKeyStr = teknikKayitlari.find(
               (r) => r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId,
             )?.teknik_isim ?? "";
-            const mevcutIsimSet = new Set(
-              mevcutIsimStr.split(",").map((s) => s.trim()).filter((s) => s.length > 0),
-            );
-            const teknikMi = mevcutIsimSet.size > 0
+            const mevcutKeyListesi = mevcutKeyStr.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+            // Geriye uyumluluk: eski kayıt key formatı olmayan "Şantiye Şefi" gibi ise,
+            // listedeki İLK eşleşen indeksi ile yorumla.
+            const mevcutKeySet = new Set<string>();
+            for (const raw of mevcutKeyListesi) {
+              if (raw.includes("#")) {
+                mevcutKeySet.add(raw);
+              } else {
+                // Eski format: ilk eşleşen ismi key'e dönüştür
+                const eslesen = teknikSecenekleri.find((o) => o.isim === raw && !mevcutKeySet.has(o.key));
+                if (eslesen) mevcutKeySet.add(eslesen.key);
+              }
+            }
+            const teknikMi = mevcutKeySet.size > 0
               || !!teknikPersonelMap.get(gunEdit.personel.id)?.has(gunEdit.santiyeId);
 
-            // Bir ismi seç/kaldır — TEK SEÇİM (radio button davranışı).
-            // Yeni bir isim tıklanırsa öncekiler otomatik kalkar.
-            // Aynı isim tekrar tıklanırsa kaldırılır.
-            const toggleTeknikIsim = async (isim: string) => {
-              const ayniIsme_yeniden_tiklandi = mevcutIsimSet.has(isim) && mevcutIsimSet.size === 1;
-              const yeniIsTeknik = !ayniIsme_yeniden_tiklandi;
-              const yeniIsimStr = yeniIsTeknik ? isim : "";
+            // Bir key'i seç/kaldır — TEK SEÇİM (radio button davranışı, index-bazlı).
+            const toggleTeknikIsim = async (key: string) => {
+              const ayniKeye_yeniden_tiklandi = mevcutKeySet.has(key) && mevcutKeySet.size === 1;
+              const yeniIsTeknik = !ayniKeye_yeniden_tiklandi;
+              const yeniIsimStr = yeniIsTeknik ? key : "";
+              // Display amaçlı: key'den ismi çıkar (eski format için key === isim)
+              const goruntuIsim = key.includes("#") ? key.split("#")[0] : key;
 
               // OPTIMISTIC UPDATE: state'i hemen güncelle
               setTeknikKayitlari((prev) => {
@@ -4312,8 +4448,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   yeniIsTeknik ? yeniIsimStr : null,
                 );
                 toast.success(yeniIsTeknik
-                  ? `"${isim}" seçildi.`
-                  : `"${isim}" kaldırıldı.`);
+                  ? `"${goruntuIsim}" seçildi.`
+                  : `"${goruntuIsim}" kaldırıldı.`);
               } catch (err) {
                 console.error("[teknik personel toggle] Hata:", err);
                 const msg = err instanceof Error ? err.message : String(err);
@@ -4332,19 +4468,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     Başka personele atanmış isimler PASİF (tikli + disabled) görünür,
                     yanlarında o personelin adı gösterilir.
                     Atamalara, giriş/çıkış tarihlerine ETKİSİ YOKTUR. */}
-                {!isReadOnly && yDuzenle && santiyeTeknikIsimleri.length > 0 && (() => {
-                  // Başka personellerin teknik isim atamalarını topla: isim → ad_soyad
-                  const baskaPersonelinIsmi = new Map<string, string>();
+                {!isReadOnly && yDuzenle && teknikSecenekleri.length > 0 && (() => {
+                  // Başka personellere atanmış key'leri topla: key → ad_soyad
+                  // (key formatı "isim#index" — index olmayan eski kayıtlar için ilk eşleşene mapleme)
+                  const baskaPersonelinKeyi = new Map<string, string>();
                   for (const r of teknikKayitlari) {
                     if (r.santiye_id !== gunEdit.santiyeId) continue;
                     if (r.personel_id === gunEdit.personel.id) continue;
                     if (!r.is_teknik || !r.teknik_isim) continue;
-                    // Bir personele virgülle birden fazla isim atanmış olabilir → her birini ekle
-                    const isimler = r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+                    const rawKeyler = r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
                     const baskaPersonel = personeller.find((p) => p.id === r.personel_id);
                     const ad = baskaPersonel?.ad_soyad ?? "—";
-                    for (const isim of isimler) {
-                      baskaPersonelinIsmi.set(isim, ad);
+                    for (const raw of rawKeyler) {
+                      if (raw.includes("#")) {
+                        baskaPersonelinKeyi.set(raw, ad);
+                      } else {
+                        // Eski format — ilk eşleşen index'i bul
+                        const eslesen = teknikSecenekleri.find(
+                          (o) => o.isim === raw && !baskaPersonelinKeyi.has(o.key),
+                        );
+                        if (eslesen) baskaPersonelinKeyi.set(eslesen.key, ad);
+                      }
                     }
                   }
                   return (
@@ -4353,21 +4497,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     }`}>
                       <div className="text-sm font-semibold text-[#1E3A5F] mb-1.5">
                         Teknik Personel
-                        {mevcutIsimSet.size > 0 && (
+                        {mevcutKeySet.size > 0 && (
                           <span className="ml-2 text-[9px] text-indigo-700 font-normal">
                             (1 seçili)
                           </span>
                         )}
                       </div>
                       <div className="space-y-1">
-                        {santiyeTeknikIsimleri.map((isim) => {
-                          const seciliMi = mevcutIsimSet.has(isim);
-                          const baskasinda = baskaPersonelinIsmi.get(isim);
-                          // Bu isim başka birine atanmışsa → pasif (tikli + disabled)
+                        {teknikSecenekleri.map(({ isim, key }) => {
+                          const seciliMi = mevcutKeySet.has(key);
+                          const baskasinda = baskaPersonelinKeyi.get(key);
+                          // Bu key başka birine atanmışsa → pasif (tikli + disabled)
                           if (baskasinda) {
                             return (
                               <div
-                                key={isim}
+                                key={key}
                                 className="flex items-center gap-2 px-2 py-1.5 rounded border bg-gray-100 border-gray-300 opacity-70 cursor-not-allowed"
                                 title={`Bu rol şu an "${baskasinda}" personeline atanmış.`}
                               >
@@ -4388,7 +4532,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           }
                           return (
                             <label
-                              key={isim}
+                              key={key}
                               className={`flex items-center gap-2 px-2 py-1.5 rounded border cursor-pointer ${
                                 seciliMi ? "bg-indigo-100 border-indigo-300" : "bg-white border-gray-200 hover:bg-gray-50"
                               }`}
@@ -4397,7 +4541,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                 type="checkbox"
                                 className="h-4 w-4 accent-indigo-600"
                                 checked={seciliMi}
-                                onChange={() => toggleTeknikIsim(isim)}
+                                onChange={() => toggleTeknikIsim(key)}
                               />
                               <span className="text-sm text-[#1E3A5F]">{isim}</span>
                             </label>
@@ -4412,8 +4556,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   );
                 })()}
 
-                {/* Şantiyede teknik personel listesi tanımlı değilse uyarı — eski tikleme ile geri uyumlu */}
-                {!isReadOnly && yDuzenle && santiyeTeknikIsimleri.length === 0 && (
+                {/* Şantiyede teknik personel listesi tanımlı değilse uyarı — eski tikleme ile geri uyumlu.
+                    "Teknik personele gerek yok" tıklı (boş dizi) işlerde fallback'i de gizle. */}
+                {!isReadOnly && yDuzenle && santiyeTeknikIsimleri.length === 0 && !teknikGerekliDegil && (
                   <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer ${
                     teknikMi ? "bg-indigo-50 border-indigo-200" : "bg-white border-gray-200 hover:bg-gray-50"
                   }`}>

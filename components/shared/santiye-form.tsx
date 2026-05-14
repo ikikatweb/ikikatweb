@@ -408,13 +408,21 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
         await saveSantiyeIsGruplari(sId, gecerliDagilim);
       } catch { /* tablo yoksa sessiz atla */ }
 
-      // Keşif Artışı — iscilik_takibi tablosuna upsert (işçilik takibi sayfasıyla ortak veri)
+      // Keşif Artışı + İşyeri Teslim Tarihi + İş Süresi → iscilik_takibi tablosuna sync.
+      // Bu alanlar iki sayfada da (Yönetim>Şantiyeler ve İşçilik Durum Raporu) görünür,
+      // birinden değiştirildiğinde diğerine yansıması için her iki tabloda da güncellenir.
       try {
         const kesifArtisi = parseParaInput(kesifArtisiStr);
-        await upsertIscilikTakibi(sId, { kesif_artisi: kesifArtisi });
+        const sureGun = formData.is_suresi ?? null;
+        await upsertIscilikTakibi(sId, {
+          kesif_artisi: kesifArtisi,
+          // SYNC: isyeri_teslim_tarihi → iscilik_takibi.baslangic_tarihi
+          baslangic_tarihi: formData.isyeri_teslim_tarihi ?? null,
+          // SYNC: is_suresi (sayı) → iscilik_takibi.sure_text (string)
+          sure_text: sureGun != null ? String(sureGun) : null,
+        });
       } catch (err) {
-        // Kesif artışı kaydı başarısız olursa form genel başarısını bozma, sadece uyarı göster
-        console.warn("Keşif artışı kaydedilemedi:", err);
+        console.warn("İşçilik takibi sync hatası:", err);
       }
 
       // Dosya yüklemeleri

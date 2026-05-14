@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getIscilikTakibi, upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
+import { updateSantiye } from "@/lib/supabase/queries/santiyeler";
 import { getAylikVeriler, createAylikVeri, updateAylikVeri, deleteAylikVeri } from "@/lib/supabase/queries/iscilik-aylik";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
@@ -474,8 +475,13 @@ export default function IscilikDetayPage() {
                         onBlur={async () => {
                           if (!yDuzenle) { setEditingHeader(null); return; }
                           try {
-                            await upsertIscilikTakibi(takip.santiye_id, { baslangic_tarihi: headerEditValue || null });
-                            setTakip((p) => p ? { ...p, baslangic_tarihi: headerEditValue || null } : p);
+                            const yeniDeger = headerEditValue || null;
+                            await upsertIscilikTakibi(takip.santiye_id, { baslangic_tarihi: yeniDeger });
+                            // SYNC: santiyeler tablosuna da yansıt (isyeri_teslim_tarihi)
+                            try {
+                              await updateSantiye(takip.santiye_id, { isyeri_teslim_tarihi: yeniDeger });
+                            } catch (e) { console.warn("santiye sync hatası:", e); }
+                            setTakip((p) => p ? { ...p, baslangic_tarihi: yeniDeger } : p);
                           } catch { toast.error("Güncelleme hatası."); }
                           setEditingHeader(null);
                         }}
@@ -504,8 +510,16 @@ export default function IscilikDetayPage() {
                         onBlur={async () => {
                           if (!yDuzenle) { setEditingHeader(null); return; }
                           try {
-                            await upsertIscilikTakibi(takip.santiye_id, { sure_text: headerEditValue || null });
-                            setTakip((p) => p ? { ...p, sure_text: headerEditValue || null } : p);
+                            const yeniDeger = headerEditValue || null;
+                            await upsertIscilikTakibi(takip.santiye_id, { sure_text: yeniDeger });
+                            // SYNC: santiyeler tablosuna toplam gün sayısı olarak yansıt (is_suresi)
+                            const toplamGun = yeniDeger
+                              ? yeniDeger.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0)
+                              : null;
+                            try {
+                              await updateSantiye(takip.santiye_id, { is_suresi: toplamGun });
+                            } catch (e) { console.warn("santiye sync hatası:", e); }
+                            setTakip((p) => p ? { ...p, sure_text: yeniDeger } : p);
                           } catch { toast.error("Güncelleme hatası."); }
                           setEditingHeader(null);
                         }}
