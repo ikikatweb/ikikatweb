@@ -50,7 +50,7 @@ function kisalt(s: string | null | undefined, n: number): string {
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 export default function GelenEvrakPage() {
-  const { kullanici, isYonetici, hasPermission } = useAuth();
+  const { kullanici, isYonetici, hasPermission, loading: authLoading } = useAuth();
   const yEkle = hasPermission("yazismalar-gelen-evrak", "ekle");
   const yDuzenle = hasPermission("yazismalar-gelen-evrak", "duzenle");
   const ySil = hasPermission("yazismalar-gelen-evrak", "sil");
@@ -105,14 +105,18 @@ export default function GelenEvrakPage() {
   const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);
 
   const loadData = useCallback(async () => {
+    // KRİTİK: Auth bilgisi yüklenmeden veri çekme. Aksi halde santiye_admin/kısıtlı
+    // kullanıcılar için filtre uygulanmadan TÜM evraklar gelir (sonra doğru filtre
+    // uygulanınca azalır → kısa süreli güvenlik açığı görünümü).
+    if (authLoading || !kullanici) return;
     try {
       // Kısıtlı: kendi yazdıklarını + atandığı şantiyelerin evraklarını
       // Şantiye admin: atandığı şantiyelerin tüm evraklarını
       // Yönetici: hepsi
       // santiyesiz_veri_gor: true → şantiye atanmamış (NULL) evrakları da görür.
-      const olusturan = (kullanici?.rol === "kisitli") ? kullanici.id : undefined;
-      const santiyeFilter = (!isYonetici && kullanici?.santiye_ids) ? kullanici.santiye_ids : undefined;
-      const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
+      const olusturan = (kullanici.rol === "kisitli") ? kullanici.id : undefined;
+      const santiyeFilter = (!isYonetici && kullanici.santiye_ids) ? kullanici.santiye_ids : undefined;
+      const santiyesizDahil = !!kullanici.santiyesiz_veri_gor;
       const [eData, fData] = await Promise.all([
         getGelenEvraklar(olusturan, santiyeFilter, santiyesizDahil),
         getFirmalar(),
@@ -131,7 +135,7 @@ export default function GelenEvrakPage() {
       setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
-  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids, kullanici?.santiyesiz_veri_gor]);
+  }, [authLoading, isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids, kullanici?.santiyesiz_veri_gor]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
