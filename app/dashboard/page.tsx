@@ -111,7 +111,7 @@ export default function DashboardPage() {
   const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
   const [bordroGunlukUcretler, setBordroGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [bordroIscilikTakibi, setBordroIscilikTakibi] = useState<IscilikTakibiWithSantiye[]>([]);
-  const [bordroAyliklar, setBordroAyliklar] = useState<{ iscilik_takibi_id: string; ait_oldugu_ay: string }[]>([]);
+  const [bordroAyliklar, setBordroAyliklar] = useState<{ iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]>([]);
   const [bordroBrutUcretler, setBordroBrutUcretler] = useState<PersonelBrutUcret[]>([]);
   const [bordroLoading, setBordroLoading] = useState(true);
   const [yaklasirGun, setYaklasirGun] = useState(30);
@@ -249,7 +249,7 @@ export default function DashboardPage() {
           getBordroPersoneller().catch(() => [] as Personel[]),
           getGunlukUcretler().catch(() => [] as GunlukUcret[]),
           getIscilikTakibi().catch(() => [] as IscilikTakibiWithSantiye[]),
-          getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
+          getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]),
           getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
         ]);
         setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
@@ -257,7 +257,7 @@ export default function DashboardPage() {
         setBordroPersoneller(bPers as Personel[]);
         setBordroGunlukUcretler(ucretData as GunlukUcret[]);
         setBordroIscilikTakibi(iscilikData as IscilikTakibiWithSantiye[]);
-        setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]);
+        setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]);
         setBordroBrutUcretler(brutData as PersonelBrutUcret[]);
       } catch { /* sessiz */ }
       finally {
@@ -602,6 +602,10 @@ export default function DashboardPage() {
       tumIds = new Set([...tumIds].filter((id) => izinli.has(id)));
     }
     for (const sid of tumIds) {
+      const depoKap = depoKapMap.get(sid) ?? 0;
+      // Depo kapalı (kapasite 0) ise dashboard widget'ta gösterme.
+      // Geçmiş veriler korunur — yakıt sayfasındaki ana filtreden tarihsel inceleme yapılır.
+      if (depoKap === 0) continue;
       const alim = alimMap.get(sid) ?? 0;
       const dagitim = dagitimMap.get(sid) ?? 0;
       const gelen = gelenVirmanMap.get(sid) ?? 0;
@@ -612,7 +616,7 @@ export default function DashboardPage() {
         santiyeId: sid,
         santiye: santMap.get(sid) ?? "—",
         alim, dagitim, stok,
-        depoKapasitesi: depoKapMap.get(sid) ?? 0,
+        depoKapasitesi: depoKap,
       });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
@@ -924,6 +928,126 @@ export default function DashboardPage() {
       ayLabel: `${AY_ADLARI[bugun.getMonth()]} ${bugun.getFullYear()}`,
     };
   }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, bugun, isYonetici, kullanici]);
+
+  // ============================================================
+  // EKSİK YÜKLENİCİ VERİ GİRİŞİ (widget: "eksik_veri_girisi")
+  // ============================================================
+  // Mantık: Bulunduğumuz ayın bir öncesindeki ay için yüklenici verisi
+  // (iscilik_aylik.yuklenici_tutar > 0) girilmemiş aktif işleri listeler.
+  //   - Mayıs'tayken Nisan verisi yapılmadıysa görünür.
+  //   - Haziran'a geçildiğinde otomatik olarak Mayıs verisini sorgular.
+  //   - O ay için yüklenici verisi DB'ye girildiğinde sonraki refresh'te
+  //     liste otomatik temizlenir (canlı veriden hesaplanır).
+  // Tamamlanmış / tasfiye / devir / kabul gören şantiyeler dahil değildir.
+  const eksikVeriGirisleri = useMemo(() => {
+    if (bordroLoading) return null;
+
+    // ait_oldugu_ay formatı tutarsız: bazı kayıtlar "MM.YYYY" ("04.2026"),
+    // bazıları "YYYY-MM" ("2026-04"). String karşılaştırma yanıltıcı — sayısal
+    // YYYYMM'a çevirip karşılaştırırız (iş durum raporundaki ayYilNumerik ile aynı).
+    const ayYilNumerik = (s: string | null | undefined): number => {
+      if (!s) return 0;
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return parseInt(mm[2], 10) * 100 + parseInt(mm[1], 10);
+      const iso = s.match(/^(\d{4})-(\d{2})/);
+      if (iso) return parseInt(iso[1], 10) * 100 + parseInt(iso[2], 10);
+      return 0;
+    };
+
+    // Geçen ay — bugün - 1 ay. Ay sınırını aşarsak yıl geriler.
+    const today = new Date(bugun);
+    const prev = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const prevYil = prev.getFullYear();
+    const prevAy = prev.getMonth() + 1;
+    const prevAyNum = prevYil * 100 + prevAy;
+    const prevLabel = `${String(prevAy).padStart(2, "0")}.${prevYil}`;
+
+    // iscilik_takibi_id → yuklenici_tutar > 0 olan en son ait_oldugu_ay (orijinal string)
+    const sonYukleniciAy = new Map<string, string>();
+    for (const a of bordroAyliklar) {
+      if (!a.yuklenici_tutar || a.yuklenici_tutar <= 0) continue;
+      const mevcut = sonYukleniciAy.get(a.iscilik_takibi_id);
+      if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) {
+        sonYukleniciAy.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
+      }
+    }
+
+    // Kısıtlı/şantiye admin: sadece atanmış şantiyeler
+    const izinli = !isYonetici && kullanici?.santiye_ids
+      ? new Set(kullanici.santiye_ids)
+      : null;
+
+    // ŞANTİYE BAZLI TOPLA — bir şantiyenin birden fazla iscilik_takibi kaydı
+    // olabilir (revize sürümler vb.). bordroOzet widget'ı da aynı şekilde
+    // santiye_id bazında topluyor. Hangisinde olursa olsun en yeni veri ayını
+    // o şantiyenin son veri girişi say.
+    const sonAyBySantiye = new Map<string, string | null>();
+    const santiyeAdMap = new Map<string, string>();
+
+    for (const r of bordroIscilikTakibi) {
+      const sant = r.santiyeler;
+      if (!sant || !r.santiye_id) continue;
+      // Tamamlanmış işler dışarda (gecici/kesin kabul, tasfiye, devir)
+      const bitmis = !!(sant.gecici_kabul_tarihi || sant.kesin_kabul_tarihi
+        || sant.tasfiye_tarihi || sant.devir_tarihi);
+      if (bitmis) continue;
+      if (izinli && !izinli.has(r.santiye_id)) continue;
+
+      santiyeAdMap.set(r.santiye_id, sant.is_adi);
+      const sonAy = sonYukleniciAy.get(r.id) ?? null;
+      const mevcut = sonAyBySantiye.get(r.santiye_id);
+      if (mevcut === undefined) {
+        // İlk kayıt — null bile olsa yaz (sonra başka bir iscilik_takibi'de
+        // daha yeni ay bulunursa override edilir)
+        sonAyBySantiye.set(r.santiye_id, sonAy);
+      } else if (sonAy !== null && (mevcut === null || ayYilNumerik(sonAy) > ayYilNumerik(mevcut))) {
+        // Daha yeni bir veri ayı bulundu → bunu kullan
+        sonAyBySantiye.set(r.santiye_id, sonAy);
+      }
+    }
+
+    const liste: {
+      santiyeId: string;
+      santiyeAd: string;
+      sonAy: string | null;
+      sonAyLabel: string;
+    }[] = [];
+
+    // Etiket formatlama: hem "04.2026" hem "2026-04" hem de boş girişleri kapsar.
+    const formatAyLabel = (s: string | null): string => {
+      if (!s) return "Hiç girilmemiş";
+      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
+      if (mm) return `${mm[1].padStart(2, "0")}.${mm[2]}`;
+      const iso = s.match(/^(\d{4})-(\d{2})/);
+      if (iso) return `${iso[2]}.${iso[1]}`;
+      return s;
+    };
+
+    for (const [santiyeId, sonAy] of sonAyBySantiye) {
+      // Eksik kriteri: sayısal karşılaştırma (YYYYMM).
+      // sonAy null → veri hiç girilmemiş → eksik
+      // sonAy < prevAyNum → son veri ayı, geçen aydan eski → eksik
+      const sonAyNum = sonAy === null ? 0 : ayYilNumerik(sonAy);
+      if (sonAy === null || sonAyNum < prevAyNum) {
+        liste.push({
+          santiyeId,
+          santiyeAd: santiyeAdMap.get(santiyeId) ?? "—",
+          sonAy,
+          sonAyLabel: formatAyLabel(sonAy),
+        });
+      }
+    }
+
+    // En kötü → en az: hiç girilmemiş üstte, sonra ay sırasına göre eski → yeni
+    liste.sort((a, b) => {
+      const aNum = a.sonAy === null ? 0 : ayYilNumerik(a.sonAy);
+      const bNum = b.sonAy === null ? 0 : ayYilNumerik(b.sonAy);
+      if (aNum !== bNum) return aNum - bNum;
+      return a.santiyeAd.localeCompare(b.santiyeAd, "tr");
+    });
+
+    return { prevAyNum, prevLabel, liste };
+  }, [bordroLoading, bordroAyliklar, bordroIscilikTakibi, isYonetici, kullanici, bugun]);
 
   function alimDuzenleAc(a: YakitAlim) {
     setEditAlim(a);
@@ -1551,8 +1675,81 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
+        {/* Widget: Eksik Yüklenici Veri Girişi — Kasa Defteri'nin hemen altında.
+            Sadece bilgi amaçlı: İş Adı / Son Veri Girişi / Eksik Dönem. Buton yok, link yok.
+            Şantiye bazlı, canlı hesap: veri girildiğinde otomatik kaybolur. */}
+        {wg("eksik_veri_girisi") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-5">
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+            <AlertTriangle size={16} className="text-amber-700" />
+            <h3 className="font-bold text-sm text-[#1E3A5F]">Eksik Yüklenici Veri Girişi</h3>
+            {eksikVeriGirisleri && (
+              <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                eksikVeriGirisleri.liste.length === 0
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-red-50 text-red-700"
+              }`}>
+                {eksikVeriGirisleri.prevLabel} · {eksikVeriGirisleri.liste.length}
+              </span>
+            )}
+          </div>
+
+          {bordroLoading ? (
+            <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
+          ) : !eksikVeriGirisleri ? (
+            <p className="text-sm text-gray-400">Veri yok.</p>
+          ) : eksikVeriGirisleri.liste.length === 0 ? (
+            <div className="flex items-center gap-2 py-2 text-emerald-700">
+              <CheckCircle2 size={14} className="flex-shrink-0" />
+              <p className="text-xs">
+                {eksikVeriGirisleri.prevLabel} dönemi için tüm işler güncel.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[260px] overflow-y-auto">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="px-2 text-[10px] text-gray-700">İş Adı</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-700 text-center w-[140px]">
+                      Son Veri Girişi
+                    </TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-700 text-center w-[110px]">
+                      Eksik Dönem
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {eksikVeriGirisleri.liste.map((row) => (
+                    <TableRow key={row.santiyeId}>
+                      <TableCell className="px-2 font-medium text-[#1E3A5F]">
+                        {row.santiyeAd}
+                      </TableCell>
+                      <TableCell className="px-2 text-center">
+                        {row.sonAy === null ? (
+                          <span className="text-[10px] italic text-red-600 font-semibold">
+                            Hiç girilmemiş
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-600 tabular-nums">
+                            {row.sonAyLabel}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-2 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 tabular-nums">
+                          {eksikVeriGirisleri.prevLabel}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div> : null}
+
         {/* Widget 4: Depo Yakıt Durumu — kart tabanlı */}
-        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-5">
+        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-6">
           <CardHeader icon={Fuel} title="Şantiye Yakıt Stokları" />
           {depoOzet.length === 0 ? <p className="text-sm text-gray-400">Depo verisi yok</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1589,7 +1786,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 5: Son Yakıt Alımları */}
-        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-6">
+        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-7">
           <CardHeader icon={Fuel} title="Son Yakıt Alımları" color="text-emerald-700" />
           {sonAlimlar.length === 0 ? <p className="text-sm text-gray-400">Alım verisi yok</p> : (
             <>
@@ -1653,7 +1850,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 6: Eksik Evrak Numaraları */}
-        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-7">
+        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-8">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
@@ -1726,7 +1923,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget: Bordro Takibi — Şantiye bazlı mali tablo */}
-        {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-9">
+        {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-10">
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               <MapPin size={16} className="text-[#1E3A5F]" />
@@ -1951,7 +2148,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 7: Şantiye Günlük Defteri — Son 5 Gün */}
-        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4 lg:order-8">
+        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4 lg:order-9">
           <div className="flex items-center gap-2 mb-3">
             <NotebookPen size={18} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Şantiye Günlük Defteri (Son 5 Gün)</h3>

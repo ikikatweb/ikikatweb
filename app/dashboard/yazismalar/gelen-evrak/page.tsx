@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Mail, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download } from "lucide-react";
+import { Plus, Mail, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Eye } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import jsPDF from "jspdf";
@@ -270,6 +270,7 @@ export default function GelenEvrakPage() {
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
+                <TableHead className="text-white text-xs px-2 text-center w-[60px]">Ek</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">İşlemler</TableHead>
               </TableRow>

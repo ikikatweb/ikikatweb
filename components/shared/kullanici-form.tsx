@@ -43,6 +43,7 @@ const DASHBOARD_WIDGETS = [
   { key: "eksik_evrak", label: "Eksik Evrak Numaraları" },
   { key: "santiye_defteri", label: "Şantiye Günlük Defteri" },
   { key: "bordro_ozet", label: "Bordro Takibi — Aylık Özet" },
+  { key: "eksik_veri_girisi", label: "Eksik Yüklenici Veri Girişi" },
 ];
 
 export default function KullaniciForm({ kullanici, onSuccess, onCancel }: KullaniciFormProps) {

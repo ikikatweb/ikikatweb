@@ -1236,7 +1236,10 @@ function YakitPageContent() {
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Şantiye</Label>
               {(() => {
-                // Sadece işlemi olan (alım, dağıtım veya virman) şantiyeleri göster
+                // Sadece işlemi olan (alım, dağıtım veya virman) şantiyeleri göster.
+                // NOT: Depo kapatılmış olsa bile burada görünür — kullanıcı tarihsel
+                // verileri inceleyebilsin. Yalnızca yeni işlem (al/ver/virman) yapılamaz
+                // (o dropdown'lar ayrıca depo_kapasitesi > 0 filtreliyor).
                 const islemliIds = new Set<string>();
                 for (const a of alimlar) islemliIds.add(a.santiye_id);
                 for (const d of yakitKayitlari) islemliIds.add(d.santiye_id);
@@ -1650,13 +1653,10 @@ function YakitPageContent() {
               <div className="overflow-hidden">
                 <SantiyeSelect
                   santiyeler={(() => {
-                    // Deposu olan VEYA araç ataması bulunan şantiyeleri göster
-                    const aracVarSantiyeIds = new Set<string>();
-                    for (const a of araclar) {
-                      if ((a.durum ?? "aktif") !== "pasif" && a.santiye_id) aracVarSantiyeIds.add(a.santiye_id);
-                    }
+                    // SADECE depo_kapasitesi > 0 olan şantiyeler — depo kapatılmışsa
+                    // (kapasite 0) o şantiyeye yeni yakıt verilemez.
                     return filtreliSantiyeler(santiyeler, kullanici).filter(
-                      (s) => (s.depo_kapasitesi ?? 0) > 0 || aracVarSantiyeIds.has(s.id),
+                      (s) => (s.depo_kapasitesi ?? 0) > 0,
                     );
                   })()}
                   value={verDialogSantiyeId}

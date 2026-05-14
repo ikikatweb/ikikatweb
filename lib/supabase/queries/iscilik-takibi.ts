@@ -203,14 +203,30 @@ export async function restoreIscilikTakibi(id: string) {
   if (error) throw error;
 }
 
-// Tüm iscilik_aylik kayıtlarını getir (işçilik durum raporu için tarih hesabı)
+// Tüm iscilik_aylik kayıtlarını getir (işçilik durum raporu için tarih hesabı).
+// Pagination: Supabase default 1000 satır limiti var. Eski işlerin (8-10 yıllık)
+// aylık kayıtları + çok sayıda iş → toplam binlerce satır olabiliyor. Bu durumda
+// EN YENİ aylar gelmiyordu ve dashboard "eksik veri girişi" widget'ı en son
+// girilen verileri görmüyordu. Range ile parça parça çekiyoruz.
 export async function getTumIscilikAyliklari() {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("iscilik_aylik")
-    .select("iscilik_takibi_id, ait_oldugu_ay, alt_yuklenici_tutar, yuklenici_tutar");
-  if (error) throw error;
-  return data ?? [];
+  const PARCA = 1000;
+  let offset = 0;
+  const sonuc: { iscilik_takibi_id: string; ait_oldugu_ay: string; alt_yuklenici_tutar: number | null; yuklenici_tutar: number | null }[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("iscilik_aylik")
+      .select("iscilik_takibi_id, ait_oldugu_ay, alt_yuklenici_tutar, yuklenici_tutar")
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as typeof sonuc;
+    sonuc.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    // Güvenlik: aşırı büyük tablolarda sonsuz döngüyü engelle
+    if (offset > 200000) break;
+  }
+  return sonuc;
 }
 
 export async function permanentDeleteIscilikTakibi(id: string) {
