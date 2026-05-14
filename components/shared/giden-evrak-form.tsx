@@ -48,7 +48,7 @@ type Props = {
   onCancel: () => void;
 };
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; yuklenici_firma_id?: string | null };
 type MuhatapItem = { id: string; deger: string; kisa_ad: string | null };
 
 const selectClass = "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -312,7 +312,22 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Firma <span className="text-red-500">*</span></Label>
-          <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)} disabled={loading} className={selectClass}>
+          <select
+            value={firmaId}
+            onChange={(e) => {
+              const yeniFirmaId = e.target.value;
+              setFirmaId(yeniFirmaId);
+              // Firma değişti → seçili şantiye yeni firmanın değilse temizle
+              if (santiyeId) {
+                const seciliSantiye = santiyeler.find((s) => s.id === santiyeId);
+                if (!seciliSantiye || seciliSantiye.yuklenici_firma_id !== yeniFirmaId) {
+                  setSantiyeId("");
+                }
+              }
+            }}
+            disabled={loading}
+            className={selectClass}
+          >
             <option value="">Firma seçin</option>
             {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
               <option key={f.id} value={f.id}>{f.firma_adi}</option>
@@ -321,7 +336,14 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Şantiye</Label>
-          <SantiyeSelect santiyeler={santiyeler} value={santiyeId} onChange={setSantiyeId} placeholder="Opsiyonel" className={selectClass} />
+          {/* Firma seçildiyse SADECE o firmaya ait şantiyeler. Firma seçilmediyse boş liste. */}
+          <SantiyeSelect
+            santiyeler={firmaId ? santiyeler.filter((s) => s.yuklenici_firma_id === firmaId) : []}
+            value={santiyeId}
+            onChange={setSantiyeId}
+            placeholder={firmaId ? "Opsiyonel" : "Önce firma seçin"}
+            className={selectClass}
+          />
         </div>
       </div>
 
