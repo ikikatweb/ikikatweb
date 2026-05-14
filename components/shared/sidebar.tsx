@@ -12,7 +12,7 @@ import {
   Shield, Headphones, BarChart3, Wrench,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus,
   ChevronDown, ChevronUp,
-  Swords, AlertTriangle, Crosshair, FileBarChart2, Network,
+  Swords, AlertTriangle, Crosshair, FileBarChart2, Network, Database,
 } from "lucide-react";
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode };
@@ -31,6 +31,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Araçlar", href: "/dashboard/yonetim/araclar", icon: <Truck size={16} /> },
       { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },
       { label: "Tanımlamalar", href: "/dashboard/yonetim/tanimlamalar", icon: <Settings size={16} /> },
+      { label: "Veri Yedeği", href: "/dashboard/yedek", icon: <Database size={16} /> },
     ],
   },
   {
@@ -121,7 +122,7 @@ const menuGroups: MenuGroup[] = [
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { hasPermission } = useAuth();
+  const { hasPermission, isYonetici } = useAuth();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     menuGroups.forEach((g) => { initial[g.title] = false; });
@@ -140,6 +141,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [pathname]);
 
   function canView(href: string): boolean {
+    // "Veri Yedeği" sayfası SADECE yöneticiye açık — izin matrisinde tanımlı değil.
+    if (href === "/dashboard/yedek") return isYonetici;
     const key = hrefToModuleKey(href);
     return hasPermission(key, "goruntule");
   }
