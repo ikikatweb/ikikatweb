@@ -179,17 +179,25 @@ export default function SigortaMuayenePage() {
     return map;
   }, [policeler]);
 
-  // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçlar görünür
+  // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçlar görünür.
+  // santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçlar da görünür.
   const izinliSantiyelerSet = !isYonetici && kullanici?.santiye_ids
     ? new Set(kullanici.santiye_ids)
     : null;
+  const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
 
   const filtrelenmis = araclar.filter((a) => {
     if (a.tip !== "ozmal") return false;
     if (a.durum === "trafikten_cekildi") return false;
     if (durumFiltre !== "tumu" && a.durum !== durumFiltre) return false;
     // Atanmamış şantiyelerin araçlarını gizle
-    if (izinliSantiyelerSet && (!a.santiye_id || !izinliSantiyelerSet.has(a.santiye_id))) return false;
+    if (izinliSantiyelerSet) {
+      if (!a.santiye_id) {
+        if (!santiyesizDahil) return false;
+      } else if (!izinliSantiyelerSet.has(a.santiye_id)) {
+        return false;
+      }
+    }
     if (arama.trim()) {
       const q = trAramaNormalize(arama.trim());
       const sp = sonPoliceMap.get(a.id);

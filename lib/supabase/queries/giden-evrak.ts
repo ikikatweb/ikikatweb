@@ -6,7 +6,11 @@ function getSupabase() {
   return createClient();
 }
 
-export async function getGidenEvraklar(olusturanId?: string, santiyeIds?: string[]) {
+export async function getGidenEvraklar(
+  olusturanId?: string,
+  santiyeIds?: string[],
+  santiyesizDahil?: boolean,
+) {
   const supabase = getSupabase();
   let query = supabase
     .from("giden_evrak")
@@ -17,14 +21,25 @@ export async function getGidenEvraklar(olusturanId?: string, santiyeIds?: string
   if (olusturanId) {
     query = query.eq("olusturan_id", olusturanId);
   }
-  // Şantiye kısıtı — kısıtlı kullanıcı veya şantiye yöneticisi: SADECE atandığı şantiyeler.
-  // Şantiyesiz (genel) evraklar dahil DEĞİL — kullanıcının görmemesi gerek.
-  // Yönetici için bu parametre verilmez (her şeyi görür).
-  if (santiyeIds && santiyeIds.length > 0) {
-    query = query.in("santiye_id", santiyeIds);
-  } else if (santiyeIds && santiyeIds.length === 0) {
-    // Hiç şantiye atanmamış: hiçbir evrak görünmez
-    query = query.eq("santiye_id", "00000000-0000-0000-0000-000000000000");
+  // Şantiye kısıtı (kısıtlı/şantiye admin):
+  //   • santiyesizDahil=false → SADECE atanmış şantiyeler
+  //   • santiyesizDahil=true  → atanmış + santiye_id NULL olanlar
+  //   • santiyeIds undefined  → yönetici akışı (filtre yok)
+  if (santiyeIds !== undefined) {
+    if (santiyesizDahil) {
+      if (santiyeIds.length > 0) {
+        const idList = santiyeIds.map((id) => `"${id}"`).join(",");
+        query = query.or(`santiye_id.in.(${idList}),santiye_id.is.null`);
+      } else {
+        query = query.is("santiye_id", null);
+      }
+    } else {
+      if (santiyeIds.length > 0) {
+        query = query.in("santiye_id", santiyeIds);
+      } else {
+        query = query.eq("santiye_id", "00000000-0000-0000-0000-000000000000");
+      }
+    }
   }
 
   const { data, error } = await query;

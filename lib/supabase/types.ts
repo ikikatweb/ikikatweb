@@ -776,6 +776,12 @@ export type Kullanici = {
   // Mesajlaşmada tüm konuşmaları görme yetkisi (admin için her zaman true,
   // şantiye yöneticisi için form'dan seçilir, kısıtlı için hiç verilmez)
   tum_mesajlari_gor?: boolean | null;
+  // Şantiye atanmamış (genel) kayıtları görme yetkisi — TÜM modüller için (yazışmalar,
+  // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.).
+  // - true  → atanmış şantiyeler + santiye_id NULL olan kayıtlar/araçlar görünür
+  // - false → sadece atanmış şantiyelerin kayıtları görünür (mevcut davranış)
+  // Yönetici için her zaman geçerli (form'da göstermesek bile DB'de true tutulur).
+  santiyesiz_veri_gor?: boolean | null;
   created_at: string;
   updated_at: string;
 };

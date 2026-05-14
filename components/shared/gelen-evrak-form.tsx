@@ -22,9 +22,9 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Save, Eye, Upload, Plus, ArrowLeft, Printer, FileText, Trash2 } from "lucide-react";
+import { Save, Eye, Upload, Plus, ArrowLeft, FileText, Trash2 } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
+import { formatBaslik } from "@/lib/utils/isim";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import toast from "react-hot-toast";
 
@@ -203,10 +203,6 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
   const seciliFirma = firmalar.find((f) => f.id === firmaId);
 
-  function handleYazdir() {
-    window.print();
-  }
-
   // ==================== ÖN İZLEME ====================
   if (onIzleme) {
     return (
@@ -290,14 +286,20 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
       </div>
 
-      {/* İlgi — çoklu satır listesi (Giden Evrak'taki pattern). A, B, C, ... harfleriyle.
-          DB'ye satırlar `\n` ile birleşmiş tek metin olarak yazılır. */}
+      {/* İlgi — çoklu satır listesi. Label'ın yanında + butonu ile yeni ilgi satırı eklenir.
+          Her satır A, B, C, ... harfleriyle etiketlenir. DB'ye `\n` ile birleştirilmiş kaydedilir. */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
           <Label>İlgi</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addIlgi} disabled={loading}>
-            <Plus size={14} className="mr-1" /> İlgi Ekle
-          </Button>
+          <button
+            type="button"
+            onClick={addIlgi}
+            disabled={loading}
+            title="Yeni ilgi ekle"
+            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#1E3A5F] text-white hover:bg-[#2a4f7a] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            <Plus size={14} />
+          </button>
         </div>
         {ilgiListesi.length > 0 ? (
           <div className="space-y-2">
@@ -324,7 +326,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             ))}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">Henüz ilgi eklenmedi. + butonuyla ekleyebilirsiniz.</p>
+          <p className="text-xs text-gray-400">Henüz ilgi eklenmedi. Yandaki + butonuyla ekleyebilirsiniz.</p>
         )}
       </div>
 
@@ -461,7 +463,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </label>
         </div>
         {eklerListesi.length === 0 ? (
-          <p className="text-xs text-gray-400">Henüz ek dosya eklenmedi. "PDF Yükle" ile birden fazla PDF ekleyebilirsiniz.</p>
+          <p className="text-xs text-gray-400">Henüz ek dosya eklenmedi. &quot;PDF Yükle&quot; ile birden fazla PDF ekleyebilirsiniz.</p>
         ) : (
           <div className="space-y-1.5">
             {eklerListesi.map((ek, i) => {

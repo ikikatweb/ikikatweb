@@ -99,17 +99,24 @@ export default function AcenteTakipPage() {
 
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
-    // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçların poliçeleri
+    // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçların poliçeleri.
+    // santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçlar da görünür.
     const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
       ? new Set(kullanici.santiye_ids)
       : null;
+    const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
     return policeler
       .filter((p) => {
         if (tipFiltre && p.police_tipi !== tipFiltre) return false;
         // Atanmamış şantiyelerin araçlarına ait poliçeleri gizle
         if (izinliSantiyeler) {
           const arac = aracMap.get(p.arac_id);
-          if (!arac || !arac.santiye_id || !izinliSantiyeler.has(arac.santiye_id)) return false;
+          if (!arac) return false;
+          if (!arac.santiye_id) {
+            if (!santiyesizDahil) return false;
+          } else if (!izinliSantiyeler.has(arac.santiye_id)) {
+            return false;
+          }
         }
         // Filtreleme tarihi: islem_tarihi → yoksa kaydedilme tarihi
         const tarih = p.islem_tarihi || p.created_at?.slice(0, 10) || "";

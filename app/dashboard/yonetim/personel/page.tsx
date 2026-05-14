@@ -150,20 +150,26 @@ export default function PersonelPage() {
   }
 
   // Kısıtlı / Şantiye admini: sadece atandığı şantiyelerdeki personeller
-  // (primary santiye_id VEYA personel_santiye junction VEYA atama_gecmisi üzerinden)
+  // (primary santiye_id VEYA personel_santiye junction VEYA atama_gecmisi üzerinden).
+  // santiyesiz_veri_gor=true → şantiye atanmamış personeller (primary=null) da görünür.
   const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
     ? new Set(kullanici.santiye_ids)
     : null;
+  const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
   const personelIzinliSantiyedeMi = (personelId: string, primarySantiyeId: string | null) => {
     if (!izinliSantiyeler) return true;
-    if (primarySantiyeId && izinliSantiyeler.has(primarySantiyeId)) return true;
+    // Primary şantiyesi yoksa: santiyesiz_veri_gor yetkisi varsa göster
+    if (!primarySantiyeId) {
+      // Junction veya atama geçmişi varsa, izinli şantiyede mi kontrol et
+      const junctionVar = personelSantiyeler.some((ps) => ps.personel_id === personelId);
+      const atamaVar = atamalar.some((a) => a.personel_id === personelId);
+      if (!junctionVar && !atamaVar) return santiyesizDahil;
+    } else if (izinliSantiyeler.has(primarySantiyeId)) return true;
     // Junction tablosunda atanmış mı?
     if (personelSantiyeler.some(
       (ps) => ps.personel_id === personelId && izinliSantiyeler.has(ps.santiye_id),
     )) return true;
     // Atama geçmişinde herhangi bir izinli şantiye var mı? (aktif veya kapanmış)
-    // İZİN kontrolü için TÜM geçmişe bakar — çıkışı verilmiş bile olsa o şantiyede çalışmış
-    // personeli kısıtlı kullanıcı görebilsin.
     return atamalar.some((a) =>
       a.personel_id === personelId && izinliSantiyeler.has(a.santiye_id),
     );

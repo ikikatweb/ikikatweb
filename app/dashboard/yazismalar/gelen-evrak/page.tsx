@@ -100,10 +100,12 @@ export default function GelenEvrakPage() {
       // Kısıtlı: kendi yazdıklarını + atandığı şantiyelerin evraklarını
       // Şantiye admin: atandığı şantiyelerin tüm evraklarını
       // Yönetici: hepsi
+      // santiyesiz_veri_gor: true → şantiye atanmamış (NULL) evrakları da görür.
       const olusturan = (kullanici?.rol === "kisitli") ? kullanici.id : undefined;
       const santiyeFilter = (!isYonetici && kullanici?.santiye_ids) ? kullanici.santiye_ids : undefined;
+      const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
       const [eData, fData] = await Promise.all([
-        getGelenEvraklar(olusturan, santiyeFilter),
+        getGelenEvraklar(olusturan, santiyeFilter, santiyesizDahil),
         getFirmalar(),
       ]);
       // Firma kapsamı: kullanıcının firma_ids'i tanımlıysa sadece o firmalar görünür.
@@ -120,7 +122,7 @@ export default function GelenEvrakPage() {
       setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
     finally { setLoading(false); }
-  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids]);
+  }, [isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids, kullanici?.santiyesiz_veri_gor]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

@@ -112,11 +112,21 @@ export default function AcenteRaporuPage() {
     return m;
   }, [araclar]);
 
-  // Kısıtlı/şantiye admin için izinli araç id seti (atanmamış şantiyelerin araçları gizli)
+  // Kısıtlı/şantiye admin için izinli araç id seti:
+  //  - Varsayılan: atanmamış şantiyelerin araçları gizli
+  //  - santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçlar da görünür
   const izinliAracIds = useMemo(() => {
     if (isYonetici || !kullanici?.santiye_ids) return null;
     const izinliS = new Set(kullanici.santiye_ids);
-    return new Set(araclar.filter((a) => a.santiye_id && izinliS.has(a.santiye_id)).map((a) => a.id));
+    const santiyesizDahil = !!kullanici.santiyesiz_veri_gor;
+    return new Set(
+      araclar
+        .filter((a) => {
+          if (a.santiye_id) return izinliS.has(a.santiye_id);
+          return santiyesizDahil;
+        })
+        .map((a) => a.id),
+    );
   }, [araclar, isYonetici, kullanici]);
 
   function hizliTarih(secim: "bu-ay" | "3-ay" | "6-ay" | "bu-yil") {

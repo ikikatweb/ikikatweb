@@ -496,15 +496,23 @@ export default function DashboardPage() {
         }
       }
     }
-    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçlar görünür
+    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçlar görünür.
+    // santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçlar da görünür.
     const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
       ? new Set(kullanici.santiye_ids)
       : null;
+    const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
     for (const a of araclar) {
       if (a.tip !== "ozmal") continue;
       if (a.durum === "trafikten_cekildi") continue;
       // Atanmamış şantiyelerle alakalı araçları gizle
-      if (izinliSantiyeler && (!a.santiye_id || !izinliSantiyeler.has(a.santiye_id))) continue;
+      if (izinliSantiyeler) {
+        if (!a.santiye_id) {
+          if (!santiyesizDahil) continue;
+        } else if (!izinliSantiyeler.has(a.santiye_id)) {
+          continue;
+        }
+      }
       const pc = policeMap.get(a.id);
       // Trafik/Kasko: sadece poliçeden gelen bitiş tarihi (araç alanına fallback YOK — stale data'yı gösterme)
       const trafikBitis = pc?.trafik?.bitis || null;
@@ -528,10 +536,12 @@ export default function DashboardPage() {
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
   const yaklasanBakimlar = useMemo(() => {
-    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçların bakımları
+    // Kısıtlı/şantiye admin: sadece izinli şantiyelerdeki araçların bakımları.
+    // santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçların bakımları da görünür.
     const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
       ? new Set(kullanici.santiye_ids)
       : null;
+    const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
     const aracSantiyeMap = new Map<string, string | null>();
     for (const a of araclar) aracSantiyeMap.set(a.id, a.santiye_id);
 
@@ -541,7 +551,11 @@ export default function DashboardPage() {
       // Şantiye filtresi
       if (izinliSantiyeler) {
         const sid = aracSantiyeMap.get(b.arac_id);
-        if (!sid || !izinliSantiyeler.has(sid)) continue;
+        if (!sid) {
+          if (!santiyesizDahil) continue;
+        } else if (!izinliSantiyeler.has(sid)) {
+          continue;
+        }
       }
       const mevcut = sonBakim.get(b.arac_id);
       if (!mevcut || b.bakim_tarihi > mevcut.bakim_tarihi) sonBakim.set(b.arac_id, b);

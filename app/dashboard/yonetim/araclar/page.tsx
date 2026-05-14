@@ -125,16 +125,24 @@ export default function AraclarPage() {
     }
   }
 
-  // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçlar görünür
+  // Kısıtlı/şantiye admin: sadece atandığı şantiyelerdeki araçlar görünür.
+  // santiyesiz_veri_gor=true → şantiye atanmamış (NULL) araçlar da görünür.
   const izinliSantiyelerSet = !isYonetici && kullanici?.santiye_ids
     ? new Set(kullanici.santiye_ids)
     : null;
+  const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
 
   // Arama + durum filtresi
   const filtrelenmis = araclar
     .filter((a) => {
       // Atanmamış şantiyelerin araçlarını gizle
-      if (izinliSantiyelerSet && (!a.santiye_id || !izinliSantiyelerSet.has(a.santiye_id))) return false;
+      if (izinliSantiyelerSet) {
+        if (!a.santiye_id) {
+          if (!santiyesizDahil) return false;
+        } else if (!izinliSantiyelerSet.has(a.santiye_id)) {
+          return false;
+        }
+      }
       if (filtre !== "tumu" && a.durum !== filtre) return false;
       if (mulkiyetFiltre !== "tumu" && a.tip !== mulkiyetFiltre) return false;
       if (cinsFiltre !== "tumu" && a.cinsi !== cinsFiltre) return false;

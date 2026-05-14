@@ -258,14 +258,20 @@ export default function IscilikTakibiPage() {
       for (const [id, son] of enSonAyliklar) sonAyMap.set(id, son.ay);
       setIscilikSonAyMap(sonAyMap);
 
-      // Kısıtlı / Şantiye admini: sadece atandığı şantiyeler görünür
+      // Kısıtlı / Şantiye admini: sadece atandığı şantiyeler görünür.
+      // santiyesiz_veri_gor=true → santiye_id NULL kayıtlar da görünür.
       const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
         ? new Set(kullanici.santiye_ids)
         : null;
+      const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
 
       // İş grubu sırasına göre sırala, aynı gruptakiler oluşturulma sırasına göre
       const sorted = ((data as IscilikTakibiWithSantiye[]) ?? [])
-        .filter((r) => izinliSantiyeler ? izinliSantiyeler.has(r.santiye_id) : true)
+        .filter((r) => {
+          if (!izinliSantiyeler) return true;
+          if (!r.santiye_id) return santiyesizDahil;
+          return izinliSantiyeler.has(r.santiye_id);
+        })
         .map((r) => {
           const sonAy = enSonAyliklar.get(r.id);
           return {
@@ -393,8 +399,13 @@ export default function IscilikTakibiPage() {
       const izinliSantiyeler = !isYonetici && kullanici?.santiye_ids
         ? new Set(kullanici.santiye_ids)
         : null;
+      const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
       const filtreli = ((data as IscilikTakibiWithSantiye[]) ?? [])
-        .filter((r) => izinliSantiyeler ? izinliSantiyeler.has(r.santiye_id) : true);
+        .filter((r) => {
+          if (!izinliSantiyeler) return true;
+          if (!r.santiye_id) return santiyesizDahil;
+          return izinliSantiyeler.has(r.santiye_id);
+        });
       setSilinenler(filtreli);
     } catch { /* sessiz */ }
   }

@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const {
     ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, firma_ids,
-    geriye_donus_gun, dashboard_widgets, tum_mesajlari_gor,
+    geriye_donus_gun, dashboard_widgets, tum_mesajlari_gor, santiyesiz_veri_gor,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
     kasa_islem_gun, kasa_goruntuleme_gun,
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
       santiye_defteri_goruntuleme_gun: santiye_defteri_goruntuleme_gun ?? null,
       dashboard_widgets: dashboard_widgets ?? null,
       tum_mesajlari_gor: tum_mesajlari_gor ?? false,
+      santiyesiz_veri_gor: santiyesiz_veri_gor ?? false,
     })
     .select()
     .single();

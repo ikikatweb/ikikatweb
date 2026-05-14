@@ -84,6 +84,9 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kullanici?.dashboard_widgets ?? []);
   // Mesajlaşmada tüm konuşmaları görme yetkisi (sadece santiye_admin için ayarlanır)
   const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kullanici?.tum_mesajlari_gor ?? false);
+  // Şantiye atanmamış (genel) verileri görme yetkisi — TÜM modüllerde geçerli (yazışmalar,
+  // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.). Kısıtlı + santiye_admin için.
+  const [santiyesizVeriGor, setSantiyesizVeriGor] = useState<boolean>(kullanici?.santiyesiz_veri_gor ?? false);
 
   // Şantiye, firma ve şablon listeleri
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
@@ -225,6 +228,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
       // - şantiye yöneticisi: form'daki seçim
       // - kısıtlı: her zaman false
       const tumMesajlariGorFinal = rol === "yonetici" ? true : (rol === "santiye_admin" ? tumMesajlariGor : false);
+      // Şantiyesiz veri görme: yönetici her zaman görür, kısıtlı/santiye_admin için form seçimi
+      const santiyesizVeriGorFinal = rol === "yonetici" ? true : santiyesizVeriGor;
 
       // Firma kapsamı: yönetici hariç herkes için kaydedilir (boş = tümüne erişim)
       const firma_ids = rol === "yonetici" ? null : (seciliFirmalar.length > 0 ? seciliFirmalar : null);
@@ -240,6 +245,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           tum_mesajlari_gor: tumMesajlariGorFinal,
+          santiyesiz_veri_gor: santiyesizVeriGorFinal,
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success("Kullanıcı güncellendi.");
@@ -256,6 +262,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           tum_mesajlari_gor: tumMesajlariGorFinal,
+          santiyesiz_veri_gor: santiyesizVeriGorFinal,
         });
         toast.success("Kullanıcı oluşturuldu.");
       }
@@ -346,6 +353,27 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
             <strong>Kısıtlı Kullanıcı:</strong> Aşağıda verdiğiniz yetki alanlarında atanan şantiyelerde{" "}
             <strong>sadece kendi kayıtlarını</strong> görür/yazar.
           </p>
+        )}
+        {/* Şantiyesiz veri görme — hem kısıtlı hem santiye_admin için.
+            TÜM modüllerde geçerli (yazışmalar, yakıt, kasa, araç bakım, işçilik, vb.).
+            Şantiye atanmamış kayıtları/araçları bu yetki sayesinde görür. */}
+        {(rol === "kisitli" || rol === "santiye_admin") && (
+          <label className="mt-2 flex items-start gap-2 p-2.5 border rounded-md bg-amber-50/40 cursor-pointer hover:bg-amber-50 transition-colors max-w-xl">
+            <input
+              type="checkbox"
+              checked={santiyesizVeriGor}
+              onChange={(e) => setSantiyesizVeriGor(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#F97316]"
+            />
+            <div>
+              <div className="text-sm font-semibold text-[#1E3A5F]">📋 Şantiyesiz verileri görsün</div>
+              <div className="text-[11px] text-gray-500">
+                İşaretliyse: TÜM modüllerde (yazışmalar, yakıt, kasa, araç bakım, işçilik takibi, personel vb.)
+                şantiye atanmamış (genel) kayıtları/araçları da görür.
+                İşaretli değilse: sadece atandığı şantiyelerin verileri görünür.
+              </div>
+            </div>
+          </label>
         )}
       </div>
 
