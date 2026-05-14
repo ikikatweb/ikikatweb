@@ -4464,8 +4464,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
-                {/* 2-kolon yerleşim: SOL = Teknik Personel + Hızlı Manuel Gün Girişi,
-                    SAĞ = Giriş/Çıkış Tarihleri + Bilgi Notu. Mobilde alt alta. */}
+                {/* 2-kolon yerleşim: SOL = Teknik Personel (tam yükseklik),
+                    SAĞ = Hızlı Manuel Gün Girişi + Giriş/Çıkış Tarihleri.
+                    Bilgi Notu ise grid'in altında TAM GENİŞLİK. Mobilde alt alta. */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {/* ────────── SOL KOLON ────────── */}
                   <div className="space-y-3">
@@ -4596,6 +4597,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     </div>
                   </label>
                 )}
+                  </div>
+                  {/* ────────── SAĞ KOLON ────────── */}
+                  <div className="space-y-3">
 
                 {/* Hızlı manuel gün girişi — atama tarihlerini DEĞİŞTİRMEZ.
                     HEM admin HEM diğerleri için max = doğal hesap × ay sonu (çıkış tarihi varsa o tarihe kadar).
@@ -4613,9 +4617,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     />
                   );
                 })()}
-                  </div>
-                  {/* ────────── SAĞ KOLON ────────── */}
-                  <div className="space-y-3">
 
                 {/* Giriş / Çıkış Tarihleri — atama editörü.
                     SADECE bu şantiyedeki atamalar gösterilir (santiye_id filtresi).
@@ -4641,8 +4642,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {liste.length === 0 && (
                   <p className="text-sm text-gray-400 italic">Bu ay için atama yok.</p>
                 )}
+                  </div>
+                  {/* ────────── /SAĞ KOLON ────────── */}
+                </div>
 
-                {/* Bilgi Notu — kalıcı, ay-bağımsız. Kullanıcı silmedikçe her ay görünür */}
+                {/* Bilgi Notu — TAM GENİŞLİK (grid dışında). Kalıcı, ay-bağımsız. */}
                 <BilgiNotuKarti
                   personelId={gunEdit.personel.id}
                   santiyeId={gunEdit.santiyeId}
@@ -4664,9 +4668,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     }
                   }}
                 />
-                  </div>
-                  {/* ────────── /SAĞ KOLON ────────── */}
-                </div>
 
                 <div className="flex justify-end pt-2 border-t">
                   <Button variant="outline" onClick={() => setGunEdit(null)}>Kapat</Button>
