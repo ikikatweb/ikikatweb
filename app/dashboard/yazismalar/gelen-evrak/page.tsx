@@ -129,12 +129,27 @@ export default function GelenEvrakPage() {
   // NOT: Antet/kaşe ön belleği için DOM'a hidden <img> mount ediliyor (aşağıda).
   // new Image() byte cache'liyor ama decode bitmeden print snapshot alınıyordu.
 
+  // Listede kayıtlı olan benzersiz muhataplar (filtre dropdown'u için)
+  const kayitliMuhataplar = Array.from(
+    new Set(
+      evraklar
+        .map((e) => (e.muhatap ?? "").trim())
+        .filter((m) => m.length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "tr"));
+
+  // Listede kayıtlı olan benzersiz firma id'leri (filtre dropdown'u için)
+  const kayitliFirmaIds = new Set(
+    evraklar.map((e) => e.firma_id).filter((id): id is string => !!id),
+  );
+
   // Filtreleme
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
     if (fBitis && e.evrak_tarihi > fBitis) return false;
     if (fFirma && e.firma_id !== fFirma) return false;
-    if (fMuhatap && !trAramaNormalize(e.muhatap ?? "").includes(trAramaNormalize(fMuhatap))) return false;
+    // Muhatap filtresi artık tam eşleşme (dropdown'dan seçilen değer)
+    if (fMuhatap && (e.muhatap ?? "") !== fMuhatap) return false;
     if (fArama.trim()) {
       const q = trAramaNormalize(fArama);
       const text = trAramaNormalize([
@@ -249,14 +264,23 @@ export default function GelenEvrakPage() {
           <Label className="text-[10px] text-gray-400">Firma</Label>
           <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
             <option value="">Tümü</option>
-            {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
-              <option key={f.id} value={f.id}>{f.firma_adi}</option>
-            ))}
+            {/* Sadece gelen evrak kaydı olan firmaları göster */}
+            {firmalar
+              .filter((f) => kayitliFirmaIds.has(f.id))
+              .map((f) => (
+                <option key={f.id} value={f.id}>{f.firma_adi}</option>
+              ))}
           </select>
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
-          <Input value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} placeholder="Ara..." className="h-8 text-xs w-full min-w-0" />
+          <select value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
+            <option value="">Tümü</option>
+            {/* Sadece gelen evraklarda kayıtlı muhatapları göster */}
+            {kayitliMuhataplar.map((m) => (
+              <option key={m} value={m}>{tekSatirMuhatap(m)}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -273,12 +297,12 @@ export default function GelenEvrakPage() {
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-xs px-2">Tarih</TableHead>
+                <TableHead className="text-white text-xs px-2">Belge Tarihi</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
-                <TableHead className="text-white text-xs px-2 text-center w-[90px]">Evrak Taraması</TableHead>
+                <TableHead className="text-white text-xs px-2 text-center w-[90px]">Üst Yazı</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center w-[60px]">Ek</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">İşlemler</TableHead>
@@ -301,7 +325,7 @@ export default function GelenEvrakPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
-                        title="Evrak taramasını görüntüle"
+                        title="Üst yazıyı görüntüle"
                       >
                         <Eye size={16} />
                       </a>
