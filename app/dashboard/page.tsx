@@ -1677,8 +1677,9 @@ export default function DashboardPage() {
 
         {/* Widget: Eksik Yüklenici Veri Girişi — Kasa Defteri'nin hemen altında.
             Sadece bilgi amaçlı: İş Adı / Son Veri Girişi / Eksik Dönem. Buton yok, link yok.
+            Kasa Defteri ve Yi-ÜFE ile aynı boyut (yarım kart — lg:col-span-2).
             Şantiye bazlı, canlı hesap: veri girildiğinde otomatik kaybolur. */}
-        {wg("eksik_veri_girisi") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-5">
+        {wg("eksik_veri_girisi") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-5">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={16} className="text-amber-700" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Eksik Yüklenici Veri Girişi</h3>
@@ -1705,38 +1706,38 @@ export default function DashboardPage() {
               </p>
             </div>
           ) : (
-            <div className="max-h-[260px] overflow-y-auto">
+            <div className="max-h-[200px] overflow-y-auto">
               <Table className="text-xs">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="px-2 text-[10px] text-gray-700">İş Adı</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-700 text-center w-[140px]">
-                      Son Veri Girişi
+                    <TableHead className="px-1 text-[10px] text-gray-700 text-center w-[80px]">
+                      Son Veri
                     </TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-700 text-center w-[110px]">
-                      Eksik Dönem
+                    <TableHead className="px-1 text-[10px] text-gray-700 text-center w-[80px]">
+                      Eksik
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {eksikVeriGirisleri.liste.map((row) => (
                     <TableRow key={row.santiyeId}>
-                      <TableCell className="px-2 font-medium text-[#1E3A5F]">
+                      <TableCell className="px-2 font-medium text-[#1E3A5F] max-w-0 truncate" title={row.santiyeAd}>
                         {row.santiyeAd}
                       </TableCell>
-                      <TableCell className="px-2 text-center">
+                      <TableCell className="px-1 text-center">
                         {row.sonAy === null ? (
-                          <span className="text-[10px] italic text-red-600 font-semibold">
-                            Hiç girilmemiş
+                          <span className="text-[9px] italic text-red-600 font-semibold whitespace-nowrap">
+                            Hiç yok
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-600 tabular-nums">
+                          <span className="text-[10px] text-gray-600 tabular-nums whitespace-nowrap">
                             {row.sonAyLabel}
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="px-2 text-center">
-                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 tabular-nums">
+                      <TableCell className="px-1 text-center">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 tabular-nums whitespace-nowrap">
                           {eksikVeriGirisleri.prevLabel}
                         </span>
                       </TableCell>

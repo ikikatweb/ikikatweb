@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { flushSync } from "react-dom";
 import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/gelen-evrak";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
@@ -19,9 +18,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Mail, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Eye } from "lucide-react";
+import { Plus, Mail, Pencil, Trash2, FileDown, FileSpreadsheet, Eye } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
-import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -59,9 +57,6 @@ export default function GelenEvrakPage() {
   const [editEvrak, setEditEvrak] = useState<GelenEvrakWithRelations | undefined>();
   const [silDialog, setSilDialog] = useState<string | null>(null);
   const [silmeNedeni, setSilmeNedeni] = useState("");
-
-  // Yazdırma için seçili evrak
-  const [printEvrakRef, setPrintEvrakRef] = useState<GelenEvrakWithRelations | null>(null);
 
   // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
   const [fArama, setFArama] = useState(() =>
@@ -132,12 +127,6 @@ export default function GelenEvrakPage() {
   function handleAdd() { setEditEvrak(undefined); setFormOpen(true); }
   function handleEdit(e: GelenEvrakWithRelations) { setEditEvrak(e); setFormOpen(true); }
 
-  function handleCopy(e: GelenEvrakWithRelations) {
-    const cogaltEvrak = { ...e, id: "", evrak_sayi_no: "", _cogaltKey: Date.now() };
-    setEditEvrak(cogaltEvrak as unknown as GelenEvrakWithRelations);
-    setFormOpen(true);
-  }
-
   async function handleSil() {
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silDialog || !silmeNedeni.trim()) { toast.error("Silme nedeni zorunludur."); return; }
@@ -184,15 +173,6 @@ export default function GelenEvrakPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Gelen Evrak");
     XLSX.writeFile(wb, "gelen-evrak-listesi.xlsx");
-  }
-
-  function printEvrak(e: GelenEvrakWithRelations) {
-    // iOS Safari user-gesture korunmalı — flushSync ile senkron render, sonra hemen print
-    flushSync(() => {
-      setPrintEvrakRef(e);
-    });
-    window.print();
-    setTimeout(() => setPrintEvrakRef(null), 1000);
   }
 
   return (
@@ -285,6 +265,21 @@ export default function GelenEvrakPage() {
                   <TableCell className="px-2 leading-snug">
                     {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
                   </TableCell>
+                  <TableCell className="px-2 text-center">
+                    {e.pdf_url ? (
+                      <a
+                        href={e.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
+                        title="Eklenen belgeyi görüntüle"
+                      >
+                        <Eye size={16} />
+                      </a>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="px-2">
                     <div>
                       <div className="font-medium">{e.kullanicilar?.ad_soyad ?? "—"}</div>
@@ -293,11 +288,6 @@ export default function GelenEvrakPage() {
                   </TableCell>
                   <TableCell className="px-2">
                     <div className="flex items-center justify-center gap-0.5">
-                      <button onClick={() => printEvrak(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Yazdır"><Printer size={14} /></button>
-                      <button onClick={() => handleCopy(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Kopyala"><Copy size={14} /></button>
-                      {e.pdf_url && (
-                        <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
-                      )}
                       {yDuzenle && (
                         <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
                       )}
@@ -356,38 +346,6 @@ export default function GelenEvrakPage() {
         </DialogContent>
       </Dialog>
 
-      {/* GİZLİ PRE-RENDER: tüm firmaların antet/kaşe görselleri offscreen mount edilir.
-          Tarayıcı bunları gerçekten decode edip cache'ler — print snapshot'ta anında çıksın. */}
-      <div aria-hidden="true" style={{ position: "absolute", left: -99999, top: -99999, width: 1, height: 1, overflow: "hidden", pointerEvents: "none" }}>
-        {firmalar.map((f) => (
-          <span key={f.id}>
-            {f.antet_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.antet_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
-            )}
-            {f.kase_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.kase_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
-            )}
-          </span>
-        ))}
-      </div>
-
-      {/* Yazdırma için görünmez render alanı - print modunda görünür */}
-      {printEvrakRef && (
-        <div className="evrak-print-area" style={{ position: "fixed", left: "-10000px", top: 0 }}>
-          <GelenEvrakOnIzleme
-            firma={printEvrakRef.firmalar ?? null}
-            evrakTarihi={printEvrakRef.evrak_tarihi}
-            evrakSayiNo={printEvrakRef.evrak_sayi_no}
-            konu={printEvrakRef.konu}
-            muhatap={printEvrakRef.muhatap}
-            ilgi={printEvrakRef.ilgi}
-            icerik={printEvrakRef.icerik}
-            ekler={printEvrakRef.ekler}
-          />
-        </div>
-      )}
     </div>
   );
 }
