@@ -43,7 +43,20 @@ export default function GelenEvrakOnIzleme({
 }: Props) {
   const ilgiHarfler = ["A", "B", "C", "D", "E", "F", "G", "H"];
   const ilgiSatirlari = ilgi ? ilgi.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-  const eklerSatirlari = ekler ? ekler.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  // Ekler — URL satırlarını PDF dosya adı olarak göster (timestamp temizle).
+  // URL olmayan eski metin açıklamalarını olduğu gibi bırak.
+  const eklerSatirlari = (ekler ? ekler.split("\n").map((s) => s.trim()).filter(Boolean) : []).map((s) => {
+    if (/^https?:\/\//i.test(s)) {
+      try {
+        const path = new URL(s).pathname;
+        const ad = decodeURIComponent(path.split("/").pop() ?? "PDF");
+        return ad.replace(/^\d+-/, "") || "PDF";
+      } catch {
+        return "PDF";
+      }
+    }
+    return s;
+  });
   const metinParagraflar = (icerik ?? "")
     .replace(/<span[^>]*style="[^"]*white-space:\s*pre[^"]*"[^>]*>[\s\t]*<\/span>/gi, "")
     .replace(/<div>/gi, "\n").replace(/<\/div>/gi, "")

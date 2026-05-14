@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Mail, Pencil, Trash2, FileDown, FileSpreadsheet, Eye } from "lucide-react";
+import { Plus, Mail, Pencil, Trash2, FileDown, FileSpreadsheet, Eye, FileText } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -57,6 +57,32 @@ export default function GelenEvrakPage() {
   const [editEvrak, setEditEvrak] = useState<GelenEvrakWithRelations | undefined>();
   const [silDialog, setSilDialog] = useState<string | null>(null);
   const [silmeNedeni, setSilmeNedeni] = useState("");
+  // Ek görüntüleme dialog — bir evraka ait tüm PDF eklerini listeler
+  const [ekDialog, setEkDialog] = useState<GelenEvrakWithRelations | null>(null);
+
+  // Bir evraka ait EK PDF'lerini toplar (sadece `ekler` alanındaki URL satırları).
+  // NOT: `pdf_url` (Evrak Taraması) bu listeye dahil DEĞİLDİR — o ayrı sütunda gösterilir.
+  function ekUrlleri(e: GelenEvrakWithRelations): { url: string; isim: string }[] {
+    const liste: { url: string; isim: string }[] = [];
+    if (e.ekler) {
+      const satirlar = e.ekler.split("\n").map((s) => s.trim()).filter(Boolean);
+      let sayac = 1;
+      for (const satir of satirlar) {
+        if (/^https?:\/\//i.test(satir)) {
+          let isim = `Ek ${sayac}`;
+          try {
+            const path = new URL(satir).pathname;
+            const raw = decodeURIComponent(path.split("/").pop() ?? "");
+            // Timestamp prefix'i temizle: "123456789-dosya.pdf" → "dosya.pdf"
+            isim = raw.replace(/^\d+-/, "") || isim;
+          } catch { /* kullanma — varsayılan isim kalır */ }
+          liste.push({ url: satir, isim });
+          sayac++;
+        }
+      }
+    }
+    return liste;
+  }
 
   // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
   const [fArama, setFArama] = useState(() =>
@@ -250,6 +276,7 @@ export default function GelenEvrakPage() {
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
+                <TableHead className="text-white text-xs px-2 text-center w-[90px]">Evrak Taraması</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center w-[60px]">Ek</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">İşlemler</TableHead>
@@ -272,13 +299,48 @@ export default function GelenEvrakPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
-                        title="Eklenen belgeyi görüntüle"
+                        title="Evrak taramasını görüntüle"
                       >
                         <Eye size={16} />
                       </a>
                     ) : (
                       <span className="text-gray-300 text-xs">—</span>
                     )}
+                  </TableCell>
+                  <TableCell className="px-2 text-center">
+                    {(() => {
+                      const urls = ekUrlleri(e);
+                      if (urls.length === 0) {
+                        return <span className="text-gray-300 text-xs">—</span>;
+                      }
+                      if (urls.length === 1) {
+                        return (
+                          <a
+                            href={urls[0].url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
+                            title={`Eki görüntüle: ${urls[0].isim}`}
+                          >
+                            <Eye size={16} />
+                          </a>
+                        );
+                      }
+                      // Birden fazla ek → dialog ile listele
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setEkDialog(e)}
+                          className="relative inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
+                          title={`${urls.length} ek dosya — görüntüle`}
+                        >
+                          <Eye size={16} />
+                          <span className="absolute -top-1 -right-1 bg-[#F97316] text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] px-0.5 flex items-center justify-center leading-none">
+                            {urls.length}
+                          </span>
+                        </button>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="px-2">
                     <div>
@@ -325,6 +387,41 @@ export default function GelenEvrakPage() {
               />
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ek Dosyalar Dialog — birden fazla PDF varsa tıklanınca liste görünür */}
+      <Dialog open={!!ekDialog} onOpenChange={() => setEkDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eklenen Belgeler</DialogTitle>
+          </DialogHeader>
+          {ekDialog && (() => {
+            const urls = ekUrlleri(ekDialog);
+            return (
+              <div className="space-y-1.5 py-2">
+                <p className="text-xs text-gray-500 mb-2">
+                  <span className="font-semibold">{ekDialog.konu}</span> · {urls.length} dosya
+                </p>
+                {urls.map((item, i) => (
+                  <a
+                    key={i}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300 text-sm text-[#1E3A5F] transition-colors"
+                  >
+                    <FileText size={14} className="flex-shrink-0 text-red-600" />
+                    <span className="truncate flex-1" title={item.isim}>{item.isim}</span>
+                    <Eye size={14} className="flex-shrink-0 text-gray-400" />
+                  </a>
+                ))}
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEkDialog(null)}>Kapat</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

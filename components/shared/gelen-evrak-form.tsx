@@ -18,12 +18,11 @@ import { useAuth } from "@/hooks";
 import type { GelenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Save, Eye, Upload, Plus, ArrowLeft, Printer } from "lucide-react";
+import { Save, Eye, Upload, Plus, ArrowLeft, Printer, FileText, Trash2 } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatMuhatap, formatBaslik } from "@/lib/utils/isim";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
@@ -59,10 +58,34 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [santiyeId, setSantiyeId] = useState(evrak?.santiye_id ?? "");
   const [evrakSayiNo, setEvrakSayiNo] = useState(evrak?.evrak_sayi_no ?? "");
   const [konu, setKonu] = useState(evrak?.konu ?? "");
-  const [ilgi, setIlgi] = useState(evrak?.ilgi ?? "");
+  // İLGİ — çoklu ilgi listesi (A, B, C, ... harfleriyle).
+  // DB'de tek metin alanı (`ilgi`) → satırlar `\n` ile birleştirilip kaydedilir.
+  const [ilgiListesi, setIlgiListesi] = useState<string[]>(() => {
+    const raw = evrak?.ilgi ?? "";
+    return raw ? raw.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  });
+  const ilgiHarfler = ["A", "B", "C", "D", "E", "F", "G", "H"];
+  function basHarfBuyuk(v: string) {
+    return v.length === 0 ? v : (v.length === 1 ? v.toUpperCase() : v.charAt(0).toUpperCase() + v.slice(1));
+  }
+  function addIlgi() { setIlgiListesi((p) => [...p, ""]); }
+  function removeIlgi(i: number) { setIlgiListesi((p) => p.filter((_, idx) => idx !== i)); }
+  function updateIlgi(i: number, v: string) {
+    setIlgiListesi((p) => p.map((x, idx) => (idx === i ? basHarfBuyuk(v) : x)));
+  }
   const [icerik, setIcerik] = useState(evrak?.icerik ?? "");
   const [muhatap, setMuhatap] = useState(evrak?.muhatap ?? "");
-  const [ekler, setEkler] = useState(evrak?.ekler ?? "");
+  // EKLER — artık çoklu PDF dosyası. URL'ler `ekler` alanına \n ile birleştirilip kaydedilir.
+  // Backward compat: eski metin açıklamalı kayıtlarda URL olmayan satırlar metin olarak kalır.
+  // urlMu(): bir satırın URL olduğunu sezgisel olarak tespit eder.
+  function urlMu(s: string): boolean {
+    return /^https?:\/\//i.test(s.trim());
+  }
+  const [eklerListesi, setEklerListesi] = useState<string[]>(() => {
+    const raw = evrak?.ekler ?? "";
+    return raw.split("\n").map((s) => s.trim()).filter(Boolean);
+  });
+  const [ekUploading, setEkUploading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -134,7 +157,14 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         formData.append("path", `gelen/${firmaId}/${Date.now()}.pdf`);
         const res = await fetch("/api/upload", { method: "POST", body: formData });
         const data = await res.json();
-        if (res.ok) pdfUrl = data.url;
+        if (res.ok && data.url) {
+          pdfUrl = data.url;
+        } else {
+          // Upload BAŞARISIZ — kullanıcıya net hata ver, formu boş kayıtla kaydetme.
+          toast.error(`Evrak taraması yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
+          setLoading(false);
+          return;
+        }
       }
 
       const payload = {
@@ -143,10 +173,10 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
         konu: formatBaslik(konu),
-        ilgi: ilgi || null,
+        ilgi: ilgiListesi.filter((s) => s.trim()).join("\n") || null,
         icerik: icerik || null,
         muhatap: muhatap?.trim() || null,
-        ekler: ekler || null,
+        ekler: eklerListesi.length > 0 ? eklerListesi.join("\n") : null,
         pdf_url: pdfUrl,
       };
 
@@ -202,9 +232,9 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             evrakSayiNo={evrakSayiNo}
             konu={konu}
             muhatap={muhatap}
-            ilgi={ilgi}
+            ilgi={ilgiListesi.filter((s) => s.trim()).join("\n") || null}
             icerik={icerik}
-            ekler={ekler}
+            ekler={eklerListesi.length > 0 ? eklerListesi.join("\n") : null}
           />
           </div>
         </div>
@@ -260,9 +290,42 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
       </div>
 
+      {/* İlgi — çoklu satır listesi (Giden Evrak'taki pattern). A, B, C, ... harfleriyle.
+          DB'ye satırlar `\n` ile birleşmiş tek metin olarak yazılır. */}
       <div className="space-y-2">
-        <Label>İlgi</Label>
-        <Input value={ilgi} onChange={(e) => setIlgi(e.target.value)} placeholder="İlgi bilgisi" disabled={loading} />
+        <div className="flex items-center justify-between">
+          <Label>İlgi</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addIlgi} disabled={loading}>
+            <Plus size={14} className="mr-1" /> İlgi Ekle
+          </Button>
+        </div>
+        {ilgiListesi.length > 0 ? (
+          <div className="space-y-2">
+            {ilgiListesi.map((ilgi, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs font-medium w-12">İlgi {ilgiHarfler[i] ?? (i + 1)}:</span>
+                <Input
+                  value={ilgi}
+                  onChange={(e) => updateIlgi(i, e.target.value)}
+                  placeholder="İlgi metni"
+                  className="flex-1"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeIlgi(i)}
+                  className="text-red-400 hover:text-red-600 p-1"
+                  title="Kaldır"
+                  disabled={loading}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">Henüz ilgi eklenmedi. + butonuyla ekleyebilirsiniz.</p>
+        )}
       </div>
 
       {/* Muhatap - aranabilir dropdown */}
@@ -326,10 +389,132 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <RichTextEditor value={icerik} onChange={setIcerik} placeholder="Taahhüdümüz altında yapımı devam eden..." rows={6} disabled={loading} />
       </div>
 
-      {/* Ekler */}
+      {/* Ekler — çoklu PDF yükleme. Yüklenen URL'ler ekler alanına satır satır kaydedilir.
+          Eski kayıtlarda metin açıklamaları varsa onlar da listede görünür ve silinebilir. */}
       <div className="space-y-2">
-        <Label>Ekler</Label>
-        <Textarea value={ekler} onChange={(e) => setEkler(e.target.value)} placeholder="Ek açıklamaları" rows={2} disabled={loading} />
+        <div className="flex items-center justify-between">
+          <Label>Ekler (PDF Dosyaları)</Label>
+          <label className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs cursor-pointer transition-colors ${
+            ekUploading || loading
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-[#1E3A5F] text-white hover:bg-[#2a4f7a]"
+          }`}>
+            <Upload size={14} />
+            {ekUploading ? "Yükleniyor..." : "PDF Yükle"}
+            <input
+              type="file"
+              accept=".pdf"
+              multiple
+              className="hidden"
+              disabled={loading || ekUploading}
+              onChange={async (e) => {
+                const dosyalar = e.target.files;
+                if (!dosyalar || dosyalar.length === 0) return;
+                if (!firmaId) { toast.error("Önce firma seçin."); e.target.value = ""; return; }
+                setEkUploading(true);
+                try {
+                  // Dosya adını Supabase Storage'a güvenli hale getir:
+                  // - Türkçe karakterler ASCII'ye çevrilir (ş→s, ğ→g, ı→i, ...)
+                  // - Boşluk, parantez, virgül gibi özel karakterler "_" olur
+                  // - Uzantı korunur, sadece ad sanitize edilir
+                  const sanitizeDosyaAdi = (ad: string): string => {
+                    const harfHaritasi: Record<string, string> = {
+                      "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G", "ı": "i", "İ": "I",
+                      "ö": "o", "Ö": "O", "ş": "s", "Ş": "S", "ü": "u", "Ü": "U",
+                    };
+                    let temiz = ad.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
+                    // Sadece harf, rakam, nokta, tire kabul et — diğerleri _ olsun
+                    temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_");
+                    // Birden fazla _ → tek _
+                    temiz = temiz.replace(/_+/g, "_");
+                    return temiz.toLowerCase();
+                  };
+
+                  const yeniUrls: string[] = [];
+                  for (const dosya of Array.from(dosyalar)) {
+                    const guvenliAd = sanitizeDosyaAdi(dosya.name);
+                    const formData = new FormData();
+                    formData.append("file", dosya);
+                    formData.append("bucket", "yazismalar");
+                    formData.append("path", `gelen-ek/${firmaId}/${Date.now()}-${guvenliAd}`);
+                    const res = await fetch("/api/upload", { method: "POST", body: formData });
+                    const data = await res.json();
+                    if (res.ok && data.url) {
+                      yeniUrls.push(data.url);
+                    } else {
+                      toast.error(`"${dosya.name}" yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
+                    }
+                  }
+                  if (yeniUrls.length > 0) {
+                    setEklerListesi((prev) => [...prev, ...yeniUrls]);
+                    toast.success(`${yeniUrls.length} dosya eklendi.`);
+                  }
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
+                  toast.error(`Yükleme hatası: ${msg}`);
+                } finally {
+                  setEkUploading(false);
+                  e.target.value = "";
+                }
+              }}
+            />
+          </label>
+        </div>
+        {eklerListesi.length === 0 ? (
+          <p className="text-xs text-gray-400">Henüz ek dosya eklenmedi. "PDF Yükle" ile birden fazla PDF ekleyebilirsiniz.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {eklerListesi.map((ek, i) => {
+              const isUrl = urlMu(ek);
+              return (
+                <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-200 bg-gray-50">
+                  <span className="text-[10px] font-semibold text-gray-500 w-10 flex-shrink-0">Ek {i + 1}</span>
+                  {isUrl ? (
+                    <a
+                      href={ek}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 flex-1 min-w-0 text-xs text-[#1E3A5F] hover:text-[#F97316] truncate"
+                      title={ek}
+                    >
+                      <FileText size={12} className="flex-shrink-0" />
+                      <span className="truncate">
+                        {(() => {
+                          try {
+                            const path = new URL(ek).pathname;
+                            const name = decodeURIComponent(path.split("/").pop() ?? "PDF");
+                            // Timestamp prefix'i temizle ("123456789-dosya.pdf" → "dosya.pdf")
+                            return name.replace(/^\d+-/, "");
+                          } catch {
+                            return "PDF";
+                          }
+                        })()}
+                      </span>
+                    </a>
+                  ) : (
+                    // Eski metin açıklamaları — düzenlenebilir input olarak göster
+                    <input
+                      type="text"
+                      value={ek}
+                      onChange={(e) => setEklerListesi((p) => p.map((x, idx) => (idx === i ? e.target.value : x)))}
+                      className="flex-1 text-xs px-2 py-0.5 rounded border bg-white"
+                      disabled={loading}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setEklerListesi((p) => p.filter((_, idx) => idx !== i))}
+                    className="text-red-400 hover:text-red-600 flex-shrink-0"
+                    title="Kaldır"
+                    disabled={loading}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* PDF */}
