@@ -84,6 +84,9 @@ export default function GidenEvrakPage() {
   const [fBitis, setFBitis] = useState("");
   const [fFirma, setFFirma] = useState("");
   const [fMuhatap, setFMuhatap] = useState("");
+  // Muhatap filtresi — aranabilir + seçilebilir dropdown state'leri
+  const [fMuhatapArama, setFMuhatapArama] = useState("");
+  const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -120,11 +123,21 @@ export default function GidenEvrakPage() {
   // (sayfanın altındaki hidden div'de). new Image() sadece byte cache'liyor,
   // decode bitmeden window.print() snapshot alıyor → ilk yazdırma boş çıkıyordu.
 
+  // Listede kayıtlı olan benzersiz muhataplar (filtre dropdown'u için)
+  const kayitliMuhataplar = Array.from(
+    new Set(
+      evraklar
+        .map((e) => (e.muhatap ?? "").trim())
+        .filter((m) => m.length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "tr"));
+
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
     if (fBitis && e.evrak_tarihi > fBitis) return false;
     if (fFirma && e.firma_id !== fFirma) return false;
-    if (fMuhatap && !trAramaNormalize(e.muhatap ?? "").includes(trAramaNormalize(fMuhatap))) return false;
+    // Muhatap filtresi artık tam eşleşme (dropdown'dan seçilen değer)
+    if (fMuhatap && (e.muhatap ?? "") !== fMuhatap) return false;
     if (fArama.trim()) {
       const q = trAramaNormalize(fArama);
       const text = trAramaNormalize([
@@ -326,7 +339,70 @@ export default function GidenEvrakPage() {
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
-          <Input value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} placeholder="Ara..." className="h-8 text-xs w-full min-w-0" />
+          {/* Aranabilir + seçilebilir dropdown — yazıp süzebilir veya tıklayıp seçebilir.
+              Liste sadece giden evraklarda kullanılmış muhatapları içerir. */}
+          <div className="relative">
+            <input
+              type="text"
+              value={fMuhatapArama || (fMuhatap ? tekSatirMuhatap(fMuhatap) : "")}
+              onChange={(e) => {
+                setFMuhatapArama(e.target.value);
+                setFMuhatapDropdownAcik(true);
+                if (fMuhatap) setFMuhatap("");
+              }}
+              onFocus={() => setFMuhatapDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setFMuhatapDropdownAcik(false), 150)}
+              placeholder="Ara veya seç..."
+              className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-2 pr-7 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+            />
+            {(fMuhatap || fMuhatapArama) && (
+              <button
+                type="button"
+                onClick={() => { setFMuhatap(""); setFMuhatapArama(""); setFMuhatapDropdownAcik(false); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                title="Temizle"
+              >
+                ×
+              </button>
+            )}
+            {fMuhatapDropdownAcik && (() => {
+              const q = trAramaNormalize(fMuhatapArama);
+              const filtreli = q
+                ? kayitliMuhataplar.filter((m) => trAramaNormalize(tekSatirMuhatap(m)).includes(q))
+                : kayitliMuhataplar;
+              if (filtreli.length === 0) {
+                return (
+                  <div
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg p-3 text-[11px] text-gray-400"
+                  >
+                    Eşleşen muhatap yok.
+                  </div>
+                );
+              }
+              return (
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
+                  {filtreli.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setFMuhatap(m);
+                        setFMuhatapArama("");
+                        setFMuhatapDropdownAcik(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${fMuhatap === m ? "bg-blue-50 font-semibold" : ""}`}
+                    >
+                      {tekSatirMuhatap(m)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       </div>
 

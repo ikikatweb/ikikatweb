@@ -127,6 +127,11 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     if (!evrakTarihi) { toast.error("Evrak tarihi zorunludur."); return; }
     if (!firmaId) { toast.error("Firma seçimi zorunludur."); return; }
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
+    // Üst Yazı (PDF) zorunlu — yeni evrakta dosya seçilmeli, düzenlemede ya mevcut PDF olmalı ya yeni dosya
+    if (!pdfFile && !evrak?.pdf_url) {
+      toast.error("Üst Yazı (PDF) zorunludur. Lütfen dosya yükleyin.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -281,14 +286,17 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           SOL: Üst Yazı (tek PDF) — pdf_url alanına kaydedilir
           SAĞ: Ekler (çoklu PDF) — URL'ler ekler alanına satır satır kaydedilir */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Üst Yazı — tek PDF yükleme (pdf_url alanına kaydedilir) */}
+        {/* Üst Yazı — tek PDF yükleme (pdf_url alanına kaydedilir). ZORUNLU. */}
         <div className="space-y-2">
-          <Label>Üst Yazı (PDF)</Label>
+          <Label>Üst Yazı (PDF) <span className="text-red-500">*</span></Label>
           <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
             <Upload size={16} />
             {pdfFile ? pdfFile.name : evrak?.pdf_url ? "Mevcut dosya yüklü - Değiştir" : "PDF Yükle"}
             <input type="file" accept=".pdf" className="hidden" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} disabled={loading} />
           </label>
+          {!pdfFile && !evrak?.pdf_url && (
+            <p className="text-[10px] text-red-500">Üst Yazı PDF dosyası zorunludur.</p>
+          )}
         </div>
 
         {/* Ekler — çoklu PDF yükleme. Yüklenen URL'ler ekler alanına satır satır kaydedilir.

@@ -100,6 +100,9 @@ export default function GelenEvrakPage() {
   const [fBitis, setFBitis] = useState("");
   const [fFirma, setFFirma] = useState("");
   const [fMuhatap, setFMuhatap] = useState("");
+  // Muhatap filtresi — aranabilir + seçilebilir dropdown için ek state'ler
+  const [fMuhatapArama, setFMuhatapArama] = useState("");
+  const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -280,13 +283,72 @@ export default function GelenEvrakPage() {
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
-          <select value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
-            <option value="">Tümü</option>
-            {/* Sadece gelen evraklarda kayıtlı muhatapları göster */}
-            {kayitliMuhataplar.map((m) => (
-              <option key={m} value={m}>{tekSatirMuhatap(m)}</option>
-            ))}
-          </select>
+          {/* Aranabilir + seçilebilir dropdown — yazıp süzebilir veya tıklayıp seçebilir.
+              Liste sadece gelen evraklarda kullanılmış muhatapları içerir. */}
+          <div className="relative">
+            <input
+              type="text"
+              value={fMuhatapArama || (fMuhatap ? tekSatirMuhatap(fMuhatap) : "")}
+              onChange={(e) => {
+                setFMuhatapArama(e.target.value);
+                setFMuhatapDropdownAcik(true);
+                // Kullanıcı yazmaya başladıysa önceki seçimi temizle
+                if (fMuhatap) setFMuhatap("");
+              }}
+              onFocus={() => setFMuhatapDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setFMuhatapDropdownAcik(false), 150)}
+              placeholder="Ara veya seç..."
+              className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-2 pr-7 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+            />
+            {/* X — seçimi/aramayı temizle */}
+            {(fMuhatap || fMuhatapArama) && (
+              <button
+                type="button"
+                onClick={() => { setFMuhatap(""); setFMuhatapArama(""); setFMuhatapDropdownAcik(false); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                title="Temizle"
+              >
+                ×
+              </button>
+            )}
+            {fMuhatapDropdownAcik && (() => {
+              const q = trAramaNormalize(fMuhatapArama);
+              const filtreli = q
+                ? kayitliMuhataplar.filter((m) => trAramaNormalize(tekSatirMuhatap(m)).includes(q))
+                : kayitliMuhataplar;
+              if (filtreli.length === 0) {
+                return (
+                  <div
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg p-3 text-[11px] text-gray-400"
+                  >
+                    Eşleşen muhatap yok.
+                  </div>
+                );
+              }
+              return (
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
+                  {filtreli.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setFMuhatap(m);
+                        setFMuhatapArama("");
+                        setFMuhatapDropdownAcik(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${fMuhatap === m ? "bg-blue-50 font-semibold" : ""}`}
+                    >
+                      {tekSatirMuhatap(m)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         </div>
       </div>
 
@@ -302,7 +364,7 @@ export default function GelenEvrakPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Belge Tarihi</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Firma</TableHead>
@@ -318,8 +380,9 @@ export default function GelenEvrakPage() {
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
                   <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
-                  {/* Sayı No: 35 karakterden sonra kısaltılır, tam değer tooltip'te. */}
-                  <TableCell className="px-2 whitespace-nowrap font-medium max-w-[260px] truncate" title={e.evrak_sayi_no}>
+                  {/* Sayı No: JS ile 35 karakterden sonra "..." eklenir.
+                      CSS truncate KULLANMA — yoksa JS'in eklediği "..." CSS tarafından kesiliyor. */}
+                  <TableCell className="px-2 whitespace-nowrap font-medium" title={e.evrak_sayi_no}>
                     {kisalt(e.evrak_sayi_no, 35)}
                   </TableCell>
                   <TableCell className="px-2 max-w-[120px] truncate" title={e.firmalar?.firma_adi ?? ""}>{e.firmalar?.firma_adi ?? "—"}</TableCell>
