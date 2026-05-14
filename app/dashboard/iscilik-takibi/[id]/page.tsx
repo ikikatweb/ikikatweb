@@ -331,10 +331,21 @@ export default function IscilikDetayPage() {
     setEditing(null);
   }
 
-  // Yeni ay ekle
+  // Yeni ay ekle — KISIT: yalnız bu ayın BİR ÖNCESİNE kadar eklenebilir.
+  // Bu ay 05 ise max 04 eklenir. 06 ise max 05.
   async function handleYeniAy() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     const sonAy = ayliklar.length > 0 ? ayliklar[ayliklar.length - 1].ait_oldugu_ay : null;
+    // Bu ay - 1 hesapla
+    const now = new Date();
+    const buAy = now.getMonth() + 1; // 1-12
+    const buYil = now.getFullYear();
+    let maxAy = buAy - 1;
+    let maxYil = buYil;
+    if (maxAy === 0) { maxAy = 12; maxYil = buYil - 1; }
+    const maxAyKey = `${String(maxAy).padStart(2, "0")}.${maxYil}`;
+    const maxAyNum = maxYil * 100 + maxAy;
+    // Hedef ay: son ay varsa son+1, yoksa direkt max (bu ay - 1)
     let yeniAy: string;
     if (sonAy) {
       const [ay, yil] = sonAy.split(".");
@@ -343,8 +354,19 @@ export default function IscilikDetayPage() {
       if (nextAy > 12) { nextAy = 1; nextYil++; }
       yeniAy = `${String(nextAy).padStart(2, "0")}.${nextYil}`;
     } else {
-      const now = new Date();
-      yeniAy = `${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
+      yeniAy = maxAyKey;
+    }
+    // KISIT: yeni ay maksimum "bu ay - 1" olabilir; gelecek/bu ay eklenemez
+    const yeniAyNum = (() => {
+      const [m, y] = yeniAy.split(".");
+      return parseInt(y) * 100 + parseInt(m);
+    })();
+    if (yeniAyNum > maxAyNum) {
+      toast.error(
+        `Yeni ay yalnızca bir önceki aya kadar açılabilir. Şu an eklenebilecek son ay: ${maxAyKey}.`,
+        { duration: 5000 },
+      );
+      return;
     }
 
     try {

@@ -98,16 +98,23 @@ export async function insertBordroPersonel(p: PersonelInsert): Promise<Personel>
   return data as Personel;
 }
 
-// İşten çıkar — SADECE atama geçmişinde aktif atamayı kapat.
+// İşten çıkar — SADECE belirtilen şantiyedeki aktif atamayı kapat.
+// santiyeId verilmezse personelin TÜM aktif atamalarını kapatır (geriye uyumluluk).
 // Personel tablosu değişmez (durum/santiye_id) — bordro bağımsız.
-export async function isenCikar(personelId: string, cikisTarihi?: string): Promise<void> {
+export async function isenCikar(
+  personelId: string,
+  cikisTarihi?: string,
+  santiyeId?: string,
+): Promise<void> {
   const supabase = getSupabase();
   const tarih = cikisTarihi || bugun();
-  const { error } = await supabase
+  let q = supabase
     .from("personel_atama_gecmisi")
     .update({ bitis_tarihi: tarih })
     .eq("personel_id", personelId)
     .is("bitis_tarihi", null);
+  if (santiyeId) q = q.eq("santiye_id", santiyeId);
+  const { error } = await q;
   if (error) throw error;
 }
 
@@ -126,11 +133,13 @@ export async function iseGeriAl(personelId: string, santiyeId: string, tarih?: s
   const inputTarih = tarih ?? bugun();
   const today = bugun();
 
-  // 1) Aktif atama varsa onu kapat (savunma — input tarih ile)
+  // 1) AYNI ŞANTİYEDE açık atama varsa onu kapat (defansif — başka şantiyelere DOKUNMA).
+  //    Personel başka şantiyelerde aktif olabilir, oraları korumalıyız.
   await supabase
     .from("personel_atama_gecmisi")
     .update({ bitis_tarihi: inputTarih })
     .eq("personel_id", personelId)
+    .eq("santiye_id", santiyeId)
     .is("bitis_tarihi", null);
 
   // 2) Bu personelin EN GÜNCEL çıkış tarihini bul (yeni kapatılan dahil)
@@ -180,6 +189,7 @@ export async function transferEt(
   personelId: string,
   yeniSantiyeId: string,
   tarih?: string,
+  eskiSantiyeId?: string,
 ): Promise<{ cikis: string; giris: string }> {
   const supabase = getSupabase();
   const cikisTarih = tarih ?? bugun();
@@ -195,11 +205,18 @@ export async function transferEt(
     girisTarih = gunEkle(cikisTarih, 1);
   }
 
-  await supabase
+  // Eski şantiyedeki açık atamayı kapat — eskiSantiyeId verilmişse sadece o,
+  // verilmemişse personelin tüm açık atamaları (geriye uyumluluk).
+  let kapatUpdate = supabase
     .from("personel_atama_gecmisi")
     .update({ bitis_tarihi: cikisTarih })
     .eq("personel_id", personelId)
     .is("bitis_tarihi", null);
+  if (eskiSantiyeId) {
+    kapatUpdate = kapatUpdate.eq("santiye_id", eskiSantiyeId);
+  }
+  await kapatUpdate;
+
   const { error } = await supabase.from("personel_atama_gecmisi").insert({
     personel_id: personelId,
     santiye_id: yeniSantiyeId,

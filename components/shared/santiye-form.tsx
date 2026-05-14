@@ -121,6 +121,10 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     return [""]; // varsayılan: 1 boş input
   });
 
+  // "Bu iş için teknik personel gerekli değil" — VARSAYILAN: tik KAPALI.
+  // Kullanıcı istediği işte manuel olarak işaretler.
+  const [teknikPersonelGerekliDegil, setTeknikPersonelGerekliDegil] = useState<boolean>(false);
+
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
     is_adi: santiye?.is_adi ?? "",
@@ -303,10 +307,12 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
-    // Teknik personel listesi zorunlu — en az 1 dolu kayıt
-    const teknikPersonellerTemiz = teknikPersonelList.map((s) => s.trim()).filter((s) => s.length > 0);
-    if (teknikPersonellerTemiz.length === 0) {
-      toast.error("En az 1 teknik personel girilmelidir.");
+    // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
+    const teknikPersonellerTemiz = teknikPersonelGerekliDegil
+      ? []
+      : teknikPersonelList.map((s) => s.trim()).filter((s) => s.length > 0);
+    if (!teknikPersonelGerekliDegil && teknikPersonellerTemiz.length === 0) {
+      toast.error("En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
       return;
     }
     // Sözleşme ve işyeri teslim tarihi ihale tarihinden önce olamaz
@@ -676,52 +682,77 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
                   </Label>
                 </div>
 
-                {/* Teknik Personel listesi — serbest metin, + ile çoğaltılabilir */}
+                {/* Teknik Personel listesi — serbest metin, + ile çoğaltılabilir.
+                    "Gerekli değil" tikli ise gizlenir ve zorunluluk kalkar. */}
                 <div className="space-y-1">
                   <Label className="text-sm">
-                    Teknik Personel <span className="text-red-500">*</span>
+                    Teknik Personel {!teknikPersonelGerekliDegil && <span className="text-red-500">*</span>}
                   </Label>
-                  <div className="space-y-1.5">
-                    {teknikPersonelList.map((deger, i) => (
-                      <div key={i} className="flex items-center gap-1.5">
-                        <Input
-                          type="text"
-                          placeholder={`Teknik personel ${i + 1}`}
-                          value={deger}
-                          onChange={(e) => {
-                            const yeni = [...teknikPersonelList];
-                            yeni[i] = e.target.value;
-                            setTeknikPersonelList(yeni);
-                          }}
-                          disabled={loading}
-                        />
-                        {teknikPersonelList.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTeknikPersonelList(teknikPersonelList.filter((_, idx) => idx !== i));
-                            }}
-                            disabled={loading}
-                            className="h-9 w-9 flex-shrink-0 rounded-md border border-red-200 text-red-600 hover:bg-red-50 flex items-center justify-center disabled:opacity-50"
-                            title="Bu personeli kaldır"
-                          >
-                            <X size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => setTeknikPersonelList([...teknikPersonelList, ""])}
+                  {/* "Teknik personel gerekli değil" tiki */}
+                  <label className={`flex items-start gap-2 p-2 mb-1.5 rounded border cursor-pointer ${
+                    teknikPersonelGerekliDegil ? "bg-amber-50 border-amber-300" : "bg-white border-gray-200 hover:bg-gray-50"
+                  }`}>
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 mt-0.5 accent-amber-600"
+                      checked={teknikPersonelGerekliDegil}
+                      onChange={(e) => setTeknikPersonelGerekliDegil(e.target.checked)}
                       disabled={loading}
-                      className="w-full h-9 rounded-md border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-sm font-semibold transition-colors disabled:opacity-50"
-                    >
-                      + Teknik personel ekle
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-gray-500 mt-1">
-                    Boş bırakılan satırlar kaydedilmez. İsim yerine görev veya açıklama da yazabilirsiniz.
-                  </p>
+                    />
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-[#1E3A5F]">
+                        Bu iş için teknik personel gerekli değil
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        İşaretlerseniz teknik personel listesi atlanır ve bu iş için zorunluluk kalkar.
+                      </div>
+                    </div>
+                  </label>
+                  {!teknikPersonelGerekliDegil && (
+                    <>
+                      <div className="space-y-1.5">
+                        {teknikPersonelList.map((deger, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <Input
+                              type="text"
+                              placeholder={`Teknik personel ${i + 1}`}
+                              value={deger}
+                              onChange={(e) => {
+                                const yeni = [...teknikPersonelList];
+                                yeni[i] = e.target.value;
+                                setTeknikPersonelList(yeni);
+                              }}
+                              disabled={loading}
+                            />
+                            {teknikPersonelList.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setTeknikPersonelList(teknikPersonelList.filter((_, idx) => idx !== i));
+                                }}
+                                disabled={loading}
+                                className="h-9 w-9 flex-shrink-0 rounded-md border border-red-200 text-red-600 hover:bg-red-50 flex items-center justify-center disabled:opacity-50"
+                                title="Bu personeli kaldır"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setTeknikPersonelList([...teknikPersonelList, ""])}
+                          disabled={loading}
+                          className="w-full h-9 rounded-md border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-sm font-semibold transition-colors disabled:opacity-50"
+                        >
+                          + Teknik personel ekle
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Boş bırakılan satırlar kaydedilmez. İsim yerine görev veya açıklama da yazabilirsiniz.
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
 

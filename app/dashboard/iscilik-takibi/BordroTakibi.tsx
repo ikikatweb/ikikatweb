@@ -1,7 +1,7 @@
 // Bordro Takibi — şantiye kanban + drag-drop personel transferi
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -97,6 +97,10 @@ type PendingChange = {
   santiyeAd?: string;     // hedef şantiye (giriş/transfer)
   onceSantiyeAd?: string; // önceki şantiye (çıkış/transfer)
   tarih: string;          // YYYY-MM-DD
+  // Transfer için: ESKİ atamanın bitis_tarihi (revert için kritik).
+  // Backdated transferde tarih ile farklı olabilir.
+  // Yoksa "tarih" değeri kullanılır (geriye uyumluluk).
+  cikisTarih?: string;
   // Mail bu firmadan gönderilir (giriş/transfer→hedef şantiyenin firması; çıkış→eski şantiyenin firması)
   firmaId?: string;
   // Mail önizlemesinde her satıra eklenebilen not (kırmızı renkte gönderilir)
@@ -142,19 +146,24 @@ function trAscii(s: string): string {
 
 // Hızlı manuel gün girişi kartı (gün düzenle dialogunun başında)
 function ManuelGunHizliKart({
-  mevcutGun, aySonGun, onSave,
+  mevcutGun, aySonGun, onSave, adminBypass = false,
 }: {
   mevcutGun: number;
   aySonGun: number;
   onSave: (N: number) => Promise<void> | void;
+  // adminBypass=true → kullanıcı admin (yönetici); sınır aşılsa bile kaydedilebilir,
+  // ama uyarı görsel olarak hâlâ kırmızı görünür.
+  adminBypass?: boolean;
 }) {
   const [val, setVal] = useState(String(mevcutGun));
   useEffect(() => { setVal(String(mevcutGun)); }, [mevcutGun]);
-  // CLAMP YAPMA — kullanıcı yazdığı değeri görsün; sınır aşılırsa hata göster, kaydetmeyi engelle.
+  // CLAMP YAPMA — kullanıcı yazdığı değeri görsün; sınır aşılırsa hata göster.
+  // Admin için kayıt butonu yine de etkin (adminBypass).
   const N = Math.max(0, parseInt(val) || 0);
   const tooHigh = N > aySonGun;
   const degisti = N !== mevcutGun;
-  const canSave = degisti && !tooHigh;
+  // Sınır aşıldıysa kaydetme: admin için izin var, diğerleri için yok
+  const canSave = degisti && (!tooHigh || adminBypass);
   return (
     <div className={`border-2 rounded-lg p-3 ${tooHigh ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
       <div className={`text-xs font-semibold mb-1.5 ${tooHigh ? "text-red-700" : "text-blue-700"}`}>
@@ -175,15 +184,22 @@ function ManuelGunHizliKart({
           type="button"
           disabled={!canSave}
           onClick={() => onSave(N)}
-          className="ml-auto px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className={`ml-auto px-3 py-1.5 text-sm rounded-md text-white disabled:bg-gray-300 disabled:cursor-not-allowed ${
+            tooHigh && adminBypass
+              ? "bg-red-600 hover:bg-red-700"
+              : "bg-blue-600 hover:bg-blue-700"
+          }`}
         >
           Kaydet
         </button>
       </div>
       {tooHigh && (
         <p className="text-xs text-red-700 font-semibold mt-2">
-          ⚠️ {aySonGun} günden fazla giremezsiniz.
+          ⚠️ {aySonGun} günden fazla giriş.
           {aySonGun === 0 ? " Bu personelin bu şantiyede atama günü yok." : ` Çıkış tarihine kadar olan gün sayısı: ${aySonGun}.`}
+          {adminBypass
+            ? <span className="block mt-0.5 text-[11px] font-normal text-red-600">Admin yetkinizle yine de kaydedebilirsiniz; ancak SGK günü 30'u aşabilir, dikkat edin.</span>
+            : <span className="block mt-0.5 text-[11px] font-normal">Kaydetme engellendi.</span>}
         </p>
       )}
       <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
@@ -572,6 +588,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     santiyeAd: r.santiye_ad ?? undefined,
     onceSantiyeAd: r.once_santiye_ad ?? undefined,
     tarih: r.tarih,
+    cikisTarih: r.cikis_tarihi ?? undefined,
     firmaId: r.firma_id ?? undefined,
   });
 
@@ -590,14 +607,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   useEffect(() => {
     refreshPending();
     const intv = setInterval(refreshPending, 30_000);
-    // Sekme tekrar fokuslanınca pending kuyruğunu + tüm sayfa verisini (santiye, atama, brüt vs.)
-    // tazele. Kullanıcı başka sekmede şantiye düzenleyip dönerse veriler otomatik yenilenir.
+    // Sekme tekrar fokuslanınca pending kuyruğunu yenile.
+    // ÖNEMLİ: loadData burada ÇAĞRILMAZ — her küçük tıklamada (örn. dialog focus dönüşü)
+    // tetiklenip sayfa scroll'unu sıfırlamasın. loadData sadece visibility değişiminde
+    // (gerçekten tab'a geri dönüldüğünde) ve manuel işlemlerden sonra çağrılır.
     const onFocus = () => {
       refreshPending();
-      loadDataRef.current?.();
     };
     window.addEventListener("focus", onFocus);
-    // Mobile için: sayfa visibility değiştiğinde de yenile (focus eventi mobilde yetersiz olabilir)
+    // Mobile/desktop: sayfa visibility değiştiğinde (tab değişikliği) yenile
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
         refreshPending();
@@ -678,6 +696,31 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending.length, muhasebeEmail, firmalar.length]);
 
+  // SCROLL KORUMA — state değişimleri (özellikle checkbox seçimi) scroll'u sıfırlamasın.
+  // useLayoutEffect: her render'dan SONRA, DOM güncellenmiş ama tarayıcı paint etmeden
+  // önce çalışır → scroll sıfırlanmışsa anında geri yüklenir, kullanıcı sıçramayı görmez.
+  const sonScrollRef = useRef<number>(0);
+  useEffect(() => {
+    const mainEl = document.getElementById("dashboard-main");
+    if (!mainEl) return;
+    const handleScroll = () => {
+      // Sadece kullanıcı scroll'larında güncelle (yani scroll > 0 olduğunda)
+      sonScrollRef.current = mainEl.scrollTop;
+    };
+    mainEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => mainEl.removeEventListener("scroll", handleScroll);
+  }, []);
+  // Render sonrası: eğer scrollTop 0'a düştüyse ve son bilinen konum > 0 ise, geri yükle.
+  useLayoutEffect(() => {
+    const mainEl = document.getElementById("dashboard-main");
+    if (!mainEl) return;
+    const son = sonScrollRef.current;
+    // Eğer son bilinen konum 0 değil ama şimdi 0'a düştüyse (unexpected reset) → geri yükle
+    if (son > 0 && mainEl.scrollTop === 0) {
+      mainEl.scrollTop = son;
+    }
+  });
+
   // Boşluğa tıkla / ESC ile seçimi temizle
   useEffect(() => {
     if (selectedKeys.size === 0) return;
@@ -699,7 +742,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   }, [selectedKeys.size]);
   // pendingEkle: önce optimistic olarak yerel state'e ekle, sonra DB'ye yaz.
   // Diğer adminler 30sn'lik refresh ile görür.
-  async function pendingEkle(p: Omit<PendingChange, "id">) {
+  async function pendingEkle(p: Omit<PendingChange, "id">): Promise<boolean> {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setPending((prev) => [...prev, { ...p, id: tempId }]);
     const inserted = await insertPendingMail({
@@ -711,6 +754,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       santiye_ad: p.santiyeAd ?? null,
       once_santiye_ad: p.onceSantiyeAd ?? null,
       tarih: p.tarih,
+      cikis_tarihi: p.cikisTarih ?? null,
       firma_id: p.firmaId ?? null,
       created_by: kullanici?.id ?? null,
       created_by_ad: kullanici?.ad_soyad ?? null,
@@ -718,6 +762,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (inserted) {
       // Temp ID yerine gerçek DB row'una geç
       setPending((prev) => prev.map((x) => (x.id === tempId ? dbRowToPending(inserted) : x)));
+      return true;
     } else {
       // Insert başarısız → temp kaydı geri al, kullanıcıyı uyar
       setPending((prev) => prev.filter((x) => x.id !== tempId));
@@ -725,13 +770,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         "Mail kuyruğuna eklenemedi. Veritabanında 'bordro_pending_mail' tablosu yoksa Supabase SQL editöründe oluşturun.",
         { duration: 5000 },
       );
+      return false;
     }
   }
 
   // İlk yüklemeden sonra loadData spinner göstermez — kanban mevcut yerinde kalır,
   // arka planda data tazelenir, scroll sıfırlanmaz.
+  // Scroll koruma: loadData (veya açılan dialog) sırasında kanbanın yeniden render
+  // edilmesi scroll konumunu sıfırlayabilir → sayfa en üste atlar. Bunu önlemek için
+  // loadData başlarken kaydet, bitince geri yükle.
   const ilkYuklemeYapildi = useRef(false);
   const loadData = useCallback(async () => {
+    // Scroll konumunu kaydet (ilk yükleme HARİÇ)
+    const mainEl = typeof document !== "undefined" ? document.getElementById("dashboard-main") : null;
+    const savedScroll = ilkYuklemeYapildi.current && mainEl ? mainEl.scrollTop : null;
     if (!ilkYuklemeYapildi.current) {
       setLoading(true);
     }
@@ -834,6 +886,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     } finally {
       setLoading(false);
       ilkYuklemeYapildi.current = true;
+      // Scroll konumunu geri yükle (re-render sonrasında, microtask sonu)
+      if (savedScroll !== null && mainEl) {
+        // requestAnimationFrame ile bir frame bekle — React state'i DOM'a yansısın
+        requestAnimationFrame(() => {
+          if (mainEl) mainEl.scrollTop = savedScroll;
+        });
+      }
     }
   }, []);
 
@@ -1113,7 +1172,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //   - Eski firmaya: "çıkış" maili (eski firmanın SMTP'sinden gidecek)
   //   - Yeni firmaya: "giriş" maili (yeni firmanın SMTP'sinden gidecek)
   // Aynı firma içi transferde tek "transfer" maili.
-  function kuyrugaEkle(payload: {
+  async function kuyrugaEkle(payload: {
     tip: "giris" | "cikis" | "transfer";
     personel: Personel;
     santiyeAd?: string;
@@ -1128,7 +1187,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // Transfer farklı firmalar arası ise, eski firmadaki ÇIKIŞ tarihi.
     // Verilmezse `tarih` kullanılır (eski davranış).
     cikisTarih?: string;
-  }) {
+  }): Promise<boolean> {
     const tarih = payload.tarih ?? yerelBugun();
     const cikisTarih = payload.cikisTarih ?? tarih;
 
@@ -1176,32 +1235,36 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (eskiFirmaId && yeniFirmaId && eskiFirmaId !== yeniFirmaId) {
         // FARKLI FİRMA → 2 ayrı kayıt (her birinin kendi tarihi)
         // Eski firma muhasebesine ÇIKIŞ maili — çıkış tarihi
-        pendingEkle({
+        // BUG #2 fix: split transferi linked yapmak için iki tarafa da cikisTarih ekle
+        const ok1 = await pendingEkle({
           ...baseFields,
           tarih: cikisTarih,
+          cikisTarih,
           tip: "cikis",
           onceSantiyeAd: payload.onceSantiyeAd,
           firmaId: eskiFirmaId,
         });
         // Yeni firma muhasebesine GİRİŞ maili — giriş tarihi (çıkış+1 ya da bugün)
-        pendingEkle({
+        const ok2 = await pendingEkle({
           ...baseFields,
           tarih, // giriş tarihi
+          cikisTarih, // linked eşleştirmesi için
           tip: "giris",
           santiyeAd: payload.santiyeAd,
           firmaId: yeniFirmaId,
         });
-        return;
+        return ok1 && ok2;
       }
       // Aynı firma içi transfer → tek mail (transfer tipi)
-      pendingEkle({
+      // ÖNEMLİ: cikisTarih, eski atamanın bitis_tarihi'ni saklar (revert için).
+      return await pendingEkle({
         ...baseFields,
         tip: "transfer",
         santiyeAd: payload.santiyeAd,
         onceSantiyeAd: payload.onceSantiyeAd,
         firmaId: yeniFirmaId,
+        cikisTarih,
       });
-      return;
     }
 
     // Giriş veya çıkış (transfer değil)
@@ -1213,7 +1276,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       firmaId = firmaIdFromSantiyeId(payload.santiyeId)
         ?? firmaIdFromSantiyeAd(payload.santiyeAd);
     }
-    pendingEkle({
+    return await pendingEkle({
       ...baseFields,
       tip: payload.tip,
       santiyeAd: payload.santiyeAd,
@@ -1356,68 +1419,104 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         return;
       }
 
-      // Tek bir change'i DB'de geri alan helper
-      async function revertOne(c: PendingChange) {
+      // Tek bir change'i DB'de geri alan helper.
+      // BUG #3 fix: transfer için ÖNCE yeni atamayı sil, SONRA eski atamayı aç (constraint riski).
+      // BUG #4 fix: Her supabase çağrısının .select() ile sonucunu kontrol et, 0 satır = hata.
+      // BUG #1 fix: transfer için eski atamanın bitis_tarihi = c.cikisTarih (yoksa c.tarih).
+      async function revertOne(c: PendingChange): Promise<{ ok: boolean; mesaj?: string }> {
+        const hatalar: string[] = [];
         if (c.tip === "cikis" && c.onceSantiyeAd) {
           const sant = santiyeler.find((s) => s.is_adi === c.onceSantiyeAd);
           if (sant) {
-            await supabase
+            const { data, error } = await supabase
               .from("personel_atama_gecmisi")
               .update({ bitis_tarihi: null })
               .eq("personel_id", personelId)
               .eq("santiye_id", sant.id)
-              .eq("bitis_tarihi", c.tarih);
+              .eq("bitis_tarihi", c.tarih)
+              .select();
+            if (error) hatalar.push(`Çıkış geri alma DB hatası: ${error.message}`);
+            else if (!data || data.length === 0) hatalar.push(`Çıkış kaydı bulunamadı (${c.onceSantiyeAd} · ${c.tarih})`);
           }
         } else if (c.tip === "giris" && c.santiyeAd) {
           const sant = santiyeler.find((s) => s.is_adi === c.santiyeAd);
           if (sant) {
-            await supabase
+            const { data, error } = await supabase
               .from("personel_atama_gecmisi")
               .delete()
               .eq("personel_id", personelId)
               .eq("santiye_id", sant.id)
               .eq("baslangic_tarihi", c.tarih)
-              .is("bitis_tarihi", null);
+              .is("bitis_tarihi", null)
+              .select();
+            if (error) hatalar.push(`Giriş geri alma DB hatası: ${error.message}`);
+            else if (!data || data.length === 0) hatalar.push(`Giriş kaydı bulunamadı (${c.santiyeAd} · ${c.tarih})`);
           }
         } else if (c.tip === "transfer") {
-          if (c.onceSantiyeAd) {
-            const sant = santiyeler.find((s) => s.is_adi === c.onceSantiyeAd);
-            if (sant) {
-              await supabase
-                .from("personel_atama_gecmisi")
-                .update({ bitis_tarihi: null })
-                .eq("personel_id", personelId)
-                .eq("santiye_id", sant.id)
-                .eq("bitis_tarihi", c.tarih);
-            }
-          }
+          // BUG #3 fix: ÖNCE yeni atamayı sil
           if (c.santiyeAd) {
             const sant = santiyeler.find((s) => s.is_adi === c.santiyeAd);
             if (sant) {
-              await supabase
+              const { data, error } = await supabase
                 .from("personel_atama_gecmisi")
                 .delete()
                 .eq("personel_id", personelId)
                 .eq("santiye_id", sant.id)
                 .eq("baslangic_tarihi", c.tarih)
-                .is("bitis_tarihi", null);
+                .is("bitis_tarihi", null)
+                .select();
+              if (error) hatalar.push(`Transfer yeni atama silme hatası: ${error.message}`);
+              else if (!data || data.length === 0) hatalar.push(`Transfer yeni atama bulunamadı (${c.santiyeAd} · ${c.tarih})`);
+            }
+          }
+          // SONRA eski atamanın bitis_tarihi'ni null'a çek
+          if (c.onceSantiyeAd) {
+            const sant = santiyeler.find((s) => s.is_adi === c.onceSantiyeAd);
+            if (sant) {
+              // BUG #1 fix: eski atama bitis_tarihi = cikisTarih (varsa) yoksa tarih
+              const eskiBitis = c.cikisTarih ?? c.tarih;
+              const { data, error } = await supabase
+                .from("personel_atama_gecmisi")
+                .update({ bitis_tarihi: null })
+                .eq("personel_id", personelId)
+                .eq("santiye_id", sant.id)
+                .eq("bitis_tarihi", eskiBitis)
+                .select();
+              if (error) hatalar.push(`Transfer eski atama açma hatası: ${error.message}`);
+              else if (!data || data.length === 0) hatalar.push(`Transfer eski atama bulunamadı (${c.onceSantiyeAd} · ${eskiBitis})`);
             }
           }
         }
+        if (hatalar.length > 0) return { ok: false, mesaj: hatalar.join("; ") };
+        return { ok: true };
       }
 
-      // Aynı tarih + personelTc kombinasyonundaki KARŞIT tipte pending var mı? (split transfer)
+      // BUG #2 fix: Aynı personel + tarih + farklı firma transfer için 2 ayrı pending oluşur
+      // (biri "cikis" eski firmada, biri "giris" yeni firmada). Bu ikisi linked sayılır.
+      // Eşleştirme: TC + (cikisTarih === otherChange.cikisTarih VEYA tarih === otherChange.tarih)
       const linked = pending.filter((p) =>
         p.id !== id
-        && p.tarih === change.tarih
         && p.personelTc === change.personelTc
         && ((change.tip === "cikis" && p.tip === "giris") || (change.tip === "giris" && p.tip === "cikis"))
+        // Aynı tarih EŞLEŞMESİ — split transferde cikisTarih bir tarafta, tarih diğer tarafta
+        && (p.tarih === change.tarih
+          || p.tarih === change.cikisTarih
+          || p.cikisTarih === change.tarih
+          || (change.cikisTarih && p.tarih && Math.abs(
+            new Date(p.tarih).getTime() - new Date(change.cikisTarih).getTime(),
+          ) <= 86400000 * 7)) // ya da 7 gün içinde — split transferlerde giriş tarihi çıkış+1 vs olabilir
       );
 
       // Önce ana change'i, sonra bağlı kayıtları DB'de geri al
-      await revertOne(change);
+      const sonuclar: { ok: boolean; mesaj?: string }[] = [];
+      sonuclar.push(await revertOne(change));
       for (const lk of linked) {
-        await revertOne(lk);
+        sonuclar.push(await revertOne(lk));
+      }
+      const hatalı = sonuclar.filter((s) => !s.ok);
+      if (hatalı.length > 0) {
+        const detay = hatalı.map((s) => s.mesaj).filter(Boolean).join("\n• ");
+        toast.error(`Bazı işlemler geri alınamadı:\n• ${detay}`, { duration: 8000 });
       }
 
       const idsToRemove = new Set([id, ...linked.map((l) => l.id)]);
@@ -1559,11 +1658,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const yeniAcik = !bitis;
         if (eskiAcik && !yeniAcik && bitis) {
           // Açık atama kapatıldı → işten çıkış maili (revert: bitis_tarihi = bitis)
-          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: santiyeAd, onceSantiyeId: eskiAtama.santiye_id, tarih: bitis });
+          await kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: santiyeAd, onceSantiyeId: eskiAtama.santiye_id, tarih: bitis });
           toast.success(`Atama güncellendi · ${personel.ad_soyad} işten çıkış maili kuyruğa eklendi`);
         } else if (!eskiAcik && yeniAcik) {
           // Kapalı atama yeniden açıldı → işe geri giriş maili (revert: baslangic_tarihi = baslangic)
-          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: eskiAtama.santiye_id, tarih: baslangic });
+          await kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: eskiAtama.santiye_id, tarih: baslangic });
           toast.success(`Atama güncellendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
         } else {
           toast.success("Atama güncellendi");
@@ -1619,7 +1718,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const santiyeAd = santiyeler.find((s) => s.id === santiyeId)?.is_adi;
       if (personel && !bitis) {
         // Revert için DB'ye yazılan ASIL baslangic_tarihi tarihini ilet
-        kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId, tarih: baslangic });
+        await kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId, tarih: baslangic });
         toast.success(`Atama eklendi · ${personel.ad_soyad} işe giriş maili kuyruğa eklendi`);
       } else {
         toast.success("Atama eklendi");
@@ -1827,22 +1926,40 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       let basari = 0;
       let teknikSayilan = 0;
       let normalSayilan = 0;
+      let atlandi = 0;
+      const atlananAdlar: string[] = [];
       let idx = 0;
       for (const personelId of topluSecilenler) {
         try {
           const personel = personeller.find((p) => p.id === personelId);
           if (!personel) { idx++; continue; }
+          // BUG #7 fix: bu personelin BU şantiyede zaten aktif ataması var mı kontrol et
+          const ayniSantiyedeAktif = atamalar.some(
+            (a) => a.personel_id === personelId && a.santiye_id === topluEkleSantiyeId && !a.bitis_tarihi,
+          );
+          if (ayniSantiyedeAktif) {
+            atlandi++;
+            atlananAdlar.push(personel.ad_soyad);
+            idx++;
+            continue;
+          }
           // Split: ilk teknikIlkN kişi teknik personel (teslim tarihi), kalan default tarih
           const buKisininTarihi = (idx < teknikIlkN && teknikTeslim) ? teknikTeslim : kullanilanTarih;
           const buKisininTeknikMi = idx < teknikIlkN;
           await insertAtama(personelId, topluEkleSantiyeId, buKisininTarihi, null, buKisininTeknikMi);
-          kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: buKisininTarihi });
+          await kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: buKisininTarihi });
           basari++;
           if (idx < teknikIlkN) teknikSayilan++; else normalSayilan++;
         } catch (e) {
           console.error("Toplu ekleme hatası:", e);
         }
         idx++;
+      }
+      if (atlandi > 0) {
+        toast(
+          `${atlandi} kişi zaten bu şantiyede aktif olduğu için atlandı: ${atlananAdlar.slice(0, 3).join(", ")}${atlananAdlar.length > 3 ? "..." : ""}`,
+          { icon: "ℹ️", duration: 5000 },
+        );
       }
       // Toast'da bölme bilgisini ver
       if (teknikSayilan > 0 && normalSayilan > 0) {
@@ -2324,13 +2441,41 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return items;
   }
 
+  // Scroll'u state değişimi sırasında koruyan yardımcı.
+  // setState'ten önce mevcut scrollTop'u yakalar, ardından 300ms boyunca her frame'de
+  // scroll bozulup bozulmadığını kontrol eder. Bozulduysa anında geri yükler.
+  // Bu, tarayıcının asenkron scrollIntoView / focus restoration davranışlarını da yakalar.
+  function scrollKoru<T>(fn: () => T): T {
+    const mainEl = typeof document !== "undefined" ? document.getElementById("dashboard-main") : null;
+    const savedScroll = mainEl?.scrollTop ?? 0;
+    const result = fn();
+    if (mainEl && savedScroll > 0) {
+      const baslangic = performance.now();
+      const sure = 300; // ms — bu süre boyunca her frame'de kontrol et
+      const tick = () => {
+        if (mainEl.scrollTop !== savedScroll) {
+          mainEl.scrollTop = savedScroll;
+          // Sonraki scroll listener tetiklenmesini önlemek için referansı da güncelle
+          sonScrollRef.current = savedScroll;
+        }
+        if (performance.now() - baslangic < sure) {
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
+    }
+    return result;
+  }
+
   function toggleSecim(personelId: string, sutunKey: string) {
     const key = `${personelId}:${sutunKey}`;
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
+    scrollKoru(() => {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
     });
   }
   // Bu (personel × şantiye) kombinasyonu "geçmiş kayıt" mı? (en son atama kapanmış mı)
@@ -2342,7 +2487,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return matches.length > 0 && !!matches[0].bitis_tarihi;
   }
   function tumunuSec(items: { id: string; sutunKey: string }[]) {
-    setSelectedKeys((prev) => {
+    scrollKoru(() => setSelectedKeys((prev) => {
       const next = new Set(prev);
       for (const it of items) {
         // İşten çıkış tarihi olanları (geçmiş kayıt) atla
@@ -2350,14 +2495,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         next.add(`${it.id}:${it.sutunKey}`);
       }
       return next;
-    });
+    }));
   }
   function tumunuKaldir(items: { id: string; sutunKey: string }[]) {
-    setSelectedKeys((prev) => {
+    scrollKoru(() => setSelectedKeys((prev) => {
       const next = new Set(prev);
       for (const it of items) next.delete(`${it.id}:${it.sutunKey}`);
       return next;
-    });
+    }));
   }
 
   async function topluCikarYap() {
@@ -2397,7 +2542,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             .eq("santiye_id", santiyeId)
             .is("bitis_tarihi", null);
           if (error) throw error;
-          kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
+          await kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
           basari++;
         } catch (e) { console.error(e); }
       }
@@ -2435,29 +2580,78 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     setTopluTransferIsleniyor(true);
     try {
       let basari = 0;
-      const tekIds = new Set<string>();
-      for (const it of items) tekIds.add(it.personel.id);
-      for (const pid of tekIds) {
-        const personel = personeller.find((p) => p.id === pid);
-        if (!personel) continue;
-        try {
-          const aktifAtama = atamalar.find((a) => a.personel_id === pid && !a.bitis_tarihi);
-          const onceSantiyeAd = aktifAtama
-            ? santiyeler.find((s) => s.id === aktifAtama.santiye_id)?.is_adi
-            : undefined;
-          if (aktifAtama && aktifAtama.santiye_id === topluTransferHedef) continue; // zaten orada
-          if (aktifAtama) {
-            // transferEt artık {cikis, giris} döner — mail önizlemesinde gerçek giriş tarihi
-            const r = await transferEt(pid, topluTransferHedef, topluTransferTarih);
-            kuyrugaEkle({ tip: "transfer", personel, santiyeAd: hedefAd, onceSantiyeAd, santiyeId: topluTransferHedef, onceSantiyeId: aktifAtama.santiye_id, tarih: r.giris, cikisTarih: r.cikis });
-          } else {
-            const girisTarih = await iseGeriAl(pid, topluTransferHedef, topluTransferTarih);
-            kuyrugaEkle({ tip: "giris", personel, santiyeAd: hedefAd, santiyeId: topluTransferHedef, tarih: girisTarih });
+      let basarisiz = 0;
+      let zatenSigortali = 0;
+      const basarisizAdlar: string[] = [];
+      const zatenSigortaliAdlar: string[] = [];
+      // ŞANTİYE-BAZLI işlem: kullanıcı hangi (personel × kaynak şantiye) çiftlerini
+      // seçtiyse her birinden hedef şantiyeye AYRI transfer yapılır.
+      // Aynı personelin BAŞKA şantiyelerdeki açık atamaları DOKUNULMADAN korunur.
+      for (const it of items) {
+        const personel = it.personel;
+        const kaynakSantiyeId = it.sutunKey;
+        // Pasif/atanmamış kaynaklı transferler için iseGeriAl kullan
+        if (kaynakSantiyeId === PASIF_KEY || kaynakSantiyeId === ATANMAMIS_KEY) {
+          try {
+            // Hedef şantiyede zaten aktif mi kontrolü
+            const hedefteAktif = atamalar.some(
+              (a) => a.personel_id === personel.id && a.santiye_id === topluTransferHedef && !a.bitis_tarihi,
+            );
+            if (hedefteAktif) {
+              zatenSigortali++;
+              zatenSigortaliAdlar.push(personel.ad_soyad);
+              continue;
+            }
+            const girisTarih = await iseGeriAl(personel.id, topluTransferHedef, topluTransferTarih);
+            await kuyrugaEkle({ tip: "giris", personel, santiyeAd: hedefAd, santiyeId: topluTransferHedef, tarih: girisTarih });
+            basari++;
+          } catch (e) {
+            console.error("[topluTransferYap]", personel.ad_soyad, e);
+            basarisiz++;
+            basarisizAdlar.push(personel.ad_soyad);
           }
+          continue;
+        }
+        try {
+          // Hedef şantiyede personel zaten sigortalı mı? (başka aktif atama var mı?)
+          const hedefteAktif = atamalar.some(
+            (a) => a.personel_id === personel.id && a.santiye_id === topluTransferHedef && !a.bitis_tarihi,
+          );
+          if (hedefteAktif) {
+            zatenSigortali++;
+            zatenSigortaliAdlar.push(personel.ad_soyad);
+            continue;
+          }
+          // ŞANTİYE-BAZLI transfer: sadece kaynak şantiyedeki atamayı kapat
+          const onceSantiyeAd = santiyeler.find((s) => s.id === kaynakSantiyeId)?.is_adi;
+          const r = await transferEt(personel.id, topluTransferHedef, topluTransferTarih, kaynakSantiyeId);
+          await kuyrugaEkle({
+            tip: "transfer", personel,
+            santiyeAd: hedefAd, onceSantiyeAd,
+            santiyeId: topluTransferHedef, onceSantiyeId: kaynakSantiyeId,
+            tarih: r.giris, cikisTarih: r.cikis,
+          });
           basari++;
-        } catch (e) { console.error(e); }
+        } catch (e) {
+          console.error("[topluTransferYap]", personel.ad_soyad, e);
+          basarisiz++;
+          basarisizAdlar.push(personel.ad_soyad);
+        }
       }
-      toast.success(`${basari} personel ${hedefAd} şantiyesine transfer edildi (${topluTransferTarih}, mail kuyruğuna eklendi)`);
+      if (zatenSigortali > 0) {
+        toast.error(
+          `${zatenSigortali} kişi ${hedefAd} şantiyesinde zaten sigortalı, transfer yapılamadı:\n${zatenSigortaliAdlar.slice(0, 5).join(", ")}${zatenSigortaliAdlar.length > 5 ? "..." : ""}`,
+          { duration: 8000 },
+        );
+      }
+      if (basarisiz > 0) {
+        toast.error(
+          `${basari} transfer edildi · ${basarisiz} kişi başarısız:\n${basarisizAdlar.slice(0, 5).join(", ")}${basarisizAdlar.length > 5 ? "..." : ""}`,
+          { duration: 8000 },
+        );
+      } else if (basari > 0) {
+        toast.success(`${basari} personel ${hedefAd} şantiyesine transfer edildi (${topluTransferTarih}, mail kuyruğuna eklendi)`);
+      }
       setSelectedKeys(new Set());
       setTopluTransferAcik(false);
       setTopluTransferHedef("");
@@ -2812,7 +3006,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       toast.success("Personel eklendi (mail kuyruğa eklendi)");
       // Mail kuyruğuna ekle
       const santiyeAd = ekleSantiye ? santiyeler.find((s) => s.id === ekleSantiye)?.is_adi : undefined;
-      kuyrugaEkle({ tip: "giris", personel: yeni, santiyeAd, santiyeId: ekleSantiye || undefined });
+      await kuyrugaEkle({ tip: "giris", personel: yeni, santiyeAd, santiyeId: ekleSantiye || undefined });
       // Kapat + reload
       setEkleAcik(false);
       setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
@@ -2856,7 +3050,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (error) throw error;
       toast.success(`${personel.ad_soyad} ${oldSantiyeAd ?? ""} şantiyesinden çıkarıldı (${cikisTarih}, mail kuyruğa)`);
       // ÖNEMLİ: DB'ye yazılan ASIL tarihi (cikisTarih) kuyruğa ilet — revert için gerekli.
-      kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
+      await kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
       setCikisOnay(null);
       setCikisTarih(yerelBugun());
       await loadData();
@@ -2869,11 +3063,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   async function geriAlYap() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!geriAlPersonel || !geriAlSantiye) return;
+    // Hedef şantiyede personel zaten aktif (sigortalı) ise engelle
+    const hedefteAktif = atamalar.some(
+      (a) => a.personel_id === geriAlPersonel.id && a.santiye_id === geriAlSantiye && !a.bitis_tarihi,
+    );
+    if (hedefteAktif) {
+      const hedefAd = santiyeler.find((s) => s.id === geriAlSantiye)?.is_adi ?? "bu şantiye";
+      toast.error(`${geriAlPersonel.ad_soyad} ${hedefAd} şantiyesinde zaten sigortalı, geri alınamaz.`);
+      return;
+    }
     try {
       const girisTarih = await iseGeriAl(geriAlPersonel.id, geriAlSantiye);
       const yeniSantiyeAd = santiyeler.find((s) => s.id === geriAlSantiye)?.is_adi;
       toast.success(`${geriAlPersonel.ad_soyad} işe geri alındı (${girisTarih}, mail kuyruğa)`);
-      kuyrugaEkle({ tip: "giris", personel: geriAlPersonel, santiyeAd: yeniSantiyeAd, santiyeId: geriAlSantiye, tarih: girisTarih });
+      await kuyrugaEkle({ tip: "giris", personel: geriAlPersonel, santiyeAd: yeniSantiyeAd, santiyeId: geriAlSantiye, tarih: girisTarih });
       setGeriAlPersonel(null); setGeriAlSantiye("");
       await loadData();
     } catch (err) {
@@ -2917,6 +3120,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (aktifSantiyeId === hedefKey) { setDragPersonelId(null); return; }
     if (bordroDurum === "atanmamis" && hedefKey === ATANMAMIS_KEY) { setDragPersonelId(null); return; }
 
+    // Hedef şantiyede personel zaten sigortalı (aktif atama) mı? → transfer ENGELLE
+    if (hedefKey !== PASIF_KEY && hedefKey !== ATANMAMIS_KEY) {
+      const hedefteAktif = atamalar.some(
+        (a) => a.personel_id === personel.id && a.santiye_id === hedefKey && !a.bitis_tarihi,
+      );
+      if (hedefteAktif) {
+        const hedefAd = santiyeler.find((s) => s.id === hedefKey)?.is_adi ?? "bu şantiye";
+        toast.error(`${personel.ad_soyad} ${hedefAd} şantiyesinde zaten sigortalı, transfer yapılamaz.`);
+        setDragPersonelId(null);
+        setDragSourceSantiyeId(null);
+        return;
+      }
+    }
+
     try {
       if (hedefKey === PASIF_KEY) {
         // İşten çıkar (drag ile) — SADECE drag kaynağı şantiyedeki atamayı kapat
@@ -2935,17 +3152,22 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         return;
       }
       // Şantiye transferi / yeni atama
-      const onceSantiyeAd = aktifSantiyeId
-        ? santiyeler.find((s) => s.id === aktifSantiyeId)?.is_adi
+      // ÖNEMLİ: dragSourceSantiyeId — kullanıcının SÜRÜKLEDİĞİ kart hangi şantiyedeydi.
+      // Personel birden fazla şantiyede aktif olabilir, sadece SÜRÜKLENEN kaynak şantiyedeki
+      // atama kapanır. Diğer şantiyelerdeki aktif atamalar DOKUNULMADAN korunur.
+      const kaynakSantiyeId = dragSourceSantiyeId ?? aktifSantiyeId ?? undefined;
+      const onceSantiyeAd = kaynakSantiyeId
+        ? santiyeler.find((s) => s.id === kaynakSantiyeId)?.is_adi
         : undefined;
       const yeniSantiyeAd = santiyeler.find((s) => s.id === hedefKey)?.is_adi;
       if (bordroDurum === "pasif" || bordroDurum === "atanmamis") {
         // Pasif veya atanmamış → yeni atama aç (giriş maili)
         const girisTarih = await iseGeriAl(personel.id, hedefKey);
-        kuyrugaEkle({ tip: "giris", personel, santiyeAd: yeniSantiyeAd, santiyeId: hedefKey, tarih: girisTarih });
+        await kuyrugaEkle({ tip: "giris", personel, santiyeAd: yeniSantiyeAd, santiyeId: hedefKey, tarih: girisTarih });
       } else {
-        const r = await transferEt(personel.id, hedefKey);
-        kuyrugaEkle({ tip: "transfer", personel, santiyeAd: yeniSantiyeAd, onceSantiyeAd, santiyeId: hedefKey, onceSantiyeId: aktifSantiyeId ?? undefined, tarih: r.giris, cikisTarih: r.cikis });
+        // ŞANTİYE-BAZLI: sadece sürüklenen kaynak şantiyedeki atamayı kapat
+        const r = await transferEt(personel.id, hedefKey, undefined, kaynakSantiyeId);
+        await kuyrugaEkle({ tip: "transfer", personel, santiyeAd: yeniSantiyeAd, onceSantiyeAd, santiyeId: hedefKey, onceSantiyeId: kaynakSantiyeId, tarih: r.giris, cikisTarih: r.cikis });
       }
       toast.success(`${personel.ad_soyad} → ${yeniSantiyeAd} (mail kuyruğa)`);
       await loadData();
@@ -4226,15 +4448,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 )}
 
                 {/* Hızlı manuel gün girişi — atama tarihlerini DEĞİŞTİRMEZ.
-                    Admin: max sınırsız (ay'ın gün sayısı veya yüksek bir limit).
-                    Diğerleri: doğal hesap × ay sonu (çıkış tarihi varsa o tarihe kadar). */}
+                    HEM admin HEM diğerleri için max = doğal hesap × ay sonu (çıkış tarihi varsa o tarihe kadar).
+                    Fark: admin sınır aşılınca da KAYDEDEBİLİR (adminBypass), diğerleri kaydedemez.
+                    Her durumda kırmızı uyarı görünür. */}
                 {!isReadOnly && (yDuzenle || yEkle) && (() => {
                   const naturalMax = naturalGunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? sonGun;
-                  const max = isYonetici ? sonGun : Math.min(sonGun, naturalMax);
+                  const max = Math.min(sonGun, naturalMax);
                   return (
                     <ManuelGunHizliKart
                       mevcutGun={gunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? 0}
                       aySonGun={max}
+                      adminBypass={isYonetici}
                       onSave={(N) => kaydetManuelGun(gunEdit.personel.id, gunEdit.santiyeId, seciliAy, N)}
                     />
                   );

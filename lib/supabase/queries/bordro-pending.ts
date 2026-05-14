@@ -16,6 +16,9 @@ export type BordroPendingDB = {
   santiye_ad: string | null;
   once_santiye_ad: string | null;
   tarih: string; // YYYY-MM-DD
+  // Transfer için ESKİ atamanın bitis_tarihi — revert sırasında doğru kaydı bulmak için.
+  // DB kolonu: cikis_tarihi DATE NULL (yoksa fallback: tarih)
+  cikis_tarihi?: string | null;
   firma_id: string | null;
   created_by: string | null;
   created_by_ad: string | null;
@@ -34,16 +37,29 @@ export async function getPendingMailler(): Promise<BordroPendingDB[]> {
     // Tablo henüz yoksa sessizce boş dön
     return [];
   }
+  // cikis_tarihi kolonu yoksa undefined olarak gelir — sorun değil, JS undefined sayar
   return (data ?? []) as BordroPendingDB[];
 }
 
 export async function insertPendingMail(p: BordroPendingInsert): Promise<BordroPendingDB | null> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("bordro_pending_mail")
     .insert(p)
     .select()
     .single();
+  // cikis_tarihi kolonu yoksa onsuz dene (geriye uyumluluk)
+  if (error && /column .*cikis_tarihi/i.test(error.message)) {
+    const { cikis_tarihi: _omit, ...pNoCikis } = p;
+    void _omit;
+    const res = await supabase
+      .from("bordro_pending_mail")
+      .insert(pNoCikis)
+      .select()
+      .single();
+    data = res.data;
+    error = res.error;
+  }
   if (error) {
     console.error("[insertPendingMail] hata:", error);
     return null;
