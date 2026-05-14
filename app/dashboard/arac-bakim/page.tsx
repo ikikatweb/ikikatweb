@@ -210,10 +210,11 @@ export default function AracBakimPage() {
   const seciliAracGuncelKm = seciliArac?.guncel_gosterge ?? null;
 
   // Araç seçildiğinde mevcut km'yi araclar.guncel_gosterge'den otomatik doldur
-  // (yalnızca yeni kayıt için — düzenlemede mevcut km'yi bozma)
+  // (yalnızca yeni kayıt için — düzenlemede mevcut km'yi bozma).
+  // ÖNEMLİ: yeni aracın km'si null/boş ise km alanı SIFIRLANIR (önceki araçtan kalan değer kalmasın).
   useEffect(() => {
-    if (!editId && seciliArac && seciliAracGuncelKm != null) {
-      setDKm(String(seciliAracGuncelKm));
+    if (!editId && seciliArac) {
+      setDKm(seciliAracGuncelKm != null ? String(seciliAracGuncelKm) : "");
     }
   }, [dAracId, editId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -252,12 +253,22 @@ export default function AracBakimPage() {
     return ozMalAraclar.filter((a) => ids.has(a.id));
   }, [ozMalAraclar, bakimlar]);
 
-  // Bakım tarihi değiştiğinde otomatik: sonraki bakım tarihi = 1 yıl sonrası
+  // Sonraki bakım tarihi otomatik doldurma — kapsamlı kontrol:
+  // - Düzenleme modu (editId): kullanıcı değerine DOKUNMA
+  // - Tip "tamirat" ise: input zaten gizli, dSonrakiTarih sıfırlanır
+  // - Tip "bakim" ise: dTarih dolu VE dSonrakiTarih boş ise otomatik 1 yıl sonrası
+  //   (dTarih değiştiğinde tetiklenir; sonraki tarih dolu ise dokunulmaz — kullanıcı manuel değer girdiyse korunur)
   useEffect(() => {
-    if (dTarih && !dSonrakiTarih) {
+    if (editId) return;
+    if (dTip !== "bakim") {
+      if (dSonrakiTarih) setDSonrakiTarih("");
+      return;
+    }
+    if (!dTarih) return;
+    if (!dSonrakiTarih) {
       setDSonrakiTarih(birYilSonra(dTarih));
     }
-  }, [dTarih]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dTarih, dTip, editId, dSonrakiTarih]);
 
   // Filtrelenmiş liste
   // Kısıtlı/şantiye admin için izinli araç id seti:

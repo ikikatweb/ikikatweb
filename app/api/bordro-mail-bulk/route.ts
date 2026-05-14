@@ -98,9 +98,12 @@ export async function POST(request: Request) {
     const konu = `Personel Bordro Bildirimi — ${parcalar.join(", ")}`;
 
     // Yardımcı: personel listesini doğal Türkçe formatta birleştir.
+    // ŞU ANDA KULLANILMIYOR — transferler artık kişi-kişi ayrı cümlelerle gönderiliyor.
+    // İleride grup mesajlama tekrar gerekirse kullanılabilir.
     //  1 personel: "12345 TC Numaralı Ahmet ÇELİK (Operatör) İsimli personelin"
     //  2+ personel: "... ve ... İsimli personellerin"
     // Meslek varsa parantez içinde isim sonrasına eklenir.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     function personelListesiMetni(liste: Change[], tekil: string, cogul: string): string {
       const isimler = liste.map((c) => {
         const adKismi = c.personelTc
@@ -157,29 +160,20 @@ export async function POST(request: Request) {
       });
     }
 
-    // Transfer cümleleri (eski şantiye → yeni şantiye bazında grupla)
-    // Notlar gruplanmış cümlenin altında kişi-kişi listelenir.
+    // Transfer cümleleri — HER PERSONEL için AYRI cümle (giriş/çıkış gibi).
+    // Aynı şantiyeler arası transferleri de gruplaMAdan, her kişiyi tek tek listele.
     const transferCumleleri: CumleNot[] = [];
-    {
-      const grup = new Map<string, Change[]>();
-      for (const c of changes.filter((c) => c.tip === "transfer")) {
-        const key = `${c.onceSantiyeAd || "?"}→${c.santiyeAd || "?"}`;
-        if (!grup.has(key)) grup.set(key, []);
-        grup.get(key)!.push(c);
-      }
-      for (const [, list] of grup) {
-        const kisi = personelListesiMetni(list, "personelin", "personellerin");
-        const ilk = list[0];
-        const eski = ilk.onceSantiyeAd ?? "—";
-        const yeni = ilk.santiyeAd ?? "—";
-        const cumle = list.length === 1
-          ? `${kisi} ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`
-          : `${kisi} ${eski} şantiyesinden çıkışlarının yapılarak, ${yeni} şantiyesine girişlerinin yapılmasını rica ederiz.`;
-        const notlar = list
-          .filter((c) => c.not && c.not.trim())
-          .map((c) => ({ personel: c.personelAd, not: c.not!.trim() }));
-        transferCumleleri.push({ cumle, notlar });
-      }
+    for (const c of changes.filter((c) => c.tip === "transfer")) {
+      const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
+      const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const teknikEk = c.teknik ? " (Teknik Personel)" : "";
+      const tarihStr = tarihFormatla(c.tarih);
+      const eski = c.onceSantiyeAd ?? "—";
+      const yeni = c.santiyeAd ?? "—";
+      transferCumleleri.push({
+        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesindeki ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`,
+        notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
+      });
     }
 
     // Plain text fallback (HTML desteklemeyen istemciler için)
