@@ -4345,7 +4345,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
       {/* Gün Düzenle Dialog — scrollbar gizli (scroll çalışır ama görünmez) */}
       <Dialog open={!!gunEdit} onOpenChange={(o) => !o && setGunEdit(null)}>
-        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto scrollbar-hidden">
+        <DialogContent className="!max-w-4xl sm:!max-w-4xl w-[95vw] max-h-[95vh] overflow-y-auto scrollbar-hidden">
           <DialogHeader>
             <DialogTitle>
               {gunEdit?.personel.ad_soyad} · {santiyeler.find((s) => s.id === gunEdit?.santiyeId)?.is_adi}
@@ -4464,6 +4464,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   Ay: <span className="font-semibold">{ayLabel(seciliAy)}</span> · Toplam atama: {liste.length}
                 </div>
 
+                {/* 2-kolon yerleşim: SOL = Teknik Personel + Hızlı Manuel Gün Girişi,
+                    SAĞ = Giriş/Çıkış Tarihleri + Bilgi Notu. Mobilde alt alta. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* ────────── SOL KOLON ────────── */}
+                  <div className="space-y-3">
                 {/* Teknik Personel — şantiyenin teknik isim listesi, her isim ayrı checkbox.
                     Başka personele atanmış isimler PASİF (tikli + disabled) görünür,
                     yanlarında o personelin adı gösterilir.
@@ -4608,6 +4613,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     />
                   );
                 })()}
+                  </div>
+                  {/* ────────── SAĞ KOLON ────────── */}
+                  <div className="space-y-3">
 
                 {/* Giriş / Çıkış Tarihleri — atama editörü.
                     SADECE bu şantiyedeki atamalar gösterilir (santiye_id filtresi).
@@ -4656,6 +4664,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     }
                   }}
                 />
+                  </div>
+                  {/* ────────── /SAĞ KOLON ────────── */}
+                </div>
 
                 <div className="flex justify-end pt-2 border-t">
                   <Button variant="outline" onClick={() => setGunEdit(null)}>Kapat</Button>
