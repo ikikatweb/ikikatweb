@@ -41,6 +41,12 @@ function tr(s: string): string {
     .replace(/ç/g,"c").replace(/Ç/g,"C").replace(/ı/g,"i").replace(/İ/g,"I").replace(/—/g,"-");
 }
 
+// Uzun metni N karakterden sonra "..." ile kısalt. Tabloda satırın taşmasını önler.
+function kisalt(s: string | null | undefined, n: number): string {
+  if (!s) return "";
+  return s.length > n ? s.slice(0, n) + "..." : s;
+}
+
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
 export default function GelenEvrakPage() {
@@ -61,7 +67,7 @@ export default function GelenEvrakPage() {
   const [ekDialog, setEkDialog] = useState<GelenEvrakWithRelations | null>(null);
 
   // Bir evraka ait EK PDF'lerini toplar (sadece `ekler` alanındaki URL satırları).
-  // NOT: `pdf_url` (Evrak Taraması) bu listeye dahil DEĞİLDİR — o ayrı sütunda gösterilir.
+  // NOT: `pdf_url` (Üst Yazı) bu listeye dahil DEĞİLDİR — o ayrı sütunda gösterilir.
   function ekUrlleri(e: GelenEvrakWithRelations): { url: string; isim: string }[] {
     const liste: { url: string; isim: string }[] = [];
     if (e.ekler) {
@@ -293,7 +299,7 @@ export default function GelenEvrakPage() {
           <p className="text-gray-500">Henüz gelen evrak eklenmemiş.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#64748B]">
@@ -312,11 +318,18 @@ export default function GelenEvrakPage() {
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
                   <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
-                  <TableCell className="px-2 whitespace-nowrap font-medium">{e.evrak_sayi_no}</TableCell>
+                  {/* Sayı No: 35 karakterden sonra kısaltılır, tam değer tooltip'te. */}
+                  <TableCell className="px-2 whitespace-nowrap font-medium max-w-[260px] truncate" title={e.evrak_sayi_no}>
+                    {kisalt(e.evrak_sayi_no, 35)}
+                  </TableCell>
                   <TableCell className="px-2 max-w-[120px] truncate" title={e.firmalar?.firma_adi ?? ""}>{e.firmalar?.firma_adi ?? "—"}</TableCell>
-                  <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>{e.konu}</TableCell>
-                  <TableCell className="px-2 leading-snug">
-                    {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
+                  {/* Konu: 60 karakter / 200px sınır — taşmaz, scrollbar çıkmaz. */}
+                  <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>
+                    {kisalt(e.konu, 60)}
+                  </TableCell>
+                  {/* Muhatap: tek satır (tekSatirMuhatap) + 40 char kısaltma + max-w truncate (taşma koruması) */}
+                  <TableCell className="px-2 max-w-[200px] truncate leading-snug" title={e.muhatap ?? ""}>
+                    {e.muhatap ? kisalt(tekSatirMuhatap(e.muhatap), 40) : "—"}
                   </TableCell>
                   <TableCell className="px-2 text-center">
                     {e.pdf_url ? (
@@ -418,16 +431,17 @@ export default function GelenEvrakPage() {
 
       {/* Ek Dosyalar Dialog — birden fazla PDF varsa tıklanınca liste görünür */}
       <Dialog open={!!ekDialog} onOpenChange={() => setEkDialog(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-hidden">
           <DialogHeader>
             <DialogTitle>Eklenen Belgeler</DialogTitle>
           </DialogHeader>
           {ekDialog && (() => {
             const urls = ekUrlleri(ekDialog);
             return (
-              <div className="space-y-1.5 py-2">
-                <p className="text-xs text-gray-500 mb-2">
-                  <span className="font-semibold">{ekDialog.konu}</span> · {urls.length} dosya
+              <div className="space-y-1.5 py-2 min-w-0">
+                {/* Konu — çok uzun konular dialog'u taşırmasın: 60 karakterde kısalt + break-words güvenliği */}
+                <p className="text-xs text-gray-500 mb-2 break-words" title={ekDialog.konu}>
+                  <span className="font-semibold">{kisalt(ekDialog.konu, 60)}</span> · {urls.length} dosya
                 </p>
                 {urls.map((item, i) => (
                   <a
@@ -435,10 +449,13 @@ export default function GelenEvrakPage() {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300 text-sm text-[#1E3A5F] transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300 text-sm text-[#1E3A5F] transition-colors min-w-0"
                   >
                     <FileText size={14} className="flex-shrink-0 text-red-600" />
-                    <span className="truncate flex-1" title={item.isim}>{item.isim}</span>
+                    {/* Dosya adı 20 karakter sonra kısaltılır + truncate koruması */}
+                    <span className="truncate flex-1 min-w-0" title={item.isim}>
+                      {kisalt(item.isim, 20)}
+                    </span>
                     <Eye size={14} className="flex-shrink-0 text-gray-400" />
                   </a>
                 ))}

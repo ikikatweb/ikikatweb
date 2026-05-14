@@ -386,7 +386,9 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                               const path = new URL(ek).pathname;
                               const name = decodeURIComponent(path.split("/").pop() ?? "PDF");
                               // Timestamp prefix'i temizle ("123456789-dosya.pdf" → "dosya.pdf")
-                              return name.replace(/^\d+-/, "");
+                              const temizAd = name.replace(/^\d+-/, "");
+                              // 20 karakterden uzun isimleri kısalt — pencereden taşmasın
+                              return temizAd.length > 20 ? temizAd.slice(0, 20) + "..." : temizAd;
                             } catch {
                               return "PDF";
                             }
