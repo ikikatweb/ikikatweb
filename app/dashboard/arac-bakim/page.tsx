@@ -253,11 +253,14 @@ export default function AracBakimPage() {
     return ozMalAraclar.filter((a) => ids.has(a.id));
   }, [ozMalAraclar, bakimlar]);
 
-  // Sonraki bakım tarihi otomatik doldurma — kapsamlı kontrol:
+  // Sonraki bakım tarihi otomatik doldurma:
   // - Düzenleme modu (editId): kullanıcı değerine DOKUNMA
   // - Tip "tamirat" ise: input zaten gizli, dSonrakiTarih sıfırlanır
-  // - Tip "bakim" ise: dTarih dolu VE dSonrakiTarih boş ise otomatik 1 yıl sonrası
-  //   (dTarih değiştiğinde tetiklenir; sonraki tarih dolu ise dokunulmaz — kullanıcı manuel değer girdiyse korunur)
+  // - Tip "bakim" + dTarih dolu ise: HER ZAMAN dTarih'in 1 yıl sonrası olarak yeniden hesapla.
+  //   Eski mantık "sadece boşsa doldur" idi → kullanıcı bakım tarihini değiştirince
+  //   sonraki tarih güncellenmiyordu. Şimdi bakım tarihi her değişikliğinde otomatik
+  //   güncellenir. Kullanıcı isterse sonradan manuel override edebilir, ama bakım
+  //   tarihi tekrar değiştirildiğinde override ezilir (beklenen davranış).
   useEffect(() => {
     if (editId) return;
     if (dTip !== "bakim") {
@@ -265,10 +268,9 @@ export default function AracBakimPage() {
       return;
     }
     if (!dTarih) return;
-    if (!dSonrakiTarih) {
-      setDSonrakiTarih(birYilSonra(dTarih));
-    }
-  }, [dTarih, dTip, editId, dSonrakiTarih]);
+    setDSonrakiTarih(birYilSonra(dTarih));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dTarih, dTip, editId]);
 
   // Filtrelenmiş liste
   // Kısıtlı/şantiye admin için izinli araç id seti:
