@@ -18,23 +18,31 @@ export async function getGelenEvraklar(
     .or("silindi.is.null,silindi.eq.false")
     .order("evrak_tarihi", { ascending: false });
 
-  if (olusturanId) {
+  // KISITLI KULLANICI: kendi yazdığı evrakları HER ZAMAN görür (şantiye fark etmez)
+  //   + atanmış şantiyenin diğer yazdıklarını da görür.
+  // OR mantığı: olusturan_id = me OR santiye_id IN (assigned) [OR santiye_id IS NULL]
+  // ŞANTIYE_ADMIN: olusturanId verilmez, sadece santiye filter çalışır.
+  // YÖNETİCİ: hiçbir filtre yok.
+  if (olusturanId && santiyeIds !== undefined) {
+    // Kısıtlı: OR mantığı
+    const parcalar: string[] = [`olusturan_id.eq.${olusturanId}`];
+    if (santiyeIds.length > 0) {
+      const idList = santiyeIds.map((id) => `"${id}"`).join(",");
+      parcalar.push(`santiye_id.in.(${idList})`);
+    }
+    if (santiyesizDahil) {
+      parcalar.push(`santiye_id.is.null`);
+    }
+    query = query.or(parcalar.join(","));
+  } else if (olusturanId) {
     query = query.eq("olusturan_id", olusturanId);
-  }
-  // Şantiye kısıtı:
-  //   • santiyeIds dolu + santiyesizDahil=false → SADECE atanmış şantiyeler
-  //   • santiyeIds dolu + santiyesizDahil=true  → atanmış şantiyeler + şantiyesiz (NULL)
-  //   • santiyeIds boş array + santiyesizDahil=true → SADECE şantiyesiz evraklar
-  //   • santiyeIds boş array + santiyesizDahil=false → hiçbir şey görmesin
-  //   • santiyeIds undefined → tüm evraklar (yönetici akışı)
-  if (santiyeIds !== undefined) {
+  } else if (santiyeIds !== undefined) {
+    // Şantiye admin
     if (santiyesizDahil) {
       if (santiyeIds.length > 0) {
-        // PostgREST OR: santiye_id IN (...) OR santiye_id IS NULL
         const idList = santiyeIds.map((id) => `"${id}"`).join(",");
         query = query.or(`santiye_id.in.(${idList}),santiye_id.is.null`);
       } else {
-        // Sadece şantiyesiz
         query = query.is("santiye_id", null);
       }
     } else {
