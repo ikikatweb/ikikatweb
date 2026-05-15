@@ -408,7 +408,8 @@ export default function GelenEvrakPage() {
           <Table noWrapper className="min-w-[1100px]">
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
-                <TableHead className="text-white text-xs px-2">Belge Tarihi</TableHead>
+                {/* Belge Tarihi başlığı sticky — yatay scroll'da sol kenarda sabit kalır */}
+                <TableHead className="text-white text-xs px-2 sticky left-0 z-20 bg-[#64748B]">Belge Tarihi</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
@@ -421,8 +422,9 @@ export default function GelenEvrakPage() {
             <TableBody>
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
-                  {/* Belge tarihi hücresinin solunda firma rengi şeridi (sütun kaldırıldı, renk + tooltip ile firma kimliği) */}
-                  <TableCell className="px-2 whitespace-nowrap">
+                  {/* Belge tarihi hücresinin solunda firma rengi şeridi (sütun kaldırıldı, renk + tooltip ile firma kimliği).
+                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır. */}
+                  <TableCell className="px-2 whitespace-nowrap sticky left-0 z-10 bg-white">
                     <div className="flex items-center gap-2">
                       <span
                         className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
