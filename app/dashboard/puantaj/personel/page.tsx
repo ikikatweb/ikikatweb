@@ -6,6 +6,7 @@ import Link from "next/link";
 import PersonelForm from "@/components/shared/personel-form";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getPersoneller, setPersonelPasif, setPersonelAktif } from "@/lib/supabase/queries/personel";
+import { getAtamaGecmisiTumu } from "@/lib/supabase/queries/bordro";
 import {
   getPersonelSantiyeler,
   addPersonelSantiye,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/supabase/queries/personel-puantaj";
 import { useAuth } from "@/hooks";
 import type {
-  PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum,
+  PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum, PersonelAtamaGecmisi,
 } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -133,6 +134,9 @@ export default function PersonelPuantajPage() {
   const [santiyeId, setSantiyeId] = useState<string>(urlSantiye);
   // Çoklu atama: personel_id -> Set<santiye_id>
   const [personelSantiyeMap, setPersonelSantiyeMap] = useState<Map<string, Set<string>>>(new Map());
+  // Atama geçmişi — pasif aralık tespiti için backup kaynak (DB'deki pasif_tarihi/
+  // aktif_alma_tarihi alanları boş olsa bile bu tablodan tespit edilebilir).
+  const [atamaGecmisi, setAtamaGecmisi] = useState<PersonelAtamaGecmisi[]>([]);
 
   // Tab
   const [aktifTab, setAktifTab] = useState<"puantaj" | "atama">("puantaj");
@@ -187,14 +191,18 @@ export default function PersonelPuantajPage() {
     return m;
   }
 
-  // Personel listesini + atama junction'ı yenile (atama değişikliği sonrası)
+  // Personel listesini + atama junction'ı yenile (atama değişikliği sonrası).
+  // Bordro Takibi'nden eklenen taşeron işçiler (personel_tipi="taseron") puantaja DAHİL EDİLMEZ —
+  // Bordro Takibi bağımsız akış: oraya eklenen kayıtlar puantaj sayfasında görünmez.
   const loadPersoneller = useCallback(async () => {
     try {
       const [pData, psData] = await Promise.all([
         getPersoneller(),
         getPersonelSantiyeler().catch(() => []),
       ]);
-      setPersoneller((pData as PersonelWithRelations[]) ?? []);
+      const filtreli = ((pData as PersonelWithRelations[]) ?? [])
+        .filter((p) => p.personel_tipi !== "taseron");
+      setPersoneller(filtreli);
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
     } catch {
       toast.error("Personel listesi yüklenirken hata oluştu.");
@@ -237,13 +245,22 @@ export default function PersonelPuantajPage() {
         }
       }
 
-      setPersoneller(pData ?? []);
+      // Bordro Takibi'nden eklenen taşeron işçiler puantajda görünmez (bordro bağımsız akış)
+      setPersoneller((pData ?? []).filter((p) => p.personel_tipi !== "taseron"));
       const sList = (sData ?? []).filter((s) => s.durum === "aktif");
       setSantiyeler(sList);
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
       // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç
       const otoId = otomatikSantiyeId(sList, kullanici);
       if (otoId) setSantiyeId(otoId);
+
+      // Atama geçmişini yükle — pasif aralık tespiti için backup kaynak
+      try {
+        const atamalar = await getAtamaGecmisiTumu();
+        setAtamaGecmisi(atamalar ?? []);
+      } catch (err) {
+        console.error("getAtamaGecmisiTumu hata:", err);
+      }
 
       setLoading(false);
     }
@@ -367,13 +384,18 @@ export default function PersonelPuantajPage() {
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
   const personelliSantiyeler = useMemo(() => {
+    // Sadece ŞU AN listede görünen personellerin atandığı şantiyeleri topla.
+    // Junction kaydı olsa bile personel listede yoksa (örn. taşeron işçi puantajda
+    // gizli, ya da silinmiş/pasif olmuş eski kayıt) o şantiye dropdown'da görünmez.
+    const personelIdSet = new Set(personeller.map((p) => p.id));
     const idSet = new Set<string>();
-    for (const sids of personelSantiyeMap.values()) {
+    for (const [pId, sids] of personelSantiyeMap) {
+      if (!personelIdSet.has(pId)) continue;
       for (const sid of sids) idSet.add(sid);
     }
     const atamasiOlanlar = santiyeler.filter((s) => idSet.has(s.id));
     return filtreliSantiyeler(atamasiOlanlar, kullanici);
-  }, [santiyeler, personelSantiyeMap, kullanici]);
+  }, [santiyeler, personelSantiyeMap, personeller, kullanici]);
 
   // Atama sekmesi: boştaki (bu şantiyeye henüz atanmamışlar) ve bu şantiyedeki personeller
   const atamaBostakiler = useMemo(() => {
@@ -610,13 +632,19 @@ export default function PersonelPuantajPage() {
   // Bir personelin belirli bir günü pasif sayılıp puantaj giremeyeceği durumlar:
   //   1. Personel ŞU AN pasif (durum=pasif) + tarih >= pasif_tarihi → kısıtlı
   //   2. Personel ŞU AN aktif (durum=aktif) AMA daha önce işten çıkarılıp tekrar alınmış:
-  //      pasif_tarihi var + aktif_alma_tarihi var + pasif_tarihi ≤ tarih < aktif_alma_tarihi
-  //      → o aralık "pasifken aktife alınmış" sayılır → kısıtlı.
+  //      pasif_tarihi + aktif_alma_tarihi varsa → pasif_tarihi ≤ tarih < aktif_alma_tarihi
+  //      aralığı "pasifken aktife alınmış" sayılır → kısıtlı.
+  //   3. Backup: personel_atama_gecmisi tablosunda SEÇİLİ ŞANTİYE için birden fazla
+  //      atama varsa (çıkış sonrası yeniden giriş), atamalar arası boşluk → kısıtlı.
+  //      Bu sayede DB'de pasif_tarihi/aktif_alma_tarihi set edilmemiş olsa bile
+  //      atama_gecmisi'nden otomatik tespit edilir.
   function pasifKisitli(p: PersonelWithRelations, gun: number): boolean {
     const hucreTarih = tarihStr(yil, ay, gun);
-    // Mevcut pasif personel + pasif_tarihi sonrası
+
+    // 1) Şu an pasif + pasif_tarihi sonrası
     if (p.durum === "pasif" && p.pasif_tarihi && hucreTarih >= p.pasif_tarihi) return true;
-    // Aktif personel ama daha önce kapalı kalan dönem var
+
+    // 2) Aktif + DB'deki pasif_tarihi + aktif_alma_tarihi aralığı kontrolü
     if (
       p.durum === "aktif"
       && p.pasif_tarihi
@@ -624,6 +652,24 @@ export default function PersonelPuantajPage() {
       && hucreTarih >= p.pasif_tarihi
       && hucreTarih < p.aktif_alma_tarihi
     ) return true;
+
+    // 3) Backup: atama_gecmisi tablosu — SEÇİLİ ŞANTİYE'de birden fazla atama varsa,
+    // aralarındaki boşluk kısıtlanır. Tek atama varsa eski davranış (kısıtlama yok).
+    if (santiyeId && atamaGecmisi.length > 0) {
+      const buSantiyeAtamalari = atamaGecmisi.filter(
+        (a) => a.personel_id === p.id && a.santiye_id === santiyeId,
+      );
+      if (buSantiyeAtamalari.length >= 2) {
+        // En az 2 atama → boşluk olabilir. Şu tarih için aktif atama var mı?
+        const aktifIciNde = buSantiyeAtamalari.some(
+          (a) =>
+            a.baslangic_tarihi <= hucreTarih
+            && (a.bitis_tarihi == null || hucreTarih <= a.bitis_tarihi),
+        );
+        if (!aktifIciNde) return true;
+      }
+    }
+
     return false;
   }
 
@@ -645,6 +691,10 @@ export default function PersonelPuantajPage() {
       if (p.durum === "aktif" && p.pasif_tarihi && p.aktif_alma_tarihi) {
         toast.error(
           `"${p.ad_soyad}" personeli ${p.pasif_tarihi} - ${p.aktif_alma_tarihi} arasında işten ayrılmıştı. Bu aralığa puantaj işlenemez.`,
+        );
+      } else if (p.durum === "aktif") {
+        toast.error(
+          `"${p.ad_soyad}" personeli bu tarihte bu şantiyede çalışmıyordu (atama yok). Puantaj işlenemez.`,
         );
       } else {
         toast.error(

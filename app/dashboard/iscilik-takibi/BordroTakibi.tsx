@@ -997,8 +997,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Teknik personel tespiti — PERSONEL × ŞANTİYE BAZLI (sadece bilgi amaçlı rozet için).
   //   teknikPersonelMap.get(personelId) → Set<santiyeId>
-  // Veri kaynağı: SADECE personel_teknik tablosundaki is_teknik=true satırları.
-  // Hiçbir fallback yok — kullanıcı dialog'dan tıkladıysa teknik sayılır, aksi halde DEĞİL.
+  // Veri kaynağı: personel_teknik tablosunda HEM is_teknik=true HEM teknik_isim DOLU olan
+  // satırlar. Sadece bir koşul sağlanıyorsa "atama yapılmamış / silinmiş" sayılır ve
+  // teknik kabul edilmez — screen ile PDF/Excel arasında tutarlılık sağlar.
   const teknikPersonelMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const ekle = (pId: string, sId: string) => {
@@ -1006,7 +1007,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       map.get(pId)!.add(sId);
     };
     for (const r of teknikKayitlari) {
-      if (r.is_teknik) ekle(r.personel_id, r.santiye_id);
+      if (r.is_teknik && r.teknik_isim && r.teknik_isim.trim().length > 0) {
+        ekle(r.personel_id, r.santiye_id);
+      }
     }
     return map;
   }, [teknikKayitlari]);
@@ -1036,6 +1039,37 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       }
     }
     return m;
+  }, [teknikKayitlari]);
+
+  // Şantiyenin ATANMAMIŞ teknik personel rollerini döndür (PDF/Excel ile aynı mantık).
+  // Şantiye id × teknik isimleri listesi → kullanıcıya atanmamış (boş kalan) roller.
+  // teknik_isim key formatı "isim#index" — isimler İÇİNDE virgül olabilir, bu yüzden
+  // regex ile "(.+?)#(\d+)" pattern'i yakalanır (ham split yanıltıcı olur).
+  const atanmamisTeknikPersoneller = useMemo(() => {
+    const cache = new Map<string, string[]>();
+    function hesapla(santiyeId: string, teknikIsimler: string[] | null | undefined): string[] {
+      if (!teknikIsimler || teknikIsimler.length === 0) return [];
+      if (cache.has(santiyeId)) return cache.get(santiyeId)!;
+      const atanmisKeyler = new Set<string>();
+      for (const r of teknikKayitlari) {
+        if (r.santiye_id !== santiyeId || !r.is_teknik || !r.teknik_isim) continue;
+        const matches = Array.from(r.teknik_isim.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
+        if (matches.length > 0) {
+          for (const m of matches) atanmisKeyler.add(`${m[1].trim()}#${m[2]}`);
+        } else {
+          const ham = r.teknik_isim.trim();
+          const idx = teknikIsimler.findIndex((isim) => isim === ham);
+          if (idx >= 0) atanmisKeyler.add(`${ham}#${idx}`);
+        }
+      }
+      const result: string[] = [];
+      teknikIsimler.forEach((isim, idx) => {
+        if (!atanmisKeyler.has(`${isim}#${idx}`)) result.push(isim);
+      });
+      cache.set(santiyeId, result);
+      return result;
+    }
+    return hesapla;
   }, [teknikKayitlari]);
 
   // Bir şantiyede şu anda kaç AKTİF teknik personel var?
@@ -2052,8 +2086,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const clampBas = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;
       const clampBit = bitisHam < ayBit ? bitisHam : ayBit;
       // Teknik personel mi? Export sırasında ad yanına "(Teknik Personel)" eklenir.
-      const isTeknik = !!teknikPersonelMap.get(personel.id)?.has(sant.id);
+      // SADECE teknik_isim (rol) atanmış kayıtlar teknik sayılır — eski "is_teknik=true
+      // ama rol seçilmemiş" kayıtlardaki kafa karışıklığını önlemek için.
       const teknikIsim = teknikIsimMap.get(`${personel.id}|${sant.id}`) ?? null;
+      const isTeknik = !!teknikIsim;
+      // "Teknik Personel" filtresi açıkken, personel BU şantiyede teknik değilse satırı atla.
+      // (Personel başka bir şantiyede teknik olabilir ama burada normal personel — listede gözükmemeli.)
+      // Screen tarafında kanbanMap'te aynı kısıtlama uygulanıyor; export burada eşleşir.
+      if (tipFiltre === "teknik" && !isTeknik) continue;
       ham.push({
         firmaId: firma?.id ?? "",
         firmaAd: firma?.firma_adi ?? "(Firma atanmamış)",
@@ -2295,21 +2335,26 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const santiyeKayit = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimler = santiyeKayit?.teknik_personeller ?? [];
         const santiyeIdAktif = list[0]?.santiyeId ?? "";
-        // Atanmış teknik rol key'lerini topla (format: "isim#index"). Eski kayıtlarda
-        // sadece "isim" varsa, ilk eşleşen index'le key'e çevirip set'e ekle.
+        // Atanmış teknik rol key'lerini topla. Key formatı: "isim#index" — isimler İÇİNDE
+        // VİRGÜL OLABİLİR (örn. "Saha Elemanı - Harita Mühendisi, Harita Teknikeri..."),
+        // bu yüzden ham `,` split yanıltıcı. Regex ile "anyChars#digits" pattern'i ararız.
         const atanmisKeyler = new Set<string>();
         for (const r of teknikKayitlari) {
           if (r.santiye_id !== santiyeIdAktif || !r.is_teknik || !r.teknik_isim) continue;
-          for (const raw of r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s)) {
-            if (raw.includes("#")) {
-              atanmisKeyler.add(raw);
-            } else {
-              const idx = teknikIsimler.findIndex((isim) => isim === raw);
-              if (idx >= 0) atanmisKeyler.add(`${raw}#${idx}`);
+          // Önce "#index" pattern'lerini bul
+          const matches = Array.from(r.teknik_isim.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
+          if (matches.length > 0) {
+            for (const m of matches) {
+              atanmisKeyler.add(`${m[1].trim()}#${m[2]}`);
             }
+          } else {
+            // Eski format — "#" yok, tek bir isim. Listeden ilk eşleşen indexi bul.
+            const ham = r.teknik_isim.trim();
+            const idx = teknikIsimler.findIndex((isim) => isim === ham);
+            if (idx >= 0) atanmisKeyler.add(`${ham}#${idx}`);
           }
         }
-        // Boşta kalan roller (henüz kimseye atanmamış)
+        // Atanmamış teknik personel rolleri (henüz kimseye atanmamış)
         const bostaRoller: string[] = [];
         teknikIsimler.forEach((isim, idx) => {
           if (!atanmisKeyler.has(`${isim}#${idx}`)) bostaRoller.push(isim);
@@ -2323,9 +2368,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
-        // Boşta kalan teknik personel rolleri satırı (sadece atanmamış olanlar)
+        // Atanmamış teknik personel rolleri satırı (sadece atanmamış olanlar)
         if (bostaRoller.length > 0) {
-          setCell(curRow, 0, `Boşta Teknik Personel: ${bostaRoller.join(", ")}`, {
+          setCell(curRow, 0, `Atanmamış Teknik Personel: ${bostaRoller.join(", ")}`, {
             font: { italic: true, sz: 10, color: { rgb: "FFB91C1C" } },
             alignment: { horizontal: "left" },
             fill: { fgColor: { rgb: "FEF2F2" }, patternType: "solid" },
@@ -2819,21 +2864,24 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         doc.setFont("helvetica", "bold"); doc.setFontSize(9);
         doc.text(trAscii(`  ${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY);
         cursorY += 2;
-        // BOŞTA olan teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır
-        // Atanmış rolleri filtreden çıkar, sadece kimseye verilmemiş olanlar listelenir.
+        // ATANMAMIŞ teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır.
+        // Key format'i "isim#index" şeklinde ve isimler İÇİNDE virgül olabileceği için
+        // ham `,` split yapılmaz, regex ile "anyChars#digits" pattern'i aranır.
         const santiyeKayitPdf = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimlerPdf = santiyeKayitPdf?.teknik_personeller ?? [];
         const santiyeIdPdf = list[0]?.santiyeId ?? "";
         const atanmisKeylerPdf = new Set<string>();
         for (const r of teknikKayitlari) {
           if (r.santiye_id !== santiyeIdPdf || !r.is_teknik || !r.teknik_isim) continue;
-          for (const raw of r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s)) {
-            if (raw.includes("#")) {
-              atanmisKeylerPdf.add(raw);
-            } else {
-              const idx = teknikIsimlerPdf.findIndex((isim) => isim === raw);
-              if (idx >= 0) atanmisKeylerPdf.add(`${raw}#${idx}`);
+          const matches = Array.from(r.teknik_isim.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
+          if (matches.length > 0) {
+            for (const m of matches) {
+              atanmisKeylerPdf.add(`${m[1].trim()}#${m[2]}`);
             }
+          } else {
+            const ham = r.teknik_isim.trim();
+            const idx = teknikIsimlerPdf.findIndex((isim) => isim === ham);
+            if (idx >= 0) atanmisKeylerPdf.add(`${ham}#${idx}`);
           }
         }
         const bostaRollerPdf: string[] = [];
@@ -2842,8 +2890,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         });
         if (bostaRollerPdf.length > 0) {
           doc.setFont("helvetica", "italic"); doc.setFontSize(8);
-          doc.setTextColor(185, 28, 28); // kırmızı (boşta = dikkat)
-          doc.text(trAscii(`  Bosta Teknik Personel: ${bostaRollerPdf.join(", ")}`), 17, cursorY + 3);
+          doc.setTextColor(185, 28, 28); // kırmızı (atanmamış = dikkat)
+          doc.text(trAscii(`  Atanmamis Teknik Personel: ${bostaRollerPdf.join(", ")}`), 17, cursorY + 3);
           doc.setTextColor(0, 0, 0);
           doc.setFont("helvetica", "normal");
           cursorY += 5;
@@ -3422,10 +3470,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
-            {/* Teknik personel listesi — ayrı sütun olarak baslık altında */}
+            {/* ATANMAMIŞ teknik personel listesi — başlık altında uyarı satırı.
+                PDF/Excel çıktısı ile tutarlı: sadece kimseye verilmemiş roller görünür. */}
             {teknikPersoneller && teknikPersoneller.length > 0 && (
-              <div className="text-[10px] text-indigo-700 mt-0.5 truncate" title={`Teknik Personel: ${teknikPersoneller.join(", ")}`}>
-                <span className="font-semibold">Teknik:</span> {teknikPersoneller.join(", ")}
+              <div className="text-[10px] text-red-600 mt-0.5 truncate" title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}`}>
+                <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.join(", ")}
               </div>
             )}
             {(() => {
@@ -4064,7 +4113,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             tumGun={tumGun}
                             acik={acik}
                             tumSecili={tumSecili}
-                            teknikPersoneller={s.teknik_personeller}
+                            teknikPersoneller={atanmamisTeknikPersoneller(s.id, s.teknik_personeller)}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
                                 const next = new Set(prev);

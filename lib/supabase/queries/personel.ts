@@ -15,6 +15,9 @@ async function checkPersonelTekillik(
 ) {
   const supabase = getSupabase();
 
+  // SADECE TC tekillik kontrolü — aynı isimli farklı kişiler eklenebilir (kardeş,
+  // aynı isim benzerliği, vb.). İsim üzerinde duplike kontrolü YAPILMAZ; TC farklıysa
+  // ekleme serbest. (`ad_soyad` parametre olarak alınıyor ama artık kontrol edilmiyor.)
   if (fields.tc_kimlik_no && fields.tc_kimlik_no.trim()) {
     let q = supabase
       .from("personel")
@@ -26,23 +29,7 @@ async function checkPersonelTekillik(
     if (error) throw error;
     if (data && data.length > 0) {
       throw new Error(
-        `Bu TC Kimlik No ("${fields.tc_kimlik_no.trim()}") zaten "${data[0].ad_soyad}" adıyla kayıtlı. Aynı personel sistemde yalnızca bir kez bulunabilir.`
-      );
-    }
-  }
-
-  if (fields.ad_soyad && fields.ad_soyad.trim()) {
-    let q = supabase
-      .from("personel")
-      .select("id, tc_kimlik_no, ad_soyad")
-      .eq("ad_soyad", fields.ad_soyad.trim())
-      .limit(1);
-    if (haricPersonelId) q = q.neq("id", haricPersonelId);
-    const { data, error } = await q;
-    if (error) throw error;
-    if (data && data.length > 0) {
-      throw new Error(
-        `Bu isimde ("${fields.ad_soyad.trim()}") bir personel zaten kayıtlı (TC: ${data[0].tc_kimlik_no}). Aynı personel sistemde yalnızca bir kez bulunabilir.`
+        `Bu TC Kimlik No ("${fields.tc_kimlik_no.trim()}") zaten "${data[0].ad_soyad}" adıyla kayıtlı. Aynı TC numaralı personel sistemde yalnızca bir kez bulunabilir.`
       );
     }
   }
