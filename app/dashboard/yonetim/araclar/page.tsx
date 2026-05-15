@@ -39,7 +39,12 @@ export default function AraclarPage() {
   const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("ozmal");
   const [cinsFiltre, setCinsFiltre] = useState("tumu");
   const [firmaFiltre, setFirmaFiltre] = useState("tumu");
-  const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([]);
+  // Varsayılan sıralama: 1) Firma sira_no asc, 2) Cinsi asc (tanımlama sırası), 3) Yılı desc (en yeni en üstte)
+  const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([
+    { key: "firma", dir: "asc" },
+    { key: "cinsi", dir: "asc" },
+    { key: "yili", dir: "desc" },
+  ]);
   const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
   // Aracın son güncellenen km/saat değerinin tarihi (en son yakıt kaydı tarihi)
   const [sonGostergeTarihi, setSonGostergeTarihi] = useState<Map<string, string>>(new Map());
@@ -54,9 +59,9 @@ export default function AraclarPage() {
         next[idx] = { key, dir: prev[idx].dir === "asc" ? "desc" : "asc" };
         return next;
       }
-      // Yeni sıralama ekle (max 2)
+      // Yeni sıralama ekle (max 3)
       const yeni = [...prev, { key, dir: "asc" as const }];
-      return yeni.slice(-2);
+      return yeni.slice(-3);
     });
   }
   function sortIcon(key: string) {
@@ -168,6 +173,12 @@ export default function AraclarPage() {
         switch (s.key) {
           case "plaka": cmp = a.plaka.localeCompare(b.plaka, "tr"); break;
           case "firma": {
+            // Önce sira_no ile karşılaştır (Yönetim → Firmalar sırasıyla aynı).
+            // Kiralık araç (firmalar=null) veya sira_no yoksa en sona at.
+            const saA = a.firmalar?.sira_no ?? Number.MAX_SAFE_INTEGER;
+            const sbA = b.firmalar?.sira_no ?? Number.MAX_SAFE_INTEGER;
+            if (saA !== sbA) { cmp = saA - sbA; break; }
+            // sira_no eşitse alfabetik fallback
             const fa = (a.tip === "ozmal" ? a.firmalar?.firma_adi : a.kiralama_firmasi) ?? "zzz";
             const fb = (b.tip === "ozmal" ? b.firmalar?.firma_adi : b.kiralama_firmasi) ?? "zzz";
             cmp = fa.localeCompare(fb, "tr"); break;
@@ -300,7 +311,6 @@ export default function AraclarPage() {
                   className="cursor-pointer select-none hover:text-blue-600 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                   onClick={() => handleSort("plaka")}
                 >Plaka{sortIcon("plaka")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("firma")}>Firma{sortIcon("firma")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
                 <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
@@ -324,11 +334,20 @@ export default function AraclarPage() {
                   <TableCell
                     style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: arac.durum === "pasif" ? "#f3f4f6" : "white" }}
                     className="font-bold shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
-                  >{arac.plaka}</TableCell>
-                  <TableCell className="max-w-[120px] truncate" title={arac.tip === "ozmal" ? arac.firmalar?.firma_adi ?? "" : arac.kiralama_firmasi ?? ""}>
-                    {arac.tip === "ozmal"
-                      ? arac.firmalar?.firma_adi ?? "—"
-                      : arac.kiralama_firmasi ?? "—"}
+                  >
+                    {/* Firma rengi şeridi (sol kenar) — kiralık araçlarda renk yok, default gri.
+                        Firma adı tooltip'te görünür (sütun kaldırıldı, hover ile erişim). */}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor: (arac.tip === "ozmal" ? arac.firmalar?.renk : null) ?? "#e5e7eb",
+                          minHeight: "1.25rem",
+                        }}
+                        title={arac.tip === "ozmal" ? (arac.firmalar?.firma_adi ?? "Firma yok") : (arac.kiralama_firmasi ?? "Kiralık")}
+                      />
+                      <span>{arac.plaka}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     {[arac.marka, arac.model].filter(Boolean).join(" ") || "—"}

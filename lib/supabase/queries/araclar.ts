@@ -67,7 +67,7 @@ export async function getAraclar() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("araclar")
-    .select("*, firmalar!left(firma_adi), santiyeler!left(is_adi)")
+    .select("*, firmalar!left(firma_adi, renk, sira_no), santiyeler!left(is_adi)")
     .order("created_at", { ascending: false });
 
   if (error) throw error;

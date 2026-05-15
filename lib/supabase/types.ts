@@ -244,7 +244,7 @@ export type TeklifGonderim = {
 };
 
 export type AracWithRelations = Arac & {
-  firmalar?: { firma_adi: string } | null;
+  firmalar?: { firma_adi: string; renk?: string | null; sira_no?: number | null } | null;
   santiyeler?: { is_adi: string } | null;
 };
 
