@@ -362,7 +362,37 @@ export default function GelenEvrakPage() {
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
           <Mail size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">Henüz gelen evrak eklenmemiş.</p>
+          {evraklar.length === 0 ? (
+            // Hiç evrak yok — filtre kaynaklı değil
+            <div>
+              <p className="text-gray-500 mb-2">Görüntülenebilir gelen evrak yok.</p>
+              {!isYonetici && (
+                <div className="text-[11px] text-gray-400 max-w-md mx-auto space-y-1">
+                  <p>Eğer evrakların görünmesini bekliyorsanız:</p>
+                  <ul className="text-left list-disc pl-4 inline-block">
+                    {kullanici?.rol === "kisitli" && (
+                      <li>Kısıtlı kullanıcısınız: <strong>SADECE kendi yazdığınız evraklar</strong> görünür.</li>
+                    )}
+                    {(!kullanici?.santiye_ids || kullanici.santiye_ids.length === 0) && (
+                      <li>Atanmış bir şantiyeniz yok — yöneticiden şantiye ataması isteyin.</li>
+                    )}
+                    {kullanici?.santiye_ids && kullanici.santiye_ids.length > 0 && (
+                      <li>Atanmış {kullanici.santiye_ids.length} şantiyenizdeki evraklar görünür. Evrakların doğru şantiyeye kayıtlı olduğundan emin olun.</li>
+                    )}
+                    {!kullanici?.santiyesiz_veri_gor && (
+                      <li>Şantiye atanmamış (genel) evrakları görmek için yöneticiden &quot;Şantiyesiz verileri görsün&quot; yetkisi isteyin.</li>
+                    )}
+                    {kullanici?.firma_ids && kullanici.firma_ids.length > 0 && (
+                      <li>{kullanici.firma_ids.length} firmaya kapsamlı erişiminiz var. Diğer firmaların evrakları gizlidir.</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
+            // Filtre yüzünden boş
+            <p className="text-gray-500">Filtre sonucu eşleşen evrak yok. Filtreyi temizleyin veya değiştirin.</p>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
