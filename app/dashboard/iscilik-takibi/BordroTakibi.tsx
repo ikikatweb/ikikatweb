@@ -2294,6 +2294,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // Teknik personel listesini şantiye kaydından çek
         const santiyeKayit = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimler = santiyeKayit?.teknik_personeller ?? [];
+        const santiyeIdAktif = list[0]?.santiyeId ?? "";
+        // Atanmış teknik rol key'lerini topla (format: "isim#index"). Eski kayıtlarda
+        // sadece "isim" varsa, ilk eşleşen index'le key'e çevirip set'e ekle.
+        const atanmisKeyler = new Set<string>();
+        for (const r of teknikKayitlari) {
+          if (r.santiye_id !== santiyeIdAktif || !r.is_teknik || !r.teknik_isim) continue;
+          for (const raw of r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s)) {
+            if (raw.includes("#")) {
+              atanmisKeyler.add(raw);
+            } else {
+              const idx = teknikIsimler.findIndex((isim) => isim === raw);
+              if (idx >= 0) atanmisKeyler.add(`${raw}#${idx}`);
+            }
+          }
+        }
+        // Boşta kalan roller (henüz kimseye atanmamış)
+        const bostaRoller: string[] = [];
+        teknikIsimler.forEach((isim, idx) => {
+          if (!atanmisKeyler.has(`${isim}#${idx}`)) bostaRoller.push(isim);
+        });
+
         setCell(curRow, 0, `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)`, {
           font: { bold: true, sz: 12, color: { rgb: "1E3A5F" } },
           alignment: { horizontal: "left" },
@@ -2302,12 +2323,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
-        // Teknik personel satırı (varsa) — başlık altında ayrı satır olarak göster
-        if (teknikIsimler.length > 0) {
-          setCell(curRow, 0, `Teknik Personel: ${teknikIsimler.join(", ")}`, {
-            font: { italic: true, sz: 10, color: { rgb: "FF4338CA" } },
+        // Boşta kalan teknik personel rolleri satırı (sadece atanmamış olanlar)
+        if (bostaRoller.length > 0) {
+          setCell(curRow, 0, `Boşta Teknik Personel: ${bostaRoller.join(", ")}`, {
+            font: { italic: true, sz: 10, color: { rgb: "FFB91C1C" } },
             alignment: { horizontal: "left" },
-            fill: { fgColor: { rgb: "EEF2FF" }, patternType: "solid" },
+            fill: { fgColor: { rgb: "FEF2F2" }, patternType: "solid" },
           });
           merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
           curRow++;
@@ -2798,13 +2819,31 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         doc.setFont("helvetica", "bold"); doc.setFontSize(9);
         doc.text(trAscii(`  ${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY);
         cursorY += 2;
-        // Teknik personel listesi — şantiye başlığı altında kursiv indigo satır
+        // BOŞTA olan teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır
+        // Atanmış rolleri filtreden çıkar, sadece kimseye verilmemiş olanlar listelenir.
         const santiyeKayitPdf = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimlerPdf = santiyeKayitPdf?.teknik_personeller ?? [];
-        if (teknikIsimlerPdf.length > 0) {
+        const santiyeIdPdf = list[0]?.santiyeId ?? "";
+        const atanmisKeylerPdf = new Set<string>();
+        for (const r of teknikKayitlari) {
+          if (r.santiye_id !== santiyeIdPdf || !r.is_teknik || !r.teknik_isim) continue;
+          for (const raw of r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s)) {
+            if (raw.includes("#")) {
+              atanmisKeylerPdf.add(raw);
+            } else {
+              const idx = teknikIsimlerPdf.findIndex((isim) => isim === raw);
+              if (idx >= 0) atanmisKeylerPdf.add(`${raw}#${idx}`);
+            }
+          }
+        }
+        const bostaRollerPdf: string[] = [];
+        teknikIsimlerPdf.forEach((isim, idx) => {
+          if (!atanmisKeylerPdf.has(`${isim}#${idx}`)) bostaRollerPdf.push(isim);
+        });
+        if (bostaRollerPdf.length > 0) {
           doc.setFont("helvetica", "italic"); doc.setFontSize(8);
-          doc.setTextColor(67, 56, 202);
-          doc.text(trAscii(`  Teknik Personel: ${teknikIsimlerPdf.join(", ")}`), 17, cursorY + 3);
+          doc.setTextColor(185, 28, 28); // kırmızı (boşta = dikkat)
+          doc.text(trAscii(`  Bosta Teknik Personel: ${bostaRollerPdf.join(", ")}`), 17, cursorY + 3);
           doc.setTextColor(0, 0, 0);
           doc.setFont("helvetica", "normal");
           cursorY += 5;

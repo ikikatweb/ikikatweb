@@ -251,12 +251,17 @@ export async function setPersonelTeknik(id: string, isTeknik: boolean) {
 // pasif_tarihi'yi KORUR (NULL'a çevirmez) — bunun yerine aktif_alma_tarihi'yi bugünün tarihiyle set eder.
 // Bu sayede pasif_tarihi ile aktif_alma_tarihi arasındaki günler "pasifken aktife alınmış"
 // olarak işaretlenir ve puantajda kilit gösterilir.
-// Eski şemada aktif_alma_tarihi kolonu yoksa eski davranışa fallback olur.
+//
+// ÖNEMLİ: Bu özelliğin çalışması için DB'de `aktif_alma_tarihi date` kolonu olmalı:
+//   ALTER TABLE personel ADD COLUMN IF NOT EXISTS aktif_alma_tarihi date;
+// Kolon yoksa fallback olarak SADECE durum=aktif yapılır, pasif_tarihi'yi KORUR
+// (NULL'a çevirmez ki kullanıcı SQL'i ekledikten sonra yeniden "Aktife Al" basıp
+// aktif_alma_tarihi'yi düzgün yazsın).
 export async function setPersonelAktif(id: string) {
   const supabase = getSupabase();
   const bugun = new Date().toISOString().slice(0, 10);
   // Önce yeni şema ile dene (pasif_tarihi'yi koru, aktif_alma_tarihi set et)
-  let { error } = await supabase
+  const { error: yeniError } = await supabase
     .from("personel")
     .update({
       durum: "aktif",
@@ -264,13 +269,25 @@ export async function setPersonelAktif(id: string) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
-  if (error && /column .*aktif_alma_tarihi/i.test(error.message)) {
-    // Kolon yoksa eski davranış: pasif_tarihi'yi NULL'a çevir
+
+  let error = yeniError;
+  if (error
+    && (/column .*aktif_alma_tarihi/i.test(error.message)
+      || /aktif_alma_tarihi.*does not exist/i.test(error.message)
+      || /could not find.*aktif_alma_tarihi/i.test(error.message)
+      || error.message.includes("schema cache"))
+  ) {
+    console.warn(
+      "[setPersonelAktif] aktif_alma_tarihi kolonu DB'de yok. " +
+      "Pasiften aktife dönüş aralık kilidi çalışmayacak. " +
+      "Bunu açmak için: ALTER TABLE personel ADD COLUMN IF NOT EXISTS aktif_alma_tarihi date;"
+    );
+    // Kolon yoksa SADECE durum'u aktif yap — pasif_tarihi'yi KORU (kayıp olmasın).
+    // User SQL'i sonradan eklerse yeniden "Aktife Al" tıklayabilir ve mantık çalışır.
     ({ error } = await supabase
       .from("personel")
       .update({
         durum: "aktif",
-        pasif_tarihi: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id));
