@@ -2009,8 +2009,9 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <Table className="text-xs">
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="px-2 text-[10px] text-gray-600">Şantiye</TableHead>
+                  <TableRow className="bg-gray-50 hover:bg-gray-50">
+                    {/* Şantiye sütunu sticky — yatay kaydırmada solda sabit kalır */}
+                    <TableHead className="px-2 text-[10px] text-gray-600 sticky left-0 z-10 bg-gray-50">Şantiye</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Kişi</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Bu Ay Gün</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
@@ -2047,9 +2048,16 @@ export default function DashboardPage() {
                       odenmisOran >= 80 ? "Tamamlanmak üzere" :
                       odenmisOran >= 40 ? "Yarı yolda" :
                       odenmisOran > 0 ? "Başlangıç" : "Hiç yatmamış";
+                    // Şantiye adı 30 karakterden uzunsa "..." ile kısalt (özellikle mobil için).
+                    // Tam adı title (tooltip) ile erişilebilir kalır.
+                    const santiyeKisa = row.santiyeAd.length > 30
+                      ? row.santiyeAd.slice(0, 30) + "..."
+                      : row.santiyeAd;
                     return (
                       <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
-                        <TableCell className="px-2 py-1.5">
+                        {/* Şantiye sütunu sticky — sağa-sola scroll'da solda sabit kalır.
+                            Mobile'da diğer sütunlara kayarken şantiye adı her zaman görünür. */}
+                        <TableCell className="px-2 py-1.5 sticky left-0 z-10 bg-white">
                           {/* Şantiye adının solunda firma rengi şeridi (İşçilik Durum Raporu pattern'i). */}
                           <div className="flex items-center gap-2">
                             <span
@@ -2058,8 +2066,8 @@ export default function DashboardPage() {
                               title={row.firmaRengi ? "Firma rengi" : "Firma rengi tanımlı değil"}
                             />
                             <div className="min-w-0 flex-1">
-                              <div className="font-medium text-[#1E3A5F] truncate max-w-[200px]" title={row.santiyeAd}>
-                                {row.santiyeAd}
+                              <div className="font-medium text-[#1E3A5F]" title={row.santiyeAd}>
+                                {santiyeKisa}
                               </div>
                               {row.iscilikOrani > 0 && (
                                 <div className="text-[9px] text-gray-400">
