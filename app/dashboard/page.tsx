@@ -2048,10 +2048,10 @@ export default function DashboardPage() {
                       odenmisOran >= 80 ? "Tamamlanmak üzere" :
                       odenmisOran >= 40 ? "Yarı yolda" :
                       odenmisOran > 0 ? "Başlangıç" : "Hiç yatmamış";
-                    // Şantiye adı 30 karakterden uzunsa "..." ile kısalt (özellikle mobil için).
-                    // Tam adı title (tooltip) ile erişilebilir kalır.
-                    const santiyeKisa = row.santiyeAd.length > 30
-                      ? row.santiyeAd.slice(0, 30) + "..."
+                    // Mobil için 22 karakter kısaltma. Masaüstünde tam ad gösterilir.
+                    // CSS responsive ile iki ayrı span — md breakpoint'i kullanır (≥768px masaüstü).
+                    const santiyeKisa = row.santiyeAd.length > 22
+                      ? row.santiyeAd.slice(0, 22) + "..."
                       : row.santiyeAd;
                     return (
                       <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
@@ -2067,7 +2067,9 @@ export default function DashboardPage() {
                             />
                             <div className="min-w-0 flex-1">
                               <div className="font-medium text-[#1E3A5F]" title={row.santiyeAd}>
-                                {santiyeKisa}
+                                {/* Mobil (<768px): 22 karakter kısaltma. Masaüstü (≥768px): tam ad */}
+                                <span className="md:hidden">{santiyeKisa}</span>
+                                <span className="hidden md:inline">{row.santiyeAd}</span>
                               </div>
                               {row.iscilikOrani > 0 && (
                                 <div className="text-[9px] text-gray-400">
