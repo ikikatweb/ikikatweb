@@ -156,6 +156,12 @@ export default function GelenEvrakPage() {
     evraklar.map((e) => e.firma_id).filter((id): id is string => !!id),
   );
 
+  // Firma id → renk map'i (firma sütunu kaldırıldı, renk şeridi için kullanılır)
+  const firmaRenkMap = new Map<string, string>();
+  for (const f of firmalar) {
+    if (f.renk) firmaRenkMap.set(f.id, f.renk);
+  }
+
   // Filtreleme
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
@@ -404,7 +410,6 @@ export default function GelenEvrakPage() {
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Belge Tarihi</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
-                <TableHead className="text-white text-xs px-2">Firma</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center w-[90px]">Üst Yazı</TableHead>
@@ -416,13 +421,25 @@ export default function GelenEvrakPage() {
             <TableBody>
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
-                  <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
+                  {/* Belge tarihi hücresinin solunda firma rengi şeridi (sütun kaldırıldı, renk + tooltip ile firma kimliği) */}
+                  <TableCell className="px-2 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor: firmaRenkMap.get(e.firma_id ?? "") ?? "#e5e7eb",
+                          minHeight: "1.25rem",
+                        }}
+                        title={e.firmalar?.firma_adi ?? "Firma yok"}
+                      />
+                      <span>{formatTarih(e.evrak_tarihi)}</span>
+                    </div>
+                  </TableCell>
                   {/* Sayı No: JS ile 35 karakterden sonra "..." eklenir.
                       CSS truncate KULLANMA — yoksa JS'in eklediği "..." CSS tarafından kesiliyor. */}
                   <TableCell className="px-2 whitespace-nowrap font-medium" title={e.evrak_sayi_no}>
                     {kisalt(e.evrak_sayi_no, 35)}
                   </TableCell>
-                  <TableCell className="px-2 max-w-[120px] truncate" title={e.firmalar?.firma_adi ?? ""}>{e.firmalar?.firma_adi ?? "—"}</TableCell>
                   {/* Konu: 60 karakter / 200px sınır — taşmaz, scrollbar çıkmaz. */}
                   <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>
                     {kisalt(e.konu, 60)}
