@@ -117,20 +117,148 @@ export async function GET() {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  // STORAGE YEDEĞİ — tüm bucket'lardaki dosyaları ZIP'e ekle
+  // STORAGE YEDEĞİ — tüm bucket'lardaki dosyaları ZIP'e ekle.
+  // Dosyaları okunaklı isimle (firma_adi, plaka, iş_adi, evrak konusu) klasörlere yerleştirir.
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // ===== DB LOOKUP MAP'LERİ — UUID'leri insan-okunabilir isimlere çevir =====
+  // Dosya/klasör adı için filesystem-safe string'e çevir.
+  function dosyaSafe(s: string, maxLen = 80): string {
+    return s
+      .replace(/[\\/:*?"<>|]/g, "_")   // OS yasak karakterleri
+      .replace(/[\r\n\t]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, maxLen);
+  }
+
+  // UUID kontrol — bir string standart 36 karakter UUID formatında mı?
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isUuid = (s: string) => UUID_RE.test(s);
+
+  const firmaMap = new Map<string, string>();    // firma_id → firma_adi
+  const santiyeMap = new Map<string, string>();  // santiye_id → is_adi
+  const aracMap = new Map<string, string>();     // arac_id → plaka
+  const bakimAracMap = new Map<string, { aracId: string; tarih: string }>(); // bakim_id → {arac, tarih}
+  const policeAracMap = new Map<string, string>(); // police_id → arac_id
+  const evrakMap = new Map<string, { konu: string; tarih: string; sayiNo: string; tip: "gelen" | "giden" | "banka" }>(); // pdf_url → bilgi
+
+  try {
+    const [firmalarRes, santiyelerRes, araclarRes, bakimRes, policeRes, gelenRes, gidenRes, bankaRes] = await Promise.all([
+      supabase.from("firmalar").select("id, firma_adi"),
+      supabase.from("santiyeler").select("id, is_adi"),
+      supabase.from("araclar").select("id, plaka"),
+      supabase.from("arac_bakim").select("id, arac_id, bakim_tarihi"),
+      supabase.from("arac_police").select("id, arac_id"),
+      supabase.from("gelen_evrak").select("pdf_url, konu, evrak_tarihi, evrak_sayi_no").not("pdf_url", "is", null),
+      supabase.from("giden_evrak").select("pdf_url, konu, evrak_tarihi, evrak_sayi_no").not("pdf_url", "is", null),
+      supabase.from("banka_yazismalari").select("pdf_url, konu, evrak_tarihi, evrak_sayi_no").not("pdf_url", "is", null),
+    ]);
+    for (const f of (firmalarRes.data ?? []) as { id: string; firma_adi: string }[]) firmaMap.set(f.id, f.firma_adi);
+    for (const s of (santiyelerRes.data ?? []) as { id: string; is_adi: string }[]) santiyeMap.set(s.id, s.is_adi);
+    for (const a of (araclarRes.data ?? []) as { id: string; plaka: string }[]) aracMap.set(a.id, a.plaka);
+    for (const b of (bakimRes.data ?? []) as { id: string; arac_id: string; bakim_tarihi: string }[]) {
+      bakimAracMap.set(b.id, { aracId: b.arac_id, tarih: b.bakim_tarihi });
+    }
+    for (const p of (policeRes.data ?? []) as { id: string; arac_id: string }[]) policeAracMap.set(p.id, p.arac_id);
+    // Yazışmalar — pdf_url'i tam URL veya path olabilir. Her ikisi için map'e ekle.
+    const evrakEkle = (rows: { pdf_url: string | null; konu: string; evrak_tarihi: string; evrak_sayi_no: string }[], tip: "gelen" | "giden" | "banka") => {
+      for (const r of rows) {
+        if (!r.pdf_url) continue;
+        evrakMap.set(r.pdf_url, { konu: r.konu, tarih: r.evrak_tarihi, sayiNo: r.evrak_sayi_no, tip });
+      }
+    };
+    evrakEkle((gelenRes.data ?? []) as never, "gelen");
+    evrakEkle((gidenRes.data ?? []) as never, "giden");
+    evrakEkle((bankaRes.data ?? []) as never, "banka");
+  } catch (err) {
+    // Lookup başarısız olsa bile yedeklemeye devam et — sadece UUID'lerle kalır.
+    console.error("[yedek/storage] lookup map hatası:", err);
+  }
+
+  // Bucket bazında path → okunaklı path dönüşümü.
+  // Geriye dönen path filesystem-safe olmalı; aynı UUID birden fazla dosya içerdiğinden
+  // klasör adı UUID'nin SON 6 karakterini de içerir (çakışmaları önler).
+  function okunakliPath(bucket: string, origPath: string): string {
+    const parcalar = origPath.split("/");
+    // İlk segment çoğu bucket'ta bir UUID veya sabit alt klasör adı.
+    const ilk = parcalar[0];
+    const sonEk = isUuid(ilk) ? `_${ilk.slice(-6)}` : ""; // UUID'lerin son 6 hanesi çakışmaya karşı
+
+    if (bucket === "firmalar" && isUuid(ilk)) {
+      const ad = firmaMap.get(ilk);
+      if (ad) parcalar[0] = `${dosyaSafe(ad)}${sonEk}`;
+    } else if (bucket === "santiyeler" && isUuid(ilk)) {
+      const ad = santiyeMap.get(ilk);
+      if (ad) parcalar[0] = `${dosyaSafe(ad)}${sonEk}`;
+    } else if (bucket === "araclar") {
+      if (ilk === "police" && parcalar.length > 1 && isUuid(parcalar[1])) {
+        const policeId = parcalar[1];
+        const aracId = policeAracMap.get(policeId);
+        const plaka = aracId ? aracMap.get(aracId) : null;
+        const sonEkP = `_${policeId.slice(-6)}`;
+        parcalar[1] = plaka ? `${dosyaSafe(plaka)}_police${sonEkP}` : `police${sonEkP}`;
+      } else if (isUuid(ilk)) {
+        const plaka = aracMap.get(ilk);
+        if (plaka) parcalar[0] = `${dosyaSafe(plaka)}${sonEk}`;
+      }
+    } else if (bucket === "arac-bakim" && isUuid(ilk)) {
+      const bakim = bakimAracMap.get(ilk);
+      if (bakim) {
+        const plaka = aracMap.get(bakim.aracId);
+        const tarih = bakim.tarih ?? "tarihsiz";
+        parcalar[0] = plaka ? `${dosyaSafe(plaka)}_${tarih}${sonEk}` : `${tarih}${sonEk}`;
+      }
+    } else if (bucket === "yazismalar" && parcalar.length >= 3) {
+      // yazismalar/gelen/{firmaId}/{file}, gelen-ek, giden, banka
+      const tip = parcalar[0]; // "gelen" | "gelen-ek" | "giden" | "banka"
+      const firmaId = parcalar[1];
+      if (isUuid(firmaId)) {
+        const ad = firmaMap.get(firmaId);
+        if (ad) parcalar[1] = dosyaSafe(ad);
+      }
+      // Dosya adına evrak bilgisi (konu) eklemek için pdf_url ile eşleştir.
+      // origPath, supabase storage path'i — pdf_url ise public URL.
+      // Her iki yöne de denemek için endsWith kontrolüyle ara.
+      const dosyaAdi = parcalar[parcalar.length - 1];
+      let evrakBilgi: { konu: string; tarih: string; sayiNo: string } | null = null;
+      for (const [url, info] of evrakMap) {
+        // gelen-ek için ekler ayrı tutulur, ana evrak pdf_url'den farklı path'te.
+        // gelen/giden/banka için tam path eşleşmesi: pdf_url URL'i origPath ile bitiyorsa eşleşir.
+        if (url.endsWith(origPath) || url.endsWith(dosyaAdi)) {
+          if ((tip === "gelen" && info.tip === "gelen")
+            || (tip === "giden" && info.tip === "giden")
+            || (tip === "banka" && info.tip === "banka")) {
+            evrakBilgi = info;
+            break;
+          }
+        }
+      }
+      if (evrakBilgi) {
+        const eklem = `${evrakBilgi.tarih}_${dosyaSafe(evrakBilgi.konu, 40)}`;
+        // Orijinal dosya uzantısını koru
+        const uzanti = dosyaAdi.includes(".") ? dosyaAdi.slice(dosyaAdi.lastIndexOf(".")) : "";
+        parcalar[parcalar.length - 1] = `${eklem}${uzanti}`;
+      }
+    }
+
+    return parcalar.join("/");
+  }
+
   const zip = new JSZip();
   const meta: {
     proje: string;
     yedek_tarihi: string;
     bucket_sayilari: Record<string, number>;
     toplam_dosya: number;
+    isim_eslemesi: Record<string, { orijinal: string; okunakli: string }[]>;
     hatalar: { bucket: string; path?: string; hata: string }[];
   } = {
     proje: "ikikatweb",
     yedek_tarihi: new Date().toISOString(),
     bucket_sayilari: {},
     toplam_dosya: 0,
+    isim_eslemesi: {},
     hatalar: [],
   };
 
@@ -138,6 +266,7 @@ export async function GET() {
     try {
       const dosyalar = await listeleHepsi(supabase, bucket);
       let basarili = 0;
+      meta.isim_eslemesi[bucket] = [];
       for (const item of dosyalar) {
         try {
           const { data, error } = await supabase.storage.from(bucket).download(item.path);
@@ -146,8 +275,9 @@ export async function GET() {
             continue;
           }
           const buffer = Buffer.from(await data.arrayBuffer());
-          // ZIP içindeki path: bucket-adi/orjinal/dosya/yolu.pdf
-          zip.file(`${bucket}/${item.path}`, buffer);
+          const okunakli = okunakliPath(bucket, item.path);
+          zip.file(`${bucket}/${okunakli}`, buffer);
+          meta.isim_eslemesi[bucket].push({ orijinal: item.path, okunakli });
           basarili++;
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err);

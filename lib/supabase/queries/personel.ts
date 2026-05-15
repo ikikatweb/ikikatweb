@@ -120,6 +120,8 @@ export async function createPersonel(personel: PersonelInsert) {
       govde: `${personel.ad_soyad}${personel.gorev ? " · " + personel.gorev : ""}`,
       url: "/dashboard/yonetim/personel",
       tag: "personel",
+      kaynak_tip: "personel",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -177,6 +179,11 @@ export async function deletePersonel(id: string) {
   }
   const { error } = await supabase.from("personel").delete().eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("personel", id);
+  } catch { /* sessiz */ }
 }
 
 // Personeli pasife al (işten ayrıldı). Belirli bir tarih ile birlikte kaydedilir.

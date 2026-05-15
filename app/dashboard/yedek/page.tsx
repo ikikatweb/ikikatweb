@@ -207,9 +207,12 @@ export default function YedekPage() {
           </div>
           <div className="flex-1">
             <h2 className="font-bold text-[#1E3A5F] mb-1">Dosya Yedeği (Storage)</h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 mb-1.5">
               Tüm PDF, görsel ve eklerin (yazışmalar, antet, kaşe, ruhsat, bakım vb.) ZIP arşivi olarak indir.
-              Bucket klasör yapısı korunur (yazismalar/, firmalar/, santiyeler/, araclar/, arac-bakim/).
+            </p>
+            <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+              ✓ Klasör adları artık <strong>okunaklı</strong>: firma adı, plaka, iş adı, evrak konusu olarak isimlendirilir.
+              UUID&apos;ler eşleştirme için <code>_yedek_meta.json</code> dosyasında listelenir.
             </p>
           </div>
         </div>

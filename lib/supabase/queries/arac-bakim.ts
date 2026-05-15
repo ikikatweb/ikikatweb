@@ -91,6 +91,8 @@ export async function insertAracBakim(data: {
       url: `/dashboard/arac-bakim?arac=${data.arac_id}`,
       tag: "arac-bakim",
       santiye_id: arac?.santiye_id ?? null,
+      kaynak_tip: "arac-bakim",
+      kaynak_id: row.id,
     });
   } catch { /* sessiz */ }
 
@@ -113,6 +115,11 @@ export async function deleteAracBakim(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("arac_bakim").delete().eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("arac-bakim", id);
+  } catch { /* sessiz */ }
 }
 
 export type BakimDosyaKategori = "fatura" | "is-foto";

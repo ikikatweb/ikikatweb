@@ -115,6 +115,10 @@ export async function deleteIhale(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("ihale").delete().eq("id", id);
   if (error) throw error;
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("ihale", id);
+  } catch { /* sessiz */ }
 }
 
 // --- Katılımcılar ---

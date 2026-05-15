@@ -16,6 +16,7 @@ import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queri
 import type { PersonelAtamaGecmisi, PersonelAtamaManuelGun, Personel, IscilikTakibiWithSantiye, PersonelBrutUcret } from "@/lib/supabase/types";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
+import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
 import { getDegerler, getTumTanimlamalar, unpackAcenteKisaAd } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -35,7 +36,8 @@ import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null };
+type FirmaBasic = { id: string; firma_adi: string; renk: string | null; sira_no?: number | null };
 type YiUfe = { id: string; yil: number; ay: number; endeks: number; created_at: string };
 type YakitAlim = { id: string; santiye_id: string; tarih: string; saat: string; tedarikci_firma: string | null; miktar_lt: number; birim_fiyat: number; notu: string | null };
 type AracYakit = { id: string; arac_id: string; santiye_id: string; tarih: string; miktar_lt: number };
@@ -103,6 +105,8 @@ export default function DashboardPage() {
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
+  // Firma listesi — bordro widget'ında renk + sıra için kullanılır
+  const [firmalar, setFirmalar] = useState<FirmaBasic[]>([]);
   const [defterOzetler, setDefterOzetler] = useState<DefterOzet[]>([]);
   const [defterDetaylar, setDefterDetaylar] = useState<DefterDetay[]>([]);
   // Bordro Takibi widget'ı
@@ -239,11 +243,11 @@ export default function DashboardPage() {
       } catch { /* sessiz */ }
     })();
 
-    // BACKGROUND BATCH 3: Bordro takibi widget verileri
+    // BACKGROUND BATCH 3: Bordro takibi widget verileri + firma renkleri
     (async () => {
       setBordroLoading(true);
       try {
-        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData] = await Promise.all([
+        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData] = await Promise.all([
           getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
           getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
           getBordroPersoneller().catch(() => [] as Personel[]),
@@ -251,6 +255,9 @@ export default function DashboardPage() {
           getIscilikTakibi().catch(() => [] as IscilikTakibiWithSantiye[]),
           getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]),
           getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
+          // Firmalar bordro widget'ında renk + sıralama için.
+          // getFirmalar() varsayılan olarak sira_no ASC döner.
+          getFirmalar().catch(() => [] as FirmaBasic[]),
         ]);
         setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
         setBordroManuelGunler(manuelData as PersonelAtamaManuelGun[]);
@@ -259,6 +266,7 @@ export default function DashboardPage() {
         setBordroIscilikTakibi(iscilikData as IscilikTakibiWithSantiye[]);
         setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]);
         setBordroBrutUcretler(brutData as PersonelBrutUcret[]);
+        setFirmalar(firmaData as FirmaBasic[]);
       } catch { /* sessiz */ }
       finally {
         setBordroLoading(false);
@@ -881,6 +889,14 @@ export default function DashboardPage() {
       return toplam;
     }
 
+    // Firma renk + sıra map'leri (İşçilik Durum Raporu ile aynı pattern)
+    const firmaRenkMap = new Map<string, string>();
+    const firmaSiraMap = new Map<string, number>();
+    firmalar.forEach((f, i) => {
+      if (f.renk) firmaRenkMap.set(f.id, f.renk);
+      firmaSiraMap.set(f.id, i);
+    });
+
     // Şantiye satırları
     type SantiyeSatir = {
       santiyeId: string;
@@ -892,6 +908,11 @@ export default function DashboardPage() {
       yatanPrim: number;
       iscilikOrani: number;
       sozlesmeBedeli: number;
+      // Yeni: firma rengi + sıralama için meta
+      firmaRengi: string | null;
+      firmaId: string | null;
+      isGrubu: string | null;
+      santiyeCreatedAt: string;
     };
     const satirlar: SantiyeSatir[] = [];
     const tumIds = new Set<string>([...primInfo.keys(), ...buAyPersonelKumeleri.keys()]);
@@ -902,6 +923,8 @@ export default function DashboardPage() {
       const sant = santiyeler.find((s) => s.id === sid);
       if (!sant) continue;
       const kisi = buAyPersonelKumeleri.get(sid)?.size ?? 0;
+      const firmaId = sant.yuklenici_firma_id ?? null;
+      const firmaRengi = firmaId ? (firmaRenkMap.get(firmaId) ?? null) : null;
       satirlar.push({
         santiyeId: sid,
         santiyeAd: sant.is_adi,
@@ -912,13 +935,25 @@ export default function DashboardPage() {
         yatanPrim: info.yatan,
         iscilikOrani: info.iscilikOrani,
         sozlesmeBedeli: info.sozlesmeBedeli,
+        firmaRengi,
+        firmaId,
+        isGrubu: sant.is_grubu ?? null,
+        santiyeCreatedAt: sant.created_at ?? "",
       });
     }
-    // Sıralama: aktif kişi varsa öne, sonra yatması gereken büyük olan
+    // Sıralama — İşçilik Durum Raporu ile aynı:
+    //   1. Firma sira_no (Yönetim > Firmalar sayfasındaki sıra)
+    //   2. İş grubu (alfabetik)
+    //   3. Şantiye created_at (oluşturulma sırası)
     satirlar.sort((a, b) => {
-      if ((b.kisi > 0 ? 1 : 0) !== (a.kisi > 0 ? 1 : 0)) return (b.kisi > 0 ? 1 : 0) - (a.kisi > 0 ? 1 : 0);
-      if (b.kisi !== a.kisi) return b.kisi - a.kisi;
-      return b.yatmasiGereken - a.yatmasiGereken;
+      const fa = firmaSiraMap.get(a.firmaId ?? "") ?? Number.MAX_SAFE_INTEGER;
+      const fb = firmaSiraMap.get(b.firmaId ?? "") ?? Number.MAX_SAFE_INTEGER;
+      if (fa !== fb) return fa - fb;
+      const ga = a.isGrubu ?? "";
+      const gb = b.isGrubu ?? "";
+      const grupKarsi = ga.localeCompare(gb, "tr");
+      if (grupKarsi !== 0) return grupKarsi;
+      return a.santiyeCreatedAt.localeCompare(b.santiyeCreatedAt);
     });
 
     const toplamKisiSet = new Set<string>();
@@ -941,7 +976,7 @@ export default function DashboardPage() {
       gunlukUcret: defaultGunlukUcret,
       ayLabel: `${AY_ADLARI[bugun.getMonth()]} ${bugun.getFullYear()}`,
     };
-  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, bugun, isYonetici, kullanici]);
+  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, firmalar, bugun, isYonetici, kullanici]);
 
   // ============================================================
   // EKSİK YÜKLENİCİ VERİ GİRİŞİ (widget: "eksik_veri_girisi")
@@ -2015,14 +2050,24 @@ export default function DashboardPage() {
                     return (
                       <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
                         <TableCell className="px-2 py-1.5">
-                          <div className="font-medium text-[#1E3A5F] truncate max-w-[200px]" title={row.santiyeAd}>
-                            {row.santiyeAd}
-                          </div>
-                          {row.iscilikOrani > 0 && (
-                            <div className="text-[9px] text-gray-400">
-                              %{formatSayi(row.iscilikOrani, 1)} işçilik · {formatSayi(row.sozlesmeBedeli, 0)} ₺ sözleşme
+                          {/* Şantiye adının solunda firma rengi şeridi (İşçilik Durum Raporu pattern'i). */}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                              style={{ backgroundColor: row.firmaRengi ?? "#e5e7eb", minHeight: "1.5rem" }}
+                              title={row.firmaRengi ? "Firma rengi" : "Firma rengi tanımlı değil"}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-[#1E3A5F] truncate max-w-[200px]" title={row.santiyeAd}>
+                                {row.santiyeAd}
+                              </div>
+                              {row.iscilikOrani > 0 && (
+                                <div className="text-[9px] text-gray-400">
+                                  %{formatSayi(row.iscilikOrani, 1)} işçilik · {formatSayi(row.sozlesmeBedeli, 0)} ₺ sözleşme
+                                </div>
+                              )}
                             </div>
-                          )}
+                          </div>
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-center font-semibold tabular-nums text-[#1E3A5F]">
                           {row.kisi}

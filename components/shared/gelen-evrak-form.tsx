@@ -197,22 +197,7 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Firma <span className="text-red-500">*</span></Label>
-          <select
-            value={firmaId}
-            onChange={(e) => {
-              const yeniFirmaId = e.target.value;
-              setFirmaId(yeniFirmaId);
-              // Firma değişti → seçili şantiye yeni firmanın değilse temizle
-              if (santiyeId) {
-                const seciliSantiye = santiyeler.find((s) => s.id === santiyeId);
-                if (!seciliSantiye || seciliSantiye.yuklenici_firma_id !== yeniFirmaId) {
-                  setSantiyeId("");
-                }
-              }
-            }}
-            disabled={loading}
-            className={selectClass}
-          >
+          <select value={firmaId} onChange={(e) => setFirmaId(e.target.value)} disabled={loading} className={selectClass}>
             <option value="">Firma seçin</option>
             {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
               <option key={f.id} value={f.id}>{f.firma_adi}</option>
@@ -221,13 +206,15 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
         <div className="space-y-2">
           <Label>Şantiye</Label>
-          {/* Firma seçildiyse SADECE o firmaya ait şantiyeler. Firma seçilmediyse boş liste. */}
+          {/* Tüm aktif şantiyeler firma adı altında <optgroup> ile gruplanmış halde gösterilir.
+              Firma seçimi şantiye listesini filtrelemez — kullanıcı istediği şantiyeyi seçebilir. */}
           <SantiyeSelect
-            santiyeler={firmaId ? santiyeler.filter((s) => s.yuklenici_firma_id === firmaId) : []}
+            santiyeler={santiyeler}
             value={santiyeId}
             onChange={setSantiyeId}
-            placeholder={firmaId ? "Opsiyonel" : "Önce firma seçin"}
+            placeholder="Opsiyonel"
             className={selectClass}
+            firmalar={firmalar}
           />
         </div>
       </div>

@@ -69,6 +69,8 @@ export async function createSantiye(santiye: SantiyeInsert) {
       govde: String(santiye.is_adi ?? "").slice(0, 150),
       url: "/dashboard/yonetim/santiyeler",
       tag: "santiye",
+      kaynak_tip: "santiye",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 

@@ -108,6 +108,8 @@ export async function createArac(arac: AracInsert) {
       govde: `${arac.plaka}${arac.marka ? " · " + arac.marka : ""}${arac.model ? " " + arac.model : ""}`,
       url: "/dashboard/yonetim/araclar",
       tag: "arac",
+      kaynak_tip: "arac",
+      kaynak_id: data.id,
     });
   } catch { /* sessiz */ }
 
@@ -239,6 +241,11 @@ export async function deleteArac(id: string) {
   }
   const { error } = await supabase.from("araclar").delete().eq("id", id);
   if (error) throw error;
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("arac", id);
+  } catch { /* sessiz */ }
 }
 
 export async function toggleAracDurum(id: string, durum: "aktif" | "pasif" | "trafikten_cekildi") {

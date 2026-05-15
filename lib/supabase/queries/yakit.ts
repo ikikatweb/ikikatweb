@@ -96,7 +96,12 @@ export async function insertAracYakit(data: {
   created_by: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from("arac_yakit").insert(data);
+  // INSERT + SELECT — bildirimde kaynak_id için id gerekli
+  const { data: inserted, error } = await supabase
+    .from("arac_yakit")
+    .insert(data)
+    .select("id")
+    .single();
   if (error) throw error;
 
   // Push bildirim — araç yakıt verme
@@ -111,14 +116,14 @@ export async function insertAracYakit(data: {
       : "?";
     const santiyeAd = santiye?.is_adi ? String(santiye.is_adi).slice(0, 40) : "?";
     const birim = arac?.sayac_tipi === "saat" ? "s" : "km";
-    // arac_yakit insert'inde döndürülen id yok (data tipi void), bu yüzden insert'ten select() çekmeliyiz.
-    // Şimdilik bildirim gönderdiğimiz için kaynak_id'yi atlıyoruz; ileride gerekirse buraya da ekleriz.
     bildirimGonder({
       baslik: `⛽ Araç Yakıt — ${aracAd.slice(0, 50)}`,
       govde: `${data.miktar_lt.toLocaleString("tr-TR")} Lt · ${data.km_saat.toLocaleString("tr-TR")} ${birim} · ${santiyeAd}${data.depo_full ? " · Depo Full" : ""}`,
       url: `/dashboard/yakit?santiye=${data.santiye_id}`,
       tag: "yakit",
       santiye_id: data.santiye_id,
+      kaynak_tip: "arac-yakit",
+      kaynak_id: inserted?.id ?? null,
     });
   } catch { /* sessiz */ }
 }
@@ -141,6 +146,10 @@ export async function deleteAracYakit(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("arac_yakit").delete().eq("id", id);
   if (error) throw error;
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("arac-yakit", id);
+  } catch { /* sessiz */ }
 }
 
 // ==================== DEPO ALIM ====================
@@ -188,7 +197,11 @@ export async function insertYakitAlim(data: {
   created_by: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from("yakit_alim").insert(data);
+  const { data: inserted, error } = await supabase
+    .from("yakit_alim")
+    .insert(data)
+    .select("id")
+    .single();
   if (error) throw error;
 
   // Push bildirim
@@ -207,6 +220,8 @@ export async function insertYakitAlim(data: {
       url: `/dashboard/yakit?santiye=${data.santiye_id}`,
       tag: "yakit",
       santiye_id: data.santiye_id,
+      kaynak_tip: "yakit-alim",
+      kaynak_id: inserted?.id ?? null,
     });
   } catch { /* sessiz */ }
 }
@@ -228,6 +243,10 @@ export async function deleteYakitAlim(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("yakit_alim").delete().eq("id", id);
   if (error) throw error;
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("yakit-alim", id);
+  } catch { /* sessiz */ }
 }
 
 // ==================== VIRMAN ====================
@@ -272,7 +291,11 @@ export async function insertYakitVirman(data: {
     throw new Error("Gönderen ve alan şantiye aynı olamaz.");
   }
   const supabase = getSupabase();
-  const { error } = await supabase.from("yakit_virman").insert(data);
+  const { data: inserted, error } = await supabase
+    .from("yakit_virman")
+    .insert(data)
+    .select("id")
+    .single();
   if (error) throw error;
 
   // Push bildirim — şantiye yakıt virmanı
@@ -290,6 +313,8 @@ export async function insertYakitVirman(data: {
       url: `/dashboard/yakit`,
       tag: "yakit",
       santiye_id: data.gonderen_santiye_id,
+      kaynak_tip: "yakit-virman",
+      kaynak_id: inserted?.id ?? null,
     });
   } catch { /* sessiz */ }
 }
@@ -313,6 +338,10 @@ export async function deleteYakitVirman(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("yakit_virman").delete().eq("id", id);
   if (error) throw error;
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    bildirimSilByKaynak("yakit-virman", id);
+  } catch { /* sessiz */ }
 }
 
 // ==================== LIMIT ====================

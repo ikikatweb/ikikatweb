@@ -151,6 +151,8 @@ export async function upsertIscilikTakibi(
       url: "/dashboard/iscilik-takibi",
       tag: "iscilik-takibi",
       santiye_id: santiyeId,
+      kaynak_tip: "iscilik-takibi",
+      kaynak_id: santiyeId,
     });
   } catch { /* sessiz */ }
 }
@@ -231,7 +233,21 @@ export async function getTumIscilikAyliklari() {
 
 export async function permanentDeleteIscilikTakibi(id: string) {
   const supabase = getSupabase();
+  // Önce iscilik_takibi kaydından santiye_id'yi al — bildirim temizleme için
+  const { data: kayit } = await supabase
+    .from("iscilik_takibi")
+    .select("santiye_id")
+    .eq("id", id)
+    .maybeSingle();
+  const santiyeId = (kayit?.santiye_id as string | null | undefined) ?? null;
+
   await supabase.from("iscilik_aylik").delete().eq("iscilik_takibi_id", id);
   const { error } = await supabase.from("iscilik_takibi").delete().eq("id", id);
   if (error) throw error;
+
+  // İlgili bildirimleri de temizle
+  try {
+    const { bildirimSilByKaynak } = await import("@/lib/bildirim");
+    if (santiyeId) bildirimSilByKaynak("iscilik-takibi", santiyeId);
+  } catch { /* sessiz */ }
 }
