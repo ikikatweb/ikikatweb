@@ -135,6 +135,12 @@ export default function GidenEvrakPage() {
     ),
   ).sort((a, b) => a.localeCompare(b, "tr"));
 
+  // Firma id → renk map'i (Firma sütunu kaldırıldı, renk şeridi için kullanılır)
+  const firmaRenkMap = new Map<string, string>();
+  for (const f of firmalar) {
+    if (f.renk) firmaRenkMap.set(f.id, f.renk);
+  }
+
   const filtrelenmis = evraklar.filter((e) => {
     if (fBaslangic && e.evrak_tarihi < fBaslangic) return false;
     if (fBitis && e.evrak_tarihi > fBitis) return false;
@@ -419,13 +425,13 @@ export default function GidenEvrakPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table noWrapper>
+          <Table noWrapper className="min-w-[1100px]">
             <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-[#64748B]">
-                <TableHead className="text-white text-xs px-2">Tarih</TableHead>
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
+                {/* Tarih başlığı sticky — yatay scroll'da sol kenarda sabit kalır */}
+                <TableHead className="text-white text-xs px-2 sticky left-0 z-20 bg-[#64748B]">Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Kayıt No</TableHead>
-                <TableHead className="text-white text-xs px-2">Firma</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
@@ -435,7 +441,21 @@ export default function GidenEvrakPage() {
             <TableBody>
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
-                  <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
+                  {/* Tarih hücresinin solunda firma rengi şeridi (sütun kaldırıldı).
+                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır. */}
+                  <TableCell className="px-2 whitespace-nowrap sticky left-0 z-10 bg-white">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                        style={{
+                          backgroundColor: firmaRenkMap.get(e.firma_id ?? "") ?? "#e5e7eb",
+                          minHeight: "1.25rem",
+                        }}
+                        title={e.firmalar?.firma_adi ?? "Firma yok"}
+                      />
+                      <span>{formatTarih(e.evrak_tarihi)}</span>
+                    </div>
+                  </TableCell>
                   <TableCell className="px-2 whitespace-nowrap font-mono text-[10px]">{e.evrak_sayi_no}</TableCell>
                   <TableCell className="px-2 whitespace-nowrap">
                     {e.evrak_kayit_no ? (
@@ -450,7 +470,6 @@ export default function GidenEvrakPage() {
                       </button>
                     )}
                   </TableCell>
-                  <TableCell className="px-2 max-w-[120px] truncate" title={e.firmalar?.firma_adi ?? ""}>{e.firmalar?.firma_adi ?? "—"}</TableCell>
                   <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>{e.konu}</TableCell>
                   <TableCell className="px-2 leading-snug">
                     {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
