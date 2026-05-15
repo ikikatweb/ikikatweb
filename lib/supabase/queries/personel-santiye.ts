@@ -19,9 +19,11 @@ export async function getPersonelSantiyeler(): Promise<PersonelSantiye[]> {
 }
 
 // Personeli bir şantiyeye ata. Zaten atanmışsa no-op.
+// sessiz=true → bildirim gönderilmez (çağıran zaten kendi bildirimini yolluyor, çift olmasın)
 export async function addPersonelSantiye(
   personelId: string,
   santiyeId: string,
+  sessiz = false,
 ): Promise<void> {
   const supabase = getSupabase();
   // Önce zaten var mı kontrol et — varsa bildirim gönderme
@@ -41,8 +43,8 @@ export async function addPersonelSantiye(
     );
   if (error) throw error;
 
-  // Push bildirim — sadece yeni atama ise (zaten varsa spam olmasın)
-  if (!yeniAtama) return;
+  // Push bildirim — sadece yeni atama ise (zaten varsa spam olmasın) ve sessiz çağrılmadıysa
+  if (!yeniAtama || sessiz) return;
   try {
     const { bildirimGonder } = await import("@/lib/bildirim");
     const [{ data: personel }, { data: santiye }] = await Promise.all([

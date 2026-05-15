@@ -3085,10 +3085,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         pasif_tarihi: null,
       });
       // Şantiye seçildiyse personel_santiye junction tablosuna da ekle
-      // (Personeller sayfasında listede görünmesi + puantaj listesi için gerekli)
+      // (Personeller sayfasında listede görünmesi + puantaj listesi için gerekli).
+      // sessiz=true → "Personel Atandı" bildirimi gönderilmez; bordro zaten kendi
+      // "İşe Giriş — Bordro Takibi" bildirimini yolluyor (çift bildirimi önler).
       if (ekleSantiye && yeni?.id) {
         try {
-          await addPersonelSantiye(yeni.id, ekleSantiye);
+          await addPersonelSantiye(yeni.id, ekleSantiye, true);
         } catch (atErr) {
           console.warn("Otomatik şantiye ataması başarısız:", atErr);
         }
