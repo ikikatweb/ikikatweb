@@ -395,8 +395,11 @@ export default function GelenEvrakPage() {
           )}
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-y-auto overflow-x-hidden max-h-[75vh]">
-          <Table noWrapper>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
+          {/* min-w-[1100px] — tablo dar ekranlarda (mobile/tablet) bu genişliğe sıkışmaz,
+              container'dan geniş olur → overflow-auto sayesinde yatay kaydırma çalışır.
+              Tüm sütunlara (Belge Tarihi, Sayı No, Firma, Konu, Muhatap, Üst Yazı, Ek, Oluşturan, İşlemler) erişim sağlar. */}
+          <Table noWrapper className="min-w-[1100px]">
             <TableHeader className="sticky top-0 z-10">
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Belge Tarihi</TableHead>
