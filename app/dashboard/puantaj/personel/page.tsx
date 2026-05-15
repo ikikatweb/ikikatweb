@@ -5,7 +5,7 @@
 import Link from "next/link";
 import PersonelForm from "@/components/shared/personel-form";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { getPersoneller, setPersonelPasif } from "@/lib/supabase/queries/personel";
+import { getPersoneller, setPersonelPasif, setPersonelAktif } from "@/lib/supabase/queries/personel";
 import {
   getPersonelSantiyeler,
   addPersonelSantiye,
@@ -244,6 +244,7 @@ export default function PersonelPuantajPage() {
       // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç
       const otoId = otomatikSantiyeId(sList, kullanici);
       if (otoId) setSantiyeId(otoId);
+
       setLoading(false);
     }
     init();
@@ -606,12 +607,24 @@ export default function PersonelPuantajPage() {
     return GUN_KISA[new Date(yil, ay - 1, gun).getDay()];
   }
 
-  // Pasif bir personelin belirli bir günü, pasif_tarihi sonrasındaysa (disabled = true)
-  // İşten ayrıldığı gün DAHİL o günden itibaren puantaj işlenemez
+  // Bir personelin belirli bir günü pasif sayılıp puantaj giremeyeceği durumlar:
+  //   1. Personel ŞU AN pasif (durum=pasif) + tarih >= pasif_tarihi → kısıtlı
+  //   2. Personel ŞU AN aktif (durum=aktif) AMA daha önce işten çıkarılıp tekrar alınmış:
+  //      pasif_tarihi var + aktif_alma_tarihi var + pasif_tarihi ≤ tarih < aktif_alma_tarihi
+  //      → o aralık "pasifken aktife alınmış" sayılır → kısıtlı.
   function pasifKisitli(p: PersonelWithRelations, gun: number): boolean {
-    if (p.durum !== "pasif" || !p.pasif_tarihi) return false;
     const hucreTarih = tarihStr(yil, ay, gun);
-    return hucreTarih >= p.pasif_tarihi;
+    // Mevcut pasif personel + pasif_tarihi sonrası
+    if (p.durum === "pasif" && p.pasif_tarihi && hucreTarih >= p.pasif_tarihi) return true;
+    // Aktif personel ama daha önce kapalı kalan dönem var
+    if (
+      p.durum === "aktif"
+      && p.pasif_tarihi
+      && p.aktif_alma_tarihi
+      && hucreTarih >= p.pasif_tarihi
+      && hucreTarih < p.aktif_alma_tarihi
+    ) return true;
+    return false;
   }
 
   // Hücreye tıkla -> dialog aç
@@ -627,11 +640,17 @@ export default function PersonelPuantajPage() {
       return;
     }
 
-    // Pasif personel ve pasif_tarihi'den sonraki bir güne tıklanırsa engelle
+    // Pasif aralık veya işten ayrılma sonrası tıklanırsa engelle
     if (pasifKisitli(p, gun)) {
-      toast.error(
-        `"${p.ad_soyad}" personeli ${p.pasif_tarihi} tarihinde pasife alındı. Bu tarihten sonrasına puantaj işlenemez.`
-      );
+      if (p.durum === "aktif" && p.pasif_tarihi && p.aktif_alma_tarihi) {
+        toast.error(
+          `"${p.ad_soyad}" personeli ${p.pasif_tarihi} - ${p.aktif_alma_tarihi} arasında işten ayrılmıştı. Bu aralığa puantaj işlenemez.`,
+        );
+      } else {
+        toast.error(
+          `"${p.ad_soyad}" personeli ${p.pasif_tarihi} tarihinde pasife alındı. Bu tarihten sonrasına puantaj işlenemez.`,
+        );
+      }
       return;
     }
 
@@ -1165,6 +1184,29 @@ export default function PersonelPuantajPage() {
                       <div className={`text-[9px] leading-tight truncate max-w-[120px] ${pasif ? "text-gray-400" : "text-gray-500"}`}>
                         {[p.meslek, p.gorev].filter(Boolean).join(" / ") || "—"}
                       </div>
+                      {/* Pasife alınmış personel için "Aktife Geri Al" butonu — sadece kullanıcının
+                          geriye dönük puantaj işlem limit'i içinde pasif_tarihi olanlar için görünür.
+                          Yanlışlıkla işten çıkar basıldığında hızlı geri alma sağlar. */}
+                      {pasif && p.pasif_tarihi && tarihIzinliMi(kullanici, p.pasif_tarihi, "puantaj", "islem") && (
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!confirm(`"${p.ad_soyad}" personelini AKTİFE geri almak istiyor musunuz? (Yanlışlıkla işten çıkartma geri alınır)`)) return;
+                            try {
+                              await setPersonelAktif(p.id);
+                              await loadPersoneller();
+                              toast.success(`${p.ad_soyad} aktife alındı.`);
+                            } catch {
+                              toast.error("Aktife alma sırasında hata oluştu.");
+                            }
+                          }}
+                          className="mt-1 text-[9px] px-1.5 py-0.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 leading-tight"
+                          title={`${p.pasif_tarihi} tarihindeki işten çıkışı geri al`}
+                        >
+                          ↩ Aktife Al
+                        </button>
+                      )}
                     </TableCell>
                     {gunler.map((g) => {
                       const pg = gunMap?.get(g);
@@ -1172,10 +1214,20 @@ export default function PersonelPuantajPage() {
                       const haftaSonu = gunHaftaSonu(g);
                       const notVar = !!pg?.aciklama;
                       const pasifGun = pasifKisitli(p, g);
-                      const digerCakisma = !pg && !pasifGun ? digerCakismalar.get(p.id)?.get(g) : null;
+                      // Pasif personelin pasif_tarihi'nden ÖNCEKİ günleri için "diğer şantiye
+                      // çakışması" kilidini gösterme — kullanıcı zaten pasif, başka şantiyede
+                      // kayıtlı olması bu satırın kafa karıştırıcı şekilde kilitlenmesine yol açar.
+                      // Mevcut şantiyede puantaj kaydı varsa (pg) o görünür; yoksa boş hücre kalır.
+                      const digerCakisma = !pg && !pasifGun && !pasif
+                        ? digerCakismalar.get(p.id)?.get(g)
+                        : null;
                       const kilitli = !!digerCakisma;
 
                       if (pasifGun) {
+                        // Hangi tip pasif aralığı olduğuna göre tooltip değişir
+                        const pasifTipBaslik = (p.durum === "aktif" && p.pasif_tarihi && p.aktif_alma_tarihi)
+                          ? `${p.pasif_tarihi} - ${p.aktif_alma_tarihi} arası işten ayrılmıştı — puantaj işlenemez`
+                          : "Personel pasif — puantaj işlenemez";
                         return (
                           <TableCell
                             key={g}
@@ -1183,7 +1235,7 @@ export default function PersonelPuantajPage() {
                           >
                             <div
                               className="w-full h-[35px] flex items-center justify-center text-gray-300"
-                              title="Personel pasif — puantaj işlenemez"
+                              title={pasifTipBaslik}
                             >
                               <Lock size={10} />
                             </div>
@@ -1578,6 +1630,36 @@ export default function PersonelPuantajPage() {
                       disabled={dialogKaydediliyor}
                     >
                       <XIcon size={14} className="mr-1" /> İşten Ayrıldı
+                    </Button>
+                  )}
+                  {/* Yanlışlıkla "İşten Ayrıldı" basıldıysa geri alma butonu — sadece pasif personel için.
+                      Yetki: kullanıcının geriye dönük puantaj işlem limit'i içinde pasif_tarihi olmalı.
+                      Yönetici sınırsız. */}
+                  {seciliPersonel.durum === "pasif" && seciliPersonel.pasif_tarihi
+                    && tarihIzinliMi(kullanici, seciliPersonel.pasif_tarihi, "puantaj", "islem") && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-emerald-700 border-emerald-300 hover:bg-emerald-100 bg-emerald-50"
+                      onClick={async () => {
+                        if (!seciliPersonel) return;
+                        if (!confirm(`"${seciliPersonel.ad_soyad}" personelini AKTİFE geri almak istiyor musunuz? (Yanlışlıkla işten çıkartma geri alınır)`)) return;
+                        setDialogKaydediliyor(true);
+                        try {
+                          await setPersonelAktif(seciliPersonel.id);
+                          await loadPersoneller();
+                          toast.success(`${seciliPersonel.ad_soyad} aktife alındı.`);
+                          setHucreDialogOpen(false);
+                        } catch {
+                          toast.error("Aktife alma işlemi sırasında hata oluştu.");
+                        } finally {
+                          setDialogKaydediliyor(false);
+                        }
+                      }}
+                      disabled={dialogKaydediliyor}
+                    >
+                      ↩ Aktife Geri Al
                     </Button>
                   )}
                 </div>

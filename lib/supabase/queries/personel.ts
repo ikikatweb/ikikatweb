@@ -187,16 +187,31 @@ export async function deletePersonel(id: string) {
 }
 
 // Personeli pasife al (işten ayrıldı). Belirli bir tarih ile birlikte kaydedilir.
+// Yeniden pasife alınınca aktif_alma_tarihi NULL'a çevrilir.
 export async function setPersonelPasif(id: string, pasifTarihi: string) {
   const supabase = getSupabase();
-  const { error } = await supabase
+  // Eski şemada aktif_alma_tarihi kolonu olmayabilir — schema mismatch hatasında
+  // o alanı atlayıp tekrar deneriz (geriye dönük uyumluluk).
+  let { error } = await supabase
     .from("personel")
     .update({
       durum: "pasif",
       pasif_tarihi: pasifTarihi,
+      aktif_alma_tarihi: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
+  if (error && /column .*aktif_alma_tarihi/i.test(error.message)) {
+    // Kolon yoksa o alanı çıkar ve tekrar dene
+    ({ error } = await supabase
+      .from("personel")
+      .update({
+        durum: "pasif",
+        pasif_tarihi: pasifTarihi,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id));
+  }
   if (error) throw error;
 
   // Push bildirim — personeli pasife alma
@@ -232,17 +247,34 @@ export async function setPersonelTeknik(id: string, isTeknik: boolean) {
   }
 }
 
-// Personeli tekrar aktife al
+// Personeli tekrar aktife al.
+// pasif_tarihi'yi KORUR (NULL'a çevirmez) — bunun yerine aktif_alma_tarihi'yi bugünün tarihiyle set eder.
+// Bu sayede pasif_tarihi ile aktif_alma_tarihi arasındaki günler "pasifken aktife alınmış"
+// olarak işaretlenir ve puantajda kilit gösterilir.
+// Eski şemada aktif_alma_tarihi kolonu yoksa eski davranışa fallback olur.
 export async function setPersonelAktif(id: string) {
   const supabase = getSupabase();
-  const { error } = await supabase
+  const bugun = new Date().toISOString().slice(0, 10);
+  // Önce yeni şema ile dene (pasif_tarihi'yi koru, aktif_alma_tarihi set et)
+  let { error } = await supabase
     .from("personel")
     .update({
       durum: "aktif",
-      pasif_tarihi: null,
+      aktif_alma_tarihi: bugun,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
+  if (error && /column .*aktif_alma_tarihi/i.test(error.message)) {
+    // Kolon yoksa eski davranış: pasif_tarihi'yi NULL'a çevir
+    ({ error } = await supabase
+      .from("personel")
+      .update({
+        durum: "aktif",
+        pasif_tarihi: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id));
+  }
   if (error) throw error;
 
   // Push bildirim — personel tekrar aktife alındı

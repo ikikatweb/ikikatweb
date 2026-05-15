@@ -127,6 +127,11 @@ export type Personel = {
   cep_telefon: string | null;
   durum: "aktif" | "pasif";
   pasif_tarihi: string | null;
+  // Yeniden aktife alma tarihi — pasiften aktife dönüşte set edilir.
+  // pasif_tarihi ile birlikte kullanılır: pasif_tarihi ≤ gün < aktif_alma_tarihi
+  // aralığındaki günler "pasifken aktife alınmış" sayılır ve puantaj kilidi olur.
+  // Personel tekrar pasife alınırsa NULL'a çevrilir.
+  aktif_alma_tarihi?: string | null;
   // Personel tipi: "kadro" (firma kadrolu) | "taseron" (taşeron işçi).
   // Bordro Takibi'nden eklenenler "taseron" olarak işaretlenir; her ikisi de
   // bordro kanban'ında görünür ama Personeller sayfasında filtrelenebilir.

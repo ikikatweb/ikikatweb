@@ -1073,46 +1073,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //  (b) "Teknik personel" sanal etiket araması: aranan q metni "teknik personel"
   //      yazısının bir parçasıysa (min 3 karakter), teknik etiketi olan personeller
   //      de eşleşir. Örn: "teknik", "teknik personel", "teknik per" → teknik olanlar
-  // Arama kelimesi şantiye ADINDA da geçiyor mu kontrol et.
-  // Geçiyorsa o şantiyedeki tüm personeller filtreye dahil olur.
-  const eslesenSantiyeIds = useMemo(() => {
-    const q = trAramaNormalize(arama);
-    if (!q) return new Set<string>();
-    const ids = new Set<string>();
-    for (const s of santiyeler) {
-      const nameNorm = trAramaNormalize(s.is_adi);
-      if (nameNorm.includes(q)) ids.add(s.id);
-    }
-    return ids;
-  }, [santiyeler, arama]);
-
   const filtreli = useMemo(() => {
     const q = trAramaNormalize(arama);
     const teknikLabel = trAramaNormalize("teknik personel");
     const qTeknikEtiketAramasi = q.length >= 3 && teknikLabel.includes(q);
-    // Hangi personellerin atamasında eslesyenSantiyeIds bir tane var? Onlar da filtreden geçer
-    const santiyeAdiEsleşenPersonelIds = new Set<string>();
-    if (eslesenSantiyeIds.size > 0) {
-      for (const a of atamalar) {
-        if (eslesenSantiyeIds.has(a.santiye_id)) {
-          santiyeAdiEsleşenPersonelIds.add(a.personel_id);
-        }
-      }
-    }
     return personeller.filter((p) => {
       const isTeknik = teknikPersonelIds.has(p.id);
       if (tipFiltre === "teknik" && !isTeknik) return false;
       if (!q) return true;
-      // Normal metin araması
+      // Sadece personel metin alanlarında ara — ad_soyad, TC, görev, meslek.
+      // Şantiye adı eşleşmesi KALDIRILDI: kullanıcı "tugay" arattığında, geçmişte
+      // "tugay" isimli bir şantiyede çalışmış olan farklı personellerin de görünmesi
+      // istenmiyor — sadece arama metnini içeren personeller görünmeli.
       const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
       if (text.includes(q)) return true;
-      // Şantiye adı eşleşmesi: bu personelin atamasında eşleşen şantiye var mı?
-      if (santiyeAdiEsleşenPersonelIds.has(p.id)) return true;
       // Sanal "teknik personel" etiketi araması — sadece teknik işaretli olanlar eşleşir
       if (isTeknik && qTeknikEtiketAramasi) return true;
       return false;
     });
-  }, [personeller, arama, tipFiltre, teknikPersonelIds, eslesenSantiyeIds, atamalar]);
+  }, [personeller, arama, tipFiltre, teknikPersonelIds]);
 
   // Şantiye → personel listesi haritası — TAMAMEN atama_gecmisi'nden türetilir.
   // Personel tablosundaki santiye_id ve durum bordro tarafından KULLANILMAZ
@@ -1155,14 +1134,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       }
       // Sadece teknik etiketi ile eşleşmiş (text alanlarında "teknik" yok) → şantiye kısıtla
       const sadeceTeknikEtiketIle = !!q && qTeknikEtiketAramasi && !matchesViaText;
+      // "Sadece Teknik Personel" filtre seçiliyse de aynı kısıtlama: personel yalnız
+      // teknik olarak işaretlendiği şantiyelerde gösterilir, başka şantiyelerde değil.
+      const teknikFiltreyleKisitla = tipFiltre === "teknik";
 
       const santiyeGunleri = gunMap.get(p.id);
       let calistigiSantiyeler = santiyeGunleri
         ? Array.from(santiyeGunleri.keys()).filter((sid) => map.has(sid))
         : [];
 
-      // Sadece teknik etiketi ile eşleştiyse → yalnız o personelin teknik OLDUĞU şantiyelerde göster
-      if (sadeceTeknikEtiketIle) {
+      // Teknik etiketi araması VEYA tipFiltre=teknik → yalnız teknik olduğu şantiyelerde göster
+      if (sadeceTeknikEtiketIle || teknikFiltreyleKisitla) {
         const teknikSantiyeleri = teknikPersonelMap.get(p.id);
         if (teknikSantiyeleri && teknikSantiyeleri.size > 0) {
           calistigiSantiyeler = calistigiSantiyeler.filter((sid) => teknikSantiyeleri.has(sid));
@@ -1175,8 +1157,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         for (const sid of calistigiSantiyeler) {
           map.get(sid)!.push(p);
         }
-      } else if (!sadeceTeknikEtiketIle) {
-        // Teknik etiketi araması değilse PASIF / ATANMAMIŞ klasmanına bakmaya devam et
+      } else if (!sadeceTeknikEtiketIle && !teknikFiltreyleKisitla) {
+        // Teknik kısıtlama yokken PASIF / ATANMAMIŞ klasmanına bakmaya devam et
         const tumAtamalari = personelAtamalari.get(p.id) ?? [];
         const izinliAtamalari = tumAtamalari.filter((a) => izinliSantiyeIds.has(a.santiye_id));
         if (izinliAtamalari.length > 0) {
@@ -1188,7 +1170,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
     void aySonuSantiyeMap;
     return map;
-  }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap]);
+  }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap, tipFiltre]);
 
   // santiye_id'den firma_id bul (yoksa undefined)
   function firmaIdFromSantiyeId(santiyeId: string | undefined | null): string | undefined {
@@ -3927,9 +3909,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const firma = firmalar.find((f) => f.id === fId);
             const firmaAd = firma?.firma_adi ?? "(Firma atanmamış)";
             const tumFirmaSantiyeler = firmaGrup.get(fId) ?? [];
-            // Arama aktifken: SADECE eşleşen personel içeren VEYA şantiye adı eşleşen şantiyeler görünür
+            // Arama aktifken: SADECE eşleşen personel içeren şantiyeler görünür
             const firmaSantiyeler = aramaAktif
-              ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0 || eslesenSantiyeIds.has(s.id))
+              ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0)
               : tumFirmaSantiyeler;
             // Arama aktifken o firmanın eşleşen şantiyesi yoksa firmayı da gizle
             if (aramaAktif && firmaSantiyeler.length === 0) return null;
