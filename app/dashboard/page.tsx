@@ -2071,11 +2071,20 @@ export default function DashboardPage() {
                                 <span className="md:hidden">{santiyeKisa}</span>
                                 <span className="hidden md:inline">{row.santiyeAd}</span>
                               </div>
-                              {row.iscilikOrani > 0 && (
-                                <div className="text-[9px] text-gray-400">
-                                  %{formatSayi(row.iscilikOrani, 1)} işçilik · {formatSayi(row.sozlesmeBedeli, 0)} ₺ sözleşme
-                                </div>
-                              )}
+                              {row.iscilikOrani > 0 && (() => {
+                                // Şantiye adı altındaki ufak silik bilgi satırı.
+                                // Mobil (<768px): sadece son kelime "sözleşme" → "sözl" olarak kısaltılır,
+                                // diğer kısımlar (% işçilik, tutar) olduğu gibi görünür.
+                                // Masaüstü (≥768px): tam metin gösterilir.
+                                const altBilgi = `%${formatSayi(row.iscilikOrani, 1)} işçilik · ${formatSayi(row.sozlesmeBedeli, 0)} ₺ sözleşme`;
+                                const altBilgiKisa = altBilgi.replace(/sözleşme$/, "sözl");
+                                return (
+                                  <div className="text-[9px] text-gray-400" title={altBilgi}>
+                                    <span className="md:hidden">{altBilgiKisa}</span>
+                                    <span className="hidden md:inline">{altBilgi}</span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </TableCell>
