@@ -313,7 +313,7 @@ export default function AraclarPage() {
                 >Plaka{sortIcon("plaka")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
-                <TableHead className="hidden lg:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead>Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
@@ -353,7 +353,7 @@ export default function AraclarPage() {
                     {[arac.marka, arac.model].filter(Boolean).join(" ") || "—"}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{arac.cinsi ?? "—"}</TableCell>
-                  <TableCell className="hidden lg:table-cell">{arac.yili ?? "—"}</TableCell>
+                  <TableCell>{arac.yili ?? "—"}</TableCell>
                   <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>
                   <TableCell className="tabular-nums">
                     {arac.guncel_gosterge != null ? (
