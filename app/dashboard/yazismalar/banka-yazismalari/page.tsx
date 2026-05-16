@@ -79,6 +79,9 @@ export default function BankaYazismalariPage() {
   const [fBitis, setFBitis] = useState("");
   const [fFirma, setFFirma] = useState("");
   const [fMuhatap, setFMuhatap] = useState("");
+  // Muhatap filtresi — aranabilir + seçilebilir dropdown state'leri
+  const [fMuhatapArama, setFMuhatapArama] = useState("");
+  const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);
   const [fOlusturan, setFOlusturan] = useState("");
 
   const loadData = useCallback(async () => {
@@ -119,11 +122,26 @@ export default function BankaYazismalariPage() {
     if (f.renk) firmaRenkMap.set(f.id, f.renk);
   }
 
+  // Listede en az 1 banka yazışması olan firma id'leri (filtre dropdown'u için)
+  const kayitliFirmaIds = new Set(
+    yazismalar.map((y) => y.firma_id).filter((id): id is string => !!id),
+  );
+
+  // Listede kayıtlı olan benzersiz muhataplar (filtre dropdown'u için)
+  const kayitliMuhataplar = Array.from(
+    new Set(
+      yazismalar
+        .map((y) => (y.muhatap ?? "").trim())
+        .filter((m) => m.length > 0),
+    ),
+  ).sort((a, b) => a.localeCompare(b, "tr"));
+
   const filtrelenmis = yazismalar.filter((y) => {
     if (fBaslangic && y.evrak_tarihi < fBaslangic) return false;
     if (fBitis && y.evrak_tarihi > fBitis) return false;
     if (fFirma && y.firma_id !== fFirma) return false;
-    if (fMuhatap && !trAramaNormalize(y.muhatap ?? "").includes(trAramaNormalize(fMuhatap))) return false;
+    // Muhatap filtresi artık tam eşleşme (dropdown'dan seçilen değer)
+    if (fMuhatap && (y.muhatap ?? "") !== fMuhatap) return false;
     if (fOlusturan && y.olusturan_id !== fOlusturan) return false;
     if (fArama.trim()) {
       const q = trAramaNormalize(fArama);
@@ -284,14 +302,80 @@ export default function BankaYazismalariPage() {
           <Label className="text-[10px] text-gray-400">Firma</Label>
           <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
             <option value="">Tümü</option>
-            {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
-              <option key={f.id} value={f.id}>{f.firma_adi}</option>
-            ))}
+            {/* Sadece banka yazışması olan firmaları göster */}
+            {firmalar
+              .filter((f) => kayitliFirmaIds.has(f.id))
+              .map((f) => (
+                <option key={f.id} value={f.id}>{f.firma_adi}</option>
+              ))}
           </select>
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
-          <Input value={fMuhatap} onChange={(e) => setFMuhatap(e.target.value)} placeholder="Ara..." className="h-8 text-xs w-full min-w-0" />
+          {/* Aranabilir + seçilebilir dropdown — yazıp süzebilir veya tıklayıp seçebilir.
+              Liste sadece banka yazışmalarında kullanılmış muhatapları içerir. */}
+          <div className="relative">
+            <input
+              type="text"
+              value={fMuhatapArama || (fMuhatap ? tekSatirMuhatap(fMuhatap) : "")}
+              onChange={(e) => {
+                setFMuhatapArama(e.target.value);
+                setFMuhatapDropdownAcik(true);
+                if (fMuhatap) setFMuhatap("");
+              }}
+              onFocus={() => setFMuhatapDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setFMuhatapDropdownAcik(false), 150)}
+              placeholder="Ara veya seç..."
+              className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-2 pr-7 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+            />
+            {(fMuhatap || fMuhatapArama) && (
+              <button
+                type="button"
+                onClick={() => { setFMuhatap(""); setFMuhatapArama(""); setFMuhatapDropdownAcik(false); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                title="Temizle"
+              >
+                ×
+              </button>
+            )}
+            {fMuhatapDropdownAcik && (() => {
+              const q = trAramaNormalize(fMuhatapArama);
+              const filtreli = q
+                ? kayitliMuhataplar.filter((m) => trAramaNormalize(tekSatirMuhatap(m)).includes(q))
+                : kayitliMuhataplar;
+              if (filtreli.length === 0) {
+                return (
+                  <div
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg p-3 text-[11px] text-gray-400"
+                  >
+                    Eşleşen muhatap yok.
+                  </div>
+                );
+              }
+              return (
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
+                  {filtreli.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        setFMuhatap(m);
+                        setFMuhatapArama("");
+                        setFMuhatapDropdownAcik(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 ${fMuhatap === m ? "bg-blue-50 font-semibold" : ""}`}
+                    >
+                      {tekSatirMuhatap(m)}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-400">Oluşturan</Label>
@@ -314,11 +398,21 @@ export default function BankaYazismalariPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table noWrapper className="min-w-[1000px]">
-            <TableHeader className="sticky top-0 z-10">
+          {/* border-separate border-spacing-0: Tailwind preflight tabloya border-collapse: collapse uyguluyor,
+              bu position: sticky'nin <th> üzerinde çalışmasını engelliyor. border-separate sticky'i etkinleştirir. */}
+          <Table noWrapper className="min-w-[1000px] border-separate border-spacing-0">
+            <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
-                {/* Tarih başlığı sticky — yatay scroll'da sol kenarda sabit kalır */}
-                <TableHead className="text-white text-xs px-2 sticky left-0 z-20 bg-[#64748B]">Tarih</TableHead>
+                <TableHead
+                  className="text-white text-xs px-2"
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    top: 0,
+                    zIndex: 100,
+                    backgroundColor: "#64748B",
+                  }}
+                >Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
@@ -330,8 +424,11 @@ export default function BankaYazismalariPage() {
               {filtrelenmis.map((y) => (
                 <TableRow key={y.id} className="text-xs hover:bg-gray-50">
                   {/* Tarih hücresinin solunda firma rengi şeridi (Firma sütunu kaldırıldı).
-                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır. */}
-                  <TableCell className="px-2 whitespace-nowrap sticky left-0 z-10 bg-white">
+                      sticky left-0 INLINE — header sticky'nin (z:100) altında kalsın (z:5). */}
+                  <TableCell
+                    className="px-2 whitespace-nowrap"
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className="inline-block w-1 self-stretch rounded-full flex-shrink-0"

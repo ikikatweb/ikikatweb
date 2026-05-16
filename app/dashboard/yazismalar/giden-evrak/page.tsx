@@ -135,6 +135,11 @@ export default function GidenEvrakPage() {
     ),
   ).sort((a, b) => a.localeCompare(b, "tr"));
 
+  // Listede en az 1 giden evrak kaydı bulunan firma id'leri (filtre dropdown'u için)
+  const kayitliFirmaIds = new Set(
+    evraklar.map((e) => e.firma_id).filter((id): id is string => !!id),
+  );
+
   // Firma id → renk map'i (Firma sütunu kaldırıldı, renk şeridi için kullanılır)
   const firmaRenkMap = new Map<string, string>();
   for (const f of firmalar) {
@@ -341,9 +346,12 @@ export default function GidenEvrakPage() {
           <Label className="text-[10px] text-gray-400">Firma</Label>
           <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
             <option value="">Tümü</option>
-            {firmalar.filter((f) => (f.durum ?? "aktif") === "aktif").map((f) => (
-              <option key={f.id} value={f.id}>{f.firma_adi}</option>
-            ))}
+            {/* Sadece giden evrak kaydı olan firmaları göster */}
+            {firmalar
+              .filter((f) => kayitliFirmaIds.has(f.id))
+              .map((f) => (
+                <option key={f.id} value={f.id}>{f.firma_adi}</option>
+              ))}
           </select>
         </div>
         <div className="space-y-1 min-w-0">
@@ -425,11 +433,21 @@ export default function GidenEvrakPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[75vh]">
-          <Table noWrapper className="min-w-[1100px]">
-            <TableHeader className="sticky top-0 z-10">
+          {/* border-separate border-spacing-0: Tailwind preflight tabloya border-collapse: collapse uyguluyor,
+              bu position: sticky'nin <th> üzerinde çalışmasını engelliyor. border-separate sticky'i etkinleştirir. */}
+          <Table noWrapper className="min-w-[1100px] border-separate border-spacing-0">
+            <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
-                {/* Tarih başlığı sticky — yatay scroll'da sol kenarda sabit kalır */}
-                <TableHead className="text-white text-xs px-2 sticky left-0 z-20 bg-[#64748B]">Tarih</TableHead>
+                <TableHead
+                  className="text-white text-xs px-2"
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    top: 0,
+                    zIndex: 100,
+                    backgroundColor: "#64748B",
+                  }}
+                >Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Kayıt No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
@@ -442,8 +460,11 @@ export default function GidenEvrakPage() {
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
                   {/* Tarih hücresinin solunda firma rengi şeridi (sütun kaldırıldı).
-                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır. */}
-                  <TableCell className="px-2 whitespace-nowrap sticky left-0 z-10 bg-white">
+                      sticky left-0 INLINE — header sticky'nin (z:100) altında kalsın (z:5). */}
+                  <TableCell
+                    className="px-2 whitespace-nowrap"
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className="inline-block w-1 self-stretch rounded-full flex-shrink-0"

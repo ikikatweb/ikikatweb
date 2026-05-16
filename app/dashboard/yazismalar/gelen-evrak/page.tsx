@@ -405,11 +405,24 @@ export default function GelenEvrakPage() {
           {/* min-w-[1100px] — tablo dar ekranlarda (mobile/tablet) bu genişliğe sıkışmaz,
               container'dan geniş olur → overflow-auto sayesinde yatay kaydırma çalışır.
               Tüm sütunlara (Belge Tarihi, Sayı No, Firma, Konu, Muhatap, Üst Yazı, Ek, Oluşturan, İşlemler) erişim sağlar. */}
-          <Table noWrapper className="min-w-[1100px]">
-            <TableHeader className="sticky top-0 z-10">
+          {/* border-separate border-spacing-0: Tailwind preflight tabloya border-collapse: collapse uyguluyor,
+              bu position: sticky'nin <th> üzerinde çalışmasını engelliyor. border-separate sticky'i etkinleştirir. */}
+          <Table noWrapper className="min-w-[1100px] border-separate border-spacing-0">
+            <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
-                {/* Belge Tarihi başlığı sticky — yatay scroll'da sol kenarda sabit kalır */}
-                <TableHead className="text-white text-xs px-2 sticky left-0 z-20 bg-[#64748B]">Belge Tarihi</TableHead>
+                {/* Belge Tarihi: tüm sticky stilleri INLINE — Tailwind class çakışmasını engeller.
+                    Background da inline (#64748B) ki Tailwind class'tan etkilenmesin.
+                    z-index: 100 — body sticky-left veri hücresini garantili örter. */}
+                <TableHead
+                  className="text-white text-xs px-2"
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    top: 0,
+                    zIndex: 100,
+                    backgroundColor: "#64748B",
+                  }}
+                >Belge Tarihi</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
@@ -423,8 +436,12 @@ export default function GelenEvrakPage() {
               {filtrelenmis.map((e) => (
                 <TableRow key={e.id} className="text-xs hover:bg-gray-50">
                   {/* Belge tarihi hücresinin solunda firma rengi şeridi (sütun kaldırıldı, renk + tooltip ile firma kimliği).
-                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır. */}
-                  <TableCell className="px-2 whitespace-nowrap sticky left-0 z-10 bg-white">
+                      sticky left-0 — yatay scroll'da firma rengi + tarih sol kenarda sabit kalır.
+                      z-index INLINE 5 — header sticky'nin (z:100) ALTINDA kalmasını garanti eder. */}
+                  <TableCell
+                    className="px-2 whitespace-nowrap"
+                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                  >
                     <div className="flex items-center gap-2">
                       <span
                         className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
