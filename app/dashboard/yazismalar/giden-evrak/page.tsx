@@ -23,7 +23,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle } from "lucide-react";
+import { Plus, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle, Eye } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -69,6 +69,8 @@ export default function GidenEvrakPage() {
 
   // Kayıt no düzenleme
   const [kayitNoDialog, setKayitNoDialog] = useState<GidenEvrakWithRelations | null>(null);
+  // Ek görüntüleme dialog — bir evraka ait ek metin listesini gösterir
+  const [ekDialog, setEkDialog] = useState<GidenEvrakWithRelations | null>(null);
   const [yeniKayitNo, setYeniKayitNo] = useState("");
 
   // Yazdırma için seçili evrak
@@ -452,6 +454,7 @@ export default function GidenEvrakPage() {
                 <TableHead className="text-white text-xs px-2">Kayıt No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
+                <TableHead className="text-white text-xs px-2 text-center w-[60px]">Ek</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">İşlemler</TableHead>
               </TableRow>
@@ -494,6 +497,26 @@ export default function GidenEvrakPage() {
                   <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>{e.konu}</TableCell>
                   <TableCell className="px-2 leading-snug">
                     {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
+                  </TableCell>
+                  {/* Ek sütunu — Muhatap ile Oluşturan arasında. Ek listesi varsa göz ikonu */}
+                  <TableCell className="px-2 text-center">
+                    {e.ekler && e.ekler.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setEkDialog(e)}
+                        className="relative inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"
+                        title={`${e.ekler.length} ek — görüntüle`}
+                      >
+                        <Eye size={16} />
+                        {e.ekler.length > 1 && (
+                          <span className="absolute -top-1 -right-1 bg-[#F97316] text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] px-0.5 flex items-center justify-center leading-none">
+                            {e.ekler.length}
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="px-2">
                     <div>
@@ -563,6 +586,34 @@ export default function GidenEvrakPage() {
               />
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ek Listesi Dialog — Ek sütunundaki göz ikonuna tıklanınca açılır */}
+      <Dialog open={!!ekDialog} onOpenChange={() => setEkDialog(null)}>
+        <DialogContent className="max-w-md overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Ekler</DialogTitle>
+          </DialogHeader>
+          {ekDialog && (
+            <div className="space-y-1.5 py-2 min-w-0">
+              <p className="text-xs text-gray-500 mb-2 break-words" title={ekDialog.konu}>
+                <span className="font-semibold">{ekDialog.konu.length > 60 ? ekDialog.konu.slice(0, 60) + "..." : ekDialog.konu}</span> · {(ekDialog.ekler ?? []).length} ek
+              </p>
+              {(ekDialog.ekler ?? []).map((ek, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 text-sm text-[#1E3A5F] min-w-0"
+                >
+                  <span className="text-[10px] font-semibold text-gray-500 w-10 flex-shrink-0">Ek {i + 1}</span>
+                  <span className="truncate flex-1 min-w-0" title={ek}>{ek}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEkDialog(null)}>Kapat</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
