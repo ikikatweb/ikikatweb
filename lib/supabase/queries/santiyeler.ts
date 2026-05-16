@@ -123,7 +123,11 @@ export async function uploadSantiyeFile(
   type: "gecici_kabul" | "kesin_kabul" | "is_deneyim"
 ) {
   const ext = file.name.split(".").pop();
-  const filePath = `${santiyeId}/${type}.${ext}`;
+  // Dosya yoluna timestamp ekle — aynı isim → cache miss + her yükleme yeni URL.
+  // Eski dosya isimleri (örn. "gecici_kabul.pdf") storage'da kalabilir,
+  // ama URL artık "gecici_kabul-{timestamp}.pdf" olacağından browser cache problem olmaz.
+  const timestamp = Date.now();
+  const filePath = `${santiyeId}/${type}-${timestamp}.${ext}`;
 
   const formData = new FormData();
   formData.append("file", file);

@@ -121,9 +121,14 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
     return [""]; // varsayılan: 1 boş input
   });
 
-  // "Bu iş için teknik personel gerekli değil" — VARSAYILAN: tik KAPALI.
-  // Kullanıcı istediği işte manuel olarak işaretler.
-  const [teknikPersonelGerekliDegil, setTeknikPersonelGerekliDegil] = useState<boolean>(false);
+  // "Bu iş için teknik personel gerekli değil" — DB durumundan başlangıç değeri alınır:
+  //   • teknik_personeller = []  (boş dizi)  → "gerek yok" TIKLI (kullanıcı kapatmış)
+  //   • teknik_personeller = null/undefined  → TIK KAPALI (tanımsız / eski kayıt)
+  //   • teknik_personeller = ["A", "B"]      → TIK KAPALI (isimler var)
+  // Eski kod sabit `false` veriyordu, bu yüzden tik düzenleme dialog'unda kayboluyordu.
+  const [teknikPersonelGerekliDegil, setTeknikPersonelGerekliDegil] = useState<boolean>(
+    Array.isArray(santiye?.teknik_personeller) && santiye!.teknik_personeller!.length === 0,
+  );
 
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
