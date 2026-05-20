@@ -2186,7 +2186,7 @@ export default function DashboardPage() {
                 {/* Toplam satırı */}
                 <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                   <tr className="font-bold">
-                    <td className="px-2 py-2 text-[11px] text-[#1E3A5F]">
+                    <td className="px-2 py-2 text-[11px] text-[#1E3A5F] sticky left-0 z-10 bg-gray-50">
                       TOPLAM
                       <span className="text-[9px] text-gray-400 font-normal ml-1">({bordroOzet.satirlar.length} şantiye)</span>
                     </td>
