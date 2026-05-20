@@ -120,6 +120,7 @@ export default function DashboardPage() {
   const [bordroLoading, setBordroLoading] = useState(true);
   const [yaklasirGun, setYaklasirGun] = useState(30);
   const [editEvrakId, setEditEvrakId] = useState<string | null>(null);
+  const [eksikEvrakKisiFiltre, setEksikEvrakKisiFiltre] = useState<string | null>(null);
   const [editSigortaKey, setEditSigortaKey] = useState<string | null>(null);
 
   // Poliçe dialog
@@ -1911,7 +1912,7 @@ export default function DashboardPage() {
           {eksikEvraklar.length === 0 ? (<p className="text-sm text-gray-400">Eksik evrak yok</p>) : (
             <div>
             {/* Kişi bazlı özet */}
-            <div className="flex flex-wrap gap-2 mb-3">
+            <div className="flex flex-wrap gap-2 mb-3 items-center">
               {(() => {
                 const kisiSayac = new Map<string, number>();
                 for (const e of eksikEvraklar) {
@@ -1920,12 +1921,34 @@ export default function DashboardPage() {
                 }
                 return Array.from(kisiSayac.entries())
                   .sort((a, b) => b[1] - a[1])
-                  .map(([ad, sayi]) => (
-                    <span key={ad} className="inline-flex items-center gap-1 text-[11px] bg-red-50 text-red-700 border border-red-200 rounded-full px-2.5 py-0.5">
-                      <User size={12} /> {ad} <span className="font-bold">{sayi} adet</span>
-                    </span>
-                  ));
+                  .map(([ad, sayi]) => {
+                    const aktif = eksikEvrakKisiFiltre === ad;
+                    return (
+                      <button
+                        key={ad}
+                        type="button"
+                        onClick={() => setEksikEvrakKisiFiltre(aktif ? null : ad)}
+                        title={aktif ? "Filtreyi kaldır" : `Sadece ${ad} listele`}
+                        className={`inline-flex items-center gap-1 text-[11px] rounded-full px-2.5 py-0.5 border transition cursor-pointer ${
+                          aktif
+                            ? "bg-red-600 text-white border-red-700 hover:bg-red-700"
+                            : "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                        }`}
+                      >
+                        <User size={12} /> {ad} <span className="font-bold">{sayi} adet</span>
+                      </button>
+                    );
+                  });
               })()}
+              {eksikEvrakKisiFiltre && (
+                <button
+                  type="button"
+                  onClick={() => setEksikEvrakKisiFiltre(null)}
+                  className="text-[10px] text-gray-500 hover:text-red-600 underline"
+                >
+                  Filtreyi temizle
+                </button>
+              )}
             </div>
             <div className="max-h-[200px] overflow-y-auto">
               <Table className="text-xs">
@@ -1936,7 +1959,13 @@ export default function DashboardPage() {
                   <TableHead className="px-2 text-[10px] text-center">Kayıt No</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {eksikEvraklar.map((e) => (
+                  {eksikEvraklar
+                    .filter((e) => {
+                      if (!eksikEvrakKisiFiltre) return true;
+                      const ad = (e.olusturan_id && kullaniciAdlari.get(e.olusturan_id)) || "Bilinmiyor";
+                      return ad === eksikEvrakKisiFiltre;
+                    })
+                    .map((e) => (
                     <TableRow key={e.id}>
                       <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
                       <TableCell className="px-2">

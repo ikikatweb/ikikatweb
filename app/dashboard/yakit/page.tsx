@@ -1413,7 +1413,7 @@ function YakitPageContent() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table className="text-xs">
             <TableHeader className="!z-[50]">
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 whitespace-nowrap sticky top-0 z-[50] bg-[#64748B]">Tarih/Saat</TableHead>
                 <TableHead className="text-white text-[11px] px-2 min-w-[180px] sticky top-0 left-0 z-[60] bg-[#64748B]">Araç / Kaynak</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px] sticky top-0 z-[50] bg-[#64748B]">Gösterge</TableHead>

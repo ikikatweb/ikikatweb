@@ -472,7 +472,7 @@ export default function SigortaMuayenePage() {
         <div className="bg-white rounded-lg border overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2 w-10">No</TableHead>
                 <TableHead
                   style={{ position: "sticky", left: 0, zIndex: 11, backgroundColor: "#64748B" }}

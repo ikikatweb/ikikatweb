@@ -620,7 +620,7 @@ export default function AracBakimPage() {
         <div className="bg-white rounded-lg border overflow-auto max-h-[75vh]">
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Tip</TableHead>
                 <TableHead

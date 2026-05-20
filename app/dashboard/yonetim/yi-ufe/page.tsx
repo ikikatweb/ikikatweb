@@ -217,7 +217,7 @@ export default function YiUfePage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white font-bold text-center sticky left-0 bg-[#64748B] z-10 min-w-[70px]">
                   YIL
                 </TableHead>

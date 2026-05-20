@@ -811,7 +811,7 @@ export default function IscilikTakibiPage() {
           */}
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white font-semibold text-center text-[10px] px-2 min-w-[32px] max-w-[32px]">No</TableHead>
                 {VISIBLE_COLUMNS.map((col) => {
                   const hasTwoLines = col.label.includes("\n");

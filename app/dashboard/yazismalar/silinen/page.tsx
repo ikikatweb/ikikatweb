@@ -284,7 +284,7 @@ export default function SilinenPage() {
         <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-[#64748B]">
+              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-xs px-2">Tür</TableHead>
                 <TableHead className="text-white text-xs px-2">Tarih</TableHead>
                 <TableHead className="text-white text-xs px-2">Sayı No</TableHead>
