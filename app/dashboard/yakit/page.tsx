@@ -1670,10 +1670,14 @@ function YakitPageContent() {
                 <select
                   value={verDialogAracId}
                   onChange={(e) => setVerDialogAracId(e.target.value)}
-                  className={selectClass + " flex-1"}
+                  className={selectClass + " flex-1 min-w-0"}
                   disabled={verDialogLoading || !verDialogSantiyeId}
                 >
-                  <option value="">Araç seçiniz</option>
+                  <option value="">
+                    {verDialogSantiyeId && verDialogAraclari.length === 0
+                      ? "Bu şantiyede araç yok — + ile ekleyin"
+                      : "Araç seçiniz"}
+                  </option>
                   {verDialogAraclari.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.plaka} - {[a.marka, a.model].filter(Boolean).join(" ")} ({a.sayac_tipi ?? "km"})
@@ -1684,8 +1688,16 @@ function YakitPageContent() {
                   <button
                     type="button"
                     onClick={() => setHizliAtamaOpen(true)}
-                    className="shrink-0 h-9 w-9 rounded-lg border border-input bg-white flex items-center justify-center text-gray-500 hover:text-[#F97316] hover:border-[#F97316]"
-                    title="Bu şantiyeye araç ata"
+                    className={
+                      verDialogAraclari.length === 0
+                        ? "shrink-0 h-9 w-9 rounded-lg bg-[#F97316] text-white flex items-center justify-center text-lg font-bold hover:bg-[#ea6a0f] shadow-sm animate-pulse"
+                        : "shrink-0 h-9 w-9 rounded-lg border border-input bg-white flex items-center justify-center text-gray-500 hover:text-[#F97316] hover:border-[#F97316]"
+                    }
+                    title={
+                      verDialogAraclari.length === 0
+                        ? "Bu şantiyede henüz araç yok — araç ata"
+                        : "Bu şantiyeye araç ata"
+                    }
                     disabled={verDialogLoading}
                   >+</button>
                 )}

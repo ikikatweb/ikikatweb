@@ -12,7 +12,8 @@ export async function getBankaYazismalari(olusturanId?: string) {
     .from("banka_yazismalari")
     .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
     .or("silindi.is.null,silindi.eq.false")
-    .order("evrak_tarihi", { ascending: false });
+    .order("evrak_tarihi", { ascending: false })
+    .order("created_at", { ascending: false });
 
   if (olusturanId) {
     query = query.eq("olusturan_id", olusturanId);

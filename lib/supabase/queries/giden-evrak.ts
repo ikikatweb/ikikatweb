@@ -16,7 +16,8 @@ export async function getGidenEvraklar(
     .from("giden_evrak")
     .select("*, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url), santiyeler!left(is_adi)")
     .or("silindi.is.null,silindi.eq.false")
-    .order("evrak_tarihi", { ascending: false });
+    .order("evrak_tarihi", { ascending: false })
+    .order("created_at", { ascending: false });
 
   // KISITLI KULLANICI: kendi yazdığı evrakları HER ZAMAN görür (şantiye fark etmez)
   //   + atanmış şantiyenin diğer yazdıklarını da görür.
