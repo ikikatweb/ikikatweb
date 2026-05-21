@@ -2020,7 +2020,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget: Bordro Takibi — Şantiye bazlı mali tablo */}
-        {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-10">
+        {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-9">
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               <MapPin size={16} className="text-[#1E3A5F]" />
@@ -2274,7 +2274,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 7: Şantiye Günlük Defteri — Son 5 Gün */}
-        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4 lg:order-9">
+        {wg("santiye_defteri") ? <div className="md:col-span-2 lg:col-span-4 lg:order-10">
           <div className="flex items-center gap-2 mb-3">
             <NotebookPen size={18} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Şantiye Günlük Defteri (Son 5 Gün)</h3>
