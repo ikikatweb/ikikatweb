@@ -1732,7 +1732,7 @@ export default function DashboardPage() {
         {wg("eksik_veri_girisi") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-5">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={16} className="text-amber-700" />
-            <h3 className="font-bold text-sm text-[#1E3A5F]">Eksik Yüklenici Veri Girişi</h3>
+            <h3 className="font-bold text-sm text-[#1E3A5F]">Sgk Primi Girilmemiş İşler</h3>
             {eksikVeriGirisleri && (
               <span className={`ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                 eksikVeriGirisleri.liste.length === 0
