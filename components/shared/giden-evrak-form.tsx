@@ -80,6 +80,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [ilgiListesi, setIlgiListesi] = useState<string[]>(evrak?.ilgi_listesi ?? []);
   const [metin, setMetin] = useState(evrak?.metin ?? "");
   const [ekler, setEkler] = useState<string[]>(evrak?.ekler ?? []);
+  const [ekUploading, setEkUploading] = useState(false);
   const [kaseDahil, setKaseDahil] = useState(evrak?.kase_dahil ?? false);
 
   useEffect(() => {
@@ -456,28 +457,124 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <RichTextEditor value={metin} onChange={setMetin} placeholder="Yazınızı yazın..." rows={8} disabled={loading} />
       </div>
 
-      {/* Ekler */}
+      {/* Ekler — çoklu PDF yükleme + metin açıklaması.
+          PDF yüklenince URL ekler[] dizisine eklenir; metin açıklaması da eklenebilir. */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <Label>Ekler</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addEk} disabled={loading}>
-            <Plus size={14} className="mr-1" /> Ek Ekle
-          </Button>
+          <div className="flex items-center gap-2">
+            <label className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs cursor-pointer transition-colors ${
+              ekUploading || loading
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-[#1E3A5F] text-white hover:bg-[#2a4f7a]"
+            }`}>
+              <Upload size={14} />
+              {ekUploading ? "Yükleniyor..." : "PDF Yükle"}
+              <input
+                type="file"
+                accept=".pdf"
+                multiple
+                className="hidden"
+                disabled={loading || ekUploading}
+                onChange={async (e) => {
+                  const dosyalar = e.target.files;
+                  if (!dosyalar || dosyalar.length === 0) return;
+                  if (!firmaId) { toast.error("Önce firma seçin."); e.target.value = ""; return; }
+                  setEkUploading(true);
+                  try {
+                    // Türkçe karakter + özel karakter temizliği (Supabase Storage path için)
+                    const sanitizeDosyaAdi = (ad: string): string => {
+                      const harfHaritasi: Record<string, string> = {
+                        "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G", "ı": "i", "İ": "I",
+                        "ö": "o", "Ö": "O", "ş": "s", "Ş": "S", "ü": "u", "Ü": "U",
+                      };
+                      let temiz = ad.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
+                      temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_");
+                      temiz = temiz.replace(/_+/g, "_");
+                      return temiz.toLowerCase();
+                    };
+
+                    const yeniUrls: string[] = [];
+                    for (const dosya of Array.from(dosyalar)) {
+                      const guvenliAd = sanitizeDosyaAdi(dosya.name);
+                      const formData = new FormData();
+                      formData.append("file", dosya);
+                      formData.append("bucket", "yazismalar");
+                      formData.append("path", `giden-ek/${firmaId}/${Date.now()}-${guvenliAd}`);
+                      const res = await fetch("/api/upload", { method: "POST", body: formData });
+                      const data = await res.json();
+                      if (res.ok && data.url) {
+                        yeniUrls.push(data.url);
+                      } else {
+                        toast.error(`"${dosya.name}" yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
+                      }
+                    }
+                    if (yeniUrls.length > 0) {
+                      setEkler((prev) => [...prev, ...yeniUrls]);
+                      toast.success(`${yeniUrls.length} dosya eklendi.`);
+                    }
+                  } catch (err) {
+                    const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
+                    toast.error(`Yükleme hatası: ${msg}`);
+                  } finally {
+                    setEkUploading(false);
+                    e.target.value = "";
+                  }
+                }}
+              />
+            </label>
+            <Button type="button" variant="outline" size="sm" onClick={addEk} disabled={loading}>
+              <Plus size={14} className="mr-1" /> Metin
+            </Button>
+          </div>
         </div>
         {ekler.length > 0 ? (
           <div className="space-y-2">
-            {ekler.map((ek, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs font-medium w-12">Ek {i + 1}:</span>
-                <Input value={ek} onChange={(e) => updateEk(i, e.target.value)} placeholder="Ek açıklaması" className="flex-1" disabled={loading} />
-                <button type="button" onClick={() => removeEk(i)} className="text-red-400 hover:text-red-600 p-1">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+            {ekler.map((ek, i) => {
+              // Format: "url" | "metin" | "metin|url"
+              const isUrl = /^https?:\/\//i.test(ek);
+              let metin = ek;
+              let url: string | null = null;
+              if (isUrl) {
+                url = ek;
+                try {
+                  const path = new URL(ek).pathname;
+                  const raw = decodeURIComponent(path.split("/").pop() ?? "");
+                  metin = raw.replace(/^\d+-/, "") || `Ek ${i + 1}`;
+                } catch { metin = `Ek ${i + 1}`; }
+              } else {
+                const idx = ek.lastIndexOf("|");
+                if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
+                  metin = ek.slice(0, idx).trim();
+                  url = ek.slice(idx + 1).trim();
+                }
+              }
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs font-medium w-12">Ek {i + 1}:</span>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 flex-1 min-w-0 text-xs text-[#1E3A5F] hover:text-[#F97316] px-3 py-2 rounded border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                      title={metin}
+                    >
+                      <Upload size={12} className="flex-shrink-0 text-red-600 rotate-180" />
+                      <span className="truncate">{metin.length > 30 ? metin.slice(0, 30) + "..." : metin}</span>
+                    </a>
+                  ) : (
+                    <Input value={ek} onChange={(e) => updateEk(i, e.target.value)} placeholder="Ek açıklaması" className="flex-1" disabled={loading} />
+                  )}
+                  <button type="button" onClick={() => removeEk(i)} className="text-red-400 hover:text-red-600 p-1" disabled={loading} title="Kaldır">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">Henüz ek eklenmedi. + butonuyla ekleyebilirsiniz.</p>
+          <p className="text-xs text-gray-400">Henüz ek eklenmedi. &quot;PDF Yükle&quot; ile dosya, &quot;Metin&quot; ile açıklama ekleyebilirsiniz.</p>
         )}
       </div>
 

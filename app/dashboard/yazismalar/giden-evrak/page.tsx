@@ -23,7 +23,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle, Eye } from "lucide-react";
+import { Plus, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle, Eye, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -49,6 +49,43 @@ function tr(s: string): string {
 
 const selectClass = "h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
+// Ek satırı parse: "metin|url", "url", veya "metin" formatlarını destekler.
+//   - "url"      → { metin: dosya_adi (URL'den çıkarılır), url: url }
+//   - "metin|url"→ { metin, url }
+//   - "metin"    → { metin, url: null }
+function parseEk(ek: string): { metin: string; url: string | null } {
+  if (/^https?:\/\//i.test(ek)) {
+    let isim = "Ek";
+    try {
+      const path = new URL(ek).pathname;
+      const raw = decodeURIComponent(path.split("/").pop() ?? "");
+      isim = raw.replace(/^\d+-/, "") || "Ek";
+    } catch { /* default */ }
+    return { metin: isim, url: ek };
+  }
+  // "metin|url" formatını ara — son "|" pozisyonundan böl (metinde "|" varsa diye)
+  const idx = ek.lastIndexOf("|");
+  if (idx > 0) {
+    const olasilik = ek.slice(idx + 1).trim();
+    if (/^https?:\/\//i.test(olasilik)) {
+      return { metin: ek.slice(0, idx).trim() || "Ek", url: olasilik };
+    }
+  }
+  return { metin: ek, url: null };
+}
+
+// Türkçe karakter + özel karakter temizliği (Supabase Storage path için)
+function sanitizeDosyaAdi(ad: string): string {
+  const harfHaritasi: Record<string, string> = {
+    "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G", "ı": "i", "İ": "I",
+    "ö": "o", "Ö": "O", "ş": "s", "Ş": "S", "ü": "u", "Ü": "U",
+  };
+  let temiz = ad.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
+  temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_");
+  temiz = temiz.replace(/_+/g, "_");
+  return temiz.toLowerCase();
+}
+
 export default function GidenEvrakPage() {
   const { kullanici, isYonetici, hasPermission, loading: authLoading } = useAuth();
   const yEkle = hasPermission("yazismalar-giden-evrak", "ekle");
@@ -71,6 +108,8 @@ export default function GidenEvrakPage() {
   const [kayitNoDialog, setKayitNoDialog] = useState<GidenEvrakWithRelations | null>(null);
   // Ek görüntüleme dialog — bir evraka ait ek metin listesini gösterir
   const [ekDialog, setEkDialog] = useState<GidenEvrakWithRelations | null>(null);
+  // Dialog içinde belirli bir ek satırına dosya yüklerken index tutar (-1 = yok)
+  const [ekUploadIdx, setEkUploadIdx] = useState<number>(-1);
   const [yeniKayitNo, setYeniKayitNo] = useState("");
 
   // Yazdırma için seçili evrak
@@ -534,8 +573,9 @@ export default function GidenEvrakPage() {
                       {yEkle && (
                         <button onClick={() => handleCogalt(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
                       )}
+                      {/* Evrak Taraması (PDF) butonu — sadece pdf_url yüklenmiş evraklar için gözükür */}
                       {e.pdf_url && (
-                        <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
+                        <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="Evrak Taraması (PDF)"><Download size={14} /></a>
                       )}
                       {yDuzenle && !e.evrak_kayit_no && (
                         <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
@@ -604,15 +644,34 @@ export default function GidenEvrakPage() {
               <p className="text-xs text-gray-500 mb-2 break-words" title={ekDialog.konu}>
                 <span className="font-semibold">{ekDialog.konu.length > 60 ? ekDialog.konu.slice(0, 60) + "..." : ekDialog.konu}</span> · {(ekDialog.ekler ?? []).length} ek
               </p>
-              {(ekDialog.ekler ?? []).map((ek, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 text-sm text-[#1E3A5F] min-w-0"
-                >
-                  <span className="text-[10px] font-semibold text-gray-500 w-10 flex-shrink-0">Ek {i + 1}</span>
-                  <span className="truncate flex-1 min-w-0" title={ek}>{ek}</span>
-                </div>
-              ))}
+              {(ekDialog.ekler ?? []).map((ek, i) => {
+                const { metin, url } = parseEk(ek);
+                // Açılacak dosya: ek'in kendi URL'i varsa onu, yoksa evrak'ın
+                // ana PDF taramasını (pdf_url) kullan.
+                const acilacakUrl = url || ekDialog.pdf_url || null;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 px-3 py-2 rounded border border-gray-200 bg-gray-50 text-sm text-[#1E3A5F] min-w-0"
+                  >
+                    {/* PDF İndir butonu — sadece dosyası olan ekler için gösterilir.
+                        Dosyası yoksa hiç görünmez (kullanıcı talebine göre). */}
+                    {acilacakUrl && (
+                      <a
+                        href={acilacakUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 p-1 text-gray-400 hover:text-green-600"
+                        title="Eki Görüntüle / İndir"
+                      >
+                        <Download size={14} />
+                      </a>
+                    )}
+                    <span className="text-[10px] font-semibold text-gray-500 w-10 flex-shrink-0">Ek {i + 1}</span>
+                    <span className="truncate flex-1 min-w-0" title={metin}>{metin}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
           <DialogFooter>

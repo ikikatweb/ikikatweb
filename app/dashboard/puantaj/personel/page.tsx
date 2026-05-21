@@ -799,9 +799,10 @@ export default function PersonelPuantajPage() {
         const mevcut = seciliAciklama.trim();
         aciklamaToSave = mevcut ? `${yagmurAciklama} — ${mevcut}` : yagmurAciklama;
       }
-      // Mesai saati: sadece "calisti" veya "yarim_gun" durumunda ve mesai_ucreti_var ise saklanır
+      // Mesai saati: mesai_ucreti_var olan personel için HER durumda kaydedilebilir
+      // (çalıştı, yarım gün, dış görev, izinli, raporlu vb. fark etmez)
       let mesaiToSave: number | null = null;
-      if ((durum === "calisti" || durum === "yarim_gun") && seciliPersonel.mesai_ucreti_var && seciliMesaiSaat.trim() !== "") {
+      if (seciliPersonel.mesai_ucreti_var && seciliMesaiSaat.trim() !== "") {
         const parsed = parseFloat(seciliMesaiSaat.replace(",", "."));
         if (isNaN(parsed) || parsed < 0) {
           toast.error("Mesai saati geçersiz.");
@@ -1607,7 +1608,7 @@ export default function PersonelPuantajPage() {
               {seciliPersonel.mesai_ucreti_var && (
                 <div className="space-y-1">
                   <Label htmlFor="mesai_saat" className="text-xs">
-                    Mesai Saati (sadece Çalıştı durumunda kaydedilir)
+                    Mesai Saati
                   </Label>
                   <input
                     id="mesai_saat"
