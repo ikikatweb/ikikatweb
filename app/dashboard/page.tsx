@@ -1662,7 +1662,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget: Yaklaşan Araç Bakımları */}
-        {wg("yaklasan_bakim") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-4">
+        {wg("yaklasan_bakim") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-6">
           <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
           {yaklasanBakimlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bakım yok</p> : (
             <div className="max-h-[220px] overflow-y-auto">
@@ -1900,9 +1900,8 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 6: Eksik Evrak Numaraları — Eksik Yüklenici Veri Girişi'nin yanına
-            (aynı boyut: lg:col-span-2, order-6). */}
-        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-6">
+        {/* Widget 6: Eksik Evrak Numaraları — Kasa Defteri'nin yanına (order-4). */}
+        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-4">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
