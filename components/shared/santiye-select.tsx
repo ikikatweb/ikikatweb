@@ -122,17 +122,8 @@ export default function SantiyeSelect({
         className={triggerClass + " flex items-center justify-between gap-1 truncate text-left w-full cursor-pointer"}
         title={gosterilenMetin || (showAll ? "Tümü" : placeholder)}
       >
-        {/* Trigger her zaman placeholder gösterir — seçili şantiye adı görünmez,
-            bu sayede buton uzun isimlerle genişlemez veya truncate olup kafa
-            karıştırmaz. Seçili olduğunu yandaki yeşil nokta ile belirtilir. */}
-        <span className="truncate flex-1 flex items-center gap-1.5 text-gray-500">
-          {value && (
-            <span
-              className="inline-block w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"
-              title={gosterilenMetin}
-            />
-          )}
-          <span className="truncate">{showAll ? "Tümü" : placeholder}</span>
+        <span className={`truncate flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
+          {gosterilenMetin || (showAll ? "Tümü" : placeholder)}
         </span>
         <span className="flex-shrink-0 text-gray-400 text-xs">▼</span>
       </button>
