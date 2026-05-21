@@ -264,59 +264,39 @@ thead th {
   }
 }
 
-/* Mobilde ön izleme — CSS zoom ile küçültülerek ekrana sığar.
-   İçerik kesilmez, kullanıcı tüm metni görür. */
+/* Mobilde ön izleme ölçekleme — PreviewScaler component'i (JS tabanlı) tarafından
+   yönetilir. CSS zoom yaklaşımı bazı Safari sürümlerinde çalışmadığı için kaldırıldı.
+   Burada sadece görsel arınma yapılır (mobilde border/shadow gizlenir, antialiasing). */
 @media screen and (max-width: 767px) {
-  /* Sayfayı 210mm genişlikte bırak ama orantılı küçült.
-     Farklı ekran genişlikleri için farklı zoom oranları. */
+  .evrak-print-area {
+    overflow-x: hidden !important;
+    max-width: 100% !important;
+  }
+
   .evrak-preview-page {
-    zoom: 0.45;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #fff !important;
-    /* Mobil dokunma ışığını / gri vurgulamayı kapat */
     -webkit-tap-highlight-color: transparent !important;
-    /* Yazıyı daha net render et (zoom ile bulanıklık olmasın) */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: geometricPrecision;
   }
 
-  /* İç tüm öğelerde tap-highlight'ı kapat — yazıların altındaki gri tabakayı engeller */
   .evrak-preview-page,
   .evrak-preview-page * {
     -webkit-tap-highlight-color: transparent !important;
     background-color: transparent;
   }
 
-  /* Sadece ana sayfa beyaz olsun (içerik şeffaf, sayfaya geçer) */
   .evrak-preview-page > *:first-child,
   .evrak-onizleme {
     background: #fff !important;
   }
 
-  /* Dialog içinde yatay scrollbar çıkmasın */
   [data-slot="dialog-content"] {
     overflow-x: hidden !important;
-  }
-  .evrak-print-area {
-    overflow-x: hidden !important;
-    max-width: 100% !important;
-  }
-}
-
-/* Daha geniş telefonlar için biraz daha büyük göster (414px+ — iPhone Plus, Pixel vb.) */
-@media screen and (min-width: 414px) and (max-width: 767px) {
-  .evrak-preview-page {
-    zoom: 0.5;
-  }
-}
-
-/* Çok dar ekranlar için daha küçük (360px ve altı) */
-@media screen and (max-width: 360px) {
-  .evrak-preview-page {
-    zoom: 0.4;
   }
 }
 

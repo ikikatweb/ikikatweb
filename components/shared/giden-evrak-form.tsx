@@ -272,9 +272,9 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </Button>
         </div>
 
-        {/* Print alanı - yazdırıldığında sadece bu görünür.
-            Mobil görünüm: 210mm (~793px) sayfa, ekrana sığmadığı için ölçeklendiriliyor.
-            Yazdırma sırasında print CSS scale'i sıfırlar (origin reset). */}
+        {/* Print alanı — yazdırıldığında sadece bu görünür.
+            PreviewScaler 210mm sayfayı ekran genişliğine göre transform: scale
+            ile küçültür; yazdırma sırasında scale otomatik sıfırlanır. */}
         <div className="evrak-print-area">
           <PreviewScaler>
             <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
