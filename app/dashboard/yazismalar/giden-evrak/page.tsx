@@ -124,6 +124,8 @@ export default function GidenEvrakPage() {
   const [fBaslangic, setFBaslangic] = useState("");
   const [fBitis, setFBitis] = useState("");
   const [fFirma, setFFirma] = useState("");
+  const [fFirmaArama, setFFirmaArama] = useState("");
+  const [fFirmaDropdownAcik, setFFirmaDropdownAcik] = useState(false);
   const [fMuhatap, setFMuhatap] = useState("");
   // Muhatap filtresi — aranabilir + seçilebilir dropdown state'leri
   const [fMuhatapArama, setFMuhatapArama] = useState("");
@@ -389,15 +391,73 @@ export default function GidenEvrakPage() {
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Firma</Label>
-          <select value={fFirma} onChange={(e) => setFFirma(e.target.value)} className={selectClass + " h-8 text-xs w-full min-w-0"}>
-            <option value="">Tümü</option>
-            {/* Sadece giden evrak kaydı olan firmaları göster */}
-            {firmalar
-              .filter((f) => kayitliFirmaIds.has(f.id))
-              .map((f) => (
-                <option key={f.id} value={f.id}>{f.firma_adi}</option>
-              ))}
-          </select>
+          {/* Native <select> yerine custom aranabilir dropdown — Chrome'un
+              native select dropdown'unu uzun isimlerle genişletmesini engeller.
+              Trigger sabit genişlikte, uzun firma isimleri ellipsis ile kırpılır. */}
+          <div className="relative">
+            <input
+              type="text"
+              value={fFirmaArama || (fFirma ? (firmalar.find((f) => f.id === fFirma)?.firma_adi ?? "") : "")}
+              onChange={(e) => {
+                setFFirmaArama(e.target.value);
+                setFFirmaDropdownAcik(true);
+                if (fFirma) setFFirma("");
+              }}
+              onFocus={() => setFFirmaDropdownAcik(true)}
+              onBlur={() => setTimeout(() => setFFirmaDropdownAcik(false), 150)}
+              placeholder="Tümü"
+              className="h-8 text-xs w-full min-w-0 rounded-lg border border-input bg-white px-2 pr-7 outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 truncate"
+            />
+            {(fFirma || fFirmaArama) && (
+              <button
+                type="button"
+                onClick={() => { setFFirma(""); setFFirmaArama(""); setFFirmaDropdownAcik(false); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs leading-none"
+                title="Temizle"
+              >
+                ×
+              </button>
+            )}
+            {fFirmaDropdownAcik && (() => {
+              const q = trAramaNormalize(fFirmaArama);
+              const firmaListesi = firmalar.filter((f) => kayitliFirmaIds.has(f.id));
+              const filtreli = q
+                ? firmaListesi.filter((f) => trAramaNormalize(f.firma_adi).includes(q))
+                : firmaListesi;
+              if (filtreli.length === 0) {
+                return (
+                  <div
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg p-3 text-[11px] text-gray-400"
+                  >
+                    Eşleşen firma yok.
+                  </div>
+                );
+              }
+              return (
+                <div
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="absolute z-30 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                >
+                  {filtreli.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setFFirma(f.id);
+                        setFFirmaArama("");
+                        setFFirmaDropdownAcik(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-blue-50 truncate ${fFirma === f.id ? "bg-blue-50 font-semibold" : ""}`}
+                      title={f.firma_adi}
+                    >
+                      {f.firma_adi}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         </div>
         <div className="space-y-1 min-w-0">
           <Label className="text-[10px] text-gray-400">Muhatap</Label>
