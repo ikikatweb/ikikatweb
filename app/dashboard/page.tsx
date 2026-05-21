@@ -1800,7 +1800,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 4: Depo Yakıt Durumu — kart tabanlı */}
-        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-6">
+        {wg("depo_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-7">
           <CardHeader icon={Fuel} title="Şantiye Yakıt Stokları" />
           {depoOzet.length === 0 ? <p className="text-sm text-gray-400">Depo verisi yok</p> : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1837,7 +1837,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 5: Son Yakıt Alımları */}
-        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-7">
+        {wg("son_yakit") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-8">
           <CardHeader icon={Fuel} title="Son Yakıt Alımları" color="text-emerald-700" />
           {sonAlimlar.length === 0 ? <p className="text-sm text-gray-400">Alım verisi yok</p> : (
             <>
@@ -1900,8 +1900,9 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 6: Eksik Evrak Numaraları */}
-        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-8">
+        {/* Widget 6: Eksik Evrak Numaraları — Eksik Yüklenici Veri Girişi'nin yanına
+            (aynı boyut: lg:col-span-2, order-6). */}
+        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-6">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
