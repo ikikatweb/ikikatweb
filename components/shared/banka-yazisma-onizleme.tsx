@@ -131,9 +131,25 @@ export default function BankaYazismaOnIzleme({
           {aktifEkler.length > 0 && (
             <>
               <div style={{ fontWeight: "bold", paddingLeft: "1.25cm", marginBottom: "2pt" }}>Ek:</div>
-              {aktifEkler.map((ek, i) => (
-                <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4", maxWidth: "50ch", wordWrap: "break-word" as const }}>{i + 1}) {ek}</div>
-              ))}
+              {aktifEkler.map((ek, i) => {
+                // Format: "metin", "url", veya "metin|url" — yazdırmada sadece metin gözüksün
+                let goster = ek;
+                if (/^https?:\/\//i.test(ek)) {
+                  try {
+                    const path = new URL(ek).pathname;
+                    const raw = decodeURIComponent(path.split("/").pop() ?? "");
+                    goster = raw.replace(/^\d+-/, "") || `Ek ${i + 1}`;
+                  } catch { goster = `Ek ${i + 1}`; }
+                } else {
+                  const idx = ek.lastIndexOf("|");
+                  if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
+                    goster = ek.slice(0, idx).trim();
+                  }
+                }
+                return (
+                  <div key={i} style={{ paddingLeft: "0.75cm", lineHeight: "1.4", maxWidth: "50ch", wordWrap: "break-word" as const }}>{i + 1}) {goster}</div>
+                );
+              })}
             </>
           )}
         </div>

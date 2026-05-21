@@ -45,6 +45,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [muhataplar, setMuhataplar] = useState<MuhatapItem[]>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  // Kullanıcı mevcut PDF'i sildiyse: kaydet'te pdf_url null'a çekilir
+  const [pdfRemoved, setPdfRemoved] = useState(false);
   const [yeniMuhatap, setYeniMuhatap] = useState("");
   const [yeniMuhatapKisa, setYeniMuhatapKisa] = useState("");
   const [muhatapDialogOpen, setMuhatapDialogOpen] = useState(false);
@@ -60,6 +62,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
   const [ilgiListesi, setIlgiListesi] = useState<string[]>(yazisma?.ilgi_listesi ?? []);
   const [metin, setMetin] = useState(yazisma?.metin ?? "");
   const [ekler, setEkler] = useState<string[]>(yazisma?.ekler ?? []);
+  const [ekUploading, setEkUploading] = useState(false);
+  const [ekUploadingIdx, setEkUploadingIdx] = useState<number>(-1);
   const [kaseDahil, setKaseDahil] = useState(yazisma?.kase_dahil ?? false);
 
   useEffect(() => {
@@ -165,6 +169,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
     setLoading(true);
     try {
       let pdfUrl = yazisma?.pdf_url ?? null;
+      // Kullanıcı sildiyse pdf_url null'a çekilir (yeni dosya seçmediği sürece)
+      if (pdfRemoved) pdfUrl = null;
       if (pdfFile) {
         const formData = new FormData();
         formData.append("file", pdfFile);
@@ -399,29 +405,161 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         </div>
         {ekler.length > 0 ? (
           <div className="space-y-2">
-            {ekler.map((ek, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs font-medium w-12">Ek {i + 1}:</span>
-                <Input value={ek} onChange={(e) => updateEk(i, e.target.value)} placeholder="Ek açıklaması" className="flex-1" disabled={loading} />
-                <button type="button" onClick={() => removeEk(i)} className="text-red-400 hover:text-red-600 p-1">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
+            {ekler.map((ek, i) => {
+              // Format parse: "url" | "metin" | "metin|url"
+              const isUrl = /^https?:\/\//i.test(ek);
+              let metin = ek;
+              let url: string | null = null;
+              if (isUrl) {
+                url = ek;
+                try {
+                  const path = new URL(ek).pathname;
+                  const raw = decodeURIComponent(path.split("/").pop() ?? "");
+                  metin = raw.replace(/^\d+-/, "") || "";
+                } catch { metin = ""; }
+              } else {
+                const idx = ek.lastIndexOf("|");
+                if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
+                  metin = ek.slice(0, idx).trim();
+                  url = ek.slice(idx + 1).trim();
+                }
+              }
+              const uploadingBu = ekUploading && ekUploadingIdx === i;
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs font-medium w-12 flex-shrink-0">Ek {i + 1}:</span>
+                  <Input
+                    value={metin}
+                    onChange={(e) => {
+                      const yeniMetin = basHarfBuyuk(e.target.value);
+                      // URL'i koru — sadece metin değişsin
+                      setEkler((p) => p.map((x, idx) => {
+                        if (idx !== i) return x;
+                        if (url) return yeniMetin ? `${yeniMetin}|${url}` : url;
+                        return yeniMetin;
+                      }));
+                    }}
+                    placeholder="Ek açıklaması"
+                    className="flex-1 min-w-0"
+                    disabled={loading || uploadingBu}
+                  />
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-shrink-0 p-1 text-gray-400 hover:text-green-600"
+                      title="Yüklü PDF'i görüntüle"
+                    >
+                      <Eye size={16} />
+                    </a>
+                  ) : null}
+                  <label
+                    className={`flex-shrink-0 p-1 rounded cursor-pointer transition-colors ${
+                      uploadingBu || loading
+                        ? "text-gray-300 cursor-not-allowed"
+                        : url
+                          ? "text-blue-500 hover:text-blue-700"
+                          : "text-gray-400 hover:text-[#1E3A5F]"
+                    }`}
+                    title={url ? "PDF'i değiştir" : "Bu ek'e PDF yükle"}
+                  >
+                    <Upload size={16} />
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      className="hidden"
+                      disabled={loading || uploadingBu}
+                      onChange={async (e) => {
+                        const dosya = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!dosya) return;
+                        if (!firmaId) { toast.error("Önce firma seçin."); return; }
+                        setEkUploading(true);
+                        setEkUploadingIdx(i);
+                        try {
+                          const harfHaritasi: Record<string, string> = {
+                            "ç": "c", "Ç": "C", "ğ": "g", "Ğ": "G", "ı": "i", "İ": "I",
+                            "ö": "o", "Ö": "O", "ş": "s", "Ş": "S", "ü": "u", "Ü": "U",
+                          };
+                          let temiz = dosya.name.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
+                          temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").toLowerCase();
+                          const formData = new FormData();
+                          formData.append("file", dosya);
+                          formData.append("bucket", "yazismalar");
+                          formData.append("path", `banka-ek/${firmaId}/${Date.now()}-${temiz}`);
+                          const res = await fetch("/api/upload", { method: "POST", body: formData });
+                          const data = await res.json();
+                          if (!res.ok || !data.url) throw new Error(data?.error ?? "Yüklenemedi");
+                          // Metni koru, URL'i ekle/değiştir
+                          setEkler((p) => p.map((x, idx) => {
+                            if (idx !== i) return x;
+                            return metin ? `${metin}|${data.url}` : data.url;
+                          }));
+                          toast.success(url ? "PDF değiştirildi." : "PDF eklendi.");
+                        } catch (err) {
+                          const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
+                          toast.error(`Yükleme hatası: ${msg}`);
+                        } finally {
+                          setEkUploading(false);
+                          setEkUploadingIdx(-1);
+                        }
+                      }}
+                    />
+                  </label>
+                  <button type="button" onClick={() => removeEk(i)} className="text-red-400 hover:text-red-600 p-1 flex-shrink-0" disabled={loading} title="Kaldır">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <p className="text-xs text-gray-400">Henüz ek eklenmedi. + butonuyla ekleyebilirsiniz.</p>
+          <p className="text-xs text-gray-400">Henüz ek eklenmedi. &quot;Ek Ekle&quot; ile satır oluşturup yanındaki yükle ikonundan PDF iliştirebilirsiniz.</p>
         )}
       </div>
 
-      {/* PDF */}
+      {/* PDF — Evrak Taraması */}
       <div className="space-y-2">
         <Label>Evrak Taraması (PDF) - Opsiyonel</Label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
-          <Upload size={16} />
-          {pdfFile ? pdfFile.name : yazisma?.pdf_url ? "Mevcut dosya yüklü - Değiştir" : "PDF Yükle"}
-          <input type="file" accept=".pdf" className="hidden" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} disabled={loading} />
-        </label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
+            <Upload size={16} />
+            {pdfFile
+              ? pdfFile.name
+              : yazisma?.pdf_url && !pdfRemoved
+                ? "Mevcut dosya yüklü - Değiştir"
+                : "PDF Yükle"}
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                setPdfFile(e.target.files?.[0] ?? null);
+                setPdfRemoved(false);
+              }}
+              disabled={loading}
+            />
+          </label>
+          {(pdfFile || (yazisma?.pdf_url && !pdfRemoved)) && (
+            <button
+              type="button"
+              onClick={() => {
+                setPdfFile(null);
+                setPdfRemoved(true);
+                toast.success("PDF kaldırıldı (kaydedince uygulanacak).");
+              }}
+              className="flex items-center gap-1 px-3 py-2 text-red-600 border border-red-200 bg-red-50 rounded-md hover:bg-red-100 transition-colors text-sm"
+              disabled={loading}
+              title="PDF'i kaldır"
+            >
+              <Trash2 size={14} /> Kaldır
+            </button>
+          )}
+          {pdfRemoved && !pdfFile && (
+            <span className="text-xs text-amber-600 italic">PDF kaydet'e bastığınızda silinecek</span>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-2 justify-end pt-2">

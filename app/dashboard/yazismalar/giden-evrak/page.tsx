@@ -216,8 +216,8 @@ export default function GidenEvrakPage() {
 
   function handleAdd() { setEditEvrak(undefined); setFormOpen(true); }
   function handleEdit(e: GidenEvrakWithRelations) {
-    // Kayıt numarası girilmiş evraklar değiştirilemez
-    if (e.evrak_kayit_no) {
+    // Kayıt numarası girilmiş evraklar normalde değiştirilemez — istisna: yönetici
+    if (e.evrak_kayit_no && !isYonetici) {
       toast.error("Bu evrakın kayıt numarası girilmiş — düzenlenemez.");
       return;
     }
@@ -260,8 +260,8 @@ export default function GidenEvrakPage() {
   }
 
   function handleSilTikla(e: GidenEvrakWithRelations) {
-    // Kayıt numarası girilmiş evrak silinemez (rol fark etmez — kalıcı kayıt)
-    if (e.evrak_kayit_no) {
+    // Kayıt numarası girilmiş evrak normalde silinemez — istisna: yönetici
+    if (e.evrak_kayit_no && !isYonetici) {
       toast.error("Evrak kayıt numarası girilmiş yazıyı silemezsiniz.");
       return;
     }
@@ -577,10 +577,14 @@ export default function GidenEvrakPage() {
                       {e.pdf_url && (
                         <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="Evrak Taraması (PDF)"><Download size={14} /></a>
                       )}
-                      {yDuzenle && !e.evrak_kayit_no && (
-                        <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
+                      {yDuzenle && (!e.evrak_kayit_no || isYonetici) && (
+                        <button
+                          onClick={() => handleEdit(e)}
+                          className="p-1 text-gray-400 hover:text-[#F97316]"
+                          title={e.evrak_kayit_no ? "Düzenle (yönetici)" : "Düzenle"}
+                        ><Pencil size={14} /></button>
                       )}
-                      {yDuzenle && e.evrak_kayit_no && (
+                      {yDuzenle && e.evrak_kayit_no && !isYonetici && (
                         <button
                           type="button"
                           disabled
@@ -588,10 +592,14 @@ export default function GidenEvrakPage() {
                           title="Kayıt numarası girilmiş — düzenlenemez"
                         ><Pencil size={14} /></button>
                       )}
-                      {ySil && !e.evrak_kayit_no && (
-                        <button onClick={() => handleSilTikla(e)} className="p-1 text-gray-400 hover:text-red-500" title="Sil"><Trash2 size={14} /></button>
+                      {ySil && (!e.evrak_kayit_no || isYonetici) && (
+                        <button
+                          onClick={() => handleSilTikla(e)}
+                          className="p-1 text-gray-400 hover:text-red-500"
+                          title={e.evrak_kayit_no ? "Sil (yönetici)" : "Sil"}
+                        ><Trash2 size={14} /></button>
                       )}
-                      {ySil && e.evrak_kayit_no && (
+                      {ySil && e.evrak_kayit_no && !isYonetici && (
                         <button
                           type="button"
                           disabled

@@ -1951,28 +1951,44 @@ export default function DashboardPage() {
               )}
             </div>
             <div className="max-h-[200px] overflow-y-auto">
+              {/* Firma sütunu kaldırıldı — Tarih sütununun solunda renk şeridi şeklinde gösterilir. */}
               <Table className="text-xs">
                 <TableHeader><TableRow>
                   <TableHead className="px-2 text-[10px]">Tarih</TableHead>
                   <TableHead className="px-2 text-[10px]">Konu / Muhatap</TableHead>
-                  <TableHead className="px-2 text-[10px]">Firma</TableHead>
                   <TableHead className="px-2 text-[10px] text-center">Kayıt No</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {eksikEvraklar
-                    .filter((e) => {
-                      if (!eksikEvrakKisiFiltre) return true;
-                      const ad = (e.olusturan_id && kullaniciAdlari.get(e.olusturan_id)) || "Bilinmiyor";
-                      return ad === eksikEvrakKisiFiltre;
-                    })
-                    .map((e) => (
+                  {(() => {
+                    // Firma id → renk map'i (firmalar state'inden)
+                    const ekFirmaRenkMap = new Map<string, string>();
+                    for (const f of firmalar) {
+                      if (f.renk) ekFirmaRenkMap.set(f.id, f.renk);
+                    }
+                    return eksikEvraklar
+                      .filter((e) => {
+                        if (!eksikEvrakKisiFiltre) return true;
+                        const ad = (e.olusturan_id && kullaniciAdlari.get(e.olusturan_id)) || "Bilinmiyor";
+                        return ad === eksikEvrakKisiFiltre;
+                      })
+                      .map((e) => {
+                        const firmaRengi = e.firma_id ? (ekFirmaRenkMap.get(e.firma_id) ?? null) : null;
+                        return (
                     <TableRow key={e.id}>
-                      <TableCell className="px-2 whitespace-nowrap">{formatTarih(e.evrak_tarihi)}</TableCell>
+                      <TableCell className="px-2 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                            style={{ backgroundColor: firmaRengi ?? "#e5e7eb", minHeight: "1.5rem" }}
+                            title={firmaRengi ? `Firma rengi (${e.firmalar?.firma_adi ?? "—"})` : "Firma rengi tanımlı değil"}
+                          />
+                          {formatTarih(e.evrak_tarihi)}
+                        </div>
+                      </TableCell>
                       <TableCell className="px-2">
                         <div className="truncate max-w-[150px]" title={e.konu ?? ""}>{e.konu ?? "—"}</div>
                         {e.muhatap && <div className="text-[9px] text-gray-400 truncate max-w-[150px]" title={e.muhatap}>{e.muhatap}</div>}
                       </TableCell>
-                      <TableCell className="px-2 truncate max-w-[100px]" title={e.firmalar?.firma_adi ?? ""}>{e.firmalar?.firma_adi ?? "—"}</TableCell>
                       <TableCell className="px-2 text-center">
                         {editEvrakId === e.id ? (
                           <div className="flex items-center gap-1">
@@ -1993,7 +2009,9 @@ export default function DashboardPage() {
                         )}
                       </TableCell>
                     </TableRow>
-                  ))}
+                        );
+                      });
+                  })()}
                 </TableBody>
               </Table>
             </div>

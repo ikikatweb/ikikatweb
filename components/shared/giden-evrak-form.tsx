@@ -63,6 +63,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [muhataplar, setMuhataplar] = useState<MuhatapItem[]>([]);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  // Kullanıcı mevcut PDF'i sildiyse: kaydet'te pdf_url null'a çekilir
+  const [pdfRemoved, setPdfRemoved] = useState(false);
   const [yeniMuhatap, setYeniMuhatap] = useState("");
   const [yeniMuhatapKisa, setYeniMuhatapKisa] = useState("");
   const [muhatapDialogOpen, setMuhatapDialogOpen] = useState(false);
@@ -202,6 +204,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     setLoading(true);
     try {
       let pdfUrl = evrak?.pdf_url ?? null;
+      // Kullanıcı sildiyse pdf_url null'a çekilir (yeni dosya seçmediği sürece)
+      if (pdfRemoved) pdfUrl = null;
       if (pdfFile) {
         const formData = new FormData();
         formData.append("file", pdfFile);
@@ -583,14 +587,48 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         )}
       </div>
 
-      {/* PDF */}
+      {/* PDF — Evrak Taraması */}
       <div className="space-y-2">
         <Label>Evrak Taraması (PDF) - Opsiyonel</Label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
-          <Upload size={16} />
-          {pdfFile ? pdfFile.name : evrak?.pdf_url ? "Mevcut dosya yüklü - Değiştir" : "PDF Yükle"}
-          <input type="file" accept=".pdf" className="hidden" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} disabled={loading} />
-        </label>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
+            <Upload size={16} />
+            {pdfFile
+              ? pdfFile.name
+              : evrak?.pdf_url && !pdfRemoved
+                ? "Mevcut dosya yüklü - Değiştir"
+                : "PDF Yükle"}
+            <input
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                setPdfFile(e.target.files?.[0] ?? null);
+                setPdfRemoved(false); // yeni dosya seçildi → kaldırma iptal
+              }}
+              disabled={loading}
+            />
+          </label>
+          {/* Sil butonu — sadece yüklenmiş veya seçilmiş bir dosya varsa görünür */}
+          {(pdfFile || (evrak?.pdf_url && !pdfRemoved)) && (
+            <button
+              type="button"
+              onClick={() => {
+                setPdfFile(null);
+                setPdfRemoved(true);
+                toast.success("PDF kaldırıldı (kaydedince uygulanacak).");
+              }}
+              className="flex items-center gap-1 px-3 py-2 text-red-600 border border-red-200 bg-red-50 rounded-md hover:bg-red-100 transition-colors text-sm"
+              disabled={loading}
+              title="PDF'i kaldır"
+            >
+              <Trash2 size={14} /> Kaldır
+            </button>
+          )}
+          {pdfRemoved && !pdfFile && (
+            <span className="text-xs text-amber-600 italic">PDF kaydet'e bastığınızda silinecek</span>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
