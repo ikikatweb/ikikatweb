@@ -24,6 +24,7 @@ import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-reac
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatMuhatap, formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
+import PreviewScaler from "@/components/shared/preview-scaler";
 import toast from "react-hot-toast";
 
 type Props = {
@@ -231,19 +232,21 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
         </div>
 
         <div className="evrak-print-area">
-          <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm", maxWidth: "100%" }}>
-            <BankaYazismaOnIzleme
-              firma={seciliFirma}
-              evrakTarihi={evrakTarihi}
-              evrakSayiNo={evrakSayiNo}
-              konu={konu}
-              muhatap={muhatap}
-              ilgiListesi={ilgiListesi}
-              metin={metin}
-              ekler={ekler}
-              kaseDahil={kaseDahil}
-            />
-          </div>
+          <PreviewScaler>
+            <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
+              <BankaYazismaOnIzleme
+                firma={seciliFirma}
+                evrakTarihi={evrakTarihi}
+                evrakSayiNo={evrakSayiNo}
+                konu={konu}
+                muhatap={muhatap}
+                ilgiListesi={ilgiListesi}
+                metin={metin}
+                ekler={ekler}
+                kaseDahil={kaseDahil}
+              />
+            </div>
+          </PreviewScaler>
         </div>
 
         <div className="flex gap-2 justify-end print:hidden">

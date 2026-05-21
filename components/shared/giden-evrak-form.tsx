@@ -28,6 +28,7 @@ import { Save, Eye, Upload, Plus, ArrowLeft, Trash2, Printer } from "lucide-reac
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatMuhatap, formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
+import PreviewScaler from "@/components/shared/preview-scaler";
 import toast from "react-hot-toast";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
@@ -271,22 +272,26 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </Button>
         </div>
 
-        {/* Print alanı - yazdırıldığında sadece bu görünür */}
+        {/* Print alanı - yazdırıldığında sadece bu görünür.
+            Mobil görünüm: 210mm (~793px) sayfa, ekrana sığmadığı için ölçeklendiriliyor.
+            Yazdırma sırasında print CSS scale'i sıfırlar (origin reset). */}
         <div className="evrak-print-area">
-          <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm", maxWidth: "100%" }}>
-            <GidenEvrakOnIzleme
-              firma={seciliFirma}
-              evrakTarihi={evrakTarihi}
-              tarihGosterim={tarihGosterim}
-              evrakSayiNo={evrakSayiNo}
-              konu={konu}
-              muhatap={muhatap}
-              ilgiListesi={ilgiListesi}
-              metin={metin}
-              ekler={ekler}
-              kaseDahil={kaseDahil}
-            />
-          </div>
+          <PreviewScaler>
+            <div className="evrak-preview-page border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
+              <GidenEvrakOnIzleme
+                firma={seciliFirma}
+                evrakTarihi={evrakTarihi}
+                tarihGosterim={tarihGosterim}
+                evrakSayiNo={evrakSayiNo}
+                konu={konu}
+                muhatap={muhatap}
+                ilgiListesi={ilgiListesi}
+                metin={metin}
+                ekler={ekler}
+                kaseDahil={kaseDahil}
+              />
+            </div>
+          </PreviewScaler>
         </div>
 
         <div className="flex gap-2 justify-end print:hidden">
