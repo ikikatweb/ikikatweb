@@ -274,10 +274,9 @@ thead th {
   }
 
   .evrak-preview-page {
-    /* A4 sayfanın dış kenar çizgisi mobilde de görünür (bilgisayardaki gibi).
-       Transform: scale uygulandığı için 1px border görsel olarak ince çıkar — bu yüzden
-       2px tanımlandı, scale 0.45 ile yaklaşık 0.9px ince çizgi görünür. */
-    border: 2px solid #d1d5db !important;
+    /* İç sayfa: kendi border'ı kaldırıldı (transform: scale ile çok inceleşiyor).
+       Border PreviewScaler container'a uygulanır (ölçeklenmez → tam 1.5px görünür). */
+    border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #fff !important;
@@ -285,6 +284,15 @@ thead th {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: geometricPrecision;
+  }
+
+  /* A4 sayfa dış kenar çizgisi — bilgisayardaki ile aynı görünüm.
+     PreviewScaler container ölçeklenmediği için border tam kalınlıkta görünür. */
+  .preview-scaler-container {
+    border: 1.5px solid #9ca3af !important;
+    border-radius: 4px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+    background: #fff !important;
   }
 
   .evrak-preview-page,

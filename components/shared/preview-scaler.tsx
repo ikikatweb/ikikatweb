@@ -1,7 +1,7 @@
 // Evrak/yazışma ön izlemelerini mobilde ekrana sığacak şekilde ölçekleyen sarmalayıcı.
 // 210mm sabit genişlikteki sayfa içeriği geniş ekranda olduğu gibi gösterilir;
 // dar ekranlarda CSS transform: scale ile küçültülerek yatay kaydırma ihtiyacı
-// ortadan kaldırılır. Yazdırma sırasında scale otomatik sıfırlanır (print CSS).
+// ortadan kaldırılır. Yazdırma sırasında scale otomatik sıfırlanır.
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -26,27 +26,35 @@ export default function PreviewScaler({ children }: { children: React.ReactNode 
     if (!container || !inner) return;
 
     const hesapla = () => {
-      // İki kaynak: container.clientWidth VE window.innerWidth tabanlı tahmin.
-      // Her zaman küçüğü kullan — bu sayede dialog kapalıyken veya
-      // ölçüm hatalıyken yine doğru ölçek elde edilir.
-      const containerW = container.clientWidth || 0;
+      // Sadece viewport genişliğine göre hesapla — DOM ölçümlerine güvenme.
+      // Mobilde dialog ~95vw genişlikte, kenar paylarıyla birlikte
+      // kullanılabilir alan ~90vw kadar.
+      // Bilgisayarda (≥768px) tam ölçek (1) kullan — küçültmeye gerek yok.
       const viewportW = window.innerWidth;
-      // Tahmin: dialog padding/margin için ekran genişliğinin %85'i
-      const tahminW = Math.max(280, Math.floor(viewportW * 0.85));
-      const efektifW = containerW > 50 ? Math.min(containerW, viewportW) : tahminW;
+      let efektifW: number;
+      if (viewportW >= 900) {
+        // Geniş ekran — ölçeklemeye gerek yok
+        efektifW = SAYFA_GENISLIK_PX;
+      } else if (viewportW >= 768) {
+        // Orta — hafif küçültme
+        efektifW = Math.min(viewportW - 80, SAYFA_GENISLIK_PX);
+      } else {
+        // Mobil — dialog padding'ini dahil et (her yönden ~24px + güvenlik payı)
+        efektifW = Math.max(280, viewportW - 80);
+      }
       const yeniScale = Math.min(1, efektifW / SAYFA_GENISLIK_PX);
       setScale(yeniScale);
       // Ölçekli yüksekliği container'a ata — sayfa altı boşluk oluşmasın
       setInnerHeight(inner.offsetHeight * yeniScale);
     };
 
-    // İlk hesap; layout finalize olduktan sonra bir kez daha çalıştır
     hesapla();
+    // Layout finalize olduktan sonra bir kez daha — bazen ilk render'da
+    // inner.offsetHeight tam ölçülmüş olmuyor
     const t1 = setTimeout(hesapla, 50);
     const t2 = setTimeout(hesapla, 200);
 
     const ro = new ResizeObserver(hesapla);
-    ro.observe(container);
     ro.observe(inner);
     window.addEventListener("resize", hesapla);
     window.addEventListener("orientationchange", hesapla);
@@ -72,12 +80,18 @@ export default function PreviewScaler({ children }: { children: React.ReactNode 
   }, []);
 
   const aktifScale = printing ? 1 : scale;
+  // Container'ın görünür genişliği = scaled inner genişlik
+  const containerW = printing ? undefined : SAYFA_GENISLIK_PX * scale;
 
   return (
     <div
       ref={containerRef}
-      className="w-full overflow-hidden preview-scaler-container"
-      style={{ height: printing ? "auto" : innerHeight ?? undefined }}
+      className="preview-scaler-container overflow-hidden mx-auto"
+      style={{
+        width: containerW,
+        maxWidth: "100%",
+        height: printing ? "auto" : innerHeight ?? undefined,
+      }}
     >
       <div
         ref={innerRef}
