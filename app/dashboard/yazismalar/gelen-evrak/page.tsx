@@ -129,8 +129,12 @@ export default function GelenEvrakPage() {
       const filtreliFirmalar = izinliFirmaIds
         ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
         : (fData ?? []);
+      // KISITLI KULLANICI: kendi yazdığı evrakı FIRMA filtresinden bağımsız görür
+      // (firma ataması sonradan değişse veya o firma izinli listede olmasa bile).
       setEvraklar(((eData as GelenEvrakWithRelations[]) ?? []).filter((e) =>
-        izinliFirmaIds ? (!e.firma_id || izinliFirmaIds.has(e.firma_id)) : true,
+        izinliFirmaIds
+          ? (!e.firma_id || izinliFirmaIds.has(e.firma_id) || e.olusturan_id === kullanici.id)
+          : true,
       ));
       setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }

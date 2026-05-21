@@ -98,8 +98,13 @@ export default function BankaYazismalariPage() {
       const filtreliFirmalar = izinliFirmaIds
         ? (fData ?? []).filter((f) => izinliFirmaIds.has(f.id))
         : (fData ?? []);
+      // KISITLI KULLANICI: kendi yazdığı yazıyı FIRMA filtresinden bağımsız görür
+      // (firma ataması sonradan değişse veya o firma izinli listede olmasa bile).
+      const benimId = kullanici?.id;
       setYazismalar(((yData as BankaYazismaWithRelations[]) ?? []).filter((y) =>
-        izinliFirmaIds ? (!y.firma_id || izinliFirmaIds.has(y.firma_id)) : true,
+        izinliFirmaIds
+          ? (!y.firma_id || izinliFirmaIds.has(y.firma_id) || y.olusturan_id === benimId)
+          : true,
       ));
       setFirmalar(filtreliFirmalar);
     } catch { toast.error("Veriler yüklenirken hata oluştu."); }
