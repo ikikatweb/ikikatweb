@@ -37,19 +37,7 @@ export default function SantiyeSelect({
   const [acik, setAcik] = useState(false);
   const [arama, setArama] = useState("");
   const [digerAcik, setDigerAcik] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // Title (bilgi notu) sadece mobilde uygulanır — bilgisayarda gereksiz tooltip
-  // çıkmasın diye viewport tabanlı toggle.
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  // Title prop yardımcısı — sadece mobilde döner, bilgisayarda undefined
-  const mobilTitle = (s: string | undefined) => (isMobile ? s : undefined);
 
   // Açılır panel dışına tıklayınca kapat
   useEffect(() => {
@@ -132,7 +120,6 @@ export default function SantiyeSelect({
         type="button"
         onClick={() => setAcik((p) => !p)}
         className={triggerClass + " flex items-center justify-between gap-1 truncate text-left w-full cursor-pointer"}
-        title={mobilTitle(gosterilenMetin || (showAll ? "Tümü" : placeholder))}
       >
         <span className={`truncate flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
           {gosterilenMetin || (showAll ? "Tümü" : placeholder)}
@@ -144,7 +131,6 @@ export default function SantiyeSelect({
           type="button"
           onClick={() => setDigerAcik((p) => !p)}
           className="h-9 px-2 text-[9px] rounded-lg border bg-gray-50 hover:bg-gray-100 text-gray-500 whitespace-nowrap flex-shrink-0"
-          title={mobilTitle(gosterDigerleri ? "Diğer şantiyeleri gizle" : `Diğer şantiyeler (${digerleri.length})`)}
         >
           {gosterDigerleri ? "▲ Gizle" : `▼ +${digerleri.length}`}
         </button>
@@ -193,7 +179,7 @@ export default function SantiyeSelect({
                 if (grupSantiyeler.length === 0) return null;
                 return (
                   <div key={`f-${i}`}>
-                    <div className="px-3 py-1 text-[10px] font-semibold text-gray-500 bg-gray-50 truncate" title={mobilTitle(grup.firmaAd)}>
+                    <div className="px-3 py-1 text-[10px] font-semibold text-gray-500 bg-gray-50 truncate">
                       {grup.firmaAd}
                     </div>
                     {grupSantiyeler.map((s) => (
@@ -202,7 +188,6 @@ export default function SantiyeSelect({
                         type="button"
                         onClick={() => { onChange(s.id); setAcik(false); setArama(""); }}
                         className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-blue-50 ${value === s.id ? "bg-blue-50 font-semibold" : ""}`}
-                        title={mobilTitle(s.is_adi)}
                       >
                         {s.is_adi}
                       </button>
@@ -217,7 +202,6 @@ export default function SantiyeSelect({
                   type="button"
                   onClick={() => { onChange(s.id); setAcik(false); setArama(""); }}
                   className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-blue-50 ${value === s.id ? "bg-blue-50 font-semibold" : ""}`}
-                  title={mobilTitle(s.is_adi)}
                 >
                   {s.is_adi}
                 </button>
@@ -237,7 +221,6 @@ export default function SantiyeSelect({
                         type="button"
                         onClick={() => { onChange(s.id); setAcik(false); setArama(""); }}
                         className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-blue-50 ${value === s.id ? "bg-blue-50 font-semibold" : ""}`}
-                        title={mobilTitle(`${s.is_adi}${etiket}`)}
                       >
                         {s.is_adi}<span className="text-gray-400">{etiket}</span>
                       </button>

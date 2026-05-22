@@ -13,14 +13,15 @@ type Change = {
   personelMeslek?: string;
   santiyeAd?: string;
   onceSantiyeAd?: string;
+  // Tarih anlamları:
+  //   giris  → işe giriş tarihi
+  //   cikis  → işten çıkış tarihi
+  //   transfer → YENİ şantiyeye giriş tarihi
   tarih: string;
-  // Kullanıcının mail önizlemede her satıra yazabildiği özel not
-  // Mailde personelin altında KIRMIZI renkle gösterilir
+  // Sadece transferde anlamlı: ESKİ şantiyeden çıkış tarihi
+  cikisTarih?: string;
   not?: string;
-  // İlgili şantiyede personel TEKNİK olarak işaretlenmiş mi?
-  // Mailde personel adının yanına "(Teknik Personel)" eklenir.
   teknik?: boolean;
-  // (opsiyonel) Atanmış teknik personel rolü(leri) — örn. "Şantiye Şefi"
   teknikIsim?: string | null;
 };
 
@@ -129,11 +130,19 @@ export async function POST(request: Request) {
     }
     const firmaAdi = firma.firma_adi ?? "";
 
-    // Her cümleyle birlikte personel notlarını da taşı (varsa)
-    type CumleNot = { cumle: string; notlar: { personel: string; not: string }[] };
+    // Her cümleyle birlikte personel notlarını da taşı (varsa) — aşağıdaki
+    // CumleNotParca tipi, parça parça (renkli vurgu için) saklar.
 
-    // Giriş cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
-    const girisCumleleri: CumleNot[] = [];
+    // Tip türü — HTML üretimi için renklerle birlikte parça parça tutarız
+    // (renkli alanları sonradan span ile sarmalayabilelim).
+    type CumleParca =
+      | { tip: "metin"; deger: string }
+      | { tip: "vurguYesil"; deger: string }   // koyu yeşil — giriş
+      | { tip: "vurguKirmizi"; deger: string }; // koyu kırmızı — çıkış
+    type CumleNotParca = { parcalar: CumleParca[]; notlar: { personel: string; not: string }[] };
+
+    // Giriş cümleleri — name, date, "giriş" KOYU YEŞİL
+    const girisCumleleri: CumleNotParca[] = [];
     for (const c of changes.filter((c) => c.tip === "giris")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
@@ -141,13 +150,21 @@ export async function POST(request: Request) {
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.santiyeAd ?? "—";
       girisCumleleri.push({
-        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personeli ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işine giriş işlemlerinin yapılmasını rica ederiz.`,
+        parcalar: [
+          { tip: "metin", deger: tc },
+          { tip: "vurguYesil", deger: `${c.personelAd}${teknikEk}` },
+          { tip: "metin", deger: ` isimli ${meslek}personeli ` },
+          { tip: "vurguYesil", deger: tarihStr },
+          { tip: "metin", deger: ` tarihinde ${firmaAdi} bünyesinde bulunan ${santiye} işine ` },
+          { tip: "vurguYesil", deger: "giriş" },
+          { tip: "metin", deger: " işlemlerinin yapılmasını rica ederiz." },
+        ],
         notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
       });
     }
 
-    // Çıkış cümleleri — her personel için ayrı cümle, FIRMA + ŞANTİYE + MESLEK dahil
-    const cikisCumleleri: CumleNot[] = [];
+    // Çıkış cümleleri — name, date, "ayrılmıştır" KOYU KIRMIZI
+    const cikisCumleleri: CumleNotParca[] = [];
     for (const c of changes.filter((c) => c.tip === "cikis")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
@@ -155,37 +172,52 @@ export async function POST(request: Request) {
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.onceSantiyeAd ?? "—";
       cikisCumleleri.push({
-        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesinde bulunan ${santiye} işinden ayrılmıştır gerekli işlemin yapılmasını rica ederiz.`,
+        parcalar: [
+          { tip: "metin", deger: tc },
+          { tip: "vurguKirmizi", deger: `${c.personelAd}${teknikEk}` },
+          { tip: "metin", deger: ` isimli ${meslek}personel ` },
+          { tip: "vurguKirmizi", deger: tarihStr },
+          { tip: "metin", deger: ` tarihinde ${firmaAdi} bünyesinde bulunan ${santiye} işinden ` },
+          { tip: "vurguKirmizi", deger: "ayrılmıştır" },
+          { tip: "metin", deger: " gerekli işlemin yapılmasını rica ederiz." },
+        ],
         notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
       });
     }
 
-    // Transfer cümleleri — HER PERSONEL için AYRI cümle (giriş/çıkış gibi).
-    // Aynı şantiyeler arası transferleri de gruplaMAdan, her kişiyi tek tek listele.
-    const transferCumleleri: CumleNot[] = [];
+    // Transfer cümleleri — HEM çıkış (kırmızı) HEM giriş (yeşil) tarihleri görünür
+    const transferCumleleri: CumleNotParca[] = [];
     for (const c of changes.filter((c) => c.tip === "transfer")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
       const teknikEk = c.teknik ? " (Teknik Personel)" : "";
-      const tarihStr = tarihFormatla(c.tarih);
+      const girisTarihStr = tarihFormatla(c.tarih);
+      // cikisTarih yoksa girişle aynı kullanılır (uyum için)
+      const cikisTarihStr = tarihFormatla(c.cikisTarih ?? c.tarih);
       const eski = c.onceSantiyeAd ?? "—";
       const yeni = c.santiyeAd ?? "—";
       transferCumleleri.push({
-        cumle: `${tc}${c.personelAd}${teknikEk} isimli ${meslek}personel ${tarihStr} tarihi itibariyle ${firmaAdi} bünyesindeki ${eski} şantiyesinden çıkışının yapılarak, ${yeni} şantiyesine girişinin yapılmasını rica ederiz.`,
+        parcalar: [
+          { tip: "metin", deger: tc },
+          { tip: "vurguYesil", deger: `${c.personelAd}${teknikEk}` },
+          { tip: "metin", deger: ` isimli ${meslek}personelin ${firmaAdi} bünyesindeki ${eski} şantiyesinden ` },
+          { tip: "vurguKirmizi", deger: `çıkış tarihi ${cikisTarihStr}` },
+          { tip: "metin", deger: `, ${yeni} şantiyesine ` },
+          { tip: "vurguYesil", deger: `giriş tarihi ${girisTarihStr}` },
+          { tip: "metin", deger: " olarak işlemlerinin yapılmasını rica ederiz." },
+        ],
         notlar: c.not && c.not.trim() ? [{ personel: c.personelAd, not: c.not.trim() }] : [],
       });
     }
 
     // Plain text fallback (HTML desteklemeyen istemciler için)
-    // Her personel notu, ait olduğu cümlenin hemen altında "Not (Ad Soyad): ..." şeklinde belirir.
-    // Notlardan sonra 1 boş satır.
-    function cumleleriMetne(items: CumleNot[]): string {
+    // Renkleri kaldırıp düz metin oluşturur.
+    function cumleleriMetne(items: CumleNotParca[]): string {
       return items.map((it) => {
-        let s = it.cumle;
+        let s = it.parcalar.map((p) => p.deger).join("");
         for (const n of it.notlar) {
           s += `\n${n.personel}: ${n.not}`;
         }
-        // Notu olan satırın sonuna 1 ek boş satır (ayırıcı görsel boşluk)
         if (it.notlar.length > 0) s += "\n";
         return s;
       }).join("\n\n");
@@ -211,12 +243,21 @@ export async function POST(request: Request) {
     // Sade kırmızı not stili — kutu yok, sadece kırmızı yazı + altta boşluk
     const noteStyle = "color:#DC2626;font-weight:600;margin:0 0 16px 0;";
 
-    function cumleleriHtmle(items: CumleNot[]): string {
+    // Renkli vurgu stilleri — koyu yeşil (giriş) / koyu kırmızı (çıkış)
+    const yesilStyle = "color:#15803D;font-weight:700;"; // koyu yeşil
+    const kirmiziStyle = "color:#991B1B;font-weight:700;"; // koyu kırmızı
+
+    function cumleleriHtmle(items: CumleNotParca[]): string {
       let out = "";
       for (const it of items) {
-        // Notu olan satırda alt boşluğu nota bırakıyoruz
         const cumleMargin = it.notlar.length > 0 ? "0 0 4px 0" : "0 0 12px 0";
-        out += `<p style="margin:${cumleMargin};">${htmlEscape(it.cumle)}</p>`;
+        const icerik = it.parcalar.map((p) => {
+          const esc = htmlEscape(p.deger);
+          if (p.tip === "vurguYesil") return `<span style="${yesilStyle}">${esc}</span>`;
+          if (p.tip === "vurguKirmizi") return `<span style="${kirmiziStyle}">${esc}</span>`;
+          return esc;
+        }).join("");
+        out += `<p style="margin:${cumleMargin};">${icerik}</p>`;
         for (const n of it.notlar) {
           const safe = htmlEscape(n.not).replace(/\n/g, "<br/>");
           out += `<p style="${noteStyle}"><strong>${htmlEscape(n.personel)}:</strong> ${safe}</p>`;

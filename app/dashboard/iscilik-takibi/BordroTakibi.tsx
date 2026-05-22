@@ -545,8 +545,29 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [topluTransferAcik, setTopluTransferAcik] = useState(false);
   const [topluTransferHedef, setTopluTransferHedef] = useState("");
   const [topluTransferIsleniyor, setTopluTransferIsleniyor] = useState(false);
-  // Toplu transfer tarihi — admin: serbest, diğer: bugünden 9 gün geriye
-  const [topluTransferTarih, setTopluTransferTarih] = useState(() => yerelBugun());
+  // Toplu transfer tarihleri — admin: serbest, diğer: bugünden 9 gün geriye
+  // Çıkış: eski şantiyeden ayrılma tarihi; Giriş: yeni şantiyeye başlama tarihi
+  const [topluTransferTarih, setTopluTransferTarih] = useState(() => yerelBugun()); // çıkış tarihi
+  // Giriş tarihi otomatik hesaplanır (çıkış + 1 gün, ya da geçmişse bugün).
+  // Kullanıcı isterse manuel olarak değiştirebilir.
+  const [topluTransferGirisTarih, setTopluTransferGirisTarih] = useState(""); // boşsa otomatik
+  // Çıkış tarihi değiştiğinde giriş tarihini otomatik güncelle
+  useEffect(() => {
+    if (!topluTransferTarih) return;
+    const today = yerelBugun();
+    let yeniGiris: string;
+    if (topluTransferTarih < today) {
+      // Geçmiş tarih → bugünden işbaşı
+      yeniGiris = today;
+    } else {
+      // Bugün veya gelecek → çıkış + 1 gün
+      const [y, m, d] = topluTransferTarih.split("-").map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setDate(dt.getDate() + 1);
+      yeniGiris = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    }
+    setTopluTransferGirisTarih(yeniGiris);
+  }, [topluTransferTarih]);
   const [topluCikisOnay, setTopluCikisOnay] = useState(false);
   const [topluCikisIsleniyor, setTopluCikisIsleniyor] = useState(false);
   // Toplu çıkış tarihi — admin: serbest, diğer: bugünden 9 gün geriye
@@ -2658,6 +2679,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         return;
       }
     }
+    // Giriş tarihi girildiyse, çıkış tarihinden önce olmamalı
+    if (topluTransferGirisTarih.trim() && topluTransferGirisTarih < topluTransferTarih) {
+      toast.error("Giriş tarihi çıkış tarihinden önce olamaz.");
+      return;
+    }
 
     const hedefAd = santiyeler.find((s) => s.id === topluTransferHedef)?.is_adi;
     setTopluTransferIsleniyor(true);
@@ -2707,7 +2733,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           }
           // ŞANTİYE-BAZLI transfer: sadece kaynak şantiyedeki atamayı kapat
           const onceSantiyeAd = santiyeler.find((s) => s.id === kaynakSantiyeId)?.is_adi;
-          const r = await transferEt(personel.id, topluTransferHedef, topluTransferTarih, kaynakSantiyeId);
+          // Manuel giriş tarihi varsa onu kullan, yoksa otomatik (cikis+1)
+          const manuelGiris = topluTransferGirisTarih.trim() || undefined;
+          const r = await transferEt(personel.id, topluTransferHedef, topluTransferTarih, kaynakSantiyeId, manuelGiris);
           await kuyrugaEkle({
             tip: "transfer", personel,
             santiyeAd: hedefAd, onceSantiyeAd,
@@ -2738,6 +2766,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setSelectedKeys(new Set());
       setTopluTransferAcik(false);
       setTopluTransferHedef("");
+      setTopluTransferGirisTarih("");
       await loadData();
     } finally {
       setTopluTransferIsleniyor(false);
@@ -4796,28 +4825,48 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 })()}
               </select>
             </div>
-            <div>
-              <Label className="text-xs">Transfer Tarihi <span className="text-red-500">*</span></Label>
-              {(() => {
-                const today = new Date();
-                const min = new Date(); min.setDate(min.getDate() - 9);
-                const fmtIso = (d: Date) => tarihStr(d);
-                return (
-                  <Input
-                    type="date"
-                    value={topluTransferTarih}
-                    min={isYonetici ? undefined : fmtIso(min)}
-                    max={isYonetici ? undefined : fmtIso(today)}
-                    onChange={(e) => setTopluTransferTarih(e.target.value)}
-                  />
-                );
-              })()}
-              <p className="text-[10px] text-gray-500 mt-0.5">
-                {isYonetici
-                  ? "🔓 Admin: istediğiniz tarihi girebilirsiniz."
-                  : "Bugünden en fazla 9 gün geriye tarih girebilirsiniz."}
-              </p>
+            {/* Çıkış ve Giriş tarihleri ayrı — eski şantiyeden ayrılma ve
+                yeni şantiyeye başlama günleri */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs text-red-700 font-semibold">
+                  Çıkış Tarihi <span className="text-red-500">*</span>
+                </Label>
+                {(() => {
+                  const today = new Date();
+                  const min = new Date(); min.setDate(min.getDate() - 9);
+                  const fmtIso = (d: Date) => tarihStr(d);
+                  return (
+                    <Input
+                      type="date"
+                      value={topluTransferTarih}
+                      min={isYonetici ? undefined : fmtIso(min)}
+                      max={isYonetici ? undefined : fmtIso(today)}
+                      onChange={(e) => setTopluTransferTarih(e.target.value)}
+                    />
+                  );
+                })()}
+                <p className="text-[10px] text-gray-500 mt-0.5">Eski şantiyeden ayrılma günü</p>
+              </div>
+              <div>
+                <Label className="text-xs text-emerald-700 font-semibold">
+                  Giriş Tarihi
+                </Label>
+                <Input
+                  type="date"
+                  value={topluTransferGirisTarih}
+                  onChange={(e) => setTopluTransferGirisTarih(e.target.value)}
+                />
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Otomatik (çıkış + 1 gün) — değiştirilebilir
+                </p>
+              </div>
             </div>
+            <p className="text-[10px] text-gray-500">
+              {isYonetici
+                ? "🔓 Admin: istediğiniz tarihi girebilirsiniz."
+                : "Bugünden en fazla 9 gün geriye tarih girebilirsiniz."}
+            </p>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <Button variant="outline" size="sm" onClick={() => setTopluTransferAcik(false)}>İptal</Button>
               <Button
@@ -5121,13 +5170,28 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                 {c.personelMeslek && <span> · {c.personelMeslek}</span>}
                                 <br />
                                 {c.tip === "transfer" ? (
-                                  <span><span className="text-red-600">{c.onceSantiyeAd ?? "—"}</span> <ArrowRight size={10} className="inline" /> <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span></span>
+                                  <>
+                                    <span>
+                                      <span className="text-red-700 font-semibold">{c.onceSantiyeAd ?? "—"}</span>
+                                      {" "}<ArrowRight size={10} className="inline" />{" "}
+                                      <span className="text-emerald-700 font-semibold">{c.santiyeAd ?? "—"}</span>
+                                    </span>
+                                    <br />
+                                    <span className="text-red-700 font-semibold">çıkış: {c.cikisTarih ?? c.tarih}</span>
+                                    <span className="text-gray-400"> · </span>
+                                    <span className="text-emerald-700 font-semibold">giriş: {c.tarih}</span>
+                                  </>
                                 ) : c.tip === "giris" ? (
-                                  <span className="text-emerald-700">{c.santiyeAd ?? "—"}</span>
+                                  <>
+                                    <span className="text-emerald-700 font-semibold">{c.santiyeAd ?? "—"}</span>
+                                    <span className="ml-1 text-emerald-700 font-semibold">(giriş: {c.tarih})</span>
+                                  </>
                                 ) : (
-                                  <span className="text-red-600">son: {c.onceSantiyeAd ?? "—"}</span>
+                                  <>
+                                    <span className="text-red-700 font-semibold">{c.onceSantiyeAd ?? "—"}</span>
+                                    <span className="ml-1 text-red-700 font-semibold">(çıkış: {c.tarih})</span>
+                                  </>
                                 )}
-                                <span className="ml-1 text-gray-400">({c.tarih})</span>
                               </div>
                             </div>
                             <button

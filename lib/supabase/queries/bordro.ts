@@ -176,6 +176,9 @@ export async function transferEt(
   yeniSantiyeId: string,
   tarih?: string,
   eskiSantiyeId?: string,
+  // Manuel giriş tarihi (opsiyonel). Verilmezse otomatik hesaplanır
+  // (cikis < bugün → bugün, aksi halde cikis + 1 gün).
+  manuelGirisTarih?: string,
 ): Promise<{ cikis: string; giris: string }> {
   const supabase = getSupabase();
   const cikisTarih = tarih ?? bugun();
@@ -183,7 +186,9 @@ export async function transferEt(
 
   // Yeni şantiyeye giriş tarihini hesapla
   let girisTarih: string;
-  if (cikisTarih < today) {
+  if (manuelGirisTarih) {
+    girisTarih = manuelGirisTarih;
+  } else if (cikisTarih < today) {
     // Geçmiş tarihe transfer → bugünden işbaşı
     girisTarih = today;
   } else {
