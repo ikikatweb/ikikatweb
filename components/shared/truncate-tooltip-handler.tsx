@@ -16,9 +16,25 @@ export default function TruncateTooltipHandler() {
     // Mobil/Desktop tespiti
     const mobil = () => window.innerWidth < 768;
 
-    // Hangi elementlerde title gösterilir? Truncate edilmiş olanlar.
+    // Element TABLO içinde mi? Filtre/dropdown/buton vb. yerlerdeki truncate'leri
+    // ETKİLEMEMEK için sadece <table> içindeki elemanlara uygulanır.
+    const tabloIcindeMi = (el: Element): boolean => {
+      let n: Element | null = el;
+      while (n) {
+        const tag = n.tagName?.toLowerCase();
+        if (tag === "table") return true;
+        // Filtre dropdown'ları, butonlar, form alanları, dialog gibi yerleri hariç tut
+        if (tag === "button" || tag === "select" || tag === "input" || tag === "textarea") return false;
+        if (n instanceof HTMLElement && n.getAttribute("role") === "dialog") return false;
+        n = n.parentElement;
+      }
+      return false;
+    };
+
+    // Hangi elementlerde title gösterilir? Truncate edilmiş VE tablo içinde olanlar.
     const truncateEdildiMi = (el: Element): boolean => {
       if (!(el instanceof HTMLElement)) return false;
+      if (!tabloIcindeMi(el)) return false;
       // Tailwind truncate class'ı VEYA inline style overflow:hidden + text-overflow:ellipsis
       const cls = el.className;
       if (typeof cls === "string" && cls.includes("truncate")) return true;
