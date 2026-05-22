@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import Sidebar from "@/components/shared/sidebar";
 import Topbar from "@/components/shared/topbar";
 import PullToRefresh from "@/components/shared/pull-to-refresh";
+import TruncateTooltipHandler from "@/components/shared/truncate-tooltip-handler";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export default function DashboardLayout({
@@ -49,6 +50,8 @@ export default function DashboardLayout({
 
   return (
     <AuthProvider>
+      {/* Mobil tap tooltip + masaüstü tooltip suppressor — global olarak çalışır */}
+      <TruncateTooltipHandler />
       <div
         className="flex overflow-hidden bg-[#FAFAFA]"
         style={{
