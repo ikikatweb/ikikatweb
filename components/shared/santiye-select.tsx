@@ -139,13 +139,16 @@ export default function SantiyeSelect({
       )}
       {acik && (
         <div
-          className="absolute z-30 left-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
+          className="absolute left-0 mt-1 bg-white border rounded-lg shadow-lg max-h-72 overflow-y-auto"
           style={{
             top: "100%",
             // Trigger ile aynı genişlikte; sağda "Diğer" butonu varsa onu da kapsa
             width: digerleri.length > 0 ? "calc(100% - 0px)" : "100%",
             right: digerleri.length > 0 ? "auto" : 0,
             minWidth: 180,
+            // Tablo sticky header'ları z-50/z-60 kullandığı için dropdown z-100
+            // ile üstte kalır (sayfa üstündeki notification/toast'lardan düşük).
+            zIndex: 100,
           }}
         >
           {/* Arama kutusu */}
