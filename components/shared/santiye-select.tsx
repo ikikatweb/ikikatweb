@@ -115,7 +115,7 @@ export default function SantiyeSelect({
   const triggerClass = (className || "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50") + " min-w-0";
 
   return (
-    <div ref={wrapperRef} className="flex items-center gap-1 min-w-0 relative">
+    <div ref={wrapperRef} className="flex items-center gap-1 min-w-0 relative w-full">
       <button
         type="button"
         onClick={() => setAcik((p) => !p)}
