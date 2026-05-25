@@ -59,6 +59,21 @@ export default function AraclarPage() {
     return `${deger.toLocaleString("tr-TR")} ₺`;
   }
 
+  // Input içindeki sayıyı binlik ayraçlı göster: "500000" → "500.000"
+  function formatBedelInput(raw: string): string {
+    const sadeceSayi = raw.replace(/[^\d]/g, "");
+    if (!sadeceSayi) return "";
+    return parseInt(sadeceSayi, 10).toLocaleString("tr-TR");
+  }
+
+  // Tarih formatı: ISO timestamp → DD.MM.YYYY
+  function formatTarihKisa(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const dt = new Date(iso);
+    if (isNaN(dt.getTime())) return "";
+    return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
+  }
+
   // Araç bedeli kaydet
   async function bedelKaydet(aracId: string, raw: string) {
     if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
@@ -68,10 +83,20 @@ export default function AraclarPage() {
       toast.error("Geçersiz bedel.");
       return;
     }
+    // Mevcut değerle aynıysa kayıt yapma — gereksiz updated_at güncellemesini önle
+    const mevcut = araclar.find((a) => a.id === aracId)?.arac_degeri ?? null;
+    if (sayisal === mevcut) {
+      setEditBedelId(null);
+      setEditBedelValue("");
+      return;
+    }
+    const simdiIso = new Date().toISOString();
     try {
       const { updateArac } = await import("@/lib/supabase/queries/araclar");
-      await updateArac(aracId, { arac_degeri: sayisal });
-      setAraclar((p) => p.map((a) => (a.id === aracId ? { ...a, arac_degeri: sayisal } : a)));
+      await updateArac(aracId, { arac_degeri: sayisal, arac_degeri_updated_at: simdiIso });
+      setAraclar((p) => p.map((a) => (
+        a.id === aracId ? { ...a, arac_degeri: sayisal, arac_degeri_updated_at: simdiIso } : a
+      )));
       setEditBedelId(null);
       setEditBedelValue("");
       toast.success("Araç bedeli güncellendi.");
@@ -392,7 +417,10 @@ export default function AraclarPage() {
                     onClick={() => {
                       if (!yDuzenle || editBedelId === arac.id) return;
                       setEditBedelId(arac.id);
-                      setEditBedelValue(arac.arac_degeri != null ? String(arac.arac_degeri) : "");
+                      // Edit moduna girerken mevcut değeri binlik ayraçlı göster
+                      setEditBedelValue(
+                        arac.arac_degeri != null ? arac.arac_degeri.toLocaleString("tr-TR") : "",
+                      );
                     }}
                     title={yDuzenle ? "Tıklayarak düzenle" : undefined}
                   >
@@ -402,21 +430,28 @@ export default function AraclarPage() {
                         inputMode="numeric"
                         autoFocus
                         value={editBedelValue}
-                        onChange={(e) => setEditBedelValue(e.target.value)}
+                        onChange={(e) => setEditBedelValue(formatBedelInput(e.target.value))}
                         onBlur={() => bedelKaydet(arac.id, editBedelValue)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") bedelKaydet(arac.id, editBedelValue);
                           if (e.key === "Escape") { setEditBedelId(null); setEditBedelValue(""); }
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-28 h-7 text-right text-xs px-2 rounded border border-blue-300 outline-none focus:border-blue-500"
+                        className="w-32 h-7 text-right text-xs px-2 rounded border border-blue-300 outline-none focus:border-blue-500"
                         placeholder="0"
                         style={{ fontSize: "16px" }}
                       />
                     ) : (
-                      <span className={arac.arac_degeri ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
-                        {formatBedel(arac.arac_degeri)}
-                      </span>
+                      <div className="flex flex-col items-end leading-tight">
+                        <span className={arac.arac_degeri ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
+                          {formatBedel(arac.arac_degeri)}
+                        </span>
+                        {arac.arac_degeri_updated_at && (
+                          <span className="text-[9px] text-gray-400 mt-0.5">
+                            {formatTarihKisa(arac.arac_degeri_updated_at)}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>

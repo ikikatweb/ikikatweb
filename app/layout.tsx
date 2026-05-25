@@ -1,6 +1,7 @@
 // Root layout - Inter font, Toaster, global meta bilgileri
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import ToasterX from "@/components/shared/toaster-x";
 import TruncateTooltip from "@/components/shared/truncate-tooltip";
 import "./globals.css";
@@ -40,17 +41,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr" className={`${inter.variable} h-full antialiased`}>
-      <head>
-        {/* Yazı boyutu tercihi: sayfa açılır açılmaz uygulansın (flicker olmasın).
-             FontSizeAyari komponenti localStorage'a "site-font-zoom" anahtarıyla yazıyor. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var z=localStorage.getItem("site-font-zoom");if(z){var p=parseInt(z,10);if(p>=50&&p<=200){document.documentElement.style.fontSize=(p/100*16)+"px";}}}catch(e){}`,
-          }}
-        />
-      </head>
+    <html lang="tr" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full flex flex-col font-sans">
+        {/* Yazı boyutu tercihi: sayfa açılır açılmaz uygulansın (flicker olmasın).
+             FontSizeAyari komponenti localStorage'a "site-font-zoom" anahtarıyla yazıyor.
+             next/script ile beforeInteractive: SSR yerine HTML'e gömülür, hidrasyondan
+             ÖNCE çalışır — React'in script tag uyarısını da tetiklemez. */}
+        <Script id="font-zoom-init" strategy="beforeInteractive">
+          {`try{var z=localStorage.getItem("site-font-zoom");if(z){var p=parseInt(z,10);if(p>=50&&p<=200){document.documentElement.style.fontSize=(p/100*16)+"px";}}}catch(e){}`}
+        </Script>
         {children}
         <ToasterX />
         <TruncateTooltip />

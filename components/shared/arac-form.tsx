@@ -69,6 +69,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
     cinsi: arac?.cinsi ?? "",
     yili: arac?.yili ?? null,
     arac_degeri: arac?.arac_degeri ?? null,
+    arac_degeri_updated_at: arac?.arac_degeri_updated_at ?? null,
     sayac_tipi: arac?.sayac_tipi ?? "km",
     guncel_gosterge: arac?.guncel_gosterge ?? null,
     santiye_id: arac?.santiye_id ?? null,

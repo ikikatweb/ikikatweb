@@ -194,6 +194,8 @@ export type Arac = {
   cinsi: string | null;
   yili: number | null;
   arac_degeri: number | null;
+  // Araç bedelinin son güncellenme tarihi (manuel bedel düzenleme zamanı)
+  arac_degeri_updated_at: string | null;
   sayac_tipi: "km" | "saat" | null;
   guncel_gosterge: number | null;
   santiye_id: string | null;
