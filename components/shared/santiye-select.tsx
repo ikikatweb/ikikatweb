@@ -37,7 +37,16 @@ export default function SantiyeSelect({
   const [acik, setAcik] = useState(false);
   const [arama, setArama] = useState("");
   const [digerAcik, setDigerAcik] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Mobil tespiti — uzun şantiye adlarını trigger'da kısaltmak için
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Açılır panel dışına tıklayınca kapat
   useEffect(() => {
@@ -119,10 +128,16 @@ export default function SantiyeSelect({
       <button
         type="button"
         onClick={() => setAcik((p) => !p)}
-        className={triggerClass + " flex items-center justify-between gap-1 truncate text-left w-full cursor-pointer"}
+        className={triggerClass + " flex-1 min-w-0 flex items-center justify-between gap-1 text-left cursor-pointer"}
       >
-        <span className={`truncate flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
-          {gosterilenMetin || (showAll ? "Tümü" : placeholder)}
+        {/* Mobilde uzun isimleri 22 karakterde kes (CSS truncate ile birlikte
+            JS truncation güvenlik kemeri — kaydet butonu kaybolmasın diye) */}
+        <span className={`truncate min-w-0 flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
+          {(() => {
+            const ham = gosterilenMetin || (showAll ? "Tümü" : placeholder);
+            if (isMobile && ham.length > 22) return ham.slice(0, 22) + "...";
+            return ham;
+          })()}
         </span>
         <span className="flex-shrink-0 text-gray-400 text-xs">▼</span>
       </button>
