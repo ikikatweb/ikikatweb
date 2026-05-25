@@ -48,7 +48,37 @@ export default function AraclarPage() {
   const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
   // Aracın son güncellenen km/saat değerinin tarihi (en son yakıt kaydı tarihi)
   const [sonGostergeTarihi, setSonGostergeTarihi] = useState<Map<string, string>>(new Map());
+  // Araç bedeli inline düzenleme — açık olan satır id'si tutulur
+  const [editBedelId, setEditBedelId] = useState<string | null>(null);
+  const [editBedelValue, setEditBedelValue] = useState<string>("");
   const router = useRouter();
+
+  // Para formatla (1.500.000 TL şeklinde, ondalıksız) — null/0 ise "—"
+  function formatBedel(deger: number | null | undefined): string {
+    if (deger == null || deger === 0) return "—";
+    return `${deger.toLocaleString("tr-TR")} ₺`;
+  }
+
+  // Araç bedeli kaydet
+  async function bedelKaydet(aracId: string, raw: string) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
+    const temizlenmis = raw.replace(/[^\d]/g, "");
+    const sayisal = temizlenmis === "" ? null : parseInt(temizlenmis, 10);
+    if (sayisal !== null && (isNaN(sayisal) || sayisal < 0)) {
+      toast.error("Geçersiz bedel.");
+      return;
+    }
+    try {
+      const { updateArac } = await import("@/lib/supabase/queries/araclar");
+      await updateArac(aracId, { arac_degeri: sayisal });
+      setAraclar((p) => p.map((a) => (a.id === aracId ? { ...a, arac_degeri: sayisal } : a)));
+      setEditBedelId(null);
+      setEditBedelValue("");
+      toast.success("Araç bedeli güncellendi.");
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   function handleSort(key: string) {
     setSortList((prev) => {
@@ -190,6 +220,7 @@ export default function AraclarPage() {
             cmp = sa - sb; break;
           }
           case "yili": cmp = (a.yili ?? 0) - (b.yili ?? 0); break;
+          case "arac_degeri": cmp = (a.arac_degeri ?? 0) - (b.arac_degeri ?? 0); break;
           case "santiye": cmp = (sonYakitSantiye.get(a.id) ?? "zzz").localeCompare(sonYakitSantiye.get(b.id) ?? "zzz", "tr"); break;
           case "durum": cmp = (a.durum ?? "").localeCompare(b.durum ?? ""); break;
           case "mulkiyet": cmp = (a.tip ?? "").localeCompare(b.tip ?? ""); break;
@@ -314,6 +345,7 @@ export default function AraclarPage() {
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
+                <TableHead className="hidden md:table-cell text-right cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("arac_degeri")}>Araç Bedeli{sortIcon("arac_degeri")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead>Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
@@ -354,6 +386,39 @@ export default function AraclarPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{arac.cinsi ?? "—"}</TableCell>
                   <TableCell>{arac.yili ?? "—"}</TableCell>
+                  {/* Araç Bedeli — inline editable. Tıklanınca input açılır. */}
+                  <TableCell
+                    className={`hidden md:table-cell text-right tabular-nums whitespace-nowrap ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
+                    onClick={() => {
+                      if (!yDuzenle || editBedelId === arac.id) return;
+                      setEditBedelId(arac.id);
+                      setEditBedelValue(arac.arac_degeri != null ? String(arac.arac_degeri) : "");
+                    }}
+                    title={yDuzenle ? "Tıklayarak düzenle" : undefined}
+                  >
+                    {editBedelId === arac.id ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus
+                        value={editBedelValue}
+                        onChange={(e) => setEditBedelValue(e.target.value)}
+                        onBlur={() => bedelKaydet(arac.id, editBedelValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") bedelKaydet(arac.id, editBedelValue);
+                          if (e.key === "Escape") { setEditBedelId(null); setEditBedelValue(""); }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-28 h-7 text-right text-xs px-2 rounded border border-blue-300 outline-none focus:border-blue-500"
+                        placeholder="0"
+                        style={{ fontSize: "16px" }}
+                      />
+                    ) : (
+                      <span className={arac.arac_degeri ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
+                        {formatBedel(arac.arac_degeri)}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[120px] truncate" title={sonYakitSantiye.get(arac.id) ?? ""}>{sonYakitSantiye.get(arac.id) || "—"}</TableCell>
                   <TableCell className="tabular-nums">
                     {arac.guncel_gosterge != null ? (

@@ -193,6 +193,7 @@ export type Arac = {
   model: string | null;
   cinsi: string | null;
   yili: number | null;
+  arac_degeri: number | null;
   sayac_tipi: "km" | "saat" | null;
   guncel_gosterge: number | null;
   santiye_id: string | null;
