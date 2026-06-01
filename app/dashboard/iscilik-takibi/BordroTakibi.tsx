@@ -1227,6 +1227,42 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return map;
   }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap, tipFiltre]);
 
+  // Arama aktifken görünen tüm (personel × şantiye) hücrelerinin toplam
+  // gün ve tutarını hesaplar. Sayfanın altında "Genel Toplam" şeklinde gösterilir.
+  const aramaGenelToplam = useMemo(() => {
+    if (!arama.trim()) return null;
+    const yil = parseInt(seciliAy.split("-")[0], 10);
+    const defaultUcret = gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+    let toplamGun = 0;
+    let toplamTutar = 0;
+    let kisiSayisi = 0;
+    const goruldu = new Set<string>();
+    for (const p of filtreli) {
+      const personelBrut = brutUcretForAy(brutUcretGecmisi, p.id, seciliAy);
+      const kullanilanUcret = personelBrut > 0 ? personelBrut : defaultUcret;
+      let personelGorundu = false;
+      for (const s of filtreliSantiyeler) {
+        const inKanban = (kanbanMap.get(s.id) ?? []).some((px) => px.id === p.id);
+        if (!inKanban) continue;
+        personelGorundu = true;
+        const ozelGun = gunMap.get(p.id)?.get(s.id) ?? 0;
+        const manuelEntry = manuelGunler.find(
+          (m) => m.personel_id === p.id && m.santiye_id === s.id && m.ay === seciliAy,
+        );
+        const hasManuel = !!manuelEntry;
+        const naturalGun = naturalGunMap.get(p.id)?.get(s.id) ?? 0;
+        const tutarGun = hasManuel ? ozelGun : naturalGun;
+        toplamGun += tutarGun;
+        toplamTutar += tutarGun * kullanilanUcret;
+      }
+      if (personelGorundu && !goruldu.has(p.id)) {
+        goruldu.add(p.id);
+        kisiSayisi++;
+      }
+    }
+    return { toplamGun, toplamTutar, kisiSayisi };
+  }, [arama, filtreli, filtreliSantiyeler, kanbanMap, gunMap, naturalGunMap, manuelGunler, brutUcretGecmisi, gunlukUcretler, seciliAy]);
+
   // santiye_id'den firma_id bul (yoksa undefined)
   function firmaIdFromSantiyeId(santiyeId: string | undefined | null): string | undefined {
     if (!santiyeId) return undefined;
@@ -3777,6 +3813,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold">
                   {ozelGun}
                 </span>
+              ) : naturalGun > 0 ? (
+                // Manuel gün girilmemiş — atama tarihlerinden hesaplanmış doğal
+                // günü gri/silik şekilde sadece görme amaçlı göster.
+                <span
+                  className="text-gray-300 italic text-[10px]"
+                  title={`${naturalGun} gün (atama tarihlerinden hesaplanmış — manuel değil)`}
+                >
+                  {naturalGun}
+                </span>
               ) : <span className="text-gray-300">—</span>}
             </td>
             {tutarGoster && (
@@ -4197,6 +4242,40 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         {/* Atanmamış ve İşten Çıkarılanlar listeleri kullanıcı isteği üzerine kaldırıldı.
             Personeller hala kanban'a eklenirken sınıflandırılır (kanbanMap üzerinde),
             sadece UI'da gösterilmiyor. */}
+
+        {/* Genel Toplam — arama aktifken sayfanın altında, filtrelenen tüm
+            personel × şantiye hücrelerinin toplam gün ve tutarı */}
+        {aramaGenelToplam && (
+          <div className="mt-4 rounded-lg shadow-md ring-1 ring-gray-200 overflow-hidden">
+            <div
+              className="px-4 py-3 text-white flex items-center justify-between flex-wrap gap-2"
+              style={{ background: "linear-gradient(135deg, #1E3A5F 0%, #2a4f7a 100%)" }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold">GENEL TOPLAM</span>
+                <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">
+                  Arama: &quot;{arama}&quot;
+                </span>
+                <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">
+                  {aramaGenelToplam.kisiSayisi} kişi
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <span>
+                  <span className="text-[11px] text-white/70 mr-1">Toplam Gün:</span>
+                  <strong className="text-base">{aramaGenelToplam.toplamGun}</strong>
+                </span>
+                <span className="h-4 w-px bg-white/30" />
+                <span>
+                  <span className="text-[11px] text-white/70 mr-1">Toplam Tutar:</span>
+                  <strong className="text-base">
+                    {aramaGenelToplam.toplamTutar.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                  </strong>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Ekle Dialog */}
