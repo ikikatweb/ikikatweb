@@ -358,11 +358,26 @@ export default function PersonelPuantajPage() {
     const q = trAramaNormalize(puantajArama);
     return personeller
       .filter((p) => {
-        // 1) Şu an bu şantiyeye atanmış → göster
-        if (personelSantiyeMap.get(p.id)?.has(santiyeId)) return true;
-        // 2) Atamadan çıkarılmış olsa bile bu ay/şantiyede puantaj kaydı varsa göster
-        //    (geçmiş aylara bakıldığında görünür kalsın diye)
+        // 1) Bu personelin SEÇİLİ ŞANTİYE'de SEÇİLİ AY'da aktif bir ataması var mı?
+        //    (atama_gecmisi tablosundan kontrol — baslangic ≤ ayBitisi ve
+        //    (bitis NULL veya bitis ≥ ayBaslangici))
+        const buSantiyeAtamalari = atamaGecmisi.filter(
+          (a) => a.personel_id === p.id && a.santiye_id === santiyeId,
+        );
+        const ayIcindeAtamaVar = buSantiyeAtamalari.some(
+          (a) =>
+            a.baslangic_tarihi <= ayBitisi &&
+            (a.bitis_tarihi == null || a.bitis_tarihi >= ayBaslangici),
+        );
+        if (ayIcindeAtamaVar) return true;
+        // 2) Atama yoksa bile bu ay/şantiyede puantaj kaydı varsa göster
+        //    (manuel girilen veya eski kayıtlar görünür kalsın)
         if (ayinPuantajPersonelleri.has(p.id)) return true;
+        // 3) atama_gecmisi henüz yüklenmediyse (boş array) eski davranışa fallback —
+        //    yoksa veri yüklenirken liste bir an boş görünür
+        if (atamaGecmisi.length === 0) {
+          return !!personelSantiyeMap.get(p.id)?.has(santiyeId);
+        }
         return false;
       })
       .filter((p) => {

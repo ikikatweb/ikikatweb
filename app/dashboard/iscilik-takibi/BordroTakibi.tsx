@@ -2231,14 +2231,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       isTeknik: boolean;
       teknikIsimler: Set<string>;
     };
+    // Ay gün sayısı — 28/29/30/31 olabilir. Bordro her zaman 30 olarak hesaplar.
+    // Bu nedenle "ay 31 çektiği için 31 gün" durumunu uyarı listesine almıyoruz.
+    const [yilNum, ayNum] = seciliAy.split("-").map(Number);
+    const ayinGunSayisi = new Date(yilNum, ayNum, 0).getDate();
     const map = new Map<string, Acc>();
     for (const r of rows) {
       const key = r.tc || r.adSoyad;
       // BORDRO MANTIĞI: Her şantiyede tek başına 30 günü aşan değer bordroda
-      // yine 30 olarak işlenir (ay 31 çekse bile). Bu yüzden 30 günü aşan
-      // listesinin amacı (çift sigortalılık tespiti) için her satırı 30'da
-      // tavanla. Tek şantiyede 31 gün = bordro açısından 30 → ihlal değil.
-      const gunCap = Math.min(r.gun, 30);
+      // yine 30 olarak işlenir. Bu yüzden her satırı 30'da tavanla.
+      const gunCap = Math.min(r.gun ?? 0, 30);
       const mevcut = map.get(key);
       if (!mevcut) {
         map.set(key, {
@@ -2250,7 +2252,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         });
       } else {
         mevcut.toplamGun += gunCap;
-        // En erken işe başlama, en geç çıkış
         if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
           mevcut.iseBaslama = r.iseBaslama;
         }
@@ -2266,7 +2267,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
     const sonuc: OtuzAsanRow[] = [];
     for (const acc of map.values()) {
-      if (acc.toplamGun > 30) {
+      // İhlal eşiği: ayın takvim günü sayısından FAZLA olmalı.
+      // - Mayıs (31 gün): toplam 31 = ay sınırı → ihlal değil (sadece ay 31 çekti)
+      // - Mayıs (31 gün): toplam 32+ → gerçek çift sigortalılık ihlali
+      // - Şubat (28 gün): toplam 28 = ay sınırı → ihlal değil
+      // - Şubat (28 gün): toplam 29+ → çift atama vardır
+      if (acc.toplamGun > ayinGunSayisi) {
         sonuc.push({
           adSoyad: acc.adSoyad,
           tc: acc.tc,
