@@ -1017,22 +1017,46 @@ export default function PersonelPuantajPage() {
       },
     });
 
-    // Açıklamalı puantajları altta listele
-    const aciklamalilar: { ad: string; tarih: string; durum: string; aciklama: string }[] = [];
+    // Açıklamalı puantajları altta listele.
+    // SADECE belirli durumlar listelenir: Dış Görev → Yarım Gün → Gelmedi → Raporlu → Resmi Tatil
+    // (Çalıştı, İzinli, Yağmur için açıklama listede gözükmez)
+    const OZEL_DURUM_SIRA: PersonelPuantajDurum[] = [
+      "dis_gorev",   // EN BAŞTA
+      "yarim_gun",
+      "gelmedi",
+      "raporlu",
+      "resmi_tatil",
+    ];
+    const durumSiraMap = new Map(OZEL_DURUM_SIRA.map((d, i) => [d, i]));
+    const LISTELENECEK_DURUMLAR = new Set<PersonelPuantajDurum>(OZEL_DURUM_SIRA);
+    const aciklamalilar: { ad: string; tarih: string; durum: string; aciklama: string; durumKod: string; gun: number }[] = [];
     for (const p of gosterilecekPersoneller) {
       const gunMap = personelGunMap.get(p.id);
       if (!gunMap) continue;
       for (const [g, pp] of gunMap.entries()) {
+        // Sadece listelenmesi gereken durumlar
+        if (!LISTELENECEK_DURUMLAR.has(pp.durum)) continue;
         if (pp.aciklama) {
           aciklamalilar.push({
             ad: tr(p.ad_soyad),
             tarih: `${g}/${ay}/${yil}`,
             durum: tr(DURUM_MAP.get(pp.durum)?.label ?? ""),
             aciklama: tr(pp.aciklama),
+            durumKod: pp.durum,
+            gun: g,
           });
         }
       }
     }
+    // Durum sıralaması: Dış Görev → Yarım Gün → Gelmedi → İzinli → Raporlu → Yağmur → Resmi Tatil
+    // Aynı durumda gün küçükten büyüğe, sonra ad alfabetik
+    aciklamalilar.sort((a, b) => {
+      const sA = durumSiraMap.get(a.durumKod as PersonelPuantajDurum) ?? 99;
+      const sB = durumSiraMap.get(b.durumKod as PersonelPuantajDurum) ?? 99;
+      if (sA !== sB) return sA - sB;
+      if (a.gun !== b.gun) return a.gun - b.gun;
+      return a.ad.localeCompare(b.ad, "tr");
+    });
     if (aciklamalilar.length > 0) {
       const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
       doc.setFontSize(9);
