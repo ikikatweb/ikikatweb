@@ -2089,6 +2089,23 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
   }
 
+  // Bordro gün hesabı kuralı:
+  // - 31 günü aşan değer → 30'a tavanla
+  // - Şubat (28/29 gün) için TAM AY çalışıldıysa → 30'a tamamla (SGK kuralı)
+  // - Kısmi (örn: 25 gün) → olduğu gibi kal
+  function ayBordroGun(gunSayisi: number, ayStr: string): number {
+    if (gunSayisi <= 0) return 0;
+    // Önce 30'da tavanla
+    const tavanli = Math.min(gunSayisi, 30);
+    // Şubat tam ay tamamlama
+    const [yil, ay] = ayStr.split("-").map(Number);
+    if (ay === 2) {
+      const subatGunSayisi = new Date(yil, ay, 0).getDate(); // 28 veya 29
+      if (gunSayisi >= subatGunSayisi) return 30; // tam Şubat → 30 olarak hesap
+    }
+    return tavanli;
+  }
+
   // Firma-Şantiye-Personel hiyerarşisinde export verisi.
   // İşe başlama = atama.baslangic_tarihi
   // İşten çıkış = atama.bitis_tarihi veya "Halen"
@@ -2194,15 +2211,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         gorev: ilk.gorev,
         iseBaslama: ilk.iseBaslama,
         isenCikis,
-        // BORDRO KURALI: Ay 31 çekse bile gün sayısı 30'da tavanlanır.
-        // (SGK ve bordro her zaman max 30 gün hesaplar.)
-        gun: Math.min(toplamGun, 30),
+        // BORDRO KURALI:
+        // - Ay 31 çekse bile gün sayısı 30'da tavanlanır.
+        // - Şubat (28/29 gün) için, personel TAM AY çalıştıysa → 30'a tamamlanır.
+        //   (SGK Şubat'ta tam ay çalışanı 30 gün olarak hesaplar.)
+        // - Şubat'ta KISMİ çalışan (25 gün vb.) için tamamlama YAPILMAZ.
+        gun: ayBordroGun(toplamGun, seciliAy),
         not: "",
         isTeknik: ilk.isTeknik,
         teknikIsim: ilk.teknikIsim,
       });
     }
-    // Manuel gün override — manuel girilen değer de 30'da tavanlanır
+    // Manuel gün override — manuel girilen değer de aynı bordro kuralına tabi
     for (const m of manuelGunler) {
       if (m.ay !== seciliAy) continue;
       const personel = personeller.find((p) => p.id === m.personel_id);
@@ -2211,7 +2231,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const key = `${personel.tc_kimlik_no || personel.ad_soyad}:${sant.id}`;
       const idx = rows.findIndex((r) => `${r.tc || r.adSoyad}:${r.santiyeId}` === key);
       if (idx >= 0) {
-        rows[idx].gun = Math.min(m.gun, 30);
+        rows[idx].gun = ayBordroGun(m.gun, seciliAy);
       }
     }
 
@@ -2269,15 +2289,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       isTeknik: boolean;
       teknikIsimler: Set<string>;
     };
-    // Ay gün sayısı — 28/29/30/31 olabilir. Bordro her zaman 30 olarak hesaplar.
-    // Bu nedenle "ay 31 çektiği için 31 gün" durumunu uyarı listesine almıyoruz.
-    const [yilNum, ayNum] = seciliAy.split("-").map(Number);
-    const ayinGunSayisi = new Date(yilNum, ayNum, 0).getDate();
     const map = new Map<string, Acc>();
     for (const r of rows) {
       const key = r.tc || r.adSoyad;
-      // BORDRO MANTIĞI: Her şantiyede tek başına 30 günü aşan değer bordroda
-      // yine 30 olarak işlenir. Bu yüzden her satırı 30'da tavanla.
+      // BORDRO MANTIĞI: exportSantiyeBazli zaten her şantiye için gun'u 30'da
+      // tavanlamış durumda. Burada ekstra cap'e gerek yok ama emniyet için tutalım.
       const gunCap = Math.min(r.gun ?? 0, 30);
       const mevcut = map.get(key);
       if (!mevcut) {
@@ -2305,12 +2321,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
     const sonuc: OtuzAsanRow[] = [];
     for (const acc of map.values()) {
-      // İhlal eşiği: ayın takvim günü sayısından FAZLA olmalı.
-      // - Mayıs (31 gün): toplam 31 = ay sınırı → ihlal değil (sadece ay 31 çekti)
-      // - Mayıs (31 gün): toplam 32+ → gerçek çift sigortalılık ihlali
-      // - Şubat (28 gün): toplam 28 = ay sınırı → ihlal değil
-      // - Şubat (28 gün): toplam 29+ → çift atama vardır
-      if (acc.toplamGun > ayinGunSayisi) {
+      // İhlal eşiği: toplam 30 günü AŞMALI.
+      // exportSantiyeBazli her şantiyeyi tek başına 30'da tavanladığı için:
+      // - Tek şantiye 31 gün → 30 (tavanlı) → 30 > 30 false → listelenmez
+      // - 2 şantiye 15+16=31 → 31 > 30 true → LİSTELENİR (gerçek SGK ihlali)
+      // - 2 şantiye 20+15=35 → 35 > 30 true → listelenir
+      if (acc.toplamGun > 30) {
         sonuc.push({
           adSoyad: acc.adSoyad,
           tc: acc.tc,
