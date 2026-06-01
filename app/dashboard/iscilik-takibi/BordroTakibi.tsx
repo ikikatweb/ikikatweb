@@ -3770,13 +3770,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             </td>
             {tutarGoster && (
               <td
-                className={`px-2 py-1.5 text-right font-mono text-[11px] ${hasManuel ? "text-gray-900 font-semibold" : "text-gray-400"}`}
+                className={`px-2 py-1.5 text-right font-mono text-[11px] whitespace-nowrap ${hasManuel ? "text-gray-900 font-semibold" : "text-gray-400"}`}
                 title={`${tutarGun} gün × ${kullanilanUcret.toLocaleString("tr-TR")} TL ${hasManuel ? "(manuel)" : "(otomatik hesap)"}${brutKullanildi ? " · brüt ücret" : " · yıl bazlı ücret"}`}
               >
                 {tutarHesap > 0 ? (
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
                     {brutKullanildi && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold" title="Brüt ücretten">B</span>}
-                    {tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                    <span className="whitespace-nowrap">{tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
                   </span>
                 ) : "—"}
               </td>
@@ -5090,7 +5090,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
       {/* Mail Önizleme + Gönder */}
       <Dialog open={mailDialogAcik} onOpenChange={setMailDialogAcik}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-3 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye size={18} /> Mail Önizleme — {pending.length} değişiklik
@@ -5120,8 +5120,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           const firmaAd = firma?.firma_adi ?? (fId === "__fallback__" ? "(Firma atanmamış)" : "(silinmiş firma)");
                           const smtpOK = !!firma && !!firma.smtp_host && !!firma.smtp_user && !!firma.smtp_password;
                           return (
-                            <li key={fId} className={`text-[11px] flex items-center gap-2 px-2 py-1 rounded ${smtpOK ? "bg-emerald-50" : "bg-red-50 border border-red-200"}`}>
-                              <span className="font-semibold truncate min-w-0 flex-1" title={firmaAd}>
+                            <li
+                              key={fId}
+                              className={`text-[11px] flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 px-2 py-1 rounded min-w-0 ${smtpOK ? "bg-emerald-50" : "bg-red-50 border border-red-200"}`}
+                            >
+                              {/* Mobilde firma adı kendi satırında, break-words ile sarılır */}
+                              <span className="font-semibold min-w-0 sm:flex-1 break-words" title={firmaAd}>
                                 {smtpOK ? "✓" : "⚠️"} {firmaAd}
                               </span>
                               <span className="flex items-center gap-2 flex-shrink-0 whitespace-nowrap">
@@ -5165,7 +5169,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0 overflow-hidden">
                               <div className="font-semibold text-gray-800 truncate" title={c.personelAd}>{c.personelAd}</div>
-                              <div className="text-gray-500 text-[10px] break-words">
+                              <div className="text-gray-500 text-[10px] break-words [overflow-wrap:anywhere]">
                                 {c.personelTc && <span className="font-mono">{c.personelTc}</span>}
                                 {c.personelMeslek && <span> · {c.personelMeslek}</span>}
                                 <br />

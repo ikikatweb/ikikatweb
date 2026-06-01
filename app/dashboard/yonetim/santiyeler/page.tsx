@@ -725,8 +725,10 @@ export default function SantiyelerPage() {
               <div className="px-4 py-2 sticky left-0 z-10" style={{ backgroundColor: grup.firmaRenk ?? "#152d4a" }}>
                 <h2 className="text-base font-bold text-black text-center">{grup.firmaAdi}</h2>
               </div>
-              {/* Sadece tablo yatay kayar, firma başlığı sabit */}
-              <div className="overflow-x-auto">
+              {/* Sadece tablo yatay kayar, firma başlığı sabit.
+                  Scrollbar görsel olarak gizlenir (kullanıcı talebi) ama yatay
+                  kaydırma işlevi korunur — touch/swipe ile ya da shift+wheel ile çalışır. */}
+              <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <Table>
                 <TableHeader>
                   <TableRow style={{ backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) }}>
@@ -737,7 +739,7 @@ export default function SantiyelerPage() {
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
                           style={isIsAdi ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) } : undefined}
-                          className={`text-black font-semibold text-center text-[10px] px-2 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[40px]" : isIsAdi ? "min-w-[140px] max-w-[180px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : h.twoLine ? "min-w-[80px]" : "min-w-[75px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          className={`text-black font-semibold text-center text-[10px] px-1.5 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[30px] max-w-[30px]" : isIsAdi ? "min-w-[100px] max-w-[120px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : h.twoLine ? "min-w-[70px] max-w-[78px]" : "min-w-[62px] max-w-[78px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
                           <div className="flex items-center justify-center gap-0.5">
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">
@@ -748,7 +750,7 @@ export default function SantiyelerPage() {
                         </TableHead>
                       );
                     })}
-                    <TableHead className="text-black font-semibold text-center text-[10px] px-2 min-w-[50px]">İşlem</TableHead>
+                    <TableHead className="text-black font-semibold text-center text-[10px] px-1 min-w-[40px] max-w-[40px]">İşlem</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -775,24 +777,25 @@ export default function SantiyelerPage() {
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
                     {/* İş Tanımları */}
-                    <TableCell className="text-center px-2 whitespace-nowrap font-semibold">{s.is_grubu ?? "—"}</TableCell>
+                    <TableCell className="text-center px-1.5 whitespace-nowrap font-semibold">{s.is_grubu ?? "—"}</TableCell>
                     {/* Ekap Belge No */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
-                    {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim */}
+                    <TableCell className="text-center px-1.5 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
+                    {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim.
+                        max-width 120 → sayfaya sığsın diye daha agresif kırpıldı. */}
                     <TableCell
                       style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: isGrubuRengi ?? "#ffffff" }}
-                      className="px-2 font-medium max-w-[180px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                      className="px-1.5 font-medium max-w-[120px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                       title={s.is_adi}
                     >{s.is_adi}</TableCell>
                     {/* İhale Kayıt No */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">{s.ihale_kayit_no ?? "—"}</TableCell>
+                    <TableCell className="text-center px-1.5 whitespace-nowrap">{s.ihale_kayit_no ?? "—"}</TableCell>
                     {/* Sözleşme Tarihi */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">{formatTarih(s.sozlesme_tarihi)}</TableCell>
+                    <TableCell className="text-center px-1.5 whitespace-nowrap">{formatTarih(s.sozlesme_tarihi)}</TableCell>
                     {/* FF Dahil Kalan - otomatik (FF kapalıysa kalan tutar gösterilir) */}
-                    <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">{c.ffDahilKalan != null ? formatParaIle(c.ffDahilKalan, s.para_birimi) : "—"}</TableCell>
+                    <TableCell className="text-right px-1.5 tabular-nums whitespace-nowrap">{c.ffDahilKalan != null ? formatParaIle(c.ffDahilKalan, s.para_birimi) : "—"}</TableCell>
                     {/* Sözl. Fiy. Gerçekleşen - tıklanabilir (geçici kabul yapıldıysa sessizce kapalı, görsel olarak diğer sütunlar gibi) */}
                     <TableCell
-                      className={`text-right px-2 tabular-nums whitespace-nowrap ${
+                      className={`text-right px-1.5 tabular-nums whitespace-nowrap ${
                         s.gecici_kabul_tarihi ? "" : "cursor-pointer hover:bg-blue-50"
                       }`}
                       onClick={() => !isEditingThis && handleGerceklesenClick(editKey, s.sozlesme_fiyatlariyla_gerceklesen, !!s.gecici_kabul_tarihi)}>
@@ -809,7 +812,7 @@ export default function SantiyelerPage() {
                       ) : formatParaIle(s.sozlesme_fiyatlariyla_gerceklesen, s.para_birimi)}
                     </TableCell>
                     {/* Geçici Kabul */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">
+                    <TableCell className="text-center px-1.5 whitespace-nowrap">
                       {s.gecici_kabul_tarihi ? (
                         <div className="flex items-center gap-1 justify-center">
                           <span>{formatTarih(s.gecici_kabul_tarihi)}</span>
@@ -818,7 +821,7 @@ export default function SantiyelerPage() {
                       ) : "—"}
                     </TableCell>
                     {/* Kesin Kabul */}
-                    <TableCell className="text-center px-2 whitespace-nowrap">
+                    <TableCell className="text-center px-1.5 whitespace-nowrap">
                       {s.kesin_kabul_tarihi ? (
                         <div className="flex items-center gap-1 justify-center">
                           <span>{formatTarih(s.kesin_kabul_tarihi)}</span>
@@ -842,18 +845,24 @@ export default function SantiyelerPage() {
                       <Badge className={durumColor}>{durumText}</Badge>
                     </TableCell>
                     {/* Güncel İş Deneyim - tıklayınca iş grubu dağılımı gösterilir */}
-                    <TableCell className="text-right px-2 tabular-nums whitespace-nowrap">
+                    <TableCell className="text-right px-1.5 tabular-nums whitespace-nowrap">
                       {(() => {
                         const dagilim = isGrupDagilimMap.get(s.id);
-                        const varDagilim = dagilim && dagilim.length > 0 && c.sozYiUfe && guncelYiUfe;
+                        const varDagilim = dagilim && dagilim.length > 0 && c.sozYiUfe && guncelYiUfe && c.guncelDeneyim != null;
                         if (!varDagilim) return c.guncelDeneyim != null ? formatParaIle(c.guncelDeneyim, s.para_birimi) : "—";
-                        const oran = satir.ortakOrani ?? s.ortaklik_orani ?? 100;
-                        // FF kapalı veya yabancı para birimi → Yi-ÜFE oranı uygulanmaz, dağılım da TRY-bazsız
-                        const ffUygula = (s.ff_hesaplanacak ?? true) && (s.para_birimi ?? "TRY") === "TRY";
-                        const yiOran = ffUygula ? (guncelYiUfe! / c.sozYiUfe!) : 1;
+                        // ORANTI BAZLI DAĞILIM:
+                        // Toplam güncel iş deneyim (c.guncelDeneyim) zaten doğru hesaplanmış durumda.
+                        // İş grupları arasında bu toplamı, her grubun girilmiş tutarının payına
+                        // göre paylaştır. Bu sayede kullanıcı dağılımı yanlış girse bile
+                        // (sum ≠ gerçekleşen) tooltip toplam = display toplam olarak kalır.
+                        const dagilimToplam = dagilim!.reduce((a, d) => a + (d.tutar ?? 0), 0);
+                        if (dagilimToplam <= 0) {
+                          return c.guncelDeneyim != null ? formatParaIle(c.guncelDeneyim, s.para_birimi) : "—";
+                        }
+                        const guncelToplam = c.guncelDeneyim!;
                         const satirlar = dagilim!.map((d) => ({
                           grup: d.is_grubu,
-                          tutar: yiOran * d.tutar * oran / 100,
+                          tutar: guncelToplam * (d.tutar / dagilimToplam),
                         }));
                         const tooltipText = satirlar.map((r) =>
                           `${r.grup}: ${formatParaIle(r.tutar, s.para_birimi)}`
@@ -865,13 +874,13 @@ export default function SantiyelerPage() {
                             className="cursor-help border-b border-dashed border-[#1E3A5F]"
                             title={tooltipText}
                           >
-                            {c.guncelDeneyim != null ? formatParaIle(c.guncelDeneyim, s.para_birimi) : "—"}
+                            {formatParaIle(guncelToplam, s.para_birimi)}
                           </span>
                         );
                       })()}
                     </TableCell>
                     {/* Fiyat Farkı - sadece devam eden işlerde */}
-                    <TableCell className="text-center px-2 tabular-nums">{c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—"}</TableCell>
+                    <TableCell className="text-center px-1.5 tabular-nums">{c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—"}</TableCell>
                     {/* İşlem - sadece düzenle */}
                     <TableCell className="text-center px-2">
                       {yDuzenle && (
