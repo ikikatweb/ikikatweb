@@ -2194,13 +2194,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         gorev: ilk.gorev,
         iseBaslama: ilk.iseBaslama,
         isenCikis,
-        gun: toplamGun,
+        // BORDRO KURALI: Ay 31 çekse bile gün sayısı 30'da tavanlanır.
+        // (SGK ve bordro her zaman max 30 gün hesaplar.)
+        gun: Math.min(toplamGun, 30),
         not: "",
         isTeknik: ilk.isTeknik,
         teknikIsim: ilk.teknikIsim,
       });
     }
-    // Manuel gün override
+    // Manuel gün override — manuel girilen değer de 30'da tavanlanır
     for (const m of manuelGunler) {
       if (m.ay !== seciliAy) continue;
       const personel = personeller.find((p) => p.id === m.personel_id);
@@ -2209,7 +2211,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const key = `${personel.tc_kimlik_no || personel.ad_soyad}:${sant.id}`;
       const idx = rows.findIndex((r) => `${r.tc || r.adSoyad}:${r.santiyeId}` === key);
       if (idx >= 0) {
-        rows[idx].gun = m.gun;
+        rows[idx].gun = Math.min(m.gun, 30);
       }
     }
 
