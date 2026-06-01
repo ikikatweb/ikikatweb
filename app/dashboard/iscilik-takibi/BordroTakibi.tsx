@@ -2285,53 +2285,132 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     isTeknik?: boolean;
     teknikIsim?: string | null;
   };
-  function otuzGununAsanlar(): OtuzAsanRow[] {
-    const rows = exportSantiyeBazli();
-    // Personel bazında topla (TC + ad birleşimi key)
-    type Acc = {
+
+  // SGK ihlali tespiti için tüm şantiyeleri (aktif + geçici kabulü yapılmış)
+  // kapsayan personel-bazlı gün toplamı. Sigorta günleri proje statüsünden
+  // bağımsızdır; geçici kabulü yapılmış işteki bir personelin günleri de SGK'da sayılır.
+  function personelGunToplamTumSantiyeler(): {
+    [tc: string]: {
       adSoyad: string; tc: string; gorev: string;
       iseBaslama: string; isenCikis: string;
-      toplamGun: number; notlar: string[];
-      isTeknik: boolean;
-      teknikIsimler: Set<string>;
+      toplamGun: number; beklenenToplam: number;
+      isTeknik: boolean; teknikIsim: string | null;
+      personelId: string;
     };
-    const map = new Map<string, Acc>();
-    for (const r of rows) {
-      const key = r.tc || r.adSoyad;
-      // BORDRO MANTIĞI: exportSantiyeBazli zaten her şantiye için gun'u 30'da
-      // tavanlamış durumda. Burada ekstra cap'e gerek yok ama emniyet için tutalım.
-      const gunCap = Math.min(r.gun ?? 0, 30);
-      const mevcut = map.get(key);
-      if (!mevcut) {
-        map.set(key, {
-          adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
-          iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
-          toplamGun: gunCap, notlar: r.not ? [r.not] : [],
-          isTeknik: !!r.isTeknik,
-          teknikIsimler: new Set(r.teknikIsim ? [r.teknikIsim] : []),
+  } {
+    const sonuc: ReturnType<typeof personelGunToplamTumSantiyeler> = {};
+    const [yil, ay] = seciliAy.split("-").map(Number);
+    const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
+    const sonGun = new Date(yil, ay, 0).getDate();
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+    const today = yerelBugun();
+    const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
+    const gFark = (a: string, b: string) => {
+      const ta = new Date(a + "T00:00:00").getTime();
+      const tb = new Date(b + "T00:00:00").getTime();
+      return Math.max(0, Math.round((tb - ta) / 86400000) + 1);
+    };
+    // Personel × şantiye bazlı: doğal gün (atama), manuel gün
+    type PSAcc = {
+      personel_id: string; santiye_id: string;
+      naturalGun: number; manuelGun: number | null;
+      iseBaslama: string; isenCikis: string;
+    };
+    const psMap = new Map<string, PSAcc>();
+    // 1) Atama tarihlerinden doğal gün
+    for (const a of atamalar) {
+      const bitisHam = a.bitis_tarihi ?? aktifSanalBitis;
+      if (a.baslangic_tarihi > ayBit) continue;
+      if (bitisHam < ayBas) continue;
+      const clampBas = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;
+      const clampBit = bitisHam < ayBit ? bitisHam : ayBit;
+      const gun = gFark(clampBas, clampBit);
+      const key = `${a.personel_id}|${a.santiye_id}`;
+      const ex = psMap.get(key);
+      if (!ex) {
+        psMap.set(key, {
+          personel_id: a.personel_id, santiye_id: a.santiye_id,
+          naturalGun: gun, manuelGun: null,
+          iseBaslama: a.baslangic_tarihi,
+          isenCikis: a.bitis_tarihi ? a.bitis_tarihi : "Halen",
         });
       } else {
-        mevcut.toplamGun += gunCap;
-        if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
-          mevcut.iseBaslama = r.iseBaslama;
+        ex.naturalGun += gun;
+        if (a.baslangic_tarihi < ex.iseBaslama) ex.iseBaslama = a.baslangic_tarihi;
+        if (a.bitis_tarihi == null) ex.isenCikis = "Halen";
+        else if (ex.isenCikis !== "Halen" && a.bitis_tarihi > ex.isenCikis) {
+          ex.isenCikis = a.bitis_tarihi;
         }
-        if (r.isenCikis === "Halen" || mevcut.isenCikis === "Halen") {
-          mevcut.isenCikis = "Halen";
-        } else if (r.isenCikis > mevcut.isenCikis) {
-          mevcut.isenCikis = r.isenCikis;
-        }
-        if (r.not) mevcut.notlar.push(r.not);
-        if (r.isTeknik) mevcut.isTeknik = true;
-        if (r.teknikIsim) mevcut.teknikIsimler.add(r.teknikIsim);
       }
     }
+    // 2) Manuel gün override
+    for (const m of manuelGunler) {
+      if (m.ay !== seciliAy) continue;
+      const key = `${m.personel_id}|${m.santiye_id}`;
+      const ex = psMap.get(key);
+      if (ex) {
+        ex.manuelGun = m.gun;
+      } else {
+        psMap.set(key, {
+          personel_id: m.personel_id, santiye_id: m.santiye_id,
+          naturalGun: 0, manuelGun: m.gun,
+          iseBaslama: "",
+          isenCikis: "Halen",
+        });
+      }
+    }
+    // 3) Personel bazında topla
+    for (const ps of psMap.values()) {
+      const personel = personeller.find((p) => p.id === ps.personel_id);
+      if (!personel) continue;
+      const tc = personel.tc_kimlik_no || personel.ad_soyad;
+      const actual = ps.manuelGun != null ? ps.manuelGun : ps.naturalGun;
+      const actualCap = Math.min(actual, 30);
+      const naturalCap = Math.min(ps.naturalGun, 30);
+      const sant = santiyeler.find((s) => s.id === ps.santiye_id);
+      const teknikIsim = teknikIsimMap.get(`${ps.personel_id}|${ps.santiye_id}`) ?? null;
+      const isTeknik = !!teknikIsim;
+      // Teknik filtre açıkken: personelin BU şantiyede teknik olmadığı satırlar atlanır
+      if (tipFiltre === "teknik" && !isTeknik) continue;
+      if (!sonuc[tc]) {
+        sonuc[tc] = {
+          adSoyad: personel.ad_soyad,
+          tc: personel.tc_kimlik_no ?? "",
+          gorev: personel.meslek ?? "",
+          iseBaslama: ps.iseBaslama
+            ? new Date(ps.iseBaslama + "T00:00:00").toLocaleDateString("tr-TR")
+            : "",
+          isenCikis: ps.isenCikis === "Halen"
+            ? "Halen"
+            : new Date(ps.isenCikis + "T00:00:00").toLocaleDateString("tr-TR"),
+          toplamGun: actualCap,
+          beklenenToplam: naturalCap,
+          isTeknik,
+          teknikIsim,
+          personelId: ps.personel_id,
+        };
+      } else {
+        sonuc[tc].toplamGun += actualCap;
+        sonuc[tc].beklenenToplam += naturalCap;
+        if (isTeknik) sonuc[tc].isTeknik = true;
+        if (teknikIsim && !sonuc[tc].teknikIsim) sonuc[tc].teknikIsim = teknikIsim;
+        if (ps.iseBaslama && (!sonuc[tc].iseBaslama || ps.iseBaslama < sonuc[tc].iseBaslama)) {
+          sonuc[tc].iseBaslama = new Date(ps.iseBaslama + "T00:00:00").toLocaleDateString("tr-TR");
+        }
+        if (ps.isenCikis === "Halen" || sonuc[tc].isenCikis === "Halen") {
+          sonuc[tc].isenCikis = "Halen";
+        }
+      }
+      void sant;
+    }
+    return sonuc;
+  }
+  function otuzGununAsanlar(): OtuzAsanRow[] {
+    // TÜM ŞANTİYELERİ (aktif + geçici kabulü yapılmış) hesaba katarak
+    // çift sigortalılık ihlali tespit et.
+    const tum = personelGunToplamTumSantiyeler();
     const sonuc: OtuzAsanRow[] = [];
-    for (const acc of map.values()) {
-      // İhlal eşiği: toplam 30 günü AŞMALI.
-      // exportSantiyeBazli her şantiyeyi tek başına 30'da tavanladığı için:
-      // - Tek şantiye 31 gün → 30 (tavanlı) → 30 > 30 false → listelenmez
-      // - 2 şantiye 15+16=31 → 31 > 30 true → LİSTELENİR (gerçek SGK ihlali)
-      // - 2 şantiye 20+15=35 → 35 > 30 true → listelenir
+    for (const acc of Object.values(tum)) {
       if (acc.toplamGun > 30) {
         sonuc.push({
           adSoyad: acc.adSoyad,
@@ -2340,9 +2419,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           iseBaslama: acc.iseBaslama,
           isenCikis: acc.isenCikis,
           toplamGun: acc.toplamGun,
-          not: acc.notlar.join(" / "),
+          not: "",
           isTeknik: acc.isTeknik,
-          teknikIsim: acc.teknikIsimler.size > 0 ? Array.from(acc.teknikIsimler).join(", ") : null,
+          teknikIsim: acc.teknikIsim,
         });
       }
     }
@@ -2350,73 +2429,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return sonuc;
   }
 
-  // Bordro export rows'undan, ay içinde TOPLAM gün sayısı atama tarihlerinden
-  // hesaplanan BEKLENEN gün sayısından AZ olan personelleri çıkar.
-  // Örnek: Personel 10.05'te başladı → beklenen 22 gün, ama actual 15 gün → listelenir.
-  // Eğer actual = beklenen ise eksik yok → listelenmez.
+  // 30 günün altında olan personelleri çıkar. TÜM ŞANTİYELERİ (aktif +
+  // geçici kabulü yapılmış) kapsar — SGK için tüm günler önemli.
+  // Listelenme kuralı: actual < beklenen VE actual < 30 VE personel hala aktif.
   function otuzGununAltinda(): OtuzAsanRow[] {
-    const rows = exportSantiyeBazli();
-    type Acc = {
-      adSoyad: string; tc: string; gorev: string;
-      iseBaslama: string; isenCikis: string;
-      toplamGun: number; notlar: string[];
-      isTeknik: boolean;
-      teknikIsimler: Set<string>;
-      personelId: string | null;
-    };
-    // TC veya ad → personel id eşleştirmesi (naturalGunMap için)
-    const map = new Map<string, Acc>();
-    for (const r of rows) {
-      const key = r.tc || r.adSoyad;
-      const gunCap = Math.min(r.gun ?? 0, 30);
-      const personel = r.tc
-        ? personeller.find((p) => p.tc_kimlik_no === r.tc)
-        : personeller.find((p) => p.ad_soyad === r.adSoyad);
-      const mevcut = map.get(key);
-      if (!mevcut) {
-        map.set(key, {
-          adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
-          iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
-          toplamGun: gunCap, notlar: r.not ? [r.not] : [],
-          isTeknik: !!r.isTeknik,
-          teknikIsimler: new Set(r.teknikIsim ? [r.teknikIsim] : []),
-          personelId: personel?.id ?? null,
-        });
-      } else {
-        mevcut.toplamGun += gunCap;
-        if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
-          mevcut.iseBaslama = r.iseBaslama;
-        }
-        if (r.isenCikis === "Halen" || mevcut.isenCikis === "Halen") {
-          mevcut.isenCikis = "Halen";
-        } else if (r.isenCikis > mevcut.isenCikis) {
-          mevcut.isenCikis = r.isenCikis;
-        }
-        if (r.not) mevcut.notlar.push(r.not);
-        if (r.isTeknik) mevcut.isTeknik = true;
-        if (r.teknikIsim) mevcut.teknikIsimler.add(r.teknikIsim);
-        if (personel && !mevcut.personelId) mevcut.personelId = personel.id;
-      }
-    }
+    const tum = personelGunToplamTumSantiyeler();
     const sonuc: OtuzAsanRow[] = [];
-    for (const acc of map.values()) {
-      // SADECE AKTİF personeller (işten çıkmış olanlar listelenmez)
+    for (const acc of Object.values(tum)) {
+      // Sadece aktif personeller (işten çıkışı olanlar dahil değil)
       if (acc.isenCikis !== "Halen") continue;
       if (acc.toplamGun <= 0) continue;
-      // Personelin tüm şantiyelerdeki BEKLENEN (natural) gün toplamı
-      // — atama tarihlerinden hesaplanır, manuel etkilemez.
-      let beklenenToplam = 0;
-      if (acc.personelId) {
-        const natMap = naturalGunMap.get(acc.personelId);
-        if (natMap) {
-          for (const g of natMap.values()) beklenenToplam += g;
-        }
-      }
-      // Beklenen 30 üstüyse 30'da tavanla (SGK kuralı)
-      beklenenToplam = Math.min(beklenenToplam, 30);
-      // Listele: actual < beklenen (eksik gün var) VE actual < 30
-      // (30 ve üstü zaten üst tabloda)
-      if (acc.toplamGun < beklenenToplam && acc.toplamGun < 30) {
+      // Beklenen 30'da tavanlanır (SGK kuralı)
+      const beklenenCap = Math.min(acc.beklenenToplam, 30);
+      // Listele: actual < beklenen (eksik var) VE actual < 30
+      if (acc.toplamGun < beklenenCap && acc.toplamGun < 30) {
         sonuc.push({
           adSoyad: acc.adSoyad,
           tc: acc.tc,
@@ -2424,13 +2450,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           iseBaslama: acc.iseBaslama,
           isenCikis: acc.isenCikis,
           toplamGun: acc.toplamGun,
-          not: acc.notlar.join(" / "),
+          not: "",
           isTeknik: acc.isTeknik,
-          teknikIsim: acc.teknikIsimler.size > 0 ? Array.from(acc.teknikIsimler).join(", ") : null,
+          teknikIsim: acc.teknikIsim,
         });
       }
     }
-    sonuc.sort((a, b) => a.toplamGun - b.toplamGun); // küçükten büyüğe
+    sonuc.sort((a, b) => a.toplamGun - b.toplamGun);
     return sonuc;
   }
 
