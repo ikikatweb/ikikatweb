@@ -2234,17 +2234,22 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const map = new Map<string, Acc>();
     for (const r of rows) {
       const key = r.tc || r.adSoyad;
+      // BORDRO MANTIĞI: Her şantiyede tek başına 30 günü aşan değer bordroda
+      // yine 30 olarak işlenir (ay 31 çekse bile). Bu yüzden 30 günü aşan
+      // listesinin amacı (çift sigortalılık tespiti) için her satırı 30'da
+      // tavanla. Tek şantiyede 31 gün = bordro açısından 30 → ihlal değil.
+      const gunCap = Math.min(r.gun, 30);
       const mevcut = map.get(key);
       if (!mevcut) {
         map.set(key, {
           adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
           iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
-          toplamGun: r.gun, notlar: r.not ? [r.not] : [],
+          toplamGun: gunCap, notlar: r.not ? [r.not] : [],
           isTeknik: !!r.isTeknik,
           teknikIsimler: new Set(r.teknikIsim ? [r.teknikIsim] : []),
         });
       } else {
-        mevcut.toplamGun += r.gun;
+        mevcut.toplamGun += gunCap;
         // En erken işe başlama, en geç çıkış
         if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
           mevcut.iseBaslama = r.iseBaslama;

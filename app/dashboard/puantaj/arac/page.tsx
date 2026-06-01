@@ -1213,7 +1213,7 @@ export default function AracPuantajPage() {
     doc.text(`Arac Puantaj - ${tr(seciliSantiye.is_adi)}`, 14, 12);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text(`${AY_ADLARI[ay - 1]} ${yil}`, 14, 17);
+    doc.text(`${tr(AY_ADLARI[ay - 1])} ${yil}`, 14, 17);
 
     // Lejant - renkli kutular + etiketler (üst kısımda yatay)
     let lejantX = 14;
@@ -1294,6 +1294,23 @@ export default function AracPuantajPage() {
             doc.text(tr(mm), x, y + h * 0.85);
           }
           doc.setTextColor(0, 0, 0);
+        }
+        // Günler arasına dikey siyah ayırıcı çiz — renkli hücreler birbirine yapışmasın
+        if (
+          (data.section === "body" || data.section === "head") &&
+          data.column.index >= 1 && data.column.index <= gunler.length
+        ) {
+          doc.setLineWidth(0.1);
+          doc.setDrawColor(0, 0, 0);
+          const xRight = data.cell.x + data.cell.width;
+          doc.line(xRight, data.cell.y, xRight, data.cell.y + data.cell.height);
+        }
+        // Satırlar arasına yatay siyah ayırıcı çiz — her body satırının alt kenarına
+        if (data.section === "body") {
+          doc.setLineWidth(0.1);
+          doc.setDrawColor(0, 0, 0);
+          const yBottom = data.cell.y + data.cell.height;
+          doc.line(data.cell.x, yBottom, data.cell.x + data.cell.width, yBottom);
         }
       },
     });
