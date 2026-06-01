@@ -2350,6 +2350,90 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return sonuc;
   }
 
+  // Bordro export rows'undan, ay içinde TOPLAM gün sayısı atama tarihlerinden
+  // hesaplanan BEKLENEN gün sayısından AZ olan personelleri çıkar.
+  // Örnek: Personel 10.05'te başladı → beklenen 22 gün, ama actual 15 gün → listelenir.
+  // Eğer actual = beklenen ise eksik yok → listelenmez.
+  function otuzGununAltinda(): OtuzAsanRow[] {
+    const rows = exportSantiyeBazli();
+    type Acc = {
+      adSoyad: string; tc: string; gorev: string;
+      iseBaslama: string; isenCikis: string;
+      toplamGun: number; notlar: string[];
+      isTeknik: boolean;
+      teknikIsimler: Set<string>;
+      personelId: string | null;
+    };
+    // TC veya ad → personel id eşleştirmesi (naturalGunMap için)
+    const map = new Map<string, Acc>();
+    for (const r of rows) {
+      const key = r.tc || r.adSoyad;
+      const gunCap = Math.min(r.gun ?? 0, 30);
+      const personel = r.tc
+        ? personeller.find((p) => p.tc_kimlik_no === r.tc)
+        : personeller.find((p) => p.ad_soyad === r.adSoyad);
+      const mevcut = map.get(key);
+      if (!mevcut) {
+        map.set(key, {
+          adSoyad: r.adSoyad, tc: r.tc, gorev: r.gorev,
+          iseBaslama: r.iseBaslama, isenCikis: r.isenCikis,
+          toplamGun: gunCap, notlar: r.not ? [r.not] : [],
+          isTeknik: !!r.isTeknik,
+          teknikIsimler: new Set(r.teknikIsim ? [r.teknikIsim] : []),
+          personelId: personel?.id ?? null,
+        });
+      } else {
+        mevcut.toplamGun += gunCap;
+        if (r.iseBaslama && (!mevcut.iseBaslama || r.iseBaslama < mevcut.iseBaslama)) {
+          mevcut.iseBaslama = r.iseBaslama;
+        }
+        if (r.isenCikis === "Halen" || mevcut.isenCikis === "Halen") {
+          mevcut.isenCikis = "Halen";
+        } else if (r.isenCikis > mevcut.isenCikis) {
+          mevcut.isenCikis = r.isenCikis;
+        }
+        if (r.not) mevcut.notlar.push(r.not);
+        if (r.isTeknik) mevcut.isTeknik = true;
+        if (r.teknikIsim) mevcut.teknikIsimler.add(r.teknikIsim);
+        if (personel && !mevcut.personelId) mevcut.personelId = personel.id;
+      }
+    }
+    const sonuc: OtuzAsanRow[] = [];
+    for (const acc of map.values()) {
+      // SADECE AKTİF personeller (işten çıkmış olanlar listelenmez)
+      if (acc.isenCikis !== "Halen") continue;
+      if (acc.toplamGun <= 0) continue;
+      // Personelin tüm şantiyelerdeki BEKLENEN (natural) gün toplamı
+      // — atama tarihlerinden hesaplanır, manuel etkilemez.
+      let beklenenToplam = 0;
+      if (acc.personelId) {
+        const natMap = naturalGunMap.get(acc.personelId);
+        if (natMap) {
+          for (const g of natMap.values()) beklenenToplam += g;
+        }
+      }
+      // Beklenen 30 üstüyse 30'da tavanla (SGK kuralı)
+      beklenenToplam = Math.min(beklenenToplam, 30);
+      // Listele: actual < beklenen (eksik gün var) VE actual < 30
+      // (30 ve üstü zaten üst tabloda)
+      if (acc.toplamGun < beklenenToplam && acc.toplamGun < 30) {
+        sonuc.push({
+          adSoyad: acc.adSoyad,
+          tc: acc.tc,
+          gorev: acc.gorev,
+          iseBaslama: acc.iseBaslama,
+          isenCikis: acc.isenCikis,
+          toplamGun: acc.toplamGun,
+          not: acc.notlar.join(" / "),
+          isTeknik: acc.isTeknik,
+          teknikIsim: acc.teknikIsimler.size > 0 ? Array.from(acc.teknikIsimler).join(", ") : null,
+        });
+      }
+    }
+    sonuc.sort((a, b) => a.toplamGun - b.toplamGun); // küçükten büyüğe
+    return sonuc;
+  }
+
   // "MAYIS 2026" gibi büyük harfli ay başlığı (ay başlığında kullanılır)
   function ayBuyukLabel(ayStr: string): string {
     const lbl = ayLabel(ayStr);
@@ -2556,6 +2640,67 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       for (let i = 0; i < otuzAsanlar.length; i++) {
         const r = otuzAsanlar[i];
         const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF5F5F5";
+        const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
+        const teknikIsimVal = r.teknikIsim ?? "";
+        const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, teknikIsimVal, r.not];
+        for (let c = 0; c < rowVals.length; c++) {
+          const isTeknikEtiketSutun = c === 1 && r.isTeknik;
+          const isTeknikIsimSutun = c === 7 && !!teknikIsimVal;
+          setCell(curRow, c, rowVals[c], {
+            font: isTeknikEtiketSutun || isTeknikIsimSutun
+              ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
+              : { sz: 10 },
+            alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 8 },
+            fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
+            border: {
+              top: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              left: { style: "thin", color: { rgb: "FFD1D5DB" } },
+              right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+            },
+          });
+        }
+        curRow++;
+      }
+    }
+
+    // En altta: 30 günün ALTINDA olan personel tablosu (kısmi ay çalışan)
+    const otuzAltindakiler = otuzGununAltinda();
+    if (otuzAltindakiler.length > 0) {
+      curRow++; // boş satır
+
+      // Mavi başlık (30 üstü siyah idi → ayırt etmek için)
+      setCell(curRow, 0,
+        `${ayBuyukLabel(seciliAy)} AYINDA SİGORTALILIK SÜRESİ 30 GÜNÜN ALTINDA OLAN PERSONEL LİSTESİ`,
+        {
+          font: { bold: true, sz: 12, color: { rgb: "FFFFFFFF" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          fill: { fgColor: { rgb: "FF1E3A5F" }, patternType: "solid" },
+        },
+      );
+      merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
+      curRow++;
+
+      // Header (aynı kolonlar)
+      const altHeaders = ["Ad Soyad", "", "TC", "Görev", "İşe Başlama", "İşten Çıkış", "Gün", "Teknik Personel", "Not"];
+      for (let c = 0; c < altHeaders.length; c++) {
+        setCell(curRow, c, altHeaders[c], {
+          font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
+          alignment: { horizontal: "center", vertical: "center" },
+          fill: { fgColor: { rgb: "FF3B5C7E" }, patternType: "solid" },
+          border: {
+            top: { style: "thin", color: { rgb: "FF000000" } },
+            bottom: { style: "thin", color: { rgb: "FF000000" } },
+            left: { style: "thin", color: { rgb: "FF000000" } },
+            right: { style: "thin", color: { rgb: "FF000000" } },
+          },
+        });
+      }
+      curRow++;
+
+      for (let i = 0; i < otuzAltindakiler.length; i++) {
+        const r = otuzAltindakiler[i];
+        const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF0F4F8";
         const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
         const teknikIsimVal = r.teknikIsim ?? "";
         const rowVals: (string | number)[] = [r.adSoyad, teknikEtiket, r.tc, r.gorev, r.iseBaslama, r.isenCikis, r.toplamGun, teknikIsimVal, r.not];
@@ -3110,6 +3255,89 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
         // 30 günü aşanlar — ad sütunu index 0; autoTable ile aynı baseline + padding kullan
+        didDrawCell: (data) => {
+          if (data.section !== "body" || data.column.index !== 0) return;
+          const fullTxt = String(data.cell.raw ?? "");
+          const marker = " (Teknik Personel)";
+          const idx = fullTxt.lastIndexOf(marker);
+          if (idx < 0) return;
+          const namePart = fullTxt.slice(0, idx);
+          const suffixPart = fullTxt.slice(idx);
+          let fillRgb: [number, number, number] = [255, 255, 255];
+          const fc = data.cell.styles.fillColor;
+          if (Array.isArray(fc) && fc.length >= 3) {
+            fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
+          }
+          doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
+          doc.rect(
+            data.cell.x + 0.15,
+            data.cell.y + 0.15,
+            data.cell.width - 0.3,
+            data.cell.height - 0.3,
+            "F",
+          );
+          const cp = data.cell.styles.cellPadding;
+          let padLeft = 1.5;
+          if (typeof cp === "number") padLeft = cp;
+          else if (cp && typeof cp === "object" && "left" in cp) {
+            padLeft = (cp as { left: number }).left;
+          }
+          const fontSize = (data.cell.styles.fontSize as number) ?? 8;
+          const textY = data.cell.y + data.cell.height / 2;
+          const nameX = data.cell.x + padLeft;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(fontSize);
+          doc.setTextColor(0, 0, 0);
+          doc.text(namePart, nameX, textY, { baseline: "middle" });
+          const nameWidth = doc.getTextWidth(namePart);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(67, 56, 202);
+          doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
+        },
+      });
+      // @ts-expect-error autoTable lastAutoTable typing
+      cursorY = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    }
+
+    // En altta: 30 günün ALTINDA olan personel listesi (kısmi ay)
+    const otuzAltindakiler = otuzGununAltinda();
+    if (otuzAltindakiler.length > 0) {
+      if (cursorY > pageHeight - 40) {
+        doc.addPage();
+        cursorY = 15;
+      } else {
+        cursorY += 4;
+      }
+      // Lacivert başlık bandı (üstteki 30 üstü siyahtı, ayırt etmek için)
+      doc.setFillColor(30, 58, 95);
+      doc.rect(14, cursorY, doc.internal.pageSize.getWidth() - 28, 7, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.setTextColor(255, 255, 255);
+      doc.text(
+        trAscii(`${ayBuyukLabel(seciliAy)} AYINDA SIGORTALILIK SURESI 30 GUNUN ALTINDA OLAN PERSONEL LISTESI`),
+        17, cursorY + 5,
+      );
+      doc.setTextColor(0, 0, 0);
+      cursorY += 9;
+      autoTable(doc, {
+        startY: cursorY,
+        head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
+        body: otuzAltindakiler.map((r) => [
+          trAscii(r.isTeknik ? `${r.adSoyad} (Teknik Personel)` : r.adSoyad),
+          r.tc,
+          trAscii(r.gorev),
+          r.iseBaslama,
+          r.isenCikis,
+          String(r.toplamGun),
+          trAscii(r.teknikIsim ?? ""),
+          trAscii(r.not),
+        ]),
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        headStyles: { fillColor: [59, 92, 126], textColor: 255 },
+        alternateRowStyles: { fillColor: [240, 244, 248] },
+        margin: { left: 14, right: 14 },
         didDrawCell: (data) => {
           if (data.section !== "body" || data.column.index !== 0) return;
           const fullTxt = String(data.cell.raw ?? "");

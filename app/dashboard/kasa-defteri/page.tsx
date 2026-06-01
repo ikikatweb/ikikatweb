@@ -839,12 +839,37 @@ function KasaDefContent() {
 
       {/* Özet kartları */}
       {(isYonetici || isShantiyeAdmin) && (
-        <div className={`grid gap-3 mb-4 ${filtreOdeme === "kart" ? "grid-cols-1 md:grid-cols-1 max-w-xs" : "grid-cols-2 md:grid-cols-3"}`}>
+        <div
+          className={`grid gap-3 mb-4 ${
+            filtreOdeme === "kart"
+              ? "grid-cols-1 md:grid-cols-1 max-w-xs"
+              : devredenBakiye !== 0
+                ? "grid-cols-2 md:grid-cols-4"
+                : "grid-cols-2 md:grid-cols-3"
+          }`}
+        >
           {filtreOdeme !== "kart" && (
             <>
+              {/* Önceki dönem devreden bakiye — sadece > 0 veya < 0 ise göster
+                  (filtre başlangıcından önceki net nakit bakiyesi) */}
+              {devredenBakiye !== 0 && (
+                <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 p-3">
+                  <div className="text-[10px] text-slate-600 uppercase font-semibold leading-tight">
+                    Önceki Dönem<br />Devreden Bakiye (Nakit)
+                  </div>
+                  <div className={`text-xl font-bold ${devredenBakiye < 0 ? "text-red-600" : "text-slate-700"}`}>
+                    {formatTL(devredenBakiye)}
+                  </div>
+                </div>
+              )}
               <div className="bg-white rounded-lg border p-3">
                 <div className="text-[10px] text-gray-500 uppercase font-semibold">Nakit Bakiye</div>
                 <div className={`text-xl font-bold ${ozet.nakitBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(ozet.nakitBakiye)}</div>
+                {devredenBakiye !== 0 && (
+                  <div className="text-[9px] text-gray-400 mt-0.5">
+                    + devreden = {formatTL(devredenBakiye + ozet.nakitBakiye)}
+                  </div>
+                )}
               </div>
               <div className="bg-white rounded-lg border p-3">
                 <div className="text-[10px] text-gray-500 uppercase font-semibold">Toplam Gelir</div>

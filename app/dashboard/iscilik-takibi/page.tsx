@@ -468,7 +468,7 @@ export default function IscilikTakibiPage() {
       if (brut > 0) return brut;
       return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
     };
-    // 1) Manuel girişler — sonAy'dan sonra
+    // 1) Manuel girişler — sonAy'dan sonra (BORDRO KURALI: 30'da tavanla)
     for (const m of manuelGunler) {
       if (m.santiye_id !== santiyeId) continue;
       const mAyNum = ayYilNum(m.ay);
@@ -476,7 +476,14 @@ export default function IscilikTakibiPage() {
       const yil = parseInt(m.ay.split("-")[0], 10);
       const ucret = personelUcret(m.personel_id, m.ay, yil);
       if (ucret > 0) {
-        bordroToplam += m.gun * ucret;
+        // Ay 31 çekse de 30'da tavanla; Şubat'ta tam ay (28/29) → 30
+        let bordroGun = Math.min(m.gun, 30);
+        const ayNo = parseInt(m.ay.split("-")[1], 10);
+        if (ayNo === 2) {
+          const subatGunSayisi = new Date(yil, ayNo, 0).getDate();
+          if (m.gun >= subatGunSayisi) bordroGun = 30;
+        }
+        bordroToplam += bordroGun * ucret;
         dahilEdilen.add(`${m.personel_id}|${m.ay}`);
       }
     }
