@@ -1665,7 +1665,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (brut > 0) return brut;
       return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
     };
-    // 1) Manuel girişler — sonAy sonrası
+    // 1) Manuel girişler — sonAy sonrası (BORDRO KURALI: 30'da tavanla, Şubat tamamla)
     for (const m of manuelGunler) {
       if (m.santiye_id !== santiyeId) continue;
       const mAyNum = ayYilNum(m.ay);
@@ -1673,7 +1673,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const yil = parseInt(m.ay.split("-")[0], 10);
       const ucret = personelUcret(m.personel_id, m.ay, yil);
       if (ucret > 0) {
-        toplam += m.gun * ucret;
+        const bordroGun = ayBordroGun(m.gun, m.ay);
+        toplam += bordroGun * ucret;
         dahilEdilen.add(`${m.personel_id}|${m.ay}`);
       }
     }
@@ -1722,7 +1723,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         if (gun <= 0) continue;
         if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
         const ucret = personelUcret(pId, ayStr, yil);
-        if (ucret > 0) toplam += gun * ucret;
+        if (ucret > 0) {
+          // BORDRO KURALI: Ay 31 çekse bile gün sayısı 30'da tavanlanır,
+          // Şubat'ta tam ay çalışıldıysa 30'a tamamlanır.
+          const bordroGun = ayBordroGun(gun, ayStr);
+          toplam += bordroGun * ucret;
+        }
       }
       ay += 1;
       if (ay > 12) { ay = 1; yil += 1; }
@@ -3835,7 +3841,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 // Manuel gün girilmemiş — atama tarihlerinden hesaplanmış doğal
                 // günü gri/silik şekilde sadece görme amaçlı göster.
                 <span
-                  className="text-gray-300 italic text-[10px]"
+                  className="text-gray-400 italic text-[12px] font-medium"
                   title={`${naturalGun} gün (atama tarihlerinden hesaplanmış — manuel değil)`}
                 >
                   {naturalGun}
