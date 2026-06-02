@@ -2150,6 +2150,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const filtrelenmisIds = new Set(filtreli.map((p) => p.id));
     // Firma filtresine uygun şantiyeler (filtre boşsa hepsi)
     const santiyeIds = new Set(filtreliSantiyeler.map((s) => s.id));
+    // EK: Geçici kabulü yapılmış işlerde YATMASI GEREKEN TUTAR varsa onları da
+    // export'a dahil et (sigortalı personel ödeme yapılacak şantiyeler).
+    // Sadece "aktif" Bordro sekmesinde geçerli — "Geçici Kabulü Yapılmış" tabında
+    // tüm pasif şantiyeler zaten görünür.
+    if (gosterilecekDurum === "aktif") {
+      const yetkili = filtreliSantiyelerHelper(santiyeler, kullanici);
+      for (const s of yetkili) {
+        if (santiyeIds.has(s.id)) continue;
+        if (!s.gecici_kabul_tarihi || s.gecici_kabul_tarihi.trim().length === 0) continue;
+        const prim = primMap.get(s.id);
+        if (prim && prim.yatmasiGereken > 0) {
+          santiyeIds.add(s.id);
+        }
+      }
+    }
 
     // Önce ham satırları topla
     const ham: (Row & { _bas: string; _bit: string | null })[] = [];
@@ -2160,7 +2175,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (a.baslangic_tarihi > ayBit) continue;
       if (bitisHam < ayBas) continue;
       const personel = personeller.find((p) => p.id === a.personel_id);
-      const sant = filtreliSantiyeler.find((s) => s.id === a.santiye_id);
+      // Sant aramada filtreliSantiyeler kapsamı dışındaki (geçici kabul yapılmış
+      // ama yatması gereken > 0) şantiyeleri de bulmalıyız → tüm santiyeler'e bak
+      const sant = santiyeler.find((s) => s.id === a.santiye_id);
       if (!personel || !sant) continue;
       const firma = sant.yuklenici_firma_id ? firmalar.find((f) => f.id === sant.yuklenici_firma_id) : null;
       const clampBas = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;

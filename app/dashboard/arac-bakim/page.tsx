@@ -843,7 +843,7 @@ export default function AracBakimPage() {
 
       {/* Bakım ekle/düzenle dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
               {editId
@@ -1089,11 +1089,11 @@ export default function AracBakimPage() {
                 <div className="mt-2 space-y-1">
                   <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dFaturaMevcut.length})</p>
                   {dFaturaMevcut.map((u, i) => (
-                    <div key={`fat-mev-${i}`} className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate">
-                        <Download size={11} /> {dosyaAd(u)}
+                    <div key={`fat-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
+                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                        <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
                       </a>
-                      <button type="button" onClick={() => setDFaturaMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1">✕</button>
+                      <button type="button" onClick={() => setDFaturaMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
                     </div>
                   ))}
                 </div>
@@ -1103,9 +1103,9 @@ export default function AracBakimPage() {
                 <div className="mt-2 space-y-1">
                   <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dFaturaYeni.length})</p>
                   {dFaturaYeni.map((f, i) => (
-                    <div key={`fat-yeni-${i}`} className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
-                      <span className="text-[11px] text-emerald-800 truncate">+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
-                      <button type="button" onClick={() => setDFaturaYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1">✕</button>
+                    <div key={`fat-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                      <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
+                      <button type="button" onClick={() => setDFaturaYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
                     </div>
                   ))}
                 </div>
@@ -1137,11 +1137,11 @@ export default function AracBakimPage() {
                 <div className="mt-2 space-y-1">
                   <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dIsFotoMevcut.length})</p>
                   {dIsFotoMevcut.map((u, i) => (
-                    <div key={`isf-mev-${i}`} className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate">
-                        <Download size={11} /> {dosyaAd(u)}
+                    <div key={`isf-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
+                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                        <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
                       </a>
-                      <button type="button" onClick={() => setDIsFotoMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1">✕</button>
+                      <button type="button" onClick={() => setDIsFotoMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
                     </div>
                   ))}
                 </div>
@@ -1151,9 +1151,9 @@ export default function AracBakimPage() {
                 <div className="mt-2 space-y-1">
                   <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dIsFotoYeni.length})</p>
                   {dIsFotoYeni.map((f, i) => (
-                    <div key={`isf-yeni-${i}`} className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
-                      <span className="text-[11px] text-emerald-800 truncate">+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
-                      <button type="button" onClick={() => setDIsFotoYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1">✕</button>
+                    <div key={`isf-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                      <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
+                      <button type="button" onClick={() => setDIsFotoYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
                     </div>
                   ))}
                 </div>

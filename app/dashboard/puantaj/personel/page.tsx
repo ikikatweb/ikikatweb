@@ -192,17 +192,16 @@ export default function PersonelPuantajPage() {
   }
 
   // Personel listesini + atama junction'ı yenile (atama değişikliği sonrası).
-  // Bordro Takibi'nden eklenen taşeron işçiler (personel_tipi="taseron") puantaja DAHİL EDİLMEZ —
-  // Bordro Takibi bağımsız akış: oraya eklenen kayıtlar puantaj sayfasında görünmez.
+  // Tüm personeller puantaja dahil edilir (taşeron işçiler dahil).
+  // Kullanıcı isteği: bir şantiyede sadece taşeron işçi varsa o şantiye ve
+  // taşeronlar yine de görünsün.
   const loadPersoneller = useCallback(async () => {
     try {
       const [pData, psData] = await Promise.all([
         getPersoneller(),
         getPersonelSantiyeler().catch(() => []),
       ]);
-      const filtreli = ((pData as PersonelWithRelations[]) ?? [])
-        .filter((p) => p.personel_tipi !== "taseron");
-      setPersoneller(filtreli);
+      setPersoneller(((pData as PersonelWithRelations[]) ?? []));
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
     } catch {
       toast.error("Personel listesi yüklenirken hata oluştu.");
@@ -245,8 +244,9 @@ export default function PersonelPuantajPage() {
         }
       }
 
-      // Bordro Takibi'nden eklenen taşeron işçiler puantajda görünmez (bordro bağımsız akış)
-      setPersoneller((pData ?? []).filter((p) => p.personel_tipi !== "taseron"));
+      // Tüm personeller dahil (taşeron işçiler dahil) — bir şantiyede sadece
+      // taşeron olsa bile o şantiye ve personeller dropdown'da/listede görünür.
+      setPersoneller(pData ?? []);
       const sList = (sData ?? []).filter((s) => s.durum === "aktif");
       setSantiyeler(sList);
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
@@ -382,20 +382,30 @@ export default function PersonelPuantajPage() {
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
   }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, puantajArama]);
 
-  // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi
+  // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi.
+  // Şantiyenin dropdown'da görünmesi için en az 1 AKTİF (pasif olmayan ya da
+  // pasife alınma tarihi seçili aydan sonra olan) personeli atanmış olmalı.
   const personelliSantiyeler = useMemo(() => {
+    const ayBaslangici = `${yil}-${String(ay).padStart(2, "0")}-01`;
     // Sadece ŞU AN listede görünen personellerin atandığı şantiyeleri topla.
-    // Junction kaydı olsa bile personel listede yoksa (örn. taşeron işçi puantajda
-    // gizli, ya da silinmiş/pasif olmuş eski kayıt) o şantiye dropdown'da görünmez.
-    const personelIdSet = new Set(personeller.map((p) => p.id));
-    const idSet = new Set<string>();
+    const personelMap = new Map(personeller.map((p) => [p.id, p]));
+    // Şantiye → seçili ayda gösterilebilen personel sayısı
+    const santiyePersonelSayisi = new Map<string, number>();
     for (const [pId, sids] of personelSantiyeMap) {
-      if (!personelIdSet.has(pId)) continue;
-      for (const sid of sids) idSet.add(sid);
+      const p = personelMap.get(pId);
+      if (!p) continue; // taşeron/silinmiş personel
+      // Pasif personel: pasife alındığı aydan SONRA gizlenir
+      if (p.durum === "pasif") {
+        if (!p.pasif_tarihi || p.pasif_tarihi < ayBaslangici) continue;
+      }
+      for (const sid of sids) {
+        santiyePersonelSayisi.set(sid, (santiyePersonelSayisi.get(sid) ?? 0) + 1);
+      }
     }
-    const atamasiOlanlar = santiyeler.filter((s) => idSet.has(s.id));
+    // Sadece en az 1 görünür personeli olan şantiyeler dropdown'da
+    const atamasiOlanlar = santiyeler.filter((s) => (santiyePersonelSayisi.get(s.id) ?? 0) > 0);
     return filtreliSantiyeler(atamasiOlanlar, kullanici);
-  }, [santiyeler, personelSantiyeMap, personeller, kullanici]);
+  }, [santiyeler, personelSantiyeMap, personeller, kullanici, yil, ay]);
 
   // Atama sekmesi: boştaki (bu şantiyeye henüz atanmamışlar) ve bu şantiyedeki personeller
   const atamaBostakiler = useMemo(() => {
