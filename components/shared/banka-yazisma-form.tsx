@@ -166,6 +166,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
     if (!evrakTarihi) { toast.error("Evrak tarihi zorunludur."); return; }
     if (!firmaId) { toast.error("Firma seçimi zorunludur."); return; }
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
+    if (!isEdit && !muhatap.trim()) { toast.error("Muhatap seçimi zorunludur."); return; }
 
     setLoading(true);
     try {
@@ -311,7 +312,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
       {/* Muhatap - aranabilir dropdown */}
       <div className="space-y-2">
-        <Label>Muhatap</Label>
+        <Label>Muhatap{!isEdit && <span className="text-red-500"> *</span>}</Label>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <input

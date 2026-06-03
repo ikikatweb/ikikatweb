@@ -296,6 +296,7 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
       toast.error("Kişi seçimi zorunludur. Kayıtlı değilse + Kişi Ekle ile ekleyin.");
       return;
     }
+    if (!muhatap.trim()) { toast.error("Muhatap (banka) zorunludur. Lütfen muhatabı olan bir hesap seçin."); return; }
     if (!tutarSayisi || tutarSayisi <= 0) { toast.error("Geçerli bir tutar giriniz."); return; }
 
     setLoading(true);
