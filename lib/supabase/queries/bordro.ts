@@ -334,7 +334,11 @@ export function gunHesaplaAyBazli(
   const [yil, ay] = ayStr.split("-").map(Number);
   const ayBaslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
   const sonGun = new Date(yil, ay, 0).getDate();
-  const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+  // SGK "1 ay = 30 gün" kuralı: 31 çeken aylarda 31. gün bordroda sayılmaz.
+  // Ay sonu sınırı en fazla 30 olur; böylece kısmi dönemler (örn. 24→ay sonu)
+  // da 31'i saymaz. Tam ay kapsamı yine aşağıda 30'a sabitlenir.
+  const bordroSonGun = Math.min(sonGun, 30);
+  const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(bordroSonGun).padStart(2, "0")}`;
   const aktifSanalBitis = aktifBitisHam(ayBaslangic, ayBitis);
   for (const a of atamalar) {
     const bitisHam = a.bitis_tarihi ?? aktifSanalBitis;

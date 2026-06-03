@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus } from "lucide-react";
+import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus, AlertTriangle } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import XLSX from "xlsx-js-style";
@@ -148,7 +148,7 @@ function trAscii(s: string): string {
 
 // Hızlı manuel gün girişi kartı (gün düzenle dialogunun başında)
 function ManuelGunHizliKart({
-  mevcutGun, aySonGun, onSave, adminBypass = false,
+  mevcutGun, aySonGun, onSave, adminBypass = false, ayMinGun = 0,
 }: {
   mevcutGun: number;
   aySonGun: number;
@@ -156,6 +156,9 @@ function ManuelGunHizliKart({
   // adminBypass=true → kullanıcı admin (yönetici); sınır aşılsa bile kaydedilebilir,
   // ama uyarı görsel olarak hâlâ kırmızı görünür.
   adminBypass?: boolean;
+  // ayMinGun: çıkışı yapılmış (kapalı) atamaların bu ayki kesinleşmiş günü.
+  // Manuel toplam bunun ALTINA inemez (admin dahil) — kapalı dönem günleriyle oynanmaz.
+  ayMinGun?: number;
 }) {
   const [val, setVal] = useState(String(mevcutGun));
   useEffect(() => { setVal(String(mevcutGun)); }, [mevcutGun]);
@@ -163,25 +166,32 @@ function ManuelGunHizliKart({
   // Admin için kayıt butonu yine de etkin (adminBypass).
   const N = Math.max(0, parseInt(val) || 0);
   const tooHigh = N > aySonGun;
+  // Çıkışı yapılmış (kapalı) atamaların günleri kesinleşmiştir; manuel toplam bu
+  // tabanın (ayMinGun) ALTINA inemez — admin dahil. Bu günleri değiştirmek için
+  // detay editöründen ilgili atamanın çıkış tarihi düzenlenir.
+  const tooLowFloor = ayMinGun > 0 && val.trim() !== "" && N < ayMinGun;
+  // Geçerli aralık [ayMinGun, aySonGun] arasıdır. Bu aralıkta uyarı YOK.
+  // Kırmızı yalnızca: max'ı aşınca (tooHigh) veya kesinleşmiş taban altına inince (tooLowFloor).
+  const uyari = tooHigh || tooLowFloor;
   const degisti = N !== mevcutGun;
-  // Sınır aşıldıysa kaydetme: admin için izin var, diğerleri için yok
-  const canSave = degisti && (!tooHigh || adminBypass);
+  // tooHigh: admin bypass edebilir. tooLowFloor: kimse bypass edemez (kesinleşmiş gün).
+  const canSave = degisti && (!tooHigh || adminBypass) && !tooLowFloor;
   return (
-    <div className={`border-2 rounded-lg p-3 ${tooHigh ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
-      <div className={`text-xs font-semibold mb-1.5 ${tooHigh ? "text-red-700" : "text-blue-700"}`}>
+    <div className={`border-2 rounded-lg p-3 ${uyari ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
+      <div className={`text-xs font-semibold mb-1.5 ${uyari ? "text-red-700" : "text-blue-700"}`}>
         Hızlı Manuel Gün Girişi
       </div>
       <div className="flex items-center gap-2">
         <input
           type="number"
-          min={0}
+          min={ayMinGun}
           value={val}
           onChange={(e) => setVal(e.target.value)}
           className={`w-24 h-10 text-2xl font-bold text-center bg-white border-2 rounded-lg outline-none ${
-            tooHigh ? "text-red-700 border-red-400 focus:border-red-500" : "text-blue-700 border-blue-300 focus:border-blue-500"
+            uyari ? "text-red-700 border-red-400 focus:border-red-500" : "text-blue-700 border-blue-300 focus:border-blue-500"
           }`}
         />
-        <span className="text-sm text-gray-600">gün <span className="text-[10px] text-gray-400">/ max {aySonGun}</span></span>
+        <span className="text-sm text-gray-600">gün <span className="text-[10px] text-gray-400">{ayMinGun > 0 ? `/ min ${ayMinGun} – max ${aySonGun}` : `/ max ${aySonGun}`}</span></span>
         <button
           type="button"
           disabled={!canSave}
@@ -202,6 +212,12 @@ function ManuelGunHizliKart({
           {adminBypass
             ? <span className="block mt-0.5 text-[11px] font-normal text-red-600">Admin yetkinizle yine de kaydedebilirsiniz; ancak SGK günü 30'u aşabilir, dikkat edin.</span>
             : <span className="block mt-0.5 text-[11px] font-normal">Kaydetme engellendi.</span>}
+        </p>
+      )}
+      {tooLowFloor && (
+        <p className="text-xs text-red-700 font-semibold mt-2">
+          ⚠️ Çıkışı yapılmış dönemin günleri kesinleşmiştir; en az <strong>{ayMinGun} gün</strong> girilmelidir.
+          <span className="block mt-0.5 text-[11px] font-normal text-red-600">Bu günleri değiştirmek için aşağıdaki detay editöründen ilgili atamanın çıkış tarihini düzenleyin. Kaydetme engellendi.</span>
         </p>
       )}
       <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
@@ -501,6 +517,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [arama, setArama] = useState("");
   // Personel tipi filtresi: "tumu" | "teknik" — yalnız teknik personeli süzmek için
   const [tipFiltre, setTipFiltre] = useState<"tumu" | "teknik">("tumu");
+  // "Limit Dışı" filtresi: aktifken efektif toplam günü 30'dan FARKLI personeller.
+  //  - Halen aktif (açık atama) olanlar: 30'un altı da üstü de listelenir.
+  //  - İşten ayrılmış olanlar: SADECE 30'u aşanlar (SGK çift sigorta ihlali) listelenir.
+  // (Kural detayı: limitDisiKapsar)
+  const [limitDisi, setLimitDisi] = useState(false);
 
   // Drag state
   const [dragPersonelId, setDragPersonelId] = useState<string | null>(null);
@@ -1004,17 +1025,64 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const gunMapToplam = useMemo(() => gunHesapla(atamalar), [atamalar]);
   void gunMapToplam;
 
-  // Personel başına AYLIK TOPLAM gün (tüm şantiyelerde): 30 üzeri uyarı için kullanılır.
-  // Sadece bilgi amaçlı; hiçbir işleme etkisi yok.
-  const personelAylikToplamMap = useMemo(() => {
+  // Personel başına AYLIK EFEKTİF toplam gün (tüm şantiyeler): manuel girilmişse
+  // manuel değer, yoksa doğal hesap (atama tarihleri). Bordroya yansıyan gerçek
+  // gün budur — "Limit Dışı" filtresi bunu 30 ile karşılaştırır.
+  const personelEfektifToplamMap = useMemo(() => {
+    const manuelLookup = new Map<string, number>(); // "pid|sid" → gun
+    for (const m of manuelGunler) {
+      if (m.ay !== seciliAy) continue;
+      manuelLookup.set(`${m.personel_id}|${m.santiye_id}`, m.gun);
+    }
     const map = new Map<string, number>();
-    for (const [pid, sMap] of gunMap) {
+    for (const [pid, sMap] of naturalGunMap) {
       let toplam = 0;
-      for (const v of sMap.values()) toplam += v;
+      for (const [sid, dogal] of sMap) {
+        const k = `${pid}|${sid}`;
+        toplam += manuelLookup.has(k) ? manuelLookup.get(k)! : dogal;
+      }
       map.set(pid, toplam);
     }
     return map;
-  }, [gunMap]);
+  }, [naturalGunMap, manuelGunler, seciliAy]);
+
+  // Personel → halen AÇIK (aktif) ataması olan şantiyeler (çıkış tarihi girilmemiş).
+  // Limit Dışı'da hem "halen aktif mi" kontrolü hem de "çıkış yaptığı şantiyede
+  // gösterme" yerleşim kuralı için kullanılır.
+  const aktifSantiyeMap = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const a of atamalar) {
+      if (a.bitis_tarihi == null) {
+        if (!m.has(a.personel_id)) m.set(a.personel_id, new Set());
+        m.get(a.personel_id)!.add(a.santiye_id);
+      }
+    }
+    return m;
+  }, [atamalar]);
+  // Halen aktif (en az bir açık ataması olan) personel kümesi.
+  const aktifPersonelIds = useMemo(() => new Set(aktifSantiyeMap.keys()), [aktifSantiyeMap]);
+
+  // Bir personel "Limit Dışı" listesine girer mi?
+  //  - Efektif toplam günü 30'dan farklı (ve > 0) olmalı.
+  //  - Halen aktif (açık atama) ise: 30'un altı da üstü de listelenir.
+  //  - İşten ayrılmış (açık atama yok) ise: SADECE 30'u AŞANLAR listelenir
+  //    (çift sigortalılık/SGK ihlali). 30 altı ayrılmalar normaldir → listelenmez.
+  const limitDisiKapsar = useCallback((personelId: string): boolean => {
+    const t = personelEfektifToplamMap.get(personelId) ?? 0;
+    if (t === 0 || t === 30) return false;
+    const aktif = aktifPersonelIds.has(personelId);
+    if (!aktif && t <= 30) return false;
+    return true;
+  }, [personelEfektifToplamMap, aktifPersonelIds]);
+
+  // "Limit Dışı" buton rozeti için: filtreye giren personel sayısı.
+  const limitDisiAdet = useMemo(() => {
+    let n = 0;
+    for (const p of personeller) {
+      if (limitDisiKapsar(p.id)) n++;
+    }
+    return n;
+  }, [personeller, limitDisiKapsar]);
 
   // Teknik personel tespiti — PERSONEL × ŞANTİYE BAZLI (sadece bilgi amaçlı rozet için).
   //   teknikPersonelMap.get(personelId) → Set<santiyeId>
@@ -1135,6 +1203,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return personeller.filter((p) => {
       const isTeknik = teknikPersonelIds.has(p.id);
       if (tipFiltre === "teknik" && !isTeknik) return false;
+      // Limit Dışı: halen aktifse 30'dan farklı (alt/üst); ayrılmışsa sadece 30'u aşan.
+      if (limitDisi && !limitDisiKapsar(p.id)) return false;
       if (!q) return true;
       // Sadece personel metin alanlarında ara — ad_soyad, TC, görev, meslek.
       // Şantiye adı eşleşmesi KALDIRILDI: kullanıcı "tugay" arattığında, geçmişte
@@ -1146,7 +1216,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (isTeknik && qTeknikEtiketAramasi) return true;
       return false;
     });
-  }, [personeller, arama, tipFiltre, teknikPersonelIds]);
+  }, [personeller, arama, tipFiltre, teknikPersonelIds, limitDisi, limitDisiKapsar]);
 
   // Şantiye → personel listesi haritası — TAMAMEN atama_gecmisi'nden türetilir.
   // Personel tablosundaki santiye_id ve durum bordro tarafından KULLANILMAZ
@@ -1208,6 +1278,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         }
       }
 
+      // Limit Dışı: personel başka bir şantiyede halen AKTİF (açık atama) ise,
+      // ÇIKIŞ yaptığı şantiyelerde tekrar gösterme — zaten aktif olduğu şantiyede
+      // listeleniyor. (Yalnızca ekran filtresi; bordro/export etkilenmez.)
+      if (limitDisi) {
+        const aktifSant = aktifSantiyeMap.get(p.id);
+        if (aktifSant && aktifSant.size > 0) {
+          calistigiSantiyeler = calistigiSantiyeler.filter((sid) => aktifSant.has(sid));
+        }
+      }
+
       if (calistigiSantiyeler.length > 0) {
         for (const sid of calistigiSantiyeler) {
           map.get(sid)!.push(p);
@@ -1225,7 +1305,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
     void aySonuSantiyeMap;
     return map;
-  }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap, tipFiltre]);
+  }, [filtreli, filtreliSantiyeler, gunMap, atamalar, arama, teknikPersonelMap, tipFiltre, limitDisi, aktifSantiyeMap]);
 
   // Arama aktifken görünen tüm (personel × şantiye) hücrelerinin toplam
   // gün ve tutarını hesaplar. Sayfanın altında "Genel Toplam" şeklinde gösterilir.
@@ -1703,7 +1783,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const [yLs, mLs] = [yil, ay];
       const ayBaslangic = `${yLs}-${String(mLs).padStart(2, "0")}-01`;
       const sonGun = new Date(yLs, mLs, 0).getDate();
-      const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+      // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
+      const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
       const today = yerelBugun();
       const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
       // Personel × ay bazında gün topla
@@ -2116,6 +2197,33 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // İşe başlama = atama.baslangic_tarihi
   // İşten çıkış = atama.bitis_tarihi veya "Halen"
   // Gün = seçili ay içindeki gün sayısı
+  // Export "İşe Başlama" tarihi için ortak kural: personelin (opsiyonel: belirli
+  // şantiyede) seçili ay ile ÇAKIŞAN atamaları arasından EN SON AKTİF olanının
+  // başlangıç tarihi. Aktif (çıkış tarihi yok) atama varsa onların en geç başlayanı;
+  // hepsi kapalıysa en geç başlayan atamanın başlangıcı. Çakışan atama yoksa null.
+  // (Eski davranış EN ESKİ tarihi gösteriyordu — bir şantiyeye eskiden başlayıp
+  //  ayrılan ve yakın tarihte tekrar girenlerde yanlış/eski tarih çıkıyordu.)
+  const enSonAktifBaslangic = useCallback((personelId: string, santiyeId?: string): string | null => {
+    const [yil, ay] = seciliAy.split("-").map(Number);
+    const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
+    const sonGun = new Date(yil, ay, 0).getDate();
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
+    const today = yerelBugun();
+    const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
+    const list = atamalar.filter((a) => {
+      if (a.personel_id !== personelId) return false;
+      if (santiyeId != null && a.santiye_id !== santiyeId) return false;
+      const bitisHam = a.bitis_tarihi ?? aktifSanalBitis;
+      if (a.baslangic_tarihi > ayBit) return false;
+      if (bitisHam < ayBas) return false;
+      return true;
+    });
+    if (list.length === 0) return null;
+    const aktifler = list.filter((a) => a.bitis_tarihi == null);
+    const havuz = aktifler.length > 0 ? aktifler : list;
+    return havuz.reduce((en, a) => (a.baslangic_tarihi > en.baslangic_tarihi ? a : en)).baslangic_tarihi;
+  }, [atamalar, seciliAy]);
+
   function exportSantiyeBazli() {
     type Row = {
       firmaId: string; firmaAd: string;
@@ -2133,7 +2241,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const [yil, ay] = seciliAy.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
-    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+    // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
     const today = yerelBugun();
     // Aktif atama (bitis_tarihi=null) için sanal bitiş: ay sınırı veya bugün
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
@@ -2167,7 +2276,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
 
     // Önce ham satırları topla
-    const ham: (Row & { _bas: string; _bit: string | null })[] = [];
+    const ham: (Row & { _bas: string; _bit: string | null; _pid: string })[] = [];
     for (const a of atamalar) {
       if (!filtrelenmisIds.has(a.personel_id)) continue;
       if (!santiyeIds.has(a.santiye_id)) continue;
@@ -2207,6 +2316,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         not: "",
         _bas: a.baslangic_tarihi,
         _bit: a.bitis_tarihi,
+        _pid: a.personel_id,
       });
     }
 
@@ -2232,7 +2342,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         adSoyad: ilk.adSoyad,
         tc: ilk.tc,
         gorev: ilk.gorev,
-        iseBaslama: ilk.iseBaslama,
+        // İşe başlama: bu şantiyedeki EN SON AKTİF atamanın başlangıcı (en eski değil).
+        iseBaslama: fmt(enSonAktifBaslangic(ilk._pid, ilk.santiyeId) ?? ilk._bas),
         isenCikis,
         // BORDRO KURALI:
         // - Ay 31 çekse bile gün sayısı 30'da tavanlanır.
@@ -2319,7 +2430,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const [yil, ay] = seciliAy.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
-    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
+    // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
     const today = yerelBugun();
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
     const gFark = (a: string, b: string) => {
@@ -2394,9 +2506,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           adSoyad: personel.ad_soyad,
           tc: personel.tc_kimlik_no ?? "",
           gorev: personel.meslek ?? "",
-          iseBaslama: ps.iseBaslama
-            ? new Date(ps.iseBaslama + "T00:00:00").toLocaleDateString("tr-TR")
-            : "",
+          // İşe başlama: personelin EN SON AKTİF olduğu şantiyedeki başlangıç tarihi
+          // (tüm şantiyeler arası; en eski değil).
+          iseBaslama: (() => {
+            const d = enSonAktifBaslangic(ps.personel_id);
+            return d ? new Date(d + "T00:00:00").toLocaleDateString("tr-TR") : "";
+          })(),
           isenCikis: ps.isenCikis === "Halen"
             ? "Halen"
             : new Date(ps.isenCikis + "T00:00:00").toLocaleDateString("tr-TR"),
@@ -2411,9 +2526,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         sonuc[tc].beklenenToplam += naturalCap;
         if (isTeknik) sonuc[tc].isTeknik = true;
         if (teknikIsim && !sonuc[tc].teknikIsim) sonuc[tc].teknikIsim = teknikIsim;
-        if (ps.iseBaslama && (!sonuc[tc].iseBaslama || ps.iseBaslama < sonuc[tc].iseBaslama)) {
-          sonuc[tc].iseBaslama = new Date(ps.iseBaslama + "T00:00:00").toLocaleDateString("tr-TR");
-        }
+        // iseBaslama, personel bazında "en son aktif" kuralıyla oluşturma anında
+        // set edildi (enSonAktifBaslangic tüm şantiyeleri zaten kapsıyor) — burada
+        // tekrar override edilmez.
         if (ps.isenCikis === "Halen" || sonuc[tc].isenCikis === "Halen") {
           sonuc[tc].isenCikis = "Halen";
         }
@@ -4071,12 +4186,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         <td className="px-2 py-1.5 font-semibold text-[#1E3A5F]">
           <div className="flex items-center gap-1 flex-wrap">
             <span className="truncate">{p.ad_soyad}</span>
-            {(personelAylikToplamMap.get(p.id) ?? 0) > 30 && (
+            {(personelEfektifToplamMap.get(p.id) ?? 0) > 30 && (
               <span
                 className="flex-shrink-0 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-bold cursor-help"
-                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelAylikToplamMap.get(p.id)} gün çalışıyor — 30 günü aşıyor (sadece bilgi)`}
+                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün çalışıyor — 30 günü aşıyor (manuel + hesaplanan gri günler dahil)`}
               >
-                ⚠️ {personelAylikToplamMap.get(p.id)}g
+                ⚠️ {personelEfektifToplamMap.get(p.id)}g
+              </span>
+            )}
+            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < 30 && (
+              <span
+                className="flex-shrink-0 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold cursor-help"
+                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün çalışıyor — 30 günün altında (manuel + hesaplanan gri günler dahil)`}
+              >
+                {personelEfektifToplamMap.get(p.id)}g
               </span>
             )}
             {p.personel_tipi === "taseron" && (
@@ -4230,6 +4353,29 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           <option value="tumu">Tüm Çalışanlar</option>
           <option value="teknik">Teknik Personel</option>
         </select>
+        <button
+          type="button"
+          onClick={() => setLimitDisi((v) => !v)}
+          aria-pressed={limitDisi}
+          title="Halen aktif çalışıp günü 30'dan farklı (alt/üst) olanlar + işten ayrılıp toplamı 30'u aşanlar (SGK ihlali)"
+          className={`h-9 flex-shrink-0 inline-flex items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors ${
+            limitDisi
+              ? "border-orange-400 bg-orange-500 text-white hover:bg-orange-600"
+              : "border-input bg-white text-gray-700 hover:bg-gray-50"
+          }`}
+        >
+          <AlertTriangle size={14} />
+          Limit Dışı
+          {limitDisiAdet > 0 && (
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                limitDisi ? "bg-white/25 text-white" : "bg-orange-100 text-orange-700"
+              }`}
+            >
+              {limitDisiAdet}
+            </span>
+          )}
+        </button>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Ay seçici — sabit genişlik (135px input + 36px×2 oklar + 90px etiket) */}
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -4264,7 +4410,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           </div>
           <span className="text-[11px] text-gray-500 inline-flex items-center gap-1">
             <Mail size={12} />
-            {muhasebeEmail || <span className="italic text-amber-600">tanımsız</span>}
+            {muhasebeEmail ? (
+              <span title={muhasebeEmail} className="cursor-help">
+                {muhasebeEmail.split(",").map((e) => e.trim()).filter(Boolean).length} alıcı
+              </span>
+            ) : (
+              <span className="italic text-amber-600">tanımsız</span>
+            )}
           </span>
           <Button variant="outline" size="sm" onClick={exportPDF} className="gap-1">
             <FileDown size={14} /> PDF
@@ -4379,12 +4531,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const firma = firmalar.find((f) => f.id === fId);
             const firmaAd = firma?.firma_adi ?? "(Firma atanmamış)";
             const tumFirmaSantiyeler = firmaGrup.get(fId) ?? [];
-            // Arama aktifken: SADECE eşleşen personel içeren şantiyeler görünür
-            const firmaSantiyeler = aramaAktif
+            // Arama VEYA Limit Dışı aktifken: SADECE personel içeren şantiyeler görünür
+            // (boş "0 kişi" şantiyeler gizlenir).
+            const bosGizle = aramaAktif || limitDisi;
+            const firmaSantiyeler = bosGizle
               ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0)
               : tumFirmaSantiyeler;
-            // Arama aktifken o firmanın eşleşen şantiyesi yoksa firmayı da gizle
-            if (aramaAktif && firmaSantiyeler.length === 0) return null;
+            // Görünür şantiyesi kalmayan firmayı da gizle
+            if (bosGizle && firmaSantiyeler.length === 0) return null;
             // Firma accordion'u kullanıcı kontrollü — auto-expand yok
             const firmaAcik = expandedFirmalar.has(fId);
             // Firma toplam: kişi sayısı + gün + prim hesabı toplamı
@@ -4840,7 +4994,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           {gunEdit && (() => {
             const [yil, ay] = seciliAy.split("-").map(Number);
             const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
-            const sonGun = new Date(yil, ay, 0).getDate();
+            // SGK 30 gün kuralı: 31 çeken aylar bordroda 30 sayılır → ay sonu ve
+            // manuel gün üst sınırı en fazla 30 (31. gün sayılmaz).
+            const sonGun = Math.min(new Date(yil, ay, 0).getDate(), 30);
             const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
             const today = yerelBugun();
             // Aktif atama için sanal bitiş: ay sınırı veya bugün
@@ -5094,10 +5250,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {!isReadOnly && (yDuzenle || yEkle) && (() => {
                   const naturalMax = naturalGunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? sonGun;
                   const max = Math.min(sonGun, naturalMax);
+                  // Çıkışı yapılmış (kapalı) atamaların bu ayki günü = manuel toplam tabanı.
+                  // liste & ayInGun, dış IIFE'de bu personel×şantiye için zaten hesaplı.
+                  // Açık (Halen) atamalar tabana dahil edilmez — onların günü düşürülebilir.
+                  const kapaliGun = liste.reduce((s, a) => s + (a.bitis_tarihi ? ayInGun(a) : 0), 0);
                   return (
                     <ManuelGunHizliKart
                       mevcutGun={gunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? 0}
                       aySonGun={max}
+                      ayMinGun={Math.min(kapaliGun, max)}
                       adminBypass={isYonetici}
                       onSave={(N) => kaydetManuelGun(gunEdit.personel.id, gunEdit.santiyeId, seciliAy, N)}
                     />
