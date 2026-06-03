@@ -54,6 +54,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import AracForm from "@/components/shared/arac-form";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
@@ -878,9 +879,9 @@ export default function AracPuantajPage() {
       console.error("Kira bedeli kaydetme hatası:", err);
       // "relation does not exist" -> tablo yok
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_kira_bedeli tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("arac_kira_bedeli tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: toastSuresi() });
       }
     }
     finally { setKiraDialogLoading(false); }
@@ -979,7 +980,7 @@ export default function AracPuantajPage() {
     if (tumDurumlarToplami > donemGunSayisi) {
       toast.error(
         `Toplam gün sayısı (${tumDurumlarToplami}) dönemdeki gün sayısını (${donemGunSayisi}) aşamaz.`,
-        { duration: 5000 },
+        { duration: toastSuresi() },
       );
       return;
     }
@@ -1005,9 +1006,9 @@ export default function AracPuantajPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("Override kaydetme hatası:", err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_puantaj_override tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("arac_puantaj_override tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       } else {
-        toast.error(`Kaydetme hatası: ${msg}`, { duration: 5000 });
+        toast.error(`Kaydetme hatası: ${msg}`, { duration: toastSuresi() });
       }
     } finally {
       setOverrideDialogLoading(false);
@@ -1109,7 +1110,7 @@ export default function AracPuantajPage() {
         toast.error(
           `Kayıt DB'ye yazılamadı! (${tarih} tarihinde ${seciliArac.plaka}). ` +
           "RLS veya bir DB kısıtlaması engelliyor olabilir. Console'u kontrol edin.",
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
         return;
       }

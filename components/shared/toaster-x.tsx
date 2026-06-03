@@ -1,24 +1,36 @@
-// Toaster wrapper — react-hot-toast'a kapatma (X) butonu ekler
-// ve varsayılan süreyi 5 saniyeye ayarlar.
+// Toaster wrapper — react-hot-toast'a kapatma (X) butonu ekler.
+// Varsayılan süre: masaüstünde 5 sn, MOBİLDE 3 sn (viewport ≤ 768px).
 "use client";
 
+import { useEffect, useState } from "react";
 import { Toaster, ToastBar, toast } from "react-hot-toast";
 
 export default function ToasterX() {
+  // Mobilde tüm bildirimler 3 sn; masaüstünde 5 sn. Viewport değişimine tepki verir.
+  const [mobil, setMobil] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const uygula = () => setMobil(mq.matches);
+    uygula();
+    mq.addEventListener("change", uygula);
+    return () => mq.removeEventListener("change", uygula);
+  }, []);
+  const sure = mobil ? 3000 : 5000;
+
   return (
     <Toaster
       position="top-right"
       toastOptions={{
-        duration: 5000,
+        duration: sure,
         style: {
           background: "#1E3A5F",
           color: "#fff",
         },
         success: {
-          duration: 5000,
+          duration: sure,
         },
         error: {
-          duration: 5000,
+          duration: sure,
           style: {
             background: "#ef4444",
             color: "#fff",

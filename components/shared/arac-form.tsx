@@ -21,6 +21,7 @@ import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamala
 import type { Tanimlama } from "@/lib/supabase/types";
 import { formatBaslik, formatPlaka, trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 
 type AracFormProps = {
   arac?: Arac;
@@ -159,7 +160,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
         } catch (uploadErr) {
           const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
           console.error("RUHSAT YÜKLEME HATASI:", msg);
-          toast.error(`Ruhsat yükleme hatası: ${msg}`, { duration: 5000 });
+          toast.error(`Ruhsat yükleme hatası: ${msg}`, { duration: toastSuresi() });
         }
       }
 

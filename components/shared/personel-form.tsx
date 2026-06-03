@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { Save, X } from "lucide-react";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -193,12 +194,12 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           ? new Date(mevcut.pasif_tarihi).toLocaleDateString("tr-TR")
           : "";
         setPasifBilgi(`${mevcut.ad_soyad}${tarihStr ? ` — ${tarihStr} tarihinde ayrılmış` : ""}`);
-        toast.success(`Pasif personel bulundu: ${mevcut.ad_soyad}. Maaşı girip kaydedin.`, { duration: 5000 });
+        toast.success(`Pasif personel bulundu: ${mevcut.ad_soyad}. Maaşı girip kaydedin.`, { duration: toastSuresi() });
       } else {
         // Aktif personel zaten sistemde — bilgiler dolduruldu ama kaydedince hata olur (TC tekillik)
         setPasifBulunanId(null);
         setPasifBilgi(`⚠ "${mevcut.ad_soyad}" bu TC ile zaten AKTİF kayıtlı — bilgileri gösterildi.`);
-        toast.error(`Bu TC zaten "${mevcut.ad_soyad}" adıyla kayıtlı (aktif personel). Bilgileri kontrol ettiniz; aynı TC ile yeni kayıt eklenemez.`, { duration: 6000 });
+        toast.error(`Bu TC zaten "${mevcut.ad_soyad}" adıyla kayıtlı (aktif personel). Bilgileri kontrol ettiniz; aynı TC ile yeni kayıt eklenemez.`, { duration: toastSuresi(6000) });
       }
     } catch {
       setPasifBulunanId(null);
@@ -284,15 +285,15 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
       const msg = err instanceof Error ? err.message : String(err);
       // Query seviyesindeki tekillik hatası (TC ya da ad_soyad zaten kayıtlı)
       if (msg.includes("zaten") || msg.includes("duplicate") || msg.includes("unique")) {
-        toast.error(msg || "Bu personel zaten kayıtlı.", { duration: 5000 });
+        toast.error(msg || "Bu personel zaten kayıtlı.", { duration: toastSuresi() });
       } else if (msg.includes("brut_ucret") || msg.includes("column") && msg.includes("not exist")) {
         toast.error(
           `Veritabanında 'brut_ucret' sütunu yok. Supabase SQL editöründe şunu çalıştırın:\n\n` +
           `ALTER TABLE personel ADD COLUMN IF NOT EXISTS brut_ucret NUMERIC NULL;`,
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
       } else {
-        toast.error(`${isEdit ? "Güncelleme" : "Ekleme"} hatası: ${msg}`, { duration: 5000 });
+        toast.error(`${isEdit ? "Güncelleme" : "Ekleme"} hatası: ${msg}`, { duration: toastSuresi() });
       }
       setLoading(false);
     }
@@ -586,17 +587,17 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                           toast.error(
                             `Veritabanında 'personel_brut_ucret' tablosu yok. Supabase SQL Editor'da şunu çalıştırın:\n\n` +
                             `CREATE TABLE personel_brut_ucret (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), personel_id UUID NOT NULL REFERENCES personel(id) ON DELETE CASCADE, ucret NUMERIC NOT NULL CHECK (ucret >= 0), gecerli_tarih DATE NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(), created_by UUID); ALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
-                            { duration: 5000 },
+                            { duration: toastSuresi() },
                           );
                         } else if (rlsHatasi) {
                           toast.error(
                             `RLS engelliyor. Supabase SQL Editor'da şunu çalıştırın:\n\nALTER TABLE personel_brut_ucret DISABLE ROW LEVEL SECURITY;`,
-                            { duration: 5000 },
+                            { duration: toastSuresi() },
                           );
                         } else {
                           toast.error(
                             `Kayıt hatası${code ? ` (${code})` : ""}${status ? ` [HTTP ${status}]` : ""}: ${msgText || "Boş hata — F12 Console'a bakın"}`,
-                            { duration: 5000 },
+                            { duration: toastSuresi() },
                           );
                         }
                       } finally {

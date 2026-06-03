@@ -37,6 +37,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
@@ -208,7 +209,7 @@ function KasaDefContent() {
       console.error(err);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("kasa_hareketi tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("kasa_hareketi tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       }
     } finally {
       setLoading(false);
@@ -438,7 +439,7 @@ function KasaDefContent() {
       const tip = nihaiOdeme === "nakit" ? "Nakit" : "Kredi kartı";
       if (ilgiliLimit > 0 && Math.abs(tutar) > ilgiliLimit) {
         toast(`Dikkat: ${tip} üst limiti (${ilgiliLimit.toLocaleString("tr-TR", { maximumFractionDigits: 2 })} TL) aşıldı.`, {
-          icon: "⚠️", duration: 5000,
+          icon: "⚠️", duration: toastSuresi(),
           style: { background: "#FEF3C7", color: "#92400E", fontWeight: "bold" },
         });
       }
@@ -504,11 +505,11 @@ function KasaDefContent() {
         msg = e.message || e.details || e.hint || e.code || JSON.stringify(err);
       }
       if (msg.includes("does not exist")) {
-        toast.error("kasa_hareketi tablosu yok. SQL çalıştırın.", { duration: 5000 });
+        toast.error("kasa_hareketi tablosu yok. SQL çalıştırın.", { duration: toastSuresi() });
       } else if (msg.includes("foreign key") || msg.includes("violates")) {
-        toast.error("Seçilen kullanıcı/şantiye geçersiz. Muhtemelen kullanıcı silinmiş veya şantiye pasif.", { duration: 5000 });
+        toast.error("Seçilen kullanıcı/şantiye geçersiz. Muhtemelen kullanıcı silinmiş veya şantiye pasif.", { duration: toastSuresi() });
       } else {
-        toast.error(`Hata: ${msg}`, { duration: 5000 });
+        toast.error(`Hata: ${msg}`, { duration: toastSuresi() });
       }
     } finally { setDialogLoading(false); }
   }

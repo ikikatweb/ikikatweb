@@ -11,6 +11,7 @@
 
 import { useEffect } from "react";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 
 // Aynı içeriği üst üste birden fazla göstermeyi engelle.
 // react-hot-toast id'si ile: aynı id'li toast varsa onu günceller, yeni oluşturmaz.
@@ -29,7 +30,7 @@ function gosterToast(metin: string) {
   const id = `truncate-${metin.slice(0, 64)}`;
   toast(metin, {
     id,
-    duration: 5000,
+    duration: toastSuresi(),
     icon: "📋",
     style: {
       maxWidth: "min(90vw, 480px)",

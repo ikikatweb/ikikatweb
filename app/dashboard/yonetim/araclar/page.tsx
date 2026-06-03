@@ -20,6 +20,7 @@ import {
   Pencil, Truck, Plus, Search, FileDown, FileSpreadsheet, FileCheck, Trash2,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth } from "@/hooks";
 import { trAramaNormalize } from "@/lib/utils/isim";
 
@@ -512,9 +513,9 @@ export default function AraclarPage() {
                           } catch (err) {
                             const msg = err instanceof Error ? err.message : String(err);
                             if (msg.includes("violates foreign key") || msg.includes("referenced")) {
-                              toast.error("Bu araca ait puantaj, yakıt veya kira verisi var. Önce ilişkili verileri silin.", { duration: 5000 });
+                              toast.error("Bu araca ait puantaj, yakıt veya kira verisi var. Önce ilişkili verileri silin.", { duration: toastSuresi() });
                             } else {
-                              toast.error(`Silme hatası: ${msg}`, { duration: 5000 });
+                              toast.error(`Silme hatası: ${msg}`, { duration: toastSuresi() });
                             }
                           }
                         }}>

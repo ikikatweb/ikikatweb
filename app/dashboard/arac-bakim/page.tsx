@@ -30,6 +30,7 @@ import * as XLSX from "xlsx";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -193,9 +194,9 @@ export default function AracBakimPage() {
       console.error("Bakım yükleme hatası:", err);
       const msg = hataMesaji(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_bakim tablosu Supabase'de yok. SQL migrasyonunu çalıştırın.", { duration: 5000 });
+        toast.error("arac_bakim tablosu Supabase'de yok. SQL migrasyonunu çalıştırın.", { duration: toastSuresi() });
       } else {
-        toast.error(`Yükleme hatası: ${msg}`, { duration: 5000 });
+        toast.error(`Yükleme hatası: ${msg}`, { duration: toastSuresi() });
       }
     } finally {
       setLoading(false);
@@ -450,7 +451,7 @@ export default function AracBakimPage() {
       setDialogOpen(false);
     } catch (err) {
       console.error("Bakım kaydet hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     } finally {
       setDialogLoading(false);
     }
@@ -466,7 +467,7 @@ export default function AracBakimPage() {
       toast.success("Silindi.");
     } catch (err) {
       console.error("Silme hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     }
   }
 

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Plus, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth } from "@/hooks";
 
 type EditingCell = { id: string; field: string } | null;
@@ -365,7 +366,7 @@ export default function IscilikDetayPage() {
     if (yeniAyNum > maxAyNum) {
       toast.error(
         `Yeni ay yalnızca bir önceki aya kadar açılabilir. Şu an eklenebilecek son ay: ${maxAyKey}.`,
-        { duration: 5000 },
+        { duration: toastSuresi() },
       );
       return;
     }

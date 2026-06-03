@@ -45,6 +45,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -982,7 +983,7 @@ function IhalePageContent() {
       console.error(err);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("ihale tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("ihale tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       }
     } finally {
       setLoading(false);
@@ -1183,7 +1184,7 @@ function IhalePageContent() {
         setCurrentIhaleIsOriginal(true);
         toast.success(
           `${parsed.altGruplar.length} alt grup tespit edildi, ${basariliKayit} grup ayrı ihale olarak kaydedildi. Her grubu Geçmiş sekmesinden açıp sınır değer hesabını görüntüleyebilirsin.`,
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
         // Geçmiş listesini yenile (yeni kayıtlar görünsün)
         try {
@@ -1260,7 +1261,7 @@ function IhalePageContent() {
         if (mevcut) {
           toast.error(
             `Bu ihale zaten kayıtlı (İKN: ${mevcut.ihale_kayit_no}). Düzenlemek için Geçmiş İhaleler sekmesinden açın.`,
-            { duration: 5000 }
+            { duration: toastSuresi() }
           );
           return;
         }

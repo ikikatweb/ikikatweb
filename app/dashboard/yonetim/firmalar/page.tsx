@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 
 function tr(s: string): string {
@@ -294,9 +295,9 @@ export default function FirmalarPage() {
                             } catch (err) {
                               const msg = err instanceof Error ? err.message : String(err);
                               if (msg.includes("violates foreign key") || msg.includes("referenced") || msg.includes("constraint")) {
-                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: 5000 });
+                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: toastSuresi() });
                               } else {
-                                toast.error(`Silme hatası: ${msg}`, { duration: 5000 });
+                                toast.error(`Silme hatası: ${msg}`, { duration: toastSuresi() });
                               }
                             }
                           }}>
@@ -399,7 +400,7 @@ export default function FirmalarPage() {
                               className="text-red-500 hover:text-red-700"
                               onClick={() => {
                                 if (aracListesi.length > 0) {
-                                  toast.error(`"${firmaAdi}" firmasına ait ${aracListesi.length} araç bulunuyor. Firma silinemez.`, { duration: 5000 });
+                                  toast.error(`"${firmaAdi}" firmasına ait ${aracListesi.length} araç bulunuyor. Firma silinemez.`, { duration: toastSuresi() });
                                   return;
                                 }
                                 if (confirm(`"${firmaAdi}" firma bilgisini silmek istediğinize emin misiniz?`)) {

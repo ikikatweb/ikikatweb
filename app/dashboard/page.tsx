@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null };
@@ -1314,13 +1315,13 @@ export default function DashboardPage() {
         if (data.sonuclar) {
           for (const s of data.sonuclar) {
             if (s.basarili) {
-              toast.success(`${s.email} → Gönderildi\nSMTP: ${s.hata ?? "OK"}`, { duration: 5000 });
+              toast.success(`${s.email} → Gönderildi\nSMTP: ${s.hata ?? "OK"}`, { duration: toastSuresi() });
             } else {
-              toast.error(`${s.email} → HATA: ${s.hata}`, { duration: 5000 });
+              toast.error(`${s.email} → HATA: ${s.hata}`, { duration: toastSuresi() });
             }
           }
         } else {
-          toast.success(data.mesaj, { duration: 5000 });
+          toast.success(data.mesaj, { duration: toastSuresi() });
         }
         // Gönderim kaydını veritabanına yaz
         try {
@@ -1336,7 +1337,7 @@ export default function DashboardPage() {
         } catch { /* sessiz */ }
         setTeklifDialogOpen(false);
       } else {
-        toast.error(data.error || "Mail gönderilemedi", { duration: 5000 });
+        toast.error(data.error || "Mail gönderilemedi", { duration: toastSuresi() });
         console.error("Teklif mail hatası:", data);
       }
     } catch (err) {

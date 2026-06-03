@@ -32,6 +32,7 @@ import {
 import jsPDF from "jspdf";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -250,7 +251,7 @@ function SantiyeDefContent() {
       console.error("Defter yükleme hatası:", err);
       const msg = hataMesaji(err);
       if (msg.includes("does not exist")) {
-        toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: 5000 });
+        toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: toastSuresi() });
       }
     }
   }, [filtreSantiye, seciliTarih, sadeceKendiKayitlari, kullanici?.id]);
@@ -316,7 +317,7 @@ function SantiyeDefContent() {
       }
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     }
   }
 
@@ -348,7 +349,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt eklendi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     } finally { setSaving(false); }
   }
 
@@ -362,7 +363,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt güncellendi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     }
   }
 
@@ -376,7 +377,7 @@ function SantiyeDefContent() {
       toast.success("Kayıt silindi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     }
   }
 
@@ -391,7 +392,7 @@ function SantiyeDefContent() {
       toast.success("Defter silindi.");
     } catch (err) {
       console.error("Şantiye defteri hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: 5000 });
+      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
     }
   }
 

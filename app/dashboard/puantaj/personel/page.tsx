@@ -46,6 +46,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
@@ -221,7 +222,7 @@ export default function PersonelPuantajPage() {
       } catch (err) {
         console.error("getPersoneller hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Personel yüklenemedi: ${msg}`, { duration: 5000 });
+        toast.error(`Personel yüklenemedi: ${msg}`, { duration: toastSuresi() });
       }
 
       try {
@@ -229,7 +230,7 @@ export default function PersonelPuantajPage() {
       } catch (err) {
         console.error("getSantiyelerBasic hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Şantiyeler yüklenemedi: ${msg}`, { duration: 5000 });
+        toast.error(`Şantiyeler yüklenemedi: ${msg}`, { duration: toastSuresi() });
       }
 
       try {
@@ -238,9 +239,9 @@ export default function PersonelPuantajPage() {
         console.error("getPersonelSantiyeler hata:", err);
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("personel_santiye")) {
-          toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+          toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
         } else {
-          toast.error(`Personel atamaları yüklenemedi: ${msg}`, { duration: 5000 });
+          toast.error(`Personel atamaları yüklenemedi: ${msg}`, { duration: toastSuresi() });
         }
       }
 
@@ -282,7 +283,7 @@ export default function PersonelPuantajPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("personel_santiye tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       } else {
         toast.error("Atama sırasında hata oluştu.");
       }
@@ -855,7 +856,7 @@ export default function PersonelPuantajPage() {
       setHucreDialogOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
-      toast.error(`Kaydedilirken hata: ${msg}`, { duration: 5000 });
+      toast.error(`Kaydedilirken hata: ${msg}`, { duration: toastSuresi() });
     } finally {
       setDialogKaydediliyor(false);
     }

@@ -12,6 +12,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
@@ -735,7 +736,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         localStorage.setItem("bordro-auto-mail-tarih", todayKey); // duplicate önle
         try {
           await bulkMailGonder();
-          toast.success("⏰ 17:00 otomatik mail gönderimi tamamlandı", { duration: 5000 });
+          toast.success("⏰ 17:00 otomatik mail gönderimi tamamlandı", { duration: toastSuresi() });
         } catch {
           // bulkMailGonder kendi hata mesajını gösterir
         }
@@ -821,7 +822,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setPending((prev) => prev.filter((x) => x.id !== tempId));
       toast.error(
         "Mail kuyruğuna eklenemedi. Veritabanında 'bordro_pending_mail' tablosu yoksa Supabase SQL editöründe oluşturun.",
-        { duration: 5000 },
+        { duration: toastSuresi() },
       );
       return false;
     }
@@ -1578,11 +1579,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         toast.error(
           `Bu firmalar için SMTP ayarları eksik (mail gönderilemedi): ${eksikSmtpFirmaAdlari.join(", ")}. ` +
           `Yönetim > Firmalar sayfasından SMTP Host/User/Password alanlarını doldurun.`,
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
       }
       if (hataMesajlari.length > 0) {
-        toast.error(hataMesajlari[0], { duration: 5000 });
+        toast.error(hataMesajlari[0], { duration: toastSuresi() });
       }
       // Sadece BAŞARILI gönderilenleri kuyruktan çıkar (DB + yerel)
       if (basari > 0) {
@@ -1716,7 +1717,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const hatalı = sonuclar.filter((s) => !s.ok);
       if (hatalı.length > 0) {
         const detay = hatalı.map((s) => s.mesaj).filter(Boolean).join("\n• ");
-        toast.error(`Bazı işlemler geri alınamadı:\n• ${detay}`, { duration: 8000 });
+        toast.error(`Bazı işlemler geri alınamadı:\n• ${detay}`, { duration: toastSuresi(8000) });
       }
 
       const idsToRemove = new Set([id, ...linked.map((l) => l.id)]);
@@ -1977,7 +1978,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (N > 30) {
         toast(
           `⚠️ Bu şantiyede ${N} gün girdiniz. SGK'da bir ay için en fazla 30 gün sayılır.`,
-          { icon: "⚠️", duration: 5000, style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
+          { icon: "⚠️", duration: toastSuresi(), style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
         );
       } else {
         // Birden fazla şantiyede çalışıyorsa toplamı kontrol et
@@ -1994,7 +1995,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           if (yeniToplam > 30) {
             toast(
               `⚠️ ${personelAd} için ${ayLabel(ayStr)} toplamı ${yeniToplam} gün — SGK 30 günü aşıyor (bu şantiye: ${N}, diğerleri: ${digerToplam})`,
-              { icon: "⚠️", duration: 5000, style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
+              { icon: "⚠️", duration: toastSuresi(), style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
             );
           }
         }
@@ -2074,7 +2075,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 >×</button>
               </div>
             ),
-            { duration: 5000 },
+            { duration: toastSuresi() },
           );
           return;
         }
@@ -2165,14 +2166,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (atlandi > 0) {
         toast(
           `${atlandi} kişi zaten bu şantiyede aktif olduğu için atlandı: ${atlananAdlar.slice(0, 3).join(", ")}${atlananAdlar.length > 3 ? "..." : ""}`,
-          { icon: "ℹ️", duration: 5000 },
+          { icon: "ℹ️", duration: toastSuresi() },
         );
       }
       // Toast'da bölme bilgisini ver
       if (teknikSayilan > 0 && normalSayilan > 0) {
         toast.success(
           `${basari}/${topluSecilenler.size} personel eklendi (${teknikSayilan} teknik · ${normalSayilan} bugün)`,
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
       } else if (teknikSayilan > 0) {
         toast.success(`${basari}/${topluSecilenler.size} teknik personel eklendi (teslim tarihi)`);
@@ -3138,13 +3139,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (zatenSigortali > 0) {
         toast.error(
           `${zatenSigortali} kişi ${hedefAd} şantiyesinde zaten sigortalı, transfer yapılamadı:\n${zatenSigortaliAdlar.slice(0, 5).join(", ")}${zatenSigortaliAdlar.length > 5 ? "..." : ""}`,
-          { duration: 8000 },
+          { duration: toastSuresi(8000) },
         );
       }
       if (basarisiz > 0) {
         toast.error(
           `${basari} transfer edildi · ${basarisiz} kişi başarısız:\n${basarisizAdlar.slice(0, 5).join(", ")}${basarisizAdlar.length > 5 ? "..." : ""}`,
-          { duration: 8000 },
+          { duration: toastSuresi(8000) },
         );
       } else if (basari > 0) {
         toast.success(`${basari} personel ${hedefAd} şantiyesine transfer edildi (${topluTransferTarih}, mail kuyruğuna eklendi)`);

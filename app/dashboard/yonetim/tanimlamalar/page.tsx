@@ -39,6 +39,7 @@ import {
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 
 const selectClass = "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -524,7 +525,7 @@ export default function TanimlamalarPage() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
-        toast.error("arac_cinsi_yakit_limit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: 5000 });
+        toast.error("arac_cinsi_yakit_limit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       } else {
         toast.error(`Kaydetme hatası: ${msg}`);
       }
@@ -1207,7 +1208,7 @@ export default function TanimlamalarPage() {
                   } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     if (msg.includes("does not exist") || msg.includes("relation") || msg.includes("column")) {
-                      toast.error("Tablo / sütun eksik. Migrasyon SQL'ini çalıştırın.", { duration: 5000 });
+                      toast.error("Tablo / sütun eksik. Migrasyon SQL'ini çalıştırın.", { duration: toastSuresi() });
                     } else {
                       toast.error("Kaydedilemedi: " + msg);
                     }

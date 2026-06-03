@@ -31,6 +31,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
@@ -357,7 +358,7 @@ export default function IscilikTakibiPage() {
         toast.error(
           `⚠️ "${isAdi}" silinemiyor: Bordro takibinde aktif ${aktifPersonelSayisi} personel atanmış. ` +
           `Önce bordro takibinden bu personelleri çıkarın veya başka şantiyeye transfer edin.`,
-          { duration: 5000 },
+          { duration: toastSuresi() },
         );
         setDeleteId(null);
         return;

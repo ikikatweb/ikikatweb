@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks";
 import { Menu, LogOut, Clock, Mail, MessageSquare, X, KeyRound, ZoomIn, Plus, Minus, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
 import SifreDegistirDialog from "@/components/shared/sifre-degistir-dialog";
 import { getKonusmalar } from "@/lib/supabase/queries/mesajlasma";
@@ -66,7 +67,7 @@ function yeniMesajToastGoster(p: {
     ),
     {
       position: "bottom-right",
-      duration: 5000,
+      duration: toastSuresi(),
       id: `mesaj-${p.konusmaId}-${Date.now()}`,
     },
   );
