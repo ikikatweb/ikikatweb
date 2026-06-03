@@ -1046,6 +1046,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return map;
   }, [naturalGunMap, manuelGunler, seciliAy]);
 
+  // "Eksik gün" (mavi rozet) eşiği: seçili ayda BUGÜNE KADAR beklenen gün sayısı.
+  //  - Geçmiş ay → tam ay beklenir (30).
+  //  - İçinde bulunduğumuz ay → ayın bugüne kadar geçen gün sayısı (30'da tavanlı).
+  //    Örn. ayın 3'ündeysek 3; 3 gün normaldir, 2 gün eksiktir.
+  //  - Gelecek ay → 0 (beklenti yok, eksik uyarısı verilmez).
+  const beklenenGun = useMemo(() => {
+    if (seciliAy < buAy) return 30;
+    if (seciliAy > buAy) return 0;
+    const gun = parseInt(yerelBugun().slice(8, 10), 10) || 0;
+    return Math.min(gun, 30);
+  }, [seciliAy, buAy]);
+
   // Personel → halen AÇIK (aktif) ataması olan şantiyeler (çıkış tarihi girilmemiş).
   // Limit Dışı'da hem "halen aktif mi" kontrolü hem de "çıkış yaptığı şantiyede
   // gösterme" yerleşim kuralı için kullanılır.
@@ -4194,10 +4206,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ⚠️ {personelEfektifToplamMap.get(p.id)}g
               </span>
             )}
-            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < 30 && (
+            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGun && (
               <span
                 className="flex-shrink-0 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold cursor-help"
-                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün çalışıyor — 30 günün altında (manuel + hesaplanan gri günler dahil)`}
+                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün — bugüne kadar beklenen ${beklenenGun} günün altında, eksik gün (manuel + hesaplanan gri günler dahil)`}
               >
                 {personelEfektifToplamMap.get(p.id)}g
               </span>
