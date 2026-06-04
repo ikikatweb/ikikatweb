@@ -76,6 +76,7 @@ type Hareket =
       km_saat: number;
       miktar_lt: number;
       depo_full: boolean;
+      dis_yakit_oncesi: boolean;
       notu: string | null;
       created_by: string | null;
     }
@@ -222,6 +223,7 @@ function YakitPageContent() {
   const [verDialogMiktar, setVerDialogMiktar] = useState("");
   const [verDialogNotu, setVerDialogNotu] = useState("");
   const [verDialogDepoFull, setVerDialogDepoFull] = useState(false);
+  const [verDialogDisYakit, setVerDialogDisYakit] = useState(false);
   const [verDialogLoading, setVerDialogLoading] = useState(false);
 
   // Dialog: Yakıt Al
@@ -371,15 +373,25 @@ function YakitPageContent() {
         hareketKey(a).localeCompare(hareketKey(b)),
       );
       if (sirali.length < 2) continue;
-      const ilk = sirali[0];
-      const son = sirali[sirali.length - 1];
-      const fark = son.km_saat - ilk.km_saat;
-      if (fark <= 0) continue;
-      const tuketilenLt = sirali.slice(1).reduce((s, k) => s + k.miktar_lt, 0);
-      // Sayaç tipi km ise lt/100km, saat ise lt/saat
       const arac = aracMap.get(aracId);
+      // Sayaç tipi km ise lt/100km, saat ise lt/saat
       const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
-      m.set(aracId, (tuketilenLt / fark) * carpan);
+      // Aralık-bazlı toplam: her ardışık (önceki→bu) çift için litre ve mesafe.
+      // Bu doluma kadar DIŞARIDAN yakıt alınmış aralık (dis_yakit_oncesi) DIŞLANIR —
+      // litre eksik olduğu için o aralık gerçek tüketimi yansıtmaz ve ortalamayı bozar.
+      let toplamLt = 0;
+      let toplamMesafe = 0;
+      for (let i = 1; i < sirali.length; i++) {
+        const oncekiK = sirali[i - 1];
+        const buK = sirali[i];
+        const mesafe = buK.km_saat - oncekiK.km_saat;
+        if (mesafe <= 0) continue;
+        if (buK.dis_yakit_oncesi) continue; // dış yakıtla kirlenen aralık → katma
+        toplamLt += buK.miktar_lt;
+        toplamMesafe += mesafe;
+      }
+      if (toplamMesafe <= 0) continue;
+      m.set(aracId, (toplamLt / toplamMesafe) * carpan);
     }
     return m;
   }, [yakitKayitlari, aracMap, filtreSantiyeId, filtreBaslangic, filtreBitis]);
@@ -411,6 +423,7 @@ function YakitPageContent() {
         km_saat: y.km_saat,
         miktar_lt: y.miktar_lt,
         depo_full: y.depo_full ?? false,
+        dis_yakit_oncesi: y.dis_yakit_oncesi ?? false,
         notu: y.notu,
         created_by: y.created_by,
       });
@@ -650,10 +663,10 @@ function YakitPageContent() {
         if (onceki) {
           const fark = h.km_saat - onceki.km_saat;
           satir.fark = fark;
-          // Anlık ortalama SADECE depo_full=true ise hesaplanır.
-          // Aksi halde gerçek tüketim ölçülemez (depo dolduğu noktayı bilmiyoruz),
-          // bu nedenle anlık ortalama verilmez. Genel ortalamaya tüm kayıtlar dahil.
-          if (fark > 0 && h.depo_full) {
+          // Anlık ortalama SADECE depo_full=true VE bu doluma kadar dışarıdan yakıt
+          // ALINMADIYSA hesaplanır. Aksi halde gerçek tüketim ölçülemez (depo dolduğu
+          // noktayı veya eksik dış litreyi bilmiyoruz), bu nedenle anlık ortalama verilmez.
+          if (fark > 0 && h.depo_full && !h.dis_yakit_oncesi) {
             // Sayaç tipi km ise lt/100km, saat ise lt/saat
             const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
             satir.anlikOrt = (h.miktar_lt / fark) * carpan;
@@ -724,6 +737,7 @@ function YakitPageContent() {
     setVerDialogMiktar("");
     setVerDialogNotu("");
     setVerDialogDepoFull(true);
+    setVerDialogDisYakit(false);
     setVerDialogOpen(true);
   }
 
@@ -739,6 +753,7 @@ function YakitPageContent() {
     setVerDialogMiktar(formatParaInput(String(y.miktar_lt).replace(".", ",")));
     setVerDialogNotu(y.notu ?? "");
     setVerDialogDepoFull(y.depo_full ?? false);
+    setVerDialogDisYakit(y.dis_yakit_oncesi ?? false);
     setVerDialogOpen(true);
   }
 
@@ -845,6 +860,7 @@ function YakitPageContent() {
           km_saat: km,
           miktar_lt: miktar,
           depo_full: verDialogDepoFull,
+          dis_yakit_oncesi: verDialogDisYakit,
           notu: verDialogNotu.trim() || null,
         });
       } else {
@@ -858,6 +874,7 @@ function YakitPageContent() {
           km_saat: km,
           miktar_lt: miktar,
           depo_full: verDialogDepoFull,
+          dis_yakit_oncesi: verDialogDisYakit,
           notu: verDialogNotu.trim() || null,
           created_by: kullanici?.id ?? null,
         });
@@ -1506,7 +1523,7 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right font-semibold">
                       {h.tip === "arac_yakit" ? (
-                        <span className="text-emerald-700">−{formatMiktar(h.miktar_lt)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}</span>
+                        <span className="text-emerald-700">−{formatMiktar(h.miktar_lt)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}{h.dis_yakit_oncesi && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold" title="Bu doluma kadar dışarıdan da yakıt alındı — bu aralık ortalamaya katılmaz">D</span>}</span>
                       ) : h.tip === "alim" ? (
                         <span className="text-blue-700">+{formatMiktar(h.miktar_lt)}</span>
                       ) : (
@@ -1827,6 +1844,27 @@ function YakitPageContent() {
                 <Fuel size={18} />
                 {verDialogDepoFull ? "Depo Full" : "Depo Full Değil"}
               </button>
+            </div>
+            <div className="space-y-1 py-1">
+              <button
+                type="button"
+                onClick={() => setVerDialogDisYakit(!verDialogDisYakit)}
+                disabled={verDialogLoading}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-semibold transition-all w-full ${
+                  verDialogDisYakit
+                    ? "bg-amber-500 text-white border-amber-500 shadow-md"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                }`}
+              >
+                <Fuel size={18} />
+                {verDialogDisYakit ? "Bu doluma kadar dışarıdan da yakıt alındı" : "Dışarıdan yakıt alınmadı"}
+              </button>
+              {verDialogDisYakit && (
+                <p className="text-[11px] text-amber-700 leading-snug">
+                  ⚠️ Önceki dolumdan bu doluma kadarki aralık, tüketim ortalamasına (anlık + genel)
+                  <strong> katılmaz</strong> — dışarıdan alınan yakıt kayıtlı olmadığı için gerçek tüketim ölçülemez.
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Not (opsiyonel)</Label>

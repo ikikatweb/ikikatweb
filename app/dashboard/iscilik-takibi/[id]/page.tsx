@@ -98,10 +98,11 @@ export default function IscilikDetayPage() {
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { if ((editing || editingHeader) && inputRef.current) inputRef.current.focus(); }, [editing, editingHeader]);
 
-  // Bordro tahmini (Yatan Prim altındaki silik gri rakamla aynı mantık)
-  // Sonuç: sonAy (en son veri girilen ay) sonrasındaki ayları kapsar — manuel + otomatik atama gün × günlük ücret
+  // Bordro tahmini — YALNIZCA en yeni ay satırının ait olduğu ay için (kümülatif DEĞİL).
+  // "Yeni Ay Ekle" ile eklenen ayın tahmini yatacak tutarı: o aya ait
+  // (manuel gün + otomatik atama günü) × günlük/brüt ücret.
   const bordroToplam = useMemo(() => {
-    if (!takip?.santiye_id) return 0;
+    if (!takip?.santiye_id || ayliklar.length === 0) return 0;
     const santiyeId = takip.santiye_id;
 
     const ayYilNum = (s: string): number => {
@@ -113,66 +114,44 @@ export default function IscilikDetayPage() {
       return 0;
     };
 
-    // sonAy = veri girilen aylardan en büyüğü (alt veya yüklenici tutarı > 0 olan)
-    let sonAyNum = 0;
+    // Hedef ay = en yeni (en büyük) ay satırı — eklenen ay
+    let hedefNum = 0;
     for (const a of ayliklar) {
-      if ((a.alt_yuklenici_tutar ?? 0) > 0 || (a.yuklenici_tutar ?? 0) > 0) {
-        const num = ayYilNum(a.ait_oldugu_ay);
-        if (num > sonAyNum) sonAyNum = num;
-      }
+      const n = ayYilNum(a.ait_oldugu_ay);
+      if (n > hedefNum) hedefNum = n;
     }
+    if (hedefNum === 0) return 0;
+    const yil = Math.floor(hedefNum / 100);
+    const ay = hedefNum % 100;
+    const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
 
-    let toplam = 0;
     const santiyeAtamalari = atamalar.filter((a) => a.santiye_id === santiyeId);
     const dahilEdilen = new Set<string>();
-    const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
-      const brut = brutUcretForAy(brutUcretGecmisi, personelId, ayStr);
+    const personelUcret = (personelId: string, aStr: string, y: number): number => {
+      const brut = brutUcretForAy(brutUcretGecmisi, personelId, aStr);
       if (brut > 0) return brut;
-      return gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0;
+      return gunlukUcretler.find((u) => u.yil === y)?.ucret ?? 0;
     };
 
-    // 1) Manuel girişler — sonAy'dan sonra
+    let toplam = 0;
+    // 1) Manuel girişler — SADECE hedef ay
     for (const m of manuelGunler) {
       if (m.santiye_id !== santiyeId) continue;
-      const mAyNum = ayYilNum(m.ay);
-      if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
-      const yil = parseInt(m.ay.split("-")[0], 10);
+      if (ayYilNum(m.ay) !== hedefNum) continue;
       const ucret = personelUcret(m.personel_id, m.ay, yil);
       if (ucret > 0) {
         toplam += m.gun * ucret;
-        dahilEdilen.add(`${m.personel_id}|${m.ay}`);
+        dahilEdilen.add(`${m.personel_id}|${ayStr}`);
       }
     }
-
-    // 2) Doğal hesap (atama tarihlerinden)
-    const bugun = new Date();
-    const buYilAy = `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}`;
-    const buYilAyNum = ayYilNum(buYilAy);
-    if (santiyeAtamalari.length > 0 && buYilAyNum > sonAyNum) {
-      const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
-        let enErken = Infinity;
-        for (const a of santiyeAtamalari) {
-          const aNum = ayYilNum(a.baslangic_tarihi.slice(0, 7));
-          if (aNum < enErken) enErken = aNum;
-        }
-        return enErken === Infinity ? buYilAyNum : enErken;
-      })();
-      let yil = Math.floor(baslangic / 100);
-      let ay = baslangic % 100;
-      if (ay === 0) { yil -= 1; ay = 12; }
-      while (yil * 100 + ay <= buYilAyNum) {
-        const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
-        const ayHesap = gunHesaplaAyBazli(santiyeAtamalari, ayStr);
-        for (const [pId, sMap] of ayHesap) {
-          const gun = sMap.get(santiyeId) ?? 0;
-          if (gun <= 0) continue;
-          if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
-          const ucret = personelUcret(pId, ayStr, yil);
-          if (ucret > 0) toplam += gun * ucret;
-        }
-        ay += 1;
-        if (ay > 12) { ay = 1; yil += 1; }
-      }
+    // 2) Doğal hesap (atama tarihlerinden) — SADECE hedef ay
+    const ayHesap = gunHesaplaAyBazli(santiyeAtamalari, ayStr);
+    for (const [pId, sMap] of ayHesap) {
+      const gun = sMap.get(santiyeId) ?? 0;
+      if (gun <= 0) continue;
+      if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
+      const ucret = personelUcret(pId, ayStr, yil);
+      if (ucret > 0) toplam += gun * ucret;
     }
     return toplam;
   }, [takip?.santiye_id, ayliklar, manuelGunler, gunlukUcretler, atamalar, brutUcretGecmisi]);
@@ -628,7 +607,7 @@ export default function IscilikDetayPage() {
                       className="h-6 text-xs px-1 text-right min-w-[120px]" />
                   ) : a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : (
                     a.id === enYeniAyId && bordroToplam > 0
-                      ? <span className="text-gray-300" title="Bordro tahmini (manuel + otomatik atama gün × günlük ücret)">{formatPara(bordroToplam)}</span>
+                      ? <span className="text-gray-300" title="Bu ayın bordro tahmini (o aya ait manuel + otomatik atama günü × günlük/brüt ücret)">{formatPara(bordroToplam)}</span>
                       : <span className="text-gray-300">0,00</span>
                   )}
                 </TableCell>
