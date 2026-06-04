@@ -1796,8 +1796,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const [yLs, mLs] = [yil, ay];
       const ayBaslangic = `${yLs}-${String(mLs).padStart(2, "0")}-01`;
       const sonGun = new Date(yLs, mLs, 0).getDate();
-      // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
-      const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
+      // Kısmi dönemde ayın GERÇEK gün sayısı kullanılır (31 çeken ayda 31. gün dahil); tam ay/Şubat ayBordroGun ile 30'a tamamlanır.
+      const ayBitis = `${yLs}-${String(mLs).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
       const today = yerelBugun();
       const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
       // Personel × ay bazında gün topla
@@ -2220,7 +2220,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const [yil, ay] = seciliAy.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
-    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
     const today = yerelBugun();
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
     const list = atamalar.filter((a) => {
@@ -2254,8 +2254,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const [yil, ay] = seciliAy.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
-    // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
-    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
+    // Kısmi dönemde ayın GERÇEK gün sayısı kullanılır (31 çeken ayda 31. gün dahil); tam ay/Şubat ayBordroGun ile 30'a tamamlanır.
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
     const today = yerelBugun();
     // Aktif atama (bitis_tarihi=null) için sanal bitiş: ay sınırı veya bugün
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
@@ -2443,8 +2443,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const [yil, ay] = seciliAy.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
     const sonGun = new Date(yil, ay, 0).getDate();
-    // SGK 30 gün kuralı: 31 çeken aylarda ay sonu en fazla 30 (31. gün sayılmaz).
-    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(Math.min(sonGun, 30)).padStart(2, "0")}`;
+    // Kısmi dönemde ayın GERÇEK gün sayısı kullanılır (31 çeken ayda 31. gün dahil); tam ay/Şubat ayBordroGun ile 30'a tamamlanır.
+    const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
     const today = yerelBugun();
     const aktifSanalBitis = today >= ayBas && today <= ayBit ? today : ayBit;
     const gFark = (a: string, b: string) => {
@@ -2507,8 +2507,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (!personel) continue;
       const tc = personel.tc_kimlik_no || personel.ad_soyad;
       const actual = ps.manuelGun != null ? ps.manuelGun : ps.naturalGun;
-      const actualCap = Math.min(actual, 30);
-      const naturalCap = Math.min(ps.naturalGun, 30);
+      // Manuel değer: yalnız 30'da tavanlanır (explicit override — Şubat tamamlaması yapılmaz).
+      // Doğal değer: prim gün kuralıyla → tam ay/Şubat 30'a tamamlanır, kısmi gerçek gün.
+      const actualCap = ps.manuelGun != null ? Math.min(ps.manuelGun, 30) : ayBordroGun(ps.naturalGun, seciliAy);
+      const naturalCap = ayBordroGun(ps.naturalGun, seciliAy);
       const sant = santiyeler.find((s) => s.id === ps.santiye_id);
       const teknikIsim = teknikIsimMap.get(`${ps.personel_id}|${ps.santiye_id}`) ?? null;
       const isTeknik = !!teknikIsim;
@@ -5007,9 +5009,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           {gunEdit && (() => {
             const [yil, ay] = seciliAy.split("-").map(Number);
             const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
-            // SGK 30 gün kuralı: 31 çeken aylar bordroda 30 sayılır → ay sonu ve
-            // manuel gün üst sınırı en fazla 30 (31. gün sayılmaz).
-            const sonGun = Math.min(new Date(yil, ay, 0).getDate(), 30);
+            // Ayın GERÇEK gün sayısı (Şubat 28/29, 31 çeken aylar 31). Tam ay → 30
+            // sabitlemesi ayInGun içinde (ayBordroGun) uygulanır; kısmi dönem gerçek gün.
+            const sonGun = new Date(yil, ay, 0).getDate();
             const ayBit = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
             const today = yerelBugun();
             // Aktif atama için sanal bitiş: ay sınırı veya bugün
@@ -5034,7 +5036,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               const bitisHam = a.bitis_tarihi ?? aktifSanal;
               const cb = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;
               const cbt = bitisHam < ayBit ? bitisHam : ayBit;
-              return gFark(cb, cbt);
+              // Prim gün kuralı: tam ay (Şubat dahil) → 30; kısmi → gerçek gün.
+              return ayBordroGun(gFark(cb, cbt), seciliAy);
             };
 
             const toplamAylikGun = liste.reduce((s, a) => s + ayInGun(a), 0);

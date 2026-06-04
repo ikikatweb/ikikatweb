@@ -778,11 +778,12 @@ export default function DashboardPage() {
     }
 
     // Şantiye bazlı bordro tahmini — BordroTakibi.bordroToplamForSantiye birebir
-    function bordroTahmini(santiyeId: string): number {
+    function bordroTahmini(santiyeId: string): { toplam: number; buAy: number; onceki: number } {
       const info = primInfo.get(santiyeId);
       const sonAyNum = info?.sonAyNum ?? 0;
       const dahilEdilen = new Set<string>();
       let toplam = 0;
+      let buAyToplam = 0; // içinde bulunulan ay (buYilAyNum) kısmı — tooltip dökümü için
 
       // 1) Manuel girişler — sonAy sonrası
       for (const m of bordroManuelGunler) {
@@ -792,15 +793,17 @@ export default function DashboardPage() {
         const yil = parseInt(m.ay.split("-")[0], 10);
         const ucret = personelUcret(m.personel_id, m.ay, yil);
         if (ucret > 0) {
-          toplam += m.gun * ucret;
+          const tutar = m.gun * ucret;
+          toplam += tutar;
+          if (mAyNum === buYilAyNum) buAyToplam += tutar;
           dahilEdilen.add(`${m.personel_id}|${m.ay}`);
         }
       }
 
       // 2) Doğal hesap — sonAy sonrası, manuel girilmemiş aylar
       const santiyeAtamalari = bordroAtamalar.filter((a) => a.santiye_id === santiyeId);
-      if (santiyeAtamalari.length === 0) return toplam;
-      if (buYilAyNum <= sonAyNum) return toplam;
+      if (santiyeAtamalari.length === 0) return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
+      if (buYilAyNum <= sonAyNum) return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
       const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
         let enErken = Infinity;
         for (const a of santiyeAtamalari) {
@@ -814,6 +817,7 @@ export default function DashboardPage() {
       if (ay === 0) { yil -= 1; ay = 12; }
       while (yil * 100 + ay <= buYilAyNum) {
         const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
+        const ayNum = yil * 100 + ay;
         const ayBaslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
         const sonGun = new Date(yil, ay, 0).getDate();
         const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
@@ -836,12 +840,16 @@ export default function DashboardPage() {
           if (gun <= 0) continue;
           if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
           const ucret = personelUcret(pId, ayStr, yil);
-          if (ucret > 0) toplam += gun * ucret;
+          if (ucret > 0) {
+            const tutar = gun * ucret;
+            toplam += tutar;
+            if (ayNum === buYilAyNum) buAyToplam += tutar;
+          }
         }
         ay += 1;
         if (ay > 12) { ay = 1; yil += 1; }
       }
-      return toplam;
+      return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
     }
 
     // Bu ay aktif kişi sayısı + atama günleri (sadece bilgi sütunu için)
@@ -906,6 +914,8 @@ export default function DashboardPage() {
       kisi: number;
       gun: number;
       tahminiBordro: number;
+      tahminiBuAy: number;    // tahmininin bu ayki kısmı (tooltip)
+      tahminiOnceki: number;  // önceki ay(lar)dan kalan kısım (tooltip)
       yatmasiGereken: number;
       yatanPrim: number;
       iscilikOrani: number;
@@ -927,12 +937,15 @@ export default function DashboardPage() {
       const kisi = buAyPersonelKumeleri.get(sid)?.size ?? 0;
       const firmaId = sant.yuklenici_firma_id ?? null;
       const firmaRengi = firmaId ? (firmaRenkMap.get(firmaId) ?? null) : null;
+      const tb = bordroTahmini(sid);
       satirlar.push({
         santiyeId: sid,
         santiyeAd: sant.is_adi,
         kisi,
         gun: buAyGun(sid),
-        tahminiBordro: bordroTahmini(sid),
+        tahminiBordro: tb.toplam,
+        tahminiBuAy: tb.buAy,
+        tahminiOnceki: tb.onceki,
         yatmasiGereken: info.yatmasiGereken,
         yatanPrim: info.yatan,
         iscilikOrani: info.iscilikOrani,
@@ -2154,7 +2167,11 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell
                           className="px-2 py-1.5 text-right tabular-nums"
-                          title={bordroOzet.gunlukUcret > 0 ? `${formatSayi(row.gun, 0)} gün × ${formatSayi(bordroOzet.gunlukUcret, 0)} ₺ = ${formatSayi(row.tahminiBordro, 0)} ₺` : "Günlük ücret tanımlı değil"}
+                          title={row.tahminiBordro > 0
+                            ? (row.tahminiOnceki > 0
+                                ? `Bu ay: ${formatSayi(row.tahminiBuAy, 0)} ₺ + Önceki aylardan: ${formatSayi(row.tahminiOnceki, 0)} ₺ = ${formatSayi(row.tahminiBordro, 0)} ₺`
+                                : `Bu ay: ${formatSayi(row.tahminiBuAy, 0)} ₺`)
+                            : (bordroOzet.gunlukUcret > 0 ? "Tahmini bordro: 0 ₺" : "Günlük ücret tanımlı değil")}
                         >
                           {row.tahminiBordro > 0 ? (
                             <span className="text-gray-400">{formatSayi(row.tahminiBordro, 0)} ₺</span>
