@@ -198,6 +198,9 @@ export type Arac = {
   arac_degeri_updated_at: string | null;
   sayac_tipi: "km" | "saat" | null;
   guncel_gosterge: number | null;
+  // 1 depo (tam dolum) ile gidilebilecek km veya çalışabilecek saat. Yakıt verirken
+  // iki dolum arası fark bu değeri AŞARSA "dışarıdan yakıt alındı" otomatik işaretlenir.
+  depo_menzil: number | null;
   santiye_id: string | null;
   firma_id: string | null;
   hgs_saglayici: string | null;

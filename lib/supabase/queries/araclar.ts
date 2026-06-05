@@ -93,12 +93,19 @@ export async function createArac(arac: AracInsert) {
     sase_no: arac.sase_no,
     motor_no: arac.motor_no,
   });
-  const { data, error } = await supabase
-    .from("araclar")
-    .insert(arac)
-    .select()
-    .single();
-
+  // Şema kaymasına dayanıklı: DB'de bulunmayan kolonu hata mesajından tespit edip
+  // payload'dan çıkararak tekrar dener (migration çalıştırılmamış kolonlar; örn.
+  // depo_menzil, arac_degeri_updated_at). Böylece eksik kolon yüzünden kayıt kırılmaz.
+  const payload = { ...arac };
+  let res = await supabase.from("araclar").insert(payload).select().single();
+  let guard = 0;
+  while (res.error && guard++ < 10) {
+    const eksik = String(res.error.message ?? "").match(/Could not find the '([^']+)' column/)?.[1];
+    if (!eksik || !(eksik in payload)) break;
+    delete (payload as Record<string, unknown>)[eksik];
+    res = await supabase.from("araclar").insert(payload).select().single();
+  }
+  const { data, error } = res;
   if (error) throw error;
 
   try {
@@ -127,13 +134,18 @@ export async function updateArac(id: string, arac: AracUpdate) {
     },
     id
   );
-  const { data, error } = await supabase
-    .from("araclar")
-    .update({ ...arac, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
-
+  // Şema kaymasına dayanıklı: DB'de bulunmayan kolonu hata mesajından tespit edip
+  // çıkararak tekrar dener (migration çalıştırılmamış kolonlar).
+  const payload = { ...arac, updated_at: new Date().toISOString() };
+  let res = await supabase.from("araclar").update(payload).eq("id", id).select().single();
+  let guard = 0;
+  while (res.error && guard++ < 10) {
+    const eksik = String(res.error.message ?? "").match(/Could not find the '([^']+)' column/)?.[1];
+    if (!eksik || !(eksik in payload)) break;
+    delete (payload as Record<string, unknown>)[eksik];
+    res = await supabase.from("araclar").update(payload).eq("id", id).select().single();
+  }
+  const { data, error } = res;
   if (error) throw error;
 
   // Update bildirimi — KM güncellemesi spam olmasın, sadece anahtar alanlar değişince gönder

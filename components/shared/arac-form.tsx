@@ -11,6 +11,7 @@ import {
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getAraclar } from "@/lib/supabase/queries/araclar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
+import { geriyeDonukDisYakitUygula } from "@/lib/supabase/queries/yakit";
 import type { Arac, AracInsert, Firma, Santiye } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,6 +74,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
     arac_degeri_updated_at: arac?.arac_degeri_updated_at ?? null,
     sayac_tipi: arac?.sayac_tipi ?? "km",
     guncel_gosterge: arac?.guncel_gosterge ?? null,
+    depo_menzil: arac?.depo_menzil ?? null,
     santiye_id: arac?.santiye_id ?? null,
     firma_id: arac?.firma_id ?? null,
     hgs_saglayici: arac?.hgs_saglayici ?? null,
@@ -128,7 +130,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
     setFormData((prev) => ({
       ...prev,
       [name]:
-        name === "yili" || name === "guncel_gosterge"
+        name === "yili" || name === "guncel_gosterge" || name === "depo_menzil"
           ? value ? parseInt(value) : null
           : value || null,
     }));
@@ -174,15 +176,34 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
         kiralama_firmasi: formData.kiralama_firmasi ? formatBaslik(formData.kiralama_firmasi) : formData.kiralama_firmasi,
       };
 
+      let kayitliAracId: string | null = isEdit ? arac.id : null;
       if (isEdit) {
         await updateArac(arac.id, submitData);
       } else {
-        await createArac(submitData);
+        const yeni = await createArac(submitData);
+        kayitliAracId = yeni?.id ?? null;
+      }
+
+      // Depo menzili girildiyse: GEÇMİŞ yakıt kayıtlarını bu menzile göre yeniden
+      // değerlendir — ardışık fark menzili aşan eski kayıtları "dışarıdan yakıt alındı"
+      // olarak işaretle (yalnız ekler, manuel işaretleri kaldırmaz).
+      if (kayitliAracId && (formData.depo_menzil ?? 0) > 0) {
+        try {
+          const n = await geriyeDonukDisYakitUygula(kayitliAracId, formData.depo_menzil!);
+          if (n > 0) {
+            toast.success(`${n} geçmiş yakıt kaydı "dışarıdan yakıt alındı" olarak işaretlendi (menzil aşımı).`);
+          }
+        } catch { /* sessiz — dis_yakit_oncesi kolonu yoksa atla */ }
       }
 
       basarili = true;
     } catch (saveErr) {
-      const msg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+      // Supabase hataları Error değil düz nesnedir → message alanını oku ([object Object] olmasın).
+      const msg = saveErr instanceof Error
+        ? saveErr.message
+        : (saveErr && typeof saveErr === "object" && "message" in saveErr)
+          ? String((saveErr as { message?: unknown }).message ?? "")
+          : String(saveErr);
       console.error("ARAÇ KAYDETME HATASI:", msg);
       toast.error(
         isEdit
@@ -445,6 +466,26 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                 onChange={handleChange}
                 disabled={loading}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="depo_menzil">
+                {formData.sayac_tipi === "saat"
+                  ? "1 Depo ile Çalışabileceği Saat"
+                  : "1 Depo ile Gidebileceği KM"}
+              </Label>
+              <Input
+                id="depo_menzil"
+                name="depo_menzil"
+                type="text" inputMode="numeric"
+                placeholder={formData.sayac_tipi === "saat" ? "Örn: 10" : "Örn: 450"}
+                value={formData.depo_menzil ?? ""}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              <p className="text-[10px] text-gray-400 leading-snug">
+                Yakıt verirken iki dolum arası fark bu değeri aşarsa &quot;dışarıdan yakıt alındı&quot; otomatik işaretlenir. Boş bırakılırsa otomatik kontrol yapılmaz.
+              </p>
             </div>
 
             <div className="space-y-2">

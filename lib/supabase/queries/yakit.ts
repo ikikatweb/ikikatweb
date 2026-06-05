@@ -98,11 +98,22 @@ export async function insertAracYakit(data: {
 }): Promise<void> {
   const supabase = getSupabase();
   // INSERT + SELECT — bildirimde kaynak_id için id gerekli
-  const { data: inserted, error } = await supabase
+  let { data: inserted, error } = await supabase
     .from("arac_yakit")
     .insert(data)
     .select("id")
     .single();
+  // dis_yakit_oncesi kolonu henüz eklenmemişse (migration çalıştırılmadıysa) o alan
+  // olmadan tekrar dene — temel yakıt kaydı yine de kaydedilsin.
+  if (error && String(error.message ?? "").includes("dis_yakit_oncesi")) {
+    const base = { ...data };
+    delete base.dis_yakit_oncesi;
+    ({ data: inserted, error } = await supabase
+      .from("arac_yakit")
+      .insert(base)
+      .select("id")
+      .single());
+  }
   if (error) throw error;
 
   // Push bildirim — araç yakıt verme
@@ -140,7 +151,13 @@ export async function updateAracYakit(id: string, data: {
   notu: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
-  const { error } = await supabase.from("arac_yakit").update(data).eq("id", id);
+  let { error } = await supabase.from("arac_yakit").update(data).eq("id", id);
+  // dis_yakit_oncesi kolonu yoksa o alansız tekrar dene (migration çalıştırılmadıysa).
+  if (error && String(error.message ?? "").includes("dis_yakit_oncesi")) {
+    const base = { ...data };
+    delete base.dis_yakit_oncesi;
+    ({ error } = await supabase.from("arac_yakit").update(base).eq("id", id));
+  }
   if (error) throw error;
 }
 
@@ -152,6 +169,39 @@ export async function deleteAracYakit(id: string): Promise<void> {
     const { bildirimSilByKaynak } = await import("@/lib/bildirim");
     bildirimSilByKaynak("arac-yakit", id);
   } catch { /* sessiz */ }
+}
+
+// Aracın 1 depo menzili girilince/değişince GEÇMİŞ yakıt kayıtlarını yeniden değerlendir:
+// ardışık iki dolum arası fark (km/saat), menzili AŞAN kayıtlar "dışarıdan yakıt alındı"
+// (dis_yakit_oncesi=true) olarak işaretlenir. Yalnız EKLER (mevcut işaretleri/manuel
+// işaretleri kaldırmaz). dis_yakit_oncesi kolonu yoksa sessizce geçer (migration gerekir).
+// Döndürür: işaretlenen kayıt sayısı (kolon yoksa veya hata olursa 0).
+export async function geriyeDonukDisYakitUygula(
+  aracId: string,
+  menzil: number,
+): Promise<number> {
+  if (!aracId || !menzil || menzil <= 0) return 0;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_yakit")
+    .select("id, km_saat, dis_yakit_oncesi")
+    .eq("arac_id", aracId)
+    .order("tarih", { ascending: true })
+    .order("saat", { ascending: true });
+  if (error || !data || data.length < 2) return 0;
+  const isaretlenecek: string[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const fark = (data[i].km_saat ?? 0) - (data[i - 1].km_saat ?? 0);
+    // Zaten işaretliyse tekrar yazma; sadece menzili aşıp henüz işaretsiz olanları al.
+    if (fark > menzil && !data[i].dis_yakit_oncesi) isaretlenecek.push(data[i].id);
+  }
+  if (isaretlenecek.length === 0) return 0;
+  const { error: updErr } = await supabase
+    .from("arac_yakit")
+    .update({ dis_yakit_oncesi: true })
+    .in("id", isaretlenecek);
+  if (updErr) return 0; // kolon yoksa / hata → sessiz
+  return isaretlenecek.length;
 }
 
 // ==================== DEPO ALIM ====================

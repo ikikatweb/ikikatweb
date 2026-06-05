@@ -4265,7 +4265,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {tutarHesap > 0 ? (
                   <span className="inline-flex items-center gap-1 whitespace-nowrap">
                     {brutKullanildi && <span className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded font-bold" title="Brüt ücretten">B</span>}
-                    <span className="whitespace-nowrap">{tutarHesap.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL</span>
+                    <span className="whitespace-nowrap">{tutarHesap.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL</span>
                   </span>
                 ) : "—"}
               </td>
@@ -4733,7 +4733,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 <span>
                   <span className="text-[11px] text-white/70 mr-1">Toplam Tutar:</span>
                   <strong className="text-base">
-                    {aramaGenelToplam.toplamTutar.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                    {aramaGenelToplam.toplamTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL
                   </strong>
                 </span>
               </div>

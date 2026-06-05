@@ -6,7 +6,7 @@
 "use client";
 
 import AracForm from "@/components/shared/arac-form";
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
@@ -224,6 +224,9 @@ function YakitPageContent() {
   const [verDialogNotu, setVerDialogNotu] = useState("");
   const [verDialogDepoFull, setVerDialogDepoFull] = useState(false);
   const [verDialogDisYakit, setVerDialogDisYakit] = useState(false);
+  // Menzil aşımında "şantiye dışından yakıt aldı mı?" sorusu (Evet/Hayır penceresi)
+  const [disSoruAcik, setDisSoruAcik] = useState(false);
+  const sorulanKmRef = useRef<number | null>(null); // aynı km için tekrar sormamak adına
   const [verDialogLoading, setVerDialogLoading] = useState(false);
 
   // Dialog: Yakıt Al
@@ -738,6 +741,7 @@ function YakitPageContent() {
     setVerDialogNotu("");
     setVerDialogDepoFull(true);
     setVerDialogDisYakit(false);
+    sorulanKmRef.current = null;
     setVerDialogOpen(true);
   }
 
@@ -754,6 +758,7 @@ function YakitPageContent() {
     setVerDialogNotu(y.notu ?? "");
     setVerDialogDepoFull(y.depo_full ?? false);
     setVerDialogDisYakit(y.dis_yakit_oncesi ?? false);
+    sorulanKmRef.current = null;
     setVerDialogOpen(true);
   }
 
@@ -821,9 +826,9 @@ function YakitPageContent() {
       return;
     }
 
-    const kmStr = verDialogKmSaat.replace(",", ".").trim();
-    if (!kmStr) { toast.error("KM/Saat değeri girin."); return; }
-    const km = parseFloat(kmStr);
+    if (!verDialogKmSaat.trim()) { toast.error("KM/Saat değeri girin."); return; }
+    // parseParaInput: binlik noktaları atar, virgülü ondalık yapar → "480.640" = 480640 (doğru).
+    const km = parseParaInput(verDialogKmSaat);
     if (isNaN(km) || km < 0) { toast.error("Geçerli bir KM/Saat değeri girin."); return; }
 
     const miktar = parseParaInput(verDialogMiktar);
@@ -897,7 +902,12 @@ function YakitPageContent() {
       toast.success(verEditId ? "Yakıt kaydı güncellendi." : "Yakıt kaydı eklendi.");
       setVerDialogOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      // Supabase hataları Error değil düz nesnedir → message alanını oku ([object Object] olmasın).
+      const msg = err instanceof Error
+        ? err.message
+        : (err && typeof err === "object" && "message" in err)
+          ? String((err as { message?: unknown }).message ?? "")
+          : String(err);
       console.error(err);
       if (msg.includes("does not exist") || msg.includes("relation")) {
         toast.error("arac_yakit tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
@@ -1046,6 +1056,24 @@ function YakitPageContent() {
     return kayitlar[0] ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verDialogAracId, verEditId, yakitKayitlari]);
+
+  // MENZİL AŞIMI KONTROLÜ — km/saat girişi tamamlanınca (blur) çağrılır:
+  // İki dolum arası fark (girilen − önceki kayıt), aracın "1 depo menzili"ni AŞARSA
+  // → "Araç şantiye dışından yakıt aldı mı?" diye SORULUR (Evet/Hayır penceresi).
+  // Evet → dış-yakıt işaretlenir; Hayır → işaretlenmez. Sessiz otomatik işaretleme YOK.
+  function kmMenzilKontrol() {
+    if (!verDialogAracId || !verDialogSonKayit) return;
+    const menzil = aracMap.get(verDialogAracId)?.depo_menzil ?? 0;
+    if (!menzil || menzil <= 0) return;
+    const km = parseParaInput(verDialogKmSaat);
+    if (km <= 0) return;
+    const fark = km - verDialogSonKayit.km_saat;
+    // Aynı km için tekrar sorma (blur her tetiklendiğinde pencere açılmasın).
+    if (fark > menzil && sorulanKmRef.current !== km) {
+      sorulanKmRef.current = km;
+      setDisSoruAcik(true);
+    }
+  }
 
   // Seçili şantiyedeki kullanılabilir araçlar (pasif olmayan — trafikten çekildi dahil)
   // Trafikten çekildi araçlara da yakıt verilebilir, sadece "pasif" olanlar hariç tutulur.
@@ -1656,8 +1684,41 @@ function YakitPageContent() {
 
       {/* ============ DIALOGS ============ */}
 
+      {/* Menzil aşımı sorusu — "Şantiye dışından yakıt aldı mı?" (Evet/Hayır) */}
+      {disSoruAcik && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-5">
+            <div className="flex items-center gap-2 text-base font-semibold text-[#1E3A5F] mb-1">
+              <Fuel size={18} className="text-amber-500" /> Şantiye Dışından Yakıt
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              İki dolum arası fark, aracın <strong>1 depo menzilini</strong> aşıyor.
+              Araç şantiye dışından (bizim depo dışı) yakıt aldı mı?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setVerDialogDisYakit(false); setDisSoruAcik(false); }}
+                className="px-4 py-2 rounded-lg border text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Hayır
+              </button>
+              <button
+                type="button"
+                onClick={() => { setVerDialogDisYakit(true); setDisSoruAcik(false); }}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600"
+              >
+                Evet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Yakıt Ver Dialog */}
-      <Dialog open={verDialogOpen} onOpenChange={setVerDialogOpen}>
+      {/* disSoruAcik iken kapanmayı engelle — Evet/Hayır overlay'ine tıklamak
+          "dışarı tıklama" sayılıp diyaloğu kapatmasın. */}
+      <Dialog open={verDialogOpen} onOpenChange={(open) => { if (!open && disSoruAcik) return; setVerDialogOpen(open); }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1668,7 +1729,7 @@ function YakitPageContent() {
           <div className="space-y-3 py-2 overflow-hidden">
             <div className="space-y-1">
               <Label className="text-xs">Şantiye</Label>
-              <div className="overflow-hidden">
+              <div>
                 <SantiyeSelect
                   santiyeler={(() => {
                     // SADECE depo_kapasitesi > 0 olan şantiyeler — depo kapatılmışsa
@@ -1687,7 +1748,7 @@ function YakitPageContent() {
               <div className="flex gap-1">
                 <select
                   value={verDialogAracId}
-                  onChange={(e) => setVerDialogAracId(e.target.value)}
+                  onChange={(e) => { setVerDialogAracId(e.target.value); sorulanKmRef.current = null; }}
                   className={selectClass + " flex-1 min-w-0"}
                   disabled={verDialogLoading || !verDialogSantiyeId}
                 >
@@ -1811,7 +1872,8 @@ function YakitPageContent() {
                   type="text"
                   inputMode="decimal"
                   value={verDialogKmSaat}
-                  onChange={(e) => setVerDialogKmSaat(e.target.value)}
+                  onChange={(e) => setVerDialogKmSaat(formatParaInput(e.target.value))}
+                  onBlur={kmMenzilKontrol}
                   placeholder={verDialogSonKayit ? String(verDialogSonKayit.km_saat) : "Örn: 125000"}
                   className={selectClass + " w-full"}
                   disabled={verDialogLoading}
@@ -1856,13 +1918,14 @@ function YakitPageContent() {
                     : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
                 }`}
               >
-                <Fuel size={18} />
-                {verDialogDisYakit ? "Bu doluma kadar dışarıdan da yakıt alındı" : "Dışarıdan yakıt alınmadı"}
+                <Fuel size={18} className="flex-shrink-0" />
+                <span className="min-w-0 break-words text-left">
+                  {verDialogDisYakit ? "Dışarıdan yakıt alındı" : "Dışarıdan yakıt alınmadı"}
+                </span>
               </button>
               {verDialogDisYakit && (
-                <p className="text-[11px] text-amber-700 leading-snug">
-                  ⚠️ Önceki dolumdan bu doluma kadarki aralık, tüketim ortalamasına (anlık + genel)
-                  <strong> katılmaz</strong> — dışarıdan alınan yakıt kayıtlı olmadığı için gerçek tüketim ölçülemez.
+                <p className="text-[11px] text-amber-700 leading-snug break-words">
+                  ⚠️ Bu aralık tüketim ortalamasına katılmaz (dış yakıt kayıtlı değil).
                 </p>
               )}
             </div>
