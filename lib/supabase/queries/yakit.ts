@@ -92,7 +92,7 @@ export async function insertAracYakit(data: {
   km_saat: number;
   miktar_lt: number;
   depo_full?: boolean;
-  dis_yakit_oncesi?: boolean;
+  dis_yakit_oncesi?: boolean | null;
   notu: string | null;
   created_by: string | null;
 }): Promise<void> {
@@ -147,7 +147,7 @@ export async function updateAracYakit(id: string, data: {
   km_saat: number;
   miktar_lt: number;
   depo_full?: boolean;
-  dis_yakit_oncesi?: boolean;
+  dis_yakit_oncesi?: boolean | null;
   notu: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
@@ -184,16 +184,26 @@ export async function geriyeDonukDisYakitUygula(
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("arac_yakit")
-    .select("id, km_saat, dis_yakit_oncesi")
+    .select("id, km_saat, dis_yakit_oncesi, santiye_id")
     .eq("arac_id", aracId)
     .order("tarih", { ascending: true })
     .order("saat", { ascending: true });
   if (error || !data || data.length < 2) return 0;
+  // ŞANTİYE BAZLI: her şantiyeyi ayrı değerlendir — ardışık (aynı şantiyedeki) iki dolum
+  // arası fark menzili aşarsa o kayıt işaretlenir. (Liste de şantiye bazlı fark gösterir.)
+  const gruplar = new Map<string, typeof data>();
+  for (const r of data) {
+    const sid = r.santiye_id ?? "";
+    if (!gruplar.has(sid)) gruplar.set(sid, []);
+    gruplar.get(sid)!.push(r);
+  }
   const isaretlenecek: string[] = [];
-  for (let i = 1; i < data.length; i++) {
-    const fark = (data[i].km_saat ?? 0) - (data[i - 1].km_saat ?? 0);
-    // Zaten işaretliyse tekrar yazma; sadece menzili aşıp henüz işaretsiz olanları al.
-    if (fark > menzil && !data[i].dis_yakit_oncesi) isaretlenecek.push(data[i].id);
+  for (const [, grup] of gruplar) {
+    for (let i = 1; i < grup.length; i++) {
+      const fark = (grup[i].km_saat ?? 0) - (grup[i - 1].km_saat ?? 0);
+      // Zaten işaretliyse tekrar yazma; sadece menzili aşıp henüz işaretsiz olanları al.
+      if (fark > menzil && !grup[i].dis_yakit_oncesi) isaretlenecek.push(grup[i].id);
+    }
   }
   if (isaretlenecek.length === 0) return 0;
   const { error: updErr } = await supabase

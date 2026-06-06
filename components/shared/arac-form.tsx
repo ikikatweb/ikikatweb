@@ -11,7 +11,6 @@ import {
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getAraclar } from "@/lib/supabase/queries/araclar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
-import { geriyeDonukDisYakitUygula } from "@/lib/supabase/queries/yakit";
 import type { Arac, AracInsert, Firma, Santiye } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -176,25 +175,13 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
         kiralama_firmasi: formData.kiralama_firmasi ? formatBaslik(formData.kiralama_firmasi) : formData.kiralama_firmasi,
       };
 
-      let kayitliAracId: string | null = isEdit ? arac.id : null;
       if (isEdit) {
         await updateArac(arac.id, submitData);
       } else {
-        const yeni = await createArac(submitData);
-        kayitliAracId = yeni?.id ?? null;
+        await createArac(submitData);
       }
-
-      // Depo menzili girildiyse: GEÇMİŞ yakıt kayıtlarını bu menzile göre yeniden
-      // değerlendir — ardışık fark menzili aşan eski kayıtları "dışarıdan yakıt alındı"
-      // olarak işaretle (yalnız ekler, manuel işaretleri kaldırmaz).
-      if (kayitliAracId && (formData.depo_menzil ?? 0) > 0) {
-        try {
-          const n = await geriyeDonukDisYakitUygula(kayitliAracId, formData.depo_menzil!);
-          if (n > 0) {
-            toast.success(`${n} geçmiş yakıt kaydı "dışarıdan yakıt alındı" olarak işaretlendi (menzil aşımı).`);
-          }
-        } catch { /* sessiz — dis_yakit_oncesi kolonu yoksa atla */ }
-      }
+      // Not: Geçmiş kayıtlar için ayrı bir bulk-işaretleme yapılmaz; dış-yakıt
+      // tespiti yakıt listesinde menzile göre CANLI (görünüme bağlı) hesaplanır.
 
       basarili = true;
     } catch (saveErr) {

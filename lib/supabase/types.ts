@@ -613,10 +613,11 @@ export type AracYakit = {
   km_saat: number;
   miktar_lt: number;
   depo_full: boolean;
-  // Bu doluma kadar araç dışarıdan (bizim depo dışı) da yakıt aldıysa true.
-  // İşaretliyse önceki dolum→bu dolum aralığı tüketim ortalamasına KATILMAZ
-  // (litre eksik olduğu için gerçek tüketim ölçülemez).
-  dis_yakit_oncesi: boolean;
+  // Dış yakıt (önceki dolum→bu dolum aralığı tüketim ortalamasına KATILMAZ):
+  //   null  → OTOMATİK: fark, aracın 1 depo menzilini aşıyorsa dış yakıt sayılır.
+  //   true  → elle "dışarıdan yakıt alındı" (zorla açık)
+  //   false → elle "alınmadı" (otomatiği iptal, zorla kapalı)
+  dis_yakit_oncesi: boolean | null;
   notu: string | null;
   created_at: string;
   created_by: string | null;
