@@ -175,8 +175,9 @@ function ManuelGunHizliKart({
   // Kırmızı yalnızca: max'ı aşınca (tooHigh) veya kesinleşmiş taban altına inince (tooLowFloor).
   const uyari = tooHigh || tooLowFloor;
   const degisti = N !== mevcutGun;
-  // tooHigh: admin bypass edebilir. tooLowFloor: kimse bypass edemez (kesinleşmiş gün).
-  const canSave = degisti && (!tooHigh || adminBypass) && !tooLowFloor;
+  // tooHigh: admin bypass edebilir. tooLowFloor: SADECE UYARI — kaydetmeyi engellemez
+  // (bilerek daha az gün girilebilir; kullanıcı yine de kaydedebilir).
+  const canSave = degisti && (!tooHigh || adminBypass);
   return (
     <div className={`border-2 rounded-lg p-3 ${uyari ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
       <div className={`text-xs font-semibold mb-1.5 ${uyari ? "text-red-700" : "text-blue-700"}`}>
@@ -218,7 +219,7 @@ function ManuelGunHizliKart({
       {tooLowFloor && (
         <p className="text-xs text-red-700 font-semibold mt-2">
           ⚠️ Çıkışı yapılmış dönemin günleri kesinleşmiştir; en az <strong>{ayMinGun} gün</strong> girilmelidir.
-          <span className="block mt-0.5 text-[11px] font-normal text-red-600">Bu günleri değiştirmek için aşağıdaki detay editöründen ilgili atamanın çıkış tarihini düzenleyin. Kaydetme engellendi.</span>
+          <span className="block mt-0.5 text-[11px] font-normal text-red-600">Bu günleri değiştirmek için aşağıdaki detay editöründen ilgili atamanın çıkış tarihini düzenleyebilirsiniz. Yine de bu değerle kaydedebilirsiniz.</span>
         </p>
       )}
       <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
