@@ -171,47 +171,43 @@ export async function deleteAracYakit(id: string): Promise<void> {
   } catch { /* sessiz */ }
 }
 
-// Aracın 1 depo menzili girilince/değişince GEÇMİŞ yakıt kayıtlarını yeniden değerlendir:
-// ardışık iki dolum arası fark (km/saat), menzili AŞAN kayıtlar "dışarıdan yakıt alındı"
-// (dis_yakit_oncesi=true) olarak işaretlenir. Yalnız EKLER (mevcut işaretleri/manuel
-// işaretleri kaldırmaz). dis_yakit_oncesi kolonu yoksa sessizce geçer (migration gerekir).
-// Döndürür: işaretlenen kayıt sayısı (kolon yoksa veya hata olursa 0).
-export async function geriyeDonukDisYakitUygula(
+// Aracın 1 depo menzili değişince GEÇMİŞ yakıt kayıtlarını menzille UYUMLU hale getir:
+// menzilin ALTINDA kalmasına rağmen kalıcı olarak dis_yakit_oncesi=true (dışarıdan yakıt)
+// işaretli kayıtları OTOMATİĞE (null) çevirir. Böylece menzil belirleyici olur — menzili
+// AŞAN aralıklar otomatik D kalır, ALTINDA kalanlar D'den çıkar. Genel ortalama hesabıyla
+// AYNI global ardışık-fark mantığını kullanır (km/saat girilmemiş kayıtlar hariç).
+// Manuel "false" (alınmadı) işaretine ve menzili gerçekten aşan "true"lara dokunmaz.
+// dis_yakit_oncesi kolonu yoksa sessizce geçer. Döndürür: otomatiğe alınan kayıt id'leri.
+export async function menzilUyumsuzDisYakitTemizle(
   aracId: string,
   menzil: number,
-): Promise<number> {
-  if (!aracId || !menzil || menzil <= 0) return 0;
+): Promise<string[]> {
+  if (!aracId || !menzil || menzil <= 0) return [];
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("arac_yakit")
-    .select("id, km_saat, dis_yakit_oncesi, santiye_id")
+    .select("id, km_saat, dis_yakit_oncesi, tarih, saat")
     .eq("arac_id", aracId)
     .order("tarih", { ascending: true })
     .order("saat", { ascending: true });
-  if (error || !data || data.length < 2) return 0;
-  // ŞANTİYE BAZLI: her şantiyeyi ayrı değerlendir — ardışık (aynı şantiyedeki) iki dolum
-  // arası fark menzili aşarsa o kayıt işaretlenir. (Liste de şantiye bazlı fark gösterir.)
-  const gruplar = new Map<string, typeof data>();
-  for (const r of data) {
-    const sid = r.santiye_id ?? "";
-    if (!gruplar.has(sid)) gruplar.set(sid, []);
-    gruplar.get(sid)!.push(r);
+  if (error || !data || data.length < 2) return [];
+  const sirali = data
+    .filter((r) => (r.km_saat ?? 0) > 0)
+    .sort((a, b) => `${a.tarih}T${a.saat}`.localeCompare(`${b.tarih}T${b.saat}`));
+  const temizlenecek: string[] = [];
+  for (let i = 1; i < sirali.length; i++) {
+    const fark = (sirali[i].km_saat ?? 0) - (sirali[i - 1].km_saat ?? 0);
+    if (fark <= 0) continue;
+    // Menzilin ALTINDA kalmasına rağmen kalıcı 'true' → menzil ile çelişiyor, otomatiğe al.
+    if (sirali[i].dis_yakit_oncesi === true && fark <= menzil) temizlenecek.push(sirali[i].id);
   }
-  const isaretlenecek: string[] = [];
-  for (const [, grup] of gruplar) {
-    for (let i = 1; i < grup.length; i++) {
-      const fark = (grup[i].km_saat ?? 0) - (grup[i - 1].km_saat ?? 0);
-      // Zaten işaretliyse tekrar yazma; sadece menzili aşıp henüz işaretsiz olanları al.
-      if (fark > menzil && !grup[i].dis_yakit_oncesi) isaretlenecek.push(grup[i].id);
-    }
-  }
-  if (isaretlenecek.length === 0) return 0;
+  if (temizlenecek.length === 0) return [];
   const { error: updErr } = await supabase
     .from("arac_yakit")
-    .update({ dis_yakit_oncesi: true })
-    .in("id", isaretlenecek);
-  if (updErr) return 0; // kolon yoksa / hata → sessiz
-  return isaretlenecek.length;
+    .update({ dis_yakit_oncesi: null })
+    .in("id", temizlenecek);
+  if (updErr) return []; // kolon yoksa / hata → sessiz
+  return temizlenecek;
 }
 
 // ==================== DEPO ALIM ====================

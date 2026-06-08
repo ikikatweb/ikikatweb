@@ -361,12 +361,13 @@ function YakitPageContent() {
   // Filtreler uygulanır: santiye + tarih aralığı (kullanıcı belirli bir kapsam istiyor)
   const aracGenelOrt = useMemo(() => {
     const m = new Map<string, number>();
-    // aracId → sıralı kayıtlar (şantiye + tarih filtresi uygulanmış)
+    // GENEL/KÜMÜLATİF ortalama: TÜM zaman (tarih filtresi UYGULANMAZ — yoksa "genel" olmaz).
+    // ŞANTİYE filtresi UYGULANIR: şantiye seçiliyse o şantiyenin geneli; seçili değilse
+    // aracın tüm şantiyelerdeki geneli (= Araçlar sekmesiyle birebir). Veri sayfalamayla
+    // tam çekiliyor (1000 satır sınırı yok).
     const byArac = new Map<string, AracYakit[]>();
     for (const y of yakitKayitlari) {
       if (filtreSantiyeId && y.santiye_id !== filtreSantiyeId) continue;
-      if (filtreBaslangic && y.tarih < filtreBaslangic) continue;
-      if (filtreBitis && y.tarih > filtreBitis) continue;
       if (!byArac.has(y.arac_id)) byArac.set(y.arac_id, []);
       byArac.get(y.arac_id)!.push(y);
     }
@@ -402,7 +403,7 @@ function YakitPageContent() {
       m.set(aracId, (toplamLt / toplamMesafe) * carpan);
     }
     return m;
-  }, [yakitKayitlari, aracMap, filtreSantiyeId, filtreBaslangic, filtreBitis]);
+  }, [yakitKayitlari, aracMap, filtreSantiyeId]);
 
   // Aracın önceki kaydını bul (tarih+saat'ten önce)
   // santiyeId verilirse önceki kayıt SADECE o şantiyedeki dolumlar arasından bulunur
@@ -1777,7 +1778,6 @@ function YakitPageContent() {
                         return trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" ")).includes(q);
                       })
                       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"))
-                      .slice(0, 20)
                       .map((a) => (
                         <button
                           key={a.id}

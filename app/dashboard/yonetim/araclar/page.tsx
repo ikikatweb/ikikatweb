@@ -1,7 +1,7 @@
 // Araç listesi sayfası - Sıra no, firma, HGS, aktif/pasif, ruhsat indirme
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAraclar, toggleAracDurum, deleteArac } from "@/lib/supabase/queries/araclar";
@@ -26,6 +26,56 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
+type YakitMini = {
+  id: string;
+  arac_id: string;
+  santiye_id: string;
+  tarih: string;
+  saat: string;
+  km_saat: number | null;
+  miktar_lt: number | null;
+  dis_yakit_oncesi?: boolean | null;
+};
+
+// Araç başına genel yakıt tüketim ortalaması (L/100km veya L/saat).
+// Yakıt sayfasındaki aracGenelOrt ile aynı mantık (şantiye filtresiz, araç geneli):
+// ardışık dolumlar arası Σlitre / Σmesafe; km/saat girilmemiş ve dış-yakıt aralıkları hariç.
+// Dış-yakıt: manuel (true/false) öncelikli; null ise OTOMATİK (mesafe 1 depo menzilini aşıyorsa).
+function hesaplaGenelOrtMap(
+  yakitlar: YakitMini[],
+  araclar: AracWithRelations[],
+): Map<string, number> {
+  const aracById = new Map(araclar.map((a) => [a.id, a]));
+  const byArac = new Map<string, YakitMini[]>();
+  for (const y of yakitlar) {
+    if (!byArac.has(y.arac_id)) byArac.set(y.arac_id, []);
+    byArac.get(y.arac_id)!.push(y);
+  }
+  const m = new Map<string, number>();
+  for (const [aracId, kayitlar] of byArac) {
+    const arac = aracById.get(aracId);
+    const carpan = arac?.sayac_tipi === "saat" ? 1 : 100;
+    const menzil = arac?.depo_menzil ?? 0;
+    const sirali = kayitlar
+      .filter((k) => (k.km_saat ?? 0) > 0) // km/saat girilmemiş kayıtlar dışlanır
+      .sort((a, b) => (a.tarih + a.saat).localeCompare(b.tarih + b.saat));
+    if (sirali.length < 2) continue;
+    let toplamLt = 0;
+    let toplamMesafe = 0;
+    for (let i = 1; i < sirali.length; i++) {
+      const mesafe = (sirali[i].km_saat ?? 0) - (sirali[i - 1].km_saat ?? 0);
+      if (mesafe <= 0) continue;
+      const dy = sirali[i].dis_yakit_oncesi;
+      const disYakit = dy === true ? true : dy === false ? false : (menzil > 0 && mesafe > menzil);
+      if (disYakit) continue;
+      toplamLt += sirali[i].miktar_lt ?? 0;
+      toplamMesafe += mesafe;
+    }
+    if (toplamMesafe > 0) m.set(aracId, (toplamLt / toplamMesafe) * carpan);
+  }
+  return m;
+}
+
 export default function AraclarPage() {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-araclar", "ekle");
@@ -49,10 +99,22 @@ export default function AraclarPage() {
   const [sonYakitSantiye, setSonYakitSantiye] = useState<Map<string, string>>(new Map());
   // Aracın son güncellenen km/saat değerinin tarihi (en son yakıt kaydı tarihi)
   const [sonGostergeTarihi, setSonGostergeTarihi] = useState<Map<string, string>>(new Map());
+  // Ham yakıt verisi (genel ortalama hesabı için) — menzil düzenlenince ortalama
+  // canlı yeniden hesaplansın diye state'te tutulur.
+  const [yakitVerileri, setYakitVerileri] = useState<YakitMini[]>([]);
   // Araç bedeli inline düzenleme — açık olan satır id'si tutulur
   const [editBedelId, setEditBedelId] = useState<string | null>(null);
   const [editBedelValue, setEditBedelValue] = useState<string>("");
+  // 1 depo menzili inline düzenleme
+  const [editMenzilId, setEditMenzilId] = useState<string | null>(null);
+  const [editMenzilValue, setEditMenzilValue] = useState<string>("");
   const router = useRouter();
+
+  // Genel ortalama — yakıt verisi veya araç (menzil) değişince yeniden hesaplanır.
+  const genelOrtMap = useMemo(
+    () => hesaplaGenelOrtMap(yakitVerileri, araclar),
+    [yakitVerileri, araclar],
+  );
 
   // Para formatla (1.500.000 TL şeklinde, ondalıksız) — null/0 ise "—"
   function formatBedel(deger: number | null | undefined): string {
@@ -106,6 +168,50 @@ export default function AraclarPage() {
     }
   }
 
+  // 1 depo menzili inline kaydet (km veya saat — tam sayı)
+  async function menzilKaydet(aracId: string, raw: string) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
+    const temizlenmis = raw.replace(/[^\d]/g, "");
+    const sayisal = temizlenmis === "" ? null : parseInt(temizlenmis, 10);
+    if (sayisal !== null && (isNaN(sayisal) || sayisal < 0)) {
+      toast.error("Geçersiz değer.");
+      return;
+    }
+    const mevcut = araclar.find((a) => a.id === aracId)?.depo_menzil ?? null;
+    if (sayisal === mevcut) {
+      setEditMenzilId(null);
+      setEditMenzilValue("");
+      return;
+    }
+    try {
+      const { updateArac } = await import("@/lib/supabase/queries/araclar");
+      await updateArac(aracId, { depo_menzil: sayisal });
+      setAraclar((p) => p.map((a) => (a.id === aracId ? { ...a, depo_menzil: sayisal } : a)));
+      setEditMenzilId(null);
+      setEditMenzilValue("");
+      // Menzille çelişen eski "dışarıdan yakıt" işaretlerini otomatiğe çevir: menzilin
+      // ALTINDA kaldığı halde kalıcı true yazılı kayıtlar null'a alınır (menzil belirleyici).
+      let temizlenenSayi = 0;
+      if (sayisal && sayisal > 0) {
+        const { menzilUyumsuzDisYakitTemizle } = await import("@/lib/supabase/queries/yakit");
+        const temizlenen = await menzilUyumsuzDisYakitTemizle(aracId, sayisal);
+        if (temizlenen.length > 0) {
+          temizlenenSayi = temizlenen.length;
+          const idSet = new Set(temizlenen);
+          // Genel ortalama canlı yeniden hesaplansın diye yerel yakıt verisini güncelle.
+          setYakitVerileri((p) => p.map((y) => (idSet.has(y.id) ? { ...y, dis_yakit_oncesi: null } : y)));
+        }
+      }
+      toast.success(
+        temizlenenSayi > 0
+          ? `1 depo menzili güncellendi. Menzilin altındaki ${temizlenenSayi} eski "D" işareti otomatiğe alındı.`
+          : "1 depo menzili güncellendi.",
+      );
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   function handleSort(key: string) {
     setSortList((prev) => {
       const idx = prev.findIndex((s) => s.key === key);
@@ -146,15 +252,40 @@ export default function AraclarPage() {
       for (const s of (santiyeData ?? []) as { id: string; is_adi: string }[]) santiyeMap.set(s.id, s.is_adi);
       try {
         const supabase = createClient();
-        const { data: yakitlar } = await supabase
-          .from("arac_yakit")
-          .select("arac_id, santiye_id, tarih, saat")
-          .order("tarih", { ascending: false })
-          .order("saat", { ascending: false });
+        const baseSelect = "id, arac_id, santiye_id, tarih, saat, km_saat, miktar_lt";
+        // SAYFALAMA: Supabase tek sorguda en fazla 1000 satır döndürür. Yakıt kayıtları
+        // 1000'i geçince eski kayıtlar eksik kalır → genel ortalama yanlış olur.
+        // Bu yüzden 1000'erli parçalarla TÜM kayıtları çekiyoruz (yakıt sayfasıyla aynı).
+        async function tumYakitCek(selectStr: string): Promise<{ data: unknown[] | null; error: unknown }> {
+          const PARCA = 1000;
+          let offset = 0;
+          const tum: unknown[] = [];
+          for (;;) {
+            const { data, error } = await supabase
+              .from("arac_yakit")
+              .select(selectStr)
+              .order("tarih", { ascending: false })
+              .order("saat", { ascending: false })
+              .range(offset, offset + PARCA - 1);
+            if (error) return { data: null, error };
+            const parca = data ?? [];
+            tum.push(...parca);
+            if (parca.length < PARCA) break;
+            offset += PARCA;
+            if (offset > 200000) break; // güvenlik
+          }
+          return { data: tum, error: null };
+        }
+        let res = await tumYakitCek(baseSelect + ", dis_yakit_oncesi");
+        // dis_yakit_oncesi kolonu henüz eklenmemişse (migration yok) o alansız tekrar dene
+        if (res.error) res = await tumYakitCek(baseSelect);
+        const yakitlar: YakitMini[] | null = res.data
+          ? (res.data as unknown as YakitMini[])
+          : null;
         if (yakitlar) {
           const sonYakit = new Map<string, string>();
           const sonTarih = new Map<string, string>();
-          for (const y of yakitlar as { arac_id: string; santiye_id: string; tarih: string }[]) {
+          for (const y of yakitlar) {
             if (!sonYakit.has(y.arac_id)) {
               sonYakit.set(y.arac_id, santiyeMap.get(y.santiye_id) ?? "");
               sonTarih.set(y.arac_id, y.tarih);
@@ -162,6 +293,8 @@ export default function AraclarPage() {
           }
           setSonYakitSantiye(sonYakit);
           setSonGostergeTarihi(sonTarih);
+          // Ham yakıt verisini sakla — genel ortalama useMemo ile (menzil değişince canlı) hesaplanır.
+          setYakitVerileri(yakitlar as YakitMini[]);
         }
       } catch { /* sessiz */ }
     } catch {
@@ -368,12 +501,14 @@ export default function AraclarPage() {
                   className="cursor-pointer select-none hover:text-blue-600 shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                   onClick={() => handleSort("plaka")}
                 >Plaka{sortIcon("plaka")}</TableHead>
-                <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
+                <TableHead className="max-w-[140px] cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("marka")}>Marka / Model{sortIcon("marka")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("cinsi")}>Cinsi{sortIcon("cinsi")}</TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("yili")}>Yılı{sortIcon("yili")}</TableHead>
                 <TableHead className="hidden md:table-cell text-right cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("arac_degeri")}>Araç Bedeli{sortIcon("arac_degeri")}</TableHead>
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead>Gösterge</TableHead>
+                <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="1 depo (tam dolum) ile gidilebilecek km / çalışabilecek saat">1 Depo</TableHead>
+                <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Genel yakıt tüketim ortalaması (km'siz ve dış-yakıt aralıkları hariç)">Genel Ort.</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
                 <TableHead className="hidden md:table-cell text-center">Ruhsat</TableHead>
                 <TableHead className="text-center">Durum</TableHead>
@@ -407,7 +542,7 @@ export default function AraclarPage() {
                       <span>{arac.plaka}</span>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-w-[140px] truncate" title={[arac.marka, arac.model].filter(Boolean).join(" ")}>
                     {[arac.marka, arac.model].filter(Boolean).join(" ") || "—"}
                   </TableCell>
                   <TableCell className="hidden md:table-cell">{arac.cinsi ?? "—"}</TableCell>
@@ -467,6 +602,53 @@ export default function AraclarPage() {
                         )}
                       </div>
                     ) : "—"}
+                  </TableCell>
+                  {/* 1 Depo menzili — inline editable. Tıklayınca rakam girilir/güncellenir. */}
+                  <TableCell
+                    className={`hidden md:table-cell text-right tabular-nums whitespace-nowrap ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
+                    onClick={() => {
+                      if (!yDuzenle || editMenzilId === arac.id) return;
+                      setEditMenzilId(arac.id);
+                      setEditMenzilValue(arac.depo_menzil != null ? String(arac.depo_menzil) : "");
+                    }}
+                    title={yDuzenle ? "Tıklayarak 1 depo menzilini gir/güncelle" : undefined}
+                  >
+                    {editMenzilId === arac.id ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus
+                        value={editMenzilValue}
+                        onChange={(e) => setEditMenzilValue(e.target.value.replace(/[^\d]/g, ""))}
+                        onBlur={() => menzilKaydet(arac.id, editMenzilValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") menzilKaydet(arac.id, editMenzilValue);
+                          if (e.key === "Escape") { setEditMenzilId(null); setEditMenzilValue(""); }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-20 h-7 text-right text-xs px-2 rounded border border-blue-300 outline-none focus:border-blue-500"
+                        placeholder={arac.sayac_tipi === "saat" ? "saat" : "km"}
+                        style={{ fontSize: "16px" }}
+                      />
+                    ) : (
+                      <span className={arac.depo_menzil != null && arac.depo_menzil > 0 ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
+                        {arac.depo_menzil != null && arac.depo_menzil > 0
+                          ? `${arac.depo_menzil.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
+                          : "—"}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-right tabular-nums whitespace-nowrap">
+                    {(() => {
+                      const o = genelOrtMap.get(arac.id);
+                      if (o == null) return <span className="text-gray-300">—</span>;
+                      const birim = arac.sayac_tipi === "saat" ? " L/s" : " L/100km";
+                      return (
+                        <span className="text-[#1E3A5F] font-semibold">
+                          {o.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{birim}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-center">
                     <Badge variant={arac.hgs_saglayici ? "default" : "secondary"}
