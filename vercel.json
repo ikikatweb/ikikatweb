@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/yi-ufe/scrape",
-      "schedule": "0 8 3 * *"
+      "schedule": "0 8 3-6 * *"
     },
     {
       "path": "/api/cron/yaklasan-bildirim",

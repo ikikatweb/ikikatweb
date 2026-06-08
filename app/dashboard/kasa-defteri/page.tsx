@@ -736,7 +736,11 @@ function KasaDefContent() {
   // Filtre için: sadece kasa hareketi olan şantiyeler
   const filtreSantiyeleri = (() => {
     const islemliIds = new Set<string>();
-    for (const h of hareketler) islemliIds.add(h.santiye_id);
+    for (const h of hareketler) {
+      // Kullanıcı seçiliyse SADECE o kullanıcının işlem yaptığı şantiyeler listelensin.
+      if (filtrePersonel && h.personel_id !== filtrePersonel) continue;
+      islemliIds.add(h.santiye_id);
+    }
     return gosterilenSantiyeler.filter((s) => islemliIds.has(s.id));
   })();
 
@@ -768,7 +772,7 @@ function KasaDefContent() {
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] text-gray-500">Kullanıcı</Label>
-              <select value={filtrePersonel} onChange={(e) => setFiltrePersonel(e.target.value)} className={selectClass + " w-full"}>
+              <select value={filtrePersonel} onChange={(e) => { setFiltrePersonel(e.target.value); setFiltreSantiye(""); }} className={selectClass + " w-full"}>
                 <option value="">Tümü</option>
                 {veriGirenPersoneller.map((p) => <option key={p.id} value={p.id}>{p.ad_soyad}</option>)}
               </select>

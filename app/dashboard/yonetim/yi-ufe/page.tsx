@@ -1,7 +1,7 @@
 // Yi-ÜFE sayfası - Yurt İçi Üretici Fiyat Endeksi tablosu
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import type { YiUfe } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -82,6 +82,35 @@ export default function YiUfePage() {
   useEffect(() => {
     loadVeriler();
   }, [loadVeriler]);
+
+  // OTOMATİK ÇEKME — sayfa açıldığında, GEÇEN ayın verisi eksikse (ve ayın 3'ünü
+  // geçtiysek) arka planda sessizce scrape tetikle. Cron'dan bağımsız güvence:
+  // biri sayfayı açtığında veri butona basmadan kendiliğinden gelir.
+  // Bir oturumda yalnız bir kez denenir; veri zaten varsa hiç çağrılmaz.
+  const otoCekDenendiRef = useRef(false);
+  useEffect(() => {
+    if (loading || otoCekDenendiRef.current) return;
+    if (!yEkle && !yDuzenle) return; // yetki yoksa deneme
+    const bugun = new Date();
+    if (bugun.getDate() < 3) return; // TÜİK ayın 3'ünde açıklar
+    const oncekiAy = new Date(bugun.getFullYear(), bugun.getMonth() - 1, 1);
+    const beklenenYil = oncekiAy.getFullYear();
+    const beklenenAy = oncekiAy.getMonth() + 1; // 1-12
+    const yilV = veriler.find((v) => v.yil === beklenenYil);
+    const zatenVar = yilV ? yilV.aylar[beklenenAy - 1] != null : false;
+    if (zatenVar) return; // geçen ay verisi mevcut → çekme
+    otoCekDenendiRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/yi-ufe/scrape");
+        const data = await res.json();
+        if (res.ok && data.basarili && (data.yeniKayit ?? 0) > 0) {
+          await loadVeriler();
+          toast.success("Yİ-ÜFE verileri otomatik güncellendi.");
+        }
+      } catch { /* sessiz — bir sonraki ziyarette tekrar denenir */ }
+    })();
+  }, [loading, veriler, yEkle, yDuzenle, loadVeriler]);
 
   function groupByYil(data: YiUfe[]): YilVerisi[] {
     const map = new Map<number, (number | null)[]>();
