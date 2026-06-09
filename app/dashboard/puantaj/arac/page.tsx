@@ -762,8 +762,10 @@ export default function AracPuantajPage() {
           arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
         };
         let kira = 0;
-        // Duruma göre kira: HER GÜN kendi ayının gün sayısına bölünür (tarih aralığından
-        // bağımsız). Tüm durumlar için biriktirilir; seçili-durum sarmalayıcısı toplar.
+        // KİRA = 30 GÜNLÜK bedel mantığı: günlük kira = aylık bedel ÷ 30 (ayın uzunluğundan
+        // BAĞIMSIZ — 31 çeken ayda da, Şubat'ta da gün başı = bedel/30). Çalışılan gün ×
+        // (bedel/30). Tüm durumlar için biriktirilir; seçili-durum sarmalayıcısı toplar.
+        const gunBasi30 = d.aylikBedel !== null ? d.aylikBedel / 30 : 0;
         const kiraPerDurumOrijinal: Record<AracPuantajDurum, number> = {
           calisti: 0, yarim_gun: 0, calismadi: 0,
           arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
@@ -773,14 +775,11 @@ export default function AracPuantajPage() {
           if (p.tarih < d.baslangic || p.tarih > d.bitis) continue;
           orijinalSayilar[p.durum]++;
           if (d.aylikBedel !== null) {
-            const y = parseInt(p.tarih.slice(0, 4), 10);
-            const m = parseInt(p.tarih.slice(5, 7), 10);
-            const gunBasi = d.aylikBedel / gunSayisi(y, m);
             const carpan = p.durum === "yarim_gun" ? 0.5 : 1;
-            kiraPerDurumOrijinal[p.durum] += gunBasi * carpan;
+            kiraPerDurumOrijinal[p.durum] += gunBasi30 * carpan;
             // Kira sadece tarife olan dönemler için hesaplanır (override'dan etkilenmez)
             if (p.durum === "calisti" || p.durum === "yarim_gun") {
-              kira += p.durum === "calisti" ? gunBasi : gunBasi * 0.5;
+              kira += p.durum === "calisti" ? gunBasi30 : gunBasi30 * 0.5;
             }
           }
         }
@@ -791,8 +790,6 @@ export default function AracPuantajPage() {
         // Override varsa uygula (donem başlangıç tarihi bazlı — aynı aracın farklı dönemleri ayrı override)
         let override: AracPuantajOverride | null = null;
         const sayilar: Record<AracPuantajDurum, number> = { ...orijinalSayilar };
-        const donemYil = parseInt(d.baslangic.slice(0, 4), 10);
-        const donemAy = parseInt(d.baslangic.slice(5, 7), 10);
         const aracOverrides = ozetOverridesMap.get(arac.id) ?? [];
         const bulunan = aracOverrides.find((o) => o.donem_baslangic === d.baslangic);
         if (bulunan) {
@@ -806,19 +803,16 @@ export default function AracPuantajPage() {
         // Yarım gün sütununda 1, 2, 3 gösterilir ama Toplam Gün'de 0.5 olarak sayılır
         const toplamGun = sayilar.calisti + sayilar.yarim_gun * 0.5;
 
-        // Toplam kira: override varsa override sayılarından, yoksa orijinal puantajdan hesapla
+        // Toplam kira: override varsa override sayılarından, yoksa orijinal puantajdan hesapla.
+        // Her durumda günlük = aylık bedel ÷ 30 (30 günlük kira mantığı).
         let toplamKira = kira; // varsayılan: orijinal puantajdan hesaplanan
-        // Duruma göre kira: override YOKSA gün-bazlı (her gün kendi ayı → aralıktan bağımsız);
-        // override VARSA dönem başlangıç ayı tarifesi × override sayısı (eski davranış korunur).
         const kiraPerDurum: Record<AracPuantajDurum, number> = { ...kiraPerDurumOrijinal };
         if (override && d.aylikBedel !== null) {
-          // Override sonrası kira'yı yeniden hesapla (dönemin ay bazlı günlük tarifesi)
-          const donemGunSayisi = gunSayisi(donemYil, donemAy);
-          const gunBasi = d.aylikBedel / donemGunSayisi;
-          toplamKira = (sayilar.calisti * gunBasi) + (sayilar.yarim_gun * gunBasi * 0.5);
+          // Override sonrası kira'yı yeniden hesapla (günlük = bedel/30 × override sayısı)
+          toplamKira = (sayilar.calisti * gunBasi30) + (sayilar.yarim_gun * gunBasi30 * 0.5);
           for (const k of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil", "dis_gorev"] as AracPuantajDurum[]) {
             const carpan = k === "yarim_gun" ? 0.5 : 1;
-            kiraPerDurum[k] = sayilar[k] * gunBasi * carpan;
+            kiraPerDurum[k] = sayilar[k] * gunBasi30 * carpan;
           }
         }
 
@@ -1432,7 +1426,7 @@ export default function AracPuantajPage() {
     doc.text(`${formatDateTR(ozetBaslangic)} - ${formatDateTR(ozetBitis)}`, 14, 17);
 
     const head = [
-      "Sahibi", "Plaka", "Marka/Model", "Aylik Kira", "Top.Yakit",
+      "Sahibi", "Plaka", "Marka/Model", "30 Gunluk Kira", "Top.Yakit",
       ...DURUM_LISTESI.map((d) => d.pdfShort),
       "Top.Gun", "Toplam Kira",
     ];
@@ -1658,7 +1652,7 @@ export default function AracPuantajPage() {
     const headers = [
       "Sahibi", "Plaka", "Marka", "Model",
       "Dönem Başlangıç", "Dönem Bitiş",
-      "Aylık Kira (TL)", "Toplam Yakıt (lt)",
+      "30 Günlük Kira (TL)", "Toplam Yakıt (lt)",
       ...DURUM_LISTESI.map((d) => d.label),
       "Toplam Gün", "Toplam Kira (TL)",
     ];
@@ -2427,7 +2421,7 @@ export default function AracPuantajPage() {
                       <TableHead className="text-white text-[11px] px-2 min-w-[120px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">Sahibi</TableHead>
                       <TableHead className="text-white text-[11px] px-2 min-w-[90px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">Plaka</TableHead>
                       <TableHead className="text-white text-[11px] px-2 min-w-[110px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">Marka/Model</TableHead>
-                      <TableHead className="text-white text-[11px] px-2 text-right min-w-[140px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">Aylık Kira</TableHead>
+                      <TableHead className="text-white text-[11px] px-2 text-right min-w-[140px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">30 Günlük Kira</TableHead>
                       <TableHead className="text-white text-[11px] px-2 text-right min-w-[80px] sticky top-0 z-[50] bg-[#64748B] hover:bg-[#64748B]">Toplam Yakıt</TableHead>
                       {DURUM_LISTESI.map((d) => {
                         const secili = seciliDurumlar.has(d.kod);
@@ -2662,7 +2656,7 @@ export default function AracPuantajPage() {
 
               {/* Bilgi notu */}
               <div className="mt-3 text-[10px] text-gray-500 space-y-0.5">
-                <div>• <strong>Aylık Kira</strong>: Kira tutarına tıklayarak mevcut tarifeyi düzenleyebilir, geçmiş tarifeleri görebilir, düzenleyebilir veya silebilirsiniz.</div>
+                <div>• <strong>30 Günlük Kira</strong>: Günlük kira = bedel ÷ 30; toplam = çalışılan gün × günlük. Kira tutarına tıklayarak mevcut tarifeyi düzenleyebilir, geçmiş tarifeleri görebilir, düzenleyebilir veya silebilirsiniz.</div>
                 <div>• <strong>Tarife Dönemleri</strong>: Seçili tarih aralığında bir aracın birden fazla kira tarifesi varsa, her tarife dönemi için ayrı bir satır gösterilir. Durum sayıları ve toplam kira o döneme ait gerçek puantajlardan hesaplanır.</div>
                 <div>• <strong>Toplam Kira</strong>: Döneme ait her çalışma günü için o ay için geçerli tarife × (1 ÷ ay gün sayısı) kullanılarak hesaplanır.</div>
               </div>
@@ -2675,7 +2669,7 @@ export default function AracPuantajPage() {
       <Dialog open={kiraDialogOpen} onOpenChange={setKiraDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Aylık Kira Bedeli</DialogTitle>
+            <DialogTitle>30 Günlük Kira Bedeli</DialogTitle>
           </DialogHeader>
           {kiraDialogArac && (() => {
             const tumKiralar = kiraMap.get(kiraDialogArac.id) ?? [];
@@ -2842,7 +2836,7 @@ export default function AracPuantajPage() {
                   <Label className="text-xs font-semibold text-orange-700">+ Yeni Kira Tarifesi</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-gray-500">Aylık Bedel (TL)</Label>
+                      <Label className="text-[10px] text-gray-500">30 Günlük Bedel (TL)</Label>
                       <input
                         type="text"
                         inputMode="decimal"
