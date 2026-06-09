@@ -74,6 +74,11 @@ type OzetSatir = {
   duzenlenebilir: boolean; // Tek ay + tek tarife mi?
   toplamGun: number; // calisti + yarim_gun * 0.5 (override uygulandıktan sonra)
   toplamKira: number;
+  // Duruma göre kira katkısı (carpan dahil). Override YOKSA her gün KENDİ ayının gün
+  // sayısına bölünerek hesaplanır → tarih aralığından BAĞIMSIZ (Tümü = 1999 = aynı sonuç).
+  // Override VARSA dönem başlangıç ayı tarifesi × override sayısı kullanılır.
+  // Seçili-durum sarmalayıcısı (ozetSatirlariSecili) toplam kirayı bundan toplar.
+  kiraPerDurum: Record<AracPuantajDurum, number>;
   donemSayisi: number; // bu araç için üretilen toplam satır sayısı (ilk satırda rowspan için)
   donemIndex: number;  // 0-based
 };
@@ -680,6 +685,7 @@ export default function AracPuantajPage() {
           duzenlenebilir: true,
           toplamGun: toplamGunNk,
           toplamKira: 0,
+          kiraPerDurum: { calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0 },
           donemSayisi: 1,
           donemIndex: 0,
         });
@@ -742,6 +748,7 @@ export default function AracPuantajPage() {
           duzenlenebilir: true,
           toplamGun: 0,
           toplamKira: 0,
+          kiraPerDurum: { calisti: 0, yarim_gun: 0, calismadi: 0, arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0 },
           donemSayisi: 1,
           donemIndex: 0,
         });
@@ -755,16 +762,26 @@ export default function AracPuantajPage() {
           arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
         };
         let kira = 0;
+        // Duruma göre kira: HER GÜN kendi ayının gün sayısına bölünür (tarih aralığından
+        // bağımsız). Tüm durumlar için biriktirilir; seçili-durum sarmalayıcısı toplar.
+        const kiraPerDurumOrijinal: Record<AracPuantajDurum, number> = {
+          calisti: 0, yarim_gun: 0, calismadi: 0,
+          arizali: 0, operator_yok: 0, tatil: 0, dis_gorev: 0,
+        };
         for (const p of ozetRangePuantajlar) {
           if (p.arac_id !== arac.id) continue;
           if (p.tarih < d.baslangic || p.tarih > d.bitis) continue;
           orijinalSayilar[p.durum]++;
-          // Kira sadece tarife olan dönemler için hesaplanır (override'dan etkilenmez)
-          if (d.aylikBedel !== null && (p.durum === "calisti" || p.durum === "yarim_gun")) {
+          if (d.aylikBedel !== null) {
             const y = parseInt(p.tarih.slice(0, 4), 10);
             const m = parseInt(p.tarih.slice(5, 7), 10);
             const gunBasi = d.aylikBedel / gunSayisi(y, m);
-            kira += p.durum === "calisti" ? gunBasi : gunBasi * 0.5;
+            const carpan = p.durum === "yarim_gun" ? 0.5 : 1;
+            kiraPerDurumOrijinal[p.durum] += gunBasi * carpan;
+            // Kira sadece tarife olan dönemler için hesaplanır (override'dan etkilenmez)
+            if (p.durum === "calisti" || p.durum === "yarim_gun") {
+              kira += p.durum === "calisti" ? gunBasi : gunBasi * 0.5;
+            }
           }
         }
 
@@ -791,11 +808,18 @@ export default function AracPuantajPage() {
 
         // Toplam kira: override varsa override sayılarından, yoksa orijinal puantajdan hesapla
         let toplamKira = kira; // varsayılan: orijinal puantajdan hesaplanan
+        // Duruma göre kira: override YOKSA gün-bazlı (her gün kendi ayı → aralıktan bağımsız);
+        // override VARSA dönem başlangıç ayı tarifesi × override sayısı (eski davranış korunur).
+        const kiraPerDurum: Record<AracPuantajDurum, number> = { ...kiraPerDurumOrijinal };
         if (override && d.aylikBedel !== null) {
           // Override sonrası kira'yı yeniden hesapla (dönemin ay bazlı günlük tarifesi)
           const donemGunSayisi = gunSayisi(donemYil, donemAy);
           const gunBasi = d.aylikBedel / donemGunSayisi;
           toplamKira = (sayilar.calisti * gunBasi) + (sayilar.yarim_gun * gunBasi * 0.5);
+          for (const k of ["calisti", "yarim_gun", "calismadi", "arizali", "operator_yok", "tatil", "dis_gorev"] as AracPuantajDurum[]) {
+            const carpan = k === "yarim_gun" ? 0.5 : 1;
+            kiraPerDurum[k] = sayilar[k] * gunBasi * carpan;
+          }
         }
 
         satirlar.push({
@@ -810,6 +834,7 @@ export default function AracPuantajPage() {
           duzenlenebilir,
           toplamGun,
           toplamKira,
+          kiraPerDurum,
           donemSayisi: merged.length,
           donemIndex: idx,
         });
@@ -837,9 +862,6 @@ export default function AracPuantajPage() {
   // tıklayarak hangi durumların hesaba dahil edileceğini seçer.
   const ozetSatirlariSecili = useMemo<OzetSatir[]>(() => {
     return ozetSatirlari.map((s) => {
-      const donemYil = parseInt(s.donemBaslangic.slice(0, 4), 10);
-      const donemAy = parseInt(s.donemBaslangic.slice(5, 7), 10);
-      const gunBasi = s.aylikBedel !== null ? s.aylikBedel / gunSayisi(donemYil, donemAy) : 0;
       let toplamGun = 0;
       let toplamKira = 0;
       for (const d of DURUM_LISTESI) {
@@ -847,7 +869,9 @@ export default function AracPuantajPage() {
         const cnt = s.sayilar[d.kod] ?? 0;
         const carpan = d.kod === "yarim_gun" ? 0.5 : 1;
         toplamGun += cnt * carpan;
-        toplamKira += cnt * gunBasi * carpan;
+        // Kira: gün-bazlı kiraPerDurum'dan topla (her gün kendi ayına bölünmüş; carpan dahil).
+        // Tek-ay gün-başı yerine bu kullanıldığı için Tümü ile geniş tarih aralığı AYNI sonucu verir.
+        toplamKira += s.kiraPerDurum[d.kod] ?? 0;
       }
       return { ...s, toplamGun, toplamKira };
     });
