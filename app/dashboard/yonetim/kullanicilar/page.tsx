@@ -44,6 +44,8 @@ export default function KullanicilarPage() {
   const [editKullanici, setEditKullanici] = useState<Kullanici | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useState("");
+  // Aktif / Pasif sekmesi — aktif ve pasif kullanıcılar ayrı tablolarda gösterilir
+  const [aktifSekme, setAktifSekme] = useState<"aktif" | "pasif">("aktif");
   const [santiyeMap, setSantiyeMap] = useState<Record<string, string>>({});
   const [aktifSantiyeSayisi, setAktifSantiyeSayisi] = useState(0);
 
@@ -165,6 +167,27 @@ export default function KullanicilarPage() {
         <Input placeholder="Ad, kullanıcı adı ile ara..." value={arama} onChange={(e) => setArama(e.target.value)} className="pl-9" />
       </div>
 
+      {/* Aktif / Pasif sekmeleri */}
+      <div className="flex gap-2 mb-4 border-b">
+        {([
+          { key: "aktif" as const, label: "Aktif", sayi: kullanicilar.filter((k) => k.aktif).length },
+          { key: "pasif" as const, label: "Pasif", sayi: kullanicilar.filter((k) => !k.aktif).length },
+        ]).map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setAktifSekme(s.key)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              aktifSekme === s.key
+                ? "border-[#F97316] text-[#1E3A5F]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {s.label} <span className="text-xs text-gray-400">({s.sayi})</span>
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => (
           <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
@@ -192,11 +215,26 @@ export default function KullanicilarPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {kullanicilar.filter((k) => {
-                if (!arama.trim()) return true;
-                const q = trAramaNormalize(arama);
-                return trAramaNormalize(k.ad_soyad).includes(q) || trAramaNormalize(k.kullanici_adi).includes(q);
-              }).map((k) => (
+              {(() => {
+                const liste = kullanicilar.filter((k) => {
+                  // Sekme: aktif sekmesinde aktifler, pasif sekmesinde pasifler
+                  if (k.aktif !== (aktifSekme === "aktif")) return false;
+                  if (!arama.trim()) return true;
+                  const q = trAramaNormalize(arama);
+                  return trAramaNormalize(k.ad_soyad).includes(q) || trAramaNormalize(k.kullanici_adi).includes(q);
+                });
+                if (liste.length === 0) {
+                  return (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-10 text-gray-400 text-sm">
+                        {aktifSekme === "pasif"
+                          ? "Pasif kullanıcı yok."
+                          : (arama.trim() ? "Eşleşen aktif kullanıcı yok." : "Aktif kullanıcı yok.")}
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+                return liste.map((k) => (
                 <TableRow key={k.id} className={!k.aktif ? "bg-gray-100 opacity-50" : ""}>
                   <TableCell
                     style={{ position: "sticky", left: 0, zIndex: 5 }}
@@ -250,7 +288,8 @@ export default function KullanicilarPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                ));
+              })()}
             </TableBody>
           </Table>
         </div>
@@ -258,7 +297,7 @@ export default function KullanicilarPage() {
 
       {/* Kullanıcı Ekle/Düzenle Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="!max-w-none w-screen h-screen !rounded-none overflow-y-auto m-0 p-6">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
           <DialogHeader>
             <DialogTitle>{editKullanici ? "Kullanıcı Düzenle" : "Yeni Kullanıcı Ekle"}</DialogTitle>
           </DialogHeader>

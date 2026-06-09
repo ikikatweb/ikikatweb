@@ -19,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, X, BookmarkPlus, Trash2, Eye, EyeOff } from "lucide-react";
+import { Save, X, BookmarkPlus, Trash2, Eye, EyeOff, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
 type KullaniciFormProps = {
@@ -50,6 +50,10 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const isEdit = !!kullanici;
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Açılır-kapanır bölümler (ok ile aç/kapa) — varsayılan kapalı
+  const [santiyeAcik, setSantiyeAcik] = useState(false);
+  const [firmaAcik, setFirmaAcik] = useState(false);
+  const [dashboardAcik, setDashboardAcik] = useState(false);
 
   const [adSoyad, setAdSoyad] = useState(kullanici?.ad_soyad ?? "");
   const [kullaniciAdi, setKullaniciAdi] = useState(kullanici?.kullanici_adi ?? "");
@@ -330,22 +334,6 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
               <strong>tüm kullanıcıların</strong> verilerine erişir (yazışmalar, defter, kasa vb).
               Yetki vermediğiniz modüllere erişemez.
             </p>
-            {/* Mesajlaşma — tüm konuşmaları görme yetkisi (opsiyonel) */}
-            <label className="mt-2 flex items-start gap-2 p-2.5 border rounded-md bg-blue-50/40 cursor-pointer hover:bg-blue-50 transition-colors max-w-xl">
-              <input
-                type="checkbox"
-                checked={tumMesajlariGor}
-                onChange={(e) => setTumMesajlariGor(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-[#F97316]"
-              />
-              <div>
-                <div className="text-sm font-semibold text-[#1E3A5F]">💬 Tüm mesajlaşmaları görsün</div>
-                <div className="text-[11px] text-gray-500">
-                  İşaretliyse: kullanıcılar arası tüm 1-1 ve grup konuşmalarını izleyebilir.
-                  İşaretli değilse: sadece kendi dahil olduğu konuşmaları görür.
-                </div>
-              </div>
-            </label>
           </>
         )}
         {rol === "kisitli" && (
@@ -354,41 +342,51 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
             <strong>sadece kendi kayıtlarını</strong> görür/yazar.
           </p>
         )}
-        {/* Şantiyesiz veri görme — hem kısıtlı hem santiye_admin için.
-            TÜM modüllerde geçerli (yazışmalar, yakıt, kasa, araç bakım, işçilik, vb.).
-            Şantiye atanmamış kayıtları/araçları bu yetki sayesinde görür. */}
+        {/* Tüm mesajlar + şantiyesiz veri görme YAN YANA (alt alta değil). */}
         {(rol === "kisitli" || rol === "santiye_admin") && (
-          <label className="mt-2 flex items-start gap-2 p-2.5 border rounded-md bg-amber-50/40 cursor-pointer hover:bg-amber-50 transition-colors max-w-xl">
-            <input
-              type="checkbox"
-              checked={santiyesizVeriGor}
-              onChange={(e) => setSantiyesizVeriGor(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-[#F97316]"
-            />
-            <div>
-              <div className="text-sm font-semibold text-[#1E3A5F]">📋 Şantiyesiz verileri görsün</div>
-              <div className="text-[11px] text-gray-500">
-                İşaretliyse: TÜM modüllerde (yazışmalar, yakıt, kasa, araç bakım, işçilik takibi, personel vb.)
-                şantiye atanmamış (genel) kayıtları/araçları da görür.
-                İşaretli değilse: sadece atandığı şantiyelerin verileri görünür.
-              </div>
-            </div>
-          </label>
+          <div className="mt-2 flex flex-col sm:flex-row gap-3">
+            {/* Mesajlaşma — sadece şantiye yöneticisi için */}
+            {rol === "santiye_admin" && (
+              <label className="flex-1 flex items-center gap-2 p-2.5 border rounded-md bg-blue-50/40 cursor-pointer hover:bg-blue-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={tumMesajlariGor}
+                  onChange={(e) => setTumMesajlariGor(e.target.checked)}
+                  className="w-4 h-4 accent-[#F97316]"
+                />
+                <span className="text-sm font-semibold text-[#1E3A5F]">💬 Tüm mesajlaşmaları görsün</span>
+              </label>
+            )}
+            {/* Şantiyesiz veri görme — hem kısıtlı hem santiye_admin için */}
+            <label className="flex-1 flex items-center gap-2 p-2.5 border rounded-md bg-amber-50/40 cursor-pointer hover:bg-amber-50 transition-colors">
+              <input
+                type="checkbox"
+                checked={santiyesizVeriGor}
+                onChange={(e) => setSantiyesizVeriGor(e.target.checked)}
+                className="w-4 h-4 accent-[#F97316]"
+              />
+              <span className="text-sm font-semibold text-[#1E3A5F]">📋 Şantiyesiz verileri görsün</span>
+            </label>
+          </div>
         )}
       </div>
 
       {/* Şantiye ataması — kısıtlı VE şantiye admini için ortak */}
       {(rol === "kisitli" || rol === "santiye_admin") && (
         <>
+          {/* Şantiye Ataması, Firma Kapsamı, Dashboard Görünümü — YAN YANA (3 sütun) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
           {/* Şantiye ataması */}
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-[#1E3A5F]">Şantiye Ataması</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Kullanıcının erişebileceği şantiyeleri seçin. Seçim yapılmazsa tüm şantiyelere erişebilir.</p>
-                </div>
-                {aktifSantiyeler.length > 0 && (
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <button type="button" onClick={() => setSantiyeAcik((o) => !o)} className="flex items-center gap-1.5 text-left">
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform shrink-0 ${santiyeAcik ? "" : "-rotate-90"}`} />
+                  <h3 className="font-semibold text-[#1E3A5F] text-sm">
+                    Şantiye Ataması{seciliSantiyeler.length > 0 ? ` (${seciliSantiyeler.length})` : ""}
+                  </h3>
+                </button>
+                {santiyeAcik && aktifSantiyeler.length > 0 && (
                   <Button type="button" variant="outline" size="sm"
                     onClick={() => {
                       if (seciliSantiyeler.length === aktifSantiyeler.length) {
@@ -401,31 +399,31 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {aktifSantiyeler.map((s) => (
-                  <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${seciliSantiyeler.includes(s.id) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
-                    <input type="checkbox" checked={seciliSantiyeler.includes(s.id)} onChange={() => toggleSantiye(s.id)} className="w-4 h-4 accent-[#F97316]" />
-                    <span className="text-sm">{s.is_adi}</span>
-                  </label>
-                ))}
-                {aktifSantiyeler.length === 0 && <p className="text-sm text-gray-400">Henüz aktif şantiye yok.</p>}
-              </div>
+              {santiyeAcik && (
+                <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {aktifSantiyeler.map((s) => (
+                    <label key={s.id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${seciliSantiyeler.includes(s.id) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
+                      <input type="checkbox" checked={seciliSantiyeler.includes(s.id)} onChange={() => toggleSantiye(s.id)} className="w-4 h-4 accent-[#F97316]" />
+                      <span className="text-sm">{s.is_adi}</span>
+                    </label>
+                  ))}
+                  {aktifSantiyeler.length === 0 && <p className="text-sm text-gray-400">Henüz aktif şantiye yok.</p>}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Firma Kapsamı */}
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-[#1E3A5F]">Firma Kapsamı</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Kullanıcı sadece seçilen firmaların yazışmalarını ve antetlerini görür.
-                    Şantiye seçtiğinizde o şantiyenin yüklenici firması otomatik eklenir.
-                    Seçim yapılmazsa tüm firmalara erişebilir.
-                  </p>
-                </div>
-                {firmalar.length > 0 && (
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <button type="button" onClick={() => setFirmaAcik((o) => !o)} className="flex items-center gap-1.5 text-left">
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform shrink-0 ${firmaAcik ? "" : "-rotate-90"}`} />
+                  <h3 className="font-semibold text-[#1E3A5F] text-sm">
+                    Firma Kapsamı{seciliFirmalar.length > 0 ? ` (${seciliFirmalar.length})` : ""}
+                  </h3>
+                </button>
+                {firmaAcik && firmalar.length > 0 && (
                   <Button type="button" variant="outline" size="sm"
                     onClick={() => {
                       if (seciliFirmalar.length === firmalar.length) {
@@ -440,7 +438,8 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {firmaAcik && (
+              <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
                 {firmalar.map((f) => {
                   const seciliMi = seciliFirmalar.includes(f.id);
                   // Otomatik (şantiye'den gelen) işaretleme
@@ -476,18 +475,21 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                 })}
                 {firmalar.length === 0 && <p className="text-sm text-gray-400">Henüz aktif firma yok.</p>}
               </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Dashboard Widget Seçimi */}
           <Card>
             <CardContent className="pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-[#1E3A5F]">Dashboard Görünümü</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Kullanıcının ana ekranda göreceği tabloları seçin. Seçim yapılmazsa hepsi gösterilir.</p>
-                </div>
-                {DASHBOARD_WIDGETS.length > 0 && (
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                <button type="button" onClick={() => setDashboardAcik((o) => !o)} className="flex items-center gap-1.5 text-left">
+                  <ChevronDown size={16} className={`text-gray-400 transition-transform shrink-0 ${dashboardAcik ? "" : "-rotate-90"}`} />
+                  <h3 className="font-semibold text-[#1E3A5F] text-sm">
+                    Dashboard Görünümü{dashboardWidgets.length > 0 ? ` (${dashboardWidgets.length})` : ""}
+                  </h3>
+                </button>
+                {dashboardAcik && DASHBOARD_WIDGETS.length > 0 && (
                   <Button type="button" variant="outline" size="sm"
                     onClick={() => {
                       if (dashboardWidgets.length === DASHBOARD_WIDGETS.length) {
@@ -500,18 +502,21 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                {DASHBOARD_WIDGETS.map((w) => (
-                  <label key={w.key} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${dashboardWidgets.includes(w.key) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
-                    <input type="checkbox" checked={dashboardWidgets.includes(w.key)}
-                      onChange={() => setDashboardWidgets((prev) => prev.includes(w.key) ? prev.filter((k) => k !== w.key) : [...prev, w.key])}
-                      className="w-4 h-4 accent-[#F97316]" />
-                    <span className="text-sm">{w.label}</span>
-                  </label>
-                ))}
-              </div>
+              {dashboardAcik && (
+                <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {DASHBOARD_WIDGETS.map((w) => (
+                    <label key={w.key} className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${dashboardWidgets.includes(w.key) ? "bg-blue-50 border-[#1E3A5F]" : "border-gray-200 hover:bg-gray-50"}`}>
+                      <input type="checkbox" checked={dashboardWidgets.includes(w.key)}
+                        onChange={() => setDashboardWidgets((prev) => prev.includes(w.key) ? prev.filter((k) => k !== w.key) : [...prev, w.key])}
+                        className="w-4 h-4 accent-[#F97316]" />
+                      <span className="text-sm">{w.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
+          </div>
 
           {/* Modül Bazlı Geriye Dönük Sınırlar */}
           <Card>
@@ -599,15 +604,15 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           <Card>
             <CardContent className="pt-4">
               <h3 className="font-semibold text-[#1E3A5F] mb-3">Yetki Ayarları</h3>
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[60vh]">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-white">
                     <tr className="border-b">
-                      <th className="text-left py-2 pr-4 font-medium">Modül</th>
-                      <th className="text-center py-2 px-3 font-medium">Görüntüle</th>
-                      <th className="text-center py-2 px-3 font-medium">Ekle</th>
-                      <th className="text-center py-2 px-3 font-medium">Düzenle</th>
-                      <th className="text-center py-2 px-3 font-medium">Sil</th>
+                      <th className="text-left py-2 pr-4 font-medium bg-white">Modül</th>
+                      <th className="text-center py-2 px-3 font-medium bg-white">Görüntüle</th>
+                      <th className="text-center py-2 px-3 font-medium bg-white">Ekle</th>
+                      <th className="text-center py-2 px-3 font-medium bg-white">Düzenle</th>
+                      <th className="text-center py-2 px-3 font-medium bg-white">Sil</th>
                     </tr>
                   </thead>
                   <tbody>

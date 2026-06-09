@@ -31,7 +31,9 @@ import { Save, X, Upload, Plus, Trash2 } from "lucide-react";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import toast from "react-hot-toast";
 
-type SantiyeFormProps = { santiye?: Santiye };
+// onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
+// (dialog/pencere içinde kullanım için). Verilmezse eski davranış: santiyeler sayfasına gider.
+type SantiyeFormProps = { santiye?: Santiye; onSuccess?: () => void; onCancel?: () => void };
 
 type OrtakRow = { firma_id: string; oran: number; is_pilot: boolean };
 
@@ -57,7 +59,7 @@ function parseParaInput(value: string): number | null {
   return isNaN(num) ? null : num;
 }
 
-export default function SantiyeForm({ santiye }: SantiyeFormProps) {
+export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
 
@@ -479,6 +481,8 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
           window.location.href = "/dashboard/yonetim/santiyeler";
         }
       } else {
+        // Düzenleme: dialog içinde açıldıysa (onSuccess varsa) yönlendirme yapma, callback çağır.
+        if (onSuccess) { onSuccess(); return; }
         window.location.href = "/dashboard/yonetim/santiyeler";
       }
     }
@@ -1140,7 +1144,7 @@ export default function SantiyeForm({ santiye }: SantiyeFormProps) {
       </Tabs>
 
       <div className="flex items-center justify-end gap-3 mt-6">
-        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
+        <Button type="button" variant="outline" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
           <X size={16} className="mr-1" /> İptal
         </Button>
         <Button type="submit" className="bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>

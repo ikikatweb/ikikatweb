@@ -3,7 +3,6 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   getSantiyeler,
   toggleSantiyeDurum,
@@ -27,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import SantiyeForm from "@/components/shared/santiye-form";
 import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/hooks";
 import jsPDF from "jspdf";
@@ -195,10 +195,11 @@ export default function SantiyelerPage() {
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [tasfiyeDialog, setTasfiyeDialog] = useState<string | null>(null);
+  // İş düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
+  const [duzenleSantiye, setDuzenleSantiye] = useState<SantiyeWithRelations | null>(null);
   const [tasfiyeTarihi, setTasfiyeTarihi] = useState(new Date().toISOString().split("T")[0]);
   // Yi-ÜFE katsayı override: "" = en son otomatik, "yil-ay" = seçilen ay
   const [katsayiSeciliAy, setKatsayiSeciliAy] = useState<string>("");
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
@@ -340,7 +341,7 @@ export default function SantiyelerPage() {
         for (const sort of sorts) {
           const va = getSortVal(a, sort.key);
           const vb = getSortVal(b, sort.key);
-          let cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "tr");
+          const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "tr");
           if (cmp !== 0) return sort.dir === "asc" ? cmp : -cmp;
         }
         return 0;
@@ -885,7 +886,7 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2">
                       {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
-                        onClick={() => router.push(`/dashboard/yonetim/santiyeler/${s.id}/duzenle`)}>
+                        onClick={() => setDuzenleSantiye(s)}>
                         <Pencil size={14} />
                       </Button>
                       )}
@@ -913,6 +914,22 @@ export default function SantiyelerPage() {
             <Button variant="outline" onClick={() => setTasfiyeDialog(null)}>İptal</Button>
             <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleTasfiyeOnayla} disabled={!tasfiyeTarihi}>Tasfiye Et</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* İş düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
+      <Dialog open={!!duzenleSantiye} onOpenChange={(o) => { if (!o) setDuzenleSantiye(null); }}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="truncate">İş Düzenle{duzenleSantiye ? ` — ${duzenleSantiye.is_adi}` : ""}</DialogTitle>
+          </DialogHeader>
+          {duzenleSantiye && (
+            <SantiyeForm
+              santiye={duzenleSantiye}
+              onSuccess={() => { setDuzenleSantiye(null); loadData(); }}
+              onCancel={() => setDuzenleSantiye(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
