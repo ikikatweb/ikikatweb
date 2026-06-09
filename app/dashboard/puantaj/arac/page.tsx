@@ -2358,12 +2358,12 @@ export default function AracPuantajPage() {
             <button
               type="button"
               onClick={async () => {
-                // En eski puantaj tarihini DOĞRUDAN veritabanından sorgula.
-                // ozetRangePuantajlar mevcut tarih aralığıyla sınırlı olduğundan
-                // daha eski kayıtlar için yetmiyordu.
-                let enEski = "";
+                // Başlangıç = en eski puantaj VEYA en eski yakıt tarihinden HANGİSİ ÖNCEYSE.
+                // İkisini de DOĞRUDAN veritabanından sorgula (mevcut aralıkla sınırlı state yetmez).
+                const supabase = createClient();
+                let enEskiPuantaj = "";
+                let enEskiYakit = "";
                 try {
-                  const supabase = createClient();
                   let q = supabase
                     .from("arac_puantaj")
                     .select("tarih")
@@ -2371,8 +2371,26 @@ export default function AracPuantajPage() {
                     .limit(1);
                   if (santiyeId) q = q.eq("santiye_id", santiyeId);
                   const { data } = await q;
-                  if (data && data.length > 0) enEski = data[0].tarih;
+                  if (data && data.length > 0) enEskiPuantaj = data[0].tarih;
                 } catch { /* sessiz — fallback */ }
+                try {
+                  let qy = supabase
+                    .from("arac_yakit")
+                    .select("tarih")
+                    .order("tarih", { ascending: true })
+                    .limit(1);
+                  if (santiyeId) qy = qy.eq("santiye_id", santiyeId);
+                  const { data: dy } = await qy;
+                  if (dy && dy.length > 0) enEskiYakit = dy[0].tarih;
+                } catch { /* sessiz — fallback */ }
+                // İki tarihten en erkeni (biri boşsa diğeri). 2000 öncesi tarihler
+                // veri giriş hatası sayılır (ör. "0205-06-17" → 2025 yerine) ve yok sayılır;
+                // yoksa "Tümü" aralığı yüzlerce yıl geriye giderek bozulurdu.
+                const MIN_GECERLI = "2000-01-01";
+                let enEski = "";
+                for (const t of [enEskiPuantaj, enEskiYakit]) {
+                  if (t && t >= MIN_GECERLI && (!enEski || t < enEski)) enEski = t;
+                }
                 // Fallback: şantiyedeki araçların oluşturma tarihinden tahmin
                 if (!enEski) {
                   for (const a of araclar) {
