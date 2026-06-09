@@ -129,6 +129,12 @@ function tarihStr(d: Date): string {
 function yerelBugun(): string {
   return tarihStr(new Date());
 }
+// ISO tarih ("2026-06-08") → "08.06.2026" (gün.ay.yıl, başına sıfırlı).
+function gunAyYil(d?: string | null): string {
+  if (!d) return "";
+  const [y, m, g] = d.split("T")[0].split("-");
+  return g && m && y ? `${g}.${m}.${y}` : d;
+}
 function ayDegistir(ayStr: string, delta: number): string {
   const [y, m] = ayStr.split("-").map(Number);
   const d = new Date(y, m - 1 + delta, 1);
@@ -5744,19 +5750,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                       <span className="text-emerald-700 font-semibold">{c.santiyeAd ?? "—"}</span>
                                     </span>
                                     <br />
-                                    <span className="text-red-700 font-semibold">çıkış: {c.cikisTarih ?? c.tarih}</span>
+                                    <span className="text-red-700 font-semibold">çıkış: {gunAyYil(c.cikisTarih ?? c.tarih)}</span>
                                     <span className="text-gray-400"> · </span>
-                                    <span className="text-emerald-700 font-semibold">giriş: {c.tarih}</span>
+                                    <span className="text-emerald-700 font-semibold">giriş: {gunAyYil(c.tarih)}</span>
                                   </>
                                 ) : c.tip === "giris" ? (
                                   <>
                                     <span className="text-emerald-700 font-semibold">{c.santiyeAd ?? "—"}</span>
-                                    <span className="ml-1 text-emerald-700 font-semibold">(giriş: {c.tarih})</span>
+                                    <span className="ml-1 text-emerald-700 font-semibold">(giriş: {gunAyYil(c.tarih)})</span>
                                   </>
                                 ) : (
                                   <>
                                     <span className="text-red-700 font-semibold">{c.onceSantiyeAd ?? "—"}</span>
-                                    <span className="ml-1 text-red-700 font-semibold">(çıkış: {c.tarih})</span>
+                                    <span className="ml-1 text-red-700 font-semibold">(çıkış: {gunAyYil(c.tarih)})</span>
                                   </>
                                 )}
                               </div>
