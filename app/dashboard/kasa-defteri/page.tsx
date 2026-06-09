@@ -169,8 +169,10 @@ function KasaDefContent() {
     slipWheelCleanupRef.current = () => node.removeEventListener("wheel", onWheel);
   }, []);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  // sessiz=true ise loading iskeleti gösterilmez (tablo DOM'da kalır) — kayıt/güncelleme
+  // sonrası kullanılır ki sayfa başa kaymasın, işlem yapılan satırda kalsın.
+  const loadAll = useCallback(async (sessiz = false) => {
+    if (!sessiz) setLoading(true);
     try {
       const [sData, katData, hData, kResp, limitData, gorLimit] = await Promise.all([
         getSantiyelerAll(),
@@ -212,7 +214,7 @@ function KasaDefContent() {
         toast.error("kasa_hareketi tablosu Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       }
     } finally {
-      setLoading(false);
+      if (!sessiz) setLoading(false);
     }
   }, [kullanici]);
 
@@ -491,7 +493,7 @@ function KasaDefContent() {
           });
         }
       }
-      await loadAll();
+      await loadAll(true);
       toast.success(editId ? "İşlem güncellendi." : "İşlem eklendi.");
       setDialogOpen(false);
     } catch (err) {
@@ -519,7 +521,7 @@ function KasaDefContent() {
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
       await deleteKasaHareketi(silOnay);
-      await loadAll();
+      await loadAll(true);
       toast.success("İşlem silindi.");
       setSilOnay(null);
     } catch (err) {
@@ -1034,11 +1036,11 @@ function KasaDefContent() {
 
       {/* İşlem Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editId ? "İşlemi Düzenle" : "Yeni İşlem Ekle"}</DialogTitle>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="truncate">{editId ? "İşlemi Düzenle" : "Yeni İşlem Ekle"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 min-w-0">
             <div className="space-y-1">
               <Label className="text-xs">Kullanıcı <span className="text-red-500">*</span></Label>
               <select

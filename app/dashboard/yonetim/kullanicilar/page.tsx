@@ -28,6 +28,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 
 function tr(s: string): string {
@@ -102,7 +103,8 @@ export default function KullanicilarPage() {
       toast.success("Kullanıcı silindi.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Hata oluştu";
-      toast.error(msg);
+      // İşlem bağlı silme engeli mesajı uzun olabilir — daha uzun göster.
+      toast.error(msg, { duration: toastSuresi(7000) });
     } finally {
       setDeleteId(null);
     }

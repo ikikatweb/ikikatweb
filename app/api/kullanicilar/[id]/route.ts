@@ -163,6 +163,47 @@ export async function DELETE(
     return NextResponse.json({ error: "Kullanıcı bulunamadı" }, { status: 404 });
   }
 
+  // İŞLEM KONTROLÜ: Kullanıcı sistemde herhangi bir işlem yaptıysa (yazışma, puantaj,
+  // yakıt, kasa, mesaj, şantiye defteri vb.) SİLİNEMEZ — veri bütünlüğü korunur.
+  // (Bunun yerine pasife alınmalı.) created_by / olusturan_id / yazan_id / gonderen_id
+  // alanlarının hepsi kullanicilar.id'yi referanslar.
+  const aktiviteTablolari: { tablo: string; kolon: string; etiket: string }[] = [
+    { tablo: "gelen_evrak", kolon: "olusturan_id", etiket: "gelen evrak" },
+    { tablo: "giden_evrak", kolon: "olusturan_id", etiket: "giden evrak" },
+    { tablo: "banka_yazisma", kolon: "olusturan_id", etiket: "banka yazışması" },
+    { tablo: "personel_puantaj", kolon: "created_by", etiket: "personel puantajı" },
+    { tablo: "arac_puantaj", kolon: "created_by", etiket: "araç puantajı" },
+    { tablo: "arac_yakit", kolon: "created_by", etiket: "yakıt kaydı" },
+    { tablo: "yakit_alim", kolon: "created_by", etiket: "yakıt alımı" },
+    { tablo: "yakit_virman", kolon: "created_by", etiket: "yakıt virmanı" },
+    { tablo: "kasa_hareketi", kolon: "created_by", etiket: "kasa hareketi" },
+    { tablo: "santiye_defteri", kolon: "created_by", etiket: "şantiye defteri" },
+    { tablo: "santiye_defteri_kayit", kolon: "yazan_id", etiket: "şantiye defteri yazısı" },
+    { tablo: "mesaj", kolon: "gonderen_id", etiket: "mesaj" },
+    { tablo: "arac_bakim", kolon: "created_by", etiket: "araç bakım kaydı" },
+    { tablo: "arac_kira_bedeli", kolon: "created_by", etiket: "kira bedeli kaydı" },
+    { tablo: "ihale", kolon: "created_by", etiket: "ihale kaydı" },
+  ];
+  const aktiviteSonuc = await Promise.all(
+    aktiviteTablolari.map(async ({ tablo, kolon, etiket }) => {
+      const { count, error } = await supabase
+        .from(tablo)
+        .select("id", { count: "exact", head: true })
+        .eq(kolon, id);
+      if (error) return null; // tablo/kolon yoksa atla
+      return (count ?? 0) > 0 ? `${etiket} (${count})` : null;
+    })
+  );
+  const bulunanlar = aktiviteSonuc.filter((x): x is string => x !== null);
+  if (bulunanlar.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Bu kullanıcı silinemez çünkü sistemde işlemleri bulunuyor: ${bulunanlar.join(", ")}. Kaydı korumak için kullanıcıyı silmek yerine PASİFE alın.`,
+      },
+      { status: 400 }
+    );
+  }
+
   // Tablodan sil
   await supabase.from("kullanicilar").delete().eq("id", id);
 
