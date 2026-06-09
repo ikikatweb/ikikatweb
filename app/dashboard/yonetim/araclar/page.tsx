@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAraclar, toggleAracDurum, deleteArac } from "@/lib/supabase/queries/araclar";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
@@ -17,7 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import AracForm from "@/components/shared/arac-form";
+import {
   Pencil, Truck, Plus, Search, FileDown, FileSpreadsheet, FileCheck, Trash2,
+  ChevronDown, Check,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -89,7 +93,9 @@ export default function AraclarPage() {
   const [filtre, setFiltre] = useState<Filtre>("tumu");
   const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("ozmal");
   const [cinsFiltre, setCinsFiltre] = useState("tumu");
-  const [firmaFiltre, setFirmaFiltre] = useState("tumu");
+  // Firma filtresi ÇOKLU seçim: boş dizi = tüm firmalar; doluysa sadece seçili firmalar gösterilir
+  const [firmaSecili, setFirmaSecili] = useState<string[]>([]);
+  const [firmaDropdownAcik, setFirmaDropdownAcik] = useState(false);
   // Varsayılan sıralama: 1) Firma sira_no asc, 2) Cinsi asc (tanımlama sırası), 3) Yılı desc (en yeni en üstte)
   const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([
     { key: "firma", dir: "asc" },
@@ -108,7 +114,8 @@ export default function AraclarPage() {
   // 1 depo menzili inline düzenleme
   const [editMenzilId, setEditMenzilId] = useState<string | null>(null);
   const [editMenzilValue, setEditMenzilValue] = useState<string>("");
-  const router = useRouter();
+  // Araç düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
+  const [duzenleArac, setDuzenleArac] = useState<AracWithRelations | null>(null);
 
   // Genel ortalama — yakıt verisi veya araç (menzil) değişince yeniden hesaplanır.
   const genelOrtMap = useMemo(
@@ -340,9 +347,9 @@ export default function AraclarPage() {
       if (filtre !== "tumu" && a.durum !== filtre) return false;
       if (mulkiyetFiltre !== "tumu" && a.tip !== mulkiyetFiltre) return false;
       if (cinsFiltre !== "tumu" && a.cinsi !== cinsFiltre) return false;
-      if (firmaFiltre !== "tumu") {
+      if (firmaSecili.length > 0) {
         const firmaAdi = a.tip === "ozmal" ? (a.firmalar?.firma_adi ?? "") : (a.kiralama_firmasi ?? "");
-        if (firmaAdi !== firmaFiltre) return false;
+        if (!firmaSecili.includes(firmaAdi)) return false;
       }
       if (!arama.trim()) return true;
       const q = trAramaNormalize(arama);
@@ -445,18 +452,57 @@ export default function AraclarPage() {
           <option value="tumu">Tüm Cinsler</option>
           {cinsListesi.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={firmaFiltre} onChange={(e) => setFirmaFiltre(e.target.value)}
-          className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm min-w-[160px]">
-          <option value="tumu">Tüm Firmalar</option>
-          {(() => {
-            const firmaSet = new Set<string>();
-            for (const a of araclar) {
-              const adi = a.tip === "ozmal" ? a.firmalar?.firma_adi : a.kiralama_firmasi;
-              if (adi) firmaSet.add(adi);
-            }
-            return Array.from(firmaSet).sort((a, b) => a.localeCompare(b, "tr")).map((f) => <option key={f} value={f}>{f}</option>);
-          })()}
-        </select>
+        {/* Çoklu firma filtresi — aynı anda 2-3 firma seçilebilir (boş = tümü) */}
+        {(() => {
+          const firmaSet = new Set<string>();
+          for (const a of araclar) {
+            const adi = a.tip === "ozmal" ? a.firmalar?.firma_adi : a.kiralama_firmasi;
+            if (adi) firmaSet.add(adi);
+          }
+          const firmaAdlari = Array.from(firmaSet).sort((a, b) => a.localeCompare(b, "tr"));
+          const etiket = firmaSecili.length === 0
+            ? "Tüm Firmalar"
+            : firmaSecili.length === 1
+              ? firmaSecili[0]
+              : `${firmaSecili.length} firma seçili`;
+          return (
+            <div className="relative">
+              <button type="button" onClick={() => setFirmaDropdownAcik((o) => !o)}
+                className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm min-w-[160px] max-w-[220px] flex items-center justify-between gap-2">
+                <span className="truncate">{etiket}</span>
+                <ChevronDown size={14} className="shrink-0 text-gray-400" />
+              </button>
+              {firmaDropdownAcik && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setFirmaDropdownAcik(false)} />
+                  <div className="absolute z-50 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border bg-white shadow-lg p-1">
+                    <button type="button" onClick={() => setFirmaSecili([])}
+                      className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-50 flex items-center gap-2">
+                      <span className={`w-4 h-4 border rounded flex items-center justify-center shrink-0 ${firmaSecili.length === 0 ? "bg-[#1E3A5F] border-[#1E3A5F]" : "border-gray-300"}`}>
+                        {firmaSecili.length === 0 && <Check size={12} className="text-white" />}
+                      </span>
+                      <span className="font-medium">Tüm Firmalar</span>
+                    </button>
+                    <div className="my-1 border-t" />
+                    {firmaAdlari.map((f) => {
+                      const secili = firmaSecili.includes(f);
+                      return (
+                        <button key={f} type="button"
+                          onClick={() => setFirmaSecili((prev) => secili ? prev.filter((x) => x !== f) : [...prev, f])}
+                          className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-50 flex items-center gap-2">
+                          <span className={`w-4 h-4 border rounded flex items-center justify-center shrink-0 ${secili ? "bg-[#1E3A5F] border-[#1E3A5F]" : "border-gray-300"}`}>
+                            {secili && <Check size={12} className="text-white" />}
+                          </span>
+                          <span className="truncate">{f}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
         {sortList.length > 0 && (
           <Button variant="ghost" size="sm" onClick={() => setSortList([])} className="text-red-500 text-xs">
             Sıralamayı Temizle
@@ -679,7 +725,7 @@ export default function AraclarPage() {
                     <div className="flex items-center justify-end gap-1">
                       {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
-                        onClick={() => router.push(`/dashboard/yonetim/araclar/${arac.id}/duzenle`)}>
+                        onClick={() => setDuzenleArac(arac)}>
                         <Pencil size={16} />
                       </Button>
                       )}
@@ -712,6 +758,23 @@ export default function AraclarPage() {
           </Table>
         </div>
       )}
+
+      {/* Araç düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
+      <Dialog open={!!duzenleArac} onOpenChange={(o) => { if (!o) setDuzenleArac(null); }}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Araç Düzenle{duzenleArac ? ` — ${duzenleArac.plaka}` : ""}</DialogTitle>
+          </DialogHeader>
+          {duzenleArac && (
+            <AracForm
+              arac={duzenleArac}
+              tip={duzenleArac.tip}
+              onSuccess={() => { setDuzenleArac(null); loadAraclar(); }}
+              onCancel={() => setDuzenleArac(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

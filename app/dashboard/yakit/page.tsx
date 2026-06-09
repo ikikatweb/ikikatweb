@@ -259,9 +259,10 @@ function YakitPageContent() {
   const [hizliAtamaOpen, setHizliAtamaOpen] = useState(false);
   const [hizliAtamaArama, setHizliAtamaArama] = useState("");
 
-  // Veri yükleme
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  // Veri yükleme. sessiz=true ise loading iskeleti gösterilmez (tablo DOM'da kalır) —
+  // kayıt/düzenleme sonrası kullanılır ki sayfa başa kaymasın, işlem yapılan satırda kalsın.
+  const loadAll = useCallback(async (sessiz = false) => {
+    if (!sessiz) setLoading(true);
     try {
       const [aracData, santiyeData, limitData, cinsTanimData] = await Promise.all([
         getAraclar(),
@@ -329,7 +330,7 @@ function YakitPageContent() {
         toast.error("Yakıt tabloları Supabase'de yok. SQL'i çalıştırmanız gerekiyor.", { duration: toastSuresi() });
       }
     } finally {
-      setLoading(false);
+      if (!sessiz) setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kullanici]);
@@ -921,7 +922,7 @@ function YakitPageContent() {
           console.warn("Araç göstergesi güncellenemedi:", e);
         }
       }
-      await loadAll();
+      await loadAll(true);
       toast.success(verEditId ? "Yakıt kaydı güncellendi." : "Yakıt kaydı eklendi.");
       setVerDialogOpen(false);
     } catch (err) {
@@ -984,7 +985,7 @@ function YakitPageContent() {
           created_by: kullanici?.id ?? null,
         });
       }
-      await loadAll();
+      await loadAll(true);
       toast.success(alEditId ? "Yakıt alımı güncellendi." : "Yakıt alımı kaydedildi.");
       setAlDialogOpen(false);
     } catch (err) {
@@ -1038,7 +1039,7 @@ function YakitPageContent() {
           created_by: kullanici?.id ?? null,
         });
       }
-      await loadAll();
+      await loadAll(true);
       toast.success(virEditId ? "Virman güncellendi." : "Virman kaydedildi.");
       setVirDialogOpen(false);
     } catch (err) {
@@ -1061,7 +1062,7 @@ function YakitPageContent() {
       if (silOnay.tip === "arac_yakit") await deleteAracYakit(silOnay.id);
       else if (silOnay.tip === "alim") await deleteYakitAlim(silOnay.id);
       else await deleteYakitVirman(silOnay.id);
-      await loadAll();
+      await loadAll(true);
       toast.success("Kayıt silindi.");
       setSilOnay(null);
     } catch (err) {
@@ -2159,7 +2160,7 @@ function YakitPageContent() {
           <div className="py-2">
             <AracForm
               tip="kiralik"
-              onSuccess={() => { setYakitKiralikDialogOpen(false); loadAll(); }}
+              onSuccess={() => { setYakitKiralikDialogOpen(false); loadAll(true); }}
               onCancel={() => setYakitKiralikDialogOpen(false)}
             />
           </div>
