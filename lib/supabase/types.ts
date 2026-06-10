@@ -800,9 +800,12 @@ export type Kullanici = {
   santiyesiz_veri_gor?: boolean | null;
   created_at: string;
   updated_at: string;
+  // DB kolonu DEĞİL — API listelemede Supabase Auth'tan (last_sign_in_at) eklenir.
+  // Kullanıcının en son siteye giriş tarih/saati (ISO). Hiç giriş yapmadıysa null.
+  son_giris?: string | null;
 };
 
-export type KullaniciInsert = Omit<Kullanici, "id" | "created_at" | "updated_at">;
+export type KullaniciInsert = Omit<Kullanici, "id" | "created_at" | "updated_at" | "son_giris">;
 export type KullaniciUpdate = Partial<Omit<KullaniciInsert, "auth_id">>;
 
 // ============ MESAJLAŞMA ============

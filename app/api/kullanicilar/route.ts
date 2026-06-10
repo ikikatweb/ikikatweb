@@ -48,7 +48,27 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+
+  // Son giriş zamanlarını Supabase Auth'tan (last_sign_in_at) çek ve her kullanıcıya ekle.
+  // Auth her girişte bu alanı otomatik günceller; ayrı izleme/bildirim gerekmez.
+  const sonGirisMap = new Map<string, string | null>();
+  try {
+    let page = 1;
+    for (;;) {
+      const { data: authList } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+      const users = authList?.users ?? [];
+      for (const u of users) sonGirisMap.set(u.id, u.last_sign_in_at ?? null);
+      if (users.length < 1000) break;
+      page++;
+      if (page > 50) break;
+    }
+  } catch { /* sessiz — son giriş gösterilemezse liste yine döner */ }
+
+  const zenginlestirilmis = (data ?? []).map((k) => ({
+    ...k,
+    son_giris: sonGirisMap.get(k.auth_id) ?? null,
+  }));
+  return NextResponse.json(zenginlestirilmis);
 }
 
 // POST - Yeni kullanıcı oluştur

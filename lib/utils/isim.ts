@@ -168,10 +168,37 @@ export function formatPlaka(metin: string | null | undefined): string {
  *   "t.c.\ndevlet su işleri\ngenel müdürlüğü\ntokat"
  *   -> "T.C.\nDevlet Su İşleri\nGenel Müdürlüğü\nTOKAT"
  */
+// Türkiye'nin 81 ili — muhatapta il ismi geçerse TAMAMI büyük yazılır.
+// trAramaNormalize ile eşleştirildiği için yazım/Türkçe karakter farkı önemsiz.
+const IL_LISTESI = [
+  "Adana", "Adıyaman", "Afyonkarahisar", "Ağrı", "Amasya", "Ankara", "Antalya", "Artvin",
+  "Aydın", "Balıkesir", "Bilecik", "Bingöl", "Bitlis", "Bolu", "Burdur", "Bursa", "Çanakkale",
+  "Çankırı", "Çorum", "Denizli", "Diyarbakır", "Edirne", "Elazığ", "Erzincan", "Erzurum",
+  "Eskişehir", "Gaziantep", "Giresun", "Gümüşhane", "Hakkari", "Hatay", "Isparta", "Mersin",
+  "İstanbul", "İzmir", "Kars", "Kastamonu", "Kayseri", "Kırklareli", "Kırşehir", "Kocaeli",
+  "Konya", "Kütahya", "Malatya", "Manisa", "Kahramanmaraş", "Mardin", "Muğla", "Muş", "Nevşehir",
+  "Niğde", "Ordu", "Rize", "Sakarya", "Samsun", "Siirt", "Sinop", "Sivas", "Tekirdağ", "Tokat",
+  "Trabzon", "Tunceli", "Şanlıurfa", "Uşak", "Van", "Yozgat", "Zonguldak", "Aksaray", "Bayburt",
+  "Karaman", "Kırıkkale", "Batman", "Şırnak", "Bartın", "Ardahan", "Iğdır", "Yalova", "Karabük",
+  "Kilis", "Osmaniye", "Düzce",
+];
+const IL_SET = new Set(IL_LISTESI.map((il) => trAramaNormalize(il)));
+
 export function formatMuhatap(metin: string | null | undefined): string {
   if (!metin) return "";
-  // Otomatik büyük/küçük dönüşüm YOK — kullanıcı nasıl yazdıysa öyle kalır.
-  // Sadece her satırda baş/son boşlukları temizler ve boş satırları atar.
+  // Her satır: kelimeler Title Case (T.C. gibi noktalı kısaltmalar büyük kalır);
+  // bir kelime İL ismiyse TAMAMI büyük yazılır.
   const satirlar = metin.split("\n").map((s) => s.replace(/[\t ]+/g, " ").trim()).filter(Boolean);
-  return satirlar.join("\n");
+  return satirlar
+    .map((satir) =>
+      satir
+        .split(" ")
+        .map((token) => {
+          const norm = trAramaNormalize(token).replace(/[^a-z]/g, "");
+          if (norm && IL_SET.has(norm)) return token.toLocaleUpperCase(TR);
+          return properCaseToken(token);
+        })
+        .join(" "),
+    )
+    .join("\n");
 }

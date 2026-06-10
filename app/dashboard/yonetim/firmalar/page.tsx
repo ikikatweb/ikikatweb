@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { getFirmalar, toggleFirmaDurum, deleteFirma, updateFirmaSiraNo } from "@/lib/supabase/queries/firmalar";
 import { getAraclar, updateArac, toggleAracDurum } from "@/lib/supabase/queries/araclar";
 import type { Firma, AracWithRelations } from "@/lib/supabase/types";
-import PageHeader from "@/components/shared/page-header";
+import Link from "next/link";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Building2, Search, Truck, Trash2, Power, FileDown, FileSpreadsheet, ArrowUp, ArrowDown } from "lucide-react";
+import { Pencil, Building2, Search, Truck, Trash2, Power, FileDown, FileSpreadsheet, ArrowUp, ArrowDown, Plus } from "lucide-react";
 import { useAuth } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -183,13 +183,16 @@ export default function FirmalarPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <PageHeader
-          title="Firmalar"
-          actionLabel={yEkle ? "Yeni Firma Ekle" : undefined}
-          actionHref={yEkle ? "/dashboard/yonetim/firmalar/yeni" : undefined}
-        />
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+        <h1 className="text-2xl font-bold text-[#1E3A5F]">Firmalar</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          {yEkle && (
+            <Link href="/dashboard/yonetim/firmalar/yeni">
+              <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
+                <Plus size={16} className="mr-1" /> Yeni Firma Ekle
+              </Button>
+            </Link>
+          )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
           </Button>

@@ -146,9 +146,9 @@ export default function KullanicilarPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Kullanıcılar</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={kullanicilar.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
           </Button>
@@ -211,6 +211,7 @@ export default function KullanicilarPage() {
                 <TableHead className="text-center">Rol</TableHead>
                 <TableHead className="hidden md:table-cell">Şantiyeler</TableHead>
                 <TableHead className="text-center">Durum</TableHead>
+                <TableHead className="text-center whitespace-nowrap">Son Giriş</TableHead>
                 <TableHead className="text-right">İşlemler</TableHead>
               </TableRow>
             </TableHeader>
@@ -226,7 +227,7 @@ export default function KullanicilarPage() {
                 if (liste.length === 0) {
                   return (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-10 text-gray-400 text-sm">
+                      <TableCell colSpan={8} className="text-center py-10 text-gray-400 text-sm">
                         {aktifSekme === "pasif"
                           ? "Pasif kullanıcı yok."
                           : (arama.trim() ? "Eşleşen aktif kullanıcı yok." : "Aktif kullanıcı yok.")}
@@ -275,6 +276,14 @@ export default function KullanicilarPage() {
                     >
                       {k.aktif ? "Aktif" : "Pasif"}
                     </button>
+                  </TableCell>
+                  <TableCell className="text-center whitespace-nowrap text-xs text-gray-600">
+                    {k.son_giris
+                      ? new Date(k.son_giris).toLocaleString("tr-TR", {
+                          day: "2-digit", month: "2-digit", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })
+                      : <span className="text-gray-300">—</span>}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">

@@ -81,6 +81,8 @@ export default function TanimlamalarPage() {
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
   const [yeniDegerler, setYeniDegerler] = useState<Record<string, string>>({});
+  // Muhatap eklerken kategori başına kısa ad (zorunlu, en fazla 10 karakter)
+  const [yeniKisaAdlar, setYeniKisaAdlar] = useState<Record<string, string>>({});
   const [deleteId, setDeleteId] = useState<string | null>(null);
   // İş grupları accordion state
   const [isGrupAcik, setIsGrupAcik] = useState<Record<string, boolean>>({});
@@ -280,6 +282,15 @@ export default function TanimlamalarPage() {
     // Kategori bazlı format uygula
     const deger = formatTanimlamaDeger(kategori, ham);
 
+    // Muhatap kategorilerinde KISA AD zorunlu (en fazla 10 karakter, büyük harf)
+    const isMuhatapKat = kategori === "muhatap" || kategori === "banka_muhatap";
+    let kisaAd: string | null = null;
+    if (isMuhatapKat) {
+      const hamKisa = (yeniKisaAdlar[kategori] ?? "").trim();
+      if (!hamKisa) { toast.error("Muhatabın kısa adı zorunludur."); return; }
+      kisaAd = formatBuyukHarf(hamKisa).slice(0, 10);
+    }
+
     const mevcut = tanimlamalar.filter((t) => t.kategori === kategori);
     if (mevcut.some((t) => t.deger.toLowerCase() === deger.toLowerCase())) {
       toast.error("Bu değer zaten ekli.");
@@ -297,6 +308,7 @@ export default function TanimlamalarPage() {
         deger,
         sira,
         aktif: true,
+        ...(kisaAd ? { kisa_ad: kisaAd } : {}),
       });
 
       // Placeholder (boş) kayıtları temizle
@@ -306,6 +318,7 @@ export default function TanimlamalarPage() {
       }
 
       setYeniDegerler((p) => ({ ...p, [kategori]: "" }));
+      setYeniKisaAdlar((p) => ({ ...p, [kategori]: "" }));
       await loadData();
       toast.success(`"${deger}" eklendi.`);
     } catch {
@@ -651,9 +664,10 @@ export default function TanimlamalarPage() {
                                   defaultValue={t.kisa_ad ?? ""}
                                   placeholder="Kısa ad (örn: DSİ)"
                                   readOnly={!yDuzenle}
+                                  maxLength={10}
                                   onBlur={async (e) => {
                                     if (!yDuzenle) return;
-                                    const yeni = formatBuyukHarf(e.target.value);
+                                    const yeni = formatBuyukHarf(e.target.value).slice(0, 10);
                                     if (yeni !== (t.kisa_ad ?? "")) {
                                       try {
                                         await updateTanimlama(t.id, { kisa_ad: yeni || null });
@@ -985,13 +999,23 @@ export default function TanimlamalarPage() {
                 ) : (
                   <div className={isMuhatap ? "space-y-2" : "flex gap-1"}>
                     {isMuhatap ? (
-                      <textarea
-                        placeholder={"T.C.\nDevlet Su İşleri\nGenel Müdürlüğü\nTOKAT"}
-                        value={yeniDegerler[kat.key] ?? ""}
-                        onChange={(e) => setYeniDegerler((p) => ({ ...p, [kat.key]: e.target.value }))}
-                        rows={4}
-                        className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-center outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
-                      />
+                      <>
+                        <textarea
+                          placeholder={"T.C.\nDevlet Su İşleri\nGenel Müdürlüğü'ne\nTOKAT"}
+                          value={yeniDegerler[kat.key] ?? ""}
+                          onChange={(e) => setYeniDegerler((p) => ({ ...p, [kat.key]: e.target.value }))}
+                          rows={4}
+                          className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-center outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
+                        />
+                        {/* Kısa ad — zorunlu, en fazla 10 karakter, büyük harf */}
+                        <Input
+                          placeholder="Kısa ad (zorunlu · en fazla 10 karakter · örn: DSİ)"
+                          value={yeniKisaAdlar[kat.key] ?? ""}
+                          maxLength={10}
+                          onChange={(e) => setYeniKisaAdlar((p) => ({ ...p, [kat.key]: e.target.value.toLocaleUpperCase("tr-TR").slice(0, 10) }))}
+                          className="text-sm h-8"
+                        />
+                      </>
                     ) : (
                       <Input
                         placeholder="Yeni değer ekle..."
