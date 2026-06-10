@@ -1056,17 +1056,28 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return map;
   }, [naturalGunMap, manuelGunler, seciliAy]);
 
-  // "Eksik gün" (mavi rozet) eşiği: seçili ayda BUGÜNE KADAR beklenen gün sayısı.
+  // Kişi başına DOĞAL (atama bazlı, manuel öncesi) toplam gün — cari ayda bugüne kadar
+  // her kişinin GİRİŞ tarihine göre beklenen gün sayısıdır (ay içinde işe girenler için
+  // daha az olması NORMALDİR). naturalGunMap zaten giriş/çıkış + bugünü dikkate alır.
+  const personelDogalToplamMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [pid, sMap] of naturalGunMap) {
+      let toplam = 0;
+      for (const dogal of sMap.values()) toplam += dogal;
+      map.set(pid, toplam);
+    }
+    return map;
+  }, [naturalGunMap]);
+
+  // "Eksik gün" eşiği — KİŞİYE ÖZEL (ay içinde işe gireni cezalandırmamak için):
   //  - Geçmiş ay → tam ay beklenir (30).
-  //  - İçinde bulunduğumuz ay → ayın bugüne kadar geçen gün sayısı (30'da tavanlı).
-  //    Örn. ayın 3'ündeysek 3; 3 gün normaldir, 2 gün eksiktir.
-  //  - Gelecek ay → 0 (beklenti yok, eksik uyarısı verilmez).
-  const beklenenGun = useMemo(() => {
+  //  - Cari ay → kişinin KENDİ atamasına göre bugüne kadarki doğal günü (giriş tarihi dahil).
+  //  - Gelecek ay → 0 (beklenti yok).
+  const beklenenGunFor = useCallback((personelId: string): number => {
     if (seciliAy < buAy) return 30;
     if (seciliAy > buAy) return 0;
-    const gun = parseInt(yerelBugun().slice(8, 10), 10) || 0;
-    return Math.min(gun, 30);
-  }, [seciliAy, buAy]);
+    return personelDogalToplamMap.get(personelId) ?? 0;
+  }, [seciliAy, buAy, personelDogalToplamMap]);
 
   // Personel → halen AÇIK (aktif) ataması olan şantiyeler (çıkış tarihi girilmemiş).
   // Limit Dışı'da hem "halen aktif mi" kontrolü hem de "çıkış yaptığı şantiyede
@@ -1084,18 +1095,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Halen aktif (en az bir açık ataması olan) personel kümesi.
   const aktifPersonelIds = useMemo(() => new Set(aktifSantiyeMap.keys()), [aktifSantiyeMap]);
 
-  // Bir personel "Limit Dışı" listesine girer mi?
-  //  - Efektif toplam günü 30'dan farklı (ve > 0) olmalı.
-  //  - Halen aktif (açık atama) ise: 30'un altı da üstü de listelenir.
+  // Bir personel "Limit Dışı" listesine girer mi? (gün rozetleriyle AYNI eşikler)
+  //  - Normal aralık [beklenenGun, 30]. Cari ayda beklenenGun = bugüne kadar geçen gün;
+  //    geçmiş ayda 30. Bu aralıkta personel "limitte" sayılır → listelenmez.
+  //  - Halen aktif (açık atama) ise: beklenenGun'un ALTINDA (eksik) VEYA 30'u AŞAN
+  //    (SGK ihlali) → limit dışı. (Geçmiş ay: beklenenGun=30 → tam "30'dan farklı" demek.)
   //  - İşten ayrılmış (açık atama yok) ise: SADECE 30'u AŞANLAR listelenir
-  //    (çift sigortalılık/SGK ihlali). 30 altı ayrılmalar normaldir → listelenmez.
+  //    (çift sigortalılık/SGK ihlali). Az gün çalışıp ayrılmak normaldir → listelenmez.
   const limitDisiKapsar = useCallback((personelId: string): boolean => {
     const t = personelEfektifToplamMap.get(personelId) ?? 0;
-    if (t === 0 || t === 30) return false;
+    if (t === 0) return false;
     const aktif = aktifPersonelIds.has(personelId);
-    if (!aktif && t <= 30) return false;
-    return true;
-  }, [personelEfektifToplamMap, aktifPersonelIds]);
+    if (aktif) return t < beklenenGunFor(personelId) || t > 30;
+    return t > 30;
+  }, [personelEfektifToplamMap, aktifPersonelIds, beklenenGunFor]);
 
   // "Limit Dışı" buton rozeti için: filtreye giren personel sayısı.
   const limitDisiAdet = useMemo(() => {
@@ -4218,10 +4231,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ⚠️ {personelEfektifToplamMap.get(p.id)}g
               </span>
             )}
-            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGun && (
+            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGunFor(p.id) && (
               <span
                 className="flex-shrink-0 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold cursor-help"
-                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün — bugüne kadar beklenen ${beklenenGun} günün altında, eksik gün (manuel + hesaplanan gri günler dahil)`}
+                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün — kendi giriş tarihine göre beklenen ${beklenenGunFor(p.id)} günün altında, eksik gün (manuel + hesaplanan gri günler dahil)`}
               >
                 {personelEfektifToplamMap.get(p.id)}g
               </span>
