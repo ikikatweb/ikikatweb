@@ -66,7 +66,9 @@ export async function GET() {
 
   const zenginlestirilmis = (data ?? []).map((k) => ({
     ...k,
-    son_giris: sonGirisMap.get(k.auth_id) ?? null,
+    // Öncelik: kendi takip ettiğimiz son_giris (kullanıcı siteye her girdiğinde güncellenir);
+    // yoksa Auth'un last_sign_in_at değeri (yalnız şifreyle yeniden girişte güncellenir).
+    son_giris: (k as { son_giris?: string | null }).son_giris ?? sonGirisMap.get(k.auth_id) ?? null,
   }));
   return NextResponse.json(zenginlestirilmis);
 }

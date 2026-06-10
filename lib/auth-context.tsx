@@ -48,6 +48,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const data = await getKullaniciProfil();
         setKullanici(data);
+        // Son giriş zamanını güncelle (kullanıcı siteye her girdiğinde). Çok sık yazmamak
+        // için 2 dakikalık throttle: son ping 2 dk içindeyse tekrar gönderme.
+        if (data) {
+          try {
+            const sonPing = parseInt(localStorage.getItem("sonGirisPing") ?? "0", 10);
+            if (Date.now() - sonPing > 120000) {
+              localStorage.setItem("sonGirisPing", String(Date.now()));
+              // fire-and-forget — sonucu beklemeye gerek yok
+              fetch("/api/kullanicilar/giris", { method: "POST" }).catch(() => {});
+            }
+          } catch { /* localStorage yoksa sessiz */ }
+        }
       } catch {
         setKullanici(null);
       } finally {
