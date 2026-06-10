@@ -24,6 +24,22 @@ export async function POST() {
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
   const supabase = createClient(url, service);
+
+  // Önceki son_giris'i oku → "yeni giriş" mi? (30 dk'dan eski/boşsa yeni oturum sayılır;
+  // böylece sayfa yenilemelerinde değil, gerçekten siteye yeniden girişte bildirim atılır.)
+  let yeniGiris = false;
+  try {
+    const { data: cur, error: selErr } = await supabase
+      .from("kullanicilar")
+      .select("son_giris")
+      .eq("auth_id", user.id)
+      .single();
+    if (!selErr) {
+      const oncekiMs = cur?.son_giris ? new Date(cur.son_giris).getTime() : 0;
+      yeniGiris = Date.now() - oncekiMs > 30 * 60 * 1000;
+    }
+  } catch { /* kolon yoksa: yeniGiris=false */ }
+
   // son_giris kolonu yoksa hata döner — sessizce yut (migration çalıştırılana kadar
   // GET tarafı Auth'un last_sign_in_at değerine düşer).
   const { error } = await supabase
@@ -31,6 +47,6 @@ export async function POST() {
     .update({ son_giris: new Date().toISOString() })
     .eq("auth_id", user.id);
 
-  if (error) return NextResponse.json({ ok: false, error: error.message });
-  return NextResponse.json({ ok: true });
+  if (error) return NextResponse.json({ ok: false, yeniGiris: false, error: error.message });
+  return NextResponse.json({ ok: true, yeniGiris });
 }

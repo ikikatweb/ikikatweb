@@ -22,6 +22,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni banka yazışması / hızlı talimat" },
   { tag: "yaklasan-sigorta", label: "Yaklaşan Sigorta & Muayene", emoji: "📋", desc: "Günlük sabah özeti (08:00)" },
   { tag: "yaklasan-bakim", label: "Yaklaşan Araç Bakımı", emoji: "🛠️", desc: "Günlük sabah özeti (08:00)" },
+  { tag: "kullanici-giris", label: "Kullanıcı Girişi", emoji: "🔐", desc: "Bir kullanıcı siteye giriş yapınca (yalnız yönetici)" },
 ];
 
 export default function PushBildirimAyarlari() {

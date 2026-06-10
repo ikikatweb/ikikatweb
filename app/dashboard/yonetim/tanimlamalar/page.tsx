@@ -20,7 +20,7 @@ import {
   deleteAracCinsiYakitLimit,
 } from "@/lib/supabase/queries/yakit";
 import { getKasaHareketLimit, upsertKasaHareketLimit } from "@/lib/supabase/queries/kasa";
-import { formatBaslik, formatBuyukHarf, formatMuhatap, formatKisiAdi } from "@/lib/utils/isim";
+import { formatBaslik, formatBuyukHarf, formatMuhatap, formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Tanimlama, Firma, AracCinsiYakitLimit } from "@/lib/supabase/types";
 import { useAuth } from "@/hooks";
@@ -36,7 +36,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet, Search } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -83,6 +83,8 @@ export default function TanimlamalarPage() {
   const [yeniDegerler, setYeniDegerler] = useState<Record<string, string>>({});
   // Muhatap eklerken kategori başına kısa ad (zorunlu, en fazla 10 karakter)
   const [yeniKisaAdlar, setYeniKisaAdlar] = useState<Record<string, string>>({});
+  // Muhatap kategorilerinde arama (muhatap çok olduğu için liste içi filtre)
+  const [muhatapArama, setMuhatapArama] = useState<Record<string, string>>({});
   const [deleteId, setDeleteId] = useState<string | null>(null);
   // İş grupları accordion state
   const [isGrupAcik, setIsGrupAcik] = useState<Record<string, boolean>>({});
@@ -587,8 +589,18 @@ export default function TanimlamalarPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay"].includes(k.key)).map((kat) => {
-          const items = getKategoriItems(kat.key).filter((t) => t.deger !== "(boş)");
           const isMuhatap = kat.key.toLowerCase() === "muhatap" || kat.key.toLowerCase() === "banka_muhatap";
+          const aramaQ = isMuhatap ? (muhatapArama[kat.key] ?? "").trim() : "";
+          const tumItems = getKategoriItems(kat.key).filter((t) => t.deger !== "(boş)");
+          const items = aramaQ
+            ? tumItems.filter((t) => {
+                const q = trAramaNormalize(aramaQ);
+                return (
+                  trAramaNormalize(tekSatirMuhatap(t.deger)).includes(q) ||
+                  trAramaNormalize(t.kisa_ad ?? "").includes(q)
+                );
+              })
+            : tumItems;
           const isBankaHesap = kat.key.toLowerCase() === "banka_hesap";
           const isAracCinsi = kat.key.toLowerCase() === "arac_cinsi";
           const isAcente = kat.key.toLowerCase() === "sigorta_acente";
@@ -599,7 +611,7 @@ export default function TanimlamalarPage() {
                 <div className="flex items-center justify-between mb-1">
                   <h3 className="font-semibold text-[#1E3A5F]">{kat.key}</h3>
                   <div className="flex items-center gap-1">
-                    <Badge variant="secondary">{items.filter((t) => t.aktif).length}</Badge>
+                    <Badge variant="secondary">{tumItems.filter((t) => t.aktif).length}</Badge>
                     {yDuzenle && (
                       <button onClick={() => openDuzenleKat(kat.key, kat.sekme)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Düzenle">
                         <Pencil size={12} />
@@ -616,10 +628,23 @@ export default function TanimlamalarPage() {
                   Sekme: {getSekmeLabel(kat.sekme)}
                 </p>
 
+                {/* Muhatap araması — muhatap çok olduğu için liste içi filtre */}
+                {isMuhatap && tumItems.length > 0 && (
+                  <div className="relative mb-2">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="Muhatap ara (ad veya kısa ad)..."
+                      value={muhatapArama[kat.key] ?? ""}
+                      onChange={(e) => setMuhatapArama((p) => ({ ...p, [kat.key]: e.target.value }))}
+                      className="h-8 text-xs pl-8"
+                    />
+                  </div>
+                )}
+
                 {/* Mevcut değerler */}
                 <div className="space-y-1 mb-3 overflow-y-auto max-h-[300px]">
                   {items.length === 0 ? (
-                    <p className="text-xs text-gray-400 py-2">Henüz değer eklenmemiş.</p>
+                    <p className="text-xs text-gray-400 py-2">{aramaQ ? "Eşleşen muhatap yok." : "Henüz değer eklenmemiş."}</p>
                   ) : (
                     items.map((t, idx) => {
                       // banka_hesap: hesap no + banka + firma bilgilerini çöz

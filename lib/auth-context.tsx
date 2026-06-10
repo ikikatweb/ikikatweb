@@ -50,13 +50,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setKullanici(data);
         // Son giriş zamanını güncelle (kullanıcı siteye her girdiğinde). Çok sık yazmamak
         // için 2 dakikalık throttle: son ping 2 dk içindeyse tekrar gönderme.
+        // Yeni oturum (yeniGiris) ise YÖNETİCİLERE push bildirim gönder.
         if (data) {
           try {
             const sonPing = parseInt(localStorage.getItem("sonGirisPing") ?? "0", 10);
             if (Date.now() - sonPing > 120000) {
               localStorage.setItem("sonGirisPing", String(Date.now()));
-              // fire-and-forget — sonucu beklemeye gerek yok
-              fetch("/api/kullanicilar/giris", { method: "POST" }).catch(() => {});
+              fetch("/api/kullanicilar/giris", { method: "POST" })
+                .then((r) => r.json())
+                .then((j) => {
+                  if (j?.yeniGiris) {
+                    // Giriş bildirimi — sadece yöneticilere gider (tag → yonetim-kullanicilar).
+                    // Çağıran (giriş yapan) hariç tutulur; gövdeye 👤 ad otomatik eklenir.
+                    fetch("/api/push/notify", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        baslik: "🔐 Kullanıcı Girişi",
+                        govde: "Siteye giriş yaptı.",
+                        tag: "kullanici-giris",
+                        url: "/dashboard/yonetim/kullanicilar",
+                      }),
+                    }).catch(() => {});
+                  }
+                })
+                .catch(() => {});
             }
           } catch { /* localStorage yoksa sessiz */ }
         }
