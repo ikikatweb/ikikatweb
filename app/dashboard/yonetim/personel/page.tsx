@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPersoneller, deletePersonel } from "@/lib/supabase/queries/personel";
 import { getPersonelSantiyeler } from "@/lib/supabase/queries/personel-santiye";
@@ -17,6 +16,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import PersonelForm from "@/components/shared/personel-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Pencil, Trash2, UserCog, Search, FileDown, FileSpreadsheet } from "lucide-react";
@@ -94,11 +97,12 @@ export default function PersonelPage() {
       sessionStorage.setItem(FILTRE_KEY, JSON.stringify({ arama, tipFiltre, durumFiltre }));
     } catch { /* sessiz */ }
   }, [arama, tipFiltre, durumFiltre, filtreYuklendi]);
-  const router = useRouter();
   const { kullanici, isYonetici, hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-personel", "ekle");
   const yDuzenle = hasPermission("yonetim-personel", "duzenle");
   const ySil = hasPermission("yonetim-personel", "sil");
+  // Personel düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
+  const [duzenlePersonel, setDuzenlePersonel] = useState<PersonelWithRelations | null>(null);
 
   async function loadPersoneller() {
     try {
@@ -411,7 +415,7 @@ export default function PersonelPage() {
                     <TableCell className="text-right whitespace-nowrap w-px">
                       <div className="flex items-center justify-end gap-1">
                         {yDuzenle && (
-                          <Button variant="ghost" size="sm" onClick={() => router.push(`/dashboard/yonetim/personel/${p.id}/duzenle`)}>
+                          <Button variant="ghost" size="sm" onClick={() => setDuzenlePersonel(p)}>
                             <Pencil size={16} />
                           </Button>
                         )}
@@ -442,6 +446,22 @@ export default function PersonelPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Personel düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
+      <Dialog open={!!duzenlePersonel} onOpenChange={(o) => { if (!o) setDuzenlePersonel(null); }}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+          <DialogHeader>
+            <DialogTitle className="truncate">Personel Düzenle{duzenlePersonel ? ` — ${duzenlePersonel.ad_soyad}` : ""}</DialogTitle>
+          </DialogHeader>
+          {duzenlePersonel && (
+            <PersonelForm
+              personel={duzenlePersonel}
+              onSuccess={() => { setDuzenlePersonel(null); loadPersoneller(); }}
+              onCancel={() => setDuzenlePersonel(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

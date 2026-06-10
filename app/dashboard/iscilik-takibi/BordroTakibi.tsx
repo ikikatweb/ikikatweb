@@ -192,7 +192,9 @@ function ManuelGunHizliKart({
       <div className="flex items-center gap-2">
         <input
           type="number"
-          min={ayMinGun}
+          // min={0}: sadece negatifi engeller. ayMinGun (kesinleşmiş taban) SADECE UYARIDIR
+          // (tooLowFloor) — native min'e koyulursa ok tuşları taban altında kilitlenir/çalışmaz.
+          min={0}
           value={val}
           onChange={(e) => setVal(e.target.value)}
           className={`w-24 h-10 text-2xl font-bold text-center bg-white border-2 rounded-lg outline-none ${
