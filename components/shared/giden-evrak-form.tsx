@@ -486,11 +486,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               let url: string | null = null;
               if (isUrl) {
                 url = ek;
-                try {
-                  const path = new URL(ek).pathname;
-                  const raw = decodeURIComponent(path.split("/").pop() ?? "");
-                  metin = raw.replace(/^\d+-/, "") || "";
-                } catch { metin = ""; }
+                // Ek adı dosya adından ALINMAZ — kullanıcı elle yazar (boş başlar).
+                metin = "";
               } else {
                 const idx = ek.lastIndexOf("|");
                 if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {

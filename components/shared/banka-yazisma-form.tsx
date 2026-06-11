@@ -416,11 +416,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
               let url: string | null = null;
               if (isUrl) {
                 url = ek;
-                try {
-                  const path = new URL(ek).pathname;
-                  const raw = decodeURIComponent(path.split("/").pop() ?? "");
-                  metin = raw.replace(/^\d+-/, "") || "";
-                } catch { metin = ""; }
+                // Ek adı dosya adından ALINMAZ — kullanıcı elle yazar (boş başlar).
+                metin = "";
               } else {
                 const idx = ek.lastIndexOf("|");
                 if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
@@ -561,7 +558,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
             </button>
           )}
           {pdfRemoved && !pdfFile && (
-            <span className="text-xs text-amber-600 italic">PDF kaydet'e bastığınızda silinecek</span>
+            <span className="text-xs text-amber-600 italic">PDF kaydet&apos;e bastığınızda silinecek</span>
           )}
         </div>
       </div>

@@ -318,18 +318,15 @@ export default function GidenEvrakOnIzleme({
             <>
               <div style={{ fontWeight: "bold", paddingLeft: "1.25cm", marginBottom: "2pt" }}>Ek:</div>
               {aktifEkler.map((ek, i) => {
-                // Format: "metin", "url", veya "metin|url" — yazdırmada sadece metin gözüksün
+                // Format: "metin", "url", veya "metin|url" — yazdırmada sadece ELLE yazılan
+                // metin gözüksün; dosya adı KULLANILMAZ, ad boşsa "Ek N".
                 let goster = ek;
                 if (/^https?:\/\//i.test(ek)) {
-                  try {
-                    const path = new URL(ek).pathname;
-                    const raw = decodeURIComponent(path.split("/").pop() ?? "");
-                    goster = raw.replace(/^\d+-/, "") || `Ek ${i + 1}`;
-                  } catch { goster = `Ek ${i + 1}`; }
+                  goster = `Ek ${i + 1}`; // sadece URL → ad girilmemiş
                 } else {
                   const idx = ek.lastIndexOf("|");
                   if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
-                    goster = ek.slice(0, idx).trim();
+                    goster = ek.slice(0, idx).trim() || `Ek ${i + 1}`;
                   }
                 }
                 return (

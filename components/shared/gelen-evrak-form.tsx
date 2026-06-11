@@ -24,6 +24,7 @@ import {
 import { Save, Upload, Plus, FileText, Trash2 } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatBaslik } from "@/lib/utils/isim";
+import { parseEk, buildEk } from "@/lib/utils/ek";
 import toast from "react-hot-toast";
 
 type Props = {
@@ -58,10 +59,6 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [muhatap, setMuhatap] = useState(evrak?.muhatap ?? "");
   // EKLER — artık çoklu PDF dosyası. URL'ler `ekler` alanına \n ile birleştirilip kaydedilir.
   // Backward compat: eski metin açıklamalı kayıtlarda URL olmayan satırlar metin olarak kalır.
-  // urlMu(): bir satırın URL olduğunu sezgisel olarak tespit eder.
-  function urlMu(s: string): boolean {
-    return /^https?:\/\//i.test(s.trim());
-  }
   const [eklerListesi, setEklerListesi] = useState<string[]>(() => {
     const raw = evrak?.ekler ?? "";
     return raw.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -360,7 +357,8 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                       const res = await fetch("/api/upload", { method: "POST", body: formData });
                       const data = await res.json();
                       if (res.ok && data.url) {
-                        yeniUrls.push(data.url);
+                        // Ek adı BOŞ eklenir — kullanıcı elle yazacak (dosya adı kullanılmaz)
+                        yeniUrls.push(buildEk("", data.url));
                       } else {
                         toast.error(`"${dosya.name}" yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
                       }
@@ -385,43 +383,29 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           ) : (
             <div className="space-y-1.5">
               {eklerListesi.map((ek, i) => {
-                const isUrl = urlMu(ek);
+                const { ad, url } = parseEk(ek);
                 return (
                   <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-200 bg-gray-50">
                     <span className="text-[10px] font-semibold text-gray-500 w-10 flex-shrink-0">Ek {i + 1}</span>
-                    {isUrl ? (
+                    {/* Ek adı ELLE yazılır (dosya adı kullanılmaz) */}
+                    <input
+                      type="text"
+                      value={ad}
+                      onChange={(e) => setEklerListesi((p) => p.map((x, idx) => (idx === i ? buildEk(e.target.value, url) : x)))}
+                      placeholder="Ek adını yazın..."
+                      className="flex-1 min-w-0 text-xs px-2 py-0.5 rounded border bg-white"
+                      disabled={loading}
+                    />
+                    {url && (
                       <a
-                        href={ek}
+                        href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 flex-1 min-w-0 text-xs text-[#1E3A5F] hover:text-[#F97316] truncate"
-                        title={ek}
+                        className="flex items-center gap-1 flex-shrink-0 text-[11px] text-[#1E3A5F] hover:text-[#F97316]"
+                        title="Dosyayı aç"
                       >
-                        <FileText size={12} className="flex-shrink-0" />
-                        <span className="truncate">
-                          {(() => {
-                            try {
-                              const path = new URL(ek).pathname;
-                              const name = decodeURIComponent(path.split("/").pop() ?? "PDF");
-                              // Timestamp prefix'i temizle ("123456789-dosya.pdf" → "dosya.pdf")
-                              const temizAd = name.replace(/^\d+-/, "");
-                              // 20 karakterden uzun isimleri kısalt — pencereden taşmasın
-                              return temizAd.length > 20 ? temizAd.slice(0, 20) + "..." : temizAd;
-                            } catch {
-                              return "PDF";
-                            }
-                          })()}
-                        </span>
+                        <FileText size={12} /> Aç
                       </a>
-                    ) : (
-                      // Eski metin açıklamaları — düzenlenebilir input olarak göster
-                      <input
-                        type="text"
-                        value={ek}
-                        onChange={(e) => setEklerListesi((p) => p.map((x, idx) => (idx === i ? e.target.value : x)))}
-                        className="flex-1 text-xs px-2 py-0.5 rounded border bg-white"
-                        disabled={loading}
-                      />
                     )}
                     <button
                       type="button"

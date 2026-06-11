@@ -2074,19 +2074,24 @@ export default function DashboardPage() {
                   (md+) overflow-visible → kapsayıcı scroll bağlamı oluşturmaz, böylece
                   thead'in sticky top-0'ı sayfa scroll'una (#dashboard-main) sabitlenir.
                   Mobilde overflow-auto kalır (geniş tablo için yatay kaydırma). */}
+              {/* max-h-none: iç dikey scrollbar yok (tablo tam uzar). md:overflow-visible:
+                  masaüstünde yatay scrollbar da olmaz. Başlık SABİTLENMİYOR (static) —
+                  dashboard bir bütün olarak kaydığı için sticky başlık satırların üzerinde
+                  uçuşup "saçmalıyordu"; düz başlık tabloyla birlikte kayar, kaymaz/uçuşmaz. */}
               <Table className="text-xs" containerClassName="max-h-none md:overflow-visible">
-                <TableHeader>
+                {/* Inline style ile KESİN static — shadcn TableHeader varsayılan "sticky top-0"i
+                    ezilir. Dashboard widget'ında başlık sabitlenmez, tabloyla birlikte kayar. */}
+                <TableHeader className="static" style={{ position: "static" }}>
                   <TableRow className="bg-gray-50 hover:bg-gray-50">
-                    {/* Başlık satırı sticky top-0 → sayfa aşağı kaydırılınca kaybolmaz.
-                        Şantiye sütunu ayrıca sticky left-0 (mobilde yatay kaydırmada solda sabit). */}
-                    <TableHead className="px-2 text-[10px] text-gray-600 sticky left-0 top-0 z-20 bg-gray-50">Şantiye</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-center sticky top-0 z-10 bg-gray-50">Kişi</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-center sticky top-0 z-10 bg-gray-50">Bu Ay Gün</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right sticky top-0 z-10 bg-gray-50">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right sticky top-0 z-10 bg-gray-50">Yatan Prim</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right sticky top-0 z-10 bg-gray-50">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(bu ay ödenecek)</span></TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right sticky top-0 z-10 bg-gray-50">Kalan<br/><span className="text-[8px] text-gray-400 font-normal">(gereken − yatan − tahmin)</span></TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-center sticky top-0 z-10 bg-gray-50">Durum</TableHead>
+                    {/* Şantiye sütunu mobilde yatay kaydırmada solda sabit (sticky left-0). */}
+                    <TableHead className="px-2 text-[10px] text-gray-600 sticky left-0 z-10 bg-gray-50">Şantiye</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Kişi</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Bu Ay Gün</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatan Prim</TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(bu ay ödenecek)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Kalan<br/><span className="text-[8px] text-gray-400 font-normal">(gereken − yatan − tahmin)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-center">Durum</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
