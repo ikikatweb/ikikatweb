@@ -703,17 +703,19 @@ function YakitPageContent() {
         }
         satir.genelOrt = aracGenelOrt.get(h.arac_id) ?? null;
 
-        // Limit kontrolü — oran bazlı: genel ortalama / anlık ortalama
-        // Alt ≤ (genelOrt / anlikOrt) ≤ Üst → limit içinde
-        // Dışındaysa → limit dışı (örn. anlık, genel ortalamadan çok farklıysa anomali)
+        // Limit kontrolü — ÇARPAN bazlı (genel ortalamanın katı):
+        //   Normal band: [genel × alt, genel × üst]
+        //   anlık < genel × alt  → AZ tüketim (yeşil, "Alt limit")
+        //   anlık > genel × üst  → ÇOK tüketim (kırmızı, "Üst limit")
         if (arac?.cinsi && arac.sayac_tipi) {
           const limit = limitMap.get(`${arac.cinsi}|${arac.sayac_tipi}`);
           if (limit) {
             satir.limitAlt = limit.alt_sinir;
             satir.limitUst = limit.ust_sinir;
             if (satir.anlikOrt !== null && satir.anlikOrt > 0 && satir.genelOrt !== null && satir.genelOrt > 0) {
-              const oran = satir.genelOrt / satir.anlikOrt;
-              if (oran < limit.alt_sinir || oran > limit.ust_sinir) {
+              const altDeger = satir.genelOrt * limit.alt_sinir;
+              const ustDeger = satir.genelOrt * limit.ust_sinir;
+              if (satir.anlikOrt < altDeger || satir.anlikOrt > ustDeger) {
                 satir.limitIhlali = true;
               }
             }
@@ -1568,16 +1570,15 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-right">
                       {s.anlikOrt !== null ? (() => {
-                        // Limit ihlali yönü:
-                        //  - oran = genel / anlık
-                        //  - oran > limitUst → ANLIK çok DÜŞÜK (az tüketim) → "Alt limit aşıldı" → YEŞİL
-                        //  - oran < limitAlt → ANLIK çok YÜKSEK (çok tüketim) → "Üst limit aşıldı" → KIRMIZI
+                        // Limit ihlali yönü (ÇARPAN bazlı):
+                        //  - anlık > genel × üst → ÇOK tüketim → "Üst limit aşıldı" → KIRMIZI
+                        //  - anlık < genel × alt → AZ tüketim → "Alt limit aşıldı" → YEŞİL
                         let limitYon: "ust" | "alt" | null = null;
-                        let oran: number | null = null;
-                        if (s.limitIhlali && s.genelOrt !== null && s.anlikOrt > 0 && s.limitUst !== null && s.limitAlt !== null) {
-                          oran = s.genelOrt / s.anlikOrt;
-                          if (oran > s.limitUst) limitYon = "alt";       // anlık düşük → alt aşıldı
-                          else if (oran < s.limitAlt) limitYon = "ust";  // anlık yüksek → üst aşıldı
+                        let kat: number | null = null; // anlık, genelin kaç katı
+                        if (s.limitIhlali && s.genelOrt !== null && s.genelOrt > 0 && s.anlikOrt > 0 && s.limitUst !== null && s.limitAlt !== null) {
+                          kat = s.anlikOrt / s.genelOrt;
+                          if (s.anlikOrt > s.genelOrt * s.limitUst) limitYon = "ust";       // çok tüketim → kırmızı
+                          else if (s.anlikOrt < s.genelOrt * s.limitAlt) limitYon = "alt";  // az tüketim → yeşil
                         }
                         const renkClass = limitYon === "ust"
                           ? "text-red-600 font-bold"
@@ -1590,13 +1591,13 @@ function YakitPageContent() {
                             <span className={renkClass}>
                               {formatSayi(s.anlikOrt, 2)}{birimEki}
                             </span>
-                            {limitYon && oran !== null && (
+                            {limitYon && kat !== null && (
                               <span
                                 className={`text-[9px] flex items-center gap-0.5 ${altRenk}`}
-                                title={`Oran: ${oran.toFixed(2)} (Limit: ${s.limitAlt} - ${s.limitUst})`}
+                                title={`Anlık, genel ortalamanın ${kat.toFixed(2)} katı (Limit çarpanı: alt ${s.limitAlt} – üst ${s.limitUst})`}
                               >
                                 <AlertTriangle size={8} />
-                                {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit aşıldı"} · Oran: {oran.toFixed(2)}
+                                {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit aşıldı"} · {kat.toFixed(2)} kat
                               </span>
                             )}
                           </div>

@@ -1098,7 +1098,7 @@ export default function TanimlamalarPage() {
                       <div className="flex flex-col flex-1 min-w-0">
                         <span className="text-xs font-semibold truncate">{l.arac_cinsi}</span>
                         <span className="text-[10px] text-gray-500">
-                          {l.sayac_tipi === "km" ? "Km" : "Saat"} · Oran: {l.alt_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })} - {l.ust_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}
+                          {l.sayac_tipi === "km" ? "Km" : "Saat"} · Çarpan: {l.alt_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}× – {l.ust_sinir.toLocaleString("tr-TR", { maximumFractionDigits: 3 })}×
                         </span>
                       </div>
                     </button>
@@ -1140,8 +1140,9 @@ export default function TanimlamalarPage() {
                   ))}
               </select>
               {yakitLimitCins && (
-                <div className="text-[10px] text-gray-500 px-1">
-                  Sayaç: <strong>{yakitLimitSayacTipi === "saat" ? "Saat" : "Kilometre"}</strong> — Oran kontrolü (genel ort. / anlık ort.)
+                <div className="text-[10px] text-gray-500 px-1 leading-relaxed">
+                  Sayaç: <strong>{yakitLimitSayacTipi === "saat" ? "Saat" : "Kilometre"}</strong> — <strong>Çarpan</strong> (genel ortalamanın katı):
+                  anlık &lt; genel × <strong>alt</strong> → az tüketim 🟢 ; anlık &gt; genel × <strong>üst</strong> → çok tüketim 🔴
                 </div>
               )}
               <div className="grid grid-cols-2 gap-1.5">
@@ -1150,7 +1151,7 @@ export default function TanimlamalarPage() {
                   inputMode="decimal"
                   value={yakitLimitAlt}
                   onChange={(e) => setYakitLimitAlt(e.target.value)}
-                  placeholder="Alt oran (0,5)"
+                  placeholder="Alt çarpan (örn. 0,5)"
                   className={selectClass + " text-xs"}
                 />
                 <input
@@ -1158,7 +1159,7 @@ export default function TanimlamalarPage() {
                   inputMode="decimal"
                   value={yakitLimitUst}
                   onChange={(e) => setYakitLimitUst(e.target.value)}
-                  placeholder="Üst oran (2)"
+                  placeholder="Üst çarpan (örn. 1,5)"
                   className={selectClass + " text-xs"}
                 />
               </div>

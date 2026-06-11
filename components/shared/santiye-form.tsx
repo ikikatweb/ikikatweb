@@ -464,7 +464,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
             (k) => (k.rol === "santiye_admin" || k.rol === "kisitli") && k.aktif,
           );
           if (filtreli.length === 0) {
-            // Hiç atanacak kullanıcı yok → direkt yönlendir
+            // Hiç atanacak kullanıcı yok → dialog modunda callback, değilse yönlendir
+            if (onSuccess) { onSuccess(); return; }
             window.location.href = "/dashboard/yonetim/santiyeler";
             return;
           }
@@ -477,7 +478,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
           return;
         } catch (err) {
           console.warn("Kullanıcı listesi yüklenemedi:", err);
-          // Yine de yönlendir
+          // Yine de kapat/yönlendir
+          if (onSuccess) { onSuccess(); return; }
           window.location.href = "/dashboard/yonetim/santiyeler";
         }
       } else {
@@ -511,6 +513,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         toast("Hiç kullanıcı seçilmedi — atama yapılmadı.", { icon: "ℹ️" });
       }
       setKullaniciDialogAcik(false);
+      if (onSuccess) { onSuccess(); return; }
       window.location.href = "/dashboard/yonetim/santiyeler";
     } finally {
       setKullaniciAtamaYukleniyor(false);

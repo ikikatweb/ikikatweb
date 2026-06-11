@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import Link from "next/link";
 import {
   getSantiyeler,
   toggleSantiyeDurum,
@@ -197,6 +196,8 @@ export default function SantiyelerPage() {
   const [tasfiyeDialog, setTasfiyeDialog] = useState<string | null>(null);
   // İş düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
   const [duzenleSantiye, setDuzenleSantiye] = useState<SantiyeWithRelations | null>(null);
+  // İş ekleme/düzenleme penceresi (ekleme: duzenleSantiye null; düzenleme: dolu)
+  const [formAcik, setFormAcik] = useState(false);
   const [tasfiyeTarihi, setTasfiyeTarihi] = useState(new Date().toISOString().split("T")[0]);
   // Yi-ÜFE katsayı override: "" = en son otomatik, "yil-ay" = seçilen ay
   const [katsayiSeciliAy, setKatsayiSeciliAy] = useState<string>("");
@@ -670,11 +671,12 @@ export default function SantiyelerPage() {
           <Button variant="outline" size="sm" onClick={santiyeExportExcel} disabled={filtrelenmis.length === 0}>
             <FileSpreadsheet size={14} className="mr-1" /> Excel
           </Button>
-          {yEkle && <Link href="/dashboard/yonetim/santiyeler/yeni">
-            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
+          {yEkle && (
+            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+              onClick={() => { setDuzenleSantiye(null); setFormAcik(true); }}>
               <Plus size={16} className="mr-1" /> Yeni İş Ekle
             </Button>
-          </Link>}
+          )}
         </div>
       </div>
 
@@ -886,7 +888,7 @@ export default function SantiyelerPage() {
                     <TableCell className="text-center px-2">
                       {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
-                        onClick={() => setDuzenleSantiye(s)}>
+                        onClick={() => { setDuzenleSantiye(s); setFormAcik(true); }}>
                         <Pencil size={14} />
                       </Button>
                       )}
@@ -917,17 +919,19 @@ export default function SantiyelerPage() {
         </DialogContent>
       </Dialog>
 
-      {/* İş düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
-      <Dialog open={!!duzenleSantiye} onOpenChange={(o) => { if (!o) setDuzenleSantiye(null); }}>
+      {/* İş ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
+      <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleSantiye(null); } }}>
         <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="truncate">İş Düzenle{duzenleSantiye ? ` — ${duzenleSantiye.is_adi}` : ""}</DialogTitle>
+            <DialogTitle className="truncate">
+              {duzenleSantiye ? `İş Düzenle — ${duzenleSantiye.is_adi}` : "Yeni İş Ekle"}
+            </DialogTitle>
           </DialogHeader>
-          {duzenleSantiye && (
+          {formAcik && (
             <SantiyeForm
-              santiye={duzenleSantiye}
-              onSuccess={() => { setDuzenleSantiye(null); loadData(); }}
-              onCancel={() => setDuzenleSantiye(null)}
+              santiye={duzenleSantiye ?? undefined}
+              onSuccess={() => { setFormAcik(false); setDuzenleSantiye(null); loadData(); }}
+              onCancel={() => { setFormAcik(false); setDuzenleSantiye(null); }}
             />
           )}
         </DialogContent>

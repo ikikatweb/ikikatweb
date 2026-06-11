@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
 import { getAraclar, toggleAracDurum, deleteArac } from "@/lib/supabase/queries/araclar";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import { getSantiyelerBasic } from "@/lib/supabase/queries/santiyeler";
@@ -116,6 +115,9 @@ export default function AraclarPage() {
   const [editMenzilValue, setEditMenzilValue] = useState<string>("");
   // Araç düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
   const [duzenleArac, setDuzenleArac] = useState<AracWithRelations | null>(null);
+  // Araç ekleme/düzenleme penceresi: formAcik açık mı; ekleTip yeni araç için öz mal/kiralık
+  const [formAcik, setFormAcik] = useState(false);
+  const [ekleTip, setEkleTip] = useState<"ozmal" | "kiralik">("ozmal");
 
   // Genel ortalama — yakıt verisi veya araç (menzil) değişince yeniden hesaplanır.
   const genelOrtMap = useMemo(
@@ -404,16 +406,14 @@ export default function AraclarPage() {
         <div className="flex items-center gap-2">
           {yEkle && (
             <>
-              <Link href="/dashboard/yonetim/araclar/yeni">
-                <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white">
-                  <Plus size={16} className="mr-1" /> Yeni Araç Ekle
-                </Button>
-              </Link>
-              <Link href="/dashboard/yonetim/araclar/kiralik">
-                <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-                  <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
-                </Button>
-              </Link>
+              <Button className="bg-[#64748B] hover:bg-[#2a4f7a] text-white"
+                onClick={() => { setDuzenleArac(null); setEkleTip("ozmal"); setFormAcik(true); }}>
+                <Plus size={16} className="mr-1" /> Yeni Araç Ekle
+              </Button>
+              <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+                onClick={() => { setDuzenleArac(null); setEkleTip("kiralik"); setFormAcik(true); }}>
+                <Plus size={16} className="mr-1" /> Kiralık Araç Ekle
+              </Button>
             </>
           )}
         </div>
@@ -725,7 +725,7 @@ export default function AraclarPage() {
                     <div className="flex items-center justify-end gap-1">
                       {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
-                        onClick={() => setDuzenleArac(arac)}>
+                        onClick={() => { setDuzenleArac(arac); setFormAcik(true); }}>
                         <Pencil size={16} />
                       </Button>
                       )}
@@ -759,18 +759,22 @@ export default function AraclarPage() {
         </div>
       )}
 
-      {/* Araç düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
-      <Dialog open={!!duzenleArac} onOpenChange={(o) => { if (!o) setDuzenleArac(null); }}>
+      {/* Araç ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
+      <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleArac(null); } }}>
         <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Araç Düzenle{duzenleArac ? ` — ${duzenleArac.plaka}` : ""}</DialogTitle>
+            <DialogTitle>
+              {duzenleArac
+                ? `Araç Düzenle — ${duzenleArac.plaka}`
+                : (ekleTip === "kiralik" ? "Yeni Kiralık Araç Ekle" : "Yeni Araç Ekle")}
+            </DialogTitle>
           </DialogHeader>
-          {duzenleArac && (
+          {formAcik && (
             <AracForm
-              arac={duzenleArac}
-              tip={duzenleArac.tip}
-              onSuccess={() => { setDuzenleArac(null); loadAraclar(); }}
-              onCancel={() => setDuzenleArac(null)}
+              arac={duzenleArac ?? undefined}
+              tip={duzenleArac ? duzenleArac.tip : ekleTip}
+              onSuccess={() => { setFormAcik(false); setDuzenleArac(null); loadAraclar(); }}
+              onCancel={() => { setFormAcik(false); setDuzenleArac(null); }}
             />
           )}
         </DialogContent>

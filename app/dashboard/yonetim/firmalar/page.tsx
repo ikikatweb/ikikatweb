@@ -2,14 +2,16 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { getFirmalar, toggleFirmaDurum, deleteFirma, updateFirmaSiraNo } from "@/lib/supabase/queries/firmalar";
 import { getAraclar, updateArac, toggleAracDurum } from "@/lib/supabase/queries/araclar";
 import type { Firma, AracWithRelations } from "@/lib/supabase/types";
-import Link from "next/link";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import FirmaForm from "@/components/shared/firma-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +38,9 @@ export default function FirmalarPage() {
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>("tumu");
   const [arama, setArama] = useState("");
-  const router = useRouter();
+  // Firma ekleme/düzenleme penceresi (ekleme: duzenleFirma null; düzenleme: dolu)
+  const [duzenleFirma, setDuzenleFirma] = useState<Firma | null>(null);
+  const [formAcik, setFormAcik] = useState(false);
   const { hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-firmalar", "ekle");
   const yDuzenle = hasPermission("yonetim-firmalar", "duzenle");
@@ -187,11 +191,10 @@ export default function FirmalarPage() {
         <h1 className="text-2xl font-bold text-[#1E3A5F]">Firmalar</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {yEkle && (
-            <Link href="/dashboard/yonetim/firmalar/yeni">
-              <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white">
-                <Plus size={16} className="mr-1" /> Yeni Firma Ekle
-              </Button>
-            </Link>
+            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+              onClick={() => { setDuzenleFirma(null); setFormAcik(true); }}>
+              <Plus size={16} className="mr-1" /> Yeni Firma Ekle
+            </Button>
           )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>
             <FileDown size={14} className="mr-1" /> PDF
@@ -283,7 +286,7 @@ export default function FirmalarPage() {
                     <div className="flex items-center justify-end gap-1">
                       {yDuzenle && (
                         <Button variant="ghost" size="sm"
-                          onClick={() => router.push(`/dashboard/yonetim/firmalar/${firma.id}/duzenle`)}>
+                          onClick={() => { setDuzenleFirma(firma); setFormAcik(true); }}>
                           <Pencil size={16} />
                         </Button>
                       )}
@@ -425,6 +428,24 @@ export default function FirmalarPage() {
           )}
         </div>
       )}
+
+      {/* Firma ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
+      <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleFirma(null); } }}>
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+          <DialogHeader>
+            <DialogTitle className="truncate">
+              {duzenleFirma ? `Firma Düzenle — ${duzenleFirma.firma_adi}` : "Yeni Firma Ekle"}
+            </DialogTitle>
+          </DialogHeader>
+          {formAcik && (
+            <FirmaForm
+              firma={duzenleFirma ?? undefined}
+              onSuccess={() => { setFormAcik(false); setDuzenleFirma(null); loadFirmalar(); }}
+              onCancel={() => { setFormAcik(false); setDuzenleFirma(null); }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

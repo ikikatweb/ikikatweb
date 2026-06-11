@@ -23,9 +23,13 @@ import toast from "react-hot-toast";
 
 type FirmaFormProps = {
   firma?: Firma;
+  // onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
+  // (dialog/pencere içinde kullanım için). Verilmezse eski davranış: firmalar sayfasına gider.
+  onSuccess?: () => void;
+  onCancel?: () => void;
 };
 
-export default function FirmaForm({ firma }: FirmaFormProps) {
+export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps) {
   const isEdit = !!firma;
   const router = useRouter();
 
@@ -133,6 +137,8 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
         setMevcutAntetUrl(antetUrl);
       }
 
+      // Dialog içinde açıldıysa (onSuccess varsa) yönlendirme yapma, callback çağır.
+      if (onSuccess) { onSuccess(); return; }
       router.push("/dashboard/yonetim/firmalar");
       router.refresh();
     } catch {
@@ -239,7 +245,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
                     Bizim Firma
                   </Label>
                   <p className="text-[10px] text-gray-500 mt-0.5">
-                    İhale katılımcı listesinde rakipler arasında bu firma "kendi firmamız" olarak vurgulanır.
+                    İhale katılımcı listesinde rakipler arasında bu firma &quot;kendi firmamız&quot; olarak vurgulanır.
                     Sadece kendi firmalarınızı işaretleyin.
                   </p>
                 </div>
@@ -425,7 +431,7 @@ export default function FirmaForm({ firma }: FirmaFormProps) {
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push("/dashboard/yonetim/firmalar")}
+          onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/firmalar")}
           disabled={loading}
         >
           <X size={16} className="mr-1" />
