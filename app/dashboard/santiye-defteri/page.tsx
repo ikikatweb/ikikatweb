@@ -935,7 +935,9 @@ function SantiyeDefContent() {
                                 <span className="text-[11px] text-gray-300 italic"> — {yazanAd}</span>
                               </p>
                               {!previewMode && isOwn && tarihIzinli && (yDuzenle || ySil) && (
-                                <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                // Mobilde hover olmadığı için ikonlar HEP görünür ve belirgin (blue/red);
+                                // masaüstünde (md+) eskisi gibi gri ve hover'da belirir.
+                                <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                   {yDuzenle && (
                                     <button type="button" onClick={() => {
                                       // En son kaydı düzenle, içeriği birleştirilmiş olarak yükle
@@ -943,11 +945,11 @@ function SantiyeDefContent() {
                                       setEditId(sonKayit.id);
                                       setEditIcerik(g.kayitlar.map((k) => k.icerik).join(" "));
                                     }}
-                                      className="p-1 text-gray-300 hover:text-blue-600"><Pencil size={12} /></button>
+                                      className="p-1 text-blue-600 md:text-gray-400 hover:text-blue-600"><Pencil size={16} className="md:w-3 md:h-3" /></button>
                                   )}
                                   {ySil && (
                                     <button type="button" onClick={() => setSilOnay(g.kayitlar[g.kayitlar.length - 1].id)}
-                                      className="p-1 text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                                      className="p-1 text-red-500 md:text-gray-400 hover:text-red-600"><Trash2 size={16} className="md:w-3 md:h-3" /></button>
                                   )}
                                 </div>
                             )}
