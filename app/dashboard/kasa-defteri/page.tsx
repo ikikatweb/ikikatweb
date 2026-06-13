@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 // Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
@@ -16,6 +16,8 @@ import {
   uploadSlip,
   getKasaHareketLimit,
 } from "@/lib/supabase/queries/kasa";
+import { aracBakimGuncelleByKasa, aracBakimVarByKasa, getOdenmemisAracBakimlar, aracBakimOdemeIsaretle } from "@/lib/supabase/queries/arac-bakim";
+import type { AracBakimWithArac, AracBakimTipi } from "@/lib/supabase/types";
 import { getGoruntulemeLimit, ngunOnce } from "@/lib/supabase/queries/goruntuleme-limit";
 import { useAuth } from "@/hooks";
 import type { KasaHareketi } from "@/lib/supabase/types";
@@ -82,6 +84,7 @@ function KasaDefContentWithKey() {
 
 function KasaDefContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
   // Yetkiler — yönetici tam yetkili; diğerleri için izin matrisinden gelir
   const yEkle = hasPermission("kasa-defteri", "ekle");
@@ -132,6 +135,9 @@ function KasaDefContent() {
   const [dTip, setDTip] = useState<"gelir" | "gider">("gider");
   const [dOdeme, setDOdeme] = useState<"nakit" | "kart">("nakit");
   const [dKategori, setDKategori] = useState("");
+  // Araç bakım kategorili giderde: bağlanacak mevcut ödenmemiş kayıt ("" = yeni oluştur)
+  const [bakimSecenekleri, setBakimSecenekleri] = useState<AracBakimWithArac[]>([]);
+  const [dBakimKaydiId, setDBakimKaydiId] = useState("");
   const [dTutar, setDTutar] = useState("");
   const [dAciklama, setDAciklama] = useState("");
   const [dSlipFile, setDSlipFile] = useState<File | null>(null);
@@ -219,6 +225,23 @@ function KasaDefContent() {
   }, [kullanici]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Kategori araç bakım/tamirat/yedek parça mı? (gider + yeni kayıt için)
+  const seciliBakimTip = useMemo<AracBakimTipi | null>(() => {
+    if (dTip !== "gider") return null;
+    const k = trAramaNormalize(dKategori);
+    return k.includes("yedek") ? "yedek_parca" : k.includes("tamirat") ? "tamirat" : k.includes("bakim") ? "bakim" : null;
+  }, [dKategori, dTip]);
+
+  // Araç bakım kategorisi seçilince ödenmemiş kayıtları yükle (bağlamak için seçtirilir).
+  useEffect(() => {
+    if (!seciliBakimTip || editId) { setBakimSecenekleri([]); setDBakimKaydiId(""); return; }
+    let iptal = false;
+    getOdenmemisAracBakimlar(seciliBakimTip)
+      .then((list) => { if (!iptal) setBakimSecenekleri(list); })
+      .catch(() => { if (!iptal) setBakimSecenekleri([]); });
+    return () => { iptal = true; };
+  }, [seciliBakimTip, editId]);
 
   // Auth yüklendiğinde varsayılan ödeme filtresini role göre ayarla
   // (useState ilk render'da çalışır, isYonetici henüz hazır değil olabilir)
@@ -402,6 +425,7 @@ function KasaDefContent() {
     setDTarih(bugunStr);
     setDTip("gider"); setDOdeme("nakit");
     setDKategori(""); setDTutar(""); setDAciklama(""); setDSlipFile(null);
+    setDBakimKaydiId("");
     setDialogOpen(true);
   }
   function dialogDuzenleAc(h: KasaHareketi) {
@@ -460,9 +484,16 @@ function KasaDefContent() {
       ? (dAciklama.trim() ? `${otomatikGelirAciklama(dTarih)} — ${dAciklama.trim()}` : otomatikGelirAciklama(dTarih))
       : (dAciklama.trim() || null);
 
+    // Araç bakım/tamirat/yedek parça kategorili YENİ gider mi? → araç bakım penceresini aç.
+    const katNorm = trAramaNormalize(dKategori);
+    const bakimTip = (!editId && dTip === "gider")
+      ? (katNorm.includes("yedek") ? "yedek_parca" : katNorm.includes("tamirat") ? "tamirat" : katNorm.includes("bakim") ? "bakim" : null)
+      : null;
+
     setDialogLoading(true);
     try {
       let slipUrl: string | null = null;
+      let yeniKasaId: string | null = editId;
       if (editId) {
         await updateKasaHareketi(editId, {
           personel_id: dPersonel, santiye_id: dSantiye, tarih: dTarih,
@@ -477,6 +508,16 @@ function KasaDefContent() {
             tutar, aciklama: finalAciklama, slip_url: slipUrl,
           });
         }
+        // Bu kasa hareketine bağlı araç bakım/onarım kaydı varsa, oradaki tutarı da
+        // güncellemek için KULLANICIYA SOR. Onaylanırsa güncelle.
+        if (dTip === "gider") {
+          let bagliVar = false;
+          try { bagliVar = await aracBakimVarByKasa(editId); } catch { /* sessiz */ }
+          if (bagliVar && typeof window !== "undefined" &&
+              window.confirm("Bu kasa işlemine bağlı bir araç bakım/onarım kaydı var.\n\nOradaki tutar da güncellensin mi?")) {
+            try { await aracBakimGuncelleByKasa(editId, { tutar }); } catch { /* sessiz */ }
+          }
+        }
       } else {
         const result = await insertKasaHareketi({
           personel_id: dPersonel, santiye_id: dSantiye, tarih: dTarih,
@@ -484,6 +525,7 @@ function KasaDefContent() {
           tutar, aciklama: finalAciklama, slip_url: null,
           created_by: kullanici?.id ?? null,
         });
+        yeniKasaId = result.id;
         if (dSlipFile && result.id) {
           slipUrl = await uploadSlip(dSlipFile, result.id);
           await updateKasaHareketi(result.id, {
@@ -496,6 +538,47 @@ function KasaDefContent() {
       await loadAll(true);
       toast.success(editId ? "İşlem güncellendi." : "İşlem eklendi.");
       setDialogOpen(false);
+      if (bakimTip && dBakimKaydiId) {
+        // TERS YÖN: mevcut ödenmemiş araç bakım kaydı seçildi → "ödendi" işaretle (kasada kal).
+        // Tutarlar farklıysa, araç bakım tutarı da kasa ödemesine göre güncellensin mi diye SOR.
+        const seciliKayit = bakimSecenekleri.find((b) => b.id === dBakimKaydiId);
+        const bakimTutar = seciliKayit?.tutar ?? null;
+        let yeniTutar: number | undefined = undefined;
+        if (bakimTutar != null && Math.abs(bakimTutar - tutar) > 0.001 && typeof window !== "undefined") {
+          if (window.confirm(
+            `Araç bakım kaydının tutarı ${bakimTutar.toLocaleString("tr-TR")} ₺, girdiğiniz ödeme ${tutar.toLocaleString("tr-TR")} ₺.\n\n` +
+            `Araç bakım tutarı da ${tutar.toLocaleString("tr-TR")} ₺ olarak güncellensin mi?`,
+          )) {
+            yeniTutar = tutar;
+          }
+        }
+        try {
+          await aracBakimOdemeIsaretle(dBakimKaydiId, {
+            odeyen_id: kullanici?.id ?? null,
+            odeyen_adi: kullanici?.ad_soyad ?? null,
+            kaynak_kasa_id: yeniKasaId,
+            tutar: yeniTutar,
+          });
+          toast.success(
+            yeniTutar !== undefined
+              ? "Araç bakım kaydı 'ödendi' işaretlendi ve tutarı güncellendi."
+              : "İlgili araç bakım kaydı 'ödendi' olarak işaretlendi.",
+            { duration: toastSuresi() },
+          );
+        } catch { toast.error("Araç bakım kaydı işaretlenemedi.", { duration: toastSuresi() }); }
+      } else if (bakimTip) {
+        // İLERİ YÖN: yeni araç bakım kaydı oluştur (AYNI SEKMEDE aç, geri=1 → kaydedince kasaya döner).
+        const params = new URLSearchParams({
+          yeni: bakimTip,
+          tutar: String(tutar),
+          tarih: dTarih,
+          detay: dAciklama.trim(),
+          geri: "1",
+        });
+        if (yeniKasaId) params.set("kasaId", yeniKasaId);
+        if (slipUrl) params.set("fatura", slipUrl);
+        router.push(`/dashboard/arac-bakim?${params.toString()}`);
+      }
     } catch (err) {
       console.error("Kasa kaydetme hatası:", err);
       // Supabase hatası veya diğer hata objelerinden mesajı çek
@@ -1127,6 +1210,24 @@ function KasaDefContent() {
                   <textarea value={dAciklama} onChange={(e) => setDAciklama(e.target.value)} placeholder="Harcama detayı..." rows={2}
                     className="w-full rounded-lg border border-input bg-white px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50" disabled={dialogLoading} />
                 </div>
+                {/* Araç bakım kategorisi: bu ödeme MEVCUT bir bakım kaydına aitse seç → o kayıt
+                    "ödendi" işaretlenir. Boş bırakılırsa kaydedince yeni bakım penceresi açılır. */}
+                {seciliBakimTip && !editId && (
+                  <div className="space-y-1 bg-purple-50/40 border border-purple-200 rounded-lg p-2">
+                    <Label className="text-xs">İlgili araç bakım kaydı</Label>
+                    <select value={dBakimKaydiId} onChange={(e) => setDBakimKaydiId(e.target.value)} className={selectClass + " w-full"} disabled={dialogLoading}>
+                      <option value="">➕ Yeni kayıt oluştur</option>
+                      {bakimSecenekleri.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {(b.araclar?.plaka ?? "?")} · {(b.detay ?? "").slice(0, 40)}{b.tutar != null ? ` · ${b.tutar.toLocaleString("tr-TR")} ₺` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-gray-500">
+                      Ödemesi henüz yapılmamış bir kayıt seçerseniz <strong>kaydedince o kayıt &quot;ödendi&quot; işaretlenir</strong> (ödeyen: siz). Boş bırakırsanız yeni bakım penceresi açılır.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label className="text-xs">
                     {dOdeme === "kart" ? "Slip Fotoğrafı / PDF" : "Fiş / Fotoğraf / PDF"}

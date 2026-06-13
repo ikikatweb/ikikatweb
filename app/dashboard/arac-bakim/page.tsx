@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   getAracBakimlar,
   insertAracBakim,
@@ -127,6 +128,15 @@ export default function AracBakimPage() {
   const [dYaptiranId, setDYaptiranId] = useState("");
   const [dServisTamirci, setDServisTamirci] = useState("");
   const [dTutar, setDTutar] = useState("");
+  // Ödeme: yapıldı mı + işaretleyen kullanıcı (otomatik = giriş yapan)
+  const [dOdemeYapildi, setDOdemeYapildi] = useState(false);
+  const [dOdeyenId, setDOdeyenId] = useState("");
+  const [dOdeyenAdi, setDOdeyenAdi] = useState("");
+  // Kasa defterinden gelindiyse bağlı kasa hareketi id'si (tutar senkronu için)
+  const [dKaynakKasaId, setDKaynakKasaId] = useState<string | null>(null);
+  // Kasa defterinden gelindiyse: kaydedince/kapatınca kasaya geri dön (?geri=1)
+  const [kasayaDon, setKasayaDon] = useState(false);
+  const router = useRouter();
   const [dKm, setDKm] = useState("");
   const [dDetay, setDDetay] = useState("");
   const [dSonrakiKm, setDSonrakiKm] = useState("");
@@ -209,6 +219,39 @@ export default function AracBakimPage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Kasa defterinden gelindiyse (?yeni=bakim|tamirat|yedek_parca&tutar&tarih&detay):
+  // ilgili pencereyi ÖNCEDEN DOLDURARAK aç. Ödeme kasa üzerinden yapıldığı için
+  // "ödemesi yapıldı" otomatik işaretli + ödeyen = giriş yapan kullanıcı. Araç elle seçilir.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const yeni = sp.get("yeni");
+    if (yeni !== "bakim" && yeni !== "tamirat" && yeni !== "yedek_parca") return;
+    setEditId(null);
+    setDTip(yeni);
+    setDAracId("");
+    setDTarih(sp.get("tarih") || new Date().toISOString().slice(0, 10));
+    const t = sp.get("tutar") ? parseFloat(sp.get("tutar")!) : NaN;
+    setDTutar(!isNaN(t) ? formatParaInput(t.toFixed(2).replace(".", ",")) : "");
+    setDDetay(sp.get("detay") || "");
+    setDYaptiranId(""); setDServisTamirci(""); setDKm("");
+    setDSonrakiKm(""); setDSonrakiTarih("");
+    setDFaturaYeni([]);
+    // Kasa fişi/faturası varsa araç bakım faturası olarak ekle
+    const fatura = sp.get("fatura");
+    setDFaturaMevcut(fatura ? [fatura] : []);
+    setDIsFotoYeni([]); setDIsFotoMevcut([]);
+    setDKaynakKasaId(sp.get("kasaId") || null);
+    setKasayaDon(sp.get("geri") === "1");
+    setDOdemeYapildi(true);
+    setDOdeyenId(kullanici?.id ?? "");
+    setDOdeyenAdi(kullanici?.ad_soyad ?? "");
+    setDAracAra(""); setDAracAcik(false);
+    setDialogOpen(true);
+    // URL'i temizle — sayfa yenilenince pencere tekrar açılmasın
+    window.history.replaceState(null, "", "/dashboard/arac-bakim");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kullanici?.id]);
 
   // Seçili araç + sayaç tipi + güncel km
   const seciliArac = useMemo(() => araclar.find((x) => x.id === dAracId) ?? null, [dAracId, araclar]);
@@ -324,7 +367,9 @@ export default function AracBakimPage() {
   // Özet
   const ozet = useMemo(() => {
     const toplamTutar = filtrelenmis.reduce((s, b) => s + (b.tutar ?? 0), 0);
-    return { sayi: filtrelenmis.length, toplamTutar };
+    const odenenTutar = filtrelenmis.reduce((s, b) => s + (b.odeme_yapildi ? (b.tutar ?? 0) : 0), 0);
+    const odenmeyenTutar = toplamTutar - odenenTutar;
+    return { sayi: filtrelenmis.length, toplamTutar, odenenTutar, odenmeyenTutar };
   }, [filtrelenmis]);
 
   function dialogAc(tip: AracBakimTipi = "bakim") {
@@ -335,6 +380,8 @@ export default function AracBakimPage() {
     setDYaptiranId("");
     setDServisTamirci("");
     setDTutar(""); setDKm(""); setDDetay("");
+    setDOdemeYapildi(false); setDOdeyenId(""); setDOdeyenAdi("");
+    setDKaynakKasaId(null);
     setDSonrakiKm(""); setDSonrakiTarih("");
     setDFaturaYeni([]); setDFaturaMevcut([]);
     setDIsFotoYeni([]); setDIsFotoMevcut([]);
@@ -350,6 +397,10 @@ export default function AracBakimPage() {
     setDYaptiranId(b.yaptiran_id ?? "");
     setDServisTamirci(b.servis_tamirci ?? "");
     setDTutar(b.tutar != null ? formatParaInput(b.tutar.toFixed(2).replace(".", ",")) : "");
+    setDOdemeYapildi(!!b.odeme_yapildi || !!b.odeyen_id || !!b.odeyen_adi);
+    setDOdeyenId(b.odeyen_id ?? "");
+    setDOdeyenAdi(b.odeyen_adi ?? "");
+    setDKaynakKasaId(b.kaynak_kasa_id ?? null);
     setDKm(b.km != null ? String(b.km) : "");
     setDDetay(b.detay ?? "");
     setDSonrakiKm(b.sonraki_bakim_km != null ? String(b.sonraki_bakim_km) : "");
@@ -375,6 +426,10 @@ export default function AracBakimPage() {
     // Tamirat ise sonraki bakım alanları kaydedilmez
     const sonrakiKm = dTip === "bakim" && dSonrakiKm ? parseInt(dSonrakiKm.replace(/\D/g, ""), 10) : null;
     const sonrakiTarih = dTip === "bakim" ? (dSonrakiTarih || null) : null;
+    // Ödeme: tik işaretliyse yapıldı sayılır. Ödeyen = işaretleyen (giriş yapan) kullanıcı.
+    const odemeYapildi = dOdemeYapildi;
+    const odeyenId = dOdemeYapildi ? (dOdeyenId || kullanici?.id || null) : null;
+    const odeyenAdi = dOdemeYapildi ? (dOdeyenAdi || kullanici?.ad_soyad || null) : null;
     const etiket = tipEtiket(dTip);
 
     setDialogLoading(true);
@@ -388,6 +443,9 @@ export default function AracBakimPage() {
           yaptiran_adi: null,
           servis_tamirci: dServisTamirci.trim() || null,
           tutar,
+          odeme_yapildi: odemeYapildi,
+          odeyen_id: odeyenId,
+          odeyen_adi: odeyenAdi,
           km,
           detay: dDetay.trim() || null,
           sonraki_bakim_km: sonrakiKm,
@@ -418,13 +476,18 @@ export default function AracBakimPage() {
           yaptiran_adi: null,
           servis_tamirci: dServisTamirci.trim() || null,
           tutar,
+          odeme_yapildi: odemeYapildi,
+          odeyen_id: odeyenId,
+          odeyen_adi: odeyenAdi,
           km,
           detay: dDetay.trim() || null,
           sonraki_bakim_km: sonrakiKm,
           sonraki_bakim_tarihi: sonrakiTarih,
-          fatura_url: null,
-          fatura_urls: [],
-          is_foto_urls: [],
+          // Kasadan gelen mevcut fatura/fişi dahil et (yeni dosyalar aşağıda eklenir)
+          fatura_url: dFaturaMevcut[0] ?? null,
+          fatura_urls: dFaturaMevcut,
+          is_foto_urls: dIsFotoMevcut,
+          kaynak_kasa_id: dKaynakKasaId || null,
           created_by: kullanici?.id ?? null,
         });
         if (result.id && (dFaturaYeni.length > 0 || dIsFotoYeni.length > 0)) {
@@ -434,13 +497,20 @@ export default function AracBakimPage() {
           const isFotoUrls = dIsFotoYeni.length > 0
             ? await uploadBakimDosyalar(dIsFotoYeni, result.id, "is-foto")
             : [];
+          const tumFatura = [...dFaturaMevcut, ...faturaUrls];
+          const tumIsFoto = [...dIsFotoMevcut, ...isFotoUrls];
           await updateAracBakim(result.id, {
-            fatura_urls: faturaUrls,
-            fatura_url: faturaUrls[0] ?? null,
-            is_foto_urls: isFotoUrls,
+            fatura_urls: tumFatura,
+            fatura_url: tumFatura[0] ?? null,
+            is_foto_urls: tumIsFoto,
           });
         }
-        toast.success(`${etiket} kaydı eklendi.`);
+        toast.success(
+          dKaynakKasaId
+            ? `${etiket} kaydı eklendi. ✓ Kasa hareketine bağlandı (kasada tutar güncellenince burası da güncellenir).`
+            : `${etiket} kaydı eklendi.`,
+          { duration: toastSuresi(dKaynakKasaId ? 6000 : undefined) },
+        );
       }
       // Aracın güncel göstergesini güncelle — sadece girilen km mevcuttan büyükse.
       // Bu sayede sonraki yeni bakım/tamirat dialog'u en son km/saat'i otomatik algılar.
@@ -454,6 +524,8 @@ export default function AracBakimPage() {
       }
       await loadAll();
       setDialogOpen(false);
+      // Kasa defterinden gelindiyse kaydedince geri kasaya dön
+      if (kasayaDon) { router.push("/dashboard/kasa-defteri"); return; }
     } catch (err) {
       console.error("Bakım kaydet hatası:", err);
       const msg = hataMesaji(err);
@@ -521,7 +593,7 @@ export default function AracBakimPage() {
   }
 
   function exportExcel() {
-    const headers = ["Tarih", "Tip", "Plaka", "Marka", "Model", "Yaptıran", "İşlemi Giren", "Km/Saat", "Servis/Tamirci", "Detay", "Tutar (TL)", "Bakım Yapılacak Km", "Bakım Yapılacak Tarih", "Fatura URL'leri", "İş Foto/PDF URL'leri"];
+    const headers = ["Tarih", "Tip", "Plaka", "Marka", "Model", "Yaptıran", "İşlemi Giren", "Km/Saat", "Servis/Tamirci", "Detay", "Tutar (TL)", "Ödemeyi Yapan", "Bakım Yapılacak Km", "Bakım Yapılacak Tarih", "Fatura URL'leri", "İş Foto/PDF URL'leri"];
     const data = filtrelenmis.map((b) => {
       const faturaDosyalar = Array.isArray(b.fatura_urls) && b.fatura_urls.length > 0
         ? b.fatura_urls
@@ -539,6 +611,7 @@ export default function AracBakimPage() {
         b.servis_tamirci ?? "",
         b.detay ?? "",
         b.tutar ?? "",
+        b.odeme_yapildi ? (b.odeyen_adi || "Ödendi") : "",
         b.sonraki_bakim_km ?? "",
         formatTarih(b.sonraki_bakim_tarihi),
         faturaDosyalar.join(" | "),
@@ -546,7 +619,7 @@ export default function AracBakimPage() {
       ];
     });
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 20 }, { wch: 40 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 50 }, { wch: 50 }];
+    ws["!cols"] = [{ wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 20 }, { wch: 40 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 50 }, { wch: 50 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Araç Bakım");
     XLSX.writeFile(wb, "arac-bakim-listesi.xlsx");
@@ -619,9 +692,11 @@ export default function AracBakimPage() {
           <Label className="text-[10px] text-gray-500">Bitiş</Label>
           <input type="date" value={filtreBitis} onChange={(e) => setFiltreBitis(e.target.value)} className={selectClass} />
         </div>
-        <div className="ml-auto text-xs text-gray-600">
+        <div className="ml-auto text-xs text-gray-600 text-right">
           <div>Kayıt: <strong>{ozet.sayi}</strong></div>
           <div>Toplam: <strong className="text-[#1E3A5F]">{formatSayi(ozet.toplamTutar)} TL</strong></div>
+          <div>Ödenen: <strong className="text-emerald-700">{formatSayi(ozet.odenenTutar)} TL</strong></div>
+          <div>Ödenmeyen: <strong className="text-red-600">{formatSayi(ozet.odenmeyenTutar)} TL</strong></div>
         </div>
       </div>
 
@@ -651,6 +726,7 @@ export default function AracBakimPage() {
                 <TableHead className="text-white text-[11px] px-2">Servis/Tamirci</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Detay</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right">Tutar</TableHead>
+                <TableHead className="text-white text-[11px] px-2">Ödemesi Yapıldı</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Bakım Yapılacak</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Fatura</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">İş Foto/PDF</TableHead>
@@ -659,7 +735,7 @@ export default function AracBakimPage() {
             </TableHeader>
             <TableBody>
               {filtrelenmis.map((b) => (
-                <TableRow key={b.id} className="text-xs hover:bg-gray-50">
+                <TableRow key={b.id} className={`text-xs hover:bg-gray-50 ${b.odeme_yapildi ? "italic opacity-60" : ""}`}>
                   <TableCell className="px-2 whitespace-nowrap">{formatTarih(b.bakim_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
                     {(b.tip ?? "bakim") === "tamirat" ? (
@@ -681,6 +757,11 @@ export default function AracBakimPage() {
                   <TableCell className="px-2 truncate max-w-[160px]" title={b.servis_tamirci ?? ""}>{b.servis_tamirci ?? "—"}</TableCell>
                   <TableCell className="px-2 truncate max-w-[220px]" title={b.detay ?? ""}>{b.detay ?? "—"}</TableCell>
                   <TableCell className="px-2 text-right font-semibold">{formatSayi(b.tutar)}</TableCell>
+                  <TableCell className="px-2 whitespace-nowrap text-emerald-700">
+                    {b.odeme_yapildi
+                      ? (b.odeyen_adi || "✓ Ödendi")
+                      : <span className="text-gray-300">—</span>}
+                  </TableCell>
                   <TableCell className="px-2 text-center text-[10px]">
                     {b.sonraki_bakim_km != null && <div>{b.sonraki_bakim_km.toLocaleString("tr-TR")} km</div>}
                     {b.sonraki_bakim_tarihi && <div>{formatTarih(b.sonraki_bakim_tarihi)}</div>}
@@ -861,7 +942,11 @@ export default function AracBakimPage() {
       </Dialog>
 
       {/* Bakım ekle/düzenle dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(o) => {
+        setDialogOpen(o);
+        // Kasa defterinden gelinip pencere kapatılırsa (iptal/dışına tıklama) kasaya dön
+        if (!o && kasayaDon) { setKasayaDon(false); router.push("/dashboard/kasa-defteri"); }
+      }}>
         <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
@@ -992,6 +1077,27 @@ export default function AracBakimPage() {
                   placeholder="0,00"
                   className={selectClass + " w-full"}
                 />
+                {/* Tutarın altında ödeme durumu: tik işaretlenince ödemeyi yapan OTOMATİK
+                    olarak işaretleyen (giriş yapan) kullanıcı olarak kaydedilir. */}
+                <label className="flex items-center gap-2 cursor-pointer mt-1.5">
+                  <input type="checkbox" checked={dOdemeYapildi}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setDOdemeYapildi(true);
+                        // Daha önce kayıtlı ödeyen yoksa, işaretleyen kullanıcı olarak ata.
+                        if (!dOdeyenAdi) { setDOdeyenId(kullanici?.id ?? ""); setDOdeyenAdi(kullanici?.ad_soyad ?? ""); }
+                      } else {
+                        setDOdemeYapildi(false); setDOdeyenId(""); setDOdeyenAdi("");
+                      }
+                    }}
+                    className="w-4 h-4 accent-emerald-600" />
+                  <span className="text-[11px] font-semibold text-emerald-700">💵 Ödemesi yapıldı</span>
+                </label>
+                {dOdemeYapildi && (
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    Ödemeyi yapan: <strong className="text-emerald-700">{dOdeyenAdi || kullanici?.ad_soyad || "—"}</strong>
+                  </p>
+                )}
               </div>
             </div>
 

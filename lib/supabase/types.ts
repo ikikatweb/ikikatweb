@@ -559,6 +559,13 @@ export type AracBakim = {
   yaptiran_adi: string | null;
   servis_tamirci: string | null; // dış servis/tamirci adı
   tutar: number | null;
+  // Ödeme bilgisi: ödemesi yapıldı mı + ödemeyi işaretleyen kullanıcı (otomatik = giriş yapan).
+  // odeyen_id: kullanicilar.id ; odeyen_adi: ad snapshot (görüntüleme için).
+  odeme_yapildi: boolean | null;
+  odeyen_id: string | null;
+  odeyen_adi: string | null;
+  // Kasa defterinden oluşturulduysa kaynak kasa hareketi id'si (tutar senkronu için)
+  kaynak_kasa_id: string | null;
   km: number | null;
   detay: string | null;
   sonraki_bakim_km: number | null;

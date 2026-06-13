@@ -56,6 +56,10 @@ export async function insertAracBakim(data: {
   yaptiran_adi?: string | null;
   servis_tamirci?: string | null;
   tutar?: number | null;
+  odeme_yapildi?: boolean | null;
+  odeyen_id?: string | null;
+  odeyen_adi?: string | null;
+  kaynak_kasa_id?: string | null;
   km?: number | null;
   detay?: string | null;
   sonraki_bakim_km?: number | null;
@@ -66,11 +70,17 @@ export async function insertAracBakim(data: {
   created_by?: string | null;
 }): Promise<AracBakim> {
   const supabase = getSupabase();
-  const { data: row, error } = await supabase
+  let { data: row, error } = await supabase
     .from("arac_bakim")
     .insert(data)
     .select()
     .single();
+  // Ödeme kolonları henüz eklenmemişse (migration çalışmadan) onları çıkarıp tekrar dene.
+  if (error && /column .*(odeme_yapildi|odeyen_id|odeyen_adi|kaynak_kasa_id)/i.test(error.message)) {
+    const rest = { ...data } as Record<string, unknown>;
+    delete rest.odeme_yapildi; delete rest.odeyen_id; delete rest.odeyen_adi; delete rest.kaynak_kasa_id;
+    ({ data: row, error } = await supabase.from("arac_bakim").insert(rest).select().single());
+  }
   if (error) throw error;
 
   // Push bildirim
@@ -104,11 +114,90 @@ export async function updateAracBakim(
   updates: Partial<Omit<AracBakim, "id" | "created_at" | "updated_at">>,
 ): Promise<void> {
   const supabase = getSupabase();
+  const payload = { ...updates, updated_at: new Date().toISOString() };
+  let { error } = await supabase.from("arac_bakim").update(payload).eq("id", id);
+  // Ödeme kolonları yoksa (migration çalışmadan) onları çıkarıp tekrar dene.
+  if (error && /column .*(odeme_yapildi|odeyen_id|odeyen_adi)/i.test(error.message)) {
+    const rest = { ...payload } as Record<string, unknown>;
+    delete rest.odeme_yapildi; delete rest.odeyen_id; delete rest.odeyen_adi;
+    ({ error } = await supabase.from("arac_bakim").update(rest).eq("id", id));
+  }
+  if (error) throw error;
+}
+
+// Kasa hareketine bağlı (kaynak_kasa_id) araç bakım kaydının tutar/tarihini günceller.
+// Kasa defterindeki ilgili gider güncellenince çağrılır. Kolon/kayıt yoksa sessiz geçer.
+export async function aracBakimGuncelleByKasa(
+  kasaId: string,
+  updates: { tutar?: number | null; bakim_tarihi?: string },
+): Promise<void> {
+  if (!kasaId) return;
+  const supabase = getSupabase();
   const { error } = await supabase
     .from("arac_bakim")
     .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("kaynak_kasa_id", kasaId);
+  // kaynak_kasa_id kolonu yoksa veya eşleşen kayıt yoksa: sessiz (entegrasyon zorunlu değil)
+  if (error) console.warn("aracBakimGuncelleByKasa:", error.message);
+}
+
+// Ödemesi YAPILMAMIŞ araç bakım kayıtları (kasada ödeme girilince işaretlemek için seçtirilir).
+// İsteğe bağlı tip filtresi (bakim/tamirat/yedek_parca). Araç plaka/marka/model dahil.
+export async function getOdenmemisAracBakimlar(tip?: AracBakimTipi): Promise<AracBakimWithArac[]> {
+  const supabase = getSupabase();
+  let q = supabase
+    .from("arac_bakim")
+    .select("*, araclar(plaka, marka, model)")
+    .order("bakim_tarihi", { ascending: false })
+    .limit(500);
+  if (tip) q = q.eq("tip", tip);
+  // odeme_yapildi kolonu yoksa filtreyi atla (hepsi döner); varsa null/false olanlar.
+  const { data, error } = await q.or("odeme_yapildi.is.null,odeme_yapildi.eq.false");
+  if (error) {
+    // Kolon yoksa: filtresiz dene
+    const { data: d2 } = await (tip
+      ? supabase.from("arac_bakim").select("*, araclar(plaka, marka, model)").eq("tip", tip).order("bakim_tarihi", { ascending: false }).limit(500)
+      : supabase.from("arac_bakim").select("*, araclar(plaka, marka, model)").order("bakim_tarihi", { ascending: false }).limit(500));
+    return (d2 ?? []) as AracBakimWithArac[];
+  }
+  return (data ?? []) as AracBakimWithArac[];
+}
+
+// Bir araç bakım kaydını "ödemesi yapıldı" olarak işaretle (+ ödeyen + kaynak kasa bağı).
+export async function aracBakimOdemeIsaretle(
+  bakimId: string,
+  payer: { odeyen_id?: string | null; odeyen_adi?: string | null; kaynak_kasa_id?: string | null; tutar?: number | null },
+): Promise<void> {
+  if (!bakimId) return;
+  const supabase = getSupabase();
+  const payload: Record<string, unknown> = {
+    odeme_yapildi: true,
+    odeyen_id: payer.odeyen_id ?? null,
+    odeyen_adi: payer.odeyen_adi ?? null,
+    kaynak_kasa_id: payer.kaynak_kasa_id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  // İstenirse araç bakım tutarı da kasa ödemesine göre güncellenir (tutar normal kolon).
+  if (payer.tutar !== undefined) payload.tutar = payer.tutar;
+  let { error } = await supabase.from("arac_bakim").update(payload).eq("id", bakimId);
+  if (error && /column .*(odeme_yapildi|odeyen_id|odeyen_adi|kaynak_kasa_id)/i.test(error.message)) {
+    const rest = { ...payload };
+    delete rest.odeme_yapildi; delete rest.odeyen_id; delete rest.odeyen_adi; delete rest.kaynak_kasa_id;
+    ({ error } = await supabase.from("arac_bakim").update(rest).eq("id", bakimId));
+  }
   if (error) throw error;
+}
+
+// Bir kasa hareketine bağlı araç bakım kaydı var mı? (güncelleme onayı sormak için)
+export async function aracBakimVarByKasa(kasaId: string): Promise<boolean> {
+  if (!kasaId) return false;
+  const supabase = getSupabase();
+  const { count, error } = await supabase
+    .from("arac_bakim")
+    .select("id", { count: "exact", head: true })
+    .eq("kaynak_kasa_id", kasaId);
+  if (error) return false; // kolon yoksa / hata → bağ yok say
+  return (count ?? 0) > 0;
 }
 
 export async function deleteAracBakim(id: string): Promise<void> {
