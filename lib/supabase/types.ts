@@ -549,7 +549,7 @@ export type AracCinsiYakitLimit = {
 };
 
 // Araç / iş makinası bakım ve tamirat kaydı
-export type AracBakimTipi = "bakim" | "tamirat";
+export type AracBakimTipi = "bakim" | "tamirat" | "yedek_parca";
 export type AracBakim = {
   id: string;
   arac_id: string;

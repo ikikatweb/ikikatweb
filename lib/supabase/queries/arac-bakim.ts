@@ -1,6 +1,6 @@
 // Araç bakım & tamirat sorguları
 import { createClient } from "@/lib/supabase/client";
-import type { AracBakim, AracBakimWithArac } from "@/lib/supabase/types";
+import type { AracBakim, AracBakimWithArac, AracBakimTipi } from "@/lib/supabase/types";
 
 function getSupabase() {
   return createClient();
@@ -50,7 +50,7 @@ export async function getAracBakimlar(): Promise<AracBakimWithArac[]> {
 
 export async function insertAracBakim(data: {
   arac_id: string;
-  tip?: "bakim" | "tamirat";
+  tip?: AracBakimTipi;
   bakim_tarihi: string;
   yaptiran_id?: string | null;
   yaptiran_adi?: string | null;

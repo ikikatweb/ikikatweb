@@ -71,6 +71,11 @@ function hataMesaji(err: unknown): string {
   return String(err);
 }
 
+// Bakım tipi etiketi
+function tipEtiket(tip: string | null | undefined): string {
+  return tip === "tamirat" ? "Tamirat" : tip === "yedek_parca" ? "Yedek Parça" : "Bakım";
+}
+
 // Dosya tipi algılama
 function resimMi(url: string): boolean {
   return /\.(jpg|jpeg|png|webp|heic|gif|bmp)(\?|$)/i.test(url);
@@ -364,13 +369,13 @@ export default function AracBakimPage() {
     if (editId ? !yDuzenle : !yEkle) { toast.error(editId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!dAracId) { toast.error("Araç seçin."); return; }
     if (!dTarih) { toast.error("Tarih girin."); return; }
-    if (!dDetay.trim()) { toast.error("Yapılan işin detayı zorunludur."); return; }
+    if (!dDetay.trim()) { toast.error(dTip === "yedek_parca" ? "Alınan yedek parça zorunludur." : "Yapılan işin detayı zorunludur."); return; }
     const tutar = dTutar ? parseParaInput(dTutar) : null;
     const km = dKm ? parseInt(dKm.replace(/\D/g, ""), 10) : null;
     // Tamirat ise sonraki bakım alanları kaydedilmez
     const sonrakiKm = dTip === "bakim" && dSonrakiKm ? parseInt(dSonrakiKm.replace(/\D/g, ""), 10) : null;
     const sonrakiTarih = dTip === "bakim" ? (dSonrakiTarih || null) : null;
-    const etiket = dTip === "tamirat" ? "Tamirat" : "Bakım";
+    const etiket = tipEtiket(dTip);
 
     setDialogLoading(true);
     try {
@@ -451,7 +456,13 @@ export default function AracBakimPage() {
       setDialogOpen(false);
     } catch (err) {
       console.error("Bakım kaydet hatası:", err);
-      toast.error(`Hata: ${hataMesaji(err)}`, { duration: toastSuresi() });
+      const msg = hataMesaji(err);
+      // Yedek parça için DB CHECK constraint'i henüz güncellenmemişse dostça uyar.
+      if (dTip === "yedek_parca" && (msg.includes("tip_check") || msg.includes("23514") || msg.includes("check constraint"))) {
+        toast.error("Yedek parça için veritabanı güncellemesi gerekiyor. Lütfen SQL migrasyonunu çalıştırın (arac_bakim_tip_check).", { duration: toastSuresi(8000) });
+      } else {
+        toast.error(`Hata: ${msg}`, { duration: toastSuresi() });
+      }
     } finally {
       setDialogLoading(false);
     }
@@ -477,6 +488,7 @@ export default function AracBakimPage() {
     doc.text(
       filtreTip === "bakim" ? "Arac Bakim Listesi" :
       filtreTip === "tamirat" ? "Arac Tamirat Listesi" :
+      filtreTip === "yedek_parca" ? "Arac Yedek Parca Listesi" :
       "Arac Bakim & Tamirat Listesi",
       14, 15,
     );
@@ -487,7 +499,7 @@ export default function AracBakimPage() {
       head: [["Tarih", "Tip", "Plaka", "Marka/Model", "Yaptiran", "Islemi Giren", "Km", "Servis/Tamirci", "Detay", "Tutar (TL)", "Bakim Yapilacak"]],
       body: filtrelenmis.map((b) => [
         tr(formatTarih(b.bakim_tarihi)),
-        (b.tip ?? "bakim") === "tamirat" ? "Tamirat" : "Bakim",
+        tr(tipEtiket(b.tip)),
         tr(b.araclar?.plaka ?? ""),
         tr([b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ")),
         tr(b.yaptiran_ad ?? ""),
@@ -517,7 +529,7 @@ export default function AracBakimPage() {
       const isFotoDosyalar = Array.isArray(b.is_foto_urls) ? b.is_foto_urls : [];
       return [
         formatTarih(b.bakim_tarihi),
-        (b.tip ?? "bakim") === "tamirat" ? "Tamirat" : "Bakım",
+        tipEtiket(b.tip),
         b.araclar?.plaka ?? "",
         b.araclar?.marka ?? "",
         b.araclar?.model ?? "",
@@ -557,12 +569,15 @@ export default function AracBakimPage() {
             </Button>
           </div>
           {yEkle && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("bakim")}>
               <Plus size={14} className="mr-1" /> Yeni Bakım
             </Button>
             <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("tamirat")}>
               <Plus size={14} className="mr-1" /> Yeni Tamirat
+            </Button>
+            <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-white flex-1 sm:flex-none" onClick={() => dialogAc("yedek_parca")}>
+              <Plus size={14} className="mr-1" /> Yedek Parça
             </Button>
           </div>
           )}
@@ -593,6 +608,7 @@ export default function AracBakimPage() {
             <option value="">Tümü</option>
             <option value="bakim">Bakım</option>
             <option value="tamirat">Tamirat</option>
+            <option value="yedek_parca">Yedek Parça</option>
           </select>
         </div>
         <div className="space-y-1">
@@ -648,6 +664,8 @@ export default function AracBakimPage() {
                   <TableCell className="px-2 text-center">
                     {(b.tip ?? "bakim") === "tamirat" ? (
                       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">Tamirat</span>
+                    ) : (b.tip === "yedek_parca") ? (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200">Yedek Parça</span>
                     ) : (
                       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Bakım</span>
                     )}
@@ -848,8 +866,8 @@ export default function AracBakimPage() {
           <DialogHeader>
             <DialogTitle>
               {editId
-                ? (dTip === "tamirat" ? "Tamirat Kaydını Düzenle" : "Bakım Kaydını Düzenle")
-                : (dTip === "tamirat" ? "Yeni Tamirat Kaydı" : "Yeni Bakım Kaydı")}
+                ? `${tipEtiket(dTip)} Kaydını Düzenle`
+                : `Yeni ${tipEtiket(dTip)} Kaydı`}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -943,14 +961,14 @@ export default function AracBakimPage() {
                 })()}
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{dTip === "tamirat" ? "Tamirat" : "Bakım"} Tarihi <span className="text-red-500">*</span></Label>
+                <Label className="text-xs">{tipEtiket(dTip)} Tarihi <span className="text-red-500">*</span></Label>
                 <input type="date" value={dTarih} onChange={(e) => setDTarih(e.target.value)} className={selectClass + " w-full"} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Yaptıran (Personel)</Label>
+                <Label className="text-xs">{dTip === "yedek_parca" ? "Parçayı Alan (Personel)" : "Yaptıran (Personel)"}</Label>
                 <select value={dYaptiranId} onChange={(e) => setDYaptiranId(e.target.value)} className={selectClass + " w-full"}>
                   <option value="">Seçiniz</option>
                   {personeller
@@ -1037,7 +1055,7 @@ export default function AracBakimPage() {
             )}
 
             <div className="space-y-1">
-              <Label className="text-xs">Servis / Tamirci</Label>
+              <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"}</Label>
               <input
                 type="text"
                 list="servis-tamirci-oneri"
@@ -1055,11 +1073,13 @@ export default function AracBakimPage() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Yapılan İşin Detayı <span className="text-red-500">*</span></Label>
+              <Label className="text-xs">{dTip === "yedek_parca" ? "Alınan Yedek Parça" : "Yapılan İşin Detayı"} <span className="text-red-500">*</span></Label>
               <Textarea
                 value={dDetay}
                 onChange={(e) => setDDetay(e.target.value)}
-                placeholder="Yağ değişimi, balata, lastik rotasyonu, fren kontrolü..."
+                placeholder={dTip === "yedek_parca"
+                  ? "Filtre, ampül, lastik, balata, conta, far, akü..."
+                  : "Yağ değişimi, balata, lastik rotasyonu, fren kontrolü..."}
                 rows={3}
                 className="text-sm"
               />
@@ -1115,7 +1135,7 @@ export default function AracBakimPage() {
 
             {/* YAPILAN İŞ — foto / PDF */}
             <div className="space-y-1 bg-amber-50/30 border border-amber-200 rounded-lg p-2">
-              <Label className="text-xs font-semibold text-amber-800">🔧 Yapılan İşle İlgili Foto / PDF (parça, hasar, rapor vb.)</Label>
+              <Label className="text-xs font-semibold text-amber-800">{dTip === "yedek_parca" ? "📷 Alınan Yedek Parçaların Fotoğrafı" : "🔧 Yapılan İşle İlgili Foto / PDF (parça, hasar, rapor vb.)"}</Label>
               <div className="flex gap-2 items-center">
                 <label htmlFor="isfoto-dosya-input" className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
                   📁 Dosya Seç
@@ -1164,7 +1184,7 @@ export default function AracBakimPage() {
             <div className="flex gap-2 justify-end pt-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={dialogLoading}>İptal</Button>
               <Button
-                className={dTip === "tamirat" ? "bg-orange-600 hover:bg-orange-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+                className={dTip === "tamirat" ? "bg-orange-600 hover:bg-orange-700 text-white" : dTip === "yedek_parca" ? "bg-purple-600 hover:bg-purple-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
                 onClick={kaydet}
                 disabled={dialogLoading}
               >
