@@ -110,10 +110,11 @@ export default function DashboardPage() {
   const [firmalar, setFirmalar] = useState<FirmaBasic[]>([]);
   const [defterOzetler, setDefterOzetler] = useState<DefterOzet[]>([]);
   const [defterDetaylar, setDefterDetaylar] = useState<DefterDetay[]>([]);
-  // Şantiye defteri PDF ön izleme — sayfa içi modal (mobilde yeni sekme açılmasın)
-  const [defterPdfUrl, setDefterPdfUrl] = useState<string | null>(null);
+  // Şantiye defteri ön izleme — sayfa içi modal (mobilde yeni sekme açılmasın)
   const [defterPdfBaslik, setDefterPdfBaslik] = useState<string>("");
   const [defterPdfDoc, setDefterPdfDoc] = useState<jsPDF | null>(null);
+  // Modalda satır kaydıran okunabilir görünüm için yapısal veri
+  const [defterPdfData, setDefterPdfData] = useState<{ santiyeAdi: string; gun: DefterDetay["gunler"][0]; gunAdi: string; tarihStr: string } | null>(null);
   // Bordro Takibi widget'ı
   const [bordroAtamalar, setBordroAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [bordroManuelGunler, setBordroManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
@@ -1224,23 +1225,17 @@ export default function DashboardPage() {
     doc.text(tr("KONTROL MUHENDISI"), mx + bw * 2 + bw / 2, imzaY + 4, { align: "center" });
 
     // Sayfa içi modal'da göster (mobilde yeni sekme açılıp kapanınca sayfa başa dönmesin)
-    if (defterPdfUrl) {
-      try { URL.revokeObjectURL(defterPdfUrl); } catch { /* sessiz */ }
-    }
-    const pdfBlob = doc.output("blob");
-    const url = URL.createObjectURL(pdfBlob);
-    setDefterPdfUrl(url);
-    setDefterPdfBaslik(`${santiyeAdi} · ${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`);
+    const tarihStr = `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;
+    const gunAdiTr = ["Pazar","Pazartesi","Salı","Çarşamba","Perşembe","Cuma","Cumartesi"][d.getDay()];
+    setDefterPdfBaslik(`${santiyeAdi} · ${tarihStr}`);
     setDefterPdfDoc(doc);
+    setDefterPdfData({ santiyeAdi, gun, gunAdi: gunAdiTr, tarihStr });
   }
 
   function defterPdfKapat() {
-    if (defterPdfUrl) {
-      try { URL.revokeObjectURL(defterPdfUrl); } catch { /* sessiz */ }
-    }
-    setDefterPdfUrl(null);
     setDefterPdfBaslik("");
     setDefterPdfDoc(null);
+    setDefterPdfData(null);
   }
 
   function policeDialogAc(aracId: string, tip: string) {
@@ -2390,8 +2385,8 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Şantiye Defteri PDF Ön İzleme — sayfa içi modal (mobil uyumlu) */}
-      {defterPdfUrl && (
+      {/* Şantiye Defteri Ön İzleme — sayfa içi modal (mobilde satır kaydıran okunabilir görünüm) */}
+      {defterPdfData && (
         <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col" onClick={defterPdfKapat}>
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -2403,17 +2398,55 @@ export default function DashboardPage() {
                 type="button"
                 onClick={() => { if (defterPdfDoc) defterPdfDoc.save(`santiye-defteri-${defterPdfBaslik.replace(/[^\w]+/g, "-")}.pdf`); }}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs font-medium flex items-center gap-1.5"
-                title="İndir"
+                title="PDF İndir"
               >
-                <FileDown size={14} /> İndir
+                <FileDown size={14} /> PDF
               </button>
               <button type="button" onClick={defterPdfKapat} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
                 <X size={18} />
               </button>
             </div>
           </div>
-          <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
-            <iframe src={defterPdfUrl} title="Şantiye Defteri PDF" className="w-full h-full border-0" />
+          {/* İçerik — ekran genişliğine göre satır kaydırır, yatay scroll yok */}
+          <div className="flex-1 overflow-y-auto bg-gray-100 p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto max-w-2xl bg-white rounded-lg shadow border">
+              <div className="text-center border-b py-3 px-4">
+                <h2 className="font-bold text-sm text-[#1E3A5F] tracking-wide">ŞANTİYE GÜNLÜK DEFTERİ</h2>
+                <p className="text-xs text-gray-500 mt-0.5">{defterPdfData.santiyeAdi}</p>
+              </div>
+              <div className="grid grid-cols-2 text-xs border-b">
+                <div className="px-3 py-2 border-r">
+                  <span className="block text-[10px] font-bold text-gray-500">TARİH ve GÜN</span>
+                  <span className="font-semibold">{defterPdfData.tarihStr} {defterPdfData.gunAdi}</span>
+                </div>
+                <div className="px-3 py-2">
+                  <span className="block text-[10px] font-bold text-gray-500">SAYFA NO</span>
+                  <span className="font-semibold text-[#1E3A5F]">{defterPdfData.gun.sayfaNo || "—"}</span>
+                </div>
+              </div>
+              <div className="px-3 py-2 border-b text-xs">
+                <span className="text-[10px] font-bold text-gray-500">HAVA DURUMU: </span>
+                <span className="font-semibold">{defterPdfData.gun.hava || "—"}</span>
+              </div>
+              <div className="px-4 py-3 space-y-2 min-h-[200px]">
+                {defterPdfData.gun.kayitlar.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic text-center py-6">Bu güne ait kayıt yok.</p>
+                ) : (
+                  defterPdfData.gun.kayitlar.map((k, i) => (
+                    <div key={i} className="text-sm text-gray-800 leading-relaxed border-b border-gray-100 pb-2 last:border-0">
+                      <span className="text-gray-400 mr-1">•</span>
+                      <span className="break-words">{k.icerik}</span>
+                      {k.yazan && <span className="text-[11px] text-gray-400 italic"> — {k.yazan}</span>}
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="grid grid-cols-3 text-[10px] font-bold text-gray-500 text-center border-t">
+                <div className="border-r py-3">ŞANTİYE ŞEFİ</div>
+                <div className="border-r py-3">MÜTEAHHİT</div>
+                <div className="py-3">KONTROL MÜHENDİSİ</div>
+              </div>
+            </div>
           </div>
         </div>
       )}
