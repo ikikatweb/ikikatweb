@@ -25,7 +25,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Pencil, Eye, MapPin, Calendar, User, ChevronUp, ChevronDown,
+  TrendingUp, Wallet, Shield, Fuel, FileText, NotebookPen, AlertTriangle, CheckCircle2, Pencil, Eye, MapPin, Calendar, User, ChevronUp, ChevronDown, FileDown, X,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -110,6 +110,10 @@ export default function DashboardPage() {
   const [firmalar, setFirmalar] = useState<FirmaBasic[]>([]);
   const [defterOzetler, setDefterOzetler] = useState<DefterOzet[]>([]);
   const [defterDetaylar, setDefterDetaylar] = useState<DefterDetay[]>([]);
+  // Şantiye defteri PDF ön izleme — sayfa içi modal (mobilde yeni sekme açılmasın)
+  const [defterPdfUrl, setDefterPdfUrl] = useState<string | null>(null);
+  const [defterPdfBaslik, setDefterPdfBaslik] = useState<string>("");
+  const [defterPdfDoc, setDefterPdfDoc] = useState<jsPDF | null>(null);
   // Bordro Takibi widget'ı
   const [bordroAtamalar, setBordroAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [bordroManuelGunler, setBordroManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
@@ -1219,10 +1223,24 @@ export default function DashboardPage() {
     doc.text(tr("MUTEAHHIT"), mx + bw + bw / 2, imzaY + 4, { align: "center" });
     doc.text(tr("KONTROL MUHENDISI"), mx + bw * 2 + bw / 2, imzaY + 4, { align: "center" });
 
-    // Yeni sekmede aç
+    // Sayfa içi modal'da göster (mobilde yeni sekme açılıp kapanınca sayfa başa dönmesin)
+    if (defterPdfUrl) {
+      try { URL.revokeObjectURL(defterPdfUrl); } catch { /* sessiz */ }
+    }
     const pdfBlob = doc.output("blob");
     const url = URL.createObjectURL(pdfBlob);
-    window.open(url, "_blank");
+    setDefterPdfUrl(url);
+    setDefterPdfBaslik(`${santiyeAdi} · ${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`);
+    setDefterPdfDoc(doc);
+  }
+
+  function defterPdfKapat() {
+    if (defterPdfUrl) {
+      try { URL.revokeObjectURL(defterPdfUrl); } catch { /* sessiz */ }
+    }
+    setDefterPdfUrl(null);
+    setDefterPdfBaslik("");
+    setDefterPdfDoc(null);
   }
 
   function policeDialogAc(aracId: string, tip: string) {
@@ -2371,6 +2389,34 @@ export default function DashboardPage() {
         </div> : null}
 
       </div>
+
+      {/* Şantiye Defteri PDF Ön İzleme — sayfa içi modal (mobil uyumlu) */}
+      {defterPdfUrl && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col" onClick={defterPdfKapat}>
+          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <Eye size={18} className="flex-shrink-0" />
+              <span className="text-sm font-medium truncate">{defterPdfBaslik}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => { if (defterPdfDoc) defterPdfDoc.save(`santiye-defteri-${defterPdfBaslik.replace(/[^\w]+/g, "-")}.pdf`); }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs font-medium flex items-center gap-1.5"
+                title="İndir"
+              >
+                <FileDown size={14} /> İndir
+              </button>
+              <button type="button" onClick={defterPdfKapat} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
+            <iframe src={defterPdfUrl} title="Şantiye Defteri PDF" className="w-full h-full border-0" />
+          </div>
+        </div>
+      )}
 
       {/* Yakıt Alım Düzenleme Dialog */}
       <Dialog open={!!editAlim} onOpenChange={(o) => !o && setEditAlim(null)}>
