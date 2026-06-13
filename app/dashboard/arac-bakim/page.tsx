@@ -422,10 +422,25 @@ export default function AracBakimPage() {
     if (!dTarih) { toast.error("Tarih girin."); return; }
     if (!dDetay.trim()) { toast.error(dTip === "yedek_parca" ? "Alınan yedek parça zorunludur." : "Yapılan işin detayı zorunludur."); return; }
     const tutar = dTutar ? parseParaInput(dTutar) : null;
-    const km = dKm ? parseInt(dKm.replace(/\D/g, ""), 10) : null;
+    // Yedek parçada km/saat tutulmaz (alan gizli)
+    const km = dTip === "yedek_parca" ? null : (dKm ? parseInt(dKm.replace(/\D/g, ""), 10) : null);
     // Tamirat ise sonraki bakım alanları kaydedilmez
     const sonrakiKm = dTip === "bakim" && dSonrakiKm ? parseInt(dSonrakiKm.replace(/\D/g, ""), 10) : null;
     const sonrakiTarih = dTip === "bakim" ? (dSonrakiTarih || null) : null;
+    // Zorunlu alan kontrolleri (türe göre)
+    if (tutar == null || tutar <= 0) { toast.error("Tutar zorunludur."); return; }
+    if (!dServisTamirci.trim()) {
+      toast.error(dTip === "yedek_parca" ? "Yedek parçacı zorunludur." : "Servis / Tamirci zorunludur.");
+      return;
+    }
+    if (dTip === "bakim" || dTip === "tamirat") {
+      if (!dYaptiranId) { toast.error("Yaptıran kişi zorunludur."); return; }
+      if (!dKm.trim()) { toast.error("Mevcut km / saat zorunludur."); return; }
+    }
+    if (dTip === "bakim" && !dSonrakiKm.trim()) {
+      toast.error("Bakım yapılacak km / saat zorunludur.");
+      return;
+    }
     // Ödeme: tik işaretliyse yapıldı sayılır. Ödeyen = işaretleyen (giriş yapan) kullanıcı.
     const odemeYapildi = dOdemeYapildi;
     const odeyenId = dOdemeYapildi ? (dOdeyenId || kullanici?.id || null) : null;
@@ -715,21 +730,15 @@ export default function AracBakimPage() {
               <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
                 <TableHead className="text-white text-[11px] px-2">Tarih</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Tip</TableHead>
-                <TableHead
-                  style={{ position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" }}
-                  className="text-white text-[11px] px-2 min-w-[80px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
-                >Plaka</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Marka/Model</TableHead>
+                <TableHead className="text-white text-[11px] px-2">Araç</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Yaptıran</TableHead>
-                <TableHead className="text-white text-[11px] px-2">İşlemi Giren</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right">Km/Saat</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Servis/Tamirci</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Detay</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-right">Tutar</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Ödemesi Yapıldı</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Bakım Yapılacak</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-center">Fatura</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-center">İş Foto/PDF</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-center">Dosyalar</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center w-[70px]">İşlem</TableHead>
               </TableRow>
             </TableHeader>
@@ -746,16 +755,17 @@ export default function AracBakimPage() {
                       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">Bakım</span>
                     )}
                   </TableCell>
-                  <TableCell
-                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
-                    className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap min-w-[80px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
-                  >{b.araclar?.plaka ?? "—"}</TableCell>
-                  <TableCell className="px-2 truncate max-w-[140px]">{[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}</TableCell>
-                  <TableCell className="px-2">{b.yaptiran_ad ?? "—"}</TableCell>
-                  <TableCell className="px-2 text-gray-500 text-[11px]">{b.isleme_giren_ad ?? "—"}</TableCell>
+                  <TableCell className="px-2 max-w-[150px]">
+                    <div className="font-bold text-[#1E3A5F] whitespace-nowrap">{b.araclar?.plaka ?? "—"}</div>
+                    <div className="text-[10px] text-gray-500 truncate">{[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || ""}</div>
+                  </TableCell>
+                  <TableCell className="px-2 max-w-[130px]">
+                    <div className="truncate">{b.yaptiran_ad ?? "—"}</div>
+                    {b.isleme_giren_ad && <div className="text-[10px] text-gray-400 truncate">İşleyen: {b.isleme_giren_ad}</div>}
+                  </TableCell>
                   <TableCell className="px-2 text-right tabular-nums">{b.km != null ? b.km.toLocaleString("tr-TR") : "—"}</TableCell>
-                  <TableCell className="px-2 truncate max-w-[160px]" title={b.servis_tamirci ?? ""}>{b.servis_tamirci ?? "—"}</TableCell>
-                  <TableCell className="px-2 truncate max-w-[220px]" title={b.detay ?? ""}>{b.detay ?? "—"}</TableCell>
+                  <TableCell className="px-2 truncate max-w-[120px]" title={b.servis_tamirci ?? ""}>{b.servis_tamirci ?? "—"}</TableCell>
+                  <TableCell className="px-2 truncate max-w-[180px]" title={b.detay ?? ""}>{b.detay ?? "—"}</TableCell>
                   <TableCell className="px-2 text-right font-semibold">{formatSayi(b.tutar)}</TableCell>
                   <TableCell className="px-2 whitespace-nowrap text-emerald-700">
                     {b.odeme_yapildi
@@ -768,40 +778,31 @@ export default function AracBakimPage() {
                   </TableCell>
                   <TableCell className="px-2 text-center">
                     {(() => {
-                      const dosyalar = Array.isArray(b.fatura_urls) && b.fatura_urls.length > 0
+                      const faturalar = Array.isArray(b.fatura_urls) && b.fatura_urls.length > 0
                         ? b.fatura_urls
                         : (b.fatura_url ? [b.fatura_url] : []);
-                      if (dosyalar.length === 0) return <span className="text-gray-300">—</span>;
+                      const fotolar = Array.isArray(b.is_foto_urls) ? b.is_foto_urls : [];
+                      if (faturalar.length === 0 && fotolar.length === 0) return <span className="text-gray-300">—</span>;
                       return (
                         <div className="flex items-center justify-center flex-wrap gap-1">
-                          {dosyalar.map((u, i) => (
+                          {faturalar.map((u, i) => (
                             <button
                               type="button"
                               key={`fat-${i}`}
                               onClick={() => setLightboxUrl(u)}
                               className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 text-[10px] font-semibold cursor-pointer"
-                              title={dosyaAd(u)}
+                              title={`Fatura: ${dosyaAd(u)}`}
                             >
-                              {i + 1}
+                              F{i + 1}
                             </button>
                           ))}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell className="px-2 text-center">
-                    {(() => {
-                      const dosyalar = Array.isArray(b.is_foto_urls) ? b.is_foto_urls : [];
-                      if (dosyalar.length === 0) return <span className="text-gray-300">—</span>;
-                      return (
-                        <div className="flex items-center justify-center flex-wrap gap-1">
-                          {dosyalar.map((u, i) => (
+                          {fotolar.map((u, i) => (
                             <button
                               type="button"
                               key={`isf-${i}`}
                               onClick={() => setLightboxUrl(u)}
                               className="inline-flex items-center justify-center w-5 h-5 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 text-[10px] font-semibold cursor-pointer"
-                              title={dosyaAd(u)}
+                              title={`Foto: ${dosyaAd(u)}`}
                             >
                               {i + 1}
                             </button>
@@ -1053,7 +1054,10 @@ export default function AracBakimPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">{dTip === "yedek_parca" ? "Parçayı Alan (Personel)" : "Yaptıran (Personel)"}</Label>
+                <Label className="text-xs">
+                  {dTip === "yedek_parca" ? "Parçayı Alan (Personel)" : "Yaptıran (Personel)"}
+                  {(dTip === "bakim" || dTip === "tamirat") && <span className="text-red-500"> *</span>}
+                </Label>
                 <select value={dYaptiranId} onChange={(e) => setDYaptiranId(e.target.value)} className={selectClass + " w-full"}>
                   <option value="">Seçiniz</option>
                   {personeller
@@ -1069,7 +1073,7 @@ export default function AracBakimPage() {
                 </p>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Tutar (TL)</Label>
+                <Label className="text-xs">Tutar (TL) <span className="text-red-500">*</span></Label>
                 <input
                   type="text" inputMode="decimal"
                   value={dTutar}
@@ -1101,9 +1105,11 @@ export default function AracBakimPage() {
               </div>
             </div>
 
+            {/* Yedek parçada km/saat alanına gerek yok */}
+            {dTip !== "yedek_parca" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Mevcut Km / Saat</Label>
+                <Label className="text-xs">Mevcut Km / Saat <span className="text-red-500">*</span></Label>
                 <input
                   type="text" inputMode="numeric"
                   value={dKm}
@@ -1120,7 +1126,7 @@ export default function AracBakimPage() {
               </div>
               {dTip === "bakim" && (
                 <div className="space-y-1">
-                  <Label className="text-xs">Bakım Yapılacak Km / Saat</Label>
+                  <Label className="text-xs">Bakım Yapılacak Km / Saat <span className="text-red-500">*</span></Label>
                   <input
                     type="text" inputMode="numeric"
                     value={dSonrakiKm}
@@ -1148,6 +1154,7 @@ export default function AracBakimPage() {
                 </div>
               )}
             </div>
+            )}
 
             {dTip === "bakim" && (
               <div className="space-y-1">
@@ -1161,7 +1168,7 @@ export default function AracBakimPage() {
             )}
 
             <div className="space-y-1">
-              <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"}</Label>
+              <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"} <span className="text-red-500">*</span></Label>
               <input
                 type="text"
                 list="servis-tamirci-oneri"
