@@ -83,8 +83,8 @@ export async function insertAracBakim(data: {
       .eq("id", data.arac_id)
       .maybeSingle();
     const plaka = arac?.plaka ?? "?";
-    const tipAd = data.tip === "tamirat" ? "Tamirat" : "Bakım";
-    const ikon = data.tip === "tamirat" ? "🔧" : "🛠️";
+    const tipAd = data.tip === "tamirat" ? "Tamirat" : data.tip === "yedek_parca" ? "Yedek Parça" : "Bakım";
+    const ikon = data.tip === "tamirat" ? "🔧" : data.tip === "yedek_parca" ? "📦" : "🛠️";
     bildirimGonder({
       baslik: `${ikon} Yeni ${tipAd} — ${plaka}`,
       govde: `${[arac?.marka, arac?.model].filter(Boolean).join(" ")}${data.tutar ? " · " + formatTL(data.tutar) : ""}${data.detay ? " · " + data.detay.slice(0, 80) : ""}`,

@@ -13,7 +13,7 @@ import { BILDIRIM_TAG_MODULE } from "@/lib/bildirim-mapping";
 // Kategori tanımları — tag, etiket, açıklama, izin modülü
 const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[] = [
   { tag: "kasa", label: "Kasa Hareketi", emoji: "💰", desc: "Yeni gelir/gider eklenince" },
-  { tag: "arac-bakim", label: "Araç Bakım & Tamirat", emoji: "🛠️", desc: "Yeni bakım veya tamirat eklenince" },
+  { tag: "arac-bakim", label: "Araç Bakım, Tamirat, Yedek Parça", emoji: "🛠️", desc: "Yeni bakım, tamirat veya yedek parça eklenince" },
   { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Yeni personel puantaj kaydı" },
   { tag: "arac-puantaj", label: "Araç Puantaj", emoji: "🚚", desc: "Yeni araç puantaj kaydı" },
   { tag: "yakit", label: "Yakıt Alımı", emoji: "⛽", desc: "Yeni yakıt alımı eklenince" },

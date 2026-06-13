@@ -60,7 +60,7 @@ const menuGroups: MenuGroup[] = [
     icon: <Wrench size={20} />,
     color: "text-cyan-600 bg-cyan-50",
     items: [
-      { label: "Bakım & Tamirat", href: "/dashboard/arac-bakim", icon: <Wrench size={16} /> },
+      { label: "Bakım, Tamirat, Yedek Parça", href: "/dashboard/arac-bakim", icon: <Wrench size={16} /> },
     ],
   },
   {

@@ -489,7 +489,7 @@ export default function AracBakimPage() {
       filtreTip === "bakim" ? "Arac Bakim Listesi" :
       filtreTip === "tamirat" ? "Arac Tamirat Listesi" :
       filtreTip === "yedek_parca" ? "Arac Yedek Parca Listesi" :
-      "Arac Bakim & Tamirat Listesi",
+      "Arac Bakim, Tamirat & Yedek Parca Listesi",
       14, 15,
     );
     doc.setFontSize(8); doc.setFont("helvetica", "normal");
@@ -556,7 +556,7 @@ export default function AracBakimPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-          <Wrench size={24} /> Araç Bakım & Tamirat
+          <Wrench size={24} /> Araç Bakım, Tamirat &amp; Yedek Parça
         </h1>
         {/* Mobilde 2 satır (PDF/Excel üstte, Yeni Bakım/Tamirat altta), masaüstünde tek satır */}
         <div className="flex flex-col sm:flex-row gap-2">
