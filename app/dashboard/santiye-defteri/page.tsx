@@ -97,7 +97,7 @@ function SantiyeDefContent() {
   const searchParams = useSearchParams();
   const urlSantiye = searchParams.get("santiye");
   const urlTarih = searchParams.get("tarih");
-  const { kullanici, isYonetici, isShantiyeAdmin, sadeceKendiKayitlari, hasPermission } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, hasPermission } = useAuth();
   const yEkle = hasPermission("santiye-defteri", "ekle");
   const yDuzenle = hasPermission("santiye-defteri", "duzenle");
   const ySil = hasPermission("santiye-defteri", "sil");
@@ -210,10 +210,8 @@ function SantiyeDefContent() {
           setDefter(d);
           setHavaDurumu(d.hava_durumu ?? "");
           setSicaklik(d.sicaklik ?? "");
-          let k = await getKayitlar(d.id).catch(() => []);
-          if (sadeceKendiKayitlari && kullanici?.id) {
-            k = k.filter((x) => x.yazan_id === kullanici.id);
-          }
+          // Şantiye defteri herkese açık: aynı şantiyedeki tüm kullanıcıların kayıtları görünür.
+          const k = await getKayitlar(d.id).catch(() => []);
           setKayitlar(k);
           // PDF önizleme aç
           previewPDFForDefter({ ...d, kayitlar: k });
@@ -237,12 +235,8 @@ function SantiyeDefContent() {
       if (d) {
         setHavaDurumu(d.hava_durumu ?? "");
         setSicaklik(d.sicaklik ?? "");
-        let k = await getKayitlar(d.id);
-        // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtları görsün
-        // (yönetici + şantiye admini tümünü görür)
-        if (sadeceKendiKayitlari && kullanici?.id) {
-          k = k.filter((x) => x.yazan_id === kullanici.id);
-        }
+        // Şantiye defteri herkese açık: aynı şantiyedeki tüm kullanıcıların kayıtları görünür.
+        const k = await getKayitlar(d.id);
         setKayitlar(k);
       } else {
         setHavaDurumu(""); setSicaklik(""); setKayitlar([]);
@@ -254,7 +248,7 @@ function SantiyeDefContent() {
         toast.error("santiye_defteri tablosu yok. SQL çalıştırın.", { duration: toastSuresi() });
       }
     }
-  }, [filtreSantiye, seciliTarih, sadeceKendiKayitlari, kullanici?.id]);
+  }, [filtreSantiye, seciliTarih]);
 
   useEffect(() => { loadDefter(); }, [loadDefter]);
 
@@ -271,16 +265,13 @@ function SantiyeDefContent() {
       // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtlar görünür
       const listWithKayitlar = await Promise.all(
         defterler.map(async (d) => {
-          let k = await getKayitlar(d.id).catch(() => []);
-          if (sadeceKendiKayitlari && kullanici?.id) {
-            k = k.filter((x) => x.yazan_id === kullanici.id);
-          }
+          const k = await getKayitlar(d.id).catch(() => []);
           return { ...d, kayitlar: k };
         })
       );
       setDefterListesi(listWithKayitlar);
     } catch { /* sessiz */ }
-  }, [filtreSantiye, filtreAy, sadeceKendiKayitlari, kullanici?.id]);
+  }, [filtreSantiye, filtreAy]);
 
   useEffect(() => { loadDefterListesi(); }, [loadDefterListesi]);
 
@@ -356,6 +347,12 @@ function SantiyeDefContent() {
   async function kayitDuzenle() {
     if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (!editId || !editIcerik.trim()) return;
+    // Başkasının yazdığı kaydı düzenleme (yönetici hariç)
+    const hedef = kayitlar.find((k) => k.id === editId);
+    if (hedef && hedef.yazan_id !== kullanici?.id && !isYonetici) {
+      toast.error("Bu kaydı yalnızca yazan kişi düzenleyebilir.", { duration: toastSuresi() });
+      return;
+    }
     try {
       await updateKayit(editId, editIcerik.trim());
       setEditId(null);
@@ -370,6 +367,12 @@ function SantiyeDefContent() {
   async function kayitSil() {
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!silOnay) return;
+    // Başkasının yazdığı kaydı silme (yönetici hariç)
+    const hedef = kayitlar.find((k) => k.id === silOnay);
+    if (hedef && hedef.yazan_id !== kullanici?.id && !isYonetici) {
+      toast.error("Bu kaydı yalnızca yazan kişi silebilir.", { duration: toastSuresi() });
+      return;
+    }
     try {
       await deleteKayit(silOnay);
       setSilOnay(null);
@@ -913,7 +916,8 @@ function SantiyeDefContent() {
                     }
                     return gruplar.map((g, gIdx) => {
                       const yazanAd = g.yazanAd;
-                      const isOwn = g.yazan_id === kullanici?.id;
+                      // Sadece kendi yazdığı kaydı düzenleyebilir/silebilir (yönetici hepsini).
+                      const duzenleyebilir = g.yazan_id === kullanici?.id || isYonetici;
                       // Grup içinde düzenlenen kayıt var mı?
                       const editKayitIdx = g.kayitlar.findIndex((k) => k.id === editId);
                       return (
@@ -934,7 +938,7 @@ function SantiyeDefContent() {
                                 {g.kayitlar.map((k) => k.icerik).join(" ")}
                                 <span className="text-[11px] text-gray-300 italic"> — {yazanAd}</span>
                               </p>
-                              {!previewMode && isOwn && tarihIzinli && (yDuzenle || ySil) && (
+                              {!previewMode && duzenleyebilir && tarihIzinli && (yDuzenle || ySil) && (
                                 // Mobilde hover olmadığı için ikonlar HEP görünür ve belirgin (blue/red);
                                 // masaüstünde (md+) eskisi gibi gri ve hover'da belirir.
                                 <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
