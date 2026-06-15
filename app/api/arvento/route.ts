@@ -20,11 +20,18 @@ export async function POST(request: Request) {
       if (!url) return NextResponse.json({ error: "İndirme linki gerekli (url)" }, { status: 400 });
       sonuc = await ingestArventoUrl(url);
     }
+    const parcalar: string[] = [];
+    for (const c of sonuc.calismaGunler) parcalar.push(`${c.tarih} çalışma (${c.sayi} araç)`);
+    if (sonuc.damperGunler.length > 0) {
+      const toplamGun = sonuc.damperGunler.length;
+      const toplamArac = sonuc.damperGunler.reduce((s, d) => s + d.sayi, 0);
+      parcalar.push(`damper: ${toplamGun} gün / ${toplamArac} kayıt`);
+    }
     return NextResponse.json({
       ok: true,
-      tarih: sonuc.tarih,
-      sayi: sonuc.sayi,
-      mesaj: `${sonuc.tarih} tarihli rapor içe aktarıldı — ${sonuc.sayi} araç.`,
+      calismaGunler: sonuc.calismaGunler,
+      damperGunler: sonuc.damperGunler,
+      mesaj: `İçe aktarıldı — ${parcalar.join(", ")}.`,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

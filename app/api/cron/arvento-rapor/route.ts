@@ -10,7 +10,7 @@
 import { NextResponse } from "next/server";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { ingestArventoUrl } from "@/lib/arvento/ingest";
+import { ingestArventoBuffer } from "@/lib/arvento/ingest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
-    let kaynakSource: Buffer | null = null;
+    const kaynakSources: Buffer[] = [];
     try {
       // Son 3 günün mailleri arasında ara
       const since = new Date(Date.now() - 3 * 86400000);
@@ -56,54 +56,92 @@ export async function GET(request: Request) {
       if (!seqs || seqs.length === 0) {
         return NextResponse.json({ ok: false, mesaj: "Son 3 günde mail bulunamadı." });
       }
-      let bestUid: number | null = null;
-      let bestDate = 0;
+      // Eşleşen tüm mailleri topla (yeni → eski), son 5'i işle — kaçan günleri toparlamak için
+      const matches: { uid: number; t: number }[] = [];
       for await (const msg of client.fetch(seqs, { envelope: true, uid: true })) {
         const env = msg.envelope;
         const fromOk = !fromFilter || (env?.from ?? []).some((a) => (a.address ?? "").toLowerCase().includes(fromFilter));
         const subjOk = !subjFilter || (env?.subject ?? "").toLowerCase().includes(subjFilter);
         if (fromOk && subjOk) {
-          const t = env?.date ? new Date(env.date).getTime() : 0;
-          if (t >= bestDate) { bestDate = t; bestUid = msg.uid; }
+          matches.push({ uid: msg.uid, t: env?.date ? new Date(env.date).getTime() : 0 });
         }
       }
-      if (bestUid == null) {
+      if (matches.length === 0) {
         return NextResponse.json({ ok: false, mesaj: "Eşleşen Arvento maili bulunamadı (FROM/SUBJECT filtrelerini kontrol edin)." });
       }
-      const tek = await client.fetchOne(String(bestUid), { source: true }, { uid: true });
-      if (tek && tek.source) kaynakSource = tek.source as Buffer;
+      matches.sort((a, b) => b.t - a.t);
+      for (const m of matches.slice(0, 5)) {
+        const tek = await client.fetchOne(String(m.uid), { source: true }, { uid: true });
+        if (tek && tek.source) kaynakSources.push(tek.source as Buffer);
+      }
     } finally {
       lock.release();
     }
     await client.logout();
 
-    if (!kaynakSource) {
+    if (kaynakSources.length === 0) {
       return NextResponse.json({ ok: false, mesaj: "Mail içeriği okunamadı." });
     }
 
-    // Maili ayrıştır, linkleri çıkar
-    const parsed = await simpleParser(kaynakSource);
-    const links: string[] = [];
-    const html = typeof parsed.html === "string" ? parsed.html : "";
-    for (const m of html.matchAll(/href=["']([^"']+)["']/gi)) links.push(m[1]);
-    const text = parsed.text ?? "";
-    for (const m of text.matchAll(/https?:\/\/[^\s"'<>)]+/gi)) links.push(m[0]);
+    // Rapor dosyalarını mailden topla: önce EKLER (.xls/.xlsx), yoksa gövdedeki LİNKLER.
+    // Hem "Araç Çalışma Raporu" hem "Genel Rapor" ayrı dosya gelir; her birini içe aktar.
+    const secLinkler = (parsed: { html?: unknown; text?: string | null }): string[] => {
+      const links: string[] = [];
+      const html = typeof parsed.html === "string" ? parsed.html : "";
+      for (const mm of html.matchAll(/href=["']([^"']+)["']/gi)) links.push(mm[1]);
+      const text = parsed.text ?? "";
+      for (const mm of text.matchAll(/https?:\/\/[^\s"'<>)]+/gi)) links.push(mm[0]);
+      let secili = links.filter((x) => /xls|download|indir|rapor|report|file|attachment/i.test(x));
+      if (linkPattern) secili = secili.filter((x) => x.toLowerCase().includes(linkPattern));
+      return (secili.length > 0 ? secili : links);
+    };
 
-    // İndirme linkini seç
-    let link: string | undefined;
-    if (linkPattern) link = links.find((l) => l.toLowerCase().includes(linkPattern));
-    if (!link) link = links.find((l) => /xls|download|indir|rapor|report|file|attachment/i.test(l));
-    if (!link) link = links[0];
-    if (!link) {
-      return NextResponse.json({ ok: false, mesaj: "Mailde indirme linki bulunamadı." });
+    const calismaGunler: { tarih: string; sayi: number }[] = [];
+    const damperGunler: { tarih: string; sayi: number }[] = [];
+    const hatalar: string[] = [];
+    for (const src of kaynakSources) {
+      try {
+        const parsed = await simpleParser(src);
+        // 1) Excel ekleri
+        const ekler = (parsed.attachments ?? []).filter((a) =>
+          /\.(xlsx?|xls)$/i.test(a.filename ?? "") || /excel|spreadsheet/i.test(a.contentType ?? ""),
+        );
+        const buffers: Buffer[] = [];
+        if (ekler.length > 0) {
+          for (const e of ekler) buffers.push(e.content as Buffer);
+        } else {
+          // 2) Ekler yoksa gövdedeki linklerden indir
+          for (const link of secLinkler(parsed)) {
+            try {
+              const r = await fetch(link, { redirect: "follow" });
+              if (r.ok) buffers.push(Buffer.from(await r.arrayBuffer()));
+            } catch { /* sonraki link */ }
+          }
+        }
+        for (const buf of buffers) {
+          try {
+            const s = await ingestArventoBuffer(buf);
+            calismaGunler.push(...s.calismaGunler);
+            damperGunler.push(...s.damperGunler);
+          } catch (e) { hatalar.push(e instanceof Error ? e.message : String(e)); }
+        }
+      } catch (e) {
+        hatalar.push(e instanceof Error ? e.message : String(e));
+      }
     }
 
-    const sonuc = await ingestArventoUrl(link);
+    if (calismaGunler.length === 0 && damperGunler.length === 0) {
+      return NextResponse.json({ ok: false, mesaj: `İçe aktarılamadı. ${hatalar.join("; ")}` });
+    }
     return NextResponse.json({
       ok: true,
-      tarih: sonuc.tarih,
-      sayi: sonuc.sayi,
-      mesaj: `${sonuc.tarih} tarihli Arvento raporu içe aktarıldı — ${sonuc.sayi} araç.`,
+      calismaGunler,
+      damperGunler,
+      mesaj: [
+        ...calismaGunler.map((s) => `${s.tarih} çalışma (${s.sayi})`),
+        ...(damperGunler.length ? [`damper ${damperGunler.length} gün`] : []),
+      ].join(" · "),
+      ...(hatalar.length ? { uyari: hatalar } : {}),
     });
   } catch (err) {
     try { await client.logout(); } catch { /* sessiz */ }

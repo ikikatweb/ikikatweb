@@ -860,6 +860,7 @@ export type AracArventoRapor = {
   rolanti_sn: number | null; // rölanti süresi (saniye)
   hareket_sn: number | null; // hareket/çalışma süresi (saniye)
   maks_hiz: number | null;   // km/s (varsa)
+  damper_sayisi: number | null; // o gün damper indirme sayısı
   marka: string | null;
   model: string | null;
   created_at: string;
