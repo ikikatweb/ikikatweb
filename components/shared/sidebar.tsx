@@ -9,7 +9,7 @@ import { hrefToModuleKey } from "@/lib/permissions";
 import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
   Mail, MailOpen, Landmark, Trash2,
-  Shield, Headphones, BarChart3, Wrench,
+  Shield, Headphones, BarChart3, Wrench, Satellite,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus,
   ChevronDown, ChevronUp,
   Swords, AlertTriangle, Crosshair, FileBarChart2, Network, Database,
@@ -53,6 +53,14 @@ const menuGroups: MenuGroup[] = [
       { label: "Araç Listesi", href: "/dashboard/araclar/sigorta-muayene", icon: <Shield size={16} /> },
       { label: "Belgeler", href: "/dashboard/araclar/acente-takip", icon: <Headphones size={16} /> },
       { label: "Acente Raporu", href: "/dashboard/araclar/acente-raporu", icon: <BarChart3 size={16} /> },
+    ],
+  },
+  {
+    title: "Arvento Raporu",
+    icon: <Satellite size={20} />,
+    color: "text-sky-600 bg-sky-50",
+    items: [
+      { label: "Araç Çalışma Raporu", href: "/dashboard/araclar/arvento-raporu", icon: <Satellite size={16} /> },
     ],
   },
   {

@@ -44,6 +44,7 @@ const DASHBOARD_WIDGETS = [
   { key: "santiye_defteri", label: "Şantiye Günlük Defteri" },
   { key: "bordro_ozet", label: "Bordro Takibi — Aylık Özet" },
   { key: "eksik_veri_girisi", label: "Sgk Primi Girilmemiş İşler" },
+  { key: "arvento", label: "Arvento Araç Çalışma" },
 ];
 
 export default function KullaniciForm({ kullanici, onSuccess, onCancel }: KullaniciFormProps) {

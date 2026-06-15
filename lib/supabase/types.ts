@@ -848,6 +848,23 @@ export type Mesaj = {
   created_at: string;
 };
 
+// Arvento araç çalışma raporu — günlük .xlsx'ten araç başına özet
+export type AracArventoRapor = {
+  id: string;
+  rapor_tarihi: string;      // YYYY-MM-DD
+  plaka: string;
+  surucu: string | null;
+  cihaz_no: string | null;
+  mesafe_km: number | null;
+  kontak_sn: number | null;  // kontak açık süresi (saniye)
+  rolanti_sn: number | null; // rölanti süresi (saniye)
+  hareket_sn: number | null; // hareket/çalışma süresi (saniye)
+  maks_hiz: number | null;   // km/s (varsa)
+  marka: string | null;
+  model: string | null;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {

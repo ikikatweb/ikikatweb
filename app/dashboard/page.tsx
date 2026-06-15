@@ -36,6 +36,7 @@ import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import ArventoWidget from "@/components/shared/arvento-widget";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null };
 type FirmaBasic = { id: string; firma_adi: string; renk: string | null; sira_no?: number | null };
@@ -2382,6 +2383,11 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+        </div> : null}
+
+        {/* Widget 8: Arvento Araç Çalışma — son rapor özeti */}
+        {wg("arvento") ? <div className="md:col-span-2 lg:col-span-2 lg:order-11">
+          <ArventoWidget />
         </div> : null}
 
       </div>
