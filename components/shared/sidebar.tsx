@@ -50,8 +50,8 @@ const menuGroups: MenuGroup[] = [
     icon: <Truck size={20} />,
     color: "text-blue-600 bg-blue-50",
     items: [
-      { label: "Sigorta & Muayene", href: "/dashboard/araclar/sigorta-muayene", icon: <Shield size={16} /> },
-      { label: "Acente Takip", href: "/dashboard/araclar/acente-takip", icon: <Headphones size={16} /> },
+      { label: "Araç Listesi", href: "/dashboard/araclar/sigorta-muayene", icon: <Shield size={16} /> },
+      { label: "Belgeler", href: "/dashboard/araclar/acente-takip", icon: <Headphones size={16} /> },
       { label: "Acente Raporu", href: "/dashboard/araclar/acente-raporu", icon: <BarChart3 size={16} /> },
     ],
   },

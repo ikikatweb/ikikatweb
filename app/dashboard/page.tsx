@@ -1333,6 +1333,7 @@ export default function DashboardPage() {
           ruhsatUrl: teklifArac.ruhsatUrl,
           ekBilgi: teklifEkBilgi,
           firmaId: teklifArac.firmaId,
+          gonderenKullanici: kullanici?.ad_soyad ?? null,
         }),
       });
       const data = await res.json();

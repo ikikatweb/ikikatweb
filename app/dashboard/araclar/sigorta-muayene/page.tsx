@@ -431,7 +431,7 @@ export default function SigortaMuayenePage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-          <Shield size={24} /> Sigorta & Muayene
+          <Shield size={24} /> Araç Listesi
         </h1>
       </div>
 

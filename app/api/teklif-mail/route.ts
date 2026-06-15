@@ -15,13 +15,14 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { acenteEmails, plaka, policeTipi, ruhsatUrl, ekBilgi, firmaId } = body as {
+    const { acenteEmails, plaka, policeTipi, ruhsatUrl, ekBilgi, firmaId, gonderenKullanici } = body as {
       acenteEmails: string[];
       plaka: string;
       policeTipi: "kasko" | "trafik";
       ruhsatUrl: string | null;
       ekBilgi: string;
       firmaId: string;
+      gonderenKullanici?: string | null;
     };
 
     if (!acenteEmails || acenteEmails.length === 0) {
@@ -80,12 +81,31 @@ export async function POST(request: Request) {
     // Mail konusu
     const konu = `${plaka} - ${policeTipi === "kasko" ? "Kasko" : "Trafik Sigortası"} Teklif Talebi`;
 
-    // Mail metni
+    // Kırmızı not (her iki tip için de eklenir)
+    const notMetni = "NOT: Fiyat Bilgisi İle Sigorta Firması Bilgisinide İletiniz.";
+
+    // Mail metni (düz metin sürümü — HTML desteklemeyen istemciler için)
     let metin = `Ekte ruhsat fotokopisi bulunan ${plaka} plakalı aracımızın süresi dolan ${tipMetni} poliçesi için yenileme teklifi çalışmasının yapılmasını rica ederiz.`;
     if (ekBilgi && ekBilgi.trim()) {
       metin += `\n\n${ekBilgi.trim()}`;
     }
     metin += "\n\nİyi çalışmalar.";
+    if (gonderenKullanici && gonderenKullanici.trim()) {
+      metin += `\n${gonderenKullanici.trim()}`;
+    }
+    metin += `\n\n${notMetni}`;
+
+    // HTML sürüm — not kırmızı ve kalın görünsün
+    const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const htmlBr = (s: string) => htmlEscape(s).replace(/\n/g, "<br>");
+    let html = `<p>Ekte ruhsat fotokopisi bulunan <strong>${htmlEscape(plaka)}</strong> plakalı aracımızın süresi dolan ${htmlEscape(tipMetni)} poliçesi için yenileme teklifi çalışmasının yapılmasını rica ederiz.</p>`;
+    if (ekBilgi && ekBilgi.trim()) {
+      html += `<p>${htmlBr(ekBilgi.trim())}</p>`;
+    }
+    html += gonderenKullanici && gonderenKullanici.trim()
+      ? `<p>İyi çalışmalar.<br>${htmlEscape(gonderenKullanici.trim())}</p>`
+      : `<p>İyi çalışmalar.</p>`;
+    html += `<p style="color:#dc2626;font-weight:bold;">${htmlEscape(notMetni)}</p>`;
 
     // Ruhsat ekini hazırla
     const attachments: { filename: string; content: Buffer }[] = [];
@@ -117,6 +137,7 @@ export async function POST(request: Request) {
           to: email,
           subject: konu,
           text: metin,
+          html,
           attachments,
         });
         console.log(`[Teklif Mail] Gönderildi → ${email}, messageId: ${info.messageId}, response: ${info.response}`);

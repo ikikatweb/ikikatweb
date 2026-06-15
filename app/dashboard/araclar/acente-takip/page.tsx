@@ -256,7 +256,7 @@ export default function AcenteTakipPage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-          <Headphones size={24} /> Acente Takip
+          <Headphones size={24} /> Belgeler
         </h1>
         <div className="text-xs text-gray-400">{filtrelenmis.length} poliçe</div>
       </div>
