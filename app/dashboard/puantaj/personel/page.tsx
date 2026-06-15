@@ -6,7 +6,6 @@ import Link from "next/link";
 import PersonelForm from "@/components/shared/personel-form";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getPersoneller, setPersonelPasif, setPersonelAktif } from "@/lib/supabase/queries/personel";
-import { getAtamaGecmisiTumu } from "@/lib/supabase/queries/bordro";
 import {
   getPersonelSantiyeler,
   addPersonelSantiye,
@@ -23,7 +22,7 @@ import {
 } from "@/lib/supabase/queries/personel-puantaj";
 import { useAuth } from "@/hooks";
 import type {
-  PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum, PersonelAtamaGecmisi,
+  PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum,
 } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -137,7 +136,6 @@ export default function PersonelPuantajPage() {
   const [personelSantiyeMap, setPersonelSantiyeMap] = useState<Map<string, Set<string>>>(new Map());
   // Atama geçmişi — pasif aralık tespiti için backup kaynak (DB'deki pasif_tarihi/
   // aktif_alma_tarihi alanları boş olsa bile bu tablodan tespit edilebilir).
-  const [atamaGecmisi, setAtamaGecmisi] = useState<PersonelAtamaGecmisi[]>([]);
 
   // Tab
   const [aktifTab, setAktifTab] = useState<"puantaj" | "atama">("puantaj");
@@ -254,14 +252,6 @@ export default function PersonelPuantajPage() {
       // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç
       const otoId = otomatikSantiyeId(sList, kullanici);
       if (otoId) setSantiyeId(otoId);
-
-      // Atama geçmişini yükle — pasif aralık tespiti için backup kaynak
-      try {
-        const atamalar = await getAtamaGecmisiTumu();
-        setAtamaGecmisi(atamalar ?? []);
-      } catch (err) {
-        console.error("getAtamaGecmisiTumu hata:", err);
-      }
 
       setLoading(false);
     }
@@ -664,23 +654,9 @@ export default function PersonelPuantajPage() {
       && hucreTarih < p.aktif_alma_tarihi
     ) return true;
 
-    // 3) Backup: atama_gecmisi tablosu — SEÇİLİ ŞANTİYE'de birden fazla atama varsa,
-    // aralarındaki boşluk kısıtlanır. Tek atama varsa eski davranış (kısıtlama yok).
-    if (santiyeId && atamaGecmisi.length > 0) {
-      const buSantiyeAtamalari = atamaGecmisi.filter(
-        (a) => a.personel_id === p.id && a.santiye_id === santiyeId,
-      );
-      if (buSantiyeAtamalari.length >= 2) {
-        // En az 2 atama → boşluk olabilir. Şu tarih için aktif atama var mı?
-        const aktifIciNde = buSantiyeAtamalari.some(
-          (a) =>
-            a.baslangic_tarihi <= hucreTarih
-            && (a.bitis_tarihi == null || hucreTarih <= a.bitis_tarihi),
-        );
-        if (!aktifIciNde) return true;
-      }
-    }
-
+    // NOT: Bordro takibindeki görevlendirme geçmişi (personel_atama_gecmisi) puantajı
+    // ETKİLEMEZ. Puantaj ile bordro takibi birbirinden bağımsız çalışır — bu yüzden
+    // atama aralıklarına göre kilitleme (eski 3. dal) kaldırıldı.
     return false;
   }
 
