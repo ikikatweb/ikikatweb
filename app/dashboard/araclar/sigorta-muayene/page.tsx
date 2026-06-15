@@ -331,25 +331,17 @@ export default function SigortaMuayenePage() {
     const key = `${arac.id}-${field}`;
 
     if (editKey === key) {
+      // Tarihi değiştir + Enter → kaydet. Esc veya boşluğa tıkla (blur) → iptal.
       return (
-        <div className="flex items-center gap-1">
-          <input type="date" defaultValue={editValue} autoFocus
-            data-date-field={key}
-            onKeyDown={(e) => {
-              const val = (e.target as HTMLInputElement).value;
-              if (e.key === "Enter") saveDate(arac.id, field, val);
-              if (e.key === "Escape") setEditKey(null);
-            }}
-            className="h-7 text-xs border rounded px-1 flex-1" />
-          <button type="button" onClick={() => {
-            const el = document.querySelector(`[data-date-field="${key}"]`) as HTMLInputElement | null;
-            if (el) saveDate(arac.id, field, el.value);
-          }} className="text-[10px] text-white bg-emerald-600 rounded px-1.5 py-1 hover:bg-emerald-700" title="Kaydet">OK</button>
-          <button type="button" onClick={() => saveDate(arac.id, field, "")}
-            className="text-[10px] text-white bg-red-500 rounded px-1.5 py-1 hover:bg-red-600" title="Tarihi temizle">
-            Temizle
-          </button>
-        </div>
+        <input type="date" defaultValue={editValue} autoFocus
+          data-date-field={key}
+          onKeyDown={(e) => {
+            const val = (e.target as HTMLInputElement).value;
+            if (e.key === "Enter") { e.preventDefault(); saveDate(arac.id, field, val); }
+            if (e.key === "Escape") { e.preventDefault(); setEditKey(null); }
+          }}
+          onBlur={() => setEditKey(null)}
+          className="h-7 text-xs border rounded px-1 w-full" />
       );
     }
 
