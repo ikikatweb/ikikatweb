@@ -64,8 +64,27 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     sonuc.calismaGunler.push({ tarih, sayi: satirlar.length });
   }
 
-  // ---- 2) Genel Rapor (damper indirme, çok günlü) ----
-  const genel = parseGenelRaporBuffer(buf);
+  // ---- 2) Genel Rapor / Damper Alarmı (damper indirme, çok günlü; bazıları KOORDİNATLI) ----
+  let genel = parseGenelRaporBuffer(buf);
+  if (genel.length > 0) {
+    // KOORDİNAT KORUMASI: koordinatsız bir kayıt, daha önce kaydedilmiş KOORDİNATLI kaydı ezmesin.
+    const tarihler = [...new Set(genel.map((g) => g.tarih))];
+    const koordluKayit = new Set<string>();
+    if (tarihler.length > 0) {
+      const { data: mevcut } = await supabase
+        .from("arac_arvento_rapor")
+        .select("rapor_tarihi, plaka, damper_olaylar")
+        .in("rapor_tarihi", tarihler);
+      for (const m of (mevcut ?? []) as { rapor_tarihi: string; plaka: string; damper_olaylar: { lat?: number | null; lng?: number | null }[] | null }[]) {
+        const ol = Array.isArray(m.damper_olaylar) ? m.damper_olaylar : [];
+        if (ol.some((o) => o?.lat != null && o?.lng != null)) koordluKayit.add(`${m.rapor_tarihi}|${m.plaka}`);
+      }
+    }
+    genel = genel.filter((g) => {
+      const yeniKoordlu = g.olaylar.some((o) => o.lat != null && o.lng != null);
+      return yeniKoordlu || !koordluKayit.has(`${g.tarih}|${g.plaka}`);
+    });
+  }
   if (genel.length > 0) {
     const satirlar = genel.map((g) => ({
       rapor_tarihi: g.tarih,

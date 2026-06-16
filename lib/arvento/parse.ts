@@ -80,8 +80,8 @@ function parseEnTarih(v: unknown): string | null {
   return `${m[3]}-${String(ay).padStart(2, "0")}-${String(parseInt(m[1], 10)).padStart(2, "0")}`;
 }
 
-// Tek bir damper indirme olayı (saat + nerede + Arvento harita linki)
-export type ArventoDamperOlay = { saat: string | null; adres: string | null; harita?: string | null };
+// Tek bir damper indirme olayı (saat + nerede + Arvento harita linki + varsa GPS koordinatı)
+export type ArventoDamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number; surucu: string | null; olaylar: ArventoDamperOlay[] };
 
 // "08:16:32" gibi saati çıkar
@@ -95,9 +95,12 @@ function parseSaat(v: unknown): string | null {
 // Genel Rapor ÇOK GÜNLÜ olabilir; her olayın kendi "Tarih/Saat" sütunundaki günü esas alınır.
 export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSatir[] {
   const wb = XLSX.read(buf, { type: "buffer" });
+  // "Genel Rapor", "Kamyonlar Genel Rapor" veya "Damper Kalktı/İndi Alarmı" (koordinatlı) sayfaları
   const sheetAdi =
     wb.SheetNames.find((n) => norm(n).includes("genel rapor")) ??
-    wb.SheetNames.find((n) => norm(n).includes("genel"));
+    wb.SheetNames.find((n) => norm(n).includes("genel")) ??
+    wb.SheetNames.find((n) => norm(n).includes("damper")) ??
+    wb.SheetNames.find((n) => norm(n).includes("alarm"));
   if (!sheetAdi) return [];
   const ws = wb.Sheets[sheetAdi];
   if (!ws) return [];
@@ -117,6 +120,22 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   // Adres tek sütun ("Adres") veya parçalı (Şehir/Mahalle/İlçe/Köy/Yol) gelebilir.
   const adresCol = head.findIndex((h) => h.includes("adres"));
   const surucuCol = head.findIndex((h) => h.includes("surucu"));
+  // GPS koordinatı — Arvento'da açıksa: ayrı Enlem/Boylam sütunları veya tek "Koordinat" sütunu
+  const enlemCol = head.findIndex((h) => h.includes("enlem") || h.includes("latitude") || h === "lat");
+  const boylamCol = head.findIndex((h) => h.includes("boylam") || h.includes("longitude") || h === "lon" || h === "lng" || h === "long");
+  const koordCol = head.findIndex((h) => h.includes("koordinat") || h.includes("konum") || (h.includes("enlem") && h.includes("boylam")));
+  const koordKur = (r: unknown[]): { lat: number; lng: number } | null => {
+    const f = (v: unknown) => parseFloat(String(v ?? "").trim().replace(",", "."));
+    if (enlemCol >= 0 && boylamCol >= 0) {
+      const la = f(r[enlemCol]); const lo = f(r[boylamCol]);
+      if (!isNaN(la) && !isNaN(lo) && (la !== 0 || lo !== 0)) return { lat: la, lng: lo };
+    }
+    if (koordCol >= 0) {
+      const m = String(r[koordCol] ?? "").match(/(-?\d+[.,]\d+)[,;\s]+(-?\d+[.,]\d+)/);
+      if (m) return { lat: parseFloat(m[1].replace(",", ".")), lng: parseFloat(m[2].replace(",", ".")) };
+    }
+    return null;
+  };
   // "Haritada Göster" sütunu — hücredeki KÖPRÜ (Arvento harita linki, kesin konum)
   const haritaCol = head.findIndex((h) => h.includes("harita") || h.includes("goster"));
   const r0 = XLSX.utils.decode_range(ws["!ref"] ?? "A1").s.r;
@@ -148,10 +167,13 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
     const pm = m.get(tarih)!;
     if (!pm.has(plaka)) pm.set(plaka, { olaylar: [], surucu: null });
     const grup = pm.get(plaka)!;
+    const koord = koordKur(r);
     grup.olaylar.push({
       saat: parseSaat(saatCol >= 0 ? r[saatCol] : r[tarihCol]),
       adres: adresKur(r),
       harita: haritaLink(i),
+      lat: koord?.lat ?? null,
+      lng: koord?.lng ?? null,
     });
     if (!grup.surucu && surucuCol >= 0) grup.surucu = temizMetin(r[surucuCol]);
   }

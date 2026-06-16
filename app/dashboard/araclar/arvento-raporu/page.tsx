@@ -15,6 +15,8 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import "leaflet/dist/leaflet.css";
+import type { Map as LeafletMap } from "leaflet";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -46,6 +48,19 @@ function saatToDk(saat: string | null | undefined): number | null {
   if (!m) return null;
   return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
 }
+
+// ---- Nominatim geocoding (OpenStreetMap) — tüm damperleri tek haritada göstermek için ----
+const geoCache = new Map<string, { lat: number; lng: number } | null>();
+async function geocodeAdres(adres: string): Promise<{ lat: number; lng: number } | null> {
+  if (geoCache.has(adres)) return geoCache.get(adres) ?? null;
+  try {
+    const r = await fetch(`/api/geocode?q=${encodeURIComponent(adres)}`);
+    const d = await r.json();
+    const c = (d?.konum ?? null) as { lat: number; lng: number } | null;
+    geoCache.set(adres, c); return c;
+  } catch { geoCache.set(adres, null); return null; }
+}
+const HARITA_RENKLER = ["#e11d48", "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
 
 // Tarih aralığındaki kayıtları PLAKAYA göre topla (çok günlük damper toplamı için).
 // Damper olaylarına gün etiketi eklenir (saat "DD.MM HH:MM:SS").
@@ -98,9 +113,15 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("arvento_mukerrer_dk", String(mukerrerDk));
   }, [mukerrerDk]);
-  // Haritada göster modalı: iframe URL + başlık
-  const [harita, setHarita] = useState<{ url: string; baslik: string } | null>(null);
-  // Damper sekmesi tarih aralığı (boşsa tek gün). Aralık seçilince çok günlük damper toplamı.
+  // Haritada göster modalı: adres (Google embed) + opsiyonel Arvento kesin-konum linki
+  const [harita, setHarita] = useState<{ baslik: string; adres: string; arvento: string | null; koord: { lat: number; lng: number } | null } | null>(null);
+  // Tüm damperleri tek haritada gösterme (Leaflet + geocoding)
+  const [tumHaritaAcik, setTumHaritaAcik] = useState(false);
+  const [haritaYukleniyor, setHaritaYukleniyor] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  // Damper sekmesi tarih aralığı — ana rapor tarihinden BAĞIMSIZ, başta ikisi de boş.
+  // İkisi de seçilince çok günlük damper toplamı; boşsa tek gün (seçili rapor tarihi).
+  const [rangeBas, setRangeBas] = useState<string>("");
   const [bitisTarih, setBitisTarih] = useState<string>("");
   const [rangeKayitlar, setRangeKayitlar] = useState<AracArventoRapor[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -184,15 +205,15 @@ export default function ArventoRaporPage() {
     return { sayi: filtrelenmis.length, calisan, toplamKm, toplamHareket, toplamDamper };
   }, [filtrelenmis]);
 
-  // Aralık seçiliyse o tarih aralığının kayıtlarını çek + plakaya göre topla
-  const aralikModu = !!bitisTarih && bitisTarih > seciliTarih;
+  // Aralık seçiliyse (başlangıç+bitiş dolu ve bitiş >= başlangıç) o aralığı çek + plakaya göre topla
+  const aralikModu = !!rangeBas && !!bitisTarih && bitisTarih >= rangeBas;
   useEffect(() => {
-    if (!(bitisTarih && bitisTarih > seciliTarih)) { setRangeKayitlar([]); return; }
+    if (!(rangeBas && bitisTarih && bitisTarih >= rangeBas)) { setRangeKayitlar([]); return; }
     (async () => {
-      try { setRangeKayitlar(aralikTopla(await getArventoRaporByRange(seciliTarih, bitisTarih))); }
+      try { setRangeKayitlar(aralikTopla(await getArventoRaporByRange(rangeBas, bitisTarih))); }
       catch { setRangeKayitlar([]); }
     })();
-  }, [seciliTarih, bitisTarih]);
+  }, [rangeBas, bitisTarih]);
 
   // Şantiye bazlı gruplama (plaka → araç puantaj şantiyesi)
   const gruplaSantiye = useCallback((list: AracArventoRapor[]) => {
@@ -223,6 +244,69 @@ export default function ArventoRaporPage() {
     return liste.filter((k) => trAramaNormalize([k.plaka, k.surucu, k.marka, k.model].filter(Boolean).join(" ")).includes(q));
   }, [aralikModu, rangeKayitlar, kayitlar, arama]);
   const damperGruplar = useMemo(() => gruplaSantiye(damperKaynak), [gruplaSantiye, damperKaynak]);
+
+  // Tüm damper olay noktaları (koordinat veya adresli) — tek haritada göstermek için
+  const tumNoktalar = useMemo(() => {
+    const pts: { plaka: string; saat: string | null; adres: string | null; lat: number | null; lng: number | null }[] = [];
+    for (const k of damperKaynak) {
+      for (const o of (Array.isArray(k.damper_olaylar) ? k.damper_olaylar : [])) {
+        const lat = o.lat ?? null; const lng = o.lng ?? null;
+        if ((lat != null && lng != null) || o.adres) pts.push({ plaka: k.plaka, saat: o.saat ?? null, adres: o.adres ?? null, lat, lng });
+      }
+    }
+    return pts;
+  }, [damperKaynak]);
+
+  // Tüm damperleri haritada göster — Leaflet yükle, adresleri geocode et, işaretle
+  useEffect(() => {
+    if (!tumHaritaAcik) return;
+    let iptal = false;
+    let map: LeafletMap | null = null;
+    (async () => {
+      setHaritaYukleniyor(true);
+      try {
+        const L = (await import("leaflet")).default;
+        if (iptal || !mapRef.current) return;
+        map = L.map(mapRef.current).setView([39, 35], 6);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap", maxZoom: 19 }).addTo(map);
+        setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 200); // modal içi boyut düzeltme
+        const plakaRenk = new Map<string, string>();
+        // GERÇEK koordinatı olmayan (yalnız adresli) noktalar için geocode et
+        const benzersizAdres = [...new Set(tumNoktalar.filter((p) => !(p.lat != null && p.lng != null) && p.adres).map((p) => p.adres as string))];
+        const koord = new Map<string, { lat: number; lng: number }>();
+        for (const adr of benzersizAdres) {
+          if (iptal) return;
+          const c = await geocodeAdres(adr);
+          if (c) koord.set(adr, c);
+          await new Promise((r) => setTimeout(r, 200)); // sunucu route nezaketi hallediyor
+        }
+        if (iptal || !map) return;
+        const bounds: [number, number][] = [];
+        // Aynı koordinata düşen noktaları üst üste bindirmemek için altın-açı spiraliyle hafifçe yelpazele
+        const kullanim = new Map<string, number>();
+        for (const p of tumNoktalar) {
+          const c = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : (p.adres ? koord.get(p.adres) : null);
+          if (!c) continue;
+          let renk = plakaRenk.get(p.plaka);
+          if (!renk) { renk = HARITA_RENKLER[plakaRenk.size % HARITA_RENKLER.length]; plakaRenk.set(p.plaka, renk); }
+          const key = `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`;
+          const n = kullanim.get(key) ?? 0; kullanim.set(key, n + 1);
+          const aci = n * 2.39996; // altın açı
+          const yari = n === 0 ? 0 : 0.0006 * Math.sqrt(n); // ~60m adım
+          const lat = c.lat + yari * Math.cos(aci);
+          const lng = c.lng + yari * Math.sin(aci);
+          L.circleMarker([lat, lng], { radius: 7, color: renk, fillColor: renk, fillOpacity: 0.85, weight: 2 })
+            .addTo(map).bindPopup(`<b>${p.plaka}</b><br>${p.saat ?? ""}<br>${p.adres ?? ""}`);
+          bounds.push([lat, lng]);
+        }
+        if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+        setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 100);
+      } catch { /* leaflet/geocode hata — sessiz */ } finally {
+        if (!iptal) setHaritaYukleniyor(false);
+      }
+    })();
+    return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
+  }, [tumHaritaAcik, tumNoktalar]);
 
   function exportExcel() {
     const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
@@ -380,20 +464,25 @@ export default function ArventoRaporPage() {
       ) : (
         // ---- SEKME 2: GENEL RAPOR (Damper İndirme) — 2 sütunlu kart düzeni ----
         <div className="overflow-auto max-h-[75vh] space-y-4">
-          {/* Tarih aralığı — çok günlük damper toplamı */}
-          <div className="flex flex-wrap items-center gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-            <span className="font-semibold text-[#1E3A5F]">Tarih aralığı:</span>
-            <select value={seciliTarih} onChange={(e) => setSeciliTarih(e.target.value)} className="h-7 rounded border border-blue-300 px-2 text-xs">
-              {tarihlerAsc.map((t) => <option key={t} value={t}>{formatTarih(t)}</option>)}
-            </select>
-            <span className="text-gray-400">→</span>
-            <select value={bitisTarih} onChange={(e) => setBitisTarih(e.target.value)} className="h-7 rounded border border-blue-300 px-2 text-xs">
-              <option value="">(tek gün)</option>
-              {tarihlerAsc.filter((t) => t > seciliTarih).map((t) => <option key={t} value={t}>{formatTarih(t)}</option>)}
-            </select>
-            {aralikModu
-              ? <span className="text-[#1E3A5F] font-semibold">{rangeKayitlar.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0)} toplam damper</span>
-              : <span className="text-gray-500">Bitiş seçilince seçili aralığın toplam damper sayısı gösterilir.</span>}
+          {/* Tarih aralığı — takvimli başlangıç/bitiş, çok günlük damper toplamı */}
+          <div className="flex flex-wrap items-end gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            <div className="space-y-1">
+              <Label className="text-[10px] text-gray-500">Başlangıç</Label>
+              <input type="date" value={rangeBas} onChange={(e) => setRangeBas(e.target.value)} className={selectClass} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-gray-500">Bitiş</Label>
+              <input type="date" value={bitisTarih} min={rangeBas || undefined} onChange={(e) => setBitisTarih(e.target.value)} className={selectClass} />
+            </div>
+            {(rangeBas || bitisTarih) && (
+              <button type="button" onClick={() => { setRangeBas(""); setBitisTarih(""); }}
+                className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Temizle</button>
+            )}
+            <div className="text-xs pb-2">
+              {aralikModu
+                ? <span className="text-[#1E3A5F] font-semibold">{Math.round((new Date(bitisTarih).getTime() - new Date(rangeBas).getTime()) / 86400000) + 1} gün · {rangeKayitlar.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0)} toplam damper</span>
+                : <span className="text-gray-500">Başlangıç ve bitiş seçince aralığın toplam damperi gösterilir. Boşsa seçili gün ({formatTarih(seciliTarih)}).</span>}
+            </div>
           </div>
           {/* Yanlış (art arda) damper kaldırma eşiği — yalnız tek gün */}
           {!aralikModu && (
@@ -405,6 +494,12 @@ export default function ArventoRaporPage() {
               <span className="text-gray-500">Bu süre içinde art arda gelen damper indirmeleri sayılmaz (gri görünür).</span>
             </div>
           )}
+          <div>
+            <Button size="sm" variant="outline" className="gap-1" disabled={tumNoktalar.length === 0}
+              onClick={() => setTumHaritaAcik(true)}>
+              <MapPin size={14} /> Tüm Damperleri Haritada Gör ({tumNoktalar.length})
+            </Button>
+          </div>
           {damperGruplar.map((g) => {
             // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
             const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
@@ -477,12 +572,9 @@ export default function ArventoRaporPage() {
                                   <span className={`flex-1 truncate ${haric ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
                                   {(o.harita || o.adres) && (
                                     <button type="button"
-                                      onClick={() => setHarita({
-                                        url: o.harita ?? `https://www.google.com/maps?q=${encodeURIComponent(o.adres ?? "")}&z=15&output=embed`,
-                                        baslik: o.adres ?? "Konum",
-                                      })}
+                                      onClick={() => setHarita({ baslik: o.adres ?? "Konum", adres: o.adres ?? "", arvento: o.harita ?? null, koord: (o.lat != null && o.lng != null) ? { lat: o.lat, lng: o.lng } : null })}
                                       className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"
-                                      title={o.harita ? "Arvento haritasında kesin konum" : "Haritada göster (yaklaşık)"}>
+                                      title="Haritada göster">
                                       <MapPin size={10} /> Harita
                                     </button>
                                   )}
@@ -501,7 +593,7 @@ export default function ArventoRaporPage() {
         </div>
       )}
 
-      {/* Haritada göster — sayfa içi PENCERE (iframe) */}
+      {/* Haritada göster — sayfa içi PENCERE: Google embed (görünür) + Arvento kesin konum */}
       {harita && (
         <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setHarita(null)}>
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
@@ -510,19 +602,48 @@ export default function ArventoRaporPage() {
               <span className="text-sm truncate">{harita.baslik}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <a href={harita.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs">Yeni sekme</a>
+              {harita.arvento && (
+                <a href={harita.arvento} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 rounded text-xs font-semibold" title="Arvento'da kesin konum (yeni sekme, giriş gerekir)">Arvento (kesin) ↗</a>
+              )}
+              <a href={`https://www.google.com/maps/search/?api=1&query=${harita.koord ? `${harita.koord.lat},${harita.koord.lng}` : encodeURIComponent(harita.adres)}`}
+                target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs">Google ↗</a>
               <button type="button" onClick={() => setHarita(null)} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
                 <X size={18} />
               </button>
             </div>
           </div>
-          <div className="bg-amber-100 text-amber-900 text-[11px] px-4 py-1 text-center" onClick={(e) => e.stopPropagation()}>
-            Harita boş görünürse (Arvento giriş/çerçeve engeli) sağ üstteki “Yeni sekme”yi kullanın.
-          </div>
+          {!harita.koord && (
+            <div className="bg-amber-100 text-amber-900 text-[11px] px-4 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+              Bu olayda GPS koordinatı yok; harita adres (yaklaşık) gösterir. <strong>Kesin konum</strong> için “Arvento (kesin)”.
+            </div>
+          )}
           <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
-            <iframe title="Harita" className="w-full h-full border-0" src={harita.url} />
+            <iframe title="Harita" className="w-full h-full border-0"
+              src={harita.koord
+                ? `https://www.google.com/maps?q=${harita.koord.lat},${harita.koord.lng}&z=17&output=embed`
+                : `https://www.google.com/maps?q=${encodeURIComponent(harita.adres)}&z=15&output=embed`} />
           </div>
+        </div>
+      )}
+
+      {/* Tüm damperler tek haritada (Leaflet + OpenStreetMap) */}
+      {tumHaritaAcik && (
+        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setTumHaritaAcik(false)}>
+          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <MapPin size={18} className="flex-shrink-0" />
+              <span className="text-sm truncate">Tüm Damper İndirmeleri — {tumNoktalar.length} nokta {haritaYukleniyor ? "· yükleniyor…" : ""}</span>
+            </div>
+            <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="bg-amber-100 text-amber-900 text-[11px] px-4 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+            Konumlar adres (mahalle) bazlı yaklaşıktır; renkler aracı, baloncuk plaka/saat/adresi gösterir. İlk açılış geocoding nedeniyle birkaç saniye sürebilir.
+          </div>
+          <div ref={mapRef} className="flex-1 bg-gray-100" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </div>
