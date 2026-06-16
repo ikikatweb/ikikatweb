@@ -377,12 +377,15 @@ export default function ArventoRaporPage() {
                             <div className="text-[10px] text-gray-500 truncate">
                               {[k.marka, k.model].filter(Boolean).join(" ") || "—"}{k.surucu ? ` · ${k.surucu}` : ""}
                             </div>
+                            <div className="text-[10px] text-gray-600 flex items-center gap-1">
+                              <Route size={10} className="text-gray-400" /> Mesafe: <strong>{k.mesafe_km != null ? `${formatKm(k.mesafe_km)} km` : "—"}</strong>
+                            </div>
                           </div>
                           <div className="text-right whitespace-nowrap">
                             <div className={`text-lg font-bold tabular-nums ${farkClass}`}>
                               {sayilan}{haricSayi > 0 && <span className="text-[10px] font-normal text-gray-400"> /{olaylar.length}</span>}
                             </div>
-                            <div className="text-[9px] text-gray-400">ort {ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</div>
+                            <div className="text-[9px] text-gray-400">damper · ort {ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</div>
                           </div>
                         </button>
                         {acik && (
