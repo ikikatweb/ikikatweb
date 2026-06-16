@@ -759,8 +759,11 @@ function YakitPageContent() {
           const carpan = aracMap.get(bAracId)?.sayac_tipi === "saat" ? 1 : 100;
           const birlesik = ((aMik + bMik) / toplamFark) * carpan;
           const genel = b.genelOrt ?? a.genelOrt;
-          if (!genel || b.limitAlt == null || b.limitUst == null) continue;
-          if (birlesik >= genel * b.limitAlt && birlesik <= genel * b.limitUst) {
+          if (!genel) continue;
+          // Birleşik ortalama, iki uç değerin İKİSİNDEN de genel ortalamaya daha yakınsa
+          // (yani birleştirmek tüketimi gerçekten normale çekiyorsa) → bağlantılı say.
+          const cFark = Math.abs(birlesik - genel);
+          if (cFark < Math.abs((a.anlikOrt ?? 0) - genel) && cFark < Math.abs((b.anlikOrt ?? 0) - genel)) {
             a.baglantiliAnomali = true; a.birlesikOrt = birlesik;
             b.baglantiliAnomali = true; b.birlesikOrt = birlesik;
           }
