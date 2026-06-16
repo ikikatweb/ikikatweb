@@ -116,6 +116,9 @@ type TabloSatir = {
   limitAlt: number | null;
   limitUst: number | null;
   limitIhlali: boolean;
+  anlikYon?: "alt" | "ust" | null;        // limit ihlali yönü
+  baglantiliAnomali?: boolean;            // ardışık alt+üst → muhtemelen yanlış "depo full"
+  birlesikOrt?: number | null;            // bağlantılı dolumların birleşik (normal) ortalaması
   birim: "km" | "saat" | null;
   virmanYon: "giden" | "gelen" | null; // virman satırlarında yön
   satirKey: string; // unique render key
@@ -715,8 +718,12 @@ function YakitPageContent() {
             if (satir.anlikOrt !== null && satir.anlikOrt > 0 && satir.genelOrt !== null && satir.genelOrt > 0) {
               const altDeger = satir.genelOrt * limit.alt_sinir;
               const ustDeger = satir.genelOrt * limit.ust_sinir;
-              if (satir.anlikOrt < altDeger || satir.anlikOrt > ustDeger) {
+              if (satir.anlikOrt < altDeger) {
                 satir.limitIhlali = true;
+                satir.anlikYon = "alt";
+              } else if (satir.anlikOrt > ustDeger) {
+                satir.limitIhlali = true;
+                satir.anlikYon = "ust";
               }
             }
           }
@@ -725,9 +732,46 @@ function YakitPageContent() {
 
       sonuc.push(satir);
     }
-    // "Sadece limit dışı" filtresi: araç yakıt + limit ihlali olan satırları bırak
+
+    // Bağlantılı anomali tespiti: aynı araçta ARDIŞIK iki tüketim dolumu zıt yönde
+    // (biri alt, diğeri üst) ve BİRLEŞİK ortalama normal bandın içindeyse → muhtemelen
+    // ortadaki dolum yanlışlıkla "depo full" işaretlenmiş. İkisini de işaretle (hesap değişmez).
+    {
+      const aracSatir = new Map<string, TabloSatir[]>();
+      for (const s of sonuc) {
+        if (s.hareket.tip === "arac_yakit" && s.anlikOrt != null && s.anlikOrt > 0) {
+          const aid = s.hareket.arac_id;
+          if (!aracSatir.has(aid)) aracSatir.set(aid, []);
+          aracSatir.get(aid)!.push(s);
+        }
+      }
+      for (const [, list] of aracSatir) {
+        list.sort((a, b) => hareketKey(a.hareket).localeCompare(hareketKey(b.hareket)));
+        for (let i = 1; i < list.length; i++) {
+          const a = list[i - 1], b = list[i];
+          if (!a.limitIhlali || !b.limitIhlali) continue;
+          if (!((a.anlikYon === "alt" && b.anlikYon === "ust") || (a.anlikYon === "ust" && b.anlikYon === "alt"))) continue;
+          const toplamFark = (a.fark ?? 0) + (b.fark ?? 0);
+          if (toplamFark <= 0) continue;
+          const aMik = a.hareket.tip === "arac_yakit" ? a.hareket.miktar_lt : 0;
+          const bMik = b.hareket.tip === "arac_yakit" ? b.hareket.miktar_lt : 0;
+          const bAracId = b.hareket.tip === "arac_yakit" ? b.hareket.arac_id : "";
+          const carpan = aracMap.get(bAracId)?.sayac_tipi === "saat" ? 1 : 100;
+          const birlesik = ((aMik + bMik) / toplamFark) * carpan;
+          const genel = b.genelOrt ?? a.genelOrt;
+          if (!genel || b.limitAlt == null || b.limitUst == null) continue;
+          if (birlesik >= genel * b.limitAlt && birlesik <= genel * b.limitUst) {
+            a.baglantiliAnomali = true; a.birlesikOrt = birlesik;
+            b.baglantiliAnomali = true; b.birlesikOrt = birlesik;
+          }
+        }
+      }
+    }
+
+    // "Sadece limit dışı" filtresi: araç yakıt + limit ihlali olan satırları bırak.
+    // Bağlantılı (muhtemelen yanlış full) çiftler gerçek ihlal sayılmaz → gösterilmez.
     if (sadeceLimitDisi) {
-      return sonuc.filter((s) => s.hareket.tip === "arac_yakit" && s.limitIhlali);
+      return sonuc.filter((s) => s.hareket.tip === "arac_yakit" && s.limitIhlali && !s.baglantiliAnomali);
     }
     return sonuc;
   }, [
@@ -1580,7 +1624,10 @@ function YakitPageContent() {
                           if (s.anlikOrt > s.genelOrt * s.limitUst) limitYon = "ust";       // çok tüketim → kırmızı
                           else if (s.anlikOrt < s.genelOrt * s.limitAlt) limitYon = "alt";  // az tüketim → yeşil
                         }
-                        const renkClass = limitYon === "ust"
+                        // Bağlantılı (muhtemelen yanlış full) → gerçek ihlal değil: açık turuncu (koyu değil).
+                        const renkClass = s.baglantiliAnomali
+                          ? "text-orange-400 font-normal"
+                          : limitYon === "ust"
                           ? "text-red-600 font-bold"
                           : limitYon === "alt"
                           ? "text-emerald-600 font-bold"
@@ -1591,13 +1638,21 @@ function YakitPageContent() {
                             <span className={renkClass}>
                               {formatSayi(s.anlikOrt, 2)}{birimEki}
                             </span>
-                            {limitYon && kat !== null && (
+                            {limitYon && kat !== null && !s.baglantiliAnomali && (
                               <span
                                 className={`text-[9px] flex items-center gap-0.5 ${altRenk}`}
                                 title={`Anlık, genel ortalamanın ${kat.toFixed(2)} katı (Limit çarpanı: alt ${s.limitAlt} – üst ${s.limitUst})`}
                               >
                                 <AlertTriangle size={8} />
                                 {limitYon === "ust" ? "Üst limit aşıldı" : "Alt limit aşıldı"} · {kat.toFixed(2)} kat
+                              </span>
+                            )}
+                            {s.baglantiliAnomali && (
+                              <span
+                                className="text-[9px] flex items-center gap-0.5 text-orange-400 font-normal"
+                                title={`Bu dolum komşu dolumla bağlantılı olabilir — muhtemelen biri yanlışlıkla 'Depo Full' işaretlendi. İkisinin BİRLEŞİK ortalaması ${s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}${birimEki} ve normal sınırlar içinde. Düzeltmek için ilgili dolumun 'Depo Full' işaretini kaldırın.`}
+                              >
+                                🔗 Bağlantılı? · birleşik {s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}{birimEki}
                               </span>
                             )}
                           </div>
