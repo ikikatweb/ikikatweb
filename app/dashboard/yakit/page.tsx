@@ -738,9 +738,10 @@ function YakitPageContent() {
     // (biri alt, diğeri üst) ve BİRLEŞİK ortalama normal bandın içindeyse → muhtemelen
     // ortadaki dolum yanlışlıkla "depo full" işaretlenmiş. İkisini de işaretle (hesap değişmez).
     {
+      // Araçtaki TÜM dolumları sıraya diz (arada başka dolum varsa "ard arda" sayılmaz).
       const aracSatir = new Map<string, TabloSatir[]>();
       for (const s of sonuc) {
-        if (s.hareket.tip === "arac_yakit" && s.anlikOrt != null && s.anlikOrt > 0) {
+        if (s.hareket.tip === "arac_yakit") {
           const aid = s.hareket.arac_id;
           if (!aracSatir.has(aid)) aracSatir.set(aid, []);
           aracSatir.get(aid)!.push(s);
@@ -750,6 +751,8 @@ function YakitPageContent() {
         list.sort((a, b) => hareketKey(a.hareket).localeCompare(hareketKey(b.hareket)));
         for (let i = 1; i < list.length; i++) {
           const a = list[i - 1], b = list[i];
+          // Yalnızca ARD ARDA iki tüketim dolumu (ikisinde de anlık ortalama hesaplanmış olmalı)
+          if (a.anlikOrt == null || a.anlikOrt <= 0 || b.anlikOrt == null || b.anlikOrt <= 0) continue;
           // Limit İÇİ olsa bile: yön genel ortalamaya göre (alt = genelin altında, üst = üstünde).
           const genel = b.genelOrt ?? a.genelOrt;
           if (!genel) continue;
