@@ -109,9 +109,19 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   if (hi < 0) return [];
   const head = (rows[hi] ?? []).map(norm);
   const plakaCol = head.findIndex((h) => h.includes("plaka"));
-  const turCol = head.findIndex((h) => h.includes("tur"));
+  // Tür / Alarm Türü sütunu (tarih sütunlarını yanlışlıkla seçmemek için "tarih" hariç)
+  const turCol = head.findIndex((h) => (h.includes("tur") || h.includes("alarm")) && !h.includes("tarih"));
   const tarihCol = head.findIndex((h) => h.includes("tarih"));
+  // Saat ayrı sütunda olabilir: "Tarih/Saat (Saat)". Yoksa tarih sütunundan çıkarılır.
+  const saatCol = head.findIndex((h) => h.includes("(saat)"));
+  // Adres tek sütun ("Adres") veya parçalı (Şehir/Mahalle/İlçe/Köy/Yol) gelebilir.
   const adresCol = head.findIndex((h) => h.includes("adres"));
+  const parcaCols = ["mahalle", "yol", "koy", "ilce", "sehir"].map((ad) => head.findIndex((h) => h.includes(ad)));
+  const adresKur = (r: unknown[]): string | null => {
+    if (adresCol >= 0) return temizMetin(r[adresCol]);
+    const parts = parcaCols.map((ci) => (ci >= 0 ? temizMetin(r[ci]) : null)).filter(Boolean);
+    return parts.length ? parts.join(", ") : null;
+  };
   if (plakaCol < 0 || tarihCol < 0) return [];
 
   // tarih -> plaka -> olaylar[]
@@ -121,15 +131,16 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
     if (!r) continue;
     const plaka = temizMetin(r[plakaCol]);
     if (!plaka) continue;
-    if (turCol >= 0 && !norm(r[turCol]).includes("damper")) continue;
+    // SADECE "Damper İndi" sayılır — "Damper Kalktı" (damper kaldırma) hariç.
+    if (turCol >= 0 && !norm(r[turCol]).includes("indi")) continue;
     const tarih = parseEnTarih(r[tarihCol]);
     if (!tarih) continue;
     if (!m.has(tarih)) m.set(tarih, new Map());
     const pm = m.get(tarih)!;
     if (!pm.has(plaka)) pm.set(plaka, []);
     pm.get(plaka)!.push({
-      saat: parseSaat(r[tarihCol]),
-      adres: adresCol >= 0 ? temizMetin(r[adresCol]) : null,
+      saat: parseSaat(saatCol >= 0 ? r[saatCol] : r[tarihCol]),
+      adres: adresKur(r),
     });
   }
   const out: ArventoGenelSatir[] = [];
