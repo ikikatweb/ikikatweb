@@ -33,26 +33,52 @@ export async function getArventoRaporByTarih(tarih: string): Promise<AracArvento
   return (data ?? []) as AracArventoRapor[];
 }
 
+// Tarih aralığındaki tüm araç kayıtları (çok günlük damper toplamı için)
+export async function getArventoRaporByRange(bas: string, bitis: string): Promise<AracArventoRapor[]> {
+  if (!bas || !bitis) return [];
+  const supabase = getSupabase();
+  const PARCA = 1000;
+  let offset = 0;
+  const tum: AracArventoRapor[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_arvento_rapor")
+      .select("*")
+      .gte("rapor_tarihi", bas)
+      .lte("rapor_tarihi", bitis)
+      .order("rapor_tarihi", { ascending: true })
+      .range(offset, offset + PARCA - 1);
+    if (error) throw error;
+    const parca = (data ?? []) as AracArventoRapor[];
+    tum.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tum;
+}
+
 // Plaka başına GENEL ORTALAMA (tüm günler) — km ve damper indirme ortalaması
-export type ArventoOrtalama = { ortKm: number; ortDamper: number; gun: number };
+export type ArventoOrtalama = { ortKm: number; ortDamper: number; gun: number; surucu: string | null };
 export async function getArventoOrtalamalar(): Promise<Map<string, ArventoOrtalama>> {
   const supabase = getSupabase();
   const PARCA = 1000;
   let offset = 0;
-  const topla = new Map<string, { km: number; damper: number; gun: number }>();
+  const topla = new Map<string, { km: number; damper: number; gun: number; surucu: string | null }>();
   while (true) {
     const { data, error } = await supabase
       .from("arac_arvento_rapor")
-      .select("plaka, mesafe_km, damper_sayisi")
+      .select("plaka, mesafe_km, damper_sayisi, surucu")
       .range(offset, offset + PARCA - 1);
     if (error) break;
-    const parca = (data ?? []) as { plaka: string; mesafe_km: number | null; damper_sayisi: number | null }[];
+    const parca = (data ?? []) as { plaka: string; mesafe_km: number | null; damper_sayisi: number | null; surucu: string | null }[];
     for (const r of parca) {
       const k = r.plaka;
-      const t = topla.get(k) ?? { km: 0, damper: 0, gun: 0 };
+      const t = topla.get(k) ?? { km: 0, damper: 0, gun: 0, surucu: null };
       t.km += r.mesafe_km ?? 0;
       t.damper += r.damper_sayisi ?? 0;
       t.gun += 1;
+      if (!t.surucu && r.surucu) t.surucu = r.surucu; // temsilî şoför (fallback)
       topla.set(k, t);
     }
     if (parca.length < PARCA) break;
@@ -61,7 +87,7 @@ export async function getArventoOrtalamalar(): Promise<Map<string, ArventoOrtala
   }
   const out = new Map<string, ArventoOrtalama>();
   for (const [k, t] of topla) {
-    out.set(k, { ortKm: t.gun ? t.km / t.gun : 0, ortDamper: t.gun ? t.damper / t.gun : 0, gun: t.gun });
+    out.set(k, { ortKm: t.gun ? t.km / t.gun : 0, ortDamper: t.gun ? t.damper / t.gun : 0, gun: t.gun, surucu: t.surucu });
   }
   return out;
 }

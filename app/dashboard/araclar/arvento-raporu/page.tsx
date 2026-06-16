@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoTarihler, getArventoRaporByTarih, getArventoOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
+import { getArventoTarihler, getArventoRaporByTarih, getArventoRaporByRange, getArventoOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -47,6 +47,30 @@ function saatToDk(saat: string | null | undefined): number | null {
   return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
 }
 
+// Tarih aralığındaki kayıtları PLAKAYA göre topla (çok günlük damper toplamı için).
+// Damper olaylarına gün etiketi eklenir (saat "DD.MM HH:MM:SS").
+function aralikTopla(rows: AracArventoRapor[]): AracArventoRapor[] {
+  const m = new Map<string, AracArventoRapor>();
+  for (const r of rows) {
+    const gunEk = `${r.rapor_tarihi.slice(8, 10)}.${r.rapor_tarihi.slice(5, 7)}`;
+    const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []).map((o) => ({
+      ...o, saat: o.saat ? `${gunEk} ${o.saat}` : o.saat,
+    }));
+    const ex = m.get(r.plaka);
+    if (!ex) {
+      m.set(r.plaka, { ...r, mesafe_km: r.mesafe_km ?? 0, damper_sayisi: r.damper_sayisi ?? 0, damper_olaylar: olaylar });
+    } else {
+      ex.mesafe_km = (ex.mesafe_km ?? 0) + (r.mesafe_km ?? 0);
+      ex.damper_sayisi = (ex.damper_sayisi ?? 0) + (r.damper_sayisi ?? 0);
+      ex.damper_olaylar = [...(ex.damper_olaylar ?? []), ...olaylar];
+      if (!ex.surucu && r.surucu) ex.surucu = r.surucu;
+      if (!ex.marka && r.marka) ex.marka = r.marka;
+      if (!ex.model && r.model) ex.model = r.model;
+    }
+  }
+  return Array.from(m.values());
+}
+
 export default function ArventoRaporPage() {
   const { hasPermission } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
@@ -74,8 +98,11 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("arvento_mukerrer_dk", String(mukerrerDk));
   }, [mukerrerDk]);
-  // Haritada göster modalı için seçilen adres
-  const [haritaAdres, setHaritaAdres] = useState<string | null>(null);
+  // Haritada göster modalı: iframe URL + başlık
+  const [harita, setHarita] = useState<{ url: string; baslik: string } | null>(null);
+  // Damper sekmesi tarih aralığı (boşsa tek gün). Aralık seçilince çok günlük damper toplamı.
+  const [bitisTarih, setBitisTarih] = useState<string>("");
+  const [rangeKayitlar, setRangeKayitlar] = useState<AracArventoRapor[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -157,25 +184,45 @@ export default function ArventoRaporPage() {
     return { sayi: filtrelenmis.length, calisan, toplamKm, toplamHareket, toplamDamper };
   }, [filtrelenmis]);
 
+  // Aralık seçiliyse o tarih aralığının kayıtlarını çek + plakaya göre topla
+  const aralikModu = !!bitisTarih && bitisTarih > seciliTarih;
+  useEffect(() => {
+    if (!(bitisTarih && bitisTarih > seciliTarih)) { setRangeKayitlar([]); return; }
+    (async () => {
+      try { setRangeKayitlar(aralikTopla(await getArventoRaporByRange(seciliTarih, bitisTarih))); }
+      catch { setRangeKayitlar([]); }
+    })();
+  }, [seciliTarih, bitisTarih]);
+
   // Şantiye bazlı gruplama (plaka → araç puantaj şantiyesi)
-  const gruplar = useMemo(() => {
+  const gruplaSantiye = useCallback((list: AracArventoRapor[]) => {
     const m = new Map<string, AracArventoRapor[]>();
-    for (const k of filtrelenmis) {
+    for (const k of list) {
       const ad = plakaSantiye.get(plakaNorm(k.plaka))?.santiyeAdi ?? "Eşleşmedi";
       if (!m.has(ad)) m.set(ad, []);
       m.get(ad)!.push(k);
     }
-    const arr = Array.from(m.entries()).map(([ad, list]) => ({
+    const arr = Array.from(m.entries()).map(([ad, l]) => ({
       ad,
-      kayitlar: [...list].sort((a, b) => (b.mesafe_km ?? 0) - (a.mesafe_km ?? 0)),
-      toplamKm: list.reduce((s, k) => s + (k.mesafe_km ?? 0), 0),
-      toplamDamper: list.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0),
-      calisan: list.filter((k) => (k.mesafe_km ?? 0) > 0 || (k.hareket_sn ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0).length,
+      kayitlar: [...l].sort((a, b) => (b.mesafe_km ?? 0) - (a.mesafe_km ?? 0)),
+      toplamKm: l.reduce((s, k) => s + (k.mesafe_km ?? 0), 0),
+      toplamDamper: l.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0),
+      calisan: l.filter((k) => (k.mesafe_km ?? 0) > 0 || (k.hareket_sn ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0).length,
     }));
     const sona = (x: string) => (x === "Atanmamış" || x === "Eşleşmedi" ? 1 : 0);
     arr.sort((a, b) => sona(a.ad) - sona(b.ad) || b.toplamKm - a.toplamKm || a.ad.localeCompare(b.ad, "tr"));
     return arr;
-  }, [filtrelenmis, plakaSantiye]);
+  }, [plakaSantiye]);
+
+  const gruplar = useMemo(() => gruplaSantiye(filtrelenmis), [gruplaSantiye, filtrelenmis]);
+  // Damper sekmesi kaynağı: aralık seçiliyse toplanmış aralık verisi, değilse tek gün
+  const damperKaynak = useMemo(() => {
+    const liste = aralikModu ? rangeKayitlar : kayitlar;
+    const q = trAramaNormalize(arama.trim());
+    if (!q) return liste;
+    return liste.filter((k) => trAramaNormalize([k.plaka, k.surucu, k.marka, k.model].filter(Boolean).join(" ")).includes(q));
+  }, [aralikModu, rangeKayitlar, kayitlar, arama]);
+  const damperGruplar = useMemo(() => gruplaSantiye(damperKaynak), [gruplaSantiye, damperKaynak]);
 
   function exportExcel() {
     const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
@@ -262,7 +309,7 @@ export default function ArventoRaporPage() {
 
       {/* Sekmeler */}
       <div className="flex gap-1 mb-3 border-b">
-        {([["calisma", "Araç Çalışma Raporu"], ["genel", "Genel Rapor (Damper)"]] as const).map(([key, label]) => (
+        {([["calisma", "Araç Çalışma Raporu"], ["genel", "Damper Detay"]] as const).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setAktifSekme(key)}
             className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
               aktifSekme === key ? "border-[#1E3A5F] text-[#1E3A5F]" : "border-transparent text-gray-400 hover:text-gray-600"
@@ -333,15 +380,32 @@ export default function ArventoRaporPage() {
       ) : (
         // ---- SEKME 2: GENEL RAPOR (Damper İndirme) — 2 sütunlu kart düzeni ----
         <div className="overflow-auto max-h-[75vh] space-y-4">
-          {/* Yanlış (art arda) damper kaldırma eşiği */}
-          <div className="flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            <span className="font-semibold text-amber-800">Yanlış kaldırma eşiği:</span>
-            <input type="number" min={0} value={mukerrerDk}
-              onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-16 h-7 rounded border border-amber-300 px-2 text-center" /> dk
-            <span className="text-gray-500">Bu süre içinde art arda gelen damper indirmeleri sayılmaz (gri görünür).</span>
+          {/* Tarih aralığı — çok günlük damper toplamı */}
+          <div className="flex flex-wrap items-center gap-2 text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+            <span className="font-semibold text-[#1E3A5F]">Tarih aralığı:</span>
+            <select value={seciliTarih} onChange={(e) => setSeciliTarih(e.target.value)} className="h-7 rounded border border-blue-300 px-2 text-xs">
+              {tarihlerAsc.map((t) => <option key={t} value={t}>{formatTarih(t)}</option>)}
+            </select>
+            <span className="text-gray-400">→</span>
+            <select value={bitisTarih} onChange={(e) => setBitisTarih(e.target.value)} className="h-7 rounded border border-blue-300 px-2 text-xs">
+              <option value="">(tek gün)</option>
+              {tarihlerAsc.filter((t) => t > seciliTarih).map((t) => <option key={t} value={t}>{formatTarih(t)}</option>)}
+            </select>
+            {aralikModu
+              ? <span className="text-[#1E3A5F] font-semibold">{rangeKayitlar.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0)} toplam damper</span>
+              : <span className="text-gray-500">Bitiş seçilince seçili aralığın toplam damper sayısı gösterilir.</span>}
           </div>
-          {gruplar.map((g) => {
+          {/* Yanlış (art arda) damper kaldırma eşiği — yalnız tek gün */}
+          {!aralikModu && (
+            <div className="flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <span className="font-semibold text-amber-800">Yanlış kaldırma eşiği:</span>
+              <input type="number" min={0} value={mukerrerDk}
+                onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
+                className="w-16 h-7 rounded border border-amber-300 px-2 text-center" /> dk
+              <span className="text-gray-500">Bu süre içinde art arda gelen damper indirmeleri sayılmaz (gri görünür).</span>
+            </div>
+          )}
+          {damperGruplar.map((g) => {
             // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
             const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
             if (damperKayitlar.length === 0) return null;
@@ -355,22 +419,26 @@ export default function ArventoRaporPage() {
                   {damperKayitlar.map((k) => {
                     const ort = ortalamalar.get(k.plaka);
                     const olaylar = Array.isArray(k.damper_olaylar) ? k.damper_olaylar : [];
-                    // Eşik içinde art arda gelen damper indirmelerini "haric" işaretle (sayılmaz)
+                    // Eşik içinde art arda gelen damper indirmelerini "haric" işaretle (sayılmaz).
+                    // Aralık modunda eşik uygulanmaz (gün-içi kavramı), tüm olaylar sayılır.
+                    const esik = aralikModu ? 0 : mukerrerDk;
                     let sonDk = -Infinity;
                     const isaretli = olaylar.map((o) => {
                       const dk = saatToDk(o.saat);
-                      const haric = mukerrerDk > 0 && dk != null && (dk - sonDk) < mukerrerDk;
+                      const haric = esik > 0 && dk != null && (dk - sonDk) < esik;
                       if (!haric && dk != null) sonDk = dk;
                       return { o, haric };
                     });
                     const sayilan = isaretli.filter((x) => !x.haric).length;
                     const haricSayi = olaylar.length - sayilan;
                     const dmpFark = sayilan - (ort?.ortDamper ?? 0);
-                    const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
+                    // Aralık modunda sayı çok günlük toplam → nötr; tek günde ortalamaya göre renk
+                    const farkClass = aralikModu ? "text-[#1E3A5F]" : dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
                     const acilabilir = olaylar.length > 0;
                     const acik = acilabilir && !kapaliPlakalar.has(k.plaka); // varsayılan açık
                     const ps = plakaSantiye.get(plakaNorm(k.plaka));
                     const markaModel = [k.marka ?? ps?.marka, k.model ?? ps?.model].filter(Boolean).join(" ");
+                    const soforAd = k.surucu ?? ort?.surucu ?? null; // gün boşsa temsilî şoför
                     return (
                       <div key={k.id} className={`border rounded-lg bg-white ${sayilan > 0 ? "" : "opacity-50"}`}>
                         <button
@@ -384,7 +452,7 @@ export default function ArventoRaporPage() {
                               {k.plaka}
                             </div>
                             <div className="text-[11px] text-gray-700 truncate">{markaModel || "—"}</div>
-                            <div className="text-[10px] text-gray-500 truncate">Şoför: {k.surucu ?? "—"}</div>
+                            <div className="text-[10px] text-gray-500 truncate">Şoför: {soforAd ?? "—"}</div>
                             <div className="text-[10px] text-gray-600 flex items-center gap-1">
                               <Route size={10} className="text-gray-400" /> Mesafe: <strong>{k.mesafe_km != null ? `${formatKm(k.mesafe_km)} km` : "—"}</strong>
                             </div>
@@ -407,18 +475,17 @@ export default function ArventoRaporPage() {
                                   <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
                                   <span className={`font-mono whitespace-nowrap ${haric ? "text-gray-400 line-through" : "font-semibold text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
                                   <span className={`flex-1 truncate ${haric ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
-                                  {o.harita ? (
-                                    <a href={o.harita} target="_blank" rel="noopener noreferrer"
+                                  {(o.harita || o.adres) && (
+                                    <button type="button"
+                                      onClick={() => setHarita({
+                                        url: o.harita ?? `https://www.google.com/maps?q=${encodeURIComponent(o.adres ?? "")}&z=15&output=embed`,
+                                        baslik: o.adres ?? "Konum",
+                                      })}
                                       className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"
-                                      title="Arvento haritasında kesin konum (yeni sekme)">
-                                      <MapPin size={10} /> Harita
-                                    </a>
-                                  ) : o.adres ? (
-                                    <button type="button" onClick={() => setHaritaAdres(o.adres ?? null)}
-                                      className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5" title="Haritada göster (yaklaşık)">
+                                      title={o.harita ? "Arvento haritasında kesin konum" : "Haritada göster (yaklaşık)"}>
                                       <MapPin size={10} /> Harita
                                     </button>
-                                  ) : null}
+                                  )}
                                 </li>
                               ))}
                             </ol>
@@ -434,26 +501,27 @@ export default function ArventoRaporPage() {
         </div>
       )}
 
-      {/* Haritada göster — pencere (Google Maps embed, zoom destekli) */}
-      {haritaAdres && (
-        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setHaritaAdres(null)}>
+      {/* Haritada göster — sayfa içi PENCERE (iframe) */}
+      {harita && (
+        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setHarita(null)}>
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <MapPin size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">{haritaAdres}</span>
+              <span className="text-sm truncate">{harita.baslik}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(haritaAdres)}`}
-                target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+              <a href={harita.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs">Yeni sekme</a>
-              <button type="button" onClick={() => setHaritaAdres(null)} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
+              <button type="button" onClick={() => setHarita(null)} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
                 <X size={18} />
               </button>
             </div>
           </div>
+          <div className="bg-amber-100 text-amber-900 text-[11px] px-4 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+            Harita boş görünürse (Arvento giriş/çerçeve engeli) sağ üstteki “Yeni sekme”yi kullanın.
+          </div>
           <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
-            <iframe title="Harita" className="w-full h-full border-0"
-              src={`https://www.google.com/maps?q=${encodeURIComponent(haritaAdres)}&z=15&output=embed`} />
+            <iframe title="Harita" className="w-full h-full border-0" src={harita.url} />
           </div>
         </div>
       )}
