@@ -747,32 +747,49 @@ function YakitPageContent() {
           aracSatir.get(aid)!.push(s);
         }
       }
+      const fmtH = (h: Hareket) => { const [yy, mm, dd] = h.tarih.split("-"); return `${dd}.${mm}.${yy}${h.saat ? " " + h.saat.slice(0, 5) : ""}`; };
+      // İki ARD ARDA dolum bağ kurabilir mi? Kurarsa birleşik ortalamayı döndür, kuramazsa null.
+      // Koşullar: ikisinde de anlık ort var, yön zıt (biri genel altı, biri üstü, limit içi olsa da),
+      // ve birleşik ortalama her ikisinden de genel ortalamaya daha yakın.
+      const bagKur = (x: TabloSatir, y: TabloSatir): number | null => {
+        if (x.anlikOrt == null || x.anlikOrt <= 0 || y.anlikOrt == null || y.anlikOrt <= 0) return null;
+        const genel = x.genelOrt ?? y.genelOrt;
+        if (!genel) return null;
+        const xDir = x.anlikOrt < genel ? "alt" : x.anlikOrt > genel ? "ust" : null;
+        const yDir = y.anlikOrt < genel ? "alt" : y.anlikOrt > genel ? "ust" : null;
+        if (!((xDir === "alt" && yDir === "ust") || (xDir === "ust" && yDir === "alt"))) return null;
+        const toplamFark = (x.fark ?? 0) + (y.fark ?? 0);
+        if (toplamFark <= 0) return null;
+        const xMik = x.hareket.tip === "arac_yakit" ? x.hareket.miktar_lt : 0;
+        const yMik = y.hareket.tip === "arac_yakit" ? y.hareket.miktar_lt : 0;
+        const aid = x.hareket.tip === "arac_yakit" ? x.hareket.arac_id : "";
+        const carpan = aracMap.get(aid)?.sayac_tipi === "saat" ? 1 : 100;
+        const birlesik = ((xMik + yMik) / toplamFark) * carpan;
+        const cFark = Math.abs(birlesik - genel);
+        if (cFark < Math.abs(x.anlikOrt - genel) && cFark < Math.abs(y.anlikOrt - genel)) return birlesik;
+        return null;
+      };
       for (const [, list] of aracSatir) {
         list.sort((a, b) => hareketKey(a.hareket).localeCompare(hareketKey(b.hareket)));
-        for (let i = 1; i < list.length; i++) {
-          const a = list[i - 1], b = list[i];
-          // Yalnızca ARD ARDA iki tüketim dolumu (ikisinde de anlık ortalama hesaplanmış olmalı)
-          if (a.anlikOrt == null || a.anlikOrt <= 0 || b.anlikOrt == null || b.anlikOrt <= 0) continue;
-          // Limit İÇİ olsa bile: yön genel ortalamaya göre (alt = genelin altında, üst = üstünde).
-          const genel = b.genelOrt ?? a.genelOrt;
-          if (!genel) continue;
-          const aDir = (a.anlikOrt ?? 0) < genel ? "alt" : (a.anlikOrt ?? 0) > genel ? "ust" : null;
-          const bDir = (b.anlikOrt ?? 0) < genel ? "alt" : (b.anlikOrt ?? 0) > genel ? "ust" : null;
-          if (!((aDir === "alt" && bDir === "ust") || (aDir === "ust" && bDir === "alt"))) continue;
-          const toplamFark = (a.fark ?? 0) + (b.fark ?? 0);
-          if (toplamFark <= 0) continue;
-          const aMik = a.hareket.tip === "arac_yakit" ? a.hareket.miktar_lt : 0;
-          const bMik = b.hareket.tip === "arac_yakit" ? b.hareket.miktar_lt : 0;
-          const bAracId = b.hareket.tip === "arac_yakit" ? b.hareket.arac_id : "";
-          const carpan = aracMap.get(bAracId)?.sayac_tipi === "saat" ? 1 : 100;
-          const birlesik = ((aMik + bMik) / toplamFark) * carpan;
-          // Birleşik ortalama, iki uç değerin İKİSİNDEN de genel ortalamaya daha yakınsa
-          // (yani birleştirmek tüketimi gerçekten normale çekiyorsa) → bağlantılı say.
-          const cFark = Math.abs(birlesik - genel);
-          if (cFark < Math.abs((a.anlikOrt ?? 0) - genel) && cFark < Math.abs((b.anlikOrt ?? 0) - genel)) {
-            const fmtH = (h: Hareket) => { const [yy, mm, dd] = h.tarih.split("-"); return `${dd}.${mm}.${yy}${h.saat ? " " + h.saat.slice(0, 5) : ""}`; };
-            a.baglantiliAnomali = true; a.birlesikOrt = birlesik; a.baglantiliBilgi = fmtH(b.hareket);
-            b.baglantiliAnomali = true; b.birlesikOrt = birlesik; b.baglantiliBilgi = fmtH(a.hareket);
+        for (let j = 0; j < list.length; j++) {
+          const cur = list[j];
+          if (cur.anlikOrt == null || cur.anlikOrt <= 0) continue;
+          const genel = cur.genelOrt;
+          // Hem ÖNCEKİ hem SONRAKİ komşuyu dene; birleşiği genele en yakın olanla bağ kur.
+          let enIyiOrt: number | null = null;
+          let enIyiPartner: TabloSatir | null = null;
+          for (const komsu of [list[j - 1], list[j + 1]]) {
+            if (!komsu) continue;
+            const b = bagKur(cur, komsu);
+            if (b == null) continue;
+            if (enIyiOrt == null || (genel != null && Math.abs(b - genel) < Math.abs(enIyiOrt - genel))) {
+              enIyiOrt = b; enIyiPartner = komsu;
+            }
+          }
+          if (enIyiPartner && enIyiOrt != null) {
+            cur.baglantiliAnomali = true;
+            cur.birlesikOrt = enIyiOrt;
+            cur.baglantiliBilgi = fmtH(enIyiPartner.hareket);
           }
         }
       }
