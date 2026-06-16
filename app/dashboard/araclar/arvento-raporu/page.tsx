@@ -311,76 +311,68 @@ export default function ArventoRaporPage() {
           </Table>
         </div>
       ) : (
-        // ---- SEKME 2: GENEL RAPOR (Damper İndirme) ----
-        <div className="bg-white rounded-lg border overflow-auto max-h-[75vh]">
-          <Table noWrapper>
-            <TableHeader className="sticky top-0 z-10">
-              <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
-                <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Araç</TableHead>
-                <TableHead className="text-white text-[11px] px-2">Sürücü</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right">Damper İndirme</TableHead>
-                <TableHead className="text-white text-[11px] px-2 text-right">Genel Ortalama</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {gruplar.map((g) => {
-                // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
-                const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
-                if (damperKayitlar.length === 0) return null;
-                return (
-                <Fragment key={g.ad}>
-                  <TableRow className="bg-blue-50 hover:bg-blue-50">
-                    <TableCell colSpan={5} className="px-2 py-1.5 text-[12px] font-bold text-[#1E3A5F]">
-                      📍 {g.ad}
-                      <span className="ml-2 text-[10px] font-normal text-gray-500">{damperKayitlar.length} araç · {g.toplamDamper} damper indirme</span>
-                    </TableCell>
-                  </TableRow>
+        // ---- SEKME 2: GENEL RAPOR (Damper İndirme) — 2 sütunlu kart düzeni ----
+        <div className="overflow-auto max-h-[75vh] space-y-4">
+          {gruplar.map((g) => {
+            // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
+            const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
+            if (damperKayitlar.length === 0) return null;
+            return (
+              <div key={g.ad}>
+                <div className="text-[12px] font-bold text-[#1E3A5F] mb-2">
+                  📍 {g.ad}
+                  <span className="ml-2 text-[10px] font-normal text-gray-500">{damperKayitlar.length} araç · {g.toplamDamper} damper indirme</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {damperKayitlar.map((k) => {
                     const ort = ortalamalar.get(k.plaka);
                     const dmpFark = (k.damper_sayisi ?? 0) - (ort?.ortDamper ?? 0);
-                    const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-400";
+                    const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
                     const olaylar = Array.isArray(k.damper_olaylar) ? k.damper_olaylar : [];
                     const acilabilir = olaylar.length > 0;
                     const acik = acikOlaylar.has(k.id);
                     return (
-                      <Fragment key={k.id}>
-                        <TableRow
-                          className={`text-xs hover:bg-gray-50 ${(k.damper_sayisi ?? 0) > 0 ? "" : "opacity-50"} ${acilabilir ? "cursor-pointer" : ""}`}
-                          onClick={() => acilabilir && toggleOlay(k.id)}>
-                          <TableCell className="px-2 pl-4 font-bold text-[#1E3A5F] whitespace-nowrap">
-                            {acilabilir && <ChevronRight size={12} className={`inline mr-1 transition-transform ${acik ? "rotate-90" : ""}`} />}
-                            {k.plaka}
-                          </TableCell>
-                          <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka, k.model].filter(Boolean).join(" ") || "—"}</TableCell>
-                          <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
-                          <TableCell className={`px-2 text-right tabular-nums font-semibold text-base ${farkClass}`}>{k.damper_sayisi ?? 0}</TableCell>
-                          <TableCell className="px-2 text-right tabular-nums text-gray-400">{ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</TableCell>
-                        </TableRow>
+                      <div key={k.id} className={`border rounded-lg bg-white ${(k.damper_sayisi ?? 0) > 0 ? "" : "opacity-50"}`}>
+                        <button
+                          type="button"
+                          onClick={() => acilabilir && toggleOlay(k.id)}
+                          className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 ${acilabilir ? "cursor-pointer hover:bg-gray-50" : "cursor-default"}`}
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-[#1E3A5F] flex items-center gap-1 whitespace-nowrap">
+                              {acilabilir && <ChevronRight size={12} className={`transition-transform ${acik ? "rotate-90" : ""}`} />}
+                              {k.plaka}
+                            </div>
+                            <div className="text-[10px] text-gray-500 truncate">
+                              {[k.marka, k.model].filter(Boolean).join(" ") || "—"}{k.surucu ? ` · ${k.surucu}` : ""}
+                            </div>
+                          </div>
+                          <div className="text-right whitespace-nowrap">
+                            <div className={`text-lg font-bold tabular-nums ${farkClass}`}>{k.damper_sayisi ?? 0}</div>
+                            <div className="text-[9px] text-gray-400">ort {ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</div>
+                          </div>
+                        </button>
                         {acik && (
-                          <TableRow className="bg-amber-50/40 hover:bg-amber-50/40">
-                            <TableCell colSpan={5} className="px-2 py-2 pl-8">
-                              <div className="text-[10px] font-semibold text-gray-500 mb-1">{k.plaka} — {olaylar.length} damper indirme</div>
-                              <ol className="space-y-0.5">
-                                {olaylar.map((o, i) => (
-                                  <li key={i} className="text-xs flex items-start gap-2">
-                                    <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
-                                    <span className="font-mono font-semibold text-orange-700 whitespace-nowrap">🔻 {o.saat ?? "—"}</span>
-                                    <span className="text-gray-600">{o.adres ?? "—"}</span>
-                                  </li>
-                                ))}
-                              </ol>
-                            </TableCell>
-                          </TableRow>
+                          <div className="border-t bg-amber-50/40 px-3 py-2">
+                            <div className="text-[10px] font-semibold text-gray-500 mb-1">{olaylar.length} damper indirme</div>
+                            <ol className="space-y-0.5">
+                              {olaylar.map((o, i) => (
+                                <li key={i} className="text-xs flex items-start gap-2">
+                                  <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
+                                  <span className="font-mono font-semibold text-orange-700 whitespace-nowrap">🔻 {o.saat ?? "—"}</span>
+                                  <span className="text-gray-600">{o.adres ?? "—"}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
                         )}
-                      </Fragment>
+                      </div>
                     );
                   })}
-                </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
