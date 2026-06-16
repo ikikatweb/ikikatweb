@@ -750,8 +750,12 @@ function YakitPageContent() {
         list.sort((a, b) => hareketKey(a.hareket).localeCompare(hareketKey(b.hareket)));
         for (let i = 1; i < list.length; i++) {
           const a = list[i - 1], b = list[i];
-          if (!a.limitIhlali || !b.limitIhlali) continue;
-          if (!((a.anlikYon === "alt" && b.anlikYon === "ust") || (a.anlikYon === "ust" && b.anlikYon === "alt"))) continue;
+          // Limit İÇİ olsa bile: yön genel ortalamaya göre (alt = genelin altında, üst = üstünde).
+          const genel = b.genelOrt ?? a.genelOrt;
+          if (!genel) continue;
+          const aDir = (a.anlikOrt ?? 0) < genel ? "alt" : (a.anlikOrt ?? 0) > genel ? "ust" : null;
+          const bDir = (b.anlikOrt ?? 0) < genel ? "alt" : (b.anlikOrt ?? 0) > genel ? "ust" : null;
+          if (!((aDir === "alt" && bDir === "ust") || (aDir === "ust" && bDir === "alt"))) continue;
           const toplamFark = (a.fark ?? 0) + (b.fark ?? 0);
           if (toplamFark <= 0) continue;
           const aMik = a.hareket.tip === "arac_yakit" ? a.hareket.miktar_lt : 0;
@@ -759,8 +763,6 @@ function YakitPageContent() {
           const bAracId = b.hareket.tip === "arac_yakit" ? b.hareket.arac_id : "";
           const carpan = aracMap.get(bAracId)?.sayac_tipi === "saat" ? 1 : 100;
           const birlesik = ((aMik + bMik) / toplamFark) * carpan;
-          const genel = b.genelOrt ?? a.genelOrt;
-          if (!genel) continue;
           // Birleşik ortalama, iki uç değerin İKİSİNDEN de genel ortalamaya daha yakınsa
           // (yani birleştirmek tüketimi gerçekten normale çekiyorsa) → bağlantılı say.
           const cFark = Math.abs(birlesik - genel);
