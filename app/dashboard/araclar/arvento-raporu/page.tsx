@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, MapPin, X } from "lucide-react";
+import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, MapPin, X, Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -118,6 +118,10 @@ export default function ArventoRaporPage() {
   // Tüm damperleri tek haritada gösterme (Leaflet + geocoding)
   const [tumHaritaAcik, setTumHaritaAcik] = useState(false);
   const [haritaYukleniyor, setHaritaYukleniyor] = useState(false);
+  // Harita çizilirken çözülen (gerçek koordinatlı) noktalar — KML export için saklanır.
+  const [cozulenNoktalar, setCozulenNoktalar] = useState<
+    { plaka: string; saat: string | null; adres: string | null; lat: number; lng: number }[]
+  >([]);
   const mapRef = useRef<HTMLDivElement>(null);
   // Damper sekmesi tarih aralığı — ana rapor tarihinden BAĞIMSIZ, başta ikisi de boş.
   // İkisi de seçilince çok günlük damper toplamı; boşsa tek gün (seçili rapor tarihi).
@@ -307,11 +311,15 @@ export default function ArventoRaporPage() {
         }
         if (iptal || !map) return;
         const bounds: [number, number][] = [];
+        // KML export için çözülen GERÇEK koordinatlı noktalar (spiral offset'siz)
+        const cozulen: { plaka: string; saat: string | null; adres: string | null; lat: number; lng: number }[] = [];
         // Aynı koordinata düşen noktaları üst üste bindirmemek için altın-açı spiraliyle hafifçe yelpazele
         const kullanim = new Map<string, number>();
         for (const p of tumNoktalar) {
           const c = (p.lat != null && p.lng != null) ? { lat: p.lat, lng: p.lng } : (p.adres ? koord.get(p.adres) : null);
           if (!c) continue;
+          // KML'e gerçek (offset'siz) koordinatı yaz
+          cozulen.push({ plaka: p.plaka, saat: p.saat, adres: p.adres, lat: c.lat, lng: c.lng });
           let renk = plakaRenk.get(p.plaka);
           if (!renk) { renk = HARITA_RENKLER[plakaRenk.size % HARITA_RENKLER.length]; plakaRenk.set(p.plaka, renk); }
           const key = `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`;
@@ -324,6 +332,7 @@ export default function ArventoRaporPage() {
             .addTo(map).bindPopup(`<b>${p.plaka}</b><br>${p.saat ?? ""}<br>${p.adres ?? ""}`);
           bounds.push([lat, lng]);
         }
+        if (!iptal) setCozulenNoktalar(cozulen);
         if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
         setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 100);
       } catch { /* leaflet/geocode hata — sessiz */ } finally {
@@ -332,6 +341,72 @@ export default function ArventoRaporPage() {
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
   }, [tumHaritaAcik, tumNoktalar]);
+
+  // Tüm damper noktalarını KML olarak indir (Google Earth / GIS).
+  // cozulenNoktalar harita render edilirken doldurulur (gerçek koordinatlar).
+  function exportKML() {
+    const noktalar = cozulenNoktalar;
+    if (noktalar.length === 0) {
+      toast.error("Konum çözümlenmedi — harita yüklenmesini bekleyin.", { duration: toastSuresi() });
+      return;
+    }
+    // XML özel karakterlerini kaçır
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    // #rrggbb → KML aabbggrr (alpha,blue,green,red)
+    const kmlRenk = (hex: string): string => {
+      const h = hex.replace("#", "");
+      const rr = h.slice(0, 2), gg = h.slice(2, 4), bb = h.slice(4, 6);
+      return `ff${bb}${gg}${rr}`;
+    };
+    // Plaka → renk (haritadaki ile aynı sıra)
+    const plakaRenk = new Map<string, string>();
+    for (const p of noktalar) {
+      if (!plakaRenk.has(p.plaka)) {
+        plakaRenk.set(p.plaka, HARITA_RENKLER[plakaRenk.size % HARITA_RENKLER.length]);
+      }
+    }
+    // Stil tanımları (plaka başına renkli pin)
+    const stiller = Array.from(plakaRenk.entries()).map(([plaka, renk], i) => `
+    <Style id="plaka${i}">
+      <IconStyle>
+        <color>${kmlRenk(renk)}</color>
+        <scale>1.1</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>0.8</scale></LabelStyle>
+    </Style>`).join("");
+    const plakaStilIdx = new Map(Array.from(plakaRenk.keys()).map((p, i) => [p, i]));
+    // Placemark'lar — KML koordinat sırası: LNG,LAT,YÜKSEKLİK
+    const placemarks = noktalar.map((p) => {
+      const idx = plakaStilIdx.get(p.plaka) ?? 0;
+      const aciklama = [p.saat ?? "", p.adres ?? ""].filter(Boolean).join(" · ");
+      return `
+    <Placemark>
+      <name>${esc(p.plaka)}</name>
+      <description>${esc(aciklama)}</description>
+      <styleUrl>#plaka${idx}</styleUrl>
+      <Point><coordinates>${p.lng.toFixed(6)},${p.lat.toFixed(6)},0</coordinates></Point>
+    </Placemark>`;
+    }).join("");
+    const baslik = bitisTarih && rangeBas
+      ? `Damper ${rangeBas} - ${bitisTarih}`
+      : `Damper ${seciliTarih}`;
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${esc(baslik)}</name>${stiller}${placemarks}
+  </Document>
+</kml>`;
+    const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${baslik.replace(/[^\w-]+/g, "_")}.kml`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${noktalar.length} damper noktası KML olarak indirildi.`, { duration: toastSuresi() });
+  }
 
   function exportExcel() {
     const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
@@ -668,9 +743,21 @@ export default function ArventoRaporPage() {
               <MapPin size={18} className="flex-shrink-0" />
               <span className="text-sm truncate">Tüm Damper İndirmeleri — {tumNoktalar.length} nokta {haritaYukleniyor ? "· yükleniyor…" : ""}</span>
             </div>
-            <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* KML olarak indir — Google Earth / GIS uygulamalarında açılır */}
+              <button
+                type="button"
+                onClick={exportKML}
+                disabled={haritaYukleniyor || cozulenNoktalar.length === 0}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-white/20 disabled:cursor-not-allowed rounded"
+                title="Tüm damper noktalarını KML olarak indir (Google Earth)"
+              >
+                <Download size={14} /> KML İndir
+              </button>
+              <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
+                <X size={18} />
+              </button>
+            </div>
           </div>
           <div className="bg-amber-100 text-amber-900 text-[11px] px-4 py-1 text-center" onClick={(e) => e.stopPropagation()}>
             Konumlar adres (mahalle) bazlı yaklaşıktır; renkler aracı, baloncuk plaka/saat/adresi gösterir. İlk açılış geocoding nedeniyle birkaç saniye sürebilir.
