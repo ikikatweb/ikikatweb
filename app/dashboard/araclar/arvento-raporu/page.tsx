@@ -324,15 +324,19 @@ export default function ArventoRaporPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {gruplar.map((g) => (
+              {gruplar.map((g) => {
+                // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
+                const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
+                if (damperKayitlar.length === 0) return null;
+                return (
                 <Fragment key={g.ad}>
                   <TableRow className="bg-blue-50 hover:bg-blue-50">
                     <TableCell colSpan={5} className="px-2 py-1.5 text-[12px] font-bold text-[#1E3A5F]">
                       📍 {g.ad}
-                      <span className="ml-2 text-[10px] font-normal text-gray-500">{g.kayitlar.length} araç · {g.toplamDamper} damper indirme</span>
+                      <span className="ml-2 text-[10px] font-normal text-gray-500">{damperKayitlar.length} araç · {g.toplamDamper} damper indirme</span>
                     </TableCell>
                   </TableRow>
-                  {g.kayitlar.map((k) => {
+                  {damperKayitlar.map((k) => {
                     const ort = ortalamalar.get(k.plaka);
                     const dmpFark = (k.damper_sayisi ?? 0) - (ort?.ortDamper ?? 0);
                     const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-400";
@@ -373,7 +377,8 @@ export default function ArventoRaporPage() {
                     );
                   })}
                 </Fragment>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </div>
