@@ -71,6 +71,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
       rapor_tarihi: g.tarih,
       plaka: g.plaka,
       damper_sayisi: g.damper,
+      damper_olaylar: g.olaylar,
     }));
     const { error } = await supabase
       .from("arac_arvento_rapor")

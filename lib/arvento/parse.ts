@@ -80,9 +80,18 @@ function parseEnTarih(v: unknown): string | null {
   return `${m[3]}-${String(ay).padStart(2, "0")}-${String(parseInt(m[1], 10)).padStart(2, "0")}`;
 }
 
-export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number };
+// Tek bir damper indirme olayı (saat + nerede)
+export type ArventoDamperOlay = { saat: string | null; adres: string | null };
+export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number; olaylar: ArventoDamperOlay[] };
 
-// "Genel Rapor" dosyasını ayrıştır: damper indirme olaylarını (tarih, plaka) bazında say.
+// "08:16:32" gibi saati çıkar
+function parseSaat(v: unknown): string | null {
+  const m = String(v ?? "").match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+  return m ? m[1] : null;
+}
+
+// "Genel Rapor" dosyasını ayrıştır: damper indirme olaylarını (tarih, plaka) bazında topla.
+// Her plaka-gün için olay sayısı + olay listesi (saat, adres) döner.
 // Genel Rapor ÇOK GÜNLÜ olabilir; her olayın kendi "Tarih/Saat" sütunundaki günü esas alınır.
 export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSatir[] {
   const wb = XLSX.read(buf, { type: "buffer" });
@@ -102,10 +111,11 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   const plakaCol = head.findIndex((h) => h.includes("plaka"));
   const turCol = head.findIndex((h) => h.includes("tur"));
   const tarihCol = head.findIndex((h) => h.includes("tarih"));
+  const adresCol = head.findIndex((h) => h.includes("adres"));
   if (plakaCol < 0 || tarihCol < 0) return [];
 
-  // tarih -> plaka -> sayı
-  const m = new Map<string, Map<string, number>>();
+  // tarih -> plaka -> olaylar[]
+  const m = new Map<string, Map<string, ArventoDamperOlay[]>>();
   for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r) continue;
@@ -116,11 +126,19 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
     if (!tarih) continue;
     if (!m.has(tarih)) m.set(tarih, new Map());
     const pm = m.get(tarih)!;
-    pm.set(plaka, (pm.get(plaka) ?? 0) + 1);
+    if (!pm.has(plaka)) pm.set(plaka, []);
+    pm.get(plaka)!.push({
+      saat: parseSaat(r[tarihCol]),
+      adres: adresCol >= 0 ? temizMetin(r[adresCol]) : null,
+    });
   }
   const out: ArventoGenelSatir[] = [];
   for (const [tarih, pm] of m) {
-    for (const [plaka, damper] of pm) out.push({ tarih, plaka, damper });
+    for (const [plaka, olaylar] of pm) {
+      // Saate göre sırala
+      olaylar.sort((a, b) => (a.saat ?? "").localeCompare(b.saat ?? ""));
+      out.push({ tarih, plaka, damper: olaylar.length, olaylar });
+    }
   }
   return out;
 }

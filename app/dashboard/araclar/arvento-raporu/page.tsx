@@ -52,6 +52,10 @@ export default function ArventoRaporPage() {
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
   const [arama, setArama] = useState("");
   const [aktifSekme, setAktifSekme] = useState<"calisma" | "genel">("calisma");
+  const [acikOlaylar, setAcikOlaylar] = useState<Set<string>>(new Set());
+  const toggleOlay = (id: string) => setAcikOlaylar((s) => {
+    const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n;
+  });
   const [yukleniyor, setYukleniyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -332,14 +336,40 @@ export default function ArventoRaporPage() {
                     const ort = ortalamalar.get(k.plaka);
                     const dmpFark = (k.damper_sayisi ?? 0) - (ort?.ortDamper ?? 0);
                     const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-400";
+                    const olaylar = Array.isArray(k.damper_olaylar) ? k.damper_olaylar : [];
+                    const acilabilir = olaylar.length > 0;
+                    const acik = acikOlaylar.has(k.id);
                     return (
-                      <TableRow key={k.id} className={`text-xs hover:bg-gray-50 ${(k.damper_sayisi ?? 0) > 0 ? "" : "opacity-50"}`}>
-                        <TableCell className="px-2 pl-4 font-bold text-[#1E3A5F] whitespace-nowrap">{k.plaka}</TableCell>
-                        <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka, k.model].filter(Boolean).join(" ") || "—"}</TableCell>
-                        <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
-                        <TableCell className={`px-2 text-right tabular-nums font-semibold text-base ${farkClass}`}>{k.damper_sayisi ?? 0}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums text-gray-400">{ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</TableCell>
-                      </TableRow>
+                      <Fragment key={k.id}>
+                        <TableRow
+                          className={`text-xs hover:bg-gray-50 ${(k.damper_sayisi ?? 0) > 0 ? "" : "opacity-50"} ${acilabilir ? "cursor-pointer" : ""}`}
+                          onClick={() => acilabilir && toggleOlay(k.id)}>
+                          <TableCell className="px-2 pl-4 font-bold text-[#1E3A5F] whitespace-nowrap">
+                            {acilabilir && <ChevronRight size={12} className={`inline mr-1 transition-transform ${acik ? "rotate-90" : ""}`} />}
+                            {k.plaka}
+                          </TableCell>
+                          <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka, k.model].filter(Boolean).join(" ") || "—"}</TableCell>
+                          <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
+                          <TableCell className={`px-2 text-right tabular-nums font-semibold text-base ${farkClass}`}>{k.damper_sayisi ?? 0}</TableCell>
+                          <TableCell className="px-2 text-right tabular-nums text-gray-400">{ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</TableCell>
+                        </TableRow>
+                        {acik && (
+                          <TableRow className="bg-amber-50/40 hover:bg-amber-50/40">
+                            <TableCell colSpan={5} className="px-2 py-2 pl-8">
+                              <div className="text-[10px] font-semibold text-gray-500 mb-1">{k.plaka} — {olaylar.length} damper indirme</div>
+                              <ol className="space-y-0.5">
+                                {olaylar.map((o, i) => (
+                                  <li key={i} className="text-xs flex items-start gap-2">
+                                    <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
+                                    <span className="font-mono font-semibold text-orange-700 whitespace-nowrap">🔻 {o.saat ?? "—"}</span>
+                                    <span className="text-gray-600">{o.adres ?? "—"}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </Fragment>
