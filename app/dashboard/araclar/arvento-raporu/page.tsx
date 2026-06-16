@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, MapPin, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -39,6 +39,14 @@ function formatKm(v: number | null): string {
   return v.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 }
 
+// "08:37:29" → gün içindeki dakika (saniye dahil kesirli). Yoksa null.
+function saatToDk(saat: string | null | undefined): number | null {
+  if (!saat) return null;
+  const m = String(saat).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(m[3]) / 60 : 0);
+}
+
 export default function ArventoRaporPage() {
   const { hasPermission } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
@@ -52,10 +60,15 @@ export default function ArventoRaporPage() {
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
   const [arama, setArama] = useState("");
   const [aktifSekme, setAktifSekme] = useState<"calisma" | "genel">("calisma");
-  const [acikOlaylar, setAcikOlaylar] = useState<Set<string>>(new Set());
-  const toggleOlay = (id: string) => setAcikOlaylar((s) => {
-    const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n;
+  // Açık olan araç detayları PLAKAYA göre tutulur → gün değişince de açık kalır
+  const [acikPlakalar, setAcikPlakalar] = useState<Set<string>>(new Set());
+  const toggleOlay = (plaka: string) => setAcikPlakalar((s) => {
+    const n = new Set(s); if (n.has(plaka)) n.delete(plaka); else n.add(plaka); return n;
   });
+  // Yanlış (art arda) damper kaldırma eşiği (dk): bu süre içinde gelen damperler sayılmaz
+  const [mukerrerDk, setMukerrerDk] = useState<number>(0);
+  // Haritada göster modalı için seçilen adres
+  const [haritaAdres, setHaritaAdres] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -313,6 +326,14 @@ export default function ArventoRaporPage() {
       ) : (
         // ---- SEKME 2: GENEL RAPOR (Damper İndirme) — 2 sütunlu kart düzeni ----
         <div className="overflow-auto max-h-[75vh] space-y-4">
+          {/* Yanlış (art arda) damper kaldırma eşiği */}
+          <div className="flex flex-wrap items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <span className="font-semibold text-amber-800">Yanlış kaldırma eşiği:</span>
+            <input type="number" min={0} value={mukerrerDk}
+              onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
+              className="w-16 h-7 rounded border border-amber-300 px-2 text-center" /> dk
+            <span className="text-gray-500">Bu süre içinde art arda gelen damper indirmeleri sayılmaz (gri görünür).</span>
+          </div>
           {gruplar.map((g) => {
             // Sadece damperle alakalı araçlar: damper geçmişi olan veya o gün damper yapanlar
             const damperKayitlar = g.kayitlar.filter((k) => (ortalamalar.get(k.plaka)?.ortDamper ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0);
@@ -321,21 +342,31 @@ export default function ArventoRaporPage() {
               <div key={g.ad}>
                 <div className="text-[12px] font-bold text-[#1E3A5F] mb-2">
                   📍 {g.ad}
-                  <span className="ml-2 text-[10px] font-normal text-gray-500">{damperKayitlar.length} araç · {g.toplamDamper} damper indirme</span>
+                  <span className="ml-2 text-[10px] font-normal text-gray-500">{damperKayitlar.length} araç</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {damperKayitlar.map((k) => {
                     const ort = ortalamalar.get(k.plaka);
-                    const dmpFark = (k.damper_sayisi ?? 0) - (ort?.ortDamper ?? 0);
-                    const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
                     const olaylar = Array.isArray(k.damper_olaylar) ? k.damper_olaylar : [];
+                    // Eşik içinde art arda gelen damper indirmelerini "haric" işaretle (sayılmaz)
+                    let sonDk = -Infinity;
+                    const isaretli = olaylar.map((o) => {
+                      const dk = saatToDk(o.saat);
+                      const haric = mukerrerDk > 0 && dk != null && (dk - sonDk) < mukerrerDk;
+                      if (!haric && dk != null) sonDk = dk;
+                      return { o, haric };
+                    });
+                    const sayilan = isaretli.filter((x) => !x.haric).length;
+                    const haricSayi = olaylar.length - sayilan;
+                    const dmpFark = sayilan - (ort?.ortDamper ?? 0);
+                    const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
                     const acilabilir = olaylar.length > 0;
-                    const acik = acikOlaylar.has(k.id);
+                    const acik = acikPlakalar.has(k.plaka);
                     return (
-                      <div key={k.id} className={`border rounded-lg bg-white ${(k.damper_sayisi ?? 0) > 0 ? "" : "opacity-50"}`}>
+                      <div key={k.id} className={`border rounded-lg bg-white ${sayilan > 0 ? "" : "opacity-50"}`}>
                         <button
                           type="button"
-                          onClick={() => acilabilir && toggleOlay(k.id)}
+                          onClick={() => acilabilir && toggleOlay(k.plaka)}
                           className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 ${acilabilir ? "cursor-pointer hover:bg-gray-50" : "cursor-default"}`}
                         >
                           <div className="min-w-0">
@@ -348,19 +379,29 @@ export default function ArventoRaporPage() {
                             </div>
                           </div>
                           <div className="text-right whitespace-nowrap">
-                            <div className={`text-lg font-bold tabular-nums ${farkClass}`}>{k.damper_sayisi ?? 0}</div>
+                            <div className={`text-lg font-bold tabular-nums ${farkClass}`}>
+                              {sayilan}{haricSayi > 0 && <span className="text-[10px] font-normal text-gray-400"> /{olaylar.length}</span>}
+                            </div>
                             <div className="text-[9px] text-gray-400">ort {ort ? ort.ortDamper.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) : "—"}</div>
                           </div>
                         </button>
                         {acik && (
                           <div className="border-t bg-amber-50/40 px-3 py-2">
-                            <div className="text-[10px] font-semibold text-gray-500 mb-1">{olaylar.length} damper indirme</div>
+                            <div className="text-[10px] font-semibold text-gray-500 mb-1">
+                              {sayilan} damper indirme{haricSayi > 0 ? ` · ${haricSayi} sayılmadı` : ""}
+                            </div>
                             <ol className="space-y-0.5">
-                              {olaylar.map((o, i) => (
-                                <li key={i} className="text-xs flex items-start gap-2">
+                              {isaretli.map(({ o, haric }, i) => (
+                                <li key={i} className={`text-xs flex items-center gap-2 ${haric ? "opacity-60" : ""}`}>
                                   <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
-                                  <span className="font-mono font-semibold text-orange-700 whitespace-nowrap">🔻 {o.saat ?? "—"}</span>
-                                  <span className="text-gray-600">{o.adres ?? "—"}</span>
+                                  <span className={`font-mono whitespace-nowrap ${haric ? "text-gray-400 line-through" : "font-semibold text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
+                                  <span className={`flex-1 truncate ${haric ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
+                                  {o.adres && (
+                                    <button type="button" onClick={() => setHaritaAdres(o.adres ?? null)}
+                                      className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5" title="Haritada göster">
+                                      <MapPin size={10} /> Harita
+                                    </button>
+                                  )}
                                 </li>
                               ))}
                             </ol>
@@ -373,6 +414,30 @@ export default function ArventoRaporPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Haritada göster — pencere (Google Maps embed, zoom destekli) */}
+      {haritaAdres && (
+        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setHaritaAdres(null)}>
+          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <MapPin size={18} className="flex-shrink-0" />
+              <span className="text-sm truncate">{haritaAdres}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(haritaAdres)}`}
+                target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded text-xs">Yeni sekme</a>
+              <button type="button" onClick={() => setHaritaAdres(null)} className="p-1.5 hover:bg-white/10 rounded" title="Kapat">
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
+            <iframe title="Harita" className="w-full h-full border-0"
+              src={`https://www.google.com/maps?q=${encodeURIComponent(haritaAdres)}&z=15&output=embed`} />
+          </div>
         </div>
       )}
     </div>
