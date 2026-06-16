@@ -125,6 +125,7 @@ export default function ArventoRaporPage() {
   const [bitisTarih, setBitisTarih] = useState<string>("");
   const [rangeKayitlar, setRangeKayitlar] = useState<AracArventoRapor[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
+  const [maildenCekiliyor, setMaildenCekiliyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadTarihler = useCallback(async () => {
@@ -157,6 +158,30 @@ export default function ArventoRaporPage() {
   }, [seciliTarih]);
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
+
+  // Mailden çek — inbox'taki Arvento rapor mailini anında işle (cron'u beklemeden)
+  async function maildenCek() {
+    setMaildenCekiliyor(true);
+    try {
+      const res = await fetch("/api/arvento/mailden-cek", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Mailden çekilemedi");
+      if (data.ok) {
+        toast.success(`Mailden çekildi — ${data.mesaj}`, { duration: toastSuresi() });
+        await loadTarihler();
+        const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
+        if (yeniTarih) setSeciliTarih(yeniTarih);
+        await loadKayitlar();
+      } else {
+        // ok:false → mail bulunamadı / işlenemedi gibi bilgilendirici durum
+        toast(data.mesaj ?? "Çekilecek yeni rapor bulunamadı.", { icon: "ℹ️", duration: toastSuresi() });
+      }
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
+    } finally {
+      setMaildenCekiliyor(false);
+    }
+  }
 
   // Manuel Excel yükleme
   async function dosyaYukle(file: File) {
@@ -342,9 +367,16 @@ export default function ArventoRaporPage() {
         </div>
         {yEkle && (
           <div className="flex gap-2">
+            {/* Mailden Çek — inbox'taki raporu cron'u beklemeden anında işler */}
+            <Button size="sm" variant="outline" className="gap-1" disabled={maildenCekiliyor || yukleniyor}
+              onClick={maildenCek}
+              title="Arvento mailini şimdi kontrol et ve içe aktar">
+              {maildenCekiliyor ? <RefreshCw size={14} className="animate-spin" /> : <Satellite size={14} />}
+              Mailden Çek
+            </Button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) dosyaYukle(f); }} />
-            <Button size="sm" variant="outline" className="gap-1" disabled={yukleniyor}
+            <Button size="sm" variant="outline" className="gap-1" disabled={yukleniyor || maildenCekiliyor}
               onClick={() => fileRef.current?.click()}>
               {yukleniyor ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
               Excel Yükle

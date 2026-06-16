@@ -951,8 +951,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setPrimMap(finalPrimMap);
       setIscilikBitimMap(bitimInfo);
       const tumSantiyeler = (s as SantiyeBasic[]) ?? [];
+      // Bordro'da görünecek şantiyeler:
+      //  1) İşçilik Takibi (Durum Raporu) kaydı olanlar (eski davranış), VEYA
+      //  2) Personel ataması (atama_gecmisi) olan şantiyeler — işçilik kaydı olmasa
+      //     bile işçi atanmışsa bordroda görünmeli (bordro personel bazlıdır).
+      const atamaliSantiyeIds = new Set<string>();
+      for (const at of (a as PersonelAtamaGecmisi[]) ?? []) {
+        if (at.santiye_id) atamaliSantiyeIds.add(at.santiye_id);
+      }
       const aktifSantiyeler = tumSantiyeler
-        .filter((x) => iscilikRaporSantiyeIds.has(x.id))
+        .filter((x) => iscilikRaporSantiyeIds.has(x.id) || atamaliSantiyeIds.has(x.id))
         .map((x) => ({ ...x, yuklenici_firma_id: x.yuklenici_firma_id ?? firmaIdMap.get(x.id) ?? null }));
       setSantiyeler(aktifSantiyeler);
       setPersoneller(p);
