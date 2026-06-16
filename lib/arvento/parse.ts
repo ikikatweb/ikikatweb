@@ -82,7 +82,7 @@ function parseEnTarih(v: unknown): string | null {
 
 // Tek bir damper indirme olayı (saat + nerede)
 export type ArventoDamperOlay = { saat: string | null; adres: string | null };
-export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number; olaylar: ArventoDamperOlay[] };
+export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number; surucu: string | null; olaylar: ArventoDamperOlay[] };
 
 // "08:16:32" gibi saati çıkar
 function parseSaat(v: unknown): string | null {
@@ -116,6 +116,7 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   const saatCol = head.findIndex((h) => h.includes("(saat)"));
   // Adres tek sütun ("Adres") veya parçalı (Şehir/Mahalle/İlçe/Köy/Yol) gelebilir.
   const adresCol = head.findIndex((h) => h.includes("adres"));
+  const surucuCol = head.findIndex((h) => h.includes("surucu"));
   const parcaCols = ["mahalle", "yol", "koy", "ilce", "sehir"].map((ad) => head.findIndex((h) => h.includes(ad)));
   const adresKur = (r: unknown[]): string | null => {
     if (adresCol >= 0) return temizMetin(r[adresCol]);
@@ -124,8 +125,8 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   };
   if (plakaCol < 0 || tarihCol < 0) return [];
 
-  // tarih -> plaka -> olaylar[]
-  const m = new Map<string, Map<string, ArventoDamperOlay[]>>();
+  // tarih -> plaka -> { olaylar, surucu }
+  const m = new Map<string, Map<string, { olaylar: ArventoDamperOlay[]; surucu: string | null }>>();
   for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r) continue;
@@ -137,18 +138,19 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
     if (!tarih) continue;
     if (!m.has(tarih)) m.set(tarih, new Map());
     const pm = m.get(tarih)!;
-    if (!pm.has(plaka)) pm.set(plaka, []);
-    pm.get(plaka)!.push({
+    if (!pm.has(plaka)) pm.set(plaka, { olaylar: [], surucu: null });
+    const grup = pm.get(plaka)!;
+    grup.olaylar.push({
       saat: parseSaat(saatCol >= 0 ? r[saatCol] : r[tarihCol]),
       adres: adresKur(r),
     });
+    if (!grup.surucu && surucuCol >= 0) grup.surucu = temizMetin(r[surucuCol]);
   }
   const out: ArventoGenelSatir[] = [];
   for (const [tarih, pm] of m) {
-    for (const [plaka, olaylar] of pm) {
-      // Saate göre sırala
-      olaylar.sort((a, b) => (a.saat ?? "").localeCompare(b.saat ?? ""));
-      out.push({ tarih, plaka, damper: olaylar.length, olaylar });
+    for (const [plaka, grup] of pm) {
+      grup.olaylar.sort((a, b) => (a.saat ?? "").localeCompare(b.saat ?? ""));
+      out.push({ tarih, plaka, damper: grup.olaylar.length, surucu: grup.surucu, olaylar: grup.olaylar });
     }
   }
   return out;

@@ -60,13 +60,20 @@ export default function ArventoRaporPage() {
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
   const [arama, setArama] = useState("");
   const [aktifSekme, setAktifSekme] = useState<"calisma" | "genel">("calisma");
-  // Açık olan araç detayları PLAKAYA göre tutulur → gün değişince de açık kalır
-  const [acikPlakalar, setAcikPlakalar] = useState<Set<string>>(new Set());
-  const toggleOlay = (plaka: string) => setAcikPlakalar((s) => {
+  // Damper detayları VARSAYILAN AÇIK; kullanıcı kapattıkça KAPALI plakalar tutulur (plakaya göre → gün değişince korunur)
+  const [kapaliPlakalar, setKapaliPlakalar] = useState<Set<string>>(new Set());
+  const toggleOlay = (plaka: string) => setKapaliPlakalar((s) => {
     const n = new Set(s); if (n.has(plaka)) n.delete(plaka); else n.add(plaka); return n;
   });
-  // Yanlış (art arda) damper kaldırma eşiği (dk): bu süre içinde gelen damperler sayılmaz
-  const [mukerrerDk, setMukerrerDk] = useState<number>(0);
+  // Yanlış (art arda) damper kaldırma eşiği (dk) — localStorage'da kalıcı
+  const [mukerrerDk, setMukerrerDk] = useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    const v = window.localStorage.getItem("arvento_mukerrer_dk");
+    return v != null ? (parseInt(v, 10) || 0) : 0;
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("arvento_mukerrer_dk", String(mukerrerDk));
+  }, [mukerrerDk]);
   // Haritada göster modalı için seçilen adres
   const [haritaAdres, setHaritaAdres] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
@@ -361,7 +368,9 @@ export default function ArventoRaporPage() {
                     const dmpFark = sayilan - (ort?.ortDamper ?? 0);
                     const farkClass = dmpFark > 0.05 ? "text-emerald-600" : dmpFark < -0.05 ? "text-red-500" : "text-gray-700";
                     const acilabilir = olaylar.length > 0;
-                    const acik = acikPlakalar.has(k.plaka);
+                    const acik = acilabilir && !kapaliPlakalar.has(k.plaka); // varsayılan açık
+                    const ps = plakaSantiye.get(plakaNorm(k.plaka));
+                    const markaModel = [k.marka ?? ps?.marka, k.model ?? ps?.model].filter(Boolean).join(" ");
                     return (
                       <div key={k.id} className={`border rounded-lg bg-white ${sayilan > 0 ? "" : "opacity-50"}`}>
                         <button
@@ -374,9 +383,8 @@ export default function ArventoRaporPage() {
                               {acilabilir && <ChevronRight size={12} className={`transition-transform ${acik ? "rotate-90" : ""}`} />}
                               {k.plaka}
                             </div>
-                            <div className="text-[10px] text-gray-500 truncate">
-                              {[k.marka, k.model].filter(Boolean).join(" ") || "—"}{k.surucu ? ` · ${k.surucu}` : ""}
-                            </div>
+                            <div className="text-[11px] text-gray-700 truncate">{markaModel || "—"}</div>
+                            <div className="text-[10px] text-gray-500 truncate">Şoför: {k.surucu ?? "—"}</div>
                             <div className="text-[10px] text-gray-600 flex items-center gap-1">
                               <Route size={10} className="text-gray-400" /> Mesafe: <strong>{k.mesafe_km != null ? `${formatKm(k.mesafe_km)} km` : "—"}</strong>
                             </div>

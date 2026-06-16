@@ -72,6 +72,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
       plaka: g.plaka,
       damper_sayisi: g.damper,
       damper_olaylar: g.olaylar,
+      ...(g.surucu ? { surucu: g.surucu } : {}), // şoför (varsa) Genel Rapor'dan
     }));
     const { error } = await supabase
       .from("arac_arvento_rapor")
