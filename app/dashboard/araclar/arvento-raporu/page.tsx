@@ -407,12 +407,18 @@ export default function ArventoRaporPage() {
                                   <span className="text-gray-400 w-5 text-right">{i + 1}.</span>
                                   <span className={`font-mono whitespace-nowrap ${haric ? "text-gray-400 line-through" : "font-semibold text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
                                   <span className={`flex-1 truncate ${haric ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
-                                  {o.adres && (
+                                  {o.harita ? (
+                                    <a href={o.harita} target="_blank" rel="noopener noreferrer"
+                                      className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5"
+                                      title="Arvento haritasında kesin konum (yeni sekme)">
+                                      <MapPin size={10} /> Harita
+                                    </a>
+                                  ) : o.adres ? (
                                     <button type="button" onClick={() => setHaritaAdres(o.adres ?? null)}
-                                      className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5" title="Haritada göster">
+                                      className="flex-shrink-0 text-[10px] text-blue-600 hover:underline flex items-center gap-0.5" title="Haritada göster (yaklaşık)">
                                       <MapPin size={10} /> Harita
                                     </button>
-                                  )}
+                                  ) : null}
                                 </li>
                               ))}
                             </ol>

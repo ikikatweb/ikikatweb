@@ -861,7 +861,7 @@ export type AracArventoRapor = {
   hareket_sn: number | null; // hareket/çalışma süresi (saniye)
   maks_hiz: number | null;   // km/s (varsa)
   damper_sayisi: number | null; // o gün damper indirme sayısı
-  damper_olaylar: { saat: string | null; adres: string | null }[] | null; // damper olay detayları
+  damper_olaylar: { saat: string | null; adres: string | null; harita?: string | null }[] | null; // damper olay detayları
   marka: string | null;
   model: string | null;
   created_at: string;

@@ -80,8 +80,8 @@ function parseEnTarih(v: unknown): string | null {
   return `${m[3]}-${String(ay).padStart(2, "0")}-${String(parseInt(m[1], 10)).padStart(2, "0")}`;
 }
 
-// Tek bir damper indirme olayı (saat + nerede)
-export type ArventoDamperOlay = { saat: string | null; adres: string | null };
+// Tek bir damper indirme olayı (saat + nerede + Arvento harita linki)
+export type ArventoDamperOlay = { saat: string | null; adres: string | null; harita?: string | null };
 export type ArventoGenelSatir = { tarih: string; plaka: string; damper: number; surucu: string | null; olaylar: ArventoDamperOlay[] };
 
 // "08:16:32" gibi saati çıkar
@@ -117,6 +117,14 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   // Adres tek sütun ("Adres") veya parçalı (Şehir/Mahalle/İlçe/Köy/Yol) gelebilir.
   const adresCol = head.findIndex((h) => h.includes("adres"));
   const surucuCol = head.findIndex((h) => h.includes("surucu"));
+  // "Haritada Göster" sütunu — hücredeki KÖPRÜ (Arvento harita linki, kesin konum)
+  const haritaCol = head.findIndex((h) => h.includes("harita") || h.includes("goster"));
+  const r0 = XLSX.utils.decode_range(ws["!ref"] ?? "A1").s.r;
+  const haritaLink = (rowIdx: number): string | null => {
+    if (haritaCol < 0) return null;
+    const cell = ws[XLSX.utils.encode_cell({ r: r0 + rowIdx, c: haritaCol })] as { l?: { Target?: string } } | undefined;
+    return cell?.l?.Target ?? null;
+  };
   const parcaCols = ["mahalle", "yol", "koy", "ilce", "sehir"].map((ad) => head.findIndex((h) => h.includes(ad)));
   const adresKur = (r: unknown[]): string | null => {
     if (adresCol >= 0) return temizMetin(r[adresCol]);
@@ -143,6 +151,7 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
     grup.olaylar.push({
       saat: parseSaat(saatCol >= 0 ? r[saatCol] : r[tarihCol]),
       adres: adresKur(r),
+      harita: haritaLink(i),
     });
     if (!grup.surucu && surucuCol >= 0) grup.surucu = temizMetin(r[surucuCol]);
   }
