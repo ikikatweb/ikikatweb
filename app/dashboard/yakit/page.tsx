@@ -119,6 +119,7 @@ type TabloSatir = {
   anlikYon?: "alt" | "ust" | null;        // limit ihlali yönü
   baglantiliAnomali?: boolean;            // ardışık alt+üst → muhtemelen yanlış "depo full"
   birlesikOrt?: number | null;            // bağlantılı dolumların birleşik (normal) ortalaması
+  baglantiliBilgi?: string | null;        // bağlı olduğu diğer dolumun tarih/saati (tooltip için)
   birim: "km" | "saat" | null;
   virmanYon: "giden" | "gelen" | null; // virman satırlarında yön
   satirKey: string; // unique render key
@@ -764,8 +765,9 @@ function YakitPageContent() {
           // (yani birleştirmek tüketimi gerçekten normale çekiyorsa) → bağlantılı say.
           const cFark = Math.abs(birlesik - genel);
           if (cFark < Math.abs((a.anlikOrt ?? 0) - genel) && cFark < Math.abs((b.anlikOrt ?? 0) - genel)) {
-            a.baglantiliAnomali = true; a.birlesikOrt = birlesik;
-            b.baglantiliAnomali = true; b.birlesikOrt = birlesik;
+            const fmtH = (h: Hareket) => { const [yy, mm, dd] = h.tarih.split("-"); return `${dd}.${mm}.${yy}${h.saat ? " " + h.saat.slice(0, 5) : ""}`; };
+            a.baglantiliAnomali = true; a.birlesikOrt = birlesik; a.baglantiliBilgi = fmtH(b.hareket);
+            b.baglantiliAnomali = true; b.birlesikOrt = birlesik; b.baglantiliBilgi = fmtH(a.hareket);
           }
         }
       }
@@ -1653,9 +1655,9 @@ function YakitPageContent() {
                             {s.baglantiliAnomali && (
                               <span
                                 className="text-[9px] flex items-center gap-0.5 text-orange-400 font-normal"
-                                title={`Bu dolum komşu dolumla bağlantılı olabilir — muhtemelen biri yanlışlıkla 'Depo Full' işaretlendi. İkisinin BİRLEŞİK ortalaması ${s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}${birimEki} ve normal sınırlar içinde. Düzeltmek için ilgili dolumun 'Depo Full' işaretini kaldırın.`}
+                                title={`${s.baglantiliBilgi ? `${s.baglantiliBilgi} tarihli dolumla bağlantılı. ` : ""}Muhtemelen biri yanlışlıkla 'Depo Full' işaretlendi. İkisinin BİRLEŞİK ortalaması ${s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}${birimEki} ve normale daha yakın. Düzeltmek için ilgili dolumun 'Depo Full' işaretini kaldırın.`}
                               >
-                                🔗 Bağlantılı? · birleşik {s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}{birimEki}
+                                🔗 Bağlantılı{s.baglantiliBilgi ? `: ${s.baglantiliBilgi}` : "?"} · birleşik {s.birlesikOrt != null ? formatSayi(s.birlesikOrt, 2) : "-"}{birimEki}
                               </span>
                             )}
                           </div>
