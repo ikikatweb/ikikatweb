@@ -355,6 +355,12 @@ export default function PersonelPuantajPage() {
     const buAyNum = bugunDt.getFullYear() * 100 + (bugunDt.getMonth() + 1);
     const goruntulenenAyNum = yil * 100 + ay;
     const gecmisAy = goruntulenenAyNum < buAyNum;
+    // İşe giriş ayı (YYYYMM) — bu aydan ÖNCEKİ aylarda personel görünmemeli.
+    const girisAyNum = (p: PersonelWithRelations): number | null => {
+      if (!p.ise_giris_tarihi) return null;
+      const m = p.ise_giris_tarihi.match(/^(\d{4})-(\d{2})/);
+      return m ? parseInt(m[1]) * 100 + parseInt(m[2]) : null;
+    };
     return personeller
       .filter((p) => {
         // 1) Bu ay/şantiyede puantaj kaydı varsa → her zaman göster (B'de çalışmış,
@@ -363,15 +369,19 @@ export default function PersonelPuantajPage() {
         // 2) Bu şantiyeye atanmış mı? (junction — tarihsiz)
         const junctionB = personelSantiyeMap.get(p.id)?.has(santiyeId) ?? false;
         if (!junctionB) return false; // atanmamış → gösterme
-        // 3) GEÇMİŞ ayda, bu şantiyede puantajı YOK ama BAŞKA şantiyede puantajı VARSA
-        //    gizle (atandığı aydan önceki aylarda yeni şantiyede görünmesin).
+        // 3) İŞE GİRİŞ TARİHİNDEN ÖNCEKİ aylarda gösterme — yeni başlayan personel,
+        //    işe başlamadan önceki aylarda puantajda çıkmasın.
+        const gAy = girisAyNum(p);
+        if (gAy != null && goruntulenenAyNum < gAy) return false;
+        // 4) GEÇMİŞ ayda, bu şantiyede puantajı YOK ama BAŞKA şantiyede puantajı VARSA
+        //    gizle (atandığı aydan önceki aylarda yeni şantiyede görünmesin — transfer).
         //    Bu ay / gelecek aylarda gizleme YAPMA → atama/transfer ayında iki
         //    şantiyede de görünsün (ay ortası giriş için puantaj girilebilsin).
         if (gecmisAy) {
           const buAyBaskaSantiyede = (digerCakismalar.get(p.id)?.size ?? 0) > 0;
           if (buAyBaskaSantiyede) return false;
         }
-        // 4) Diğer tüm durumlar → göster
+        // 5) Diğer tüm durumlar → göster
         return true;
       })
       .filter((p) => {

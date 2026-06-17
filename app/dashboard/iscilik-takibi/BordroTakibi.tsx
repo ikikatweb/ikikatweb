@@ -953,11 +953,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const tumSantiyeler = (s as SantiyeBasic[]) ?? [];
       // Bordro'da görünecek şantiyeler:
       //  1) İşçilik Takibi (Durum Raporu) kaydı olanlar (eski davranış), VEYA
-      //  2) Personel ataması (atama_gecmisi) olan şantiyeler — işçilik kaydı olmasa
-      //     bile işçi atanmışsa bordroda görünmeli (bordro personel bazlıdır).
+      //  2) AKTİF (açık = bitis_tarihi null) personel ataması olan şantiyeler.
+      //     SADECE açık atamalar — herkesi çıkmış/tamamlanmış (kapanmış atamalı)
+      //     şantiyeler "0 kişi" ile gelmesin diye. Bordro personel bazlıdır:
+      //     fiilen personeli olan şantiye görünür.
       const atamaliSantiyeIds = new Set<string>();
       for (const at of (a as PersonelAtamaGecmisi[]) ?? []) {
-        if (at.santiye_id) atamaliSantiyeIds.add(at.santiye_id);
+        if (at.santiye_id && at.bitis_tarihi == null) atamaliSantiyeIds.add(at.santiye_id);
       }
       const aktifSantiyeler = tumSantiyeler
         .filter((x) => iscilikRaporSantiyeIds.has(x.id) || atamaliSantiyeIds.has(x.id))
@@ -995,21 +997,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const filtreliSantiyeler = useMemo(() => {
     // Önce yetki bazlı (kısıtlı kullanıcı sadece izinli şantiyeler) filtre
     const yetkili = filtreliSantiyelerHelper(santiyeler, kullanici);
-    // "aktif" sekmesi → gecici_kabul_tarihi BOŞ olan tüm işler
-    // "pasif" sekmesi (Geçici Kabulü Yapılmış İşler) → gecici_kabul_tarihi DOLU olan işler
     const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
+    // TAMAMLANMIŞ iş = geçici kabul VEYA kesin kabul VEYA tasfiye VEYA devir tarihi dolu.
+    // Sadece geçici kabule bakmak yetmiyor: kesin kabul / tasfiye / devir ile biten
+    // ama geçici kabul tarihi girilmemiş işler "aktif" sekmesinde kalıyordu.
+    const tamamlandi = (s: typeof yetkili[number]) =>
+      dolu(s.gecici_kabul_tarihi) || dolu(s.kesin_kabul_tarihi) ||
+      dolu(s.tasfiye_tarihi) || dolu(s.devir_tarihi);
+    // "aktif" sekmesi → tamamlanmamış (devam eden) işler
     if (gosterilecekDurum === "aktif") {
-      return yetkili.filter((s) => !dolu(s.gecici_kabul_tarihi));
+      return yetkili.filter((s) => !tamamlandi(s));
     }
-    // Pasif sekmesi: en son geçici kabul tarihi yapılan en üstte (DESC sıralama)
+    // "pasif" sekmesi (Geçici/Kesin Kabulü Yapılmış İşler) → tamamlanmış işler.
+    // En son tamamlanma tarihi (kabul/tasfiye/devir'in en yenisi) en üstte (DESC).
+    const tamTarih = (s: typeof yetkili[number]): string =>
+      [s.gecici_kabul_tarihi, s.kesin_kabul_tarihi, s.tasfiye_tarihi, s.devir_tarihi]
+        .filter((v): v is string => dolu(v))
+        .sort()
+        .pop() ?? "";
     return yetkili
-      .filter((s) => dolu(s.gecici_kabul_tarihi))
-      .sort((a, b) => {
-        const at = a.gecici_kabul_tarihi ?? "";
-        const bt = b.gecici_kabul_tarihi ?? "";
-        // Tarih string'i ISO formatında (YYYY-MM-DD) — string karşılaştırma yeterli
-        return bt.localeCompare(at); // descending
-      });
+      .filter((s) => tamamlandi(s))
+      .sort((a, b) => tamTarih(b).localeCompare(tamTarih(a))); // descending
   }, [santiyeler, kullanici, gosterilecekDurum]);
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır
