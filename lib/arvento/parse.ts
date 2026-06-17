@@ -187,6 +187,84 @@ export function parseGenelRaporBuffer(buf: ArrayBuffer | Buffer): ArventoGenelSa
   return out;
 }
 
+// ===== "Mesafe Bilgisi" (Konum Geçmişi) — araç güzergahı / rota =====
+// Araç başına sık aralıklı GPS noktaları → haritada rota çizgisi için.
+export type GuzergahNokta = { saat: string | null; lat: number; lng: number; hiz: number | null };
+export type ArventoGuzergah = {
+  tarih: string;       // YYYY-MM-DD
+  plaka: string;
+  aracSinifi: string | null; // ör. "Greyder"
+  marka: string | null;
+  model: string | null;
+  toplamMesafe: number | null; // km
+  noktalar: GuzergahNokta[];
+};
+
+// "Mesafe Bilgisi" sayfasını ayrıştır: plaka × gün bazında sıralı GPS noktaları.
+export function parseMesafeBilgisiBuffer(buf: ArrayBuffer | Buffer): ArventoGuzergah[] {
+  const wb = XLSX.read(buf, { type: "buffer" });
+  const sheetAdi =
+    wb.SheetNames.find((n) => norm(n).includes("mesafe bilgisi")) ??
+    wb.SheetNames.find((n) => norm(n).includes("mesafe")) ??
+    wb.SheetNames.find((n) => norm(n).includes("konum"));
+  if (!sheetAdi) return [];
+  const ws = wb.Sheets[sheetAdi];
+  if (!ws) return [];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: false });
+  // Başlık satırı: "plaka" içeren ilk satır
+  let hi = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if ((rows[i] ?? []).some((c) => norm(c) === "plaka")) { hi = i; break; }
+  }
+  if (hi < 0) return [];
+  const head = (rows[hi] ?? []).map(norm);
+  const plakaCol = head.findIndex((h) => h.includes("plaka"));
+  const tarihCol = head.findIndex((h) => h.includes("tarih"));
+  const enlemCol = head.findIndex((h) => h.includes("enlem") || h.includes("latitude") || h === "lat");
+  const boylamCol = head.findIndex((h) => h.includes("boylam") || h.includes("longitude") || h === "lng" || h === "lon");
+  const hizCol = head.findIndex((h) => h.includes("hiz") || h.includes("(km/h)") || h.includes("km h"));
+  const mesafeCol = head.findIndex((h) => h.includes("mesafe (km") || h === "mesafe km");
+  const sinifCol = head.findIndex((h) => h.includes("sinif"));
+  const markaCol = head.findIndex((h) => h.includes("marka"));
+  const modelCol = head.findIndex((h) => h.includes("model"));
+  if (plakaCol < 0 || tarihCol < 0 || enlemCol < 0 || boylamCol < 0) return [];
+
+  const m = new Map<string, ArventoGuzergah>();
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const plaka = temizMetin(r[plakaCol]);
+    if (!plaka) continue;
+    const tarih = parseEnTarih(r[tarihCol]);
+    if (!tarih) continue;
+    const lat = parseSayi(r[enlemCol]);
+    const lng = parseSayi(r[boylamCol]);
+    if (lat == null || lng == null || (lat === 0 && lng === 0)) continue;
+    const key = `${tarih}|${plaka}`;
+    let g = m.get(key);
+    if (!g) {
+      g = {
+        tarih, plaka,
+        aracSinifi: sinifCol >= 0 ? temizMetin(r[sinifCol]) : null,
+        marka: markaCol >= 0 ? temizMetin(r[markaCol]) : null,
+        model: modelCol >= 0 ? temizMetin(r[modelCol]) : null,
+        toplamMesafe: 0,
+        noktalar: [],
+      };
+      m.set(key, g);
+    }
+    g.noktalar.push({ saat: parseSaat(r[tarihCol]), lat, lng, hiz: hizCol >= 0 ? parseSayi(r[hizCol]) : null });
+    if (mesafeCol >= 0) { const seg = parseSayi(r[mesafeCol]); if (seg != null) g.toplamMesafe = (g.toplamMesafe ?? 0) + seg; }
+  }
+  const out = [...m.values()];
+  // Noktaları saate göre sırala (rota doğru çizilsin)
+  for (const g of out) {
+    g.noktalar.sort((a, b) => (a.saat ?? "").localeCompare(b.saat ?? ""));
+    if (g.toplamMesafe != null) g.toplamMesafe = Math.round(g.toplamMesafe * 10) / 10;
+  }
+  return out;
+}
+
 // Buffer/ArrayBuffer'dan Arvento raporunu ayrıştır.
 export function parseArventoBuffer(buf: ArrayBuffer | Buffer): ArventoRaporParse {
   const wb = XLSX.read(buf, { type: "buffer" });

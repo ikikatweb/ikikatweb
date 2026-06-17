@@ -1,9 +1,38 @@
 // Arvento araç çalışma raporu sorguları
 import { createClient } from "@/lib/supabase/client";
-import type { AracArventoRapor } from "@/lib/supabase/types";
+import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 function getSupabase() {
   return createClient();
+}
+
+// ===== Güzergah (Mesafe Bilgisi / rota) sorguları =====
+
+// Güzergah verisi olan tarihler (yeni → eski)
+export async function getGuzergahTarihler(limit = 60): Promise<string[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_arvento_guzergah")
+    .select("rapor_tarihi")
+    .order("rapor_tarihi", { ascending: false })
+    .limit(2000);
+  if (error) return [];
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { rapor_tarihi: string }[]) set.add(r.rapor_tarihi);
+  return Array.from(set).slice(0, limit);
+}
+
+// Belirli bir günün tüm güzergah kayıtları (plaka bazında)
+export async function getGuzergahByTarih(tarih: string): Promise<AracArventoGuzergah[]> {
+  if (!tarih) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_arvento_guzergah")
+    .select("*")
+    .eq("rapor_tarihi", tarih)
+    .order("plaka");
+  if (error) throw error;
+  return (data ?? []) as AracArventoGuzergah[];
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için

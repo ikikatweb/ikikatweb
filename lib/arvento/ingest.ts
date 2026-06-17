@@ -7,7 +7,7 @@
 // ingestArventoBuffer her iki tipi de otomatik algılar. Kayıtlar (rapor_tarihi, plaka)
 // üzerinden UPSERT edilir → çalışma ve damper verisi hangi sırada gelirse gelsin birleşir.
 import { createClient } from "@supabase/supabase-js";
-import { parseArventoBuffer, parseGenelRaporBuffer } from "@/lib/arvento/parse";
+import { parseArventoBuffer, parseGenelRaporBuffer, parseMesafeBilgisiBuffer } from "@/lib/arvento/parse";
 
 function trBugun(): string {
   const now = new Date();
@@ -25,11 +25,36 @@ function serviceClient() {
 export type IngestSonuc = {
   calismaGunler: { tarih: string; sayi: number }[]; // işlenen çalışma raporları
   damperGunler: { tarih: string; sayi: number }[];   // damper güncellenen günler
+  guzergahGunler?: { tarih: string; sayi: number }[]; // güzergah (rota) güncellenen plaka/gün
 };
 
 export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<IngestSonuc> {
   const supabase = serviceClient();
-  const sonuc: IngestSonuc = { calismaGunler: [], damperGunler: [] };
+  const sonuc: IngestSonuc = { calismaGunler: [], damperGunler: [], guzergahGunler: [] };
+
+  // ---- 0) Mesafe Bilgisi (Güzergah / Rota) ----
+  const guzergahlar = parseMesafeBilgisiBuffer(buf);
+  if (guzergahlar.length > 0) {
+    const satirlar = guzergahlar.map((g) => ({
+      rapor_tarihi: g.tarih,
+      plaka: g.plaka,
+      arac_sinifi: g.aracSinifi,
+      marka: g.marka,
+      model: g.model,
+      toplam_mesafe: g.toplamMesafe,
+      nokta_sayisi: g.noktalar.length,
+      noktalar: g.noktalar,
+    }));
+    const { error } = await supabase
+      .from("arac_arvento_guzergah")
+      .upsert(satirlar, { onConflict: "rapor_tarihi,plaka" });
+    if (error) throw new Error(`Güzergah kaydı hatası: ${error.message}`);
+    const gunMap = new Map<string, number>();
+    for (const g of guzergahlar) gunMap.set(g.tarih, (gunMap.get(g.tarih) ?? 0) + 1);
+    sonuc.guzergahGunler = Array.from(gunMap.entries()).map(([tarih, sayi]) => ({ tarih, sayi }));
+    // Mesafe Bilgisi dosyasında çalışma/damper sayfası olmaz → erken dön
+    return sonuc;
+  }
 
   // ---- 1) Araç Çalışma Raporu (km/süre) ----
   const work = parseArventoBuffer(buf);
@@ -103,8 +128,18 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     for (const [tarih, sayi] of gunMap) sonuc.damperGunler.push({ tarih, sayi });
   }
 
-  if (sonuc.calismaGunler.length === 0 && sonuc.damperGunler.length === 0) {
-    throw new Error("Dosyada 'Araç Çalışma Raporu' veya 'Genel Rapor' verisi bulunamadı.");
+  if (sonuc.calismaGunler.length === 0 && sonuc.damperGunler.length === 0 && (sonuc.guzergahGunler?.length ?? 0) === 0) {
+    // Mesafe Bilgisi sayfası var ama koordinat yoksa: ÖZET formatı yüklenmiş demektir.
+    const { default: XLSX } = await import("xlsx");
+    const wbCheck = XLSX.read(buf, { type: "buffer" });
+    const mesafeSayfasiVar = wbCheck.SheetNames.some((n) => n.toLowerCase().includes("mesafe"));
+    if (mesafeSayfasiVar) {
+      throw new Error(
+        "Bu Mesafe Bilgisi raporu ÖZET formatında (koordinat yok). Rota/Reglaj için " +
+        "Arvento'dan raporu 'Detaylı: Seçili' seçeneğiyle dışa aktarın — detaylı raporda Enlem/Boylam sütunları bulunur.",
+      );
+    }
+    throw new Error("Dosyada 'Araç Çalışma Raporu', 'Genel Rapor' veya 'Mesafe Bilgisi' verisi bulunamadı.");
   }
   return sonuc;
 }

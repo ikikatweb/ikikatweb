@@ -25,6 +25,7 @@ import { Save, Upload, Plus, FileText, Trash2 } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatBaslik } from "@/lib/utils/isim";
 import { parseEk, buildEk } from "@/lib/utils/ek";
+import { uploadDosya } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
 
 type Props = {
@@ -135,17 +136,12 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     try {
       let pdfUrl = evrak?.pdf_url ?? null;
       if (pdfFile) {
-        const formData = new FormData();
-        formData.append("file", pdfFile);
-        formData.append("bucket", "yazismalar");
-        formData.append("path", `gelen/${firmaId}/${Date.now()}.pdf`);
-        const res = await fetch("/api/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (res.ok && data.url) {
-          pdfUrl = data.url;
-        } else {
+        try {
+          // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
+          pdfUrl = await uploadDosya(pdfFile, "yazismalar", `gelen/${firmaId}/${Date.now()}.pdf`);
+        } catch (e) {
           // Upload BAŞARISIZ — kullanıcıya net hata ver, formu boş kayıtla kaydetme.
-          toast.error(`Üst yazı yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
+          toast.error(`Üst yazı yüklenemedi: ${e instanceof Error ? e.message : "Bilinmeyen hata"}`);
           setLoading(false);
           return;
         }
@@ -350,17 +346,13 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                     const yeniUrls: string[] = [];
                     for (const dosya of Array.from(dosyalar)) {
                       const guvenliAd = sanitizeDosyaAdi(dosya.name);
-                      const formData = new FormData();
-                      formData.append("file", dosya);
-                      formData.append("bucket", "yazismalar");
-                      formData.append("path", `gelen-ek/${firmaId}/${Date.now()}-${guvenliAd}`);
-                      const res = await fetch("/api/upload", { method: "POST", body: formData });
-                      const data = await res.json();
-                      if (res.ok && data.url) {
+                      try {
+                        // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
+                        const yeniUrl = await uploadDosya(dosya, "yazismalar", `gelen-ek/${firmaId}/${Date.now()}-${guvenliAd}`);
                         // Ek adı BOŞ eklenir — kullanıcı elle yazacak (dosya adı kullanılmaz)
-                        yeniUrls.push(buildEk("", data.url));
-                      } else {
-                        toast.error(`"${dosya.name}" yüklenemedi: ${data?.error ?? "Bilinmeyen hata"}`);
+                        yeniUrls.push(buildEk("", yeniUrl));
+                      } catch (e) {
+                        toast.error(`"${dosya.name}" yüklenemedi: ${e instanceof Error ? e.message : "Bilinmeyen hata"}`);
                       }
                     }
                     if (yeniUrls.length > 0) {

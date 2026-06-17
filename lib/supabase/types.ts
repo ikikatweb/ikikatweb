@@ -867,6 +867,20 @@ export type AracArventoRapor = {
   created_at: string;
 };
 
+// Araç güzergahı (Mesafe Bilgisi raporu) — plaka × gün bazında sıralı GPS noktaları.
+export type AracArventoGuzergah = {
+  id: string;
+  rapor_tarihi: string;      // YYYY-MM-DD
+  plaka: string;
+  arac_sinifi: string | null; // ör. "Greyder"
+  marka: string | null;
+  model: string | null;
+  toplam_mesafe: number | null; // km
+  nokta_sayisi: number | null;
+  noktalar: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {

@@ -29,6 +29,7 @@ import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatMuhatap, formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
+import { uploadDosya } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
@@ -209,13 +210,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       // Kullanıcı sildiyse pdf_url null'a çekilir (yeni dosya seçmediği sürece)
       if (pdfRemoved) pdfUrl = null;
       if (pdfFile) {
-        const formData = new FormData();
-        formData.append("file", pdfFile);
-        formData.append("bucket", "yazismalar");
-        formData.append("path", `giden/${firmaId}/${Date.now()}.pdf`);
-        const res = await fetch("/api/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (res.ok) pdfUrl = data.url;
+        // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
+        pdfUrl = await uploadDosya(pdfFile, "yazismalar", `giden/${firmaId}/${Date.now()}.pdf`);
       }
 
       // Tam tarih yoksa yıldan kurtarma (sıralama için ocak 1)
@@ -555,17 +551,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                           };
                           let temiz = dosya.name.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
                           temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").toLowerCase();
-                          const formData = new FormData();
-                          formData.append("file", dosya);
-                          formData.append("bucket", "yazismalar");
-                          formData.append("path", `giden-ek/${firmaId}/${Date.now()}-${temiz}`);
-                          const res = await fetch("/api/upload", { method: "POST", body: formData });
-                          const data = await res.json();
-                          if (!res.ok || !data.url) throw new Error(data?.error ?? "Yüklenemedi");
+                          // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
+                          const yeniUrl = await uploadDosya(dosya, "yazismalar", `giden-ek/${firmaId}/${Date.now()}-${temiz}`);
                           // Metni koru, URL'i ekle/değiştir
                           setEkler((p) => p.map((x, idx) => {
                             if (idx !== i) return x;
-                            return metin ? `${metin}|${data.url}` : data.url;
+                            return metin ? `${metin}|${yeniUrl}` : yeniUrl;
                           }));
                           toast.success(url ? "PDF değiştirildi." : "PDF eklendi.");
                         } catch (err) {
