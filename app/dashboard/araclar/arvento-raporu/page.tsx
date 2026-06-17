@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoTarihler, getGuzergahTarihler, getArventoRaporByTarih, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -23,12 +23,6 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
-function formatTarih(t: string | null): string {
-  if (!t) return "—";
-  const d = new Date(t + "T00:00:00");
-  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
-}
-
 // saniye → "2sa 15dk" / "—"
 function formatSure(sn: number | null): string {
   if (sn == null) return "—";
@@ -44,14 +38,53 @@ function formatKm(v: number | null): string {
   return v.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 }
 
+// Bugün (TR saati) — YYYY-MM-DD
+function trBugun(): string {
+  const now = new Date();
+  const tr = new Date(now.getTime() + (3 * 60 - now.getTimezoneOffset()) * 60000);
+  return tr.toISOString().slice(0, 10);
+}
+
+// Bir YYYY-MM-DD tarihine gün ekler/çıkarır
+function gunEkle(tarih: string, delta: number): string {
+  const d = new Date((tarih || trBugun()) + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// Tarih aralığındaki kayıtları PLAKAYA göre topla (çok günlük km/damper toplamı).
+// Damper olaylarına gün etiketi eklenir (saat "DD.MM HH:MM:SS").
+function aralikTopla(rows: AracArventoRapor[]): AracArventoRapor[] {
+  const m = new Map<string, AracArventoRapor>();
+  for (const r of rows) {
+    const gunEk = `${r.rapor_tarihi.slice(8, 10)}.${r.rapor_tarihi.slice(5, 7)}`;
+    const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []).map((o) => ({
+      ...o, saat: o.saat ? `${gunEk} ${o.saat}` : o.saat,
+    }));
+    const ex = m.get(r.plaka);
+    if (!ex) {
+      m.set(r.plaka, { ...r, mesafe_km: r.mesafe_km ?? 0, damper_sayisi: r.damper_sayisi ?? 0, damper_olaylar: olaylar });
+    } else {
+      ex.mesafe_km = (ex.mesafe_km ?? 0) + (r.mesafe_km ?? 0);
+      ex.damper_sayisi = (ex.damper_sayisi ?? 0) + (r.damper_sayisi ?? 0);
+      ex.damper_olaylar = [...(ex.damper_olaylar ?? []), ...olaylar];
+      if (!ex.surucu && r.surucu) ex.surucu = r.surucu;
+      if (!ex.marka && r.marka) ex.marka = r.marka;
+      if (!ex.model && r.model) ex.model = r.model;
+    }
+  }
+  return Array.from(m.values());
+}
+
 export default function ArventoRaporPage() {
   const { hasPermission } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
   const yEkle = hasPermission("araclar-arvento-raporu", "ekle");
 
   const [loading, setLoading] = useState(true);
-  const [tarihler, setTarihler] = useState<string[]>([]);
-  const [seciliTarih, setSeciliTarih] = useState<string>("");
+  // Tarih aralığı — başlangıç & bitiş; varsayılan ikisi de bugün (tek gün). Manuel değiştirilebilir.
+  const [baslangic, setBaslangic] = useState<string>(trBugun());
+  const [bitis, setBitis] = useState<string>(trBugun());
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
   // Ham günlük kayıtlar (tüm geçmiş) — ortalama hesabı için. Bir kez çekilir.
   const [hamKayitlar, setHamKayitlar] = useState<ArventoHamKayit[]>([]);
@@ -125,35 +158,23 @@ export default function ArventoRaporPage() {
   const [maildenCekiliyor, setMaildenCekiliyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadTarihler = useCallback(async () => {
-    try {
-      // Çalışma/damper tarihleri + güzergah (Reglaj) tarihleri birleşik liste.
-      // Reglaj artık üstteki tarihten beslendiği için güzergah-only günler de seçilebilir.
-      const [t, gt] = await Promise.all([getArventoTarihler(), getGuzergahTarihler()]);
-      const birlesik = Array.from(new Set([...t, ...gt])).sort().reverse();
-      setTarihler(birlesik);
-      setSeciliTarih((prev) => prev || birlesik[0] || "");
-    } catch { /* sessiz */ } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { loadTarihler(); }, [loadTarihler]);
-
   const loadKayitlar = useCallback(async () => {
-    if (!seciliTarih) { setKayitlar([]); return; }
+    if (!baslangic || !bitis) { setKayitlar([]); setLoading(false); return; }
     try {
       const [k, ps] = await Promise.all([
-        getArventoRaporByTarih(seciliTarih),
-        getPlakaSantiyeMap(seciliTarih),
+        getArventoRaporByRange(baslangic, bitis),
+        getPlakaSantiyeMap(bitis),
       ]);
-      setKayitlar(k);
+      // Aralıktaki günleri plaka bazında topla (tek gün ise zaten tek satır)
+      setKayitlar(aralikTopla(k));
       setPlakaSantiye(ps);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("arac_arvento_rapor")) {
         toast.error("arac_arvento_rapor tablosu yok. SQL'i çalıştırın.", { duration: toastSuresi() });
       }
-    }
-  }, [seciliTarih]);
+    } finally { setLoading(false); }
+  }, [baslangic, bitis]);
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
 
@@ -171,10 +192,9 @@ export default function ArventoRaporPage() {
       if (!res.ok) throw new Error(data.error ?? "Mailden çekilemedi");
       if (data.ok) {
         toast.success(`Mailden çekildi — ${data.mesaj}`, { duration: toastSuresi() });
-        await loadTarihler();
         const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
-        if (yeniTarih) setSeciliTarih(yeniTarih);
-        await loadKayitlar();
+        if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
+        else await loadKayitlar();
       } else {
         // ok:false → mail bulunamadı / işlenemedi gibi bilgilendirici durum
         toast(data.mesaj ?? "Çekilecek yeni rapor bulunamadı.", { icon: "ℹ️", duration: toastSuresi() });
@@ -196,15 +216,13 @@ export default function ArventoRaporPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "İçe aktarılamadı");
       toast.success(data.mesaj ?? "İçe aktarıldı.", { duration: toastSuresi() });
-      await loadTarihler();
-      // İçe aktarılan ilk çalışma günü (yoksa ilk damper günü) seçili olsun
-      const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
-      if (yeniTarih) setSeciliTarih(yeniTarih);
-      await loadKayitlar();
-      // Güzergah (Mesafe Bilgisi) yüklendiyse: üstteki tarihi o güne al + Reglaj'a geç
+      // İçe aktarılan ilk çalışma/damper günü (güzergah varsa onun günü) aralık olarak seçilsin
+      const yeniTarih: string | undefined =
+        data.guzergahGunler?.[0]?.tarih ?? data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
+      if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
+      else await loadKayitlar();
+      // Güzergah (Mesafe Bilgisi) yüklendiyse Reglaj'a geç + yenile
       if (data.guzergahGunler && data.guzergahGunler.length > 0) {
-        const gTarih: string | undefined = data.guzergahGunler[0]?.tarih;
-        if (gTarih) setSeciliTarih(gTarih); // loadTarihler birleşik listeye ekledi
         setGuzergahRefresh((x) => x + 1);
         setAktifSekme("guzergah");
       }
@@ -216,12 +234,11 @@ export default function ArventoRaporPage() {
     }
   }
 
-  // Mevcut tarihler arasında gün gün gezinme (sola = eski, sağa = yeni)
-  const tarihlerAsc = useMemo(() => [...tarihler].sort(), [tarihler]);
-  const tarihIdx = tarihlerAsc.indexOf(seciliTarih);
+  // Oklarla tek gün ileri-geri: başlangıç & bitiş aynı güne ayarlanır (referans = bitiş)
   function gunGez(delta: number) {
-    const j = tarihIdx + delta;
-    if (j >= 0 && j < tarihlerAsc.length) setSeciliTarih(tarihlerAsc[j]);
+    const yeni = gunEkle(bitis || baslangic, delta);
+    setBaslangic(yeni);
+    setBitis(yeni);
   }
 
   const filtrelenmis = useMemo(() => {
@@ -277,7 +294,7 @@ export default function ArventoRaporPage() {
     ws["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 9 }, { wch: 13 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Arvento");
-    XLSX.writeFile(wb, `arvento-${seciliTarih}.xlsx`);
+    XLSX.writeFile(wb, `arvento-${baslangic === bitis ? baslangic : `${baslangic}_${bitis}`}.xlsx`);
   }
 
   if (!yGor) {
@@ -329,23 +346,28 @@ export default function ArventoRaporPage() {
 
       {/* Filtreler + özet */}
       <div className="bg-white rounded-lg border p-3 mb-4 flex flex-wrap items-end gap-3">
+        <button type="button" onClick={() => gunGez(-1)}
+          title="Önceki gün (başlangıç = bitiş)" className="h-9 w-8 mb-px flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100">
+          <ChevronLeft size={16} />
+        </button>
         <div className="space-y-1">
-          <Label className="text-[10px] text-gray-500">Rapor Tarihi</Label>
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => gunGez(-1)} disabled={tarihIdx <= 0}
-              title="Önceki gün" className="h-9 w-8 flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronLeft size={16} />
-            </button>
-            <select value={seciliTarih} onChange={(e) => setSeciliTarih(e.target.value)} className={selectClass + " min-w-[160px]"}>
-              {tarihler.length === 0 && <option value="">Kayıt yok</option>}
-              {tarihler.map((t) => <option key={t} value={t}>{formatTarih(t)}</option>)}
-            </select>
-            <button type="button" onClick={() => gunGez(1)} disabled={tarihIdx < 0 || tarihIdx >= tarihlerAsc.length - 1}
-              title="Sonraki gün" className="h-9 w-8 flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
-              <ChevronRight size={16} />
-            </button>
-          </div>
+          <Label className="text-[10px] text-gray-500">Başlangıç</Label>
+          <input type="date" value={baslangic} max={bitis || undefined}
+            onChange={(e) => setBaslangic(e.target.value)} className={selectClass} />
         </div>
+        <div className="space-y-1">
+          <Label className="text-[10px] text-gray-500">Bitiş</Label>
+          <input type="date" value={bitis} min={baslangic || undefined}
+            onChange={(e) => setBitis(e.target.value)} className={selectClass} />
+        </div>
+        <button type="button" onClick={() => gunGez(1)}
+          title="Sonraki gün (başlangıç = bitiş)" className="h-9 w-8 mb-px flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100">
+          <ChevronRight size={16} />
+        </button>
+        {(baslangic !== trBugun() || bitis !== trBugun()) && (
+          <button type="button" onClick={() => { const b = trBugun(); setBaslangic(b); setBitis(b); }}
+            title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
+        )}
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Ara</Label>
           <div className="relative">
@@ -380,19 +402,19 @@ export default function ArventoRaporPage() {
       {/* Tablo */}
       {aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah tarih={seciliTarih} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize tarih={seciliTarih} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon tarih={seciliTarih} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon tarih={seciliTarih} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu tarih={seciliTarih} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME 6: TANIMLAMALAR — damper indirme sayısı, araç km, makina saati ----
         <div className="bg-white rounded-lg border p-4 space-y-4">
@@ -557,7 +579,7 @@ export default function ArventoRaporPage() {
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border">
           <Satellite size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">{seciliTarih ? "Bu tarihte kayıt yok." : "Henüz rapor yok. Excel yükleyin veya gece otomatik gelmesini bekleyin."}</p>
+          <p className="text-gray-500">{baslangic ? "Bu tarih aralığında kayıt yok." : "Henüz rapor yok. Excel yükleyin veya gece otomatik gelmesini bekleyin."}</p>
         </div>
       ) : aktifSekme === "calisma" ? (
         // ---- SEKME 1: ARAÇ ÇALIŞMA RAPORU (km / süre) ----

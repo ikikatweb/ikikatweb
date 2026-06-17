@@ -35,6 +35,37 @@ export async function getGuzergahByTarih(tarih: string): Promise<AracArventoGuze
   return (data ?? []) as AracArventoGuzergah[];
 }
 
+// Tarih aralığındaki güzergahlar — aynı plakanın TÜM günlerinin noktaları birleştirilir
+// (dönem boyunca aracın gittiği tüm yollar tek güzergah olarak). bas===bitis → tek gün.
+export async function getGuzergahByRange(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
+  if (!bas || !bitis) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_arvento_guzergah")
+    .select("*")
+    .gte("rapor_tarihi", bas)
+    .lte("rapor_tarihi", bitis)
+    .order("rapor_tarihi")
+    .order("plaka");
+  if (error) throw error;
+  const rows = (data ?? []) as AracArventoGuzergah[];
+  const m = new Map<string, AracArventoGuzergah>();
+  for (const r of rows) {
+    const ex = m.get(r.plaka);
+    if (!ex) {
+      m.set(r.plaka, { ...r, noktalar: [...(r.noktalar ?? [])] });
+    } else {
+      ex.noktalar = [...ex.noktalar, ...(r.noktalar ?? [])];
+      ex.toplam_mesafe = (ex.toplam_mesafe ?? 0) + (r.toplam_mesafe ?? 0);
+      ex.nokta_sayisi = (ex.nokta_sayisi ?? 0) + (r.noktalar?.length ?? 0);
+      if (!ex.arac_sinifi && r.arac_sinifi) ex.arac_sinifi = r.arac_sinifi;
+      if (!ex.marka && r.marka) ex.marka = r.marka;
+      if (!ex.model && r.model) ex.model = r.model;
+    }
+  }
+  return Array.from(m.values());
+}
+
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için
 export async function getArventoTarihler(limit = 60): Promise<string[]> {
   const supabase = getSupabase();

@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByTarih, getArventoRaporByTarih } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
 import { sinifEslesir } from "@/lib/arvento/operasyonlar";
@@ -31,12 +31,16 @@ function formatTarih(t: string | null): string {
   const d = new Date(t + "T00:00:00");
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 }
+function formatAralik(bas: string, bitis: string): string {
+  if (!bas) return "—";
+  return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
+}
 
 function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
 
-export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { tarih: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlaka, setSeciliPlaka] = useState(""); // "" = tüm kamyonlar
@@ -46,16 +50,16 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
   const tumMapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!tarih) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
     setLoading(true);
-    Promise.all([getGuzergahByTarih(tarih), getArventoRaporByTarih(tarih)])
+    Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
       .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r); })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
       .finally(() => setLoading(false));
-  }, [tarih, refreshKey]);
+  }, [bas, bitis, refreshKey]);
 
   // Referans çizgiler: greyder (reglaj) güzergahları
   const greyderler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "reglaj", k.plaka)), [tumGuzergah]);
@@ -85,7 +89,7 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
 
   // Harita: greyder çizgileri (referans) + kamyon damper yuvarlakları
   useEffect(() => {
-    if (!tarih) return;
+    if (!bas || !bitis) return;
     let iptal = false;
     let map: LeafletMap | null = null;
     (async () => {
@@ -118,7 +122,7 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [tarih, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, guzergahMesafe]);
 
   // Tam ekran modal — aynı içerik (referans çizgiler + damperler)
   useEffect(() => {
@@ -165,7 +169,7 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
     const damperPlacemarks = damperKoordlu.map((o, i) => `
     <Placemark><name>${esc(o.plaka)} damper ${i + 1}</name><description>${esc([o.saat ?? "", o.adres ?? ""].filter(Boolean).join(" · "))}</description><styleUrl>#damper</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("");
     if (!cizgiler && !damperPlacemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
-    const baslik = `Stabilize ${tarih}`;
+    const baslik = `Stabilize ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -183,11 +187,11 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
   }
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
-  if (!tarih) {
+  if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
         <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih seçin.</p>
+        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
       </div>
     );
   }
@@ -196,7 +200,7 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
       <div className="text-center py-16 bg-white rounded-lg border">
         <Layers size={48} className="mx-auto text-gray-300 mb-4" />
         <p className="text-gray-500">
-          {formatTarih(tarih)} için kamyon damper verisi ya da reglaj çizgisi yok.
+          {formatAralik(bas, bitis)} için kamyon damper verisi ya da reglaj çizgisi yok.
           <br />Damper (Genel) raporunu ve/veya greyder Mesafe Bilgisi raporunu yükleyin.
         </p>
       </div>
@@ -272,7 +276,7 @@ export default function ArventoStabilize({ tarih, tekrarEsigi = 0, gridMesafe = 
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <Layers size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">Stabilize — {formatTarih(tarih)} · {damperKoordlu.length} damper · {greyderler.length} reglaj çizgisi</span>
+              <span className="text-sm truncate">Stabilize — {formatAralik(bas, bitis)} · {damperKoordlu.length} damper · {greyderler.length} reglaj çizgisi</span>
             </div>
             <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
               <X size={18} />

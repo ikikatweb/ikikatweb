@@ -7,7 +7,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByTarih, getArventoRaporByTarih } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
 import { OPERASYONLAR, sinifEslesir, zikzakla, paralelCizgi, type OperasyonTip } from "@/lib/arvento/operasyonlar";
@@ -34,6 +34,10 @@ function formatTarih(t: string | null): string {
   if (!t) return "—";
   const d = new Date(t + "T00:00:00");
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+}
+function formatAralik(bas: string, bitis: string): string {
+  if (!bas) return "—";
+  return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
 // Greyder hattının herhangi bir noktası bir damper noktasına esikM metre içinde mi?
@@ -72,8 +76,8 @@ function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][]
   }
 }
 
-export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: {
-  tarih: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -86,16 +90,16 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
   const tumMapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!tarih) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
     setLoading(true);
-    Promise.all([getGuzergahByTarih(tarih), sermeMi ? getArventoRaporByTarih(tarih) : Promise.resolve([])])
+    Promise.all([getGuzergahByRange(bas, bitis), sermeMi ? getArventoRaporByRange(bas, bitis) : Promise.resolve([])])
       .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r as AracArventoRapor[]); })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
       .finally(() => setLoading(false));
-  }, [tarih, refreshKey, sermeMi]);
+  }, [bas, bitis, refreshKey, sermeMi]);
 
   const greyderler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "reglaj", k.plaka)), [tumGuzergah]);
   const silindirler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergah]);
@@ -160,11 +164,11 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
   }
 
   useEffect(() => {
-    if (!tarih || !mapRef.current) return;
+    if (!bas || !bitis || !mapRef.current) return;
     const h = harita(mapRef.current);
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tarih, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, guzergahMesafe, sermeMi]);
+  }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, guzergahMesafe, sermeMi]);
 
   useEffect(() => {
     if (!tumHaritaAcik || !tumMapRef.current) return;
@@ -193,7 +197,7 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
     <Placemark><name>${esc(k.plaka)} silindir</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
         }).join("");
     if (!cizgiler && !orta) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
-    const baslik = `${def.ad} ${tarih}`;
+    const baslik = `${def.ad} ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -210,11 +214,11 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
   }
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
-  if (!tarih) {
+  if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
         <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih seçin.</p>
+        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
       </div>
     );
   }
@@ -226,7 +230,7 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
       <div className="text-center py-16 bg-white rounded-lg border">
         <Layers size={48} className="mx-auto mb-4" style={{ color: def.renk, opacity: 0.5 }} />
         <p className="text-gray-500">
-          {formatTarih(tarih)} için <strong style={{ color: def.renk }}>{def.ad}</strong> verisi yok.
+          {formatAralik(bas, bitis)} için <strong style={{ color: def.renk }}>{def.ad}</strong> verisi yok.
           <br />{sermeMi
             ? "Greyder Mesafe Bilgisi ve/veya damper raporunu yükleyin."
             : "Greyder Mesafe Bilgisi (alan) ve silindir Mesafe Bilgisi raporunu yükleyin."}
@@ -279,7 +283,7 @@ export default function ArventoOperasyon({ tarih, operasyon, tekrarEsigi = 0, si
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <Layers size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">{def.ad} — {formatTarih(tarih)}</span>
+              <span className="text-sm truncate">{def.ad} — {formatAralik(bas, bitis)}</span>
             </div>
             <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
               <X size={18} />

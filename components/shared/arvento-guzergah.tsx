@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByTarih } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
@@ -26,8 +26,12 @@ function formatTarih(t: string | null): string {
   const d = new Date(t + "T00:00:00");
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 }
+function formatAralik(bas: string, bitis: string): string {
+  if (!bas) return "—";
+  return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
+}
 
-export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { tarih: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlaka, setSeciliPlaka] = useState("");
   const [loading, setLoading] = useState(true);
@@ -35,11 +39,11 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
   const mapRef = useRef<HTMLDivElement>(null);
   const tumMapRef = useRef<HTMLDivElement>(null);
 
-  // Seçili (üstteki) tarihin kayıtlarını yükle — tarih değişince / yeni yükleme sonrası
+  // Seçili aralığın kayıtlarını yükle (bas–bitis); aralık değişince / yeni yükleme sonrası
   useEffect(() => {
-    if (!tarih) { setKayitlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { setKayitlar([]); setLoading(false); return; }
     setLoading(true);
-    getGuzergahByTarih(tarih)
+    getGuzergahByRange(bas, bitis)
       .then((k) => {
         setKayitlar(k);
         setSeciliPlaka((prev) => (k.some((x) => x.plaka === prev) ? prev : (k[0]?.plaka ?? "")));
@@ -51,7 +55,7 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
         }
       })
       .finally(() => setLoading(false));
-  }, [tarih, refreshKey]);
+  }, [bas, bitis, refreshKey]);
 
   const seciliKayit = useMemo(() => kayitlar.find((k) => k.plaka === seciliPlaka) ?? null, [kayitlar, seciliPlaka]);
 
@@ -155,8 +159,8 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
     const noktalar = seciliKayit.noktalar.filter((p) => p.lat != null && p.lng != null);
     // KML koordinat sırası: LNG,LAT,YÜKSEKLİK
     const coords = noktalar.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
-    const baslik = `Guzergah ${seciliKayit.plaka} ${tarih}`;
-    const bas = noktalar[0], son = noktalar[noktalar.length - 1];
+    const baslik = `Guzergah ${seciliKayit.plaka} ${bas === bitis ? bas : `${bas}_${bitis}`}`;
+    const ilkN = noktalar[0], sonN = noktalar[noktalar.length - 1];
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -168,8 +172,8 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
       <styleUrl>#rota</styleUrl>
       <LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString>
     </Placemark>
-    <Placemark><name>Başlangıç</name><Point><coordinates>${bas.lng.toFixed(6)},${bas.lat.toFixed(6)},0</coordinates></Point></Placemark>
-    <Placemark><name>Bitiş</name><Point><coordinates>${son.lng.toFixed(6)},${son.lat.toFixed(6)},0</coordinates></Point></Placemark>
+    <Placemark><name>Başlangıç</name><Point><coordinates>${ilkN.lng.toFixed(6)},${ilkN.lat.toFixed(6)},0</coordinates></Point></Placemark>
+    <Placemark><name>Bitiş</name><Point><coordinates>${sonN.lng.toFixed(6)},${sonN.lat.toFixed(6)},0</coordinates></Point></Placemark>
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
@@ -183,11 +187,11 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
   }
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
-  if (!tarih) {
+  if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
         <Route size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih seçin.</p>
+        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
       </div>
     );
   }
@@ -196,7 +200,7 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
       <div className="text-center py-16 bg-white rounded-lg border">
         <Route size={48} className="mx-auto text-gray-300 mb-4" />
         <p className="text-gray-500">
-          {formatTarih(tarih)} için güzergah (Mesafe Bilgisi) verisi yok.
+          {formatAralik(bas, bitis)} için güzergah (Mesafe Bilgisi) verisi yok.
           <br />Üstteki tarihi değiştirin ya da &quot;Excel Yükle&quot; ile Mesafe Bilgisi raporu yükleyin.
         </p>
       </div>
@@ -262,7 +266,7 @@ export default function ArventoGuzergah({ tarih, tekrarEsigi = 0, gridMesafe = 1
           <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <MapPin size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">Tüm Araç Rotaları — {formatTarih(tarih)} · {kayitlar.length} araç</span>
+              <span className="text-sm truncate">Tüm Araç Rotaları — {formatAralik(bas, bitis)} · {kayitlar.length} araç</span>
             </div>
             <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
               <X size={18} />
