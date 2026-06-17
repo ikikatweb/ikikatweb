@@ -11,6 +11,7 @@ export type MailCekSonuc = {
   mesaj: string;
   calismaGunler: { tarih: string; sayi: number }[];
   damperGunler: { tarih: string; sayi: number }[];
+  guzergahGunler: { tarih: string; sayi: number }[];
   uyari?: string[];
 };
 
@@ -48,7 +49,7 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
       const since = new Date(Date.now() - gunSayisi * 86400000);
       const seqs = await client.search({ since });
       if (!seqs || seqs.length === 0) {
-        return { ok: false, mesaj: `Son ${gunSayisi} günde mail bulunamadı.`, calismaGunler: [], damperGunler: [] };
+        return { ok: false, mesaj: `Son ${gunSayisi} günde mail bulunamadı.`, calismaGunler: [], damperGunler: [], guzergahGunler: [] };
       }
       const matches: { uid: number; t: number }[] = [];
       for await (const msg of client.fetch(seqs, { envelope: true, uid: true })) {
@@ -60,11 +61,12 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
         }
       }
       if (matches.length === 0) {
-        return { ok: false, mesaj: "Eşleşen Arvento maili bulunamadı (FROM/SUBJECT filtrelerini kontrol edin).", calismaGunler: [], damperGunler: [] };
+        return { ok: false, mesaj: "Eşleşen Arvento maili bulunamadı (FROM/SUBJECT filtrelerini kontrol edin).", calismaGunler: [], damperGunler: [], guzergahGunler: [] };
       }
       matches.sort((a, b) => b.t - a.t);
-      // En yeni 5 maili işle — kaçan günleri toparlamak için
-      for (const m of matches.slice(0, 5)) {
+      // Penceredeki TÜM Arvento maillerini işle (günde 5-7 farklı rapor tipi gelir;
+      // 5 ile sınırlamak Mesafe Bilgisi / Araç Çalışma gibi tipleri kaçırıyordu)
+      for (const m of matches.slice(0, 60)) {
         const tek = await client.fetchOne(String(m.uid), { source: true }, { uid: true });
         if (tek && tek.source) kaynakSources.push(tek.source as Buffer);
       }
@@ -74,7 +76,7 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
     await client.logout();
 
     if (kaynakSources.length === 0) {
-      return { ok: false, mesaj: "Mail içeriği okunamadı.", calismaGunler: [], damperGunler: [] };
+      return { ok: false, mesaj: "Mail içeriği okunamadı.", calismaGunler: [], damperGunler: [], guzergahGunler: [] };
     }
 
     // Rapor dosyalarını mailden topla: önce EKLER (.xls/.xlsx), yoksa gövdedeki LİNKLER.
@@ -91,6 +93,7 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
 
     const calismaGunler: { tarih: string; sayi: number }[] = [];
     const damperGunler: { tarih: string; sayi: number }[] = [];
+    const guzergahGunler: { tarih: string; sayi: number }[] = [];
     const hatalar: string[] = [];
     for (const src of kaynakSources) {
       try {
@@ -114,6 +117,7 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
             const s = await ingestArventoBuffer(buf);
             calismaGunler.push(...s.calismaGunler);
             damperGunler.push(...s.damperGunler);
+            if (s.guzergahGunler) guzergahGunler.push(...s.guzergahGunler);
           } catch (e) { hatalar.push(e instanceof Error ? e.message : String(e)); }
         }
       } catch (e) {
@@ -121,12 +125,13 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
       }
     }
 
-    if (calismaGunler.length === 0 && damperGunler.length === 0) {
+    if (calismaGunler.length === 0 && damperGunler.length === 0 && guzergahGunler.length === 0) {
       return {
         ok: false,
         mesaj: `İçe aktarılamadı. ${hatalar.join("; ")}`,
         calismaGunler: [],
         damperGunler: [],
+        guzergahGunler: [],
         ...(hatalar.length ? { uyari: hatalar } : {}),
       };
     }
@@ -134,9 +139,11 @@ export async function cekVeIsleArventoMail(gunSayisi = 3): Promise<MailCekSonuc>
       ok: true,
       calismaGunler,
       damperGunler,
+      guzergahGunler,
       mesaj: [
         ...calismaGunler.map((s) => `${s.tarih} çalışma (${s.sayi})`),
         ...(damperGunler.length ? [`damper ${damperGunler.length} gün`] : []),
+        ...(guzergahGunler.length ? [`güzergah ${guzergahGunler.length} kayıt`] : []),
       ].join(" · "),
       ...(hatalar.length ? { uyari: hatalar } : {}),
     };

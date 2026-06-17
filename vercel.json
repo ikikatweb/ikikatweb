@@ -12,7 +12,7 @@
     },
     {
       "path": "/api/cron/arvento-rapor",
-      "schedule": "30 17 * * *"
+      "schedule": "0 18 * * *"
     }
   ]
 }
