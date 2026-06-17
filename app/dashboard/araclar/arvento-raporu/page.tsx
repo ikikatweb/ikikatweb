@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoTarihler, getArventoRaporByTarih, getArventoRaporByRange, getArventoOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
+import { getArventoTarihler, getArventoRaporByTarih, getArventoRaporByRange, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -95,7 +95,15 @@ export default function ArventoRaporPage() {
   const [tarihler, setTarihler] = useState<string[]>([]);
   const [seciliTarih, setSeciliTarih] = useState<string>("");
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
-  const [ortalamalar, setOrtalamalar] = useState<Map<string, ArventoOrtalama>>(new Map());
+  // Ham günlük kayıtlar (tüm geçmiş) — ortalama hesabı için. Bir kez çekilir.
+  const [hamKayitlar, setHamKayitlar] = useState<ArventoHamKayit[]>([]);
+  // Km eşiği: bu değeri AŞAN günlük km'ler ortalamaya KATILMAZ (0 = filtre yok).
+  const [kmEsik, setKmEsik] = useState<number>(0);
+  // Plaka başına ortalama — ham kayıtlardan kmEsik filtresiyle client-side hesaplanır.
+  const ortalamalar = useMemo<Map<string, ArventoOrtalama>>(
+    () => hesaplaOrtalamalar(hamKayitlar, kmEsik),
+    [hamKayitlar, kmEsik],
+  );
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
   const [arama, setArama] = useState("");
   const [aktifSekme, setAktifSekme] = useState<"calisma" | "genel">("calisma");
@@ -145,13 +153,11 @@ export default function ArventoRaporPage() {
   const loadKayitlar = useCallback(async () => {
     if (!seciliTarih) { setKayitlar([]); return; }
     try {
-      const [k, ort, ps] = await Promise.all([
+      const [k, ps] = await Promise.all([
         getArventoRaporByTarih(seciliTarih),
-        getArventoOrtalamalar(),
         getPlakaSantiyeMap(seciliTarih),
       ]);
       setKayitlar(k);
-      setOrtalamalar(ort);
       setPlakaSantiye(ps);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -162,6 +168,11 @@ export default function ArventoRaporPage() {
   }, [seciliTarih]);
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
+
+  // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.
+  useEffect(() => {
+    getArventoHamKayitlar().then(setHamKayitlar).catch(() => { /* sessiz */ });
+  }, []);
 
   // Mailden çek — inbox'taki Arvento rapor mailini anında işle (cron'u beklemeden)
   async function maildenCek() {
@@ -485,6 +496,30 @@ export default function ArventoRaporPage() {
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input type="text" value={arama} onChange={(e) => setArama(e.target.value)}
               placeholder="Plaka, sürücü, marka..." className={selectClass + " pl-8 w-52"} />
+          </div>
+        </div>
+        {/* Km eşiği — bu km'yi AŞAN günler ortalamaya katılmaz (outlier eleme) */}
+        <div className="space-y-1">
+          <Label className="text-[10px] text-gray-500" title="Bu değerden fazla km yapılan günler 'Gen. Ort Km' hesabına katılmaz">
+            Ort. Km Üst Sınır
+          </Label>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              value={kmEsik || ""}
+              onChange={(e) => setKmEsik(Math.max(0, parseInt(e.target.value) || 0))}
+              placeholder="örn. 500"
+              className={selectClass + " w-28"}
+              title="Bu km'yi aşan günler ortalamaya alınmaz (0/boş = filtre yok)"
+            />
+            <span className="text-[10px] text-gray-400 whitespace-nowrap">km/gün</span>
+            {kmEsik > 0 && (
+              <button type="button" onClick={() => setKmEsik(0)}
+                className="text-gray-400 hover:text-red-500 text-xs px-1" title="Filtreyi temizle">
+                ✕
+              </button>
+            )}
           </div>
         </div>
         <div className="ml-auto flex items-end gap-4">

@@ -347,14 +347,32 @@ export default function PersonelPuantajPage() {
       ayinPuantajPersonelleri.add(p.personel_id);
     }
     const q = trAramaNormalize(puantajArama);
+    // Görüntülenen ay GEÇMİŞ mi? (bu aydan önceki tamamlanmış aylar)
+    // Atama junction'a tarihsiz yazıldığı için "hangi ay atandı" bilinmiyor.
+    // Pratik kural: bu ay/gelecek = atama/transfer ayı (herkesi göster),
+    // geçmiş aylar = eskiye dönük başka-şantiye gürültüsünü temizle.
+    const bugunDt = new Date();
+    const buAyNum = bugunDt.getFullYear() * 100 + (bugunDt.getMonth() + 1);
+    const goruntulenenAyNum = yil * 100 + ay;
+    const gecmisAy = goruntulenenAyNum < buAyNum;
     return personeller
       .filter((p) => {
-        // 1) Şu an bu şantiyeye atanmış → göster
-        if (personelSantiyeMap.get(p.id)?.has(santiyeId)) return true;
-        // 2) Atamadan çıkarılmış olsa bile bu ay/şantiyede puantaj kaydı varsa göster
-        //    (geçmiş aylara bakıldığında görünür kalsın diye)
+        // 1) Bu ay/şantiyede puantaj kaydı varsa → her zaman göster (B'de çalışmış,
+        //    geçmiş veri korunur; ay ortası transfer dahil bu kapsar).
         if (ayinPuantajPersonelleri.has(p.id)) return true;
-        return false;
+        // 2) Bu şantiyeye atanmış mı? (junction — tarihsiz)
+        const junctionB = personelSantiyeMap.get(p.id)?.has(santiyeId) ?? false;
+        if (!junctionB) return false; // atanmamış → gösterme
+        // 3) GEÇMİŞ ayda, bu şantiyede puantajı YOK ama BAŞKA şantiyede puantajı VARSA
+        //    gizle (atandığı aydan önceki aylarda yeni şantiyede görünmesin).
+        //    Bu ay / gelecek aylarda gizleme YAPMA → atama/transfer ayında iki
+        //    şantiyede de görünsün (ay ortası giriş için puantaj girilebilsin).
+        if (gecmisAy) {
+          const buAyBaskaSantiyede = (digerCakismalar.get(p.id)?.size ?? 0) > 0;
+          if (buAyBaskaSantiyede) return false;
+        }
+        // 4) Diğer tüm durumlar → göster
+        return true;
       })
       .filter((p) => {
         if (p.durum !== "pasif") return true;
@@ -371,7 +389,7 @@ export default function PersonelPuantajPage() {
         return text.includes(q);
       })
       .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
-  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, puantajArama]);
+  }, [personeller, personelSantiyeMap, puantajlar, santiyeId, yil, ay, puantajArama, digerCakismalar]);
 
   // Sadece personel ataması olan şantiyeler + kısıtlı kullanıcı filtresi.
   // Şantiyenin dropdown'da görünmesi için en az 1 AKTİF (pasif olmayan ya da

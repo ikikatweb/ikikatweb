@@ -92,6 +92,55 @@ export async function getArventoOrtalamalar(): Promise<Map<string, ArventoOrtala
   return out;
 }
 
+// Ortalama hesabı için HAM günlük kayıtlar (plaka × gün bazında km/damper).
+// Client tarafında km eşiği gibi filtrelerle ortalama yeniden hesaplanabilsin diye
+// günleri aggregate ETMEDEN döner.
+export type ArventoHamKayit = { plaka: string; mesafe_km: number | null; damper_sayisi: number | null; surucu: string | null };
+export async function getArventoHamKayitlar(): Promise<ArventoHamKayit[]> {
+  const supabase = getSupabase();
+  const PARCA = 1000;
+  let offset = 0;
+  const tum: ArventoHamKayit[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_arvento_rapor")
+      .select("plaka, mesafe_km, damper_sayisi, surucu")
+      .range(offset, offset + PARCA - 1);
+    if (error) break;
+    const parca = (data ?? []) as ArventoHamKayit[];
+    tum.push(...parca);
+    if (parca.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 100000) break;
+  }
+  return tum;
+}
+
+// Ham kayıtlardan plaka başına ortalama hesapla.
+// kmEsik > 0 ise, mesafe_km > kmEsik olan GÜNLER ortalamaya HİÇ katılmaz (outlier eleme).
+export function hesaplaOrtalamalar(
+  ham: ArventoHamKayit[],
+  kmEsik = 0,
+): Map<string, ArventoOrtalama> {
+  const topla = new Map<string, { km: number; damper: number; gun: number; surucu: string | null }>();
+  for (const r of ham) {
+    const km = r.mesafe_km ?? 0;
+    // Eşik aşıldıysa bu günü tamamen atla (ne km'ye ne gün sayısına eklenir)
+    if (kmEsik > 0 && km > kmEsik) continue;
+    const t = topla.get(r.plaka) ?? { km: 0, damper: 0, gun: 0, surucu: null };
+    t.km += km;
+    t.damper += r.damper_sayisi ?? 0;
+    t.gun += 1;
+    if (!t.surucu && r.surucu) t.surucu = r.surucu;
+    topla.set(r.plaka, t);
+  }
+  const out = new Map<string, ArventoOrtalama>();
+  for (const [k, t] of topla) {
+    out.set(k, { ortKm: t.gun ? t.km / t.gun : 0, ortDamper: t.gun ? t.damper / t.gun : 0, gun: t.gun, surucu: t.surucu });
+  }
+  return out;
+}
+
 // Plaka normalizasyonu (Arvento ile araclar tablosu plakalarını eşleştirmek için)
 export function plakaNorm(s: unknown): string {
   return String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
