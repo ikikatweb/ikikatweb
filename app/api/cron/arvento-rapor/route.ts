@@ -22,7 +22,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const sonuc = await cekVeIsleArventoMail(3);
+    // Son 7 günü tara: bir gece cron gecikir/atlanırsa ertesi gece kaçan günleri
+    // kendiliğinden toparlar (kayıtlar upsert edildiği için tekrar işlemek zararsız).
+    const sonuc = await cekVeIsleArventoMail(7);
     return NextResponse.json(sonuc);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
