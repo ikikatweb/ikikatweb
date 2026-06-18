@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff } from "lucide-react";
 import * as XLSX from "xlsx";
 import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
@@ -21,6 +21,8 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
+import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
+import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -39,6 +41,17 @@ async function guvenliJson(res: Response): Promise<any> {
     const ozet = text.trim().replace(/\s+/g, " ").slice(0, 120) || `HTTP ${res.status}`;
     throw new Error(`Sunucu beklenmeyen bir cevap döndü (${res.status}): ${ozet}`);
   }
+}
+
+// Hata metnini güvenle çıkar. Supabase hataları Error değil düz nesnedir (message/details/hint/code)
+// → String(err) "[object Object]" verir. Bu yardımcı gerçek mesajı döndürür.
+function hataMetni(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    const e = err as { message?: string; details?: string; hint?: string; code?: string };
+    return e.message || e.details || e.hint || (e.code ? `Hata kodu: ${e.code}` : JSON.stringify(err));
+  }
+  return String(err);
 }
 
 // saniye → "2sa 15dk" / "—"
@@ -168,6 +181,12 @@ export default function ArventoRaporPage() {
   const [maildenCekiliyor, setMaildenCekiliyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Harita katmanları (NetCAD/KML) — Tanımlamalar'dan yüklenir, tüm haritalarda gösterilir
+  const [haritaKatmanlari, setHaritaKatmanlari] = useState<HaritaKatman[]>([]);
+  const [katmanYukleniyor, setKatmanYukleniyor] = useState(false);
+  const [katmanRenk, setKatmanRenk] = useState<string>("#ff3b30");
+  const katmanFileRef = useRef<HTMLInputElement>(null);
+
   const loadKayitlar = useCallback(async () => {
     if (!baslangic || !bitis) { setKayitlar([]); setLoading(false); return; }
     try {
@@ -272,6 +291,54 @@ export default function ArventoRaporPage() {
     setBitis(yeni);
   }
 
+  // ----- Harita katmanları (NetCAD/KML) -----
+  const loadKatmanlar = useCallback(async () => {
+    try { setHaritaKatmanlari(await getHaritaKatmanlari()); } catch { /* sessiz */ }
+  }, []);
+  useEffect(() => { loadKatmanlar(); }, [loadKatmanlar]);
+
+  async function katmanYukle(file: File) {
+    setKatmanYukleniyor(true);
+    try {
+      const geometriler = await dosyadanGeometriler(file);
+      const ad = file.name.replace(/\.(kml|kmz)$/i, "");
+      await ekleHaritaKatman({ ad, renk: katmanRenk, geometriler });
+      const sayilar = geometriler.reduce((a, g) => { a[g.tip] = (a[g.tip] ?? 0) + 1; return a; }, {} as Record<string, number>);
+      toast.success(`"${ad}" eklendi — ${sayilar.cizgi ?? 0} çizgi, ${sayilar.alan ?? 0} alan, ${sayilar.nokta ?? 0} nokta.`, { duration: toastSuresi() });
+      await loadKatmanlar();
+      setGuzergahRefresh((x) => x + 1); // açık haritalar yenilensin
+    } catch (err) {
+      toast.error(`Katman eklenemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
+    } finally {
+      setKatmanYukleniyor(false);
+      if (katmanFileRef.current) katmanFileRef.current.value = "";
+    }
+  }
+
+  async function katmanSil(id: string, ad: string) {
+    if (!window.confirm(`"${ad}" katmanı silinsin mi?`)) return;
+    try {
+      await silHaritaKatman(id);
+      await loadKatmanlar();
+      setGuzergahRefresh((x) => x + 1);
+      toast.success("Katman silindi.", { duration: toastSuresi() });
+    } catch (err) {
+      toast.error(`Silinemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
+    }
+  }
+
+  async function katmanDegis(id: string, alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "gorunur">>) {
+    // İyimser güncelle (anında yansısın), sonra DB
+    setHaritaKatmanlari((list) => list.map((k) => (k.id === id ? { ...k, ...alanlar } : k)));
+    try {
+      await guncelleHaritaKatman(id, alanlar);
+      setGuzergahRefresh((x) => x + 1);
+    } catch (err) {
+      toast.error(`Güncellenemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
+      await loadKatmanlar();
+    }
+  }
+
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     if (!q) return kayitlar;
@@ -279,14 +346,6 @@ export default function ArventoRaporPage() {
       trAramaNormalize([k.plaka, k.surucu, k.marka, k.model].filter(Boolean).join(" ")).includes(q),
     );
   }, [kayitlar, arama]);
-
-  const ozet = useMemo(() => {
-    const toplamKm = filtrelenmis.reduce((s, k) => s + (k.mesafe_km ?? 0), 0);
-    const calisan = filtrelenmis.filter((k) => (k.hareket_sn ?? 0) > 0 || (k.mesafe_km ?? 0) > 0 || (k.damper_sayisi ?? 0) > 0).length;
-    const toplamHareket = filtrelenmis.reduce((s, k) => s + (k.hareket_sn ?? 0), 0);
-    const toplamDamper = filtrelenmis.reduce((s, k) => s + (k.damper_sayisi ?? 0), 0);
-    return { sayi: filtrelenmis.length, calisan, toplamKm, toplamHareket, toplamDamper };
-  }, [filtrelenmis]);
 
   // Şantiye bazlı gruplama (plaka → araç puantaj şantiyesi)
   const gruplaSantiye = useCallback((list: AracArventoRapor[]) => {
@@ -426,10 +485,6 @@ export default function ArventoRaporPage() {
           </div>
         </div>
         <div className="ml-auto flex items-end gap-4">
-          <div className="text-xs text-gray-600 text-right leading-relaxed">
-            <div>Araç: <strong>{ozet.sayi}</strong> · Çalışan: <strong className="text-emerald-700">{ozet.calisan}</strong></div>
-            <div>Toplam: <strong className="text-[#1E3A5F]">{formatKm(ozet.toplamKm)} km</strong> · Damper: <strong className="text-orange-600">{ozet.toplamDamper}</strong> · Hareket: <strong>{formatSure(ozet.toplamHareket)}</strong></div>
-          </div>
           <Button variant="outline" size="sm" onClick={exportExcel} className="h-9 gap-1 text-xs" disabled={filtrelenmis.length === 0}>
             <FileSpreadsheet size={14} /> Excel
           </Button>
@@ -517,7 +572,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
@@ -528,7 +583,8 @@ export default function ArventoRaporPage() {
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
         <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
-        // ---- SEKME 6: TANIMLAMALAR — damper indirme sayısı, araç km, makina saati ----
+        // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
+        <div className="space-y-4">
         <div className="bg-white rounded-lg border p-4 space-y-4">
           <div>
             <h3 className="font-bold text-sm text-[#1E3A5F] mb-1">Tanımlamalar</h3>
@@ -659,6 +715,58 @@ export default function ArventoRaporPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Harita Katmanları (NetCAD/KML) — yüklenen çizgiler tüm haritalara biner */}
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-bold text-sm text-[#1E3A5F] mb-1 flex items-center gap-1.5"><Layers size={16} /> Harita Katmanları</h3>
+              <p className="text-xs text-gray-400 max-w-2xl">
+                NetCAD vb. çiziminizi <strong>KML/KMZ</strong> olarak yükleyin; tüm Arvento haritalarına
+                (Reglaj, Stabilize, Serme, Sıkıştırma, Tümü) referans olarak biner. NetCAD&apos;de: çizimi
+                seçip &quot;Google Earth&apos;e Aktar / KML kaydet&quot; ile dosyayı üretin.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 text-xs text-gray-600">
+                Renk
+                <input type="color" value={katmanRenk} onChange={(e) => setKatmanRenk(e.target.value)}
+                  className="h-8 w-10 rounded border cursor-pointer" title="Yeni katman rengi" />
+              </label>
+              <input ref={katmanFileRef} type="file" accept=".kml,.kmz" className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) katmanYukle(f); }} />
+              <Button variant="outline" size="sm" onClick={() => katmanFileRef.current?.click()}
+                disabled={katmanYukleniyor} className="h-9 gap-1 text-xs">
+                <Upload size={14} /> {katmanYukleniyor ? "Yükleniyor..." : "KML/KMZ Yükle"}
+              </Button>
+            </div>
+          </div>
+
+          {haritaKatmanlari.length === 0 ? (
+            <p className="text-xs text-gray-400">Henüz katman yok. Yukarıdan bir KML/KMZ yükleyin.</p>
+          ) : (
+            <ul className="divide-y border rounded-lg overflow-hidden">
+              {haritaKatmanlari.map((k) => (
+                <li key={k.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                  <input type="color" value={k.renk} onChange={(e) => katmanDegis(k.id, { renk: e.target.value })}
+                    className="h-6 w-7 rounded border cursor-pointer shrink-0" title="Renk" />
+                  <span className="font-medium text-gray-800 truncate flex-1">{k.ad}</span>
+                  <span className="text-[11px] text-gray-400 shrink-0">{(k.geometriler ?? []).length} geometri</span>
+                  <button type="button" onClick={() => katmanDegis(k.id, { gorunur: !k.gorunur })}
+                    title={k.gorunur ? "Haritada gizle" : "Haritada göster"}
+                    className={`p-1 rounded ${k.gorunur ? "text-emerald-600 hover:bg-emerald-50" : "text-gray-300 hover:bg-gray-100"}`}>
+                    {k.gorunur ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                  <button type="button" onClick={() => katmanSil(k.id, k.ad)} title="Sil"
+                    className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50">
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         </div>
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border">

@@ -6,10 +6,10 @@
 // Damper: arac_arvento_rapor.damper_olaylar (kamyonlar). Çizgi: arac_arvento_guzergah (greyder).
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { sinifEslesir } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,39 @@ function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
 
+// "HH:MM:SS" / "HH:MM" → gün içi saniye. Yoksa null.
+function saatSn(saat: string | null): number | null {
+  if (!saat) return null;
+  const p = saat.split(":").map((x) => parseInt(x, 10));
+  if (p.length < 2 || p.some((n) => !Number.isFinite(n))) return null;
+  return p[0] * 3600 + p[1] * 60 + (p[2] ?? 0);
+}
+
+// Bir aracın damper olaylarını "mükerrer" (yanlış tetik) işaretler: aynı konumda (≈11 m)
+// pencSn saniye içinde art arda gelenler son TUTULAN damperden ölçülerek mükerrer sayılır.
+// Konumsuz olaylar temizliğe girmez (mukerrer=false). pencSn=0 → temizleme yok.
+function mukerrerIsaretle<T extends DamperOlay>(olaylar: T[], pencSn: number): (T & { mukerrer: boolean })[] {
+  if (pencSn <= 0) return olaylar.map((o) => ({ ...o, mukerrer: false }));
+  const mset = new Set<T>();
+  const gruplar = new Map<string, T[]>();
+  for (const o of olaylar) {
+    if (o.lat == null || o.lng == null) continue;
+    const key = `${o.lat.toFixed(4)}|${o.lng.toFixed(4)}`;
+    const g = gruplar.get(key);
+    if (g) g.push(o); else gruplar.set(key, [o]);
+  }
+  for (const arr of gruplar.values()) {
+    arr.sort((a, b) => (saatSn(a.saat) ?? 0) - (saatSn(b.saat) ?? 0));
+    let sonTutulanSn: number | null = null;
+    for (const o of arr) {
+      const sn = saatSn(o.saat);
+      if (sonTutulanSn != null && sn != null && sn - sonTutulanSn <= pencSn) mset.add(o);
+      else sonTutulanSn = sn ?? sonTutulanSn;
+    }
+  }
+  return olaylar.map((o) => ({ ...o, mukerrer: mset.has(o) }));
+}
+
 // Her kamyona ayırt edici sabit renk — uydu görüntüsünde okunur, parlak tonlar.
 // Sıralama hue olarak en uzaktan başlar: az sayıda kamyonda bile renkler net ayrılsın
 // (örn. 2 kamyon → kırmızı + camgöbeği). Reglaj çizgisi mavi olduğundan onun tonundan kaçınıldı.
@@ -58,7 +91,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; refreshKey?: number }) {
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set()); // çoklu seçim (boş→hepsi varsayılan effect ile dolar)
@@ -92,7 +125,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     kamyonlar.forEach((r, i) => m.set(r.plaka, KAMYON_RENKLERI[i % KAMYON_RENKLERI.length]));
     return m;
   }, [kamyonlar]);
-  const renkAl = (plaka: string) => plakaRenk.get(plaka) ?? "#f97316";
+  const renkAl = useCallback((plaka: string) => plakaRenk.get(plaka) ?? "#f97316", [plakaRenk]);
 
   // Veri değişince varsayılan: tüm kamyonlar seçili
   useEffect(() => {
@@ -114,7 +147,46 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return out;
   }, [kamyonlar, seciliPlakalar]);
 
-  const damperKoordlu = useMemo(() => damperOlaylar.filter((o) => o.lat != null && o.lng != null), [damperOlaylar]);
+  // Seçili kamyonların damperleri, mükerrer (yanlış tetik) işaretiyle. Araç bazında temizlenir.
+  const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean })[]>(() => {
+    const pencSn = Math.max(0, mukerrerDk) * 60;
+    const out: (DamperNokta & { mukerrer: boolean })[] = [];
+    for (const r of kamyonlar) {
+      if (!seciliPlakalar.has(r.plaka)) continue;
+      for (const o of mukerrerIsaretle(damperOlaylariniAl(r), pencSn)) {
+        out.push({ ...o, plaka: r.plaka, surucu: r.surucu });
+      }
+    }
+    return out;
+  }, [kamyonlar, seciliPlakalar, mukerrerDk]);
+
+  // Haritaya çizilecekler: mükerrer OLMAYAN + konumlu damperler
+  const damperKoordlu = useMemo(
+    () => damperIsaretli.filter((o) => !o.mukerrer && o.lat != null && o.lng != null),
+    [damperIsaretli],
+  );
+  const mukerrerSayisi = useMemo(() => damperIsaretli.filter((o) => o.mukerrer).length, [damperIsaretli]);
+  const konumsuzSayisi = useMemo(() => damperIsaretli.filter((o) => o.lat == null || o.lng == null).length, [damperIsaretli]);
+
+  // Her araç için mükerrer ayıklanmış GERÇEK damper sayısı (chip rozeti — seçimden bağımsız).
+  const gercekSayiByPlaka = useMemo(() => {
+    const pencSn = Math.max(0, mukerrerDk) * 60;
+    const m = new Map<string, number>();
+    for (const r of kamyonlar) {
+      const olaylar = damperOlaylariniAl(r);
+      const gercek = mukerrerIsaretle(olaylar, pencSn).filter((o) => !o.mukerrer).length;
+      m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
+    }
+    return m;
+  }, [kamyonlar, mukerrerDk]);
+
+  // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer ayıklanmış).
+  const ozet = useMemo(() => {
+    const secilenler = kamyonlar.filter((r) => seciliPlakalar.has(r.plaka));
+    const toplamKm = secilenler.reduce((s, r) => s + (r.mesafe_km ?? 0), 0);
+    const toplamDamper = damperIsaretli.filter((o) => !o.mukerrer).length;
+    return { aracSayisi: secilenler.length, toplamKm, toplamDamper };
+  }, [kamyonlar, seciliPlakalar, damperIsaretli]);
 
   // Harita: greyder çizgileri (referans) + kamyon damper yuvarlakları
   useEffect(() => {
@@ -126,6 +198,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (iptal || !mapRef.current) return;
       map = L.map(mapRef.current).setView([39, 35], 6);
       ekleHaritaKatmanlari(L, map, "uydu");
+      ekleOlcumKontrolu(L, map);
+      await ekleKayitliKatmanlar(L, map);
       const bounds: [number, number][] = [];
       greyderler.forEach((k) => {
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
@@ -138,19 +212,35 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
         for (const ll of latlngs) bounds.push(ll);
       });
-      damperKoordlu.forEach((o, i) => {
+      // Aynı/çok yakın konuma (≈11 m) denk gelen damperleri grupla — üst üste binmesin,
+      // nokta üstünde kaç damper olduğu (×N) görünsün. Gruplama plaka bazında (renk korunur).
+      const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
+      for (const o of damperKoordlu) {
         const lat = o.lat as number, lng = o.lng as number;
-        const renk = renkAl(o.plaka);
-        L.circleMarker([lat, lng], { radius: 8, color: "#ffffff", fillColor: renk, fillOpacity: 0.95, weight: 2 })
+        const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
+        const g = gruplar.get(anahtar);
+        if (g) g.olaylar.push(o);
+        else gruplar.set(anahtar, { lat, lng, plaka: o.plaka, surucu: o.surucu, olaylar: [o] });
+      }
+      gruplar.forEach((g) => {
+        const renk = renkAl(g.plaka);
+        const adet = g.olaylar.length;
+        const liste = g.olaylar
+          .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
+          .join("<br>");
+        const mk = L.circleMarker([g.lat, g.lng], { radius: adet > 1 ? 10 : 8, color: "#ffffff", fillColor: renk, fillOpacity: 0.95, weight: 2 })
           .addTo(map!)
-          .bindPopup(`<b>🔻 ${o.surucu ?? o.plaka}</b> · Damper ${i + 1}<br>${o.plaka}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
-        bounds.push([lat, lng]);
+          .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
+        if (adet > 1) {
+          mk.bindTooltip(String(adet), { permanent: true, direction: "center", className: "damper-sayi" }).openTooltip();
+        }
+        bounds.push([g.lat, g.lng]);
       });
       if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, plakaRenk]);
+  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, renkAl]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -230,17 +320,29 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: "#2563eb", opacity: 0.6 }} />
                 {greyderler.length} reglaj çizgisi (referans)
               </div>
-              <div>
-                <span className="text-orange-600 font-semibold">🔻 {damperKoordlu.length} damper</span>
-                {damperOlaylar.length > damperKoordlu.length && (
-                  <span className="text-gray-400"> (+{damperOlaylar.length - damperKoordlu.length} konumsuz)</span>
-                )}
+              <div className="text-gray-400">
+                🔻 {damperKoordlu.length} haritada
+                {mukerrerSayisi > 0 && <span className="text-amber-600"> · {mukerrerSayisi} mükerrer gizli</span>}
+                {konumsuzSayisi > 0 && <span> · {konumsuzSayisi} konumsuz</span>}
               </div>
             </div>
             <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
               <Download size={14} /> KML İndir
             </Button>
           </div>
+        </div>
+        {/* Seçili kamyon özeti — seçime göre güncellenir (3 araç→toplamı, 1 araç→onunki) */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="px-2.5 py-1 rounded-md bg-gray-50 border text-gray-600">
+            Seçili: <b className="text-gray-900">{ozet.aracSayisi}</b>
+            <span className="text-gray-400"> / {kamyonlar.length} kamyon</span>
+          </span>
+          <span className="px-2.5 py-1 rounded-md bg-sky-50 border border-sky-200 text-sky-700">
+            📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b>
+          </span>
+          <span className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-700">
+            🔻 Toplam damper: <b>{ozet.toplamDamper}</b>
+          </span>
         </div>
         {/* Kamyon chip'leri */}
         <div className="flex flex-wrap gap-1.5">
@@ -249,7 +351,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             const secili = seciliPlakalar.has(r.plaka);
             const renk = renkAl(r.plaka);
             const ad = r.surucu?.trim() || r.plaka;
-            const adet = damperOlaylariniAl(r).length || (r.damper_sayisi ?? 0);
+            const adet = gercekSayiByPlaka.get(r.plaka) ?? (damperOlaylariniAl(r).length || (r.damper_sayisi ?? 0));
             return (
               <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
                 title={`${r.plaka}${r.marka ? " · " + r.marka : ""}`}
@@ -274,21 +376,27 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       {damperOlaylar.length > 0 && (
         <div className="bg-white rounded-lg border p-3">
           <div className="text-xs font-semibold text-gray-600 mb-2">
-            🔻 {seciliPlakalar.size === kamyonlar.length ? "Tüm kamyonlar" : `${seciliPlakalar.size} kamyon`} — {damperOlaylar.length} damper indirme
-            {damperOlaylar.length > damperKoordlu.length && <span className="text-gray-400 font-normal"> ({damperKoordlu.length} tanesi haritada konumlu)</span>}
+            🔻 {seciliPlakalar.size === kamyonlar.length ? "Tüm kamyonlar" : `${seciliPlakalar.size} kamyon`} — {ozet.toplamDamper} gerçek damper
+            {(mukerrerSayisi > 0 || konumsuzSayisi > 0) && (
+              <span className="text-gray-400 font-normal"> ({damperOlaylar.length} kayıt
+                {mukerrerSayisi > 0 && `, ${mukerrerSayisi} mükerrer gizli`}
+                {konumsuzSayisi > 0 && `, ${konumsuzSayisi} konumsuz`})</span>
+            )}
           </div>
           <ol className="space-y-0.5 max-h-[28vh] overflow-auto">
-            {damperOlaylar.map((o, i) => (
-              <li key={i} className="text-xs flex items-center gap-2">
+            {damperIsaretli.map((o, i) => (
+              <li key={i} className={`text-xs flex items-center gap-2 ${o.mukerrer ? "opacity-60" : ""}`}>
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka) }} />
-                <span className="font-bold text-[#1E3A5F] w-32 truncate">{o.surucu?.trim() || o.plaka}</span>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: o.mukerrer ? 0.4 : 1 }} />
+                <span className={`font-bold w-32 truncate ${o.mukerrer ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
                 <span className="text-gray-400 w-20 truncate">{o.plaka}</span>
-                <span className="font-mono whitespace-nowrap font-semibold text-orange-700">🔻 {o.saat ?? "—"}</span>
-                <span className="flex-1 truncate text-gray-600">{o.adres ?? "—"}</span>
-                {o.lat != null && o.lng != null
-                  ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><MapPin size={10} /> konumlu</span>
-                  : <span className="text-[10px] text-gray-400">konumsuz</span>}
+                <span className={`font-mono whitespace-nowrap font-semibold ${o.mukerrer ? "text-gray-400 line-through" : "text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
+                <span className={`flex-1 truncate ${o.mukerrer ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
+                {o.mukerrer
+                  ? <span className="text-[10px] text-amber-600">mükerrer</span>
+                  : o.lat != null && o.lng != null
+                    ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><MapPin size={10} /> konumlu</span>
+                    : <span className="text-[10px] text-gray-400">konumsuz</span>}
               </li>
             ))}
           </ol>

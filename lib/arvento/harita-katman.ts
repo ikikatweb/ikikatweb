@@ -2,6 +2,7 @@
 // Google Earth tarzı uydu görüntüsü). Reglaj/Stabilize/Serme/Sıkıştırma/Tümü haritalarında
 // ortak kullanılır. Sağ üstte katman seçici (Uydu / Sokak + etiket) çıkar.
 import type { Map as LeafletMap } from "leaflet";
+import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
 
 type LeafletStatic = typeof import("leaflet");
 
@@ -26,4 +27,164 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
     { "Yol/yer etiketleri": etiketler },
     { collapsed: true },
   ).addTo(map);
+}
+
+// Mesafe ölçüm kontrolü — sol üstte cetvel (📏) butonu. Tıklayınca ölçüm moduna girilir:
+// haritaya tıklayarak nokta eklenir, çizgi ve canlı toplam (m/km) gösterilir; çift tıkla bitirilir.
+// Çizgilerin (reglaj güzergahı vb.) boyunu ölçmek için kullanılır. Harici eklenti yok.
+type LatLng = import("leaflet").LatLng;
+type FareOlay = import("leaflet").LeafletMouseEvent;
+
+export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
+  let mod: "kapali" | "olcuyor" | "bitti" = "kapali";
+  let noktalar: LatLng[] = [];
+  const katman = L.layerGroup().addTo(map);
+  let lastik: import("leaflet").Polyline | null = null; // imleci takip eden ön-izleme çizgisi
+  let butonEl: HTMLAnchorElement | null = null;
+  let kutuEl: HTMLDivElement | null = null;
+
+  const fmt = (m: number) => (m >= 1000 ? (m / 1000).toFixed(2) + " km" : Math.round(m) + " m");
+  const toplam = (pts: LatLng[]) => {
+    let t = 0;
+    for (let i = 1; i < pts.length; i++) t += map.distance(pts[i - 1], pts[i]);
+    return t;
+  };
+
+  // Cetvel butonu (sol üst, zoom altında)
+  const Buton = L.Control.extend({
+    options: { position: "topleft" as const },
+    onAdd() {
+      const div = L.DomUtil.create("div", "leaflet-bar");
+      const a = L.DomUtil.create("a", "", div) as HTMLAnchorElement;
+      a.href = "#";
+      a.title = "Mesafe ölç";
+      a.innerHTML = "📏";
+      a.style.cssText = "font-size:16px;line-height:30px;text-align:center;cursor:pointer";
+      butonEl = a;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.on(a, "click", (e) => { L.DomEvent.stop(e); butonaTikla(); });
+      return div;
+    },
+  });
+  map.addControl(new Buton());
+
+  // Sonuç/yardım kutusu (sol alt)
+  const Kutu = L.Control.extend({
+    options: { position: "bottomleft" as const },
+    onAdd() {
+      const d = L.DomUtil.create("div", "olcum-kutu") as HTMLDivElement;
+      d.style.cssText = "display:none;background:rgba(30,58,95,.92);color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.3);max-width:240px";
+      kutuEl = d;
+      L.DomEvent.disableClickPropagation(d);
+      return d;
+    },
+  });
+  map.addControl(new Kutu());
+
+  function kutuyuGuncelle(provizyonel?: number) {
+    if (!kutuEl) return;
+    if (mod === "kapali") { kutuEl.style.display = "none"; return; }
+    const t = provizyonel != null ? provizyonel : toplam(noktalar);
+    const ip = mod === "olcuyor"
+      ? "Tıkla: nokta ekle · Çift tık: bitir"
+      : "Bitti · 📏 ile temizle";
+    kutuEl.style.display = "block";
+    kutuEl.innerHTML = `<b style="font-size:14px">${noktalar.length >= 2 || provizyonel != null ? fmt(t) : "0 m"}</b><br><span style="opacity:.85">${ip}</span>`;
+  }
+
+  function butonGorunumu() {
+    if (!butonEl) return;
+    const aktif = mod !== "kapali";
+    butonEl.style.background = aktif ? "#1E3A5F" : "";
+    butonEl.style.color = aktif ? "#fff" : "";
+    butonEl.title = aktif ? "Ölçümü temizle" : "Mesafe ölç";
+  }
+
+  function ciz() {
+    katman.clearLayers();
+    lastik = null;
+    if (noktalar.length >= 2) {
+      L.polyline(noktalar, { color: "#facc15", weight: 3, opacity: 0.95, dashArray: "6 4" }).addTo(katman);
+    }
+    noktalar.forEach((p) =>
+      L.circleMarker(p, { radius: 4, color: "#fff", weight: 2, fillColor: "#ca8a04", fillOpacity: 1 }).addTo(katman),
+    );
+  }
+
+  function lastikTemizle() { if (lastik) { katman.removeLayer(lastik); lastik = null; } }
+
+  function tikla(e: FareOlay) { noktalar.push(e.latlng); ciz(); kutuyuGuncelle(); }
+  function ciftTikla(e: FareOlay) {
+    L.DomEvent.stop(e);
+    if (mod !== "olcuyor") return;
+    mod = "bitti";
+    lastikTemizle();
+    map.off("click", tikla);
+    map.off("dblclick", ciftTikla);
+    map.off("mousemove", hareket);
+    butonGorunumu();
+    kutuyuGuncelle();
+  }
+  function hareket(e: FareOlay) {
+    if (mod !== "olcuyor" || noktalar.length === 0) return;
+    lastikTemizle();
+    const son = noktalar[noktalar.length - 1];
+    lastik = L.polyline([son, e.latlng], { color: "#facc15", weight: 2, opacity: 0.6, dashArray: "4 4" }).addTo(katman);
+    kutuyuGuncelle(toplam(noktalar) + map.distance(son, e.latlng));
+  }
+
+  function basla() {
+    mod = "olcuyor";
+    noktalar = [];
+    katman.clearLayers();
+    map.doubleClickZoom.disable();
+    L.DomUtil.addClass(map.getContainer(), "olcum-modu");
+    map.on("click", tikla);
+    map.on("dblclick", ciftTikla);
+    map.on("mousemove", hareket);
+    butonGorunumu();
+    kutuyuGuncelle();
+  }
+  function temizle() {
+    mod = "kapali";
+    noktalar = [];
+    katman.clearLayers();
+    lastik = null;
+    map.doubleClickZoom.enable();
+    L.DomUtil.removeClass(map.getContainer(), "olcum-modu");
+    map.off("click", tikla);
+    map.off("dblclick", ciftTikla);
+    map.off("mousemove", hareket);
+    butonGorunumu();
+    kutuyuGuncelle();
+  }
+  function butonaTikla() { if (mod === "kapali") basla(); else temizle(); }
+}
+
+// Tanımlamalar'dan eklenmiş kalıcı katmanları (NetCAD/KML çizgileri) haritaya çizer.
+// Tüm Arvento haritalarında çağrılır; veri yoksa/tabloyoksa sessizce geçer.
+export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): Promise<void> {
+  try {
+    const katmanlar = await getHaritaKatmanlari();
+    for (const k of katmanlar) {
+      if (!k.gorunur) continue;
+      for (const g of k.geometriler ?? []) {
+        const baslik = `<b>${k.ad}</b>${g.ad ? " · " + g.ad : ""}`;
+        if (g.tip === "nokta") {
+          const p = g.noktalar[0];
+          if (!p) continue;
+          L.circleMarker(p, { radius: 5, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
+            .addTo(map).bindPopup(baslik);
+        } else if (g.tip === "alan") {
+          L.polygon(g.noktalar, { color: k.renk, weight: 2, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
+            .addTo(map).bindPopup(baslik);
+        } else {
+          L.polyline(g.noktalar, { color: k.renk, weight: 3, opacity: 0.9 })
+            .addTo(map).bindPopup(baslik);
+        }
+      }
+    }
+  } catch {
+    /* katman çizimi haritayı bozmasın */
+  }
 }

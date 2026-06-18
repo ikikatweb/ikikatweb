@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { OPERASYONLAR, sinifEslesir, zikzakla, paralelCizgi, type OperasyonTip } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
@@ -134,6 +134,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       if (iptal || !hedef) return;
       map = L.map(hedef).setView([39, 35], 6);
       ekleHaritaKatmanlari(L, map, "uydu");
+      ekleOlcumKontrolu(L, map);
+      await ekleKayitliKatmanlar(L, map);
       const bounds: [number, number][] = [];
       // Altlı üstlü greyder çizgisi (sıkıştırmada soluk referans)
       gosterilenGreyder.forEach((k) =>

@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       // Önceki harita varsa temizle (mapRef yeniden kullanılıyor)
       map = L.map(mapRef.current).setView([39, 35], 6);
       ekleHaritaKatmanlari(L, map, "uydu");
+      ekleOlcumKontrolu(L, map);
+      await ekleKayitliKatmanlar(L, map);
       const noktalar = seciliKayit.noktalar.filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;

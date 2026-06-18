@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { OPERASYONLAR, sinifEslesir, zikzakla } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (iptal || !mapRef.current) return;
       map = L.map(mapRef.current).setView([39, 35], 6);
       ekleHaritaKatmanlari(L, map, "uydu");
+      ekleOlcumKontrolu(L, map);
+      await ekleKayitliKatmanlar(L, map);
       const bounds: [number, number][] = [];
       // Güzergah çizgileri — sınıfa göre operasyon rengi/stili
       guzergahlar.forEach((k) => {

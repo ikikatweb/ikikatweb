@@ -26,6 +26,27 @@ thead th {
   isolation: isolate;
 }
 
+/* Mesafe ölçüm modunda imleç artı (crosshair) olsun — nokta koyduğun belli olsun. */
+.leaflet-container.olcum-modu,
+.leaflet-container.olcum-modu .leaflet-grab,
+.leaflet-container.olcum-modu .leaflet-interactive {
+  cursor: crosshair !important;
+}
+
+/* Damper noktası üzerindeki "×N" sayı etiketi — şeffaf zemin, beyaz kalın yazı. */
+.leaflet-tooltip.damper-sayi {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+  padding: 0;
+  margin: 0;
+}
+.leaflet-tooltip.damper-sayi::before { display: none; }
+
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
    !important ile uygulanır çünkü bazı UI kütüphaneleri kendi scrollbar style'larını ekliyor. */
