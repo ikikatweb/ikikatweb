@@ -58,10 +58,10 @@ function yakinDamperVar(noktalar: { lat: number; lng: number }[], damperler: Dam
 }
 
 // Bir güzergahı sadeleştirip çizilecek parça (latlng dizisi) listesine çevirir.
-function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM: number, kopruM: number): [number, number][][] {
+function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM: number): [number, number][][] {
   const latlngs: [number, number][] = noktalar.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng]);
   if (latlngs.length === 0) return [];
-  if (esik >= 1) return sadelesGuzergah(noktalar, esik, gridM, kopruM).parcalar; // eşik (tekrar) ile açılır
+  if (esik >= 1) return sadelesGuzergah(noktalar, esik, gridM).parcalar; // eşik (tekrar) ile açılır
 
   return [latlngs];
 }
@@ -76,8 +76,8 @@ function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][]
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, refreshKey = 0 }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; refreshKey?: number;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -139,7 +139,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const bounds: [number, number][] = [];
       // Altlı üstlü greyder çizgisi (sıkıştırmada soluk referans)
       gosterilenGreyder.forEach((k) =>
-        cizAltUst(L, map!, parcalar(k.noktalar ?? [], tekrarEsigi, gridMesafe, guzergahMesafe), ALTUST_RENK, sermeMi ? 0.85 : 0.45, bounds));
+        cizAltUst(L, map!, parcalar(k.noktalar ?? [], tekrarEsigi, gridMesafe), ALTUST_RENK, sermeMi ? 0.85 : 0.45, bounds));
       if (sermeMi) {
         // Ortada damper ikonları
         damperKoordlu.forEach((o, i) => {
@@ -150,7 +150,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       } else {
         // Ortada silindir zikzak (silindir tekrar eşiğiyle sadeleşir)
         silindirler.forEach((k) =>
-          parcalar(k.noktalar ?? [], silindirEsik, gridMesafe, guzergahMesafe).forEach((seg) => {
+          parcalar(k.noktalar ?? [], silindirEsik, gridMesafe).forEach((seg) => {
             if (seg.length < 2) return;
             L.polyline(zikzakla(seg), { color: ZIGZAK_RENK, weight: 3, opacity: 0.9 })
               .addTo(map!).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
@@ -168,14 +168,14 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const h = harita(mapRef.current);
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, guzergahMesafe, sermeMi]);
+  }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, sermeMi]);
 
   useEffect(() => {
     if (!tumHaritaAcik || !tumMapRef.current) return;
     const h = harita(tumMapRef.current);
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tumHaritaAcik, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, guzergahMesafe, sermeMi]);
+  }, [tumHaritaAcik, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, sermeMi]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

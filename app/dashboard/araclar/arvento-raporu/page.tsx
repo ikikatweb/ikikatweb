@@ -144,16 +144,6 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem("arvento_grid_mesafe", String(gridMesafe));
   }, [gridMesafe]);
-  // Güzergah mesafesi (m) — gidiş-geliş boyunca köprülenecek azami boşluk. Bu mesafeden
-  // kısa eşik-altı kopukluklar tek çizgiye birleşir; uzunsa ayrı parça. localStorage'da kalıcı.
-  const [guzergahMesafe, setGuzergahMesafe] = useState<number>(() => {
-    if (typeof window === "undefined") return 30;
-    const v = window.localStorage.getItem("arvento_guzergah_mesafe");
-    return v != null ? (parseInt(v, 10) || 30) : 30;
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("arvento_guzergah_mesafe", String(guzergahMesafe));
-  }, [guzergahMesafe]);
   const [yukleniyor, setYukleniyor] = useState(false);
   const [maildenCekiliyor, setMaildenCekiliyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -402,19 +392,19 @@ export default function ArventoRaporPage() {
       {/* Tablo */}
       {aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} guzergahMesafe={guzergahMesafe} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME 6: TANIMLAMALAR — damper indirme sayısı, araç km, makina saati ----
         <div className="bg-white rounded-lg border p-4 space-y-4">
@@ -541,26 +531,6 @@ export default function ArventoRaporPage() {
                   value={gridMesafe || ""}
                   onChange={(e) => setGridMesafe(Math.max(0, parseInt(e.target.value) || 0))}
                   placeholder="12"
-                  className={selectClass + " w-32"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>
-              </div>
-            </div>
-            {/* Güzergah Mesafesi — gidiş-geliş (boyuna) köprüleme. Bu mesafeden kısa kopukluklar
-                tek hatta birleşir; greyder tam aynı hatta gitmese de güzergah sürekli görünür. */}
-            <div className="border rounded-lg p-3 bg-cyan-50/40 border-cyan-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Güzergah Mesafesi (m)</div>
-              <p className="text-[11px] text-gray-400 mb-2">
-                Çizilecek omurganın <strong>en kısa uzunluğu</strong>. Bu uzunluktan <strong>kısa</strong> omurgalar
-                (gürültü / kısa lekeler) çizilmez; sadece asıl yol(lar) kalır. Büyütürsen küçük izler temizlenir. Varsayılan 30.
-              </p>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={0}
-                  value={guzergahMesafe || ""}
-                  onChange={(e) => setGuzergahMesafe(Math.max(0, parseInt(e.target.value) || 0))}
-                  placeholder="30"
                   className={selectClass + " w-32"}
                 />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>

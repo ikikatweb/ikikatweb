@@ -31,7 +31,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; refreshKey?: number }) {
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlaka, setSeciliPlaka] = useState("");
   const [loading, setLoading] = useState(true);
@@ -68,11 +68,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const maksHiz = n.reduce((m, p) => Math.max(m, p.hiz ?? 0), 0);
     let sade: { gosterilen: number; toplam: number; maksGecis: number } | null = null;
     if (tekrarEsigi >= 1) {
-      const s = sadelesGuzergah(n, tekrarEsigi, gridMesafe, guzergahMesafe);
+      const s = sadelesGuzergah(n, tekrarEsigi, gridMesafe);
       sade = { gosterilen: s.gosterilenSegment, toplam: s.toplamSegment, maksGecis: s.maksGecis };
     }
     return { nokta: n.length, mesafe: seciliKayit.toplam_mesafe ?? 0, ilkSaat, sonSaat, maksHiz, sade };
-  }, [seciliKayit, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [seciliKayit, tekrarEsigi, gridMesafe]);
 
   // Haritayı çiz — seçili plaka rotası (polyline + başlangıç/bitiş işareti)
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       if (latlngs.length === 0) return;
       if (tekrarEsigi >= 1) {
         // SADELEŞTİRİLMİŞ: eşiği geçen yol parçaları GERÇEK koordinatlarla çizilir
-        const cizgiler = sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar;
+        const cizgiler = sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar;
         if (cizgiler.length > 0) L.polyline(cizgiler, { color: "#2563eb", weight: 4, opacity: 0.85 }).addTo(map);
         else L.polyline(latlngs, { color: "#2563eb", weight: 4, opacity: 0.85 }).addTo(map); // eşik çok yüksek → ham yedek
         // Ara noktalar gizli (sadeleştirme modunda temiz tek çizgi)
@@ -114,7 +114,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [seciliKayit, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [seciliKayit, tekrarEsigi, gridMesafe]);
 
   // TÜM araçların rotalarını tek haritada göster (modal) — her plaka farklı renk
   useEffect(() => {
@@ -134,7 +134,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         if (latlngs.length === 0) return;
         // Sadeleştirme açıksa eşiği geçen parçaları gerçek koordinatlarla göster
         const cizim: [number, number][][] = tekrarEsigi >= 1
-          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
+          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: renk, weight: 3, opacity: 0.75 })
           .addTo(map!).bindPopup(`<b>${k.plaka}</b><br>${k.arac_sinifi ?? ""}<br>${k.toplam_mesafe ?? 0} km`);
@@ -147,7 +147,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 200);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [tumHaritaAcik, kayitlar, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [tumHaritaAcik, kayitlar, tekrarEsigi, gridMesafe]);
 
   // KML export — rota LineString + başlangıç/bitiş noktaları (Google Earth)
   function exportKML() {

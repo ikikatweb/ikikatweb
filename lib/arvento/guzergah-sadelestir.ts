@@ -69,12 +69,10 @@ function enUzak(bas: string, komsu: Map<string, Set<string>>, dist: (a: string, 
 // noktalar: zaman sırasına göre GPS noktaları.
 // esik: bir grid kenarı EN AZ kaç kez geçilmişse omurgaya dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
-// minUzunlukM: bu uzunluktan KISA omurgalar (gürültü/kısa sapma) çizilmez.
 export function sadelesGuzergah(
   noktalar: { lat: number; lng: number }[],
   esik: number,
   gridM = 12,
-  minUzunlukM = 30,
 ): SadelesSonuc {
   const bos: SadelesSonuc = { parcalar: [], gosterilenSegment: 0, toplamSegment: 0, maksGecis: 0 };
   const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
@@ -154,11 +152,7 @@ export function sadelesGuzergah(
     const yol: string[] = [];
     let cur: string | undefined = u2;
     while (cur !== undefined) { yol.push(cur); cur = r.prev.get(cur); }
-    if (yol.length < 2) continue;
-    // Omurga uzunluğu kısa ise (gürültü sapması) çizme
-    let uzunluk = 0;
-    for (let i = 1; i < yol.length; i++) uzunluk += dist(yol[i - 1], yol[i]);
-    if (uzunluk >= minUzunlukM) parcalar.push(yumusat(yol.map(merkez)));
+    if (yol.length > 1) parcalar.push(yumusat(yol.map(merkez)));
   }
 
   return { parcalar, gosterilenSegment: gosterilen, toplamSegment, maksGecis };

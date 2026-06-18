@@ -28,7 +28,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; refreshKey?: number }) {
   const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]);
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +77,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
         const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
         const cizim: [number, number][][] = esik >= 1
-          ? sadelesGuzergah(noktalar, esik, gridMesafe, guzergahMesafe).parcalar
+          ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
           : [latlngs];
         (cizim.length ? cizim : [latlngs]).forEach((seg) =>
           L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: def.renk, weight: 3.5, opacity: 0.85 })
@@ -97,7 +97,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, guzergahMesafe]);
+  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
@@ -113,7 +113,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const def = OPERASYONLAR[op];
       const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
       const cizim: [number, number][][] = esik >= 1
-        ? sadelesGuzergah(noktalar, esik, gridMesafe, guzergahMesafe).parcalar
+        ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
         : [noktalar.map((p) => [p.lat, p.lng] as [number, number])];
       cizim.forEach((seg) => {
         if (seg.length < 2) return;

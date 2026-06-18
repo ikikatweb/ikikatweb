@@ -40,7 +40,7 @@ function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, guzergahMesafe = 30, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; guzergahMesafe?: number; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; refreshKey?: number }) {
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlaka, setSeciliPlaka] = useState(""); // "" = tüm kamyonlar
@@ -104,7 +104,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
         const cizim: [number, number][][] = tekrarEsigi >= 1
-          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
+          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: "#2563eb", weight: 3, opacity: 0.6 })
           .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
@@ -122,7 +122,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe]);
 
   // Tam ekran modal — aynı içerik (referans çizgiler + damperler)
   useEffect(() => {
@@ -140,7 +140,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
         const cizim: [number, number][][] = tekrarEsigi >= 1
-          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
+          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: "#2563eb", weight: 3, opacity: 0.55 }).addTo(map!);
         for (const ll of latlngs) bounds.push(ll);
@@ -154,7 +154,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 200);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [tumHaritaAcik, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, guzergahMesafe]);
+  }, [tumHaritaAcik, greyderler, damperKoordlu, tekrarEsigi, gridMesafe]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
