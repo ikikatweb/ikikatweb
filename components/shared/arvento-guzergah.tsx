@@ -29,11 +29,15 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; refreshKey?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, renkler, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number }) {
+  const reglajKal = kalinliklar?.reglaj ?? 4;
+  const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlaka, setSeciliPlaka] = useState("");
+  const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşiği yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const etkinTekrar = hamGoster ? 0 : tekrarEsigi; // açıkken sadeleştirme kapalı
 
   // Seçili aralığın kayıtlarını yükle (bas–bitis); aralık değişince / yeni yükleme sonrası
   useEffect(() => {
@@ -63,12 +67,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const sonSaat = n[n.length - 1]?.saat ?? null;
     const maksHiz = n.reduce((m, p) => Math.max(m, p.hiz ?? 0), 0);
     let sade: { gosterilen: number; toplam: number; maksGecis: number } | null = null;
-    if (tekrarEsigi >= 1) {
-      const s = sadelesGuzergah(n, tekrarEsigi, gridMesafe);
+    if (etkinTekrar >= 1) {
+      const s = sadelesGuzergah(n, etkinTekrar, gridMesafe);
       sade = { gosterilen: s.gosterilenSegment, toplam: s.toplamSegment, maksGecis: s.maksGecis };
     }
     return { nokta: n.length, mesafe: seciliKayit.toplam_mesafe ?? 0, ilkSaat, sonSaat, maksHiz, sade };
-  }, [seciliKayit, tekrarEsigi, gridMesafe]);
+  }, [seciliKayit, etkinTekrar, gridMesafe]);
 
   // Haritayı çiz — seçili plaka rotası (polyline + başlangıç/bitiş işareti)
   useEffect(() => {
@@ -83,18 +87,19 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
+      if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const noktalar = seciliKayit.noktalar.filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
-      if (tekrarEsigi >= 1) {
+      if (etkinTekrar >= 1) {
         // SADELEŞTİRİLMİŞ: eşiği geçen yol parçaları GERÇEK koordinatlarla çizilir
-        const cizgiler = sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar;
-        if (cizgiler.length > 0) L.polyline(cizgiler, { color: "#2563eb", weight: 4, opacity: 0.85 }).addTo(map);
-        else L.polyline(latlngs, { color: "#2563eb", weight: 4, opacity: 0.85 }).addTo(map); // eşik çok yüksek → ham yedek
+        const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
+        if (cizgiler.length > 0) L.polyline(cizgiler, { color: reglajRenkV, weight: reglajKal, opacity: 0.85 }).addTo(map);
+        else L.polyline(latlngs, { color: reglajRenkV, weight: reglajKal, opacity: 0.85 }).addTo(map); // eşik çok yüksek → ham yedek
         // Ara noktalar gizli (sadeleştirme modunda temiz tek çizgi)
       } else {
         // HAM rota: tüm noktalar sırayla + ara noktalar
-        L.polyline(latlngs, { color: "#2563eb", weight: 4, opacity: 0.8 }).addTo(map);
+        L.polyline(latlngs, { color: reglajRenkV, weight: reglajKal, opacity: 0.8 }).addTo(map);
         for (let i = 0; i < noktalar.length; i++) {
           const p = noktalar[i];
           L.circleMarker([p.lat, p.lng], { radius: 3, color: "#1d4ed8", fillColor: "#3b82f6", fillOpacity: 0.7, weight: 1 })
@@ -112,7 +117,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [seciliKayit, tekrarEsigi, gridMesafe]);
+  }, [seciliKayit, etkinTekrar, gridMesafe, reglajKal, reglajRenkV]);
 
   // KML export — rota LineString + başlangıç/bitiş noktaları (Google Earth)
   function exportKML() {
@@ -187,6 +192,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             ))}
           </select>
         </div>
+        <button type="button" onClick={() => setHamGoster((v) => !v)}
+          title="Açıkken Güzergah Tekrar Eşiği yok sayılır — tam (ham) rota gösterilir"
+          className={`h-9 px-3 rounded-lg border text-xs font-medium self-end transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+          {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+        </button>
         {ozet && (
           <div className="ml-auto flex items-end gap-3">
             <div className="text-xs text-gray-600 text-right leading-relaxed">
@@ -201,7 +211,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
               </div>
               {ozet.sade && (
                 <div className="text-[10px] text-emerald-700">
-                  Tek çizgi: {ozet.sade.gosterilen}/{ozet.sade.toplam} parça (≥{tekrarEsigi} geçiş · en çok {ozet.sade.maksGecis}×)
+                  Tek çizgi: {ozet.sade.gosterilen}/{ozet.sade.toplam} parça (≥{etkinTekrar} geçiş · en çok {ozet.sade.maksGecis}×)
                 </div>
               )}
             </div>

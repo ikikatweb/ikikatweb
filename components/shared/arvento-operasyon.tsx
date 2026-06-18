@@ -22,8 +22,6 @@ import type { Map as LeafletMap } from "leaflet";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 const OFFSET_M = 4; // altlı üstlü çizgi yarı-aralığı (m)
-const ALTUST_RENK = OPERASYONLAR.serme.renk;      // yeşil — greyder serme alanı çizgisi
-const ZIGZAK_RENK = OPERASYONLAR.sikistirma.renk; // mor — silindir zikzak
 const DAMPER_RENK = "#f97316";
 
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
@@ -67,20 +65,29 @@ function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM:
 }
 
 // Altlı üstlü (paralel çift) çizgi çiz
-function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][][], renk: string, opacity: number, bounds: [number, number][]) {
+function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
   for (const seg of segler) {
     if (seg.length < 2) continue;
-    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: 3, opacity }).addTo(map);
-    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: 3, opacity }).addTo(map);
+    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(map);
+    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(map);
     for (const ll of seg) bounds.push(ll);
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, refreshKey = 0 }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; refreshKey?: number;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, refreshKey = 0 }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
+  const sermeKal = kalinliklar?.serme ?? 3;
+  const silindirKal = kalinliklar?.silindir ?? 3;
+  const reglajKal = kalinliklar?.reglaj ?? 4;
+  const sermeRenkV = renkler?.serme ?? OPERASYONLAR.serme.renk;
+  const silindirRenkV = renkler?.silindir ?? OPERASYONLAR.sikistirma.renk;
+  const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
+  const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşikleri yok sayılır (ham rota)
+  const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
+  const etkinSilindir = hamGoster ? 0 : silindirEsik;
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]);
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [seciliGreyder, setSeciliGreyder] = useState(""); // "" = tüm greyderler
@@ -136,10 +143,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
+      if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const bounds: [number, number][] = [];
       // Altlı üstlü greyder çizgisi (sıkıştırmada soluk referans)
       gosterilenGreyder.forEach((k) =>
-        cizAltUst(L, map!, parcalar(k.noktalar ?? [], tekrarEsigi, gridMesafe), ALTUST_RENK, sermeMi ? 0.85 : 0.45, bounds));
+        cizAltUst(L, map!, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe), sermeMi ? sermeRenkV : reglajRenkV, sermeMi ? 0.85 : 0.45, sermeMi ? sermeKal : reglajKal, bounds));
       if (sermeMi) {
         // Ortada damper ikonları
         damperKoordlu.forEach((o, i) => {
@@ -150,9 +158,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       } else {
         // Ortada silindir zikzak (silindir tekrar eşiğiyle sadeleşir)
         silindirler.forEach((k) =>
-          parcalar(k.noktalar ?? [], silindirEsik, gridMesafe).forEach((seg) => {
+          parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
             if (seg.length < 2) return;
-            L.polyline(zikzakla(seg), { color: ZIGZAK_RENK, weight: 3, opacity: 0.9 })
+            L.polyline(zikzakla(seg), { color: silindirRenkV, weight: silindirKal, opacity: 0.9 })
               .addTo(map!).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
             for (const ll of seg) bounds.push(ll);
           }));
@@ -168,7 +176,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const h = harita(mapRef.current);
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, sermeMi]);
+  }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -244,20 +252,25 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
             ))}
           </select>
         </div>
+        <button type="button" onClick={() => setHamGoster((v) => !v)}
+          title="Açıkken tekrar eşikleri yok sayılır — tam (ham) rota gösterilir"
+          className={`h-9 px-3 rounded-lg border text-xs font-medium self-end transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+          {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+        </button>
         <div className="ml-auto flex items-end gap-3">
           <div className="text-xs text-gray-600 text-right leading-relaxed">
             <div className="flex items-center justify-end gap-1">
               <span className="inline-flex flex-col gap-0.5">
-                <span className="inline-block w-4 h-0.5 rounded" style={{ background: ALTUST_RENK }} />
-                <span className="inline-block w-4 h-0.5 rounded" style={{ background: ALTUST_RENK }} />
+                <span className="inline-block w-4 h-0.5 rounded" style={{ background: sermeMi ? sermeRenkV : reglajRenkV }} />
+                <span className="inline-block w-4 h-0.5 rounded" style={{ background: sermeMi ? sermeRenkV : reglajRenkV }} />
               </span>
-              <strong style={{ color: def.renk }}>{def.ad}</strong>
+              <strong style={{ color: sermeMi ? sermeRenkV : silindirRenkV }}>{def.ad}</strong>
               <span className="text-gray-400">· {gosterilenGreyder.length} greyder alanı</span>
             </div>
             <div>
               {sermeMi
                 ? <span className="text-orange-600 font-semibold">🔻 {damperKoordlu.length} damper</span>
-                : <span style={{ color: ZIGZAK_RENK }} className="font-semibold">⩘ {silindirler.length} silindir zikzak</span>}
+                : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {silindirler.length} silindir zikzak</span>}
             </div>
           </div>
           <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">

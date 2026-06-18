@@ -8,6 +8,7 @@ export type HaritaKatman = {
   id: string;
   ad: string;
   renk: string;
+  kalinlik: number;
   gorunur: boolean;
   geometriler: HaritaGeometri[];
   created_at: string;
@@ -42,7 +43,7 @@ export async function silHaritaKatman(id: string): Promise<void> {
 
 export async function guncelleHaritaKatman(
   id: string,
-  alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "gorunur">>,
+  alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "kalinlik" | "gorunur">>,
 ): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from(TABLO).update(alanlar).eq("id", id);

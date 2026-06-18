@@ -23,8 +23,9 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
 import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
+import { getArventoAyarlar, setArventoAyarlar } from "@/lib/supabase/queries/arvento-ayarlar";
 
-const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
+const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed";
 
 // Cevabı güvenle JSON'a çevir. Sunucu JSON yerine düz metin/HTML dönerse
 // (örn. Vercel'in "Request Entity Too Large" 413 sayfası), "Unexpected token" yerine
@@ -111,6 +112,8 @@ export default function ArventoRaporPage() {
   const { hasPermission } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
   const yEkle = hasPermission("araclar-arvento-raporu", "ekle");
+  const yDuzenle = hasPermission("araclar-arvento-raporu", "duzenle");
+  const ySil = hasPermission("araclar-arvento-raporu", "sil");
 
   const [loading, setLoading] = useState(true);
   // Tarih aralığı — başlangıç & bitiş; varsayılan ikisi de bugün (tek gün). Manuel değiştirilebilir.
@@ -138,45 +141,65 @@ export default function ArventoRaporPage() {
   >("calisma");
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
-  // Yanlış (art arda) damper kaldırma eşiği (dk) — localStorage'da kalıcı
-  const [mukerrerDk, setMukerrerDk] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    const v = window.localStorage.getItem("arvento_mukerrer_dk");
-    return v != null ? (parseInt(v, 10) || 0) : 0;
-  });
+  // Tanımlamalar eşikleri — ORTAK (kullanıcı bazlı DEĞİL): DB'den yüklenir, herkes aynı değeri görür.
+  // Sadece "düzenle" yetkisi olan değiştirebilir (aşağıdaki kaydetme effect'i yetkiyle korunur).
+  const [mukerrerDk, setMukerrerDk] = useState<number>(0);     // yanlış (art arda) damper eşiği (dk)
+  const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
+  const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
+  const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
+  // Çizgi kalınlıkları (haritada) — Reglaj / Serme / Silindir ayrı ayrı, ortak (global).
+  const [reglajKalinlik, setReglajKalinlik] = useState<number>(4);
+  const [sermeKalinlik, setSermeKalinlik] = useState<number>(3);
+  const [silindirKalinlik, setSilindirKalinlik] = useState<number>(3);
+  // Çizgi renkleri (haritada) — ortak (global)
+  const [reglajRenk, setReglajRenk] = useState<string>("#2563eb");
+  const [sermeRenk, setSermeRenk] = useState<string>("#059669");
+  const [silindirRenk, setSilindirRenk] = useState<string>("#7c3aed");
+  const [ayarYuklendi, setAyarYuklendi] = useState(false);     // ilk DB yüklemesi tamamlandı mı
+  const sonAyarRef = useRef<string>("");                       // son kaydedilen/yüklenen snapshot (gereksiz yazmayı önler)
+
+  // İlk açılışta ortak ayarları DB'den çek
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("arvento_mukerrer_dk", String(mukerrerDk));
-  }, [mukerrerDk]);
-  // Güzergah tekrar eşiği — Reglaj/Stabilize'de bir yol parçasından en az kaç kez
-  // geçilince TEK çizgi gösterileceği (0 = sadeleştirme yok, ham rota). localStorage'da kalıcı.
-  const [guzergahTekrar, setGuzergahTekrar] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    const v = window.localStorage.getItem("arvento_guzergah_tekrar");
-    return v != null ? (parseInt(v, 10) || 0) : 0;
-  });
+    getArventoAyarlar()
+      .then((a) => {
+        setKmEsik(a.kmEsik);
+        setMukerrerDk(a.mukerrerDk);
+        setGuzergahTekrar(a.guzergahTekrar);
+        setGridMesafe(a.gridMesafe);
+        setSilindirTekrar(a.silindirTekrar);
+        setReglajKalinlik(a.reglajKalinlik);
+        setSermeKalinlik(a.sermeKalinlik);
+        setSilindirKalinlik(a.silindirKalinlik);
+        setReglajRenk(a.reglajRenk);
+        setSermeRenk(a.sermeRenk);
+        setSilindirRenk(a.silindirRenk);
+        sonAyarRef.current = JSON.stringify(a); // yüklenen değeri "kaydedilmiş" say → geri yazma olmaz
+      })
+      .catch(() => { /* tablo yoksa varsayılanlarla devam */ })
+      .finally(() => setAyarYuklendi(true));
+  }, []);
+
+  // Kullanıcı bir eşiği/kalınlığı DEĞİŞTİRİNCE DB'ye yaz — sadece düzenleme yetkisi olan + ilk yükleme bitmişken.
+  // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("arvento_guzergah_tekrar", String(guzergahTekrar));
-  }, [guzergahTekrar]);
-  // Silindir (Sıkıştırma) tekrar eşiği — bir yol parçasından bu sayı ve üzeri silindir
-  // geçişi varsa zikzak çizilir, altındakiler çizilmez. localStorage'da kalıcı.
-  const [silindirTekrar, setSilindirTekrar] = useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    const v = window.localStorage.getItem("arvento_silindir_tekrar");
-    return v != null ? (parseInt(v, 10) || 0) : 0;
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("arvento_silindir_tekrar", String(silindirTekrar));
-  }, [silindirTekrar]);
-  // Yan yana çizgi mesafesi (m) — sadeleştirme ızgara toleransı. İki geçiş bu mesafeden
-  // uzaksa "aynı güzergah" sayılmaz (tekrara katılmaz). localStorage'da kalıcı, varsayılan 12.
-  const [gridMesafe, setGridMesafe] = useState<number>(() => {
-    if (typeof window === "undefined") return 12;
-    const v = window.localStorage.getItem("arvento_grid_mesafe");
-    return v != null ? (parseInt(v, 10) || 12) : 12;
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") window.localStorage.setItem("arvento_grid_mesafe", String(gridMesafe));
-  }, [gridMesafe]);
+    if (!ayarYuklendi || !yDuzenle) return;
+    const guncel = { kmEsik, mukerrerDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk };
+    const snapshot = JSON.stringify(guncel);
+    if (snapshot === sonAyarRef.current) return;
+    setArventoAyarlar(guncel)
+      .then(() => { sonAyarRef.current = snapshot; })
+      .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
+  }, [kmEsik, mukerrerDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk, ayarYuklendi, yDuzenle]);
+
+  // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
+  const kalinliklar = useMemo(
+    () => ({ reglaj: reglajKalinlik, serme: sermeKalinlik, silindir: silindirKalinlik }),
+    [reglajKalinlik, sermeKalinlik, silindirKalinlik],
+  );
+  const renkler = useMemo(
+    () => ({ reglaj: reglajRenk, serme: sermeRenk, silindir: silindirRenk }),
+    [reglajRenk, sermeRenk, silindirRenk],
+  );
   const [yukleniyor, setYukleniyor] = useState(false);
   const [maildenCekiliyor, setMaildenCekiliyor] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -298,6 +321,7 @@ export default function ArventoRaporPage() {
   useEffect(() => { loadKatmanlar(); }, [loadKatmanlar]);
 
   async function katmanYukle(file: File) {
+    if (!yEkle) { toast.error("KML eklemek için 'ekleme' yetkiniz yok.", { duration: toastSuresi() }); return; }
     setKatmanYukleniyor(true);
     try {
       const geometriler = await dosyadanGeometriler(file);
@@ -316,6 +340,7 @@ export default function ArventoRaporPage() {
   }
 
   async function katmanSil(id: string, ad: string) {
+    if (!ySil) { toast.error("Katman silmek için 'silme' yetkiniz yok.", { duration: toastSuresi() }); return; }
     if (!window.confirm(`"${ad}" katmanı silinsin mi?`)) return;
     try {
       await silHaritaKatman(id);
@@ -327,7 +352,8 @@ export default function ArventoRaporPage() {
     }
   }
 
-  async function katmanDegis(id: string, alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "gorunur">>) {
+  async function katmanDegis(id: string, alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "kalinlik" | "gorunur">>) {
+    if (!yDuzenle) { toast.error("Katmanı düzenlemek için 'düzenleme' yetkiniz yok.", { duration: toastSuresi() }); return; }
     // İyimser güncelle (anında yansısın), sonra DB
     setHaritaKatmanlari((list) => list.map((k) => (k.id === id ? { ...k, ...alanlar } : k)));
     try {
@@ -569,19 +595,19 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -593,6 +619,12 @@ export default function ArventoRaporPage() {
               araç km, makine çalışma saati). Veri modeli netleşince doldurulacak — şimdilik taslak.
             </p>
           </div>
+          {!yDuzenle && (
+            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              🔒 Görüntüleme modundasınız — bu ayarları yalnızca <strong>düzenleme yetkisi</strong> olan kullanıcılar değiştirebilir.
+            </div>
+          )}
+          <fieldset disabled={!yDuzenle} className="min-w-0 border-0 p-0 m-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Araç Km — yanlış/anomali kaldırma eşiği (filtre çubuğundan buraya taşındı).
                 Bu km'yi AŞAN günler 'Gen. Ort Km' hesabına katılmaz (outlier eleme). */}
@@ -714,7 +746,44 @@ export default function ArventoRaporPage() {
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>
               </div>
             </div>
+            {/* Çizgi Kalınlıkları & Renkleri — Reglaj / Serme / Silindir (haritadaki çizgi) */}
+            <div className="border rounded-lg p-3 bg-indigo-50/40 border-indigo-200 md:col-span-3">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Çizgi Kalınlıkları & Renkleri</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Haritadaki çizgilerin kalınlığı (1–12 px) ve rengi — her operasyon için ayrı.
+              </p>
+              <div className="flex flex-wrap items-end gap-5">
+                <div className="flex items-end gap-2">
+                  <input type="color" value={reglajRenk} onChange={(e) => setReglajRenk(e.target.value)}
+                    className="h-8 w-9 rounded border cursor-pointer" title="Reglaj rengi" />
+                  <label className="flex flex-col gap-1 text-[11px] text-gray-600">Reglaj (px)
+                    <input type="number" min={1} max={12} value={reglajKalinlik || ""}
+                      onChange={(e) => setReglajKalinlik(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className={selectClass + " w-20"} />
+                  </label>
+                </div>
+                <div className="flex items-end gap-2">
+                  <input type="color" value={sermeRenk} onChange={(e) => setSermeRenk(e.target.value)}
+                    className="h-8 w-9 rounded border cursor-pointer" title="Serme rengi" />
+                  <label className="flex flex-col gap-1 text-[11px] text-gray-600">Serme (px)
+                    <input type="number" min={1} max={12} value={sermeKalinlik || ""}
+                      onChange={(e) => setSermeKalinlik(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className={selectClass + " w-20"} />
+                  </label>
+                </div>
+                <div className="flex items-end gap-2">
+                  <input type="color" value={silindirRenk} onChange={(e) => setSilindirRenk(e.target.value)}
+                    className="h-8 w-9 rounded border cursor-pointer" title="Silindir rengi" />
+                  <label className="flex flex-col gap-1 text-[11px] text-gray-600">Silindir (px)
+                    <input type="number" min={1} max={12} value={silindirKalinlik || ""}
+                      onChange={(e) => setSilindirKalinlik(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className={selectClass + " w-20"} />
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
+          </fieldset>
         </div>
 
         {/* Harita Katmanları (NetCAD/KML) — yüklenen çizgiler tüm haritalara biner */}
@@ -728,19 +797,25 @@ export default function ArventoRaporPage() {
                 seçip &quot;Google Earth&apos;e Aktar / KML kaydet&quot; ile dosyayı üretin.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 text-xs text-gray-600">
-                Renk
-                <input type="color" value={katmanRenk} onChange={(e) => setKatmanRenk(e.target.value)}
-                  className="h-8 w-10 rounded border cursor-pointer" title="Yeni katman rengi" />
-              </label>
-              <input ref={katmanFileRef} type="file" accept=".kml,.kmz" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) katmanYukle(f); }} />
-              <Button variant="outline" size="sm" onClick={() => katmanFileRef.current?.click()}
-                disabled={katmanYukleniyor} className="h-9 gap-1 text-xs">
-                <Upload size={14} /> {katmanYukleniyor ? "Yükleniyor..." : "KML/KMZ Yükle"}
-              </Button>
-            </div>
+            {yEkle ? (
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1 text-xs text-gray-600">
+                  Renk
+                  <input type="color" value={katmanRenk} onChange={(e) => setKatmanRenk(e.target.value)}
+                    className="h-8 w-10 rounded border cursor-pointer" title="Yeni katman rengi" />
+                </label>
+                <input ref={katmanFileRef} type="file" accept=".kml,.kmz" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) katmanYukle(f); }} />
+                <Button variant="outline" size="sm" onClick={() => katmanFileRef.current?.click()}
+                  disabled={katmanYukleniyor} className="h-9 gap-1 text-xs">
+                  <Upload size={14} /> {katmanYukleniyor ? "Yükleniyor..." : "KML/KMZ Yükle"}
+                </Button>
+              </div>
+            ) : (
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5">
+                🔒 KML eklemek için <strong>ekleme yetkisi</strong> gerekir
+              </span>
+            )}
           </div>
 
           {haritaKatmanlari.length === 0 ? (
@@ -749,19 +824,31 @@ export default function ArventoRaporPage() {
             <ul className="divide-y border rounded-lg overflow-hidden">
               {haritaKatmanlari.map((k) => (
                 <li key={k.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                  <input type="color" value={k.renk} onChange={(e) => katmanDegis(k.id, { renk: e.target.value })}
-                    className="h-6 w-7 rounded border cursor-pointer shrink-0" title="Renk" />
+                  <input type="color" value={k.renk} disabled={!yDuzenle}
+                    onChange={(e) => katmanDegis(k.id, { renk: e.target.value })}
+                    className="h-6 w-7 rounded border cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-50" title="Renk" />
                   <span className="font-medium text-gray-800 truncate flex-1">{k.ad}</span>
                   <span className="text-[11px] text-gray-400 shrink-0">{(k.geometriler ?? []).length} geometri</span>
-                  <button type="button" onClick={() => katmanDegis(k.id, { gorunur: !k.gorunur })}
-                    title={k.gorunur ? "Haritada gizle" : "Haritada göster"}
-                    className={`p-1 rounded ${k.gorunur ? "text-emerald-600 hover:bg-emerald-50" : "text-gray-300 hover:bg-gray-100"}`}>
+                  <div className="flex items-center gap-1 shrink-0" title="Çizgi kalınlığı (px)">
+                    <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) <= 1}
+                      onClick={() => katmanDegis(k.id, { kalinlik: Math.max(1, (k.kalinlik ?? 3) - 1) })}
+                      className="w-6 h-6 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none">−</button>
+                    <span className="w-10 text-center text-[11px] text-gray-600 tabular-nums">{k.kalinlik ?? 3}px</span>
+                    <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) >= 12}
+                      onClick={() => katmanDegis(k.id, { kalinlik: Math.min(12, (k.kalinlik ?? 3) + 1) })}
+                      className="w-6 h-6 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none">+</button>
+                  </div>
+                  <button type="button" onClick={() => katmanDegis(k.id, { gorunur: !k.gorunur })} disabled={!yDuzenle}
+                    title={!yDuzenle ? "Düzenleme yetkiniz yok" : k.gorunur ? "Haritada gizle" : "Haritada göster"}
+                    className={`p-1 rounded disabled:cursor-not-allowed disabled:opacity-40 ${k.gorunur ? "text-emerald-600 hover:bg-emerald-50" : "text-gray-300 hover:bg-gray-100"}`}>
                     {k.gorunur ? <Eye size={16} /> : <EyeOff size={16} />}
                   </button>
-                  <button type="button" onClick={() => katmanSil(k.id, k.ad)} title="Sil"
-                    className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50">
-                    <Trash2 size={16} />
-                  </button>
+                  {ySil && (
+                    <button type="button" onClick={() => katmanSil(k.id, k.ad)} title="Sil"
+                      className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

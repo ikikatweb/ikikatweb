@@ -28,7 +28,11 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; refreshKey?: number }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number }) {
+  const reglajKal = kalinliklar?.reglaj ?? 4;
+  const silindirKal = kalinliklar?.silindir ?? 3;
+  const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
+  const silindirRenkV = renkler?.silindir ?? OPERASYONLAR.sikistirma.renk;
   const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]);
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +70,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
+      if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const bounds: [number, number][] = [];
       // Güzergah çizgileri — sınıfa göre operasyon rengi/stili
       guzergahlar.forEach((k) => {
@@ -81,8 +86,10 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         const cizim: [number, number][][] = esik >= 1
           ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
           : [latlngs];
+        const kal = op === "sikistirma" ? silindirKal : reglajKal;
+        const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
         (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-          L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: def.renk, weight: 3.5, opacity: 0.85 })
+          L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
             .addTo(map!).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
         for (const ll of latlngs) bounds.push(ll);
       });
@@ -99,7 +106,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe]);
+  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {

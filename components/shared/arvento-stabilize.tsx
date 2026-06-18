@@ -91,12 +91,16 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, kalinliklar, renkler, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number }) {
+  const reglajKal = kalinliklar?.reglaj ?? 4;
+  const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set()); // çoklu seçim (boş→hepsi varsayılan effect ile dolar)
+  const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşiği yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
 
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
@@ -200,15 +204,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
+      if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const bounds: [number, number][] = [];
       greyderler.forEach((k) => {
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
-        const cizim: [number, number][][] = tekrarEsigi >= 1
-          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar
+        const cizim: [number, number][][] = etkinTekrar >= 1
+          ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
           : [latlngs];
-        L.polyline(cizim.length ? cizim : [latlngs], { color: "#2563eb", weight: 3, opacity: 0.6 })
+        L.polyline(cizim.length ? cizim : [latlngs], { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
           .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
         for (const ll of latlngs) bounds.push(ll);
       });
@@ -240,7 +245,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, renkAl]);
+  }, [bas, bitis, greyderler, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -313,6 +318,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 {hepsiSecili ? "Hiçbiri" : "Tümünü seç"}
               </button>
             )}
+            <button type="button" onClick={() => setHamGoster((v) => !v)}
+              title="Açıkken Güzergah Tekrar Eşiği yok sayılır — tam (ham) reglaj rotası gösterilir"
+              className={`px-2 py-1 rounded-md border text-[10px] font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+              {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-xs text-gray-600 text-right leading-relaxed">

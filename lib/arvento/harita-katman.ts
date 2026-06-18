@@ -36,7 +36,7 @@ type LatLng = import("leaflet").LatLng;
 type FareOlay = import("leaflet").LeafletMouseEvent;
 
 export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
-  let mod: "kapali" | "olcuyor" | "bitti" = "kapali";
+  let mod: "kapali" | "olcuyor" = "kapali";
   let noktalar: LatLng[] = [];
   const katman = L.layerGroup().addTo(map);
   let lastik: import("leaflet").Polyline | null = null; // imleci takip eden ön-izleme çizgisi
@@ -85,9 +85,7 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     if (!kutuEl) return;
     if (mod === "kapali") { kutuEl.style.display = "none"; return; }
     const t = provizyonel != null ? provizyonel : toplam(noktalar);
-    const ip = mod === "olcuyor"
-      ? "Tıkla: nokta ekle · Çift tık: bitir"
-      : "Bitti · 📏 ile temizle";
+    const ip = "Tıkla: ekle · Son noktaya tıkla: geri al · 📏: temizle";
     kutuEl.style.display = "block";
     kutuEl.innerHTML = `<b style="font-size:14px">${noktalar.length >= 2 || provizyonel != null ? fmt(t) : "0 m"}</b><br><span style="opacity:.85">${ip}</span>`;
   }
@@ -113,16 +111,15 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
 
   function lastikTemizle() { if (lastik) { katman.removeLayer(lastik); lastik = null; } }
 
-  function tikla(e: FareOlay) { noktalar.push(e.latlng); ciz(); kutuyuGuncelle(); }
-  function ciftTikla(e: FareOlay) {
-    L.DomEvent.stop(e);
-    if (mod !== "olcuyor") return;
-    mod = "bitti";
-    lastikTemizle();
-    map.off("click", tikla);
-    map.off("dblclick", ciftTikla);
-    map.off("mousemove", hareket);
-    butonGorunumu();
+  function tikla(e: FareOlay) {
+    // Son noktanın üzerine (≈12 px) tekrar tıklanırsa o noktayı GERİ AL (sil).
+    if (noktalar.length > 0) {
+      const sonPx = map.latLngToContainerPoint(noktalar[noktalar.length - 1]);
+      const tikPx = map.latLngToContainerPoint(e.latlng);
+      if (sonPx.distanceTo(tikPx) <= 12) { noktalar.pop(); ciz(); kutuyuGuncelle(); return; }
+    }
+    noktalar.push(e.latlng);
+    ciz();
     kutuyuGuncelle();
   }
   function hareket(e: FareOlay) {
@@ -140,7 +137,6 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     map.doubleClickZoom.disable();
     L.DomUtil.addClass(map.getContainer(), "olcum-modu");
     map.on("click", tikla);
-    map.on("dblclick", ciftTikla);
     map.on("mousemove", hareket);
     butonGorunumu();
     kutuyuGuncelle();
@@ -153,7 +149,6 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     map.doubleClickZoom.enable();
     L.DomUtil.removeClass(map.getContainer(), "olcum-modu");
     map.off("click", tikla);
-    map.off("dblclick", ciftTikla);
     map.off("mousemove", hareket);
     butonGorunumu();
     kutuyuGuncelle();
@@ -168,18 +163,19 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
     const katmanlar = await getHaritaKatmanlari();
     for (const k of katmanlar) {
       if (!k.gorunur) continue;
+      const kalinlik = k.kalinlik ?? 3;
       for (const g of k.geometriler ?? []) {
         const baslik = `<b>${k.ad}</b>${g.ad ? " · " + g.ad : ""}`;
         if (g.tip === "nokta") {
           const p = g.noktalar[0];
           if (!p) continue;
-          L.circleMarker(p, { radius: 5, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
+          L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
             .addTo(map).bindPopup(baslik);
         } else if (g.tip === "alan") {
-          L.polygon(g.noktalar, { color: k.renk, weight: 2, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
+          L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
             .addTo(map).bindPopup(baslik);
         } else {
-          L.polyline(g.noktalar, { color: k.renk, weight: 3, opacity: 0.9 })
+          L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9 })
             .addTo(map).bindPopup(baslik);
         }
       }
