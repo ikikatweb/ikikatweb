@@ -487,7 +487,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               } else {
                 const idx = ek.lastIndexOf("|");
                 if (idx > 0 && /^https?:\/\//i.test(ek.slice(idx + 1).trim())) {
-                  metin = ek.slice(0, idx).trim();
+                  metin = ek.slice(0, idx); // trim YOK — kullanıcı boşluk bırakabilsin (aksi halde aradaki boşluk silinir)
                   url = ek.slice(idx + 1).trim();
                 }
               }
