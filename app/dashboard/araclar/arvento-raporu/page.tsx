@@ -20,8 +20,26 @@ import { OPERASYONLAR, OPERASYON_SIRA } from "@/lib/arvento/operasyonlar";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { createClient } from "@/lib/supabase/client";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
+
+// Cevabı güvenle JSON'a çevir. Sunucu JSON yerine düz metin/HTML dönerse
+// (örn. Vercel'in "Request Entity Too Large" 413 sayfası), "Unexpected token" yerine
+// anlaşılır bir hata fırlat.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function guvenliJson(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    if (res.status === 413) {
+      throw new Error("Dosya sunucu boyut sınırını aşıyor. Daha küçük bir dosya deneyin.");
+    }
+    const ozet = text.trim().replace(/\s+/g, " ").slice(0, 120) || `HTTP ${res.status}`;
+    throw new Error(`Sunucu beklenmeyen bir cevap döndü (${res.status}): ${ozet}`);
+  }
+}
 
 // saniye → "2sa 15dk" / "—"
 function formatSure(sn: number | null): string {
@@ -180,7 +198,7 @@ export default function ArventoRaporPage() {
     setMaildenCekiliyor(true);
     try {
       const res = await fetch("/api/arvento/mailden-cek", { method: "POST" });
-      const data = await res.json();
+      const data = await guvenliJson(res);
       if (!res.ok) throw new Error(data.error ?? "Mailden çekilemedi");
       if (data.ok) {
         toast.success(`Mailden çekildi — ${data.mesaj}`, { duration: toastSuresi() });
@@ -202,10 +220,31 @@ export default function ArventoRaporPage() {
   async function dosyaYukle(file: File) {
     setYukleniyor(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/arvento", { method: "POST", body: fd });
-      const data = await res.json();
+      // Büyük .xlsx dosyaları Vercel'in ~4.5MB istek limitine takılmasın diye:
+      // dosyayı imzalı URL ile DOĞRUDAN Supabase Storage'a yükle, sonra sunucuya
+      // sadece { bucket, path } referansını gönder (sunucu Storage'dan okuyup işler).
+      const imzaRes = await fetch("/api/arvento/yukle-imza", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dosyaAdi: file.name }),
+      });
+      const imza = await guvenliJson(imzaRes);
+      if (!imzaRes.ok) throw new Error(imza.error ?? "Yükleme hazırlanamadı");
+
+      const supabase = createClient();
+      const { error: upErr } = await supabase.storage
+        .from(imza.bucket)
+        .uploadToSignedUrl(imza.path, imza.token, file, {
+          contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+      if (upErr) throw new Error(`Dosya yüklenemedi: ${upErr.message}`);
+
+      const res = await fetch("/api/arvento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucket: imza.bucket, path: imza.path }),
+      });
+      const data = await guvenliJson(res);
       if (!res.ok) throw new Error(data.error ?? "İçe aktarılamadı");
       toast.success(data.mesaj ?? "İçe aktarıldı.", { duration: toastSuresi() });
       // İçe aktarılan ilk çalışma/damper günü (güzergah varsa onun günü) aralık olarak seçilsin
@@ -397,11 +436,11 @@ export default function ArventoRaporPage() {
         </div>
       </div>
 
-      {/* Sekmeler */}
-      <div className="flex gap-1 mb-3 border-b">
+      {/* Sekmeler — satır kaydırmalı (wrap): yatay scroll olmadan tek ekranda görünür */}
+      <div className="flex flex-wrap gap-x-1 gap-y-0.5 mb-3 border-b">
         {([["calisma", "Araç Çalışma Raporu"], ["ismakine", "İş Makineleri"], ["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"], ["tanimlamalar", "Tanımlamalar"]] as const).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setAktifSekme(key)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            className={`whitespace-nowrap px-2.5 py-2 text-[13px] font-semibold border-b-2 -mb-px transition-colors ${
               aktifSekme === key ? "border-[#1E3A5F] text-[#1E3A5F]" : "border-transparent text-gray-400 hover:text-gray-600"
             }`}>
             {label}

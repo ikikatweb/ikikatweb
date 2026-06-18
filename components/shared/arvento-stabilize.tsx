@@ -36,6 +36,28 @@ function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
 
+// Her kamyona ayırt edici sabit renk — uydu görüntüsünde okunur, parlak tonlar.
+// Sıralama hue olarak en uzaktan başlar: az sayıda kamyonda bile renkler net ayrılsın
+// (örn. 2 kamyon → kırmızı + camgöbeği). Reglaj çizgisi mavi olduğundan onun tonundan kaçınıldı.
+const KAMYON_RENKLERI = [
+  "#ef4444", // kırmızı
+  "#06b6d4", // camgöbeği
+  "#84cc16", // fıstık yeşili
+  "#a855f7", // mor
+  "#f59e0b", // amber
+  "#ec4899", // pembe
+  "#10b981", // zümrüt
+  "#f97316", // turuncu
+  "#3b82f6", // mavi
+  "#d946ef", // fuşya
+  "#14b8a6", // turkuaz
+  "#eab308", // sarı
+  "#8b5cf6", // menekşe
+  "#22c55e", // yeşil
+  "#f43f5e", // gül
+  "#0ea5e9", // gök
+];
+
 export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; refreshKey?: number }) {
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
@@ -63,6 +85,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     () => raporlar.filter((r) => damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0),
     [raporlar],
   );
+
+  // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
+  const plakaRenk = useMemo(() => {
+    const m = new Map<string, string>();
+    kamyonlar.forEach((r, i) => m.set(r.plaka, KAMYON_RENKLERI[i % KAMYON_RENKLERI.length]));
+    return m;
+  }, [kamyonlar]);
+  const renkAl = (plaka: string) => plakaRenk.get(plaka) ?? "#f97316";
 
   // Veri değişince varsayılan: tüm kamyonlar seçili
   useEffect(() => {
@@ -110,7 +140,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       });
       damperKoordlu.forEach((o, i) => {
         const lat = o.lat as number, lng = o.lng as number;
-        L.circleMarker([lat, lng], { radius: 8, color: "#9a3412", fillColor: "#f97316", fillOpacity: 0.9, weight: 2 })
+        const renk = renkAl(o.plaka);
+        L.circleMarker([lat, lng], { radius: 8, color: "#ffffff", fillColor: renk, fillOpacity: 0.95, weight: 2 })
           .addTo(map!)
           .bindPopup(`<b>🔻 ${o.surucu ?? o.plaka}</b> · Damper ${i + 1}<br>${o.plaka}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([lat, lng]);
@@ -119,7 +150,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe]);
+  }, [bas, bitis, greyderler, damperKoordlu, tekrarEsigi, gridMesafe, plakaRenk]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -131,16 +162,22 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       return `
     <Placemark><name>${esc(k.plaka)} reglaj</name><styleUrl>#rota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
+    // KML rengi aabbggrr formatında — #rrggbb → ff bb gg rr
+    const kmlRenk = (hex: string) => "ff" + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
+    const renkStilId = (hex: string) => "d" + hex.slice(1);
+    const kullanilanRenkler = Array.from(new Set(damperKoordlu.map((o) => renkAl(o.plaka))));
+    const damperStilleri = kullanilanRenkler.map((hex) =>
+      `<Style id="${renkStilId(hex)}"><IconStyle><color>${kmlRenk(hex)}</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`,
+    ).join("");
     const damperPlacemarks = damperKoordlu.map((o, i) => `
-    <Placemark><name>${esc((o.surucu ?? o.plaka) + " damper " + (i + 1))}</name><description>${esc([o.plaka, o.saat ?? "", o.adres ?? ""].filter(Boolean).join(" · "))}</description><styleUrl>#damper</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("");
+    <Placemark><name>${esc((o.surucu ?? o.plaka) + " damper " + (i + 1))}</name><description>${esc([o.plaka, o.saat ?? "", o.adres ?? ""].filter(Boolean).join(" · "))}</description><styleUrl>#${renkStilId(renkAl(o.plaka))}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("");
     if (!cizgiler && !damperPlacemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `Stabilize ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>${esc(baslik)}</name>
-    <Style id="rota"><LineStyle><color>ffeb6326</color><width>4</width></LineStyle></Style>
-    <Style id="damper"><IconStyle><color>ff167cf9</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>${cizgiler}${damperPlacemarks}
+    <Style id="rota"><LineStyle><color>ffeb6326</color><width>4</width></LineStyle></Style>${damperStilleri}${cizgiler}${damperPlacemarks}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
@@ -210,17 +247,20 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta damper indiren kamyon yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
+            const renk = renkAl(r.plaka);
             const ad = r.surucu?.trim() || r.plaka;
             const adet = damperOlaylariniAl(r).length || (r.damper_sayisi ?? 0);
             return (
               <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
                 title={`${r.plaka}${r.marka ? " · " + r.marka : ""}`}
+                style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
                 className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${
-                  secili ? "bg-orange-50 border-orange-300 text-orange-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
+                  secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
                 }`}>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
                 <span className="font-semibold">{ad}</span>
                 {r.surucu?.trim() && <span className="text-[10px] opacity-70">{r.plaka}</span>}
-                <span className={`text-[10px] px-1 rounded ${secili ? "bg-orange-200/60" : "bg-gray-100"}`}>🔻{adet}</span>
+                <span className="text-[10px] px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>
               </button>
             );
           })}
@@ -241,6 +281,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             {damperOlaylar.map((o, i) => (
               <li key={i} className="text-xs flex items-center gap-2">
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka) }} />
                 <span className="font-bold text-[#1E3A5F] w-32 truncate">{o.surucu?.trim() || o.plaka}</span>
                 <span className="text-gray-400 w-20 truncate">{o.plaka}</span>
                 <span className="font-mono whitespace-nowrap font-semibold text-orange-700">🔻 {o.saat ?? "—"}</span>

@@ -19,6 +19,13 @@ thead th {
   overflow-anchor: none;
 }
 
+/* Leaflet haritası: pane'ler ve zoom/katman kontrolleri z-index 1000'e kadar çıkar.
+   Konteyneri kendi stacking context'ine alarak bu yüksek değerleri içeride hapsediyoruz;
+   aksi halde mobil menü (Sheet, z-50) ve diğer üst katmanlar haritanın ALTINDA kalıyor. */
+.leaflet-container {
+  isolation: isolate;
+}
+
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
    !important ile uygulanır çünkü bazı UI kütüphaneleri kendi scrollbar style'larını ekliyor. */
