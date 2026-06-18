@@ -76,7 +76,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         const def = OPERASYONLAR[op];
         // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
         const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
-        const cizim: [number, number][][] = gridMesafe > 0
+        const cizim: [number, number][][] = esik >= 1
           ? sadelesGuzergah(noktalar, esik, gridMesafe, guzergahMesafe).parcalar
           : [latlngs];
         (cizim.length ? cizim : [latlngs]).forEach((seg) =>
@@ -112,7 +112,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (!op) return;
       const def = OPERASYONLAR[op];
       const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
-      const cizim: [number, number][][] = gridMesafe > 0
+      const cizim: [number, number][][] = esik >= 1
         ? sadelesGuzergah(noktalar, esik, gridMesafe, guzergahMesafe).parcalar
         : [noktalar.map((p) => [p.lat, p.lng] as [number, number])];
       cizim.forEach((seg) => {

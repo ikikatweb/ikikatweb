@@ -103,7 +103,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
-        const cizim: [number, number][][] = gridMesafe > 0
+        const cizim: [number, number][][] = tekrarEsigi >= 1
           ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: "#2563eb", weight: 3, opacity: 0.6 })
@@ -139,7 +139,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
-        const cizim: [number, number][][] = gridMesafe > 0
+        const cizim: [number, number][][] = tekrarEsigi >= 1
           ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: "#2563eb", weight: 3, opacity: 0.55 }).addTo(map!);

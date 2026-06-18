@@ -478,11 +478,12 @@ export default function ArventoRaporPage() {
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}
             <div className="border rounded-lg p-3 bg-emerald-50/40 border-emerald-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Güzergah Tekrar Eşiği (filtre)</div>
+              <div className="text-xs font-semibold text-gray-700 mb-1">Güzergah Tekrar Eşiği — ANA AYAR</div>
               <p className="text-[11px] text-gray-400 mb-2">
-                Yalnız sapmaları temizleme filtresi. Aynı yere <strong>en az kaç kez</strong> geçilirse
-                gösterilsin; daha az geçilen (yalnız) sapmalar gizlenir.
-                <strong> 0 veya 1 = tüm yol</strong> gösterilir (filtre yok). Örn. 3 → 3+ kez geçilen ana hat kalır.
+                Sadeleştirmeyi açan ana ayar. Bir yoldan <strong>bu sayı ve üzeri</strong> kez geçilmişse
+                (greyder gidip-gelmiş) <strong>tek çizgi</strong> gösterilir; <strong>daha az</strong> geçilen
+                (örn. 1 kez) parçalar <strong>silinir</strong>. Örn. <strong>3</strong> → 3+ kez gidilen yol tek hat,
+                1-2 kezlik sapmalar gizli. <strong>0 = ham rota</strong> (sadeleştirme kapalı).
               </p>
               <div className="flex items-center gap-1">
                 <input
@@ -527,12 +528,11 @@ export default function ArventoRaporPage() {
             {/* Yan Yana Çizgi Mesafesi — sadeleştirme ızgara toleransı (m).
                 İki geçiş bu mesafeden uzaksa "aynı güzergah" sayılmaz, tekrara katılmaz. */}
             <div className="border rounded-lg p-3 bg-slate-50 border-slate-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Yan Yana Çizgi Mesafesi (m) — ANA AYAR</div>
+              <div className="text-xs font-semibold text-gray-700 mb-1">Yan Yana Çizgi Mesafesi (m) — yardımcı</div>
               <p className="text-[11px] text-gray-400 mb-2">
-                Sadeleştirmeyi açan ana ayar. Orta hattan <strong>sağa-sola (±) bu kadar metre</strong>:
-                bu bant içindeki yan yana şeritler tek orta hatta iner, dışı hesaba katılmaz.
-                Örn. <strong>2</strong> → ±2 m (toplam 4 m bant). Geniş yol için yarıçapı büyüt (ör. 10-15).
-                <strong> 0 = ham rota</strong> (sadeleştirme kapalı). Varsayılan 12.
+                Yan yana şeritleri tek orta hatta toplama yarıçapı (orta hattan ±m). Tekrar Eşiği ≥ 1 iken
+                etkilidir. Aynı yolda yan yana sapan şeritler bu bant içindeyse ortalanıp tek hat olur.
+                Geniş yol için büyüt (ör. 10-15). Varsayılan 12.
               </p>
               <div className="flex items-center gap-1">
                 <input
@@ -551,8 +551,8 @@ export default function ArventoRaporPage() {
             <div className="border rounded-lg p-3 bg-cyan-50/40 border-cyan-200">
               <div className="text-xs font-semibold text-gray-700 mb-1">Güzergah Mesafesi (m)</div>
               <p className="text-[11px] text-gray-400 mb-2">
-                Gidiş-geliş boyunca, araç tam aynı hatta gitmese de <strong>bu mesafeden kısa</strong> kopuklukları
-                köprüleyip <strong>tek sürekli çizgiye</strong> indirir; daha uzun sapmalar ayrı kalır. Varsayılan 30.
+                Çizilecek omurganın <strong>en kısa uzunluğu</strong>. Bu uzunluktan <strong>kısa</strong> omurgalar
+                (gürültü / kısa lekeler) çizilmez; sadece asıl yol(lar) kalır. Büyütürsen küçük izler temizlenir. Varsayılan 30.
               </p>
               <div className="flex items-center gap-1">
                 <input

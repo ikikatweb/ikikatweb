@@ -67,7 +67,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const sonSaat = n[n.length - 1]?.saat ?? null;
     const maksHiz = n.reduce((m, p) => Math.max(m, p.hiz ?? 0), 0);
     let sade: { gosterilen: number; toplam: number; maksGecis: number } | null = null;
-    if (gridMesafe > 0) {
+    if (tekrarEsigi >= 1) {
       const s = sadelesGuzergah(n, tekrarEsigi, gridMesafe, guzergahMesafe);
       sade = { gosterilen: s.gosterilenSegment, toplam: s.toplamSegment, maksGecis: s.maksGecis };
     }
@@ -88,7 +88,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const noktalar = seciliKayit.noktalar.filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
-      if (gridMesafe > 0) {
+      if (tekrarEsigi >= 1) {
         // SADELEŞTİRİLMİŞ: eşiği geçen yol parçaları GERÇEK koordinatlarla çizilir
         const cizgiler = sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar;
         if (cizgiler.length > 0) L.polyline(cizgiler, { color: "#2563eb", weight: 4, opacity: 0.85 }).addTo(map);
@@ -133,7 +133,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
         // Sadeleştirme açıksa eşiği geçen parçaları gerçek koordinatlarla göster
-        const cizim: [number, number][][] = gridMesafe > 0
+        const cizim: [number, number][][] = tekrarEsigi >= 1
           ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe, guzergahMesafe).parcalar
           : [latlngs];
         L.polyline(cizim.length ? cizim : [latlngs], { color: renk, weight: 3, opacity: 0.75 })

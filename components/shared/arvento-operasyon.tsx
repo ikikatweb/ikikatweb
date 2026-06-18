@@ -61,7 +61,7 @@ function yakinDamperVar(noktalar: { lat: number; lng: number }[], damperler: Dam
 function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM: number, kopruM: number): [number, number][][] {
   const latlngs: [number, number][] = noktalar.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng]);
   if (latlngs.length === 0) return [];
-  if (gridM > 0) return sadelesGuzergah(noktalar, esik, gridM, kopruM).parcalar; // sadeleştirme bant (gridM) ile açılır
+  if (esik >= 1) return sadelesGuzergah(noktalar, esik, gridM, kopruM).parcalar; // eşik (tekrar) ile açılır
 
   return [latlngs];
 }
