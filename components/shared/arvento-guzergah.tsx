@@ -37,6 +37,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşiği yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
+  const fitAnahtarRef = useRef<string>(""); // sadece bu anahtar (plaka/tarih) değişince yeniden ortala
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi; // açıkken sadeleştirme kapalı
 
   // Seçili aralığın kayıtlarını yükle (bas–bitis); aralık değişince / yeni yükleme sonrası
@@ -83,7 +85,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       // Önceki harita varsa temizle (mapRef yeniden kullanılıyor)
-      map = L.map(mapRef.current).setView([39, 35], 6);
+      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map.on("moveend zoomend", () => {
+        if (!map) return;
+        const c = map.getCenter();
+        gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
@@ -113,11 +120,18 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         .addTo(map).bindPopup(`<b>BAŞLANGIÇ</b><br>${noktalar[0].saat ?? ""}`);
       L.circleMarker(son, { radius: 8, color: "#991b1b", fillColor: "#ef4444", fillOpacity: 0.9, weight: 2 })
         .addTo(map).bindPopup(`<b>BİTİŞ</b><br>${noktalar[noktalar.length - 1].saat ?? ""}`);
-      map.fitBounds(latlngs, { padding: [40, 40], maxZoom: 17 });
+      // Sadece plaka/tarih değişince yeniden ortala; toggle/filtre değişiminde mevcut görünümü koru
+      const fitAnahtar = `${bas}|${bitis}|${seciliKayit.plaka}`;
+      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
+      } else {
+        map.fitBounds(latlngs, { padding: [40, 40], maxZoom: 17 });
+      }
+      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [seciliKayit, etkinTekrar, gridMesafe, reglajKal, reglajRenkV]);
+  }, [seciliKayit, etkinTekrar, gridMesafe, reglajKal, reglajRenkV, bas, bitis]);
 
   // KML export — rota LineString + başlangıç/bitiş noktaları (Google Earth)
   function exportKML() {
@@ -193,7 +207,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
           </select>
         </div>
         <button type="button" onClick={() => setHamGoster((v) => !v)}
-          title="Açıkken Güzergah Tekrar Eşiği yok sayılır — tam (ham) rota gösterilir"
+          title="Açıkken tüm Tanımlamalar filtreleri yok sayılır — tam (ham) rota gösterilir"
           className={`h-9 px-3 rounded-lg border text-xs font-medium self-end transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
           {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
         </button>

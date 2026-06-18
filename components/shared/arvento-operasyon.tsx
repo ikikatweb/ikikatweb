@@ -93,6 +93,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const [seciliGreyder, setSeciliGreyder] = useState(""); // "" = tüm greyderler
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
+  const fitAnahtarRef = useRef<string>(""); // sadece tarih/greyder seçimi değişince yeniden ortala
 
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
@@ -139,7 +141,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     (async () => {
       const L = (await import("leaflet")).default;
       if (iptal || !hedef) return;
-      map = L.map(hedef).setView([39, 35], 6);
+      map = L.map(hedef).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map.on("moveend zoomend", () => {
+        if (!map) return;
+        const c = map.getCenter();
+        gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
@@ -165,7 +172,14 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
             for (const ll of seg) bounds.push(ll);
           }));
       }
-      if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      // Sadece tarih/greyder seçimi değişince yeniden ortala; toggle/filtre değişiminde görünümü koru
+      const fitAnahtar = `${bas}|${bitis}|${operasyon}|${seciliGreyder}`;
+      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
+      } else if (bounds.length) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      }
+      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return { iptal: () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } } };
@@ -253,7 +267,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
           </select>
         </div>
         <button type="button" onClick={() => setHamGoster((v) => !v)}
-          title="Açıkken tekrar eşikleri yok sayılır — tam (ham) rota gösterilir"
+          title="Açıkken tüm Tanımlamalar filtreleri (tekrar + silindir eşiği) yok sayılır — ham veri gösterilir"
           className={`h-9 px-3 rounded-lg border text-xs font-medium self-end transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
           {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
         </button>

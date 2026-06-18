@@ -97,10 +97,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set()); // çoklu seçim (boş→hepsi varsayılan effect ile dolar)
-  const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşiği yok sayılır (ham rota)
+  const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken TÜM Tanımlamalar filtreleri yok sayılır (ham veri)
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
+  const fitAnahtarRef = useRef<string>(""); // sadece tarih değişince yeniden ortala
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
+  const etkinMukerrer = hamGoster ? 0 : mukerrerDk; // açıkken mükerrer damper temizliği de kapalı
 
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
@@ -153,7 +156,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Seçili kamyonların damperleri, mükerrer (yanlış tetik) işaretiyle. Araç bazında temizlenir.
   const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean })[]>(() => {
-    const pencSn = Math.max(0, mukerrerDk) * 60;
+    const pencSn = Math.max(0, etkinMukerrer) * 60;
     const out: (DamperNokta & { mukerrer: boolean })[] = [];
     for (const r of kamyonlar) {
       if (!seciliPlakalar.has(r.plaka)) continue;
@@ -162,7 +165,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       }
     }
     return out;
-  }, [kamyonlar, seciliPlakalar, mukerrerDk]);
+  }, [kamyonlar, seciliPlakalar, etkinMukerrer]);
 
   // Haritaya çizilecekler: mükerrer OLMAYAN + konumlu damperler
   const damperKoordlu = useMemo(
@@ -174,7 +177,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Her araç için mükerrer ayıklanmış GERÇEK damper sayısı (chip rozeti — seçimden bağımsız).
   const gercekSayiByPlaka = useMemo(() => {
-    const pencSn = Math.max(0, mukerrerDk) * 60;
+    const pencSn = Math.max(0, etkinMukerrer) * 60;
     const m = new Map<string, number>();
     for (const r of kamyonlar) {
       const olaylar = damperOlaylariniAl(r);
@@ -182,7 +185,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
     }
     return m;
-  }, [kamyonlar, mukerrerDk]);
+  }, [kamyonlar, etkinMukerrer]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer ayıklanmış).
   const ozet = useMemo(() => {
@@ -200,7 +203,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     (async () => {
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
-      map = L.map(mapRef.current).setView([39, 35], 6);
+      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map.on("moveend zoomend", () => {
+        if (!map) return;
+        const c = map.getCenter();
+        gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
@@ -241,7 +249,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         }
         bounds.push([g.lat, g.lng]);
       });
-      if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      // Sadece tarih değişince yeniden ortala; seçim/toggle/filtre değişiminde görünümü koru
+      const fitAnahtar = `${bas}|${bitis}`;
+      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
+      } else if (bounds.length) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      }
+      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
@@ -319,7 +334,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               </button>
             )}
             <button type="button" onClick={() => setHamGoster((v) => !v)}
-              title="Açıkken Güzergah Tekrar Eşiği yok sayılır — tam (ham) reglaj rotası gösterilir"
+              title="Açıkken tüm Tanımlamalar filtreleri (tekrar eşiği, mükerrer damper) yok sayılır — ham veri gösterilir"
               className={`px-2 py-1 rounded-md border text-[10px] font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
               {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
             </button>
