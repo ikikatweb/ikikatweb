@@ -11,15 +11,13 @@ import { ekleHaritaKatmanlari } from "@/lib/arvento/harita-katman";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Route, Download, Gauge, Clock, MapPin, X } from "lucide-react";
+import { Route, Download, Gauge, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import "leaflet/dist/leaflet.css";
 import type { Map as LeafletMap } from "leaflet";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
-// Araç başına rota rengi (tümünü göster modunda)
-const ROTA_RENKLER = ["#e11d48", "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
 
 function formatTarih(t: string | null): string {
   if (!t) return "—";
@@ -35,9 +33,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlaka, setSeciliPlaka] = useState("");
   const [loading, setLoading] = useState(true);
-  const [tumHaritaAcik, setTumHaritaAcik] = useState(false); // tüm araçların rotaları modalı
   const mapRef = useRef<HTMLDivElement>(null);
-  const tumMapRef = useRef<HTMLDivElement>(null);
 
   // Seçili aralığın kayıtlarını yükle (bas–bitis); aralık değişince / yeni yükleme sonrası
   useEffect(() => {
@@ -115,39 +111,6 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
   }, [seciliKayit, tekrarEsigi, gridMesafe]);
-
-  // TÜM araçların rotalarını tek haritada göster (modal) — her plaka farklı renk
-  useEffect(() => {
-    if (!tumHaritaAcik) return;
-    let iptal = false;
-    let map: LeafletMap | null = null;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      if (iptal || !tumMapRef.current) return;
-      map = L.map(tumMapRef.current).setView([39, 35], 6);
-      ekleHaritaKatmanlari(L, map, "uydu");
-      const tumBounds: [number, number][] = [];
-      kayitlar.forEach((k, idx) => {
-        const renk = ROTA_RENKLER[idx % ROTA_RENKLER.length];
-        const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
-        if (latlngs.length === 0) return;
-        // Sadeleştirme açıksa eşiği geçen parçaları gerçek koordinatlarla göster
-        const cizim: [number, number][][] = tekrarEsigi >= 1
-          ? sadelesGuzergah(noktalar, tekrarEsigi, gridMesafe).parcalar
-          : [latlngs];
-        L.polyline(cizim.length ? cizim : [latlngs], { color: renk, weight: 3, opacity: 0.75 })
-          .addTo(map!).bindPopup(`<b>${k.plaka}</b><br>${k.arac_sinifi ?? ""}<br>${k.toplam_mesafe ?? 0} km`);
-        // Başlangıç işareti (plaka rengi)
-        L.circleMarker(latlngs[0], { radius: 5, color: renk, fillColor: renk, fillOpacity: 0.9, weight: 1 })
-          .addTo(map!).bindPopup(`<b>${k.plaka}</b> başlangıç<br>${noktalar[0].saat ?? ""}`);
-        for (const ll of latlngs) tumBounds.push(ll);
-      });
-      if (tumBounds.length) map.fitBounds(tumBounds, { padding: [40, 40], maxZoom: 16 });
-      setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 200);
-    })();
-    return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [tumHaritaAcik, kayitlar, tekrarEsigi, gridMesafe]);
 
   // KML export — rota LineString + başlangıç/bitiş noktaları (Google Earth)
   function exportKML() {
@@ -240,10 +203,6 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                 </div>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setTumHaritaAcik(true)} disabled={kayitlar.length === 0}
-              className="h-9 gap-1 text-xs" title="Bu tarihteki tüm araçların rotalarını tek haritada göster">
-              <MapPin size={14} /> Tümünü Haritada Göster ({kayitlar.length})
-            </Button>
             <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
               <Download size={14} /> KML İndir
             </Button>
@@ -257,22 +216,6 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       ) : (
         <div className="text-center py-16 bg-white rounded-lg border text-gray-500">
           Bu tarihte güzergah kaydı bulunamadı.
-        </div>
-      )}
-
-      {/* Tüm araçların rotaları — tam ekran modal */}
-      {tumHaritaAcik && (
-        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setTumHaritaAcik(false)}>
-          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <MapPin size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">Tüm Araç Rotaları — {formatAralik(bas, bitis)} · {kayitlar.length} araç</span>
-            </div>
-            <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
-              <X size={18} />
-            </button>
-          </div>
-          <div ref={tumMapRef} className="flex-1 bg-gray-100" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
     </div>

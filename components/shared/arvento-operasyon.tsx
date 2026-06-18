@@ -14,7 +14,7 @@ import { OPERASYONLAR, sinifEslesir, zikzakla, paralelCizgi, type OperasyonTip }
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Layers, Download, MapPin, X } from "lucide-react";
+import { Layers, Download } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import "leaflet/dist/leaflet.css";
@@ -85,9 +85,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [seciliGreyder, setSeciliGreyder] = useState(""); // "" = tüm greyderler
   const [loading, setLoading] = useState(true);
-  const [tumHaritaAcik, setTumHaritaAcik] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
-  const tumMapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
@@ -169,13 +167,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bas, bitis, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, sermeMi]);
-
-  useEffect(() => {
-    if (!tumHaritaAcik || !tumMapRef.current) return;
-    const h = harita(tumMapRef.current);
-    return h.iptal;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tumHaritaAcik, gosterilenGreyder, silindirler, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, sermeMi]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -267,9 +258,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                 : <span style={{ color: ZIGZAK_RENK }} className="font-semibold">⩘ {silindirler.length} silindir zikzak</span>}
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setTumHaritaAcik(true)} className="h-9 gap-1 text-xs" title="Tam ekranda göster">
-            <MapPin size={14} /> Tümünü Haritada Göster
-          </Button>
           <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
             <Download size={14} /> KML İndir
           </Button>
@@ -277,21 +265,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       </div>
 
       <div ref={mapRef} className="w-full rounded-lg border bg-gray-100" style={{ height: "62vh" }} />
-
-      {tumHaritaAcik && (
-        <div className="fixed inset-0 z-[100] bg-black/70 flex flex-col" onClick={() => setTumHaritaAcik(false)}>
-          <div className="bg-[#1E3A5F] text-white px-4 py-2 flex items-center justify-between gap-3" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <Layers size={18} className="flex-shrink-0" />
-              <span className="text-sm truncate">{def.ad} — {formatAralik(bas, bitis)}</span>
-            </div>
-            <button type="button" onClick={() => setTumHaritaAcik(false)} className="p-1.5 hover:bg-white/10 rounded flex-shrink-0" title="Kapat">
-              <X size={18} />
-            </button>
-          </div>
-          <div ref={tumMapRef} className="flex-1 bg-gray-100" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
     </div>
   );
 }
