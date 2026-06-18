@@ -375,7 +375,7 @@ export default function PushBildirimMenu() {
       {/* Dropdown — mobilde tam viewport'a sığsın diye fixed konumlandırma kullanılır */}
       {acik && (
         <div
-          className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-14 sm:top-auto sm:mt-2 sm:w-[360px] bg-white border border-gray-200 rounded-lg shadow-xl z-[100] overflow-hidden"
+          className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-14 sm:top-auto sm:mt-2 sm:w-[360px] bg-white border border-gray-200 rounded-lg shadow-xl z-[1100] overflow-hidden"
         >
           {/* Sekme başlıkları */}
           <div className="flex border-b bg-gray-50">
