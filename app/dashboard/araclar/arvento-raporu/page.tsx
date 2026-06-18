@@ -97,11 +97,13 @@ export default function ArventoRaporPage() {
   );
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
   const [arama, setArama] = useState("");
+  // İş Makineleri sekmesi — cins filtresi ("" = tüm iş makineleri = sayaç tipi "saat")
+  const [ismakineCins, setIsmakineCins] = useState<string>("");
   // Sekme anahtarları:
   //  calisma=Araç Çalışma Raporu, guzergah=Reglaj, genel=Stabilize,
   //  serme=Serme, sikistirma=Sıkıştırma, tanimlamalar=Tanımlamalar
   const [aktifSekme, setAktifSekme] = useState<
-    "calisma" | "guzergah" | "genel" | "serme" | "sikistirma" | "tumu" | "tanimlamalar"
+    "calisma" | "ismakine" | "guzergah" | "genel" | "serme" | "sikistirma" | "tumu" | "tanimlamalar"
   >("calisma");
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
@@ -269,6 +271,24 @@ export default function ArventoRaporPage() {
 
   const gruplar = useMemo(() => gruplaSantiye(filtrelenmis), [gruplaSantiye, filtrelenmis]);
 
+  // İş Makineleri: araç cinsleri (filtre seçeneği) + cinse göre süzülmüş kayıtlar.
+  // Cins seçilmemişse varsayılan: sayaç tipi "saat" olanlar (iş makineleri saat çalışır).
+  const ismakineCinsler = useMemo(() => {
+    const set = new Set<string>();
+    for (const k of kayitlar) { const c = plakaSantiye.get(plakaNorm(k.plaka))?.cinsi; if (c) set.add(c); }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "tr"));
+  }, [kayitlar, plakaSantiye]);
+  const ismakineKayitlar = useMemo(() => {
+    const q = trAramaNormalize(arama.trim());
+    return kayitlar.filter((k) => {
+      const ps = plakaSantiye.get(plakaNorm(k.plaka));
+      const cinsOk = ismakineCins ? ps?.cinsi === ismakineCins : ps?.sayacTipi === "saat";
+      if (!cinsOk) return false;
+      if (q && !trAramaNormalize([k.plaka, k.surucu, k.marka, k.model, ps?.cinsi].filter(Boolean).join(" ")).includes(q)) return false;
+      return true;
+    });
+  }, [kayitlar, plakaSantiye, ismakineCins, arama]);
+
   function exportExcel() {
     const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
     // Şantiye gruplarına göre sıralı dök
@@ -379,7 +399,7 @@ export default function ArventoRaporPage() {
 
       {/* Sekmeler */}
       <div className="flex gap-1 mb-3 border-b">
-        {([["calisma", "Araç Çalışma Raporu"], ["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"], ["tanimlamalar", "Tanımlamalar"]] as const).map(([key, label]) => (
+        {([["calisma", "Araç Çalışma Raporu"], ["ismakine", "İş Makineleri"], ["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"], ["tanimlamalar", "Tanımlamalar"]] as const).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setAktifSekme(key)}
             className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
               aktifSekme === key ? "border-[#1E3A5F] text-[#1E3A5F]" : "border-transparent text-gray-400 hover:text-gray-600"
@@ -390,7 +410,70 @@ export default function ArventoRaporPage() {
       </div>
 
       {/* Tablo */}
-      {aktifSekme === "guzergah" ? (
+      {aktifSekme === "ismakine" ? (
+        // ---- SEKME: İŞ MAKİNELERİ — cinse göre, Arvento'nun tüm sütunlarıyla detaylı tablo ----
+        <div className="space-y-3">
+          <div className="bg-white rounded-lg border p-3 flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-[10px] text-gray-500">Cins</Label>
+              <select value={ismakineCins} onChange={(e) => setIsmakineCins(e.target.value)} className={selectClass + " min-w-[180px]"}>
+                <option value="">Tüm iş makineleri (saat sayaçlı)</option>
+                {ismakineCinsler.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="ml-auto text-xs text-gray-600">
+              <strong className="text-[#1E3A5F]">{ismakineKayitlar.length}</strong> makine ·{" "}
+              <strong>{formatSure(ismakineKayitlar.reduce((s, k) => s + (k.hareket_sn ?? 0), 0))}</strong> toplam çalışma
+            </div>
+          </div>
+          {ismakineKayitlar.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-lg border">
+              <Satellite size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-500">Bu aralıkta iş makinesi kaydı yok. (Araçlar tablosunda sayaç tipi &quot;saat&quot; veya cins atanmış olmalı.)</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border overflow-auto max-h-[75vh]">
+              <Table noWrapper>
+                <TableHeader className="sticky top-0 z-10">
+                  <TableRow className="bg-[#64748B] hover:bg-[#64748B]">
+                    <TableHead className="text-white text-[11px] px-2">Plaka</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">Cins</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">Marka/Model</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">Sürücü</TableHead>
+                    <TableHead className="text-white text-[11px] px-2">Cihaz No</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right"><Route size={12} className="inline" /> Mesafe (km)</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right"><Clock size={12} className="inline" /> Hareket</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right">Kontak Açık</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right">Rölanti</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right"><Gauge size={12} className="inline" /> Maks Hız</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right">Damper</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ismakineKayitlar.map((k) => {
+                    const ps = plakaSantiye.get(plakaNorm(k.plaka));
+                    return (
+                      <TableRow key={k.id} className="text-xs hover:bg-gray-50">
+                        <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{k.plaka}</TableCell>
+                        <TableCell className="px-2 text-gray-600 whitespace-nowrap">{ps?.cinsi ?? "—"}</TableCell>
+                        <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka ?? ps?.marka, k.model ?? ps?.model].filter(Boolean).join(" ") || "—"}</TableCell>
+                        <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
+                        <TableCell className="px-2 text-gray-500 whitespace-nowrap">{k.cihaz_no ?? "—"}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums font-semibold">{formatKm(k.mesafe_km)}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums font-semibold">{formatSure(k.hareket_sn)}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums text-gray-500">{formatSure(k.kontak_sn)}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums text-gray-500">{formatSure(k.rolanti_sn)}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums">{k.maks_hiz != null ? `${k.maks_hiz} km/s` : "—"}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums font-semibold text-orange-600">{k.damper_sayisi ?? 0}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
         <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
@@ -536,15 +619,7 @@ export default function ArventoRaporPage() {
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>
               </div>
             </div>
-            <div className="border rounded-lg p-3 bg-gray-50">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Makine Saati</div>
-              <p className="text-[11px] text-gray-400">İş makineleri için günlük/dönemsel çalışma saati normu.</p>
-            </div>
           </div>
-          <p className="text-[11px] text-amber-600">
-            ⚠️ Bu sekmenin tam çalışması için tanımları nereye uygulayacağımızı (her araç/makine için tek değer mi,
-            yıl/dönem bazlı mı, hangi raporu etkileyecek) netleştirmemiz gerekiyor.
-          </p>
         </div>
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border">

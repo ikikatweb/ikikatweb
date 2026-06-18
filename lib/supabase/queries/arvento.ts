@@ -207,16 +207,16 @@ export function plakaNorm(s: unknown): string {
 }
 
 // Plaka → Şantiye eşlemesi: araç puantajdan (o tarihteki kayıt), yoksa aracın atanmış şantiyesi.
-export type PlakaSantiye = { santiyeId: string | null; santiyeAdi: string; marka: string | null; model: string | null };
+export type PlakaSantiye = { santiyeId: string | null; santiyeAdi: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null };
 export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, PlakaSantiye>> {
   const supabase = getSupabase();
   const out = new Map<string, PlakaSantiye>();
   const [araclarRes, santiyelerRes, puantajRes] = await Promise.all([
-    supabase.from("araclar").select("id, plaka, santiye_id, marka, model"),
+    supabase.from("araclar").select("id, plaka, santiye_id, marka, model, cinsi, sayac_tipi"),
     supabase.from("santiyeler").select("id, is_adi"),
     tarih ? supabase.from("arac_puantaj").select("arac_id, santiye_id").eq("tarih", tarih) : Promise.resolve({ data: [] }),
   ]);
-  const araclar = (araclarRes.data ?? []) as { id: string; plaka: string; santiye_id: string | null; marka: string | null; model: string | null }[];
+  const araclar = (araclarRes.data ?? []) as { id: string; plaka: string; santiye_id: string | null; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: "km" | "saat" | null }[];
   const santiyeler = (santiyelerRes.data ?? []) as { id: string; is_adi: string }[];
   const puantaj = (puantajRes.data ?? []) as { arac_id: string; santiye_id: string }[];
   const sAd = new Map(santiyeler.map((s) => [s.id, s.is_adi]));
@@ -225,7 +225,7 @@ export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, Pla
   for (const p of puantaj) if (p.arac_id && !puMap.has(p.arac_id)) puMap.set(p.arac_id, p.santiye_id);
   for (const a of araclar) {
     const sid = puMap.get(a.id) ?? a.santiye_id ?? null;
-    out.set(plakaNorm(a.plaka), { santiyeId: sid, santiyeAdi: sid ? (sAd.get(sid) ?? "—") : "Atanmamış", marka: a.marka, model: a.model });
+    out.set(plakaNorm(a.plaka), { santiyeId: sid, santiyeAdi: sid ? (sAd.get(sid) ?? "—") : "Atanmamış", marka: a.marka, model: a.model, cinsi: a.cinsi, sayacTipi: a.sayac_tipi });
   }
   return out;
 }
