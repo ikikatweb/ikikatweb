@@ -10,7 +10,8 @@ import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap } from "@/lib/arvento/canli-katman";
+import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import type { MutableRefObject } from "react";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Route, Download } from "lucide-react";
@@ -56,14 +57,15 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, baslik = "Araçlar (Reglaj)", refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; baslik?: string; refreshKey?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; refreshKey?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
-  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null);
+  const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
+  const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
@@ -190,7 +192,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, bas, bitis]);
+  }, [secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, bas, bitis, gorunumRef]);
 
   // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
   function exportKML() {

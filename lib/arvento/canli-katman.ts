@@ -16,6 +16,9 @@ export type CanliKonum = {
   adres: string | null;
 };
 export type CihazBilgi = { plaka: string | null; surucu: string | null; model?: string | null };
+
+// Harita görünümü (merkez + zoom) — sekmeler arası PAYLAŞILAN görünüm hafızası için.
+export type HaritaGorunum = { merkez: [number, number]; zoom: number };
 export type CihazMap = Map<string, CihazBilgi>;
 
 function formatSaat(t: string | null): string {

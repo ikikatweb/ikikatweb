@@ -17,7 +17,7 @@ import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
 import ArventoOperasyon from "@/components/shared/arvento-operasyon";
 import ArventoTumu from "@/components/shared/arvento-tumu";
-import type { CanliKonum, CihazMap } from "@/lib/arvento/canli-katman";
+import type { CanliKonum, CihazMap, HaritaGorunum } from "@/lib/arvento/canli-katman";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -136,6 +136,9 @@ export default function ArventoRaporPage() {
   const [canliKonumlar, setCanliKonumlar] = useState<CanliKonum[]>([]);
   const [canliCihazMap, setCanliCihazMap] = useState<CihazMap>(new Map());
   const [canliYukleniyor, setCanliYukleniyor] = useState(false);
+  // Sekmeler arası PAYLAŞILAN harita görünümü (merkez+zoom) — Reglaj/Serme/Sıkıştırma/Stabilize/Tümü/İş Makineleri
+  // geçişlerinde harita aynı konum ve yakınlıkta kalsın diye tek ortak ref tüm haritalara verilir.
+  const haritaGorunumRef = useRef<HaritaGorunum | null>(null);
   // Araç → Sekme atamaları (Tanımlamalar'da düzenlenir; haritalarda hangi araç hangi sekmede)
   const [atamalar, setAtamalar] = useState<AracAtama[]>([]);
   const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
@@ -725,26 +728,26 @@ export default function ArventoRaporPage() {
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
-                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap}
+                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
                 refreshKey={guzergahRefresh} />
             </div>
           )}
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">

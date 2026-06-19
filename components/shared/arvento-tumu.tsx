@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap } from "@/lib/arvento/canli-katman";
+import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import type { MutableRefObject } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; refreshKey?: number }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -38,7 +39,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
-  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // yenilemede görünüm korunur
+  const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
+  const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
@@ -127,7 +129,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler]);
+  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
