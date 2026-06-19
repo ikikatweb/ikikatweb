@@ -7,6 +7,7 @@
 // ingestArventoBuffer her iki tipi de otomatik algılar. Kayıtlar (rapor_tarihi, plaka)
 // üzerinden UPSERT edilir → çalışma ve damper verisi hangi sırada gelirse gelsin birleşir.
 import { createClient } from "@supabase/supabase-js";
+import * as XLSX from "xlsx";
 import { parseArventoBuffer, parseGenelRaporBuffer, parseMesafeBilgisiBuffer } from "@/lib/arvento/parse";
 
 function trBugun(): string {
@@ -130,7 +131,6 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
 
   if (sonuc.calismaGunler.length === 0 && sonuc.damperGunler.length === 0 && (sonuc.guzergahGunler?.length ?? 0) === 0) {
     // Mesafe Bilgisi sayfası var ama koordinat yoksa: ÖZET formatı yüklenmiş demektir.
-    const { default: XLSX } = await import("xlsx");
     const wbCheck = XLSX.read(buf, { type: "buffer" });
     const mesafeSayfasiVar = wbCheck.SheetNames.some((n) => n.toLowerCase().includes("mesafe"));
     if (mesafeSayfasiVar) {

@@ -12,7 +12,6 @@ import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { sinifEslesir } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin } from "lucide-react";
 import toast from "react-hot-toast";
@@ -23,6 +22,13 @@ import type { Map as LeafletMap } from "leaflet";
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 type DamperNokta = DamperOlay & { plaka: string; surucu: string | null };
 
+// saniye → "2sa 15dk" / "0"
+function formatSure(sn: number): string {
+  if (!sn) return "0";
+  const sa = Math.floor(sn / 3600);
+  const dk = Math.floor((sn % 3600) / 60);
+  return sa > 0 ? `${sa}sa ${dk}dk` : `${dk}dk`;
+}
 function formatTarih(t: string | null): string {
   if (!t) return "—";
   const d = new Date(t + "T00:00:00");
@@ -142,7 +148,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const toggle = (plaka: string) => setSeciliPlakalar((s) => {
     const n = new Set(s); if (n.has(plaka)) n.delete(plaka); else n.add(plaka); return n;
   });
-  const hepsiSecili = kamyonlar.length > 0 && kamyonlar.every((r) => seciliPlakalar.has(r.plaka));
 
   // Gösterilecek damper noktaları: seçili kamyonların damperleri
   const damperOlaylar = useMemo<DamperNokta[]>(() => {
@@ -191,8 +196,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const ozet = useMemo(() => {
     const secilenler = kamyonlar.filter((r) => seciliPlakalar.has(r.plaka));
     const toplamKm = secilenler.reduce((s, r) => s + (r.mesafe_km ?? 0), 0);
+    const toplamHareket = secilenler.reduce((s, r) => s + (r.hareket_sn ?? 0), 0);
     const toplamDamper = damperIsaretli.filter((o) => !o.mukerrer).length;
-    return { aracSayisi: secilenler.length, toplamKm, toplamDamper };
+    return { aracSayisi: secilenler.length, toplamKm, toplamHareket, toplamDamper };
   }, [kamyonlar, seciliPlakalar, damperIsaretli]);
 
   // Harita: greyder çizgileri (referans) + kamyon damper yuvarlakları
@@ -322,55 +328,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   return (
     <div className="space-y-3">
       {/* Kamyon chip'leri (yan yana, çoklu seçim — şoför ismiyle) + özet + KML */}
-      <div className="bg-white rounded-lg border p-3 space-y-2">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Label className="text-[10px] text-gray-500">Kamyonlar (Damper)</Label>
-            {kamyonlar.length > 0 && (
-              <button type="button"
-                onClick={() => setSeciliPlakalar(hepsiSecili ? new Set() : new Set(kamyonlar.map((r) => r.plaka)))}
-                className="text-[10px] text-blue-600 hover:underline">
-                {hepsiSecili ? "Hiçbiri" : "Tümünü seç"}
-              </button>
-            )}
-            <button type="button" onClick={() => setHamGoster((v) => !v)}
-              title="Açıkken tüm Tanımlamalar filtreleri (tekrar eşiği, mükerrer damper) yok sayılır — ham veri gösterilir"
-              className={`px-2 py-1 rounded-md border text-[10px] font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
-              {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-xs text-gray-600 text-right leading-relaxed">
-              <div className="text-gray-400">
-                <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: "#2563eb", opacity: 0.6 }} />
-                {greyderler.length} reglaj çizgisi (referans)
-              </div>
-              <div className="text-gray-400">
-                🔻 {damperKoordlu.length} haritada
-                {mukerrerSayisi > 0 && <span className="text-amber-600"> · {mukerrerSayisi} mükerrer gizli</span>}
-                {konumsuzSayisi > 0 && <span> · {konumsuzSayisi} konumsuz</span>}
-              </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-              <Download size={14} /> KML İndir
-            </Button>
-          </div>
-        </div>
-        {/* Seçili kamyon özeti — seçime göre güncellenir (3 araç→toplamı, 1 araç→onunki) */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="px-2.5 py-1 rounded-md bg-gray-50 border text-gray-600">
-            Seçili: <b className="text-gray-900">{ozet.aracSayisi}</b>
-            <span className="text-gray-400"> / {kamyonlar.length} kamyon</span>
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-sky-50 border border-sky-200 text-sky-700">
-            📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b>
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-700">
-            🔻 Toplam damper: <b>{ozet.toplamDamper}</b>
-          </span>
-        </div>
-        {/* Kamyon chip'leri */}
-        <div className="flex flex-wrap gap-1.5">
+      <div className="bg-white rounded-lg border p-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          {/* Sol: kamyon chip'leri + Güzergahı Göster */}
+          <div className="flex flex-wrap items-center gap-1.5">
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta damper indiren kamyon yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
@@ -381,16 +342,49 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
                 title={`${r.plaka}${r.marka ? " · " + r.marka : ""}`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${
+                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
                 }`}>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
-                <span className="font-semibold">{ad}</span>
-                {r.surucu?.trim() && <span className="text-[10px] opacity-70">{r.plaka}</span>}
-                <span className="text-[10px] px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>
+                <span className="flex flex-col items-start leading-tight">
+                  {/* Üst satır: şöför ismi + plaka */}
+                  <span className="font-semibold flex items-center gap-1">
+                    {ad}
+                    {r.surucu?.trim() && <span className="text-[10px] font-normal opacity-60">{r.plaka}</span>}
+                  </span>
+                  {/* Alt satır: km + damper sayısı */}
+                  <span className="text-[10px] opacity-90 flex items-center gap-1.5">
+                    <span>{Math.round(r.mesafe_km ?? 0)} km</span>
+                    <span className="px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>
+                  </span>
+                </span>
               </button>
             );
           })}
+          {/* Chip'lerin hemen yanında: Güzergahı Göster (tüm Tanımlamalar filtrelerini yok say) */}
+          {kamyonlar.length > 0 && (
+            <button type="button" onClick={() => setHamGoster((v) => !v)}
+              title="Açıkken tüm Tanımlamalar filtreleri (tekrar eşiği, mükerrer damper) yok sayılır — ham veri gösterilir"
+              className={`self-center px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+              {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+            </button>
+          )}
+          </div>
+          {/* Sağ: özet + KML */}
+          <div className="flex items-start gap-3">
+            <div className="text-xs text-gray-600 text-right leading-relaxed">
+              <div className="text-gray-400">
+                <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: "#2563eb", opacity: 0.6 }} />
+                {greyderler.length} reglaj çizgisi (referans)
+              </div>
+              <div className="text-sky-700">📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b></div>
+              <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
+              <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
+            </div>
+            <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
+              <Download size={14} /> KML İndir
+            </Button>
+          </div>
         </div>
       </div>
 

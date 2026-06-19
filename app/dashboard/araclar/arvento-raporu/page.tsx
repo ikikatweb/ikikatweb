@@ -412,6 +412,17 @@ export default function ArventoRaporPage() {
       return true;
     });
   }, [kayitlar, plakaSantiye, ismakineCins, arama]);
+  // İş makinelerinin plakaları — harita (güzergah) filtresi için
+  const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
+  // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
+  const ismakineEkstra = useMemo(
+    () => ismakineKayitlar.map((k) => ({
+      plaka: k.plaka,
+      arac_sinifi: plakaSantiye.get(plakaNorm(k.plaka))?.cinsi ?? null,
+      toplam_mesafe: k.mesafe_km ?? 0,
+    })),
+    [ismakineKayitlar, plakaSantiye],
+  );
 
   function exportExcel() {
     const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
@@ -560,13 +571,9 @@ export default function ArventoRaporPage() {
                     <TableHead className="text-white text-[11px] px-2">Cins</TableHead>
                     <TableHead className="text-white text-[11px] px-2">Marka/Model</TableHead>
                     <TableHead className="text-white text-[11px] px-2">Sürücü</TableHead>
-                    <TableHead className="text-white text-[11px] px-2">Cihaz No</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-right"><Route size={12} className="inline" /> Mesafe (km)</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-right"><Clock size={12} className="inline" /> Hareket</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Kontak Açık</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-right">Rölanti</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right"><Gauge size={12} className="inline" /> Maks Hız</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Damper</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -578,18 +585,23 @@ export default function ArventoRaporPage() {
                         <TableCell className="px-2 text-gray-600 whitespace-nowrap">{ps?.cinsi ?? "—"}</TableCell>
                         <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka ?? ps?.marka, k.model ?? ps?.model].filter(Boolean).join(" ") || "—"}</TableCell>
                         <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
-                        <TableCell className="px-2 text-gray-500 whitespace-nowrap">{k.cihaz_no ?? "—"}</TableCell>
                         <TableCell className="px-2 text-right tabular-nums font-semibold">{formatKm(k.mesafe_km)}</TableCell>
                         <TableCell className="px-2 text-right tabular-nums font-semibold">{formatSure(k.hareket_sn)}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums text-gray-500">{formatSure(k.kontak_sn)}</TableCell>
                         <TableCell className="px-2 text-right tabular-nums text-gray-500">{formatSure(k.rolanti_sn)}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums">{k.maks_hiz != null ? `${k.maks_hiz} km/s` : "—"}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums font-semibold text-orange-600">{k.damper_sayisi ?? 0}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) */}
+          {ismakineKayitlar.length > 0 && (
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-[#1E3A5F] flex items-center gap-1"><Satellite size={14} /> Haritada Çalışma Bölgeleri</h4>
+              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
+                kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra} baslik="İş Makineleri"
+                refreshKey={guzergahRefresh} />
             </div>
           )}
         </div>
@@ -821,37 +833,46 @@ export default function ArventoRaporPage() {
           {haritaKatmanlari.length === 0 ? (
             <p className="text-xs text-gray-400">Henüz katman yok. Yukarıdan bir KML/KMZ yükleyin.</p>
           ) : (
-            <ul className="divide-y border rounded-lg overflow-hidden">
-              {haritaKatmanlari.map((k) => (
-                <li key={k.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                  <input type="color" value={k.renk} disabled={!yDuzenle}
-                    onChange={(e) => katmanDegis(k.id, { renk: e.target.value })}
-                    className="h-6 w-7 rounded border cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-50" title="Renk" />
-                  <span className="font-medium text-gray-800 truncate flex-1">{k.ad}</span>
-                  <span className="text-[11px] text-gray-400 shrink-0">{(k.geometriler ?? []).length} geometri</span>
-                  <div className="flex items-center gap-1 shrink-0" title="Çizgi kalınlığı (px)">
-                    <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) <= 1}
-                      onClick={() => katmanDegis(k.id, { kalinlik: Math.max(1, (k.kalinlik ?? 3) - 1) })}
-                      className="w-6 h-6 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none">−</button>
-                    <span className="w-10 text-center text-[11px] text-gray-600 tabular-nums">{k.kalinlik ?? 3}px</span>
-                    <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) >= 12}
-                      onClick={() => katmanDegis(k.id, { kalinlik: Math.min(12, (k.kalinlik ?? 3) + 1) })}
-                      className="w-6 h-6 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none">+</button>
+            <>
+              <div className="text-[11px] text-gray-400">{haritaKatmanlari.length} katman</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 max-h-[40vh] overflow-auto pr-1">
+                {haritaKatmanlari.map((k) => (
+                  <div key={k.id} className="border rounded-md p-1.5 flex flex-col gap-1 text-xs">
+                    {/* Üst: renk + ad + göster/gizle + sil */}
+                    <div className="flex items-center gap-1.5">
+                      <input type="color" value={k.renk} disabled={!yDuzenle}
+                        onChange={(e) => katmanDegis(k.id, { renk: e.target.value })}
+                        className="h-5 w-6 rounded border cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-50" title="Renk" />
+                      <span className="font-medium text-gray-800 truncate flex-1 text-[11px]" title={k.ad}>{k.ad}</span>
+                      <button type="button" onClick={() => katmanDegis(k.id, { gorunur: !k.gorunur })} disabled={!yDuzenle}
+                        title={!yDuzenle ? "Düzenleme yetkiniz yok" : k.gorunur ? "Haritada gizle" : "Haritada göster"}
+                        className={`p-0.5 rounded shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${k.gorunur ? "text-emerald-600 hover:bg-emerald-50" : "text-gray-300 hover:bg-gray-100"}`}>
+                        {k.gorunur ? <Eye size={14} /> : <EyeOff size={14} />}
+                      </button>
+                      {ySil && (
+                        <button type="button" onClick={() => katmanSil(k.id, k.ad)} title="Sil"
+                          className="p-0.5 rounded shrink-0 text-gray-400 hover:text-red-500 hover:bg-red-50">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                    {/* Alt: geometri sayısı + kalınlık stepper */}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-gray-400">{(k.geometriler ?? []).length} geo.</span>
+                      <div className="flex items-center gap-0.5" title="Çizgi kalınlığı (px)">
+                        <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) <= 1}
+                          onClick={() => katmanDegis(k.id, { kalinlik: Math.max(1, (k.kalinlik ?? 3) - 1) })}
+                          className="w-5 h-5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none text-xs">−</button>
+                        <span className="w-8 text-center text-[10px] text-gray-600 tabular-nums">{k.kalinlik ?? 3}px</span>
+                        <button type="button" disabled={!yDuzenle || (k.kalinlik ?? 3) >= 12}
+                          onClick={() => katmanDegis(k.id, { kalinlik: Math.min(12, (k.kalinlik ?? 3) + 1) })}
+                          className="w-5 h-5 rounded border text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed leading-none text-xs">+</button>
+                      </div>
+                    </div>
                   </div>
-                  <button type="button" onClick={() => katmanDegis(k.id, { gorunur: !k.gorunur })} disabled={!yDuzenle}
-                    title={!yDuzenle ? "Düzenleme yetkiniz yok" : k.gorunur ? "Haritada gizle" : "Haritada göster"}
-                    className={`p-1 rounded disabled:cursor-not-allowed disabled:opacity-40 ${k.gorunur ? "text-emerald-600 hover:bg-emerald-50" : "text-gray-300 hover:bg-gray-100"}`}>
-                    {k.gorunur ? <Eye size={16} /> : <EyeOff size={16} />}
-                  </button>
-                  {ySil && (
-                    <button type="button" onClick={() => katmanSil(k.id, k.ad)} title="Sil"
-                      className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+                ))}
+              </div>
+            </>
           )}
         </div>
         </div>
