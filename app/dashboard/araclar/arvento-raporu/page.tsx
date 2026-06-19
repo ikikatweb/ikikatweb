@@ -156,10 +156,12 @@ export default function ArventoRaporPage() {
   const [reglajKalinlik, setReglajKalinlik] = useState<number>(4);
   const [sermeKalinlik, setSermeKalinlik] = useState<number>(3);
   const [silindirKalinlik, setSilindirKalinlik] = useState<number>(3);
+  const [kamyonIziKalinlik, setKamyonIziKalinlik] = useState<number>(3); // Stabilize kamyon izi — reglajdan ayrı
   // Çizgi renkleri (haritada) — ortak (global)
   const [reglajRenk, setReglajRenk] = useState<string>("#2563eb");
   const [sermeRenk, setSermeRenk] = useState<string>("#059669");
   const [silindirRenk, setSilindirRenk] = useState<string>("#7c3aed");
+  const [kamyonIziRenk, setKamyonIziRenk] = useState<string>("#dc2626");
   const [ayarYuklendi, setAyarYuklendi] = useState(false);     // ilk DB yüklemesi tamamlandı mı
   const sonAyarRef = useRef<string>("");                       // son kaydedilen/yüklenen snapshot (gereksiz yazmayı önler)
 
@@ -176,9 +178,11 @@ export default function ArventoRaporPage() {
         setReglajKalinlik(a.reglajKalinlik);
         setSermeKalinlik(a.sermeKalinlik);
         setSilindirKalinlik(a.silindirKalinlik);
+        setKamyonIziKalinlik(a.kamyonIziKalinlik);
         setReglajRenk(a.reglajRenk);
         setSermeRenk(a.sermeRenk);
         setSilindirRenk(a.silindirRenk);
+        setKamyonIziRenk(a.kamyonIziRenk);
         sonAyarRef.current = JSON.stringify(a); // yüklenen değeri "kaydedilmiş" say → geri yazma olmaz
       })
       .catch(() => { /* tablo yoksa varsayılanlarla devam */ })
@@ -189,13 +193,13 @@ export default function ArventoRaporPage() {
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -644,7 +648,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
@@ -836,7 +840,19 @@ export default function ArventoRaporPage() {
                       className={selectClass + " w-20"} />
                   </label>
                 </div>
+                <div className="flex items-end gap-2 border-l pl-5">
+                  <input type="color" value={kamyonIziRenk} onChange={(e) => setKamyonIziRenk(e.target.value)}
+                    className="h-8 w-9 rounded border cursor-pointer" title="Kamyon izi rengi" />
+                  <label className="flex flex-col gap-1 text-[11px] text-gray-600">Kamyon İzi (px)
+                    <input type="number" min={1} max={12} value={kamyonIziKalinlik || ""}
+                      onChange={(e) => setKamyonIziKalinlik(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))}
+                      className={selectClass + " w-20"} />
+                  </label>
+                </div>
               </div>
+              <p className="text-[10px] text-gray-400 mt-2">
+                <strong>Kamyon İzi</strong> = Stabilize&apos;de kamyonun kendi güzergahı (reglaj çizgisinden farklı, kesik çizgi).
+              </p>
             </div>
           </div>
           </fieldset>

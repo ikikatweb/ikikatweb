@@ -102,7 +102,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, sekmeMap, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; refreshKey?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -167,6 +167,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     }),
     [birlesikRaporlar, sekmeMap, atananSekmeler],
   );
+
+  // Kamyon plakaları — kamyon izini reglaj çizgisinden AYIRMAK için
+  const kamyonPlakaSet = useMemo(() => new Set(kamyonlar.map((r) => plakaNorm(r.plaka))), [kamyonlar]);
+  // Kamyon izi: kamyonların KENDİ güzergahı (reglaj değil). Ayrı renk/kalınlıkla çizilir.
+  const kamyonIzleri = useMemo(() => tumGuzergah.filter((k) => kamyonPlakaSet.has(plakaNorm(k.plaka))), [tumGuzergah, kamyonPlakaSet]);
+  // Reglaj referans çizgileri: greyder hatları, kamyonlar HARİÇ (karışmasın)
+  const reglajRefleri = useMemo(() => greyderler.filter((k) => !kamyonPlakaSet.has(plakaNorm(k.plaka))), [greyderler, kamyonPlakaSet]);
 
   // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
   const plakaRenk = useMemo(() => {
@@ -257,7 +264,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const bounds: [number, number][] = [];
       const reglajNoktalari: [number, number][] = []; // damperleri çizginin ortasına oturtmak için
-      greyderler.forEach((k) => {
+      // 1) Reglaj referans çizgileri (greyder hattı) — kamyonlar hariç
+      reglajRefleri.forEach((k) => {
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
@@ -269,6 +277,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
         for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
         for (const ll of latlngs) bounds.push(ll);
+      });
+      // 2) Kamyon izi (kamyonun KENDİ güzergahı) — reglajdan AYRI renk/kalınlık; yalnız seçili kamyonlar
+      kamyonIzleri.forEach((k) => {
+        if (!seciliPlakalar.has(k.plaka)) return;
+        const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
+        if (latlngs.length === 0) return;
+        L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
+          .addTo(map!).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
+        for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
       });
       // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
       const snapReglaj = (lat: number, lng: number): [number, number] => {
@@ -316,20 +334,28 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, greyderler, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV]);
+  }, [bas, bitis, reglajRefleri, kamyonIzleri, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const cizgiler = greyderler.map((k) => {
+    // KML rengi aabbggrr formatında — #rrggbb → ff bb gg rr
+    const kmlRenk = (hex: string) => "ff" + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
+    const cizgiler = reglajRefleri.map((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return "";
       const coords = noktalar.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
       return `
     <Placemark><name>${esc(k.plaka)} reglaj</name><styleUrl>#rota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
-    // KML rengi aabbggrr formatında — #rrggbb → ff bb gg rr
-    const kmlRenk = (hex: string) => "ff" + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
+    // Kamyon izi — reglajdan ayrı stil/renk
+    const izCizgiler = kamyonIzleri.filter((k) => seciliPlakalar.has(k.plaka)).map((k) => {
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      if (noktalar.length === 0) return "";
+      const coords = noktalar.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
+      return `
+    <Placemark><name>${esc(k.plaka)} kamyon izi</name><styleUrl>#iz</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+    }).join("");
     const renkStilId = (hex: string) => "d" + hex.slice(1);
     const kullanilanRenkler = Array.from(new Set(damperKoordlu.map((o) => renkAl(o.plaka))));
     const damperStilleri = kullanilanRenkler.map((hex) =>
@@ -337,13 +363,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     ).join("");
     const damperPlacemarks = damperKoordlu.map((o, i) => `
     <Placemark><name>${esc((o.surucu ?? o.plaka) + " damper " + (i + 1))}</name><description>${esc([o.plaka, o.saat ?? "", o.adres ?? ""].filter(Boolean).join(" · "))}</description><styleUrl>#${renkStilId(renkAl(o.plaka))}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("");
-    if (!cizgiler && !damperPlacemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
+    if (!cizgiler && !izCizgiler && !damperPlacemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `Stabilize ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>${esc(baslik)}</name>
-    <Style id="rota"><LineStyle><color>ffeb6326</color><width>4</width></LineStyle></Style>${damperStilleri}${cizgiler}${damperPlacemarks}
+    <Style id="rota"><LineStyle><color>${kmlRenk(reglajRenkV)}</color><width>${reglajKal}</width></LineStyle></Style>
+    <Style id="iz"><LineStyle><color>${kmlRenk(kamyonIziRenk)}</color><width>${kamyonIziKalinlik}</width></LineStyle></Style>${damperStilleri}${cizgiler}${izCizgiler}${damperPlacemarks}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
@@ -421,9 +448,15 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           <div className="flex items-start gap-3">
             <div className="text-xs text-gray-600 text-right leading-relaxed">
               <div className="text-gray-400">
-                <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: "#2563eb", opacity: 0.6 }} />
-                {greyderler.length} reglaj çizgisi (referans)
+                <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: reglajRenkV, opacity: 0.6 }} />
+                {reglajRefleri.length} reglaj çizgisi (referans)
               </div>
+              {kamyonIzleri.length > 0 && (
+                <div className="text-gray-400">
+                  <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: kamyonIziRenk }} />
+                  {kamyonIzleri.length} kamyon izi
+                </div>
+              )}
               <div className="text-sky-700">📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b></div>
               <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>

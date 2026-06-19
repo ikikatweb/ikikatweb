@@ -13,9 +13,11 @@ export type ArventoAyarlar = {
   reglajKalinlik: number;
   sermeKalinlik: number;
   silindirKalinlik: number;
+  kamyonIziKalinlik: number; // Stabilize: kamyon izi (güzergah) çizgi kalınlığı — reglajdan AYRI
   reglajRenk: string;
   sermeRenk: string;
   silindirRenk: string;
+  kamyonIziRenk: string;     // Stabilize: kamyon izi rengi — reglajdan AYRI
 };
 
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
@@ -28,9 +30,11 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   reglajKalinlik: 4,
   sermeKalinlik: 3,
   silindirKalinlik: 3,
+  kamyonIziKalinlik: 3,
   reglajRenk: "#2563eb",
   sermeRenk: "#059669",
   silindirRenk: "#7c3aed",
+  kamyonIziRenk: "#dc2626",
 };
 
 const TABLO = "arvento_ayarlar";
@@ -50,9 +54,11 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     reglajKalinlik: data.reglaj_kalinlik ?? 4,
     sermeKalinlik: data.serme_kalinlik ?? 3,
     silindirKalinlik: data.silindir_kalinlik ?? 3,
+    kamyonIziKalinlik: data.kamyon_izi_kalinlik ?? 3,
     reglajRenk: data.reglaj_renk ?? "#2563eb",
     sermeRenk: data.serme_renk ?? "#059669",
     silindirRenk: data.silindir_renk ?? "#7c3aed",
+    kamyonIziRenk: data.kamyon_izi_renk ?? "#dc2626",
   };
 }
 
@@ -69,9 +75,11 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     reglaj_kalinlik: a.reglajKalinlik,
     serme_kalinlik: a.sermeKalinlik,
     silindir_kalinlik: a.silindirKalinlik,
+    kamyon_izi_kalinlik: a.kamyonIziKalinlik,
     reglaj_renk: a.reglajRenk,
     serme_renk: a.sermeRenk,
     silindir_renk: a.silindirRenk,
+    kamyon_izi_renk: a.kamyonIziRenk,
   });
   if (error) throw error;
 }
