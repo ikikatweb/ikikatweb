@@ -55,7 +55,6 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
   const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null);
-  const fitAnahtarRef = useRef<string>("");
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
 
   // Aralığın kayıtlarını yükle
@@ -159,14 +158,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         }
         for (const ll of latlngs) tumBounds.push(ll);
       }
-      // Sadece tarih değişince yeniden ortala; seçim/toggle/filtre değişiminde görünümü koru
-      const fitAnahtar = `${bas}|${bitis}`;
-      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+      // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
+      if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
       } else if (tumBounds.length) {
         map.fitBounds(tumBounds, { padding: [40, 40], maxZoom: 17 });
       }
-      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };

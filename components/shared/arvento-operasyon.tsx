@@ -97,7 +97,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
   const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
-  const fitAnahtarRef = useRef<string>(""); // sadece tarih/greyder seçimi değişince yeniden ortala
 
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
@@ -216,14 +215,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
             for (const ll of seg) bounds.push(ll);
           }));
       }
-      // Sadece tarih/greyder seçimi değişince yeniden ortala; toggle/filtre değişiminde görünümü koru
-      const fitAnahtar = `${bas}|${bitis}|${operasyon}`;
-      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+      // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
+      if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
       } else if (bounds.length) {
         map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
       }
-      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return { iptal: () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } } };

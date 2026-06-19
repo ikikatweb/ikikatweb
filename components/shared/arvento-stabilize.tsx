@@ -7,7 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { sinifEslesir } from "@/lib/arvento/operasyonlar";
@@ -107,7 +107,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
   const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
-  const fitAnahtarRef = useRef<string>(""); // sadece tarih değişince yeniden ortala
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
   const etkinMukerrer = hamGoster ? 0 : mukerrerDk; // açıkken mükerrer damper temizliği de kapalı
 
@@ -126,10 +125,31 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // Referans çizgiler: greyder (reglaj) güzergahları
   const greyderler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "reglaj", k.plaka)), [tumGuzergah]);
 
+  // Çok günlük aralıkta aynı plaka birden çok satır gelebilir → plakaya göre BİRLEŞTİR
+  // (damper olaylarını birleştir, km/hareket/damper sayısını topla). Tek satır/plaka kalır.
+  const birlesikRaporlar = useMemo(() => {
+    const m = new Map<string, AracArventoRapor>();
+    for (const r of raporlar) {
+      const anahtar = plakaNorm(r.plaka); // boşluk/harf farkını yok say (mükerrer plakalar birleşsin)
+      const ex = m.get(anahtar);
+      if (!ex) {
+        m.set(anahtar, { ...r, damper_olaylar: [...damperOlaylariniAl(r)] });
+      } else {
+        ex.mesafe_km = (ex.mesafe_km ?? 0) + (r.mesafe_km ?? 0);
+        ex.hareket_sn = (ex.hareket_sn ?? 0) + (r.hareket_sn ?? 0);
+        ex.damper_sayisi = (ex.damper_sayisi ?? 0) + (r.damper_sayisi ?? 0);
+        ex.damper_olaylar = [...(Array.isArray(ex.damper_olaylar) ? ex.damper_olaylar : []), ...damperOlaylariniAl(r)];
+        ex.surucu = ex.surucu ?? r.surucu;
+        ex.marka = ex.marka ?? r.marka;
+      }
+    }
+    return Array.from(m.values());
+  }, [raporlar]);
+
   // Damper indiren kamyonlar (damper_olaylar veya damper_sayisi olan araçlar)
   const kamyonlar = useMemo(
-    () => raporlar.filter((r) => damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0),
-    [raporlar],
+    () => birlesikRaporlar.filter((r) => damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0),
+    [birlesikRaporlar],
   );
 
   // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
@@ -255,14 +275,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         }
         bounds.push([g.lat, g.lng]);
       });
-      // Sadece tarih değişince yeniden ortala; seçim/toggle/filtre değişiminde görünümü koru
-      const fitAnahtar = `${bas}|${bitis}`;
-      if (gorunumRef.current && fitAnahtarRef.current === fitAnahtar) {
+      // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
+      if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
       } else if (bounds.length) {
         map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
       }
-      fitAnahtarRef.current = fitAnahtar;
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
