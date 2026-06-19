@@ -17,6 +17,7 @@ import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
 import ArventoOperasyon from "@/components/shared/arvento-operasyon";
 import ArventoTumu from "@/components/shared/arvento-tumu";
+import type { CanliKonum, CihazMap } from "@/lib/arvento/canli-katman";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -130,6 +131,11 @@ export default function ArventoRaporPage() {
     [hamKayitlar, kmEsik],
   );
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
+  // Canlı overlay — "Canlı" butonu: açıkken bulunulan haritaya anlık araçlar biner
+  const [canliAcik, setCanliAcik] = useState(false);
+  const [canliKonumlar, setCanliKonumlar] = useState<CanliKonum[]>([]);
+  const [canliCihazMap, setCanliCihazMap] = useState<CihazMap>(new Map());
+  const [canliYukleniyor, setCanliYukleniyor] = useState(false);
   // Araç → Sekme atamaları (Tanımlamalar'da düzenlenir; haritalarda hangi araç hangi sekmede)
   const [atamalar, setAtamalar] = useState<AracAtama[]>([]);
   const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
@@ -149,6 +155,8 @@ export default function ArventoRaporPage() {
   // Sadece "düzenle" yetkisi olan değiştirebilir (aşağıdaki kaydetme effect'i yetkiyle korunur).
   const [mukerrerDk, setMukerrerDk] = useState<number>(0);     // yanlış (art arda) damper eşiği (dk)
   const [mukerrerYaricap, setMukerrerYaricap] = useState<number>(0); // mükerrer damper yarıçapı (m) — dk ile BİRLİKTE şart
+  const [canliYenilemeSn, setCanliYenilemeSn] = useState<number>(45); // Canlı sekmesi yenileme aralığı (sn)
+  const [canliBirim, setCanliBirim] = useState<"sn" | "dk">("sn");    // UI birimi (gösterim) — kayıt hep sn
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
@@ -172,6 +180,7 @@ export default function ArventoRaporPage() {
         setKmEsik(a.kmEsik);
         setMukerrerDk(a.mukerrerDk);
         setMukerrerYaricap(a.mukerrerYaricap);
+        setCanliYenilemeSn(a.canliYenilemeSn);
         setGuzergahTekrar(a.guzergahTekrar);
         setGridMesafe(a.gridMesafe);
         setSilindirTekrar(a.silindirTekrar);
@@ -193,13 +202,13 @@ export default function ArventoRaporPage() {
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -219,6 +228,10 @@ export default function ArventoRaporPage() {
   const [katmanYukleniyor, setKatmanYukleniyor] = useState(false);
   const [katmanRenk, setKatmanRenk] = useState<string>("#ff3b30");
   const katmanFileRef = useRef<HTMLInputElement>(null);
+  // Cihaz listesi (Canlı takip node→plaka eşlemesi) yükleme
+  const [cihazSayisi, setCihazSayisi] = useState<number | null>(null);
+  const [cihazYukleniyor, setCihazYukleniyor] = useState(false);
+  const cihazFileRef = useRef<HTMLInputElement>(null);
 
   const loadKayitlar = useCallback(async () => {
     if (!baslangic || !bitis) { setKayitlar([]); setLoading(false); return; }
@@ -289,6 +302,65 @@ export default function ArventoRaporPage() {
       toast.error(`Kayıt hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
     } finally { setAtamaKaydet(false); }
   }, [atamalar, loadAtamalar]);
+
+  // Cihaz listesi (Canlı node→plaka) — kayıtlı sayıyı yükle + Excel içe aktar
+  const cihazSayisiYukle = useCallback(async () => {
+    try {
+      const r = await fetch("/api/arvento/cihaz", { cache: "no-store" });
+      const d = await r.json();
+      if (r.ok && Array.isArray(d.cihazlar)) setCihazSayisi(d.cihazlar.length);
+    } catch { /* sessiz */ }
+  }, []);
+  useEffect(() => { cihazSayisiYukle(); }, [cihazSayisiYukle]);
+  const cihazYukle = useCallback(async (file: File) => {
+    setCihazYukleniyor(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/arvento/cihaz", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
+      toast.success(`${d.sayi} cihaz işlendi (${d.surucuSayi} şoför).`, { duration: toastSuresi() });
+      await cihazSayisiYukle();
+    } catch (err) {
+      toast.error(`Yükleme hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
+    } finally {
+      setCihazYukleniyor(false);
+      if (cihazFileRef.current) cihazFileRef.current.value = "";
+    }
+  }, [cihazSayisiYukle]);
+
+  // Canlı overlay: açıkken anlık konumları çek + Tanımlamalar aralığında otomatik yenile.
+  // Cihaz (node→plaka/şoför) eşlemesi açılışta bir kez yüklenir.
+  useEffect(() => {
+    if (!canliAcik) { setCanliKonumlar([]); return; }
+    let iptal = false;
+    // Cihaz eşlemesini yükle (bir kez)
+    fetch("/api/arvento/cihaz", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (iptal || !Array.isArray(d.cihazlar)) return;
+        const m: CihazMap = new Map();
+        for (const c of d.cihazlar as { node: string; plaka: string | null; surucu: string | null; model: string | null }[]) {
+          if (c.node) m.set(c.node.trim(), { plaka: c.plaka, surucu: c.surucu, model: c.model });
+        }
+        setCanliCihazMap(m);
+      })
+      .catch(() => { /* sessiz */ });
+    const cek = async () => {
+      setCanliYukleniyor(true);
+      try {
+        const r = await fetch("/api/arvento/anlik", { cache: "no-store" });
+        const d = await r.json();
+        if (!iptal && r.ok) setCanliKonumlar((d.araclar ?? []) as CanliKonum[]);
+        else if (!iptal && !r.ok) toast.error(`Canlı: ${d?.error ?? r.status}`, { duration: toastSuresi() });
+      } catch { /* sessiz */ } finally { if (!iptal) setCanliYukleniyor(false); }
+    };
+    cek();
+    const sn = Math.max(15, canliYenilemeSn || 45);
+    const id = setInterval(cek, sn * 1000);
+    return () => { iptal = true; clearInterval(id); };
+  }, [canliAcik, canliYenilemeSn]);
 
   // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.
   useEffect(() => {
@@ -563,6 +635,14 @@ export default function ArventoRaporPage() {
           <button type="button" onClick={() => { const b = trBugun(); setBaslangic(b); setBitis(b); }}
             title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
         )}
+        {(["ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu"] as const).includes(aktifSekme as "ismakine") && (
+          <button type="button" onClick={() => setCanliAcik((v) => !v)}
+            title="Anlık araç konumlarını bu haritaya bindir/kaldır"
+            className={`ml-auto h-9 px-3 mb-px flex items-center gap-1.5 rounded-lg border text-xs font-medium transition-colors ${canliAcik ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
+            <span className={`inline-block w-2 h-2 rounded-full ${canliAcik ? "bg-white animate-pulse" : "bg-emerald-500"}`} />
+            {canliAcik ? `Canlı açık${canliKonumlar.length ? ` · ${canliKonumlar.length}` : ""}${canliYukleniyor ? " ⟳" : ""}` : "Canlı"}
+          </button>
+        )}
       </div>
 
       {/* Sekmeler — satır kaydırmalı (wrap): yatay scroll olmadan tek ekranda görünür */}
@@ -639,25 +719,26 @@ export default function ArventoRaporPage() {
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
+                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap}
                 refreshKey={guzergahRefresh} />
             </div>
           )}
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -734,6 +815,34 @@ export default function ArventoRaporPage() {
                     className="text-gray-400 hover:text-red-500 text-xs px-1" title="Temizle">✕</button>
                 )}
               </div>
+            </div>
+            {/* Canlı Yenileme Süresi — Canlı sekmesi haritasının otomatik yenileme aralığı */}
+            <div className="border rounded-lg p-3 bg-teal-50/40 border-teal-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Canlı Yenileme Süresi</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                🟢 <strong>Canlı</strong> butonu açıkken haritadaki araçlar bu aralıkta otomatik yenilenir. Birimi
+                <strong> saniye</strong> veya <strong>dakika</strong> seçebilirsiniz. Arvento servisi çok sık çağrıyı
+                boş döndürdüğü için <strong>en az 15 sn</strong> uygulanır.
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={canliBirim === "dk" ? Math.round((canliYenilemeSn / 60) * 100) / 100 || "" : canliYenilemeSn || ""}
+                  onChange={(e) => {
+                    const v = Math.max(0, parseFloat(e.target.value) || 0);
+                    setCanliYenilemeSn(canliBirim === "dk" ? Math.round(v * 60) : Math.round(v));
+                  }}
+                  placeholder={canliBirim === "dk" ? "örn. 1" : "örn. 45"}
+                  className={selectClass + " w-24"}
+                />
+                <select value={canliBirim} onChange={(e) => setCanliBirim(e.target.value as "sn" | "dk")}
+                  className={selectClass + " w-24"}>
+                  <option value="sn">saniye</option>
+                  <option value="dk">dakika</option>
+                </select>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(15, canliYenilemeSn || 45)} sn</strong> yenilenir.</div>
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}
@@ -937,6 +1046,31 @@ export default function ArventoRaporPage() {
               </table>
             </div>
           </fieldset>
+        </div>
+
+        {/* Cihaz Listesi (Canlı Takip) — node→plaka/şoför eşlemesi için Arvento cihaz Excel'i */}
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-bold text-sm text-[#1E3A5F] mb-1">Cihaz Listesi (Canlı Takip)</h3>
+              <p className="text-xs text-gray-400 max-w-2xl">
+                Canlı konum web servisi araçları <strong>cihaz no (node)</strong> ile döndürür, plaka ile değil.
+                Plaka/şoför gösterimi için Arvento&apos;dan indirdiğiniz <strong>Cihazlar_*.xlsx</strong> dosyasını
+                yükleyin. Cihaz değişince tekrar yükleyip güncelleyebilirsiniz.
+                {cihazSayisi != null && <span className="block mt-1 text-emerald-700">Kayıtlı cihaz: <strong>{cihazSayisi}</strong></span>}
+              </p>
+            </div>
+            {yEkle && (
+              <>
+                <input ref={cihazFileRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) cihazYukle(f); }} />
+                <Button variant="outline" size="sm" onClick={() => cihazFileRef.current?.click()}
+                  disabled={cihazYukleniyor} className="h-9 gap-1 text-xs">
+                  <Upload size={14} /> {cihazYukleniyor ? "Yükleniyor..." : "Cihaz Excel Yükle"}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Harita Katmanları (NetCAD/KML) — yüklenen çizgiler tüm haritalara biner */}

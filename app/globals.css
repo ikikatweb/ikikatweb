@@ -47,6 +47,32 @@ thead th {
 }
 .leaflet-tooltip.damper-sayi::before { display: none; }
 
+/* Canlı araç kalıcı etiketi — plaka + model, haritada hep okunur (Arvento tarzı kutu) */
+.leaflet-tooltip.canli-etiket {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  padding: 2px 7px;
+  text-align: center;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.leaflet-tooltip.canli-etiket .ce-plaka {
+  display: block;
+  font-weight: 700;
+  font-size: 12px;
+  color: #0f172a;
+}
+.leaflet-tooltip.canli-etiket .ce-model {
+  display: block;
+  font-weight: 500;
+  font-size: 10px;
+  color: #475569;
+}
+/* üçgen okun rengi kutuyla uyumlu */
+.leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
+
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
    !important ile uygulanır çünkü bazı UI kütüphaneleri kendi scrollbar style'larını ekliyor. */

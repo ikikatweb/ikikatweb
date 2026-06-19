@@ -218,6 +218,9 @@ export type Arac = {
   // Arvento: bu araç hangi sekmelerde görünsün (reglaj/stabilize/serme/sikistirma/ismakine).
   // null = otomatik tespit (sınıf/plaka). Boş dizi = hiçbir sekmede gösterme.
   arvento_sekmeler?: string[] | null;
+  // Arvento canlı takip cihaz node'u (strNode) — web servisi konumu node ile döndürür,
+  // plaka ile değil; bu eşleme bir kez kurulur. null = eşlenmemiş.
+  arvento_node?: string | null;
   created_at: string;
   updated_at: string;
 };
