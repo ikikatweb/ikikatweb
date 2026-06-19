@@ -125,6 +125,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set()); // çoklu seçim (boş→hepsi varsayılan effect ile dolar)
+  const [kamyonIziGoster, setKamyonIziGoster] = useState(true); // kamyon izi çizgileri görünsün mü
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
   const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // harita yeniden kurulurken görünüm korunur
@@ -300,8 +301,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
         for (const ll of latlngs) bounds.push(ll);
       });
-      // 2) Kamyon izi (kamyonun KENDİ güzergahı) — reglajdan AYRI renk/kalınlık; yalnız seçili kamyonlar
-      kamyonIzleri.forEach((k) => {
+      // 2) Kamyon izi (kamyonun KENDİ güzergahı) — reglajdan AYRI renk/kalınlık; yalnız seçili kamyonlar.
+      // "Kamyon izini gizle" butonu kapalıysa hiç çizilmez.
+      if (kamyonIziGoster) kamyonIzleri.forEach((k) => {
         if (!seciliPlakalar.has(k.plaka)) return;
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
@@ -360,7 +362,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, reglajRefleri, kamyonIzleri, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik]);
+  }, [bas, bitis, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -478,8 +480,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 {reglajRefleri.length} reglaj çizgisi (referans)
               </div>
               {kamyonIzleri.length > 0 && (
-                <div className="text-gray-400">
-                  <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: kamyonIziRenk }} />
+                <div className={kamyonIziGoster ? "text-gray-400" : "text-gray-300 line-through"}>
+                  <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: kamyonIziRenk, opacity: kamyonIziGoster ? 1 : 0.4 }} />
                   {kamyonIzleri.length} kamyon izi
                 </div>
               )}
@@ -487,9 +489,18 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
             </div>
-            <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-              <Download size={14} /> KML İndir
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              {kamyonIzleri.length > 0 && (
+                <button type="button" onClick={() => setKamyonIziGoster((v) => !v)}
+                  title="Kamyon izi çizgilerini göster/gizle"
+                  className={`h-9 px-2.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap ${kamyonIziGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
+                  {kamyonIziGoster ? "Kamyon izini gizle" : "Kamyon izini göster"}
+                </button>
+              )}
+              <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
+                <Download size={14} /> KML İndir
+              </Button>
+            </div>
           </div>
         </div>
       </div>
