@@ -11,6 +11,7 @@ export type CanliKonum = {
   lat: number | null;
   lng: number | null;
   hiz: number | null;
+  yon: number | null; // gidiş yönü (derece, 0=kuzey, saat yönü) — hareket eden araçta ok için
   tarih: string | null;
   adres: string | null;
 };
@@ -37,11 +38,22 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
     const renk = hareket ? "#16a34a" : "#dc2626"; // hareket=yeşil, durağan=kırmızı
     // Kalıcı etiket: plaka (kalın) + model (alt satır) — haritada hep görünür, Arvento'daki gibi.
     const etiket = `<span class="ce-plaka">${ad}</span>${model ? `<span class="ce-model">${model}</span>` : ""}`;
-    L.circleMarker([k.lat, k.lng], { radius: 7, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 })
+    // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde nokta.
+    const marker = (hareket && k.yon != null)
+      ? L.marker([k.lat, k.lng], {
+          icon: L.divIcon({
+            className: "canli-ok-wrap",
+            iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -12],
+            // İç div yön kadar döner (Leaflet'in konum transform'una karışmaz). 0°=kuzey, saat yönü.
+            html: `<div class="canli-ok" style="transform:rotate(${k.yon}deg)"><svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path d="M15 2 L23 25 L15 19.5 L7 25 Z" fill="${renk}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
+          }),
+        })
+      : L.circleMarker([k.lat, k.lng], { radius: 7, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 });
+    marker
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
-        `${hareket ? "🟢 hareket" : "🔴 durağan"} · ${k.hiz ?? 0} km/s<br>` +
+        `${hareket ? "🟢 hareket" : "🔴 durağan"} · ${k.hiz ?? 0} km/s${k.yon != null ? ` · ${Math.round(k.yon)}°` : ""}<br>` +
         `${formatSaat(k.tarih)}<br>${k.adres ?? ""}`,
       )
       .bindTooltip(etiket, { permanent: true, direction: "top", offset: [0, -9], className: "canli-etiket", opacity: 1 });

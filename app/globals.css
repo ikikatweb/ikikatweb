@@ -76,6 +76,18 @@ thead th {
   z-index: 1;
 }
 
+/* Canlı araç yön oku — divIcon varsayılan beyaz kutusunu kaldır, içteki ok yöne döner */
+.leaflet-div-icon.canli-ok-wrap {
+  background: transparent;
+  border: none;
+}
+.canli-ok {
+  width: 30px;
+  height: 30px;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
 /* Canlı araç kalıcı etiketi — plaka + model, haritada hep okunur (Arvento tarzı kutu) */
 .leaflet-tooltip.canli-etiket {
   background: rgba(255, 255, 255, 0.95);
