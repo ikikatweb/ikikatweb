@@ -215,6 +215,9 @@ export type Arac = {
   ruhsat_url: string | null;
   kiralama_firmasi: string | null;
   kiralik_iletisim: string | null;
+  // Arvento: bu araç hangi sekmelerde görünsün (reglaj/stabilize/serme/sikistirma/ismakine).
+  // null = otomatik tespit (sınıf/plaka). Boş dizi = hiçbir sekmede gösterme.
+  arvento_sekmeler?: string[] | null;
   created_at: string;
   updated_at: string;
 };
@@ -864,6 +867,8 @@ export type AracArventoRapor = {
   damper_olaylar: { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null }[] | null; // damper olay detayları
   marka: string | null;
   model: string | null;
+  ilk_kontak: string | null; // o günkü ilk "Kontak Açıldı" saati (HH:MM:SS) — Kontak Alarmı raporundan
+  son_kontak: string | null; // o günkü son "Kontak Kapandı" saati (HH:MM:SS)
   created_at: string;
 };
 

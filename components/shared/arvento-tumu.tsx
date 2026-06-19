@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { OPERASYONLAR, sinifEslesir, zikzakla } from "@/lib/arvento/operasyonlar";
+import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -28,7 +28,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; refreshKey?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -50,14 +50,16 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       .finally(() => setLoading(false));
   }, [bas, bitis, refreshKey]);
 
+  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
+
   // Katman özeti (kaç greyder / silindir çizgisi, kaç damper)
   const ozet = useMemo(() => {
-    const greyder = guzergahlar.filter((k) => sinifEslesir(k.arac_sinifi, "reglaj", k.plaka)).length;
-    const silindir = guzergahlar.filter((k) => sinifEslesir(k.arac_sinifi, "sikistirma", k.plaka)).length;
+    const greyder = guzergahlar.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka)).length;
+    const silindir = guzergahlar.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
     let damper = 0;
     for (const r of raporlar) for (const o of (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[]) if (o.lat != null && o.lng != null) damper++;
     return { greyder, silindir, damper };
-  }, [guzergahlar, raporlar]);
+  }, [guzergahlar, raporlar, sekmeMap, atananSekmeler]);
 
   useEffect(() => {
     if (!bas || !bitis) return;
@@ -77,8 +79,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) return;
-        const op = sinifEslesir(k.arac_sinifi, "sikistirma", k.plaka) ? "sikistirma"
-          : sinifEslesir(k.arac_sinifi, "reglaj", k.plaka) ? "reglaj" : null;
+        const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
+          : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
         if (!op) return; // tanınmayan sınıf → çizme
         const def = OPERASYONLAR[op];
         // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
@@ -106,7 +108,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV]);
+  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
@@ -116,8 +118,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     guzergahlar.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return;
-      const op = sinifEslesir(k.arac_sinifi, "sikistirma", k.plaka) ? "sikistirma"
-        : sinifEslesir(k.arac_sinifi, "reglaj", k.plaka) ? "reglaj" : null;
+      const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
+        : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
       if (!op) return;
       const def = OPERASYONLAR[op];
       const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;

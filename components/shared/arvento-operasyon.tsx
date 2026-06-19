@@ -7,10 +7,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { OPERASYONLAR, sinifEslesir, zikzakla, paralelCizgi, type OperasyonTip } from "@/lib/arvento/operasyonlar";
+import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -27,6 +27,14 @@ const ARAC_RENKLERI = [
   "#10b981", "#f97316", "#3b82f6", "#d946ef", "#14b8a6", "#eab308",
   "#8b5cf6", "#22c55e", "#f43f5e", "#0ea5e9",
 ];
+
+// saniye → "2sa 15dk" / "0"
+function formatSure(sn: number): string {
+  if (!sn) return "0";
+  const sa = Math.floor(sn / 3600);
+  const dk = Math.floor((sn % 3600) / 60);
+  return sa > 0 ? `${sa}sa ${dk}dk` : `${dk}dk`;
+}
 
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 type DamperNokta = DamperOlay & { plaka: string };
@@ -78,8 +86,8 @@ function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][]
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, refreshKey = 0 }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; refreshKey?: number;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, kontakRolantiMap, sekmeMap, refreshKey = 0 }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; refreshKey?: number;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -110,8 +118,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       .finally(() => setLoading(false));
   }, [bas, bitis, refreshKey, sermeMi]);
 
-  const greyderler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "reglaj", k.plaka)), [tumGuzergah]);
-  const silindirler = useMemo(() => tumGuzergah.filter((k) => sinifEslesir(k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergah]);
+  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
+  // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
+  const greyderler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
+  const silindirler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
 
   // Sıkıştırma chip listesi: güzergahı olan silindirler + rapordaki silindirler (o gün hareketsiz
   // olsa da plakası görünsün). Plakaya göre tekilleştirilir; km güzergahtan/rapordan gelir.
@@ -120,11 +130,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const m = new Map<string, { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }>();
     for (const k of silindirler) m.set(k.plaka, { plaka: k.plaka, arac_sinifi: k.arac_sinifi, toplam_mesafe: k.toplam_mesafe ?? 0 });
     for (const r of raporlar) {
-      if (!sinifEslesir(null, "sikistirma", r.plaka)) continue; // silindir plakası (config) eşleşmesi
+      if (!operasyondaGorunur(sekmeMap, atananSekmeler, null, "sikistirma", r.plaka)) continue; // silindir plakası (atama/config) eşleşmesi
       if (!m.has(r.plaka)) m.set(r.plaka, { plaka: r.plaka, arac_sinifi: "Silindir", toplam_mesafe: r.mesafe_km ?? 0 });
     }
     return Array.from(m.values());
-  }, [sermeMi, silindirler, raporlar]);
+  }, [sermeMi, silindirler, raporlar, sekmeMap, atananSekmeler]);
 
   // Sıkıştırma: silindirler renkli chip'ler — çoklu seçim (chip listesi = silindirChipler)
   const [seciliSilindirler, setSeciliSilindirler] = useState<Set<string>>(new Set());
@@ -314,6 +324,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                   <span className="flex flex-col items-start leading-tight">
                     <span className="font-semibold flex items-center gap-1">{k.plaka}{k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}</span>
                     <span className="text-[10px] opacity-90">{Math.round(k.toplam_mesafe ?? 0)} km</span>
+                    {/* Kontak açık + rölanti — alt alta */}
+                    {kontakRolantiMap && (
+                      <>
+                        <span className="text-[10px] opacity-80">⏱ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.kontak ?? 0)} kontak açık</span>
+                        <span className="text-[10px] opacity-80">⏳ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.rolanti ?? 0)} rölanti</span>
+                      </>
+                    )}
                   </span>
                 </button>
               );

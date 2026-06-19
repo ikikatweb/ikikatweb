@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
@@ -29,6 +30,13 @@ function formatTarih(t: string | null): string {
   const d = new Date(t + "T00:00:00");
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
 }
+// saniye → "2sa 15dk" / "0"
+function formatSure(sn: number): string {
+  if (!sn) return "0";
+  const sa = Math.floor(sn / 3600);
+  const dk = Math.floor((sn % 3600) / 60);
+  return sa > 0 ? `${sa}sa ${dk}dk` : `${dk}dk`;
+}
 function formatAralik(bas: string, bitis: string): string {
   if (!bas) return "—";
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
@@ -47,7 +55,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, baslik = "Araçlar (Reglaj)", refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; baslik?: string; refreshKey?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, sekmeMap, baslik = "Araçlar (Reglaj)", refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; baslik?: string; refreshKey?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
@@ -75,16 +83,23 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   // plakaFiltre verilmişse (İş Makineleri haritası) sadece o plakalar gösterilir.
   // ekstraAraclar: güzergahı OLMAYAN araçlar da chip olarak görünsün (rapordan; 0 km olsa da).
   const araclar = useMemo<GuzergahArac[]>(() => {
+    // plakaFiltre (İş Makineleri haritası) verildiyse o liste kesin; verilmediyse Reglaj sekmesidir:
+    // atama VARSA yalnız "reglaj" atanmışlar; atama YOKSA mevcut davranış (tüm güzergahlar).
+    const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
     const guzergahli: GuzergahArac[] = plakaFiltre
       ? kayitlar.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
-      : kayitlar;
+      : kayitlar.filter((k) => {
+          const atama = sekmeMap?.get(plakaNorm(k.plaka));
+          // Atama varsa kesin; yoksa "reglaj"a başka araç atanmışsa gizle, değilse tüm güzergahlar.
+          return atama ? atama.includes("reglaj") : !atananSekmeler.has("reglaj");
+        });
     if (!ekstraAraclar || ekstraAraclar.length === 0) return guzergahli;
     const varPlaka = new Set(guzergahli.map((k) => plakaNorm(k.plaka)));
     const ekstra: GuzergahArac[] = ekstraAraclar
       .filter((e) => !varPlaka.has(plakaNorm(e.plaka)))
       .map((e) => ({ plaka: e.plaka, arac_sinifi: e.arac_sinifi, toplam_mesafe: e.toplam_mesafe }));
     return [...guzergahli, ...ekstra];
-  }, [kayitlar, plakaFiltre, ekstraAraclar]);
+  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap]);
 
   // Veri değişince varsayılan: tüm araçlar seçili
   useEffect(() => {
@@ -250,6 +265,15 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                     <span>{Math.round(k.toplam_mesafe ?? 0)} km</span>
                     <span>{k.noktalar?.length ?? 0} nokta</span>
                   </span>
+                  {/* Çalışma saati (iş makineleri) = Kontak Açık süresi */}
+                  {calismaSnMap && <span className="text-[10px] opacity-80">⏱ {formatSure(calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)} çalışma</span>}
+                  {/* Kontak açık + rölanti (Reglaj) — alt alta */}
+                  {kontakRolantiMap && (
+                    <>
+                      <span className="text-[10px] opacity-80">⏱ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.kontak ?? 0)} kontak açık</span>
+                      <span className="text-[10px] opacity-80">⏳ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.rolanti ?? 0)} rölanti</span>
+                    </>
+                  )}
                 </span>
               </button>
             );

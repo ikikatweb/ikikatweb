@@ -332,3 +332,61 @@ export function parseArventoBuffer(buf: ArrayBuffer | Buffer): ArventoRaporParse
   }
   return { raporTarihi, araclar };
 }
+
+// ===== "Kontak Alarmı" raporu — araç başına o GÜNKÜ ilk "Kontak Açıldı" ve son "Kontak Kapandı" saati =====
+export type KontakSure = { tarih: string; plaka: string; ilkAcik: string | null; sonKapandi: string | null };
+
+export function parseKontakAlarmiBuffer(buf: ArrayBuffer | Buffer): KontakSure[] {
+  const wb = XLSX.read(buf, { type: "buffer" });
+  const sheetAdi = wb.SheetNames.find((n) => norm(n).includes("kontak"));
+  if (!sheetAdi) return [];
+  const ws = wb.Sheets[sheetAdi];
+  if (!ws) return [];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null, raw: false });
+  // Başlık metnindeki tarih (tek günlük rapor için yedek)
+  let baslikTarih: string | null = null;
+  for (let i = 0; i < Math.min(3, rows.length); i++) {
+    const t = String((rows[i] ?? [])[0] ?? "");
+    const dm = t.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    if (dm) { baslikTarih = `${dm[3]}-${dm[2]}-${dm[1]}`; break; }
+  }
+  let hi = -1;
+  for (let i = 0; i < rows.length; i++) if ((rows[i] ?? []).some((c) => norm(c) === "plaka")) { hi = i; break; }
+  if (hi < 0) return [];
+  const head = (rows[hi] ?? []).map(norm);
+  const plakaCol = head.findIndex((h) => h.includes("plaka"));
+  const turCol = head.findIndex((h) => h.includes("alarm") && !h.includes("tarih"));
+  const saatCol = head.findIndex((h) => h.includes("(saat)"));
+  const tarihCol = head.findIndex((h) => h.includes("(tarih)"));
+  if (plakaCol < 0 || turCol < 0 || saatCol < 0) return [];
+
+  const m = new Map<string, { tarih: string; plaka: string; acik: string[]; kapandi: string[] }>();
+  for (let i = hi + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const plaka = temizMetin(r[plakaCol]);
+    if (!plaka) continue;
+    const saat = parseSaat(r[saatCol]);
+    if (!saat) continue;
+    const tarih = (tarihCol >= 0 ? parseEnTarih(r[tarihCol]) : null) ?? baslikTarih;
+    if (!tarih) continue;
+    const tur = norm(r[turCol]);
+    const key = `${tarih}|${plaka}`;
+    let g = m.get(key);
+    if (!g) { g = { tarih, plaka, acik: [], kapandi: [] }; m.set(key, g); }
+    if (tur.includes("acild")) g.acik.push(saat);          // "Kontak Açıldı"
+    else if (tur.includes("kapand")) g.kapandi.push(saat); // "Kontak Kapandı"
+  }
+  const out: KontakSure[] = [];
+  for (const g of m.values()) {
+    g.acik.sort();
+    g.kapandi.sort();
+    out.push({
+      tarih: g.tarih,
+      plaka: g.plaka,
+      ilkAcik: g.acik[0] ?? null,
+      sonKapandi: g.kapandi.length ? g.kapandi[g.kapandi.length - 1] : null,
+    });
+  }
+  return out;
+}

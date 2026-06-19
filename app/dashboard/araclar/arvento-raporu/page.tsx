@@ -3,20 +3,20 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
+import { updateArac } from "@/lib/supabase/queries/araclar";
+import { ATAMA_SEKMELERI, type ArventoSekme, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Search, Upload, FileSpreadsheet, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff } from "lucide-react";
-import * as XLSX from "xlsx";
+import { Satellite, Upload, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff } from "lucide-react";
 import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
 import ArventoOperasyon from "@/components/shared/arvento-operasyon";
 import ArventoTumu from "@/components/shared/arvento-tumu";
-import { OPERASYONLAR, OPERASYON_SIRA } from "@/lib/arvento/operasyonlar";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -130,7 +130,11 @@ export default function ArventoRaporPage() {
     [hamKayitlar, kmEsik],
   );
   const [plakaSantiye, setPlakaSantiye] = useState<Map<string, PlakaSantiye>>(new Map());
-  const [arama, setArama] = useState("");
+  // Araç → Sekme atamaları (Tanımlamalar'da düzenlenir; haritalarda hangi araç hangi sekmede)
+  const [atamalar, setAtamalar] = useState<AracAtama[]>([]);
+  const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
+  const [atamaArama, setAtamaArama] = useState("");       // atama tablosu plaka araması
+  const [arama] = useState("");
   // İş Makineleri sekmesi — cins filtresi ("" = tüm iş makineleri = sayaç tipi "saat")
   const [ismakineCins, setIsmakineCins] = useState<string>("");
   // Sekme anahtarları:
@@ -144,6 +148,7 @@ export default function ArventoRaporPage() {
   // Tanımlamalar eşikleri — ORTAK (kullanıcı bazlı DEĞİL): DB'den yüklenir, herkes aynı değeri görür.
   // Sadece "düzenle" yetkisi olan değiştirebilir (aşağıdaki kaydetme effect'i yetkiyle korunur).
   const [mukerrerDk, setMukerrerDk] = useState<number>(0);     // yanlış (art arda) damper eşiği (dk)
+  const [mukerrerYaricap, setMukerrerYaricap] = useState<number>(0); // mükerrer damper yarıçapı (m) — dk ile BİRLİKTE şart
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
@@ -164,6 +169,7 @@ export default function ArventoRaporPage() {
       .then((a) => {
         setKmEsik(a.kmEsik);
         setMukerrerDk(a.mukerrerDk);
+        setMukerrerYaricap(a.mukerrerYaricap);
         setGuzergahTekrar(a.guzergahTekrar);
         setGridMesafe(a.gridMesafe);
         setSilindirTekrar(a.silindirTekrar);
@@ -183,13 +189,13 @@ export default function ArventoRaporPage() {
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
-    const guncel = { kmEsik, mukerrerDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, reglajRenk, sermeRenk, silindirRenk, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -230,6 +236,56 @@ export default function ArventoRaporPage() {
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
 
+  // Araç → Sekme atamalarını yükle (tarihten bağımsız; bir kez + kayıt sonrası yenilenir)
+  const loadAtamalar = useCallback(async () => {
+    try { setAtamalar(await getAraclarAtama()); } catch { /* sessiz */ }
+  }, []);
+  useEffect(() => { loadAtamalar(); }, [loadAtamalar]);
+
+  // Haritalara verilecek atama haritası: plakaNorm → atanmış sekmeler (yalnız atanmışlar).
+  const sekmeMap = useMemo<SekmeAtamaMap>(() => {
+    const m: SekmeAtamaMap = new Map();
+    for (const a of atamalar) {
+      if (Array.isArray(a.sekmeler)) m.set(plakaNorm(a.plaka), a.sekmeler as ArventoSekme[]);
+    }
+    return m;
+  }, [atamalar]);
+  // En az bir araç atanmış olan sekmeler (katı mod: bir sekmeye atama varsa yalnız atananlar görünür).
+  const atananSekmeler = useMemo(() => {
+    const s = new Set<ArventoSekme>();
+    for (const arr of sekmeMap.values()) for (const k of arr) s.add(k);
+    return s;
+  }, [sekmeMap]);
+
+  // Bir aracın atamasını değiştir (checkbox) — yerel state'i günceller, kaydet butonu DB'ye yazar.
+  const atamaToggle = useCallback((id: string, sekme: ArventoSekme) => {
+    setAtamalar((prev) => prev.map((a) => {
+      if (a.id !== id) return a;
+      const mevcut = new Set<string>(a.sekmeler ?? []);
+      if (mevcut.has(sekme)) mevcut.delete(sekme); else mevcut.add(sekme);
+      return { ...a, sekmeler: Array.from(mevcut) };
+    }));
+  }, []);
+
+  // Bir aracı otomatik moda döndür (atama = null → sınıf/plaka tespitine düşer)
+  const atamaSifirla = useCallback((id: string) => {
+    setAtamalar((prev) => prev.map((a) => (a.id === id ? { ...a, sekmeler: null } : a)));
+  }, []);
+
+  // Tüm atamaları DB'ye yaz (araclar.arvento_sekmeler)
+  const atamalariKaydet = useCallback(async () => {
+    setAtamaKaydet(true);
+    try {
+      for (const a of atamalar) {
+        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null });
+      }
+      toast.success("Sekme atamaları kaydedildi.", { duration: toastSuresi() });
+      await loadAtamalar();
+    } catch (err) {
+      toast.error(`Kayıt hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
+    } finally { setAtamaKaydet(false); }
+  }, [atamalar, loadAtamalar]);
+
   // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.
   useEffect(() => {
     getArventoHamKayitlar().then(setHamKayitlar).catch(() => { /* sessiz */ });
@@ -244,7 +300,7 @@ export default function ArventoRaporPage() {
       if (!res.ok) throw new Error(data.error ?? "Mailden çekilemedi");
       if (data.ok) {
         toast.success(`Mailden çekildi — ${data.mesaj}`, { duration: toastSuresi() });
-        const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
+        const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih ?? data.kontakGunler?.[0]?.tarih;
         if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
         else await loadKayitlar();
       } else {
@@ -291,7 +347,7 @@ export default function ArventoRaporPage() {
       toast.success(data.mesaj ?? "İçe aktarıldı.", { duration: toastSuresi() });
       // İçe aktarılan ilk çalışma/damper günü (güzergah varsa onun günü) aralık olarak seçilsin
       const yeniTarih: string | undefined =
-        data.guzergahGunler?.[0]?.tarih ?? data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih;
+        data.guzergahGunler?.[0]?.tarih ?? data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih ?? data.kontakGunler?.[0]?.tarih;
       if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
       else await loadKayitlar();
       // Güzergah (Mesafe Bilgisi) yüklendiyse Reglaj'a geç + yenile
@@ -406,12 +462,16 @@ export default function ArventoRaporPage() {
     const q = trAramaNormalize(arama.trim());
     return kayitlar.filter((k) => {
       const ps = plakaSantiye.get(plakaNorm(k.plaka));
-      const cinsOk = ismakineCins ? ps?.cinsi === ismakineCins : ps?.sayacTipi === "saat";
-      if (!cinsOk) return false;
+      // Atama VARSA: yalnız "ismakine" atanmışlar; atama YOKSA: "ismakine"e başka araç
+      // atanmışsa gizle, değilse sayaç tipi "saat" (otomatik).
+      const atama = sekmeMap.get(plakaNorm(k.plaka));
+      const ismakineMi = atama ? atama.includes("ismakine") : (atananSekmeler.has("ismakine") ? false : ps?.sayacTipi === "saat");
+      if (!ismakineMi) return false;
+      if (ismakineCins && ps?.cinsi !== ismakineCins) return false; // cins alt-filtresi
       if (q && !trAramaNormalize([k.plaka, k.surucu, k.marka, k.model, ps?.cinsi].filter(Boolean).join(" ")).includes(q)) return false;
       return true;
     });
-  }, [kayitlar, plakaSantiye, ismakineCins, arama]);
+  }, [kayitlar, plakaSantiye, ismakineCins, arama, sekmeMap, atananSekmeler]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
@@ -423,24 +483,23 @@ export default function ArventoRaporPage() {
     })),
     [ismakineKayitlar, plakaSantiye],
   );
-
-  function exportExcel() {
-    const headers = ["Şantiye", "Plaka", "Sürücü", "Marka", "Model", "Mesafe (km)", "Gen. Ort Km", "Damper", "Gen. Ort Damper", "Hareket Süresi", "Kontak Açık", "Rölanti", "Maks Hız (km/s)"];
-    // Şantiye gruplarına göre sıralı dök
-    const data = gruplar.flatMap((g) => g.kayitlar.map((k) => {
-      const ort = ortalamalar.get(k.plaka);
-      return [
-        g.ad, k.plaka, k.surucu ?? "", k.marka ?? "", k.model ?? "",
-        k.mesafe_km ?? "", ort ? Number(ort.ortKm.toFixed(1)) : "", k.damper_sayisi ?? 0, ort ? Number(ort.ortDamper.toFixed(1)) : "",
-        formatSure(k.hareket_sn), formatSure(k.kontak_sn), formatSure(k.rolanti_sn), k.maks_hiz ?? "",
-      ];
-    }));
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    ws["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 9 }, { wch: 13 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Arvento");
-    XLSX.writeFile(wb, `arvento-${baslangic === bitis ? baslangic : `${baslangic}_${bitis}`}.xlsx`);
-  }
+  // İş makineleri için "çalışma saati" = Kontak Açık süresi (kontak_sn). Plakaya göre harita.
+  const ismakineCalismaMap = useMemo(
+    () => new Map(ismakineKayitlar.map((k) => [plakaNorm(k.plaka), k.kontak_sn ?? 0])),
+    [ismakineKayitlar],
+  );
+  // Tüm araçlar için kontak açık + rölanti süresi (plaka bazında, aralık toplamı) — Reglaj/Serme/Sıkıştırma chip'leri için
+  const kontakRolantiMap = useMemo(() => {
+    const m = new Map<string, { kontak: number; rolanti: number }>();
+    for (const k of kayitlar) {
+      const key = plakaNorm(k.plaka);
+      const ex = m.get(key) ?? { kontak: 0, rolanti: 0 };
+      ex.kontak += k.kontak_sn ?? 0;
+      ex.rolanti += k.rolanti_sn ?? 0;
+      m.set(key, ex);
+    }
+    return m;
+  }, [kayitlar]);
 
   if (!yGor) {
     return <div className="text-center py-16 text-gray-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
@@ -476,19 +535,6 @@ export default function ArventoRaporPage() {
         )}
       </div>
 
-      {/* Operasyon renk lejantı — hangi renk hangi katman (harita sekmeleri için) */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-[11px] text-gray-600">
-        <span className="font-semibold text-gray-500">Harita renkleri:</span>
-        {OPERASYON_SIRA.map((op) => (
-          <span key={op} className="flex items-center gap-1.5">
-            <span className="inline-block w-4 h-1.5 rounded" style={{ background: OPERASYONLAR[op].renk }} />
-            {OPERASYONLAR[op].ad}
-            {op === "stabilize" && <span className="text-gray-400">(damper ●)</span>}
-            {op === "sikistirma" && <span className="text-gray-400">(zikzak)</span>}
-          </span>
-        ))}
-      </div>
-
       {/* Filtreler + özet */}
       <div className="bg-white rounded-lg border p-3 mb-4 flex flex-wrap items-end gap-3">
         <button type="button" onClick={() => gunGez(-1)}
@@ -513,19 +559,6 @@ export default function ArventoRaporPage() {
           <button type="button" onClick={() => { const b = trBugun(); setBaslangic(b); setBitis(b); }}
             title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
         )}
-        <div className="space-y-1">
-          <Label className="text-[10px] text-gray-500">Ara</Label>
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" value={arama} onChange={(e) => setArama(e.target.value)}
-              placeholder="Plaka, sürücü, marka..." className={selectClass + " pl-8 w-52"} />
-          </div>
-        </div>
-        <div className="ml-auto flex items-end gap-4">
-          <Button variant="outline" size="sm" onClick={exportExcel} className="h-9 gap-1 text-xs" disabled={filtrelenmis.length === 0}>
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
       </div>
 
       {/* Sekmeler — satır kaydırmalı (wrap): yatay scroll olmadan tek ekranda görünür */}
@@ -600,26 +633,27 @@ export default function ArventoRaporPage() {
             <div className="space-y-1">
               <h4 className="text-xs font-semibold text-[#1E3A5F] flex items-center gap-1"><Satellite size={14} /> Haritada Çalışma Bölgeleri</h4>
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
-                kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra} baslik="İş Makineleri"
+                kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
+                calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
                 refreshKey={guzergahRefresh} />
             </div>
           )}
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} refreshKey={guzergahRefresh} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -666,23 +700,33 @@ export default function ArventoRaporPage() {
             {/* Yanlış kaldırma eşiği — Stabilize'dan buraya taşındı. Damper sayısından
                 FARKLI: bu, art arda gelen yanlış damperleri temizler (zaman bazlı). */}
             <div className="border rounded-lg p-3 bg-amber-50/40 border-amber-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Yanlış Kaldırma Eşiği (dk)</div>
+              <div className="text-xs font-semibold text-gray-700 mb-1">Yanlış Kaldırma Eşiği (dk + yarıçap)</div>
               <p className="text-[11px] text-gray-400 mb-2">
-                Stabilize&apos;de bu süre içinde art arda gelen damper indirmeleri tek sayılır (yanlış/mükerrer
-                tetikleme temizliği). &quot;Damper İndirme Sayısı&quot;ndan farklıdır. 0 = temizleme yok.
+                Stabilize&apos;de bir damper, önceki dampere <strong>hem süre (dk) hem yarıçap (m) içinde</strong> ise
+                mükerrer (yanlış tetik) sayılır — <strong>ikisi birlikte</strong> gerçekleşmeli. &quot;Damper İndirme
+                Sayısı&quot;ndan farklıdır. Süre <strong>veya</strong> yarıçap 0 = temizleme yok.
               </p>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap">
                 <input
                   type="number"
                   min={0}
                   value={mukerrerDk || ""}
                   onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
                   placeholder="örn. 2"
-                  className={selectClass + " w-32"}
+                  className={selectClass + " w-20"}
                 />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">dk</span>
-                {mukerrerDk > 0 && (
-                  <button type="button" onClick={() => setMukerrerDk(0)}
+                <span className="text-[10px] text-gray-400 whitespace-nowrap mr-2">dk</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={mukerrerYaricap || ""}
+                  onChange={(e) => setMukerrerYaricap(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 15"
+                  className={selectClass + " w-20"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">m yarıçap</span>
+                {(mukerrerDk > 0 || mukerrerYaricap > 0) && (
+                  <button type="button" onClick={() => { setMukerrerDk(0); setMukerrerYaricap(0); }}
                     className="text-gray-400 hover:text-red-500 text-xs px-1" title="Temizle">✕</button>
                 )}
               </div>
@@ -795,6 +839,87 @@ export default function ArventoRaporPage() {
               </div>
             </div>
           </div>
+          </fieldset>
+        </div>
+
+        {/* Araç → Sekme Atamaları — hangi araç hangi sekmede (Reglaj/Stabilize/Serme/Sıkıştırma/İş Makineleri) görünür */}
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-bold text-sm text-[#1E3A5F] mb-1">Araç Sekme Atamaları</h3>
+              <p className="text-xs text-gray-400 max-w-2xl">
+                Her aracın hangi sekme(ler)de görüneceğini buradan seçin. <strong>Hiçbir kutu işaretli değilse</strong> araç
+                otomatik tespite (sınıf/plaka) göre davranır. Bir kutu işaretlenirse araç <strong>yalnız seçilen sekmelerde</strong> görünür.
+                &quot;Sıfırla&quot; aracı otomatik moda döndürür.
+              </p>
+            </div>
+            {yDuzenle && (
+              <Button variant="outline" size="sm" onClick={atamalariKaydet} disabled={atamaKaydet} className="h-9 gap-1 text-xs">
+                {atamaKaydet ? "Kaydediliyor..." : "Atamaları Kaydet"}
+              </Button>
+            )}
+          </div>
+          {!yDuzenle && (
+            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              🔒 Görüntüleme modundasınız — atamaları yalnızca <strong>düzenleme yetkisi</strong> olanlar değiştirebilir.
+            </div>
+          )}
+          <input type="text" value={atamaArama} onChange={(e) => setAtamaArama(e.target.value)}
+            placeholder="Plaka / cins ara..." className={selectClass + " w-full max-w-xs"} />
+          <fieldset disabled={!yDuzenle} className="min-w-0 border-0 p-0 m-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b bg-gray-50 text-gray-500">
+                    <th className="text-left font-semibold px-2 py-2">Plaka</th>
+                    <th className="text-left font-semibold px-2 py-2">Cins</th>
+                    {ATAMA_SEKMELERI.map((s) => (
+                      <th key={s.key} className="font-semibold px-2 py-2 text-center whitespace-nowrap">{s.ad}</th>
+                    ))}
+                    <th className="font-semibold px-2 py-2 text-center">Durum</th>
+                    <th className="px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {atamalar
+                    .filter((a) => {
+                      const q = trAramaNormalize(atamaArama.trim());
+                      if (!q) return true;
+                      return trAramaNormalize([a.plaka, a.cinsi, a.marka, a.model].filter(Boolean).join(" ")).includes(q);
+                    })
+                    .map((a) => {
+                      const atanmis = Array.isArray(a.sekmeler);
+                      return (
+                        <tr key={a.id} className="border-b hover:bg-gray-50">
+                          <td className="px-2 py-1.5 font-medium text-gray-700 whitespace-nowrap">{a.plaka}</td>
+                          <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{a.cinsi ?? "—"}</td>
+                          {ATAMA_SEKMELERI.map((s) => (
+                            <td key={s.key} className="px-2 py-1.5 text-center">
+                              <input type="checkbox" className="h-4 w-4 cursor-pointer accent-[#1E3A5F]"
+                                checked={(a.sekmeler ?? []).includes(s.key)}
+                                onChange={() => atamaToggle(a.id, s.key)} />
+                            </td>
+                          ))}
+                          <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                            {atanmis
+                              ? <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">Atanmış</span>
+                              : <span className="text-[10px] text-gray-400 bg-gray-50 border rounded px-1.5 py-0.5">Otomatik</span>}
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            {atanmis && (
+                              <button type="button" onClick={() => atamaSifirla(a.id)}
+                                className="text-gray-400 hover:text-red-500 text-[11px]" title="Otomatik moda döndür">Sıfırla</button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {atamalar.length === 0 && (
+                    <tr><td colSpan={ATAMA_SEKMELERI.length + 4} className="px-2 py-4 text-center text-gray-400">Araç bulunamadı.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </fieldset>
         </div>
 

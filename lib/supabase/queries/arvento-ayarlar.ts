@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 export type ArventoAyarlar = {
   kmEsik: number;
   mukerrerDk: number;
+  mukerrerYaricap: number; // mükerrer damper yarıçapı (m) — dakika ile BİRLİKTE şart
   guzergahTekrar: number;
   gridMesafe: number;
   silindirTekrar: number;
@@ -20,6 +21,7 @@ export type ArventoAyarlar = {
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   kmEsik: 0,
   mukerrerDk: 0,
+  mukerrerYaricap: 0,
   guzergahTekrar: 0,
   gridMesafe: 12,
   silindirTekrar: 0,
@@ -41,6 +43,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
   return {
     kmEsik: data.km_esik ?? 0,
     mukerrerDk: data.mukerrer_dk ?? 0,
+    mukerrerYaricap: data.mukerrer_yaricap ?? 0,
     guzergahTekrar: data.guzergah_tekrar ?? 0,
     gridMesafe: data.grid_mesafe ?? 12,
     silindirTekrar: data.silindir_tekrar ?? 0,
@@ -59,6 +62,7 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     id: SATIR_ID,
     km_esik: a.kmEsik,
     mukerrer_dk: a.mukerrerDk,
+    mukerrer_yaricap: a.mukerrerYaricap,
     guzergah_tekrar: a.guzergahTekrar,
     grid_mesafe: a.gridMesafe,
     silindir_tekrar: a.silindirTekrar,

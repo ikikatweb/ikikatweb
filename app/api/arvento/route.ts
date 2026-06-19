@@ -63,11 +63,17 @@ export async function POST(request: Request) {
       const toplamArac = sonuc.guzergahGunler.reduce((s, d) => s + d.sayi, 0);
       parcalar.push(`güzergah: ${toplamGun} gün / ${toplamArac} araç`);
     }
+    if (sonuc.kontakGunler && sonuc.kontakGunler.length > 0) {
+      const toplamGun = sonuc.kontakGunler.length;
+      const toplamArac = sonuc.kontakGunler.reduce((s, d) => s + d.sayi, 0);
+      parcalar.push(`kontak saatleri: ${toplamGun} gün / ${toplamArac} araç`);
+    }
     return NextResponse.json({
       ok: true,
       calismaGunler: sonuc.calismaGunler,
       damperGunler: sonuc.damperGunler,
       guzergahGunler: sonuc.guzergahGunler ?? [],
+      kontakGunler: sonuc.kontakGunler ?? [],
       mesaj: `İçe aktarıldı — ${parcalar.join(", ")}.`,
     });
   } catch (err) {

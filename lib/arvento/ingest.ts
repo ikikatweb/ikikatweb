@@ -8,7 +8,7 @@
 // üzerinden UPSERT edilir → çalışma ve damper verisi hangi sırada gelirse gelsin birleşir.
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
-import { parseArventoBuffer, parseGenelRaporBuffer, parseMesafeBilgisiBuffer } from "@/lib/arvento/parse";
+import { parseArventoBuffer, parseGenelRaporBuffer, parseMesafeBilgisiBuffer, parseKontakAlarmiBuffer } from "@/lib/arvento/parse";
 
 function trBugun(): string {
   const now = new Date();
@@ -27,6 +27,7 @@ export type IngestSonuc = {
   calismaGunler: { tarih: string; sayi: number }[]; // işlenen çalışma raporları
   damperGunler: { tarih: string; sayi: number }[];   // damper güncellenen günler
   guzergahGunler?: { tarih: string; sayi: number }[]; // güzergah (rota) güncellenen plaka/gün
+  kontakGunler?: { tarih: string; sayi: number }[];   // kontak açılış/kapanış saati güncellenen plaka/gün
 };
 
 export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<IngestSonuc> {
@@ -54,6 +55,27 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     for (const g of guzergahlar) gunMap.set(g.tarih, (gunMap.get(g.tarih) ?? 0) + 1);
     sonuc.guzergahGunler = Array.from(gunMap.entries()).map(([tarih, sayi]) => ({ tarih, sayi }));
     // Mesafe Bilgisi dosyasında çalışma/damper sayfası olmaz → erken dön
+    return sonuc;
+  }
+
+  // ---- 0.5) Kontak Alarmı (o günkü ilk açılış / son kapanış saati) ----
+  const kontaklar = parseKontakAlarmiBuffer(buf);
+  if (kontaklar.length > 0) {
+    const satirlar = kontaklar.map((k) => ({
+      rapor_tarihi: k.tarih,
+      plaka: k.plaka,
+      ilk_kontak: k.ilkAcik,
+      son_kontak: k.sonKapandi,
+    }));
+    // Sadece ilk_kontak/son_kontak güncellenir; mevcut çalışma/damper sütunlarına dokunmaz (upsert).
+    const { error } = await supabase
+      .from("arac_arvento_rapor")
+      .upsert(satirlar, { onConflict: "rapor_tarihi,plaka" });
+    if (error) throw new Error(`Kontak kaydı hatası: ${error.message}`);
+    const gunMap = new Map<string, number>();
+    for (const k of kontaklar) gunMap.set(k.tarih, (gunMap.get(k.tarih) ?? 0) + 1);
+    sonuc.kontakGunler = Array.from(gunMap.entries()).map(([tarih, sayi]) => ({ tarih, sayi }));
+    // Kontak Alarmı dosyasında çalışma/damper sayfası yok → erken dön (yanlış parse'ı önle)
     return sonuc;
   }
 

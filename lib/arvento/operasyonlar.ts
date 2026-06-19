@@ -34,6 +34,47 @@ export const OPERASYONLAR: Record<OperasyonTip, OperasyonTanim> = {
 // Lejant / sayfa başı renk açıklaması sırası
 export const OPERASYON_SIRA: OperasyonTip[] = ["reglaj", "serme", "stabilize", "sikistirma"];
 
+// ---- Araç → Sekme ATAMA (Tanımlamalar'dan manuel seçim) ----
+// Bir aracın hangi sekmelerde görüneceği. "ismakine" harita operasyonu değildir ama
+// atama listesinde yer alır (İş Makineleri sekmesi bunu kullanır).
+export type ArventoSekme = OperasyonTip | "ismakine";
+
+// Tanımlamalar'daki atama tablosunda gösterilecek sekmeler (sıra önemli)
+export const ATAMA_SEKMELERI: { key: ArventoSekme; ad: string }[] = [
+  { key: "reglaj", ad: "Reglaj" },
+  { key: "stabilize", ad: "Stabilize" },
+  { key: "serme", ad: "Serme" },
+  { key: "sikistirma", ad: "Sıkıştırma" },
+  { key: "ismakine", ad: "İş Makineleri" },
+];
+
+// plakaNorm (A-Z0-9, büyük harf) → atanmış sekmeler. null/eksik = atama yok (otomatik).
+export type SekmeAtamaMap = Map<string, ArventoSekme[]>;
+
+// sekmeMap'ten "en az bir araç atanmış olan operasyonlar" kümesini çıkarır.
+export function atananSekmeleriHesapla(atamalar: SekmeAtamaMap | undefined): Set<ArventoSekme> {
+  const s = new Set<ArventoSekme>();
+  if (atamalar) for (const arr of atamalar.values()) for (const k of arr) s.add(k);
+  return s;
+}
+
+// Bir araç bu operasyonda görünür mü? (KATI MOD)
+//   - Aracın kendi ataması VARSA: kesin → yalnız listedeki sekmeler.
+//   - Atama YOK ama bu operasyona BAŞKA araç(lar) atanmışsa: gizle (yalnız atananlar görünür).
+//   - Bu operasyona HİÇ atama yoksa: mevcut otomatik tespit (arac_sinifi / bilinen plaka).
+export function operasyondaGorunur(
+  atamalar: SekmeAtamaMap | undefined,
+  atananSekmeler: Set<ArventoSekme> | undefined,
+  aracSinifi: string | null | undefined,
+  op: OperasyonTip,
+  plaka?: string | null,
+): boolean {
+  const atama = plaka ? atamalar?.get(plakaKodu(plaka)) : undefined;
+  if (atama) return atama.includes(op);
+  if (atananSekmeler?.has(op)) return false; // op'a atama var ama bu araç atanmamış
+  return sinifEslesir(aracSinifi, op, plaka);
+}
+
 export function sinifNorm(s: string | null | undefined): string {
   return String(s ?? "").toLocaleLowerCase("tr").replace(/[^a-z0-9ğüşıöç]/g, "");
 }
