@@ -275,8 +275,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
-        if (!map) return;
+        if (oto || !map) return;
         const c = map.getCenter();
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       });
@@ -359,6 +360,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       } else if (bounds.length) {
         map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
       }
+      setTimeout(() => { oto = false; }, 600); // programatik hareketler bitti → kullanıcı hareketlerini dinle
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
