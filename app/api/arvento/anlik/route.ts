@@ -6,6 +6,8 @@ import { cekAnlikDurum } from "@/lib/arvento/anlik";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
+// Türkiye'ye en yakın Vercel bölgesi (Frankfurt) — Arvento'nun yabancı/uzak IP kısıtını azaltır
+export const preferredRegion = "fra1";
 
 export async function GET() {
   try {

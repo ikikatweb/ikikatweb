@@ -61,20 +61,46 @@ export async function cekAnlikDurum(): Promise<{ araclar: AnlikArac[]; hamXml: s
   </soap:Body>
 </soap:Envelope>`;
 
-  const res = await fetch(WS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: SOAP_ACTION },
-    body,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Web servisi HTTP ${res.status}: ${text.slice(0, 300)}`);
-  const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
-  if (fault) throw new Error(`Web servisi hatası: ${htmlUnesc(fault[1]).trim()}`);
-
-  // Result içeriği doğrudan XML (HTML-escape DEĞİL): <LastPacket> blokları
-  const m = text.match(/<GetVehicleStatusV3Result>([\s\S]*?)<\/GetVehicleStatusV3Result>/i);
-  const inner = (m ? m[1] : "").trim();
-  return { araclar: parseAnlikXml(inner), hamXml: inner };
+  // Arvento yabancı/art arda isteklere bazen EKSİK liste döndürüyor (özellikle Vercel
+  // veri merkezi IP'sinden). En dolu yanıtı almak için birkaç kez dene, en çoğunu tut.
+  const uyku = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+  let enIyi: { araclar: AnlikArac[]; hamXml: string } = { araclar: [], hamXml: "" };
+  let sonHata: Error | null = null;
+  let erisimYok = false; // "Access denied" → tekrar denemeyi kes
+  const DENEME = 4;
+  for (let i = 0; i < DENEME; i++) {
+    if (i > 0) await uyku(1800); // rate-limit'e karşı aralık
+    try {
+      const res = await fetch(WS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: SOAP_ACTION },
+        body,
+        cache: "no-store",
+      });
+      const text = await res.text();
+      if (!res.ok) { sonHata = new Error(`Web servisi HTTP ${res.status}`); continue; }
+      const fault = text.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
+      if (fault) { sonHata = new Error(`Web servisi hatası: ${htmlUnesc(fault[1]).trim()}`); continue; }
+      const m = text.match(/<GetVehicleStatusV3Result>([\s\S]*?)<\/GetVehicleStatusV3Result>/i);
+      const inner = (m ? m[1] : "").trim();
+      // Arvento, izinsiz IP'den gelen isteğe tek "Access denied" kaydı döndürür → net hata, tekrar deneme YOK.
+      if (/access denied/i.test(inner)) {
+        erisimYok = true;
+        sonHata = new Error(
+          "Arvento web servisi bu sunucunun IP adresine erişim izni vermiyor (\"Access denied\"). " +
+          "Arvento panelinde web servisi IP kısıtlamasını kaldırın ya da bu sunucunun çıkış IP'sini izinli listeye ekletin.",
+        );
+        break;
+      }
+      const araclar = parseAnlikXml(inner);
+      if (araclar.length > enIyi.araclar.length) enIyi = { araclar, hamXml: inner };
+      if (araclar.length >= 10) break; // yeterince dolu → dur (filo birden çok araç)
+    } catch (e) {
+      sonHata = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  if ((erisimYok || enIyi.araclar.length === 0) && sonHata) throw sonHata;
+  return enIyi;
 }
 
 // GetVehicleStatusV3 yanıtındaki <LastPacket> bloklarını AnlikArac'a çevirir.
