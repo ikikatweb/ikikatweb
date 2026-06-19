@@ -38,6 +38,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const [raporlar, setRaporlar] = useState<AracArventoRapor[]>([]);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
+  const gorunumRef = useRef<{ merkez: [number, number]; zoom: number } | null>(null); // yenilemede görünüm korunur
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
@@ -73,7 +74,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     (async () => {
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
-      map = L.map(mapRef.current).setView([39, 35], 6);
+      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map.on("moveend zoomend", () => {
+        if (!map) return;
+        const c = map.getCenter();
+        gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
@@ -110,7 +116,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           bounds.push([o.lat as number, o.lng as number]);
         });
       });
-      if (bounds.length) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      // İlk açılışta otomatik ortala; sonraki yenilemelerde mevcut görünümü KORU
+      if (gorunumRef.current) {
+        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
+      } else if (bounds.length) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      }
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };

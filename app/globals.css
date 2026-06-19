@@ -47,6 +47,35 @@ thead th {
 }
 .leaflet-tooltip.damper-sayi::before { display: none; }
 
+/* Damper-indi kamyon ikonu — divIcon varsayılan beyaz kutusunu kaldır */
+.leaflet-div-icon.damper-ikon {
+  background: transparent;
+  border: none;
+}
+.damper-wrap {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.damper-rozet {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  border: 1px solid #fff;
+  z-index: 1;
+}
+
 /* Canlı araç kalıcı etiketi — plaka + model, haritada hep okunur (Arvento tarzı kutu) */
 .leaflet-tooltip.canli-etiket {
   background: rgba(255, 255, 255, 0.95);

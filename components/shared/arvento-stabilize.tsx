@@ -81,6 +81,22 @@ function mukerrerIsaretle<T extends DamperOlay>(olaylar: T[], pencSn: number, ya
   return olaylar.map((o) => ({ ...o, mukerrer: mset.has(o) }));
 }
 
+// "Damper indi" işareti — kalkık damperinden malzeme boşaltan kamyon SVG'si.
+// renk: o kamyonun sabit rengi (kasa/kabin); adet>1 ise sağ üstte sayı rozeti.
+function damperKamyonIkonHtml(renk: string, adet: number): string {
+  const rozet = adet > 1 ? `<span class="damper-rozet">${adet}</span>` : "";
+  return `<div class="damper-wrap">${rozet}<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="17" cy="30" rx="9" ry="2.2" fill="rgba(0,0,0,.35)"/>
+    <circle cx="12" cy="25" r="3.1" fill="#111827"/><circle cx="23" cy="25" r="3.1" fill="#111827"/>
+    <circle cx="12" cy="25" r="1.2" fill="#9ca3af"/><circle cx="23" cy="25" r="1.2" fill="#9ca3af"/>
+    <rect x="6" y="21" width="21" height="2.4" rx="1" fill="#1f2937"/>
+    <path d="M22 13 h4.5 a2 2 0 0 1 1.8 1.2 l1.4 3 a1.5 1.5 0 0 1 .1 .6 V21 H22 Z" fill="${renk}" stroke="#0f172a" stroke-width="1" stroke-linejoin="round"/>
+    <rect x="23.2" y="14.6" width="3.4" height="3" rx="0.6" fill="#dbeafe" stroke="#0f172a" stroke-width="0.7"/>
+    <polygon points="5,20 8.5,7.5 20.5,10.5 20.5,20" fill="${renk}" stroke="#0f172a" stroke-width="1.1" stroke-linejoin="round"/>
+    <g fill="#b45309"><circle cx="4.2" cy="21" r="1.2"/><circle cx="2.7" cy="23.6" r="1"/><circle cx="5.3" cy="24" r="0.9"/></g>
+  </svg></div>`;
+}
+
 // Her kamyona ayırt edici sabit renk — uydu görüntüsünde okunur, parlak tonlar.
 // Sıralama hue olarak en uzaktan başlar: az sayıda kamyonda bile renkler net ayrılsın
 // (örn. 2 kamyon → kırmızı + camgöbeği). Reglaj çizgisi mavi olduğundan onun tonundan kaçınıldı.
@@ -322,13 +338,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const liste = g.olaylar
           .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
           .join("<br>");
-        // Açık HALKA: çizgi halkanın ortasından geçsin (dolu değil)
-        const mk = L.circleMarker([g.lat, g.lng], { radius: adet > 1 ? 11 : 8, color: renk, weight: 4, fill: false, opacity: 1 })
+        // "Damper indi" kamyon ikonu — çizginin ortasına oturur, kamyon renginde
+        const ikon = L.divIcon({
+          html: damperKamyonIkonHtml(renk, adet),
+          className: "damper-ikon",
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+          popupAnchor: [0, -15],
+        });
+        L.marker([g.lat, g.lng], { icon: ikon })
           .addTo(map!)
           .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
-        if (adet > 1) {
-          mk.bindTooltip(String(adet), { permanent: true, direction: "center", className: "damper-sayi" }).openTooltip();
-        }
         bounds.push([g.lat, g.lng]);
       });
       // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU

@@ -253,6 +253,20 @@ export default function ArventoRaporPage() {
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
 
+  // Otomatik tazeleme: İş Makineleri / Reglaj / Stabilize / Serme / Sıkıştırma / Tümü
+  // sekmelerindeyken rapor verisini "Canlı Yenileme Süresi" aralığında yeniden çek
+  // (mail/yükleme ile yeni gelen raporlar manuel yenileme olmadan yansısın).
+  useEffect(() => {
+    const otoSekmeler = ["ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu"];
+    if (!otoSekmeler.includes(aktifSekme)) return;
+    const sn = Math.max(15, canliYenilemeSn || 45);
+    const id = setInterval(() => {
+      loadKayitlar();                      // İş Makineleri tablosu + ortalamalar
+      setGuzergahRefresh((x) => x + 1);    // harita bileşenleri (güzergah/rapor) yeniden çeksin
+    }, sn * 1000);
+    return () => clearInterval(id);
+  }, [aktifSekme, canliYenilemeSn, loadKayitlar]);
+
   // Araç → Sekme atamalarını yükle (tarihten bağımsız; bir kez + kayıt sonrası yenilenir)
   const loadAtamalar = useCallback(async () => {
     try { setAtamalar(await getAraclarAtama()); } catch { /* sessiz */ }
