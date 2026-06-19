@@ -253,19 +253,11 @@ export default function ArventoRaporPage() {
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
 
-  // Otomatik tazeleme: İş Makineleri / Reglaj / Stabilize / Serme / Sıkıştırma / Tümü
-  // sekmelerindeyken rapor verisini "Canlı Yenileme Süresi" aralığında yeniden çek
-  // (mail/yükleme ile yeni gelen raporlar manuel yenileme olmadan yansısın).
-  useEffect(() => {
-    const otoSekmeler = ["ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu"];
-    if (!otoSekmeler.includes(aktifSekme)) return;
-    const sn = Math.max(15, canliYenilemeSn || 45);
-    const id = setInterval(() => {
-      loadKayitlar();                      // İş Makineleri tablosu + ortalamalar
-      setGuzergahRefresh((x) => x + 1);    // harita bileşenleri (güzergah/rapor) yeniden çeksin
-    }, sn * 1000);
-    return () => clearInterval(id);
-  }, [aktifSekme, canliYenilemeSn, loadKayitlar]);
+  // NOT: Rapor verisini (rota/damper/çalışma) periyodik olarak yeniden çeken otomatik
+  // tazeleme KALDIRILDI — bu veri gerçek zamanlı değişmediği için haritayı boş yere
+  // sürekli yeniden kuruyordu. Veri; tarih değişince, sekme değişince veya Mailden Çek/
+  // Excel Yükle sonrası yenilenir. Anlık araç konumları ise ayrı "Canlı" katmanında
+  // (haritayı yeniden kurmadan) tazelenir.
 
   // Araç → Sekme atamalarını yükle (tarihten bağımsız; bir kez + kayıt sonrası yenilenir)
   const loadAtamalar = useCallback(async () => {
