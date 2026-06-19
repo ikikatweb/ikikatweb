@@ -79,13 +79,20 @@ export function sadelesGuzergah(
   gridM = 12,
 ): SadelesSonuc {
   if (esik < 1) return sadelesGuzergahCore(noktalar, esik, gridM);
-  let sonuc = sadelesGuzergahCore(noktalar, esik, gridM);
-  // Omurga boş ama yine de eşiği geçen bir tekrar varsa, koridoru genişleterek dene
-  for (const carpan of [1.5, 2, 3, 4]) {
-    if (sonuc.parcalar.length > 0) break;
-    sonuc = sadelesGuzergahCore(noktalar, esik, gridM * carpan);
+  // Birkaç koridor genişliğini dene; EN AZ PARÇALI (en bütün) sonucu seç. Böylece geniş
+  // koridorda yan yana kopuk parçalar tek sürekli omurgaya iner; eşitlikte daha detaylı olan.
+  let best: SadelesSonuc | null = null;
+  for (const carpan of [1, 1.5, 2, 3, 4]) {
+    const s = sadelesGuzergahCore(noktalar, esik, gridM * carpan);
+    if (s.parcalar.length === 0) continue;
+    if (best === null) { best = s; continue; }
+    const sN = s.parcalar.reduce((a, p) => a + p.length, 0);
+    const bN = best.parcalar.reduce((a, p) => a + p.length, 0);
+    if (s.parcalar.length < best.parcalar.length || (s.parcalar.length === best.parcalar.length && sN > bN)) {
+      best = s;
+    }
   }
-  return sonuc;
+  return best ?? sadelesGuzergahCore(noktalar, esik, gridM);
 }
 
 function sadelesGuzergahCore(

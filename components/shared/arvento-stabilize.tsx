@@ -240,6 +240,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       await ekleKayitliKatmanlar(L, map);
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       const bounds: [number, number][] = [];
+      const reglajNoktalari: [number, number][] = []; // damperleri çizginin ortasına oturtmak için
       greyderler.forEach((k) => {
         const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
@@ -247,15 +248,29 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const cizim: [number, number][][] = etkinTekrar >= 1
           ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
           : [latlngs];
-        L.polyline(cizim.length ? cizim : [latlngs], { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
+        const cizilen = cizim.length ? cizim : [latlngs];
+        L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
           .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
+        for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
         for (const ll of latlngs) bounds.push(ll);
       });
+      // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
+      const snapReglaj = (lat: number, lng: number): [number, number] => {
+        let en: [number, number] | null = null, enD = Infinity;
+        const cosL = Math.cos((lat * Math.PI) / 180);
+        for (const [rl, rg] of reglajNoktalari) {
+          const dy = (rl - lat) * 111320;
+          const dx = (rg - lng) * 111320 * cosL;
+          const d = dy * dy + dx * dx;
+          if (d < enD) { enD = d; en = [rl, rg]; }
+        }
+        return en && enD <= 30 * 30 ? en : [lat, lng];
+      };
       // Aynı/çok yakın konuma (≈11 m) denk gelen damperleri grupla — üst üste binmesin,
       // nokta üstünde kaç damper olduğu (×N) görünsün. Gruplama plaka bazında (renk korunur).
       const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
       for (const o of damperKoordlu) {
-        const lat = o.lat as number, lng = o.lng as number;
+        const [lat, lng] = snapReglaj(o.lat as number, o.lng as number); // çizginin ortasına oturt
         const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
         const g = gruplar.get(anahtar);
         if (g) g.olaylar.push(o);
@@ -267,7 +282,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const liste = g.olaylar
           .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
           .join("<br>");
-        const mk = L.circleMarker([g.lat, g.lng], { radius: adet > 1 ? 10 : 8, color: "#ffffff", fillColor: renk, fillOpacity: 0.95, weight: 2 })
+        // Açık HALKA: çizgi halkanın ortasından geçsin (dolu değil)
+        const mk = L.circleMarker([g.lat, g.lng], { radius: adet > 1 ? 11 : 8, color: renk, weight: 4, fill: false, opacity: 1 })
           .addTo(map!)
           .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
         if (adet > 1) {
