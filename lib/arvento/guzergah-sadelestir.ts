@@ -69,7 +69,26 @@ function enUzak(bas: string, komsu: Map<string, Set<string>>, dist: (a: string, 
 // noktalar: zaman sırasına göre GPS noktaları.
 // esik: bir grid kenarı EN AZ kaç kez geçilmişse omurgaya dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
+//
+// OTOMATİK KORİDOR GENİŞLETME: Verilen gridM ile omurga çıkmazsa (git-gel çizgileri birbirinden
+// gridM'den daha geniş kaymışsa), koridoru kademeli büyütüp tekrar dener — böylece kullanıcı
+// "Yan Yana Çizgi Mesafesi"ni elle ayarlamadan da yayvan git-gel'ler tek çizgiye iner.
 export function sadelesGuzergah(
+  noktalar: { lat: number; lng: number }[],
+  esik: number,
+  gridM = 12,
+): SadelesSonuc {
+  if (esik < 1) return sadelesGuzergahCore(noktalar, esik, gridM);
+  let sonuc = sadelesGuzergahCore(noktalar, esik, gridM);
+  // Omurga boş ama yine de eşiği geçen bir tekrar varsa, koridoru genişleterek dene
+  for (const carpan of [1.5, 2, 3, 4]) {
+    if (sonuc.parcalar.length > 0) break;
+    sonuc = sadelesGuzergahCore(noktalar, esik, gridM * carpan);
+  }
+  return sonuc;
+}
+
+function sadelesGuzergahCore(
   noktalar: { lat: number; lng: number }[],
   esik: number,
   gridM = 12,
