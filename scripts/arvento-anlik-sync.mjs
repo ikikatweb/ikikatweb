@@ -37,6 +37,67 @@ const WS_URL = "https://ws.arvento.com/v1/report.asmx";
 const xe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const sayi = (v) => { if (v == null) return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
+// --- Bugünün güzergahını anlık konumlardan biriktirme yardımcıları ---
+const R_METRE = 111320;
+function mesafeM(la1, lo1, la2, lo2) {
+  const cosL = Math.max(0.1, Math.cos(((la1 + la2) / 2) * Math.PI / 180));
+  return Math.hypot((lo2 - lo1) * R_METRE * cosL, (la2 - la1) * R_METRE);
+}
+function trBugun() {
+  const n = new Date();
+  const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000);
+  return tr.toISOString().slice(0, 10);
+}
+const saatAl = (t) => { const m = String(t || "").match(/\d{2}:\d{2}:\d{2}/); return m ? m[0] : null; };
+
+// Bellek: --loop modunda gün boyu birikir; one-shot'ta her çalıştırmada DB'den yüklenir.
+let rotaBellek = new Map(); // plaka -> noktalar[]
+let rotaGun = null;
+let cihazCache = null, cihazZaman = 0;
+
+async function cihazlariYukle(sb) {
+  if (cihazCache && Date.now() - cihazZaman < 600000) return cihazCache; // 10 dk önbellek
+  const { data } = await sb.from("arvento_cihaz").select("node, plaka, sinif, marka, model");
+  const m = new Map();
+  for (const c of (data || [])) if (c.node) m.set(c.node.trim(), c);
+  cihazCache = m; cihazZaman = Date.now();
+  return m;
+}
+
+// Anlık konumları bugünün güzergahına (arac_arvento_guzergah) işler. Hareket eden araçlarda
+// son noktadan >12 m uzaklaşınca yeni nokta eklenir (duranlarda nokta birikmez).
+async function rotaBirik(sb, konumlar) {
+  const gun = trBugun();
+  const cihaz = await cihazlariYukle(sb);
+  if (rotaGun !== gun) { // gün değişti → belleği sıfırla, bugünü DB'den yükle
+    rotaBellek = new Map(); rotaGun = gun;
+    const plakalar = [...new Set([...cihaz.values()].map((c) => c.plaka).filter(Boolean))];
+    if (plakalar.length) {
+      const { data } = await sb.from("arac_arvento_guzergah").select("plaka, noktalar").eq("rapor_tarihi", gun).in("plaka", plakalar);
+      for (const r of (data || [])) rotaBellek.set(r.plaka, Array.isArray(r.noktalar) ? r.noktalar : []);
+    }
+  }
+  const yaz = [];
+  for (const k of konumlar) {
+    if (k.lat == null || k.lng == null) continue;
+    const c = cihaz.get((k.node || "").trim());
+    if (!c || !c.plaka) continue;
+    const noktalar = rotaBellek.get(c.plaka) || [];
+    const son = noktalar[noktalar.length - 1];
+    if (son && mesafeM(son.lat, son.lng, k.lat, k.lng) <= 12) continue; // hareket yok → ekleme
+    noktalar.push({ lat: k.lat, lng: k.lng, saat: saatAl(k.tarih), hiz: k.hiz });
+    rotaBellek.set(c.plaka, noktalar);
+    let km = 0;
+    for (let i = 1; i < noktalar.length; i++) km += mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng);
+    yaz.push({ rapor_tarihi: gun, plaka: c.plaka, arac_sinifi: c.sinif || null, marka: c.marka || null, model: c.model || null, toplam_mesafe: Math.round(km / 1000 * 100) / 100, nokta_sayisi: noktalar.length, noktalar });
+  }
+  if (yaz.length) {
+    const { error } = await sb.from("arac_arvento_guzergah").upsert(yaz, { onConflict: "rapor_tarihi,plaka" });
+    if (error) throw new Error(`Rota yazma hatası: ${error.message}`);
+  }
+  return yaz.length;
+}
+
 async function cekAnlik() {
   const user = process.env.ARVENTO_WS_USERNAME, pin1 = process.env.ARVENTO_WS_PIN1,
         pin2 = process.env.ARVENTO_WS_PIN2, lang = process.env.ARVENTO_WS_LANG || "tr";
@@ -77,7 +138,10 @@ async function birKez() {
   if (satirlar.length === 0) { console.log(new Date().toLocaleTimeString(), "→ konum gelmedi (boş)"); return; }
   const { error } = await sb.from("arvento_anlik").upsert(satirlar, { onConflict: "node" });
   if (error) throw new Error(`Supabase yazma hatası: ${error.message}`);
-  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı.`);
+  // Anlık konumları bugünün güzergahına da işle (Reglaj/Serme/Sıkıştırma/Tümü haritaları okur)
+  let rotaSayi = 0;
+  try { rotaSayi = await rotaBirik(sb, satirlar); } catch (e) { console.error("  rota uyarı:", e.message); }
+  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı, ${rotaSayi} araç rotası güncellendi.`);
 }
 
 const loop = process.argv.includes("--loop");
