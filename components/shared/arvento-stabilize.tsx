@@ -531,7 +531,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
               {sonGuncelleme && (
                 <div className="text-[10px] text-gray-400 mt-0.5 pt-1 border-t border-gray-100">
-                  🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b>
+                  🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b>
                   <span className="text-gray-300"> · {sonGuncelleme.toLocaleDateString("tr-TR")}</span>
                 </div>
               )}

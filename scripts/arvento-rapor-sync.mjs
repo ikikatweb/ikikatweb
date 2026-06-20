@@ -40,8 +40,9 @@ async function fetchTimeout(url, opts, ms = 25000) {
 const sayi = (v) => { if (v == null || v === "") return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 const deco = (s) => s.replace(/_x([0-9A-Fa-f]{4})_/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 const ymd = (g) => g.replace(/-/g, "") ; // 2026-06-19 -> 20260619
-const trBugun = () => { const n = new Date(); const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000); return tr.toISOString().slice(0, 10); };
-const trDun = () => { const n = new Date(); const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000 - 86400000); return tr.toISOString().slice(0, 10); };
+// TR = UTC+3: mutlak epoch'a +3 saat ekle (makine saat dilimine bağımsız → 21:00'de güne atlamaz, gece 00:00'da atlar).
+const trBugun = () => new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+const trDun = () => new Date(Date.now() + 3 * 3600000 - 86400000).toISOString().slice(0, 10);
 const saatAl = (t) => { const m = String(t || "").match(/\d{1,2}:\d{2}:\d{2}/); if (!m) return null; const [h, mi, s] = m[0].split(":"); return `${h.padStart(2, "0")}:${mi}:${s}`; };
 
 // Bir araç-gün için VehicleOperatingReport satırını çek (düz XML).
@@ -149,8 +150,8 @@ async function birKez(gunler) {
 // değerlerini bir kez yakala). Gündüz sadece bugün → yük düşük, sık çalıştırılabilir.
 function varsayilanGunler() {
   const n = new Date();
-  const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000);
-  return tr.getHours() < 3 ? [trBugun(), trDun()] : [trBugun()];
+  const tr = new Date(n.getTime() + 3 * 3600000); // TR'ye kaydır; UTC temsili = TR duvar saati
+  return tr.getUTCHours() < 3 ? [trBugun(), trDun()] : [trBugun()]; // getUTCHours → gerçek TR saati (saat dilimine bağımsız)
 }
 // Çekme aralığı (dk): UI'daki "Rapor Çekme Süresi" (arvento_ayarlar.rapor_cekme_dk) yönetir.
 // Okunamazsa env ARVENTO_RAPOR_ARALIK_DK, o da yoksa 5 dk. 1–120 dk arasına sıkıştırılır.

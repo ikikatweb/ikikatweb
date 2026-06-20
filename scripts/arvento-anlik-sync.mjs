@@ -54,7 +54,7 @@ function mesafeM(la1, lo1, la2, lo2) {
 }
 function trBugun() {
   const n = new Date();
-  const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000);
+  const tr = new Date(n.getTime() + 3 * 3600000); // TR = UTC+3: mutlak epoch'a +3 saat (makine saat dilimine bağımsız → 21:00'de güne atlamaz)
   return tr.toISOString().slice(0, 10);
 }
 const saatAl = (t) => { const m = String(t || "").match(/\d{2}:\d{2}:\d{2}/); return m ? m[0] : null; };

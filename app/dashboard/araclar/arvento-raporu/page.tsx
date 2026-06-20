@@ -74,7 +74,7 @@ function formatKm(v: number | null): string {
 // Bugün (TR saati) — YYYY-MM-DD
 function trBugun(): string {
   const now = new Date();
-  const tr = new Date(now.getTime() + (3 * 60 - now.getTimezoneOffset()) * 60000);
+  const tr = new Date(now.getTime() + 3 * 3600000); // TR = UTC+3: mutlak epoch'a +3 saat (tarayıcı saat dilimine bağımlı DEĞİL → 21:00'de güne atlamaz, gece 00:00'da atlar)
   return tr.toISOString().slice(0, 10);
 }
 

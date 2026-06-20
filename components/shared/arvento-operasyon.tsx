@@ -408,7 +408,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                   : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir zikzak</span>}
               </div>
               {sonGuncelleme && (
-                <div className="text-[10px] text-gray-400 mt-0.5">🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
+                <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}
             </div>
             <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">

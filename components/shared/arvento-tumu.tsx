@@ -242,7 +242,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           Stabilize (damper) <strong className="text-gray-500">· {ozet.damper} nokta</strong>
         </span>
         {sonGuncelleme && (
-          <span className="text-[10px] text-gray-400">🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
+          <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
         )}
         <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
           className="h-9 gap-1 text-xs ml-auto">
