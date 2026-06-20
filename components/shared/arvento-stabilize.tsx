@@ -134,6 +134,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
+  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
   const etkinTekrar = tekrarEsigi;
   const etkinMukerrer = mukerrerDk;
@@ -356,6 +357,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
         bounds.push([g.lat, g.lng]);
       });
+      // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
+      for (const k of canliVeriRef.current.konumlar ?? []) {
+        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+      }
       // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
       if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
@@ -366,7 +371,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef]);
+  }, [bas, bitis, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, canliVar]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -422,7 +427,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       </div>
     );
   }
-  if (kamyonlar.length === 0 && greyderler.length === 0) {
+  if (kamyonlar.length === 0 && greyderler.length === 0 && !(canliKonumlar && canliKonumlar.length > 0)) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
         <Layers size={48} className="mx-auto text-gray-300 mb-4" />

@@ -111,6 +111,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
+  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
 
   useEffect(() => {
@@ -234,6 +235,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
             for (const ll of seg) bounds.push(ll);
           }));
       }
+      // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
+      for (const k of canliVeriRef.current.konumlar ?? []) {
+        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+      }
       // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
       if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
@@ -251,7 +256,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const h = harita(mapRef.current);
     return h.iptal;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bas, bitis, gosterilenGreyder, greyderRenkAl, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV]);
+  }, [bas, bitis, gosterilenGreyder, greyderRenkAl, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, canliVar]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -298,9 +303,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       </div>
     );
   }
-  const veriYok = sermeMi
+  const veriYok = (sermeMi
     ? greyderler.length === 0 && damperKoordlu.length === 0
-    : greyderler.length === 0 && silindirler.length === 0;
+    : greyderler.length === 0 && silindirler.length === 0) && !canliVar;
   if (veriYok) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">

@@ -44,6 +44,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
+  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
 
   useEffect(() => {
@@ -119,6 +120,10 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           bounds.push([o.lat as number, o.lng as number]);
         });
       });
+      // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
+      for (const k of canliVeriRef.current.konumlar ?? []) {
+        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+      }
       // İlk açılışta otomatik ortala; sonraki yenilemelerde mevcut görünümü KORU
       if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
@@ -129,7 +134,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
+  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef, canliVar]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
@@ -188,7 +193,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       </div>
     );
   }
-  const veriYok = guzergahlar.length === 0 && ozet.damper === 0;
+  const veriYok = guzergahlar.length === 0 && ozet.damper === 0 && !(canliKonumlar && canliKonumlar.length > 0);
 
   return (
     <div className="space-y-3">

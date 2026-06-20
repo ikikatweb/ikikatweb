@@ -69,6 +69,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const canliLayerRef = useRef<LayerGroup | null>(null);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
+  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
 
@@ -182,6 +183,10 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         }
         for (const ll of latlngs) tumBounds.push(ll);
       }
+      // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
+      for (const k of canliVeriRef.current.konumlar ?? []) {
+        if (k.lat != null && k.lng != null) tumBounds.push([k.lat, k.lng]);
+      }
       // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
       if (gorunumRef.current) {
         map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
@@ -192,7 +197,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
     })();
     return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, bas, bitis, gorunumRef]);
+  }, [secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, bas, bitis, gorunumRef, canliVar]);
 
   // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
   function exportKML() {
@@ -236,7 +241,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       </div>
     );
   }
-  if (araclar.length === 0) {
+  if (araclar.length === 0 && !(canliKonumlar && canliKonumlar.length > 0)) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
         <Route size={48} className="mx-auto text-gray-300 mb-4" />
