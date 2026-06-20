@@ -180,15 +180,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return Array.from(m.values());
   }, [raporlar]);
 
-  // Damper indiren kamyonlar (damper_olaylar veya damper_sayisi olan araçlar).
-  // Atama VARSA: yalnız "stabilize" atanmış araçlar; atama YOKSA: damperli her araç.
+  // Stabilize kamyonları:
+  //  - Atama VARSA: "stabilize" atanmış her araç (damper ŞART DEĞİL — API'de damper gelmese de
+  //    rota/km/kontak ile görünsün).
+  //  - Atama YOKSA: damperli her araç (stabilize'e başka atama yoksa).
   const kamyonlar = useMemo(
     () => birlesikRaporlar.filter((r) => {
-      const damperli = damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0;
-      if (!damperli) return false;
       const atama = sekmeMap?.get(plakaNorm(r.plaka));
-      // Atama varsa kesin; yoksa "stabilize"e başka araç atanmışsa gizle, değilse damperli her araç.
-      return atama ? atama.includes("stabilize") : !atananSekmeler.has("stabilize");
+      if (atama) return atama.includes("stabilize");
+      const damperli = damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0;
+      return damperli && !atananSekmeler.has("stabilize");
     }),
     [birlesikRaporlar, sekmeMap, atananSekmeler],
   );
@@ -446,7 +447,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         <div className="flex items-start justify-between gap-3 flex-wrap">
           {/* Sol: kamyon chip'leri + Güzergahı Göster */}
           <div className="flex flex-wrap items-center gap-1.5">
-          {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta damper indiren kamyon yok.</span>}
+          {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta Stabilize aracı/kamyonu yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
             const renk = renkAl(r.plaka);
