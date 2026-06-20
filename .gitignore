@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Arvento rapor senkron yerel durum damgası (makineye özel)
+scripts/.rapor-son.txt

@@ -30,6 +30,13 @@ for (const dosya of [".env.local", ".env"]) {
 const WS_URL = "https://ws.arvento.com/v1/report.asmx";
 const xe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const uyku = (ms) => new Promise((r) => setTimeout(r, ms));
+// Zaman aşımlı fetch — Arvento yanıt vermezse ~25 sn'de iptal eder (tek takılı istek tüm senkronu dondurmasın).
+async function fetchTimeout(url, opts, ms = 25000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(t); }
+}
 const sayi = (v) => { if (v == null || v === "") return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 const deco = (s) => s.replace(/_x([0-9A-Fa-f]{4})_/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 const ymd = (g) => g.replace(/-/g, "") ; // 2026-06-19 -> 20260619
@@ -51,7 +58,7 @@ async function aracGun(node, gun) {
   };
   const inner = Object.entries(P).map(([k, v]) => `<${k}>${xe(v)}</${k}>`).join("");
   const body = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><VehicleOperatingReport xmlns="http://www.arvento.com/">${inner}</VehicleOperatingReport></soap:Body></soap:Envelope>`;
-  const r = await fetch(WS_URL, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "http://www.arvento.com/VehicleOperatingReport" }, body });
+  const r = await fetchTimeout(WS_URL, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "http://www.arvento.com/VehicleOperatingReport" }, body });
   let t = await r.text();
   t = t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
   const row = t.match(/<Calisma\s+diffgr:id="[^"]*1"[\s\S]*?<\/Calisma>/);
@@ -79,17 +86,49 @@ async function birKez(gunler) {
   const liste = (cihazlar || []).filter((c) => c.node);
   let yazildi = 0;
   for (const gun of gunler) {
+    // O güne ait mevcut satırları çek → MONOTON birleştirme için (değer asla düşmesin).
+    // Günlük km/kontak/hareket/rölanti kümülatiftir; Arvento anlık 0/eksik dönerse
+    // önceki doğru değeri EZMEYELİM. ilk_kontak en erken, son_kontak en geç kalsın.
+    const { data: mevcutSatir } = await sb
+      .from("arac_arvento_rapor")
+      .select("plaka, mesafe_km, maks_hiz, kontak_sn, rolanti_sn, hareket_sn, ilk_kontak, son_kontak")
+      .eq("rapor_tarihi", gun);
+    const mevcut = new Map((mevcutSatir || []).map((r) => [r.plaka, r]));
+    // GPS güzergah mesafesi (yedek). Arvento resmi raporu bazı araçlara 0 km döndürüyor
+    // (ör. 60 BP 843: hareket var, mesafe 0). O durumda anlık senkronun biriktirdiği
+    // gerçek GPS yolunu taban olarak kullan. GPS kiriş-örneklemesi gerçek yolu hafife
+    // alır, bu yüzden resmi km doluysa hep o kazanır (en büyük seçilir).
+    const { data: rotaSatir } = await sb
+      .from("arac_arvento_guzergah")
+      .select("plaka, toplam_mesafe")
+      .eq("rapor_tarihi", gun);
+    const rotaKm = new Map((rotaSatir || []).map((r) => [r.plaka, r.toplam_mesafe]));
+    const enBuyuk = (a, b) => (a == null ? b : b == null ? a : Math.max(a, b));
+    const enErken = (a, b) => (!a ? b : !b ? a : a <= b ? a : b);
+    const enGec = (a, b) => (!a ? b : !b ? a : a >= b ? a : b);
+
     const satirlar = [];
     for (const c of liste) {
       try {
         const d = await aracGun(c.node, gun);
         if (d && (d.plaka || c.plaka)) {
+          const plaka = c.plaka || d.plaka;
+          const v = mevcut.get(plaka) || {};
           satirlar.push({
-            rapor_tarihi: gun, plaka: c.plaka || d.plaka,
-            mesafe_km: d.mesafe_km, maks_hiz: d.maks_hiz != null ? Math.round(d.maks_hiz) : null,
-            kontak_sn: d.kontak_sn, rolanti_sn: d.rolanti_sn, hareket_sn: d.hareket_sn,
-            ilk_kontak: d.ilk_kontak, son_kontak: d.son_kontak,
+            rapor_tarihi: gun, plaka,
+            // Kümülatif alanlar: yeni ile eskinin BÜYÜĞÜ (anlık 0/eksik cevabı ezemez).
+            // mesafe için ayrıca GPS güzergah mesafesi taban (resmi 0 dönerse devreye girer).
+            mesafe_km: enBuyuk(enBuyuk(d.mesafe_km, v.mesafe_km), rotaKm.get(plaka)),
+            maks_hiz: enBuyuk(d.maks_hiz != null ? Math.round(d.maks_hiz) : null, v.maks_hiz),
+            kontak_sn: enBuyuk(d.kontak_sn, v.kontak_sn),
+            rolanti_sn: enBuyuk(d.rolanti_sn, v.rolanti_sn),
+            hareket_sn: enBuyuk(d.hareket_sn, v.hareket_sn),
+            ilk_kontak: enErken(d.ilk_kontak, v.ilk_kontak),
+            son_kontak: enGec(d.son_kontak, v.son_kontak),
             surucu: c.surucu || null, marka: c.marka || null, model: c.model || null,
+            // Her yazımda güncellenir → "rapor verisinin en son güncellenme zamanı" (haritada gösterilir).
+            // Günde tek satır/plaka upsert edildiği için created_at'i son yazım zamanı olarak kullanıyoruz.
+            created_at: new Date().toISOString(),
           });
         }
       } catch (e) { /* sonraki araç */ }
@@ -113,17 +152,54 @@ function varsayilanGunler() {
   const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000);
   return tr.getHours() < 3 ? [trBugun(), trDun()] : [trBugun()];
 }
+// Çekme aralığı (dk): UI'daki "Rapor Çekme Süresi" (arvento_ayarlar.rapor_cekme_dk) yönetir.
+// Okunamazsa env ARVENTO_RAPOR_ARALIK_DK, o da yoksa 5 dk. 1–120 dk arasına sıkıştırılır.
+async function araligiOkuDk() {
+  const envDk = parseInt(process.env.ARVENTO_RAPOR_ARALIK_DK || "0", 10) || null;
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (url && key) {
+      const { data } = await createClient(url, key)
+        .from("arvento_ayarlar").select("rapor_cekme_dk").eq("id", "global").maybeSingle();
+      const dk = data?.rapor_cekme_dk;
+      if (dk && dk > 0) return Math.max(1, Math.min(120, dk));
+    }
+  } catch { /* DB okunamadı → alta düş */ }
+  return Math.max(1, Math.min(120, envDk || 5));
+}
+
+// "Son çalışma" damgası — makine-yerel dosyada. Zamanlanmış görev her 1 dk ateşlenir; bu damga
+// ile yalnız ayardaki dakika dolduğunda gerçek çekim yapılır (aradaki tetiklemeler ucuz çıkar).
+const DAMGA = path.join(__dirname, ".rapor-son.txt");
+function sonCalismaOku() { try { return new Date(fs.readFileSync(DAMGA, "utf8").trim()).getTime() || 0; } catch { return 0; } }
+function sonCalismaYaz() { try { fs.writeFileSync(DAMGA, new Date().toISOString()); } catch { /* yoksay */ } }
+
 const args = process.argv.slice(2).filter((a) => a !== "--loop");
 const loop = process.argv.includes("--loop");
-const gunler = args.length ? args : varsayilanGunler();
+const elle = args.length > 0; // belirli gün(ler) verildiyse elle çalıştırma → gate uygulanmaz
+const gunler = elle ? args : varsayilanGunler();
 if (loop) {
-  console.log(`Sürekli mod: her 5 dk. Ctrl+C ile durur.`);
+  console.log(`Sürekli mod: aralık ayardan okunur (Rapor Çekme Süresi). Ctrl+C ile durur.`);
   for (;;) {
     try { await birKez(varsayilanGunler()); } catch (e) { console.error("HATA:", e.message); }
-    await uyku(5 * 60 * 1000);
+    const dk = await araligiOkuDk();
+    await uyku(dk * 60 * 1000);
   }
-} else {
+} else if (elle) {
+  // Elle (gün argümanlı) çalıştırma: gate yok, hemen çek.
   let kod = 0;
   try { await birKez(gunler); } catch (e) { console.error("HATA:", e.message); kod = 1; }
   setTimeout(() => process.exit(kod), 400);
+} else {
+  // Zamanlanmış Görev modu: görev her 1 dk ateşlenir; ayardaki dakika dolmadıysa ucuz çık.
+  let kod = 0;
+  const dk = await araligiOkuDk();
+  const gecen = Date.now() - sonCalismaOku();
+  if (sonCalismaOku() && gecen < dk * 60 * 1000) {
+    console.log(`${new Date().toLocaleTimeString("tr-TR")} → erken (${Math.round(gecen / 60000)}/${dk} dk), çekim atlandı.`);
+    setTimeout(() => process.exit(0), 200);
+  } else {
+    try { await birKez(gunler); sonCalismaYaz(); } catch (e) { console.error("HATA:", e.message); kod = 1; }
+    setTimeout(() => process.exit(kod), 400);
+  }
 }

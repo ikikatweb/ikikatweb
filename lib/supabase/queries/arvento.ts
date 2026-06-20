@@ -118,6 +118,25 @@ export async function getArventoRaporByRange(bas: string, bitis: string): Promis
   return tum;
 }
 
+// Rapor verisinin (km/çalışma/damper) bu tarih aralığında EN SON yazıldığı an.
+// Rapor senkronu her yazımda created_at'i günceller → haritada "Son güncelleme" olarak gösterilir
+// (canlı konumun değil, RAPOR verisinin tazeliği). Veri yoksa null.
+export async function getArventoRaporSonGuncelleme(bas: string, bitis: string): Promise<Date | null> {
+  if (!bas || !bitis) return null;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_arvento_rapor")
+    .select("created_at")
+    .gte("rapor_tarihi", bas)
+    .lte("rapor_tarihi", bitis)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.created_at) return null;
+  const d = new Date(data.created_at as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // Plaka başına GENEL ORTALAMA (tüm günler) — km ve damper indirme ortalaması
 export type ArventoOrtalama = { ortKm: number; ortDamper: number; gun: number; surucu: string | null };
 export async function getArventoOrtalamalar(): Promise<Map<string, ArventoOrtalama>> {

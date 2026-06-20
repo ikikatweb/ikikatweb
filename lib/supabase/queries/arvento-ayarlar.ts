@@ -8,6 +8,7 @@ export type ArventoAyarlar = {
   mukerrerDk: number;
   mukerrerYaricap: number; // mükerrer damper yarıçapı (m) — dakika ile BİRLİKTE şart
   canliYenilemeSn: number; // Canlı sekmesi otomatik yenileme aralığı (saniye)
+  raporCekmeDk: number;    // Gerçek çalışma raporunun çekilme aralığı (dakika)
   guzergahTekrar: number;
   gridMesafe: number;
   silindirTekrar: number;
@@ -26,6 +27,7 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   mukerrerDk: 0,
   mukerrerYaricap: 0,
   canliYenilemeSn: 45,
+  raporCekmeDk: 5,
   guzergahTekrar: 0,
   gridMesafe: 12,
   silindirTekrar: 0,
@@ -51,6 +53,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     mukerrerDk: data.mukerrer_dk ?? 0,
     mukerrerYaricap: data.mukerrer_yaricap ?? 0,
     canliYenilemeSn: data.canli_yenileme_sn ?? 45,
+    raporCekmeDk: data.rapor_cekme_dk ?? 5,
     guzergahTekrar: data.guzergah_tekrar ?? 0,
     gridMesafe: data.grid_mesafe ?? 12,
     silindirTekrar: data.silindir_tekrar ?? 0,
@@ -73,6 +76,7 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     mukerrer_dk: a.mukerrerDk,
     mukerrer_yaricap: a.mukerrerYaricap,
     canli_yenileme_sn: a.canliYenilemeSn,
+    rapor_cekme_dk: a.raporCekmeDk,
     guzergah_tekrar: a.guzergahTekrar,
     grid_mesafe: a.gridMesafe,
     silindir_tekrar: a.silindirTekrar,

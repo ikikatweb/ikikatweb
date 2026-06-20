@@ -30,7 +30,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -42,21 +42,29 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
   const canliLayerRef = useRef<LayerGroup | null>(null);
+  // Harita BİR KEZ kurulur; veri ayrı LayerGroup'ta → veri değişince flicker olmaz (sadece grup yeniden çizilir).
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+  const veriKatmanRef = useRef<LayerGroup | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const [haritaHazir, setHaritaHazir] = useState(0);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
-  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
-  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
+  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
 
+  // Yükleme göstergesi yalnız TARİH değişiminde; periyodik tazelemede sessiz çek.
+  const yapiRef = useRef("");
   useEffect(() => {
     if (!bas || !bitis) { setGuzergahlar([]); setRaporlar([]); setLoading(false); return; }
-    setLoading(true);
+    const yapi = `${bas}|${bitis}`;
+    const yapisal = yapiRef.current !== yapi;
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
       .then(([g, r]) => { setGuzergahlar(g); setRaporlar(r); })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey]);
 
   const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
@@ -70,14 +78,16 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     return { greyder, silindir, damper };
   }, [guzergahlar, raporlar, sekmeMap, atananSekmeler]);
 
+  // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
-    if (!bas || !bitis) return;
     let iptal = false;
     let map: LeafletMap | null = null;
     (async () => {
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
+      leafletRef.current = L as unknown as typeof import("leaflet");
       map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
         if (oto || !map) return;
@@ -88,53 +98,72 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
+      veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
-      const bounds: [number, number][] = [];
-      // Güzergah çizgileri — sınıfa göre operasyon rengi/stili
-      guzergahlar.forEach((k) => {
-        const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
-        if (latlngs.length === 0) return;
-        const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
-          : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
-        if (!op) return; // tanınmayan sınıf → çizme
-        const def = OPERASYONLAR[op];
-        // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
-        const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
-        const cizim: [number, number][][] = esik >= 1
-          ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
-          : [latlngs];
-        const kal = op === "sikistirma" ? silindirKal : reglajKal;
-        const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
-        (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-          L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
-            .addTo(map!).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
-        for (const ll of latlngs) bounds.push(ll);
-      });
-      // Damper noktaları (Stabilize) — turuncu yuvarlak
-      raporlar.forEach((r) => {
-        const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
-        olaylar.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
-          L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#9a3412", fillColor: OPERASYONLAR.stabilize.renk, fillOpacity: 0.9, weight: 1 })
-            .addTo(map!).bindPopup(`<b>🔻 ${r.plaka}</b><br>Stabilize (damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
-          bounds.push([o.lat as number, o.lng as number]);
-        });
-      });
-      // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
-      for (const k of canliVeriRef.current.konumlar ?? []) {
-        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
-      }
-      // İlk açılışta otomatik ortala; sonraki yenilemelerde mevcut görünümü KORU
-      if (gorunumRef.current) {
-        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
-      } else if (bounds.length) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
-      }
-      setTimeout(() => { oto = false; }, 600); // programatik hareketler bitti → kullanıcı hareketlerini dinle
+      setTimeout(() => { oto = false; }, 800);
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
+      setHaritaHazir((h) => h + 1);
     })();
-    return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef, canliVar]);
+    return () => {
+      iptal = true;
+      canliLayerRef.current = null;
+      veriKatmanRef.current = null;
+      mapInstanceRef.current = null;
+      leafletRef.current = null;
+      if (map) { try { map.remove(); } catch { /* sessiz */ } }
+    };
+    // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
+  }, [gorunumRef, loading]);
+
+  // Veri/ayar değişince YALNIZ veri katmanını yeniden çiz (harita yerinde kalır → flicker yok).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const grup = veriKatmanRef.current;
+    const L = leafletRef.current;
+    if (!map || !grup || !L) return;
+    grup.clearLayers();
+    const bounds: [number, number][] = [];
+    // Güzergah çizgileri — sınıfa göre operasyon rengi/stili
+    guzergahlar.forEach((k) => {
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
+      if (latlngs.length === 0) return;
+      const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
+        : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
+      if (!op) return; // tanınmayan sınıf → çizme
+      const def = OPERASYONLAR[op];
+      // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
+      const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
+      const cizim: [number, number][][] = esik >= 1
+        ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
+        : [latlngs];
+      const kal = op === "sikistirma" ? silindirKal : reglajKal;
+      const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
+      (cizim.length ? cizim : [latlngs]).forEach((seg) =>
+        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
+          .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
+      for (const ll of latlngs) bounds.push(ll);
+    });
+    // Damper noktaları (Stabilize) — turuncu yuvarlak
+    raporlar.forEach((r) => {
+      const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
+      olaylar.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
+        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#9a3412", fillColor: OPERASYONLAR.stabilize.renk, fillOpacity: 0.9, weight: 1 })
+          .addTo(grup).bindPopup(`<b>🔻 ${r.plaka}</b><br>Stabilize (damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
+        bounds.push([o.lat as number, o.lng as number]);
+      });
+    });
+    // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
+    for (const k of canliVeriRef.current.konumlar ?? []) {
+      if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+    }
+    // Yalnızca İLK açılışta otomatik ortala; sonra mevcut görünümü KORU.
+    if (!gorunumRef.current && bounds.length) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      const c = map.getCenter();
+      gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+    }
+  }, [haritaHazir, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
@@ -212,6 +241,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           <span className="inline-block w-3 h-3 rounded-full border border-orange-800" style={{ background: OPERASYONLAR.stabilize.renk }} />
           Stabilize (damper) <strong className="text-gray-500">· {ozet.damper} nokta</strong>
         </span>
+        {sonGuncelleme && (
+          <span className="text-[10px] text-gray-400">🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
+        )}
         <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
           className="h-9 gap-1 text-xs ml-auto">
           <Download size={14} /> KML İndir

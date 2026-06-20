@@ -79,17 +79,17 @@ function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM:
 }
 
 // Altlı üstlü (paralel çift) çizgi çiz
-function cizAltUst(L: LeafletStatic, map: LeafletMap, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
+function cizAltUst(L: LeafletStatic, hedef: LeafletMap | LayerGroup, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
   for (const seg of segler) {
     if (seg.length < 2) continue;
-    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(map);
-    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(map);
+    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
+    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
     for (const ll of seg) bounds.push(ll);
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0 }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -109,21 +109,29 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
   const canliLayerRef = useRef<LayerGroup | null>(null);
+  // Harita BİR KEZ kurulur; veri ayrı LayerGroup'ta → veri değişince flicker olmaz (sadece grup yeniden çizilir).
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+  const veriKatmanRef = useRef<LayerGroup | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const [haritaHazir, setHaritaHazir] = useState(0);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
   const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
 
+  const yapiRef = useRef(""); // yükleme göstergesi yalnız tarih/operasyon değişiminde; periyodik tazelemede sessiz
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
-    setLoading(true);
+    const yapi = `${bas}|${bitis}|${sermeMi}`;
+    const yapisal = yapiRef.current !== yapi;
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
       .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r as AracArventoRapor[]); })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey, sermeMi]);
 
   const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
@@ -146,7 +154,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
 
   // Sıkıştırma: silindirler renkli chip'ler — çoklu seçim (chip listesi = silindirChipler)
   const [seciliSilindirler, setSeciliSilindirler] = useState<Set<string>>(new Set());
-  useEffect(() => { setSeciliSilindirler(new Set(silindirChipler.map((k) => k.plaka))); }, [silindirChipler]);
+  const silindirImzaRef = useRef("");
+  useEffect(() => {
+    const imza = silindirChipler.map((k) => k.plaka).sort().join("|");
+    if (silindirImzaRef.current === imza) return; // aynı araç kümesi → seçimi koru (periyodik tazelemede sıfırlama)
+    silindirImzaRef.current = imza;
+    setSeciliSilindirler(new Set(silindirChipler.map((k) => k.plaka)));
+  }, [silindirChipler]);
   const silindirRenk = useMemo(() => {
     const m = new Map<string, string>();
     silindirChipler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
@@ -158,7 +172,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
 
   // Serme: greyderler de Stabilize kamyonları gibi renkli chip — çoklu seçim
   const [seciliGreyderler, setSeciliGreyderler] = useState<Set<string>>(new Set());
-  useEffect(() => { setSeciliGreyderler(new Set(greyderler.map((k) => k.plaka))); }, [greyderler]);
+  const greyderImzaRef = useRef("");
+  useEffect(() => {
+    const imza = greyderler.map((k) => k.plaka).sort().join("|");
+    if (greyderImzaRef.current === imza) return; // aynı araç kümesi → seçimi koru
+    greyderImzaRef.current = imza;
+    setSeciliGreyderler(new Set(greyderler.map((k) => k.plaka)));
+  }, [greyderler]);
   const greyderRenk = useMemo(() => {
     const m = new Map<string, string>();
     greyderler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
@@ -196,13 +216,16 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       .filter((k) => yakinDamperVar(k.noktalar ?? [], damperKoordlu));
   }, [greyderler, seciliGreyderler, sermeMi, damperKoordlu]);
 
-  function harita(hedef: HTMLDivElement): { iptal: () => void } {
+  // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
+  useEffect(() => {
     let iptal = false;
     let map: LeafletMap | null = null;
     (async () => {
       const L = (await import("leaflet")).default;
-      if (iptal || !hedef) return;
-      map = L.map(hedef).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      if (iptal || !mapRef.current) return;
+      leafletRef.current = L as unknown as typeof import("leaflet");
+      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
         if (oto || !map) return;
@@ -213,50 +236,62 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
+      veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
-      const bounds: [number, number][] = [];
-      // Altlı üstlü greyder çizgisi (sıkıştırmada soluk referans)
-      gosterilenGreyder.forEach((k) =>
-        cizAltUst(L, map!, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe), sermeMi ? greyderRenkAl(k.plaka) : reglajRenkV, sermeMi ? 0.85 : 0.45, sermeMi ? sermeKal : reglajKal, bounds));
-      if (sermeMi) {
-        // Ortada damper ikonları
-        damperKoordlu.forEach((o, i) => {
-          L.circleMarker([o.lat as number, o.lng as number], { radius: 7, color: "#9a3412", fillColor: DAMPER_RENK, fillOpacity: 0.9, weight: 2 })
-            .addTo(map!).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
-          bounds.push([o.lat as number, o.lng as number]);
-        });
-      } else {
-        // Ortada silindir zikzak (silindir tekrar eşiğiyle sadeleşir)
-        secilenSilindirler.forEach((k) =>
-          parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
-            if (seg.length < 2) return;
-            L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
-              .addTo(map!).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
-            for (const ll of seg) bounds.push(ll);
-          }));
-      }
-      // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
-      for (const k of canliVeriRef.current.konumlar ?? []) {
-        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
-      }
-      // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
-      if (gorunumRef.current) {
-        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
-      } else if (bounds.length) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
-      }
-      setTimeout(() => { oto = false; }, 600); // programatik hareketler bitti → kullanıcı hareketlerini dinle
+      setTimeout(() => { oto = false; }, 800);
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
+      setHaritaHazir((h) => h + 1);
     })();
-    return { iptal: () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } } };
-  }
+    return () => {
+      iptal = true;
+      canliLayerRef.current = null;
+      veriKatmanRef.current = null;
+      mapInstanceRef.current = null;
+      leafletRef.current = null;
+      if (map) { try { map.remove(); } catch { /* sessiz */ } }
+    };
+    // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
+  }, [gorunumRef, loading]);
 
+  // Veri/seçim/ayar değişince YALNIZ veri katmanını yeniden çiz (harita yerinde kalır → flicker yok).
   useEffect(() => {
-    if (!bas || !bitis || !mapRef.current) return;
-    const h = harita(mapRef.current);
-    return h.iptal;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bas, bitis, gosterilenGreyder, greyderRenkAl, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, canliVar]);
+    const map = mapInstanceRef.current;
+    const grup = veriKatmanRef.current;
+    const L = leafletRef.current;
+    if (!map || !grup || !L) return;
+    grup.clearLayers();
+    const bounds: [number, number][] = [];
+    // Altlı üstlü greyder çizgisi (sıkıştırmada soluk referans)
+    gosterilenGreyder.forEach((k) =>
+      cizAltUst(L, grup, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe), sermeMi ? greyderRenkAl(k.plaka) : reglajRenkV, sermeMi ? 0.85 : 0.45, sermeMi ? sermeKal : reglajKal, bounds));
+    if (sermeMi) {
+      // Ortada damper ikonları
+      damperKoordlu.forEach((o, i) => {
+        L.circleMarker([o.lat as number, o.lng as number], { radius: 7, color: "#9a3412", fillColor: DAMPER_RENK, fillOpacity: 0.9, weight: 2 })
+          .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
+        bounds.push([o.lat as number, o.lng as number]);
+      });
+    } else {
+      // Ortada silindir zikzak (silindir tekrar eşiğiyle sadeleşir)
+      secilenSilindirler.forEach((k) =>
+        parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
+          if (seg.length < 2) return;
+          L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
+            .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
+          for (const ll of seg) bounds.push(ll);
+        }));
+    }
+    // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
+    for (const k of canliVeriRef.current.konumlar ?? []) {
+      if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+    }
+    // Yalnızca İLK açılışta otomatik ortala; sonra mevcut görünümü KORU.
+    if (!gorunumRef.current && bounds.length) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      const c = map.getCenter();
+      gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+    }
+  }, [haritaHazir, gosterilenGreyder, greyderRenkAl, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -372,6 +407,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                   ? <span className="text-orange-600 font-semibold">🔻 {damperKoordlu.length} damper</span>
                   : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir zikzak</span>}
               </div>
+              {sonGuncelleme && (
+                <div className="text-[10px] text-gray-400 mt-0.5">🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
+              )}
             </div>
             <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
               <Download size={14} /> KML İndir

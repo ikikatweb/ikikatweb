@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
 import { updateArac } from "@/lib/supabase/queries/araclar";
 import { ATAMA_SEKMELERI, type ArventoSekme, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoRapor } from "@/lib/supabase/types";
@@ -154,12 +154,28 @@ export default function ArventoRaporPage() {
   >("calisma");
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
+  // Ekrandaki verilerin en son tazelendiği an (haritalarda "Son güncelleme" olarak gösterilir)
+  const [veriGuncelleme, setVeriGuncelleme] = useState<Date | null>(null);
+
+  // Aktif sekmeyi F5/yenileme arası KORU: mount'ta localStorage'dan oku, her değişimde yaz.
+  // Böylece Stabilize'dayken yenileyince yine Stabilize'da kalır (varsayılana atmaz).
+  useEffect(() => {
+    try {
+      const k = localStorage.getItem("arventoAktifSekme");
+      const gecerli = ["calisma", "ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu", "tanimlamalar"];
+      if (k && gecerli.includes(k)) setAktifSekme(k as typeof aktifSekme);
+    } catch { /* localStorage yoksa yoksay */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("arventoAktifSekme", aktifSekme); } catch { /* yoksay */ }
+  }, [aktifSekme]);
   // Tanımlamalar eşikleri — ORTAK (kullanıcı bazlı DEĞİL): DB'den yüklenir, herkes aynı değeri görür.
   // Sadece "düzenle" yetkisi olan değiştirebilir (aşağıdaki kaydetme effect'i yetkiyle korunur).
   const [mukerrerDk, setMukerrerDk] = useState<number>(0);     // yanlış (art arda) damper eşiği (dk)
   const [mukerrerYaricap, setMukerrerYaricap] = useState<number>(0); // mükerrer damper yarıçapı (m) — dk ile BİRLİKTE şart
   const [canliYenilemeSn, setCanliYenilemeSn] = useState<number>(45); // Canlı sekmesi yenileme aralığı (sn)
   const [canliBirim, setCanliBirim] = useState<"sn" | "dk">("sn");    // UI birimi (gösterim) — kayıt hep sn
+  const [raporCekmeDk, setRaporCekmeDk] = useState<number>(5);        // Gerçek rapor çekme aralığı (dk)
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
@@ -184,6 +200,7 @@ export default function ArventoRaporPage() {
         setMukerrerDk(a.mukerrerDk);
         setMukerrerYaricap(a.mukerrerYaricap);
         setCanliYenilemeSn(a.canliYenilemeSn);
+        setRaporCekmeDk(a.raporCekmeDk);
         setGuzergahTekrar(a.guzergahTekrar);
         setGridMesafe(a.gridMesafe);
         setSilindirTekrar(a.silindirTekrar);
@@ -205,13 +222,13 @@ export default function ArventoRaporPage() {
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -370,6 +387,26 @@ export default function ArventoRaporPage() {
     const id = setInterval(cek, sn * 1000);
     return () => { iptal = true; clearInterval(id); };
   }, [canliAcik, canliYenilemeSn]);
+
+  // Ekrandaki RAKAMLARI periyodik tazele: sayfa yenilemeden km/çalışma/damper güncellensin.
+  // guzergahRefresh bump'ı → harita bileşenleri veriyi sessizce yeniden çeker (harita YERİNDE
+  // kalır, yalnız veri katmanı/rakamlar güncellenir — tile reload/flicker YOK). Canlı butonundan
+  // BAĞIMSIZ çalışır. Aralık "Canlı Yenileme Süresi" ayarını izler (en az 20 sn).
+  // "Son güncelleme" = RAPOR verisinin (km/çalışma/damper) DB'ye en son yazıldığı an (canlı konum DEĞİL).
+  useEffect(() => {
+    let iptal = false;
+    const tazeleGuncelleme = async () => {
+      try { const t = await getArventoRaporSonGuncelleme(baslangic, bitis); if (!iptal) setVeriGuncelleme(t); }
+      catch { /* sessiz — eski değeri koru */ }
+    };
+    tazeleGuncelleme(); // ilk gösterim
+    const sn = Math.max(20, canliYenilemeSn || 45);
+    const id = setInterval(() => {
+      setGuzergahRefresh((v) => v + 1);
+      tazeleGuncelleme();
+    }, sn * 1000);
+    return () => { iptal = true; clearInterval(id); };
+  }, [canliYenilemeSn, baslangic, bitis]);
 
   // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.
   useEffect(() => {
@@ -729,25 +766,25 @@ export default function ArventoRaporPage() {
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
                 canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
-                refreshKey={guzergahRefresh} />
+                refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
             </div>
           )}
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -852,6 +889,27 @@ export default function ArventoRaporPage() {
                 </select>
               </div>
               <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(15, canliYenilemeSn || 45)} sn</strong> yenilenir.</div>
+            </div>
+            {/* Rapor Çekme Süresi — Arvento'dan gerçek çalışma raporunun (km/kontak/çalışma) çekilme aralığı */}
+            <div className="border rounded-lg p-3 bg-sky-50/40 border-sky-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Rapor Çekme Süresi</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Araçların <strong>gerçek çalışma raporu</strong> (günlük km, kontak açık, çalışma, ilk/son kontak)
+                Arvento&apos;dan bu aralıkta çekilir. Birimi <strong>dakika</strong>. Senkron makinesindeki görev bu değere
+                göre çalışır; <strong>en az 1 dk</strong> uygulanır.
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={raporCekmeDk || ""}
+                  onChange={(e) => setRaporCekmeDk(Math.max(1, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 5"
+                  className={selectClass + " w-24"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika</span>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(1, raporCekmeDk || 5)} dk</strong> çekilir.</div>
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}

@@ -37,6 +37,15 @@ const WS_URL = "https://ws.arvento.com/v1/report.asmx";
 const xe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const sayi = (v) => { if (v == null) return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
+// Zaman aşımlı fetch — Arvento yanıt vermezse ~20 sn'de iptal eder (ASILI KALMAYI önler).
+// Aksi halde tek bir takılı istek tüm senkronu (ve görevi) sonsuza dek dondurabilir.
+async function fetchTimeout(url, opts, ms = 20000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(t); }
+}
+
 // --- Bugünün güzergahını anlık konumlardan biriktirme yardımcıları ---
 const R_METRE = 111320;
 function mesafeM(la1, lo1, la2, lo2) {
@@ -116,7 +125,7 @@ async function cekAnlik() {
         pin2 = process.env.ARVENTO_WS_PIN2, lang = process.env.ARVENTO_WS_LANG || "tr";
   if (!user || !pin1 || !pin2) throw new Error("Arvento WS bilgileri eksik (.env.local: ARVENTO_WS_USERNAME/PIN1/PIN2)");
   const body = `<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetVehicleStatusV3 xmlns="http://www.arvento.com/"><Username>${xe(user)}</Username><PIN1>${xe(pin1)}</PIN1><PIN2>${xe(pin2)}</PIN2><Language>${xe(lang)}</Language></GetVehicleStatusV3></soap:Body></soap:Envelope>`;
-  const r = await fetch(WS_URL, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "http://www.arvento.com/GetVehicleStatusV3" }, body });
+  const r = await fetchTimeout(WS_URL, { method: "POST", headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "http://www.arvento.com/GetVehicleStatusV3" }, body });
   const t = await r.text();
   if (!r.ok) throw new Error(`Arvento HTTP ${r.status}`);
   const fault = t.match(/<faultstring>([\s\S]*?)<\/faultstring>/i);
@@ -160,18 +169,44 @@ async function birKez() {
   console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı, ${rotaSayi} araç rotası güncellendi.`);
 }
 
+// Yenileme aralığı (sn): UI'daki "Canlı Yenileme Süresi" (arvento_ayarlar.canli_yenileme_sn)
+// script'i de yönetir. Okunamazsa env ARVENTO_ANLIK_ARALIK_SN, o da yoksa 15 sn.
+// 10–120 sn arasına sıkıştırılır (çok sık çağrı Arvento'yu hız-sınırlar).
+async function araligiOku() {
+  const envSn = parseInt(process.env.ARVENTO_ANLIK_ARALIK_SN || "0", 10) || null;
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (url && key) {
+      const q = createClient(url, key).from("arvento_ayarlar").select("canli_yenileme_sn").eq("id", "global").maybeSingle();
+      // 8 sn zaman aşımı — DB yanıt vermezse varsayılana düş (asılı kalma).
+      const { data } = await Promise.race([q, new Promise((_, rej) => setTimeout(() => rej(new Error("ayar okuma zaman aşımı")), 8000))]);
+      const sn = data?.canli_yenileme_sn;
+      if (sn && sn > 0) return Math.max(10, Math.min(120, sn));
+    }
+  } catch { /* DB okunamadı → alta düş */ }
+  return Math.max(10, Math.min(120, envSn || 15));
+}
+
 const loop = process.argv.includes("--loop");
-const ARALIK_SN = parseInt(process.env.ARVENTO_ANLIK_ARALIK_SN || "60", 10);
 if (loop) {
-  console.log(`Sürekli mod: her ${ARALIK_SN} sn. Durdurmak için Ctrl+C.`);
+  // Elle/test: sonsuz döngü, aralığı her turda DB'den tazele (ayar değişince hemen uyar).
+  console.log("Sürekli mod (--loop). Durdurmak için Ctrl+C.");
   for (;;) {
     try { await birKez(); } catch (e) { console.error(new Date().toLocaleTimeString(), "HATA:", e.message); }
-    await new Promise((r) => setTimeout(r, ARALIK_SN * 1000));
+    const sn = await araligiOku();
+    await new Promise((r) => setTimeout(r, sn * 1000));
   }
 } else {
+  // Zamanlanmış Görev modu: görev HER 1 DK ateşlenir. Bu tek çalışma, dakikayı `sn` aralıkla
+  // KAPLAYACAK kadar tekrar yazar (ör. 15 sn → dakikada 4 yazım: 0/15/30/45 sn). Böylece 1 dk
+  // yerine `sn` tazelik olur; yapı her dakika yeni süreçle kendini onarır (S4U/oturum kapalı uyumlu).
   let kod = 0;
-  try { await birKez(); }
-  catch (e) { console.error("HATA:", e.message); kod = 1; }
+  const sn = await araligiOku();
+  const adet = Math.max(1, Math.floor(60 / sn)); // dakikayı kaplayan yazım sayısı
+  for (let i = 0; i < adet; i++) {
+    try { await birKez(); } catch (e) { console.error("HATA:", e.message); kod = 1; }
+    if (i < adet - 1) await new Promise((r) => setTimeout(r, sn * 1000)); // son turda bekleme yok
+  }
   // Açık kalan HTTP soketlerinin kapanması için kısa bekleme, sonra temiz çık
   // (Windows'ta process.exit'i hemen çağırınca libuv "Assertion failed" verebiliyor).
   setTimeout(() => process.exit(kod), 300);

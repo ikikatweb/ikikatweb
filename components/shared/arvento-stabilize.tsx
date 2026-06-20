@@ -120,7 +120,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -132,24 +132,32 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
   const canliLayerRef = useRef<LayerGroup | null>(null);
+  // Harita BİR KEZ kurulur; veri katmanları ayrı LayerGroup'ta tutulur → veri değişince harita
+  // yeniden kurulmaz (tile reload/flicker YOK), sadece bu grup temizlenip yeniden çizilir.
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+  const veriKatmanRef = useRef<LayerGroup | null>(null);
+  const leafletRef = useRef<typeof import("leaflet") | null>(null);
+  const [haritaHazir, setHaritaHazir] = useState(0); // kurulum bitince ilk çizimi tetikler
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
-  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
-  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
+  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = tekrarEsigi;
   const etkinMukerrer = mukerrerDk;
   const etkinYaricap = mukerrerYaricap;
 
+  const yapiRef = useRef(""); // "bas|bitis" — tarih değişti mi? (yükleme göstergesi sadece yapısal değişimde)
   useEffect(() => {
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
-    setLoading(true);
+    const yapi = `${bas}|${bitis}`;
+    const yapisal = yapiRef.current !== yapi; // tarih değişimi → yükleme göster; periyodik tazeleme → sessiz
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
       .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r); })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey]);
 
   const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
@@ -209,8 +217,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [kamyonlar]);
   const renkAl = useCallback((plaka: string) => plakaRenk.get(plaka) ?? "#f97316", [plakaRenk]);
 
-  // Veri değişince varsayılan: tüm kamyonlar seçili
+  // Araç KÜMESİ değişince (tarih/yeni araç) varsayılan: tüm kamyonlar seçili. Periyodik tazelemede
+  // aynı plakalar gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, redraw olmasın).
+  const plakaImzaRef = useRef("");
   useEffect(() => {
+    const imza = kamyonlar.map((r) => r.plaka).sort().join("|");
+    if (plakaImzaRef.current === imza) return;
+    plakaImzaRef.current = imza;
     setSeciliPlakalar(new Set(kamyonlar.map((r) => r.plaka)));
   }, [kamyonlar]);
 
@@ -270,15 +283,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return { aracSayisi: secilenler.length, toplamKm, toplamHareket, toplamDamper };
   }, [kamyonlar, seciliPlakalar, damperIsaretli]);
 
-  // Harita: greyder çizgileri (referans) + kamyon damper yuvarlakları
+  // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
-    if (!bas || !bitis) return;
     let iptal = false;
     let map: LeafletMap | null = null;
     (async () => {
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
+      leafletRef.current = L as unknown as typeof import("leaflet");
       map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
         if (oto || !map) return;
@@ -289,90 +303,107 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
+      veriKatmanRef.current = L.layerGroup().addTo(map); // çizgi/damper buraya — temizlenip yeniden çizilir
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
-      const bounds: [number, number][] = [];
-      const reglajNoktalari: [number, number][] = []; // damperleri çizginin ortasına oturtmak için
-      // 1) Reglaj referans çizgileri (greyder hattı) — kamyonlar hariç
-      reglajRefleri.forEach((k) => {
-        const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
-        if (latlngs.length === 0) return;
-        const cizim: [number, number][][] = etkinTekrar >= 1
-          ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
-          : [latlngs];
-        const cizilen = cizim.length ? cizim : [latlngs];
-        L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
-          .addTo(map!).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
-        for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
-        for (const ll of latlngs) bounds.push(ll);
-      });
-      // 2) Kamyon izi (kamyonun KENDİ güzergahı) — reglajdan AYRI renk/kalınlık; yalnız seçili kamyonlar.
-      // "Kamyon izini gizle" butonu kapalıysa hiç çizilmez.
-      if (kamyonIziGoster) kamyonIzleri.forEach((k) => {
-        if (!seciliPlakalar.has(k.plaka)) return;
-        const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
-        if (latlngs.length === 0) return;
-        L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
-          .addTo(map!).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
-        for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
-      });
-      // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
-      const snapReglaj = (lat: number, lng: number): [number, number] => {
-        let en: [number, number] | null = null, enD = Infinity;
-        const cosL = Math.cos((lat * Math.PI) / 180);
-        for (const [rl, rg] of reglajNoktalari) {
-          const dy = (rl - lat) * 111320;
-          const dx = (rg - lng) * 111320 * cosL;
-          const d = dy * dy + dx * dx;
-          if (d < enD) { enD = d; en = [rl, rg]; }
-        }
-        return en && enD <= 30 * 30 ? en : [lat, lng];
-      };
-      // Aynı/çok yakın konuma (≈11 m) denk gelen damperleri grupla — üst üste binmesin,
-      // nokta üstünde kaç damper olduğu (×N) görünsün. Gruplama plaka bazında (renk korunur).
-      const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
-      for (const o of damperKoordlu) {
-        const [lat, lng] = snapReglaj(o.lat as number, o.lng as number); // çizginin ortasına oturt
-        const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
-        const g = gruplar.get(anahtar);
-        if (g) g.olaylar.push(o);
-        else gruplar.set(anahtar, { lat, lng, plaka: o.plaka, surucu: o.surucu, olaylar: [o] });
-      }
-      gruplar.forEach((g) => {
-        const renk = renkAl(g.plaka);
-        const adet = g.olaylar.length;
-        const liste = g.olaylar
-          .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
-          .join("<br>");
-        // "Damper indi" kamyon ikonu — çizginin ortasına oturur, kamyon renginde
-        const ikon = L.divIcon({
-          html: damperKamyonIkonHtml(renk, adet),
-          className: "damper-ikon",
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
-          popupAnchor: [0, -15],
-        });
-        L.marker([g.lat, g.lng], { icon: ikon })
-          .addTo(map!)
-          .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
-        bounds.push([g.lat, g.lng]);
-      });
-      // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
-      for (const k of canliVeriRef.current.konumlar ?? []) {
-        if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
-      }
-      // Yalnızca İLK açılışta otomatik ortala; sonrasında (tarih/seçim/toggle dahil) mevcut görünümü KORU
-      if (gorunumRef.current) {
-        map.setView(gorunumRef.current.merkez, gorunumRef.current.zoom, { animate: false });
-      } else if (bounds.length) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
-      }
-      setTimeout(() => { oto = false; }, 600); // programatik hareketler bitti → kullanıcı hareketlerini dinle
+      setTimeout(() => { oto = false; }, 800); // ilk programatik hareketler bitti → kullanıcıyı dinle
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
+      setHaritaHazir((h) => h + 1); // ilk çizimi tetikle
     })();
-    return () => { iptal = true; canliLayerRef.current = null; if (map) { try { map.remove(); } catch { /* sessiz */ } } };
-  }, [bas, bitis, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, canliVar]);
+    return () => {
+      iptal = true;
+      canliLayerRef.current = null;
+      veriKatmanRef.current = null;
+      mapInstanceRef.current = null;
+      leafletRef.current = null;
+      if (map) { try { map.remove(); } catch { /* sessiz */ } }
+    };
+    // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede
+    // loading değişmez → harita yeniden kurulmaz (flicker yok); yalnız tarih değişiminde yeniden kurulur.
+  }, [gorunumRef, loading]);
+
+  // Veri/seçim/ayar değişince YALNIZ veri katmanını yeniden çiz (harita yerinde kalır → flicker yok).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const grup = veriKatmanRef.current;
+    const L = leafletRef.current;
+    if (!map || !grup || !L) return;
+    grup.clearLayers();
+    const bounds: [number, number][] = [];
+    const reglajNoktalari: [number, number][] = []; // damperleri çizginin ortasına oturtmak için
+    // 1) Reglaj referans çizgileri (greyder hattı) — kamyonlar hariç
+    reglajRefleri.forEach((k) => {
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
+      if (latlngs.length === 0) return;
+      const cizim: [number, number][][] = etkinTekrar >= 1
+        ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
+        : [latlngs];
+      const cizilen = cizim.length ? cizim : [latlngs];
+      L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
+        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
+      for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
+      for (const ll of latlngs) bounds.push(ll);
+    });
+    // 2) Kamyon izi (kamyonun KENDİ güzergahı) — reglajdan AYRI renk/kalınlık; yalnız seçili kamyonlar.
+    if (kamyonIziGoster) kamyonIzleri.forEach((k) => {
+      if (!seciliPlakalar.has(k.plaka)) return;
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
+      if (latlngs.length === 0) return;
+      L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
+        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
+      for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
+    });
+    // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
+    const snapReglaj = (lat: number, lng: number): [number, number] => {
+      let en: [number, number] | null = null, enD = Infinity;
+      const cosL = Math.cos((lat * Math.PI) / 180);
+      for (const [rl, rg] of reglajNoktalari) {
+        const dy = (rl - lat) * 111320;
+        const dx = (rg - lng) * 111320 * cosL;
+        const d = dy * dy + dx * dx;
+        if (d < enD) { enD = d; en = [rl, rg]; }
+      }
+      return en && enD <= 30 * 30 ? en : [lat, lng];
+    };
+    // Aynı/çok yakın konuma denk gelen damperleri grupla — üst üste binmesin (×N gösterilir).
+    const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
+    for (const o of damperKoordlu) {
+      const [lat, lng] = snapReglaj(o.lat as number, o.lng as number); // çizginin ortasına oturt
+      const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
+      const g = gruplar.get(anahtar);
+      if (g) g.olaylar.push(o);
+      else gruplar.set(anahtar, { lat, lng, plaka: o.plaka, surucu: o.surucu, olaylar: [o] });
+    }
+    gruplar.forEach((g) => {
+      const renk = renkAl(g.plaka);
+      const adet = g.olaylar.length;
+      const liste = g.olaylar
+        .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
+        .join("<br>");
+      const ikon = L.divIcon({
+        html: damperKamyonIkonHtml(renk, adet),
+        className: "damper-ikon",
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -15],
+      });
+      L.marker([g.lat, g.lng], { icon: ikon })
+        .addTo(grup)
+        .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
+      bounds.push([g.lat, g.lng]);
+    });
+    // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
+    for (const k of canliVeriRef.current.konumlar ?? []) {
+      if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
+    }
+    // Yalnızca İLK açılışta (görünüm henüz yokken) otomatik ortala; sonra mevcut görünümü KORU.
+    if (!gorunumRef.current && bounds.length) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      const c = map.getCenter();
+      gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+    }
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -498,6 +529,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <div className="text-sky-700">📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b></div>
               <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
+              {sonGuncelleme && (
+                <div className="text-[10px] text-gray-400 mt-0.5 pt-1 border-t border-gray-100">
+                  🕒 Son güncelleme: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b>
+                  <span className="text-gray-300"> · {sonGuncelleme.toLocaleDateString("tr-TR")}</span>
+                </div>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               {kamyonIzleri.length > 0 && (
