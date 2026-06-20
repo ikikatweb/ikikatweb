@@ -97,11 +97,11 @@ async function rotaBirik(sb, konumlar) {
     const odoKm = (ilkOdo != null && sonOdo != null) ? Math.max(0, sonOdo - ilkOdo) : 0;
     // Odometre gerçek mesafe; gecikirse GPS polyline'ı kullan → ikisinin büyüğü
     const mesafeKm = Math.round(Math.max(odoKm, polyKm) * 100) / 100;
-    // Çalışma/kontak yaklaşıkları (API'de ignition yok → HAREKETTEN türetilir)
+    // Çalışma yaklaşığı (API'de ignition yok → HAREKETTEN türetilir). İlk/son KONTAK YAZMIYORUZ:
+    // gerçek değeri yalnız mail "Kontak Alarmı" raporundan gelir; hareket saatini "ilk kontak"
+    // diye yazmak yanıltıcı oluyordu.
     const hareketli = noktalar.filter((p) => (p.hiz ?? 0) > 3);
     const hizler = noktalar.map((p) => p.hiz).filter((h) => h != null);
-    const ilkKontak = noktalar[0]?.saat ?? null;            // o günkü ilk hareket/görülme
-    const sonKontak = noktalar[noktalar.length - 1]?.saat ?? null; // son hareket
     const hareketSn = hareketli.length * (parseInt(process.env.ARVENTO_ANLIK_ARALIK_SN || "60", 10)); // ~hareket süresi
 
     yazRota.push({ rapor_tarihi: gun, plaka: c.plaka, arac_sinifi: c.sinif || null, marka: c.marka || null, model: c.model || null, toplam_mesafe: Math.round(polyKm * 100) / 100, nokta_sayisi: noktalar.length, noktalar });
@@ -110,9 +110,6 @@ async function rotaBirik(sb, konumlar) {
       mesafe_km: mesafeKm,
       maks_hiz: hizler.length ? Math.round(Math.max(...hizler)) : null,
       hareket_sn: hareketSn,
-      kontak_sn: hareketSn, // ignition yok → hareket süresi proxy
-      ilk_kontak: ilkKontak,
-      son_kontak: sonKontak,
       surucu: c.surucu || null,
       marka: c.marka || null,
       model: c.model || null,
