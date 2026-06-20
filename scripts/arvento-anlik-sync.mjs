@@ -57,7 +57,7 @@ let cihazCache = null, cihazZaman = 0;
 
 async function cihazlariYukle(sb) {
   if (cihazCache && Date.now() - cihazZaman < 600000) return cihazCache; // 10 dk önbellek
-  const { data } = await sb.from("arvento_cihaz").select("node, plaka, sinif, marka, model");
+  const { data } = await sb.from("arvento_cihaz").select("node, plaka, sinif, marka, model, surucu");
   const m = new Map();
   for (const c of (data || [])) if (c.node) m.set(c.node.trim(), c);
   cihazCache = m; cihazZaman = Date.now();
@@ -77,7 +77,7 @@ async function rotaBirik(sb, konumlar) {
       for (const r of (data || [])) rotaBellek.set(r.plaka, Array.isArray(r.noktalar) ? r.noktalar : []);
     }
   }
-  const yaz = [];
+  const yazRota = [], yazRapor = [];
   for (const k of konumlar) {
     if (k.lat == null || k.lng == null) continue;
     const c = cihaz.get((k.node || "").trim());
@@ -85,17 +85,49 @@ async function rotaBirik(sb, konumlar) {
     const noktalar = rotaBellek.get(c.plaka) || [];
     const son = noktalar[noktalar.length - 1];
     if (son && mesafeM(son.lat, son.lng, k.lat, k.lng) <= 12) continue; // hareket yok → ekleme
-    noktalar.push({ lat: k.lat, lng: k.lng, saat: saatAl(k.tarih), hiz: k.hiz });
+    noktalar.push({ lat: k.lat, lng: k.lng, saat: saatAl(k.tarih), hiz: k.hiz, odo: k.odo });
     rotaBellek.set(c.plaka, noktalar);
-    let km = 0;
-    for (let i = 1; i < noktalar.length; i++) km += mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng);
-    yaz.push({ rapor_tarihi: gun, plaka: c.plaka, arac_sinifi: c.sinif || null, marka: c.marka || null, model: c.model || null, toplam_mesafe: Math.round(km / 1000 * 100) / 100, nokta_sayisi: noktalar.length, noktalar });
+    // Rota toplam mesafe (polyline)
+    let polyKm = 0;
+    for (let i = 1; i < noktalar.length; i++) polyKm += mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng);
+    polyKm = polyKm / 1000;
+    // Günlük km: odometre delta (ilk↔son nokta odometresi) daha doğru; yoksa polyline
+    const ilkOdo = noktalar.find((p) => p.odo != null)?.odo;
+    const sonOdo = [...noktalar].reverse().find((p) => p.odo != null)?.odo;
+    const odoKm = (ilkOdo != null && sonOdo != null) ? Math.max(0, sonOdo - ilkOdo) : 0;
+    // Odometre gerçek mesafe; gecikirse GPS polyline'ı kullan → ikisinin büyüğü
+    const mesafeKm = Math.round(Math.max(odoKm, polyKm) * 100) / 100;
+    // Çalışma/kontak yaklaşıkları (API'de ignition yok → HAREKETTEN türetilir)
+    const hareketli = noktalar.filter((p) => (p.hiz ?? 0) > 3);
+    const hizler = noktalar.map((p) => p.hiz).filter((h) => h != null);
+    const ilkKontak = noktalar[0]?.saat ?? null;            // o günkü ilk hareket/görülme
+    const sonKontak = noktalar[noktalar.length - 1]?.saat ?? null; // son hareket
+    const hareketSn = hareketli.length * (parseInt(process.env.ARVENTO_ANLIK_ARALIK_SN || "60", 10)); // ~hareket süresi
+
+    yazRota.push({ rapor_tarihi: gun, plaka: c.plaka, arac_sinifi: c.sinif || null, marka: c.marka || null, model: c.model || null, toplam_mesafe: Math.round(polyKm * 100) / 100, nokta_sayisi: noktalar.length, noktalar });
+    yazRapor.push({
+      rapor_tarihi: gun, plaka: c.plaka,
+      mesafe_km: mesafeKm,
+      maks_hiz: hizler.length ? Math.round(Math.max(...hizler)) : null,
+      hareket_sn: hareketSn,
+      kontak_sn: hareketSn, // ignition yok → hareket süresi proxy
+      ilk_kontak: ilkKontak,
+      son_kontak: sonKontak,
+      surucu: c.surucu || null,
+      marka: c.marka || null,
+      model: c.model || null,
+    });
   }
-  if (yaz.length) {
-    const { error } = await sb.from("arac_arvento_guzergah").upsert(yaz, { onConflict: "rapor_tarihi,plaka" });
+  if (yazRota.length) {
+    const { error } = await sb.from("arac_arvento_guzergah").upsert(yazRota, { onConflict: "rapor_tarihi,plaka" });
     if (error) throw new Error(`Rota yazma hatası: ${error.message}`);
   }
-  return yaz.length;
+  if (yazRapor.length) {
+    // Yalnız verdiğimiz sütunlar güncellenir; damper_olaylar vb. korunur (upsert).
+    const { error } = await sb.from("arac_arvento_rapor").upsert(yazRapor, { onConflict: "rapor_tarihi,plaka" });
+    if (error) throw new Error(`Rapor yazma hatası: ${error.message}`);
+  }
+  return yazRota.length;
 }
 
 async function cekAnlik() {
@@ -122,6 +154,7 @@ async function cekAnlik() {
       node,
       lat: sayi(h.dlatitude), lng: sayi(h.dlongitude),
       hiz: sayi(h.dspeed), yon: sayi(h.ncourse),
+      odo: sayi(h.dodometer), // toplam km — günlük km için delta alınır
       tarih: h.dtlocaldatetime || h.dtgmtdatetime || null,
       adres: h.straddress || null,
       guncelleme: new Date().toISOString(),
@@ -136,7 +169,9 @@ async function birKez() {
   const sb = createClient(url, key);
   const satirlar = await cekAnlik();
   if (satirlar.length === 0) { console.log(new Date().toLocaleTimeString(), "→ konum gelmedi (boş)"); return; }
-  const { error } = await sb.from("arvento_anlik").upsert(satirlar, { onConflict: "node" });
+  // arvento_anlik'te 'odo' kolonu yok → yazımdan çıkar (odo yalnız rota/rapor için kullanılır)
+  const anlikSatir = satirlar.map(({ odo, ...rest }) => rest); // eslint-disable-line no-unused-vars
+  const { error } = await sb.from("arvento_anlik").upsert(anlikSatir, { onConflict: "node" });
   if (error) throw new Error(`Supabase yazma hatası: ${error.message}`);
   // Anlık konumları bugünün güzergahına da işle (Reglaj/Serme/Sıkıştırma/Tümü haritaları okur)
   let rotaSayi = 0;
