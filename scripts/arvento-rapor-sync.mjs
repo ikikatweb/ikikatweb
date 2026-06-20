@@ -106,14 +106,21 @@ async function birKez(gunler) {
   return yazildi;
 }
 
+// Varsayılan günler: HER ZAMAN bugün; dünü yalnız gece yarısı–03:00 arası (dünün final
+// değerlerini bir kez yakala). Gündüz sadece bugün → yük düşük, sık çalıştırılabilir.
+function varsayilanGunler() {
+  const n = new Date();
+  const tr = new Date(n.getTime() + (3 * 60 - n.getTimezoneOffset()) * 60000);
+  return tr.getHours() < 3 ? [trBugun(), trDun()] : [trBugun()];
+}
 const args = process.argv.slice(2).filter((a) => a !== "--loop");
 const loop = process.argv.includes("--loop");
-const gunler = args.length ? args : [trBugun(), trDun()];
+const gunler = args.length ? args : varsayilanGunler();
 if (loop) {
-  console.log(`Sürekli mod: her 15 dk (bugün+dün). Ctrl+C ile durur.`);
+  console.log(`Sürekli mod: her 5 dk. Ctrl+C ile durur.`);
   for (;;) {
-    try { await birKez([trBugun(), trDun()]); } catch (e) { console.error("HATA:", e.message); }
-    await uyku(15 * 60 * 1000);
+    try { await birKez(varsayilanGunler()); } catch (e) { console.error("HATA:", e.message); }
+    await uyku(5 * 60 * 1000);
   }
 } else {
   let kod = 0;
