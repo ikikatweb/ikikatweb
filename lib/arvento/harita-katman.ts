@@ -6,7 +6,18 @@ import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
 
 type LeafletStatic = typeof import("leaflet");
 
+// Katman (z-index) sıralaması — ALTTAN ÜSTE: harita(tile ~200) < KML(420) < damper(marker 600) < canlı(640).
+// Leaflet pane'leriyle kesinleştirilir; KML/canlı katmanları bu pane adlarını kullanır (ekleKayitliKatmanlar,
+// canli-katman). Damperler varsayılan markerPane'de (600) → KML üstünde, canlının altında kalır.
+export const KML_PANE = "kmlPane";
+export const CANLI_PANE = "canliPane";
+function panelleriKur(map: LeafletMap): void {
+  if (!map.getPane(KML_PANE)) { const p = map.createPane(KML_PANE); p.style.zIndex = "420"; }
+  if (!map.getPane(CANLI_PANE)) { const p = map.createPane(CANLI_PANE); p.style.zIndex = "640"; }
+}
+
 export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayilan: "uydu" | "sokak" = "uydu"): void {
+  panelleriKur(map);
   // maxZoom: haritanın çıkabileceği en üst zoom. maxNativeZoom: kaynağın gerçek karo sağladığı
   // son seviye — üstünde "veri yok" placeholder yerine son karo büyütülür (overzoom).
   const sokak = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -163,7 +174,15 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
 
 // Tanımlamalar'dan eklenmiş kalıcı katmanları (NetCAD/KML çizgileri) haritaya çizer.
 // Tüm Arvento haritalarında çağrılır; veri yoksa/tabloyoksa sessizce geçer.
+// Yol/çizgi isimlerinin (kalıcı etiketler) görüneceği EN DÜŞÜK zoom. Bu seviyenin ALTINDA (uzaklaşınca)
+// etiketler gizlenir → harita çizgilerini/yollarını kapatmaz. Yakınlaşınca isimler çıkar. (Gerekirse ayarlanır.)
+const ETIKET_MIN_ZOOM = 16;
+
 export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): Promise<void> {
+  // Zoom'a göre etiket görünürlüğü: eşik altında map container'a sınıf eklenir, CSS o etiketleri gizler.
+  const etiketGorunurluk = () => map.getContainer().classList.toggle("etiketleri-gizle", map.getZoom() < ETIKET_MIN_ZOOM);
+  map.on("zoomend", etiketGorunurluk);
+  etiketGorunurluk();
   try {
     const katmanlar = await getHaritaKatmanlari();
     for (const k of katmanlar) {
@@ -174,19 +193,19 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
         const etiket = (g.ad || k.ad || "").trim(); // KALICI etiket içeriği (yol/çizgi adı)
         // Kalıcı (her zaman görünür) etiket — tıklamadan ismi gösterir. Boşsa eklenmez.
         const tipTooltip = (dir: "center" | "top") =>
-          etiket ? { permanent: true as const, direction: dir, className: "yol-etiket", opacity: 1 } : null;
+          etiket ? { permanent: true as const, direction: dir, className: "yol-etiket", opacity: 1, pane: KML_PANE } : null;
         if (g.tip === "nokta") {
           const p = g.noktalar[0];
           if (!p) continue;
-          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
+          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
-          const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
+          const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         } else {
-          const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9 })
+          const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         }

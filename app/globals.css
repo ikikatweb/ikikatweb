@@ -92,23 +92,23 @@ thead th {
 .leaflet-tooltip.canli-etiket {
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid #94a3b8;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  padding: 2px 7px;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  padding: 0px 3px;          /* daha küçük */
   text-align: center;
-  line-height: 1.15;
+  line-height: 1.05;
   white-space: nowrap;
 }
 .leaflet-tooltip.canli-etiket .ce-plaka {
   display: block;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 7px;            /* daha küçük: 9px → 7px */
   color: #0f172a;
 }
 .leaflet-tooltip.canli-etiket .ce-model {
   display: block;
   font-weight: 500;
-  font-size: 10px;
+  font-size: 5px;            /* daha küçük: 7px → 5px */
   color: #475569;
 }
 /* üçgen okun rengi kutuyla uyumlu */
@@ -131,6 +131,9 @@ thead th {
   pointer-events: none;
 }
 .leaflet-tooltip.yol-etiket::before { display: none !important; } /* üçgen ok yok */
+/* Uzaklaşınca (eşik altı zoom) yol/çizgi isimleri gizlenir → harita çizgilerini/bilgilerini kapatmaz.
+   Yakınlaşınca tekrar görünür. Sınıf, zoom dinleyicisiyle map container'a eklenir/çıkarılır. */
+.leaflet-container.etiketleri-gizle .leaflet-tooltip.yol-etiket { display: none !important; }
 
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
