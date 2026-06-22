@@ -80,6 +80,11 @@ export default function YedekPage() {
         toplamSatir,
         tabloSayisi,
       });
+      // Dashboard'daki Cumartesi yedek hatırlatması bugün için gizlensin
+      try {
+        const d = new Date();
+        localStorage.setItem("sonYedekTarihi", `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+      } catch { /* yoksay */ }
       toast.success("Yedek indirildi!", { id: t });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bilinmeyen hata";

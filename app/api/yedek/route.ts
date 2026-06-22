@@ -57,6 +57,15 @@ const YEDEK_TABLOLARI = [
   "mesaj",
   // İhale (varsa)
   "ihale",
+  // Arvento (araç takip) — tüm sekmelerin verisi
+  "arvento_cihaz",          // cihaz ↔ plaka ↔ şoför eşlemesi
+  "arvento_ayarlar",        // Tanımlamalar eşik/ayarları
+  "arvento_ocak",           // gün bazlı stabilize ocağı
+  "arvento_harita_katmani", // NetCAD/KML kayıtlı katmanlar
+  "arac_arvento_rapor",     // günlük km/kontak/çalışma/damper (Araç Çalışma Raporu/Stabilize/Serme/Sıkıştırma)
+  "arac_arvento_guzergah",  // günlük GPS güzergahları (Reglaj/İş Makineleri/Tümü) — büyük olabilir
+  "arvento_anlik",          // canlı/anlık konum — yedek anındaki ANLIK görüntü (15 sn'de bir yenilenir)
+  // NOT: Araç↔sekme atamaları "araclar.arvento_sekmeler" kolonunda → "araclar" tablosuyla zaten yedekleniyor.
 ];
 
 const PARCA_BOYUTU = 1000;

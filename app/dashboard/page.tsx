@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -1435,7 +1436,7 @@ export default function DashboardPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
-
+      <YedekHatirlatma />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
