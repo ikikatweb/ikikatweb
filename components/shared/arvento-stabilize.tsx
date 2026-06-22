@@ -391,8 +391,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
         : [latlngs];
       const cizilen = cizim.length ? cizim : [latlngs];
-      L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
-        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
+      L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6, interactive: false }) // tıklama KML'ye geçsin
+        .addTo(grup);
       for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
       for (const ll of latlngs) bounds.push(ll);
     });
@@ -402,8 +402,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
-      L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
-        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
+      L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4", interactive: false }) // tıklama KML'ye geçsin
+        .addTo(grup);
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
     });
     // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın

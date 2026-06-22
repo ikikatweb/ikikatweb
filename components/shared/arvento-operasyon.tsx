@@ -83,8 +83,8 @@ function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM:
 function cizAltUst(L: LeafletStatic, hedef: LeafletMap | LayerGroup, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
   for (const seg of segler) {
     if (seg.length < 2) continue;
-    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
-    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
+    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity, interactive: false }).addTo(hedef);
+    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity, interactive: false }).addTo(hedef);
     for (const ll of seg) bounds.push(ll);
   }
 }
@@ -302,8 +302,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       secilenSilindirler.forEach((k) =>
         parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
           if (seg.length < 2) return;
-          L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
-            .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
+          L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9, interactive: false }) // tıklama KML'ye geçsin
+            .addTo(grup);
           for (const ll of seg) bounds.push(ll);
         }));
     }

@@ -62,7 +62,7 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
     const yon = k.yon ?? hesapYon;
     // Hareket: hız > 3 km/s VEYA son çizimden bu yana konum anlamlı kaydıysa (yavaş iş makineleri için).
     const hareket = (k.hiz ?? 0) > 3 || hesapYon != null;
-    const renk = hareket ? "#16a34a" : "#dc2626"; // hareket=yeşil, durağan=kırmızı
+    const renk = hareket ? "#16a34a" : "#2563eb"; // hareket=yeşil, duruyor=MAVI (kırmızı "çalışmıyor" izlenimi veriyordu)
     // Kalıcı etiket: plaka (kalın) + model (alt satır) — haritada hep görünür, Arvento'daki gibi.
     const etiket = `<span class="ce-plaka">${ad}</span>${model ? `<span class="ce-model">${model}</span>` : ""}`;
     // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde (durağan/yön yok) nokta.
@@ -81,7 +81,7 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
-        `${hareket ? "🟢 hareket" : "🔴 durağan"} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
+        `${hareket ? "🟢 hareket" : "🔵 duruyor"} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
         `${formatSaat(k.tarih)}<br>${k.adres ?? ""}`,
       )
       .bindTooltip(etiket, { permanent: true, direction: "top", offset: [0, -9], className: "canli-etiket", opacity: 1, pane: CANLI_PANE });

@@ -142,8 +142,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const kal = op === "sikistirma" ? silindirKal : reglajKal;
       const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
       (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
-          .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
+        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85, interactive: false }) // tıklama KML'ye geçsin
+          .addTo(grup));
       for (const ll of latlngs) bounds.push(ll);
     });
     // Damper noktaları (Stabilize) — turuncu yuvarlak

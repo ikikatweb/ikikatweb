@@ -225,17 +225,13 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) continue;
       const renk = renkAl(kayit.plaka);
-      // Popup km'si KART ile AYNI olsun (tutarsızlık olmasın): omurga (tek çizgi) varsa onu, yoksa toplam_mesafe.
-      const omurgaKm = omurgaKmMap.get(kayit.plaka);
-      const kmStr = omurgaKm != null
-        ? `${omurgaKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
-        : `${kayit.toplam_mesafe ?? 0} km`;
-      const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kmStr} · ${noktalar.length} nokta`;
+      // Reglaj çizgisi TIKLAMA-GEÇİRGEN (interactive:false): görselde KML üstünde durur ama tıklama
+      // alttaki KML'ye geçer → KML seçilebilir. (Km/nokta bilgisi kartta zaten var.)
       if (etkinTekrar >= 1) {
         const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
-        L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
+        L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85, interactive: false }).addTo(grup);
       } else {
-        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
+        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, interactive: false }).addTo(grup);
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })
