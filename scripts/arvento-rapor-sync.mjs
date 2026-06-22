@@ -192,11 +192,14 @@ if (loop) {
   try { await birKez(gunler); } catch (e) { console.error("HATA:", e.message); kod = 1; }
   setTimeout(() => process.exit(kod), 400);
 } else {
-  // Zamanlanmış Görev modu: görev her 1 dk ateşlenir; ayardaki dakika dolmadıysa ucuz çık.
+  // Zamanlanmış Görev modu: görev belirli aralıkla ateşlenir; ayardaki dakika dolmadıysa ucuz çık.
+  // PAY (100 sn): çekim ~25 sn sürdüğü için damga fire'dan geç düşer; sonraki fire eşiğin hemen
+  // ALTINDA gelip atlanmasın diye eşiği 100 sn düşürürüz (yoksa efektif aralık ~2 katına çıkar).
   let kod = 0;
   const dk = await araligiOkuDk();
+  const esikMs = Math.max(0, dk * 60 - 100) * 1000;
   const gecen = Date.now() - sonCalismaOku();
-  if (sonCalismaOku() && gecen < dk * 60 * 1000) {
+  if (sonCalismaOku() && gecen < esikMs) {
     console.log(`${new Date().toLocaleTimeString("tr-TR")} → erken (${Math.round(gecen / 60000)}/${dk} dk), çekim atlandı.`);
     setTimeout(() => process.exit(0), 200);
   } else {
