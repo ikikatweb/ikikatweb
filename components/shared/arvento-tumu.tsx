@@ -8,7 +8,7 @@ import { getGuzergahByRange, getArventoRaporByRange } from "@/lib/supabase/queri
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
@@ -31,7 +31,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -142,8 +142,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const kal = op === "sikistirma" ? silindirKal : reglajKal;
       const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
       (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85, interactive: false }) // tıklama KML'ye geçsin
-          .addTo(grup));
+        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
+          .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
       for (const ll of latlngs) bounds.push(ll);
     });
     // Damper noktaları (Stabilize) — turuncu yuvarlak
@@ -246,10 +246,13 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         {sonGuncelleme && (
           <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
         )}
-        <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
-          className="h-9 gap-1 text-xs ml-auto">
-          <Download size={14} /> KML İndir
-        </Button>
+        <div className="flex flex-col gap-1.5 ml-auto">
+          <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
+            className="h-9 gap-1 text-xs">
+            <Download size={14} /> KML İndir
+          </Button>
+          {canliButton}
+        </div>
       </div>
 
       {veriYok ? (

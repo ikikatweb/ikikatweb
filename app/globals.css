@@ -126,7 +126,7 @@ thead th {
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel {
   position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-  z-index: 1200; width: auto; max-width: calc(100% - 24px); max-height: none; overflow: visible;
+  z-index: 1200; width: auto; max-width: calc(100% - 16px); max-height: none; overflow: visible;
   margin: 0 !important; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 /* Tam ekranda GENEL BİLGİLER (özet) kamyon isimlerinin ALTINA değil YANINA gelsin:
@@ -141,7 +141,8 @@ thead th {
    (Normal moddaki tek-satır + yatay kaydırma yalnız tam ekranda devre dışı kalır.) */
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div > div:first-child,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div > div:first-child {
-  flex-wrap: wrap !important; overflow-x: visible !important;
+  flex-wrap: nowrap !important; overflow-x: visible !important; /* TEK SATIR — sarma yok, kaydırma yok */
+  flex: 0 0 auto !important; /* büyüme yok → kartlar ile özet arasında boşluk olmaz, panel daralır */
 }
 
 /* KAPALI KML çizgileri (döngü/alan) — şeffaf dolgulu polygon olarak çizilir; içine de TIKLANABİLSİN

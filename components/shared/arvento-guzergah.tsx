@@ -11,7 +11,7 @@ import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Route, Download } from "lucide-react";
@@ -57,12 +57,13 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", refreshKey = 0, sonGuncelleme }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; refreshKey?: number; sonGuncelleme?: Date | null }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
+  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık menüsü (Araca odaklan)
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -153,6 +154,35 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     setSeciliPlakalar(new Set(araclar.map((k) => k.plaka)));
   }, [araclar]);
 
+  // Sağ-tık menüsünü dışarı tıklayınca / ESC ile kapat.
+  useEffect(() => {
+    if (!odakMenu) return;
+    const kapat = () => setOdakMenu(null);
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOdakMenu(null); };
+    window.addEventListener("click", kapat);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("click", kapat); window.removeEventListener("keydown", esc); };
+  }, [odakMenu]);
+
+  // Araca odaklan — haritayı aracın ŞU ANKİ canlı konumuna (varsa) ya da güzergahına götürür.
+  const aracaOdaklan = useCallback((plaka: string) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const norm = plakaNorm(plaka);
+    const canli = (canliVeriRef.current.konumlar ?? []).find((k) => {
+      const p = k.node ? canliVeriRef.current.cihazMap?.get(k.node.trim())?.plaka : null;
+      return p != null && plakaNorm(p) === norm && k.lat != null && k.lng != null;
+    });
+    if (canli && canli.lat != null && canli.lng != null) {
+      map.setView([canli.lat, canli.lng], Math.max(map.getZoom(), 16), { animate: true });
+      return;
+    }
+    const arac = araclar.find((a) => a.plaka === plaka);
+    const pts = (arac?.noktalar ?? []).filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng] as [number, number]);
+    if (pts.length) { map.fitBounds(pts, { padding: [40, 40], maxZoom: 17 }); return; }
+    toast.error("Aracın konumu bulunamadı (canlı kapalı ve bu aralıkta güzergah yok).", { duration: toastSuresi() });
+  }, [araclar]);
+
   // Her araca sabit renk
   const plakaRenk = useMemo(() => {
     const m = new Map<string, string>();
@@ -225,13 +255,18 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) continue;
       const renk = renkAl(kayit.plaka);
-      // Reglaj çizgisi TIKLAMA-GEÇİRGEN (interactive:false): görselde KML üstünde durur ama tıklama
-      // alttaki KML'ye geçer → KML seçilebilir. (Km/nokta bilgisi kartta zaten var.)
+      // Çizgiye tıklanınca bilgi popup'ı (kartla aynı km: omurga varsa onu, yoksa toplam_mesafe).
+      // Çizgi ince → çizgiye tıkla=bu popup, alana tıkla=alttaki KML seçilir (ikisi de çalışır).
+      const omurgaKm = omurgaKmMap.get(kayit.plaka);
+      const kmStr = omurgaKm != null
+        ? `${omurgaKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
+        : `${kayit.toplam_mesafe ?? 0} km`;
+      const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kmStr} · ${noktalar.length} nokta`;
       if (etkinTekrar >= 1) {
         const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
-        L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85, interactive: false }).addTo(grup);
+        L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
       } else {
-        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, interactive: false }).addTo(grup);
+        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })
@@ -328,7 +363,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             const omurgaKm = omurgaKmMap.get(k.plaka); // tek çizgi (yol) uzunluğu — varsa bunu göster
             return (
               <button key={k.plaka} type="button" onClick={() => toggle(k.plaka)}
-                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""}`}
+                onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: k.plaka }); }}
+                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""} — sağ tık: araca odaklan`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
                 className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
@@ -378,15 +414,29 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-              <Download size={14} /> KML İndir
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
+                <Download size={14} /> KML İndir
+              </Button>
+              {canliButton}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Harita */}
       <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "65vh" }} />
+
+      {/* Sağ-tık menüsü — Araca odaklan */}
+      {odakMenu && (
+        <div className="fixed z-[1401] bg-white rounded-lg border shadow-lg py-1 text-xs"
+          style={{ left: odakMenu.x, top: odakMenu.y }}>
+          <button type="button" onClick={() => { aracaOdaklan(odakMenu.plaka); setOdakMenu(null); }}
+            className="px-3 py-1.5 hover:bg-gray-100 w-full text-left flex items-center gap-1.5 whitespace-nowrap">
+            🎯 <b>{odakMenu.plaka}</b> — Araca odaklan
+          </button>
+        </div>
+      )}
     </div>
   );
 }

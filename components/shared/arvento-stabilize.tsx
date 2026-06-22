@@ -11,7 +11,7 @@ import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/sup
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
@@ -117,7 +117,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -391,8 +391,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         ? sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
         : [latlngs];
       const cizilen = cizim.length ? cizim : [latlngs];
-      L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6, interactive: false }) // tıklama KML'ye geçsin
-        .addTo(grup);
+      L.polyline(cizilen, { color: reglajRenkV, weight: reglajKal, opacity: 0.6 })
+        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
       for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
       for (const ll of latlngs) bounds.push(ll);
     });
@@ -402,8 +402,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
-      L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4", interactive: false }) // tıklama KML'ye geçsin
-        .addTo(grup);
+      L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
+        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
     });
     // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
@@ -614,6 +614,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
                 <Download size={14} /> KML İndir
               </Button>
+              {canliButton}
             </div>
           </div>
         </div>

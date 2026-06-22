@@ -11,7 +11,7 @@ import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/sup
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
@@ -83,14 +83,14 @@ function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM:
 function cizAltUst(L: LeafletStatic, hedef: LeafletMap | LayerGroup, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
   for (const seg of segler) {
     if (seg.length < 2) continue;
-    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity, interactive: false }).addTo(hedef);
-    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity, interactive: false }).addTo(hedef);
+    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
+    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
     for (const ll of seg) bounds.push(ll);
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, canliButton }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -302,8 +302,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       secilenSilindirler.forEach((k) =>
         parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
           if (seg.length < 2) return;
-          L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9, interactive: false }) // tıklama KML'ye geçsin
-            .addTo(grup);
+          L.polyline(zikzakla(seg), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
+            .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir)<br>${k.arac_sinifi ?? ""}`);
           for (const ll of seg) bounds.push(ll);
         }));
     }
@@ -441,9 +441,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-              <Download size={14} /> KML İndir
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
+                <Download size={14} /> KML İndir
+              </Button>
+              {canliButton}
+            </div>
           </div>
         </div>
       </div>

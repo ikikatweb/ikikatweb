@@ -144,8 +144,6 @@ export default function ArventoRaporPage() {
   const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
   const [atamaArama, setAtamaArama] = useState("");       // atama tablosu plaka araması
   const [arama] = useState("");
-  // İş Makineleri sekmesi — cins filtresi ("" = tüm iş makineleri = sayaç tipi "saat")
-  const [ismakineCins, setIsmakineCins] = useState<string>("");
   // Sekme anahtarları:
   //  calisma=Araç Çalışma Raporu, guzergah=Reglaj, genel=Stabilize,
   //  serme=Serme, sikistirma=Sıkıştırma, tanimlamalar=Tanımlamalar
@@ -582,12 +580,6 @@ export default function ArventoRaporPage() {
   const gruplar = useMemo(() => gruplaSantiye(filtrelenmis), [gruplaSantiye, filtrelenmis]);
 
   // İş Makineleri: araç cinsleri (filtre seçeneği) + cinse göre süzülmüş kayıtlar.
-  // Cins seçilmemişse varsayılan: sayaç tipi "saat" olanlar (iş makineleri saat çalışır).
-  const ismakineCinsler = useMemo(() => {
-    const set = new Set<string>();
-    for (const k of kayitlar) { const c = plakaSantiye.get(plakaNorm(k.plaka))?.cinsi; if (c) set.add(c); }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "tr"));
-  }, [kayitlar, plakaSantiye]);
   const ismakineKayitlar = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     return kayitlar.filter((k) => {
@@ -597,11 +589,10 @@ export default function ArventoRaporPage() {
       const atama = sekmeMap.get(plakaNorm(k.plaka));
       const ismakineMi = atama ? atama.includes("ismakine") : (atananSekmeler.has("ismakine") ? false : ps?.sayacTipi === "saat");
       if (!ismakineMi) return false;
-      if (ismakineCins && ps?.cinsi !== ismakineCins) return false; // cins alt-filtresi
       if (q && !trAramaNormalize([k.plaka, k.surucu, k.marka, k.model, ps?.cinsi].filter(Boolean).join(" ")).includes(q)) return false;
       return true;
     });
-  }, [kayitlar, plakaSantiye, ismakineCins, arama, sekmeMap, atananSekmeler]);
+  }, [kayitlar, plakaSantiye, arama, sekmeMap, atananSekmeler]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
@@ -636,12 +627,22 @@ export default function ArventoRaporPage() {
   }
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
 
+  // Canlı (anlık konum) butonu — sekme panelindeki KML İndir'in ALTINA yerleştirilir (canliButton prop'u).
+  const canliButton = (
+    <button type="button" onClick={() => setCanliAcik((v) => !v)}
+      title="Anlık araç konumlarını bu haritaya bindir/kaldır"
+      className={`h-9 px-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${canliAcik ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
+      <span className={`inline-block w-2 h-2 rounded-full ${canliAcik ? "bg-white animate-pulse" : "bg-emerald-500"}`} />
+      {canliAcik ? `Canlı açık${canliKonumlar.length ? ` · ${canliKonumlar.length}` : ""}${canliYukleniyor ? " ⟳" : ""}` : "Canlı"}
+    </button>
+  );
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-            <Satellite size={24} /> Arvento Araç Çalışma Raporu
+            <Satellite size={24} /> Araç Takip
           </h1>
           <p className="text-xs text-gray-500 mt-1">Her gece otomatik gelen rapordan araç bazlı mesafe ve çalışma süreleri.</p>
         </div>
@@ -689,14 +690,6 @@ export default function ArventoRaporPage() {
           <button type="button" onClick={() => { const b = trBugun(); setBaslangic(b); setBitis(b); }}
             title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
         )}
-        {(["ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu"] as const).includes(aktifSekme as "ismakine") && (
-          <button type="button" onClick={() => setCanliAcik((v) => !v)}
-            title="Anlık araç konumlarını bu haritaya bindir/kaldır"
-            className={`ml-auto h-9 px-3 mb-px flex items-center gap-1.5 rounded-lg border text-xs font-medium transition-colors ${canliAcik ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
-            <span className={`inline-block w-2 h-2 rounded-full ${canliAcik ? "bg-white animate-pulse" : "bg-emerald-500"}`} />
-            {canliAcik ? `Canlı açık${canliKonumlar.length ? ` · ${canliKonumlar.length}` : ""}${canliYukleniyor ? " ⟳" : ""}` : "Canlı"}
-          </button>
-        )}
       </div>
 
       {/* Sekmeler — satır kaydırmalı (wrap): yatay scroll olmadan tek ekranda görünür */}
@@ -715,19 +708,21 @@ export default function ArventoRaporPage() {
       {aktifSekme === "ismakine" ? (
         // ---- SEKME: İŞ MAKİNELERİ — cinse göre, Arvento'nun tüm sütunlarıyla detaylı tablo ----
         <div className="space-y-3">
-          <div className="bg-white rounded-lg border p-3 flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label className="text-[10px] text-gray-500">Cins</Label>
-              <select value={ismakineCins} onChange={(e) => setIsmakineCins(e.target.value)} className={selectClass + " min-w-[180px]"}>
-                <option value="">Tüm iş makineleri (saat sayaçlı)</option>
-                {ismakineCinsler.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="ml-auto text-xs text-gray-600">
-              <strong className="text-[#1E3A5F]">{ismakineKayitlar.length}</strong> makine ·{" "}
-              <strong>{formatSure(ismakineKayitlar.reduce((s, k) => s + (k.hareket_sn ?? 0), 0))}</strong> toplam çalışma
-            </div>
+          <div className="bg-white rounded-lg border p-3 text-xs text-gray-600">
+            <strong className="text-[#1E3A5F]">{ismakineKayitlar.length}</strong> makine ·{" "}
+            <strong>{formatSure(ismakineKayitlar.reduce((s, k) => s + (k.hareket_sn ?? 0), 0))}</strong> toplam çalışma
           </div>
+          {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
+          {ismakineKayitlar.length > 0 && (
+            <div className="space-y-1">
+              <h4 className="text-xs font-semibold text-[#1E3A5F] flex items-center gap-1"><Satellite size={14} /> Haritada Çalışma Bölgeleri</h4>
+              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
+                kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
+                calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
+                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
+                refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+            </div>
+          )}
           {ismakineKayitlar.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg border">
               <Satellite size={48} className="mx-auto text-gray-300 mb-4" />
@@ -766,33 +761,22 @@ export default function ArventoRaporPage() {
               </Table>
             </div>
           )}
-          {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) */}
-          {ismakineKayitlar.length > 0 && (
-            <div className="space-y-1">
-              <h4 className="text-xs font-semibold text-[#1E3A5F] flex items-center gap-1"><Satellite size={14} /> Haritada Çalışma Bölgeleri</h4>
-              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
-                kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
-                calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
-                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
-                refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
-            </div>
-          )}
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} canliButton={canliButton} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">

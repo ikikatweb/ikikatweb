@@ -56,7 +56,7 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    title: "Arvento Raporu",
+    title: "Araç Takip",
     icon: <Satellite size={20} />,
     color: "text-sky-600 bg-sky-50",
     items: [
