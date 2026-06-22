@@ -16,6 +16,22 @@ export type SadelesSonuc = {
 
 const METRE_DERECE = 111320; // 1 derece ~ 111.32 km (yaklaşık)
 
+// Omurga çizgilerinin (parcalar) TOPLAM uzunluğu — KM. Bu, "haritada görünen tek çizginin uzunluğu":
+// greyderin/silindirin aynı yolu git-gel taraması (tekrarlar) sayılmaz, yalnız yolun kendisi ölçülür.
+// Kartlarda gösterilen "reglaj km" bununla hesaplanır (ham toplam_mesafe yerine).
+export function parcalarUzunlukKm(parcalar: [number, number][][]): number {
+  let metre = 0;
+  for (const p of parcalar) {
+    for (let i = 1; i < p.length; i++) {
+      const cosL = Math.max(0.1, Math.cos(((p[i - 1][0] + p[i][0]) / 2) * Math.PI / 180));
+      const dy = (p[i][0] - p[i - 1][0]) * METRE_DERECE;
+      const dx = (p[i][1] - p[i - 1][1]) * METRE_DERECE * cosL;
+      metre += Math.hypot(dx, dy);
+    }
+  }
+  return metre / 1000;
+}
+
 // Bir parçayı (hareketli ortalama ile) yumuşatır.
 function yumusat(parca: [number, number][], pencere = 2): [number, number][] {
   if (parca.length <= 2) return parca;

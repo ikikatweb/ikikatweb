@@ -82,8 +82,8 @@ thead th {
   border: none;
 }
 .canli-ok {
-  width: 22px;   /* küçültüldü: 30px → 22px (SVG ile uyumlu) */
-  height: 22px;
+  width: 26px;   /* sabit boyut: 26px (SVG ile uyumlu, zoom'dan bağımsız) */
+  height: 26px;
   transform-origin: 50% 50%;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
@@ -102,17 +102,42 @@ thead th {
 .leaflet-tooltip.canli-etiket .ce-plaka {
   display: block;
   font-weight: 700;
-  font-size: 8px;            /* bir tık büyütüldü: 7px → 8px */
+  font-size: 11px;           /* plaka */
   color: #0f172a;
 }
 .leaflet-tooltip.canli-etiket .ce-model {
   display: block;
   font-weight: 500;
-  font-size: 6px;            /* bir tık büyütüldü: 5px → 6px */
+  font-size: 9px;            /* model */
   color: #475569;
 }
 /* üçgen okun rengi kutuyla uyumlu */
 .leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
+
+/* ── Tam ekran: o sekmenin araç kartları haritanın ÜSTÜNE ortalı yüzer ──
+   Kapsayıcı (kart paneli + harita) tam ekrana alınır; tam ekranda harita tüm alanı kaplar,
+   kart paneli ("harita-arac-panel") üstte ortalı kayan kutuya döner. Normal modda hiçbir etki yok. */
+.harita-tamekran-kapsayici:fullscreen,
+.harita-tamekran-kapsayici:-webkit-full-screen { width: 100%; height: 100%; background: #000; }
+.harita-tamekran-kapsayici:fullscreen .harita-leaflet,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-leaflet {
+  position: absolute; inset: 0; height: 100% !important; width: 100% !important; border-radius: 0 !important; margin: 0 !important;
+}
+.harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 1200; width: auto; max-width: calc(100% - 90px); max-height: 40vh; overflow: auto;
+  margin: 0 !important; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+/* Tam ekranda GENEL BİLGİLER (özet) kamyon isimlerinin ALTINA değil YANINA gelsin:
+   panelin ana satırının sarması kapatılır → [kartlar] [özet] yan yana kalır.
+   (Kartların KENDİ iç sarması korunur — yalnız panelin doğrudan çocuğu/kendisi nowrap olur.) */
+.harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel,
+.harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div {
+  flex-wrap: nowrap !important;
+}
 
 /* Kayıtlı katman (NetCAD/KML) çizgilerinin KALICI yol/çizgi adı etiketi — kutusuz, uydu üzerinde
    okunur (beyaz metin + koyu hale). Tıklamadan görünür. */

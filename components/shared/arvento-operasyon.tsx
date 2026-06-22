@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
-import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject } from "react";
@@ -203,6 +203,21 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     [sermeMi, greyderler, silindirChipler],
   );
 
+  // Omurga (tek çizgi) uzunluğu — KM. Kartta ham toplam_mesafe yerine bu gösterilir: haritada çizilen
+  // sadeleşmiş tek hattın uzunluğu (serme=greyder, sıkıştırma=silindir; git-gel tekrarları sayılmaz).
+  const omurgaKmMap = useMemo(() => {
+    const m = new Map<string, number>();
+    const esik = sermeMi ? etkinTekrar : etkinSilindir;
+    if (esik < 1) return m; // ham mod → omurga yok, toplam_mesafe'ye düşülür
+    for (const k of sermeMi ? greyderler : silindirler) {
+      const ns = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      if (ns.length < 2) continue;
+      const ps = sadelesGuzergah(ns, esik, gridMesafe).parcalar;
+      if (ps.length) m.set(k.plaka, parcalarUzunlukKm(ps));
+    }
+    return m;
+  }, [sermeMi, greyderler, silindirler, etkinTekrar, etkinSilindir, gridMesafe]);
+
   // Kamyon damperleri (serme'de ortada gösterilir)
   const damperKoordlu = useMemo<DamperNokta[]>(() => {
     if (!sermeMi) return [];
@@ -234,7 +249,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+        .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
@@ -366,8 +382,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   }
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded-lg border p-3">
+    <div className="space-y-3 harita-tamekran-kapsayici relative">
+      <div className="bg-white rounded-lg border p-3 harita-arac-panel">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           {/* Sol: araç chip'leri (serme→greyder, sıkıştırma→silindir) + Güzergahı Göster */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -383,7 +399,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
                   <span className="flex flex-col items-start leading-tight">
                     <span className="font-semibold flex items-center gap-1">{k.plaka}{k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}</span>
-                    <span className="text-[10px] opacity-90">{Math.round(k.toplam_mesafe ?? 0)} km</span>
+                    <span className="text-[10px] opacity-90" title={omurgaKmMap.get(k.plaka) != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
+                      {omurgaKmMap.get(k.plaka) != null
+                        ? `${omurgaKmMap.get(k.plaka)!.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
+                        : `${Math.round(k.toplam_mesafe ?? 0)} km`}
+                    </span>
                     {/* Kontak açık + rölanti — alt alta */}
                     {kontakRolantiMap && (
                       <>
@@ -428,7 +448,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         </div>
       </div>
 
-      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100" style={{ height: "62vh" }} />
+      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "62vh" }} />
     </div>
   );
 }

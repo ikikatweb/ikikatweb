@@ -87,7 +87,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+        .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
@@ -226,9 +227,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const veriYok = guzergahlar.length === 0 && ozet.damper === 0 && !(canliKonumlar && canliKonumlar.length > 0);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 harita-tamekran-kapsayici relative">
       {/* Lejant + özet */}
-      <div className="bg-white rounded-lg border p-3 flex flex-wrap items-center gap-x-5 gap-y-2">
+      <div className="bg-white rounded-lg border p-3 flex flex-wrap items-center gap-x-5 gap-y-2 harita-arac-panel">
         <span className="text-xs font-semibold text-gray-600">{formatAralik(bas, bitis)} — Tüm operasyonlar</span>
         <span className="flex items-center gap-1.5 text-xs">
           <span className="inline-block w-4 h-1.5 rounded" style={{ background: OPERASYONLAR.reglaj.renk }} />
@@ -257,7 +258,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           <p className="text-gray-500">{formatAralik(bas, bitis)} için operasyon verisi yok. Mesafe Bilgisi / damper raporlarını yükleyin.</p>
         </div>
       ) : (
-        <div ref={mapRef} className="w-full rounded-lg border bg-gray-100" style={{ height: "66vh" }} />
+        <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "66vh" }} />
       )}
     </div>
   );

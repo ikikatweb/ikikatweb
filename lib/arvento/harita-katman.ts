@@ -6,13 +6,14 @@ import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
 
 type LeafletStatic = typeof import("leaflet");
 
-// Katman (z-index) sıralaması — ALTTAN ÜSTE: harita(tile ~200) < KML(420) < damper(marker 600) < canlı(640).
-// Leaflet pane'leriyle kesinleştirilir; KML/canlı katmanları bu pane adlarını kullanır (ekleKayitliKatmanlar,
-// canli-katman). Damperler varsayılan markerPane'de (600) → KML üstünde, canlının altında kalır.
+// Katman (z-index) sıralaması — ALTTAN ÜSTE:
+//   harita(tile ~200) < KML(350) < reglaj/rota çizgileri(overlayPane 400) < damper(marker 600) < canlı(640)
+// İstek: "harita, KML, reglaj" sırası → KML, araç rota çizgilerinin ALTINDA olmalı (reglaj çizgisi en üstte
+// görünsün). Bu yüzden KML pane'i overlayPane'in (400) altına, 350'ye alındı.
 export const KML_PANE = "kmlPane";
 export const CANLI_PANE = "canliPane";
 function panelleriKur(map: LeafletMap): void {
-  if (!map.getPane(KML_PANE)) { const p = map.createPane(KML_PANE); p.style.zIndex = "420"; }
+  if (!map.getPane(KML_PANE)) { const p = map.createPane(KML_PANE); p.style.zIndex = "350"; }
   if (!map.getPane(CANLI_PANE)) { const p = map.createPane(CANLI_PANE); p.style.zIndex = "640"; }
 }
 
@@ -20,21 +21,24 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   panelleriKur(map);
   // maxZoom: haritanın çıkabileceği en üst zoom. maxNativeZoom: kaynağın gerçek karo sağladığı
   // son seviye — üstünde "veri yok" placeholder yerine son karo büyütülür (overzoom).
+  // TÜM katmanlar aynı maxZoom (21) — yoksa biri (uydu) erken biter, üstündeki zoom'da kaybolup
+  // harita "bozuk" görünür. maxNativeZoom: kaynağın gerçek son karosu; üstünde son karo büyütülür (overzoom).
+  const ENUST_ZOOM = 21;
   const sokak = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap", maxZoom: 19, maxNativeZoom: 19,
+    attribution: "© OpenStreetMap", maxZoom: ENUST_ZOOM, maxNativeZoom: 19,
   });
   // Esri World Imagery — Google Earth benzeri uydu görüntüsü (kırsalda ~18'e kadar karo var)
   const uydu = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-    attribution: "Uydu: Esri, Maxar, Earthstar Geographics", maxZoom: 19, maxNativeZoom: 18,
+    attribution: "Uydu: Esri, Maxar, Earthstar Geographics", maxZoom: ENUST_ZOOM, maxNativeZoom: 18,
   });
   // Uydu üzerine yol ÇİZGİLERİ (Esri) — yolların nerede olduğunu gösterir (etiket az)
   const etiketler = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 20, maxNativeZoom: 18,
+    maxZoom: ENUST_ZOOM, maxNativeZoom: 18,
   });
   // Uydu üzerine yol/yer İSİMLERİ — OpenStreetMap tabanlı şeffaf etiket katmanı (yol adları zengin,
   // beyaz haleli → uydu üzerinde okunur). Kırsal yol isimlerini bunda daha iyi görürsünüz.
   const isimler = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
-    attribution: "Etiketler © OpenStreetMap, © CARTO", subdomains: "abcd", maxZoom: 20, maxNativeZoom: 20,
+    attribution: "Etiketler © OpenStreetMap, © CARTO", subdomains: "abcd", maxZoom: ENUST_ZOOM, maxNativeZoom: 20,
   });
   if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); }
   else sokak.addTo(map);
@@ -46,9 +50,12 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   ekleTamEkranKontrolu(L, map);
 }
 
-// Tam ekran butonu (sol üst) — haritayı tarayıcı Fullscreen API ile tam ekrana alır/çıkarır.
+// Tam ekran butonu (sol üst) — Fullscreen API ile tam ekrana alır/çıkarır.
+// Tam ekran HEDEFİ: kartlar + harita'yı saran ".harita-tamekran-kapsayici" (varsa); böylece tam ekranda
+// o sekmenin araç kartları da görünür (CSS ile haritanın üstüne ortalı yüzer). Kapsayıcı yoksa harita div'i.
 export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   const el = map.getContainer();
+  const hedef = (): HTMLElement => (el.closest(".harita-tamekran-kapsayici") as HTMLElement | null) ?? el;
   let butonA: HTMLAnchorElement | null = null;
   const Buton = L.Control.extend({
     options: { position: "topleft" as const },
@@ -61,8 +68,9 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.on(a, "click", (e) => {
         L.DomEvent.stop(e);
-        if (document.fullscreenElement === el) document.exitFullscreen?.();
-        else el.requestFullscreen?.().catch(() => { /* sessiz */ });
+        const h = hedef();
+        if (document.fullscreenElement === h) document.exitFullscreen?.();
+        else h.requestFullscreen?.().catch(() => { /* sessiz */ });
       });
       return div;
     },
@@ -72,7 +80,7 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   // kalkınca dinleyici kendini temizler (sızıntı olmaz).
   const handler = () => {
     if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", handler); return; }
-    const tam = document.fullscreenElement === el;
+    const tam = document.fullscreenElement === hedef();
     if (butonA) { butonA.innerHTML = tam ? "🗕" : "⛶"; butonA.title = tam ? "Tam ekrandan çık" : "Tam ekran"; }
     setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 120);
   };
@@ -250,10 +258,9 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
-          // Alan (polygon) isimleri haritada gösterilmez — gerek yok. (Ada tıklayınca popup ile görünür.)
-          const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE })
-            .addTo(map).bindPopup(baslik);
-          m.on("click", () => vurgula(m, { color: k.renk, weight: kalinlik, opacity: 0.9 }));
+          // Alan (polygon) TIKLAMAYI YAKALAMAZ (interactive:false) → üstündeki reglaj/rota çizgisine
+          // tıklanabilsin (alan büyük dolgusuyla çizginin tıklamasını çalıyordu). Görsel korunur, isim yok.
+          L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE, interactive: false }).addTo(map);
         } else {
           const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);

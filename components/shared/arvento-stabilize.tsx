@@ -342,7 +342,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+        .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
@@ -354,7 +355,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map);
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
-      veriKatmanRef.current = L.layerGroup().addTo(map); // çizgi/damper buraya — temizlenip yeniden çizilir
+      veriKatmanRef.current = L.layerGroup().addTo(map); // çizgi/damper/ocak buraya — temizlenip yeniden çizilir
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
       setTimeout(() => { oto = false; }, 800); // ilk programatik hareketler bitti → kullanıcıyı dinle
       setTimeout(() => { try { map?.invalidateSize(); } catch { /* sessiz */ } }, 150);
@@ -435,9 +436,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const ikon = L.divIcon({
         html: damperKamyonIkonHtml(renk, adet),
         className: "damper-ikon",
-        iconSize: [34, 34],
-        iconAnchor: [17, 17],
-        popupAnchor: [0, -15],
+        iconSize: [26, 26],   // küçültüldü: 34 → 26
+        iconAnchor: [13, 13],
+        popupAnchor: [0, -12],
       });
       L.marker([g.lat, g.lng], { icon: ikon })
         .addTo(grup)
@@ -537,12 +538,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 harita-tamekran-kapsayici relative">
       {/* Kamyon chip'leri (yan yana, çoklu seçim — şoför ismiyle) + özet + KML */}
-      <div className="bg-white rounded-lg border p-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="bg-white rounded-lg border p-3 harita-arac-panel">
+        {/* Satır sarmaz → özet kartların ALTINA değil YANINA kalır; kart bloğu esner ve içinde sarar. */}
+        <div className="flex items-start justify-between gap-3">
           {/* Sol: kamyon chip'leri + Güzergahı Göster */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta Stabilize aracı/kamyonu yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
@@ -578,8 +580,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             );
           })}
           </div>
-          {/* Sağ: özet + KML */}
-          <div className="flex items-start gap-3">
+          {/* Sağ: özet + KML — kartların yanında sabit kalır (daralmaz/alta inmez) */}
+          <div className="flex items-start gap-3 shrink-0">
             <div className="text-xs text-gray-600 text-right leading-relaxed">
               <div className="text-gray-400">
                 <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: reglajRenkV, opacity: 0.6 }} />
@@ -618,7 +620,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       </div>
 
       {/* Harita */}
-      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100" style={{ height: "60vh" }} />
+      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "60vh" }} />
 
       {/* Damper indirme listesi (seçili kamyonlar) */}
       {damperOlaylar.length > 0 && (

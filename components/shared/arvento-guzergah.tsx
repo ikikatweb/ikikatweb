@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject } from "react";
@@ -128,6 +128,21 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     return [...guzergahli, ...ekstra];
   }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap]);
 
+  // Omurga (tek çizgi) uzunluğu — KM. Kartta "reglaj km" olarak gösterilir (ham toplam_mesafe yerine):
+  // haritada çizilen sadeleşmiş tek hattın uzunluğu = greyderin git-gel'i sayılmadan yapılan yol.
+  // Yalnız sadeleştirme aktifken (etkinTekrar >= 1, yani omurga çiziliyorken) hesaplanır.
+  const omurgaKmMap = useMemo(() => {
+    const m = new Map<string, number>();
+    if (etkinTekrar < 1) return m; // ham mod → omurga yok, toplam_mesafe'ye düşülür
+    for (const k of araclar) {
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      if (noktalar.length < 2) continue;
+      const parcalar = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
+      if (parcalar.length) m.set(k.plaka, parcalarUzunlukKm(parcalar));
+    }
+    return m;
+  }, [araclar, etkinTekrar, gridMesafe]);
+
   // Araç KÜMESİ değişince varsayılan: tüm araçlar seçili. Periyodik tazelemede aynı plakalar
   // gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, gereksiz redraw olmasın).
   const plakaImzaRef = useRef("");
@@ -152,10 +167,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const secilenler = useMemo(() => araclar.filter((k) => seciliPlakalar.has(k.plaka)), [araclar, seciliPlakalar]);
 
   const ozet = useMemo(() => {
-    const toplamKm = secilenler.reduce((s, k) => s + (k.toplam_mesafe ?? 0), 0);
+    // toplamKm = omurga (tek çizgi) uzunlukları; omurga yoksa ham toplam_mesafe'ye düş.
+    const toplamKm = secilenler.reduce((s, k) => s + (omurgaKmMap.get(k.plaka) ?? k.toplam_mesafe ?? 0), 0);
     const toplamNokta = secilenler.reduce((s, k) => s + (k.noktalar?.length ?? 0), 0);
     return { arac: secilenler.length, toplamKm, toplamNokta };
-  }, [secilenler]);
+  }, [secilenler, omurgaKmMap]);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
@@ -165,7 +181,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current).setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
+      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+        .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
@@ -208,7 +225,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) continue;
       const renk = renkAl(kayit.plaka);
-      const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kayit.toplam_mesafe ?? 0} km · ${noktalar.length} nokta`;
+      // Popup km'si KART ile AYNI olsun (tutarsızlık olmasın): omurga (tek çizgi) varsa onu, yoksa toplam_mesafe.
+      const omurgaKm = omurgaKmMap.get(kayit.plaka);
+      const kmStr = omurgaKm != null
+        ? `${omurgaKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
+        : `${kayit.toplam_mesafe ?? 0} km`;
+      const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kmStr} · ${noktalar.length} nokta`;
       if (etkinTekrar >= 1) {
         const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
         L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
@@ -241,7 +263,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, gorunumRef]);
+  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, gorunumRef, omurgaKmMap]);
 
   // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
   function exportKML() {
@@ -298,15 +320,16 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 harita-tamekran-kapsayici relative">
       {/* Araç chip'leri (yan yana, çoklu seçim — renkli) + özet + KML */}
-      <div className="bg-white rounded-lg border p-3">
+      <div className="bg-white rounded-lg border p-3 harita-arac-panel">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           {/* Sol: araç chip'leri + Güzergahı Göster */}
           <div className="flex flex-wrap items-center gap-1.5">
           {araclar.map((k) => {
             const secili = seciliPlakalar.has(k.plaka);
             const renk = renkAl(k.plaka);
+            const omurgaKm = omurgaKmMap.get(k.plaka); // tek çizgi (yol) uzunluğu — varsa bunu göster
             return (
               <button key={k.plaka} type="button" onClick={() => toggle(k.plaka)}
                 title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""}`}
@@ -321,7 +344,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                     {k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}
                   </span>
                   <span className="text-[10px] opacity-90 flex items-center gap-1.5">
-                    <span>{Math.round(k.toplam_mesafe ?? 0)} km</span>
+                    <span title={omurgaKm != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
+                      {omurgaKm != null
+                        ? `${omurgaKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
+                        : `${Math.round(k.toplam_mesafe ?? 0)} km`}
+                    </span>
                     <span>{k.noktalar?.length ?? 0} nokta</span>
                   </span>
                   {/* Çalışma saati (iş makineleri) = Kontak Açık süresi */}
@@ -363,7 +390,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       </div>
 
       {/* Harita */}
-      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100" style={{ height: "65vh" }} />
+      <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "65vh" }} />
     </div>
   );
 }
