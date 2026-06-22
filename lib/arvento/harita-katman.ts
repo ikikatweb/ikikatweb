@@ -1,7 +1,7 @@
 // Leaflet harita temel katmanları — Sokak (OpenStreetMap) ve Uydu (Esri World Imagery,
 // Google Earth tarzı uydu görüntüsü). Reglaj/Stabilize/Serme/Sıkıştırma/Tümü haritalarında
 // ortak kullanılır. Sağ üstte katman seçici (Uydu / Sokak + etiket) çıkar.
-import type { Map as LeafletMap } from "leaflet";
+import type { Map as LeafletMap, Path } from "leaflet";
 import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
 
 type LeafletStatic = typeof import("leaflet");
@@ -217,6 +217,18 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
   const etiketGorunurluk = () => map.getContainer().classList.toggle("etiketleri-gizle", map.getZoom() < ETIKET_MIN_ZOOM);
   map.on("zoomend", etiketGorunurluk);
   etiketGorunurluk();
+  // Tıklanan yolu vurgula — seçili yol KIRMIZI + kalınlaşır (baştan sona belli olur). Başka yola
+  // tıklayınca öncekisi eskiye döner; aynı yola tekrar tıklayınca seçim kalkar (toggle).
+  const SECIM_RENK = "#ff2d2d";
+  type Stil = { color: string; weight: number; opacity: number };
+  let secili: { yol: Path; stil: Stil } | null = null;
+  const vurgula = (yol: Path, stil: Stil) => {
+    if (secili) secili.yol.setStyle(secili.stil);            // öncekini sıfırla
+    if (secili?.yol === yol) { secili = null; return; }      // aynı yol → seçimi kaldır
+    yol.setStyle({ color: SECIM_RENK, weight: stil.weight + 3, opacity: 1 });
+    yol.bringToFront();
+    secili = { yol, stil };
+  };
   try {
     const katmanlar = await getHaritaKatmanlari();
     for (const k of katmanlar) {
@@ -235,12 +247,14 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
+          // Alan (polygon) isimleri haritada gösterilmez — gerek yok. (Ada tıklayınca popup ile görünür.)
           const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
-          const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
+          m.on("click", () => vurgula(m, { color: k.renk, weight: kalinlik, opacity: 0.9 }));
         } else {
           const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
+          m.on("click", () => vurgula(m, { color: k.renk, weight: kalinlik, opacity: 0.9 }));
           const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         }
       }
