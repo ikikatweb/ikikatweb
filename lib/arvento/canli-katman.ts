@@ -48,12 +48,12 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
           pane: CANLI_PANE, // EN ÜST katman (damper ve KML'nin üstünde)
           icon: L.divIcon({
             className: "canli-ok-wrap",
-            iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -12],
+            iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -9], // küçültüldü: 30→22
             // İç div yön kadar döner (Leaflet'in konum transform'una karışmaz). 0°=kuzey, saat yönü.
-            html: `<div class="canli-ok" style="transform:rotate(${k.yon}deg)"><svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path d="M15 2 L23 25 L15 19.5 L7 25 Z" fill="${renk}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
+            html: `<div class="canli-ok" style="transform:rotate(${k.yon}deg)"><svg width="22" height="22" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path d="M15 2 L23 25 L15 19.5 L7 25 Z" fill="${renk}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
           }),
         })
-      : L.circleMarker([k.lat, k.lng], { pane: CANLI_PANE, radius: 7, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 });
+      : L.circleMarker([k.lat, k.lng], { pane: CANLI_PANE, radius: 5, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 }); // küçültüldü: 7→5
     marker
       .addTo(layer)
       .bindPopup(

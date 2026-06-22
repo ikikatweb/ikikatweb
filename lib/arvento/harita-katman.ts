@@ -43,6 +43,40 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
     { "Yol çizgileri": etiketler, "Yol/yer isimleri": isimler },
     { collapsed: true },
   ).addTo(map);
+  ekleTamEkranKontrolu(L, map);
+}
+
+// Tam ekran butonu (sol üst) — haritayı tarayıcı Fullscreen API ile tam ekrana alır/çıkarır.
+export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
+  const el = map.getContainer();
+  let butonA: HTMLAnchorElement | null = null;
+  const Buton = L.Control.extend({
+    options: { position: "topleft" as const },
+    onAdd() {
+      const div = L.DomUtil.create("div", "leaflet-bar");
+      const a = L.DomUtil.create("a", "", div) as HTMLAnchorElement;
+      a.href = "#"; a.title = "Tam ekran"; a.innerHTML = "⛶";
+      a.style.cssText = "font-size:18px;line-height:30px;text-align:center;cursor:pointer";
+      butonA = a;
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.on(a, "click", (e) => {
+        L.DomEvent.stop(e);
+        if (document.fullscreenElement === el) document.exitFullscreen?.();
+        else el.requestFullscreen?.().catch(() => { /* sessiz */ });
+      });
+      return div;
+    },
+  });
+  map.addControl(new Buton());
+  // Tam ekran değişiminde haritayı yeniden boyutlandır + buton ikonunu güncelle. Harita DOM'dan
+  // kalkınca dinleyici kendini temizler (sızıntı olmaz).
+  const handler = () => {
+    if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", handler); return; }
+    const tam = document.fullscreenElement === el;
+    if (butonA) { butonA.innerHTML = tam ? "🗕" : "⛶"; butonA.title = tam ? "Tam ekrandan çık" : "Tam ekran"; }
+    setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 120);
+  };
+  document.addEventListener("fullscreenchange", handler);
 }
 
 // Mesafe ölçüm kontrolü — sol üstte cetvel (📏) butonu. Tıklayınca ölçüm moduna girilir:
@@ -197,7 +231,7 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
         if (g.tip === "nokta") {
           const p = g.noktalar[0];
           if (!p) continue;
-          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1, pane: KML_PANE })
+          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1, pane: KML_PANE, className: "kml-nokta" })
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {

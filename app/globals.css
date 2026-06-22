@@ -82,8 +82,8 @@ thead th {
   border: none;
 }
 .canli-ok {
-  width: 30px;
-  height: 30px;
+  width: 22px;   /* küçültüldü: 30px → 22px (SVG ile uyumlu) */
+  height: 22px;
   transform-origin: 50% 50%;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
@@ -102,13 +102,13 @@ thead th {
 .leaflet-tooltip.canli-etiket .ce-plaka {
   display: block;
   font-weight: 700;
-  font-size: 7px;            /* daha küçük: 9px → 7px */
+  font-size: 8px;            /* bir tık büyütüldü: 7px → 8px */
   color: #0f172a;
 }
 .leaflet-tooltip.canli-etiket .ce-model {
   display: block;
   font-weight: 500;
-  font-size: 5px;            /* daha küçük: 7px → 5px */
+  font-size: 6px;            /* bir tık büyütüldü: 5px → 6px */
   color: #475569;
 }
 /* üçgen okun rengi kutuyla uyumlu */
@@ -134,6 +134,14 @@ thead th {
 /* Uzaklaşınca (eşik altı zoom) yol/çizgi isimleri gizlenir → harita çizgilerini/bilgilerini kapatmaz.
    Yakınlaşınca tekrar görünür. Sınıf, zoom dinleyicisiyle map container'a eklenir/çıkarılır. */
 .leaflet-container.etiketleri-gizle .leaflet-tooltip.yol-etiket { display: none !important; }
+/* Uzaklaşınca KML nokta işaretleri (yuvarlaklar) da gizlensin (çizgiler kalır). */
+.leaflet-container.etiketleri-gizle .kml-nokta { display: none !important; }
+
+/* Harita tam ekran modu — element tüm ekranı doldursun (yükseklik inline 60vh'i ezer). */
+.leaflet-container:fullscreen, .leaflet-container:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+}
 
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
