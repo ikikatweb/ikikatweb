@@ -258,12 +258,24 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
-          // Alan (polygon) TIKLAMAYI YAKALAMAZ (interactive:false) → üstündeki reglaj/rota çizgisine
-          // tıklanabilsin (alan büyük dolgusuyla çizginin tıklamasını çalıyordu). Görsel korunur, isim yok.
-          L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE, interactive: false }).addTo(map);
-        } else {
-          const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, pane: KML_PANE })
+          // Alan (polygon) — dolgulu, TIKLANIR (seçilir). Çizgilerin/noktaların ALTINA alınır (bringToBack)
+          // ki üstteki çizgiler de tıklanabilsin. (İsim etiketi yok — alan adları gösterilmiyor.)
+          const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12, pane: KML_PANE })
             .addTo(map).bindPopup(baslik);
+          m.bringToBack();
+          m.on("click", () => vurgula(m, { color: k.renk, weight: kalinlik, opacity: 0.9 }));
+        } else {
+          // Çizgi. KAPALI (döngü) ise alan gibi İÇİ de tıklanabilsin: şeffaf dolgulu polygon +
+          // pointer-events:all (görünmez ama iç tıklamayı yakalar). Açık çizgi normal polyline kalır.
+          const n = g.noktalar;
+          const kapali = n.length > 3
+            && Math.abs(n[0][0] - n[n.length - 1][0]) < 1e-6
+            && Math.abs(n[0][1] - n[n.length - 1][1]) < 1e-6;
+          const m = kapali
+            ? L.polygon(n, { color: k.renk, weight: kalinlik, opacity: 0.9, fill: true, fillOpacity: 0, pane: KML_PANE, className: "kml-ic-tikla" })
+            : L.polyline(n, { color: k.renk, weight: kalinlik, opacity: 0.9, pane: KML_PANE });
+          m.addTo(map).bindPopup(baslik);
+          if (kapali) m.bringToBack(); // şeffaf dolgulu kapalı alan, çizgilerin/noktaların altında kalsın
           m.on("click", () => vurgula(m, { color: k.renk, weight: kalinlik, opacity: 0.9 }));
           const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         }

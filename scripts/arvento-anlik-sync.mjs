@@ -37,6 +37,19 @@ const WS_URL = "https://ws.arvento.com/v1/report.asmx";
 const xe = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const sayi = (v) => { if (v == null) return null; const n = parseFloat(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
+// Kontak (ignition) durumu — Arvento alan adı kesin bilinmediğinden "ign/kontak/contact" içeren
+// alanları tarar. Açık=true, kapalı=false, bilinmiyor=null.
+const kontakOku = (h) => {
+  for (const [k, v] of Object.entries(h)) {
+    if (!/ign|kontak|contact/i.test(k)) continue;
+    const s = String(v).trim().toLowerCase();
+    if (["1", "true", "on", "yes", "acik", "açık", "open", "var"].includes(s)) return true;
+    if (["0", "false", "off", "no", "kapali", "kapalı", "closed", "yok"].includes(s)) return false;
+  }
+  return null;
+};
+let alanLoguYapildi = false; // ilk pakette mevcut alan adlarını BİR KEZ logla (kontak alanını bulmak için)
+
 // Zaman aşımlı fetch — Arvento yanıt vermezse ~20 sn'de iptal eder (ASILI KALMAYI önler).
 // Aksi halde tek bir takılı istek tüm senkronu (ve görevi) sonsuza dek dondurabilir.
 async function fetchTimeout(url, opts, ms = 20000) {
@@ -143,6 +156,7 @@ async function cekAnlik() {
     const h = {};
     for (const mm of blok.matchAll(/<([A-Za-z0-9_]+)\s*\/>/g)) h[mm[1].toLowerCase()] = "";
     for (const mm of blok.matchAll(/<([A-Za-z0-9_]+)>([^<]*)<\/\1>/g)) h[mm[1].toLowerCase()] = mm[2].trim();
+    if (!alanLoguYapildi && Object.keys(h).length) { alanLoguYapildi = true; console.log("ANLIK paket alanları:", Object.keys(h).join(", ")); }
     const node = h.strnode || "";
     if (!node) continue;
     out.push({
@@ -152,6 +166,7 @@ async function cekAnlik() {
       odo: sayi(h.dodometer), // toplam km — günlük km için delta alınır
       tarih: h.dtlocaldatetime || h.dtgmtdatetime || null,
       adres: h.straddress || null,
+      kontak: kontakOku(h), // kontak açık=true / kapalı=false / bilinmiyor=null
       guncelleme: new Date().toISOString(),
     });
   }

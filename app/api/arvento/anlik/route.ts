@@ -17,9 +17,10 @@ export async function GET() {
       return NextResponse.json({ error: "Supabase yapılandırması eksik" }, { status: 500 });
     }
     const supabase = createClient(url, key);
+    // "*" → "kontak" kolonu henüz eklenmemiş olsa bile sorgu patlamaz (kolon yoksa undefined gelir).
     const { data, error } = await supabase
       .from("arvento_anlik")
-      .select("node, lat, lng, hiz, yon, tarih, adres, guncelleme");
+      .select("*");
     if (error) {
       // Tablo henüz yoksa anlaşılır mesaj
       if (/does not exist|arvento_anlik/i.test(error.message)) {
@@ -33,12 +34,14 @@ export async function GET() {
     const rows = (data ?? []) as {
       node: string; lat: number | null; lng: number | null; hiz: number | null;
       yon: number | null; tarih: string | null; adres: string | null; guncelleme: string | null;
+      kontak?: boolean | null;
     }[];
     const araclar = rows.map((r) => ({
       node: r.node,
       plaka: null,
       lat: r.lat, lng: r.lng, hiz: r.hiz, yon: r.yon,
       tarih: r.tarih, adres: r.adres,
+      kontak: r.kontak ?? null, // kontak açık=true / kapalı=false / bilinmiyor=null
       odometre: null,
       ham: {},
     }));

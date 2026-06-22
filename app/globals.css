@@ -144,6 +144,10 @@ thead th {
   flex-wrap: wrap !important; overflow-x: visible !important;
 }
 
+/* KAPALI KML çizgileri (döngü/alan) — şeffaf dolgulu polygon olarak çizilir; içine de TIKLANABİLSİN
+   diye görünmez dolgu alanı tıklamayı yakalar (varsayılan visiblePainted şeffaf dolguyu yakalamaz). */
+.leaflet-interactive.kml-ic-tikla { pointer-events: all !important; }
+
 /* Kayıtlı katman (NetCAD/KML) çizgilerinin KALICI yol/çizgi adı etiketi — kutusuz, uydu üzerinde
    okunur (beyaz metin + koyu hale). Tıklamadan görünür. */
 .leaflet-tooltip.yol-etiket {
