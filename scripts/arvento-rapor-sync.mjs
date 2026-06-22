@@ -146,12 +146,11 @@ async function birKez(gunler) {
   return yazildi;
 }
 
-// Varsayılan günler: HER ZAMAN bugün; dünü yalnız gece yarısı–03:00 arası (dünün final
-// değerlerini bir kez yakala). Gündüz sadece bugün → yük düşük, sık çalıştırılabilir.
+// Varsayılan günler: HER ZAMAN bugün + dün. Böylece dünün geç finalize olan değerleri (Arvento
+// raporu gün içinde güncelliyor — ör. son kontak) her 5 dk'da otomatik yakalanır; ayrı bir "09:00
+// dün güncelle" görevine GEREK KALMAZ. Monoton birleştirme zaten en doğru değeri tutar.
 function varsayilanGunler() {
-  const n = new Date();
-  const tr = new Date(n.getTime() + 3 * 3600000); // TR'ye kaydır; UTC temsili = TR duvar saati
-  return tr.getUTCHours() < 3 ? [trBugun(), trDun()] : [trBugun()]; // getUTCHours → gerçek TR saati (saat dilimine bağımsız)
+  return [trBugun(), trDun()];
 }
 // Çekme aralığı (dk): UI'daki "Rapor Çekme Süresi" (arvento_ayarlar.rapor_cekme_dk) yönetir.
 // Okunamazsa env ARVENTO_RAPOR_ARALIK_DK, o da yoksa 5 dk. 1–120 dk arasına sıkıştırılır.
@@ -175,10 +174,11 @@ const DAMGA = path.join(__dirname, ".rapor-son.txt");
 function sonCalismaOku() { try { return new Date(fs.readFileSync(DAMGA, "utf8").trim()).getTime() || 0; } catch { return 0; } }
 function sonCalismaYaz() { try { fs.writeFileSync(DAMGA, new Date().toISOString()); } catch { /* yoksay */ } }
 
-const args = process.argv.slice(2).filter((a) => a !== "--loop");
+const args = process.argv.slice(2).filter((a) => a !== "--loop" && a !== "--dun");
 const loop = process.argv.includes("--loop");
-const elle = args.length > 0; // belirli gün(ler) verildiyse elle çalıştırma → gate uygulanmaz
-const gunler = elle ? args : varsayilanGunler();
+const dunMod = process.argv.includes("--dun"); // --dun → BİR ÖNCEKİ günü çek (gate yok). Günlük 09:00 görevi için.
+const elle = args.length > 0 || dunMod;        // belirli gün VEYA --dun → gate uygulanmaz, hemen çek
+const gunler = dunMod ? [trDun()] : (args.length ? args : varsayilanGunler());
 if (loop) {
   console.log(`Sürekli mod: aralık ayardan okunur (Rapor Çekme Süresi). Ctrl+C ile durur.`);
   for (;;) {

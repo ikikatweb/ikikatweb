@@ -114,6 +114,22 @@ thead th {
 /* üçgen okun rengi kutuyla uyumlu */
 .leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
 
+/* Kayıtlı katman (NetCAD/KML) çizgilerinin KALICI yol/çizgi adı etiketi — kutusuz, uydu üzerinde
+   okunur (beyaz metin + koyu hale). Tıklamadan görünür. */
+.leaflet-tooltip.yol-etiket {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 0 3px #000, 0 0 3px #000, 0 1px 2px #000; /* koyu hale → her zeminde okunur */
+  pointer-events: none;
+}
+.leaflet-tooltip.yol-etiket::before { display: none; } /* üçgen ok yok */
+
 /* Görsel olarak gizli scrollbar — scroll çalışır ama scrollbar görünmez.
    Bordro Takibi gün edit dialog vb. yerlerde dikey çubuk istemediğimiz dialog'larda.
    !important ile uygulanır çünkü bazı UI kütüphaneleri kendi scrollbar style'larını ekliyor. */

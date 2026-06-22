@@ -13,6 +13,9 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { ocakTespit, arizaIsaretle, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
+import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
+import { getOcakForTarih, setOcakForTarih } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin } from "lucide-react";
@@ -82,19 +85,13 @@ function mukerrerIsaretle<T extends DamperOlay>(olaylar: T[], pencSn: number, ya
   return olaylar.map((o) => ({ ...o, mukerrer: mset.has(o) }));
 }
 
-// "Damper indi" işareti — kalkık damperinden malzeme boşaltan kamyon SVG'si.
-// renk: o kamyonun sabit rengi (kasa/kabin); adet>1 ise sağ üstte sayı rozeti.
-function damperKamyonIkonHtml(renk: string, adet: number): string {
-  const rozet = adet > 1 ? `<span class="damper-rozet">${adet}</span>` : "";
-  return `<div class="damper-wrap">${rozet}<svg width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="17" cy="30" rx="9" ry="2.2" fill="rgba(0,0,0,.35)"/>
-    <circle cx="12" cy="25" r="3.1" fill="#111827"/><circle cx="23" cy="25" r="3.1" fill="#111827"/>
-    <circle cx="12" cy="25" r="1.2" fill="#9ca3af"/><circle cx="23" cy="25" r="1.2" fill="#9ca3af"/>
-    <rect x="6" y="21" width="21" height="2.4" rx="1" fill="#1f2937"/>
-    <path d="M22 13 h4.5 a2 2 0 0 1 1.8 1.2 l1.4 3 a1.5 1.5 0 0 1 .1 .6 V21 H22 Z" fill="${renk}" stroke="#0f172a" stroke-width="1" stroke-linejoin="round"/>
-    <rect x="23.2" y="14.6" width="3.4" height="3" rx="0.6" fill="#dbeafe" stroke="#0f172a" stroke-width="0.7"/>
-    <polygon points="5,20 8.5,7.5 20.5,10.5 20.5,20" fill="${renk}" stroke="#0f172a" stroke-width="1.1" stroke-linejoin="round"/>
-    <g fill="#b45309"><circle cx="4.2" cy="21" r="1.2"/><circle cx="2.7" cy="23.6" r="1"/><circle cx="5.3" cy="24" r="0.9"/></g>
+
+// Stabilize ocağı (yükleme noktası) işareti — mavi konum pini + kazma/ocak simgesi.
+function ocakIkonHtml(): string {
+  return `<div class="ocak-wrap"><svg width="30" height="38" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 37 C6 26 1 20 1 13 a14 14 0 0 1 28 0 C29 20 24 26 15 37 Z" fill="#1d4ed8" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="15" cy="13" r="8.5" fill="#ffffff"/>
+    <g stroke="#1d4ed8" stroke-width="2" stroke-linecap="round"><path d="M10 17 L18 9"/><path d="M16.5 7.5 L20.5 11.5"/><path d="M8.5 15.5 L12.5 19.5"/></g>
   </svg></div>`;
 }
 
@@ -120,7 +117,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergah, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -138,9 +135,19 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0); // kurulum bitince ilk çizimi tetikler
+  // Canlı: SADECE Stabilize sekmesine tanımlı araçların konumu gösterilir (diğer araçlar bu haritada görünmesin).
+  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
+  const canliStabilize = useMemo<CanliKonum[] | undefined>(() => {
+    if (!canliKonumlar) return undefined;
+    return canliKonumlar.filter((k) => {
+      const plaka = k.node ? canliCihazMap?.get(k.node.trim())?.plaka : null;
+      if (!plaka) return false; // eşlenmemiş araç → Stabilize tanımlı değil → gösterme
+      return operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", plaka);
+    });
+  }, [canliKonumlar, canliCihazMap, sekmeMap, atananSekmeler]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
-  canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
-  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
+  canliVeriRef.current = { konumlar: canliStabilize, cihazMap: canliCihazMap };
+  useCanliKatman(canliLayerRef, canliStabilize, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = tekrarEsigi;
   const etkinMukerrer = mukerrerDk;
   const etkinYaricap = mukerrerYaricap;
@@ -160,9 +167,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       .finally(() => { if (yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey]);
 
-  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
+  // Rotalardaki İZOLE GPS çöp noktalarını ayıkla (731 km gibi sapan hatalı okumalar) — sonraki tüm
+  // hesaplar (çizim, ocak tespiti, mesafe, arıza sınıflama) temiz veri üzerinden yapılır.
+  const tumGuzergahTemiz = useMemo(
+    () => tumGuzergah.map((k) => (Array.isArray(k.noktalar) ? { ...k, noktalar: rotaTemizle(k.noktalar) } : k)),
+    [tumGuzergah],
+  );
   // Referans çizgiler: greyder güzergahları (atama varsa "stabilize" ataması esas)
-  const greyderler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "stabilize", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
+  const greyderler = useMemo(() => tumGuzergahTemiz.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "stabilize", k.plaka)), [tumGuzergahTemiz, sekmeMap, atananSekmeler]);
 
   // Çok günlük aralıkta aynı plaka birden çok satır gelebilir → plakaya göre BİRLEŞTİR
   // (damper olaylarını birleştir, km/hareket/damper sayısını topla). Tek satır/plaka kalır.
@@ -198,16 +210,50 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (atama) return atama.includes("stabilize");
       const damperli = damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0;
       return damperli && !atananSekmeler.has("stabilize");
-    }),
+    }).sort((a, b) => a.plaka.localeCompare(b.plaka, "tr", { numeric: true })), // PLAKAYA göre SABİT sıra (her tazelemede aynı + renkler sabit)
     [birlesikRaporlar, sekmeMap, atananSekmeler],
   );
 
   // Kamyon plakaları — kamyon izini reglaj çizgisinden AYIRMAK için
   const kamyonPlakaSet = useMemo(() => new Set(kamyonlar.map((r) => plakaNorm(r.plaka))), [kamyonlar]);
   // Kamyon izi: kamyonların KENDİ güzergahı (reglaj değil). Ayrı renk/kalınlıkla çizilir.
-  const kamyonIzleri = useMemo(() => tumGuzergah.filter((k) => kamyonPlakaSet.has(plakaNorm(k.plaka))), [tumGuzergah, kamyonPlakaSet]);
+  const kamyonIzleri = useMemo(() => tumGuzergahTemiz.filter((k) => kamyonPlakaSet.has(plakaNorm(k.plaka))), [tumGuzergahTemiz, kamyonPlakaSet]);
   // Reglaj referans çizgileri: greyder hatları, kamyonlar HARİÇ (karışmasın)
   const reglajRefleri = useMemo(() => greyderler.filter((k) => !kamyonPlakaSet.has(plakaNorm(k.plaka))), [greyderler, kamyonPlakaSet]);
+
+  // ── Stabilize ocağı (yükleme noktası) + arıza tespiti ───────────────────────────────
+  // Plaka → rota noktaları: damperden önce kamyon ocağa uğramış mı (yüklemiş mi) kontrolü için.
+  const rotaByPlaka = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number; saat: string | null }[]>();
+    for (const k of tumGuzergahTemiz) {
+      const key = plakaNorm(k.plaka);
+      const arr = m.get(key) ?? [];
+      if (Array.isArray(k.noktalar)) for (const p of k.noktalar) if (p?.lat != null && p?.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat ?? null });
+      m.set(key, arr);
+    }
+    return m;
+  }, [tumGuzergahTemiz]);
+  // Otomatik tespit: kamyon rotalarının en yoğun toplandığı nokta (başlangıç tahmini).
+  const otomatikOcak = useMemo<LatLng | null>(() => ocakTespit(kamyonIzleri.map((k) => k.noktalar ?? [])), [kamyonIzleri]);
+  // GÜN BAZLI ocak: bu tarihin (bas) GEÇERLİ ocağını (≤ bas EN SON kayıt) DB'den çek. Tarih değişince yenilenir.
+  // Marker sürüklenince O GÜN için kaydedilir → geçmiş günler kendi ocağını korur, etkilenmez.
+  const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
+  const basRef = useRef(bas); basRef.current = bas; // sürükleme anında güncel tarihi kullan
+  useEffect(() => {
+    let iptal = false;
+    getOcakForTarih(bas).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
+    return () => { iptal = true; };
+  }, [bas]);
+  // Çözünürlük: gün-ocağı → (eski global prop ocak) → otomatik tespit. useMemo: referans her render'da
+  // değişmesin (yoksa sınıflama memo'ları ve harita çizimi her render tetiklenir = flicker).
+  const ocak = useMemo<LatLng | null>(
+    () => gunOcak
+      ? { lat: gunOcak.lat, lng: gunOcak.lng }
+      : (ocakLat != null && ocakLng != null ? { lat: ocakLat, lng: ocakLng } : otomatikOcak),
+    [gunOcak, ocakLat, ocakLng, otomatikOcak],
+  );
+  const etkinOcakYaricap = gunOcak?.yaricap ?? ocakYaricap;            // sayı → sabit
+  const ocakElleMi = gunOcak != null || (ocakLat != null && ocakLng != null); // otomatik mi (popup notu)
 
   // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
   const plakaRenk = useMemo(() => {
@@ -241,45 +287,50 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return out;
   }, [kamyonlar, seciliPlakalar]);
 
-  // Seçili kamyonların damperleri, mükerrer (yanlış tetik) işaretiyle. Araç bazında temizlenir.
-  const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean })[]>(() => {
+  // Seçili kamyonların damperleri, MÜKERRER (yanlış tetik) + ARIZA (ocağa uğramadan inen) işaretleriyle.
+  // Araç bazında: önce mükerrer, sonra ocak ziyaretine göre arıza. Gerçek = ne mükerrer ne arıza.
+  const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[]>(() => {
     const pencSn = Math.max(0, etkinMukerrer) * 60;
-    const out: (DamperNokta & { mukerrer: boolean })[] = [];
+    const out: (DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[] = [];
     for (const r of kamyonlar) {
       if (!seciliPlakalar.has(r.plaka)) continue;
-      for (const o of mukerrerIsaretle(damperOlaylariniAl(r), pencSn, etkinYaricap)) {
-        out.push({ ...o, plaka: r.plaka, surucu: r.surucu });
-      }
+      const muk = mukerrerIsaretle(damperOlaylariniAl(r), pencSn, etkinYaricap);
+      const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
+      for (const o of sinifli) out.push({ ...o, plaka: r.plaka, surucu: r.surucu });
     }
     return out;
-  }, [kamyonlar, seciliPlakalar, etkinMukerrer, etkinYaricap]);
+  }, [kamyonlar, seciliPlakalar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap]);
 
-  // Haritaya çizilecekler: mükerrer OLMAYAN + konumlu damperler
+  // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler
   const damperKoordlu = useMemo(
-    () => damperIsaretli.filter((o) => !o.mukerrer && o.lat != null && o.lng != null),
+    () => damperIsaretli.filter((o) => !o.mukerrer && !o.ariza && o.lat != null && o.lng != null),
     [damperIsaretli],
   );
   const mukerrerSayisi = useMemo(() => damperIsaretli.filter((o) => o.mukerrer).length, [damperIsaretli]);
+  const arizaSayisi = useMemo(() => damperIsaretli.filter((o) => o.ariza && !o.mukerrer).length, [damperIsaretli]);
+  const dogrulanmamisSayisi = useMemo(() => damperIsaretli.filter((o) => o.dogrulanmamis && !o.mukerrer && !o.ariza).length, [damperIsaretli]);
   const konumsuzSayisi = useMemo(() => damperIsaretli.filter((o) => o.lat == null || o.lng == null).length, [damperIsaretli]);
 
-  // Her araç için mükerrer ayıklanmış GERÇEK damper sayısı (chip rozeti — seçimden bağımsız).
+  // Her araç için GERÇEK damper sayısı (mükerrer + arıza ayıklanmış) — chip rozeti (seçimden bağımsız).
   const gercekSayiByPlaka = useMemo(() => {
     const pencSn = Math.max(0, etkinMukerrer) * 60;
     const m = new Map<string, number>();
     for (const r of kamyonlar) {
       const olaylar = damperOlaylariniAl(r);
-      const gercek = mukerrerIsaretle(olaylar, pencSn, etkinYaricap).filter((o) => !o.mukerrer).length;
+      const muk = mukerrerIsaretle(olaylar, pencSn, etkinYaricap);
+      const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
+      const gercek = sinifli.filter((o) => !o.mukerrer && !o.ariza).length;
       m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
     }
     return m;
-  }, [kamyonlar, etkinMukerrer, etkinYaricap]);
+  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap]);
 
-  // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer ayıklanmış).
+  // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
     const secilenler = kamyonlar.filter((r) => seciliPlakalar.has(r.plaka));
     const toplamKm = secilenler.reduce((s, r) => s + (r.mesafe_km ?? 0), 0);
     const toplamHareket = secilenler.reduce((s, r) => s + (r.hareket_sn ?? 0), 0);
-    const toplamDamper = damperIsaretli.filter((o) => !o.mukerrer).length;
+    const toplamDamper = damperIsaretli.filter((o) => !o.mukerrer && !o.ariza).length;
     return { aracSayisi: secilenler.length, toplamKm, toplamHareket, toplamDamper };
   }, [kamyonlar, seciliPlakalar, damperIsaretli]);
 
@@ -393,6 +444,20 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
       bounds.push([g.lat, g.lng]);
     });
+    // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──
+    if (ocak) {
+      L.circle([ocak.lat, ocak.lng], { radius: etkinOcakYaricap, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.08, dashArray: "5 4" }).addTo(grup);
+      const ocakIkon = L.divIcon({ html: ocakIkonHtml(), className: "ocak-ikon", iconSize: [30, 38], iconAnchor: [15, 36], popupAnchor: [0, -34] });
+      const ocakM = L.marker([ocak.lat, ocak.lng], { icon: ocakIkon, draggable: yDuzenle, zIndexOffset: 1000 }).addTo(grup);
+      ocakM.bindPopup(`<b>⛏️ Stabilize Ocağı</b> · ${basRef.current}<br>Yükleme noktası (yarıçap ${etkinOcakYaricap} m)${yDuzenle ? "<br><i>Sürükleyerek bu güne kaydedin</i>" : ""}${ocakElleMi ? "" : "<br><i>(otomatik tespit)</i>"}`);
+      if (yDuzenle) ocakM.on("dragend", () => {
+        const ll = ocakM.getLatLng();
+        setGunOcak({ lat: ll.lat, lng: ll.lng, yaricap: etkinOcakYaricap });
+        setOcakForTarih(basRef.current, ll.lat, ll.lng, etkinOcakYaricap)
+          .catch(() => toast.error("Ocak kaydedilemedi — arvento_ocak tablosu için SQL'i çalıştırın.", { duration: toastSuresi() }));
+      });
+      bounds.push([ocak.lat, ocak.lng]);
+    }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
       if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
@@ -403,7 +468,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, ocakElleMi]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -560,28 +625,36 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         <div className="bg-white rounded-lg border p-3">
           <div className="text-xs font-semibold text-gray-600 mb-2">
             🔻 {seciliPlakalar.size === kamyonlar.length ? "Tüm kamyonlar" : `${seciliPlakalar.size} kamyon`} — {ozet.toplamDamper} gerçek damper
-            {(mukerrerSayisi > 0 || konumsuzSayisi > 0) && (
+            {(mukerrerSayisi > 0 || arizaSayisi > 0 || dogrulanmamisSayisi > 0 || konumsuzSayisi > 0) && (
               <span className="text-gray-400 font-normal"> ({damperOlaylar.length} kayıt
                 {mukerrerSayisi > 0 && `, ${mukerrerSayisi} mükerrer gizli`}
+                {arizaSayisi > 0 && `, ${arizaSayisi} arıza gizli`}
+                {dogrulanmamisSayisi > 0 && `, ${dogrulanmamisSayisi} doğrulanmamış`}
                 {konumsuzSayisi > 0 && `, ${konumsuzSayisi} konumsuz`})</span>
             )}
           </div>
           <ol className="space-y-0.5 max-h-[28vh] overflow-auto">
-            {damperIsaretli.map((o, i) => (
-              <li key={i} className={`text-xs flex items-center gap-2 ${o.mukerrer ? "opacity-60" : ""}`}>
+            {damperIsaretli.map((o, i) => {
+              const gizli = o.mukerrer || o.ariza; // mükerrer veya arıza → soluk, üstü çizili
+              return (
+              <li key={i} className={`text-xs flex items-center gap-2 ${gizli ? "opacity-60" : ""}`}>
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: o.mukerrer ? 0.4 : 1 }} />
-                <span className={`font-bold w-32 truncate ${o.mukerrer ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: gizli ? 0.4 : 1 }} />
+                <span className={`font-bold w-32 truncate ${gizli ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
                 <span className="text-gray-400 w-20 truncate">{o.plaka}</span>
-                <span className={`font-mono whitespace-nowrap font-semibold ${o.mukerrer ? "text-gray-400 line-through" : "text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
-                <span className={`flex-1 truncate ${o.mukerrer ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
+                <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : "text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
+                <span className={`flex-1 truncate ${gizli ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
                 {o.mukerrer
                   ? <span className="text-[10px] text-amber-600">mükerrer</span>
-                  : o.lat != null && o.lng != null
-                    ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><MapPin size={10} /> konumlu</span>
-                    : <span className="text-[10px] text-gray-400">konumsuz</span>}
+                  : o.ariza
+                    ? <span className="text-[10px] text-rose-600 font-semibold">arıza</span>
+                    : o.dogrulanmamis
+                      ? <span className="text-[10px] text-blue-500" title="Rota verisi yok — Arvento'dan doğrulanmalı">doğrulanmamış</span>
+                      : o.lat != null && o.lng != null
+                        ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><MapPin size={10} /> konumlu ✓</span>
+                        : <span className="text-[10px] text-gray-400">konumsuz</span>}
               </li>
-            ))}
+            );})}
           </ol>
         </div>
       )}

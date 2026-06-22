@@ -189,6 +189,10 @@ export default function ArventoRaporPage() {
   const [sermeRenk, setSermeRenk] = useState<string>("#059669");
   const [silindirRenk, setSilindirRenk] = useState<string>("#7c3aed");
   const [kamyonIziRenk, setKamyonIziRenk] = useState<string>("#dc2626");
+  // Stabilize ocağı (yükleme noktası) — elle ayarlanmışsa DB'den; yoksa null → bileşen otomatik tespit eder.
+  const [ocakLat, setOcakLat] = useState<number | null>(null);
+  const [ocakLng, setOcakLng] = useState<number | null>(null);
+  const [ocakYaricap, setOcakYaricap] = useState<number>(150);
   const [ayarYuklendi, setAyarYuklendi] = useState(false);     // ilk DB yüklemesi tamamlandı mı
   const sonAyarRef = useRef<string>("");                       // son kaydedilen/yüklenen snapshot (gereksiz yazmayı önler)
 
@@ -212,6 +216,9 @@ export default function ArventoRaporPage() {
         setSermeRenk(a.sermeRenk);
         setSilindirRenk(a.silindirRenk);
         setKamyonIziRenk(a.kamyonIziRenk);
+        setOcakLat(a.ocakLat);
+        setOcakLng(a.ocakLng);
+        setOcakYaricap(a.ocakYaricap);
         sonAyarRef.current = JSON.stringify(a); // yüklenen değeri "kaydedilmiş" say → geri yazma olmaz
       })
       .catch(() => { /* tablo yoksa varsayılanlarla devam */ })
@@ -222,13 +229,14 @@ export default function ArventoRaporPage() {
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk };
+    // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -775,7 +783,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} />

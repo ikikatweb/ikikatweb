@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
-import { atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
@@ -72,9 +72,21 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0);
+  // Canlı: İş Makineleri haritasında (plakaFiltre) sadece o plakalar; Reglaj sekmesinde sadece
+  // "reglaj" atanmış araçlar gösterilir (başka araçlar bu haritada görünmesin).
+  const canliFiltreli = useMemo<CanliKonum[] | undefined>(() => {
+    if (!canliKonumlar) return undefined;
+    const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
+    const filtreSet = plakaFiltre ? new Set(plakaFiltre.map(plakaNorm)) : null;
+    return canliKonumlar.filter((k) => {
+      const plaka = k.node ? canliCihazMap?.get(k.node.trim())?.plaka : null;
+      if (!plaka) return false;
+      return filtreSet ? filtreSet.has(plakaNorm(plaka)) : operasyondaGorunur(sekmeMap, atananSekmeler, null, "reglaj", plaka);
+    });
+  }, [canliKonumlar, canliCihazMap, sekmeMap, plakaFiltre]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
-  canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
-  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
+  canliVeriRef.current = { konumlar: canliFiltreli, cihazMap: canliCihazMap };
+  useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
 
   // Aralığın kayıtlarını yükle. Yükleme göstergesi yalnız TARİH değişiminde; periyodik tazelemede sessiz.

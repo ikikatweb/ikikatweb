@@ -13,6 +13,7 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -114,10 +115,20 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0);
+  // Canlı: SADECE bu operasyona (serme/sıkıştırma) atanmış araçların konumu gösterilir.
+  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
+  const canliFiltreli = useMemo<CanliKonum[] | undefined>(() => {
+    if (!canliKonumlar) return undefined;
+    const op: OperasyonTip = sermeMi ? "serme" : "sikistirma";
+    return canliKonumlar.filter((k) => {
+      const plaka = k.node ? canliCihazMap?.get(k.node.trim())?.plaka : null;
+      return plaka ? operasyondaGorunur(sekmeMap, atananSekmeler, null, op, plaka) : false;
+    });
+  }, [canliKonumlar, canliCihazMap, sekmeMap, atananSekmeler, sermeMi]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
-  canliVeriRef.current = { konumlar: canliKonumlar, cihazMap: canliCihazMap };
-  const canliVar = (canliKonumlar?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
-  useCanliKatman(canliLayerRef, canliKonumlar, canliCihazMap);
+  canliVeriRef.current = { konumlar: canliFiltreli, cihazMap: canliCihazMap };
+  const canliVar = (canliFiltreli?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
+  useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap);
 
   const yapiRef = useRef(""); // yükleme göstergesi yalnız tarih/operasyon değişiminde; periyodik tazelemede sessiz
   useEffect(() => {
@@ -134,7 +145,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       .finally(() => { if (yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey, sermeMi]);
 
-  const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
   const greyderler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
   const silindirler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
@@ -267,7 +277,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     if (sermeMi) {
       // Ortada damper ikonları
       damperKoordlu.forEach((o, i) => {
-        L.circleMarker([o.lat as number, o.lng as number], { radius: 7, color: "#9a3412", fillColor: DAMPER_RENK, fillOpacity: 0.9, weight: 2 })
+        L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(DAMPER_RENK, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
           .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });

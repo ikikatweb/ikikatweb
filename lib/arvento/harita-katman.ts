@@ -16,15 +16,20 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   const uydu = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
     attribution: "Uydu: Esri, Maxar, Earthstar Geographics", maxZoom: 19, maxNativeZoom: 18,
   });
-  // Uydu üzerine yol/yer adı etiketleri (hibrit görünüm)
+  // Uydu üzerine yol ÇİZGİLERİ (Esri) — yolların nerede olduğunu gösterir (etiket az)
   const etiketler = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {
-    maxZoom: 19, maxNativeZoom: 18,
+    maxZoom: 20, maxNativeZoom: 18,
   });
-  if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); }
+  // Uydu üzerine yol/yer İSİMLERİ — OpenStreetMap tabanlı şeffaf etiket katmanı (yol adları zengin,
+  // beyaz haleli → uydu üzerinde okunur). Kırsal yol isimlerini bunda daha iyi görürsünüz.
+  const isimler = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
+    attribution: "Etiketler © OpenStreetMap, © CARTO", subdomains: "abcd", maxZoom: 20, maxNativeZoom: 20,
+  });
+  if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); }
   else sokak.addTo(map);
   L.control.layers(
     { "🛰️ Uydu (Earth)": uydu, "🗺️ Sokak": sokak },
-    { "Yol/yer etiketleri": etiketler },
+    { "Yol çizgileri": etiketler, "Yol/yer isimleri": isimler },
     { collapsed: true },
   ).addTo(map);
 }
@@ -166,17 +171,24 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
       const kalinlik = k.kalinlik ?? 3;
       for (const g of k.geometriler ?? []) {
         const baslik = `<b>${k.ad}</b>${g.ad ? " · " + g.ad : ""}`;
+        const etiket = (g.ad || k.ad || "").trim(); // KALICI etiket içeriği (yol/çizgi adı)
+        // Kalıcı (her zaman görünür) etiket — tıklamadan ismi gösterir. Boşsa eklenmez.
+        const tipTooltip = (dir: "center" | "top") =>
+          etiket ? { permanent: true as const, direction: dir, className: "yol-etiket", opacity: 1 } : null;
         if (g.tip === "nokta") {
           const p = g.noktalar[0];
           if (!p) continue;
-          L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
+          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1 })
             .addTo(map).bindPopup(baslik);
+          const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
-          L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
+          const m = L.polygon(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9, fillColor: k.renk, fillOpacity: 0.12 })
             .addTo(map).bindPopup(baslik);
+          const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         } else {
-          L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9 })
+          const m = L.polyline(g.noktalar, { color: k.renk, weight: kalinlik, opacity: 0.9 })
             .addTo(map).bindPopup(baslik);
+          const tt = tipTooltip("center"); if (tt) m.bindTooltip(etiket, tt);
         }
       }
     }

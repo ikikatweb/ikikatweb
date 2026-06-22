@@ -20,6 +20,9 @@ export type ArventoAyarlar = {
   sermeRenk: string;
   silindirRenk: string;
   kamyonIziRenk: string;     // Stabilize: kamyon izi rengi — reglajdan AYRI
+  ocakLat: number | null;    // Stabilize ocağı (yükleme noktası) — elle ayarlanmışsa; yoksa otomatik tespit
+  ocakLng: number | null;
+  ocakYaricap: number;       // "ocağa geldi" sayılma yarıçapı (m) — damper gerçek/arıza ayrımı için
 };
 
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
@@ -39,6 +42,9 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   sermeRenk: "#059669",
   silindirRenk: "#7c3aed",
   kamyonIziRenk: "#dc2626",
+  ocakLat: null,
+  ocakLng: null,
+  ocakYaricap: 150,
 };
 
 const TABLO = "arvento_ayarlar";
@@ -65,7 +71,46 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     sermeRenk: data.serme_renk ?? "#059669",
     silindirRenk: data.silindir_renk ?? "#7c3aed",
     kamyonIziRenk: data.kamyon_izi_renk ?? "#dc2626",
+    ocakLat: data.ocak_lat ?? null,   // kolon yoksa undefined → null (otomatik tespit devreye girer)
+    ocakLng: data.ocak_lng ?? null,
+    ocakYaricap: data.ocak_yaricap ?? 150,
   };
+}
+
+// ── Stabilize ocağı: GÜN BAZLI (geçerlilik tarihli) ────────────────────────────────────
+// arvento_ocak(gecerli_tarih, lat, lng, yaricap): ocak "bu tarihten itibaren" geçerlidir. Belirli bir
+// gün için, o güne ≤ olan EN SON kayıt kullanılır. Ocak ara sıra değişir → her değişiklikte o günün
+// kaydı eklenir; geçmiş günler kendi (eski) ocaklarını korur, değişmez.
+export async function getOcakForTarih(tarih: string): Promise<{ lat: number; lng: number; yaricap: number } | null> {
+  if (!tarih) return null;
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("arvento_ocak")
+    .select("lat, lng, yaricap")
+    .lte("gecerli_tarih", tarih)
+    .order("gecerli_tarih", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data || data.lat == null || data.lng == null) return null;
+  return { lat: data.lat as number, lng: data.lng as number, yaricap: (data.yaricap as number) ?? 150 };
+}
+
+// Ocağı belirli bir GÜN için kaydet (o tarihten itibaren geçerli). Tablo yoksa hata fırlatır → çağıran yakalar.
+export async function setOcakForTarih(tarih: string, lat: number, lng: number, yaricap: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("arvento_ocak").upsert({ gecerli_tarih: tarih, lat, lng, yaricap });
+  if (error) throw error;
+}
+
+// Stabilize ocağını ayrı kaydet (ana ayar snapshot'ından BAĞIMSIZ). Kolonlar henüz eklenmemişse
+// (SQL çalıştırılmadıysa) hata fırlatır → çağıran tarafta yakalanıp kullanıcıya bildirilir; diğer
+// ayarların kaydı bundan etkilenmez.
+export async function setArventoOcak(lat: number, lng: number, yaricap: number): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from(TABLO).upsert({
+    id: SATIR_ID, ocak_lat: lat, ocak_lng: lng, ocak_yaricap: yaricap,
+  });
+  if (error) throw error;
 }
 
 export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {

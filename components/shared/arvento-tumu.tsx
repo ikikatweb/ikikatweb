@@ -10,6 +10,7 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -148,7 +149,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     raporlar.forEach((r) => {
       const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
       olaylar.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
-        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#9a3412", fillColor: OPERASYONLAR.stabilize.renk, fillOpacity: 0.9, weight: 1 })
+        L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(OPERASYONLAR.stabilize.renk, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
           .addTo(grup).bindPopup(`<b>🔻 ${r.plaka}</b><br>Stabilize (damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });

@@ -96,9 +96,14 @@ async function rotaBirik(sb, konumlar) {
     if (son && mesafeM(son.lat, son.lng, k.lat, k.lng) <= 12) continue; // hareket yok → ekleme
     noktalar.push({ lat: k.lat, lng: k.lng, saat: saatAl(k.tarih), hiz: k.hiz, odo: k.odo });
     rotaBellek.set(c.plaka, noktalar);
-    // Rota toplam mesafe (polyline)
+    // Rota toplam mesafe (polyline). ÇÖP GPS koruması: 50 km+ ardışık sıçramalar (hatalı GPS okuması
+    // — ör. araç bir an 731 km öteye "ışınlanıyor") km'ye KATILMAZ, yoksa toplam mesafe şişer.
     let polyKm = 0;
-    for (let i = 1; i < noktalar.length; i++) polyKm += mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng);
+    for (let i = 1; i < noktalar.length; i++) {
+      const seg = mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng);
+      if (seg > 50000) continue; // 50 km+ sıçrama → çöp segment, atla
+      polyKm += seg;
+    }
     polyKm = polyKm / 1000;
     // Günlük km: odometre delta (ilk↔son nokta odometresi) daha doğru; yoksa polyline
     const ilkOdo = noktalar.find((p) => p.odo != null)?.odo;
