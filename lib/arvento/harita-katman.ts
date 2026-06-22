@@ -229,6 +229,9 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
     yol.bringToFront();
     secili = { yol, stil };
   };
+  // Boş alana (harita arka planı) tıklayınca seçimi kaldır. Leaflet'te bir yola tıklamak map "click"
+  // olayını tetiklemez (interaktif katman olayı tüketir) → yol seçimi bu yüzden anında kapanmaz.
+  map.on("click", () => { if (secili) { secili.yol.setStyle(secili.stil); secili = null; } });
   try {
     const katmanlar = await getHaritaKatmanlari();
     for (const k of katmanlar) {
