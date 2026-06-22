@@ -543,8 +543,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       <div className="bg-white rounded-lg border p-3 harita-arac-panel">
         {/* Satır sarmaz → özet kartların ALTINA değil YANINA kalır; kart bloğu esner ve içinde sarar. */}
         <div className="flex items-start justify-between gap-3">
-          {/* Sol: kamyon chip'leri + Güzergahı Göster */}
-          <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+          {/* Sol: kamyon chip'leri — TEK SATIR yan yana; sığmazsa yatay kaydırılır (özet sağda sabit) */}
+          <div className="flex items-stretch gap-1.5 flex-1 min-w-0 overflow-x-auto">
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta Stabilize aracı/kamyonu yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
@@ -555,7 +555,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
                 title={`${r.plaka}${r.marka ? " · " + r.marka : ""}`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${
+                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors shrink-0 ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
                 }`}>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />

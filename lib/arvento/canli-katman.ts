@@ -29,6 +29,22 @@ function formatSaat(t: string | null): string {
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+// Bir önceki çizimdeki konum (node bazlı). Arvento yön (nCourse) vermezse yönü buradan hesaplarız;
+// ayrıca düşük hızlı iş makineleri için "hareket"i konum değişiminden tespit ederiz.
+const sonKonum = new Map<string, { lat: number; lng: number }>();
+
+// İki konum arası pusula yönü (derece, 0=kuzey, saat yönü). ~6 m altı kayma = GPS gürültüsü → null.
+function yonHesap(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number | null {
+  const dLat = b.lat - a.lat, dLng = b.lng - a.lng;
+  const mLat = dLat * 111320;
+  const mLng = dLng * 111320 * Math.cos((a.lat * Math.PI) / 180);
+  if (Math.hypot(mLat, mLng) < 6) return null; // gerçek hareket değil
+  const f1 = (a.lat * Math.PI) / 180, f2 = (b.lat * Math.PI) / 180, dl = (dLng * Math.PI) / 180;
+  const y = Math.sin(dl) * Math.cos(f2);
+  const x = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
 // Katmanı temizleyip güncel konumlarla yeniden doldurur.
 export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: CanliKonum[], cihazMap?: CihazMap): void {
   layer.clearLayers();
@@ -38,19 +54,26 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
     const ad = c?.plaka ?? k.node ?? "—";
     const model = c?.model?.trim();
     const sof = c?.surucu ? ` · ${c.surucu}` : "";
-    const hareket = (k.hiz ?? 0) > 3;
+    // Yön: Arvento nCourse (k.yon) varsa onu; yoksa bir önceki konuma göre hesapla (anlamlı kımıldadıysa).
+    const anahtar = (k.node ?? `${k.lat},${k.lng}`).trim();
+    const onceki = sonKonum.get(anahtar);
+    const hesapYon = onceki ? yonHesap(onceki, { lat: k.lat, lng: k.lng }) : null;
+    sonKonum.set(anahtar, { lat: k.lat, lng: k.lng });
+    const yon = k.yon ?? hesapYon;
+    // Hareket: hız > 3 km/s VEYA son çizimden bu yana konum anlamlı kaydıysa (yavaş iş makineleri için).
+    const hareket = (k.hiz ?? 0) > 3 || hesapYon != null;
     const renk = hareket ? "#16a34a" : "#dc2626"; // hareket=yeşil, durağan=kırmızı
     // Kalıcı etiket: plaka (kalın) + model (alt satır) — haritada hep görünür, Arvento'daki gibi.
     const etiket = `<span class="ce-plaka">${ad}</span>${model ? `<span class="ce-model">${model}</span>` : ""}`;
-    // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde nokta.
-    const marker = (hareket && k.yon != null)
+    // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde (durağan/yön yok) nokta.
+    const marker = (hareket && yon != null)
       ? L.marker([k.lat, k.lng], {
           pane: CANLI_PANE, // EN ÜST katman (damper ve KML'nin üstünde)
           icon: L.divIcon({
             className: "canli-ok-wrap",
             iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -11], // sabit boyut: 26px (zoom'dan bağımsız)
             // İç div yön kadar döner (Leaflet'in konum transform'una karışmaz). 0°=kuzey, saat yönü.
-            html: `<div class="canli-ok" style="transform:rotate(${k.yon}deg)"><svg width="26" height="26" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path d="M15 2 L23 25 L15 19.5 L7 25 Z" fill="${renk}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
+            html: `<div class="canli-ok" style="transform:rotate(${yon}deg)"><svg width="26" height="26" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><path d="M15 2 L23 25 L15 19.5 L7 25 Z" fill="${renk}" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>`,
           }),
         })
       : L.circleMarker([k.lat, k.lng], { pane: CANLI_PANE, radius: 6, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 }); // ok ile orantılı
@@ -58,7 +81,7 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
-        `${hareket ? "🟢 hareket" : "🔴 durağan"} · ${k.hiz ?? 0} km/s${k.yon != null ? ` · ${Math.round(k.yon)}°` : ""}<br>` +
+        `${hareket ? "🟢 hareket" : "🔴 durağan"} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
         `${formatSaat(k.tarih)}<br>${k.adres ?? ""}`,
       )
       .bindTooltip(etiket, { permanent: true, direction: "top", offset: [0, -9], className: "canli-etiket", opacity: 1, pane: CANLI_PANE });
