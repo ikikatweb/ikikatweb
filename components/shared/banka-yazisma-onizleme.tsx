@@ -33,7 +33,9 @@ function sanitizeHtml(text: string): string {
   }
   clean = clean.replace(/<span[^>]*>/gi, "").replace(/<\/span>/gi, "");
   clean = clean
-    .replace(/&/g, "&amp;")
+    // & yalnız ZATEN entity değilse escape edilir (RichTextEditor metni '&'i '&amp;' olarak verdiği için
+    // yeniden escape edersek '&amp;amp;' olup ekranda "&amp;" görünüyordu — çift escape düzeltmesi).
+    .replace(/&(?!(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[\da-fA-F]+);)/g, "&amp;")
     .replace(/<(?!\/?[biu]>)/g, "&lt;")
     .replace(/(?<![biu])>/g, "&gt;");
   return clean;
