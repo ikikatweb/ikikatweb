@@ -3,16 +3,18 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
+import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
+import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
 import { ATAMA_SEKMELERI, type ArventoSekme, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import type { AracArventoRapor } from "@/lib/supabase/types";
+import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Upload, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff } from "lucide-react";
+import { Satellite, Upload, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff, MapPin } from "lucide-react";
 import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
 import ArventoOperasyon from "@/components/shared/arvento-operasyon";
@@ -22,7 +24,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
-import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
+import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, setSantiyeIl, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
 import { getArventoAyarlar, setArventoAyarlar } from "@/lib/supabase/queries/arvento-ayarlar";
 
@@ -110,7 +112,7 @@ function aralikTopla(rows: AracArventoRapor[]): AracArventoRapor[] {
 }
 
 export default function ArventoRaporPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, kullanici, isYonetici } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
   const yEkle = hasPermission("araclar-arvento-raporu", "ekle");
   const yDuzenle = hasPermission("araclar-arvento-raporu", "duzenle");
@@ -121,6 +123,7 @@ export default function ArventoRaporPage() {
   const [baslangic, setBaslangic] = useState<string>(trBugun());
   const [bitis, setBitis] = useState<string>(trBugun());
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
+  const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]); // YAKINLIK izin filtresi için rota noktaları
   // Ham günlük kayıtlar (tüm geçmiş) — ortalama hesabı için. Bir kez çekilir.
   const [hamKayitlar, setHamKayitlar] = useState<ArventoHamKayit[]>([]);
   // Km eşiği: bu değeri AŞAN günlük km'ler ortalamaya KATILMAZ (0 = filtre yok).
@@ -254,6 +257,8 @@ export default function ArventoRaporPage() {
   const [haritaKatmanlari, setHaritaKatmanlari] = useState<HaritaKatman[]>([]);
   const [katmanYukleniyor, setKatmanYukleniyor] = useState(false);
   const [katmanRenk, setKatmanRenk] = useState<string>("#ff3b30");
+  const [santiyeSecenekleri, setSantiyeSecenekleri] = useState<SantiyeSecenek[]>([]);
+  const [katmanSantiyeId, setKatmanSantiyeId] = useState<string>(""); // KML yüklemeden ÖNCE seçilecek şantiye
   const katmanFileRef = useRef<HTMLInputElement>(null);
   // Cihaz listesi (Canlı takip node→plaka eşlemesi) yükleme
   const [cihazSayisi, setCihazSayisi] = useState<number | null>(null);
@@ -504,14 +509,91 @@ export default function ArventoRaporPage() {
     try { setHaritaKatmanlari(await getHaritaKatmanlari()); } catch { /* sessiz */ }
   }, []);
   useEffect(() => { loadKatmanlar(); }, [loadKatmanlar]);
+  useEffect(() => { getSantiyeSecenekleri().then(setSantiyeSecenekleri).catch(() => {}); }, []);
+  // KML katmanlarını ŞANTİYE bazında grupla (Tanımlamalar listesi): şantiye adı başlık, KML'ler altında.
+  const katmanGruplari = useMemo(() => {
+    const ad = new Map(santiyeSecenekleri.map((s) => [s.id, s.is_adi]));
+    const grup = new Map<string, HaritaKatman[]>();
+    for (const k of haritaKatmanlari) {
+      const anahtar = k.santiye_id ?? "";
+      if (!grup.has(anahtar)) grup.set(anahtar, []);
+      grup.get(anahtar)!.push(k);
+    }
+    const arr = Array.from(grup.entries()).map(([sid, layers]) => ({
+      santiyeId: sid || null,
+      ad: sid ? (ad.get(sid) ?? "Bilinmeyen şantiye") : "Atanmamış",
+      layers,
+    }));
+    arr.sort((a, b) => (a.santiyeId ? 0 : 1) - (b.santiyeId ? 0 : 1) || a.ad.localeCompare(b.ad, "tr"));
+    return arr;
+  }, [haritaKatmanlari, santiyeSecenekleri]);
+
+  // ----- İL SINIRI İZNİ -----
+  // Kullanıcının şantiyeleri → o şantiyelerin İLLERİ → kullanıcı O İLLERİN sınırı içindeki her şeyi
+  // görür: CANLI araç (anlık konum), GEÇMİŞ araç (rota), KML, damper. Yönetici hepsini görür.
+  useEffect(() => {
+    if (!baslangic || !bitis) { setGuzergahlar([]); return; }
+    let iptal = false;
+    getGuzergahByRange(baslangic, bitis).then((g) => { if (!iptal) setGuzergahlar(g); }).catch(() => { if (!iptal) setGuzergahlar([]); });
+    return () => { iptal = true; };
+  }, [baslangic, bitis, guzergahRefresh]);
+  // İl sınırları (81 il poligonu) — /tr-iller.json'dan bir kez yüklenir.
+  const [iller, setIller] = useState<IlPoligon[]>([]);
+  useEffect(() => { fetch("/tr-iller.json").then((r) => r.json()).then((g) => setIller(illeriYukle(g))).catch(() => {}); }, []);
+  // Kullanıcının İZİNLİ İLLERİ: atandığı şantiyelerin adından çıkarılan iller. Yönetici → null (sınırsız).
+  const izinliIller = useMemo<IlPoligon[] | null>(() => {
+    if (isYonetici || !kullanici) return null;
+    if (!iller.length) return []; // iller henüz yüklenmedi → geçici hiçbir şey (sızıntı olmasın)
+    const ilAdlari = iller.map((i) => i.ad);
+    const sMap = new Map(santiyeSecenekleri.map((s) => [s.id, s]));
+    const izinliAdlar = new Set<string>();
+    for (const sid of kullanici.santiye_ids ?? []) {
+      const s = sMap.get(sid);
+      const il = s ? (s.il ?? adtanIl(s.is_adi, ilAdlari)) : null; // önce elle girilen il, yoksa addan otomatik
+      if (il) izinliAdlar.add(il);
+    }
+    return iller.filter((i) => izinliAdlar.has(i.ad));
+  }, [isYonetici, kullanici, iller, santiyeSecenekleri]);
+  // GEÇMİŞ: plaka, rotası VEYA damperi izinli illerden birindeyse görünür. Yönetici → null (kısıt yok).
+  const izinliPlakalar = useMemo<string[] | null>(() => {
+    if (!izinliIller) return null;
+    const s = new Set<string>();
+    for (const g of guzergahlar) if (herhangiIzinli(g.noktalar, izinliIller)) s.add(g.plaka);
+    for (const k of kayitlar) {
+      if (s.has(k.plaka)) continue;
+      const dpts = (k.damper_olaylar ?? []).filter((o) => o.lat != null && o.lng != null).map((o) => ({ lat: o.lat as number, lng: o.lng as number }));
+      if (dpts.length && herhangiIzinli(dpts, izinliIller)) s.add(k.plaka);
+    }
+    return Array.from(s);
+  }, [izinliIller, guzergahlar, kayitlar]);
+  const izinliPlakaSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
+  // KML izin filtresi: katmanın geometrisi izinli illerden birinde mi (yönetici → hep true).
+  const katmanIzinli = useCallback<KatmanIzin>((k) => {
+    if (!izinliIller) return true;
+    const pts = (k.geometriler ?? []).flatMap((g) => (g.noktalar ?? []).map(([la, ln]) => ({ lat: la, lng: ln })));
+    return herhangiIzinli(pts, izinliIller);
+  }, [izinliIller]);
+  // CANLI: aracın ANLIK konumu izinli ilde mi (araç il dışına çıkınca anında kaybolur). Yönetici → hepsi.
+  const canliKonumlarIzinli = useMemo<CanliKonum[]>(() => {
+    if (!izinliIller) return canliKonumlar;
+    return canliKonumlar.filter((k) => k.lat != null && k.lng != null && noktaIzinli(k.lat, k.lng, izinliIller));
+  }, [canliKonumlar, izinliIller]);
+
+  // Şantiyenin il'ini elle ayarla (il izni için — addan otomatik bulunamayan/yanlış olanlar).
+  async function santiyeIlDegistir(id: string, il: string) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok.", { duration: toastSuresi() }); return; }
+    setSantiyeSecenekleri((list) => list.map((s) => (s.id === id ? { ...s, il: il || null } : s)));
+    try { await setSantiyeIl(id, il); } catch (err) { toast.error(`İl kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); }
+  }
 
   async function katmanYukle(file: File) {
     if (!yEkle) { toast.error("KML eklemek için 'ekleme' yetkiniz yok.", { duration: toastSuresi() }); return; }
+    if (!katmanSantiyeId) { toast.error("Önce bir şantiye seçin, sonra KML yükleyin.", { duration: toastSuresi() }); return; }
     setKatmanYukleniyor(true);
     try {
       const geometriler = await dosyadanGeometriler(file);
       const ad = file.name.replace(/\.(kml|kmz)$/i, "");
-      await ekleHaritaKatman({ ad, renk: katmanRenk, geometriler });
+      await ekleHaritaKatman({ ad, renk: katmanRenk, geometriler, santiyeId: katmanSantiyeId });
       const sayilar = geometriler.reduce((a, g) => { a[g.tip] = (a[g.tip] ?? 0) + 1; return a; }, {} as Record<string, number>);
       toast.success(`"${ad}" eklendi — ${sayilar.cizgi ?? 0} çizgi, ${sayilar.alan ?? 0} alan, ${sayilar.nokta ?? 0} nokta.`, { duration: toastSuresi() });
       await loadKatmanlar();
@@ -537,7 +619,7 @@ export default function ArventoRaporPage() {
     }
   }
 
-  async function katmanDegis(id: string, alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "kalinlik" | "gorunur">>) {
+  async function katmanDegis(id: string, alanlar: Partial<Pick<HaritaKatman, "ad" | "renk" | "kalinlik" | "gorunur" | "santiye_id">>) {
     if (!yDuzenle) { toast.error("Katmanı düzenlemek için 'düzenleme' yetkiniz yok.", { duration: toastSuresi() }); return; }
     // İyimser güncelle (anında yansısın), sonra DB
     setHaritaKatmanlari((list) => list.map((k) => (k.id === id ? { ...k, ...alanlar } : k)));
@@ -552,11 +634,13 @@ export default function ArventoRaporPage() {
 
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
-    if (!q) return kayitlar;
-    return kayitlar.filter((k) =>
+    let liste = kayitlar;
+    if (izinliPlakaSet) liste = liste.filter((k) => izinliPlakaSet.has(plakaNorm(k.plaka))); // şantiye izni
+    if (!q) return liste;
+    return liste.filter((k) =>
       trAramaNormalize([k.plaka, k.surucu, k.marka, k.model].filter(Boolean).join(" ")).includes(q),
     );
-  }, [kayitlar, arama]);
+  }, [kayitlar, arama, izinliPlakaSet]);
 
   // Şantiye bazlı gruplama (plaka → araç puantaj şantiyesi)
   const gruplaSantiye = useCallback((list: AracArventoRapor[]) => {
@@ -584,6 +668,7 @@ export default function ArventoRaporPage() {
   const ismakineKayitlar = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     return kayitlar.filter((k) => {
+      if (izinliPlakaSet && !izinliPlakaSet.has(plakaNorm(k.plaka))) return false; // şantiye izni
       const ps = plakaSantiye.get(plakaNorm(k.plaka));
       // Atama VARSA: yalnız "ismakine" atanmışlar; atama YOKSA: "ismakine"e başka araç
       // atanmışsa gizle, değilse sayaç tipi "saat" (otomatik).
@@ -593,7 +678,7 @@ export default function ArventoRaporPage() {
       if (q && !trAramaNormalize([k.plaka, k.surucu, k.marka, k.model, ps?.cinsi].filter(Boolean).join(" ")).includes(q)) return false;
       return true;
     });
-  }, [kayitlar, plakaSantiye, arama, sekmeMap, atananSekmeler]);
+  }, [kayitlar, plakaSantiye, arama, sekmeMap, atananSekmeler, izinliPlakaSet]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
@@ -733,8 +818,8 @@ export default function ArventoRaporPage() {
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri"
-                canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
-                refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+                canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
+                izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
             </div>
           )}
           {ismakineKayitlar.length === 0 ? (
@@ -778,19 +863,19 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} canliButton={canliButton} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -1171,7 +1256,16 @@ export default function ArventoRaporPage() {
               </p>
             </div>
             {yEkle ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="flex items-center gap-1 text-xs text-gray-600">
+                  Şantiye
+                  <select value={katmanSantiyeId} onChange={(e) => setKatmanSantiyeId(e.target.value)}
+                    className={`h-8 rounded border px-2 text-xs bg-white max-w-[200px] ${katmanSantiyeId ? "" : "border-amber-400 text-amber-700"}`}
+                    title="Önce şantiye seçin, sonra KML yükleyin">
+                    <option value="">— Önce şantiye seçin —</option>
+                    {santiyeSecenekleri.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
+                  </select>
+                </label>
                 <label className="flex items-center gap-1 text-xs text-gray-600">
                   Renk
                   <input type="color" value={katmanRenk} onChange={(e) => setKatmanRenk(e.target.value)}
@@ -1180,7 +1274,8 @@ export default function ArventoRaporPage() {
                 <input ref={katmanFileRef} type="file" accept=".kml,.kmz" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) katmanYukle(f); }} />
                 <Button variant="outline" size="sm" onClick={() => katmanFileRef.current?.click()}
-                  disabled={katmanYukleniyor} className="h-9 gap-1 text-xs">
+                  disabled={katmanYukleniyor || !katmanSantiyeId} title={!katmanSantiyeId ? "Önce şantiye seçin" : "KML/KMZ yükle"}
+                  className="h-9 gap-1 text-xs">
                   <Upload size={14} /> {katmanYukleniyor ? "Yükleniyor..." : "KML/KMZ Yükle"}
                 </Button>
               </div>
@@ -1194,10 +1289,16 @@ export default function ArventoRaporPage() {
           {haritaKatmanlari.length === 0 ? (
             <p className="text-xs text-gray-400">Henüz katman yok. Yukarıdan bir KML/KMZ yükleyin.</p>
           ) : (
-            <>
-              <div className="text-[11px] text-gray-400">{haritaKatmanlari.length} katman</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 max-h-[40vh] overflow-auto pr-1">
-                {haritaKatmanlari.map((k) => (
+            <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+              {katmanGruplari.map((grp) => (
+                <div key={grp.santiyeId ?? "yok"}>
+                  <div className="flex items-center gap-2 mb-1.5 sticky top-0 bg-white py-1 z-10">
+                    <span className={`text-xs font-bold truncate ${grp.santiyeId ? "text-[#1E3A5F]" : "text-amber-700"}`} title={grp.ad}>{grp.ad}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{grp.layers.length} katman</span>
+                    <div className="flex-1 border-t border-gray-100" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5">
+                    {grp.layers.map((k) => (
                   <div key={k.id} className="border rounded-md p-1.5 flex flex-col gap-1 text-xs">
                     {/* Üst: renk + ad + göster/gizle + sil */}
                     <div className="flex items-center gap-1.5">
@@ -1217,6 +1318,14 @@ export default function ArventoRaporPage() {
                         </button>
                       )}
                     </div>
+                    {/* Şantiye ataması — yüklerken seçilir, buradan değiştirilebilir */}
+                    <select value={k.santiye_id ?? ""} disabled={!yDuzenle}
+                      onChange={(e) => katmanDegis(k.id, { santiye_id: e.target.value || null })}
+                      title="Bu katmanın şantiyesi"
+                      className={`h-6 rounded border px-1 text-[10px] w-full bg-white disabled:opacity-70 disabled:cursor-not-allowed ${k.santiye_id ? "text-gray-700" : "text-amber-700 border-amber-300"}`}>
+                      <option value="">— Atanmamış —</option>
+                      {santiyeSecenekleri.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
+                    </select>
                     {/* Alt: geometri sayısı + kalınlık stepper */}
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] text-gray-400">{(k.geometriler ?? []).length} geo.</span>
@@ -1231,9 +1340,44 @@ export default function ArventoRaporPage() {
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Şantiye → İl (görme izni): kısıtlı kullanıcı, atandığı şantiyenin İL SINIRI içindeki her şeyi görür */}
+        <div className="bg-white rounded-lg border p-4 space-y-3">
+          <div>
+            <h3 className="font-bold text-sm text-[#1E3A5F] mb-1 flex items-center gap-1.5"><MapPin size={16} /> Şantiye İlleri (görme izni)</h3>
+            <p className="text-xs text-gray-400 max-w-2xl">
+              Kısıtlı kullanıcı, atandığı şantiyelerin <strong>il sınırı</strong> içindeki tüm canlı araç, KML ve damperleri görür
+              (araç il dışına çıkınca canlıda anında kaybolur; geçmişte o il içindeki veriler her zaman görünür). İl, şantiye
+              adından <strong>otomatik</strong> bulunur; yanlışsa aşağıdan düzeltin. <strong>Yöneticiler her şeyi görür.</strong>
+            </p>
+          </div>
+          {santiyeSecenekleri.length === 0 ? (
+            <p className="text-xs text-gray-400">Şantiye yok.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5 max-h-[40vh] overflow-auto pr-1">
+              {santiyeSecenekleri.map((s) => {
+                const oto = adtanIl(s.is_adi, iller.map((i) => i.ad));
+                return (
+                  <div key={s.id} className="border rounded-md p-1.5 flex items-center gap-2 text-xs">
+                    <span className="flex-1 truncate text-gray-700" title={s.is_adi}>{s.is_adi}</span>
+                    <select value={s.il ?? ""} disabled={!yDuzenle || iller.length === 0}
+                      onChange={(e) => santiyeIlDegistir(s.id, e.target.value)}
+                      title={s.il ? "Elle ayarlı" : oto ? `Otomatik: ${oto}` : "İl bulunamadı — elle seçin"}
+                      className={`h-6 rounded border px-1 text-[10px] bg-white shrink-0 w-28 disabled:opacity-60 disabled:cursor-not-allowed ${s.il ? "text-gray-800 font-medium" : oto ? "text-emerald-700" : "text-amber-700 border-amber-300"}`}>
+                      <option value="">{oto ? `Otomatik: ${oto}` : "— İl seçin —"}</option>
+                      {iller.map((i) => <option key={i.ad} value={i.ad}>{i.ad}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
         </div>

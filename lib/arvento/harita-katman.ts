@@ -2,7 +2,10 @@
 // Google Earth tarzı uydu görüntüsü). Reglaj/Stabilize/Serme/Sıkıştırma/Tümü haritalarında
 // ortak kullanılır. Sağ üstte katman seçici (Uydu / Sokak + etiket) çıkar.
 import type { Map as LeafletMap, Path } from "leaflet";
-import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
+import { getHaritaKatmanlari, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
+
+// KML izin filtresi: bir katmanın (coğrafi konumuna/şantiyesine göre) görünür olup olmadığı.
+export type KatmanIzin = (k: HaritaKatman) => boolean;
 
 type LeafletStatic = typeof import("leaflet");
 
@@ -244,7 +247,8 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
 // etiketler gizlenir → harita çizgilerini/yollarını kapatmaz. Yakınlaşınca isimler çıkar. (Gerekirse ayarlanır.)
 const ETIKET_MIN_ZOOM = 16;
 
-export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): Promise<void> {
+// katmanIzinli: KML izin filtresi (katmanın konumu izinli ilde mi). Verilmezse hepsi çizilir (yönetici).
+export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap, katmanIzinli?: KatmanIzin): Promise<void> {
   // Zoom'a göre etiket görünürlüğü: eşik altında map container'a sınıf eklenir, CSS o etiketleri gizler.
   const etiketGorunurluk = () => map.getContainer().classList.toggle("etiketleri-gizle", map.getZoom() < ETIKET_MIN_ZOOM);
   map.on("zoomend", etiketGorunurluk);
@@ -268,6 +272,7 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap): P
     const katmanlar = await getHaritaKatmanlari();
     for (const k of katmanlar) {
       if (!k.gorunur) continue;
+      if (katmanIzinli && !katmanIzinli(k)) continue; // izin yoksa (KML izinli il dışında) çizme
       const kalinlik = k.kalinlik ?? 3;
       for (const g of k.geometriler ?? []) {
         const baslik = `<b>${k.ad}</b>${g.ad ? " · " + g.ad : ""}`;

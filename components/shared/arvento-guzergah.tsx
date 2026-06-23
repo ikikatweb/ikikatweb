@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
@@ -57,7 +57,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
@@ -87,6 +87,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   }, [canliKonumlar, canliCihazMap, sekmeMap, plakaFiltre]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliFiltreli, cihazMap: canliCihazMap };
+  const katmanIzinliRef = useRef(katmanIzinli); katmanIzinliRef.current = katmanIzinli; // KML izin filtresi (en güncel)
   useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
 
@@ -121,13 +122,15 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
           // Atama varsa kesin; yoksa "reglaj"a başka araç atanmışsa gizle, değilse tüm güzergahlar.
           return atama ? atama.includes("reglaj") : !atananSekmeler.has("reglaj");
         });
-    if (!ekstraAraclar || ekstraAraclar.length === 0) return guzergahli;
     const varPlaka = new Set(guzergahli.map((k) => plakaNorm(k.plaka)));
-    const ekstra: GuzergahArac[] = ekstraAraclar
+    const ekstra: GuzergahArac[] = (ekstraAraclar ?? [])
       .filter((e) => !varPlaka.has(plakaNorm(e.plaka)))
       .map((e) => ({ plaka: e.plaka, arac_sinifi: e.arac_sinifi, toplam_mesafe: e.toplam_mesafe }));
-    return [...guzergahli, ...ekstra];
-  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap]);
+    const tum = ekstra.length ? [...guzergahli, ...ekstra] : guzergahli;
+    if (!izinliPlakalar) return tum; // yönetici/izin yok → hepsi
+    const izin = new Set(izinliPlakalar.map(plakaNorm));
+    return tum.filter((k) => izin.has(plakaNorm(k.plaka)));
+  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar]);
 
   // "Reglaj km" — KAPSANAN YOL: aracın dokunduğu TÜM benzersiz yolların toplamı (git-gel ve yan
   // şeritler tek sayılır). Bağlı yollar tek bileşene birleşse bile hepsi toplanır (omurga gibi
@@ -220,7 +223,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
-      await ekleKayitliKatmanlar(L, map);
+      await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return;
       veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
