@@ -1440,7 +1440,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
-        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-2 lg:order-1">
+        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-1 lg:order-1">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Yi-ÜFE Endeksler</h3>
@@ -1448,7 +1448,7 @@ export default function DashboardPage() {
           {!yiUfeSon.son ? (
             <p className="text-sm text-gray-400">Veri yok</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               {/* Kart 1: Son ay + bir önceki ay */}
               <div className="bg-gray-50 rounded-lg p-3 border">
                 <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.son.ay - 1)] ?? ""} {yiUfeSon.son.yil}</div>
@@ -1537,7 +1537,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 3: Yaklaşan Sigorta/Muayene (üst sıra sağ) */}
-        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-1 lg:order-2">
+        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -2387,7 +2387,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 8: Arvento Araç Çalışma — son rapor özeti */}
-        {wg("arvento") ? <div className="md:col-span-1 lg:col-span-1 lg:order-first">
+        {wg("arvento") ? <div className="order-first md:col-span-1 lg:col-span-1">
           <ArventoWidget />
         </div> : null}
 
