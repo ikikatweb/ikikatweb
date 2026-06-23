@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import { uzunBasmaHandlers } from "@/lib/arvento/uzun-basma";
 import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
@@ -218,6 +219,24 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const kamyonPlakaSet = useMemo(() => new Set(kamyonlar.map((r) => plakaNorm(r.plaka))), [kamyonlar]);
   // Kamyon izi: kamyonların KENDİ güzergahı (reglaj değil). Ayrı renk/kalınlıkla çizilir.
   const kamyonIzleri = useMemo(() => tumGuzergahTemiz.filter((k) => kamyonPlakaSet.has(plakaNorm(k.plaka))), [tumGuzergahTemiz, kamyonPlakaSet]);
+  // Sağ-tık "Araca odaklan" menüsü — haritayı aracın canlı konumuna/güzergahına götürür.
+  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null);
+  const uzunBasmaRef = useRef(false); // mobil uzun-basma menüyü açınca SONRAKİ tıklamayı (seçim) yut
+  useEffect(() => {
+    if (!odakMenu) return;
+    const kapat = () => setOdakMenu(null);
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOdakMenu(null); };
+    window.addEventListener("click", kapat);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("click", kapat); window.removeEventListener("keydown", esc); };
+  }, [odakMenu]);
+  const aracaOdaklan = useCallback((plaka: string) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const rota = tumGuzergahTemiz.find((k) => plakaNorm(k.plaka) === plakaNorm(plaka))?.noktalar;
+    if (!aracKonumunaOdaklan(map, plaka, canliVeriRef.current, rota, plakaNorm))
+      toast.error("Aracın konumu bulunamadı (canlı kapalı ve güzergah yok).", { duration: toastSuresi() });
+  }, [tumGuzergahTemiz]);
   // Reglaj referans çizgileri: greyder hatları, kamyonlar HARİÇ (karışmasın)
   const reglajRefleri = useMemo(() => greyderler.filter((k) => !kamyonPlakaSet.has(plakaNorm(k.plaka))), [greyderler, kamyonPlakaSet]);
 
@@ -541,10 +560,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     <div className="space-y-3 harita-tamekran-kapsayici relative">
       {/* Kamyon chip'leri (yan yana, çoklu seçim — şoför ismiyle) + özet + KML */}
       <div className="bg-white rounded-lg border p-3 harita-arac-panel">
-        {/* Satır sarmaz → özet kartların ALTINA değil YANINA kalır; kart bloğu esner ve içinde sarar. */}
-        <div className="flex items-start justify-between gap-3">
-          {/* Sol: kamyon chip'leri — TEK SATIR yan yana; sığmazsa yatay kaydırılır (özet sağda sabit) */}
-          <div className="flex items-stretch gap-1.5 flex-1 min-w-0 overflow-x-auto">
+        {/* Masaüstü: tek satır (özet kartların yanında). Mobil: alt alta (özet kartların altında) → taşma yok. */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          {/* Sol: kamyon chip'leri — MOBİL: sarmalı (hepsi görünür). MASAÜSTÜ: tek satır + yatay kaydırma. */}
+          <div className="flex flex-wrap items-stretch gap-1.5 md:flex-nowrap md:flex-1 md:min-w-0 md:overflow-x-auto">
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta Stabilize aracı/kamyonu yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
@@ -552,8 +571,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             const ad = r.surucu?.trim() || r.plaka;
             const adet = gercekSayiByPlaka.get(r.plaka) ?? (damperOlaylariniAl(r).length || (r.damper_sayisi ?? 0));
             return (
-              <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
-                title={`${r.plaka}${r.marka ? " · " + r.marka : ""}`}
+              <button key={r.plaka} type="button"
+                onClick={() => { if (uzunBasmaRef.current) { uzunBasmaRef.current = false; return; } toggle(r.plaka); }}
+                onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: r.plaka }); }}
+                {...uzunBasmaHandlers((x, y) => { uzunBasmaRef.current = true; setOdakMenu({ x, y, plaka: r.plaka }); })}
+                title={`${r.plaka}${r.marka ? " · " + r.marka : ""} — sağ tık / uzun bas: araca odaklan`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
                 className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors shrink-0 ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
@@ -622,6 +644,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
       {/* Harita */}
       <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "60vh" }} />
+
+      {/* Sağ-tık menüsü — Araca odaklan */}
+      {odakMenu && (
+        <div className="fixed z-[1401] bg-white rounded-lg border shadow-lg py-1 text-xs" style={{ left: odakMenu.x, top: odakMenu.y }}>
+          <button type="button" onClick={() => { aracaOdaklan(odakMenu.plaka); setOdakMenu(null); }}
+            className="px-3 py-1.5 hover:bg-gray-100 w-full text-left flex items-center gap-1.5 whitespace-nowrap">
+            🎯 <b>{odakMenu.plaka}</b> — Araca odaklan
+          </button>
+        </div>
+      )}
 
       {/* Damper indirme listesi (seçili kamyonlar) */}
       {damperOlaylar.length > 0 && (

@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
-import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
+import { uzunBasmaHandlers } from "@/lib/arvento/uzun-basma";
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
@@ -203,6 +204,25 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     [sermeMi, greyderler, silindirChipler],
   );
 
+  // Sağ-tık "Araca odaklan" menüsü — haritayı aracın canlı konumuna/güzergahına götürür.
+  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null);
+  const uzunBasmaRef = useRef(false); // mobil uzun-basma menüyü açınca SONRAKİ tıklamayı (seçim) yut
+  useEffect(() => {
+    if (!odakMenu) return;
+    const kapat = () => setOdakMenu(null);
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOdakMenu(null); };
+    window.addEventListener("click", kapat);
+    window.addEventListener("keydown", esc);
+    return () => { window.removeEventListener("click", kapat); window.removeEventListener("keydown", esc); };
+  }, [odakMenu]);
+  const aracaOdaklan = useCallback((plaka: string) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const rota = tumGuzergah.find((k) => plakaNorm(k.plaka) === plakaNorm(plaka))?.noktalar;
+    if (!aracKonumunaOdaklan(map, plaka, canliVeriRef.current, rota, plakaNorm))
+      toast.error("Aracın konumu bulunamadı (canlı kapalı ve güzergah yok).", { duration: toastSuresi() });
+  }, [tumGuzergah]);
+
   // Omurga (tek çizgi) uzunluğu — KM. Kartta ham toplam_mesafe yerine bu gösterilir: haritada çizilen
   // sadeleşmiş tek hattın uzunluğu (serme=greyder, sıkıştırma=silindir; git-gel tekrarları sayılmaz).
   const omurgaKmMap = useMemo(() => {
@@ -392,8 +412,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               const secili = sermeMi ? seciliGreyderler.has(k.plaka) : seciliSilindirler.has(k.plaka);
               const renk = sermeMi ? greyderRenkAl(k.plaka) : silindirRenkAl(k.plaka);
               return (
-                <button key={k.plaka} type="button" onClick={() => (sermeMi ? greyderToggle(k.plaka) : silindirToggle(k.plaka))}
-                  title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}`}
+                <button key={k.plaka} type="button"
+                  onClick={() => { if (uzunBasmaRef.current) { uzunBasmaRef.current = false; return; } if (sermeMi) greyderToggle(k.plaka); else silindirToggle(k.plaka); }}
+                  onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: k.plaka }); }}
+                  {...uzunBasmaHandlers((x, y) => { uzunBasmaRef.current = true; setOdakMenu({ x, y, plaka: k.plaka }); })}
+                  title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""} — sağ tık / uzun bas: araca odaklan`}
                   style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
                   className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"}`}>
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
@@ -415,11 +438,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                 </button>
               );
             })}
-            <button type="button" onClick={() => setHamGoster((v) => !v)}
-              title="Açıkken tüm Tanımlamalar filtreleri (tekrar + silindir eşiği) yok sayılır — ham veri gösterilir"
-              className={`self-center px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
-              {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
-            </button>
           </div>
           {/* Sağ: özet + KML */}
           <div className="flex items-start gap-3">
@@ -442,6 +460,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               )}
             </div>
             <div className="flex flex-col gap-1.5">
+              <button type="button" onClick={() => setHamGoster((v) => !v)}
+                title="Açıkken tüm Tanımlamalar filtreleri (tekrar + silindir eşiği) yok sayılır — ham veri gösterilir"
+                className={`h-9 px-2.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+                {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+              </button>
               <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
                 <Download size={14} /> KML İndir
               </Button>
@@ -452,6 +475,16 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       </div>
 
       <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "62vh" }} />
+
+      {/* Sağ-tık menüsü — Araca odaklan */}
+      {odakMenu && (
+        <div className="fixed z-[1401] bg-white rounded-lg border shadow-lg py-1 text-xs" style={{ left: odakMenu.x, top: odakMenu.y }}>
+          <button type="button" onClick={() => { aracaOdaklan(odakMenu.plaka); setOdakMenu(null); }}
+            className="px-3 py-1.5 hover:bg-gray-100 w-full text-left flex items-center gap-1.5 whitespace-nowrap">
+            🎯 <b>{odakMenu.plaka}</b> — Araca odaklan
+          </button>
+        </div>
+      )}
     </div>
   );
 }

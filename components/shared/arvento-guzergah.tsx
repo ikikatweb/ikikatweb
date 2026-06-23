@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
+import { uzunBasmaHandlers } from "@/lib/arvento/uzun-basma";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -63,7 +64,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
-  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık menüsü (Araca odaklan)
+  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık / uzun-basma menüsü (Araca odaklan)
+  const uzunBasmaRef = useRef(false); // mobil uzun-basma menüyü açınca SONRAKİ tıklamayı (seçim) yut
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -362,9 +364,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             const renk = renkAl(k.plaka);
             const omurgaKm = omurgaKmMap.get(k.plaka); // tek çizgi (yol) uzunluğu — varsa bunu göster
             return (
-              <button key={k.plaka} type="button" onClick={() => toggle(k.plaka)}
+              <button key={k.plaka} type="button"
+                onClick={() => { if (uzunBasmaRef.current) { uzunBasmaRef.current = false; return; } toggle(k.plaka); }}
                 onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: k.plaka }); }}
-                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""} — sağ tık: araca odaklan`}
+                {...uzunBasmaHandlers((x, y) => { uzunBasmaRef.current = true; setOdakMenu({ x, y, plaka: k.plaka }); })}
+                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""} — sağ tık / uzun bas: araca odaklan`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
                 className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
@@ -396,16 +400,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
               </button>
             );
           })}
-          {/* Güzergahı Göster (tüm Tanımlamalar filtrelerini yok say) */}
-          {araclar.length > 0 && (
-            <button type="button" onClick={() => setHamGoster((v) => !v)}
-              title="Açıkken tüm Tanımlamalar filtreleri yok sayılır — tam (ham) rota gösterilir"
-              className={`self-center px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
-              {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
-            </button>
-          )}
           </div>
-          {/* Sağ: özet + KML */}
+          {/* Sağ: özet + butonlar (Güzergahı Göster → KML İndir → Canlı) */}
           <div className="flex items-start gap-3">
             <div className="text-xs text-gray-600 text-right">
               <span className="font-semibold">{ozet.arac}</span>/{araclar.length} araç ·{" "}
@@ -415,6 +411,13 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
               )}
             </div>
             <div className="flex flex-col gap-1.5">
+              {araclar.length > 0 && (
+                <button type="button" onClick={() => setHamGoster((v) => !v)}
+                  title="Açıkken tüm Tanımlamalar filtreleri yok sayılır — tam (ham) rota gösterilir"
+                  className={`h-9 px-2.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+                  {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
+                </button>
+              )}
               <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
                 <Download size={14} /> KML İndir
               </Button>

@@ -90,6 +90,31 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
   }
 }
 
+// Haritayı bir aracın ŞU ANKİ canlı konumuna (varsa) ya da güzergah noktalarına odaklar (sağ-tık "Araca odaklan").
+// Canlı konum öncelikli (aracın o anki yeri); yoksa güzergaha fitBounds. Bulunamazsa false döner.
+export function aracKonumunaOdaklan(
+  map: LeafletMap,
+  plaka: string,
+  canli: { konumlar?: CanliKonum[]; cihazMap?: CihazMap },
+  rotaNoktalari: { lat: number | null; lng: number | null }[] | undefined,
+  plakaNorm: (p: string) => string,
+): boolean {
+  const n = plakaNorm(plaka);
+  const c = (canli.konumlar ?? []).find((k) => {
+    const p = k.node ? canli.cihazMap?.get(k.node.trim())?.plaka : null;
+    return p != null && plakaNorm(p) === n && k.lat != null && k.lng != null;
+  });
+  if (c && c.lat != null && c.lng != null) {
+    map.setView([c.lat, c.lng], Math.max(map.getZoom(), 16), { animate: true });
+    return true;
+  }
+  const pts = (rotaNoktalari ?? [])
+    .filter((p) => p.lat != null && p.lng != null)
+    .map((p) => [p.lat as number, p.lng as number] as [number, number]);
+  if (pts.length) { map.fitBounds(pts, { padding: [40, 40], maxZoom: 17 }); return true; }
+  return false;
+}
+
 // Harita kurulduktan sonra çağrılır: canlı LayerGroup oluşturup haritaya ekler, ilk çizimi yapar.
 export function canliKatmanKur(L: LeafletStatic, map: LeafletMap, konumlar: CanliKonum[] | undefined, cihazMap?: CihazMap): LayerGroup {
   const layer = L.layerGroup().addTo(map);

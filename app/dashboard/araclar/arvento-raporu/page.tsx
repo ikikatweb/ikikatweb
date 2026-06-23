@@ -708,14 +708,9 @@ export default function ArventoRaporPage() {
       {aktifSekme === "ismakine" ? (
         // ---- SEKME: İŞ MAKİNELERİ — cinse göre, Arvento'nun tüm sütunlarıyla detaylı tablo ----
         <div className="space-y-3">
-          <div className="bg-white rounded-lg border p-3 text-xs text-gray-600">
-            <strong className="text-[#1E3A5F]">{ismakineKayitlar.length}</strong> makine ·{" "}
-            <strong>{formatSure(ismakineKayitlar.reduce((s, k) => s + (k.hareket_sn ?? 0), 0))}</strong> toplam çalışma
-          </div>
           {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
           {ismakineKayitlar.length > 0 && (
             <div className="space-y-1">
-              <h4 className="text-xs font-semibold text-[#1E3A5F] flex items-center gap-1"><Satellite size={14} /> Haritada Çalışma Bölgeleri</h4>
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
