@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Satellite, ChevronRight } from "lucide-react";
-import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
+import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, getArventoRaporSonGuncelleme, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
 import { gercekDamperSayisi } from "@/lib/arvento/damper-say";
@@ -30,6 +30,7 @@ export default function ArventoWidget() {
   const [ayarlar, setAyarlar] = useState<ArventoAyarlar | null>(null);
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
   const [sinifMap, setSinifMap] = useState<Map<string, DamperSinif>>(new Map());
+  const [guncelleme, setGuncelleme] = useState<Date | null>(null); // raporun çekilme zamanı (created_at)
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,10 +39,10 @@ export default function ArventoWidget() {
         const t = await getArventoSonTarih();
         setTarih(t);
         if (t) {
-          const [k, g, ps, ay, ocak, sinif] = await Promise.all([
-            getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t),
+          const [k, g, ps, ay, ocak, sinif, gunc] = await Promise.all([
+            getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t), getArventoRaporSonGuncelleme(t, t),
           ]);
-          setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak);
+          setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc);
           const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setSinifMap(sm);
         }
       } catch { /* tablo yoksa sessiz */ } finally { setLoading(false); }
@@ -111,11 +112,11 @@ export default function ArventoWidget() {
   }, [kayitlar, plakaSantiye]);
 
   return (
-    <div className="bg-white rounded-xl border p-4">
+    <div className="bg-white rounded-xl border p-4 h-full">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Satellite size={16} className="text-[#1E3A5F]" />
-          <h3 className="font-bold text-sm text-[#1E3A5F]">Arvento Araç Çalışma</h3>
+          <h3 className="font-bold text-sm text-[#1E3A5F]">Araç Takip</h3>
         </div>
         <Link href="/dashboard/araclar/arvento-raporu" className="text-[11px] text-blue-600 hover:underline flex items-center">
           Tümü <ChevronRight size={12} />
@@ -128,7 +129,7 @@ export default function ArventoWidget() {
         <p className="text-xs text-gray-400 py-4 text-center">Henüz Arvento raporu yok.</p>
       ) : (
         <>
-          <div className="text-[10px] text-gray-400 mb-2">{formatTarih(tarih)} raporu</div>
+          <div className="text-[10px] text-gray-400 mb-2">{formatTarih(tarih)}{guncelleme ? ` ${String(guncelleme.getHours()).padStart(2, "0")}:${String(guncelleme.getMinutes()).padStart(2, "0")}` : ""} raporu</div>
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-emerald-50 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-emerald-700">{(reglajUzunluk * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</div>

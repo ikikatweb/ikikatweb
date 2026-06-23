@@ -1452,17 +1452,17 @@ export default function DashboardPage() {
               {/* Kart 1: Son ay + bir önceki ay */}
               <div className="bg-gray-50 rounded-lg p-3 border">
                 <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.son.ay - 1)] ?? ""} {yiUfeSon.son.yil}</div>
-                <div className="text-2xl font-bold text-[#1E3A5F] mb-3">{formatSayi(yiUfeSon.son.endeks)}</div>
+                <div className="text-lg font-bold text-[#1E3A5F] mb-1.5">{formatSayi(yiUfeSon.son.endeks)}</div>
                 {yiUfeSon.onceki && (
                   <>
                     <div className="border-t pt-2">
                       <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.onceki.ay - 1)] ?? ""} {yiUfeSon.onceki.yil}</div>
-                      <div className="text-base font-semibold text-gray-600 mb-2">{formatSayi(yiUfeSon.onceki.endeks)}</div>
+                      <div className="text-sm font-semibold text-gray-600 mb-1">{formatSayi(yiUfeSon.onceki.endeks)}</div>
                     </div>
                     {(() => {
                       const degisim = ((yiUfeSon.son.endeks - yiUfeSon.onceki.endeks) / yiUfeSon.onceki.endeks) * 100;
                       return (
-                        <div className={`text-center py-1.5 rounded-lg text-xs font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                        <div className={`text-center py-1 rounded-md text-[11px] font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                           {degisim >= 0 ? "+" : ""}%{formatSayi(degisim)}
                         </div>
                       );
@@ -1475,15 +1475,15 @@ export default function DashboardPage() {
               {yiUfeSon.onceki && yiUfeSon.oncekiOncesi ? (
                 <div className="bg-gray-50 rounded-lg p-3 border">
                   <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.onceki.ay - 1)] ?? ""} {yiUfeSon.onceki.yil}</div>
-                  <div className="text-2xl font-bold text-[#1E3A5F] mb-3">{formatSayi(yiUfeSon.onceki.endeks)}</div>
+                  <div className="text-lg font-bold text-[#1E3A5F] mb-1.5">{formatSayi(yiUfeSon.onceki.endeks)}</div>
                   <div className="border-t pt-2">
                     <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.oncekiOncesi.ay - 1)] ?? ""} {yiUfeSon.oncekiOncesi.yil}</div>
-                    <div className="text-base font-semibold text-gray-600 mb-2">{formatSayi(yiUfeSon.oncekiOncesi.endeks)}</div>
+                    <div className="text-sm font-semibold text-gray-600 mb-1">{formatSayi(yiUfeSon.oncekiOncesi.endeks)}</div>
                   </div>
                   {(() => {
                     const degisim = ((yiUfeSon.onceki.endeks - yiUfeSon.oncekiOncesi.endeks) / yiUfeSon.oncekiOncesi.endeks) * 100;
                     return (
-                      <div className={`text-center py-1.5 rounded-lg text-xs font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                      <div className={`text-center py-1 rounded-md text-[11px] font-bold ${degisim >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
                         {degisim >= 0 ? "+" : ""}%{formatSayi(degisim)}
                       </div>
                     );
