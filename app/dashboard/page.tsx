@@ -1448,7 +1448,7 @@ export default function DashboardPage() {
           {!yiUfeSon.son ? (
             <p className="text-sm text-gray-400">Veri yok</p>
           ) : (
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               {/* Kart 1: Son ay + bir önceki ay */}
               <div className="bg-gray-50 rounded-lg p-3 border">
                 <div className="text-xs text-gray-400 mb-1">{AY_ADLARI[(yiUfeSon.son.ay - 1)] ?? ""} {yiUfeSon.son.yil}</div>

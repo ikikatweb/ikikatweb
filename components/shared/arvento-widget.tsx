@@ -131,8 +131,8 @@ export default function ArventoWidget() {
           <div className="text-[10px] text-gray-400 mb-2">{formatTarih(tarih)} raporu</div>
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-emerald-50 rounded-lg p-2 text-center">
-              <div className="text-lg font-bold text-emerald-700">{reglajUzunluk.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}</div>
-              <div className="text-[9px] text-gray-500">Reglaj Uzunluğu (km)</div>
+              <div className="text-lg font-bold text-emerald-700">{(reglajUzunluk * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</div>
+              <div className="text-[9px] text-gray-500">Reglaj Uzunluğu (m)</div>
             </div>
             <div className="bg-blue-50 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-blue-700">{kamyonSefer.toLocaleString("tr-TR")}</div>
@@ -140,7 +140,7 @@ export default function ArventoWidget() {
             </div>
             <div className="bg-orange-50 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-orange-700">{saatDk(ekskavatorSn)}</div>
-              <div className="text-[9px] text-gray-500">İş Mak. Çalışma (sa:dk)</div>
+              <div className="text-[9px] text-gray-500">Makineli Çalışma (sa:dk)</div>
             </div>
           </div>
         </>
