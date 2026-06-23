@@ -11,7 +11,6 @@ import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/sup
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
-import { uzunBasmaHandlers } from "@/lib/arvento/uzun-basma";
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
@@ -206,7 +205,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
 
   // Sağ-tık "Araca odaklan" menüsü — haritayı aracın canlı konumuna/güzergahına götürür.
   const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null);
-  const uzunBasmaRef = useRef(false); // mobil uzun-basma menüyü açınca SONRAKİ tıklamayı (seçim) yut
   useEffect(() => {
     if (!odakMenu) return;
     const kapat = () => setOdakMenu(null);
@@ -413,12 +411,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               const renk = sermeMi ? greyderRenkAl(k.plaka) : silindirRenkAl(k.plaka);
               return (
                 <button key={k.plaka} type="button"
-                  onClick={() => { if (uzunBasmaRef.current) { uzunBasmaRef.current = false; return; } if (sermeMi) greyderToggle(k.plaka); else silindirToggle(k.plaka); }}
+                  onClick={() => { if (sermeMi) greyderToggle(k.plaka); else silindirToggle(k.plaka); }}
+                  onDoubleClick={() => aracaOdaklan(k.plaka)}
                   onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: k.plaka }); }}
-                  {...uzunBasmaHandlers((x, y) => { uzunBasmaRef.current = true; setOdakMenu({ x, y, plaka: k.plaka }); })}
-                  title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""} — sağ tık / uzun bas: araca odaklan`}
+                  title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""} — çift tıkla/dokun: araca odaklan`}
                   style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"}`}>
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors select-none touch-manipulation ${secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"}`}>
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
                   <span className="flex flex-col items-start leading-tight">
                     <span className="font-semibold flex items-center gap-1">{k.plaka}{k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}</span>

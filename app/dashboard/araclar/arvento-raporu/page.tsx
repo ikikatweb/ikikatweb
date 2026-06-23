@@ -604,9 +604,11 @@ export default function ArventoRaporPage() {
     })),
     [ismakineKayitlar, plakaSantiye],
   );
-  // İş makineleri için "çalışma saati" = Kontak Açık süresi (kontak_sn). Plakaya göre harita.
+  // İş makineleri için "çalışma saati" = MOTOR AÇIK süresi = hareket + rölanti.
+  // (Ekskavatör/loder çoğunlukla YERİNDE çalışır → hareket=0 olsa da rölanti'de iş yapar; sadece
+  //  hareket sayılırsa "0 çalışma" görünür ve yanıltır.) Plakaya göre harita.
   const ismakineCalismaMap = useMemo(
-    () => new Map(ismakineKayitlar.map((k) => [plakaNorm(k.plaka), k.kontak_sn ?? 0])),
+    () => new Map(ismakineKayitlar.map((k) => [plakaNorm(k.plaka), (k.hareket_sn ?? 0) + (k.rolanti_sn ?? 0)])),
     [ismakineKayitlar],
   );
   // Tüm araçlar için kontak açık + rölanti süresi (plaka bazında, aralık toplamı) — Reglaj/Serme/Sıkıştırma chip'leri için

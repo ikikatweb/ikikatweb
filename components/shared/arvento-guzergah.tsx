@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
-import { uzunBasmaHandlers } from "@/lib/arvento/uzun-basma";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -64,8 +63,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
-  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık / uzun-basma menüsü (Araca odaklan)
-  const uzunBasmaRef = useRef(false); // mobil uzun-basma menüyü açınca SONRAKİ tıklamayı (seçim) yut
+  const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık menüsü (Araca odaklan)
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -364,13 +362,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             const renk = renkAl(k.plaka);
             const omurgaKm = omurgaKmMap.get(k.plaka); // tek çizgi (yol) uzunluğu — varsa bunu göster
             return (
-              <button key={k.plaka} type="button"
-                onClick={() => { if (uzunBasmaRef.current) { uzunBasmaRef.current = false; return; } toggle(k.plaka); }}
+              <button key={k.plaka} type="button" onClick={() => toggle(k.plaka)}
+                onDoubleClick={() => aracaOdaklan(k.plaka)}
                 onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: k.plaka }); }}
-                {...uzunBasmaHandlers((x, y) => { uzunBasmaRef.current = true; setOdakMenu({ x, y, plaka: k.plaka }); })}
-                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""} — sağ tık / uzun bas: araca odaklan`}
+                title={`${k.plaka}${k.arac_sinifi ? " · " + k.arac_sinifi : ""}${k.marka ? " · " + k.marka : ""} — çift tıkla/dokun: araca odaklan`}
                 style={secili ? { borderColor: renk, background: renk + "14" } : undefined}
-                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors ${
+                className={`px-2.5 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-colors select-none touch-manipulation ${
                   secili ? "text-gray-800" : "bg-white border-gray-200 text-gray-400 hover:border-gray-300"
                 }`}>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
