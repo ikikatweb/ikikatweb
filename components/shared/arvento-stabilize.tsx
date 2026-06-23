@@ -15,7 +15,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
-import { getOcakForTarih, setOcakForTarih } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getOcakForTarih, setOcakForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin } from "lucide-react";
@@ -88,7 +88,7 @@ function mukerrerIsaretle<T extends DamperOlay>(olaylar: T[], pencSn: number, ya
 
 // Stabilize ocağı (yükleme noktası) işareti — mavi konum pini + kazma/ocak simgesi.
 function ocakIkonHtml(): string {
-  return `<div class="ocak-wrap"><svg width="30" height="38" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg">
+  return `<div class="ocak-wrap"><svg width="22" height="28" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg">
     <path d="M15 37 C6 26 1 20 1 13 a14 14 0 0 1 28 0 C29 20 24 26 15 37 Z" fill="#1d4ed8" stroke="#ffffff" stroke-width="2"/>
     <circle cx="15" cy="13" r="8.5" fill="#ffffff"/>
     <g stroke="#1d4ed8" stroke-width="2" stroke-linecap="round"><path d="M10 17 L18 9"/><path d="M16.5 7.5 L20.5 11.5"/><path d="M8.5 15.5 L12.5 19.5"/></g>
@@ -272,6 +272,31 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const etkinOcakYaricap = gunOcak?.yaricap ?? ocakYaricap;            // sayı → sabit
   const ocakElleMi = gunOcak != null || (ocakLat != null && ocakLng != null); // otomatik mi (popup notu)
 
+  // ── Damper manuel sınıflandırma (override) — gerçek/mükerrer/arıza elle değiştirilir, kalıcı ──
+  // Anahtar: plaka|tarih(bas)|saat. Liste ve popup AYNI map'ten türediği için otomatik senkron.
+  const [damperSinif, setDamperSinifState] = useState<Map<string, DamperSinif>>(new Map());
+  const sinifKey = useCallback((plaka: string, saat: string | null) => `${plakaNorm(plaka)}|${bas}|${saat ?? ""}`, [bas]);
+  useEffect(() => {
+    let iptal = false;
+    getDamperSiniflar(bas, bitis)
+      .then((rows) => { if (iptal) return; const m = new Map<string, DamperSinif>(); for (const r of rows) m.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setDamperSinifState(m); })
+      .catch(() => { if (!iptal) setDamperSinifState(new Map()); });
+    return () => { iptal = true; };
+  }, [bas, bitis, refreshKey]);
+  // Bir damperin sınıfını elle değiştir (optimistik + DB'ye yaz). Liste & popup aynı state'ten beslenir.
+  const damperSinifDegistir = useCallback((plaka: string, saat: string | null, yeni: DamperSinif) => {
+    const key = `${plakaNorm(plaka)}|${bas}|${saat ?? ""}`;
+    setDamperSinifState((prev) => { const m = new Map(prev); m.set(key, yeni); return m; });
+    setDamperSinif(plaka, bas, saat ?? "", yeni).catch(() => toast.error("Sınıf kaydedilemedi — arvento_damper_sinif tablosu için SQL'i çalıştırın.", { duration: toastSuresi() }));
+  }, [bas]);
+  // Popup içindeki butonlar (Leaflet HTML) global fonksiyonu çağırır → React state'i günceller.
+  const degistirRef = useRef(damperSinifDegistir); degistirRef.current = damperSinifDegistir;
+  useEffect(() => {
+    (window as unknown as { __damperSinifSet?: (p: string, s: string, k: string) => void }).__damperSinifSet =
+      (p, s, k) => degistirRef.current(p, s || null, k as DamperSinif);
+    return () => { try { delete (window as unknown as { __damperSinifSet?: unknown }).__damperSinifSet; } catch { /* yoksay */ } };
+  }, []);
+
   // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
   const plakaRenk = useMemo(() => {
     const m = new Map<string, string>();
@@ -313,10 +338,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (!seciliPlakalar.has(r.plaka)) continue;
       const muk = mukerrerIsaretle(damperOlaylariniAl(r), pencSn, etkinYaricap);
       const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
-      for (const o of sinifli) out.push({ ...o, plaka: r.plaka, surucu: r.surucu });
+      for (const o of sinifli) {
+        const e = { ...o, plaka: r.plaka, surucu: r.surucu };
+        const ov = damperSinif.get(sinifKey(r.plaka, o.saat)); // MANUEL override otomatik sınıfı ezer
+        if (ov === "gercek") { e.mukerrer = false; e.ariza = false; e.dogrulanmamis = false; }
+        else if (ov === "mukerrer") { e.mukerrer = true; e.ariza = false; }
+        else if (ov === "ariza") { e.ariza = true; e.mukerrer = false; }
+        out.push(e);
+      }
     }
     return out;
-  }, [kamyonlar, seciliPlakalar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap]);
+  }, [kamyonlar, seciliPlakalar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey]);
 
   // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler
   const damperKoordlu = useMemo(
@@ -336,11 +368,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const olaylar = damperOlaylariniAl(r);
       const muk = mukerrerIsaretle(olaylar, pencSn, etkinYaricap);
       const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
-      const gercek = sinifli.filter((o) => !o.mukerrer && !o.ariza).length;
+      const gercek = sinifli.filter((o) => {
+        const ov = damperSinif.get(sinifKey(r.plaka, o.saat));
+        if (ov === "gercek") return true;
+        if (ov === "mukerrer" || ov === "ariza") return false;
+        return !o.mukerrer && !o.ariza;
+      }).length;
       m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
     }
     return m;
-  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap]);
+  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
@@ -447,9 +484,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     gruplar.forEach((g) => {
       const renk = renkAl(g.plaka);
       const adet = g.olaylar.length;
+      // Popup'taki her damper için Mükerrer/Arıza butonu — window.__damperSinifSet → React state (liste ile senkron).
+      const esc = (s: string) => String(s ?? "").replace(/['\\]/g, "\\$&");
+      const bStil = "font-size:10px;padding:0 5px;margin-left:3px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer";
       const liste = g.olaylar
-        .map((o, i) => `${i + 1}. ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`)
-        .join("<br>");
+        .map((o) => `🔻 ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`
+          + `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
+          + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`)
+        .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
       const ikon = L.divIcon({
         html: damperKamyonIkonHtml(renk, adet),
         className: "damper-ikon",
@@ -464,8 +506,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     });
     // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──
     if (ocak) {
-      L.circle([ocak.lat, ocak.lng], { radius: etkinOcakYaricap, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.08, dashArray: "5 4" }).addTo(grup);
-      const ocakIkon = L.divIcon({ html: ocakIkonHtml(), className: "ocak-ikon", iconSize: [30, 38], iconAnchor: [15, 36], popupAnchor: [0, -34] });
+      // Ocak çemberi METRE-tabanlı küçük (50 m) → zoom'la birlikte küçülür: yakında belli, uzaklaşınca
+      // neredeyse görünmez. (Sınıflama yine etkinOcakYaricap metresini kullanır; bu yalnız görseldir.)
+      L.circle([ocak.lat, ocak.lng], { radius: 50, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.1, dashArray: "5 4" }).addTo(grup);
+      const ocakIkon = L.divIcon({ html: ocakIkonHtml(), className: "ocak-ikon", iconSize: [22, 28], iconAnchor: [11, 27], popupAnchor: [0, -26] });
       const ocakM = L.marker([ocak.lat, ocak.lng], { icon: ocakIkon, draggable: yDuzenle, zIndexOffset: 1000 }).addTo(grup);
       ocakM.bindPopup(`<b>⛏️ Stabilize Ocağı</b> · ${basRef.current}<br>Yükleme noktası (yarıçap ${etkinOcakYaricap} m)${yDuzenle ? "<br><i>Sürükleyerek bu güne kaydedin</i>" : ""}${ocakElleMi ? "" : "<br><i>(otomatik tespit)</i>"}`);
       if (yDuzenle) ocakM.on("dragend", () => {
@@ -676,15 +720,23 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="text-gray-400 w-20 truncate">{o.plaka}</span>
                 <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : "text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
                 <span className={`flex-1 truncate ${gizli ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
-                {o.mukerrer
-                  ? <span className="text-[10px] text-amber-600">mükerrer</span>
-                  : o.ariza
-                    ? <span className="text-[10px] text-rose-600 font-semibold">arıza</span>
-                    : o.dogrulanmamis
-                      ? <span className="text-[10px] text-blue-500" title="Rota verisi yok — Arvento'dan doğrulanmalı">doğrulanmamış</span>
-                      : o.lat != null && o.lng != null
-                        ? <span className="text-[10px] text-emerald-600 flex items-center gap-0.5"><MapPin size={10} /> konumlu ✓</span>
-                        : <span className="text-[10px] text-gray-400">konumsuz</span>}
+                {(() => {
+                  const aktif: DamperSinif = o.mukerrer ? "mukerrer" : o.ariza ? "ariza" : "gercek";
+                  const btn = (k: DamperSinif, etiket: string, renk: string) => (
+                    <button type="button" onClick={() => damperSinifDegistir(o.plaka, o.saat, k)}
+                      title="Bu damperin sınıfını elle ayarla"
+                      className={`text-[9px] leading-none px-1 py-0.5 rounded border transition-colors ${aktif === k ? renk : "bg-white text-gray-400 border-gray-200 hover:bg-gray-100"}`}>{etiket}</button>
+                  );
+                  return (
+                    <span className="flex items-center gap-0.5 shrink-0">
+                      {btn("gercek", "Gerçek", "bg-emerald-600 text-white border-emerald-600")}
+                      {btn("mukerrer", "Mük.", "bg-amber-500 text-white border-amber-500")}
+                      {btn("ariza", "Arıza", "bg-rose-600 text-white border-rose-600")}
+                      {aktif === "gercek" && o.dogrulanmamis && <span className="text-[9px] text-blue-500" title="Rota verisi yok — doğrulanmamış">?</span>}
+                      {(o.lat == null || o.lng == null) && <span className="text-[9px] text-gray-400" title="Konumsuz"><MapPin size={9} className="inline" />✕</span>}
+                    </span>
+                  );
+                })()}
               </li>
             );})}
           </ol>

@@ -139,13 +139,19 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
   });
   map.addControl(new Kutu());
 
-  function kutuyuGuncelle(provizyonel?: number) {
+  function kutuyuGuncelle(imlecMesafe?: number) {
     if (!kutuEl) return;
     if (mod === "kapali") { kutuEl.style.display = "none"; return; }
-    const t = provizyonel != null ? provizyonel : toplam(noktalar);
+    // ANA sayı = TIKLANAN TÜM noktaların SABIT toplamı (ilk→son, kaç nokta olursa olsun). Fare ile DEĞİŞMEZ.
+    const kilitli = toplam(noktalar);
+    const anaMetin = noktalar.length >= 2 ? `Toplam: ${fmt(kilitli)} (${noktalar.length} nokta)` : (noktalar.length === 1 ? "1. nokta — sonraki noktaya tıkla" : "Başlamak için tıkla");
+    // Fare gezerken imleç mesafesi AYRI/küçük satırda (ana sabit sayıyı bozmaz).
+    const canli = (imlecMesafe != null && noktalar.length >= 1)
+      ? `<br><span style="opacity:.7;font-size:11px">↳ imleç: ${fmt(imlecMesafe)}${noktalar.length >= 2 ? ` · toplam ${fmt(kilitli + imlecMesafe)}` : ""}</span>`
+      : "";
     const ip = "Tıkla: ekle · Son noktaya tıkla: geri al · 📏: temizle";
     kutuEl.style.display = "block";
-    kutuEl.innerHTML = `<b style="font-size:14px">${noktalar.length >= 2 || provizyonel != null ? fmt(t) : "0 m"}</b><br><span style="opacity:.85">${ip}</span>`;
+    kutuEl.innerHTML = `<b style="font-size:14px">${anaMetin}</b>${canli}<br><span style="opacity:.85">${ip}</span>`;
   }
 
   function butonGorunumu() {
@@ -161,6 +167,15 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     lastik = null;
     if (noktalar.length >= 2) {
       L.polyline(noktalar, { color: "#facc15", weight: 3, opacity: 0.95, dashArray: "6 4" }).addTo(katman);
+      // Her segmentin ORTASINA SABİT mesafe etiketi — çizgide net görünür (fareyle değişmez).
+      for (let i = 1; i < noktalar.length; i++) {
+        const a = noktalar[i - 1], b = noktalar[i];
+        const orta = L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+        L.marker(orta, {
+          interactive: false,
+          icon: L.divIcon({ className: "", iconSize: [0, 0], html: `<span style="background:#1E3A5F;color:#fff;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4);transform:translate(-50%,-50%);display:inline-block">${fmt(map.distance(a, b))}</span>` }),
+        }).addTo(katman);
+      }
     }
     noktalar.forEach((p) =>
       L.circleMarker(p, { radius: 4, color: "#fff", weight: 2, fillColor: "#ca8a04", fillOpacity: 1 }).addTo(katman),
@@ -185,7 +200,14 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     lastikTemizle();
     const son = noktalar[noktalar.length - 1];
     lastik = L.polyline([son, e.latlng], { color: "#facc15", weight: 2, opacity: 0.6, dashArray: "4 4" }).addTo(katman);
-    kutuyuGuncelle(toplam(noktalar) + map.distance(son, e.latlng));
+    kutuyuGuncelle(map.distance(son, e.latlng)); // imleç mesafesi (ana sabit toplamı değiştirmez)
+  }
+
+  // Ölçüm modunda KML/çizgi/damper/canlı katmanları tıklamayı YUTMASIN → her tık haritaya (ölçüm
+  // noktası) gitsin. Aktif=true: pointer-events kapat; false: geri aç.
+  function katmanlariGecirgen(aktif: boolean) {
+    const panes = [map.getPane(KML_PANE), map.getPane(CANLI_PANE), map.getPanes().overlayPane, map.getPanes().markerPane];
+    for (const p of panes) if (p) p.style.pointerEvents = aktif ? "none" : "";
   }
 
   function basla() {
@@ -194,6 +216,7 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     katman.clearLayers();
     map.doubleClickZoom.disable();
     L.DomUtil.addClass(map.getContainer(), "olcum-modu");
+    katmanlariGecirgen(true);
     map.on("click", tikla);
     map.on("mousemove", hareket);
     butonGorunumu();
@@ -206,6 +229,7 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     lastik = null;
     map.doubleClickZoom.enable();
     L.DomUtil.removeClass(map.getContainer(), "olcum-modu");
+    katmanlariGecirgen(false);
     map.off("click", tikla);
     map.off("mousemove", hareket);
     butonGorunumu();

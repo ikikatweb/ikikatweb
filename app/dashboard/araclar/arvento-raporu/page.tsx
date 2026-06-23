@@ -143,6 +143,7 @@ export default function ArventoRaporPage() {
   const [atamalar, setAtamalar] = useState<AracAtama[]>([]);
   const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
   const [atamaArama, setAtamaArama] = useState("");       // atama tablosu plaka araması
+  const [atanmamisGoster, setAtanmamisGoster] = useState(false); // false: yalnız atanmış araçlar; true: atanmamışlar da
   const [arama] = useState("");
   // Sekme anahtarları:
   //  calisma=Araç Çalışma Raporu, guzergah=Reglaj, genel=Stabilize,
@@ -623,6 +624,18 @@ export default function ArventoRaporPage() {
     }
     return m;
   }, [kayitlar]);
+  // İlk kontak (en erken açılış) + son kontak (en geç kapanış) — TÜM araçlarda chip'te gösterilir.
+  const ilkSonKontakMap = useMemo(() => {
+    const m = new Map<string, { ilk: string | null; son: string | null }>();
+    for (const k of kayitlar) {
+      const key = plakaNorm(k.plaka);
+      const ex = m.get(key) ?? { ilk: null, son: null };
+      if (k.ilk_kontak && (!ex.ilk || k.ilk_kontak < ex.ilk)) ex.ilk = k.ilk_kontak;
+      if (k.son_kontak && (!ex.son || k.son_kontak > ex.son)) ex.son = k.son_kontak;
+      m.set(key, ex);
+    }
+    return m;
+  }, [kayitlar]);
 
   if (!yGor) {
     return <div className="text-center py-16 text-gray-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
@@ -715,7 +728,7 @@ export default function ArventoRaporPage() {
             <div className="space-y-1">
               <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
-                calismaSnMap={ismakineCalismaMap} baslik="İş Makineleri"
+                calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri"
                 canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
                 refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
             </div>
@@ -761,7 +774,7 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
         <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlar} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} canliButton={canliButton} />
@@ -1065,8 +1078,10 @@ export default function ArventoRaporPage() {
                   {atamalar
                     .filter((a) => {
                       const q = trAramaNormalize(atamaArama.trim());
-                      if (!q) return true;
-                      return trAramaNormalize([a.plaka, a.cinsi, a.marka, a.model].filter(Boolean).join(" ")).includes(q);
+                      if (q) return trAramaNormalize([a.plaka, a.cinsi, a.marka, a.model].filter(Boolean).join(" ")).includes(q);
+                      // Arama yoksa: atama yapılmamış (otomatik) araçları gizle — toggle ile açılır.
+                      if (!atanmamisGoster && !Array.isArray(a.sekmeler)) return false;
+                      return true;
                     })
                     .map((a) => {
                       const atanmis = Array.isArray(a.sekmeler);
@@ -1102,6 +1117,17 @@ export default function ArventoRaporPage() {
               </table>
             </div>
           </fieldset>
+          {/* Atama yapılmamış (otomatik) araçları göster/gizle — arama yokken geçerli */}
+          {!atamaArama.trim() && (() => {
+            const atanmamisSayi = atamalar.filter((a) => !Array.isArray(a.sekmeler)).length;
+            if (atanmamisSayi === 0) return null;
+            return (
+              <button type="button" onClick={() => setAtanmamisGoster((v) => !v)}
+                className="text-xs font-medium text-[#1E3A5F] hover:underline flex items-center gap-1">
+                {atanmamisGoster ? `▲ Atama yapılmamış araçları gizle` : `▼ Atama yapılmamış araçları göster (${atanmamisSayi})`}
+              </button>
+            );
+          })()}
         </div>
 
         {/* Cihaz Listesi (Canlı Takip) — node→plaka/şoför eşlemesi için Arvento cihaz Excel'i */}

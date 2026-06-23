@@ -30,9 +30,11 @@ function formatSaat(t: string | null): string {
   return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-// Bir önceki çizimdeki konum (node bazlı). Arvento yön (nCourse) vermezse yönü buradan hesaplarız;
-// ayrıca düşük hızlı iş makineleri için "hareket"i konum değişiminden tespit ederiz.
-const sonKonum = new Map<string, { lat: number; lng: number }>();
+// Bir önceki çizimdeki konum + son HAREKET zamanı (node bazlı). Arvento yön (nCourse) vermezse yönü
+// buradan hesaplarız; ayrıca aracın en son ne zaman kımıldadığını izleyip "çalışmıyor" (uzun süre
+// hareketsiz) tespiti yaparız (canlı feed kontak/ignition vermediği için en iyi yaklaşım budur).
+const sonKonum = new Map<string, { lat: number; lng: number; sonHareket: number }>();
+const CALISMIYOR_ESIK_MS = 20 * 60 * 1000; // bu süre boyunca hiç kımıldamayan araç "çalışmıyor" → kırmızı
 
 // İki konum arası pusula yönü (derece, 0=kuzey, saat yönü). ~6 m altı kayma = GPS gürültüsü → null.
 function yonHesap(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number | null {
@@ -57,14 +59,19 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
     const sof = c?.surucu ? ` · ${c.surucu}` : "";
     // Yön: Arvento nCourse (k.yon) varsa onu; yoksa bir önceki konuma göre hesapla (anlamlı kımıldadıysa).
     const anahtar = (k.node ?? `${k.lat},${k.lng}`).trim();
+    const simdi = Date.now();
     const onceki = sonKonum.get(anahtar);
     const hesapYon = onceki ? yonHesap(onceki, { lat: k.lat, lng: k.lng }) : null;
-    sonKonum.set(anahtar, { lat: k.lat, lng: k.lng });
-    const yon = k.yon ?? hesapYon;
     // Hareket: hız > 3 km/s VEYA son çizimden bu yana konum anlamlı kaydıysa (yavaş iş makineleri için).
     const hareket = (k.hiz ?? 0) > 3 || hesapYon != null;
-    // Renk: hareket=YEŞIL. Duruyorsa kontağa bak → kontak KAPALI=KIRMIZI, açık/bilinmiyor=MAVI.
-    const renk = hareket ? "#16a34a" : (k.kontak === false ? "#dc2626" : "#2563eb");
+    // Son hareket zamanını izle: hareket varsa (ya da ilk görülüyorsa) şimdi; yoksa öncekini koru.
+    const sonHareket = (hareket || !onceki) ? simdi : onceki.sonHareket;
+    sonKonum.set(anahtar, { lat: k.lat, lng: k.lng, sonHareket });
+    const yon = k.yon ?? hesapYon;
+    // "Çalışmıyor": uzun süredir hiç kımıldamadı (canlı feed kontak vermediği için hareket bazlı yaklaşım).
+    const calismiyor = simdi - sonHareket > CALISMIYOR_ESIK_MS;
+    // Renk: hareket=YEŞIL. Duruyorsa → kontak KAPALI ya da uzun süre HAREKETSİZ ise KIRMIZI; aksi halde MAVI.
+    const renk = hareket ? "#16a34a" : ((k.kontak === false || calismiyor) ? "#dc2626" : "#2563eb");
     // Kalıcı etiket: plaka (kalın) + model (alt satır) — haritada hep görünür, Arvento'daki gibi.
     const etiket = `<span class="ce-plaka">${ad}</span>${model ? `<span class="ce-model">${model}</span>` : ""}`;
     // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde (durağan/yön yok) nokta.
@@ -83,7 +90,7 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
-        `${hareket ? "🟢 hareket" : (k.kontak === false ? "🔴 kontak kapalı" : k.kontak === true ? "🔵 kontak açık (duruyor)" : "🔵 duruyor")} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
+        `${hareket ? "🟢 hareket" : (k.kontak === false ? "🔴 kontak kapalı" : calismiyor ? "🔴 çalışmıyor (uzun süre hareketsiz)" : "🔵 duruyor")} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
         `${formatSaat(k.tarih)}<br>${k.adres ?? ""}`,
       )
       .bindTooltip(etiket, { permanent: true, direction: "top", offset: [0, -9], className: "canli-etiket", opacity: 1, pane: CANLI_PANE });

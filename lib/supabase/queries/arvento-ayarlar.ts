@@ -136,3 +136,32 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
   });
   if (error) throw error;
 }
+
+// ── Damper manuel sınıflandırma (override) — arvento_damper_sinif tablosu ───────────────
+// Otomatik sınıf (gerçek/mükerrer/arıza) kullanıcı tarafından elle değiştirilebilir; burada saklanır.
+// SQL:
+//   create table if not exists arvento_damper_sinif (
+//     plaka text not null, tarih date not null, saat text not null,
+//     sinif text not null check (sinif in ('gercek','mukerrer','ariza')),
+//     primary key (plaka, tarih, saat));
+//   alter table arvento_damper_sinif disable row level security;
+export type DamperSinif = "gercek" | "mukerrer" | "ariza";
+
+export async function getDamperSiniflar(bas: string, bitis: string): Promise<{ plaka: string; tarih: string; saat: string; sinif: DamperSinif }[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from("arvento_damper_sinif")
+    .select("plaka, tarih, saat, sinif")
+    .gte("tarih", bas)
+    .lte("tarih", bitis);
+  if (error) return [];
+  return (data ?? []) as { plaka: string; tarih: string; saat: string; sinif: DamperSinif }[];
+}
+
+export async function setDamperSinif(plaka: string, tarih: string, saat: string, sinif: DamperSinif): Promise<void> {
+  const sb = createClient();
+  const { error } = await sb
+    .from("arvento_damper_sinif")
+    .upsert({ plaka, tarih, saat, sinif }, { onConflict: "plaka,tarih,saat" });
+  if (error) throw error;
+}

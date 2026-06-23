@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
-import { sadelesGuzergah, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -221,20 +221,17 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       toast.error("Aracın konumu bulunamadı (canlı kapalı ve güzergah yok).", { duration: toastSuresi() });
   }, [tumGuzergah]);
 
-  // Omurga (tek çizgi) uzunluğu — KM. Kartta ham toplam_mesafe yerine bu gösterilir: haritada çizilen
-  // sadeleşmiş tek hattın uzunluğu (serme=greyder, sıkıştırma=silindir; git-gel tekrarları sayılmaz).
+  // "km yol" — KAPSANAN YOL: aracın dokunduğu TÜM benzersiz yolların toplamı (git-gel/yan şerit tek
+  // sayılır; bağlı yollar dahil hepsi toplanır). Kararlı; sadeleştirme eşiğinden bağımsız.
   const omurgaKmMap = useMemo(() => {
     const m = new Map<string, number>();
-    const esik = sermeMi ? etkinTekrar : etkinSilindir;
-    if (esik < 1) return m; // ham mod → omurga yok, toplam_mesafe'ye düşülür
     for (const k of sermeMi ? greyderler : silindirler) {
       const ns = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (ns.length < 2) continue;
-      const ps = sadelesGuzergah(ns, esik, gridMesafe).parcalar;
-      if (ps.length) m.set(k.plaka, parcalarUzunlukKm(ps));
+      m.set(k.plaka, kapsananYolKm(ns, gridMesafe));
     }
     return m;
-  }, [sermeMi, greyderler, silindirler, etkinTekrar, etkinSilindir, gridMesafe]);
+  }, [sermeMi, greyderler, silindirler, gridMesafe]);
 
   // Kamyon damperleri (serme'de ortada gösterilir)
   const damperKoordlu = useMemo<DamperNokta[]>(() => {
@@ -422,7 +419,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                     <span className="font-semibold flex items-center gap-1">{k.plaka}{k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}</span>
                     <span className="text-[10px] opacity-90" title={omurgaKmMap.get(k.plaka) != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
                       {omurgaKmMap.get(k.plaka) != null
-                        ? `${omurgaKmMap.get(k.plaka)!.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km yol`
+                        ? `${omurgaKmMap.get(k.plaka)!.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km yol`
                         : `${Math.round(k.toplam_mesafe ?? 0)} km`}
                     </span>
                     {/* Kontak açık + rölanti — alt alta */}

@@ -63,6 +63,47 @@ function yogunlastir(pts: { lat: number; lng: number }[], adimM: number): { lat:
   return out;
 }
 
+// "Kapsanan yol" — aracın gün içinde DOKUNDUĞU benzersiz yol uzunluğu (KM). Yolu ~gridM ızgarasına
+// oturtup, ardışık BENZERSİZ hücre kenarlarının uzunluklarını TEK kez toplar: aynı yolu git-gel taraması
+// ve yan yana şeritler aynı hücrelere düştüğü için bir kez sayılır. Omurga (en uzun TEK yol) değil —
+// BAĞLI olsalar bile TÜM yolların toplamıdır ("her yol bir çizgi, hepsinin toplamı"). Eşik=1 → kararlı.
+export function kapsananYolKm(noktalar: { lat: number; lng: number }[], gridM = 12): number {
+  const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
+  if (pts0.length < 2) return 0;
+  const g = Math.max(1, gridM * 2);
+  const pts = yogunlastir(pts0, Math.max(2, g / 2));
+  const ortLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
+  const cosOrt = Math.max(0.1, Math.cos((ortLat * Math.PI) / 180));
+  const latStep = g / METRE_DERECE;
+  const lngStep = g / (METRE_DERECE * cosOrt);
+  const hucreKey = (p: { lat: number; lng: number }) => `${Math.round(p.lat / latStep)}_${Math.round(p.lng / lngStep)}`;
+  const segKey = (k1: string, k2: string) => (k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`);
+  // Hücre ortalama merkezleri (yan yana şeritlerin tam ortası)
+  const merkezTopla = new Map<string, { lat: number; lng: number; n: number }>();
+  for (const p of pts) {
+    const key = hucreKey(p);
+    const m = merkezTopla.get(key);
+    if (m) { m.lat += p.lat; m.lng += p.lng; m.n += 1; } else merkezTopla.set(key, { lat: p.lat, lng: p.lng, n: 1 });
+  }
+  const merkez = (key: string): [number, number] => { const m = merkezTopla.get(key)!; return [m.lat / m.n, m.lng / m.n]; };
+  // Ardışık hücreler arası BENZERSİZ kenarlar (git-gel/yan şerit tek sayılır)
+  const benzersiz = new Set<string>();
+  let onceki = hucreKey(pts[0]);
+  for (let i = 1; i < pts.length; i++) {
+    const simdi = hucreKey(pts[i]);
+    if (simdi === onceki) continue;
+    benzersiz.add(segKey(onceki, simdi));
+    onceki = simdi;
+  }
+  let metre = 0;
+  for (const k of benzersiz) {
+    const [a, b] = k.split("|");
+    const [la1, ln1] = merkez(a), [la2, ln2] = merkez(b);
+    metre += Math.hypot((la2 - la1) * METRE_DERECE, (ln2 - ln1) * METRE_DERECE * cosOrt);
+  }
+  return metre / 1000;
+}
+
 // Dijkstra: bas düğümünden en uzak düğüm + önceki-düğüm haritası (yol geri izleme için).
 function enUzak(bas: string, komsu: Map<string, Set<string>>, dist: (a: string, b: string) => number) {
   const d = new Map<string, number>([[bas, 0]]);
