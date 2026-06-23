@@ -102,6 +102,30 @@ export async function setOcakForTarih(tarih: string, lat: number, lng: number, y
   if (error) throw error;
 }
 
+// ── Stabilize ocağı GİRİŞİ: ÇİZGİ (kapı) — A(lat,lng)–B(lat2,lng2). Kamyon çizgisi bu kapıyı kestiğinde
+// "girişten geçti" sayılır; geniş girişlerde uçları uzatılabilir. Okuma/yazma SUNUCU (service role) →
+// RLS baypas. Gün bazlı (ocak gibi): belirli güne ≤ EN SON kayıt geçerlidir.
+export type GirisCizgi = { lat: number; lng: number; lat2: number; lng2: number };
+
+export async function getGirisForTarih(tarih: string): Promise<GirisCizgi | null> {
+  if (!tarih) return null;
+  try {
+    const r = await fetch(`/api/arvento/giris?tarih=${encodeURIComponent(tarih)}`, { cache: "no-store" });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d.giris ?? null) as GirisCizgi | null;
+  } catch { return null; }
+}
+
+export async function setGirisForTarih(tarih: string, lat: number, lng: number, lat2: number, lng2: number): Promise<void> {
+  const r = await fetch("/api/arvento/giris", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tarih, lat, lng, lat2, lng2 }),
+  });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d?.error ?? "Kaydedilemedi"); }
+}
+
 // Stabilize ocağını ayrı kaydet (ana ayar snapshot'ından BAĞIMSIZ). Kolonlar henüz eklenmemişse
 // (SQL çalıştırılmadıysa) hata fırlatır → çağıran tarafta yakalanıp kullanıcıya bildirilir; diğer
 // ayarların kaydı bundan etkilenmez.

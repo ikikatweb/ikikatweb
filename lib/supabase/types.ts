@@ -42,6 +42,7 @@ export type Santiye = {
   sira_no: number;
   durum: "aktif" | "tamamlandi" | "tasfiye" | "devir";
   is_adi: string;
+  il?: string | null; // işin bulunduğu il (Araç Takip görme izni + genel bilgi). tr-iller.json ile aynı yazım.
   is_grubu: string | null;
   benzer_is_grubu: string | null; // Benzer İş Grubu (A-V, B-II vb.)
   ekap_belge_no: string | null;

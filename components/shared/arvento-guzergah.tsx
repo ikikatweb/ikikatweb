@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { sadelesGuzergah, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -57,7 +57,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
@@ -125,25 +125,38 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const varPlaka = new Set(guzergahli.map((k) => plakaNorm(k.plaka)));
     const ekstra: GuzergahArac[] = (ekstraAraclar ?? [])
       .filter((e) => !varPlaka.has(plakaNorm(e.plaka)))
-      .map((e) => ({ plaka: e.plaka, arac_sinifi: e.arac_sinifi, toplam_mesafe: e.toplam_mesafe }));
+      .map((e) => ({ plaka: e.plaka, arac_sinifi: e.arac_sinifi, toplam_mesafe: e.toplam_mesafe, model: e.model ?? null }));
     const tum = ekstra.length ? [...guzergahli, ...ekstra] : guzergahli;
     if (!izinliPlakalar) return tum; // yönetici/izin yok → hepsi
     const izin = new Set(izinliPlakalar.map(plakaNorm));
     return tum.filter((k) => izin.has(plakaNorm(k.plaka)));
   }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar]);
 
-  // "Reglaj km" — KAPSANAN YOL: aracın dokunduğu TÜM benzersiz yolların toplamı (git-gel ve yan
-  // şeritler tek sayılır). Bağlı yollar tek bileşene birleşse bile hepsi toplanır (omurga gibi
-  // "en uzun tek kol" değil). Kararlı; sadeleştirme eşiğinden bağımsız hesaplanır.
+  // Her SADELEŞTİRİLMİŞ TEK ÇİZGİNİN (omurga parçası) AYRI uzunluğu (km, büyükten küçüğe). Haritada
+  // çizilen çizgilerle birebir: git-gel tekrarları sayılmaz. Eşik<1 (ham) ise parça yok → boş.
+  const parcaUzunlukMap = useMemo(() => {
+    const m = new Map<string, number[]>();
+    if (etkinTekrar < 1) return m;
+    for (const k of araclar) {
+      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      if (noktalar.length < 2) continue;
+      const uz = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
+        .map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005).sort((a, b) => b - a);
+      if (uz.length) m.set(k.plaka, uz);
+    }
+    return m;
+  }, [araclar, etkinTekrar, gridMesafe]);
+  // "Reglaj km" (TOPLAM): sadeleştirilmiş çizgiler varsa parçaların TOPLAMI; yoksa (ham mod) kapsanan yol.
   const omurgaKmMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const k of araclar) {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length < 2) continue;
-      m.set(k.plaka, kapsananYolKm(noktalar, gridMesafe));
+      const parts = parcaUzunlukMap.get(k.plaka);
+      m.set(k.plaka, parts ? parts.reduce((a, b) => a + b, 0) : kapsananYolKm(noktalar, gridMesafe));
     }
     return m;
-  }, [araclar, gridMesafe]);
+  }, [araclar, gridMesafe, parcaUzunlukMap]);
 
   // Araç KÜMESİ değişince varsayılan: tüm araçlar seçili. Periyodik tazelemede aynı plakalar
   // gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, gereksiz redraw olmasın).
@@ -265,7 +278,21 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kmStr} · ${noktalar.length} nokta`;
       if (etkinTekrar >= 1) {
         const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
-        L.polyline(cizgiler.length ? cizgiler : [latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
+        if (cizgiler.length) {
+          // Her parça AYRI tıklanabilir polyline → tıklanınca YALNIZ o çizginin uzunluğu (toplam ikincil).
+          for (const parca of cizgiler) {
+            const uz = parcalarUzunlukKm([parca]);
+            const parcaPop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>`
+              + `Bu çizgi: <b>${uz.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</b>`
+              + `<br><span style="opacity:.65">Toplam: ${kmStr} · ${noktalar.length} nokta</span>`;
+            const cizgi = L.polyline(parca, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(parcaPop);
+            // Tıklayınca seçili çizgi belirginleşsin (kalınlaşır), popup kapanınca eski haline döner.
+            cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
+            cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));
+          }
+        } else {
+          L.polyline([latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
+        }
       } else {
         L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
         if (tekMi) {
@@ -375,7 +402,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                 <span className="flex flex-col items-start leading-tight">
                   <span className="font-semibold flex items-center gap-1">
                     {k.plaka}
-                    {k.arac_sinifi && <span className="text-[10px] font-normal opacity-60">{k.arac_sinifi}</span>}
+                    {(() => { const ik = modelGoster ? (modelMap?.get(plakaNorm(k.plaka)) || k.model || k.arac_sinifi) : k.arac_sinifi; return ik ? <span className="text-[10px] font-normal opacity-60">{ik}</span> : null; })()}
                   </span>
                   <span className="text-[10px] opacity-90 flex items-center gap-1.5">
                     <span title={omurgaKm != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
@@ -385,18 +412,16 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                     </span>
                     <span>{k.noktalar?.length ?? 0} nokta</span>
                   </span>
-                  {/* Çalışma saati (iş makineleri) = Kontak Açık süresi */}
+                  {/* SIRA: ilk kontak → çalışma → (kontak açık/rölanti) → son kontak */}
+                  {ilkSonKontakMap?.get(plakaNorm(k.plaka))?.ilk && (
+                    <span className="text-[10px] text-emerald-600">🟢 {ilkSonKontakMap.get(plakaNorm(k.plaka))!.ilk!.slice(0, 5)} ilk kontak</span>
+                  )}
                   {calismaSnMap && <span className="text-[10px] opacity-80">⏱ {formatSure(calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)} çalışma</span>}
-                  {/* Kontak açık + rölanti (Reglaj) — alt alta */}
                   {kontakRolantiMap && (
                     <>
                       <span className="text-[10px] opacity-80">⏱ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.kontak ?? 0)} kontak açık</span>
                       <span className="text-[10px] opacity-80">⏳ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.rolanti ?? 0)} rölanti</span>
                     </>
-                  )}
-                  {/* İlk/son kontak saatleri (tüm araçlar) — kamyonlardaki gibi */}
-                  {ilkSonKontakMap?.get(plakaNorm(k.plaka))?.ilk && (
-                    <span className="text-[10px] text-emerald-600">🟢 {ilkSonKontakMap.get(plakaNorm(k.plaka))!.ilk!.slice(0, 5)} ilk kontak</span>
                   )}
                   {ilkSonKontakMap?.get(plakaNorm(k.plaka))?.son && (
                     <span className="text-[10px] text-red-600">🔴 {ilkSonKontakMap.get(plakaNorm(k.plaka))!.son!.slice(0, 5)} son kontak</span>

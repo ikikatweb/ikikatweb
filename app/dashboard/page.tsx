@@ -1536,8 +1536,8 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 3: Yaklaşan Sigorta/Muayene (sağ üst) */}
-        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
+        {/* Widget 3: Yaklaşan Sigorta/Muayene (üst sıra sağ) */}
+        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-1 lg:order-2">
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
             <div className="max-h-[200px] overflow-y-auto">
@@ -2387,7 +2387,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 8: Arvento Araç Çalışma — son rapor özeti */}
-        {wg("arvento") ? <div className="md:col-span-2 lg:col-span-2 lg:order-11">
+        {wg("arvento") ? <div className="md:col-span-1 lg:col-span-1 lg:order-first">
           <ArventoWidget />
         </div> : null}
 

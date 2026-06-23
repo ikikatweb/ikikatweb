@@ -18,6 +18,7 @@ import { getSantiyePrimHesabi } from "@/lib/supabase/queries/prim-hesap";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
+import { TR_ILLER } from "@/lib/tr-iller";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -135,6 +136,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
     is_adi: santiye?.is_adi ?? "",
+    il: santiye?.il ?? null,
     is_grubu: santiye?.is_grubu ?? null,
     benzer_is_grubu: santiye?.benzer_is_grubu ?? null,
     ekap_belge_no: santiye?.ekap_belge_no ?? "",
@@ -314,6 +316,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
+    if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
@@ -546,6 +549,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     onBlur={(e) => setFormData((p) => ({ ...p, is_adi: formatBaslik(e.target.value) }))}
                     disabled={loading}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="il">İl <span className="text-red-500">*</span></Label>
+                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => setFormData((p) => ({ ...p, il: e.target.value || null }))} disabled={loading} className={selectClass}>
+                    <option value="">Seçiniz</option>
+                    {TR_ILLER.map((il) => (<option key={il} value={il}>{il}</option>))}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <Label>İş Tanımları</Label>

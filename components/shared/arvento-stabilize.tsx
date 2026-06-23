@@ -13,9 +13,10 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type Kat
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { ocakTespit, arizaIsaretle, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
+import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
+import { mukerrerIsaretle, gercekDamperSayisi } from "@/lib/arvento/damper-say";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
-import { getOcakForTarih, setOcakForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin } from "lucide-react";
@@ -43,47 +44,19 @@ function formatAralik(bas: string, bitis: string): string {
   if (!bas) return "—";
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
+// İki doğru parçası kesişiyor mu (lat=y, lng=x düzlemi; küçük alanlar için yeterli). Kamyon segmenti
+// kapı (giriş) çizgisini kesiyorsa "kapıdan geçti".
+type Nk = { lat: number; lng: number };
+function yon3(p: Nk, q: Nk, r: Nk): number { return (q.lng - p.lng) * (r.lat - q.lat) - (q.lat - p.lat) * (r.lng - q.lng); }
+function parcaKesisir(a: Nk, b: Nk, c: Nk, d: Nk): boolean {
+  const d1 = yon3(c, d, a), d2 = yon3(c, d, b), d3 = yon3(a, b, c), d4 = yon3(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
 function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
 
-// "HH:MM:SS" / "HH:MM" → gün içi saniye. Yoksa null.
-function saatSn(saat: string | null): number | null {
-  if (!saat) return null;
-  const p = saat.split(":").map((x) => parseInt(x, 10));
-  if (p.length < 2 || p.some((n) => !Number.isFinite(n))) return null;
-  return p[0] * 3600 + p[1] * 60 + (p[2] ?? 0);
-}
-
-// İki konum arası mesafe (metre) — küçük mesafeler için düz (equirectangular) yaklaşım yeterli.
-function mesafeMetre(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 111320;
-  const cosL = Math.max(0.1, Math.cos(((lat1 + lat2) / 2) * Math.PI / 180));
-  const dx = (lng2 - lng1) * R * cosL;
-  const dy = (lat2 - lat1) * R;
-  return Math.hypot(dx, dy);
-}
-
-// Bir aracın damper olaylarını "mükerrer" (yanlış tetik) işaretler. Bir damper, daha önce
-// TUTULAN bir dampere HEM yarıçap (m) HEM süre (sn) içinde yakınsa mükerrer sayılır — İKİSİ birden.
-// Konumsuz olaylar temizliğe girmez (mukerrer=false). pencSn=0 veya yaricapM=0 → temizleme yok.
-function mukerrerIsaretle<T extends DamperOlay>(olaylar: T[], pencSn: number, yaricapM: number): (T & { mukerrer: boolean })[] {
-  if (pencSn <= 0 || yaricapM <= 0) return olaylar.map((o) => ({ ...o, mukerrer: false }));
-  const konumlu = olaylar.filter((o) => o.lat != null && o.lng != null);
-  const sirali = [...konumlu].sort((a, b) => (saatSn(a.saat) ?? 0) - (saatSn(b.saat) ?? 0));
-  const mset = new Set<T>();
-  const tutulan: T[] = []; // mükerrer SAYILMAYAN (gerçek) damperler
-  for (const o of sirali) {
-    const sn = saatSn(o.saat);
-    const yakin = sn != null && tutulan.some((t) => {
-      const tsn = saatSn(t.saat);
-      if (tsn == null || sn - tsn > pencSn) return false;               // süre penceresi dışı
-      return mesafeMetre(t.lat as number, t.lng as number, o.lat as number, o.lng as number) <= yaricapM; // yarıçap içi
-    });
-    if (yakin) mset.add(o); else tutulan.push(o);
-  }
-  return olaylar.map((o) => ({ ...o, mukerrer: mset.has(o) }));
-}
 
 
 // Stabilize ocağı (yükleme noktası) işareti — mavi konum pini + kazma/ocak simgesi.
@@ -261,10 +234,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // GÜN BAZLI ocak: bu tarihin (bas) GEÇERLİ ocağını (≤ bas EN SON kayıt) DB'den çek. Tarih değişince yenilenir.
   // Marker sürüklenince O GÜN için kaydedilir → geçmiş günler kendi ocağını korur, etkilenmez.
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
+  const [gunGiris, setGunGiris] = useState<{ lat: number; lng: number; lat2: number; lng2: number } | null>(null); // ocak girişi KAPI ÇİZGİSİ (A–B)
   const basRef = useRef(bas); basRef.current = bas; // sürükleme anında güncel tarihi kullan
   useEffect(() => {
     let iptal = false;
     getOcakForTarih(bas).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
+    getGirisForTarih(bas).then((g) => { if (!iptal) setGunGiris(g); }).catch(() => { if (!iptal) setGunGiris(null); });
     return () => { iptal = true; };
   }, [bas]);
   // Çözünürlük: gün-ocağı → (eski global prop ocak) → otomatik tespit. useMemo: referans her render'da
@@ -372,22 +347,55 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Her araç için GERÇEK damper sayısı (mükerrer + arıza ayıklanmış) — chip rozeti (seçimden bağımsız).
   const gercekSayiByPlaka = useMemo(() => {
-    const pencSn = Math.max(0, etkinMukerrer) * 60;
     const m = new Map<string, number>();
     for (const r of kamyonlar) {
       const olaylar = damperOlaylariniAl(r);
-      const muk = mukerrerIsaretle(olaylar, pencSn, etkinYaricap);
-      const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
-      const gercek = sinifli.filter((o) => {
-        const ov = damperSinif.get(sinifKey(r.plaka, o.saat));
-        if (ov === "gercek") return true;
-        if (ov === "mukerrer" || ov === "ariza") return false;
-        return !o.mukerrer && !o.ariza;
-      }).length;
+      const gercek = gercekDamperSayisi(olaylar, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap, etkinMukerrer, etkinYaricap, (saat) => damperSinif.get(sinifKey(r.plaka, saat)));
       m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
     }
     return m;
   }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey]);
+
+  // SEFER ANALİZİ — her kamyon için gerçek/mükerrer/arıza dökümü (TÜM kamyonlar, seçimden bağımsız).
+  // Ocağa gidiş (yüklü) = gerçek; Döküme gidiş = gerçek + arıza (arıza = ocağa uğramadan döken).
+  const seferAnaliz = useMemo(() => {
+    const pencSn = Math.max(0, etkinMukerrer) * 60;
+    // Giriş KAPI çizgisi tanımlıysa: rota segmentleri bu çizgiyi kestikçe yön (ocağa mı/dökümе mi) ile say.
+    const A = gunGiris ? { lat: gunGiris.lat, lng: gunGiris.lng } : null;
+    const B = gunGiris ? { lat: gunGiris.lat2, lng: gunGiris.lng2 } : null;
+    // Yön: kesişimden sonra araç GİRİŞ ÇİZGİSİNİN ocak tarafına geçtiyse "ocağa", diğer tarafa geçtiyse
+    // "döküme". Çizginin tam konumundan BAĞIMSIZ (ocak hangi taraftaysa o taraf = ocağa) → tutarlı.
+    const ocakTaraf = (A && B && ocak) ? Math.sign(yon3(A, B, ocak)) : 0;
+    const sat: { plaka: string; surucu: string | null; gercek: number; mukerrer: number; ariza: number; girisOcak: number; girisDokum: number }[] = [];
+    for (const r of kamyonlar) {
+      const olaylar = damperOlaylariniAl(r);
+      let g = 0, m = 0, a = 0;
+      if (olaylar.length === 0) { g = r.damper_sayisi ?? 0; }
+      else {
+        const muk = mukerrerIsaretle(olaylar, pencSn, etkinYaricap);
+        const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
+        for (const o of sinifli) {
+          const ov = damperSinif.get(sinifKey(r.plaka, o.saat));
+          let mk = o.mukerrer, ar = o.ariza;
+          if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
+          if (mk) m++; else if (ar) a++; else g++;
+        }
+      }
+      // Kapıdan fiziksel geçiş (yön: kesişimden sonra ocağa yaklaşıyorsa "ocağa", uzaklaşıyorsa "döküme").
+      let go = 0, gd = 0;
+      if (A && B && ocak) {
+        const rota = rotaByPlaka.get(plakaNorm(r.plaka)) ?? [];
+        for (let i = 1; i < rota.length; i++) {
+          const p1 = rota[i - 1], p2 = rota[i];
+          if (p1.lat == null || p1.lng == null || p2.lat == null || p2.lng == null) continue;
+          if (parcaKesisir(p1 as Nk, p2 as Nk, A, B)) { if (Math.sign(yon3(A, B, p2 as Nk)) === ocakTaraf) go++; else gd++; }
+        }
+      }
+      if (g + m + a > 0 || go + gd > 0) sat.push({ plaka: r.plaka, surucu: r.surucu, gercek: g, mukerrer: m, ariza: a, girisOcak: go, girisDokum: gd });
+    }
+    sat.sort((x, y) => y.gercek - x.gercek);
+    return sat;
+  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey, gunGiris]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
@@ -468,6 +476,22 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (latlngs.length === 0) return;
       L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
         .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
+      // Gidiş yönü okları — iz boyunca ~her 250 m'de bir, aynı turuncu + kalınlık (zaman sıralı → yön).
+      { const R = 111320, ARALIK = 250; let birikim = ARALIK, okSay = 0;
+        for (let i = 1; i < latlngs.length && okSay < 250; i++) {
+          const a = latlngs[i - 1], b = latlngs[i];
+          const cosL = Math.max(0.1, Math.cos((a[0] * Math.PI) / 180));
+          const d = Math.hypot((b[0] - a[0]) * R, (b[1] - a[1]) * R * cosL);
+          if (d < 1) continue;
+          birikim += d;
+          if (birikim >= ARALIK) {
+            birikim = 0; okSay++;
+            const yon = (Math.atan2((b[1] - a[1]) * cosL, b[0] - a[0]) * 180) / Math.PI; // 0=kuzey, saat yönü
+            const ok = L.divIcon({ className: "iz-ok", iconSize: [14, 14], iconAnchor: [7, 7], html: `<div style="transform:rotate(${yon}deg)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 10 L7 4.5 L11 10" fill="none" stroke="${kamyonIziRenk}" stroke-width="${kamyonIziKalinlik}" stroke-linecap="round" stroke-linejoin="round"/></svg></div>` });
+            L.marker(b, { icon: ok, interactive: false, zIndexOffset: 500 }).addTo(grup);
+          }
+        }
+      }
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
     });
     // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
@@ -517,19 +541,51 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     });
     // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──
     if (ocak) {
-      // Ocak çemberi METRE-tabanlı küçük (50 m) → zoom'la birlikte küçülür: yakında belli, uzaklaşınca
-      // neredeyse görünmez. (Sınıflama yine etkinOcakYaricap metresini kullanır; bu yalnız görseldir.)
-      L.circle([ocak.lat, ocak.lng], { radius: 50, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.1, dashArray: "5 4" }).addTo(grup);
+      // Ocak çemberi = GERÇEK sınıflama yarıçapı (etkinOcakYaricap, metre → zoom'la ölçeklenir).
+      const cember = L.circle([ocak.lat, ocak.lng], { radius: etkinOcakYaricap, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.08, dashArray: "5 4" }).addTo(grup);
       const ocakIkon = L.divIcon({ html: ocakIkonHtml(), className: "ocak-ikon", iconSize: [22, 28], iconAnchor: [11, 27], popupAnchor: [0, -26] });
       const ocakM = L.marker([ocak.lat, ocak.lng], { icon: ocakIkon, draggable: yDuzenle, zIndexOffset: 1000 }).addTo(grup);
-      ocakM.bindPopup(`<b>⛏️ Stabilize Ocağı</b> · ${basRef.current}<br>Yükleme noktası (yarıçap ${etkinOcakYaricap} m)${yDuzenle ? "<br><i>Sürükleyerek bu güne kaydedin</i>" : ""}${ocakElleMi ? "" : "<br><i>(otomatik tespit)</i>"}`);
-      if (yDuzenle) ocakM.on("dragend", () => {
-        const ll = ocakM.getLatLng();
-        setGunOcak({ lat: ll.lat, lng: ll.lng, yaricap: etkinOcakYaricap });
-        setOcakForTarih(basRef.current, ll.lat, ll.lng, etkinOcakYaricap)
-          .catch(() => toast.error("Ocak kaydedilemedi — arvento_ocak tablosu için SQL'i çalıştırın.", { duration: toastSuresi() }));
-      });
+      ocakM.bindPopup(`<b>⛏️ Stabilize Ocağı</b> · ${basRef.current}<br>Yükleme noktası (yarıçap ${Math.round(etkinOcakYaricap)} m)${yDuzenle ? "<br><i>Pini sürükle: taşı · kenar tutamağını sürükle: çapı büyüt/küçült</i>" : ""}${ocakElleMi ? "" : "<br><i>(otomatik tespit)</i>"}`);
       bounds.push([ocak.lat, ocak.lng]);
+      if (yDuzenle) {
+        // Kenar tutamağı: ocağın doğusunda, çemberin kenarında. Sürükleyince yarıçap = merkez↔tutamak.
+        const kenarKonum = () => { const c = ocakM.getLatLng(); const r = cember.getRadius(); return L.latLng(c.lat, c.lng + r / (111320 * Math.cos(c.lat * Math.PI / 180))); };
+        const tutamacIkon = L.divIcon({ className: "ocak-tutamac", html: '<div style="width:14px;height:14px;border-radius:50%;background:#1d4ed8;border:2px solid #fff;box-shadow:0 0 0 1.5px #1d4ed8;cursor:ew-resize"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+        const kenarM = L.marker(kenarKonum(), { icon: tutamacIkon, draggable: true, zIndexOffset: 1050 }).addTo(grup);
+        const kaydet = () => {
+          const c = ocakM.getLatLng(), r = Math.max(20, Math.round(cember.getRadius()));
+          setGunOcak({ lat: c.lat, lng: c.lng, yaricap: r });
+          setOcakForTarih(basRef.current, c.lat, c.lng, r).catch(() => toast.error("Ocak kaydedilemedi — arvento_ocak tablosu için SQL'i çalıştırın.", { duration: toastSuresi() }));
+        };
+        ocakM.on("drag", () => { const c = ocakM.getLatLng(); cember.setLatLng(c); kenarM.setLatLng(kenarKonum()); });
+        ocakM.on("dragend", kaydet);
+        kenarM.on("drag", () => { const c = ocakM.getLatLng(), h = kenarM.getLatLng(); cember.setRadius(Math.max(20, mesafeMetre(c.lat, c.lng, h.lat, h.lng))); });
+        kenarM.on("dragend", kaydet);
+      }
+    }
+    // OCAK GİRİŞİ KAPI ÇİZGİSİ (yeşil A–B) — kamyonlar yüklenmeye girerken bu çizgiyi keser. Geniş
+    // girişlerde uçlardaki tutamaklar sürüklenerek uzatılıp daraltılır. Tanımlı değilse ve düzenleme
+    // yetkisi varsa ocağın yanında kısa bir çizgi gösterilir (ilk tanımlama için).
+    {
+      const gz = gunGiris ?? (yDuzenle && ocak ? { lat: ocak.lat + 0.0006, lng: ocak.lng, lat2: ocak.lat - 0.0006, lng2: ocak.lng } : null);
+      if (gz) {
+        const cizgi = L.polyline([[gz.lat, gz.lng], [gz.lat2, gz.lng2]], { color: "#16a34a", weight: 5, opacity: 0.95 }).addTo(grup);
+        cizgi.bindPopup(`<b>🚪 Ocak Girişi (kapı)</b> · ${basRef.current}<br>Kamyonlar buradan geçer${yDuzenle ? "<br><i>Uçlardaki tutamakları sürükleyerek uzatın/daraltın + konumlandırın</i>" : ""}${gunGiris ? "" : "<br><i>(henüz tanımlanmadı — uçları sürükleyin)</i>"}`);
+        bounds.push([gz.lat, gz.lng], [gz.lat2, gz.lng2]);
+        if (yDuzenle) {
+          const tutamac = L.divIcon({ className: "giris-tutamac", html: '<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 0 0 1.5px #16a34a"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+          const mA = L.marker([gz.lat, gz.lng], { icon: tutamac, draggable: true, zIndexOffset: 1200 }).addTo(grup);
+          const mB = L.marker([gz.lat2, gz.lng2], { icon: tutamac, draggable: true, zIndexOffset: 1200 }).addTo(grup);
+          const guncelle = () => cizgi.setLatLngs([mA.getLatLng(), mB.getLatLng()]);
+          const kaydet = () => {
+            const a = mA.getLatLng(), b = mB.getLatLng();
+            setGunGiris({ lat: a.lat, lng: a.lng, lat2: b.lat, lng2: b.lng });
+            setGirisForTarih(basRef.current, a.lat, a.lng, b.lat, b.lng)
+              .catch((e: unknown) => toast.error(`Giriş kaydedilemedi — ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: toastSuresi() }));
+          };
+          mA.on("drag", guncelle); mB.on("drag", guncelle); mA.on("dragend", kaydet); mB.on("dragend", kaydet);
+        }
+      }
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
@@ -541,7 +597,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, ocakElleMi]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -704,6 +760,64 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             className="px-3 py-1.5 hover:bg-gray-100 w-full text-left flex items-center gap-1.5 whitespace-nowrap">
             🎯 <b>{odakMenu.plaka}</b> — Araca odaklan
           </button>
+        </div>
+      )}
+
+      {/* SEFER ANALİZİ tablosu — kamyon başına ocak/döküm seferi + gerçek/arıza/mükerrer */}
+      {seferAnaliz.length > 0 && (
+        <div className="bg-white rounded-lg border p-3">
+          <div className="text-xs font-semibold text-gray-600 mb-2">📋 Sefer Analizi · {formatAralik(bas, bitis)}</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 text-[10px] border-b">
+                  <th className="text-left py-1 pr-2">Kamyon</th>
+                  <th className="text-right px-2" title={gunGiris ? "Kamyon çizgisinin giriş kapısını OCAĞA doğru kesme sayısı" : "Yüklenip döküme inen sefer (= gerçek)"}>Ocağa gidiş{gunGiris ? " 🚪" : ""}</th>
+                  <th className="text-right px-2" title={gunGiris ? "Giriş kapısını DÖKÜME doğru kesme sayısı" : "Toplam döküm seferi (gerçek + arızalı)"}>Döküme gidiş{gunGiris ? " 🚪" : ""}</th>
+                  <th className="text-right px-2">Gerçek</th>
+                  <th className="text-right px-2">Arızalı</th>
+                  <th className="text-right px-2">Mükerrer</th>
+                  <th className="text-right pl-2">Toplam</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seferAnaliz.map((s) => (
+                  <tr key={s.plaka} className="border-b border-gray-50 last:border-0">
+                    <td className="py-1 pr-2"><span className="font-semibold text-[#1E3A5F]">{s.plaka}</span>{s.surucu ? <span className="text-gray-400"> · {s.surucu}</span> : null}</td>
+                    <td className="text-right px-2 tabular-nums">{gunGiris ? s.girisOcak : s.gercek}</td>
+                    <td className="text-right px-2 tabular-nums">{gunGiris ? s.girisDokum : s.gercek + s.ariza}</td>
+                    <td className="text-right px-2 tabular-nums font-semibold text-emerald-700">{s.gercek}</td>
+                    <td className="text-right px-2 tabular-nums text-rose-600">{s.ariza}</td>
+                    <td className="text-right px-2 tabular-nums text-amber-600">{s.mukerrer}</td>
+                    <td className="text-right pl-2 tabular-nums">{s.gercek + s.ariza + s.mukerrer}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {(() => {
+                const tG = seferAnaliz.reduce((a, s) => a + s.gercek, 0), tA = seferAnaliz.reduce((a, s) => a + s.ariza, 0), tM = seferAnaliz.reduce((a, s) => a + s.mukerrer, 0);
+                const tGO = seferAnaliz.reduce((a, s) => a + s.girisOcak, 0), tGD = seferAnaliz.reduce((a, s) => a + s.girisDokum, 0);
+                return (
+                  <tfoot>
+                    <tr className="border-t font-semibold text-[#1E3A5F]">
+                      <td className="py-1 pr-2">TOPLAM</td>
+                      <td className="text-right px-2 tabular-nums">{gunGiris ? tGO : tG}</td>
+                      <td className="text-right px-2 tabular-nums">{gunGiris ? tGD : tG + tA}</td>
+                      <td className="text-right px-2 tabular-nums text-emerald-700">{tG}</td>
+                      <td className="text-right px-2 tabular-nums text-rose-600">{tA}</td>
+                      <td className="text-right px-2 tabular-nums text-amber-600">{tM}</td>
+                      <td className="text-right pl-2 tabular-nums">{tG + tA + tM}</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
+            </table>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1.5">
+            {gunGiris
+              ? "🚪 Ocağa/Döküme gidiş = kamyon çizgisinin GİRİŞ KAPISINI o yöne kesme sayısı (kapıyı oynatınca değişir). "
+              : "Ocağa gidiş = yüklenip döküme inen (gerçek). Döküme gidiş = gerçek + arızalı. "}
+            Arızalı = ocağa uğramadan döken (yüklemesiz). Mükerrer = aynı yerde yanlış tetiklenen.
+          </p>
         </div>
       )}
 
