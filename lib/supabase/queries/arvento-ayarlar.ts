@@ -139,29 +139,29 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
 
 // ── Damper manuel sınıflandırma (override) — arvento_damper_sinif tablosu ───────────────
 // Otomatik sınıf (gerçek/mükerrer/arıza) kullanıcı tarafından elle değiştirilebilir; burada saklanır.
-// SQL:
+// Okuma/yazma /api/arvento/damper-sinif route'u üzerinden SERVICE ROLE ile yapılır → RLS GEREKMEZ.
+// SQL (sadece tabloyu kur; RLS satırına gerek yok):
 //   create table if not exists arvento_damper_sinif (
 //     plaka text not null, tarih date not null, saat text not null,
 //     sinif text not null check (sinif in ('gercek','mukerrer','ariza')),
 //     primary key (plaka, tarih, saat));
-//   alter table arvento_damper_sinif disable row level security;
 export type DamperSinif = "gercek" | "mukerrer" | "ariza";
 
+// Okuma/yazma SUNUCU tarafından (service role) yapılır → RLS baypas; tabloda RLS açık olsa bile çalışır.
 export async function getDamperSiniflar(bas: string, bitis: string): Promise<{ plaka: string; tarih: string; saat: string; sinif: DamperSinif }[]> {
-  const sb = createClient();
-  const { data, error } = await sb
-    .from("arvento_damper_sinif")
-    .select("plaka, tarih, saat, sinif")
-    .gte("tarih", bas)
-    .lte("tarih", bitis);
-  if (error) return [];
-  return (data ?? []) as { plaka: string; tarih: string; saat: string; sinif: DamperSinif }[];
+  try {
+    const r = await fetch(`/api/arvento/damper-sinif?bas=${encodeURIComponent(bas)}&bitis=${encodeURIComponent(bitis)}`, { cache: "no-store" });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.satirlar ?? []) as { plaka: string; tarih: string; saat: string; sinif: DamperSinif }[];
+  } catch { return []; }
 }
 
 export async function setDamperSinif(plaka: string, tarih: string, saat: string, sinif: DamperSinif): Promise<void> {
-  const sb = createClient();
-  const { error } = await sb
-    .from("arvento_damper_sinif")
-    .upsert({ plaka, tarih, saat, sinif }, { onConflict: "plaka,tarih,saat" });
-  if (error) throw error;
+  const r = await fetch("/api/arvento/damper-sinif", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plaka, tarih, saat, sinif }),
+  });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d?.error ?? "Kaydedilemedi"); }
 }

@@ -605,13 +605,17 @@ export default function ArventoRaporPage() {
     })),
     [ismakineKayitlar, plakaSantiye],
   );
-  // İş makineleri için "çalışma saati" = MOTOR AÇIK süresi = hareket + rölanti.
-  // (Ekskavatör/loder çoğunlukla YERİNDE çalışır → hareket=0 olsa da rölanti'de iş yapar; sadece
-  //  hareket sayılırsa "0 çalışma" görünür ve yanıltır.) Plakaya göre harita.
-  const ismakineCalismaMap = useMemo(
-    () => new Map(ismakineKayitlar.map((k) => [plakaNorm(k.plaka), (k.hareket_sn ?? 0) + (k.rolanti_sn ?? 0)])),
-    [ismakineKayitlar],
-  );
+  // İş makineleri "çalışma saati" = MOTOR AÇIK süresi. kontak_sn ve rolanti_sn örtüşebildiği için
+  // TOPLAMAZ (çift sayım olur), EN BÜYÜĞÜNÜ alır; ayrıca ilk→son kontak PENCERESİNİ aşamaz
+  // (rapor birikiminden şişen değerler kırpılır). Ekskavatör yerinde çalışsa da (rölanti) doğru sayılır.
+  const ismakineCalismaMap = useMemo(() => {
+    const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
+    return new Map(ismakineKayitlar.map((k) => {
+      let calisma = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0);
+      if (k.ilk_kontak && k.son_kontak) { const span = sn(k.son_kontak) - sn(k.ilk_kontak); if (span > 0) calisma = Math.min(calisma, span); }
+      return [plakaNorm(k.plaka), calisma];
+    }));
+  }, [ismakineKayitlar]);
   // Tüm araçlar için kontak açık + rölanti süresi (plaka bazında, aralık toplamı) — Reglaj/Serme/Sıkıştırma chip'leri için
   const kontakRolantiMap = useMemo(() => {
     const m = new Map<string, { kontak: number; rolanti: number }>();

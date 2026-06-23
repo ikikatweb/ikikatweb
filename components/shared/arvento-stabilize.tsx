@@ -287,13 +287,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const damperSinifDegistir = useCallback((plaka: string, saat: string | null, yeni: DamperSinif) => {
     const key = `${plakaNorm(plaka)}|${bas}|${saat ?? ""}`;
     setDamperSinifState((prev) => { const m = new Map(prev); m.set(key, yeni); return m; });
-    setDamperSinif(plaka, bas, saat ?? "", yeni).catch(() => toast.error("Sınıf kaydedilemedi — arvento_damper_sinif tablosu için SQL'i çalıştırın.", { duration: toastSuresi() }));
+    setDamperSinif(plaka, bas, saat ?? "", yeni).catch((e: unknown) => toast.error(`Sınıf kaydedilemedi — ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: toastSuresi() }));
   }, [bas]);
   // Popup içindeki butonlar (Leaflet HTML) global fonksiyonu çağırır → React state'i günceller.
   const degistirRef = useRef(damperSinifDegistir); degistirRef.current = damperSinifDegistir;
   useEffect(() => {
     (window as unknown as { __damperSinifSet?: (p: string, s: string, k: string) => void }).__damperSinifSet =
-      (p, s, k) => degistirRef.current(p, s || null, k as DamperSinif);
+      (p, s, k) => {
+        const etiket = k === "ariza" ? "ARIZAYA almak" : k === "mukerrer" ? "MÜKERRER yapmak" : "GERÇEK yapmak";
+        if (window.confirm(`${p} · ${s || ""}\nBu damperi ${etiket} istediğinize emin misiniz?`))
+          degistirRef.current(p, s || null, k as DamperSinif);
+      };
     return () => { try { delete (window as unknown as { __damperSinifSet?: unknown }).__damperSinifSet; } catch { /* yoksay */ } };
   }, []);
 
@@ -489,7 +493,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const bStil = "font-size:10px;padding:0 5px;margin-left:3px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer";
       const liste = g.olaylar
         .map((o) => `🔻 ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`
-          + `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
+          + `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','gercek')">Gerçek</button>`
+          + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
           + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`)
         .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
       const ikon = L.divIcon({
@@ -717,21 +722,30 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: gizli ? 0.4 : 1 }} />
                 <span className={`font-bold w-32 truncate ${gizli ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
-                <span className="text-gray-400 w-20 truncate">{o.plaka}</span>
-                <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : "text-orange-700"}`}>🔻 {o.saat ?? "—"}</span>
+                <button type="button" className="text-gray-400 w-20 truncate text-left hover:text-rose-600 hover:underline cursor-pointer"
+                  title="Tıkla: bu damperi arızaya al / arızadan çıkar"
+                  onClick={() => {
+                    const kapali = o.mukerrer || o.ariza;
+                    if (window.confirm(`${o.plaka} · ${o.saat ?? ""}\nBu damperi ${kapali ? "AKTİF (gerçek) yapmak" : "ARIZAYA almak"} istediğinize emin misiniz?`))
+                      damperSinifDegistir(o.plaka, o.saat, kapali ? "gercek" : "ariza");
+                  }}>{o.plaka}</button>
+                <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : ""}`}
+                  style={gizli ? undefined : { color: renkAl(o.plaka) }}>🔻 {o.saat ?? "—"}</span>
                 <span className={`flex-1 truncate ${gizli ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
                 {(() => {
                   const aktif: DamperSinif = o.mukerrer ? "mukerrer" : o.ariza ? "ariza" : "gercek";
-                  const btn = (k: DamperSinif, etiket: string, renk: string) => (
-                    <button type="button" onClick={() => damperSinifDegistir(o.plaka, o.saat, k)}
-                      title="Bu damperin sınıfını elle ayarla"
-                      className={`text-[9px] leading-none px-1 py-0.5 rounded border transition-colors ${aktif === k ? renk : "bg-white text-gray-400 border-gray-200 hover:bg-gray-100"}`}>{etiket}</button>
-                  );
+                  const arac = renkAl(o.plaka); // GERÇEK butonu, aracın harita damper rengiyle aynı
+                  const pasif = "bg-white text-gray-400 border-gray-200 hover:bg-gray-100";
+                  const sinifBtn = "text-[9px] leading-none px-1 py-0.5 rounded border transition-colors";
                   return (
                     <span className="flex items-center gap-0.5 shrink-0">
-                      {btn("gercek", "Gerçek", "bg-emerald-600 text-white border-emerald-600")}
-                      {btn("mukerrer", "Mük.", "bg-amber-500 text-white border-amber-500")}
-                      {btn("ariza", "Arıza", "bg-rose-600 text-white border-rose-600")}
+                      <button type="button" onClick={() => damperSinifDegistir(o.plaka, o.saat, "gercek")} title="Bu damperin sınıfını elle ayarla"
+                        style={aktif === "gercek" ? { background: arac, borderColor: arac, color: "#fff" } : undefined}
+                        className={`${sinifBtn} ${aktif === "gercek" ? "" : pasif}`}>Gerçek</button>
+                      <button type="button" onClick={() => damperSinifDegistir(o.plaka, o.saat, "mukerrer")} title="Bu damperin sınıfını elle ayarla"
+                        className={`${sinifBtn} ${aktif === "mukerrer" ? "bg-amber-500 text-white border-amber-500" : pasif}`}>Mük.</button>
+                      <button type="button" onClick={() => damperSinifDegistir(o.plaka, o.saat, "ariza")} title="Bu damperin sınıfını elle ayarla"
+                        className={`${sinifBtn} ${aktif === "ariza" ? "bg-rose-600 text-white border-rose-600" : pasif}`}>Arıza</button>
                       {aktif === "gercek" && o.dogrulanmamis && <span className="text-[9px] text-blue-500" title="Rota verisi yok — doğrulanmamış">?</span>}
                       {(o.lat == null || o.lng == null) && <span className="text-[9px] text-gray-400" title="Konumsuz"><MapPin size={9} className="inline" />✕</span>}
                     </span>
