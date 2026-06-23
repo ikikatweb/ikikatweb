@@ -476,22 +476,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (latlngs.length === 0) return;
       L.polyline(latlngs, { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" })
         .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
-      // Gidiş yönü okları — iz boyunca ~her 250 m'de bir, aynı turuncu + kalınlık (zaman sıralı → yön).
-      { const R = 111320, ARALIK = 250; let birikim = ARALIK, okSay = 0;
-        for (let i = 1; i < latlngs.length && okSay < 250; i++) {
-          const a = latlngs[i - 1], b = latlngs[i];
-          const cosL = Math.max(0.1, Math.cos((a[0] * Math.PI) / 180));
-          const d = Math.hypot((b[0] - a[0]) * R, (b[1] - a[1]) * R * cosL);
-          if (d < 1) continue;
-          birikim += d;
-          if (birikim >= ARALIK) {
-            birikim = 0; okSay++;
-            const yon = (Math.atan2((b[1] - a[1]) * cosL, b[0] - a[0]) * 180) / Math.PI; // 0=kuzey, saat yönü
-            const ok = L.divIcon({ className: "iz-ok", iconSize: [14, 14], iconAnchor: [7, 7], html: `<div style="transform:rotate(${yon}deg)"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 10 L7 4.5 L11 10" fill="none" stroke="${kamyonIziRenk}" stroke-width="${kamyonIziKalinlik}" stroke-linecap="round" stroke-linejoin="round"/></svg></div>` });
-            L.marker(b, { icon: ok, interactive: false, zIndexOffset: 500 }).addTo(grup);
-          }
-        }
-      }
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
     });
     // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
