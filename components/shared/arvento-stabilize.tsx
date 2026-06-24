@@ -13,7 +13,7 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type Kat
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, saatSn, type LatLng } from "@/lib/arvento/ocak";
+import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle, gercekDamperSayisi } from "@/lib/arvento/damper-say";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
@@ -51,22 +51,6 @@ function yon3(p: Nk, q: Nk, r: Nk): number { return (q.lng - p.lng) * (r.lat - q
 function parcaKesisir(a: Nk, b: Nk, c: Nk, d: Nk): boolean {
   const d1 = yon3(c, d, a), d2 = yon3(c, d, b), d3 = yon3(a, b, c), d4 = yon3(a, b, d);
   return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
-}
-
-// Damper, araç DURUNCA iner. Arvento'nun damper alarmı GPS'i kayık/donmuş olabildiğinden, damper
-// saatine en yakın DURMUŞ (hız ≤ 3 km/h) rota noktasını = gerçek dökme yeri olarak kullanırız. ±7 dk
-// içinde durmuş nokta yoksa null → çağıran alarm-GPS'e döner (rota durağı yakalayamadığı durumlar).
-function damperDurakKonumu(rota: { saat: string | null; lat: number | null; lng: number | null; hiz?: number | null }[], saat: string | null, maxYakinSn = 420): [number, number] | null {
-  const ds = saatSn(saat); if (ds == null || !rota.length) return null;
-  let best: [number, number] | null = null, bestDt = Infinity;
-  for (const p of rota) {
-    if (p.lat == null || p.lng == null) continue;
-    const ps = saatSn(p.saat); if (ps == null) continue;
-    const dt = Math.abs(ps - ds);
-    if (dt > maxYakinSn || (p.hiz ?? 99) > 3) continue;   // pencere dışı veya HAREKET halinde → atla
-    if (dt < bestDt) { bestDt = dt; best = [p.lat, p.lng]; }
-  }
-  return best;
 }
 
 function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {

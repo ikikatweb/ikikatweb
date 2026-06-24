@@ -15,7 +15,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
-import { arizaIsaretle } from "@/lib/arvento/ocak";
+import { arizaIsaretle, damperDurakKonumu } from "@/lib/arvento/ocak";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -261,7 +261,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         const ov = damperSinif?.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}|${o.saat ?? ""}`);
         let mk = o.mukerrer, ar = o.ariza;
         if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
-        if (!mk && !ar && o.lat != null && o.lng != null) out.push({ ...o, plaka: r.plaka });
+        if (!mk && !ar && o.lat != null && o.lng != null) {
+          // Stabilize ile AYNI konuma oturt: aracın o saatteki DURMUŞ rota noktası (yoksa ham koordinat).
+          const [la, ln] = damperDurakKonumu(rotaBy.get(plakaNorm(r.plaka)) ?? [], o.saat) ?? [o.lat, o.lng];
+          out.push({ ...o, lat: la, lng: ln, plaka: r.plaka });
+        }
       }
     }
     return out;

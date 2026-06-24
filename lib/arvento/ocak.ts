@@ -75,6 +75,22 @@ export function ocakTespit(rotalar: Nokta[][], gridM = 40): LatLng | null {
   return best ? { lat: best.sumLat / best.sayi, lng: best.sumLng / best.sayi } : null;
 }
 
+// Damper, araç DURUNCA iner. Arvento'nun damper alarmı GPS'i kayık/donmuş olabildiğinden, damper
+// saatine en yakın DURMUŞ (hız ≤ 3 km/h) rota noktasını = gerçek dökme yeri olarak kullanırız. ±maxYakinSn
+// içinde durmuş nokta yoksa null → çağıran alarm-GPS'e döner. Stabilize + Serme aynı yere oturtsun diye paylaşılır.
+export function damperDurakKonumu(rota: { saat?: string | null; lat?: number | null; lng?: number | null; hiz?: number | null }[], saat: string | null | undefined, maxYakinSn = 420): [number, number] | null {
+  const ds = saatSn(saat); if (ds == null || !rota.length) return null;
+  let best: [number, number] | null = null, bestDt = Infinity;
+  for (const p of rota) {
+    if (p.lat == null || p.lng == null) continue;
+    const ps = saatSn(p.saat); if (ps == null) continue;
+    const dt = Math.abs(ps - ds);
+    if (dt > maxYakinSn || (p.hiz ?? 99) > 3) continue;   // pencere dışı veya HAREKET halinde → atla
+    if (dt < bestDt) { bestDt = dt; best = [p.lat, p.lng]; }
+  }
+  return best;
+}
+
 // Bir iş makinesinin (sabit ekskavatör vb.) OCAK çemberi içinde çalışıp çalışmadığı: rota (GPS)
 // noktalarının ÇOĞUNLUĞU ocak yarıçapı içindeyse "ocak makinesi" (ocakta yükleme yapan makine).
 // Ocak yoksa / nokta yoksa → false. Ayrıca ocak içindeki noktaların ağırlık merkezini (marker konumu) döndürür.
@@ -97,7 +113,7 @@ export function ocakMakineDurumu(noktalar: Nokta[], ocak: LatLng | null, yaricap
 // Gerçek (doğrulanmış) = ne ariza ne dogrulanmamis. Mükerrer olaylar diziye girmez (zaten dışlanmış).
 export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   olaylar: T[],
-  rota: Nokta[],
+  rota: (Nokta & { hiz?: number | null })[],
   ocak: LatLng | null,
   yaricapM: number,
 ): (T & { ariza: boolean; dogrulanmamis: boolean })[] {
@@ -116,6 +132,12 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   for (const { o, sn } of sirali) {
     if (o.mukerrer) continue;        // mükerrer zaten dışlandı
     if (sn == null) continue;        // zamansız olay → işaretleme (gerçek say)
+    // OCAKTA DÖKÜM → ARIZA: damperin HARİTADA GÖSTERİLEN konumu (aracın o saatteki DURMUŞ rota noktası;
+    // yoksa damper koordinatı — snap mantığıyla AYNI) ocak çemberi içindeyse, araç ocakta döktü demektir
+    // → gerçek teslim değil. Böylece "ocakta görünen damper" her yerde arıza sayılır. sonGercek güncellenmez.
+    const snapKonum = damperDurakKonumu(rota, o.saat);
+    const kLat = snapKonum ? snapKonum[0] : o.lat, kLng = snapKonum ? snapKonum[1] : o.lng;
+    if (kLat != null && kLng != null && mesafeMetre(kLat as number, kLng as number, ocak.lat, ocak.lng) <= yaricapM) { arizaSet.add(o); continue; }
     const altSn = sonGercekSn < 0 ? 0 : sonGercekSn;
     const pencere = rotaSn.filter((p) => p.sn > altSn && p.sn <= sn);
     if (pencere.length === 0) {
