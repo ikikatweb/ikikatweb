@@ -402,29 +402,26 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                 }`}>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
                 <span className="flex flex-col items-start leading-tight">
-                  <span className="font-semibold flex items-center gap-1">
-                    {k.plaka}
-                    {(() => { const ik = modelGoster ? (modelMap?.get(plakaNorm(k.plaka)) || k.model || k.arac_sinifi) : k.arac_sinifi; return ik ? <span className="text-[10px] font-normal opacity-60">{ik}</span> : null; })()}
-                  </span>
-                  <span className="text-[10px] opacity-90 flex items-center gap-1.5">
-                    <span title={omurgaKm != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
+                  {/* PLAKA en üstte, model/cins hemen ALTINDA (ayrı satır) */}
+                  <span className="font-semibold">{k.plaka}</span>
+                  {(() => { const ik = modelGoster ? (modelMap?.get(plakaNorm(k.plaka)) || k.model || k.arac_sinifi) : k.arac_sinifi; return ik ? <span className="text-[10px] font-normal opacity-60">{ik}</span> : null; })()}
+                  {/* "km yol" satırı — İş Makineleri'nde gizli (makineler km değil saat bazlı). Nokta sayısı gösterilmez. */}
+                  {baslik !== "İş Makineleri" && (
+                    <span className="text-[10px] opacity-90" title={omurgaKm != null ? "Yol uzunluğu — haritadaki tek çizgi (git-gel tekrarları sayılmaz)" : "Toplam kat edilen mesafe"}>
                       {omurgaKm != null
                         ? `${omurgaKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km yol`
                         : `${Math.round(k.toplam_mesafe ?? 0)} km`}
                     </span>
-                    <span>{k.noktalar?.length ?? 0} nokta</span>
-                  </span>
+                  )}
                   {/* SIRA: ilk kontak → çalışma → (kontak açık/rölanti) → son kontak */}
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.ilk ? (
                     <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
                   ) : null; })()}
                   {calismaSnMap && <span className="text-[10px] opacity-80">⏱ {formatSure(calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)} çalışma</span>}
-                  {kontakRolantiMap && (
-                    <>
-                      <span className="text-[10px] opacity-80">⏱ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.kontak ?? 0)} kontak açık</span>
-                      <span className="text-[10px] opacity-80">⏳ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.rolanti ?? 0)} rölanti</span>
-                    </>
-                  )}
+                  {!calismaSnMap && kontakRolantiMap && (() => {
+                    const kr = kontakRolantiMap.get(plakaNorm(k.plaka));
+                    return <span className="text-[10px] opacity-80">⏱ {formatSure(Math.max(kr?.kontak ?? 0, kr?.rolanti ?? 0))} çalışma</span>;
+                  })()}
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.son ? (
                     <span className={`text-[10px] text-red-600 ${e.sonT ? "italic opacity-80" : ""}`} title={e.sonT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🔴 {e.sonT ? "~" : ""}{e.son.slice(0, 5)} son kontak</span>
                   ) : null; })()}

@@ -8,7 +8,7 @@ import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlak
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
 import { gercekDamperSayisi } from "@/lib/arvento/damper-say";
-import { rotaTemizle, ocakTespit, ocakMakineDurumu, type LatLng } from "@/lib/arvento/ocak";
+import { rotaTemizle, ocakTespit, ocakMakineDurumu, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 // "HH:MM:SS" → saniye
@@ -62,6 +62,40 @@ export default function ArventoWidget() {
       // Eşik ≥ 1 ama omurga boşsa (yol eşik kadar tekrar taranmamış) → reglaj sayılmaz (0). Kapsanan yol yalnız ham modda.
       return s + (parca.length ? parcalarUzunlukKm(parca) : (esik >= 1 ? 0 : kapsananYolKm(noktalar, grid)));
     }, 0);
+  }, [guzergahlar, plakaSantiye, ayarlar]);
+
+  // Omurga uzunluğu (km) — Reglaj ile aynı: eşik ≥ 1 omurga, omurga boşsa 0, ham modda kapsanan yol.
+  const omurgaKm = (noktalar: { lat: number | null; lng: number | null }[], esik: number, grid: number): number => {
+    const ns = noktalar.filter((p): p is { lat: number; lng: number } => p.lat != null && p.lng != null);
+    if (ns.length < 2) return 0;
+    const parca = esik >= 1 ? sadelesGuzergah(ns, esik, grid).parcalar : [];
+    return parca.length ? parcalarUzunlukKm(parca) : (esik >= 1 ? 0 : kapsananYolKm(ns, grid));
+  };
+  // op'a (serme/sikistirma) GÖRÜNÜR mü — Reglaj/Serme sekmeleriyle AYNI: atama varsa onu, yoksa
+  // op'a atanmış başka araç varsa gizle, değilse cinse göre otomatik (greyder/silindir).
+  const opGorunur = (plaka: string, sinif: string | null, op: "serme" | "sikistirma", cinsRe: RegExp): boolean => {
+    const atama = plakaSantiye.get(plakaNorm(plaka))?.sekmeler ?? null;
+    if (atama != null) return atama.includes(op);
+    if (Array.from(plakaSantiye.values()).some((ps) => ps.sekmeler?.includes(op))) return false;
+    return cinsRe.test(`${sinif ?? ""} ${plakaSantiye.get(plakaNorm(plaka))?.cinsi ?? ""}`);
+  };
+
+  // 1b) SERME UZUNLUĞU — Serme sekmesiyle AYNI: serme greyder hatlarının omurgası, AMA yalnız hattın
+  //     ≤80 m'sinde damper varsa (damper olmayan yolda serme olmaz). Damper yoksa o greyder 0.
+  const sermeUzunluk = useMemo(() => {
+    const grid = ayarlar?.gridMesafe ?? 12, esik = ayarlar?.guzergahTekrar ?? 0;
+    const damperler: { lat: number; lng: number }[] = [];
+    for (const r of kayitlar) for (const o of (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : [])) if (o.lat != null && o.lng != null) damperler.push({ lat: o.lat, lng: o.lng });
+    const yakin = (ns: { lat: number | null; lng: number | null }[]) => damperler.length > 0 && ns.some((p) => p.lat != null && p.lng != null && damperler.some((d) => mesafeMetre(p.lat as number, p.lng as number, d.lat, d.lng) <= 80));
+    return guzergahlar.reduce((s, g) => (opGorunur(g.plaka, g.arac_sinifi, "serme", /greyder|grayder/i) && yakin(g.noktalar ?? [])) ? s + omurgaKm(g.noktalar ?? [], esik, grid) : s, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guzergahlar, kayitlar, plakaSantiye, ayarlar]);
+
+  // 1c) SIKIŞTIRMA UZUNLUĞU — Sıkıştırma sekmesiyle AYNI: silindir hatlarının omurgası, SİLİNDİR tekrar eşiğiyle.
+  const sikistirmaUzunluk = useMemo(() => {
+    const grid = ayarlar?.gridMesafe ?? 12, esik = ayarlar?.silindirTekrar ?? 0;
+    return guzergahlar.reduce((s, g) => opGorunur(g.plaka, g.arac_sinifi, "sikistirma", /silindir|roller|compact/i) ? s + omurgaKm(g.noktalar ?? [], esik, grid) : s, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guzergahlar, plakaSantiye, ayarlar]);
 
   // 2) TOPLAM KAMYON SEFER = STABILIZE GERÇEK damper toplamı (mükerrer + ocağa göre arıza ayıklanır,
@@ -144,6 +178,14 @@ export default function ArventoWidget() {
             <div className="bg-blue-50 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-blue-700">{kamyonSefer.toLocaleString("tr-TR")}</div>
               <div className="text-[9px] text-gray-500">Kamyon Sefer Sayısı</div>
+            </div>
+            <div className="bg-teal-50 rounded-lg p-2 text-center">
+              <div className="text-lg font-bold text-teal-700">{(sermeUzunluk * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</div>
+              <div className="text-[9px] text-gray-500">Serme Uzunluğu (m)</div>
+            </div>
+            <div className="bg-purple-50 rounded-lg p-2 text-center">
+              <div className="text-lg font-bold text-purple-700">{(sikistirmaUzunluk * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })}</div>
+              <div className="text-[9px] text-gray-500">Sıkıştırma Uzunluğu (m)</div>
             </div>
             <div className="bg-orange-50 rounded-lg p-2 text-center">
               <div className="text-lg font-bold text-orange-700">{saatDk(ekskavatorSn)}</div>

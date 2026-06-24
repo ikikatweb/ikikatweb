@@ -696,7 +696,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);
             const renk = renkAl(r.plaka);
-            const ad = r.surucu?.trim() || r.plaka;
             const adet = gercekSayiByPlaka.get(r.plaka) ?? (damperOlaylariniAl(r).length || (r.damper_sayisi ?? 0));
             return (
               <button key={r.plaka} type="button" onClick={() => toggle(r.plaka)}
@@ -709,11 +708,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 }`}>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renk, opacity: secili ? 1 : 0.4 }} />
                 <span className="flex flex-col items-start leading-tight">
-                  {/* Üst satır: şöför ismi + plaka */}
-                  <span className="font-semibold flex items-center gap-1">
-                    {ad}
-                    {r.surucu?.trim() && <span className="text-[10px] font-normal opacity-60">{r.plaka}</span>}
-                  </span>
+                  {/* PLAKA en üstte, ŞÖFÖR adı hemen ALTINDA (ayrı satır) */}
+                  <span className="font-semibold">{r.plaka}</span>
+                  {r.surucu?.trim() && <span className="text-[10px] font-normal opacity-60">{r.surucu.trim()}</span>}
                   {/* Alt satır: km + damper sayısı */}
                   <span className="text-[10px] opacity-90 flex items-center gap-1.5">
                     <span>{Math.round(r.mesafe_km ?? 0)} km</span>
@@ -732,12 +729,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           {ocakMakineleri.map((mk) => {
             const sa = Math.floor(mk.calismaSn / 3600), dk = Math.floor((mk.calismaSn % 3600) / 60);
             return (
-              <div key={`om-${mk.plaka}`} title={`${mk.model || mk.cins || "İş Makinesi"} · ${mk.plaka} — ocakta çalışan iş makinesi`}
-                className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-xs flex items-center gap-2 shrink-0 select-none">
+              <div key={`om-${mk.plaka}`} title={`${mk.model || mk.cins || "İş Makinesi"} · ${mk.plaka} — çift tıkla/sağ tık: makineye odaklan`}
+                onDoubleClick={() => aracaOdaklan(mk.plaka)}
+                onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: mk.plaka }); }}
+                className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-xs flex items-center gap-2 shrink-0 select-none cursor-pointer">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-amber-500" />
                 <span className="flex flex-col items-start leading-tight text-gray-700 max-w-[104px]">
-                  <span className="font-semibold truncate max-w-full">⛏️ {mk.model || mk.cins || "İş Makinesi"}</span>
-                  <span className="text-[10px] opacity-60 truncate max-w-full">{mk.plaka}</span>
+                  <span className="font-semibold truncate max-w-full">⛏️ {mk.plaka}</span>
+                  <span className="text-[10px] opacity-60 truncate max-w-full">{mk.model || mk.cins || "İş Makinesi"}</span>
                   <span className="text-[10px] text-amber-700">ocakta çalışıyor</span>
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(mk.plaka)); return e?.ilk ? (
                     <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
@@ -754,16 +753,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           {/* Sağ: özet + KML — kartların yanında sabit kalır (daralmaz/alta inmez) */}
           <div className="flex items-start gap-3 shrink-0">
             <div className="text-xs text-gray-600 text-right leading-relaxed">
-              <div className="text-gray-400">
-                <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: reglajRenkV, opacity: 0.6 }} />
-                {reglajRefleri.length} reglaj çizgisi (referans)
-              </div>
-              {kamyonIzleri.length > 0 && (
-                <div className={kamyonIziGoster ? "text-gray-400" : "text-gray-300 line-through"}>
-                  <span className="inline-block w-3 h-1 rounded align-middle mr-1" style={{ background: kamyonIziRenk, opacity: kamyonIziGoster ? 1 : 0.4 }} />
-                  {kamyonIzleri.length} kamyon izi
-                </div>
-              )}
               <div className="text-sky-700">📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b></div>
               <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
