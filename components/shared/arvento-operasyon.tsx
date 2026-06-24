@@ -154,18 +154,22 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap);
 
   const yapiRef = useRef(""); // yükleme göstergesi yalnız tarih/operasyon değişiminde; periyodik tazelemede sessiz
+  const yukNoRef = useRef(0); // yükleme sıra no — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN
   useEffect(() => {
-    if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { yukNoRef.current++; setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
     const yapi = `${bas}|${bitis}|${sermeMi}`;
     const yapisal = yapiRef.current !== yapi;
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
+    // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski rakamlar görünür) + yükleniyor göster.
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
+    const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
-      .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r as AracArventoRapor[]); })
+      .then(([g, r]) => { if (benimNo === yukNoRef.current) { setTumGuzergah(g); setRaporlar(r as AracArventoRapor[]); } }) // eski istek → yok say
       .catch((err) => {
+        if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => { if (yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey, sermeMi]);
 
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
