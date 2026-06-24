@@ -59,18 +59,22 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
 
   // Yükleme göstergesi yalnız TARİH değişiminde; periyodik tazelemede sessiz çek.
   const yapiRef = useRef("");
+  const yukNoRef = useRef(0); // yükleme sıra no — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN
   useEffect(() => {
-    if (!bas || !bitis) { setGuzergahlar([]); setRaporlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { yukNoRef.current++; setGuzergahlar([]); setRaporlar([]); setLoading(false); return; }
     const yapi = `${bas}|${bitis}`;
     const yapisal = yapiRef.current !== yapi;
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
+    // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri gelene kadar eski rakamlar görünür) + yükleniyor göster.
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); setGuzergahlar([]); setRaporlar([]); }
+    const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
-      .then(([g, r]) => { setGuzergahlar(g); setRaporlar(r); })
+      .then(([g, r]) => { if (benimNo === yukNoRef.current) { setGuzergahlar(g); setRaporlar(r); } }) // eski istek → yok say
       .catch((err) => {
+        if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => { if (yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey]);
 
   const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);

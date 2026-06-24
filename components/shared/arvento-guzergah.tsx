@@ -93,20 +93,24 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
 
   // Aralığın kayıtlarını yükle. Yükleme göstergesi yalnız TARİH değişiminde; periyodik tazelemede sessiz.
   const yapiRef = useRef("");
+  const yukNoRef = useRef(0); // yükleme sıra no — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN
   useEffect(() => {
-    if (!bas || !bitis) { setKayitlar([]); setLoading(false); return; }
+    if (!bas || !bitis) { yukNoRef.current++; setKayitlar([]); setLoading(false); return; }
     const yapi = `${bas}|${bitis}`;
     const yapisal = yapiRef.current !== yapi;
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
+    // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri gelene kadar eski rakamlar görünür) + yükleniyor göster.
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); setKayitlar([]); }
+    const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     getGuzergahByRange(bas, bitis)
-      .then((k) => setKayitlar(k))
+      .then((k) => { if (benimNo === yukNoRef.current) setKayitlar(k); }) // eski istek → yok say
       .catch((err) => {
+        if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist") || msg.includes("arac_arvento_guzergah")) {
           toast.error("arac_arvento_guzergah tablosu yok. SQL'i çalıştırın.", { duration: toastSuresi() });
         }
       })
-      .finally(() => { if (yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
   }, [bas, bitis, refreshKey]);
 
   // plakaFiltre verilmişse (İş Makineleri haritası) sadece o plakalar gösterilir.

@@ -266,22 +266,32 @@ export default function ArventoRaporPage() {
   const [cihazYukleniyor, setCihazYukleniyor] = useState(false);
   const cihazFileRef = useRef<HTMLInputElement>(null);
 
+  // yükleme sıra no + son yapı — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN; tarih
+  // değişiminde eski veri temizlenir (refresh çağrısında — aynı tarih — flaş olmasın diye temizlenmez).
+  const kayitYukRef = useRef({ no: 0, yapi: "" });
   const loadKayitlar = useCallback(async () => {
-    if (!baslangic || !bitis) { setKayitlar([]); setLoading(false); return; }
+    if (!baslangic || !bitis) { kayitYukRef.current.no++; setKayitlar([]); setLoading(false); return; }
+    const yapi = `${baslangic}|${bitis}`;
+    const yapisal = kayitYukRef.current.yapi !== yapi; // tarih değişti mi? (refresh ise hayır)
+    kayitYukRef.current.yapi = yapi;
+    const benimNo = ++kayitYukRef.current.no;
+    if (yapisal) { setLoading(true); setKayitlar([]); } // tarih değişti → eski veriyi HEMEN temizle
     try {
       const [k, ps] = await Promise.all([
         getArventoRaporByRange(baslangic, bitis),
         getPlakaSantiyeMap(bitis),
       ]);
+      if (benimNo !== kayitYukRef.current.no) return; // eski istek → yok say
       // Aralıktaki günleri plaka bazında topla (tek gün ise zaten tek satır)
       setKayitlar(aralikTopla(k));
       setPlakaSantiye(ps);
     } catch (err) {
+      if (benimNo !== kayitYukRef.current.no) return;
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("does not exist") || msg.includes("arac_arvento_rapor")) {
         toast.error("arac_arvento_rapor tablosu yok. SQL'i çalıştırın.", { duration: toastSuresi() });
       }
-    } finally { setLoading(false); }
+    } finally { if (benimNo === kayitYukRef.current.no) setLoading(false); }
   }, [baslangic, bitis]);
 
   useEffect(() => { loadKayitlar(); }, [loadKayitlar]);
@@ -532,9 +542,13 @@ export default function ArventoRaporPage() {
   // ----- İL SINIRI İZNİ -----
   // Kullanıcının şantiyeleri → o şantiyelerin İLLERİ → kullanıcı O İLLERİN sınırı içindeki her şeyi
   // görür: CANLI araç (anlık konum), GEÇMİŞ araç (rota), KML, damper. Yönetici hepsini görür.
+  const guzYapiRef = useRef(""); // tarih değişiminde eski rotayı temizle (refresh'te flaş olmasın diye değil)
   useEffect(() => {
-    if (!baslangic || !bitis) { setGuzergahlar([]); return; }
-    let iptal = false;
+    if (!baslangic || !bitis) { guzYapiRef.current = ""; setGuzergahlar([]); return; }
+    const yapi = `${baslangic}|${bitis}`;
+    // Tarih değişti → eski güzergahı HEMEN temizle (yoksa türetilmiş ~ilk/son kontak + çalışma ~10 sn eski kalır).
+    if (guzYapiRef.current !== yapi) { guzYapiRef.current = yapi; setGuzergahlar([]); }
+    let iptal = false; // deps değişince eski .then yok sayılır (stale-overwrite koruması)
     getGuzergahByRange(baslangic, bitis).then((g) => { if (!iptal) setGuzergahlar(g); }).catch(() => { if (!iptal) setGuzergahlar([]); });
     return () => { iptal = true; };
   }, [baslangic, bitis, guzergahRefresh]);
