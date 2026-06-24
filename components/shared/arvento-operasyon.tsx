@@ -15,7 +15,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
-import { arizaIsaretle, damperDurakKonumu } from "@/lib/arvento/ocak";
+import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -250,20 +250,30 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const damperKoordlu = useMemo<DamperNokta[]>(() => {
     const pencSn = Math.max(0, mukerrerDk) * 60;
     const ocak = (ocakLat != null && ocakLng != null) ? { lat: ocakLat, lng: ocakLng } : null;
-    const rotaBy = new Map(tumGuzergah.map((g) => [plakaNorm(g.plaka), (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null)]));
+    // Stabilize ile BİREBİR AYNI: rota GÜN-BAZLI (plaka|tarih) anahtarla + izole GPS çöpü ayıkla (rotaTemizle).
+    // Önceden plakaya göre Map'lendiği için çoklu-gün aralığında SON gün kazanıyordu → yanlış gün rotasıyla
+    // sınıflanan damperler arıza yerine gerçek (veya tersi) çıkıyordu.
+    const rotaByGun = new Map<string, { lat: number; lng: number; saat?: string | null; hiz?: number | null }[]>();
+    for (const g of tumGuzergah) {
+      const key = `${plakaNorm(g.plaka)}|${g.rapor_tarihi}`;
+      const arr = rotaByGun.get(key) ?? [];
+      if (Array.isArray(g.noktalar)) for (const p of rotaTemizle(g.noktalar)) if (p.lat != null && p.lng != null) arr.push(p);
+      rotaByGun.set(key, arr);
+    }
     const out: DamperNokta[] = [];
     for (const r of raporlar) {
       const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
       if (!olaylar.length) continue;
+      const rota = rotaByGun.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}`) ?? [];
       const muk = mukerrerIsaretle(olaylar, pencSn, mukerrerYaricap);
-      const sinifli = arizaIsaretle(muk, rotaBy.get(plakaNorm(r.plaka)) ?? [], ocak, ocakYaricap);
+      const sinifli = arizaIsaretle(muk, rota, ocak, ocakYaricap);
       for (const o of sinifli) {
         const ov = damperSinif?.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}|${o.saat ?? ""}`);
         let mk = o.mukerrer, ar = o.ariza;
         if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
         if (!mk && !ar && o.lat != null && o.lng != null) {
           // Stabilize ile AYNI konuma oturt: aracın o saatteki DURMUŞ rota noktası (yoksa ham koordinat).
-          const [la, ln] = damperDurakKonumu(rotaBy.get(plakaNorm(r.plaka)) ?? [], o.saat) ?? [o.lat, o.lng];
+          const [la, ln] = damperDurakKonumu(rota, o.saat) ?? [o.lat, o.lng];
           out.push({ ...o, lat: la, lng: ln, plaka: r.plaka });
         }
       }
