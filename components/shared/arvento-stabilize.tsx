@@ -143,7 +143,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     if (!bas || !bitis) { setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
     const yapi = `${bas}|${bitis}`;
     const yapisal = yapiRef.current !== yapi; // tarih değişimi → yükleme göster; periyodik tazeleme → sessiz
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); }
+    // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski veri görünür) + yükleniyor göster.
+    if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
     Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
       .then(([g, r]) => { setTumGuzergah(g); setRaporlar(r); })
       .catch((err) => {
