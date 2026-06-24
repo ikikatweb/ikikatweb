@@ -559,7 +559,8 @@ export default function ArventoRaporPage() {
       setDamperSinifMap(m);
     }).catch(() => { if (!iptal) setDamperSinifMap(new Map()); });
     return () => { iptal = true; };
-  }, [baslangic, bitis, guzergahRefresh]);
+    // aktifSekme: Stabilize'de elle işaretlenen override'lar, Serme/Sıkıştırma'ya geçince TAZE yüklensin.
+  }, [baslangic, bitis, guzergahRefresh, aktifSekme]);
   // İl sınırları (81 il poligonu) — /tr-iller.json'dan bir kez yüklenir.
   const [iller, setIller] = useState<IlPoligon[]>([]);
   useEffect(() => { fetch("/tr-iller.json").then((r) => r.json()).then((g) => setIller(illeriYukle(g))).catch(() => {}); }, []);
