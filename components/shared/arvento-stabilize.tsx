@@ -14,7 +14,7 @@ import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, t
 import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
-import { mukerrerIsaretle, gercekDamperSayisi } from "@/lib/arvento/damper-say";
+import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
@@ -325,15 +325,38 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return out;
   }, [kamyonlar, seciliPlakalar]);
 
+  // GÜN BAZLI rota: plakaNorm|tarih → o günün rotası. Çoklu-gün aralığında damper sınıflaması GÜN GÜN
+  // yapılmalı (mükerrer/arıza zaman mantığı gün-içi saate bakar; günler birleşince saatler çakışır → bozulur).
+  const rotaByPlakaGun = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null }[]>();
+    for (const k of tumGuzergahTemiz) {
+      const key = `${plakaNorm(k.plaka)}|${k.rapor_tarihi}`;
+      const arr = m.get(key) ?? [];
+      if (Array.isArray(k.noktalar)) for (const p of k.noktalar) if (p?.lat != null && p?.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat ?? null, hiz: p.hiz ?? null });
+      m.set(key, arr);
+    }
+    return m;
+  }, [tumGuzergahTemiz]);
+  // Bir aracın damperlerini GÜN GÜN sınıfla (her gün kendi rotasıyla), sonuçları birleştir.
+  const gunBazliSinifla = useCallback((dampers: DamperOlay[], plaka: string) => {
+    const pencSn = Math.max(0, etkinMukerrer) * 60;
+    const byGun = new Map<string, DamperOlay[]>();
+    for (const o of dampers) { const t = (o as { _t?: string | null })._t ?? bas; let arr = byGun.get(t); if (!arr) { arr = []; byGun.set(t, arr); } arr.push(o); }
+    const out: (DamperOlay & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[] = [];
+    for (const [t, grup] of byGun) {
+      const muk = mukerrerIsaretle(grup, pencSn, etkinYaricap);
+      out.push(...arizaIsaretle(muk, rotaByPlakaGun.get(`${plakaNorm(plaka)}|${t}`) ?? [], ocak, etkinOcakYaricap));
+    }
+    return out;
+  }, [etkinMukerrer, etkinYaricap, rotaByPlakaGun, ocak, etkinOcakYaricap, bas]);
+
   // Seçili kamyonların damperleri, MÜKERRER (yanlış tetik) + ARIZA (ocağa uğramadan inen) işaretleriyle.
   // Araç bazında: önce mükerrer, sonra ocak ziyaretine göre arıza. Gerçek = ne mükerrer ne arıza.
   const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[]>(() => {
-    const pencSn = Math.max(0, etkinMukerrer) * 60;
     const out: (DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[] = [];
     for (const r of kamyonlar) {
       if (!seciliPlakalar.has(r.plaka)) continue;
-      const muk = mukerrerIsaretle(damperOlaylariniAl(r), pencSn, etkinYaricap);
-      const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
+      const sinifli = gunBazliSinifla(damperOlaylariniAl(r), r.plaka);
       for (const o of sinifli) {
         const e = { ...o, plaka: r.plaka, surucu: r.surucu };
         const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat)); // MANUEL override otomatik sınıfı ezer
@@ -344,7 +367,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       }
     }
     return out;
-  }, [kamyonlar, seciliPlakalar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey, damperTarih]);
+  }, [kamyonlar, seciliPlakalar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
 
   // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler
   const damperKoordlu = useMemo(
@@ -361,16 +384,22 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     const m = new Map<string, number>();
     for (const r of kamyonlar) {
       const olaylar = damperOlaylariniAl(r);
-      const gercek = gercekDamperSayisi(olaylar, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap, etkinMukerrer, etkinYaricap, (o) => damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat)));
-      m.set(r.plaka, olaylar.length > 0 ? gercek : (r.damper_sayisi ?? 0));
+      if (olaylar.length === 0) { m.set(r.plaka, r.damper_sayisi ?? 0); continue; }
+      let g = 0;
+      for (const o of gunBazliSinifla(olaylar, r.plaka)) {
+        const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat));
+        let mk = o.mukerrer, ar = o.ariza;
+        if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
+        if (!mk && !ar) g++;
+      }
+      m.set(r.plaka, g);
     }
     return m;
-  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey, damperTarih]);
+  }, [kamyonlar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
 
   // SEFER ANALİZİ — her kamyon için gerçek/mükerrer/arıza dökümü (TÜM kamyonlar, seçimden bağımsız).
   // Ocağa gidiş (yüklü) = gerçek; Döküme gidiş = gerçek + arıza (arıza = ocağa uğramadan döken).
   const seferAnaliz = useMemo(() => {
-    const pencSn = Math.max(0, etkinMukerrer) * 60;
     // Giriş KAPI çizgisi tanımlıysa: rota segmentleri bu çizgiyi kestikçe yön (ocağa mı/dökümе mi) ile say.
     const A = gunGiris ? { lat: gunGiris.lat, lng: gunGiris.lng } : null;
     const B = gunGiris ? { lat: gunGiris.lat2, lng: gunGiris.lng2 } : null;
@@ -383,9 +412,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       let g = 0, m = 0, a = 0;
       if (olaylar.length === 0) { g = r.damper_sayisi ?? 0; }
       else {
-        const muk = mukerrerIsaretle(olaylar, pencSn, etkinYaricap);
-        const sinifli = arizaIsaretle(muk, rotaByPlaka.get(plakaNorm(r.plaka)) ?? [], ocak, etkinOcakYaricap);
-        for (const o of sinifli) {
+        for (const o of gunBazliSinifla(olaylar, r.plaka)) {
           const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat));
           let mk = o.mukerrer, ar = o.ariza;
           if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
@@ -406,7 +433,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     }
     sat.sort((x, y) => y.gercek - x.gercek);
     return sat;
-  }, [kamyonlar, etkinMukerrer, etkinYaricap, rotaByPlaka, ocak, etkinOcakYaricap, damperSinif, sinifKey, damperTarih, gunGiris]);
+  }, [kamyonlar, gunBazliSinifla, rotaByPlaka, ocak, damperSinif, sinifKey, damperTarih, gunGiris]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
