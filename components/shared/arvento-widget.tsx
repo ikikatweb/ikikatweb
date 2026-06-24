@@ -123,7 +123,7 @@ export default function ArventoWidget() {
     return kamyonlar.reduce((s, r) => {
       const ol = Array.isArray(r.damper_olaylar) ? r.damper_olaylar : [];
       const g = ol.length > 0
-        ? gercekDamperSayisi(ol, rotaBy.get(plakaNorm(r.plaka)) ?? [], ocak, ocakYaricap, mukerrerDk, mukerrerYaricap, (saat) => sinifMap.get(`${plakaNorm(r.plaka)}|${tarih}|${saat ?? ""}`))
+        ? gercekDamperSayisi(ol, rotaBy.get(plakaNorm(r.plaka)) ?? [], ocak, ocakYaricap, mukerrerDk, mukerrerYaricap, (o) => sinifMap.get(`${plakaNorm(r.plaka)}|${(o as { _t?: string | null })._t ?? tarih}|${o.saat ?? ""}`))
         : (r.damper_sayisi ?? 0);
       return s + g;
     }, 0);

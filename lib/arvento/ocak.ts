@@ -118,11 +118,28 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   yaricapM: number,
 ): (T & { ariza: boolean; dogrulanmamis: boolean })[] {
   if (!ocak || yaricapM <= 0) return olaylar.map((o) => ({ ...o, ariza: false, dogrulanmamis: false }));
-  const rotaSn = rota
-    .filter((p) => p.lat != null && p.lng != null)
-    .map((p) => ({ sn: saatSn(p.saat), lat: p.lat as number, lng: p.lng as number }))
-    .filter((p): p is { sn: number; lat: number; lng: number } => p.sn != null)
+  // PERFORMANS: rotayı zaman sırasına BİR KEZ diz; ocak-içi SN'leri ve DURMUŞ noktaları ayır → her damper
+  // ikili-aramayla işlenir (büyük tarih aralığında O(damper×rota) yerine O(damper×log rota)).
+  const rs = rota
+    .map((p) => ({ sn: saatSn(p.saat), lat: p.lat, lng: p.lng, hiz: p.hiz }))
+    .filter((p): p is { sn: number; lat: number; lng: number; hiz: number | null | undefined } => p.sn != null && p.lat != null && p.lng != null)
     .sort((a, b) => a.sn - b.sn);
+  const rotaSnArr = rs.map((p) => p.sn);                            // tüm rota SN'leri (artan)
+  const ocakSnArr: number[] = [];                                  // ocak çemberi İÇİ noktaların SN'leri
+  const duraklar: { sn: number; lat: number; lng: number }[] = []; // DURMUŞ (hız ≤ 3) noktalar
+  for (const p of rs) {
+    if (mesafeMetre(p.lat, p.lng, ocak.lat, ocak.lng) <= yaricapM) ocakSnArr.push(p.sn);
+    if ((p.hiz ?? 99) <= 3) duraklar.push({ sn: p.sn, lat: p.lat, lng: p.lng });
+  }
+  const ilkBuyuk = (arr: number[], x: number): number => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] > x) hi = m; else lo = m + 1; } return lo; };
+  const aralikta = (arr: number[], alt: number, ust: number): boolean => { const i = ilkBuyuk(arr, alt); return i < arr.length && arr[i] <= ust; }; // (alt, ust] içinde eleman var mı
+  const enYakinDurak = (sn: number, maxSn: number): { lat: number; lng: number } | null => {
+    if (!duraklar.length) return null;
+    let lo = 0, hi = duraklar.length; while (lo < hi) { const m = (lo + hi) >> 1; if (duraklar[m].sn < sn) lo = m + 1; else hi = m; }
+    let best: { lat: number; lng: number } | null = null, bestDt = Infinity;
+    for (const i of [lo - 1, lo]) { if (i < 0 || i >= duraklar.length) continue; const dt = Math.abs(duraklar[i].sn - sn); if (dt <= maxSn && dt < bestDt) { bestDt = dt; best = duraklar[i]; } }
+    return best;
+  };
   const sirali = olaylar
     .map((o) => ({ o, sn: saatSn(o.saat) }))
     .sort((a, b) => (a.sn ?? 0) - (b.sn ?? 0));
@@ -132,24 +149,19 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   for (const { o, sn } of sirali) {
     if (o.mukerrer) continue;        // mükerrer zaten dışlandı
     if (sn == null) continue;        // zamansız olay → işaretleme (gerçek say)
-    // OCAKTA DÖKÜM → ARIZA: damperin HARİTADA GÖSTERİLEN konumu (aracın o saatteki DURMUŞ rota noktası;
-    // yoksa damper koordinatı — snap mantığıyla AYNI) ocak çemberi içindeyse, araç ocakta döktü demektir
-    // → gerçek teslim değil. Böylece "ocakta görünen damper" her yerde arıza sayılır. sonGercek güncellenmez.
-    const snapKonum = damperDurakKonumu(rota, o.saat);
-    const kLat = snapKonum ? snapKonum[0] : o.lat, kLng = snapKonum ? snapKonum[1] : o.lng;
+    // OCAKTA DÖKÜM → ARIZA: damperin GÖSTERİLEN konumu (o saatteki DURMUŞ rota noktası; yoksa damper
+    // koordinatı) ocak çemberi içindeyse araç ocakta döktü → gerçek teslim değil. sonGercek güncellenmez.
+    const d = enYakinDurak(sn, 420);
+    const kLat = d ? d.lat : o.lat, kLng = d ? d.lng : o.lng;
     if (kLat != null && kLng != null && mesafeMetre(kLat as number, kLng as number, ocak.lat, ocak.lng) <= yaricapM) { arizaSet.add(o); continue; }
     const altSn = sonGercekSn < 0 ? 0 : sonGercekSn;
-    const pencere = rotaSn.filter((p) => p.sn > altSn && p.sn <= sn);
-    if (pencere.length === 0) {
-      // O aralıkta rota verisi YOK → ocağa uğrayıp uğramadığını doğrulayamıyoruz → gerçek say AMA
-      // doğrulanmamış işaretle (Arvento tam-gün rotası çekilince kesinleşecek).
+    if (!aralikta(rotaSnArr, altSn, sn)) { // o aralıkta rota verisi YOK → doğrulanamıyor → gerçek say (doğrulanmamış)
       dogrulanmamisSet.add(o);
       sonGercekSn = sn;
       continue;
     }
-    const ugradi = pencere.some((p) => mesafeMetre(p.lat, p.lng, ocak.lat, ocak.lng) <= yaricapM);
-    if (ugradi) sonGercekSn = sn;    // ocağa uğramış → gerçek (doğrulanmış)
-    else arizaSet.add(o);            // rota var, ocağa uğramamış → KESİN arıza
+    if (aralikta(ocakSnArr, altSn, sn)) sonGercekSn = sn; // ocağa uğramış → gerçek (doğrulanmış)
+    else arizaSet.add(o);                                  // rota var, ocağa uğramamış → KESİN arıza
   }
   return olaylar.map((o) => ({ ...o, ariza: arizaSet.has(o), dogrulanmamis: dogrulanmamisSet.has(o) }));
 }

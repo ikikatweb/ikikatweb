@@ -36,12 +36,12 @@ export function gercekDamperSayisi<T extends Olay>(
   ocakYaricap: number,
   mukerrerDk: number,
   mukerrerYaricap: number,
-  override: (saat: string | null) => DamperSinif | undefined,
+  override: (o: T) => DamperSinif | undefined,
 ): number {
   const muk = mukerrerIsaretle(olaylar, Math.max(0, mukerrerDk) * 60, mukerrerYaricap);
   const sinifli = arizaIsaretle(muk, rota, ocak, ocakYaricap);
   return sinifli.filter((o) => {
-    const ov = override(o.saat);
+    const ov = override(o);
     if (ov === "gercek") return true;
     if (ov === "mukerrer" || ov === "ariza") return false;
     return !o.mukerrer && !o.ariza;

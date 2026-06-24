@@ -381,11 +381,14 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     for (const k of canliVeriRef.current.konumlar ?? []) {
       if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
     }
-    // Yalnızca İLK açılışta otomatik ortala; sonra mevcut görünümü KORU.
+    // Yalnızca İLK açılışta otomatik ortala; sonra mevcut görünümü KORU. (Harita sekme geçişinde/HMR'de
+    // yarı-yıkılmış olabilir → fitBounds _leaflet_pos atabilir; sarıp yutuyoruz.)
     if (!gorunumRef.current && bounds.length) {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
-      const c = map.getCenter();
-      gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      try {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+        const c = map.getCenter();
+        gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
+      } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
   }, [haritaHazir, gosterilenGreyder, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
