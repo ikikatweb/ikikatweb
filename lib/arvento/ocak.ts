@@ -75,6 +75,21 @@ export function ocakTespit(rotalar: Nokta[][], gridM = 40): LatLng | null {
   return best ? { lat: best.sumLat / best.sayi, lng: best.sumLng / best.sayi } : null;
 }
 
+// Bir iş makinesinin (sabit ekskavatör vb.) OCAK çemberi içinde çalışıp çalışmadığı: rota (GPS)
+// noktalarının ÇOĞUNLUĞU ocak yarıçapı içindeyse "ocak makinesi" (ocakta yükleme yapan makine).
+// Ocak yoksa / nokta yoksa → false. Ayrıca ocak içindeki noktaların ağırlık merkezini (marker konumu) döndürür.
+export function ocakMakineDurumu(noktalar: Nokta[], ocak: LatLng | null, yaricapM: number): { icinde: boolean; konum: LatLng | null } {
+  if (!ocak || yaricapM <= 0) return { icinde: false, konum: null };
+  let top = 0, ic = 0, sumLat = 0, sumLng = 0;
+  for (const p of noktalar) {
+    if (p.lat == null || p.lng == null) continue;
+    top++;
+    if (mesafeMetre(p.lat, p.lng, ocak.lat, ocak.lng) <= yaricapM) { ic++; sumLat += p.lat; sumLng += p.lng; }
+  }
+  const icinde = top > 0 && ic / top >= 0.5;
+  return { icinde, konum: ic > 0 ? { lat: sumLat / ic, lng: sumLng / ic } : null };
+}
+
 // Bir kamyonun damper olaylarını ocak ziyaretine göre sınıflar. Her olaya iki bayrak ekler:
 //  - ariza: O aralıkta rota VAR ama ocağa uğramamış → yüklemeden inmiş (KESİN arıza, gizlenir).
 //  - dogrulanmamis: O aralıkta rota YOK (ör. sabah GPS başlamadan) → "gerçek" sayılır AMA doğrulanamadı.

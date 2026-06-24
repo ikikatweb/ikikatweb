@@ -57,7 +57,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
@@ -146,17 +146,20 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     }
     return m;
   }, [araclar, etkinTekrar, gridMesafe]);
-  // "Reglaj km" (TOPLAM): sadeleştirilmiş çizgiler varsa parçaların TOPLAMI; yoksa (ham mod) kapsanan yol.
+  // "Reglaj km" (TOPLAM): omurga parçaları varsa onların TOPLAMI. EŞİK ≥ 1 ama omurga YOKSA (greyder
+  // yolu eşik kadar tekrar taramamış) → reglaj sayılmaz = 0. Yalnız HAM modda (eşik < 1) kapsanan yola düşülür.
   const omurgaKmMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const k of araclar) {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length < 2) continue;
       const parts = parcaUzunlukMap.get(k.plaka);
-      m.set(k.plaka, parts ? parts.reduce((a, b) => a + b, 0) : kapsananYolKm(noktalar, gridMesafe));
+      if (parts) m.set(k.plaka, parts.reduce((a, b) => a + b, 0));
+      else if (etkinTekrar < 1) m.set(k.plaka, kapsananYolKm(noktalar, gridMesafe)); // ham mod: eşik yok
+      else m.set(k.plaka, 0); // eşik var, omurga boş → tekrar yetmedi, reglaj tamamlanmadı
     }
     return m;
-  }, [araclar, gridMesafe, parcaUzunlukMap]);
+  }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar]);
 
   // Araç KÜMESİ değişince varsayılan: tüm araçlar seçili. Periyodik tazelemede aynı plakalar
   // gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, gereksiz redraw olmasın).
@@ -290,9 +293,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
             cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));
           }
-        } else {
-          L.polyline([latlngs], { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
         }
+        // else: omurga yok (yol eşik kadar tekrar taranmamış) → reglaj sayılmaz → harita çizgisi de YOK.
       } else {
         L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
         if (tekMi) {
@@ -413,9 +415,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                     <span>{k.noktalar?.length ?? 0} nokta</span>
                   </span>
                   {/* SIRA: ilk kontak → çalışma → (kontak açık/rölanti) → son kontak */}
-                  {ilkSonKontakMap?.get(plakaNorm(k.plaka))?.ilk && (
-                    <span className="text-[10px] text-emerald-600">🟢 {ilkSonKontakMap.get(plakaNorm(k.plaka))!.ilk!.slice(0, 5)} ilk kontak</span>
-                  )}
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.ilk ? (
+                    <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
+                  ) : null; })()}
                   {calismaSnMap && <span className="text-[10px] opacity-80">⏱ {formatSure(calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)} çalışma</span>}
                   {kontakRolantiMap && (
                     <>
@@ -423,9 +425,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                       <span className="text-[10px] opacity-80">⏳ {formatSure(kontakRolantiMap.get(plakaNorm(k.plaka))?.rolanti ?? 0)} rölanti</span>
                     </>
                   )}
-                  {ilkSonKontakMap?.get(plakaNorm(k.plaka))?.son && (
-                    <span className="text-[10px] text-red-600">🔴 {ilkSonKontakMap.get(plakaNorm(k.plaka))!.son!.slice(0, 5)} son kontak</span>
-                  )}
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.son ? (
+                    <span className={`text-[10px] text-red-600 ${e.sonT ? "italic opacity-80" : ""}`} title={e.sonT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🔴 {e.sonT ? "~" : ""}{e.son.slice(0, 5)} son kontak</span>
+                  ) : null; })()}
                 </span>
               </button>
             );

@@ -13,7 +13,7 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type Kat
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
+import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, saatSn, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle, gercekDamperSayisi } from "@/lib/arvento/damper-say";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
@@ -53,6 +53,22 @@ function parcaKesisir(a: Nk, b: Nk, c: Nk, d: Nk): boolean {
   return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
 }
 
+// Damper, araç DURUNCA iner. Arvento'nun damper alarmı GPS'i kayık/donmuş olabildiğinden, damper
+// saatine en yakın DURMUŞ (hız ≤ 3 km/h) rota noktasını = gerçek dökme yeri olarak kullanırız. ±7 dk
+// içinde durmuş nokta yoksa null → çağıran alarm-GPS'e döner (rota durağı yakalayamadığı durumlar).
+function damperDurakKonumu(rota: { saat: string | null; lat: number | null; lng: number | null; hiz?: number | null }[], saat: string | null, maxYakinSn = 420): [number, number] | null {
+  const ds = saatSn(saat); if (ds == null || !rota.length) return null;
+  let best: [number, number] | null = null, bestDt = Infinity;
+  for (const p of rota) {
+    if (p.lat == null || p.lng == null) continue;
+    const ps = saatSn(p.saat); if (ps == null) continue;
+    const dt = Math.abs(ps - ds);
+    if (dt > maxYakinSn || (p.hiz ?? 99) > 3) continue;   // pencere dışı veya HAREKET halinde → atla
+    if (dt < bestDt) { bestDt = dt; best = [p.lat, p.lng]; }
+  }
+  return best;
+}
+
 function damperOlaylariniAl(r: AracArventoRapor): DamperOlay[] {
   return (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
 }
@@ -66,6 +82,13 @@ function ocakIkonHtml(): string {
     <circle cx="15" cy="13" r="8.5" fill="#ffffff"/>
     <g stroke="#1d4ed8" stroke-width="2" stroke-linecap="round"><path d="M10 17 L18 9"/><path d="M16.5 7.5 L20.5 11.5"/><path d="M8.5 15.5 L12.5 19.5"/></g>
   </svg></div>`;
+}
+
+// Ocakta çalışan iş makinesi (ekskavatör vb.) işareti — turuncu daire + makine simgesi.
+function ocakMakineIkonHtml(): string {
+  return `<div style="width:24px;height:24px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h7"/><path d="M5 20v-5H3l3-4h3v9"/><path d="M9 13l5-2 6 4"/><circle cx="6.5" cy="20" r="1.6" fill="#fff" stroke="none"/></svg>
+  </div>`;
 }
 
 // Her kamyona ayırt edici sabit renk — uydu görüntüsünde okunur, parlak tonlar.
@@ -90,7 +113,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -220,11 +243,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // ── Stabilize ocağı (yükleme noktası) + arıza tespiti ───────────────────────────────
   // Plaka → rota noktaları: damperden önce kamyon ocağa uğramış mı (yüklemiş mi) kontrolü için.
   const rotaByPlaka = useMemo(() => {
-    const m = new Map<string, { lat: number; lng: number; saat: string | null }[]>();
+    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null }[]>();
     for (const k of tumGuzergahTemiz) {
       const key = plakaNorm(k.plaka);
       const arr = m.get(key) ?? [];
-      if (Array.isArray(k.noktalar)) for (const p of k.noktalar) if (p?.lat != null && p?.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat ?? null });
+      if (Array.isArray(k.noktalar)) for (const p of k.noktalar) if (p?.lat != null && p?.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat ?? null, hiz: p.hiz ?? null });
       m.set(key, arr);
     }
     return m;
@@ -493,7 +516,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     // Aynı/çok yakın konuma denk gelen damperleri grupla — üst üste binmesin (×N gösterilir).
     const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
     for (const o of damperKoordlu) {
-      const [lat, lng] = snapReglaj(o.lat as number, o.lng as number); // çizginin ortasına oturt
+      // Damper saatine en yakın DURMUŞ rota noktasına (gerçek dökme yeri) oturt; yoksa ≤30 m yola / alarm-GPS.
+      const [lat, lng] = damperDurakKonumu(rotaByPlaka.get(plakaNorm(o.plaka)) ?? [], o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
       const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
       const g = gruplar.get(anahtar);
       if (g) g.olaylar.push(o);
@@ -571,6 +595,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         }
       }
     }
+    // OCAK İŞ MAKİNELERİ — ocak çemberi içinde çalışan ekskavatör vb. (yükleme yapan). İş Makineleri
+    // sekmesinde DEĞİL, burada gösterilir; konum = rotasının ocak içi ağırlık merkezi.
+    for (const mk of ocakMakineleri) {
+      if (mk.lat == null || mk.lng == null) continue;
+      const sa = Math.floor(mk.calismaSn / 3600), dk = Math.floor((mk.calismaSn % 3600) / 60);
+      const ikon = L.divIcon({ html: ocakMakineIkonHtml(), className: "ocak-makine-ikon", iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12] });
+      L.marker([mk.lat, mk.lng], { icon: ikon, zIndexOffset: 900 })
+        .addTo(grup)
+        .bindPopup(`<b>⛏️ ${mk.model || mk.cins || "İş Makinesi"}</b><br>${mk.plaka}<br>Çalışma: ${sa}:${String(dk).padStart(2, "0")} (sa:dk)`);
+      bounds.push([mk.lat, mk.lng]);
+    }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
       if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
@@ -581,7 +616,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, rotaByPlaka, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -691,6 +726,28 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   {r.son_kontak && <span className="text-[10px] text-red-600">🔴 {r.son_kontak.slice(0, 5)} son kontak</span>}
                 </span>
               </button>
+            );
+          })}
+          {/* OCAK İŞ MAKİNELERİ — kamyonların yanında, amber chip (ocak çemberi içinde çalışanlar) */}
+          {ocakMakineleri.map((mk) => {
+            const sa = Math.floor(mk.calismaSn / 3600), dk = Math.floor((mk.calismaSn % 3600) / 60);
+            return (
+              <div key={`om-${mk.plaka}`} title={`${mk.model || mk.cins || "İş Makinesi"} · ${mk.plaka} — ocakta çalışan iş makinesi`}
+                className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-xs flex items-center gap-2 shrink-0 select-none">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-amber-500" />
+                <span className="flex flex-col items-start leading-tight text-gray-700 max-w-[104px]">
+                  <span className="font-semibold truncate max-w-full">⛏️ {mk.model || mk.cins || "İş Makinesi"}</span>
+                  <span className="text-[10px] opacity-60 truncate max-w-full">{mk.plaka}</span>
+                  <span className="text-[10px] text-amber-700">ocakta çalışıyor</span>
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(mk.plaka)); return e?.ilk ? (
+                    <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
+                  ) : null; })()}
+                  <span className="text-[10px] opacity-80">⏱ {sa}:{String(dk).padStart(2, "0")} çalışma</span>
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(mk.plaka)); return e?.son ? (
+                    <span className={`text-[10px] text-red-600 ${e.sonT ? "italic opacity-80" : ""}`} title={e.sonT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🔴 {e.sonT ? "~" : ""}{e.son.slice(0, 5)} son kontak</span>
+                  ) : null; })()}
+                </span>
+              </div>
             );
           })}
           </div>

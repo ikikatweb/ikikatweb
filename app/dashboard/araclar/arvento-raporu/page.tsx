@@ -26,7 +26,8 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
 import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, setSantiyeIl, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
-import { getArventoAyarlar, setArventoAyarlar } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih } from "@/lib/supabase/queries/arvento-ayarlar";
+import { ocakMakineDurumu, ocakTespit, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed";
 
@@ -537,6 +538,14 @@ export default function ArventoRaporPage() {
     getGuzergahByRange(baslangic, bitis).then((g) => { if (!iptal) setGuzergahlar(g); }).catch(() => { if (!iptal) setGuzergahlar([]); });
     return () => { iptal = true; };
   }, [baslangic, bitis, guzergahRefresh]);
+  // Gün bazlı ocak (haritada görünen çember) — ocaktaki iş makinelerini saptamak için.
+  const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
+  useEffect(() => {
+    if (!baslangic) { setGunOcak(null); return; }
+    let iptal = false;
+    getOcakForTarih(baslangic).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
+    return () => { iptal = true; };
+  }, [baslangic, guzergahRefresh]);
   // İl sınırları (81 il poligonu) — /tr-iller.json'dan bir kez yüklenir.
   const [iller, setIller] = useState<IlPoligon[]>([]);
   useEffect(() => { fetch("/tr-iller.json").then((r) => r.json()).then((g) => setIller(illeriYukle(g))).catch(() => {}); }, []);
@@ -664,8 +673,8 @@ export default function ArventoRaporPage() {
 
   const gruplar = useMemo(() => gruplaSantiye(filtrelenmis), [gruplaSantiye, filtrelenmis]);
 
-  // İş Makineleri: araç cinsleri (filtre seçeneği) + cinse göre süzülmüş kayıtlar.
-  const ismakineKayitlar = useMemo(() => {
+  // İş Makineleri (HAM): atama/sayaç tipine göre tüm iş makineleri (ocak içi/dışı ayrılmadan).
+  const tumIsMakineKayitlar = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     return kayitlar.filter((k) => {
       if (izinliPlakaSet && !izinliPlakaSet.has(plakaNorm(k.plaka))) return false; // şantiye izni
@@ -679,6 +688,62 @@ export default function ArventoRaporPage() {
       return true;
     });
   }, [kayitlar, plakaSantiye, arama, sekmeMap, atananSekmeler, izinliPlakaSet]);
+
+  // Rota noktalarını plaka bazında birleştir — ocak içi makine tespiti için.
+  const rotaByPlakaTumu = useMemo(() => {
+    const m = new Map<string, { lat: number | null; lng: number | null; saat: string | null }[]>();
+    for (const g of guzergahlar) {
+      const key = plakaNorm(g.plaka);
+      const arr = m.get(key) ?? [];
+      if (Array.isArray(g.noktalar)) for (const p of g.noktalar) arr.push({ lat: p.lat ?? null, lng: p.lng ?? null, saat: p.saat ?? null });
+      m.set(key, arr);
+    }
+    return m;
+  }, [guzergahlar]);
+  // Etkin ocak (gün bazlı > ayar > otomatik) + yarıçap — Stabilize haritasındaki çemberle aynı.
+  const etkinOcak = useMemo<LatLng | null>(() => {
+    if (gunOcak) return { lat: gunOcak.lat, lng: gunOcak.lng };
+    if (ocakLat != null && ocakLng != null) return { lat: ocakLat, lng: ocakLng };
+    return ocakTespit(Array.from(rotaByPlakaTumu.values()).map((r) => rotaTemizle(r)));
+  }, [gunOcak, ocakLat, ocakLng, rotaByPlakaTumu]);
+  const etkinOcakR = gunOcak?.yaricap ?? ocakYaricap;
+  // Damper olayı OLAN plakalar = kamyon (ocak makinesi DEĞİL) — ocak içi tespitinde dışlanır.
+  const damperliSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const k of kayitlar) if (Array.isArray(k.damper_olaylar) && k.damper_olaylar.length > 0) s.add(plakaNorm(k.plaka));
+    return s;
+  }, [kayitlar]);
+  // OCAK MAKİNELERİ (plakaNorm → ocak içi konum): rotası ocak çemberinin ÇOĞUNLUĞUNDA + damper YOK
+  // (kamyon değil) + izinli. "İş makinesi" sınıfına bağlı DEĞİL → araç kaydı eşleşmese de (node-id'li
+  // makineler) yakalanır.
+  const ocakMakineMap = useMemo(() => {
+    const m = new Map<string, { konum: LatLng | null }>();
+    for (const [key, rota] of rotaByPlakaTumu) {
+      if (damperliSet.has(key)) continue;
+      if (izinliPlakaSet && !izinliPlakaSet.has(key)) continue;
+      const d = ocakMakineDurumu(rota, etkinOcak, etkinOcakR);
+      if (d.icinde) m.set(key, { konum: d.konum });
+    }
+    return m;
+  }, [rotaByPlakaTumu, damperliSet, etkinOcak, etkinOcakR, izinliPlakaSet]);
+
+  // İŞ MAKİNELERİ sekmesi: ocak DIŞINDAKİ makineler (ocaktakiler Stabilize'de gösterilir).
+  const ismakineKayitlar = useMemo(
+    () => tumIsMakineKayitlar.filter((k) => !ocakMakineMap.has(plakaNorm(k.plaka))),
+    [tumIsMakineKayitlar, ocakMakineMap],
+  );
+  // STABILIZE'de gösterilecek OCAK makineleri: model/cins + çalışma saati (rapordan) + ocak içi konum.
+  const ocakMakineleri = useMemo(() => {
+    const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
+    const raporBy = new Map(kayitlar.map((k) => [plakaNorm(k.plaka), k]));
+    return Array.from(ocakMakineMap.entries()).map(([key, v]) => {
+      const k = raporBy.get(key);
+      const ps = plakaSantiye.get(key);
+      let calisma = 0;
+      if (k) { calisma = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0); if (k.ilk_kontak && k.son_kontak) { const span = sn(k.son_kontak) - sn(k.ilk_kontak); if (span > 0) calisma = Math.min(calisma, span); } }
+      return { plaka: k?.plaka ?? key, model: ps?.model ?? null, cins: ps?.cinsi ?? null, calismaSn: calisma, lat: v.konum?.lat ?? null, lng: v.konum?.lng ?? null };
+    });
+  }, [ocakMakineMap, kayitlar, plakaSantiye]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
@@ -716,16 +781,48 @@ export default function ArventoRaporPage() {
   }, [kayitlar]);
   // İlk kontak (en erken açılış) + son kontak (en geç kapanış) — TÜM araçlarda chip'te gösterilir.
   const ilkSonKontakMap = useMemo(() => {
-    const m = new Map<string, { ilk: string | null; son: string | null }>();
+    // ilkT/sonT = değer rapordan değil GÜZERGAH'tan TÜRETİLDİ (gerçek kontak yok) → arayüzde italik gösterilir.
+    const m = new Map<string, { ilk: string | null; son: string | null; ilkT: boolean; sonT: boolean }>();
     for (const k of kayitlar) {
       const key = plakaNorm(k.plaka);
-      const ex = m.get(key) ?? { ilk: null, son: null };
-      if (k.ilk_kontak && (!ex.ilk || k.ilk_kontak < ex.ilk)) ex.ilk = k.ilk_kontak;
-      if (k.son_kontak && (!ex.son || k.son_kontak > ex.son)) ex.son = k.son_kontak;
+      const ex = m.get(key) ?? { ilk: null, son: null, ilkT: false, sonT: false };
+      if (k.ilk_kontak && (!ex.ilk || k.ilk_kontak < ex.ilk)) { ex.ilk = k.ilk_kontak; ex.ilkT = false; }
+      if (k.son_kontak && (!ex.son || k.son_kontak > ex.son)) { ex.son = k.son_kontak; ex.sonT = false; }
+      m.set(key, ex);
+    }
+    // YEDEK (TÜRETİLMİŞ): Arvento ilk/son kontak DÖNMEYEN araçlar (kontağı gün boyu açık kalan greyder vb.)
+    // için güzergah GPS saatlerinden türet. Gün sonu/başı izole park sinyalleri (>2 s boşlukla ayrı) kırpılır.
+    const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
+    const BOSLUK = 120 * 60;
+    // GELECEK SAAT KORUMASI: bugünün raporunda, ŞU ANDAN sonraki saatler bozuk zaman damgasıdır
+    // (cihaz saati ileri/bayat) → türetmeye katma. (TR = UTC+3.)
+    const trNow = new Date(Date.now() + 3 * 3600000);
+    const bugun = trNow.toISOString().slice(0, 10), simdi = trNow.toISOString().slice(11, 19);
+    const guzSaat = new Map<string, string[]>();
+    for (const g of guzergahlar) {
+      const key = plakaNorm(g.plaka);
+      const arr = guzSaat.get(key) ?? [];
+      const bugunMu = g.rapor_tarihi === bugun;
+      for (const p of (g.noktalar ?? [])) {
+        if (!p.saat) continue;
+        if (bugunMu && p.saat > simdi) continue; // bugünün gelecek saatleri (bozuk) → atla
+        arr.push(p.saat as string);
+      }
+      guzSaat.set(key, arr);
+    }
+    for (const [key, arr] of guzSaat) {
+      const ex = m.get(key) ?? { ilk: null, son: null, ilkT: false, sonT: false };
+      if ((ex.ilk && ex.son) || !arr.length) continue;
+      const s = arr.slice().sort();
+      let i = 0, j = s.length - 1;
+      while (j > i && sn(s[j]) - sn(s[j - 1]) > BOSLUK) j--; // sondaki izole park sinyali
+      while (i < j && sn(s[i + 1]) - sn(s[i]) > BOSLUK) i++; // baştaki izole sinyal
+      if (!ex.ilk) { ex.ilk = s[i]; ex.ilkT = true; }
+      if (!ex.son) { ex.son = s[j]; ex.sonT = true; }
       m.set(key, ex);
     }
     return m;
-  }, [kayitlar]);
+  }, [kayitlar, guzergahlar]);
   // Plaka(norm) → araç modeli (chip'lerde "İş Makinesi/cins" yerine model göstermek için).
   const modelMap = useMemo(() => new Map(Array.from(plakaSantiye.entries()).map(([p, ps]) => [p, ps.model ?? null])), [plakaSantiye]);
 
@@ -869,7 +966,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} />

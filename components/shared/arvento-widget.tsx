@@ -8,7 +8,7 @@ import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlak
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
 import { gercekDamperSayisi } from "@/lib/arvento/damper-say";
-import { rotaTemizle, ocakTespit, type LatLng } from "@/lib/arvento/ocak";
+import { rotaTemizle, ocakTespit, ocakMakineDurumu, type LatLng } from "@/lib/arvento/ocak";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 // "HH:MM:SS" → saniye
@@ -59,7 +59,8 @@ export default function ArventoWidget() {
       const noktalar = (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length < 2) return s;
       const parca = esik >= 1 ? sadelesGuzergah(noktalar, esik, grid).parcalar : [];
-      return s + (parca.length ? parcalarUzunlukKm(parca) : kapsananYolKm(noktalar, grid));
+      // Eşik ≥ 1 ama omurga boşsa (yol eşik kadar tekrar taranmamış) → reglaj sayılmaz (0). Kapsanan yol yalnız ham modda.
+      return s + (parca.length ? parcalarUzunlukKm(parca) : (esik >= 1 ? 0 : kapsananYolKm(noktalar, grid)));
     }, 0);
   }, [guzergahlar, plakaSantiye, ayarlar]);
 
@@ -98,18 +99,23 @@ export default function ArventoWidget() {
   //    toplamı (max(kontak, rölanti), ilk→son penceresiyle sınırlı). "S:DD" saat:dakika.
   const ekskavatorSn = useMemo(() => {
     const ismakineAtanmisVar = Array.from(plakaSantiye.values()).some((ps) => ps.sekmeler?.includes("ismakine"));
+    // Ocak (çember) + rota — ocakta çalışan makineler bu TOPLAMA KATILMAZ (Stabilize'de sayılır).
+    const ocak: LatLng | null = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
+    const ocakR = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
+    const rotaBy = new Map(guzergahlar.map((g) => [plakaNorm(g.plaka), (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null)]));
     const m = new Map<string, number>();
     for (const k of kayitlar) {
       const ps = plakaSantiye.get(plakaNorm(k.plaka));
       const atama = ps?.sekmeler ?? null;
       const ismakineMi = atama != null ? atama.includes("ismakine") : (ismakineAtanmisVar ? false : ps?.sayacTipi === "saat");
       if (!ismakineMi) continue;
+      if (ocakMakineDurumu(rotaBy.get(plakaNorm(k.plaka)) ?? [], ocak, ocakR).icinde) continue; // ocak makinesi → toplama katma
       let c = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0);
       if (k.ilk_kontak && k.son_kontak) { const span = sureSn(k.son_kontak) - sureSn(k.ilk_kontak); if (span > 0) c = Math.min(c, span); }
       m.set(plakaNorm(k.plaka), c);
     }
     return Array.from(m.values()).reduce((a, b) => a + b, 0);
-  }, [kayitlar, plakaSantiye]);
+  }, [kayitlar, plakaSantiye, guzergahlar, gunOcak, ayarlar]);
 
   return (
     <div className="bg-white rounded-xl border p-4 h-full">
