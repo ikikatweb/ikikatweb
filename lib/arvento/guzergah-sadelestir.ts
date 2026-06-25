@@ -44,22 +44,33 @@ function yumusat(parca: [number, number][], pencere = 2): [number, number][] {
   return out;
 }
 
-// Seyrek GPS noktalarını ~adimM aralıkla yeniden örnekler (yan yana/tekrar geçişlerin aynı
-// hücrelere düşmesi için).
-function yogunlastir(pts: { lat: number; lng: number }[], adimM: number): { lat: number; lng: number }[] {
+// Rotayı SABİT ADIMLA (adimM) yol boyunca yeniden örnekler: her adimM metrede bir nokta üretir.
+// Seyrek bölümleri SIKLAŞTIRIR **ve** yoğun bölümleri SEYRELTİR → sonuç GPS nokta yoğunluğundan
+// BAĞIMSIZ olur. Böylece canlı (sık yoklama) ve rapor (seyrek export) rota AYNI omurgayı/reglajı verir;
+// ayrıca yoğun jitter noktaları seyreltildiği için sahte "tekrar geçiş" şişmesi (ör. 900 m) ortadan kalkar.
+// Çıktı yine yolun gerçek geometrisini izler (ara noktalar segment üzerinde interpolasyonla).
+function sabitAdimOrnekle(pts: { lat: number; lng: number }[], adimM: number): { lat: number; lng: number }[] {
   if (pts.length < 2) return pts;
+  const seg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const cosL = Math.max(0.1, Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180));
+    return Math.hypot((b.lat - a.lat) * METRE_DERECE, (b.lng - a.lng) * METRE_DERECE * cosL);
+  };
   const out: { lat: number; lng: number }[] = [pts[0]];
+  let acc = 0; // son üretilen noktadan bu yana biriken yol (m)
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
-    const cosL = Math.max(0.1, Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180));
-    const dx = (b.lng - a.lng) * METRE_DERECE * cosL;
-    const dy = (b.lat - a.lat) * METRE_DERECE;
-    const n = Math.min(2000, Math.max(1, Math.round(Math.hypot(dx, dy) / adimM)));
-    for (let s = 1; s <= n; s++) {
-      const t = s / n;
+    const segLen = seg(a, b);
+    if (segLen === 0) continue;
+    let next = adimM - acc; // segment başından itibaren ilk üretim mesafesi
+    while (next <= segLen) {
+      const t = next / segLen;
       out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t });
+      next += adimM;
     }
+    acc = segLen - (next - adimM); // segment sonundaki artık (bir sonraki segmente taşınır)
   }
+  const last = pts[pts.length - 1], lo = out[out.length - 1];
+  if (lo.lat !== last.lat || lo.lng !== last.lng) out.push(last); // bitiş noktasını koru
   return out;
 }
 
@@ -71,7 +82,7 @@ export function kapsananYolKm(noktalar: { lat: number; lng: number }[], gridM = 
   const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
   if (pts0.length < 2) return 0;
   const g = Math.max(1, gridM * 2);
-  const pts = yogunlastir(pts0, Math.max(2, g / 2));
+  const pts = sabitAdimOrnekle(pts0, Math.max(2, g / 2));
   const ortLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
   const cosOrt = Math.max(0.1, Math.cos((ortLat * Math.PI) / 180));
   const latStep = g / METRE_DERECE;
@@ -161,7 +172,7 @@ function sadelesGuzergahCore(
   const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
   if (pts0.length < 2) return bos;
   const g = Math.max(1, gridM * 2); // hücre çapı = 2×yarıçap
-  const pts = yogunlastir(pts0, Math.max(2, g / 2));
+  const pts = sabitAdimOrnekle(pts0, Math.max(2, g / 2));
 
   const ortLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
   const cosOrt = Math.max(0.1, Math.cos((ortLat * Math.PI) / 180));

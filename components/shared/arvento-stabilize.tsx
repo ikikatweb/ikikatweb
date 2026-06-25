@@ -97,7 +97,7 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, kmlIndir = true, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; kmlIndir?: boolean; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -550,9 +550,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const bStil = "font-size:10px;padding:0 5px;margin-left:3px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer";
       const liste = g.olaylar
         .map((o) => `🔻 ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`
-          + `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','gercek')">Gerçek</button>`
-          + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
-          + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`)
+          // Sınıf değiştirme (Gerçek/Mükerrer/Arıza) = DÜZENLEME yetkisi; yoksa butonlar hiç gösterilmez (salt-okunur).
+          + (yDuzenle
+            ? `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','gercek')">Gerçek</button>`
+              + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
+              + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`
+            : ""))
         .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
       const ikon = L.divIcon({
         html: damperKamyonIkonHtml(renk, adet),
@@ -790,9 +793,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   {kamyonIziGoster ? "Kamyon izini gizle" : "Kamyon izini göster"}
                 </button>
               )}
-              <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-                <Download size={14} /> KML İndir
-              </Button>
+              {kmlIndir && (
+                <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
+                  <Download size={14} /> KML İndir
+                </Button>
+              )}
               {canliButton}
             </div>
           </div>
@@ -891,19 +896,35 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: gizli ? 0.4 : 1 }} />
                 <span className={`font-bold w-32 truncate ${gizli ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
-                <button type="button" className="text-gray-400 w-20 truncate text-left hover:text-rose-600 hover:underline cursor-pointer"
-                  title="Tıkla: bu damperi arızaya al / arızadan çıkar"
-                  onClick={() => {
-                    const kapali = o.mukerrer || o.ariza;
-                    if (window.confirm(`${o.plaka} · ${o.saat ?? ""}\nBu damperi ${kapali ? "AKTİF (gerçek) yapmak" : "ARIZAYA almak"} istediğinize emin misiniz?`))
-                      damperSinifDegistir(o.plaka, damperTarih(o), o.saat,kapali ? "gercek" : "ariza");
-                  }}>{o.plaka}</button>
+                {yDuzenle ? (
+                  <button type="button" className="text-gray-400 w-20 truncate text-left hover:text-rose-600 hover:underline cursor-pointer"
+                    title="Tıkla: bu damperi arızaya al / arızadan çıkar"
+                    onClick={() => {
+                      const kapali = o.mukerrer || o.ariza;
+                      if (window.confirm(`${o.plaka} · ${o.saat ?? ""}\nBu damperi ${kapali ? "AKTİF (gerçek) yapmak" : "ARIZAYA almak"} istediğinize emin misiniz?`))
+                        damperSinifDegistir(o.plaka, damperTarih(o), o.saat,kapali ? "gercek" : "ariza");
+                    }}>{o.plaka}</button>
+                ) : (
+                  <span className="text-gray-400 w-20 truncate text-left">{o.plaka}</span>
+                )}
                 <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : ""}`}
                   style={gizli ? undefined : { color: renkAl(o.plaka) }}>🔻 {o.saat ?? "—"}</span>
                 <span className={`flex-1 truncate ${gizli ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>
                 {(() => {
                   const aktif: DamperSinif = o.mukerrer ? "mukerrer" : o.ariza ? "ariza" : "gercek";
                   const arac = renkAl(o.plaka); // GERÇEK butonu, aracın harita damper rengiyle aynı
+                  // DÜZENLEME yetkisi yoksa sınıf butonları GÖSTERİLMEZ → yalnız mevcut sınıf rozeti (salt-okunur).
+                  if (!yDuzenle) {
+                    const etiket = aktif === "gercek" ? "Gerçek" : aktif === "mukerrer" ? "Mük." : "Arıza";
+                    const stil = aktif === "gercek" ? { background: arac, color: "#fff" } : aktif === "mukerrer" ? { background: "#f59e0b", color: "#fff" } : { background: "#e11d48", color: "#fff" };
+                    return (
+                      <span className="flex items-center gap-0.5 shrink-0">
+                        <span className="text-[9px] leading-none px-1 py-0.5 rounded" style={stil}>{etiket}</span>
+                        {aktif === "gercek" && o.dogrulanmamis && <span className="text-[9px] text-blue-500" title="Rota verisi yok — doğrulanmamış">?</span>}
+                        {(o.lat == null || o.lng == null) && <span className="text-[9px] text-gray-400" title="Konumsuz"><MapPin size={9} className="inline" />✕</span>}
+                      </span>
+                    );
+                  }
                   const pasif = "bg-white text-gray-400 border-gray-200 hover:bg-gray-100";
                   const sinifBtn = "text-[9px] leading-none px-1 py-0.5 rounded border transition-colors";
                   return (
