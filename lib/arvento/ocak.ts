@@ -107,10 +107,16 @@ export function ocakMakineDurumu(noktalar: Nokta[], ocak: LatLng | null, yaricap
 }
 
 // Bir kamyonun damper olaylarını ocak ziyaretine göre sınıflar. Her olaya iki bayrak ekler:
-//  - ariza: O aralıkta rota VAR ama ocağa uğramamış → yüklemeden inmiş (KESİN arıza, gizlenir).
-//  - dogrulanmamis: O aralıkta rota YOK (ör. sabah GPS başlamadan) → "gerçek" sayılır AMA doğrulanamadı.
-//    (Arvento'dan tam gün rota çekilince doğrulanıp gerçek/arıza olarak kesinleşir.)
-// Gerçek (doğrulanmış) = ne ariza ne dogrulanmamis. Mükerrer olaylar diziye girmez (zaten dışlanmış).
+//  - ariza: Ocağa gittiği KANITLANAMIYOR → arıza. İki halde olur:
+//      (a) O aralıkta rota VAR ama ocağa uğramamış (ve devir yükü de değil) → yüklemeden inmiş.
+//      (b) O aralıkta rota YOK → ocak ziyareti doğrulanamıyor (ör. sabah GPS başlamadan, park yerinde
+//          atılan sahte damper). Kanıt yoksa GERÇEK SAYILMAZ → arıza. (dogrulanmamis bayrağı = sebep "rota yok".)
+//  - dogrulanmamis: yukarıdaki (b) durumu — arızanın sebebinin "rota yok" olduğunu işaretler (bilgi amaçlı).
+// DEVİR YÜKÜ: araç GÜNE OCAKTA/OCAK AĞZINDA başlamış (gece ocakta yüklü park → ilk GPS noktası ocak ağzında)
+//   VE gün içinde ocağa yeniden giriyor (cycle) VE döküm o ilk girişten önce → önceki günden taşınan yükün
+//   teslimi → GERÇEK. Rota-yok kontrolünden ÖNCE gelir (senaryo zaten "ocakta hat çekmiyor → sabah verisi
+//   yok"), yani rota olmasa da geçerli. Araç güne ocaktan UZAKTA başladıysa (yüklü değildi) sabahki dökümler arıza.
+// Gerçek = ne ariza ne mukerrer. Mükerrer olaylar diziye girmez (zaten dışlanmış).
 export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   olaylar: T[],
   rota: (Nokta & { hiz?: number | null })[],
@@ -125,6 +131,10 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
     .filter((p): p is { sn: number; lat: number; lng: number; hiz: number | null | undefined } => p.sn != null && p.lat != null && p.lng != null)
     .sort((a, b) => a.sn - b.sn);
   const rotaSnArr = rs.map((p) => p.sn);                            // tüm rota SN'leri (artan)
+  // GÜNE OCAKTA BAŞLAMIŞ MI: günün İLK rota noktası ocak ağzında mı (≤ yarıçap×1.5). Gece ocakta/ocak
+  // yanında YÜKLÜ park etmiş aracın sabah ilk GPS noktası buradadır (devir yükü teslimi için şart).
+  const gunBasiOcakAgzi = yaricapM * 1.5;
+  const gunBasiOcakta = rs.length > 0 && mesafeMetre(rs[0].lat, rs[0].lng, ocak.lat, ocak.lng) <= gunBasiOcakAgzi;
   const ocakSnArr: number[] = [];                                  // ocak çemberi İÇİ noktaların SN'leri
   const duraklar: { sn: number; lat: number; lng: number }[] = []; // DURMUŞ (hız ≤ 3) noktalar
   for (const p of rs) {
@@ -154,14 +164,20 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
     const d = enYakinDurak(sn, 420);
     const kLat = d ? d.lat : o.lat, kLng = d ? d.lng : o.lng;
     if (kLat != null && kLng != null && mesafeMetre(kLat as number, kLng as number, ocak.lat, ocak.lng) <= yaricapM) { arizaSet.add(o); continue; }
+    // DEVİR YÜKÜ — rota-yok kontrolünden ÖNCE (çünkü senaryo ZATEN "ocakta hat çekmiyor → sabah verisi yok"):
+    // araç güne OCAKTA/OCAK AĞZINDA başlamış (gece yüklü park) + gün içinde ocağa YENİDEN giriyor (cycle
+    // doğrulandı) + bu döküm o ilk girişten ÖNCE → önceki günden taşınan yükün teslimi → GERÇEK. Rota olsa da
+    // olmasa da geçerli; ilk ocak girişine kadar olan tüm sabah teslimlerini kapsar.
+    const ilkOcakSn = ocakSnArr.length ? ocakSnArr[0] : null; // ocakSnArr zaman sıralı → [0] = günün ilk ocak ziyareti
+    if (gunBasiOcakta && ilkOcakSn != null && sn < ilkOcakSn) { sonGercekSn = sn; continue; }
     const altSn = sonGercekSn < 0 ? 0 : sonGercekSn;
-    if (!aralikta(rotaSnArr, altSn, sn)) { // o aralıkta rota verisi YOK → doğrulanamıyor → gerçek say (doğrulanmamış)
-      dogrulanmamisSet.add(o);
-      sonGercekSn = sn;
+    if (!aralikta(rotaSnArr, altSn, sn)) { // o aralıkta rota verisi YOK + devir yükü değil → KANITLANAMIYOR → ARIZA
+      arizaSet.add(o);
+      dogrulanmamisSet.add(o); // sebep: rota yok (gerçek değil). sonGercek güncellenmez (arıza)
       continue;
     }
-    if (aralikta(ocakSnArr, altSn, sn)) sonGercekSn = sn; // ocağa uğramış → gerçek (doğrulanmış)
-    else arizaSet.add(o);                                  // rota var, ocağa uğramamış → KESİN arıza
+    if (aralikta(ocakSnArr, altSn, sn)) { sonGercekSn = sn; continue; } // pencerede ocağa uğramış → gerçek (doğrulanmış)
+    arizaSet.add(o);                                                     // rota var, ocağa uğramamış, devir değil → arıza
   }
   return olaylar.map((o) => ({ ...o, ariza: arizaSet.has(o), dogrulanmamis: dogrulanmamisSet.has(o) }));
 }

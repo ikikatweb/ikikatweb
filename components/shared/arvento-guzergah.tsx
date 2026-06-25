@@ -110,7 +110,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
           toast.error("arac_arvento_guzergah tablosu yok. SQL'i çalıştırın.", { duration: toastSuresi() });
         }
       })
-      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
   }, [bas, bitis, refreshKey]);
 
   // plakaFiltre verilmişse (İş Makineleri haritası) sadece o plakalar gösterilir.
@@ -119,13 +119,33 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     // plakaFiltre (İş Makineleri haritası) verildiyse o liste kesin; verilmediyse Reglaj sekmesidir:
     // atama VARSA yalnız "reglaj" atanmışlar; atama YOKSA mevcut davranış (tüm güzergahlar).
     const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
-    const guzergahli: GuzergahArac[] = plakaFiltre
+    const guzergahliHam: GuzergahArac[] = plakaFiltre
       ? kayitlar.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
       : kayitlar.filter((k) => {
           const atama = sekmeMap?.get(plakaNorm(k.plaka));
           // Atama varsa kesin; yoksa "reglaj"a başka araç atanmışsa gizle, değilse tüm güzergahlar.
           return atama ? atama.includes("reglaj") : !atananSekmeler.has("reglaj");
         });
+    // ÇOKLU-GÜN ARALIĞI: aynı plakanın günlük rotalarını TEK kayıtta BİRLEŞTİR (noktaları gün sırasıyla
+    // ekle, km'leri topla). Böylece omurga/çizim/kart plaka başına TEK olur; aralıkta üst üste çizmez ve
+    // omurga (sadelesGuzergah) tüm günlerin tekrar taranan yollarını TEK ÇİZGİ olarak kapsar. Önceden her
+    // gün ayrı işleniyor, omurga map'i plaka anahtarıyla yalnız SON günü tutuyordu → çoklu-günde saçmalıyordu.
+    const sirali = [...guzergahliHam].sort((a, b) =>
+      String((a as AracArventoGuzergah).rapor_tarihi ?? "").localeCompare(String((b as AracArventoGuzergah).rapor_tarihi ?? "")));
+    const birlesikMap = new Map<string, GuzergahArac>();
+    for (const k of sirali) {
+      const key = plakaNorm(k.plaka);
+      const ex = birlesikMap.get(key);
+      if (!ex) birlesikMap.set(key, { ...k, noktalar: [...(k.noktalar ?? [])] });
+      else {
+        ex.noktalar = [...(ex.noktalar ?? []), ...(k.noktalar ?? [])];
+        ex.toplam_mesafe = (ex.toplam_mesafe ?? 0) + (k.toplam_mesafe ?? 0);
+        ex.arac_sinifi = ex.arac_sinifi ?? k.arac_sinifi;
+        ex.marka = ex.marka ?? k.marka;
+        ex.model = ex.model ?? k.model;
+      }
+    }
+    const guzergahli = Array.from(birlesikMap.values());
     const varPlaka = new Set(guzergahli.map((k) => plakaNorm(k.plaka)));
     const ekstra: GuzergahArac[] = (ekstraAraclar ?? [])
       .filter((e) => !varPlaka.has(plakaNorm(e.plaka)))

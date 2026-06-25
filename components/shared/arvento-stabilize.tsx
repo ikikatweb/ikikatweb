@@ -154,7 +154,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
   }, [bas, bitis, refreshKey]);
 
   // Rotalardaki İZOLE GPS çöp noktalarını ayıkla (731 km gibi sapan hatalı okumalar) — sonraki tüm

@@ -169,7 +169,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
       })
-      .finally(() => { if (benimNo === yukNoRef.current && yapisal) setLoading(false); });
+      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
   }, [bas, bitis, refreshKey, sermeMi]);
 
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.

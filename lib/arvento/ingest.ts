@@ -47,12 +47,21 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
       nokta_sayisi: g.noktalar.length,
       noktalar: g.noktalar,
     }));
-    const { error } = await supabase
-      .from("arac_arvento_guzergah")
-      .upsert(satirlar, { onConflict: "rapor_tarihi,plaka" });
-    if (error) throw new Error(`Güzergah kaydı hatası: ${error.message}`);
+    // ÖNEMLİ: Rota YOĞUNLUĞUNU koru — yalnızca DAHA ÇOK NOKTALI (daha yoğun) rota mevcudu günceller.
+    // Reglaj km nokta yoğunluğuna duyarlı (omurga = tekrar geçilen segmentler); seyrek rota düşük reglaj verir.
+    //  - Özet/seyrek rapor, yoğun CANLI rotayı EZMEZ (reglaj düşmez).
+    //  - Detaylı (daha çok noktalı) export, seyrek mevcudu GÜNCELLER → yoğunluk geri gelir (geçmiş gün elle düzeltilebilir).
+    const tarihler = [...new Set(satirlar.map((s) => s.rapor_tarihi))];
+    const { data: mevcut } = await supabase
+      .from("arac_arvento_guzergah").select("rapor_tarihi, plaka, nokta_sayisi").in("rapor_tarihi", tarihler);
+    const mevcutNokta = new Map((mevcut ?? []).map((m) => [`${m.rapor_tarihi}|${m.plaka}`, (m.nokta_sayisi as number) ?? 0]));
+    const yazilacak = satirlar.filter((s) => (s.nokta_sayisi ?? 0) > (mevcutNokta.get(`${s.rapor_tarihi}|${s.plaka}`) ?? -1));
+    if (yazilacak.length > 0) {
+      const { error } = await supabase.from("arac_arvento_guzergah").upsert(yazilacak, { onConflict: "rapor_tarihi,plaka" });
+      if (error) throw new Error(`Güzergah kaydı hatası: ${error.message}`);
+    }
     const gunMap = new Map<string, number>();
-    for (const g of guzergahlar) gunMap.set(g.tarih, (gunMap.get(g.tarih) ?? 0) + 1);
+    for (const s of yazilacak) gunMap.set(s.rapor_tarihi, (gunMap.get(s.rapor_tarihi) ?? 0) + 1);
     sonuc.guzergahGunler = Array.from(gunMap.entries()).map(([tarih, sayi]) => ({ tarih, sayi }));
     // Mesafe Bilgisi dosyasında çalışma/damper sayfası olmaz → erken dön
     return sonuc;
