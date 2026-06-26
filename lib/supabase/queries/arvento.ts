@@ -73,8 +73,8 @@ export async function getGuzergahByRange(bas: string, bitis: string): Promise<Ar
   }
   if (gunler.length === 0) gunler.push(bas);
   const rows: AracArventoGuzergah[] = [];
-  for (let i = 0; i < gunler.length; i += 8) {            // 8'erli paralel → geniş aralık daha az turda gelir
-    const grup = gunler.slice(i, i + 8);
+  for (let i = 0; i < gunler.length; i += 4) {            // 4'erli paralel (bağlantı havuzunu yormadan)
+    const grup = gunler.slice(i, i + 4);
     const sonuclar = await Promise.all(grup.map((g) =>
       supabase.from("arac_arvento_guzergah").select("*").eq("rapor_tarihi", g).order("plaka")));
     for (const r of sonuclar) { if (r.error) throw r.error; for (const row of (r.data ?? []) as AracArventoGuzergah[]) rows.push(row); }

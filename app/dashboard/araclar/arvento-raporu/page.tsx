@@ -113,7 +113,7 @@ function aralikTopla(rows: AracArventoRapor[]): AracArventoRapor[] {
 }
 
 export default function ArventoRaporPage() {
-  const { hasPermission, kullanici, isYonetici } = useAuth();
+  const { hasPermission, kullanici, isYonetici, loading: authYukleniyor } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
   const yEkle = hasPermission("araclar-arvento-raporu", "ekle");
   const yDuzenle = hasPermission("araclar-arvento-raporu", "duzenle");
@@ -866,6 +866,8 @@ export default function ArventoRaporPage() {
   // Plaka(norm) → araç modeli (chip'lerde "İş Makinesi/cins" yerine model göstermek için).
   const modelMap = useMemo(() => new Map(Array.from(plakaSantiye.entries()).map(([p, ps]) => [p, ps.model ?? null])), [plakaSantiye]);
 
+  // Auth HENÜZ yüklenirken hasPermission false döner → "yetkiniz yok" yanlış görünmesin; önce yüklemeyi bekle.
+  if (authYukleniyor) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
   if (!yGor) {
     return <div className="text-center py-16 text-gray-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
   }

@@ -253,6 +253,10 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap, ka
   const etiketGorunurluk = () => map.getContainer().classList.toggle("etiketleri-gizle", map.getZoom() < ETIKET_MIN_ZOOM);
   map.on("zoomend", etiketGorunurluk);
   etiketGorunurluk();
+  // KML noktaları SVG renderer ile çizilir → her nokta bir DOM <path> olur, "kml-nokta" className/CSS
+  // gizleme (uzaklaşınca display:none) çalışır. Harita preferCanvas:true olunca circleMarker'lar canvas'a
+  // gider ve className uygulanmaz (canvas'ta DOM yok) → uzaklaşınca noktalar gizlenmezdi. Bu renderer onu çözer.
+  const kmlNoktaRenderer = L.svg({ pane: KML_PANE });
   // Tıklanan yolu vurgula — seçili yol KIRMIZI + kalınlaşır (baştan sona belli olur). Başka yola
   // tıklayınca öncekisi eskiye döner; aynı yola tekrar tıklayınca seçim kalkar (toggle).
   const SECIM_RENK = "#ff2d2d";
@@ -283,7 +287,7 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap, ka
         if (g.tip === "nokta") {
           const p = g.noktalar[0];
           if (!p) continue;
-          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1, pane: KML_PANE, className: "kml-nokta" })
+          const m = L.circleMarker(p, { radius: kalinlik + 2, color: "#fff", weight: 2, fillColor: k.renk, fillOpacity: 1, pane: KML_PANE, className: "kml-nokta", renderer: kmlNoktaRenderer })
             .addTo(map).bindPopup(baslik);
           const tt = tipTooltip("top"); if (tt) m.bindTooltip(etiket, tt);
         } else if (g.tip === "alan") {
