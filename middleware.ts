@@ -2,7 +2,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
-import { pathToModuleKey, pathToAction, hasPermission } from "@/lib/permissions";
+import { pathToModuleKey, pathToAction, hasPermission, type Rol } from "@/lib/permissions";
 
 export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,14 +28,19 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // getUser auth hatası verebilir (Invalid Refresh Token, Auth session missing).
-  // Sessiz şekilde user=null kabul et — sonsuz redirect döngüsünü önle.
+  // Supabase çağrısı takılırsa middleware 25 sn bekleyip 504 (MIDDLEWARE_INVOCATION_TIMEOUT) veriyordu.
+  // Her çağrıyı kısa timeout'a sar → takılırsa HIZLI düş (login akışı kilitlenmesin, 504 olmasın).
+  const zamanAsimi = <T,>(p: PromiseLike<T>, ms = 6000): Promise<T> =>
+    Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error("supabase-timeout")), ms))]);
+
+  // getUser auth hatası verebilir (Invalid Refresh Token, Auth session missing) ya da takılabilir.
+  // Sessiz şekilde user=null kabul et — sonsuz redirect döngüsünü ve 504'ü önle.
   let user = null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await zamanAsimi(supabase.auth.getUser());
     user = data.user;
   } catch {
-    // Sessizce devam et — user null olarak kalacak
+    // Sessizce devam et — user null kalacak (timeout ya da auth hatası)
   }
 
   // Oturum yoksa dashboard'a erişimi engelle
@@ -61,11 +66,17 @@ export async function middleware(request: NextRequest) {
   if (user && request.nextUrl.pathname.startsWith("/dashboard") && supabaseServiceKey) {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: kullanici } = await supabaseAdmin
-      .from("kullanicilar")
-      .select("rol, aktif, izinler")
-      .eq("auth_id", user.id)
-      .single();
+    // Sorgu takılırsa middleware'i 504'e sokmamak için timeout; hata/timeout → kullanici null (geç).
+    type KullaniciSatir = { rol: Rol; aktif: boolean; izinler: unknown };
+    let kullanici: KullaniciSatir | null = null;
+    try {
+      const { data } = await zamanAsimi(
+        supabaseAdmin.from("kullanicilar").select("rol, aktif, izinler").eq("auth_id", user.id).single()
+      );
+      kullanici = (data ?? null) as KullaniciSatir | null;
+    } catch {
+      // timeout/hata → profil kontrolünü atla (sayfa kendi içinde de kontrol eder)
+    }
 
     // Kullanıcı profili bulunamazsa (tablo henüz oluşturulmamış olabilir) geç
     if (kullanici) {

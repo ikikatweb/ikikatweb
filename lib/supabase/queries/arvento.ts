@@ -35,22 +35,13 @@ export async function getGuzergahByTarih(tarih: string): Promise<AracArventoGuze
   return (data ?? []) as AracArventoGuzergah[];
 }
 
-// Tarih aralığındaki güzergahlar — aynı plakanın TÜM günlerinin noktaları birleştirilir
-// (dönem boyunca aracın gittiği tüm yollar tek güzergah olarak). bas===bitis → tek gün.
-export async function getGuzergahByRange(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
-  if (!bas || !bitis) return [];
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("arac_arvento_guzergah")
-    .select("*")
-    .gte("rapor_tarihi", bas)
-    .lte("rapor_tarihi", bitis)
-    .order("rapor_tarihi")
-    .order("plaka");
-  if (error) throw error;
-  const rows = (data ?? []) as AracArventoGuzergah[];
+// Güzergah satırlarını PLAKA bazında birleştir (TÜM günlerin noktalarını tek diziye, tarih sırasıyla).
+// OMURGA/referans/chip çizimi için (dönem boyunca aracın gittiği tüm yollar tek hat). DİKKAT: damper
+// sınıflaması GÜN-BAZLI olmalı (plaka|tarih) → bunun için ham gün-bazlı satırlar kullanılır, bu DEĞİL.
+export function birlestirGuzergahPlaka(rows: AracArventoGuzergah[]): AracArventoGuzergah[] {
+  const sirali = [...rows].sort((a, b) => String(a.rapor_tarihi ?? "").localeCompare(String(b.rapor_tarihi ?? "")));
   const m = new Map<string, AracArventoGuzergah>();
-  for (const r of rows) {
+  for (const r of sirali) {
     const ex = m.get(r.plaka);
     if (!ex) {
       m.set(r.plaka, { ...r, noktalar: [...(r.noktalar ?? [])] });
@@ -64,6 +55,31 @@ export async function getGuzergahByRange(bas: string, bitis: string): Promise<Ar
     }
   }
   return Array.from(m.values());
+}
+
+// Tarih aralığındaki güzergahlar — GÜN-BAZLI satır döner (her gün ayrı satır). Damper sınıflaması rotayı
+// plaka|tarih ile arar; birleştirilmiş TEK satır verilince ilk-gün dışındaki günler rota bulamayıp damperler
+// yanlış (arıza / sahte-gerçek) çıkıyordu → gün-bazlı dönüyoruz. Omurga/chip isteyen yerler
+// birlestirGuzergahPlaka() ile kendileri birleştirir. bas===bitis → tek gün.
+export async function getGuzergahByRange(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
+  if (!bas || !bitis) return [];
+  const supabase = getSupabase();
+  // Geniş aralıkta tek sorgu (YOĞUN noktalar = SpeedReport) DB statement-timeout veriyordu → "veri yok".
+  // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla (hız/timeout dengesi).
+  const gunler: string[] = [];
+  const d = new Date(bas + "T00:00:00"); const son = new Date(bitis + "T00:00:00");
+  for (; d <= son; d.setDate(d.getDate() + 1)) {
+    gunler.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  if (gunler.length === 0) gunler.push(bas);
+  const rows: AracArventoGuzergah[] = [];
+  for (let i = 0; i < gunler.length; i += 8) {            // 8'erli paralel → geniş aralık daha az turda gelir
+    const grup = gunler.slice(i, i + 8);
+    const sonuclar = await Promise.all(grup.map((g) =>
+      supabase.from("arac_arvento_guzergah").select("*").eq("rapor_tarihi", g).order("plaka")));
+    for (const r of sonuclar) { if (r.error) throw r.error; for (const row of (r.data ?? []) as AracArventoGuzergah[]) rows.push(row); }
+  }
+  return rows;
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için

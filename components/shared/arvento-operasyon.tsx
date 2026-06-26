@@ -7,7 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
@@ -126,6 +126,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const tumGuzergah = useMemo(() => (izinSet ? tumGuzergahHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : tumGuzergahHam), [tumGuzergahHam, izinSet]);
+  // OMURGA/chip için plaka-bazında birleşik (TÜM günler tek hat). Damper sınıflaması ise GÜN-BAZLI
+  // tumGuzergah kullanır (rotaByGun, plaka|tarih) — birleşik kullanılırsa günler karışıp damper bozulur.
+  const tumGuzergahBirlesik = useMemo(() => birlestirGuzergahPlaka(tumGuzergah), [tumGuzergah]);
   const raporlar = useMemo(() => (izinSet ? raporlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : raporlarHam), [raporlarHam, izinSet]);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -173,8 +176,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   }, [bas, bitis, refreshKey, sermeMi]);
 
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
-  const greyderler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
-  const silindirler = useMemo(() => tumGuzergah.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergah, sekmeMap, atananSekmeler]);
+  const greyderler = useMemo(() => tumGuzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergahBirlesik, sekmeMap, atananSekmeler]);
+  const silindirler = useMemo(() => tumGuzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "sikistirma", k.plaka)), [tumGuzergahBirlesik, sekmeMap, atananSekmeler]);
 
   // Sıkıştırma chip listesi: güzergahı olan silindirler + rapordaki silindirler (o gün hareketsiz
   // olsa da plakası görünsün). Plakaya göre tekilleştirilir; km güzergahtan/rapordan gelir.
@@ -243,10 +246,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const aracaOdaklan = useCallback((plaka: string) => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    const rota = tumGuzergah.find((k) => plakaNorm(k.plaka) === plakaNorm(plaka))?.noktalar;
+    const rota = tumGuzergahBirlesik.find((k) => plakaNorm(k.plaka) === plakaNorm(plaka))?.noktalar;
     if (!aracKonumunaOdaklan(map, plaka, canliVeriRef.current, rota, plakaNorm))
       toast.error("Aracın konumu bulunamadı (canlı kapalı ve güzergah yok).", { duration: toastSuresi() });
-  }, [tumGuzergah]);
+  }, [tumGuzergahBirlesik]);
 
   // Kamyon damperleri (serme'de ortada gösterilir)
   // Damper noktaları — YALNIZ GERÇEK (Stabilize ile aynı sınıflama): mükerrer + arıza ayıklanır,
@@ -332,7 +335,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+      map = L.map(mapRef.current, { preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // preferCanvas: çok çizgide pan/zoom akıcı (canvas); tekerlek başına AZ zoom
         .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin

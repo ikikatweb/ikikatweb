@@ -4,8 +4,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
+import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
+import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -31,7 +33,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -41,8 +43,43 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const guzergahlar = useMemo(() => (izinSet ? guzergahlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : guzergahlarHam), [guzergahlarHam, izinSet]);
+  // OMURGA çizimi/KML/özet için plaka-bazında birleşik (TÜM günler tek hat). Damper sınıflaması ise
+  // GÜN-BAZLI guzergahlar kullanır (rotaByGun, plaka|tarih) — birleşik verilirse günler karışıp damper bozulur.
+  const guzergahBirlesik = useMemo(() => birlestirGuzergahPlaka(guzergahlar), [guzergahlar]);
   const raporlar = useMemo(() => (izinSet ? raporlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : raporlarHam), [raporlarHam, izinSet]);
   const [loading, setLoading] = useState(true);
+
+  // Damper noktaları — YALNIZ GERÇEK (Stabilize/Serme ile AYNI sınıflama): mükerrer + arıza ayıklanır,
+  // manuel override uygulanır, gösterilen konum o saatteki DURMUŞ rota noktasına oturtulur. Tümü sekmesi
+  // önceden TÜM damperleri (arıza/mükerrer dahil) çiziyordu — artık yalnız gerçekleri gösterir.
+  const damperKoordlu = useMemo<(DamperOlay & { plaka: string })[]>(() => {
+    const pencSn = Math.max(0, mukerrerDk) * 60;
+    const ocak = (ocakLat != null && ocakLng != null) ? { lat: ocakLat, lng: ocakLng } : null;
+    const rotaByGun = new Map<string, { lat: number; lng: number; saat?: string | null; hiz?: number | null }[]>();
+    for (const g of guzergahlar) {
+      const key = `${plakaNorm(g.plaka)}|${g.rapor_tarihi}`;
+      const arr = rotaByGun.get(key) ?? [];
+      if (Array.isArray(g.noktalar)) for (const p of rotaTemizle(g.noktalar)) if (p.lat != null && p.lng != null) arr.push(p);
+      rotaByGun.set(key, arr);
+    }
+    const out: (DamperOlay & { plaka: string })[] = [];
+    for (const r of raporlar) {
+      const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
+      if (!olaylar.length) continue;
+      const rota = rotaByGun.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}`) ?? [];
+      const sinifli = arizaIsaretle(mukerrerIsaretle(olaylar, pencSn, mukerrerYaricap), rota, ocak, ocakYaricap);
+      for (const o of sinifli) {
+        const ov = damperSinif?.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}|${o.saat ?? ""}`);
+        let mk = o.mukerrer, ar = o.ariza;
+        if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
+        if (!mk && !ar && o.lat != null && o.lng != null) {
+          const [la, ln] = damperDurakKonumu(rota, o.saat) ?? [o.lat, o.lng];
+          out.push({ ...o, lat: la, lng: ln, plaka: r.plaka });
+        }
+      }
+    }
+    return out;
+  }, [raporlar, guzergahlar, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif]);
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -81,12 +118,11 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
 
   // Katman özeti (kaç greyder / silindir çizgisi, kaç damper)
   const ozet = useMemo(() => {
-    const greyder = guzergahlar.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka)).length;
-    const silindir = guzergahlar.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
-    let damper = 0;
-    for (const r of raporlar) for (const o of (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[]) if (o.lat != null && o.lng != null) damper++;
+    const greyder = guzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka)).length;
+    const silindir = guzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
+    const damper = damperKoordlu.length; // yalnız gerçek damper sayısı
     return { greyder, silindir, damper };
-  }, [guzergahlar, raporlar, sekmeMap, atananSekmeler]);
+  }, [guzergahBirlesik, damperKoordlu, sekmeMap, atananSekmeler]);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
@@ -96,7 +132,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+      map = L.map(mapRef.current, { preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // preferCanvas: çok çizgide pan/zoom akıcı (canvas); tekerlek başına AZ zoom
         .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
@@ -134,8 +170,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     if (!map || !grup || !L) return;
     grup.clearLayers();
     const bounds: [number, number][] = [];
-    // Güzergah çizgileri — sınıfa göre operasyon rengi/stili
-    guzergahlar.forEach((k) => {
+    // Güzergah çizgileri — sınıfa göre operasyon rengi/stili (plaka-bazında BİRLEŞİK → tek hat/araç)
+    guzergahBirlesik.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
@@ -155,14 +191,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
       for (const ll of latlngs) bounds.push(ll);
     });
-    // Damper noktaları (Stabilize) — turuncu yuvarlak
-    raporlar.forEach((r) => {
-      const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
-      olaylar.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
-        L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(OPERASYONLAR.stabilize.renk, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
-          .addTo(grup).bindPopup(`<b>🔻 ${r.plaka}</b><br>Stabilize (damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
-        bounds.push([o.lat as number, o.lng as number]);
-      });
+    // Damper noktaları (Stabilize) — turuncu yuvarlak. YALNIZ GERÇEK (mükerrer/arıza ayıklanmış).
+    damperKoordlu.forEach((o) => {
+      if (o.lat == null || o.lng == null) return;
+      L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(OPERASYONLAR.stabilize.renk, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
+        .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b><br>Stabilize (gerçek damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
+      bounds.push([o.lat as number, o.lng as number]);
     });
     // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
@@ -174,14 +208,14 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, guzergahlar, raporlar, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
+  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const kmlRenk = (hex: string) => { const h = hex.replace("#", ""); return `ff${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`; };
     let placemarks = "";
-    guzergahlar.forEach((k) => {
+    guzergahBirlesik.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return;
       const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
@@ -199,13 +233,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><Style><LineStyle><color>${kmlRenk(def.renk)}</color><width>4</width></LineStyle></Style><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
       });
     });
-    raporlar.forEach((r) => {
-      ((Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[])
-        .filter((o) => o.lat != null && o.lng != null)
-        .forEach((o) => {
-          placemarks += `
-    <Placemark><name>${esc(r.plaka)} damper</name><description>${esc(o.saat ?? "")}</description><styleUrl>#damper</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`;
-        });
+    damperKoordlu.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
+      placemarks += `
+    <Placemark><name>${esc(o.plaka)} damper</name><description>${esc(o.saat ?? "")}</description><styleUrl>#damper</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`;
     });
     if (!placemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `Tumu ${bas === bitis ? bas : `${bas}_${bitis}`}`;

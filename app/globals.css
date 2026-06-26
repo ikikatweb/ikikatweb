@@ -311,9 +311,13 @@ thead th {
   }
   body {
     @apply bg-background text-foreground;
+    /* Mobilde "aşağı çekince yenile" (pull-to-refresh) kapalı — sayfa en üstteyken haritayı dikey
+       sürüklemek yanlışlıkla sayfayı yenilemesin. Normal kaydırma korunur. */
+    overscroll-behavior-y: contain;
   }
   html {
     @apply font-sans;
+    overscroll-behavior-y: contain;
     /* iOS Safari'de yatay çevirince metni otomatik büyütme — dikey'e dönünce
        eski boyutuna yumuşak şekilde geri döner. Tüm tarayıcılar için */
     -webkit-text-size-adjust: 100%;

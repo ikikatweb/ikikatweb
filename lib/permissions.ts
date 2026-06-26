@@ -88,7 +88,7 @@ export function pathToAction(pathname: string): IzinAksiyonu {
   return "goruntule";
 }
 
-type Rol = "yonetici" | "santiye_admin" | "kisitli";
+export type Rol = "yonetici" | "santiye_admin" | "kisitli";
 
 // İzin kontrolü
 // Hem "kisitli" hem "santiye_admin" izin matrisinden geçer; aralarındaki fark

@@ -32,18 +32,6 @@ export function parcalarUzunlukKm(parcalar: [number, number][][]): number {
   return metre / 1000;
 }
 
-// Bir parçayı (hareketli ortalama ile) yumuşatır.
-function yumusat(parca: [number, number][], pencere = 2): [number, number][] {
-  if (parca.length <= 2) return parca;
-  const out: [number, number][] = [];
-  for (let i = 0; i < parca.length; i++) {
-    let sl = 0, sg = 0, c = 0;
-    for (let j = Math.max(0, i - pencere); j <= Math.min(parca.length - 1, i + pencere); j++) { sl += parca[j][0]; sg += parca[j][1]; c++; }
-    out.push([sl / c, sg / c]);
-  }
-  return out;
-}
-
 // Rotayı SABİT ADIMLA (adimM) yol boyunca yeniden örnekler: her adimM metrede bir nokta üretir.
 // Seyrek bölümleri SIKLAŞTIRIR **ve** yoğun bölümleri SEYRELTİR → sonuç GPS nokta yoğunluğundan
 // BAĞIMSIZ olur. Böylece canlı (sık yoklama) ve rapor (seyrek export) rota AYNI omurgayı/reglajı verir;
@@ -115,52 +103,17 @@ export function kapsananYolKm(noktalar: { lat: number; lng: number }[], gridM = 
   return metre / 1000;
 }
 
-// Dijkstra: bas düğümünden en uzak düğüm + önceki-düğüm haritası (yol geri izleme için).
-function enUzak(bas: string, komsu: Map<string, Set<string>>, dist: (a: string, b: string) => number) {
-  const d = new Map<string, number>([[bas, 0]]);
-  const prev = new Map<string, string>();
-  const pq: [number, string][] = [[0, bas]];
-  while (pq.length) {
-    pq.sort((x, y) => x[0] - y[0]);
-    const [du, u] = pq.shift()!;
-    if (du > (d.get(u) ?? Infinity)) continue;
-    for (const v of komsu.get(u) ?? []) {
-      const nd = du + dist(u, v);
-      if (nd < (d.get(v) ?? Infinity)) { d.set(v, nd); prev.set(v, u); pq.push([nd, v]); }
-    }
-  }
-  let far = bas, fd = 0;
-  for (const [n, dd] of d) if (dd > fd) { fd = dd; far = n; }
-  return { far, prev };
-}
-
 // noktalar: zaman sırasına göre GPS noktaları.
-// esik: bir grid kenarı EN AZ kaç kez geçilmişse omurgaya dahil edilir (>= esik). Az geçilen sapmalar atılır.
+// esik: bir grid kenarı EN AZ kaç kez geçilmişse AĞA dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
-//
-// OTOMATİK KORİDOR GENİŞLETME: Verilen gridM ile omurga çıkmazsa (git-gel çizgileri birbirinden
-// gridM'den daha geniş kaymışsa), koridoru kademeli büyütüp tekrar dener — böylece kullanıcı
-// "Yan Yana Çizgi Mesafesi"ni elle ayarlamadan da yayvan git-gel'ler tek çizgiye iner.
+// Çekirdek ≥eşik geçilen TÜM yol ağını (her kolu) çizer; hücre çapı (2×gridM) yan yana/git-gel şeritleri
+// tek merkez hatta indirir. Koridoru elle genişletmek için "Yan Yana Çizgi Mesafesi" (gridM) artırılır.
 export function sadelesGuzergah(
   noktalar: { lat: number; lng: number }[],
   esik: number,
   gridM = 12,
 ): SadelesSonuc {
-  if (esik < 1) return sadelesGuzergahCore(noktalar, esik, gridM);
-  // Birkaç koridor genişliğini dene; EN AZ PARÇALI (en bütün) sonucu seç. Böylece geniş
-  // koridorda yan yana kopuk parçalar tek sürekli omurgaya iner; eşitlikte daha detaylı olan.
-  let best: SadelesSonuc | null = null;
-  for (const carpan of [1, 1.5, 2, 3, 4]) {
-    const s = sadelesGuzergahCore(noktalar, esik, gridM * carpan);
-    if (s.parcalar.length === 0) continue;
-    if (best === null) { best = s; continue; }
-    const sN = s.parcalar.reduce((a, p) => a + p.length, 0);
-    const bN = best.parcalar.reduce((a, p) => a + p.length, 0);
-    if (s.parcalar.length < best.parcalar.length || (s.parcalar.length === best.parcalar.length && sN > bN)) {
-      best = s;
-    }
-  }
-  return best ?? sadelesGuzergahCore(noktalar, esik, gridM);
+  return sadelesGuzergahCore(noktalar, esik, gridM);
 }
 
 function sadelesGuzergahCore(
@@ -219,35 +172,31 @@ function sadelesGuzergahCore(
   }
   if (komsu.size === 0) return { parcalar: [], gosterilenSegment: 0, toplamSegment, maksGecis };
 
-  const dist = (a: string, b: string) => {
-    const [la1, ln1] = merkez(a), [la2, ln2] = merkez(b);
-    return Math.hypot((la2 - la1) * METRE_DERECE, (ln2 - ln1) * METRE_DERECE * cosOrt);
-  };
-
-  // Her bağlı bölge için omurga (en uzun yol) çıkar
-  const ziyaret = new Set<string>();
+  // ── ≥eşik geçilen TÜM AĞI çiz (diameter/en-uzun-yol DEĞİL) → bir bölgedeki her yol kolu yakalanır
+  // (eski yöntem yalnız en uzun kolu çiziyordu, yan kolları atıyordu). Kenarları polyline'lara dön: uç
+  // (derece 1) / kavşak (derece ≥3) düğümlerinden başla, derece-2 zincirleri izle; kalan kapalı döngüler. ──
+  const derece = (k: string) => komsu.get(k)?.size ?? 0;
+  const kenarKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const kullanildi = new Set<string>();
   const parcalar: [number, number][][] = [];
-  for (const bas of komsu.keys()) {
-    if (ziyaret.has(bas)) continue;
-    // bileşeni topla (DFS)
-    const bilesen: string[] = [];
-    const yigin = [bas];
-    ziyaret.add(bas);
-    while (yigin.length) {
-      const u = yigin.pop()!;
-      bilesen.push(u);
-      for (const v of komsu.get(u) ?? []) if (!ziyaret.has(v)) { ziyaret.add(v); yigin.push(v); }
+  const izle = (bas: string) => {
+    for (const ilk of (komsu.get(bas) ?? [])) {
+      if (kullanildi.has(kenarKey(bas, ilk))) continue;
+      const yol = [bas]; let onceki = bas, cur = ilk;
+      kullanildi.add(kenarKey(onceki, cur)); yol.push(cur);
+      while (derece(cur) === 2) {
+        const next = [...(komsu.get(cur) ?? [])].find((n) => n !== onceki && !kullanildi.has(kenarKey(cur, n)));
+        if (next === undefined) break;
+        kullanildi.add(kenarKey(cur, next)); yol.push(next); onceki = cur; cur = next;
+      }
+      // yumuşat YOK: kısa zincirleri büzüp kapsamayı düşürüyordu; hücre merkezleri (merkez) zaten ortalanmış.
+      if (yol.length >= 2) parcalar.push(yol.map(merkez));
     }
-    if (bilesen.length < 3) continue; // çok küçük gürültü bölgesi → atla
-    // Çift-Dijkstra ile diameter (yolun iki ucu) ve aralarındaki yol
-    const u1 = enUzak(bilesen[0], komsu, dist).far;
-    const r = enUzak(u1, komsu, dist);
-    const u2 = r.far;
-    const yol: string[] = [];
-    let cur: string | undefined = u2;
-    while (cur !== undefined) { yol.push(cur); cur = r.prev.get(cur); }
-    if (yol.length > 1) parcalar.push(yumusat(yol.map(merkez)));
-  }
+  };
+  for (const k of komsu.keys()) { const d = derece(k); if (d === 1 || d >= 3) izle(k); } // uç + kavşak kolları
+  for (const k of komsu.keys()) izle(k); // kalan kapalı döngüler (hepsi derece 2)
 
-  return { parcalar, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
+  // Çok kısa spur/gürültü parçalarını at (≤ ~1 hücre)
+  const temiz = parcalar.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.012, (gridM * 1.2) / 1000));
+  return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }

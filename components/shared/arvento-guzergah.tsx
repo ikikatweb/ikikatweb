@@ -57,8 +57,9 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, renkler, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
+  const reglajRenkV = renkler?.reglaj ?? "#2563eb"; // BİRLEŞİK reglaj omurgası tek renk (makine bazlı değil)
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
@@ -252,7 +253,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+      map = L.map(mapRef.current, { preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // preferCanvas: çok çizgide pan/zoom akıcı (canvas); tekerlek başına AZ zoom
         .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
@@ -291,52 +292,50 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     grup.clearLayers();
     const tumBounds: [number, number][] = [];
     const tekMi = secilenler.length === 1;
-    for (const kayit of secilenler) {
-      const noktalar = (kayit.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-      const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
-      if (latlngs.length === 0) continue;
-      const renk = renkAl(kayit.plaka);
-      // Çizgiye tıklanınca bilgi popup'ı (kartla aynı km: omurga varsa onu, yoksa toplam_mesafe).
-      // Çizgi ince → çizgiye tıkla=bu popup, alana tıkla=alttaki KML seçilir (ikisi de çalışır).
-      const omurgaKm = omurgaKmMap.get(kayit.plaka);
-      const kmStr = omurgaKm != null
-        ? `${omurgaKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km yol`
-        : `${kayit.toplam_mesafe ?? 0} km`;
-      const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kmStr} · ${noktalar.length} nokta`;
-      if (etkinTekrar >= 1) {
-        const cizgiler = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar;
-        if (cizgiler.length) {
-          // Her parça AYRI tıklanabilir polyline → tıklanınca YALNIZ o çizginin uzunluğu (toplam ikincil).
-          for (const parca of cizgiler) {
-            const uz = parcalarUzunlukKm([parca]);
-            const parcaPop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>`
-              + `Bu çizgi: <b>${uz.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</b>`
-              + `<br><span style="opacity:.65">Toplam: ${kmStr} · ${noktalar.length} nokta</span>`;
-            const cizgi = L.polyline(parca, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(parcaPop);
-            // Tıklayınca seçili çizgi belirginleşsin (kalınlaşır), popup kapanınca eski haline döner.
-            cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
-            cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));
-          }
+    if (etkinTekrar >= 1) {
+      // ── BİRLEŞİK REGLAJ OMURGASI ──
+      // Tüm seçili greyderlerin (tüm günler) noktaları TEK havuzda birleşir → tek omurga çıkarılır.
+      // Makine fark etmez: bir yolda TOPLAM geçiş (hangi greyder olursa olsun) ≥ eşik ise tek çizgiye iner.
+      // Aynı yolu farklı greyderler taramış olabilir; reglaj birleşik sayılır. Tek renk (reglajRenkV).
+      const havuz: { lat: number; lng: number }[] = [];
+      for (const kayit of secilenler) {
+        for (const p of (kayit.noktalar ?? [])) {
+          if (p.lat != null && p.lng != null) { havuz.push({ lat: p.lat, lng: p.lng }); tumBounds.push([p.lat, p.lng]); }
         }
-        // else: omurga yok (yol eşik kadar tekrar taranmamış) → reglaj sayılmaz → harita çizgisi de YOK.
-      } else {
+      }
+      const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe).parcalar;
+      const toplamKm = parcalarUzunlukKm(cizgiler);
+      for (const parca of cizgiler) {
+        const uz = parcalarUzunlukKm([parca]);
+        const parcaPop = `<b>Reglaj (birleşik)</b><br>Bu çizgi: <b>${uz.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</b>`
+          + `<br><span style="opacity:.65">Toplam reglaj: ${toplamKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km · ${secilenler.length} greyder · eşik ${etkinTekrar}</span>`;
+        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9 }).addTo(grup).bindPopup(parcaPop);
+        cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
+        cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
+      }
+      // else: omurga yok (hiçbir yol eşik kadar taranmamış) → çizgi yok.
+    } else {
+      // ── HAM MOD (eşik < 1): her aracın izini AYRI çiz (kendi renginde) ──
+      for (const kayit of secilenler) {
+        const noktalar = (kayit.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+        const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
+        if (latlngs.length === 0) continue;
+        const renk = renkAl(kayit.plaka);
+        const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kayit.toplam_mesafe ?? 0} km · ${noktalar.length} nokta`;
         L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })
               .addTo(grup).bindPopup(`${p.saat ?? ""}<br>Hız: ${p.hiz ?? "—"} km/s`);
           }
+          const ilk = latlngs[0], son = latlngs[latlngs.length - 1];
+          L.circleMarker(ilk, { radius: 8, color: "#15803d", fillColor: "#22c55e", fillOpacity: 0.9, weight: 2 })
+            .addTo(grup).bindPopup(`<b>BAŞLANGIÇ</b><br>${noktalar[0].saat ?? ""}`);
+          L.circleMarker(son, { radius: 8, color: "#991b1b", fillColor: "#ef4444", fillOpacity: 0.9, weight: 2 })
+            .addTo(grup).bindPopup(`<b>BİTİŞ</b><br>${noktalar[noktalar.length - 1].saat ?? ""}`);
         }
+        for (const ll of latlngs) tumBounds.push(ll);
       }
-      // Başlangıç/bitiş işareti sadece tek araç seçiliyken (çoklu seçimde kalabalık olmasın)
-      if (tekMi) {
-        const ilk = latlngs[0], son = latlngs[latlngs.length - 1];
-        L.circleMarker(ilk, { radius: 8, color: "#15803d", fillColor: "#22c55e", fillOpacity: 0.9, weight: 2 })
-          .addTo(grup).bindPopup(`<b>BAŞLANGIÇ</b><br>${noktalar[0].saat ?? ""}`);
-        L.circleMarker(son, { radius: 8, color: "#991b1b", fillColor: "#ef4444", fillOpacity: 0.9, weight: 2 })
-          .addTo(grup).bindPopup(`<b>BİTİŞ</b><br>${noktalar[noktalar.length - 1].saat ?? ""}`);
-      }
-      for (const ll of latlngs) tumBounds.push(ll);
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
@@ -348,7 +347,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, reglajKal, renkAl, gorunumRef, omurgaKmMap]);
+  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, reglajKal, reglajRenkV, renkAl, gorunumRef]);
 
   // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
   function exportKML() {

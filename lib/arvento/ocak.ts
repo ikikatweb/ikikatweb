@@ -141,6 +141,7 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
     if (mesafeMetre(p.lat, p.lng, ocak.lat, ocak.lng) <= yaricapM) ocakSnArr.push(p.sn);
     if ((p.hiz ?? 99) <= 3) duraklar.push({ sn: p.sn, lat: p.lat, lng: p.lng });
   }
+  const durakSnArr = duraklar.map((d) => d.sn); // DURMUŞ (≤3 km/h) noktaların SN'leri (rs sıralı → sıralı)
   const ilkBuyuk = (arr: number[], x: number): number => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] > x) hi = m; else lo = m + 1; } return lo; };
   const aralikta = (arr: number[], alt: number, ust: number): boolean => { const i = ilkBuyuk(arr, alt); return i < arr.length && arr[i] <= ust; }; // (alt, ust] içinde eleman var mı
   const enYakinDurak = (sn: number, maxSn: number): { lat: number; lng: number } | null => {
@@ -156,9 +157,17 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   const arizaSet = new Set<T>();
   const dogrulanmamisSet = new Set<T>();
   let sonGercekSn = -1; // -1 → ilk pencere gün başından
+  const HAREKET_PENCERE_SN = 600;    // ±10 dk: döküm anına yakın duruş aranır (gerçek dökümlerin %99'u bu pencerede durur)
   for (const { o, sn } of sirali) {
     if (o.mukerrer) continue;        // mükerrer zaten dışlandı
     if (sn == null) continue;        // zamansız olay → işaretleme (gerçek say)
+    // HAREKETLİ DÖKÜM → ARIZA: damper araç DURUNCA iner ("hareketli damper kaldırılmaz"). Damper saatine
+    // ±10 dk içinde rota noktası VAR ama hiçbiri DURMUŞ (≤3 km/h) değilse araç hareket halindeydi (transit/
+    // sahte tetik) → arıza. GPS hiç yoksa ATLANIR (duruş doğrulanamaz; devir yükü/rota-yok mantığına bırakılır
+    // → GPS'siz olanlar bu kuralla elenmez). Pencere ±10 dk: gerçek dökümlerin %99'u burada durur, yalnız hiç
+    // durmayan (≥9 km/h sürüş) damperler düşer.
+    const hAlt = sn - HAREKET_PENCERE_SN - 1, hUst = sn + HAREKET_PENCERE_SN;
+    if (aralikta(rotaSnArr, hAlt, hUst) && !aralikta(durakSnArr, hAlt, hUst)) { arizaSet.add(o); continue; }
     // OCAKTA DÖKÜM → ARIZA: damperin GÖSTERİLEN konumu (o saatteki DURMUŞ rota noktası; yoksa damper
     // koordinatı) ocak çemberi içindeyse araç ocakta döktü → gerçek teslim değil. sonGercek güncellenmez.
     const d = enYakinDurak(sn, 420);

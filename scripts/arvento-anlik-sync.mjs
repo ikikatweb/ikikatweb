@@ -182,10 +182,11 @@ async function birKez() {
   const anlikSatir = satirlar.map(({ odo, ...rest }) => rest); // eslint-disable-line no-unused-vars
   const { error } = await sb.from("arvento_anlik").upsert(anlikSatir, { onConflict: "node" });
   if (error) throw new Error(`Supabase yazma hatası: ${error.message}`);
-  // Anlık konumları bugünün güzergahına da işle (Reglaj/Serme/Sıkıştırma/Tümü haritaları okur)
-  let rotaSayi = 0;
-  try { rotaSayi = await rotaBirik(sb, satirlar); } catch (e) { console.error("  rota uyarı:", e.message); }
-  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı, ${rotaSayi} araç rotası güncellendi.`);
+  // ROTA ARTIK BURADA YAZILMIYOR. Sparse (dakikada 1 nokta) biriktirme hem düşük kaliteliydi hem de
+  // (eksik okuma / iki süreç) rota uzunluğunu DÜŞÜRÜP geri çıkarıyordu. Rota (güzergah) artık YOĞUN +
+  // DOĞRU + DALGALANMAYAN şekilde SpeedReport'tan geliyor (scripts/arvento-speed-sync.mjs, bugünü periyodik
+  // çeker → her çalışma o ana kadarki TAM izi yazar, idempotent). anlik yalnız CANLI KONUM (arvento_anlik) yazar.
+  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı (rota: SpeedReport senkronundan).`);
 }
 
 // Yenileme aralığı (sn): UI'daki "Canlı Yenileme Süresi" (arvento_ayarlar.canli_yenileme_sn)

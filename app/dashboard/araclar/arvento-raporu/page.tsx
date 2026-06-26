@@ -123,8 +123,17 @@ export default function ArventoRaporPage() {
 
   const [loading, setLoading] = useState(true);
   // Tarih aralığı — başlangıç & bitiş; varsayılan ikisi de bugün (tek gün). Manuel değiştirilebilir.
+  // INPUT = anlık (kullanıcı yazarken responsive); baslangic/bitis = DEBOUNCE'lu (yükleme bunları kullanır).
+  // Native date input her tuşta onChange tetikler ("20" yazarken "2"de tarih oluşuyordu) → debounce ile
+  // yazma bitene kadar yükleme TETİKLENMEZ. Tüm yükleme/effect'ler eskisi gibi baslangic/bitis'e bağlı.
+  const [baslangicInput, setBaslangicInput] = useState<string>(trBugun());
+  const [bitisInput, setBitisInput] = useState<string>(trBugun());
   const [baslangic, setBaslangic] = useState<string>(trBugun());
   const [bitis, setBitis] = useState<string>(trBugun());
+  useEffect(() => {
+    const id = setTimeout(() => { setBaslangic(baslangicInput); setBitis(bitisInput); }, 500);
+    return () => clearTimeout(id);
+  }, [baslangicInput, bitisInput]);
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
   const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]); // YAKINLIK izin filtresi için rota noktaları
   // Ham günlük kayıtlar (tüm geçmiş) — ortalama hesabı için. Bir kez çekilir.
@@ -448,7 +457,7 @@ export default function ArventoRaporPage() {
       if (data.ok) {
         toast.success(`Mailden çekildi — ${data.mesaj}`, { duration: toastSuresi() });
         const yeniTarih: string | undefined = data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih ?? data.kontakGunler?.[0]?.tarih;
-        if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
+        if (yeniTarih) { setBaslangicInput(yeniTarih); setBitisInput(yeniTarih); } // debounce → baslangic/bitis → loadKayitlar
         else await loadKayitlar();
       } else {
         // ok:false → mail bulunamadı / işlenemedi gibi bilgilendirici durum
@@ -495,7 +504,7 @@ export default function ArventoRaporPage() {
       // İçe aktarılan ilk çalışma/damper günü (güzergah varsa onun günü) aralık olarak seçilsin
       const yeniTarih: string | undefined =
         data.guzergahGunler?.[0]?.tarih ?? data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih ?? data.kontakGunler?.[0]?.tarih;
-      if (yeniTarih) { setBaslangic(yeniTarih); setBitis(yeniTarih); } // effect loadKayitlar'ı tetikler
+      if (yeniTarih) { setBaslangicInput(yeniTarih); setBitisInput(yeniTarih); } // debounce → baslangic/bitis → loadKayitlar
       else await loadKayitlar();
       // Güzergah (Mesafe Bilgisi) yüklendiyse Reglaj'a geç + yenile
       if (data.guzergahGunler && data.guzergahGunler.length > 0) {
@@ -512,9 +521,9 @@ export default function ArventoRaporPage() {
 
   // Oklarla tek gün ileri-geri: başlangıç & bitiş aynı güne ayarlanır (referans = bitiş)
   function gunGez(delta: number) {
-    const yeni = gunEkle(bitis || baslangic, delta);
-    setBaslangic(yeni);
-    setBitis(yeni);
+    const yeni = gunEkle(bitisInput || baslangicInput, delta);
+    setBaslangicInput(yeni);
+    setBitisInput(yeni);
   }
 
   // ----- Harita katmanları (NetCAD/KML) -----
@@ -909,20 +918,20 @@ export default function ArventoRaporPage() {
         </button>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Başlangıç</Label>
-          <input type="date" value={baslangic} max={bitis || undefined}
-            onChange={(e) => setBaslangic(e.target.value)} className={selectClass} />
+          <input type="date" value={baslangicInput} max={bitisInput || undefined}
+            onChange={(e) => setBaslangicInput(e.target.value)} className={selectClass} />
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Bitiş</Label>
-          <input type="date" value={bitis} min={baslangic || undefined}
-            onChange={(e) => setBitis(e.target.value)} className={selectClass} />
+          <input type="date" value={bitisInput} min={baslangicInput || undefined}
+            onChange={(e) => setBitisInput(e.target.value)} className={selectClass} />
         </div>
         <button type="button" onClick={() => gunGez(1)}
           title="Sonraki gün (başlangıç = bitiş)" className="h-9 w-8 mb-px flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100">
           <ChevronRight size={16} />
         </button>
         {(baslangic !== trBugun() || bitis !== trBugun()) && (
-          <button type="button" onClick={() => { const b = trBugun(); setBaslangic(b); setBitis(b); }}
+          <button type="button" onClick={() => { const b = trBugun(); setBaslangicInput(b); setBitisInput(b); }}
             title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
         )}
       </div>
@@ -1006,7 +1015,7 @@ export default function ArventoRaporPage() {
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">

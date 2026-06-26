@@ -7,7 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
@@ -164,7 +164,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     [tumGuzergah],
   );
   // Referans çizgiler: greyder güzergahları (atama varsa "stabilize" ataması esas)
-  const greyderler = useMemo(() => tumGuzergahTemiz.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "stabilize", k.plaka)), [tumGuzergahTemiz, sekmeMap, atananSekmeler]);
+  // Reglaj referans omurgası için plaka-bazında BİRLEŞİK (TÜM günler tek hat). Damper sınıflaması
+  // (rotaByPlakaGun, plaka|tarih) ve kamyon izleri ise GÜN-BAZLI tumGuzergahTemiz kullanır.
+  const tumGuzergahTemizBirlesik = useMemo(() => birlestirGuzergahPlaka(tumGuzergahTemiz), [tumGuzergahTemiz]);
+  const greyderler = useMemo(() => tumGuzergahTemizBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "stabilize", k.plaka)), [tumGuzergahTemizBirlesik, sekmeMap, atananSekmeler]);
 
   // Çok günlük aralıkta aynı plaka birden çok satır gelebilir → plakaya göre BİRLEŞTİR
   // (damper olaylarını birleştir, km/hareket/damper sayısını topla). Tek satır/plaka kalır.
@@ -456,7 +459,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const L = (await import("leaflet")).default;
       if (iptal || !mapRef.current) return;
       leafletRef.current = L as unknown as typeof import("leaflet");
-      map = L.map(mapRef.current, { zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // tekerlek başına AZ zoom + ince adımlar
+      map = L.map(mapRef.current, { preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // preferCanvas: çok çizgide pan/zoom akıcı (canvas); tekerlek başına AZ zoom
         .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
