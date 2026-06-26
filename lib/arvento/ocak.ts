@@ -168,11 +168,13 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
     // durmayan (≥9 km/h sürüş) damperler düşer.
     const hAlt = sn - HAREKET_PENCERE_SN - 1, hUst = sn + HAREKET_PENCERE_SN;
     if (aralikta(rotaSnArr, hAlt, hUst) && !aralikta(durakSnArr, hAlt, hUst)) { arizaSet.add(o); continue; }
-    // OCAKTA DÖKÜM → ARIZA: damperin GÖSTERİLEN konumu (o saatteki DURMUŞ rota noktası; yoksa damper
-    // koordinatı) ocak çemberi içindeyse araç ocakta döktü → gerçek teslim değil. sonGercek güncellenmez.
+    // OCAKTA DÖKÜM → ARIZA: damperin DURMUŞ rota konumu VEYA HAM damper koordinatı ocak çemberi
+    // içindeyse araç ocakta döktü → gerçek teslim değil. (Yalnız durmuş konuma bakılırsa: ham koordinatı
+    // ocakta olup duruşu dışarıda kalan damper gerçek sayılıp ocak üstünde görünüyordu.) sonGercek güncellenmez.
     const d = enYakinDurak(sn, 420);
-    const kLat = d ? d.lat : o.lat, kLng = d ? d.lng : o.lng;
-    if (kLat != null && kLng != null && mesafeMetre(kLat as number, kLng as number, ocak.lat, ocak.lng) <= yaricapM) { arizaSet.add(o); continue; }
+    const ocaktaMi = (la: number | null | undefined, ln: number | null | undefined) =>
+      la != null && ln != null && mesafeMetre(la as number, ln as number, ocak.lat, ocak.lng) <= yaricapM;
+    if ((d && ocaktaMi(d.lat, d.lng)) || ocaktaMi(o.lat, o.lng)) { arizaSet.add(o); continue; }
     // DEVİR YÜKÜ — rota-yok kontrolünden ÖNCE (çünkü senaryo ZATEN "ocakta hat çekmiyor → sabah verisi yok"):
     // araç güne OCAKTA/OCAK AĞZINDA başlamış (gece yüklü park) + gün içinde ocağa YENİDEN giriyor (cycle
     // doğrulandı) + bu döküm o ilk girişten ÖNCE → önceki günden taşınan yükün teslimi → GERÇEK. Rota olsa da

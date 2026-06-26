@@ -566,11 +566,13 @@ export default function ArventoRaporPage() {
   // Gün bazlı ocak (haritada görünen çember) — ocaktaki iş makinelerini saptamak için.
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
   useEffect(() => {
-    if (!baslangic) { setGunOcak(null); return; }
+    // OCAK BİTİŞ gününe göre: geniş aralıkta başlangıç (ör. 01.06) ocak kaydından önce olabilir →
+    // getOcakForTarih null → yanlış ocak → ocaktaki damperler elenmiyordu. Bitişte gerçek ocak hep var.
+    if (!bitis) { setGunOcak(null); return; }
     let iptal = false;
-    getOcakForTarih(baslangic).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
+    getOcakForTarih(bitis).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
     return () => { iptal = true; };
-  }, [baslangic, guzergahRefresh]);
+  }, [bitis, guzergahRefresh]);
   // Damper MANUEL sınıf (override) — plakaNorm|tarih|saat → gerçek/mükerrer/arıza. Serme/Sıkıştırma'da
   // gerçek damper süzmek için (Stabilize ile aynı sınıflama).
   const [damperSinifMap, setDamperSinifMap] = useState<Map<string, DamperSinif>>(new Map());

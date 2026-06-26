@@ -249,13 +249,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // Marker sürüklenince O GÜN için kaydedilir → geçmiş günler kendi ocağını korur, etkilenmez.
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
   const [gunGiris, setGunGiris] = useState<{ lat: number; lng: number; lat2: number; lng2: number } | null>(null); // ocak girişi KAPI ÇİZGİSİ (A–B)
-  const basRef = useRef(bas); basRef.current = bas; // sürükleme anında güncel tarihi kullan
+  // OCAK işlemleri BİTİŞ gününe göre çözülür. Geniş aralıkta (ör. 01.06–26.06) başlangıç günü ocak
+  // KAYDINDAN ÖNCE olabilir (ilk ocak 10.06) → getOcakForTarih(bas)=null → yanlış/yedek ocak → ocaktaki
+  // damperler "ocakta döküm" sayılmayıp gerçek görünüyordu. Bitiş gününde gerçek ocak hep vardır.
+  const basRef = useRef(bitis); basRef.current = bitis; // ocak sürükleme/kayıt bitiş gününe yazar
   useEffect(() => {
     let iptal = false;
-    getOcakForTarih(bas).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
-    getGirisForTarih(bas).then((g) => { if (!iptal) setGunGiris(g); }).catch(() => { if (!iptal) setGunGiris(null); });
+    getOcakForTarih(bitis).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
+    getGirisForTarih(bitis).then((g) => { if (!iptal) setGunGiris(g); }).catch(() => { if (!iptal) setGunGiris(null); });
     return () => { iptal = true; };
-  }, [bas]);
+  }, [bitis]);
   // Çözünürlük: gün-ocağı → (eski global prop ocak) → otomatik tespit. useMemo: referans her render'da
   // değişmesin (yoksa sınıflama memo'ları ve harita çizimi her render tetiklenir = flicker).
   const ocak = useMemo<LatLng | null>(
@@ -539,7 +542,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
     for (const o of damperKoordlu) {
       // Damper saatine en yakın DURMUŞ rota noktasına (gerçek dökme yeri) oturt; yoksa ≤30 m yola / alarm-GPS.
-      const [lat, lng] = damperDurakKonumu(rotaByPlaka.get(plakaNorm(o.plaka)) ?? [], o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
+      // GÜN-BAZLI rota (plaka|tarih) kullan — plaka-bazlı havuz (tüm günler) kullanılırsa damper, BAŞKA bir
+      // günün aynı saatteki ocak-duruşuna oturup yanlışlıkla OCAĞA taşınıyordu (ham yeri km'lerce uzakta olsa bile).
+      const gunRotasi = rotaByPlakaGun.get(`${plakaNorm(o.plaka)}|${damperTarih(o)}`) ?? [];
+      const [lat, lng] = damperDurakKonumu(gunRotasi, o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
       const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
       const g = gruplar.get(anahtar);
       if (g) g.olaylar.push(o);
@@ -641,7 +647,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, rotaByPlaka, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
