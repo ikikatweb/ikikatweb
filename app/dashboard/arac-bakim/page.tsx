@@ -257,26 +257,31 @@ export default function AracBakimPage() {
   const seciliArac = useMemo(() => araclar.find((x) => x.id === dAracId) ?? null, [dAracId, araclar]);
   const seciliAracSayacTipi = useMemo(() => (seciliArac?.sayac_tipi ?? "km") as "km" | "saat", [seciliArac]);
   const seciliAracGuncelKm = seciliArac?.guncel_gosterge ?? null;
+  const MAKINE_BAKIM_ARALIK_SAAT = 250; // iş makinelerinde standart bakım aralığı: 250 saatte 1 bakım
 
   // Araç seçildiğinde mevcut km'yi araclar.guncel_gosterge'den otomatik doldur
   // (yalnızca yeni kayıt için — düzenlemede mevcut km'yi bozma).
   // ÖNEMLİ: yeni aracın km'si null/boş ise km alanı SIFIRLANIR (önceki araçtan kalan değer kalmasın).
+  // İŞ MAKİNESİ (sayac_tipi="saat") → sonraki bakım = güncel saat + 250 oto-önerilir (elle değiştirilebilir).
   useEffect(() => {
     if (!editId && seciliArac) {
-      setDKm(seciliAracGuncelKm != null ? String(seciliAracGuncelKm) : "");
+      const g = seciliAracGuncelKm;
+      setDKm(g != null ? String(g) : "");
+      if (seciliArac.sayac_tipi === "saat" && g != null) setDSonrakiKm(String(g + MAKINE_BAKIM_ARALIK_SAAT));
     }
   }, [dAracId, editId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sonraki bakım km durumu: geçti / yaklaştı / normal (yalnızca bakım)
+  // Sonraki bakım durumu: geçti / yaklaştı / normal (yalnızca bakım). Eşik birime göre: saat→25, km→500.
   const sonrakiKmDurum = useMemo(() => {
     if (dTip !== "bakim") return "normal" as const;
     const sonraki = dSonrakiKm ? parseInt(dSonrakiKm.replace(/\D/g, ""), 10) : null;
     const guncel = seciliAracGuncelKm;
     if (sonraki == null || guncel == null) return "normal" as const;
     if (guncel >= sonraki) return "gecti" as const;
-    if (sonraki - guncel <= 500) return "yaklasti" as const;
+    const yaklasikEsik = seciliAracSayacTipi === "saat" ? 50 : 500;
+    if (sonraki - guncel <= yaklasikEsik) return "yaklasti" as const;
     return "normal" as const;
-  }, [dTip, dSonrakiKm, seciliAracGuncelKm]);
+  }, [dTip, dSonrakiKm, seciliAracGuncelKm, seciliAracSayacTipi]);
 
   // Daha önce girilmiş servis/tamirci adlarını topla (autocomplete için)
   const servisTamirciOnerileri = useMemo(() => {
@@ -773,7 +778,7 @@ export default function AracBakimPage() {
                       : <span className="text-gray-300">—</span>}
                   </TableCell>
                   <TableCell className="px-2 text-center text-[10px]">
-                    {b.sonraki_bakim_km != null && <div>{b.sonraki_bakim_km.toLocaleString("tr-TR")} km</div>}
+                    {b.sonraki_bakim_km != null && <div>{b.sonraki_bakim_km.toLocaleString("tr-TR")} {b.araclar?.sayac_tipi === "saat" ? "sa" : "km"}</div>}
                     {b.sonraki_bakim_tarihi && <div>{formatTarih(b.sonraki_bakim_tarihi)}</div>}
                   </TableCell>
                   <TableCell className="px-2 text-center">

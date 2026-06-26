@@ -80,16 +80,17 @@ export async function GET(request: Request) {
   // ========== YAKLAŞAN ARAÇ BAKIMLARI ==========
   const { data: bakimlar } = await supabase
     .from("arac_bakim")
-    .select("arac_id, tip, bakim_tarihi, sonraki_bakim_km, sonraki_bakim_tarihi, araclar(plaka, marka, model, guncel_gosterge)")
+    .select("arac_id, tip, bakim_tarihi, sonraki_bakim_km, sonraki_bakim_tarihi, araclar(plaka, marka, model, guncel_gosterge, sayac_tipi)")
     .eq("tip", "bakim");
 
+  type AracMini = { plaka: string; marka: string | null; model: string | null; guncel_gosterge: number | null; sayac_tipi: "km" | "saat" | null };
   type BakimRow = {
     arac_id: string;
     tip: string;
     bakim_tarihi: string;
     sonraki_bakim_km: number | null;
     sonraki_bakim_tarihi: string | null;
-    araclar: { plaka: string; marka: string | null; model: string | null; guncel_gosterge: number | null } | { plaka: string; marka: string | null; model: string | null; guncel_gosterge: number | null }[] | null;
+    araclar: AracMini | AracMini[] | null;
   };
   const sonBakim = new Map<string, BakimRow>();
   for (const b of (bakimlar ?? []) as BakimRow[]) {
@@ -108,12 +109,16 @@ export async function GET(request: Request) {
     if (b.sonraki_bakim_tarihi) {
       kalanGun = Math.ceil((new Date(b.sonraki_bakim_tarihi + "T00:00:00").getTime() - bugunMs) / 86400000);
     }
-    const kmYaklasti = kmFark != null && kmFark <= 500;
+    // İş makinesi (sayac_tipi="saat") → birim "sa", yaklaşır eşik 50; normal araç → "km", 500.
+    const saatMi = arac.sayac_tipi === "saat";
+    const birim = saatMi ? "sa" : "km";
+    const sayacEsik = saatMi ? 50 : 500;
+    const kmYaklasti = kmFark != null && kmFark <= sayacEsik;
     const tarihYaklasti = kalanGun != null && kalanGun <= 30;
     if (kmYaklasti || tarihYaklasti) {
       const sebepler: string[] = [];
-      if (kmFark != null && kmFark <= 500) {
-        sebepler.push(kmFark < 0 ? `${Math.abs(kmFark).toLocaleString("tr-TR")} km geçti` : `${kmFark.toLocaleString("tr-TR")} km kaldı`);
+      if (kmFark != null && kmFark <= sayacEsik) {
+        sebepler.push(kmFark < 0 ? `${Math.abs(kmFark).toLocaleString("tr-TR")} ${birim} geçti` : `${kmFark.toLocaleString("tr-TR")} ${birim} kaldı`);
       }
       if (kalanGun != null && kalanGun <= 30) {
         sebepler.push(kalanGun < 0 ? `${Math.abs(kalanGun)} gün geçti` : `${kalanGun} gün kaldı`);

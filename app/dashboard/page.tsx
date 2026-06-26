@@ -587,7 +587,8 @@ export default function DashboardPage() {
       if (b.sonraki_bakim_tarihi) {
         kalanGun = Math.ceil((new Date(b.sonraki_bakim_tarihi + "T00:00:00").getTime() - bugunMs) / 86400000);
       }
-      const kmYaklasti = kmFark != null && kmFark <= 500;
+      const yaklasikEsik = b.araclar?.sayac_tipi === "saat" ? 50 : 500; // saat→50, km→500
+      const kmYaklasti = kmFark != null && kmFark <= yaklasikEsik;
       const tarihYaklasti = kalanGun != null && kalanGun <= 30;
       if (kmYaklasti || tarihYaklasti) liste.push({ ...b, kalanGun, kmFark });
     }
@@ -1701,8 +1702,8 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableHead className="px-2 text-[10px]">Plaka</TableHead>
                     <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
-                    <TableHead className="px-2 text-[10px] text-right">Güncel Km</TableHead>
-                    <TableHead className="px-2 text-[10px] text-right">Yapılacak Km</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Güncel Km/Sa</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Yapılacak Km/Sa</TableHead>
                     <TableHead className="px-2 text-[10px] text-center">Durum</TableHead>
                     <TableHead className="px-2 text-[10px] text-center">Yapılacak Tarih</TableHead>
                   </TableRow>
@@ -1710,6 +1711,7 @@ export default function DashboardPage() {
                 <TableBody>
                   {yaklasanBakimlar.map((b) => {
                     const guncelKm = b.araclar?.guncel_gosterge ?? null;
+                    const birim = b.araclar?.sayac_tipi === "saat" ? "sa" : "km"; // iş makinesi → saat, araç → km
                     const kmGecti = b.kmFark != null && b.kmFark < 0;
                     const tarihGecti = b.kalanGun != null && b.kalanGun < 0;
                     const kritik = kmGecti || tarihGecti;
@@ -1732,8 +1734,8 @@ export default function DashboardPage() {
                         <TableCell className="px-2 text-center">
                           <div className="flex flex-col items-center gap-0.5">
                             {b.kmFark != null && (
-                              <span className={`text-[10px] font-semibold ${b.kmFark < 0 ? "text-red-600" : b.kmFark <= 100 ? "text-red-500" : "text-amber-700"}`}>
-                                {b.kmFark < 0 ? `${Math.abs(b.kmFark).toLocaleString("tr-TR")} km geçti` : `${b.kmFark.toLocaleString("tr-TR")} km kaldı`}
+                              <span className={`text-[10px] font-semibold ${b.kmFark < 0 ? "text-red-600" : b.kmFark <= (birim === "sa" ? 10 : 100) ? "text-red-500" : "text-amber-700"}`}>
+                                {b.kmFark < 0 ? `${Math.abs(b.kmFark).toLocaleString("tr-TR")} ${birim} geçti` : `${b.kmFark.toLocaleString("tr-TR")} ${birim} kaldı`}
                               </span>
                             )}
                             {b.kalanGun != null && (
