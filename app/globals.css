@@ -331,6 +331,10 @@ thead th {
   }
 }
 
+/* Mobil pull-to-refresh: harita üstünde dikey sürükleyince sayfa yenilenmesin (overscroll viewport'a
+   zincirlenmesin). İç kaydırıcı #dashboard-main'de overscroll-contain ile birlikte çalışır. */
+.harita-leaflet { overscroll-behavior: none; }
+
 /* iOS Safari'de input/textarea/select focus'unda otomatik zoom yapılmasını önle.
    Font-size 16px'ten küçük olan input'larda iOS otomatik zoom yapar ve geri dönmez.
    Sadece mobilde uygula (masaüstünde küçük input'lar normal kalsın) */
