@@ -130,12 +130,13 @@ export default function SantiyeSelect({
         onClick={() => setAcik((p) => !p)}
         className={triggerClass + " flex-1 min-w-0 flex items-center justify-between gap-1 text-left cursor-pointer"}
       >
-        {/* Mobilde uzun isimleri 22 karakterde kes (CSS truncate ile birlikte
-            JS truncation güvenlik kemeri — kaydet butonu kaybolmasın diye) */}
+        {/* Uzun isimleri "..." ile kes (mobil 22, masaüstü 38 karakter) — dar dialoglarda
+            ad taşıp Kaydet butonunu kaydırmasın. CSS truncate ile birlikte güvenlik kemeri. */}
         <span className={`truncate min-w-0 flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
           {(() => {
             const ham = gosterilenMetin || (showAll ? "Tümü" : placeholder);
-            if (isMobile && ham.length > 22) return ham.slice(0, 22) + "...";
+            const limit = isMobile ? 22 : 38;
+            if (ham.length > limit) return ham.slice(0, limit) + "...";
             return ham;
           })()}
         </span>

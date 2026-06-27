@@ -17,7 +17,6 @@ import SantiyeSelect from "@/components/shared/santiye-select";
 import {
   getAracYakitlarByRange,
   insertAracYakit,
-  insertYakitDuzeltme,
   updateAracYakit,
   deleteAracYakit,
   getYakitAlimlarByRange,
@@ -248,6 +247,7 @@ function YakitPageContent() {
   const [duzDialogOpen, setDuzDialogOpen] = useState(false);
   const [duzDialogSantiyeId, setDuzDialogSantiyeId] = useState("");
   const [duzDialogTarih, setDuzDialogTarih] = useState("");
+  const [duzDialogSaat, setDuzDialogSaat] = useState(""); // HH:MM — varsayılan şu an, elle değiştirilebilir
   const [duzDialogMiktar, setDuzDialogMiktar] = useState(""); // ± litre (negatif olabilir)
   const [duzDialogNotu, setDuzDialogNotu] = useState("");
   const [duzDialogLoading, setDuzDialogLoading] = useState(false);
@@ -838,7 +838,8 @@ function YakitPageContent() {
     let virmanGiden = 0;
     for (const s of tabloSatirlari) {
       const h = s.hareket;
-      if (h.tip === "alim") toplamAlim += h.miktar_lt;
+      // "Düzeltme" alımları depo stok düzeltmesidir, satın alma değil → Dönem Alımı'na katma.
+      if (h.tip === "alim") { if (h.tedarikci_firma !== "Düzeltme") toplamAlim += h.miktar_lt; }
       else if (h.tip === "arac_yakit") toplamDagitim += h.miktar_lt;
       else if (h.tip === "virman") {
         if (s.virmanYon === "gelen") virmanGelen += h.miktar_lt;
@@ -885,6 +886,8 @@ function YakitPageContent() {
   function duzDialogAc() {
     setDuzDialogSantiyeId(filtreSantiyeId || "");
     setDuzDialogTarih(new Date().toISOString().slice(0, 10));
+    const sm = new Date();
+    setDuzDialogSaat(`${String(sm.getHours()).padStart(2, "0")}:${String(sm.getMinutes()).padStart(2, "0")}`);
     setDuzDialogMiktar("");
     setDuzDialogNotu("");
     setDuzDialogOpen(true);
@@ -1058,26 +1061,29 @@ function YakitPageContent() {
     }
     const miktar = parseDuzMiktar(duzDialogMiktar);
     if (isNaN(miktar) || miktar === 0) { toast.error("Geçerli bir miktar girin (± olabilir, 0 olamaz)."); return; }
-    if (duzDagilim.hata) { toast.error(duzDagilim.hata); return; }
-    if (duzDagilim.satirlar.length === 0) { toast.error("Dağıtılacak araç bulunamadı."); return; }
 
     setDuzDialogLoading(true);
     try {
+      // Saat: kullanıcının girdiği (HH:MM) → HH:MM:00; boşsa şu an.
       const simdi = new Date();
-      const saatStr = `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
-      await insertYakitDuzeltme({
+      const saatStr = duzDialogSaat
+        ? `${duzDialogSaat}:00`
+        : `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
+      // Düzeltme = o şantiyenin DEPO mazotuna ± stok girişi. Araçlara dağıtım YOK.
+      // yakit_alim kaydı "Düzeltme" firma adıyla yazılır → stokMap'te tip "alim"
+      // olarak (stok += miktar_lt) sayılır; ± miktar otomatik doğru stok düzeltmesi yapar.
+      await insertYakitAlim({
         santiye_id: duzDialogSantiyeId,
         tarih: duzDialogTarih,
         saat: saatStr,
+        tedarikci_firma: "Düzeltme",
+        miktar_lt: miktar, // ± olabilir (negatif = dökülme/eksik)
+        birim_fiyat: 0,
         notu: duzDialogNotu.trim() || null,
         created_by: kullanici?.id ?? null,
-        // Düşeni 0 olan araçları atla (litre eklemek gereksiz)
-        dagilim: duzDagilim.satirlar
-          .filter((s) => s.dusen !== 0)
-          .map((s) => ({ arac_id: s.arac_id, miktar_lt: s.dusen })),
       });
       await loadAll(true);
-      toast.success("Yakıt düzeltmesi araçlara dağıtıldı.");
+      toast.success(miktar < 0 ? "Depo stoğundan düzeltme düşüldü." : "Depo stoğuna düzeltme eklendi.");
       setDuzDialogOpen(false);
     } catch (err) {
       const msg = err instanceof Error
@@ -1115,18 +1121,17 @@ function YakitPageContent() {
         await updateYakitAlim(alEditId, {
           santiye_id: alDialogSantiyeId,
           tarih: alDialogTarih,
+          saat: `${alDialogSaat}:00`,
           tedarikci_firma: formatBaslik(alDialogFirma.trim()),
           miktar_lt: miktar,
           birim_fiyat: birimFiyat,
           notu: alDialogNotu.trim() || null,
         });
       } else {
-        const simdi = new Date();
-        const saatStr = `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
         await insertYakitAlim({
           santiye_id: alDialogSantiyeId,
           tarih: alDialogTarih,
-          saat: saatStr,
+          saat: `${alDialogSaat}:00`,
           tedarikci_firma: formatBaslik(alDialogFirma.trim()),
           miktar_lt: miktar,
           birim_fiyat: birimFiyat,
@@ -1238,65 +1243,6 @@ function YakitPageContent() {
       .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === verDialogSantiyeId)
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
   }, [araclar, verDialogSantiyeId]);
-
-  // Yakıt Düzeltme dialogu: seçili şantiyenin SON yakıt alımı ile BİR ÖNCEKİ alımı
-  // arasındaki dönemde, o şantiyeye VERİLEN (duzeltme=false/null) yakıtın araç bazında
-  // toplamına göre HİSSE oranı + girilen miktara göre canlı dağılım.
-  // Dönem = (oncekiAlim.datetime, sonAlim.datetime] (tarih+saat, localeCompare).
-  const duzDagilim = useMemo(() => {
-    const bos = {
-      hata: null as string | null,
-      sonAlim: null as YakitAlim | null,
-      oncekiAlim: null as YakitAlim | null,
-      genelToplam: 0,
-      satirlar: [] as { arac_id: string; plaka: string; toplam: number; hisse: number; dusen: number }[],
-    };
-    if (!duzDialogSantiyeId) {
-      return { ...bos, hata: "Şantiye seçin." };
-    }
-    // Şantiyenin alımlarını tarih+saat'e göre ASC sırala
-    const santiyeAlimlar = alimlar
-      .filter((a) => a.santiye_id === duzDialogSantiyeId)
-      .sort((a, b) => hareketKey(a).localeCompare(hareketKey(b)));
-    if (santiyeAlimlar.length < 2) {
-      return { ...bos, hata: "Bu şantiyede en az 2 yakıt alımı kaydı olmalı (son alım ve bir önceki alım arasındaki dönem gerekli)." };
-    }
-    const sonAlim = santiyeAlimlar[santiyeAlimlar.length - 1];
-    const oncekiAlim = santiyeAlimlar[santiyeAlimlar.length - 2];
-    const altKey = hareketKey(oncekiAlim); // dahil DEĞİL (büyük olmalı)
-    const ustKey = hareketKey(sonAlim);    // dahil
-    // Dönemde şantiyeye verilen yakıt (duzeltme hariç) — araç bazında topla
-    const aracToplam = new Map<string, number>();
-    for (const y of yakitKayitlari) {
-      if (y.santiye_id !== duzDialogSantiyeId) continue;
-      if (y.duzeltme === true) continue; // düzeltme kayıtları hisseye katılmaz
-      const k = hareketKey(y);
-      if (k <= altKey) continue;  // dönem başlangıcı dahil değil
-      if (k > ustKey) continue;   // dönem sonu (son alım anı) dahil
-      aracToplam.set(y.arac_id, (aracToplam.get(y.arac_id) ?? 0) + (y.miktar_lt ?? 0));
-    }
-    let genelToplam = 0;
-    for (const v of aracToplam.values()) genelToplam += v;
-    if (genelToplam <= 0) {
-      return { ...bos, sonAlim, oncekiAlim, hata: "Bu dönemde bu şantiyede araçlara verilmiş yakıt yok — hisse hesaplanamıyor." };
-    }
-    const miktar = parseDuzMiktar(duzDialogMiktar);
-    const miktarGecerli = !isNaN(miktar);
-    const satirlar = [...aracToplam.entries()]
-      .map(([arac_id, toplam]) => {
-        const hisse = toplam / genelToplam;
-        const dusen = miktarGecerli ? Math.round(miktar * hisse * 100) / 100 : 0; // 2 ondalık
-        return { arac_id, plaka: aracMap.get(arac_id)?.plaka ?? "—", toplam, hisse, dusen };
-      })
-      .sort((a, b) => b.toplam - a.toplam);
-    // Yuvarlama farkını en büyük paya ekle → düşenler toplamı = girilen miktar
-    if (satirlar.length > 0 && !isNaN(miktar)) {
-      const dusenToplam = satirlar.reduce((acc, s) => acc + s.dusen, 0);
-      const fark = Math.round((miktar - dusenToplam) * 100) / 100;
-      if (fark !== 0) satirlar[0].dusen = Math.round((satirlar[0].dusen + fark) * 100) / 100;
-    }
-    return { hata: null, sonAlim, oncekiAlim, genelToplam, satirlar };
-  }, [duzDialogSantiyeId, duzDialogMiktar, alimlar, yakitKayitlari, aracMap]);
 
   // ============ EXPORT ============
 
@@ -1722,10 +1668,11 @@ function YakitPageContent() {
                     );
                   }
                 } else if (h.tip === "alim") {
+                  const duzeltmeAlim = h.tedarikci_firma === "Düzeltme";
                   aracKaynakText = (
                     <div>
-                      <div className="font-semibold text-gray-700">{h.tedarikci_firma}</div>
-                      <div className="text-[10px] text-gray-500">Tedarikçi</div>
+                      <div className={`font-semibold ${duzeltmeAlim ? "text-indigo-700" : "text-gray-700"}`}>{h.tedarikci_firma}</div>
+                      <div className="text-[10px] text-gray-500">{duzeltmeAlim ? "Stok düzeltmesi" : "Tedarikçi"}</div>
                     </div>
                   );
                 } else if (h.tip === "virman") {
@@ -1783,7 +1730,8 @@ function YakitPageContent() {
                       {h.tip === "arac_yakit" ? (
                         <span className="text-emerald-700">−{formatMiktar(h.miktar_lt)}{h.depo_full && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 rounded font-bold">F</span>}{s.disYakit && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold" title="Dışarıdan yakıt alındı (fark menzili aştı veya manuel) — bu aralık ortalamaya katılmaz. Kaldırmak için kaydı düzenleyip 'Dışarıdan yakıt alındı'yı kapatın.">D</span>}{s.disSupheli && <span className="ml-1 text-[9px] bg-orange-100 text-orange-700 px-1 rounded font-bold" title="Bu şantiyedeki fark, aracın başka şantiyelerdeki dolumlarından kaynaklanıyor olabilir — aracın gerçek farkı menzili aşmıyor. D'yi gözden geçirin.">Ş</span>}</span>
                       ) : h.tip === "alim" ? (
-                        <span className="text-blue-700">+{formatMiktar(h.miktar_lt)}</span>
+                        // Düzeltme negatif olabilir → işarete göre göster (+ mavi / − kırmızı), "+-" olmasın
+                        <span className={h.miktar_lt < 0 ? "text-rose-600" : "text-blue-700"}>{h.miktar_lt < 0 ? "−" : "+"}{formatMiktar(Math.abs(h.miktar_lt))}</span>
                       ) : (
                         <span className={s.virmanYon === "giden" ? "text-red-600" : "text-emerald-700"}>
                           {s.virmanYon === "giden" ? "−" : "+"}{formatMiktar(h.miktar_lt)}
@@ -2176,9 +2124,8 @@ function YakitPageContent() {
           </DialogHeader>
           <div className="space-y-3 py-2 overflow-hidden">
             <p className="text-[11px] text-gray-500 leading-snug bg-indigo-50 border border-indigo-100 rounded p-2">
-              Mazot dökülünce veya yazılması unutulunca eksik/fazla mazotu araçlara HİSSE oranında dağıtır.
-              Hisse, seçili şantiyenin SON yakıt alımı ile bir ÖNCEKİ alımı arasındaki dönemde araçlara
-              verilen yakıt toplamına göre hesaplanır. Her araca ayrı bir düzeltme kaydı (±litre) yazılır.
+              Seçili şantiyenin DEPO mazotuna ± stok düzeltmesi yapar. Pozitif değer depoya ekler,
+              negatif değer (dökülme/eksik) depodan düşer. Araçlara dağıtım yapılmaz.
             </p>
             <div className="space-y-1">
               <Label className="text-xs">Şantiye</Label>
@@ -2188,29 +2135,27 @@ function YakitPageContent() {
                 onChange={(v) => setDuzDialogSantiyeId(v)}
                 className={selectClass + " w-full"} />
             </div>
-            {/* Dönem bilgisi */}
-            {duzDagilim.sonAlim && duzDagilim.oncekiAlim && (
-              <div className="bg-amber-50 border border-amber-200 rounded p-2 text-[11px]">
-                <div className="font-semibold text-amber-800">Hesaplama Dönemi</div>
-                <div className="text-amber-700">
-                  {duzDagilim.oncekiAlim.tarih.split("-").reverse().join(".")} {duzDagilim.oncekiAlim.saat.slice(0, 5)}
-                  {" → "}
-                  {duzDagilim.sonAlim.tarih.split("-").reverse().join(".")} {duzDagilim.sonAlim.saat.slice(0, 5)}
-                </div>
-                <div className="text-[10px] text-amber-600 mt-0.5">
-                  Dönem dağıtımı toplamı: {formatLt(duzDagilim.genelToplam)}
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Tarih</Label>
+                <input
+                  type="date"
+                  value={duzDialogTarih}
+                  onChange={(e) => setDuzDialogTarih(e.target.value)}
+                  className={selectClass + " w-full"}
+                  disabled={duzDialogLoading}
+                />
               </div>
-            )}
-            <div className="space-y-1">
-              <Label className="text-xs">Tarih</Label>
-              <input
-                type="date"
-                value={duzDialogTarih}
-                onChange={(e) => setDuzDialogTarih(e.target.value)}
-                className={selectClass + " w-full"}
-                disabled={duzDialogLoading}
-              />
+              <div className="space-y-1">
+                <Label className="text-xs">Saat</Label>
+                <input
+                  type="time"
+                  value={duzDialogSaat}
+                  onChange={(e) => setDuzDialogSaat(e.target.value)}
+                  className={selectClass + " w-full"}
+                  disabled={duzDialogLoading}
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Miktar (lt) — ± girilebilir</Label>
@@ -2224,30 +2169,6 @@ function YakitPageContent() {
                 disabled={duzDialogLoading}
               />
             </div>
-            {/* Canlı dağılım */}
-            {duzDagilim.hata ? (
-              <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                {duzDagilim.hata}
-              </div>
-            ) : (
-              <div className="border rounded-lg bg-gray-50 p-2 space-y-1">
-                <div className="flex items-center justify-between text-[10px] font-semibold text-gray-600">
-                  <span>Araç Bazında Dağılım</span>
-                  <span>Toplam: {formatMiktar(duzDagilim.satirlar.reduce((acc, s) => acc + s.dusen, 0))} lt</span>
-                </div>
-                <div className="max-h-[180px] overflow-y-auto space-y-0.5">
-                  {duzDagilim.satirlar.map((s) => (
-                    <div key={s.arac_id} className="flex items-center justify-between text-[11px] px-1 py-0.5 rounded hover:bg-white">
-                      <span className="font-semibold text-[#1E3A5F] truncate max-w-[120px]">{s.plaka}</span>
-                      <span className="text-gray-400 text-[10px]">%{(s.hisse * 100).toFixed(1)}</span>
-                      <span className={`font-semibold ${s.dusen < 0 ? "text-red-600" : "text-emerald-700"}`}>
-                        {s.dusen > 0 ? "+" : ""}{formatMiktar(s.dusen)} lt
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             <div className="space-y-1">
               <Label className="text-xs">Not (opsiyonel)</Label>
               <input
@@ -2264,9 +2185,9 @@ function YakitPageContent() {
               <Button
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
                 onClick={duzKaydet}
-                disabled={duzDialogLoading || !!duzDagilim.hata}
+                disabled={duzDialogLoading}
               >
-                {duzDialogLoading ? "Kaydediliyor..." : "Dağıt ve Kaydet"}
+                {duzDialogLoading ? "Kaydediliyor..." : "Kaydet"}
               </Button>
             </div>
           </div>
@@ -2275,7 +2196,7 @@ function YakitPageContent() {
 
       {/* Yakıt Al Dialog */}
       <Dialog open={alDialogOpen} onOpenChange={setAlDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download size={18} className="text-blue-600" />
@@ -2287,20 +2208,36 @@ function YakitPageContent() {
               <Label className="text-xs">Şantiye (Depo)</Label>
               <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici).filter((s) => (s.depo_kapasitesi ?? 0) > 0)} value={alDialogSantiyeId} onChange={setAlDialogSantiyeId} className={selectClass + " w-full"} />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Tarih</Label>
-              <input
-                type="date"
-                value={alDialogTarih}
-                onChange={(e) => setAlDialogTarih(e.target.value)}
-                className={selectClass + " w-full"}
-                disabled={alDialogLoading}
-              />
-              {!alEditId && (
-                <div className="text-[10px] text-gray-400">Saat otomatik olarak şu an ({alDialogSaat}) alınacak.</div>
-              )}
-              {alEditId && (
-                <div className="text-[10px] text-gray-400">Kayıt saati: {alDialogSaat} (değişmez)</div>
+            <div className={isYonetici ? "grid grid-cols-2 gap-2" : "space-y-1"}>
+              <div className="space-y-1">
+                <Label className="text-xs">Tarih</Label>
+                <input
+                  type="date"
+                  value={alDialogTarih}
+                  onChange={(e) => setAlDialogTarih(e.target.value)}
+                  className={selectClass + " w-full"}
+                  disabled={alDialogLoading}
+                />
+                {/* Yönetici dışı: saat otomatik (şu an / değişmez) */}
+                {!isYonetici && !alEditId && (
+                  <div className="text-[10px] text-gray-400">Saat otomatik olarak şu an ({alDialogSaat}) alınacak.</div>
+                )}
+                {!isYonetici && alEditId && (
+                  <div className="text-[10px] text-gray-400">Kayıt saati: {alDialogSaat} (değişmez)</div>
+                )}
+              </div>
+              {/* Yönetici: saati elle düzenleyebilir (yeni + düzenleme) */}
+              {isYonetici && (
+                <div className="space-y-1">
+                  <Label className="text-xs">Saat</Label>
+                  <input
+                    type="time"
+                    value={alDialogSaat}
+                    onChange={(e) => setAlDialogSaat(e.target.value)}
+                    className={selectClass + " w-full"}
+                    disabled={alDialogLoading}
+                  />
+                </div>
               )}
             </div>
             <div className="space-y-1">
@@ -2405,7 +2342,7 @@ function YakitPageContent() {
 
       {/* Virman Dialog */}
       <Dialog open={virDialogOpen} onOpenChange={setVirDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <RefreshCcw size={18} className="text-purple-600" />

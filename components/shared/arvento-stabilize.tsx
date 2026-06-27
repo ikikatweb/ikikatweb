@@ -379,10 +379,24 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return out;
   }, [kamyonlar, seciliPlakalar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
 
-  // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler
+  // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler.
+  // KML export ve özet sayımları HEP bu (gerçek) seti kullanır — görsel filtreden ETKİLENMEZ.
   const damperKoordlu = useMemo(
     () => damperIsaretli.filter((o) => !o.mukerrer && !o.ariza && o.lat != null && o.lng != null),
     [damperIsaretli],
+  );
+  // ── SADECE GÖRSEL harita filtresi: Sefer Analizi başlıklarına tıklayınca haritada hangi
+  // sınıftaki damperlerin gösterileceğini belirler. VERİYİ DEĞİŞTİRMEZ (sayım/KML/override aynı kalır).
+  const [damperFiltre, setDamperFiltre] = useState<"gercek" | "ariza" | "mukerrer">("gercek");
+  // Haritada GÖSTERİLECEK set — damperFiltre'ye göre süzülür (gerçek = mevcut davranış, varsayılan).
+  const damperGosterilecek = useMemo(
+    () => damperIsaretli.filter((o) => {
+      if (o.lat == null || o.lng == null) return false; // konumsuz çizilemez
+      if (damperFiltre === "mukerrer") return o.mukerrer;
+      if (damperFiltre === "ariza") return o.ariza && !o.mukerrer;
+      return !o.mukerrer && !o.ariza; // "gercek"
+    }),
+    [damperIsaretli, damperFiltre],
   );
   const mukerrerSayisi = useMemo(() => damperIsaretli.filter((o) => o.mukerrer).length, [damperIsaretli]);
   const arizaSayisi = useMemo(() => damperIsaretli.filter((o) => o.ariza && !o.mukerrer).length, [damperIsaretli]);
@@ -539,8 +553,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       return en && enD <= 30 * 30 ? en : [lat, lng];
     };
     // Aynı/çok yakın konuma denk gelen damperleri grupla — üst üste binmesin (×N gösterilir).
+    // damperGosterilecek: görsel filtreyle (gerçek/arıza/mükerrer) süzülmüş set.
     const gruplar = new Map<string, { lat: number; lng: number; plaka: string; surucu: string | null; olaylar: DamperNokta[] }>();
-    for (const o of damperKoordlu) {
+    for (const o of damperGosterilecek) {
       // Damper saatine en yakın DURMUŞ rota noktasına (gerçek dökme yeri) oturt; yoksa ≤30 m yola / alarm-GPS.
       // GÜN-BAZLI rota (plaka|tarih) kullan — plaka-bazlı havuz (tüm günler) kullanılırsa damper, BAŞKA bir
       // günün aynı saatteki ocak-duruşuna oturup yanlışlıkla OCAĞA taşınıyordu (ham yeri km'lerce uzakta olsa bile).
@@ -552,7 +567,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       else gruplar.set(anahtar, { lat, lng, plaka: o.plaka, surucu: o.surucu, olaylar: [o] });
     }
     gruplar.forEach((g) => {
-      const renk = renkAl(g.plaka);
+      // SINIFA göre renk: gerçek = aracın kendi rengi (mevcut), arıza = kırmızı, mükerrer = amber.
+      const renk = damperFiltre === "ariza" ? "#dc2626" : damperFiltre === "mukerrer" ? "#f59e0b" : renkAl(g.plaka);
+      const sinifAd = damperFiltre === "ariza" ? "Arıza" : damperFiltre === "mukerrer" ? "Mükerrer" : "Gerçek";
       const adet = g.olaylar.length;
       // Popup'taki her damper için Mükerrer/Arıza butonu — window.__damperSinifSet → React state (liste ile senkron).
       const esc = (s: string) => String(s ?? "").replace(/['\\]/g, "\\$&");
@@ -575,7 +592,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       });
       L.marker([g.lat, g.lng], { icon: ikon })
         .addTo(grup)
-        .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper<br>${g.plaka}<br>${liste}`);
+        .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b><br>${g.plaka}<br>${liste}`);
       bounds.push([g.lat, g.lng]);
     });
     // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──
@@ -647,7 +664,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperKoordlu, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -829,7 +846,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       {/* SEFER ANALİZİ tablosu — kamyon başına ocak/döküm seferi + gerçek/arıza/mükerrer */}
       {seferAnaliz.length > 0 && (
         <div className="bg-white rounded-lg border p-3">
-          <div className="text-xs font-semibold text-gray-600 mb-2">📋 Sefer Analizi · {formatAralik(bas, bitis)}</div>
+          <div className="text-xs font-semibold text-gray-600 mb-2">📋 Sefer Analizi · {formatAralik(bas, bitis)}
+            <span className="font-normal text-gray-400"> — başlığa tıkla: haritada o sınıfı göster (gerçek/arızalı/mükerrer)</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -837,9 +856,19 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   <th className="text-left py-1 pr-2">Kamyon</th>
                   <th className="text-right px-2" title={gunGiris ? "Kamyon çizgisinin giriş kapısını OCAĞA doğru kesme sayısı" : "Yüklenip döküme inen sefer (= gerçek)"}>Ocağa gidiş{gunGiris ? " 🚪" : ""}</th>
                   <th className="text-right px-2" title={gunGiris ? "Giriş kapısını DÖKÜME doğru kesme sayısı" : "Toplam döküm seferi (gerçek + arızalı)"}>Döküme gidiş{gunGiris ? " 🚪" : ""}</th>
-                  <th className="text-right px-2">Gerçek</th>
-                  <th className="text-right px-2">Arızalı</th>
-                  <th className="text-right px-2">Mükerrer</th>
+                  {/* TIKLANABİLİR sınıf başlıkları → haritada SADECE o sınıftaki damperleri göster (görsel filtre). */}
+                  <th className="text-right px-2">
+                    <button type="button" onClick={() => setDamperFiltre("gercek")} title="Haritada gerçek damperleri göster"
+                      className={`cursor-pointer transition-colors ${damperFiltre === "gercek" ? "font-bold underline text-emerald-700" : "text-gray-400 hover:text-emerald-600"}`}>Gerçek</button>
+                  </th>
+                  <th className="text-right px-2">
+                    <button type="button" onClick={() => setDamperFiltre("ariza")} title="Haritada arızalı damperleri göster"
+                      className={`cursor-pointer transition-colors ${damperFiltre === "ariza" ? "font-bold underline text-rose-600" : "text-gray-400 hover:text-rose-500"}`}>Arızalı</button>
+                  </th>
+                  <th className="text-right px-2">
+                    <button type="button" onClick={() => setDamperFiltre("mukerrer")} title="Haritada mükerrer damperleri göster"
+                      className={`cursor-pointer transition-colors ${damperFiltre === "mukerrer" ? "font-bold underline text-amber-600" : "text-gray-400 hover:text-amber-500"}`}>Mükerrer</button>
+                  </th>
                   <th className="text-right pl-2">Toplam</th>
                 </tr>
               </thead>

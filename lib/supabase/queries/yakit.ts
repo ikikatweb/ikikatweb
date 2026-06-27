@@ -326,6 +326,7 @@ export async function insertYakitAlim(data: {
 export async function updateYakitAlim(id: string, data: {
   santiye_id: string;
   tarih: string;
+  saat?: string;
   tedarikci_firma: string;
   miktar_lt: number;
   birim_fiyat: number;
