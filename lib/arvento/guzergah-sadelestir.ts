@@ -16,6 +16,13 @@ export type SadelesSonuc = {
 
 const METRE_DERECE = 111320; // 1 derece ~ 111.32 km (yaklaşık)
 
+// Hız taşıyan nokta tipi. Omurga sayımında "transit" (asfaltta hızlı git-gel) geçişleri elemek için kullanılır.
+type NoktaH = { lat: number; lng: number; hiz?: number | null };
+
+// REGLAJ/SERME/SIKIŞTIRMA işi YAVAŞ yapılır (bıçak/silindir inik); bu hızın ÜSTÜ = transit (yola/asfalta
+// gidiş-geliş) → omurga sayımına KATILMAZ. Greyder verisinde işin %96'sı ≤15 km/s, transit >20-45 km/s.
+const HIZ_TRANSIT_ESIK = 20; // km/s
+
 // Omurga çizgilerinin (parcalar) TOPLAM uzunluğu — KM. Bu, "haritada görünen tek çizginin uzunluğu":
 // greyderin/silindirin aynı yolu git-gel taraması (tekrarlar) sayılmaz, yalnız yolun kendisi ölçülür.
 // Kartlarda gösterilen "reglaj km" bununla hesaplanır (ham toplam_mesafe yerine).
@@ -37,13 +44,13 @@ export function parcalarUzunlukKm(parcalar: [number, number][][]): number {
 // BAĞIMSIZ olur. Böylece canlı (sık yoklama) ve rapor (seyrek export) rota AYNI omurgayı/reglajı verir;
 // ayrıca yoğun jitter noktaları seyreltildiği için sahte "tekrar geçiş" şişmesi (ör. 900 m) ortadan kalkar.
 // Çıktı yine yolun gerçek geometrisini izler (ara noktalar segment üzerinde interpolasyonla).
-function sabitAdimOrnekle(pts: { lat: number; lng: number }[], adimM: number): { lat: number; lng: number }[] {
+function sabitAdimOrnekle(pts: NoktaH[], adimM: number): NoktaH[] {
   if (pts.length < 2) return pts;
-  const seg = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const seg = (a: NoktaH, b: NoktaH) => {
     const cosL = Math.max(0.1, Math.cos(((a.lat + b.lat) / 2) * Math.PI / 180));
     return Math.hypot((b.lat - a.lat) * METRE_DERECE, (b.lng - a.lng) * METRE_DERECE * cosL);
   };
-  const out: { lat: number; lng: number }[] = [pts[0]];
+  const out: NoktaH[] = [pts[0]];
   let acc = 0; // son üretilen noktadan bu yana biriken yol (m)
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
@@ -52,7 +59,10 @@ function sabitAdimOrnekle(pts: { lat: number; lng: number }[], adimM: number): {
     let next = adimM - acc; // segment başından itibaren ilk üretim mesafesi
     while (next <= segLen) {
       const t = next / segLen;
-      out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t });
+      // hızı da taşı (segment hızı, interpolasyon) → omurga sayımında transit (hızlı) geçişler elenebilsin
+      const ha = a.hiz, hb = b.hiz;
+      const hiz = (ha != null && hb != null) ? ha + (hb - ha) * t : (hb ?? ha ?? null);
+      out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, hiz });
       next += adimM;
     }
     acc = segLen - (next - adimM); // segment sonundaki artık (bir sonraki segmente taşınır)
@@ -109,17 +119,19 @@ export function kapsananYolKm(noktalar: { lat: number; lng: number }[], gridM = 
 // Çekirdek ≥eşik geçilen TÜM yol ağını (her kolu) çizer; hücre çapı (2×gridM) yan yana/git-gel şeritleri
 // tek merkez hatta indirir. Koridoru elle genişletmek için "Yan Yana Çizgi Mesafesi" (gridM) artırılır.
 export function sadelesGuzergah(
-  noktalar: { lat: number; lng: number }[],
+  noktalar: NoktaH[],
   esik: number,
   gridM = 12,
+  hizEsik: number = HIZ_TRANSIT_ESIK,
 ): SadelesSonuc {
-  return sadelesGuzergahCore(noktalar, esik, gridM);
+  return sadelesGuzergahCore(noktalar, esik, gridM, hizEsik);
 }
 
 function sadelesGuzergahCore(
-  noktalar: { lat: number; lng: number }[],
+  noktalar: NoktaH[],
   esik: number,
   gridM = 12,
+  hizEsik: number = HIZ_TRANSIT_ESIK,
 ): SadelesSonuc {
   const bos: SadelesSonuc = { parcalar: [], gosterilenSegment: 0, toplamSegment: 0, maksGecis: 0 };
   const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
@@ -147,13 +159,16 @@ function sadelesGuzergahCore(
     return [m.lat / m.n, m.lng / m.n];
   };
 
-  // Yönsüz kenar geçiş sayımı (ardışık hücreler arası)
+  // Yönsüz kenar geçiş sayımı (ardışık hücreler arası). HIZ FİLTRESİ: geçiş HIZLI ise (hizEsik üstü =
+  // asfalta/yola transit git-gel, reglaj işi değil) SAYMA. Hücre dizisi (onceki) yine ilerler ama o kenar
+  // sayıma katılmaz → yalnız yavaş (işlenmiş) geçilen yollar eşiği aşıp omurgaya girer. hız yoksa (null) sayılır.
   const sayim = new Map<string, number>();
   let onceki = hucreKey(pts[0]);
   for (let i = 1; i < pts.length; i++) {
     const simdi = hucreKey(pts[i]);
     if (simdi === onceki) continue;
-    sayim.set(segKey(onceki, simdi), (sayim.get(segKey(onceki, simdi)) ?? 0) + 1);
+    const hizli = hizEsik > 0 && (pts[i].hiz ?? 0) > hizEsik;
+    if (!hizli) sayim.set(segKey(onceki, simdi), (sayim.get(segKey(onceki, simdi)) ?? 0) + 1);
     onceki = simdi;
   }
   const toplamSegment = sayim.size;

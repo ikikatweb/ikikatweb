@@ -78,6 +78,9 @@ export function ocakTespit(rotalar: Nokta[][], gridM = 40): LatLng | null {
 // Damper, araç DURUNCA iner. Arvento'nun damper alarmı GPS'i kayık/donmuş olabildiğinden, damper
 // saatine en yakın DURMUŞ (hız ≤ 3 km/h) rota noktasını = gerçek dökme yeri olarak kullanırız. ±maxYakinSn
 // içinde durmuş nokta yoksa null → çağıran alarm-GPS'e döner. Stabilize + Serme aynı yere oturtsun diye paylaşılır.
+// ⚠️ DİKKAT: `rota` mutlaka TEK GÜNE ait olmalı (eşleşme gün-içi SAAT ile yapılır). Çok-günlü/havuzlanmış
+// (plaka bazında tüm günler birleşik) rota verilirse damper, BAŞKA bir günün aynı saatteki duruşuna oturup
+// yanlış yere (ör. ocağa) taşınır. Çağıranlar her zaman gün-bazlı rota (plaka|tarih) geçmeli.
 export function damperDurakKonumu(rota: { saat?: string | null; lat?: number | null; lng?: number | null; hiz?: number | null }[], saat: string | null | undefined, maxYakinSn = 420): [number, number] | null {
   const ds = saatSn(saat); if (ds == null || !rota.length) return null;
   let best: [number, number] | null = null, bestDt = Infinity;

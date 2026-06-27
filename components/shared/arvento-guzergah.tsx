@@ -57,7 +57,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, kalinliklar, renkler, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, renkler, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb"; // BİRLEŞİK reglaj omurgası tek renk (makine bazlı değil)
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
@@ -165,7 +165,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     for (const k of araclar) {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length < 2) continue;
-      const uz = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe).parcalar
+      const uz = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe, transitHiz).parcalar
         .map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005).sort((a, b) => b - a);
       if (uz.length) m.set(k.plaka, uz);
     }
@@ -297,13 +297,13 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       // Tüm seçili greyderlerin (tüm günler) noktaları TEK havuzda birleşir → tek omurga çıkarılır.
       // Makine fark etmez: bir yolda TOPLAM geçiş (hangi greyder olursa olsun) ≥ eşik ise tek çizgiye iner.
       // Aynı yolu farklı greyderler taramış olabilir; reglaj birleşik sayılır. Tek renk (reglajRenkV).
-      const havuz: { lat: number; lng: number }[] = [];
+      const havuz: { lat: number; lng: number; hiz?: number | null }[] = [];
       for (const kayit of secilenler) {
         for (const p of (kayit.noktalar ?? [])) {
-          if (p.lat != null && p.lng != null) { havuz.push({ lat: p.lat, lng: p.lng }); tumBounds.push([p.lat, p.lng]); }
+          if (p.lat != null && p.lng != null) { havuz.push({ lat: p.lat, lng: p.lng, hiz: p.hiz }); tumBounds.push([p.lat, p.lng]); }
         }
       }
-      const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe).parcalar;
+      const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe, transitHiz).parcalar;
       const toplamKm = parcalarUzunlukKm(cizgiler);
       for (const parca of cizgiler) {
         const uz = parcalarUzunlukKm([parca]);

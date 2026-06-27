@@ -193,6 +193,7 @@ export default function ArventoRaporPage() {
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
+  const [transitHiz, setTransitHiz] = useState<number>(20);    // reglaj transit hız eşiği (km/s); üstü = asfalt git-gel, sayılmaz; 0=kapalı
   // Çizgi kalınlıkları (haritada) — Reglaj / Serme / Silindir ayrı ayrı, ortak (global).
   const [reglajKalinlik, setReglajKalinlik] = useState<number>(4);
   const [sermeKalinlik, setSermeKalinlik] = useState<number>(3);
@@ -221,6 +222,7 @@ export default function ArventoRaporPage() {
         setRaporCekmeDk(a.raporCekmeDk);
         setGuzergahTekrar(a.guzergahTekrar);
         setGridMesafe(a.gridMesafe);
+        setTransitHiz(a.transitHiz);
         setSilindirTekrar(a.silindirTekrar);
         setReglajKalinlik(a.reglajKalinlik);
         setSermeKalinlik(a.sermeKalinlik);
@@ -244,13 +246,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -959,7 +961,7 @@ export default function ArventoRaporPage() {
           {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
           {ismakineKayitlar.length > 0 && (
             <div className="space-y-1">
-              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe}
+              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri" modelGoster
                 canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
@@ -1007,19 +1009,19 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
@@ -1215,6 +1217,25 @@ export default function ArventoRaporPage() {
                   className={selectClass + " w-32"}
                 />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-gray-700 mb-1">Reglaj Transit Hız Eşiği (km/s)</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Greyder/silindir bu hızın ÜSTÜnde geçtiği yer &quot;transit&quot; (asfalta gidiş-geliş) sayılır,
+                reglaj olarak SAYILMAZ. Asfaltta yapılan git-gel reglaj gibi görünüyorsa bu değeri DÜŞÜR
+                (ör. 15-12). 0 = kapalı (her geçiş sayılır). Varsayılan 20.
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  value={transitHiz}
+                  onChange={(e) => setTransitHiz(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="20"
+                  className={selectClass + " w-32"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">km/s (0 = kapalı)</span>
               </div>
             </div>
             {/* Çizgi Kalınlıkları & Renkleri — Reglaj / Serme / Silindir (haritadaki çizgi) */}

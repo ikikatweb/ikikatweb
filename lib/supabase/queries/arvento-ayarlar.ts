@@ -12,6 +12,7 @@ export type ArventoAyarlar = {
   guzergahTekrar: number;
   gridMesafe: number;
   silindirTekrar: number;
+  transitHiz: number; // reglaj/serme/sıkıştırma omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı
   reglajKalinlik: number;
   sermeKalinlik: number;
   silindirKalinlik: number;
@@ -34,6 +35,7 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   guzergahTekrar: 0,
   gridMesafe: 12,
   silindirTekrar: 0,
+  transitHiz: 20,
   reglajKalinlik: 4,
   sermeKalinlik: 3,
   silindirKalinlik: 3,
@@ -63,6 +65,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     guzergahTekrar: data.guzergah_tekrar ?? 0,
     gridMesafe: data.grid_mesafe ?? 12,
     silindirTekrar: data.silindir_tekrar ?? 0,
+    transitHiz: data.transit_hiz ?? 20,   // kolon yoksa varsayılan 20 (geriye uyumlu)
     reglajKalinlik: data.reglaj_kalinlik ?? 4,
     sermeKalinlik: data.serme_kalinlik ?? 3,
     silindirKalinlik: data.silindir_kalinlik ?? 3,
@@ -149,6 +152,7 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     guzergah_tekrar: a.guzergahTekrar,
     grid_mesafe: a.gridMesafe,
     silindir_tekrar: a.silindirTekrar,
+    transit_hiz: a.transitHiz,
     reglaj_kalinlik: a.reglajKalinlik,
     serme_kalinlik: a.sermeKalinlik,
     silindir_kalinlik: a.silindirKalinlik,

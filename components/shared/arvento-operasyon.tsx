@@ -89,10 +89,10 @@ function sermeUstuRunlar(seg: [number, number][], rotaNoktalari: { lat: number; 
 }
 
 // Bir güzergahı sadeleştirip çizilecek parça (latlng dizisi) listesine çevirir.
-function parcalar(noktalar: { lat: number; lng: number }[], esik: number, gridM: number): [number, number][][] {
+function parcalar(noktalar: { lat: number; lng: number; hiz?: number | null }[], esik: number, gridM: number, hizEsik: number): [number, number][][] {
   const latlngs: [number, number][] = noktalar.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng]);
   if (latlngs.length === 0) return [];
-  if (esik >= 1) return sadelesGuzergah(noktalar, esik, gridM).parcalar; // eşik (tekrar) ile açılır
+  if (esik >= 1) return sadelesGuzergah(noktalar, esik, gridM, hizEsik).parcalar; // eşik (tekrar) ile açılır
 
   return [latlngs];
 }
@@ -107,8 +107,8 @@ function cizAltUst(L: LeafletStatic, hedef: LeafletMap | LayerGroup, segler: [nu
   }
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -296,7 +296,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     for (const k of greyderler) {
       const ns = (k.noktalar ?? []).filter((p): p is { lat: number; lng: number; saat: string | null; hiz: number | null } => p.lat != null && p.lng != null);
       if (ns.length < 2 || !yakinDamperVar(ns, damperKoordlu)) continue;
-      for (const seg of parcalar(ns, etkinTekrar, gridMesafe)) for (const [la, ln] of seg) pts.push({ lat: la, lng: ln });
+      for (const seg of parcalar(ns, etkinTekrar, gridMesafe, transitHiz)) for (const [la, ln] of seg) pts.push({ lat: la, lng: ln });
     }
     return pts;
   }, [sermeMi, greyderler, damperKoordlu, etkinTekrar, gridMesafe]);
@@ -311,7 +311,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const ns = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (ns.length < 2) continue;
       if (sermeMi && !yakinDamperVar(ns, damperKoordlu)) { m.set(k.plaka, 0); continue; }
-      m.set(k.plaka, esik < 1 ? kapsananYolKm(ns, gridMesafe) : parcalarUzunlukKm(parcalar(ns, esik, gridMesafe)));
+      m.set(k.plaka, esik < 1 ? kapsananYolKm(ns, gridMesafe) : parcalarUzunlukKm(parcalar(ns, esik, gridMesafe, transitHiz)));
     }
     return m;
   }, [sermeMi, greyderler, silindirler, gridMesafe, etkinTekrar, etkinSilindir, damperKoordlu]);
@@ -375,7 +375,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const bounds: [number, number][] = [];
     // Altlı üstlü greyder çizgisi — YALNIZ Serme'de. Sıkıştırma'da greyder GÖSTERİLMEZ (sadece silindir güzergahı).
     if (sermeMi) gosterilenGreyder.forEach((k) =>
-      cizAltUst(L, grup, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe), greyderRenkAl(k.plaka), 0.85, sermeKal, bounds));
+      cizAltUst(L, grup, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe, transitHiz), greyderRenkAl(k.plaka), 0.85, sermeKal, bounds));
     if (sermeMi) {
       // Ortada damper ikonları
       damperKoordlu.forEach((o, i) => {
@@ -386,7 +386,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     } else {
       // Silindir ZİKZAĞI — YALNIZ serme yapılan güzergah ÜZERİNDE (≤40 m) gidip geldiği kısımlar çizilir.
       secilenSilindirler.forEach((k) =>
-        parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe).forEach((seg) => {
+        parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe, transitHiz).forEach((seg) => {
           for (const run of sermeUstuRunlar(seg, sermeRotaNoktalari)) {
             L.polyline(zikzakla(run), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
               .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir · sıkıştırma)<br>${k.arac_sinifi ?? ""}`);

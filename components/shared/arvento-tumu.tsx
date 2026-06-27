@@ -33,7 +33,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -182,7 +182,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
       const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
       const cizim: [number, number][][] = esik >= 1
-        ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
+        ? sadelesGuzergah(noktalar, esik, gridMesafe, transitHiz).parcalar
         : [latlngs];
       const kal = op === "sikistirma" ? silindirKal : reglajKal;
       const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
@@ -224,7 +224,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const def = OPERASYONLAR[op];
       const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
       const cizim: [number, number][][] = esik >= 1
-        ? sadelesGuzergah(noktalar, esik, gridMesafe).parcalar
+        ? sadelesGuzergah(noktalar, esik, gridMesafe, transitHiz).parcalar
         : [noktalar.map((p) => [p.lat, p.lng] as [number, number])];
       cizim.forEach((seg) => {
         if (seg.length < 2) return;
