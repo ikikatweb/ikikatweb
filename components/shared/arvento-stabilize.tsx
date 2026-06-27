@@ -19,7 +19,7 @@ import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
-import { Layers, Download, MapPin } from "lucide-react";
+import { Layers, Download, MapPin, CheckCircle2, AlertTriangle, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import "leaflet/dist/leaflet.css";
@@ -859,15 +859,15 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   {/* TIKLANABİLİR sınıf başlıkları → haritada SADECE o sınıftaki damperleri göster (görsel filtre). */}
                   <th className="text-right px-2">
                     <button type="button" onClick={() => setDamperFiltre("gercek")} title="Haritada gerçek damperleri göster"
-                      className={`cursor-pointer transition-colors ${damperFiltre === "gercek" ? "font-bold underline text-emerald-700" : "text-gray-400 hover:text-emerald-600"}`}>Gerçek</button>
+                      className={`cursor-pointer transition-colors inline-flex items-center gap-1 ${damperFiltre === "gercek" ? "font-bold text-emerald-700" : "text-gray-400 hover:text-emerald-600"}`}><CheckCircle2 size={13} />Gerçek</button>
                   </th>
                   <th className="text-right px-2">
                     <button type="button" onClick={() => setDamperFiltre("ariza")} title="Haritada arızalı damperleri göster"
-                      className={`cursor-pointer transition-colors ${damperFiltre === "ariza" ? "font-bold underline text-rose-600" : "text-gray-400 hover:text-rose-500"}`}>Arızalı</button>
+                      className={`cursor-pointer transition-colors inline-flex items-center gap-1 ${damperFiltre === "ariza" ? "font-bold text-rose-600" : "text-gray-400 hover:text-rose-500"}`}><AlertTriangle size={13} />Arızalı</button>
                   </th>
                   <th className="text-right px-2">
                     <button type="button" onClick={() => setDamperFiltre("mukerrer")} title="Haritada mükerrer damperleri göster"
-                      className={`cursor-pointer transition-colors ${damperFiltre === "mukerrer" ? "font-bold underline text-amber-600" : "text-gray-400 hover:text-amber-500"}`}>Mükerrer</button>
+                      className={`cursor-pointer transition-colors inline-flex items-center gap-1 ${damperFiltre === "mukerrer" ? "font-bold text-amber-600" : "text-gray-400 hover:text-amber-500"}`}><Copy size={13} />Mükerrer</button>
                   </th>
                   <th className="text-right pl-2">Toplam</th>
                 </tr>

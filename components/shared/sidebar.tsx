@@ -64,6 +64,14 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
+    title: "Maliyet Raporu",
+    icon: <FileBarChart2 size={20} />,
+    color: "text-rose-600 bg-rose-50",
+    items: [
+      { label: "Şantiye Maliyetleri", href: "/dashboard/maliyet-raporu", icon: <FileBarChart2 size={16} /> },
+    ],
+  },
+  {
     title: "Araç Bakım",
     icon: <Wrench size={20} />,
     color: "text-cyan-600 bg-cyan-50",
@@ -149,8 +157,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [pathname]);
 
   function canView(href: string): boolean {
-    // "Veri Yedeği" sayfası SADECE yöneticiye açık — izin matrisinde tanımlı değil.
+    // "Veri Yedeği" ve "Maliyet Raporu" SADECE yöneticiye açık — izin matrisinde tanımlı değil.
     if (href === "/dashboard/yedek") return isYonetici;
+    if (href === "/dashboard/maliyet-raporu") return isYonetici;
     const key = hrefToModuleKey(href);
     return hasPermission(key, "goruntule");
   }

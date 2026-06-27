@@ -113,6 +113,65 @@ export function kapsananYolKm(noktalar: { lat: number; lng: number }[], gridM = 
   return metre / 1000;
 }
 
+// Omurga parçalarını BİRLEŞTİR ("kesik kesik" giderme). Ağ-izleme; kavşaklarda zinciri kırar ve
+// eşik-altı 1-2 hücrelik küçük boşluklarda (kullanıcının ölçtüğü ~13m gibi) parçayı bırakır → çok sayıda
+// kopuk parça. Burada parçaların UÇLARI birbirine yakın (≤ kopruM) VE aynı yönde devam ediyorsa (dönüş
+// ≤ MAKS_DONUS) tek sürekli çizgiye bağlanır. Dik kollar (kavşak sapması) birleşmez → ayrı kalır. Greedy:
+// her turda en düşük skorlu (mesafe + dönüş cezası) uç çiftini bağla, tekrar tara.
+function birlestirParcalar(
+  parcalar: [number, number][][],
+  kopruM: number,
+  cosOrt: number,
+): [number, number][][] {
+  if (kopruM <= 0 || parcalar.length < 2 || parcalar.length > 600) return parcalar;
+  const list = parcalar.map((p) => p.slice());
+  const dist = (a: [number, number], b: [number, number]) =>
+    Math.hypot((b[0] - a[0]) * METRE_DERECE, (b[1] - a[1]) * METRE_DERECE * cosOrt);
+  // Uçtan gövdeye DOĞRU bakan yönün açısı (içe yön); dışa yön = +π.
+  const iceYon = (p: [number, number][], sonUc: boolean): number => {
+    const n = p.length;
+    const uc = sonUc ? p[n - 1] : p[0];
+    const ic = sonUc ? p[Math.max(0, n - 3)] : p[Math.min(n - 1, 2)];
+    return Math.atan2((ic[0] - uc[0]) * METRE_DERECE, (ic[1] - uc[1]) * METRE_DERECE * cosOrt);
+  };
+  const aciFarki = (a: number, b: number) => { let d = Math.abs(a - b); if (d > Math.PI) d = 2 * Math.PI - d; return d; };
+  const MAKS_DONUS = (70 * Math.PI) / 180; // join'de izin verilen sapma (üstü = ayrı yol/dik kol)
+  const combos: [boolean, boolean][] = [[false, false], [false, true], [true, false], [true, true]];
+
+  let degisti = true;
+  while (degisti) {
+    degisti = false;
+    let best: { i: number; j: number; iSon: boolean; jSon: boolean; skor: number } | null = null;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const pi = list[i], pj = list[j];
+        for (const [iSon, jSon] of combos) {
+          const ui = iSon ? pi[pi.length - 1] : pi[0];
+          const uj = jSon ? pj[pj.length - 1] : pj[0];
+          const m = dist(ui, uj);
+          if (m > kopruM) continue;
+          const iDis = iceYon(pi, iSon) + Math.PI; // i ucunda dışa yön
+          const jDis = iceYon(pj, jSon) + Math.PI; // j ucunda dışa yön
+          const donus = Math.PI - aciFarki(iDis, jDis); // düz join'de uçlar birbirine bakar → ~0
+          if (donus > MAKS_DONUS) continue;
+          const skor = m + donus * 30; // mesafe (m) + dönüş cezası
+          if (!best || skor < best.skor) best = { i, j, iSon, jSon, skor };
+        }
+      }
+    }
+    if (best) {
+      let pi = list[best.i], pj = list[best.j];
+      if (!best.iSon) pi = pi.slice().reverse(); // i'nin bağlanan ucu SONda olsun
+      if (best.jSon) pj = pj.slice().reverse();  // j'nin bağlanan ucu BAŞta olsun
+      const yeni = pi.concat(pj);
+      list.splice(best.j, 1); list.splice(best.i, 1); // j>i → önce j
+      list.push(yeni);
+      degisti = true;
+    }
+  }
+  return list;
+}
+
 // noktalar: zaman sırasına göre GPS noktaları.
 // esik: bir grid kenarı EN AZ kaç kez geçilmişse AĞA dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
@@ -211,7 +270,11 @@ function sadelesGuzergahCore(
   for (const k of komsu.keys()) { const d = derece(k); if (d === 1 || d >= 3) izle(k); } // uç + kavşak kolları
   for (const k of komsu.keys()) izle(k); // kalan kapalı döngüler (hepsi derece 2)
 
-  // Çok kısa spur/gürültü parçalarını at (≤ ~1 hücre)
-  const temiz = parcalar.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.012, (gridM * 1.2) / 1000));
+  // "Kesik kesik" giderme: uçları yakın + aynı yönde devam eden parçaları tek çizgiye bağla.
+  // Köprü mesafesi = ~1.5 hücre (eşik-altı 1-2 hücrelik boşlukları kapatır; dik kolları açı kapısı ayırır).
+  const kopru = birlestirParcalar(parcalar, g * 1.5, cosOrt);
+
+  // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at (≤ ~1 hücre)
+  const temiz = kopru.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.012, (gridM * 1.2) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }
