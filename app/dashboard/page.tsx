@@ -660,7 +660,9 @@ export default function DashboardPage() {
   // Kısıtlı kullanıcı: sadece kendi atandığı şantiyelerin alımları görünür
   const sonAlimlar = useMemo(() => {
     // yakitAlimlarTum tüm zamandan veri içerir (yakitAlimlar son 30 günle sınırlı)
-    const kaynak = yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar;
+    // Stok "Düzeltme" kayıtları gerçek alım değildir → bu listeden hariç tut.
+    const kaynak = (yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar)
+      .filter((a) => a.tedarikci_firma !== "Düzeltme");
     let filtreli = kaynak;
     if (!isYonetici) {
       const izinli = new Set(kullanici?.santiye_ids ?? []);
