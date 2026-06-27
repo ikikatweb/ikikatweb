@@ -632,6 +632,10 @@ export type AracYakit = {
   //   true  → elle "dışarıdan yakıt alındı" (zorla açık)
   //   false → elle "alınmadı" (otomatiği iptal, zorla kapalı)
   dis_yakit_oncesi: boolean | null;
+  // Düzeltme kaydı mı? (mazot dökülmesi/yazılmaması gibi durumlarda araçlara hisse
+  // oranında dağıtılan ± litre düzeltmesi). true ise km_saat null'dır (gerçek dolum değil).
+  // Sadece yöneticiye gösterilir. null/false → normal yakıt verme kaydı.
+  duzeltme?: boolean | null;
   notu: string | null;
   created_at: string;
   created_by: string | null;

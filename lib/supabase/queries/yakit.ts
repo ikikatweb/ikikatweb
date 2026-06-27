@@ -140,6 +140,45 @@ export async function insertAracYakit(data: {
   } catch { /* sessiz */ }
 }
 
+// Yakıt düzeltmesi kaydet — mazot dökülmesi/yazılmaması gibi durumlarda eksik/fazla
+// mazotu araçlara HİSSE oranında dağıtır. Her araç için AYRI bir arac_yakit kaydı yazılır:
+//   duzeltme = true, km_saat = null (gerçek dolum değil), miktar_lt = ±(o aracın hissesi).
+// Böylece araçların litre toplamı/raporu otomatik düzelir. duzeltme kolonu yoksa o
+// alansız (dis_yakit_oncesi desenindeki gibi) toleranslı şekilde tekrar dene.
+export async function insertYakitDuzeltme(params: {
+  santiye_id: string;
+  tarih: string;
+  saat: string;
+  notu: string | null;
+  created_by: string | null;
+  dagilim: { arac_id: string; miktar_lt: number }[];
+}): Promise<void> {
+  if (params.dagilim.length === 0) return;
+  const supabase = getSupabase();
+  const satirlar = params.dagilim.map((d) => ({
+    arac_id: d.arac_id,
+    santiye_id: params.santiye_id,
+    tarih: params.tarih,
+    saat: params.saat,
+    km_saat: null as number | null, // düzeltme = gerçek dolum değil
+    miktar_lt: d.miktar_lt,
+    duzeltme: true as boolean,
+    notu: params.notu,
+    created_by: params.created_by,
+  }));
+  let { error } = await supabase.from("arac_yakit").insert(satirlar);
+  // duzeltme kolonu henüz eklenmemişse (migration çalıştırılmadıysa) o alansız tekrar dene.
+  if (error && String(error.message ?? "").includes("duzeltme")) {
+    const base = satirlar.map((s) => {
+      const k = { ...s } as Partial<typeof s>;
+      delete k.duzeltme;
+      return k;
+    });
+    ({ error } = await supabase.from("arac_yakit").insert(base));
+  }
+  if (error) throw error;
+}
+
 export async function updateAracYakit(id: string, data: {
   arac_id: string;
   santiye_id: string;
