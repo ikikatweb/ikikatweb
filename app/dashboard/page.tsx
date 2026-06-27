@@ -33,6 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
+import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -1438,6 +1439,11 @@ export default function DashboardPage() {
     <div>
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
       <YedekHatirlatma />
+
+      {/* Sezon Maliyeti özeti (yalnız yönetici; gizlenen şantiyeler hariç) */}
+      <div className="mb-4">
+        <SezonMaliyetOzet />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}

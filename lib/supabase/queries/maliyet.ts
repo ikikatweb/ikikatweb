@@ -7,10 +7,10 @@
 //  4. SGK gideri     → Yüklenici Prim Esas Kazanç (İşçilik "Yüklenici Veri Girişi") × 0,375
 //  5. Yakıt gideri   → araçlara verilen toplam lt (arac_yakit) × o ŞANTİYENİN en son alım birim fiyatı
 //  6. Makine kira    → kiralık araç aylık bedeli, puantaj günlerine göre (dış görev hariç)
+//  7. Bakım/Onarım   → arac_bakim tutarı (yedek parça+bakım+tamirat), bakım tarihindeki araç puantaj şantiyesine
 import { createClient } from "@/lib/supabase/client";
 import { gunHesaplaAyBazli } from "./bordro";
-import { brutUcretForAy } from "./personel-brut-ucret";
-import type { AracKiraBedeli, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
+import type { AracKiraBedeli, PersonelAtamaGecmisi, PersonelAtamaManuelGun } from "@/lib/supabase/types";
 
 function getSupabase() {
   return createClient();
@@ -28,6 +28,7 @@ export type MaliyetSatir = {
   sgk: number;
   yakit: number;
   makineKira: number;
+  bakim: number;
   toplam: number;
 };
 
@@ -91,7 +92,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   for (const s of santiyeler) {
     satirMap.set(s.id, {
       santiyeId: s.id, isAdi: s.is_adi,
-      nakit: 0, kart: 0, personel: 0, sgk: 0, yakit: 0, makineKira: 0, toplam: 0,
+      nakit: 0, kart: 0, personel: 0, sgk: 0, yakit: 0, makineKira: 0, bakim: 0, toplam: 0,
     });
   }
   const sat = (santiyeId: string | null | undefined): MaliyetSatir | null =>
@@ -119,15 +120,18 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   const manuelGunler = await tumSatirlar<PersonelAtamaManuelGun>((o, p) =>
     supabase.from("personel_atama_manuel_gun").select("*").range(o, o + p - 1),
   );
-  const brutGecmis = await tumSatirlar<PersonelBrutUcret>((o, p) =>
-    supabase.from("personel_brut_ucret").select("*").order("gecerli_tarih", { ascending: false }).range(o, o + p - 1),
-  ).catch(() => [] as PersonelBrutUcret[]);
+  // Maaş kaynağı: Personeller tablosundaki "Maaş" (personel.maas; yoksa brut_ucret). Tek güncel değer.
+  const personeller = await tumSatirlar<{ id: string; maas: number | null; brut_ucret: number | null }>((o, p) =>
+    supabase.from("personel").select("id, maas, brut_ucret").range(o, o + p - 1),
+  );
+  const maasMap = new Map<string, number>();
+  for (const x of personeller) maasMap.set(x.id, x.maas ?? x.brut_ucret ?? 0);
 
-  // GÜNLÜK kazanç = personele TANIMLI aylık brüt maaş ÷ 30. Maaşı tanımlı OLMAYAN personel
-  // hesaba KATILMAZ (0) — genel günlük ücrete düşülmez. Personel gideri = bu × puantaj günü.
-  const personelUcret = (personelId: string, ayStr: string): number => {
-    const brut = brutUcretForAy(brutGecmis, personelId, ayStr);
-    return brut > 0 ? brut / 30 : 0;
+  // GÜNLÜK kazanç = personele tanımlı aylık maaş ÷ 30. Maaşı TANIMLI OLMAYAN personel
+  // hesaba KATILMAZ (0). Personel gideri = bu × puantaj günü.
+  const personelUcret = (personelId: string): number => {
+    const maas = maasMap.get(personelId) ?? 0;
+    return maas > 0 ? maas / 30 : 0;
   };
 
   const dahilEdilen = new Set<string>(); // personel|ay → manuel ile işlendi, doğal hesapta atla
@@ -156,7 +160,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
     const n = ayYilNum(m.ay);
     if (n < basNum || n > bitNum) continue;
     const r = sat(m.santiye_id);
-    const ucret = personelUcret(m.personel_id, m.ay);
+    const ucret = personelUcret(m.personel_id);
     if (r && ucret > 0) r.personel += (m.gun ?? 0) * ucret;
     dahilEdilen.add(`${m.personel_id}|${m.ay}`);
   }
@@ -176,7 +180,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
       const ayHesap = tamAy ? gunHesaplaAyBazli(atamalar, ayStr) : clampGunler(subStart, subEnd);
       for (const [pId, sMap] of ayHesap) {
         if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
-        const ucret = personelUcret(pId, ayStr);
+        const ucret = personelUcret(pId);
         if (ucret <= 0) continue;
         for (const [santiyeId, gun] of sMap) {
           if (gun <= 0) continue;
@@ -215,6 +219,21 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
     if ((a.birim_fiyat ?? 0) <= 0 || a.tedarikci_firma === "Düzeltme") continue;
     if (!sonFiyatMap.has(a.santiye_id)) sonFiyatMap.set(a.santiye_id, a.birim_fiyat);
   }
+  // Kendi alımı OLMAYAN şantiye → yakıtı virmanla geldiği (GÖNDEREN) şantiyenin en son fiyatıyla hesapla.
+  const virmanlar = await tumSatirlar<{ gonderen_santiye_id: string; alan_santiye_id: string; tarih: string; saat: string }>((o, p) =>
+    supabase.from("yakit_virman").select("gonderen_santiye_id, alan_santiye_id, tarih, saat")
+      .order("tarih", { ascending: false }).order("saat", { ascending: false }).range(o, o + p - 1),
+  );
+  const sonGonderen = new Map<string, string>(); // alan santiye → en son gönderen santiye
+  for (const v of virmanlar) {
+    if (!sonGonderen.has(v.alan_santiye_id)) sonGonderen.set(v.alan_santiye_id, v.gonderen_santiye_id);
+  }
+  const etkinFiyat = (santiyeId: string): number => {
+    if (sonFiyatMap.has(santiyeId)) return sonFiyatMap.get(santiyeId)!; // kendi alım fiyatı
+    const gonderen = sonGonderen.get(santiyeId);                         // virman kaynağının fiyatı
+    if (gonderen && sonFiyatMap.has(gonderen)) return sonFiyatMap.get(gonderen)!;
+    return 0;
+  };
   const yakitlar = await tumSatirlar<{ santiye_id: string; miktar_lt: number; duzeltme: boolean | null }>((o, p) =>
     supabase.from("arac_yakit").select("santiye_id, miktar_lt, duzeltme")
       .gte("tarih", bas).lte("tarih", bit).range(o, o + p - 1),
@@ -222,13 +241,15 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   for (const y of yakitlar) {
     if (y.duzeltme === true) continue; // düzeltme kaydı = gerçek dolum değil
     const r = sat(y.santiye_id);
-    if (r) r.yakit += (y.miktar_lt ?? 0) * (sonFiyatMap.get(y.santiye_id) ?? 0);
+    if (r) r.yakit += (y.miktar_lt ?? 0) * etkinFiyat(y.santiye_id);
   }
 
   // ── 6. Makine kira (kiralık araç aylık bedeli × puantaj günü, dış görev hariç) ──
-  const araclar = await tumSatirlar<{ id: string; tip: string }>((o, p) =>
-    supabase.from("araclar").select("id, tip").range(o, o + p - 1),
+  const araclar = await tumSatirlar<{ id: string; tip: string; santiye_id: string | null }>((o, p) =>
+    supabase.from("araclar").select("id, tip, santiye_id").range(o, o + p - 1),
   );
+  const aracSantiye = new Map<string, string | null>();
+  for (const a of araclar) aracSantiye.set(a.id, a.santiye_id);
   const kiralikIds = araclar.filter((a) => a.tip === "kiralik").map((a) => a.id);
   if (kiralikIds.length > 0) {
     // Kira bedeli geçmişi (arac_id → DESC tarife listesi)
@@ -254,9 +275,49 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
     }
   }
 
+  // ── 7. Araç bakım / tamirat / yedek parça gideri ──
+  // Her bakım kaydı, BAKIM TARİHİNDE aracın puantajda olduğu şantiyeye yansır (yedek parça +
+  // bakım + tamirat = tutar; tip ayrımı yok, hepsi toplanır). O gün puantaj yoksa en yakın
+  // tarihli puantaj; o da yoksa aracın atalı şantiyesi.
+  const bakimlar = await tumSatirlar<{ arac_id: string; bakim_tarihi: string; tutar: number | null }>((o, p) =>
+    supabase.from("arac_bakim").select("arac_id, bakim_tarihi, tutar")
+      .gte("bakim_tarihi", bas).lte("bakim_tarihi", bit).range(o, o + p - 1),
+  );
+  if (bakimlar.length > 0) {
+    const bakimAracIds = [...new Set(bakimlar.map((b) => b.arac_id))];
+    const bkPuantaj = await tumSatirlar<{ arac_id: string; santiye_id: string; tarih: string }>((o, p) =>
+      supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih").in("arac_id", bakimAracIds)
+        .gte("tarih", bas).lte("tarih", bit).range(o, o + p - 1),
+    );
+    const puByArac = new Map<string, { tarih: string; santiye_id: string }[]>();
+    for (const pj of bkPuantaj) {
+      if (!puByArac.has(pj.arac_id)) puByArac.set(pj.arac_id, []);
+      puByArac.get(pj.arac_id)!.push({ tarih: pj.tarih, santiye_id: pj.santiye_id });
+    }
+    const bakimSantiye = (aracId: string, tarih: string): string | null => {
+      const arr = puByArac.get(aracId);
+      if (arr && arr.length > 0) {
+        const tam = arr.find((x) => x.tarih === tarih); // o günkü puantaj
+        if (tam) return tam.santiye_id;
+        let enYakin = arr[0], enFark = Infinity; // en yakın tarihli puantaj
+        const hedef = new Date(tarih).getTime();
+        for (const x of arr) {
+          const fark = Math.abs(new Date(x.tarih).getTime() - hedef);
+          if (fark < enFark) { enFark = fark; enYakin = x; }
+        }
+        return enYakin.santiye_id;
+      }
+      return aracSantiye.get(aracId) ?? null; // fallback: aracın atalı şantiyesi
+    };
+    for (const b of bakimlar) {
+      const r = sat(bakimSantiye(b.arac_id, b.bakim_tarihi));
+      if (r) r.bakim += b.tutar ?? 0;
+    }
+  }
+
   // ── Toplam + sırala (toplamı yüksekten düşüğe; sıfır olanları gizle) ──
   for (const r of satirMap.values()) {
-    r.toplam = r.nakit + r.kart + r.personel + r.sgk + r.yakit + r.makineKira;
+    r.toplam = r.nakit + r.kart + r.personel + r.sgk + r.yakit + r.makineKira + r.bakim;
   }
   const satirlar = Array.from(satirMap.values())
     .filter((r) => r.toplam !== 0)

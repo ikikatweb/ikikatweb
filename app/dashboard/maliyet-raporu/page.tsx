@@ -1,17 +1,20 @@
 // Maliyet Raporu — şantiye bazlı yıllık maliyet kalemleri (yalnız yöneticiye açık).
 // Tablo: her satır bir şantiye; sütunlar nakit, k.k., personel, SGK, yakıt, makine kira + toplam.
+// "Gizle" ikonu şantiyeyi Silinenler sekmesine taşır — VERİ SİLİNMEZ, hesaplanmaya devam eder,
+// sadece ayrı sekmede listelenir. Tercih cihazda (localStorage) saklanır.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks";
 import { getMaliyetRaporu, type MaliyetSatir, SGK_ORAN } from "@/lib/supabase/queries/maliyet";
-import { FileBarChart2 } from "lucide-react";
+import { FileBarChart2, Trash2, RotateCcw } from "lucide-react";
 
 const fmt = (n: number) =>
   n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const BU_YIL = new Date().getFullYear();
 const YILLAR = Array.from({ length: 6 }, (_, i) => BU_YIL - i); // bu yıl + 5 geri
+const GIZLI_KEY = "maliyet-gizli-santiyeler";
 
 export default function MaliyetRaporuPage() {
   const { isYonetici, loading: authYukleniyor } = useAuth();
@@ -24,6 +27,24 @@ export default function MaliyetRaporuPage() {
   const [satirlar, setSatirlar] = useState<MaliyetSatir[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
+  // Görünmesini istemediğim şantiyeler (cihazda saklanır; veri silinmez).
+  const [gizliIds, setGizliIds] = useState<Set<string>>(new Set());
+  const [sekme, setSekme] = useState<"aktif" | "silinen">("aktif");
+
+  // localStorage'dan gizli listeyi yükle (bir kez)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(GIZLI_KEY);
+      if (raw) setGizliIds(new Set(JSON.parse(raw) as string[]));
+    } catch { /* yoksay */ }
+  }, []);
+
+  const gizliKaydet = (yeni: Set<string>) => {
+    setGizliIds(new Set(yeni));
+    try { localStorage.setItem(GIZLI_KEY, JSON.stringify([...yeni])); } catch { /* yoksay */ }
+  };
+  const gizle = (id: string) => { const n = new Set(gizliIds); n.add(id); gizliKaydet(n); };
+  const geriAl = (id: string) => { const n = new Set(gizliIds); n.delete(id); gizliKaydet(n); };
 
   useEffect(() => {
     if (authYukleniyor || !isYonetici) return;
@@ -44,14 +65,18 @@ export default function MaliyetRaporuPage() {
     return () => { iptal = true; };
   }, [sorgu, isYonetici, authYukleniyor]);
 
+  const gorunen = useMemo(() => satirlar.filter((s) => !gizliIds.has(s.santiyeId)), [satirlar, gizliIds]);
+  const gizli = useMemo(() => satirlar.filter((s) => gizliIds.has(s.santiyeId)), [satirlar, gizliIds]);
+  const gosterilen = sekme === "aktif" ? gorunen : gizli;
+
   const toplamlar = useMemo(() => {
-    const t = { nakit: 0, kart: 0, personel: 0, sgk: 0, yakit: 0, makineKira: 0, toplam: 0 };
-    for (const s of satirlar) {
+    const t = { nakit: 0, kart: 0, personel: 0, sgk: 0, yakit: 0, makineKira: 0, bakim: 0, toplam: 0 };
+    for (const s of gosterilen) {
       t.nakit += s.nakit; t.kart += s.kart; t.personel += s.personel;
-      t.sgk += s.sgk; t.yakit += s.yakit; t.makineKira += s.makineKira; t.toplam += s.toplam;
+      t.sgk += s.sgk; t.yakit += s.yakit; t.makineKira += s.makineKira; t.bakim += s.bakim; t.toplam += s.toplam;
     }
     return t;
-  }, [satirlar]);
+  }, [gosterilen]);
 
   if (authYukleniyor) {
     return <div className="p-6 text-sm text-gray-500">Yükleniyor…</div>;
@@ -110,14 +135,31 @@ export default function MaliyetRaporuPage() {
       <p className="text-[11px] text-gray-400">
         Personel = (aylık maaş ÷ 30) × puantaj günü (yalnız maaşı tanımlı personel). SGK = Yüklenici Prim Esas Kazanç × {SGK_ORAN}.
         Yakıt = verilen litre × o şantiyenin en son alım fiyatı. Makine kira: dış görev günleri hariç.
+        Bakım/Onarım = araç bakım/tamirat/yedek parça tutarı, işlem tarihindeki araç puantajının şantiyesine yansır.
       </p>
+
+      {/* Sekmeler: Aktif / Silinenler */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        <button type="button" onClick={() => setSekme("aktif")}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 ${sekme === "aktif" ? "border-[#1E3A5F] text-[#1E3A5F]" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          Aktif ({gorunen.length})
+        </button>
+        <button type="button" onClick={() => setSekme("silinen")}
+          className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 flex items-center gap-1.5 ${sekme === "silinen" ? "border-rose-600 text-rose-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          <Trash2 size={14} /> Silinenler ({gizli.length})
+        </button>
+      </div>
 
       {hata && <div className="p-3 rounded-lg bg-red-50 text-sm text-red-600">{hata}</div>}
 
       {yukleniyor ? (
         <div className="p-6 text-sm text-gray-500">Maliyetler hesaplanıyor…</div>
-      ) : satirlar.length === 0 ? (
-        <div className="p-6 text-sm text-gray-500">{yil} yılı için maliyet kaydı bulunamadı.</div>
+      ) : gosterilen.length === 0 ? (
+        <div className="p-6 text-sm text-gray-500">
+          {sekme === "silinen"
+            ? "Silinenler boş — gizlemek istediğin şantiyeyi Aktif sekmesindeki çöp ikonuyla buraya taşıyabilirsin."
+            : satirlar.length === 0 ? "Seçilen dönem için maliyet kaydı bulunamadı." : "Tüm şantiyeler gizlenmiş."}
+        </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
           <table className="w-full text-sm">
@@ -130,11 +172,13 @@ export default function MaliyetRaporuPage() {
                 <th className="text-right px-3 py-2 font-semibold">SGK</th>
                 <th className="text-right px-3 py-2 font-semibold">Yakıt</th>
                 <th className="text-right px-3 py-2 font-semibold">Makine Kira</th>
+                <th className="text-right px-3 py-2 font-semibold">Bakım/Onarım</th>
                 <th className="text-right px-3 py-2 font-semibold">Toplam</th>
+                <th className="px-2 py-2 w-10"></th>
               </tr>
             </thead>
             <tbody>
-              {satirlar.map((s) => (
+              {gosterilen.map((s) => (
                 <tr key={s.santiyeId} className="border-b last:border-0 hover:bg-gray-50">
                   <td className="px-3 py-2 text-gray-900">{s.isAdi}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(s.nakit)}</td>
@@ -143,7 +187,21 @@ export default function MaliyetRaporuPage() {
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(s.sgk)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(s.yakit)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(s.makineKira)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-gray-700">{fmt(s.bakim)}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900">{fmt(s.toplam)}</td>
+                  <td className="px-2 py-2 text-center">
+                    {sekme === "aktif" ? (
+                      <button type="button" onClick={() => gizle(s.santiyeId)} title="Listeden gizle (Silinenlere taşı)"
+                        className="text-gray-300 hover:text-rose-600 transition-colors">
+                        <Trash2 size={15} />
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => geriAl(s.santiyeId)} title="Geri al (Aktife taşı)"
+                        className="text-gray-300 hover:text-emerald-600 transition-colors">
+                        <RotateCcw size={15} />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -156,7 +214,9 @@ export default function MaliyetRaporuPage() {
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(toplamlar.sgk)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(toplamlar.yakit)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(toplamlar.makineKira)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmt(toplamlar.bakim)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{fmt(toplamlar.toplam)}</td>
+                <td className="px-2 py-2"></td>
               </tr>
             </tfoot>
           </table>

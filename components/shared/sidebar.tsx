@@ -68,7 +68,7 @@ const menuGroups: MenuGroup[] = [
     icon: <FileBarChart2 size={20} />,
     color: "text-rose-600 bg-rose-50",
     items: [
-      { label: "Şantiye Maliyetleri", href: "/dashboard/maliyet-raporu", icon: <FileBarChart2 size={16} /> },
+      { label: "Sezon Maliyeti", href: "/dashboard/maliyet-raporu", icon: <FileBarChart2 size={16} /> },
     ],
   },
   {
