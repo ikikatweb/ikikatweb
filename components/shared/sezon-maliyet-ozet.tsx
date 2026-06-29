@@ -28,10 +28,29 @@ export default function SezonMaliyetOzet() {
       const raw = localStorage.getItem(GIZLI_KEY);
       if (raw) gizli = new Set(JSON.parse(raw) as string[]);
     } catch { /* yoksay */ }
+    // gizli filtre kullanım anında uygulanır → önbellekte HAM satırlar tutulur (gizli değişince refetch gerekmez)
+    const uygula = (ham: MaliyetSatir[]) => {
+      if (iptal) return;
+      setSatirlar(ham.filter((s) => !gizli.has(s.santiyeId)));
+      setYukleniyor(false);
+    };
+    // ÖNBELLEK: 15 dk taze ise ağır yıl-bazlı sorguyu tekrar çalıştırma (dashboard her açılışında DB'yi yormasın).
+    try {
+      const c = sessionStorage.getItem(CACHE_KEY);
+      if (c) {
+        const obj = JSON.parse(c) as { ts: number; satirlar: MaliyetSatir[] };
+        if (obj && Date.now() - obj.ts < CACHE_TTL && Array.isArray(obj.satirlar)) {
+          uygula(obj.satirlar);
+          return () => { iptal = true; };
+        }
+      }
+    } catch { /* yoksay → taze çek */ }
     getMaliyetRaporu(`${BU_YIL}-01-01`, `${BU_YIL}-12-31`)
-      .then((r) => { if (!iptal) setSatirlar(r.satirlar.filter((s) => !gizli.has(s.santiyeId))); })
-      .catch(() => { /* sessiz */ })
-      .finally(() => { if (!iptal) setYukleniyor(false); });
+      .then((r) => {
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), satirlar: r.satirlar })); } catch { /* kota → yoksay */ }
+        uygula(r.satirlar);
+      })
+      .catch(() => { if (!iptal) setYukleniyor(false); });
     return () => { iptal = true; };
   }, [isYonetici, loading]);
 
