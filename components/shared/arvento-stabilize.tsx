@@ -580,6 +580,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       if (g) g.olaylar.push(o);
       else gruplar.set(anahtar, { lat, lng, plaka: o.plaka, surucu: o.surucu, olaylar: [o] });
     }
+    // ÇOK damper (geniş aralık) → truck divIcon (DOM) yerine canvas nokta çiz: 1000+ damper bile akıcı.
+    // Az damperde (gün/kısa aralık) truck ikonu korunur. Eşik = harita marker SAYISI (gruplanmış).
+    const cokDamper = gruplar.size > 150;
     gruplar.forEach((g) => {
       // SINIFA göre renk: gerçek = aracın kendi rengi (mevcut), arıza = kırmızı, mükerrer = amber.
       const renk = damperFiltre === "ariza" ? "#dc2626" : damperFiltre === "mukerrer" ? "#f59e0b" : renkAl(g.plaka);
@@ -597,16 +600,21 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`
             : ""))
         .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
-      const ikon = L.divIcon({
-        html: damperKamyonIkonHtml(renk, adet),
-        className: "damper-ikon",
-        iconSize: [26, 26],   // küçültüldü: 34 → 26
-        iconAnchor: [13, 13],
-        popupAnchor: [0, -12],
-      });
-      L.marker([g.lat, g.lng], { icon: ikon })
-        .addTo(grup)
-        .bindPopup(`<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b><br>${g.plaka}<br>${liste}`);
+      const popupHtml = `<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b><br>${g.plaka}<br>${liste}`;
+      if (cokDamper) {
+        // Canvas nokta (preferCanvas) — renk = sınıf rengi; truck ikonu yerine hızlı render.
+        L.circleMarker([g.lat, g.lng], { radius: 5, color: "#ffffff", weight: 1, fillColor: renk, fillOpacity: 0.95 })
+          .addTo(grup).bindPopup(popupHtml);
+      } else {
+        const ikon = L.divIcon({
+          html: damperKamyonIkonHtml(renk, adet),
+          className: "damper-ikon",
+          iconSize: [26, 26],   // küçültüldü: 34 → 26
+          iconAnchor: [13, 13],
+          popupAnchor: [0, -12],
+        });
+        L.marker([g.lat, g.lng], { icon: ikon }).addTo(grup).bindPopup(popupHtml);
+      }
       bounds.push([g.lat, g.lng]);
     });
     // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──

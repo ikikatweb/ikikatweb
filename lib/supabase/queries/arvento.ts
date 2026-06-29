@@ -69,26 +69,9 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
   if (!bas || !bitis) return [];
   if (plakalar && plakalar.length === 0) return []; // bu sekmeye ait araç yok → çekme
   const supabase = getSupabase();
-  // SCOPED (plaka listesi var) → veri küçük; gün-gün 29 sorgu yerine TEK aralık sorgusu (round-trip darboğazı
-  // biter, timeout riski yok çünkü az araç). Gün-gün yöntemi yalnız TÜM araçlar (büyük) için gerekliydi.
-  if (plakalar && plakalar.length > 0) {
-    const rows: AracArventoGuzergah[] = [];
-    const PARCA = 1000; let offset = 0;
-    while (true) {
-      const { data, error } = await supabase
-        .from("arac_arvento_guzergah").select("*")
-        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis).in("plaka", plakalar)
-        .order("rapor_tarihi").range(offset, offset + PARCA - 1);
-      if (error) throw error;
-      const d = (data ?? []) as AracArventoGuzergah[];
-      rows.push(...d);
-      if (d.length < PARCA) break;
-      offset += PARCA; if (offset > 100000) break;
-    }
-    return rows;
-  }
-  // Geniş aralıkta tek sorgu (YOĞUN noktalar = SpeedReport) DB statement-timeout veriyordu → "veri yok".
-  // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla (hız/timeout dengesi).
+  // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla. plakalar verilirse her gün-sorgusu .in ile scoped
+  // (küçük). KANITLANMIŞ yol: tek dev sorgu/haftalık paralel ağır sorgular tarayıcıda (RLS) TAKILIYORDU;
+  // gün-gün küçük parçalar takılmaz. (Geniş aralıkta tek sorgu DB statement-timeout veriyordu.)
   const gunler: string[] = [];
   const d = new Date(bas + "T00:00:00"); const son = new Date(bitis + "T00:00:00");
   for (; d <= son; d.setDate(d.getDate() + 1)) {

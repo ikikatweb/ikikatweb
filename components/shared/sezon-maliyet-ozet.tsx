@@ -12,6 +12,8 @@ import { FileBarChart2 } from "lucide-react";
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const BU_YIL = new Date().getFullYear();
 const GIZLI_KEY = "maliyet-gizli-santiyeler";
+const CACHE_KEY = `sezon-maliyet-ozet-${BU_YIL}`;
+const CACHE_TTL = 15 * 60 * 1000; // 15 dk: ağır yıl-bazlı sorgu her dashboard açılışında değil, oturumda en çok 1 kez/15dk
 
 export default function SezonMaliyetOzet() {
   const { isYonetici, loading } = useAuth();
