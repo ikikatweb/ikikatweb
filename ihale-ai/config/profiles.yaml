@@ -1,0 +1,42 @@
+# =============================================================
+# HAZIR PROFİLLER
+# =============================================================
+# Her profil thresholds.yaml'in üzerine override yapar.
+# Kullanım: python scripts/ihale_stratejisi.py --profile <isim>
+# =============================================================
+
+profiles:
+
+  # ----- DENGELİ (varsayılan) -----
+  # thresholds.yaml'deki değerleri aynen kullanır
+  dengeli: {}
+
+  # ----- PARANOYAK -----
+  # Daha gevşek eşikler — daha çok firma kartel/sniper olarak tespit edilir
+  # Yanlış pozitif yüksek olabilir
+  paranoyak:
+    sniper.threshold_pct: 0.80
+    sniper.min_idare_hits: 1
+    kartel.tenzilat.fark_esigi_pct: 0.30
+    kartel.tenzilat.guclu_oran: 0.50
+    kartel.kategori_esikleri.kartel_supheli: [60, 100]
+    kartel.min_ortak_ihale: 3
+
+  # ----- MUHAFAZAKÂR -----
+  # Sıkı eşikler — sadece bariz kartelleri yakalar
+  muhafazakar:
+    sniper.threshold_pct: 0.30
+    sniper.min_idare_hits: 3
+    sniper.min_total_ihale: 5
+    kartel.tenzilat.fark_esigi_pct: 0.10
+    kartel.tenzilat.guclu_oran: 0.90
+    kartel.min_ortak_ihale: 8
+    kartel.kategori_esikleri.kartel_supheli: [85, 100]
+
+  # ----- FORENSIC -----
+  # Hassasiyet testi — her şeyi raporla, kararlar elde verilir
+  forensic:
+    kartel.kategori_esikleri.bagimsiz: [0, 15]
+    kartel.kategori_esikleri.zayif_bag: [15, 35]
+    sniper.min_idare_hits: 2
+    sniper.min_total_ihale: 2

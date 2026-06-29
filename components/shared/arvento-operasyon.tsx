@@ -126,7 +126,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const etkinSilindir = hamGoster ? 0 : silindirEsik;
   // SERME: seçilen günden ÖNCE damper dökülmüş yol hücreleri (tüm geçmiş taranır). Serme = greyder
   // rotasının bu hücrelere denk gelen kısmı. Boş = henüz yükleniyor / önceden damper yok.
-  const [damperGecmisHucre, setDamperGecmisHucre] = useState<Set<string>>(new Set());
+  // SERME: seçilen aralık BAŞINDAN ÖNCEKİ damperler (tarih+saat = dt). Aralık içi damperler raporlar'dan gelir.
+  const [oncekiDamper, setOncekiDamper] = useState<{ lat: number; lng: number; dt: string }[]>([]);
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]);
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
@@ -322,6 +323,58 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return m;
   }, [sermeMi, greyderler, silindirler, gridMesafe, etkinTekrar, etkinSilindir, damperKoordlu]);
 
+  // SERME ızgarası: her hücreye o hücredeki EN ERKEN damper tarihi. Aralık öncesi (oncekiDamper) +
+  // aralık içi (raporlar) damperleri birleşir. Böylece "bu yola, bu greyder geçişinden ÖNCE damper
+  // dökülmüş mü?" gün-gün sorulabilir (aralıkta da çalışır; tek güne de uyar).
+  const damperHucreTarih = useMemo(() => {
+    const m = new Map<string, string>(); // hücre → en erken damper DATETIME ("YYYY-MM-DD HH:MM:SS")
+    const ekle = (lat: number, lng: number, dt: string) => {
+      const [cy, cx] = sermeHucreIdx(lat, lng);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const key = `${cy + dy}_${cx + dx}`;
+        const mevcut = m.get(key);
+        if (mevcut == null || dt < mevcut) m.set(key, dt);
+      }
+    };
+    for (const d of oncekiDamper) ekle(d.lat, d.lng, d.dt);
+    for (const r of raporlar) {
+      for (const o of (r.damper_olaylar ?? []) as { lat?: number | null; lng?: number | null; saat?: string | null }[]) {
+        if (o?.lat == null || o?.lng == null) continue;
+        ekle(o.lat, o.lng, `${r.rapor_tarihi} ${o.saat ?? "00:00:00"}`);
+      }
+    }
+    return m;
+  }, [oncekiDamper, raporlar]);
+
+  // SERME = greyderin GÜN-GÜN rotasının, o günden ÖNCE damper dökülmüş hücrelere denk gelen kısmı.
+  // Plaka bazında toplanır → omurga (tek çizgi). Reglajı (taze yol, önceden damper yok) serme'den ayırır.
+  const sermeByPlaka = useMemo(() => {
+    if (!sermeMi) return [] as { plaka: string; arac_sinifi: string | null; parcalar: [number, number][][] }[];
+    const greyderPlakalar = new Set(greyderler.filter((k) => seciliGreyderler.has(k.plaka)).map((k) => plakaNorm(k.plaka)));
+    const byP = new Map<string, { plaka: string; arac_sinifi: string | null; pts: { lat: number; lng: number; hiz?: number | null }[] }>();
+    for (const row of tumGuzergah) {
+      const pk = plakaNorm(row.plaka);
+      if (!greyderPlakalar.has(pk)) continue;
+      const D = row.rapor_tarihi;
+      let g = byP.get(pk);
+      if (!g) { g = { plaka: row.plaka, arac_sinifi: row.arac_sinifi ?? null, pts: [] }; byP.set(pk, g); }
+      for (const p of (row.noktalar ?? [])) {
+        if (p?.lat == null || p?.lng == null) continue;
+        // Bu greyder geçişinin DATETIME'ı; o hücreye DAHA ÖNCE damper dökülmüşse (ct < geçiş) = serme.
+        // Damperden ÖNCEKİ geçişler (reglaj) elenir → reglaj ile serme artık karışmaz.
+        const ct = damperHucreTarih.get(sermeHucreKey(p.lat, p.lng));
+        const gecisDt = `${D} ${p.saat ?? "23:59:59"}`;
+        if (ct != null && ct < gecisDt) g.pts.push({ lat: p.lat, lng: p.lng, hiz: p.hiz });
+      }
+    }
+    const out: { plaka: string; arac_sinifi: string | null; parcalar: [number, number][][] }[] = [];
+    for (const g of byP.values()) {
+      if (g.pts.length < 2) continue;
+      out.push({ plaka: g.plaka, arac_sinifi: g.arac_sinifi, parcalar: sadelesGuzergah(g.pts, etkinTekrar, gridMesafe, transitHiz).parcalar });
+    }
+    return out;
+  }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz]);
+
   // Serme: greyder hattı yalnızca ÜZERİNDE/yakınında damper varsa gösterilir
   // (reglaj→damper→reglaj). Damper yoksa serme yapılmamıştır → boş.
   const gosterilenGreyder = useMemo(() => {
@@ -371,29 +424,28 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
   }, [gorunumRef, loading]);
 
-  // SERME geçmiş damper taraması: seçilen güne (bas) kadar TÜM damper noktalarını ızgaraya işle.
-  // Hafif: yalnız damper_olaylar çekilir. Serme sekmesinde + tarih değişince yenilenir.
+  // SERME geçmiş damper taraması: seçilen aralık BAŞINDAN (bas) önceki damperleri TARİHLİ çek.
+  // Aralık içi damperler ayrıca raporlar'dan (in-memory) gelir → damperHucreTarih memo'da birleşir.
   useEffect(() => {
-    if (!sermeMi || !bas) { setDamperGecmisHucre(new Set()); return; }
+    if (!sermeMi || !bas) { setOncekiDamper([]); return; }
     let iptal = false;
     (async () => {
       const sb = createClient();
-      const set = new Set<string>();
+      const out: { lat: number; lng: number; dt: string }[] = [];
       const PARCA = 1000; let offset = 0;
       while (!iptal) {
-        const { data, error } = await sb.from("arac_arvento_rapor").select("damper_olaylar").lt("rapor_tarihi", bas).range(offset, offset + PARCA - 1);
+        const { data, error } = await sb.from("arac_arvento_rapor").select("rapor_tarihi, damper_olaylar").lt("rapor_tarihi", bas).range(offset, offset + PARCA - 1);
         if (error || !data) break;
-        for (const r of data as { damper_olaylar?: { lat?: number | null; lng?: number | null }[] | null }[]) {
+        for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
           for (const d of (r.damper_olaylar ?? [])) {
             if (d?.lat == null || d?.lng == null) continue;
-            const [cy, cx] = sermeHucreIdx(d.lat, d.lng);
-            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) set.add(`${cy + dy}_${cx + dx}`);
+            out.push({ lat: d.lat, lng: d.lng, dt: `${r.rapor_tarihi} ${d.saat ?? "00:00:00"}` });
           }
         }
         if (data.length < PARCA) break;
         offset += PARCA; if (offset > 300000) break;
       }
-      if (!iptal) setDamperGecmisHucre(set);
+      if (!iptal) setOncekiDamper(out);
     })();
     return () => { iptal = true; };
   }, [sermeMi, bas]);
@@ -407,14 +459,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     grup.clearLayers();
     const bounds: [number, number][] = [];
     // Altlı üstlü greyder çizgisi — YALNIZ Serme'de. Sıkıştırma'da greyder GÖSTERİLMEZ (sadece silindir güzergahı).
-    // SERME: greyder rotasının YALNIZ önceden damper dökülmüş (geçmiş) hücrelere denk gelen kısmı,
-    // TEK ÇİZGİ (omurga). Reglajı serme'den ayıran kural budur (ikisi de greyder).
-    if (sermeMi) gosterilenGreyder.forEach((k) => {
-      const sermePts = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null && damperGecmisHucre.has(sermeHucreKey(p.lat as number, p.lng as number)));
-      if (sermePts.length < 2) return;
-      for (const seg of sadelesGuzergah(sermePts, etkinTekrar, gridMesafe, transitHiz).parcalar) {
-        L.polyline(seg, { color: greyderRenkAl(k.plaka), weight: sermeKal, opacity: 0.9 })
-          .addTo(grup).bindPopup(`<b>${k.plaka}</b> (serme · önceden damperli yol)<br>${k.arac_sinifi ?? ""}`);
+    // SERME: greyderin GÜN-GÜN, o günden ÖNCE damper dökülmüş yola denk gelen rotası — TEK ÇİZGİ (omurga).
+    // (Aralıkta da doğru: 10.06'da damper, 15.06'da serme → yakalanır; taze reglaj → yakalanmaz.)
+    if (sermeMi) sermeByPlaka.forEach((g) => {
+      const renk = greyderRenkAl(g.plaka);
+      for (const seg of g.parcalar) {
+        L.polyline(seg, { color: renk, weight: sermeKal, opacity: 0.9 })
+          .addTo(grup).bindPopup(`<b>${g.plaka}</b> (serme · önceden damperli yol)<br>${g.arac_sinifi ?? ""}`);
         for (const ll of seg) bounds.push(ll);
       }
     });
@@ -450,7 +501,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, gosterilenGreyder, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, damperGecmisHucre, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, sermeByPlaka, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

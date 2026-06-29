@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+*.egg-info/
+
+# Data outputs (model çıktıları)
+data/profiles/*.json
+data/bias_history.json
+data/my_firms.json
+*.xlsx
+*.png
+*.pdf
+!sample-*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,136 @@
+# =============================================================
+# İHALE AI — EŞİK KONFİGÜRASYONU
+# =============================================================
+# Tüm eşikler buradan ayarlanabilir.
+# Profil değiştirmek için: ihale-ai/config/profiles.yaml
+# Çalışma anında override için: --key.subkey value
+# =============================================================
+
+# ===========================================
+# SNIPER DETECTION (Avcı Tespiti)
+# ===========================================
+sniper:
+  # Sınır değere maksimum yakınlık: |T - SD| / SD × 100 < threshold
+  # Hem üst hem alt: SD × (1 - thr/100) ≤ T ≤ SD × (1 + thr/100)
+  threshold_pct: 0.50
+
+  # Aynı idarede SNIPER demek için minimum "in-band" hit sayısı
+  min_idare_hits: 2
+
+  # Genel std sapma kontrolü — firma çok değişkense sniper sayma
+  max_global_std_pct: 2.0
+
+  # Sniper kararı için firmanın toplam minimum ihale sayısı (anlamlılık için)
+  min_total_ihale: 3
+
+  # ULTRA SNIPER eşiği — büyük olasılıkla iç bilgi sızıntısı
+  ultra_threshold_pct: 0.20
+
+
+# ===========================================
+# CARTEL DETECTION (Birlikte Hareket)
+# ===========================================
+kartel:
+  # Bir firma çifti değerlendirmek için minimum ortak ihale
+  min_ortak_ihale: 5
+
+  # ---- SİNYAL 1: LIFT ----
+  lift:
+    cok_zayif: 1.2
+    zayif: 1.5
+    guclu: 2.0
+    cok_guclu: 5.0
+    negatif_pazar_bolusumu: 0.5
+
+  # ---- SİNYAL 2: TENZİLAT YAKINLIĞI (en güçlü sinyal) ⭐ ----
+  tenzilat:
+    fark_esigi_pct: 0.15        # |Tenzilat_A - Tenzilat_B| < %0.15 = "yakın"
+    guclu_oran: 0.80            # %80+ ihale eşik altı → GÜÇLÜ
+    orta_oran: 0.50
+    zayif_oran: 0.30
+    metrik: "esik_alti_orani"   # "mean" | "median" | "esik_alti_orani"
+
+  # ---- SİNYAL 3: TEKLİF ORANI SABİTLİĞİ ----
+  teklif_orani:
+    cv_esigi: 0.02              # std/mean < %2 = sabit oran
+    min_ihale: 3
+
+  # ---- SİNYAL 4: KAZANMA ROTASYONU ----
+  rotasyon:
+    sira_alma_min: 0.40         # 40-60 → "sıraya alma"
+    sira_alma_max: 0.60
+    destek_teklifi_esigi: 0.85  # %85+ aynı kazanan → diğeri "destek"
+
+  # ---- SİNYAL 5: İDARE YOĞUNLUĞU ----
+  idare:
+    yuksek: 0.80
+    orta: 0.60
+
+  # ---- SKOR AĞIRLIKLARI (Toplam 100) ----
+  skor_agirliklari:
+    lift: 25
+    tenzilat: 35       # ⭐ EN YÜKSEK
+    teklif_orani: 15
+    rotasyon: 10
+    idare: 15
+
+  # ---- KATEGORİLER ----
+  kategori_esikleri:
+    bagimsiz: [0, 30]
+    zayif_bag: [30, 50]
+    orta_bag: [50, 75]
+    kartel_supheli: [75, 100]
+
+
+# ===========================================
+# TOPLULAŞTIRMACI FİRMA TESPİTİ
+# ===========================================
+toplulaştırmacı:
+  taban_oran: 0.70                          # %70+ ihaleye girmiş = toplulaştırmacı
+  toplulastirmaci_arasi_lift_min: 3.0       # bunlar arası lift düşük çıkar — daha sıkı tut
+  toplulastirmaci_arasi_tenzilat_zorla: true  # tenzilat sinyali zorunlu
+
+
+# ===========================================
+# YETERLİLİK / İŞ DENEYİMİ
+# ===========================================
+deneyim:
+  jv_carpan: 1.20                  # JV durumunda %20 fazla
+  jv_baz: "max"                    # "max" | "sum" | "pilot" — büyük firmanın deneyimi
+
+  # Tenzilat anomali filtresi — istatistiklerden hariç tutulan teklifler
+  # (deneyim hesabı ve tenzilat ortalamaları için)
+  # Bu aralık dışındaki tenzilatlar büyük olasılıkla VERİ HATASI.
+  # Örn: -%14000 = teklif YM'nin 150 katı (saçma)
+  tenzilat_min_pct: -50.0          # %50'den fazla yüksek teklif → hariç
+  tenzilat_max_pct: 60.0           # %60'tan fazla kırım → hariç (mantıksız)
+
+
+# ===========================================
+# JOINT VENTURE PARSER
+# ===========================================
+joint_venture:
+  # Ayraçlar (çoğul olabilir)
+  ayraclar: [", "]
+  # Tarih-saat son eki regex'i (ihale_katilimci.firma_adi'ndaki formata uyumlu)
+  tarih_son_eki_regex: ' - \d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2}'
+  # JV tespitinde tek firma adı için minimum karakter
+  min_firma_adi_uzunluk: 5
+
+
+# ===========================================
+# MONTE CARLO SİMÜLASYON
+# ===========================================
+simulasyon:
+  iterasyon_sayisi: 1000
+  guven_aralikleri: [0.10, 0.50, 0.90]
+  rakip_secim_carpani: "ihale_sayisi"
+  random_seed: null                # tekrarlanabilir sonuç için sayı koy
+
+
+# ===========================================
+# YI-UFE
+# ===========================================
+yi_ufe:
+  referans_ay: "today"             # "today" veya "YYYY-MM"
+  eksik_ay_doldurma: "linear"      # "linear" | "nearest" | "skip"

@@ -1,0 +1,29 @@
+{
+  "_aciklama": "Manuel olarak tanımladığınız 'birlikte hareket eden' firma grupları. Bu dosyayı 'manual_groups.json' olarak kopyalayın.",
+  "groups": [
+    {
+      "id": "g1",
+      "name": "Doğu Anadolu Konsorsiyumu",
+      "color": "#E63946",
+      "firmalar": [
+        "ABC İNŞAAT MÜH. LTD. ŞTİ.",
+        "XYZ YAPI A.Ş.",
+        "DEF MÜTEAHHİTLİK"
+      ],
+      "notlar": "DSİ Erzurum 2018-2022 arası, %85+ ortak katılım",
+      "active": true
+    },
+    {
+      "id": "g2",
+      "name": "Karayolları Trio",
+      "color": "#457B9D",
+      "firmalar": [
+        "ALFA İNŞ.",
+        "BETA YAPI",
+        "GAMMA SAN."
+      ],
+      "notlar": "Karayolları 12. Bölge, sıraya alma kalıbı",
+      "active": true
+    }
+  ]
+}
