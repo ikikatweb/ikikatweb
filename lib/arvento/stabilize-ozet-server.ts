@@ -14,6 +14,10 @@ import { ocakTespit, rotaTemizle, type LatLng } from "./ocak";
 
 const SEKME = "stabilize";
 const MAX_GUN = 45; // Vercel 60s limiti — bir istekte en fazla bu kadar gün hesaplanır.
+// Plaka normalize (boşluk/harf farkını yok say). rapor.plaka ile guzergah.plaka FARKLI biçimde gelebilir
+// ("60 BP 842" vs "60BP842") → rota eşleşmesi için ŞART. (plakaNorm ile aynı; queries/arvento'yu sunucuda
+// import etmemek için yerel.)
+const plakaKey = (s: string) => String(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 // Service-role client (RLS baypas). arvento_harita_ozet'e politikasız erişim için ŞART.
 export function serviceClient(): SupabaseClient {
@@ -107,7 +111,7 @@ export async function gunOzetiHesapla(
     for (const g of (guzData ?? []) as GuzergahRow[]) {
       const ham = Array.isArray(g.noktalar) ? g.noktalar : [];
       const temiz = rotaTemizle(ham).map((p) => ({ lat: p.lat, lng: p.lng, saat: p.saat ?? null, hiz: p.hiz ?? null }));
-      rotaMap.set(g.plaka, temiz);
+      rotaMap.set(plakaKey(g.plaka), temiz);
     }
   }
 
@@ -140,7 +144,7 @@ export async function gunOzetiHesapla(
       lng: o.lng ?? null,
     }));
     if (olaylar.length === 0) continue; // yalnız damper_sayisi var, detay yok → oturtulacak olay yok
-    const rota = rotaMap.get(r.plaka) ?? [];
+    const rota = rotaMap.get(plakaKey(r.plaka)) ?? [];
     const sinifli = siniflaGunDamper(r.plaka, gun, r.surucu ?? null, olaylar, rota, ocak, ayar);
     dampers.push(...sinifli);
   }
