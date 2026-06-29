@@ -230,19 +230,15 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
   // çekiyordu → API 5+ sn sürüyordu.) Ocak/ayar geçmiş bir gün için değişirse o gün backfill ile tazelenir.
   const { data: cacheRows } = await supabase
     .from("arvento_harita_ozet")
-    .select("rapor_tarihi, payload, olusturma")
+    .select("rapor_tarihi, payload")
     .eq("sekme", SEKME)
     .gte("rapor_tarihi", gunler[0])
     .lte("rapor_tarihi", gunler[gunler.length - 1]);
-  type CacheVal = { payload: { dampers?: OzetDamper[]; girisler?: OzetGiris[] }; olusturma: string | null };
-  const cacheMap = new Map<string, CacheVal>();
-  for (const r of (cacheRows ?? []) as { rapor_tarihi: string; payload: CacheVal["payload"]; olusturma: string | null }[]) {
-    cacheMap.set(String(r.rapor_tarihi), { payload: r.payload, olusturma: r.olusturma });
+  type CachePayload = { dampers?: OzetDamper[]; girisler?: OzetGiris[] };
+  const cacheMap = new Map<string, CachePayload>();
+  for (const r of (cacheRows ?? []) as { rapor_tarihi: string; payload: CachePayload }[]) {
+    cacheMap.set(String(r.rapor_tarihi), r.payload);
   }
-  // BUGÜN: her açılışta yeniden hesaplamak yerine, önbellek <BUGUN_TTL ise onu kullan. 15 dk'lık speed-sync
-  // bugünün özetini önceden ısıtır (warming) → TTL=20 dk ile cache HEP taze kalır → ilk açılış da anında.
-  // Warming durursa TTL bitince ilk kullanıcı bir kez yeniden hesaplar (kendi kendine düzelir).
-  const BUGUN_TTL = 20 * 60 * 1000;
 
   // Giriş sayıları gün-gün gelir → plaka bazında TOPLA (aralık geneli).
   const girisM = new Map<string, { girisOcak: number; girisDokum: number }>();
@@ -259,10 +255,10 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
   for (const gun of gunler) {
     const cached = cacheMap.get(gun);
     const bugunMu = gun === bugun;
-    // Geçmiş gün → önbellek (kesin). Bugün → önbellek TTL içindeyse kullan; değilse yeniden hesapla.
-    const tazeBugun = !force && !!(cached && bugunMu && cached.olusturma && (Date.now() - new Date(cached.olusturma).getTime() < BUGUN_TTL));
-    if (cached && (!bugunMu || tazeBugun)) { tum.push(...(cached.payload.dampers ?? [])); girisTopla(cached.payload.girisler); continue; }
-    // Eksik gün veya BAYAT bugün → hesapla + upsert (SIRALI — havuz).
+    // ÖNBELLEK VARSA kullan (bugün dahil) → kullanıcı yüklemesi HEP hızlı (zaman damgası/TTL yok). Bugünü
+    // yalnız WARMING (force; 15 dk'da bir speed-sync) yeniden hesaplar → tazelik orada. Eksik gün → hesapla.
+    if (cached && !(bugunMu && force)) { tum.push(...(cached.dampers ?? [])); girisTopla(cached.girisler); continue; }
+    // Eksik gün veya (bugün + force/warming) → hesapla + upsert (SIRALI — havuz).
     if (!ayarCache) ayarCache = await getAyarServer(supabase);
     const { imza, payload } = await gunOzetiHesapla(gun, supabase, ayarCache);
     await supabase
