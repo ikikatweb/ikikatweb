@@ -311,17 +311,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // "km yol" = HARİTADA ÇİZİLEN çizginin (eşikli omurga) uzunluğu. Eşik ≥ 1 ama yol eşik kadar
   // taranmamışsa omurga BOŞ → 0. SERME'de AYRICA: greyder hattının ≤80 m'sinde damper YOKSA serme
   // yapılmamıştır → 0 ("damper olmayan yolda serme olmaz"). Ham modda (eşik < 1) kapsanan yol.
-  const omurgaKmMap = useMemo(() => {
-    const m = new Map<string, number>();
-    const esik = sermeMi ? etkinTekrar : etkinSilindir;
-    for (const k of sermeMi ? greyderler : silindirler) {
-      const ns = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-      if (ns.length < 2) continue;
-      if (sermeMi && !yakinDamperVar(ns, damperKoordlu)) { m.set(k.plaka, 0); continue; }
-      m.set(k.plaka, esik < 1 ? kapsananYolKm(ns, gridMesafe) : parcalarUzunlukKm(parcalar(ns, esik, gridMesafe, transitHiz)));
-    }
-    return m;
-  }, [sermeMi, greyderler, silindirler, gridMesafe, etkinTekrar, etkinSilindir, damperKoordlu]);
+  // omurgaKmMap, sermeByPlaka'dan SONRA tanımlı (serme km'si oradan gelir) — aşağıya taşındı.
 
   // SERME ızgarası: her hücreye o hücredeki EN ERKEN damper tarihi. Aralık öncesi (oncekiDamper) +
   // aralık içi (raporlar) damperleri birleşir. Böylece "bu yola, bu greyder geçişinden ÖNCE damper
@@ -374,6 +364,24 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     }
     return out;
   }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz]);
+
+  // Çip "km yol": SERME'de damper-SONRASI serme omurgası (sermeByPlaka); SIKIŞTIRMA'da silindir omurgası.
+  // Serme greyderinin TOPLAM rotası DEĞİL → reglaj ile aynı görünmez. Serme'si olmayan greyder = 0.
+  const omurgaKmMap = useMemo(() => {
+    const m = new Map<string, number>();
+    if (sermeMi) {
+      for (const k of greyderler) m.set(k.plaka, 0); // varsayılan: serme yok → 0
+      for (const g of sermeByPlaka) m.set(g.plaka, parcalarUzunlukKm(g.parcalar));
+      return m;
+    }
+    const esik = etkinSilindir;
+    for (const k of silindirler) {
+      const ns = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      if (ns.length < 2) continue;
+      m.set(k.plaka, esik < 1 ? kapsananYolKm(ns, gridMesafe) : parcalarUzunlukKm(parcalar(ns, esik, gridMesafe, transitHiz)));
+    }
+    return m;
+  }, [sermeMi, greyderler, sermeByPlaka, silindirler, gridMesafe, etkinSilindir, transitHiz]);
 
   // Serme: greyder hattı yalnızca ÜZERİNDE/yakınında damper varsa gösterilir
   // (reglaj→damper→reglaj). Damper yoksa serme yapılmamıştır → boş.
