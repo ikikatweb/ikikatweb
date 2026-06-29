@@ -172,15 +172,30 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski rakamlar görünür) + yükleniyor göster.
     if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
-    Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
-      .then(([g, r]) => { if (benimNo === yukNoRef.current) { setTumGuzergah(g); setRaporlar(r as AracArventoRapor[]); } }) // eski istek → yok say
-      .catch((err) => {
+    // HIZLANDIRMA: önce hafif rapor (tüm araçlar; damper buradan), sonra YALNIZ bu sekmeye ait araçların
+    // ağır rotası çekilir. Serme/Sıkıştırma = greyder ∪ silindir (sıkıştırma serme referansı için greyderi de ister).
+    // İlgisiz araçların (oto/iş mak./kamyon) GPS verisi indirilmez → 13,7 MB yerine ~0,6 MB.
+    (async () => {
+      try {
+        const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
+        if (benimNo !== yukNoRef.current) return;
+        const ilgili = [...new Set(r
+          .filter((x) =>
+            operasyondaGorunur(sekmeMap, atananSekmeler, null, "serme", x.plaka) ||
+            operasyondaGorunur(sekmeMap, atananSekmeler, null, "sikistirma", x.plaka))
+          .map((x) => x.plaka))];
+        const g = await getGuzergahByRange(bas, bitis, ilgili);
+        if (benimNo !== yukNoRef.current) return;
+        setTumGuzergah(g); setRaporlar(r);
+      } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
-      })
-      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
-  }, [bas, bitis, refreshKey, sermeMi]);
+      } finally {
+        if (benimNo === yukNoRef.current) setLoading(false);
+      }
+    })();
+  }, [bas, bitis, refreshKey, sermeMi, sekmeMap, atananSekmeler]);
 
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
   const greyderler = useMemo(() => tumGuzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergahBirlesik, sekmeMap, atananSekmeler]);

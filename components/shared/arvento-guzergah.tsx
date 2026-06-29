@@ -6,7 +6,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
@@ -102,17 +102,34 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri gelene kadar eski rakamlar görünür) + yükleniyor göster.
     if (yapisal) { yapiRef.current = yapi; setLoading(true); setKayitlar([]); }
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
-    getGuzergahByRange(bas, bitis)
-      .then((k) => { if (benimNo === yukNoRef.current) setKayitlar(k); }) // eski istek → yok say
-      .catch((err) => {
+    // HIZLANDIRMA: İş Makineleri haritası → yalnız plakaFiltre; Reglaj → yalnız greyder (rapordan, atamaya
+    // saygılı). İlgisiz araçların (oto/kamyon/iş mak.) ağır GPS verisi indirilmez → 13,7 MB yerine ~0,6 MB.
+    (async () => {
+      try {
+        let plakalar: string[] | null;
+        if (plakaFiltre && plakaFiltre.length > 0) {
+          plakalar = plakaFiltre; // İş Makineleri haritası → bu plakalar
+        } else {
+          const r = await getArventoRaporByRange(bas, bitis); // hafif; reglaj plakalarını bulmak için
+          if (benimNo !== yukNoRef.current) return;
+          const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
+          plakalar = [...new Set((r as { plaka: string }[])
+            .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "reglaj", x.plaka))
+            .map((x) => x.plaka))];
+        }
+        const k = await getGuzergahByRange(bas, bitis, plakalar);
+        if (benimNo === yukNoRef.current) setKayitlar(k);
+      } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist") || msg.includes("arac_arvento_guzergah")) {
           toast.error("arac_arvento_guzergah tablosu yok. SQL'i çalıştırın.", { duration: toastSuresi() });
         }
-      })
-      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
-  }, [bas, bitis, refreshKey]);
+      } finally {
+        if (benimNo === yukNoRef.current) setLoading(false);
+      }
+    })();
+  }, [bas, bitis, refreshKey, plakaFiltre, sekmeMap]);
 
   // plakaFiltre verilmişse (İş Makineleri haritası) sadece o plakalar gösterilir.
   // ekstraAraclar: güzergahı OLMAYAN araçlar da chip olarak görünsün (rapordan; 0 km olsa da).

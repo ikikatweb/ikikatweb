@@ -61,9 +61,32 @@ export function birlestirGuzergahPlaka(rows: AracArventoGuzergah[]): AracArvento
 // plaka|tarih ile arar; birleştirilmiş TEK satır verilince ilk-gün dışındaki günler rota bulamayıp damperler
 // yanlış (arıza / sahte-gerçek) çıkıyordu → gün-bazlı dönüyoruz. Omurga/chip isteyen yerler
 // birlestirGuzergahPlaka() ile kendileri birleştirir. bas===bitis → tek gün.
-export async function getGuzergahByRange(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
+// plakalar verilirse YALNIZ o plakaların rotası çekilir (sekme bazlı: serme/reglaj=greyder, sıkıştırma=silindir).
+// İlgisiz araçların (oto/iş mak./başka sekme) ağır GPS verisi indirilmez → sayfa çok hızlanır.
+//   - undefined/null → TÜM araçlar (eski davranış; "Tümü" sekmesi).
+//   - boş dizi []     → ilgili araç yok → boş döner (gereksiz sorgu atılmaz).
+export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
+  if (plakalar && plakalar.length === 0) return []; // bu sekmeye ait araç yok → çekme
   const supabase = getSupabase();
+  // SCOPED (plaka listesi var) → veri küçük; gün-gün 29 sorgu yerine TEK aralık sorgusu (round-trip darboğazı
+  // biter, timeout riski yok çünkü az araç). Gün-gün yöntemi yalnız TÜM araçlar (büyük) için gerekliydi.
+  if (plakalar && plakalar.length > 0) {
+    const rows: AracArventoGuzergah[] = [];
+    const PARCA = 1000; let offset = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("arac_arvento_guzergah").select("*")
+        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis).in("plaka", plakalar)
+        .order("rapor_tarihi").range(offset, offset + PARCA - 1);
+      if (error) throw error;
+      const d = (data ?? []) as AracArventoGuzergah[];
+      rows.push(...d);
+      if (d.length < PARCA) break;
+      offset += PARCA; if (offset > 100000) break;
+    }
+    return rows;
+  }
   // Geniş aralıkta tek sorgu (YOĞUN noktalar = SpeedReport) DB statement-timeout veriyordu → "veri yok".
   // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla (hız/timeout dengesi).
   const gunler: string[] = [];
@@ -75,8 +98,11 @@ export async function getGuzergahByRange(bas: string, bitis: string): Promise<Ar
   const rows: AracArventoGuzergah[] = [];
   for (let i = 0; i < gunler.length; i += 4) {            // 4'erli paralel (bağlantı havuzunu yormadan)
     const grup = gunler.slice(i, i + 4);
-    const sonuclar = await Promise.all(grup.map((g) =>
-      supabase.from("arac_arvento_guzergah").select("*").eq("rapor_tarihi", g).order("plaka")));
+    const sonuclar = await Promise.all(grup.map((g) => {
+      let q = supabase.from("arac_arvento_guzergah").select("*").eq("rapor_tarihi", g).order("plaka");
+      if (plakalar && plakalar.length > 0) q = q.in("plaka", plakalar);
+      return q;
+    }));
     for (const r of sonuclar) { if (r.error) throw r.error; for (const row of (r.data ?? []) as AracArventoGuzergah[]) rows.push(row); }
   }
   return rows;
