@@ -6,7 +6,7 @@
 //     — bordro/prim sayfalarıyla AYNI model (gunHesaplaAyBazli × personelUcret).
 //  4. SGK gideri     → Yüklenici Prim Esas Kazanç (İşçilik "Yüklenici Veri Girişi") × 0,375
 //  5. Yakıt gideri   → araçlara verilen toplam lt (arac_yakit) × o ŞANTİYENİN en son alım birim fiyatı
-//  6. Makine kira    → kira bedeli girilmiş araç (tip'e bakılmaz) aylık bedeli, puantaj günlerine göre (dış görev hariç)
+//  6. Makine kira    → kira bedeli girilmiş araç (tip'e bakılmaz); YALNIZ çalışılan gün: calisti=bedel/30, yarim_gun=×0,5 (Araç Puantaj yıl bazlı firma kira ile birebir; override uygulanmaz)
 //  7. Bakım/Onarım   → arac_bakim tutarı (yedek parça+bakım+tamirat), bakım tarihindeki araç puantaj şantiyesine
 import { createClient } from "@/lib/supabase/client";
 import { gunHesaplaAyBazli } from "./bordro";
@@ -264,16 +264,19 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   }
   const kiraAracIds = [...kiraByArac.keys()];
   if (kiraAracIds.length > 0) {
-    // Puantaj — dış görev HARİÇ; her gün = aylık bedelin 1/30'u
+    // Kira YALNIZ çalışılan güne yazılır — Araç Puantaj "Firma Bazlı Kira" (yıl bazlı) ile AYNI:
+    //   calisti → bedel/30, yarim_gun → bedel/30 × 0,5. calismadi/arizali/operator_yok/tatil/dis_gorev → YOK.
+    // NOT: manuel gün override'ları UYGULANMAZ — yıl bazlı firma tablosu da (dönem eşleşmesi tutmadığı için)
+    // uygulamıyor; ham puantaj kullanılır. Böylece iki tablo birebir tutar.
     const puantajlar = await tumSatirlar<{ arac_id: string; santiye_id: string; tarih: string; durum: string }>((o, p) =>
       supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih, durum").in("arac_id", kiraAracIds)
-        .gte("tarih", bas).lte("tarih", bit).neq("durum", "dis_gorev").range(o, o + p - 1),
+        .gte("tarih", bas).lte("tarih", bit).in("durum", ["calisti", "yarim_gun"]).range(o, o + p - 1),
     );
     for (const pj of puantajlar) {
       const r = sat(pj.santiye_id);
       if (!r) continue;
       const bedel = etkinKiraBedeli(kiraByArac.get(pj.arac_id), pj.tarih);
-      r.makineKira += bedel / 30;
+      r.makineKira += (bedel / 30) * (pj.durum === "yarim_gun" ? 0.5 : 1);
     }
   }
 

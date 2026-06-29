@@ -419,11 +419,14 @@ export default function AracPuantajPage() {
         rangeYakitlar = await getAracYakitlarByRange([santiyeId], ozetBaslangic, ozetBitis);
         setOzetRangeYakitlar(rangeYakitlar);
       } catch (err) {
-        console.error("getAracYakitlarByRange (ozet) hatası:", err);
+        const e = err as { message?: string; code?: string; details?: string; hint?: string } | null;
+        console.error("getAracYakitlarByRange (ozet) hatası:", { message: e?.message, code: e?.code, details: e?.details, hint: e?.hint, ham: err });
         setOzetRangeYakitlar([]);
       }
     } catch (err) {
-      console.error("getAracPuantajByRange hatası:", err);
+      // Boş {} yerine gerçek alanları bas (PostgrestError ham console.error'da {} görünebiliyor).
+      const e = err as { message?: string; code?: string; details?: string; hint?: string } | null;
+      console.error("getAracPuantajByRange hatası:", { message: e?.message, code: e?.code, details: e?.details, hint: e?.hint, ham: err });
       setOzetRangePuantajlar([]);
       setOzetRangeYakitlar([]);
     }

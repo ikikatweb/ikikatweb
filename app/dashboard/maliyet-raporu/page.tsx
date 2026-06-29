@@ -134,7 +134,7 @@ export default function MaliyetRaporuPage() {
       {/* Bilgi notu */}
       <p className="text-[11px] text-gray-400">
         Personel = (aylık maaş ÷ 30) × puantaj günü (yalnız maaşı tanımlı personel). SGK = Yüklenici Prim Esas Kazanç × {SGK_ORAN}.
-        Yakıt = verilen litre × o şantiyenin en son alım fiyatı. Makine kira: dış görev günleri hariç.
+        Yakıt = verilen litre × o şantiyenin en son alım fiyatı. Makine kira = çalışılan gün × (aylık bedel ÷ 30); yarım gün ×0,5 (Araç Puantaj firma kira ile aynı).
         Bakım/Onarım = araç bakım/tamirat/yedek parça tutarı, işlem tarihindeki araç puantajının şantiyesine yansır.
       </p>
 

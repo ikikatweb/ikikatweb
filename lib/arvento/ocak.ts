@@ -161,16 +161,21 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   const dogrulanmamisSet = new Set<T>();
   let sonGercekSn = -1; // -1 → ilk pencere gün başından
   const HAREKET_PENCERE_SN = 600;    // ±10 dk: döküm anına yakın duruş aranır (gerçek dökümlerin %99'u bu pencerede durur)
+  const BOSLUK_SN = 60;              // damper bu kadar sn'lik rota BOŞLUĞUNA denk geliyorsa = araç DURMUŞ (seyreltme durağanı atar) → hareketli sayma
   for (const { o, sn } of sirali) {
     if (o.mukerrer) continue;        // mükerrer zaten dışlandı
     if (sn == null) continue;        // zamansız olay → işaretleme (gerçek say)
-    // HAREKETLİ DÖKÜM → ARIZA: damper araç DURUNCA iner ("hareketli damper kaldırılmaz"). Damper saatine
-    // ±10 dk içinde rota noktası VAR ama hiçbiri DURMUŞ (≤3 km/h) değilse araç hareket halindeydi (transit/
-    // sahte tetik) → arıza. GPS hiç yoksa ATLANIR (duruş doğrulanamaz; devir yükü/rota-yok mantığına bırakılır
-    // → GPS'siz olanlar bu kuralla elenmez). Pencere ±10 dk: gerçek dökümlerin %99'u burada durur, yalnız hiç
-    // durmayan (≥9 km/h sürüş) damperler düşer.
+    // HAREKETLİ DÖKÜM → ARIZA: damper araç DURUNCA iner ("hareketli damper kaldırılmaz"). YALNIZ damper anı
+    // KESİNTİSİZ hareket akışındaysa (±10 dk'da duruş YOK + damper anı GPS BOŞLUĞUNA denk gelmiyor) arıza.
+    // Damper anı bir boşluğa denk geliyorsa (önceki↔sonraki rota noktası arası > BOSLUK_SN, ya da damper
+    // ilk/son noktanın dışında) araç DURMUŞ olabilir — seyreltme durağan noktayı atar (duran araç 14 m
+    // ilerlemez → nokta üretilmez) ya da sinyal yok → hareketli SAYMA (ocakta-yükleme + rota mantığına bırak).
     const hAlt = sn - HAREKET_PENCERE_SN - 1, hUst = sn + HAREKET_PENCERE_SN;
-    if (aralikta(rotaSnArr, hAlt, hUst) && !aralikta(durakSnArr, hAlt, hUst)) { arizaSet.add(o); continue; }
+    const bi = ilkBuyuk(rotaSnArr, sn);                          // ilk > sn olan rota noktası
+    const oncekiSn = bi > 0 ? rotaSnArr[bi - 1] : null;
+    const sonrakiSn = bi < rotaSnArr.length ? rotaSnArr[bi] : null;
+    const damperBosluk = oncekiSn == null || sonrakiSn == null || (sonrakiSn - oncekiSn > BOSLUK_SN);
+    if (!damperBosluk && !aralikta(durakSnArr, hAlt, hUst)) { arizaSet.add(o); continue; }
     // OCAKTA DÖKÜM → ARIZA: damperin DURMUŞ rota konumu VEYA HAM damper koordinatı ocak çemberi
     // içindeyse araç ocakta döktü → gerçek teslim değil. (Yalnız durmuş konuma bakılırsa: ham koordinatı
     // ocakta olup duruşu dışarıda kalan damper gerçek sayılıp ocak üstünde görünüyordu.) sonGercek güncellenmez.
