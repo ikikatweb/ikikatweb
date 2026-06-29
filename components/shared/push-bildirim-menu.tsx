@@ -146,6 +146,19 @@ export default function PushBildirimMenu() {
         if (!reg) { setDurum("kapali"); return; }
         const sub = await reg.pushManager.getSubscription();
         setDurum(sub ? "acik" : "kapali");
+        // KENDİNİ ONARMA: tarayıcıda abonelik VAR ama DB'de kaybolmuş olabilir (eski 410 temizliği /
+        // migration / başka cihaz). Her açılışta DB'ye tekrar yaz — endpoint upsert olduğu için duplicate
+        // olmaz; push tekrar çalışmaya başlar. (Kullanıcı "açık" görüyor ama bildirim gelmiyorsa bunu çözer.)
+        if (sub) {
+          const j = sub.toJSON();
+          if (j.endpoint && j.keys?.p256dh && j.keys?.auth) {
+            fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }),
+            }).catch(() => { /* sessiz */ });
+          }
+        }
       })
       .catch(() => setDurum("kapali"));
   }, []);
