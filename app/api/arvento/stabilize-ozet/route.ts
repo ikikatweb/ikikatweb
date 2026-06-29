@@ -16,8 +16,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "bas ve bitis zorunlu (YYYY-MM-DD)" }, { status: 400 });
   }
   try {
-    const { dampers } = await ozetGetir(bas, bitis);
-    return NextResponse.json({ dampers });
+    const { dampers, girisler } = await ozetGetir(bas, bitis);
+    return NextResponse.json({ dampers, girisler });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Stabilize özeti hatası: ${msg}` }, { status: 500 });

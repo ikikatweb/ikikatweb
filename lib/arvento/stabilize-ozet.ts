@@ -12,6 +12,10 @@ import { mukerrerIsaretle } from "./damper-say";
 
 export type OzetAyar = { mukerrerDk: number; mukerrerYaricap: number; ocakYaricap: number };
 
+// Sefer Analizi: kamyon çizgisinin GİRİŞ KAPISINI o yöne kesme sayısı (per plaka). Kamyon rotası gerektiği
+// için SUNUCUDA hesaplanır (tarayıcıya kamyon GPS inmiyor) ve özete eklenir.
+export type OzetGiris = { plaka: string; girisOcak: number; girisDokum: number };
+
 export type OzetDamper = {
   plaka: string;
   saat: string | null;
@@ -62,8 +66,13 @@ export function siniflaGunDamper(
   });
 }
 
-// O günün ocak+ayar parmak izi → imza. Değişirse özet yeniden hesaplanır.
-export function ozetImza(ocak: LatLng | null, ayar: OzetAyar): string {
+// O günün ocak+ayar+giriş parmak izi → imza. Değişirse özet yeniden hesaplanır.
+export function ozetImza(
+  ocak: LatLng | null,
+  ayar: OzetAyar,
+  giris?: { lat: number; lng: number; lat2: number; lng2: number } | null,
+): string {
   const o = ocak ? `${ocak.lat.toFixed(6)},${ocak.lng.toFixed(6)}` : "yok";
-  return `o:${o}|oy:${ayar.ocakYaricap}|md:${ayar.mukerrerDk}|my:${ayar.mukerrerYaricap}`;
+  const g = giris ? `${giris.lat.toFixed(6)},${giris.lng.toFixed(6)},${giris.lat2.toFixed(6)},${giris.lng2.toFixed(6)}` : "yok";
+  return `o:${o}|oy:${ayar.ocakYaricap}|md:${ayar.mukerrerDk}|my:${ayar.mukerrerYaricap}|g:${g}`;
 }

@@ -16,7 +16,7 @@ import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
-import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
+import { type OzetDamper, type OzetGiris } from "@/lib/arvento/stabilize-ozet";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin, CheckCircle2, AlertTriangle, Copy } from "lucide-react";
@@ -110,6 +110,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [ozetDampers, setOzetDampers] = useState<OzetDamper[]>([]);             // ÖZET MODU: sunucuda sınıflanmış damperler
+  const [ozetGirisler, setOzetGirisler] = useState<OzetGiris[]>([]);            // ÖZET MODU: sunucuda hesaplanan giriş/döküm sayıları
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları görür (yakınlık şantiyesine göre). Tüm
   // downstream aynı isimli (tumGuzergah/raporlar) filtrelenmiş memo'yu kullanır → otomatik kısıtlanır.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
@@ -178,6 +179,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           if (benimNo !== yukNoRef.current) return;
           setTumGuzergah(g); setRaporlar(r);
           setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
+          setOzetGirisler(Array.isArray(ozetRes?.girisler) ? (ozetRes.girisler as OzetGiris[]) : []);
         } else {
           // ESKİ YOL: ham kamyon+greyder GPS'i çek, sınıflamayı tarayıcıda yap.
           const ilgili = [...new Set(r
@@ -401,22 +403,20 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return out;
   }, [etkinMukerrer, etkinYaricap, rotaByPlakaGun, ocak, etkinOcakYaricap, bas]);
 
-  // Seçili kamyonların damperleri, MÜKERRER (yanlış tetik) + ARIZA (ocağa uğramadan inen) işaretleriyle.
-  // Araç bazında: önce mükerrer, sonra ocak ziyaretine göre arıza. Gerçek = ne mükerrer ne arıza.
-  const damperIsaretli = useMemo<DamperIsaretliEl[]>(() => {
+  // TÜM kamyonların damperleri, MÜKERRER + ARIZA işaretli — SEÇİMDEN BAĞIMSIZ (tablo/chip sayıları bunu
+  // kullanır). Tek doğru kaynak: özet modunda ozetDampers, eski modda gunBazliSinifla. Manuel override üstüne.
+  const tumDamperSinifli = useMemo<DamperIsaretliEl[]>(() => {
     const out: DamperIsaretliEl[] = [];
     if (OZET_MODU) {
-      // ÖZET MODU: sınıflama sunucuda hazır (ozetDampers). Burada sadece SEÇİM süzgeci + MANUEL override
-      // üstüne uygulanır (eski yoldaki gibi). durak konumu (_durakLat/_durakLng) çizimde kullanılır.
+      // ÖZET MODU: sınıflama sunucuda hazır (ozetDampers). durak konumu (_durakLat/_durakLng) çizimde kullanılır.
       for (const d of ozetDampers) {
-        if (!seciliPlakalar.has(d.plaka)) continue;
         const e: DamperIsaretliEl = {
           plaka: d.plaka, surucu: d.surucu, saat: d.saat, adres: d.adres,
           lat: d.rawLat, lng: d.rawLng, _t: d.tarih,
           _durakLat: d.durakLat, _durakLng: d.durakLng,
           mukerrer: d.mukerrer, ariza: d.ariza, dogrulanmamis: d.dogrulanmamis,
         };
-        const ov = damperSinif.get(sinifKey(d.plaka, d.tarih, d.saat));
+        const ov = damperSinif.get(sinifKey(d.plaka, d.tarih, d.saat)); // MANUEL override otomatik sınıfı ezer
         if (ov === "gercek") { e.mukerrer = false; e.ariza = false; e.dogrulanmamis = false; }
         else if (ov === "mukerrer") { e.mukerrer = true; e.ariza = false; }
         else if (ov === "ariza") { e.ariza = true; e.mukerrer = false; }
@@ -425,11 +425,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       return out;
     }
     for (const r of kamyonlar) {
-      if (!seciliPlakalar.has(r.plaka)) continue;
       const sinifli = gunBazliSinifla(damperOlaylariniAl(r), r.plaka);
       for (const o of sinifli) {
         const e: DamperIsaretliEl = { ...o, plaka: r.plaka, surucu: r.surucu };
-        const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat)); // MANUEL override otomatik sınıfı ezer
+        const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat));
         if (ov === "gercek") { e.mukerrer = false; e.ariza = false; e.dogrulanmamis = false; }
         else if (ov === "mukerrer") { e.mukerrer = true; e.ariza = false; }
         else if (ov === "ariza") { e.ariza = true; e.mukerrer = false; }
@@ -437,7 +436,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       }
     }
     return out;
-  }, [ozetDampers, kamyonlar, seciliPlakalar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
+  }, [ozetDampers, kamyonlar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
+
+  // Haritada gösterilecek = SEÇİLİ kamyonların damperleri (tablo/chip seçimden bağımsızdır, harita değil).
+  const damperIsaretli = useMemo<DamperIsaretliEl[]>(
+    () => tumDamperSinifli.filter((o) => seciliPlakalar.has(o.plaka)),
+    [tumDamperSinifli, seciliPlakalar],
+  );
 
   // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler.
   // KML export ve özet sayımları HEP bu (gerçek) seti kullanır — görsel filtreden ETKİLENMEZ.
@@ -466,20 +471,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // Her araç için GERÇEK damper sayısı (mükerrer + arıza ayıklanmış) — chip rozeti (seçimden bağımsız).
   const gercekSayiByPlaka = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of kamyonlar) {
-      const olaylar = damperOlaylariniAl(r);
-      if (olaylar.length === 0) { m.set(r.plaka, r.damper_sayisi ?? 0); continue; }
-      let g = 0;
-      for (const o of gunBazliSinifla(olaylar, r.plaka)) {
-        const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat));
-        let mk = o.mukerrer, ar = o.ariza;
-        if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
-        if (!mk && !ar) g++;
-      }
-      m.set(r.plaka, g);
+    // Detay olmayan (yalnız damper_sayisi) kamyon → fallback damper_sayisi; detaylı → tumDamperSinifli'den say.
+    for (const r of kamyonlar) m.set(r.plaka, damperOlaylariniAl(r).length === 0 ? (r.damper_sayisi ?? 0) : 0);
+    for (const o of tumDamperSinifli) {
+      if (!o.mukerrer && !o.ariza && m.has(o.plaka)) m.set(o.plaka, (m.get(o.plaka) ?? 0) + 1);
     }
     return m;
-  }, [kamyonlar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
+  }, [kamyonlar, tumDamperSinifli]);
 
   // SEFER ANALİZİ — her kamyon için gerçek/mükerrer/arıza dökümü (TÜM kamyonlar, seçimden bağımsız).
   // Ocağa gidiş (yüklü) = gerçek; Döküme gidiş = gerçek + arıza (arıza = ocağa uğramadan döken).
@@ -490,22 +488,25 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     // Yön: kesişimden sonra araç GİRİŞ ÇİZGİSİNİN ocak tarafına geçtiyse "ocağa", diğer tarafa geçtiyse
     // "döküme". Çizginin tam konumundan BAĞIMSIZ (ocak hangi taraftaysa o taraf = ocağa) → tutarlı.
     const ocakTaraf = (A && B && ocak) ? Math.sign(yon3(A, B, ocak)) : 0;
+    // Sınıf sayıları TEK kaynaktan (tumDamperSinifli) — özet/eski fark etmez, manuel override dahil.
+    const sinifM = new Map<string, { g: number; m: number; a: number }>();
+    for (const o of tumDamperSinifli) {
+      let e = sinifM.get(o.plaka); if (!e) { e = { g: 0, m: 0, a: 0 }; sinifM.set(o.plaka, e); }
+      if (o.mukerrer) e.m++; else if (o.ariza) e.a++; else e.g++;
+    }
+    // ÖZET MODU: giriş/döküm sunucuda hesaplanır (kamyon rotası tarayıcıya inmiyor) → ozetGirisler'den oku.
+    const girisM = new Map<string, OzetGiris>();
+    if (OZET_MODU) for (const gi of ozetGirisler) girisM.set(gi.plaka, gi);
     const sat: { plaka: string; surucu: string | null; gercek: number; mukerrer: number; ariza: number; girisOcak: number; girisDokum: number }[] = [];
     for (const r of kamyonlar) {
-      const olaylar = damperOlaylariniAl(r);
-      let g = 0, m = 0, a = 0;
-      if (olaylar.length === 0) { g = r.damper_sayisi ?? 0; }
-      else {
-        for (const o of gunBazliSinifla(olaylar, r.plaka)) {
-          const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat));
-          let mk = o.mukerrer, ar = o.ariza;
-          if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
-          if (mk) m++; else if (ar) a++; else g++;
-        }
-      }
-      // Kapıdan fiziksel geçiş (yön: kesişimden sonra ocağa yaklaşıyorsa "ocağa", uzaklaşıyorsa "döküme").
+      const c = sinifM.get(r.plaka);
+      let g = c?.g ?? 0, m = c?.m ?? 0, a = c?.a ?? 0;
+      if (damperOlaylariniAl(r).length === 0) { g = r.damper_sayisi ?? 0; m = 0; a = 0; } // detay yok → damper_sayisi
+      // Kapıdan geçiş: özet modunda sunucudan; eski modda tarayıcıda rotadan (yön: ocağa yaklaşan/uzaklaşan).
       let go = 0, gd = 0;
-      if (A && B && ocak) {
+      if (OZET_MODU) {
+        const gi = girisM.get(r.plaka); go = gi?.girisOcak ?? 0; gd = gi?.girisDokum ?? 0;
+      } else if (A && B && ocak) {
         const rota = rotaByPlaka.get(plakaNorm(r.plaka)) ?? [];
         for (let i = 1; i < rota.length; i++) {
           const p1 = rota[i - 1], p2 = rota[i];
@@ -517,7 +518,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     }
     sat.sort((x, y) => y.gercek - x.gercek);
     return sat;
-  }, [kamyonlar, gunBazliSinifla, rotaByPlaka, ocak, damperSinif, sinifKey, damperTarih, gunGiris]);
+  }, [kamyonlar, tumDamperSinifli, rotaByPlaka, ocak, gunGiris, ozetGirisler]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
