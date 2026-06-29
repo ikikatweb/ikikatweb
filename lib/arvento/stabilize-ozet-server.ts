@@ -21,7 +21,7 @@ function parcaKesisir(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
 }
 
 const SEKME = "stabilize";
-const MAX_GUN = 45; // Vercel 60s limiti — bir istekte en fazla bu kadar gün hesaplanır.
+const MAX_YENIDEN = 45; // Vercel 60s: bir istekte en fazla bu kadar EKSİK gün yeniden hesaplanır (cache okuma sınırsız).
 // Plaka normalize (boşluk/harf farkını yok say). rapor.plaka ile guzergah.plaka FARKLI biçimde gelebilir
 // ("60 BP 842" vs "60BP842") → rota eşleşmesi için ŞART. (plakaNorm ile aynı; queries/arvento'yu sunucuda
 // import etmemek için yerel.)
@@ -122,6 +122,9 @@ export async function gunOzetiHesapla(
   const damperli = raporlar.filter(
     (r) => (Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0) > 0 || (r.damper_sayisi ?? 0) > 0,
   );
+  // BOŞ gün (damperli kamyon yok) → güzergah/ocak/giriş sorgularını ATLA, hemen boş dön. Geniş aralıkta
+  // veri olmayan yüzlerce gün her biri 3 sorgu yapıp API'yi yavaşlatıyordu (16 boş gün ≈ 10 sn).
+  if (damperli.length === 0) return { imza: "bos", payload: { dampers: [], girisler: [] } };
 
   // 2) O kamyonların güzergahı (sadece bu plakalara scoped). Plaka → temizlenmiş rota.
   const plakalar = [...new Set(damperli.map((r) => r.plaka))];
@@ -208,7 +211,8 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
   if (!bas || !bitis) return { dampers: [], girisler: [] };
   const supabase = serviceClient();
 
-  // Gün listesi (artan). Aralık MAX_GUN'ü aşarsa SON MAX_GUN gün işlenir.
+  // Gün listesi (artan). Cache OKUMA sınırsız (tek sorgu, hızlı); çok geniş aralıkta döngü/okuma sanity için
+  // son 400 günle sınırla. Asıl maliyet YENİDEN-HESAP (eksik gün) → o ayrıca MAX_YENIDEN ile sınırlanır.
   let gunler: string[] = [];
   const d = new Date(bas + "T00:00:00");
   const son = new Date(bitis + "T00:00:00");
@@ -216,10 +220,7 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
     gunler.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
   }
   if (gunler.length === 0) gunler = [bas];
-  if (gunler.length > MAX_GUN) {
-    console.warn(`[stabilize-ozet] aralık ${gunler.length} gün > ${MAX_GUN}; son ${MAX_GUN} gün işlenecek.`);
-    gunler = gunler.slice(gunler.length - MAX_GUN);
-  }
+  if (gunler.length > 400) gunler = gunler.slice(gunler.length - 400);
 
   // Bugün (canlı gün) — veri değişebilir → her zaman taze hesaplanır.
   const now = new Date();
@@ -251,6 +252,7 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
   };
 
   let ayarCache: AyarCache | null = null; // yalnız hesap gerekirse çek (önbellek isabetinde gerekmez)
+  let yenidenSayac = 0; // bu istekte yeniden hesaplanan (eksik) gün sayısı — Vercel 60s için sınırlı
   const tum: OzetDamper[] = [];
   for (const gun of gunler) {
     const cached = cacheMap.get(gun);
@@ -258,7 +260,10 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
     // ÖNBELLEK VARSA kullan (bugün dahil) → kullanıcı yüklemesi HEP hızlı (zaman damgası/TTL yok). Bugünü
     // yalnız WARMING (force; 15 dk'da bir speed-sync) yeniden hesaplar → tazelik orada. Eksik gün → hesapla.
     if (cached && !(bugunMu && force)) { tum.push(...(cached.dampers ?? [])); girisTopla(cached.girisler); continue; }
-    // Eksik gün veya (bugün + force/warming) → hesapla + upsert (SIRALI — havuz).
+    // Eksik gün → yeniden hesapla; ama bir istekte EN FAZLA MAX_YENIDEN gün (timeout koruması). Sınır
+    // aşılırsa o gün ATLANIR (boş) — sonraki açılış/warming/backfill doldurur. Tam-backfill'de hiç olmaz.
+    if (yenidenSayac >= MAX_YENIDEN) continue;
+    yenidenSayac++;
     if (!ayarCache) ayarCache = await getAyarServer(supabase);
     const { imza, payload } = await gunOzetiHesapla(gun, supabase, ayarCache);
     await supabase
