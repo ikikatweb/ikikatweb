@@ -9,6 +9,7 @@
 //   ARVENTO_LINK_PATTERN  — indirme linkini seçmek için link içinde geçmesi gereken ifade
 import { NextResponse } from "next/server";
 import { cekVeIsleArventoMail } from "@/lib/arvento/mail-fetch";
+import { serviceClient, getAyarServer, gunOzetiHesapla } from "@/lib/arvento/stabilize-ozet-server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,6 +26,22 @@ export async function GET(request: Request) {
     // Son 7 günü tara: bir gece cron gecikir/atlanırsa ertesi gece kaçan günleri
     // kendiliğinden toparlar (kayıtlar upsert edildiği için tekrar işlemek zararsız).
     const sonuc = await cekVeIsleArventoMail(7);
+
+    // Önbellek ısıtma: rapor sync bittikten sonra BUGÜNÜN stabilize özetini üret + kaydet → tarayıcı
+    // hazır gelir. Hata olsa bile cron'u BOZMA (logla, devam et).
+    try {
+      const supabase = serviceClient();
+      const ayarCache = await getAyarServer(supabase);
+      const bugun = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+      const { imza, payload } = await gunOzetiHesapla(bugun, supabase, ayarCache);
+      await supabase
+        .from("arvento_harita_ozet")
+        .upsert({ rapor_tarihi: bugun, sekme: "stabilize", imza, payload }, { onConflict: "rapor_tarihi,sekme" });
+      console.log(`[arvento-rapor cron] stabilize özeti ısıtıldı: ${bugun} → ${payload.dampers.length} damper`);
+    } catch (ozetErr) {
+      console.error("[arvento-rapor cron] stabilize özeti ısıtma hatası:", ozetErr instanceof Error ? ozetErr.message : String(ozetErr));
+    }
+
     return NextResponse.json(sonuc);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

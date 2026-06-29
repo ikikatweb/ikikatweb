@@ -16,6 +16,7 @@ import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download, MapPin, CheckCircle2, AlertTriangle, Copy } from "lucide-react";
@@ -26,6 +27,8 @@ import type { Map as LeafletMap, LayerGroup } from "leaflet";
 
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 type DamperNokta = DamperOlay & { plaka: string; surucu: string | null };
+// Sınıflanmış damper (eski yol VEYA özet). _t: damperin günü; _durakLat/_durakLng: özet modunda hazır durak konumu.
+type DamperIsaretliEl = DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean; _t?: string | null; _durakLat?: number | null; _durakLng?: number | null };
 
 // saniye → "2sa 15dk" / "0"
 function formatSure(sn: number): string {
@@ -96,11 +99,17 @@ const KAMYON_RENKLERI = [
   "#0ea5e9", // gök
 ];
 
+// ÖZET MODU: damper sınıflaması SUNUCUDA önceden hesaplanıp (arvento_harita_ozet) küçük JSON olarak çekilir
+// → 7,8 MB kamyon GPS inmez, tarayıcıda sınıflama yapılmaz (aylık aralık uçar). Sınıflama mantığı birebir
+// aynı (lib/arvento/stabilize-ozet → siniflaGunDamper). Sorun çıkarsa false yap → eski (ham) yola döner.
+const OZET_MODU = true;
+
 export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, kmlIndir = true, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; kmlIndir?: boolean; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
+  const [ozetDampers, setOzetDampers] = useState<OzetDamper[]>([]);             // ÖZET MODU: sunucuda sınıflanmış damperler
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları görür (yakınlık şantiyesine göre). Tüm
   // downstream aynı isimli (tumGuzergah/raporlar) filtrelenmiş memo'yu kullanır → otomatik kısıtlanır.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
@@ -153,13 +162,32 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       try {
         const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
         if (benimNo !== yukNoRef.current) return;
-        const ilgili = [...new Set(r
-          .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
-            || ((x.damper_olaylar?.length ?? 0) > 0) || ((x.damper_sayisi ?? 0) > 0))
-          .map((x) => x.plaka))];
-        const g = await getGuzergahByRange(bas, bitis, ilgili);
-        if (benimNo !== yukNoRef.current) return;
-        setTumGuzergah(g); setRaporlar(r);
+        if (OZET_MODU) {
+          // ÖZET MODU: damper sınıflaması sunucuda hazır (API) → kamyon GPS İNMEZ. Sadece GREYDER referans
+          // hatları (kamyon hariç, hafif) + özet damperler çekilir. rapor chip/araç listesi için kalır.
+          const greyderPlaka = [...new Set(r
+            .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
+              && !((x.damper_olaylar?.length ?? 0) > 0) && !((x.damper_sayisi ?? 0) > 0))
+            .map((x) => x.plaka))];
+          const [g, ozetRes] = await Promise.all([
+            getGuzergahByRange(bas, bitis, greyderPlaka),
+            fetch(`/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}`)
+              .then((res) => (res.ok ? res.json() : { dampers: [] }))
+              .catch(() => ({ dampers: [] })),
+          ]);
+          if (benimNo !== yukNoRef.current) return;
+          setTumGuzergah(g); setRaporlar(r);
+          setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
+        } else {
+          // ESKİ YOL: ham kamyon+greyder GPS'i çek, sınıflamayı tarayıcıda yap.
+          const ilgili = [...new Set(r
+            .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
+              || ((x.damper_olaylar?.length ?? 0) > 0) || ((x.damper_sayisi ?? 0) > 0))
+            .map((x) => x.plaka))];
+          const g = await getGuzergahByRange(bas, bitis, ilgili);
+          if (benimNo !== yukNoRef.current) return;
+          setTumGuzergah(g); setRaporlar(r);
+        }
       } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -375,13 +403,32 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Seçili kamyonların damperleri, MÜKERRER (yanlış tetik) + ARIZA (ocağa uğramadan inen) işaretleriyle.
   // Araç bazında: önce mükerrer, sonra ocak ziyaretine göre arıza. Gerçek = ne mükerrer ne arıza.
-  const damperIsaretli = useMemo<(DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[]>(() => {
-    const out: (DamperNokta & { mukerrer: boolean; ariza: boolean; dogrulanmamis: boolean })[] = [];
+  const damperIsaretli = useMemo<DamperIsaretliEl[]>(() => {
+    const out: DamperIsaretliEl[] = [];
+    if (OZET_MODU) {
+      // ÖZET MODU: sınıflama sunucuda hazır (ozetDampers). Burada sadece SEÇİM süzgeci + MANUEL override
+      // üstüne uygulanır (eski yoldaki gibi). durak konumu (_durakLat/_durakLng) çizimde kullanılır.
+      for (const d of ozetDampers) {
+        if (!seciliPlakalar.has(d.plaka)) continue;
+        const e: DamperIsaretliEl = {
+          plaka: d.plaka, surucu: d.surucu, saat: d.saat, adres: d.adres,
+          lat: d.rawLat, lng: d.rawLng, _t: d.tarih,
+          _durakLat: d.durakLat, _durakLng: d.durakLng,
+          mukerrer: d.mukerrer, ariza: d.ariza, dogrulanmamis: d.dogrulanmamis,
+        };
+        const ov = damperSinif.get(sinifKey(d.plaka, d.tarih, d.saat));
+        if (ov === "gercek") { e.mukerrer = false; e.ariza = false; e.dogrulanmamis = false; }
+        else if (ov === "mukerrer") { e.mukerrer = true; e.ariza = false; }
+        else if (ov === "ariza") { e.ariza = true; e.mukerrer = false; }
+        out.push(e);
+      }
+      return out;
+    }
     for (const r of kamyonlar) {
       if (!seciliPlakalar.has(r.plaka)) continue;
       const sinifli = gunBazliSinifla(damperOlaylariniAl(r), r.plaka);
       for (const o of sinifli) {
-        const e = { ...o, plaka: r.plaka, surucu: r.surucu };
+        const e: DamperIsaretliEl = { ...o, plaka: r.plaka, surucu: r.surucu };
         const ov = damperSinif.get(sinifKey(r.plaka, damperTarih(o), o.saat)); // MANUEL override otomatik sınıfı ezer
         if (ov === "gercek") { e.mukerrer = false; e.ariza = false; e.dogrulanmamis = false; }
         else if (ov === "mukerrer") { e.mukerrer = true; e.ariza = false; }
@@ -390,7 +437,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       }
     }
     return out;
-  }, [kamyonlar, seciliPlakalar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
+  }, [ozetDampers, kamyonlar, seciliPlakalar, gunBazliSinifla, damperSinif, sinifKey, damperTarih]);
 
   // Haritaya çizilecekler: GERÇEK (mükerrer DEĞİL + arıza DEĞİL) + konumlu damperler.
   // KML export ve özet sayımları HEP bu (gerçek) seti kullanır — görsel filtreden ETKİLENMEZ.
@@ -572,8 +619,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       // Damper saatine en yakın DURMUŞ rota noktasına (gerçek dökme yeri) oturt; yoksa ≤30 m yola / alarm-GPS.
       // GÜN-BAZLI rota (plaka|tarih) kullan — plaka-bazlı havuz (tüm günler) kullanılırsa damper, BAŞKA bir
       // günün aynı saatteki ocak-duruşuna oturup yanlışlıkla OCAĞA taşınıyordu (ham yeri km'lerce uzakta olsa bile).
-      const gunRotasi = rotaByPlakaGun.get(`${plakaNorm(o.plaka)}|${damperTarih(o)}`) ?? [];
-      const [lat, lng] = damperDurakKonumu(gunRotasi, o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
+      let lat: number, lng: number;
+      if (OZET_MODU) {
+        // ÖZET: durak konumu sunucuda hazır; yoksa snapReglaj(ham) — eski yolla birebir (damperDurakKonumu ?? snapReglaj)
+        if (o._durakLat != null && o._durakLng != null) { lat = o._durakLat; lng = o._durakLng; }
+        else { const s = snapReglaj(o.lat as number, o.lng as number); lat = s[0]; lng = s[1]; }
+      } else {
+        const gunRotasi = rotaByPlakaGun.get(`${plakaNorm(o.plaka)}|${damperTarih(o)}`) ?? [];
+        const s = damperDurakKonumu(gunRotasi, o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
+        lat = s[0]; lng = s[1];
+      }
       const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;
       const g = gruplar.get(anahtar);
       if (g) g.olaylar.push(o);
