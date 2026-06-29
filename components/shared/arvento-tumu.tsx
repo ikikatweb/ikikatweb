@@ -11,7 +11,7 @@ import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/oca
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
-import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -187,7 +187,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const kal = op === "sikistirma" ? silindirKal : reglajKal;
       const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
       (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-        L.polyline(def.zikzak ? zikzakla(seg) : seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
+        // Sıkıştırma dahil tüm operasyonlar TEK ÇİZGİ (omurga) çizilir — zikzak kaldırıldı.
+        L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
           .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
       for (const ll of latlngs) bounds.push(ll);
     });
@@ -276,7 +277,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         </span>
         <span className="flex items-center gap-1.5 text-xs">
           <span className="inline-block w-4 h-1.5 rounded" style={{ background: OPERASYONLAR.sikistirma.renk }} />
-          Sıkıştırma (silindir, zikzak) <strong className="text-gray-500">· {ozet.silindir} çizgi</strong>
+          Sıkıştırma (silindir hattı) <strong className="text-gray-500">· {ozet.silindir} çizgi</strong>
         </span>
         <span className="flex items-center gap-1.5 text-xs">
           <span className="inline-block w-3 h-3 rounded-full border border-orange-800" style={{ background: OPERASYONLAR.stabilize.renk }} />

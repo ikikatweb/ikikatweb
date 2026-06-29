@@ -12,7 +12,8 @@ import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
-import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, zikzakla, paralelCizgi, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
+import { createClient } from "@/lib/supabase/client";
 import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
@@ -24,8 +25,20 @@ import { toastSuresi } from "@/lib/utils/toast-sure";
 import "leaflet/dist/leaflet.css";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 
-const OFFSET_M = 4; // altlı üstlü çizgi yarı-aralığı (m)
 const DAMPER_RENK = "#f97316";
+// Serme: "önceden damper dökülmüş yol" tespiti için ~50 m sabit ızgara (bölge ~41° enlem).
+// Geçmiş damper noktaları bu ızgaraya (±1 komşu) işlenir; seçilen günün greyder rotasının
+// bu hücrelere denk gelen kısmı = SERME (reglaj sonrası malzeme serilen yol).
+const SERME_HUCRE_M = 50;
+const SERME_LAT_STEP = SERME_HUCRE_M / 111320;
+const SERME_LNG_STEP = SERME_HUCRE_M / (111320 * Math.cos((41 * Math.PI) / 180));
+function sermeHucreIdx(lat: number, lng: number): [number, number] {
+  return [Math.round(lat / SERME_LAT_STEP), Math.round(lng / SERME_LNG_STEP)];
+}
+function sermeHucreKey(lat: number, lng: number): string {
+  const [y, x] = sermeHucreIdx(lat, lng);
+  return `${y}_${x}`;
+}
 // Her silindir aracına ayırt edici sabit renk (Stabilize kamyon paletiyle aynı).
 const ARAC_RENKLERI = [
   "#ef4444", "#06b6d4", "#84cc16", "#a855f7", "#f59e0b", "#ec4899",
@@ -97,16 +110,6 @@ function parcalar(noktalar: { lat: number; lng: number; hiz?: number | null }[],
   return [latlngs];
 }
 
-// Altlı üstlü (paralel çift) çizgi çiz
-function cizAltUst(L: LeafletStatic, hedef: LeafletMap | LayerGroup, segler: [number, number][][], renk: string, opacity: number, kalinlik: number, bounds: [number, number][]) {
-  for (const seg of segler) {
-    if (seg.length < 2) continue;
-    L.polyline(paralelCizgi(seg, OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
-    L.polyline(paralelCizgi(seg, -OFFSET_M), { color: renk, weight: kalinlik, opacity }).addTo(hedef);
-    for (const ll of seg) bounds.push(ll);
-  }
-}
-
 export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: {
   bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean;
 }) {
@@ -121,6 +124,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const [hamGoster, setHamGoster] = useState(false); // "Güzergahı Göster": açıkken tekrar eşikleri yok sayılır (ham rota)
   const etkinTekrar = hamGoster ? 0 : tekrarEsigi;
   const etkinSilindir = hamGoster ? 0 : silindirEsik;
+  // SERME: seçilen günden ÖNCE damper dökülmüş yol hücreleri (tüm geçmiş taranır). Serme = greyder
+  // rotasının bu hücrelere denk gelen kısmı. Boş = henüz yükleniyor / önceden damper yok.
+  const [damperGecmisHucre, setDamperGecmisHucre] = useState<Set<string>>(new Set());
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]);
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
@@ -365,6 +371,33 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
   }, [gorunumRef, loading]);
 
+  // SERME geçmiş damper taraması: seçilen güne (bas) kadar TÜM damper noktalarını ızgaraya işle.
+  // Hafif: yalnız damper_olaylar çekilir. Serme sekmesinde + tarih değişince yenilenir.
+  useEffect(() => {
+    if (!sermeMi || !bas) { setDamperGecmisHucre(new Set()); return; }
+    let iptal = false;
+    (async () => {
+      const sb = createClient();
+      const set = new Set<string>();
+      const PARCA = 1000; let offset = 0;
+      while (!iptal) {
+        const { data, error } = await sb.from("arac_arvento_rapor").select("damper_olaylar").lt("rapor_tarihi", bas).range(offset, offset + PARCA - 1);
+        if (error || !data) break;
+        for (const r of data as { damper_olaylar?: { lat?: number | null; lng?: number | null }[] | null }[]) {
+          for (const d of (r.damper_olaylar ?? [])) {
+            if (d?.lat == null || d?.lng == null) continue;
+            const [cy, cx] = sermeHucreIdx(d.lat, d.lng);
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) set.add(`${cy + dy}_${cx + dx}`);
+          }
+        }
+        if (data.length < PARCA) break;
+        offset += PARCA; if (offset > 300000) break;
+      }
+      if (!iptal) setDamperGecmisHucre(set);
+    })();
+    return () => { iptal = true; };
+  }, [sermeMi, bas]);
+
   // Veri/seçim/ayar değişince YALNIZ veri katmanını yeniden çiz (harita yerinde kalır → flicker yok).
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -374,8 +407,17 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     grup.clearLayers();
     const bounds: [number, number][] = [];
     // Altlı üstlü greyder çizgisi — YALNIZ Serme'de. Sıkıştırma'da greyder GÖSTERİLMEZ (sadece silindir güzergahı).
-    if (sermeMi) gosterilenGreyder.forEach((k) =>
-      cizAltUst(L, grup, parcalar(k.noktalar ?? [], etkinTekrar, gridMesafe, transitHiz), greyderRenkAl(k.plaka), 0.85, sermeKal, bounds));
+    // SERME: greyder rotasının YALNIZ önceden damper dökülmüş (geçmiş) hücrelere denk gelen kısmı,
+    // TEK ÇİZGİ (omurga). Reglajı serme'den ayıran kural budur (ikisi de greyder).
+    if (sermeMi) gosterilenGreyder.forEach((k) => {
+      const sermePts = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null && damperGecmisHucre.has(sermeHucreKey(p.lat as number, p.lng as number)));
+      if (sermePts.length < 2) return;
+      for (const seg of sadelesGuzergah(sermePts, etkinTekrar, gridMesafe, transitHiz).parcalar) {
+        L.polyline(seg, { color: greyderRenkAl(k.plaka), weight: sermeKal, opacity: 0.9 })
+          .addTo(grup).bindPopup(`<b>${k.plaka}</b> (serme · önceden damperli yol)<br>${k.arac_sinifi ?? ""}`);
+        for (const ll of seg) bounds.push(ll);
+      }
+    });
     if (sermeMi) {
       // Ortada damper ikonları
       damperKoordlu.forEach((o, i) => {
@@ -384,11 +426,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         bounds.push([o.lat as number, o.lng as number]);
       });
     } else {
-      // Silindir ZİKZAĞI — YALNIZ serme yapılan güzergah ÜZERİNDE (≤40 m) gidip geldiği kısımlar çizilir.
+      // Silindir SIKIŞTIRMA hattı — "Silindir Tekrar Eşiği"ni karşılayan (yeterince geçilen) omurga
+      // TEK ÇİZGİ olarak çizilir (zikzak değil). YALNIZ serme yapılan güzergah ÜZERİNDE (≤40 m) gidip geldiği kısımlar.
       secilenSilindirler.forEach((k) =>
         parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe, transitHiz).forEach((seg) => {
           for (const run of sermeUstuRunlar(seg, sermeRotaNoktalari)) {
-            L.polyline(zikzakla(run), { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
+            L.polyline(run, { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
               .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir · sıkıştırma)<br>${k.arac_sinifi ?? ""}`);
             for (const ll of run) bounds.push(ll);
           }
@@ -407,7 +450,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, gosterilenGreyder, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, gosterilenGreyder, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, damperGecmisHucre, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -529,7 +572,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               <div>
                 {sermeMi
                   ? <span className="text-orange-600 font-semibold">🔻 {damperKoordlu.length} damper</span>
-                  : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir zikzak</span>}
+                  : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir hattı</span>}
               </div>
               {sonGuncelleme && (
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>

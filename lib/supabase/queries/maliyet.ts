@@ -6,7 +6,7 @@
 //     — bordro/prim sayfalarıyla AYNI model (gunHesaplaAyBazli × personelUcret).
 //  4. SGK gideri     → Yüklenici Prim Esas Kazanç (İşçilik "Yüklenici Veri Girişi") × 0,375
 //  5. Yakıt gideri   → araçlara verilen toplam lt (arac_yakit) × o ŞANTİYENİN en son alım birim fiyatı
-//  6. Makine kira    → kiralık araç aylık bedeli, puantaj günlerine göre (dış görev hariç)
+//  6. Makine kira    → kira bedeli girilmiş araç (tip'e bakılmaz) aylık bedeli, puantaj günlerine göre (dış görev hariç)
 //  7. Bakım/Onarım   → arac_bakim tutarı (yedek parça+bakım+tamirat), bakım tarihindeki araç puantaj şantiyesine
 import { createClient } from "@/lib/supabase/client";
 import { gunHesaplaAyBazli } from "./bordro";
@@ -244,27 +244,29 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
     if (r) r.yakit += (y.miktar_lt ?? 0) * etkinFiyat(y.santiye_id);
   }
 
-  // ── 6. Makine kira (kiralık araç aylık bedeli × puantaj günü, dış görev hariç) ──
-  const araclar = await tumSatirlar<{ id: string; tip: string; santiye_id: string | null }>((o, p) =>
-    supabase.from("araclar").select("id, tip, santiye_id").range(o, o + p - 1),
+  // ── 6. Makine kira (kira bedeli girilmiş araç × puantaj günü, dış görev hariç) ──
+  // tip'e BAKILMAZ: öz mal da olsa kira bedeli girilmişse o, şantiyenin makine maliyetidir
+  // (firma kendi makinesine de iç kira bedeli atayabilir). Kriter = kira bedeli kaydı VAR.
+  const araclar = await tumSatirlar<{ id: string; santiye_id: string | null }>((o, p) =>
+    supabase.from("araclar").select("id, santiye_id").range(o, o + p - 1),
   );
   const aracSantiye = new Map<string, string | null>();
   for (const a of araclar) aracSantiye.set(a.id, a.santiye_id);
-  const kiralikIds = araclar.filter((a) => a.tip === "kiralik").map((a) => a.id);
-  if (kiralikIds.length > 0) {
-    // Kira bedeli geçmişi (arac_id → DESC tarife listesi)
-    const kiraRows = await tumSatirlar<AracKiraBedeli>((o, p) =>
-      supabase.from("arac_kira_bedeli").select("*").in("arac_id", kiralikIds)
-        .order("gecerli_tarih", { ascending: false }).order("created_at", { ascending: false }).range(o, o + p - 1),
-    );
-    const kiraByArac = new Map<string, AracKiraBedeli[]>();
-    for (const k of kiraRows) {
-      if (!kiraByArac.has(k.arac_id)) kiraByArac.set(k.arac_id, []);
-      kiraByArac.get(k.arac_id)!.push(k);
-    }
+  // Tüm kira bedeli geçmişi (arac_id → DESC tarife listesi)
+  const kiraRows = await tumSatirlar<AracKiraBedeli>((o, p) =>
+    supabase.from("arac_kira_bedeli").select("*")
+      .order("gecerli_tarih", { ascending: false }).order("created_at", { ascending: false }).range(o, o + p - 1),
+  );
+  const kiraByArac = new Map<string, AracKiraBedeli[]>();
+  for (const k of kiraRows) {
+    if (!kiraByArac.has(k.arac_id)) kiraByArac.set(k.arac_id, []);
+    kiraByArac.get(k.arac_id)!.push(k);
+  }
+  const kiraAracIds = [...kiraByArac.keys()];
+  if (kiraAracIds.length > 0) {
     // Puantaj — dış görev HARİÇ; her gün = aylık bedelin 1/30'u
     const puantajlar = await tumSatirlar<{ arac_id: string; santiye_id: string; tarih: string; durum: string }>((o, p) =>
-      supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih, durum").in("arac_id", kiralikIds)
+      supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih, durum").in("arac_id", kiraAracIds)
         .gte("tarih", bas).lte("tarih", bit).neq("durum", "dis_gorev").range(o, o + p - 1),
     );
     for (const pj of puantajlar) {
