@@ -170,95 +170,37 @@ export async function ozetGetir(bas: string, bitis: string): Promise<{ dampers: 
     gunler = gunler.slice(gunler.length - MAX_GUN);
   }
 
-  // Ayarları BİR KEZ çek (cache).
-  const ayarCache = await getAyarServer(supabase);
+  // Bugün (canlı gün) — veri değişebilir → her zaman taze hesaplanır.
+  const now = new Date();
+  const bugun = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-  // Bugün (TR'de gün değişimi sunucuyla aynı varsayılıyor — cron da bu güne yazıyor).
-  const bugun = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+  // TEK sorgu: aralıktaki TÜM önbellek satırlarını çek (gün-gün imza kontrolü YOK → hızlı). Geçmiş günlerde
+  // önbelleğe GÜVENİLİR; yalnız EKSİK günler + BUGÜN hesaplanır. (Eski yöntem her gün imza için ocak/GPS
+  // çekiyordu → API 5+ sn sürüyordu.) Ocak/ayar geçmiş bir gün için değişirse o gün backfill ile tazelenir.
+  const { data: cacheRows } = await supabase
+    .from("arvento_harita_ozet")
+    .select("rapor_tarihi, payload")
+    .eq("sekme", SEKME)
+    .gte("rapor_tarihi", gunler[0])
+    .lte("rapor_tarihi", gunler[gunler.length - 1]);
+  const cacheMap = new Map<string, { dampers?: OzetDamper[] }>();
+  for (const r of (cacheRows ?? []) as { rapor_tarihi: string; payload: { dampers?: OzetDamper[] } }[]) {
+    cacheMap.set(String(r.rapor_tarihi), r.payload);
+  }
 
+  let ayarCache: AyarCache | null = null; // yalnız hesap gerekirse çek (önbellek isabetinde gerekmez)
   const tum: OzetDamper[] = [];
-  // Günleri SIRALI işle — paralel DEĞİL (bağlantı havuzu).
   for (const gun of gunler) {
-    // Önbellekteki satırı çek.
-    const { data: cache } = await supabase
-      .from("arvento_harita_ozet")
-      .select("imza, payload")
-      .eq("rapor_tarihi", gun)
-      .eq("sekme", SEKME)
-      .maybeSingle();
-
-    const bugunMu = gun === bugun; // canlı gün — veri değişebilir → her zaman taze hesapla
-
-    if (cache && !bugunMu) {
-      // İmza güncel mi? Önce ayar/ocak'tan beklenen imzayı üret, cache.imza ile karşılaştır.
-      // (Hesaplamadan imza üretmek için ocak çözümü gerekir; ama ocak otomatik tespit GÜN verisine
-      //  bağlı olabildiğinden, imza eşleşmesini hesaplanan özetle teyit etmek en güvenlisi. Performans
-      //  için: gün-bazlı ocak/ayar imzası ham veriden bağımsız değil → tam hesap yapıp imza karşılaştırırız
-      //  ancak cache imzası eşleşirse cache payload'ını kullanırız.)
-      const beklenenImza = await imzaHesapla(gun, supabase, ayarCache);
-      if (beklenenImza === cache.imza) {
-        const payload = cache.payload as { dampers?: OzetDamper[] } | null;
-        tum.push(...(payload?.dampers ?? []));
-        continue;
-      }
-    }
-
-    // Önbellek yok / bayat / bugün → hesapla + upsert + kullan.
+    const cached = cacheMap.get(gun);
+    if (cached && gun !== bugun) { tum.push(...(cached.dampers ?? [])); continue; }
+    // Eksik gün veya BUGÜN → hesapla + upsert (SIRALI — havuz).
+    if (!ayarCache) ayarCache = await getAyarServer(supabase);
     const { imza, payload } = await gunOzetiHesapla(gun, supabase, ayarCache);
     await supabase
       .from("arvento_harita_ozet")
-      .upsert(
-        { rapor_tarihi: gun, sekme: SEKME, imza, payload },
-        { onConflict: "rapor_tarihi,sekme" },
-      );
+      .upsert({ rapor_tarihi: gun, sekme: SEKME, imza, payload }, { onConflict: "rapor_tarihi,sekme" });
     tum.push(...payload.dampers);
   }
 
   return { dampers: tum };
-}
-
-// Yalnız o günün imzasını hesaplar (ocak çözümü + ayar). gunOzetiHesapla ile AYNI ocak mantığını
-// kullanır → imza tutarlı. Önbellek geçerlilik kontrolü için (tam damper hesabı yapmadan).
-async function imzaHesapla(gun: string, supabase: SupabaseClient, ayarCache: AyarCache): Promise<string> {
-  // Ocak çözümü için: gün-bazlı kayıt > ayar > otomatik tespit (otomatik tespit rota gerektirir).
-  const ocakRow = await getOcakServer(supabase, gun);
-  let ocak: LatLng | null = null;
-  let ocakYaricap = ayarCache.ocakYaricap ?? 150;
-  if (ocakRow) {
-    ocak = { lat: ocakRow.lat, lng: ocakRow.lng };
-    ocakYaricap = ocakRow.yaricap ?? ocakYaricap;
-  } else if (ayarCache.ocakLat != null && ayarCache.ocakLng != null) {
-    ocak = { lat: ayarCache.ocakLat, lng: ayarCache.ocakLng };
-  } else {
-    // Otomatik tespit ham rotaya bağlı → damperli kamyonların rotasından tespit et (gunOzetiHesapla ile aynı).
-    const { data: raporData } = await supabase
-      .from("arac_arvento_rapor")
-      .select("plaka, damper_sayisi, damper_olaylar")
-      .eq("rapor_tarihi", gun);
-    const raporlar = (raporData ?? []) as RaporRow[];
-    const plakalar = [
-      ...new Set(
-        raporlar
-          .filter((r) => (Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0) > 0 || (r.damper_sayisi ?? 0) > 0)
-          .map((r) => r.plaka),
-      ),
-    ];
-    if (plakalar.length > 0) {
-      const { data: guzData } = await supabase
-        .from("arac_arvento_guzergah")
-        .select("plaka, noktalar")
-        .eq("rapor_tarihi", gun)
-        .in("plaka", plakalar);
-      const rotalar = ((guzData ?? []) as GuzergahRow[]).map((g) =>
-        rotaTemizle(Array.isArray(g.noktalar) ? g.noktalar : []),
-      );
-      ocak = ocakTespit(rotalar);
-    }
-  }
-  const ayar: OzetAyar = {
-    mukerrerDk: ayarCache.mukerrerDk,
-    mukerrerYaricap: ayarCache.mukerrerYaricap,
-    ocakYaricap,
-  };
-  return ozetImza(ocak, ayar);
 }
