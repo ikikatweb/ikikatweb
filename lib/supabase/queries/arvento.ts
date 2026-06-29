@@ -65,10 +65,29 @@ export function birlestirGuzergahPlaka(rows: AracArventoGuzergah[]): AracArvento
 // İlgisiz araçların (oto/iş mak./başka sekme) ağır GPS verisi indirilmez → sayfa çok hızlanır.
 //   - undefined/null → TÜM araçlar (eski davranış; "Tümü" sekmesi).
 //   - boş dizi []     → ilgili araç yok → boş döner (gereksiz sorgu atılmaz).
-export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null): Promise<AracArventoGuzergah[]> {
+export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null, opts?: { tekSorgu?: boolean }): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
   if (plakalar && plakalar.length === 0) return []; // bu sekmeye ait araç yok → çekme
   const supabase = getSupabase();
+  // tekSorgu: çağıran verinin KÜÇÜK olduğunu biliyorsa (ör. sadece greyder/silindir, ~0,6 MB) → gün-gün 29
+  // sorgu yerine TEK aralık sorgusu (round-trip darboğazı biter; 933ms → ~180ms). Büyük (kamyon 8,5 MB)
+  // fetch'lerde KULLANMA — tek sorgu tarayıcıda takılır; onlar varsayılan gün-gün yolda kalır.
+  if (opts?.tekSorgu && plakalar && plakalar.length > 0) {
+    const rows: AracArventoGuzergah[] = [];
+    const PARCA = 1000; let offset = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from("arac_arvento_guzergah").select("*")
+        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis).in("plaka", plakalar)
+        .order("rapor_tarihi").range(offset, offset + PARCA - 1);
+      if (error) throw error;
+      const d = (data ?? []) as AracArventoGuzergah[];
+      rows.push(...d);
+      if (d.length < PARCA) break;
+      offset += PARCA; if (offset > 100000) break;
+    }
+    return rows;
+  }
   // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla. plakalar verilirse her gün-sorgusu .in ile scoped
   // (küçük). KANITLANMIŞ yol: tek dev sorgu/haftalık paralel ağır sorgular tarayıcıda (RLS) TAKILIYORDU;
   // gün-gün küçük parçalar takılmaz. (Geniş aralıkta tek sorgu DB statement-timeout veriyordu.)

@@ -111,5 +111,16 @@ async function aracGun(node, gunIso) {
     }
   }
   console.log(`\nBitti: ${yazilan} araç-gün yazıldı, ${toplamNokta} nokta, ${hata} hata.`);
+
+  // ÖZET WARMING: senkronlanan günlerin stabilize özetini CANLIDA önceden hesaplat (önbelleğe yaz). Böylece
+  // kullanıcı stabilize'yi açınca BUGÜN de önbellekten gelir (canlı yeniden-hesap ~1,5s beklenmez). Sync'i
+  // bozmaz (hata yoksayılır). API en fazla 45 günü işler; geniş backfill'de son 45 gün ısınır.
+  try {
+    const bas = gunler[0], bitis = gunler[gunler.length - 1];
+    const r = await fetchTimeout(`https://ikikat.net/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}&force=1`, {}, 120000);
+    console.log(`Özet warming (${bas} → ${bitis}): HTTP ${r.status}`);
+  } catch (e) {
+    console.error(`Özet warming hatası (yoksayıldı): ${e instanceof Error ? e.message : String(e)}`);
+  }
   process.exit(0);
 })();

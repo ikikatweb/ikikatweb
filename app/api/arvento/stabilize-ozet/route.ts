@@ -16,7 +16,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "bas ve bitis zorunlu (YYYY-MM-DD)" }, { status: 400 });
   }
   try {
-    const { dampers, girisler } = await ozetGetir(bas, bitis);
+    const force = searchParams.get("force") === "1"; // warming → bugünü TTL'e bakmadan tazeler
+    const { dampers, girisler } = await ozetGetir(bas, bitis, force);
     return NextResponse.json({ dampers, girisler });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -161,26 +161,30 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     // olduğu için TEK aralık sorgusu (gün-gün 29 istek yerine) → çok daha hızlı.
     (async () => {
       try {
-        const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
-        if (benimNo !== yukNoRef.current) return;
         if (OZET_MODU) {
-          // ÖZET MODU: damper sınıflaması sunucuda hazır (API) → kamyon GPS İNMEZ. Sadece GREYDER referans
-          // hatları (kamyon hariç, hafif) + özet damperler çekilir. rapor chip/araç listesi için kalır.
+          // ÖZET MODU: damper sınıflaması sunucuda hazır (API) → kamyon GPS İNMEZ. API rapor'a BAĞIMSIZ →
+          // hemen (paralel) başlat. rapor (chip/araç listesi) + GREYDER referans (kamyon hariç, hafif, TEK
+          // sorgu) ardından. Greyder küçük olduğundan tek sorgu güvenli (8,5 MB kamyon artık çekilmiyor).
+          const ozetPromise = fetch(`/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}`)
+            .then((res) => (res.ok ? res.json() : { dampers: [], girisler: [] }))
+            .catch(() => ({ dampers: [], girisler: [] }));
+          const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
+          if (benimNo !== yukNoRef.current) return;
           const greyderPlaka = [...new Set(r
             .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
               && !((x.damper_olaylar?.length ?? 0) > 0) && !((x.damper_sayisi ?? 0) > 0))
             .map((x) => x.plaka))];
           const [g, ozetRes] = await Promise.all([
-            getGuzergahByRange(bas, bitis, greyderPlaka),
-            fetch(`/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}`)
-              .then((res) => (res.ok ? res.json() : { dampers: [] }))
-              .catch(() => ({ dampers: [] })),
+            getGuzergahByRange(bas, bitis, greyderPlaka, { tekSorgu: true }),
+            ozetPromise,
           ]);
           if (benimNo !== yukNoRef.current) return;
           setTumGuzergah(g); setRaporlar(r);
           setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
           setOzetGirisler(Array.isArray(ozetRes?.girisler) ? (ozetRes.girisler as OzetGiris[]) : []);
         } else {
+          const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
+          if (benimNo !== yukNoRef.current) return;
           // ESKİ YOL: ham kamyon+greyder GPS'i çek, sınıflamayı tarayıcıda yap.
           const ilgili = [...new Set(r
             .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
