@@ -98,6 +98,20 @@ export async function getOcakForTarih(tarih: string): Promise<{ lat: number; lng
   return { lat: data.lat as number, lng: data.lng as number, yaricap: (data.yaricap as number) ?? 150 };
 }
 
+// TÜM ocak kayıtları (yeni → eski). Operasyon/Tümü sekmeleri GÜN-BAZLI ocak çözümü için kullanır (her günün
+// damperi KENDİ ocağıyla sınıflanır — stabilize özetiyle aynı). gecerli_tarih ≤ gün olan EN SON kayıt geçerlidir.
+export async function getTumOcaklar(): Promise<{ gecerli_tarih: string; lat: number; lng: number; yaricap: number }[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("arvento_ocak")
+    .select("gecerli_tarih, lat, lng, yaricap")
+    .order("gecerli_tarih", { ascending: false });
+  if (error || !data) return [];
+  return data
+    .filter((o) => o.lat != null && o.lng != null)
+    .map((o) => ({ gecerli_tarih: o.gecerli_tarih as string, lat: o.lat as number, lng: o.lng as number, yaricap: (o.yaricap as number) ?? 150 }));
+}
+
 // Ocağı belirli bir GÜN için kaydet (o tarihten itibaren geçerli). Tablo yoksa hata fırlatır → çağıran yakalar.
 export async function setOcakForTarih(tarih: string, lat: number, lng: number, yaricap: number): Promise<void> {
   const supabase = createClient();

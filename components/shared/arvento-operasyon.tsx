@@ -1,6 +1,6 @@
 // Arvento Serme & Sıkıştırma haritaları.
 // Temel: greyder (reglaj) güzergahı ALTLI ÜSTLÜ (paralel çift) çizgi olarak çizilir.
-//   - Serme      → altlı üstlü çizgi (yeşil) + ortada kamyon damper ikonları
+//   - Serme      → altlı üstlü çizgi (yeşil) + ortada yuvarlak renkli damper noktaları
 //   - Sıkıştırma → altlı üstlü çizgi (yeşil, soluk referans) + ortada silindir ZİKZAK (mor)
 // Greyder çizgisi "Güzergah Tekrar Eşiği", silindir zikzak "Silindir Tekrar Eşiği" ile sadeleşir.
 // Harita uydu (Google Earth) görünümünde.
@@ -14,9 +14,9 @@ import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, t
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { createClient } from "@/lib/supabase/client";
-import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
+import { getTumOcaklar } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -130,6 +130,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const [oncekiDamper, setOncekiDamper] = useState<{ lat: number; lng: number; dt: string }[]>([]);
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]);
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);
+  // GÜN-BAZLI ocak: her günün damperi KENDİ ocağıyla sınıflansın (stabilize özetiyle aynı). Tek prop-ocak
+  // tüm günlere uygulanınca, ocak taşınan aralıklarda yanlış gün ocağıyla sınıflama oluyordu (arıza↔gerçek).
+  const [ocaklar, setOcaklar] = useState<{ gecerli_tarih: string; lat: number; lng: number; yaricap: number }[]>([]);
+  useEffect(() => { let iptal = false; getTumOcaklar().then((o) => { if (!iptal) setOcaklar(o); }).catch(() => {}); return () => { iptal = true; }; }, []);
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const tumGuzergah = useMemo(() => (izinSet ? tumGuzergahHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : tumGuzergahHam), [tumGuzergahHam, izinSet]);
@@ -278,7 +282,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // manuel override uygulanır. (Arızalı/mükerrer damper serme sayılmaz; Serme/Sıkıştırma bunları kullanmaz.)
   const damperKoordlu = useMemo<DamperNokta[]>(() => {
     const pencSn = Math.max(0, mukerrerDk) * 60;
-    const ocak = (ocakLat != null && ocakLng != null) ? { lat: ocakLat, lng: ocakLng } : null;
+    const propOcak = (ocakLat != null && ocakLng != null) ? { lat: ocakLat, lng: ocakLng } : null;
+    // GÜN-BAZLI ocak çözümü (stabilize özetiyle aynı): o güne ≤ EN SON ocak kaydı; yoksa prop-ocak'a düş.
+    // ocaklar yeni→eski sıralı → ilk gecerli_tarih ≤ gün eşleşmesi geçerli.
+    const ocakForGun = (gun: string): { ocak: { lat: number; lng: number } | null; yaricap: number } => {
+      const o = ocaklar.find((x) => x.gecerli_tarih <= gun);
+      return o ? { ocak: { lat: o.lat, lng: o.lng }, yaricap: o.yaricap } : { ocak: propOcak, yaricap: ocakYaricap };
+    };
     // Stabilize ile BİREBİR AYNI: rota GÜN-BAZLI (plaka|tarih) anahtarla + izole GPS çöpü ayıkla (rotaTemizle).
     // Önceden plakaya göre Map'lendiği için çoklu-gün aralığında SON gün kazanıyordu → yanlış gün rotasıyla
     // sınıflanan damperler arıza yerine gerçek (veya tersi) çıkıyordu.
@@ -294,8 +304,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const olaylar = (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : []) as DamperOlay[];
       if (!olaylar.length) continue;
       const rota = rotaByGun.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}`) ?? [];
+      const { ocak: gunOcak, yaricap: gunOcakR } = ocakForGun(r.rapor_tarihi); // o günün ocağı
       const muk = mukerrerIsaretle(olaylar, pencSn, mukerrerYaricap);
-      const sinifli = arizaIsaretle(muk, rota, ocak, ocakYaricap);
+      const sinifli = arizaIsaretle(muk, rota, gunOcak, gunOcakR);
       for (const o of sinifli) {
         const ov = damperSinif?.get(`${plakaNorm(r.plaka)}|${r.rapor_tarihi}|${o.saat ?? ""}`);
         let mk = o.mukerrer, ar = o.ariza;
@@ -308,7 +319,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       }
     }
     return out;
-  }, [raporlar, tumGuzergah, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif]);
+  }, [raporlar, tumGuzergah, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif, ocaklar]);
 
   // SERME ROTA NOKTALARI (Sıkıştırma için): serme YAPILAN (damper ≤80 m yakını) greyder omurgalarının
   // noktaları. Silindir bu noktaların üstünden gidip geldiyse o kısım sıkıştırma sayılır.
@@ -493,9 +504,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       }
     });
     if (sermeMi) {
-      // Ortada damper ikonları
+      // Ortada damperler: YUVARLAK renkli nokta (canvas, hızlı) — truck ikonu kaldırıldı (stabilize ile aynı).
       damperKoordlu.forEach((o, i) => {
-        L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(DAMPER_RENK, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
+        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95 })
           .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });
