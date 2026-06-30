@@ -283,6 +283,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return;
+      // NOT: KML pane'i (350) yükseltilmez → güzergah çizgileri (SVG yolPane 450) KML'nin ÜSTÜNDE görünür.
+      // SVG katmanı boş yerlerde tıklamayı alttaki KML'ye geçirdiği için KML yine tıklanabilir kalır.
       veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
       setTimeout(() => { oto = false; }, 800);
@@ -307,6 +309,10 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const L = leafletRef.current;
     if (!map || !grup || !L) return;
     grup.clearLayers();
+    // YOL çizgilerini SVG renderer ile çiz (canvas değil): DOM <path> = KESİN tıklanır + SVG'nin BOŞ alanları
+    // tıklamayı ALTTAKİ KML'ye geçirir (canvas geçirmiyordu). overlayPane (z 400) KML pane'inin (350) ÜSTÜNDE
+    // → güzergah çizgileri KML'nin ÜZERİNDE görünür; özel pane geçiş yapmadığı için STANDART overlayPane kullanılır.
+    const yolRenderer = L.svg();
     const tumBounds: [number, number][] = [];
     const tekMi = secilenler.length === 1;
     if (etkinTekrar >= 1) {
@@ -326,7 +332,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const uz = parcalarUzunlukKm([parca]);
         const parcaPop = `<b>Reglaj (birleşik)</b><br>Bu çizgi: <b>${uz.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</b>`
           + `<br><span style="opacity:.65">Toplam reglaj: ${toplamKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km · ${secilenler.length} greyder · eşik ${etkinTekrar}</span>`;
-        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9 }).addTo(grup).bindPopup(parcaPop);
+        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup).bindPopup(parcaPop);
         cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
         cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
       }
@@ -339,7 +345,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         if (latlngs.length === 0) continue;
         const renk = renkAl(kayit.plaka);
         const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kayit.toplam_mesafe ?? 0} km · ${noktalar.length} nokta`;
-        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85 }).addTo(grup).bindPopup(pop);
+        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, renderer: yolRenderer }).addTo(grup).bindPopup(pop);
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })
