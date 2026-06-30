@@ -1,9 +1,38 @@
 // Arvento araç çalışma raporu sorguları
 import { createClient } from "@/lib/supabase/client";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
+import type { OzetDamper, OzetGiris } from "@/lib/arvento/stabilize-ozet";
 
 function getSupabase() {
   return createClient();
+}
+
+// Stabilize özetini DOĞRUDAN tablodan oku (Vercel API'yi ATLA → bir hop + fonksiyon yükü daha az = ~2× hızlı).
+// arvento_harita_ozet'e "authenticated SELECT" RLS politikası gerekir; yoksa RLS boş döner → çağıran API'ye düşer.
+// Bugünün tazeliği warming (speed-sync force) ile sağlanır (API yolundaki gibi); eksik gün hesaplaması YOK.
+export async function getStabilizeOzetDirect(bas: string, bitis: string): Promise<{ dampers: OzetDamper[]; girisler: OzetGiris[] }> {
+  if (!bas || !bitis) return { dampers: [], girisler: [] };
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arvento_harita_ozet")
+    .select("payload")
+    .eq("sekme", "stabilize")
+    .gte("rapor_tarihi", bas)
+    .lte("rapor_tarihi", bitis);
+  if (error) return { dampers: [], girisler: [] };
+  const dampers: OzetDamper[] = [];
+  const girisM = new Map<string, { girisOcak: number; girisDokum: number }>();
+  for (const r of (data ?? []) as { payload: { dampers?: OzetDamper[]; girisler?: OzetGiris[] } }[]) {
+    const p = r.payload;
+    if (Array.isArray(p?.dampers)) dampers.push(...p.dampers);
+    for (const g of p?.girisler ?? []) {
+      const e = girisM.get(g.plaka) ?? { girisOcak: 0, girisDokum: 0 };
+      e.girisOcak += g.girisOcak; e.girisDokum += g.girisDokum;
+      girisM.set(g.plaka, e);
+    }
+  }
+  const girisler: OzetGiris[] = [...girisM.entries()].map(([plaka, v]) => ({ plaka, girisOcak: v.girisOcak, girisDokum: v.girisDokum }));
+  return { dampers, girisler };
 }
 
 // ===== Güzergah (Mesafe Bilgisi / rota) sorguları =====

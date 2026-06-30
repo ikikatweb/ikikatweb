@@ -9,6 +9,7 @@
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { parseArventoBuffer, parseGenelRaporBuffer, parseMesafeBilgisiBuffer, parseKontakAlarmiBuffer } from "@/lib/arvento/parse";
+import { gunOzetiHesapla, getAyarServer } from "@/lib/arvento/stabilize-ozet-server";
 
 function trBugun(): string {
   const now = new Date();
@@ -29,6 +30,29 @@ export type IngestSonuc = {
   guzergahGunler?: { tarih: string; sayi: number }[]; // güzergah (rota) güncellenen plaka/gün
   kontakGunler?: { tarih: string; sayi: number }[];   // kontak açılış/kapanış saati güncellenen plaka/gün
 };
+
+// Stabilize özet önbelleğini, damper/güzergah DEĞİŞEN günler için HEMEN YENİDEN HESAPLA (üzerine yaz) → hem
+// tarayıcı-direkt okuma hem API o günü TAZE görür. (Silmek yetmez: tarayıcı-direkt silineni yeniden hesaplamaz.)
+// Excel, Mailden Çek ve gece cron'unun HEPSİ ingest'ten geçtiği için tek nokta burası. Hata import'u bozmaz.
+async function stabilizeOzetTazele(supabase: ReturnType<typeof serviceClient>, sonuc: IngestSonuc) {
+  const gunler = [...new Set([
+    ...sonuc.damperGunler.map((d) => d.tarih),
+    ...(sonuc.guzergahGunler ?? []).map((d) => d.tarih),
+  ])];
+  if (gunler.length === 0) return;
+  try {
+    const ayar = await getAyarServer(supabase);
+    const islenecek = gunler.slice(0, 31); // güvenlik sınırı: çok büyük import, import route'unu (timeout) zorlamasın
+    for (const gun of islenecek) {
+      const { imza, payload } = await gunOzetiHesapla(gun, supabase, ayar);
+      await supabase.from("arvento_harita_ozet").upsert({ rapor_tarihi: gun, sekme: "stabilize", imza, payload }, { onConflict: "rapor_tarihi,sekme" });
+    }
+    // Sınırı aşan (nadir, çok geniş import) günler → sil; sonraki backfill/açılış doldurur (bayat kalmasın).
+    if (gunler.length > islenecek.length) {
+      await supabase.from("arvento_harita_ozet").delete().eq("sekme", "stabilize").in("rapor_tarihi", gunler.slice(31));
+    }
+  } catch { /* özet tazeleme hatası import'u bozmasın */ }
+}
 
 export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<IngestSonuc> {
   const supabase = serviceClient();
@@ -63,6 +87,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     const gunMap = new Map<string, number>();
     for (const s of yazilacak) gunMap.set(s.rapor_tarihi, (gunMap.get(s.rapor_tarihi) ?? 0) + 1);
     sonuc.guzergahGunler = Array.from(gunMap.entries()).map(([tarih, sayi]) => ({ tarih, sayi }));
+    await stabilizeOzetTazele(supabase, sonuc); // rota değişti → o günlerin özetini tazele
     // Mesafe Bilgisi dosyasında çalışma/damper sayfası olmaz → erken dön
     return sonuc;
   }
@@ -172,6 +197,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     }
     throw new Error("Dosyada 'Araç Çalışma Raporu', 'Genel Rapor' veya 'Mesafe Bilgisi' verisi bulunamadı.");
   }
+  await stabilizeOzetTazele(supabase, sonuc); // damper/çalışma yazıldı → değişen günlerin özetini tazele
   return sonuc;
 }
 

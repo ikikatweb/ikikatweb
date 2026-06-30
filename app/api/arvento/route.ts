@@ -68,6 +68,8 @@ export async function POST(request: Request) {
       const toplamArac = sonuc.kontakGunler.reduce((s, d) => s + d.sayi, 0);
       parcalar.push(`kontak saatleri: ${toplamGun} gün / ${toplamArac} araç`);
     }
+    // (Stabilize özet önbelleği, ingestArventoBuffer içinde damper/güzergah değişen günler için otomatik
+    //  geçersiz kılınır → burada ayrıca yapmaya gerek yok.)
     return NextResponse.json({
       ok: true,
       calismaGunler: sonuc.calismaGunler,
