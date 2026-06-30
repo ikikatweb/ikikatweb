@@ -12,6 +12,7 @@ import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
+import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
@@ -116,8 +117,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const tumGuzergah = useMemo(() => (izinSet ? tumGuzergahHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : tumGuzergahHam), [tumGuzergahHam, izinSet]);
   const raporlar = useMemo(() => (izinSet ? raporlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : raporlarHam), [raporlarHam, izinSet]);
-  // PASİF (kapatılan) plakalar — gün değişse de KORUNUR. Seçili = mevcut kamyonlar − pasif.
-  const [pasifPlakalar, setPasifPlakalar] = useState<Set<string>>(new Set());
+  // PASİF (kapatılan) plakalar — gün değişince (parent remount etse bile) KORUNUR; F5'te sıfırlanır (modül-seviyesi store).
+  const [pasifPlakalar, setPasifPlakalar] = usePasifSecim("arvento-pasif-stabilize");
   const [kamyonIziGoster, setKamyonIziGoster] = useState(true); // kamyon izi çizgileri görünsün mü
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);

@@ -12,6 +12,7 @@ import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
+import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import type { AracArventoGuzergah } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Route, Download } from "lucide-react";
@@ -57,13 +58,13 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, renkler, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, renkler, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true, secimKey = "guzergah" }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean; secimKey?: string }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb"; // BİRLEŞİK reglaj omurgası tek renk (makine bazlı değil)
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
-  // PASİF (kullanıcının kapattığı) plakalar — gün değişse de KORUNUR (seçili set'i değil, pasifi tutuyoruz ki
-  // yeni güne geçince kullanıcının filtresi sıfırlanmasın). Seçili = mevcut araçlar − pasif.
-  const [pasifPlakalar, setPasifPlakalar] = useState<Set<string>>(new Set());
+  // PASİF (kullanıcının kapattığı) plakalar — gün değişince (parent remount etse bile) KORUNUR; F5'te sıfırlanır
+  // (modül-seviyesi store). secimKey ile İş Makineleri ve Reglaj ayrı saklanır. Seçili = araçlar − pasif.
+  const [pasifPlakalar, setPasifPlakalar] = usePasifSecim(`arvento-pasif-${secimKey}`);
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık menüsü (Araca odaklan)
@@ -459,10 +460,21 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.ilk ? (
                     <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
                   ) : null; })()}
-                  {calismaSnMap && <span className="text-[10px] opacity-80">⏱ {formatSure(calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)} çalışma</span>}
-                  {!calismaSnMap && kontakRolantiMap && (() => {
-                    const kr = kontakRolantiMap.get(plakaNorm(k.plaka));
-                    return <span className="text-[10px] opacity-80">⏱ {formatSure(Math.max(kr?.kontak ?? 0, kr?.rolanti ?? 0))} çalışma</span>;
+                  {(calismaSnMap || kontakRolantiMap) && (() => {
+                    // Çalışma = İş Makineleri'nde hazır hesap (calismaSnMap), diğerlerinde max(kontak, rölanti).
+                    let cal = calismaSnMap
+                      ? (calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)
+                      : (() => { const kr = kontakRolantiMap!.get(plakaNorm(k.plaka)); return Math.max(kr?.kontak ?? 0, kr?.rolanti ?? 0); })();
+                    // EKRANDA GÖRÜNEN ilk→son kontak penceresini AŞAMAZ: Arvento kontak_sn/rolanti_sn rapor
+                    // birikiminden şişebiliyor (ör. 3 saatlik pencerede 16 saat çalışma). İlk/son GPS'ten türetilmişse
+                    // (Arvento kontağı boşsa) calismaSnMap'teki kırpma çalışmıyordu — burada görünen pencereye kırpılır.
+                    const e = ilkSonKontakMap?.get(plakaNorm(k.plaka));
+                    if (e?.ilk && e?.son) {
+                      const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
+                      const span = sn(e.son) - sn(e.ilk);
+                      if (span > 0) cal = Math.min(cal, span);
+                    }
+                    return <span className="text-[10px] opacity-80">⏱ {formatSure(cal)} çalışma</span>;
                   })()}
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(k.plaka)); return e?.son ? (
                     <span className={`text-[10px] text-red-600 ${e.sonT ? "italic opacity-80" : ""}`} title={e.sonT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🔴 {e.sonT ? "~" : ""}{e.son.slice(0, 5)} son kontak</span>

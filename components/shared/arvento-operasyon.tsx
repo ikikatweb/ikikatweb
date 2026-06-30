@@ -13,6 +13,7 @@ import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
+import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { createClient } from "@/lib/supabase/client";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
@@ -244,8 +245,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   }, [sermeMi, silindirler, raporlar, sekmeMap, atananSekmeler]);
 
   // Sıkıştırma: silindirler renkli chip'ler — çoklu seçim (chip listesi = silindirChipler)
-  // PASİF silindirler — gün değişse de KORUNUR. Seçili = chip listesi − pasif.
-  const [pasifSilindirler, setPasifSilindirler] = useState<Set<string>>(new Set());
+  // PASİF silindirler — gün değişse de KORUNUR; F5'te sıfırlanır (modül-seviyesi store).
+  const [pasifSilindirler, setPasifSilindirler] = usePasifSecim(`arvento-pasif-silindir-${operasyon}`);
   const seciliSilindirler = useMemo(() => new Set(silindirChipler.map((k) => k.plaka).filter((p) => !pasifSilindirler.has(p))), [silindirChipler, pasifSilindirler]);
   const silindirRenk = useMemo(() => {
     const m = new Map<string, string>();
@@ -257,8 +258,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const silindirToggle = (p: string) => setPasifSilindirler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); // pasife ekle/çıkar (gün değişse korunur)
 
   // Serme: greyderler de Stabilize kamyonları gibi renkli chip — çoklu seçim
-  // PASİF greyderler — gün değişse de KORUNUR. Seçili = greyderler − pasif.
-  const [pasifGreyderler, setPasifGreyderler] = useState<Set<string>>(new Set());
+  // PASİF greyderler — gün değişse de KORUNUR; F5'te sıfırlanır (modül-seviyesi store).
+  const [pasifGreyderler, setPasifGreyderler] = usePasifSecim(`arvento-pasif-greyder-${operasyon}`);
   const seciliGreyderler = useMemo(() => new Set(greyderler.map((k) => k.plaka).filter((p) => !pasifGreyderler.has(p))), [greyderler, pasifGreyderler]);
   const greyderRenk = useMemo(() => {
     const m = new Map<string, string>();
