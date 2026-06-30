@@ -184,34 +184,36 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const canliVar = (canliFiltreli?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap);
 
+  // SERME/SIKIŞTIRMA = BİRİKMELİ: veriyi SEZON BAŞINDAN (yıl başı) seçilen BİTİŞ gününe kadar çek. Başlangıç
+  // tarihi serme'de etkisiz — damper yığınları sezon boyu birikir, serilenler çıkar. ("Bugün" = bugüne kadarki tüm yığınlar.)
+  const sermeBas = bitis ? `${bitis.slice(0, 4)}-01-01` : bas;
   const yapiRef = useRef(""); // yükleme göstergesi yalnız tarih/operasyon değişiminde; periyodik tazelemede sessiz
   const yukNoRef = useRef(0); // yükleme sıra no — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN
   useEffect(() => {
-    if (!bas || !bitis) { yukNoRef.current++; setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
-    const yapi = `${bas}|${bitis}|${sermeMi}`;
+    if (!bitis) { yukNoRef.current++; setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
+    const yapi = `${sermeBas}|${bitis}|${sermeMi}`;
     const yapisal = yapiRef.current !== yapi;
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski rakamlar görünür) + yükleniyor göster.
     if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
-    // HIZLANDIRMA: önce hafif rapor (tüm araçlar; damper buradan), sonra YALNIZ bu sekmeye ait araçların
-    // ağır rotası çekilir. Serme/Sıkıştırma = greyder ∪ silindir (sıkıştırma serme referansı için greyderi de ister).
-    // İlgisiz araçların (oto/iş mak./kamyon) GPS verisi indirilmez → 13,7 MB yerine ~0,6 MB.
+    // Veri SEZON BAŞINDAN bitişe (sermeBas→bitis): greyder/silindir rotası + özet damperler + rapor. Greyder
+    // küçük olduğundan tek sorgu (geniş aralıkta gün-gün yüzlerce istek yerine).
     (async () => {
       try {
         // Damper sınıflaması özetten (kamyon GPS inmez). Rapor'a bağımsız → hemen paralel başlat.
-        const ozetPromise = getStabilizeOzetDirect(bas, bitis).then((d) => {
+        const ozetPromise = getStabilizeOzetDirect(sermeBas, bitis).then((d) => {
           if (d.dampers.length > 0) return d.dampers;
-          return fetch(`/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}`)
+          return fetch(`/api/arvento/stabilize-ozet?bas=${sermeBas}&bitis=${bitis}`)
             .then((res) => (res.ok ? res.json() : { dampers: [] })).then((j) => (j.dampers ?? []) as OzetDamper[]).catch(() => [] as OzetDamper[]);
         });
-        const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
+        const r = (await getArventoRaporByRange(sermeBas, bitis)) as AracArventoRapor[];
         if (benimNo !== yukNoRef.current) return;
         const ilgili = [...new Set(r
           .filter((x) =>
             operasyondaGorunur(sekmeMap, atananSekmeler, null, "serme", x.plaka) ||
             operasyondaGorunur(sekmeMap, atananSekmeler, null, "sikistirma", x.plaka))
           .map((x) => x.plaka))];
-        const [g, oz] = await Promise.all([getGuzergahByRange(bas, bitis, ilgili), ozetPromise]);
+        const [g, oz] = await Promise.all([getGuzergahByRange(sermeBas, bitis, ilgili, { tekSorgu: true }), ozetPromise]);
         if (benimNo !== yukNoRef.current) return;
         setTumGuzergah(g); setRaporlar(r); setOzetDampers(oz as OzetDamper[]);
       } catch (err) {
@@ -222,7 +224,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         if (benimNo === yukNoRef.current) setLoading(false);
       }
     })();
-  }, [bas, bitis, refreshKey, sermeMi, sekmeMap, atananSekmeler]);
+  }, [sermeBas, bitis, refreshKey, sermeMi, sekmeMap, atananSekmeler]);
 
   // Serme = greyder hattı; atama varsa "serme" ataması esas alınır, yoksa otomatik sınıf tespiti.
   const greyderler = useMemo(() => tumGuzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka)), [tumGuzergahBirlesik, sekmeMap, atananSekmeler]);
@@ -477,17 +479,17 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
   }, [gorunumRef, loading]);
 
-  // SERME geçmiş damper taraması: seçilen aralık BAŞINDAN (bas) önceki damperleri TARİHLİ çek.
-  // Aralık içi damperler ayrıca raporlar'dan (in-memory) gelir → damperHucreTarih memo'da birleşir.
+  // SERME geçmiş damper taraması: SEZON BAŞINDAN (sermeBas) önceki damperleri TARİHLİ çek (genelde boş —
+  // sezon içi damperler raporlar'dan gelir). Aralık içi damperler raporlar'dan → damperHucreTarih memo'da birleşir.
   useEffect(() => {
-    if (!sermeMi || !bas) { setOncekiDamper([]); return; }
+    if (!sermeMi || !sermeBas) { setOncekiDamper([]); return; }
     let iptal = false;
     (async () => {
       const sb = createClient();
       const out: { lat: number; lng: number; dt: string }[] = [];
       const PARCA = 1000; let offset = 0;
       while (!iptal) {
-        const { data, error } = await sb.from("arac_arvento_rapor").select("rapor_tarihi, damper_olaylar").lt("rapor_tarihi", bas).range(offset, offset + PARCA - 1);
+        const { data, error } = await sb.from("arac_arvento_rapor").select("rapor_tarihi, damper_olaylar").lt("rapor_tarihi", sermeBas).range(offset, offset + PARCA - 1);
         if (error || !data) break;
         for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
           for (const d of (r.damper_olaylar ?? [])) {
@@ -501,7 +503,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       if (!iptal) setOncekiDamper(out);
     })();
     return () => { iptal = true; };
-  }, [sermeMi, bas]);
+  }, [sermeMi, sermeBas]);
 
   // Veri/seçim/ayar değişince YALNIZ veri katmanını yeniden çiz (harita yerinde kalır → flicker yok).
   useEffect(() => {
@@ -678,9 +680,14 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               </div>
               <div>
                 {sermeMi
-                  ? <span className="text-orange-600 font-semibold">🔻 {sermeDamperleri.length} damper</span>
+                  ? <span className="text-orange-600 font-semibold">🔻 {sermeDamperleri.length} serilmemiş damper</span>
                   : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir hattı</span>}
               </div>
+              {sermeMi && (
+                <div className="text-[10px] text-gray-400 mt-0.5" title="Damperler sezon başından seçilen bitiş gününe kadar birikir; serilenler düşer. Başlangıç tarihi serme'de etkisizdir.">
+                  📅 Sezon başından ({sermeBas.slice(0, 4)}) birikmeli · başlangıç etkisiz
+                </div>
+              )}
               {sonGuncelleme && (
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}
