@@ -29,7 +29,7 @@ import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatMuhatap, formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
-import { uploadDosya } from "@/lib/supabase/queries/upload";
+import { uploadDosyaImzali } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
@@ -210,8 +210,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       // Kullanıcı sildiyse pdf_url null'a çekilir (yeni dosya seçmediği sürece)
       if (pdfRemoved) pdfUrl = null;
       if (pdfFile) {
-        // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
-        pdfUrl = await uploadDosya(pdfFile, "yazismalar", `giden/${firmaId}/${Date.now()}.pdf`);
+        // İmzalı doğrudan yükleme (≤50 MB, Vercel baypas)
+        pdfUrl = await uploadDosyaImzali(pdfFile, "yazismalar", `giden/${firmaId}/${Date.now()}.pdf`);
       }
 
       // Tam tarih yoksa yıldan kurtarma (sıralama için ocak 1)
@@ -551,8 +551,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                           };
                           let temiz = dosya.name.replace(/[çÇğĞıİöÖşŞüÜ]/g, (m) => harfHaritasi[m] || m);
                           temiz = temiz.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_").toLowerCase();
-                          // uploadDosya: boyut kontrolü + 413/JSON-olmayan yanıtı düzgün ele alır
-                          const yeniUrl = await uploadDosya(dosya, "yazismalar", `giden-ek/${firmaId}/${Date.now()}-${temiz}`);
+                          // İmzalı doğrudan yükleme (≤50 MB, Vercel baypas)
+                          const yeniUrl = await uploadDosyaImzali(dosya, "yazismalar", `giden-ek/${firmaId}/${Date.now()}-${temiz}`);
                           // Metni koru, URL'i ekle/değiştir
                           setEkler((p) => p.map((x, idx) => {
                             if (idx !== i) return x;

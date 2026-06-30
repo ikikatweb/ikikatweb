@@ -329,3 +329,22 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
 
   return { satirlar };
 }
+
+// ── "Silenler" (gizli şantiyeler) — PAYLAŞIMLI (DB, /api/maliyet/gizli). Eskiden localStorage'daydı (kişi bazlı);
+//    artık bir yöneticinin gizlediği TÜM yöneticilerde gizli. ──
+export async function getMaliyetGizliSantiyeler(): Promise<string[]> {
+  try {
+    const r = await fetch("/api/maliyet/gizli", { cache: "no-store" });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.ids) ? (d.ids as string[]) : [];
+  } catch { return []; }
+}
+
+export async function setMaliyetGizliSantiye(santiyeId: string, gizli: boolean): Promise<void> {
+  await fetch("/api/maliyet/gizli", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ santiyeId, gizli }),
+  });
+}

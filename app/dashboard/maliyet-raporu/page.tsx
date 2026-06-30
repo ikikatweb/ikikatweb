@@ -1,12 +1,12 @@
 // Maliyet Raporu — şantiye bazlı yıllık maliyet kalemleri (yalnız yöneticiye açık).
 // Tablo: her satır bir şantiye; sütunlar nakit, k.k., personel, SGK, yakıt, makine kira + toplam.
 // "Gizle" ikonu şantiyeyi Silinenler sekmesine taşır — VERİ SİLİNMEZ, hesaplanmaya devam eder,
-// sadece ayrı sekmede listelenir. Tercih cihazda (localStorage) saklanır.
+// sadece ayrı sekmede listelenir. Liste DB'de PAYLAŞIMLI: bir yöneticinin gizlediği tüm yöneticilerde gizli.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks";
-import { getMaliyetRaporu, type MaliyetSatir, SGK_ORAN } from "@/lib/supabase/queries/maliyet";
+import { getMaliyetRaporu, getMaliyetGizliSantiyeler, setMaliyetGizliSantiye, type MaliyetSatir, SGK_ORAN } from "@/lib/supabase/queries/maliyet";
 import { FileBarChart2, Trash2, RotateCcw } from "lucide-react";
 
 const fmt = (n: number) =>
@@ -14,7 +14,6 @@ const fmt = (n: number) =>
 
 const BU_YIL = new Date().getFullYear();
 const YILLAR = Array.from({ length: 6 }, (_, i) => BU_YIL - i); // bu yıl + 5 geri
-const GIZLI_KEY = "maliyet-gizli-santiyeler";
 
 export default function MaliyetRaporuPage() {
   const { isYonetici, loading: authYukleniyor } = useAuth();
@@ -27,24 +26,27 @@ export default function MaliyetRaporuPage() {
   const [satirlar, setSatirlar] = useState<MaliyetSatir[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
-  // Görünmesini istemediğim şantiyeler (cihazda saklanır; veri silinmez).
+  // Gizlenen (Silinenler) şantiyeler — PAYLAŞIMLI (DB). Bir yöneticinin gizlediği herkeste gizli.
   const [gizliIds, setGizliIds] = useState<Set<string>>(new Set());
   const [sekme, setSekme] = useState<"aktif" | "silinen">("aktif");
 
-  // localStorage'dan gizli listeyi yükle (bir kez)
+  // Gizli listeyi DB'den yükle (yönetici girişinde).
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(GIZLI_KEY);
-      if (raw) setGizliIds(new Set(JSON.parse(raw) as string[]));
-    } catch { /* yoksay */ }
-  }, []);
+    if (authYukleniyor || !isYonetici) return;
+    let iptal = false;
+    getMaliyetGizliSantiyeler().then((ids) => { if (!iptal) setGizliIds(new Set(ids)); }).catch(() => {});
+    return () => { iptal = true; };
+  }, [isYonetici, authYukleniyor]);
 
-  const gizliKaydet = (yeni: Set<string>) => {
-    setGizliIds(new Set(yeni));
-    try { localStorage.setItem(GIZLI_KEY, JSON.stringify([...yeni])); } catch { /* yoksay */ }
+  // Optimistik güncelle + DB'ye yaz (hata olursa eski hale dön).
+  const gizliDegistir = (id: string, gizli: boolean) => {
+    setGizliIds((prev) => { const n = new Set(prev); if (gizli) n.add(id); else n.delete(id); return n; });
+    setMaliyetGizliSantiye(id, gizli).catch(() => {
+      setGizliIds((prev) => { const n = new Set(prev); if (gizli) n.delete(id); else n.add(id); return n; }); // geri al
+    });
   };
-  const gizle = (id: string) => { const n = new Set(gizliIds); n.add(id); gizliKaydet(n); };
-  const geriAl = (id: string) => { const n = new Set(gizliIds); n.delete(id); gizliKaydet(n); };
+  const gizle = (id: string) => gizliDegistir(id, true);
+  const geriAl = (id: string) => gizliDegistir(id, false);
 
   useEffect(() => {
     if (authYukleniyor || !isYonetici) return;

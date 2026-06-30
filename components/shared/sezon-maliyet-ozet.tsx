@@ -1,17 +1,16 @@
 // Dashboard için Sezon Maliyeti özeti — şantiye + toplam (yalnız yönetici).
 // Sezon Maliyeti sayfasında gizlenen (Silinenler) şantiyeler burada GÖRÜNMEZ
-// (aynı localStorage listesi okunur). Veri bu yıl bazında hesaplanır.
+// (aynı PAYLAŞIMLI DB listesi okunur). Veri bu yıl bazında hesaplanır.
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/hooks";
-import { getMaliyetRaporu, type MaliyetSatir } from "@/lib/supabase/queries/maliyet";
+import { getMaliyetRaporu, getMaliyetGizliSantiyeler, type MaliyetSatir } from "@/lib/supabase/queries/maliyet";
 import { FileBarChart2 } from "lucide-react";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const BU_YIL = new Date().getFullYear();
-const GIZLI_KEY = "maliyet-gizli-santiyeler";
 const CACHE_KEY = `sezon-maliyet-ozet-${BU_YIL}`;
 const CACHE_TTL = 15 * 60 * 1000; // 15 dk: ağır yıl-bazlı sorgu her dashboard açılışında değil, oturumda en çok 1 kez/15dk
 
@@ -23,34 +22,29 @@ export default function SezonMaliyetOzet() {
   useEffect(() => {
     if (loading || !isYonetici) return;
     let iptal = false;
-    let gizli = new Set<string>();
-    try {
-      const raw = localStorage.getItem(GIZLI_KEY);
-      if (raw) gizli = new Set(JSON.parse(raw) as string[]);
-    } catch { /* yoksay */ }
-    // gizli filtre kullanım anında uygulanır → önbellekte HAM satırlar tutulur (gizli değişince refetch gerekmez)
-    const uygula = (ham: MaliyetSatir[]) => {
+    (async () => {
+      // Gizli (Silinenler) listesi PAYLAŞIMLI DB'den — gizli filtre kullanım anında uygulanır (önbellekte HAM satırlar).
+      const gizli = new Set(await getMaliyetGizliSantiyeler().catch(() => []));
       if (iptal) return;
-      setSatirlar(ham.filter((s) => !gizli.has(s.santiyeId)));
-      setYukleniyor(false);
-    };
-    // ÖNBELLEK: 15 dk taze ise ağır yıl-bazlı sorguyu tekrar çalıştırma (dashboard her açılışında DB'yi yormasın).
-    try {
-      const c = sessionStorage.getItem(CACHE_KEY);
-      if (c) {
-        const obj = JSON.parse(c) as { ts: number; satirlar: MaliyetSatir[] };
-        if (obj && Date.now() - obj.ts < CACHE_TTL && Array.isArray(obj.satirlar)) {
-          uygula(obj.satirlar);
-          return () => { iptal = true; };
+      const uygula = (ham: MaliyetSatir[]) => {
+        if (iptal) return;
+        setSatirlar(ham.filter((s) => !gizli.has(s.santiyeId)));
+        setYukleniyor(false);
+      };
+      // ÖNBELLEK: 15 dk taze ise ağır yıl-bazlı sorguyu tekrar çalıştırma (dashboard her açılışında DB'yi yormasın).
+      try {
+        const c = sessionStorage.getItem(CACHE_KEY);
+        if (c) {
+          const obj = JSON.parse(c) as { ts: number; satirlar: MaliyetSatir[] };
+          if (obj && Date.now() - obj.ts < CACHE_TTL && Array.isArray(obj.satirlar)) { uygula(obj.satirlar); return; }
         }
-      }
-    } catch { /* yoksay → taze çek */ }
-    getMaliyetRaporu(`${BU_YIL}-01-01`, `${BU_YIL}-12-31`)
-      .then((r) => {
+      } catch { /* yoksay → taze çek */ }
+      try {
+        const r = await getMaliyetRaporu(`${BU_YIL}-01-01`, `${BU_YIL}-12-31`);
         try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), satirlar: r.satirlar })); } catch { /* kota → yoksay */ }
         uygula(r.satirlar);
-      })
-      .catch(() => { if (!iptal) setYukleniyor(false); });
+      } catch { if (!iptal) setYukleniyor(false); }
+    })();
     return () => { iptal = true; };
   }, [isYonetici, loading]);
 

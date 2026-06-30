@@ -1,3 +1,30 @@
+import { createClient } from "@/lib/supabase/client";
+
+// BÜYÜK dosya yükleme (≤50 MB) — İMZALI URL ile DOĞRUDAN Supabase'e (Vercel ~4.5MB limitini baypas).
+// Evrak PDF'leri gibi büyük olabilecek dosyalar için. Resimler yine sıkıştırılır. publicUrl döner.
+export async function uploadDosyaImzali(file: File, bucket: string, path: string): Promise<string> {
+  let yuklenecek = file;
+  if (file.type.startsWith("image/") && file.type !== "image/svg+xml") {
+    try { yuklenecek = await sikistirResim(file, 1920, 0.82); } catch { yuklenecek = file; }
+  }
+  const MAX_BYTES = 50 * 1024 * 1024;
+  if (yuklenecek.size > MAX_BYTES) {
+    throw new Error(`Dosya çok büyük (${(yuklenecek.size / 1024 / 1024).toFixed(1)} MB). Maksimum 50 MB.`);
+  }
+  // 1) İmzalı yükleme URL'i al
+  const imzaRes = await fetch("/api/upload/imza", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ bucket, path }),
+  });
+  const imza = await imzaRes.json().catch(() => ({}));
+  if (!imzaRes.ok) throw new Error(imza.error ?? "Yükleme hazırlanamadı");
+  // 2) DOĞRUDAN Supabase Storage'a yükle (Vercel'e uğramaz → büyük dosya takılmaz)
+  const supabase = createClient();
+  const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(imza.path, imza.token, yuklenecek, { contentType: yuklenecek.type });
+  if (error) throw new Error(`Dosya yüklenemedi: ${error.message}`);
+  return imza.publicUrl as string;
+}
+
 // Genel dosya yükleme helper'ı — herhangi bir bucket'a path ile yükler
 // /api/upload route'unu kullanır (server-side, service role).
 // Resim dosyaları otomatik olarak sıkıştırılır → Vercel 4.5MB body limitini aşmaz,
