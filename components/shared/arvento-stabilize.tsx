@@ -116,7 +116,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const tumGuzergah = useMemo(() => (izinSet ? tumGuzergahHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : tumGuzergahHam), [tumGuzergahHam, izinSet]);
   const raporlar = useMemo(() => (izinSet ? raporlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : raporlarHam), [raporlarHam, izinSet]);
-  const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set()); // çoklu seçim (boş→hepsi varsayılan effect ile dolar)
+  // PASİF (kapatılan) plakalar — gün değişse de KORUNUR. Seçili = mevcut kamyonlar − pasif.
+  const [pasifPlakalar, setPasifPlakalar] = useState<Set<string>>(new Set());
   const [kamyonIziGoster, setKamyonIziGoster] = useState(true); // kamyon izi çizgileri görünsün mü
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -375,15 +376,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Araç KÜMESİ değişince (tarih/yeni araç) varsayılan: tüm kamyonlar seçili. Periyodik tazelemede
   // aynı plakalar gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, redraw olmasın).
-  const plakaImzaRef = useRef("");
-  useEffect(() => {
-    const imza = kamyonlar.map((r) => r.plaka).sort().join("|");
-    if (plakaImzaRef.current === imza) return;
-    plakaImzaRef.current = imza;
-    setSeciliPlakalar(new Set(kamyonlar.map((r) => r.plaka)));
-  }, [kamyonlar]);
+  // Seçili = mevcut kamyonlardan PASİF olmayanlar (varsayılan hepsi açık; kapatılan pasife eklenir, gün değişse korunur).
+  const seciliPlakalar = useMemo(() => new Set(kamyonlar.map((r) => r.plaka).filter((p) => !pasifPlakalar.has(p))), [kamyonlar, pasifPlakalar]);
 
-  const toggle = (plaka: string) => setSeciliPlakalar((s) => {
+  const toggle = (plaka: string) => setPasifPlakalar((s) => { // pasife ekle/çıkar (gün değişse de korunur)
     const n = new Set(s); if (n.has(plaka)) n.delete(plaka); else n.add(plaka); return n;
   });
 

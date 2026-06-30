@@ -961,7 +961,7 @@ export default function ArventoRaporPage() {
           {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
           {ismakineKayitlar.length > 0 && (
             <div className="space-y-1">
-              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz}
+              <ArventoGuzergah bas={baslangic} bitis={bitis} tekrarEsigi={0} gridMesafe={gridMesafe} transitHiz={transitHiz}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri" modelGoster
                 canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}

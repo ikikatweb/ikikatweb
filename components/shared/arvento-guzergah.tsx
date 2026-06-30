@@ -61,7 +61,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb"; // BİRLEŞİK reglaj omurgası tek renk (makine bazlı değil)
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
-  const [seciliPlakalar, setSeciliPlakalar] = useState<Set<string>>(new Set());
+  // PASİF (kullanıcının kapattığı) plakalar — gün değişse de KORUNUR (seçili set'i değil, pasifi tutuyoruz ki
+  // yeni güne geçince kullanıcının filtresi sıfırlanmasın). Seçili = mevcut araçlar − pasif.
+  const [pasifPlakalar, setPasifPlakalar] = useState<Set<string>>(new Set());
   const [hamGoster, setHamGoster] = useState(false); // açıkken tüm Tanımlamalar filtreleri yok sayılır (ham rota)
   const [loading, setLoading] = useState(true);
   const [odakMenu, setOdakMenu] = useState<{ x: number; y: number; plaka: string } | null>(null); // sağ-tık menüsü (Araca odaklan)
@@ -203,15 +205,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     return m;
   }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar]);
 
-  // Araç KÜMESİ değişince varsayılan: tüm araçlar seçili. Periyodik tazelemede aynı plakalar
-  // gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, gereksiz redraw olmasın).
-  const plakaImzaRef = useRef("");
-  useEffect(() => {
-    const imza = araclar.map((k) => k.plaka).sort().join("|");
-    if (plakaImzaRef.current === imza) return;
-    plakaImzaRef.current = imza;
-    setSeciliPlakalar(new Set(araclar.map((k) => k.plaka)));
-  }, [araclar]);
+  // Seçili = mevcut araçlardan PASİF olmayanlar. Varsayılan hepsi açık; kullanıcı kapatınca pasife eklenir →
+  // gün değişse de pasif korunur (yeni araçlar otomatik açık gelir, kapatılanlar kapalı kalır).
+  const seciliPlakalar = useMemo(() => new Set(araclar.map((k) => k.plaka).filter((p) => !pasifPlakalar.has(p))), [araclar, pasifPlakalar]);
 
   // Sağ-tık menüsünü dışarı tıklayınca / ESC ile kapat.
   useEffect(() => {
@@ -250,7 +246,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   }, [araclar]);
   const renkAl = useCallback((p: string) => plakaRenk.get(p) ?? "#2563eb", [plakaRenk]);
 
-  const toggle = (p: string) => setSeciliPlakalar((s) => {
+  const toggle = (p: string) => setPasifPlakalar((s) => { // pasife ekle/çıkar (gün değişse de korunur)
     const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n;
   });
   const secilenler = useMemo(() => araclar.filter((k) => seciliPlakalar.has(k.plaka)), [araclar, seciliPlakalar]);

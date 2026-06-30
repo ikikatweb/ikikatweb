@@ -244,14 +244,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   }, [sermeMi, silindirler, raporlar, sekmeMap, atananSekmeler]);
 
   // Sıkıştırma: silindirler renkli chip'ler — çoklu seçim (chip listesi = silindirChipler)
-  const [seciliSilindirler, setSeciliSilindirler] = useState<Set<string>>(new Set());
-  const silindirImzaRef = useRef("");
-  useEffect(() => {
-    const imza = silindirChipler.map((k) => k.plaka).sort().join("|");
-    if (silindirImzaRef.current === imza) return; // aynı araç kümesi → seçimi koru (periyodik tazelemede sıfırlama)
-    silindirImzaRef.current = imza;
-    setSeciliSilindirler(new Set(silindirChipler.map((k) => k.plaka)));
-  }, [silindirChipler]);
+  // PASİF silindirler — gün değişse de KORUNUR. Seçili = chip listesi − pasif.
+  const [pasifSilindirler, setPasifSilindirler] = useState<Set<string>>(new Set());
+  const seciliSilindirler = useMemo(() => new Set(silindirChipler.map((k) => k.plaka).filter((p) => !pasifSilindirler.has(p))), [silindirChipler, pasifSilindirler]);
   const silindirRenk = useMemo(() => {
     const m = new Map<string, string>();
     silindirChipler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
@@ -259,24 +254,19 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   }, [silindirChipler]);
   const silindirRenkAl = useCallback((p: string) => silindirRenk.get(p) ?? silindirRenkV, [silindirRenk, silindirRenkV]);
   const secilenSilindirler = useMemo(() => silindirler.filter((k) => seciliSilindirler.has(k.plaka)), [silindirler, seciliSilindirler]);
-  const silindirToggle = (p: string) => setSeciliSilindirler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const silindirToggle = (p: string) => setPasifSilindirler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); // pasife ekle/çıkar (gün değişse korunur)
 
   // Serme: greyderler de Stabilize kamyonları gibi renkli chip — çoklu seçim
-  const [seciliGreyderler, setSeciliGreyderler] = useState<Set<string>>(new Set());
-  const greyderImzaRef = useRef("");
-  useEffect(() => {
-    const imza = greyderler.map((k) => k.plaka).sort().join("|");
-    if (greyderImzaRef.current === imza) return; // aynı araç kümesi → seçimi koru
-    greyderImzaRef.current = imza;
-    setSeciliGreyderler(new Set(greyderler.map((k) => k.plaka)));
-  }, [greyderler]);
+  // PASİF greyderler — gün değişse de KORUNUR. Seçili = greyderler − pasif.
+  const [pasifGreyderler, setPasifGreyderler] = useState<Set<string>>(new Set());
+  const seciliGreyderler = useMemo(() => new Set(greyderler.map((k) => k.plaka).filter((p) => !pasifGreyderler.has(p))), [greyderler, pasifGreyderler]);
   const greyderRenk = useMemo(() => {
     const m = new Map<string, string>();
     greyderler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
     return m;
   }, [greyderler]);
   const greyderRenkAl = useCallback((p: string) => greyderRenk.get(p) ?? sermeRenkV, [greyderRenk, sermeRenkV]);
-  const greyderToggle = (p: string) => setSeciliGreyderler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const greyderToggle = (p: string) => setPasifGreyderler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); // pasife ekle/çıkar (gün değişse korunur)
 
   // Chip kaynağı: serme → greyderler, sıkıştırma → silindirChipler (tek tip normalize liste)
   const chipler = useMemo<{ plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null }[]>(
