@@ -16,8 +16,20 @@ export type SadelesSonuc = {
 
 const METRE_DERECE = 111320; // 1 derece ~ 111.32 km (yaklaşık)
 
+// "YYYY-MM-DD" + "HH:MM:SS" → MUTLAK saniye (gün-farkı dahil). "Tekrar süresi" penceresi için NoktaH.ts değeri.
+// Date.UTC saf/deterministik (Date.now yok) — çok-günlü havuzda pencere günleri karıştırmaz.
+export function tsSaniye(tarih: string, saat: string | null | undefined): number | null {
+  if (!saat) return null;
+  const [y, m, d] = tarih.split("-").map(Number);
+  const [hh, mm, ss] = saat.split(":").map(Number);
+  if (!y || !m || !d) return null;
+  return Math.floor(Date.UTC(y, m - 1, d) / 1000) + (hh || 0) * 3600 + (mm || 0) * 60 + (ss || 0);
+}
+
 // Hız taşıyan nokta tipi. Omurga sayımında "transit" (asfaltta hızlı git-gel) geçişleri elemek için kullanılır.
-type NoktaH = { lat: number; lng: number; hiz?: number | null };
+// ts: mutlak zaman (saniye) — "tekrar süresi" penceresi (pencereSn) verildiğinde geçişlerin aynı süre içinde
+// olup olmadığını ölçmek için. Verilmezse (undefined/null) zaman şartı uygulanamaz.
+type NoktaH = { lat: number; lng: number; hiz?: number | null; ts?: number | null };
 
 // REGLAJ/SERME/SIKIŞTIRMA işi YAVAŞ yapılır (bıçak/silindir inik); bu hızın ÜSTÜ = transit (yola/asfalta
 // gidiş-geliş) → omurga sayımına KATILMAZ. Greyder verisinde işin %96'sı ≤15 km/s, transit >20-45 km/s.
@@ -62,7 +74,9 @@ function sabitAdimOrnekle(pts: NoktaH[], adimM: number): NoktaH[] {
       // hızı da taşı (segment hızı, interpolasyon) → omurga sayımında transit (hızlı) geçişler elenebilsin
       const ha = a.hiz, hb = b.hiz;
       const hiz = (ha != null && hb != null) ? ha + (hb - ha) * t : (hb ?? ha ?? null);
-      out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, hiz });
+      const ta = a.ts, tb = b.ts;
+      const ts = (ta != null && tb != null) ? ta + (tb - ta) * t : (tb ?? ta ?? null);
+      out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, hiz, ts });
       next += adimM;
     }
     acc = segLen - (next - adimM); // segment sonundaki artık (bir sonraki segmente taşınır)
@@ -182,8 +196,9 @@ export function sadelesGuzergah(
   esik: number,
   gridM = 12,
   hizEsik: number = HIZ_TRANSIT_ESIK,
+  pencereSn = 0,
 ): SadelesSonuc {
-  return sadelesGuzergahCore(noktalar, esik, gridM, hizEsik);
+  return sadelesGuzergahCore(noktalar, esik, gridM, hizEsik, pencereSn);
 }
 
 function sadelesGuzergahCore(
@@ -191,6 +206,10 @@ function sadelesGuzergahCore(
   esik: number,
   gridM = 12,
   hizEsik: number = HIZ_TRANSIT_ESIK,
+  // pencereSn > 0 ise: bir yol (kenar) yalnızca eşik kadar geçiş AYNI pencereSn saniyelik süre içinde
+  // olursa çizilir (greyder bir yolu bütün güne yayarak defalarca geçse de, süre içinde yeterli tekrar
+  // yoksa çizilmez). 0 = zaman şartı kapalı → sadece toplam geçiş sayısı (eski davranış).
+  pencereSn = 0,
 ): SadelesSonuc {
   const bos: SadelesSonuc = { parcalar: [], gosterilenSegment: 0, toplamSegment: 0, maksGecis: 0 };
   const pts0 = noktalar.filter((p) => p.lat != null && p.lng != null);
@@ -221,25 +240,41 @@ function sadelesGuzergahCore(
   // Yönsüz kenar geçiş sayımı (ardışık hücreler arası). HIZ FİLTRESİ: geçiş HIZLI ise (hizEsik üstü =
   // asfalta/yola transit git-gel, reglaj işi değil) SAYMA. Hücre dizisi (onceki) yine ilerler ama o kenar
   // sayıma katılmaz → yalnız yavaş (işlenmiş) geçilen yollar eşiği aşıp omurgaya girer. hız yoksa (null) sayılır.
+  // Her kenar için geçiş ZAMANLARI (ts). pencereSn kapalıysa yalnız sayı önemli; açıksa zaman penceresi bakılır.
   const sayim = new Map<string, number>();
+  const zamanlar = new Map<string, number[]>(); // kenar → geçiş ts'leri (yalnız zamanı olan geçişler)
   let onceki = hucreKey(pts[0]);
   for (let i = 1; i < pts.length; i++) {
     const simdi = hucreKey(pts[i]);
     if (simdi === onceki) continue;
     const hizli = hizEsik > 0 && (pts[i].hiz ?? 0) > hizEsik;
-    if (!hizli) sayim.set(segKey(onceki, simdi), (sayim.get(segKey(onceki, simdi)) ?? 0) + 1);
+    if (!hizli) {
+      const kk = segKey(onceki, simdi);
+      sayim.set(kk, (sayim.get(kk) ?? 0) + 1);
+      const t = pts[i].ts;
+      if (pencereSn > 0 && t != null) { let a = zamanlar.get(kk); if (!a) { a = []; zamanlar.set(kk, a); } a.push(t); } // yalnız süre şartı açıkken tut
+    }
     onceki = simdi;
   }
   const toplamSegment = sayim.size;
   const maksGecis = Array.from(sayim.values()).reduce((m, v) => Math.max(m, v), 0);
   const alt = Math.max(1, esik);
+  // Kenar eşiği karşılıyor mu: pencere kapalı → toplam geçiş ≥ eşik. Pencere açık → sıralı ts'lerde eşik
+  // kadar geçiş ≤ pencereSn süre içinde (kayan pencere: z[i+alt-1] - z[i] ≤ pencereSn).
+  const kenarYeter = (kk: string, cnt: number): boolean => {
+    if (pencereSn <= 0) return cnt >= alt;
+    const z = (zamanlar.get(kk) ?? []).slice().sort((a, b) => a - b);
+    if (z.length < alt) return false;
+    for (let i = 0; i + alt - 1 < z.length; i++) if (z[i + alt - 1] - z[i] <= pencereSn) return true;
+    return false;
+  };
 
-  // Komşuluk grafiği — sadece eşiği geçen kenarlar (az geçilen sapmalar grafa girmez → silinir)
+  // Komşuluk grafiği — sadece eşiği (ve varsa zaman penceresini) karşılayan kenarlar
   const komsu = new Map<string, Set<string>>();
   const ekle = (a: string, b: string) => { if (!komsu.has(a)) komsu.set(a, new Set()); komsu.get(a)!.add(b); };
   let gosterilen = 0;
   for (const [k, cnt] of sayim) {
-    if (cnt < alt) continue;
+    if (!kenarYeter(k, cnt)) continue;
     gosterilen++;
     const [a, b] = k.split("|");
     ekle(a, b); ekle(b, a);

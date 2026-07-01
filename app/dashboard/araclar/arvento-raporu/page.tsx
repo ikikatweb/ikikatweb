@@ -191,6 +191,7 @@ export default function ArventoRaporPage() {
   const [canliBirim, setCanliBirim] = useState<"sn" | "dk">("sn");    // UI birimi (gösterim) — kayıt hep sn
   const [raporCekmeDk, setRaporCekmeDk] = useState<number>(5);        // Gerçek rapor çekme aralığı (dk)
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
+  const [tekrarPencereSaat, setTekrarPencereSaat] = useState<number>(0); // eşik kadar geçiş bu süre (saat) içinde olmalı; 0 = kapalı
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
   const [transitHiz, setTransitHiz] = useState<number>(20);    // reglaj transit hız eşiği (km/s); üstü = asfalt git-gel, sayılmaz; 0=kapalı
@@ -221,6 +222,7 @@ export default function ArventoRaporPage() {
         setCanliYenilemeSn(a.canliYenilemeSn);
         setRaporCekmeDk(a.raporCekmeDk);
         setGuzergahTekrar(a.guzergahTekrar);
+        setTekrarPencereSaat(a.tekrarPencereSaat);
         setGridMesafe(a.gridMesafe);
         setTransitHiz(a.transitHiz);
         setSilindirTekrar(a.silindirTekrar);
@@ -246,13 +248,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -1009,13 +1011,13 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
         <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
@@ -1172,6 +1174,32 @@ export default function ArventoRaporPage() {
                   <button type="button" onClick={() => setGuzergahTekrar(0)}
                     className="text-gray-400 hover:text-red-500 text-xs px-1" title="Sadeleştirmeyi kapat">✕</button>
                 )}
+              </div>
+              {/* Tekrar SÜRESİ — eşik kadar geçiş bu süre İÇİNDE olmalı (greyder aynı yolu bütün güne yayarak
+                  geçse de sayılmaz; ancak süre içinde yeterli tekrar varsa çizilir). 0 = süre şartı yok. */}
+              <div className="mt-2 pt-2 border-t border-emerald-200/70">
+                <div className="text-[11px] font-semibold text-gray-600 mb-1">Tekrar Süresi (opsiyonel)</div>
+                <p className="text-[11px] text-gray-400 mb-2">
+                  Eşik kadar geçiş <strong>bu süre içinde</strong> olursa yol çizilir. Örn. eşik <strong>3</strong> + süre
+                  <strong> 2</strong> → aynı yolu <strong>2 saat içinde</strong> 3 kez geçerse çizilir; güne yayılmış
+                  seyrek geçişler <strong>çizilmez</strong>. Ondalık olur (1.5 = 90 dk). <strong>0 = süre şartı yok</strong> (sadece toplam sayıya bakar).
+                </p>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={tekrarPencereSaat || ""}
+                    onChange={(e) => setTekrarPencereSaat(Math.max(0, parseFloat(e.target.value) || 0))}
+                    placeholder="örn. 2"
+                    className={selectClass + " w-32"}
+                  />
+                  <span className="text-[10px] text-gray-400 whitespace-nowrap">saat</span>
+                  {tekrarPencereSaat > 0 && (
+                    <button type="button" onClick={() => setTekrarPencereSaat(0)}
+                      className="text-gray-400 hover:text-red-500 text-xs px-1" title="Süre şartını kapat">✕</button>
+                  )}
+                </div>
               </div>
             </div>
             {/* Silindir Tekrar Eşiği — Sıkıştırma sekmesindeki silindir zikzakı için.

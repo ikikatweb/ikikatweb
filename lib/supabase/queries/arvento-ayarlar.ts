@@ -10,6 +10,7 @@ export type ArventoAyarlar = {
   canliYenilemeSn: number; // Canlı sekmesi otomatik yenileme aralığı (saniye)
   raporCekmeDk: number;    // Gerçek çalışma raporunun çekilme aralığı (dakika)
   guzergahTekrar: number;
+  tekrarPencereSaat: number; // güzergah tekrar SÜRESİ (saat): eşik kadar geçiş bu süre içinde olursa yol çizilir; 0 = kapalı (zaman şartı yok). Ondalık olabilir (1.5 = 90 dk)
   gridMesafe: number;
   silindirTekrar: number;
   transitHiz: number; // reglaj/serme/sıkıştırma omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı
@@ -33,6 +34,7 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   canliYenilemeSn: 45,
   raporCekmeDk: 5,
   guzergahTekrar: 0,
+  tekrarPencereSaat: 0,
   gridMesafe: 12,
   silindirTekrar: 0,
   transitHiz: 20,
@@ -63,6 +65,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     canliYenilemeSn: data.canli_yenileme_sn ?? 45,
     raporCekmeDk: data.rapor_cekme_dk ?? 5,
     guzergahTekrar: data.guzergah_tekrar ?? 0,
+    tekrarPencereSaat: data.tekrar_pencere_saat ?? 0, // kolon yoksa 0 (kapalı, geriye uyumlu)
     gridMesafe: data.grid_mesafe ?? 12,
     silindirTekrar: data.silindir_tekrar ?? 0,
     transitHiz: data.transit_hiz ?? 20,   // kolon yoksa varsayılan 20 (geriye uyumlu)
@@ -164,6 +167,7 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     canli_yenileme_sn: a.canliYenilemeSn,
     rapor_cekme_dk: a.raporCekmeDk,
     guzergah_tekrar: a.guzergahTekrar,
+    tekrar_pencere_saat: a.tekrarPencereSaat,
     grid_mesafe: a.gridMesafe,
     silindir_tekrar: a.silindirTekrar,
     transit_hiz: a.transitHiz,

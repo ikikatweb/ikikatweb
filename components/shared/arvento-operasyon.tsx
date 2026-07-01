@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect } from "@/lib/supabase/queries/arvento";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
-import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -129,8 +129,8 @@ function parcalar(noktalar: { lat: number; lng: number; hiz?: number | null }[],
   return [latlngs];
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, tekrarPencereSaat = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; tekrarPencereSaat?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -359,7 +359,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const sermeByPlaka = useMemo(() => {
     if (!sermeMi) return [] as { plaka: string; arac_sinifi: string | null; parcalar: [number, number][][] }[];
     const greyderPlakalar = new Set(greyderler.filter((k) => seciliGreyderler.has(k.plaka)).map((k) => plakaNorm(k.plaka)));
-    const byP = new Map<string, { plaka: string; arac_sinifi: string | null; pts: { lat: number; lng: number; hiz?: number | null }[] }>();
+    const byP = new Map<string, { plaka: string; arac_sinifi: string | null; pts: { lat: number; lng: number; hiz?: number | null; ts?: number | null }[] }>();
     for (const row of tumGuzergah) {
       const pk = plakaNorm(row.plaka);
       if (!greyderPlakalar.has(pk)) continue;
@@ -372,16 +372,16 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         // Damperden ÖNCEKİ geçişler (reglaj) elenir → reglaj ile serme artık karışmaz.
         const ct = damperHucreTarih.get(sermeHucreKey(p.lat, p.lng));
         const gecisDt = `${D} ${p.saat ?? "23:59:59"}`;
-        if (ct != null && ct < gecisDt) g.pts.push({ lat: p.lat, lng: p.lng, hiz: p.hiz });
+        if (ct != null && ct < gecisDt) g.pts.push({ lat: p.lat, lng: p.lng, hiz: p.hiz, ts: tsSaniye(D, p.saat) });
       }
     }
     const out: { plaka: string; arac_sinifi: string | null; parcalar: [number, number][][] }[] = [];
     for (const g of byP.values()) {
       if (g.pts.length < 2) continue;
-      out.push({ plaka: g.plaka, arac_sinifi: g.arac_sinifi, parcalar: sadelesGuzergah(g.pts, etkinTekrar, gridMesafe, transitHiz).parcalar });
+      out.push({ plaka: g.plaka, arac_sinifi: g.arac_sinifi, parcalar: sadelesGuzergah(g.pts, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat * 3600).parcalar });
     }
     return out;
-  }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz]);
+  }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat]);
 
   // Serme yolu tıklandığında popup için greyderlerin HAM noktaları (saat + hız + tarih). Tıklanan konuma
   // EN YAKIN nokta gösterilir → plaka/model/hız/tarih/saat. (Omurga çizgisi tek değer taşımaz; ham noktadan alınır.)
