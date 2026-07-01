@@ -206,11 +206,15 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     kutuyuGuncelle(map.distance(son, e.latlng)); // imleç mesafesi (ana sabit toplamı değiştirmez)
   }
 
-  // Ölçüm modunda KML/çizgi/damper/canlı katmanları tıklamayı YUTMASIN → her tık haritaya (ölçüm
-  // noktası) gitsin. Aktif=true: pointer-events kapat; false: geri aç.
+  // Ölçüm modunda KML/çizgi/damper/canlı — HİÇBİR katman tıklamayı YUTMASIN → her tık haritaya (ölçüm noktası)
+  // gitsin. TABAN dışındaki TÜM pane'ler geçirgen yapılır (özel pane'ler de: yolPane, damperPane, opYolPane…).
+  // Aktif=true: pointer-events kapat; false: geri aç.
   function katmanlariGecirgen(aktif: boolean) {
-    const panes = [map.getPane(KML_PANE), map.getPane(CANLI_PANE), map.getPanes().overlayPane, map.getPanes().markerPane];
-    for (const p of panes) if (p) p.style.pointerEvents = aktif ? "none" : "";
+    const panes = map.getPanes() as unknown as Record<string, HTMLElement>;
+    for (const ad of Object.keys(panes)) {
+      if (ad === "mapPane" || ad === "tilePane") continue; // taban — harita tıklaması ölçüme gitsin
+      const p = panes[ad]; if (p) p.style.pointerEvents = aktif ? "none" : "";
+    }
   }
 
   function basla() {

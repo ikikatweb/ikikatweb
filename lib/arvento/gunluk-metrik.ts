@@ -11,6 +11,17 @@ import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types
 
 export type GunlukMetrik = { reglajKm: number; kamyonSefer: number; sermeKm: number; sikistirmaKm: number; makineSn: number };
 
+// Metriği ETKİLEYEN ayarların parmak izi. Değişince cache'lenmiş günler "eski imzalı" olur → dashboard onları
+// yeniden hesaplatır (renk/kalınlık gibi metriği etkilemeyen ayarlar imzaya girmez, gereksiz tazeleme olmasın).
+export function metrikImza(ayarlar: ArventoAyarlar | null): string {
+  const a = ayarlar;
+  return [
+    a?.guzergahTekrar ?? 0, a?.tekrarPencereSaat ?? 0, a?.gridMesafe ?? 12, a?.silindirTekrar ?? 0,
+    a?.transitHiz ?? 20, a?.mukerrerDk ?? 0, a?.mukerrerYaricap ?? 0, a?.ocakYaricap ?? 150,
+    a?.ocakLat ?? "", a?.ocakLng ?? "",
+  ].join("|");
+}
+
 export type GunlukMetrikGirdi = {
   tarih: string | null;
   kayitlar: AracArventoRapor[];
@@ -27,12 +38,15 @@ function sureSn(t: string | null): number { if (!t) return 0; const p = t.split(
 // Widget'takiyle BİREBİR aynı 5 hesap — tek yerde. (Widget bu fonksiyonu çağırır; sunucu cache de.)
 export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap }: GunlukMetrikGirdi): GunlukMetrik {
   const grid = ayarlar?.gridMesafe ?? 12;
+  const transitHiz = ayarlar?.transitHiz ?? 20;                 // reglaj/serme omurgasında transit hız eşiği
+  const pencereSn = (ayarlar?.tekrarPencereSaat ?? 0) * 3600;   // "tekrar süresi" penceresi (reglaj/serme)
 
   // Omurga uzunluğu (km) — Reglaj ile aynı: eşik ≥ 1 omurga, omurga boşsa 0, ham modda kapsanan yol.
-  const omurgaKm = (noktalar: { lat: number | null; lng: number | null }[], esik: number, g: number): number => {
+  // hizEsik + pSn sekmelerdeki hesapla AYNI olsun diye dışarıdan verilir (silindir transit filtresi kullanmaz → 0).
+  const omurgaKm = (noktalar: { lat: number | null; lng: number | null }[], esik: number, g: number, hizEsik: number, pSn: number): number => {
     const ns = noktalar.filter((p): p is { lat: number; lng: number } => p.lat != null && p.lng != null);
     if (ns.length < 2) return 0;
-    const parca = esik >= 1 ? sadelesGuzergah(ns, esik, g).parcalar : [];
+    const parca = esik >= 1 ? sadelesGuzergah(ns, esik, g, hizEsik, pSn).parcalar : [];
     return parca.length ? parcalarUzunlukKm(parca) : (esik >= 1 ? 0 : kapsananYolKm(ns, g));
   };
   // op'a (serme/sikistirma) GÖRÜNÜR mü — atama varsa onu, yoksa op'a atanmış başka araç varsa gizle, değilse cinse göre.
@@ -50,19 +64,29 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     if (!greyderMi(g.plaka, g.arac_sinifi)) return s;
     const noktalar = (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
     if (noktalar.length < 2) return s;
-    const parca = esikReglaj >= 1 ? sadelesGuzergah(noktalar, esikReglaj, grid).parcalar : [];
-    return s + (parca.length ? parcalarUzunlukKm(parca) : (esikReglaj >= 1 ? 0 : kapsananYolKm(noktalar, grid)));
+    if (esikReglaj < 1) return s + kapsananYolKm(noktalar, grid);
+    // Reglaj sekmesinin per-araç "km yol"u ile BİREBİR: transit (tekrar süresi/pencere YOK), yalnız >0.5 m parçalar.
+    const parts = sadelesGuzergah(noktalar, esikReglaj, grid, transitHiz).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
+    return s + parts.reduce((a, b) => a + b, 0);
   }, 0);
 
-  // 1b) SERME UZUNLUĞU (km) — serme greyder omurgası, yalnız hattın ≤80 m'sinde damper varsa.
+  // 1b) SERME UZUNLUĞU (km) — serme greyder omurgası, yalnız hattın ≤80 m'sinde (GERÇEK) damper varsa.
+  // Manuel arıza/mükerrer işaretlenen damper GERÇEK dökme sayılmaz → serme'ye de KATILMAZ (kamyon seferle tutarlı;
+  // geçmiş günde override yapılınca serme metriği de güncellenir).
   const damperler: { lat: number; lng: number }[] = [];
-  for (const r of kayitlar) for (const o of (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : [])) if (o.lat != null && o.lng != null) damperler.push({ lat: o.lat, lng: o.lng });
+  for (const r of kayitlar) for (const o of (Array.isArray(r.damper_olaylar) ? r.damper_olaylar : [])) {
+    if (o.lat == null || o.lng == null) continue;
+    const sinif = sinifMap.get(`${plakaNorm(r.plaka)}|${(o as { _t?: string | null })._t ?? tarih}|${o.saat ?? ""}`);
+    if (sinif === "ariza" || sinif === "mukerrer") continue;
+    damperler.push({ lat: o.lat, lng: o.lng });
+  }
   const yakin = (ns: { lat: number | null; lng: number | null }[]) => damperler.length > 0 && ns.some((p) => p.lat != null && p.lng != null && damperler.some((d) => mesafeMetre(p.lat as number, p.lng as number, d.lat, d.lng) <= 80));
-  const sermeKm = guzergahlar.reduce((s, g) => (opGorunur(g.plaka, g.arac_sinifi, "serme", /greyder|grayder/i) && yakin(g.noktalar ?? [])) ? s + omurgaKm(g.noktalar ?? [], esikReglaj, grid) : s, 0);
+  const sermeKm = guzergahlar.reduce((s, g) => (opGorunur(g.plaka, g.arac_sinifi, "serme", /greyder|grayder/i) && yakin(g.noktalar ?? [])) ? s + omurgaKm(g.noktalar ?? [], esikReglaj, grid, transitHiz, pencereSn) : s, 0);
 
-  // 1c) SIKIŞTIRMA UZUNLUĞU (km) — silindir omurgası, SİLİNDİR tekrar eşiğiyle.
+  // 1c) SIKIŞTIRMA UZUNLUĞU (km) — silindir omurgası, SİLİNDİR tekrar eşiğiyle. Sıkıştırma sekmesinin per-araç
+  // "km yol"u ile aynı: transit, pencere YOK.
   const esikSil = ayarlar?.silindirTekrar ?? 0;
-  const sikistirmaKm = guzergahlar.reduce((s, g) => opGorunur(g.plaka, g.arac_sinifi, "sikistirma", /silindir|roller|compact/i) ? s + omurgaKm(g.noktalar ?? [], esikSil, grid) : s, 0);
+  const sikistirmaKm = guzergahlar.reduce((s, g) => opGorunur(g.plaka, g.arac_sinifi, "sikistirma", /silindir|roller|compact/i) ? s + omurgaKm(g.noktalar ?? [], esikSil, grid, transitHiz, 0) : s, 0);
 
   // 2) KAMYON SEFER = Stabilize GERÇEK damper toplamı (mükerrer + ocağa göre arıza ayıklanır, manuel override).
   const mukerrerDk = ayarlar?.mukerrerDk ?? 0, mukerrerYaricap = ayarlar?.mukerrerYaricap ?? 0;

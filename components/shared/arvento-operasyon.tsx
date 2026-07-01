@@ -169,9 +169,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const canliVar = (canliFiltreli?.length ?? 0) > 0; // toggle'da değişir, pozisyon güncellemesinde değişmez
   useCanliKatman(canliLayerRef, canliFiltreli, canliCihazMap);
 
-  // SERME/SIKIŞTIRMA = BİRİKMELİ: veriyi SEZON BAŞINDAN (yıl başı) seçilen BİTİŞ gününe kadar çek. Başlangıç
-  // tarihi serme'de etkisiz — damper yığınları sezon boyu birikir, serilenler çıkar. ("Bugün" = bugüne kadarki tüm yığınlar.)
-  const sermeBas = bitis ? `${bitis.slice(0, 4)}-01-01` : bas;
+  // SERME + SIKIŞTIRMA = GÜNLÜK/ARALIK: ikisi de SEÇİLEN tarih aralığını (bas→bitis) uygular; aralık seçilmezse
+  // yalnız o günü gösterir (reglaj gibi, dashboard "günlük" ile tutar). Serme için "bu yola daha önce damper
+  // döküldü mü" geçmişi, aralık ÖNCESİNDEN oncekiDamper ile gelir → kümülatif fetch gerekmez.
+  const sermeBas = bas;
   const yapiRef = useRef(""); // yükleme göstergesi yalnız tarih/operasyon değişiminde; periyodik tazelemede sessiz
   const yukNoRef = useRef(0); // yükleme sıra no — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN
   useEffect(() => {
@@ -407,6 +408,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     }
     return m;
   }, [sermeMi, greyderler, sermeByPlaka, silindirler, gridMesafe, etkinSilindir, transitHiz]);
+  // Seçili aralıkta yapılan TOPLAM serme (km) — seçili greyderlerin serme omurgalarının toplamı (header'da gösterilir).
+  const sermeToplamKm = useMemo(() => (sermeMi ? sermeByPlaka.reduce((s, g) => s + parcalarUzunlukKm(g.parcalar), 0) : 0), [sermeMi, sermeByPlaka]);
+  // TOPLAM sıkıştırma (km) — seçili silindirlerin omurga km'lerinin (chip "km yol") toplamı (header'da gösterilir).
+  const sikistirmaToplamKm = useMemo(() => (!sermeMi ? secilenSilindirler.reduce((s, k) => s + (omurgaKmMap.get(k.plaka) ?? 0), 0) : 0), [sermeMi, secilenSilindirler, omurgaKmMap]);
 
   // Serme: greyder hattı yalnızca ÜZERİNDE/yakınında damper varsa gösterilir
   // (reglaj→damper→reglaj). Damper yoksa serme yapılmamıştır → boş.
@@ -678,12 +683,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               </div>
               <div>
                 {sermeMi
-                  ? <span className="text-orange-600 font-semibold">🔻 {sermeDamperleri.length} serilmemiş damper</span>
-                  : <span style={{ color: silindirRenkV }} className="font-semibold">⩘ {secilenSilindirler.length} silindir hattı</span>}
+                  ? <span><span className="font-semibold" style={{ color: sermeRenkV }}>🟰 {(sermeToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m serme</span> <span className="text-orange-600 font-semibold">· 🔻 {sermeDamperleri.length} serilmemiş damper</span></span>
+                  : <span><span className="font-semibold" style={{ color: silindirRenkV }}>🟰 {(sikistirmaToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m sıkıştırma</span> <span style={{ color: silindirRenkV }} className="font-semibold">· ⩘ {secilenSilindirler.length} silindir hattı</span></span>}
               </div>
               {sermeMi && (
-                <div className="text-[10px] text-gray-400 mt-0.5" title="Damperler sezon başından seçilen bitiş gününe kadar birikir; serilenler düşer. Başlangıç tarihi serme'de etkisizdir.">
-                  📅 Sezon başından ({sermeBas.slice(0, 4)}) birikmeli · başlangıç etkisiz
+                <div className="text-[10px] text-gray-400 mt-0.5" title="Seçilen tarih aralığındaki greyder geçişleri gösterilir; aralık öncesinde damper dökülmüş yollar 'serme' sayılır. Aralık seçmezsen yalnız o gün.">
+                  📅 Seçilen aralık · önceden damperli yollar serme sayılır
                 </div>
               )}
               {sonGuncelleme && (

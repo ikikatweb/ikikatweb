@@ -16,6 +16,7 @@ import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
+import { gunMetrikTazele } from "@/lib/arvento/gunluk-metrik-client";
 import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { type OzetDamper, type OzetGiris } from "@/lib/arvento/stabilize-ozet";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
@@ -348,13 +349,23 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       .catch(() => { if (!iptal) setDamperSinifState(new Map()); });
     return () => { iptal = true; };
   }, [bas, bitis, refreshKey]);
+  // O günün dashboard metriğini (arvento_gunluk_metrik) tazele — GEÇMİŞ günde override yapılınca "Sezon Özeti"
+  // güncellensin diye. Debounce: aynı güne birden çok işaretleme yapılırsa TEK tazeleme (son işaretlemeden ~1.5 sn
+  // sonra, DB yazımı bittiğinde tetiklenir; getDamperSiniflar en güncel override'ları okur).
+  const metrikTazeleTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const gunMetrikTazeleDebounce = useCallback((t: string) => {
+    const timers = metrikTazeleTimers.current;
+    const mevcut = timers.get(t); if (mevcut) clearTimeout(mevcut);
+    timers.set(t, setTimeout(() => { timers.delete(t); void gunMetrikTazele(t).catch(() => { /* cache tazeleme sessiz */ }); }, 1500));
+  }, []);
   // Bir damperin sınıfını elle değiştir (optimistik + DB'ye yaz). Liste & popup aynı state'ten beslenir.
   const damperSinifDegistir = useCallback((plaka: string, tarih: string, saat: string | null, yeni: DamperSinif) => {
     const t = tarih || bas;
     const key = `${plakaNorm(plaka)}|${t}|${saat ?? ""}`;
     setDamperSinifState((prev) => { const m = new Map(prev); m.set(key, yeni); return m; });
     setDamperSinif(plaka, t, saat ?? "", yeni).catch((e: unknown) => toast.error(`Sınıf kaydedilemedi — ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: toastSuresi() }));
-  }, [bas]);
+    gunMetrikTazeleDebounce(t); // dashboard sezon özeti bu günü de güncellesin (geçmiş gün dahil)
+  }, [bas, gunMetrikTazeleDebounce]);
   // Popup içindeki butonlar (Leaflet HTML) global fonksiyonu çağırır → React state'i günceller.
   const degistirRef = useRef(damperSinifDegistir); degistirRef.current = damperSinifDegistir;
   useEffect(() => {
@@ -610,8 +621,13 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     };
     // YOL çizgilerini SVG renderer ile, damperlerin (canvas) ÜSTÜNDEKİ ayrı bir pane'de çiz: SVG yolları DOM
     // <path> olduğu için KESİN tıklanır (canvas ince çizgi tıklaması zordu) + boş yerde damperlere geçirir.
+    // KATMAN SIRASI (alt→üst): harita(tile) < KML(350) < kamyon izi/reglaj(yolPane 450) < damper(damperPane 500) < canlı(640).
     if (!map.getPane("yolPane")) { const p = map.createPane("yolPane"); p.style.zIndex = "450"; }
     const yolRenderer = L.svg({ pane: "yolPane" });
+    // Damper noktaları KAMYON İZİNİN ÜSTÜNDE ayrı pane'de (SVG → DOM daire = KESİN tıklanır; canvas'ta ince/örtüşen
+    // yerlerde tıklama kaçıyordu). Canlı (640) hâlâ en üstte.
+    if (!map.getPane("damperPane")) { const p = map.createPane("damperPane"); p.style.zIndex = "500"; }
+    const damperRenderer = L.svg({ pane: "damperPane" });
     // 1) Reglaj referans çizgileri (greyder hattı) — kamyonlar hariç
     reglajRefleri.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
@@ -635,9 +651,18 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
       const iStil = { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" };
-      const cizgi = L.polyline(latlngs, { ...iStil, renderer: yolRenderer })
-        .addTo(grup).bindPopup(`<b>${k.plaka}</b> (kamyon izi)<br>${k.arac_sinifi ?? ""}`);
-      cizgi.on("click", () => vurgulaYol(cizgi, iStil));
+      const cizgi = L.polyline(latlngs, { ...iStil, renderer: yolRenderer }).addTo(grup);
+      // Tıklayınca EN YAKIN ham noktadan plaka · araç / Hız / tarih saat + çizgiyi vurgula.
+      cizgi.on("click", (e) => {
+        const pt = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
+        let best: { saat: string | null; hiz: number | null } | null = null, bd = Infinity;
+        for (const q of noktalar) { const dx = q.lat - pt.lat, dy = q.lng - pt.lng, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = q; } }
+        const hiz = best?.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
+        const tar = k.rapor_tarihi ? String(k.rapor_tarihi).split("-").reverse().join(".") : "";
+        const sa = best?.saat ? String(best.saat).slice(0, 8) : "";
+        cizgi.bindPopup(`<b>${k.plaka}</b>${k.arac_sinifi ? " · " + k.arac_sinifi : ""}<br>Hız: ${hiz}<br>${tar}${sa ? " " + sa : ""}`).openPopup([pt.lat, pt.lng]);
+        vurgulaYol(cizgi, iStil);
+      });
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }
     });
     // Damperi en yakın reglaj çizgisine (≤30 m) oturt → halka çizginin tam ortasında çıksın
@@ -694,8 +719,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
         return `<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b><br>${g.plaka}<br>${liste}`;
       };
-      // TÜM damperler (gün + aralık): kamyon rengine göre YUVARLAK nokta (canvas, hızlı). Truck ikonu kaldırıldı.
-      L.circleMarker([g.lat, g.lng], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: renk, fillOpacity: 0.95 })
+      // TÜM damperler: kamyon rengine göre YUVARLAK nokta. SVG + damperPane (kamyon izinin üstünde, KESİN tıklanır).
+      L.circleMarker([g.lat, g.lng], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: renk, fillOpacity: 0.95, renderer: damperRenderer })
         .addTo(grup).bindPopup(popupFn);
       bounds.push([g.lat, g.lng]);
     });

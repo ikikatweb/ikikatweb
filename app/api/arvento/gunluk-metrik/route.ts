@@ -28,12 +28,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const bas = searchParams.get("bas"), bitis = searchParams.get("bitis");
   if (!bas || !bitis) return NextResponse.json({ error: "bas ve bitis gerekli" }, { status: 400 });
+  const imza = searchParams.get("imza"); // verilirse yalnız bu imzalı (güncel ayar) günler toplanır
   const sb = service();
   const { data, error } = await sb.from("arvento_gunluk_metrik")
-    .select("tarih, reglaj_km, kamyon_sefer, serme_km, sikistirma_km, makine_sn")
+    .select("tarih, reglaj_km, kamyon_sefer, serme_km, sikistirma_km, makine_sn, imza")
     .gte("tarih", bas).lte("tarih", bitis);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const rows = data ?? [];
+  // İmza verildiyse yalnız EŞLEŞEN (güncel ayarlı) satırları say; eskiler "güncel değil" → toplama girmez.
+  const rows = (data ?? []).filter((r) => imza == null || r.imza === imza);
   const toplam = rows.reduce((a, r) => ({
     reglajKm: a.reglajKm + Number(r.reglaj_km ?? 0),
     kamyonSefer: a.kamyonSefer + Number(r.kamyon_sefer ?? 0),
@@ -46,7 +48,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   if (!(await yoneticiMi())) return NextResponse.json({ error: "Yetkisiz" }, { status: 403 });
-  let b: { tarih?: string; reglajKm?: number; kamyonSefer?: number; sermeKm?: number; sikistirmaKm?: number; makineSn?: number };
+  let b: { tarih?: string; reglajKm?: number; kamyonSefer?: number; sermeKm?: number; sikistirmaKm?: number; makineSn?: number; imza?: string };
   try { b = await request.json(); } catch { return NextResponse.json({ error: "Geçersiz istek" }, { status: 400 }); }
   if (!b.tarih) return NextResponse.json({ error: "tarih gerekli" }, { status: 400 });
   const sb = service();
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
     serme_km: b.sermeKm ?? 0,
     sikistirma_km: b.sikistirmaKm ?? 0,
     makine_sn: Math.round(b.makineSn ?? 0),
+    imza: b.imza ?? null, // hesaplandığı andaki ayar imzası — ayar değişince eski satırlar "güncel değil" olur
     olusturma: new Date().toISOString(),
   }, { onConflict: "tarih" });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

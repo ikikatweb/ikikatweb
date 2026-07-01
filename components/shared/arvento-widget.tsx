@@ -8,7 +8,7 @@ import Link from "next/link";
 import { Satellite, ChevronRight } from "lucide-react";
 import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, getArventoRaporSonGuncelleme, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
-import { hesaplaGunlukMetrik, type GunlukMetrik } from "@/lib/arvento/gunluk-metrik";
+import { hesaplaGunlukMetrik, metrikImza, type GunlukMetrik } from "@/lib/arvento/gunluk-metrik";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 const SEZON_BAS = "2026-01-01";
@@ -92,25 +92,27 @@ export default function ArventoWidget() {
     () => hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap }),
     [tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap],
   );
+  // Ayar imzası — metriği etkileyen ayar değişince değişir; cache bununla eşleşmeyen günler "güncel değil" sayılır.
+  const imza = useMemo(() => metrikImza(ayarlar), [ayarlar]);
 
-  // Sezon: cache toplamını (01.01 → dün) çek + bugünü cache'e yaz (yalnız yönetici POST edebilir).
+  // Sezon: cache toplamını (01.01 → dün, YALNIZ güncel imzalı günler) çek + bugünü cache'e yaz.
   const sezonCek = useMemo(() => async () => {
     if (!tarih) return;
     setSezonYuk(true);
     const dun = gunKaydir(tarih, -1);
     try {
-      const r = await fetch(`/api/arvento/gunluk-metrik?bas=${SEZON_BAS}&bitis=${dun}`);
+      const r = await fetch(`/api/arvento/gunluk-metrik?bas=${SEZON_BAS}&bitis=${dun}&imza=${encodeURIComponent(imza)}`);
       const d = await r.json().catch(() => ({}));
       if (r.ok) { setSezonOncesi(d.toplam as GunlukMetrik); setCachedGunler(new Set((d.tarihler ?? []) as string[])); }
     } finally { setSezonYuk(false); }
-  }, [tarih]);
+  }, [tarih, imza]);
 
   useEffect(() => { if (!tarih || loading) return; void sezonCek(); }, [tarih, loading, sezonCek]);
   // Bugünün taze değerini cache'e yaz (fire-and-forget; yönetici değilse 403 → sessiz).
   useEffect(() => {
     if (!tarih || loading) return;
-    fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih, ...gunluk }) }).catch(() => {});
-  }, [tarih, loading, gunluk]);
+    fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih, ...gunluk, imza }) }).catch(() => {});
+  }, [tarih, loading, gunluk, imza]);
 
   // Sezon toplam = cache(01.01→dün) + bugünün taze değeri.
   const sezon = useMemo<GunlukMetrik | null>(() => {
@@ -137,7 +139,7 @@ export default function ArventoWidget() {
     ]);
     const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif);
     const m = hesaplaGunlukMetrik({ tarih: t, kayitlar: k, guzergahlar: g, plakaSantiye: ps, ayarlar, gunOcak: ocak, sinifMap: sm });
-    await fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih: t, ...m }) });
+    await fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih: t, ...m, imza }) });
   }
 
   async function eksikleriDoldur() {
@@ -187,7 +189,7 @@ export default function ArventoWidget() {
               <div className="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
                 <span><span className="font-semibold text-gray-500">Sezon Özeti</span> · {formatTarih(SEZON_BAS)} → bugün</span>
                 {eksikGunler.length > 0 && !dolduruluyor && (
-                  <button type="button" onClick={eksikleriDoldur} className="text-blue-600 hover:underline">Eksik {eksikGunler.length} gün — Doldur</button>
+                  <button type="button" onClick={eksikleriDoldur} className="text-blue-600 hover:underline" title="Eksik veya ayar değişikliğiyle güncelliğini yitirmiş günleri yeniden hesapla">{eksikGunler.length} gün güncel değil — Güncelle</button>
                 )}
                 {dolduruluyor && <span className="text-blue-600">Dolduruluyor… {dolduruluyor.toplam - dolduruluyor.kalan}/{dolduruluyor.toplam}</span>}
               </div>
