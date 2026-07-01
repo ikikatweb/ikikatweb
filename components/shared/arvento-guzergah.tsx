@@ -206,6 +206,20 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     return m;
   }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar]);
 
+  // Yol tıklandığında popup için HAM noktalar (saat + hız + tarih) — plaka bazında. Omurga birleşik/tek çizgi
+  // olduğu için tek değer taşımaz; tıklanan konuma EN YAKIN ham nokta gösterilir → plaka/model/hız/tarih/saat.
+  const hamNoktaByPlaka = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string; plaka: string }[]>();
+    for (const row of kayitlar) {
+      const pk = plakaNorm(row.plaka);
+      let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
+      for (const p of (row.noktalar ?? [])) {
+        if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat, hiz: p.hiz, tarih: row.rapor_tarihi, plaka: row.plaka });
+      }
+    }
+    return m;
+  }, [kayitlar]);
+
   // Seçili = mevcut araçlardan PASİF olmayanlar. Varsayılan hepsi açık; kullanıcı kapatınca pasife eklenir →
   // gün değişse de pasif korunur (yeni araçlar otomatik açık gelir, kapatılanlar kapalı kalır).
   const seciliPlakalar = useMemo(() => new Set(araclar.map((k) => k.plaka).filter((p) => !pasifPlakalar.has(p))), [araclar, pasifPlakalar]);
@@ -312,6 +326,24 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     const yolRenderer = L.svg();
     const tumBounds: [number, number][] = [];
     const tekMi = secilenler.length === 1;
+    // Yol tıklama popup'ı: verilen plakalar arasında tıklanan konuma EN YAKIN ham noktayı bul → plaka·model / hız / tarih saat.
+    const icerikYap = (ll: { lat: number; lng: number }, plakalar: string[]) => {
+      let best: { saat: string | null; hiz: number | null; tarih: string; plaka: string } | null = null, bestD = Infinity;
+      for (const pk of plakalar) for (const p of (hamNoktaByPlaka.get(pk) ?? [])) {
+        const dx = p.lat - ll.lat, dy = p.lng - ll.lng, d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = p; }
+      }
+      if (!best) return "";
+      const model = (modelMap?.get(plakaNorm(best.plaka)) || "");
+      const hiz = best.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
+      const tarih = best.tarih ? best.tarih.split("-").reverse().join(".") : "";
+      const saat = best.saat ? best.saat.slice(0, 8) : "";
+      return `<b>${best.plaka}</b>${model ? ` · ${model}` : ""}<br>Hız: ${hiz}<br>${tarih}${saat ? " " + saat : ""}`;
+    };
+    const tiklaBagla = (cizgi: ReturnType<typeof L.polyline>, plakalar: string[]) => cizgi.on("click", (e) => {
+      const p = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
+      cizgi.bindPopup(icerikYap(p, plakalar)).openPopup([p.lat, p.lng]);
+    });
     if (etkinTekrar >= 1) {
       // ── BİRLEŞİK REGLAJ OMURGASI ──
       // Tüm seçili greyderlerin (tüm günler) noktaları TEK havuzda birleşir → tek omurga çıkarılır.
@@ -324,12 +356,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         }
       }
       const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe, transitHiz).parcalar;
-      const toplamKm = parcalarUzunlukKm(cizgiler);
+      const seciliPlakaList = secilenler.map((k) => plakaNorm(k.plaka)); // popup EN YAKIN ham noktayı bu plakalarda arar
       for (const parca of cizgiler) {
-        const uz = parcalarUzunlukKm([parca]);
-        const parcaPop = `<b>Reglaj (birleşik)</b><br>Bu çizgi: <b>${uz.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</b>`
-          + `<br><span style="opacity:.65">Toplam reglaj: ${toplamKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km · ${secilenler.length} greyder · eşik ${etkinTekrar}</span>`;
-        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup).bindPopup(parcaPop);
+        // Popup: tıklanan konuma en yakın ham nokta → plaka·model / hız / tarih saat (km & nokta gösterilmez).
+        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup);
+        tiklaBagla(cizgi, seciliPlakaList);
         cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
         cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
       }
@@ -341,8 +372,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) continue;
         const renk = renkAl(kayit.plaka);
-        const pop = `<b>${kayit.plaka}</b>${kayit.arac_sinifi ? " · " + kayit.arac_sinifi : ""}<br>${kayit.toplam_mesafe ?? 0} km · ${noktalar.length} nokta`;
-        L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, renderer: yolRenderer }).addTo(grup).bindPopup(pop);
+        // Popup: tıklanan konuma en yakın ham nokta → plaka·model / hız / tarih saat (km & nokta gösterilmez).
+        const cizgi = L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, renderer: yolRenderer }).addTo(grup);
+        tiklaBagla(cizgi, [plakaNorm(kayit.plaka)]);
+        cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
+        cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })
@@ -367,7 +401,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, reglajKal, reglajRenkV, renkAl, gorunumRef]);
+  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, transitHiz, reglajKal, reglajRenkV, renkAl, hamNoktaByPlaka, modelMap, gorunumRef]);
 
   // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
   function exportKML() {
