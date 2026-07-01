@@ -270,8 +270,10 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     // toplamKm = omurga (tek çizgi) uzunlukları; omurga yoksa ham toplam_mesafe'ye düş.
     const toplamKm = secilenler.reduce((s, k) => s + (omurgaKmMap.get(k.plaka) ?? k.toplam_mesafe ?? 0), 0);
     const toplamNokta = secilenler.reduce((s, k) => s + (k.noktalar?.length ?? 0), 0);
-    return { arac: secilenler.length, toplamKm, toplamNokta };
-  }, [secilenler, omurgaKmMap]);
+    // Toplam çalışma (sn) — yalnız İş Makineleri'nde (calismaSnMap verilir): seçili makinelerin çalışma süreleri toplamı.
+    const toplamCalismaSn = calismaSnMap ? secilenler.reduce((s, k) => s + (calismaSnMap.get(plakaNorm(k.plaka)) ?? 0), 0) : 0;
+    return { arac: secilenler.length, toplamKm, toplamNokta, toplamCalismaSn };
+  }, [secilenler, omurgaKmMap, calismaSnMap]);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
@@ -501,11 +503,11 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
                     let cal = calismaSnMap
                       ? (calismaSnMap.get(plakaNorm(k.plaka)) ?? 0)
                       : (() => { const kr = kontakRolantiMap!.get(plakaNorm(k.plaka)); return Math.max(kr?.kontak ?? 0, kr?.rolanti ?? 0); })();
-                    // EKRANDA GÖRÜNEN ilk→son kontak penceresini AŞAMAZ: Arvento kontak_sn/rolanti_sn rapor
-                    // birikiminden şişebiliyor (ör. 3 saatlik pencerede 16 saat çalışma). İlk/son GPS'ten türetilmişse
-                    // (Arvento kontağı boşsa) calismaSnMap'teki kırpma çalışmıyordu — burada görünen pencereye kırpılır.
+                    // İlk→son penceresine kırpma YALNIZ ham (kontakRolantiMap) durumunda: Arvento kontak_sn/rolanti_sn
+                    // rapor birikiminden şişebiliyor (ör. 3 saatlik pencerede 16 saat). calismaSnMap ise ZATEN gün-gün
+                    // kırpılıp toplandı → tekrar kırpma YOK (aksi halde çok-günlük toplam tek-günlük ~24h pencereye kısılır).
                     const e = ilkSonKontakMap?.get(plakaNorm(k.plaka));
-                    if (e?.ilk && e?.son) {
+                    if (!calismaSnMap && e?.ilk && e?.son) {
                       const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
                       const span = sn(e.son) - sn(e.ilk);
                       if (span > 0) cal = Math.min(cal, span);
@@ -525,6 +527,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             <div className="text-xs text-gray-600 text-right">
               <span className="font-semibold">{ozet.arac}</span>/{araclar.length} araç ·{" "}
               <Route size={12} className="inline" /> <strong className="text-[#1E3A5F]">{ozet.toplamKm.toLocaleString("tr-TR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km</strong> · {ozet.toplamNokta} nokta
+              {calismaSnMap && (
+                <div className="text-[11px] mt-0.5">⏱ Toplam çalışma: <strong className="text-[#1E3A5F]">{formatSure(ozet.toplamCalismaSn)}</strong></div>
+              )}
               {sonGuncelleme && (
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}

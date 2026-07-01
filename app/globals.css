@@ -32,6 +32,10 @@ thead th {
 .leaflet-container.olcum-modu .leaflet-interactive {
   cursor: crosshair !important;
 }
+/* Ölçüm (cetvel) açıkken HİÇBİR katman tıklamayı yutmasın → her tık (başlangıç + ARA noktalar) haritaya gitsin.
+   Leaflet .leaflet-interactive'e pointer-events:auto verdiği için pane'i none yapmak YETMEZ; burada zorla kapatılır.
+   Yüksek özgüllük → kml-ic-tikla'nın pointer-events:all'ını da ezer. */
+.leaflet-container.olcum-modu .leaflet-interactive { pointer-events: none !important; }
 
 /* Damper noktası üzerindeki "×N" sayı etiketi — şeffaf zemin, beyaz kalın yazı. */
 .leaflet-tooltip.damper-sayi {

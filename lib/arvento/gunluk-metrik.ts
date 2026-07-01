@@ -13,13 +13,55 @@ export type GunlukMetrik = { reglajKm: number; kamyonSefer: number; sermeKm: num
 
 // Metriği ETKİLEYEN ayarların parmak izi. Değişince cache'lenmiş günler "eski imzalı" olur → dashboard onları
 // yeniden hesaplatır (renk/kalınlık gibi metriği etkilemeyen ayarlar imzaya girmez, gereksiz tazeleme olmasın).
-export function metrikImza(ayarlar: ArventoAyarlar | null): string {
+export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<string, PlakaSantiye> | null, ocakMakinePlakalar?: Set<string> | null): string {
   const a = ayarlar;
-  return [
+  const ayarKimlik = [
     a?.guzergahTekrar ?? 0, a?.tekrarPencereSaat ?? 0, a?.gridMesafe ?? 12, a?.silindirTekrar ?? 0,
     a?.transitHiz ?? 20, a?.mukerrerDk ?? 0, a?.mukerrerYaricap ?? 0, a?.ocakYaricap ?? 150,
     a?.ocakLat ?? "", a?.ocakLng ?? "",
   ].join("|");
+  // Makine atamaları (arvento_sekmeler) da hangi aracın hangi sekmede sayıldığını belirler → metriği etkiler.
+  // Atama değişince (ör. bir araç ismakine→serme) cache eskir, dashboard yeniden hesaplasın diye imzaya girer.
+  const atamaKimlik = plakaSantiye
+    ? Array.from(plakaSantiye.entries())
+        .filter(([, ps]) => ps.sekmeler != null && ps.sekmeler.length > 0)
+        .map(([plaka, ps]) => `${plaka}:${[...ps.sekmeler!].sort().join(",")}`)
+        .sort()
+        .join(";")
+    : "";
+  // Ocak makinesi kümesi de makineSn'i etkiler (bunlar TÜMDEN dışlanır) → değişince cache tazelensin.
+  const ocakKimlik = ocakMakinePlakalar ? Array.from(ocakMakinePlakalar).sort().join(",") : "";
+  return `${ayarKimlik}#${atamaKimlik}#${ocakKimlik}`;
+}
+
+// OCAK MAKİNELERİ (plakaNorm kümesi) — İş Makineleri sekmesindeki `ocakMakineMap` ile AYNI mantık, verilen
+// (tek) günün rotalarından. Widget bunu SON GÜN verisinden üretip TÜM günlere uygular: makineSn ocak
+// makinesini gün-bazlı GPS anomalisine (rota yok / <%50 içeride) bakmadan TÜMDEN dışlar → sekmedeki aralık
+// toplamıyla birebir tutar (ocak makinesinin çalışması Stabilize'de gösterilir, "Makineli Çalışma"ya girmez).
+export function ocakMakineSeti(
+  guzergahlar: AracArventoGuzergah[],
+  kayitlar: AracArventoRapor[],
+  ayarlar: ArventoAyarlar | null,
+  gunOcak: { lat: number; lng: number; yaricap: number } | null,
+): Set<string> {
+  const rotaBy = new Map<string, { lat: number | null; lng: number | null; saat: string | null }[]>();
+  for (const g of guzergahlar) {
+    const key = plakaNorm(g.plaka);
+    const arr = rotaBy.get(key) ?? [];
+    if (Array.isArray(g.noktalar)) for (const p of g.noktalar) arr.push({ lat: p.lat ?? null, lng: p.lng ?? null, saat: p.saat ?? null });
+    rotaBy.set(key, arr);
+  }
+  const damperli = new Set<string>();
+  for (const k of kayitlar) if (Array.isArray(k.damper_olaylar) && k.damper_olaylar.length > 0) damperli.add(plakaNorm(k.plaka));
+  let ocak: LatLng | null = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
+  const ocakR = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
+  if (!ocak) ocak = ocakTespit(Array.from(rotaBy.values()).map((r) => rotaTemizle(r)).filter((x) => x.length));
+  const set = new Set<string>();
+  for (const [key, rota] of rotaBy) {
+    if (damperli.has(key)) continue; // damperli = kamyon, ocak makinesi değil
+    if (ocakMakineDurumu(rota, ocak, ocakR).icinde) set.add(key);
+  }
+  return set;
 }
 
 export type GunlukMetrikGirdi = {
@@ -30,13 +72,14 @@ export type GunlukMetrikGirdi = {
   ayarlar: ArventoAyarlar | null;
   gunOcak: { lat: number; lng: number; yaricap: number } | null;
   sinifMap: Map<string, DamperSinif>;
+  ocakMakinePlakalar?: Set<string> | null; // TÜMDEN dışlanacak ocak makineleri (SON GÜN'den, tüm günlere sabit)
 };
 
 // "HH:MM:SS" → saniye
 function sureSn(t: string | null): number { if (!t) return 0; const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); }
 
 // Widget'takiyle BİREBİR aynı 5 hesap — tek yerde. (Widget bu fonksiyonu çağırır; sunucu cache de.)
-export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap }: GunlukMetrikGirdi): GunlukMetrik {
+export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap, ocakMakinePlakalar }: GunlukMetrikGirdi): GunlukMetrik {
   const grid = ayarlar?.gridMesafe ?? 12;
   const transitHiz = ayarlar?.transitHiz ?? 20;                 // reglaj/serme omurgasında transit hız eşiği
   const pencereSn = (ayarlar?.tekrarPencereSaat ?? 0) * 3600;   // "tekrar süresi" penceresi (reglaj/serme)
@@ -127,7 +170,8 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     const atama = ps?.sekmeler ?? null;
     const ismakineMi = atama != null ? atama.includes("ismakine") : (ismakineAtanmisVar ? false : ps?.sayacTipi === "saat");
     if (!ismakineMi) continue;
-    if (ocakMakineDurumu(rotaMakine.get(plakaNorm(k.plaka)) ?? [], ocakM, ocakR).icinde) continue;
+    if (ocakMakinePlakalar?.has(plakaNorm(k.plaka))) continue; // ocak makinesi (SON GÜN'den sabit) → TÜMDEN dışla
+    if (ocakMakineDurumu(rotaMakine.get(plakaNorm(k.plaka)) ?? [], ocakM, ocakR).icinde) continue; // gün-bazlı yedek dışlama
     let c = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0);
     if (k.ilk_kontak && k.son_kontak) { const span = sureSn(k.son_kontak) - sureSn(k.ilk_kontak); if (span > 0) c = Math.min(c, span); }
     mkMap.set(plakaNorm(k.plaka), c);

@@ -651,16 +651,18 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
       const iStil = { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" };
-      const cizgi = L.polyline(latlngs, { ...iStil, renderer: yolRenderer }).addTo(grup);
-      // Tıklayınca EN YAKIN ham noktadan plaka · araç / Hız / tarih saat + çizgiyi vurgula.
-      cizgi.on("click", (e) => {
+      const cizgi = L.polyline(latlngs, { ...iStil, interactive: false, renderer: yolRenderer }).addTo(grup); // görünür (kesikli) — tıklamayı YAKALAMAZ
+      // GENİŞ görünmez tıklama hedefi (16px): ince/kesikli çizgiyi kolayca tıklamak için. Damperler üstteki pane'de
+      // olduğu için onların üzerinde damper öne çıkar; boş yolda bu hedef yakalar. Ölçüm açıkken CSS onu da geçirgen yapar.
+      const tikHedef = L.polyline(latlngs, { color: "#000", opacity: 0, weight: 16, renderer: yolRenderer }).addTo(grup);
+      tikHedef.on("click", (e) => {
         const pt = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
         let best: { saat: string | null; hiz: number | null } | null = null, bd = Infinity;
         for (const q of noktalar) { const dx = q.lat - pt.lat, dy = q.lng - pt.lng, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = q; } }
         const hiz = best?.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
         const tar = k.rapor_tarihi ? String(k.rapor_tarihi).split("-").reverse().join(".") : "";
         const sa = best?.saat ? String(best.saat).slice(0, 8) : "";
-        cizgi.bindPopup(`<b>${k.plaka}</b>${k.arac_sinifi ? " · " + k.arac_sinifi : ""}<br>Hız: ${hiz}<br>${tar}${sa ? " " + sa : ""}`).openPopup([pt.lat, pt.lng]);
+        tikHedef.bindPopup(`<b>${k.plaka}</b>${k.arac_sinifi ? " · " + k.arac_sinifi : ""}<br>Hız: ${hiz}<br>${tar}${sa ? " " + sa : ""}`).openPopup([pt.lat, pt.lng]);
         vurgulaYol(cizgi, iStil);
       });
       for (const ll of latlngs) { reglajNoktalari.push(ll); bounds.push(ll); }

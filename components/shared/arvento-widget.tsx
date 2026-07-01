@@ -9,6 +9,8 @@ import { Satellite, ChevronRight } from "lucide-react";
 import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, getArventoRaporSonGuncelleme, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { hesaplaGunlukMetrik, metrikImza, type GunlukMetrik } from "@/lib/arvento/gunluk-metrik";
+import { ocakMakineSetiCek } from "@/lib/arvento/gunluk-metrik-client";
+import { sezonUzunlukMetrik, type SezonUzunluk } from "@/lib/arvento/sezon-uzunluk";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 const SEZON_BAS = "2026-01-01";
@@ -61,12 +63,14 @@ export default function ArventoWidget() {
   const [ayarlar, setAyarlar] = useState<ArventoAyarlar | null>(null);
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
   const [sinifMap, setSinifMap] = useState<Map<string, DamperSinif>>(new Map());
+  const [ocakMakinePlakalar, setOcakMakinePlakalar] = useState<Set<string>>(new Set()); // ocak makineleri (makineSn'den tümden dışlı)
   const [guncelleme, setGuncelleme] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [sayfa, setSayfa] = useState(0); // 0 = günlük, 1 = sezon
   const [sezonOncesi, setSezonOncesi] = useState<GunlukMetrik | null>(null); // cache: 01.01 → dün
   const [cachedGunler, setCachedGunler] = useState<Set<string>>(new Set());
+  const [sezonUzunluk, setSezonUzunluk] = useState<SezonUzunluk | null>(null); // reglaj/serme/sıkıştırma: aralık-birleşik (sekmeyle birebir)
   const [sezonYuk, setSezonYuk] = useState(true);
   const [dolduruluyor, setDolduruluyor] = useState<{ toplam: number; kalan: number } | null>(null);
   const kaydirRef = useRef<HTMLDivElement>(null);
@@ -82,6 +86,9 @@ export default function ArventoWidget() {
           ]);
           setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc);
           const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setSinifMap(sm);
+          // Ocak makineleri (aralık-birleşik, bitiş ocağı) — İş Makineleri sekmesiyle BİREBİR; makineSn'den TÜM
+          // günlerde tümden dışlanır (ocak makinesinin çalışması "Makineli Çalışma"ya girmesin, Stabilize'de görünür).
+          try { setOcakMakinePlakalar(await ocakMakineSetiCek(t)); } catch { /* boş bırak */ }
         }
       } catch { /* tablo yoksa sessiz */ } finally { setLoading(false); }
     })();
@@ -89,11 +96,11 @@ export default function ArventoWidget() {
 
   // Günlük 5 metrik — tek kaynak.
   const gunluk = useMemo<GunlukMetrik>(
-    () => hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap }),
-    [tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap],
+    () => hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap, ocakMakinePlakalar }),
+    [tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap, ocakMakinePlakalar],
   );
-  // Ayar imzası — metriği etkileyen ayar değişince değişir; cache bununla eşleşmeyen günler "güncel değil" sayılır.
-  const imza = useMemo(() => metrikImza(ayarlar), [ayarlar]);
+  // Ayar imzası — metriği etkileyen ayar/atama/ocak-makine değişince değişir; eşleşmeyen cache günü "güncel değil".
+  const imza = useMemo(() => metrikImza(ayarlar, plakaSantiye, ocakMakinePlakalar), [ayarlar, plakaSantiye, ocakMakinePlakalar]);
 
   // Sezon: cache toplamını (01.01 → dün, YALNIZ güncel imzalı günler) çek + bugünü cache'e yaz.
   const sezonCek = useMemo(() => async () => {
@@ -108,23 +115,33 @@ export default function ArventoWidget() {
   }, [tarih, imza]);
 
   useEffect(() => { if (!tarih || loading) return; void sezonCek(); }, [tarih, loading, sezonCek]);
+  // Sezon uzunlukları (reglaj/serme/sıkıştırma) — TOPLANAMAZ büyüklük → aralık-birleşik omurgadan (sekmeyle
+  // birebir), gün-gün toplamdan DEĞİL. Damper/çalışma toplanabilir olduğu için onlar cache toplamından gelir.
+  useEffect(() => {
+    if (!tarih || loading) return;
+    let iptal = false;
+    sezonUzunlukMetrik(SEZON_BAS, tarih).then((u) => { if (!iptal) setSezonUzunluk(u); }).catch(() => {});
+    return () => { iptal = true; };
+  }, [tarih, loading]);
   // Bugünün taze değerini cache'e yaz (fire-and-forget; yönetici değilse 403 → sessiz).
   useEffect(() => {
     if (!tarih || loading) return;
     fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih, ...gunluk, imza }) }).catch(() => {});
   }, [tarih, loading, gunluk, imza]);
 
-  // Sezon toplam = cache(01.01→dün) + bugünün taze değeri.
+  // Sezon toplam: TOPLANABİLİR metrikler (kamyon sefer, makine çalışma) = cache(01.01→dün) + bugün. Uzunluklar
+  // (reglaj/serme/sıkıştırma) TOPLANAMAZ → aralık-birleşik omurgadan (sezonUzunluk; sekmeyle birebir). sezonUzunluk
+  // henüz gelmediyse geçici olarak eski toplam gösterilir (yüklenince düzelir).
   const sezon = useMemo<GunlukMetrik | null>(() => {
     if (sezonOncesi == null) return null;
     return {
-      reglajKm: sezonOncesi.reglajKm + gunluk.reglajKm,
+      reglajKm: sezonUzunluk ? sezonUzunluk.reglajKm : sezonOncesi.reglajKm + gunluk.reglajKm,
       kamyonSefer: sezonOncesi.kamyonSefer + gunluk.kamyonSefer,
-      sermeKm: sezonOncesi.sermeKm + gunluk.sermeKm,
-      sikistirmaKm: sezonOncesi.sikistirmaKm + gunluk.sikistirmaKm,
+      sermeKm: sezonUzunluk ? sezonUzunluk.sermeKm : sezonOncesi.sermeKm + gunluk.sermeKm,
+      sikistirmaKm: sezonUzunluk ? sezonUzunluk.sikistirmaKm : sezonOncesi.sikistirmaKm + gunluk.sikistirmaKm,
       makineSn: sezonOncesi.makineSn + gunluk.makineSn,
     };
-  }, [sezonOncesi, gunluk]);
+  }, [sezonOncesi, gunluk, sezonUzunluk]);
 
   // Eksik günler (01.01 → dün, cache'de olmayan). Doldur ile geçmişe işlenir.
   const eksikGunler = useMemo(() => {
@@ -138,7 +155,7 @@ export default function ArventoWidget() {
       getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getOcakForTarih(t), getDamperSiniflar(t, t),
     ]);
     const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif);
-    const m = hesaplaGunlukMetrik({ tarih: t, kayitlar: k, guzergahlar: g, plakaSantiye: ps, ayarlar, gunOcak: ocak, sinifMap: sm });
+    const m = hesaplaGunlukMetrik({ tarih: t, kayitlar: k, guzergahlar: g, plakaSantiye: ps, ayarlar, gunOcak: ocak, sinifMap: sm, ocakMakinePlakalar });
     await fetch("/api/arvento/gunluk-metrik", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarih: t, ...m, imza }) });
   }
 

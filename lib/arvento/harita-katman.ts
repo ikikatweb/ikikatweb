@@ -206,16 +206,10 @@ export function ekleOlcumKontrolu(L: LeafletStatic, map: LeafletMap): void {
     kutuyuGuncelle(map.distance(son, e.latlng)); // imleç mesafesi (ana sabit toplamı değiştirmez)
   }
 
-  // Ölçüm modunda KML/çizgi/damper/canlı — HİÇBİR katman tıklamayı YUTMASIN → her tık haritaya (ölçüm noktası)
-  // gitsin. TABAN dışındaki TÜM pane'ler geçirgen yapılır (özel pane'ler de: yolPane, damperPane, opYolPane…).
-  // Aktif=true: pointer-events kapat; false: geri aç.
-  function katmanlariGecirgen(aktif: boolean) {
-    const panes = map.getPanes() as unknown as Record<string, HTMLElement>;
-    for (const ad of Object.keys(panes)) {
-      if (ad === "mapPane" || ad === "tilePane") continue; // taban — harita tıklaması ölçüme gitsin
-      const p = panes[ad]; if (p) p.style.pointerEvents = aktif ? "none" : "";
-    }
-  }
+  // Ölçüm geçirgenliği artık YALNIZ CSS ile: basla()/temizle() "olcum-modu" sınıfını ekler/kaldırır →
+  // .leaflet-container.olcum-modu .leaflet-interactive { pointer-events: none } TÜM katmanları geçirgen yapar.
+  // (Pane pointer-events yeterli değildi — Leaflet .leaflet-interactive'e auto verip eziyordu — ve kalıntı bırakıyordu.)
+  function katmanlariGecirgen(_aktif: boolean) { /* no-op: CSS 'olcum-modu' sınıfı hallediyor */ }
 
   function basla() {
     mod = "olcuyor";

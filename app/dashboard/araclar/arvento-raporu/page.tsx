@@ -135,6 +135,7 @@ export default function ArventoRaporPage() {
     return () => clearTimeout(id);
   }, [baslangicInput, bitisInput]);
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
+  const [kayitlarHam, setKayitlarHam] = useState<AracArventoRapor[]>([]); // aralıktaki HAM günlük satırlar (aralikTopla ÖNCESİ) — gün-gün çalışma toplamı için
   const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]); // YAKINLIK izin filtresi için rota noktaları
   // Ham günlük kayıtlar (tüm geçmiş) — ortalama hesabı için. Bir kez çekilir.
   const [hamKayitlar, setHamKayitlar] = useState<ArventoHamKayit[]>([]);
@@ -299,6 +300,7 @@ export default function ArventoRaporPage() {
       if (benimNo !== kayitYukRef.current.no) return; // eski istek → yok say
       // Aralıktaki günleri plaka bazında topla (tek gün ise zaten tek satır)
       setKayitlar(aralikTopla(k));
+      setKayitlarHam(k); // HAM günlük satırlar (birleştirilmemiş) — İş Makineleri çalışma toplamı gün-gün hesaplanır
       setPlakaSantiye(ps);
     } catch (err) {
       if (benimNo !== kayitYukRef.current.no) return;
@@ -805,14 +807,22 @@ export default function ArventoRaporPage() {
   // İş makineleri "çalışma saati" = MOTOR AÇIK süresi. kontak_sn ve rolanti_sn örtüşebildiği için
   // TOPLAMAZ (çift sayım olur), EN BÜYÜĞÜNÜ alır; ayrıca ilk→son kontak PENCERESİNİ aşamaz
   // (rapor birikiminden şişen değerler kırpılır). Ekskavatör yerinde çalışsa da (rölanti) doğru sayılır.
+  // İş makinesi plakaları (birleştirilmiş kayıttan) — HAM satırları bunlara göre süzeceğiz.
+  const ismakinePlakaSet = useMemo(() => new Set(ismakineKayitlar.map((k) => plakaNorm(k.plaka))), [ismakineKayitlar]);
   const ismakineCalismaMap = useMemo(() => {
     const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
-    return new Map(ismakineKayitlar.map((k) => {
+    // GÜN GÜN TOPLA — HAM günlük satırlardan (aralikTopla kontak_sn/ilk-son'u BİRLEŞTİRMEZ, ilk günü tutar).
+    // Her günün çalışmasını (max kontak/rölanti, o günün ilk→son penceresiyle kırpılı) TOPLA → seçili aralık toplamı.
+    const m = new Map<string, number>();
+    for (const k of kayitlarHam) {
+      const key = plakaNorm(k.plaka);
+      if (!ismakinePlakaSet.has(key)) continue;
       let calisma = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0);
       if (k.ilk_kontak && k.son_kontak) { const span = sn(k.son_kontak) - sn(k.ilk_kontak); if (span > 0) calisma = Math.min(calisma, span); }
-      return [plakaNorm(k.plaka), calisma];
-    }));
-  }, [ismakineKayitlar]);
+      m.set(key, (m.get(key) ?? 0) + calisma);
+    }
+    return m;
+  }, [kayitlarHam, ismakinePlakaSet]);
   // Tüm araçlar için kontak açık + rölanti süresi (plaka bazında, aralık toplamı) — Reglaj/Serme/Sıkıştırma chip'leri için
   const kontakRolantiMap = useMemo(() => {
     const m = new Map<string, { kontak: number; rolanti: number }>();
