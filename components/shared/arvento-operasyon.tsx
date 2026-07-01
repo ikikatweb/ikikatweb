@@ -104,22 +104,6 @@ function yakinDamperVar(noktalar: { lat: number; lng: number }[], damperler: { l
   return false;
 }
 
-// Bir silindir omurga segmentinden, SERME rotasına (rotaNoktalari) ≤esikM yakın ARDIŞIK nokta dizilerini
-// (run) çıkarır. Sıkıştırma = silindirin serme yapılan güzergah ÜZERİNDE gidip geldiği kısım.
-function sermeUstuRunlar(seg: [number, number][], rotaNoktalari: { lat: number; lng: number }[], esikM = 40): [number, number][][] {
-  if (!rotaNoktalari.length) return [];
-  const R = 111320, e2 = esikM * esikM;
-  const yakin = (la: number, ln: number) => {
-    const cosL = Math.max(0.1, Math.cos((la * Math.PI) / 180));
-    for (const s of rotaNoktalari) { const dx = (ln - s.lng) * R * cosL, dy = (la - s.lat) * R; if (dx * dx + dy * dy <= e2) return true; }
-    return false;
-  };
-  const runs: [number, number][][] = []; let run: [number, number][] = [];
-  for (const [la, ln] of seg) { if (yakin(la, ln)) run.push([la, ln]); else { if (run.length >= 2) runs.push(run); run = []; } }
-  if (run.length >= 2) runs.push(run);
-  return runs;
-}
-
 // Bir güzergahı sadeleştirip çizilecek parça (latlng dizisi) listesine çevirir.
 function parcalar(noktalar: { lat: number; lng: number; hiz?: number | null }[], esik: number, gridM: number, hizEsik: number): [number, number][][] {
   const latlngs: [number, number][] = noktalar.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng]);
@@ -315,17 +299,6 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
 
   // SERME ROTA NOKTALARI (Sıkıştırma için): serme YAPILAN (damper ≤80 m yakını) greyder omurgalarının
   // noktaları. Silindir bu noktaların üstünden gidip geldiyse o kısım sıkıştırma sayılır.
-  const sermeRotaNoktalari = useMemo<{ lat: number; lng: number }[]>(() => {
-    if (sermeMi) return [];
-    const pts: { lat: number; lng: number }[] = [];
-    for (const k of greyderler) {
-      const ns = (k.noktalar ?? []).filter((p): p is { lat: number; lng: number; saat: string | null; hiz: number | null } => p.lat != null && p.lng != null);
-      if (ns.length < 2 || !yakinDamperVar(ns, damperKoordlu)) continue;
-      for (const seg of parcalar(ns, etkinTekrar, gridMesafe, transitHiz)) for (const [la, ln] of seg) pts.push({ lat: la, lng: ln });
-    }
-    return pts;
-  }, [sermeMi, greyderler, damperKoordlu, etkinTekrar, gridMesafe]);
-
   // "km yol" = HARİTADA ÇİZİLEN çizginin (eşikli omurga) uzunluğu. Eşik ≥ 1 ama yol eşik kadar
   // taranmamışsa omurga BOŞ → 0. SERME'de AYRICA: greyder hattının ≤80 m'sinde damper YOKSA serme
   // yapılmamıştır → 0 ("damper olmayan yolda serme olmaz"). Ham modda (eşik < 1) kapsanan yol.
@@ -383,22 +356,19 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return out;
   }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat]);
 
-  // Serme yolu tıklandığında popup için greyderlerin HAM noktaları (saat + hız + tarih). Tıklanan konuma
-  // EN YAKIN nokta gösterilir → plaka/model/hız/tarih/saat. (Omurga çizgisi tek değer taşımaz; ham noktadan alınır.)
-  const greyderHamByPlaka = useMemo(() => {
+  // Yol tıklandığında popup için TÜM araçların (greyder + silindir) HAM noktaları (saat + hız + tarih).
+  // Tıklanan konuma EN YAKIN nokta → plaka/model/hız/tarih/saat. (Omurga tek değer taşımaz; ham noktadan alınır.)
+  const hamNoktaByPlaka = useMemo(() => {
     const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string }[]>();
-    if (!sermeMi) return m;
-    const greyderPlakalar = new Set(greyderler.map((k) => plakaNorm(k.plaka)));
     for (const row of tumGuzergah) {
       const pk = plakaNorm(row.plaka);
-      if (!greyderPlakalar.has(pk)) continue;
       let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
       for (const p of (row.noktalar ?? [])) {
         if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat, hiz: p.hiz, tarih: row.rapor_tarihi });
       }
     }
     return m;
-  }, [sermeMi, greyderler, tumGuzergah]);
+  }, [tumGuzergah]);
 
   // SERME DAMPERLERİ: TÜM gerçek damperler GÖSTERİLİR, AMA üzerinde serme yapılmış (greyderin serilen yoluna
   // denk gelen) damperler KALDIRILIR — o pile dağıtıldı, serilen yolda damper ikonu olmaz. Yani: henüz
@@ -470,6 +440,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
+      // Güzergah/serme çizgileri için AYRI pane (z 450) — KML pane'inin (350) ÜSTÜnde → KML altta, çizgiler
+      // üstte ve TIKLANABİLİR olur (SVG DOM path). preferCanvas damper noktalarını canvas'ta (400) bırakır.
+      if (!map.getPane("opYolPane")) { const yp = map.createPane("opYolPane"); yp.style.zIndex = "450"; }
       veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
       setTimeout(() => { oto = false; }, 800);
@@ -521,31 +494,34 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     if (!map || !grup || !L) return;
     grup.clearLayers();
     const bounds: [number, number][] = [];
+    // Güzergah/serme çizgileri SVG + üst pane (opYolPane z450) → KML'nin (350) üstünde, DOM path = KESİN tıklanır
+    // (preferCanvas'ın canvas çizgisi ince hatlarda tıklamayı kaçırıyordu; damper noktaları canvas'ta kalır).
+    const yolRenderer = L.svg({ pane: "opYolPane" });
+    // ORTAK yol popup'ı — tıklanan konuma EN YAKIN ham nokta (verilen plakalar arasında) → plaka·model / hız / tarih saat.
+    // Havuzlanmış (birleşik) çizgide birden çok plaka olabilir; en yakın nokta hangi araca aitse o gösterilir.
+    const yolPopup = (plakalar: string[], ll: { lat: number; lng: number }) => {
+      let best: { saat: string | null; hiz: number | null; tarih: string } | null = null, bestPk = plakalar[0] ?? "", bestD = Infinity;
+      for (const pk of plakalar) for (const p of (hamNoktaByPlaka.get(plakaNorm(pk)) ?? [])) { const dx = p.lat - ll.lat, dy = p.lng - ll.lng, d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = p; bestPk = pk; } }
+      const model = modelMap?.get(plakaNorm(bestPk)) || "";
+      const hiz = best?.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
+      const tarih = best?.tarih ? best.tarih.split("-").reverse().join(".") : "";
+      const saat = best?.saat ? best.saat.slice(0, 8) : "";
+      return `<b>${bestPk}</b>${model ? ` · ${model}` : ""}<br>Hız: ${hiz}<br>${tarih}${saat ? " " + saat : ""}`;
+    };
+    const yolTikla = (cizgi: ReturnType<typeof L.polyline>, plakalar: string[]) => cizgi.on("click", (e) => {
+      const p = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
+      cizgi.bindPopup(yolPopup(plakalar, p)).openPopup([p.lat, p.lng]);
+    });
     // Altlı üstlü greyder çizgisi — YALNIZ Serme'de. Sıkıştırma'da greyder GÖSTERİLMEZ (sadece silindir güzergahı).
     // SERME: greyderin GÜN-GÜN, o günden ÖNCE damper dökülmüş yola denk gelen rotası — TEK ÇİZGİ (omurga).
     // (Aralıkta da doğru: 10.06'da damper, 15.06'da serme → yakalanır; taze reglaj → yakalanmaz.)
     if (sermeMi) sermeByPlaka.forEach((g) => {
       const renk = greyderRenkAl(g.plaka);
-      const model = (modelMap?.get(plakaNorm(g.plaka)) || g.arac_sinifi) ?? "";
-      const hamlar = greyderHamByPlaka.get(plakaNorm(g.plaka)) ?? [];
-      // Tıklanan konuma EN YAKIN ham nokta → plaka · model / hız / tarih saat. (nokta sayısı & km gösterilmez.)
-      const icerik = (ll: { lat: number; lng: number }) => {
-        let best: { saat: string | null; hiz: number | null; tarih: string } | null = null, bestD = Infinity;
-        for (const p of hamlar) { const dx = p.lat - ll.lat, dy = p.lng - ll.lng; const d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = p; } }
-        const hiz = best?.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
-        const tarih = best?.tarih ? best.tarih.split("-").reverse().join(".") : "";
-        const saat = best?.saat ? best.saat.slice(0, 8) : "";
-        return `<b>${g.plaka}</b>${model ? ` · ${model}` : ""}<br>Hız: ${hiz}<br>${tarih}${saat ? " " + saat : ""}`;
-      };
-      const tiklaBagla = (cizgi: ReturnType<typeof L.polyline>) => cizgi.on("click", (e) => {
-        const p = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
-        cizgi.bindPopup(icerik(p)).openPopup([p.lat, p.lng]);
-      });
       for (const seg of g.parcalar) {
         // İKİ PARALEL ÇİZGİ (altlı üstlü) — serilen şeridi belli eder.
         const { ust, alt } = altUstParalel(seg, 6);
-        tiklaBagla(L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup));
-        tiklaBagla(L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup));
+        yolTikla(L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), [g.plaka]);
+        yolTikla(L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), [g.plaka]);
         for (const ll of seg) bounds.push(ll);
       }
     });
@@ -557,16 +533,16 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         bounds.push([o.lat as number, o.lng as number]);
       });
     } else {
-      // Silindir SIKIŞTIRMA hattı — "Silindir Tekrar Eşiği"ni karşılayan (yeterince geçilen) omurga
-      // TEK ÇİZGİ olarak çizilir (zikzak değil). YALNIZ serme yapılan güzergah ÜZERİNDE (≤40 m) gidip geldiği kısımlar.
-      secilenSilindirler.forEach((k) =>
-        parcalar(k.noktalar ?? [], etkinSilindir, gridMesafe, transitHiz).forEach((seg) => {
-          for (const run of sermeUstuRunlar(seg, sermeRotaNoktalari)) {
-            L.polyline(run, { color: silindirRenkAl(k.plaka), weight: silindirKal, opacity: 0.9 })
-              .addTo(grup).bindPopup(`<b>${k.plaka}</b> (silindir · sıkıştırma)<br>${k.arac_sinifi ?? ""}`);
-            for (const ll of run) bounds.push(ll);
-          }
-        }));
+      // Silindir SIKIŞTIRMA hattı — YALNIZCA "Silindir Tekrar Eşiği" ile çizilir. Başka hiçbir tanıma bakılmaz:
+      //   • serme yoluna kırpma YOK (damper/serme'den bağımsız), • transit-hız filtresi YOK (0 → her geçiş sayılır).
+      // Tüm seçili silindirler TEK HAVUZDA birleşir → bir yol eşik kadar geçilmişse tek omurga (tek çizgi) çizilir.
+      const silHavuz: { lat: number; lng: number; hiz?: number | null }[] = [];
+      for (const k of secilenSilindirler) for (const p of (k.noktalar ?? [])) if (p.lat != null && p.lng != null) silHavuz.push({ lat: p.lat, lng: p.lng, hiz: p.hiz });
+      const silPlakalar = secilenSilindirler.map((k) => k.plaka);
+      parcalar(silHavuz, etkinSilindir, gridMesafe, 0).forEach((seg) => {
+        yolTikla(L.polyline(seg, { color: silindirRenkV, weight: silindirKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), silPlakalar);
+        for (const ll of seg) bounds.push(ll);
+      });
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
@@ -581,7 +557,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, greyderHamByPlaka, modelMap, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

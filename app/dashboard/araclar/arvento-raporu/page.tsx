@@ -1250,9 +1250,10 @@ export default function ArventoRaporPage() {
             <div>
               <div className="text-xs font-semibold text-gray-700 mb-1">Reglaj Transit Hız Eşiği (km/s)</div>
               <p className="text-[11px] text-gray-400 mb-2">
-                Greyder/silindir bu hızın ÜSTÜnde geçtiği yer &quot;transit&quot; (asfalta gidiş-geliş) sayılır,
-                reglaj olarak SAYILMAZ. Asfaltta yapılan git-gel reglaj gibi görünüyorsa bu değeri DÜŞÜR
-                (ör. 15-12). 0 = kapalı (her geçiş sayılır). Varsayılan 20.
+                Greyder bu hızın ÜSTÜnde geçtiği yer &quot;transit&quot; (asfalta gidiş-geliş) sayılır ve
+                <strong> Reglaj/Serme&apos;de</strong> SAYILMAZ. <strong>Sıkıştırma bu filtreyi kullanmaz</strong> —
+                silindir yalnız kendi tekrar eşiğiyle çizilir. Asfalttaki git-gel reglaj gibi görünüyorsa bu değeri
+                DÜŞÜR (ör. 15-12). 0 = kapalı (her geçiş sayılır). Varsayılan 20.
               </p>
               <div className="flex items-center gap-1">
                 <input

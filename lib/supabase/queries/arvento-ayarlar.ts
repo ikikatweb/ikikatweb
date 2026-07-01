@@ -13,7 +13,7 @@ export type ArventoAyarlar = {
   tekrarPencereSaat: number; // güzergah tekrar SÜRESİ (saat): eşik kadar geçiş bu süre içinde olursa yol çizilir; 0 = kapalı (zaman şartı yok). Ondalık olabilir (1.5 = 90 dk)
   gridMesafe: number;
   silindirTekrar: number;
-  transitHiz: number; // reglaj/serme/sıkıştırma omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı
+  transitHiz: number; // REGLAJ/SERME omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı. (Sıkıştırma bu filtreyi KULLANMAZ — silindir yalnız kendi tekrar eşiğiyle çizilir.)
   reglajKalinlik: number;
   sermeKalinlik: number;
   silindirKalinlik: number;
