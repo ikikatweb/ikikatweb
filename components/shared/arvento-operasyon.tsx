@@ -383,6 +383,23 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return out;
   }, [sermeMi, greyderler, seciliGreyderler, tumGuzergah, damperHucreTarih, etkinTekrar, gridMesafe, transitHiz]);
 
+  // Serme yolu tıklandığında popup için greyderlerin HAM noktaları (saat + hız + tarih). Tıklanan konuma
+  // EN YAKIN nokta gösterilir → plaka/model/hız/tarih/saat. (Omurga çizgisi tek değer taşımaz; ham noktadan alınır.)
+  const greyderHamByPlaka = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string }[]>();
+    if (!sermeMi) return m;
+    const greyderPlakalar = new Set(greyderler.map((k) => plakaNorm(k.plaka)));
+    for (const row of tumGuzergah) {
+      const pk = plakaNorm(row.plaka);
+      if (!greyderPlakalar.has(pk)) continue;
+      let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
+      for (const p of (row.noktalar ?? [])) {
+        if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat, hiz: p.hiz, tarih: row.rapor_tarihi });
+      }
+    }
+    return m;
+  }, [sermeMi, greyderler, tumGuzergah]);
+
   // SERME DAMPERLERİ: TÜM gerçek damperler GÖSTERİLİR, AMA üzerinde serme yapılmış (greyderin serilen yoluna
   // denk gelen) damperler KALDIRILIR — o pile dağıtıldı, serilen yolda damper ikonu olmaz. Yani: henüz
   // SERİLMEMİŞ damper yığınları kalır + serilen yollar iki çizgi olarak görünür.
@@ -509,12 +526,26 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // (Aralıkta da doğru: 10.06'da damper, 15.06'da serme → yakalanır; taze reglaj → yakalanmaz.)
     if (sermeMi) sermeByPlaka.forEach((g) => {
       const renk = greyderRenkAl(g.plaka);
-      const pop = `<b>${g.plaka}</b> (serme · önceden damperli yol)<br>${g.arac_sinifi ?? ""}`;
+      const model = (modelMap?.get(plakaNorm(g.plaka)) || g.arac_sinifi) ?? "";
+      const hamlar = greyderHamByPlaka.get(plakaNorm(g.plaka)) ?? [];
+      // Tıklanan konuma EN YAKIN ham nokta → plaka · model / hız / tarih saat. (nokta sayısı & km gösterilmez.)
+      const icerik = (ll: { lat: number; lng: number }) => {
+        let best: { saat: string | null; hiz: number | null; tarih: string } | null = null, bestD = Infinity;
+        for (const p of hamlar) { const dx = p.lat - ll.lat, dy = p.lng - ll.lng; const d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = p; } }
+        const hiz = best?.hiz != null ? `${Math.round(best.hiz)} km/s` : "—";
+        const tarih = best?.tarih ? best.tarih.split("-").reverse().join(".") : "";
+        const saat = best?.saat ? best.saat.slice(0, 8) : "";
+        return `<b>${g.plaka}</b>${model ? ` · ${model}` : ""}<br>Hız: ${hiz}<br>${tarih}${saat ? " " + saat : ""}`;
+      };
+      const tiklaBagla = (cizgi: ReturnType<typeof L.polyline>) => cizgi.on("click", (e) => {
+        const p = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
+        cizgi.bindPopup(icerik(p)).openPopup([p.lat, p.lng]);
+      });
       for (const seg of g.parcalar) {
         // İKİ PARALEL ÇİZGİ (altlı üstlü) — serilen şeridi belli eder.
         const { ust, alt } = altUstParalel(seg, 6);
-        L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup).bindPopup(pop);
-        L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup).bindPopup(pop);
+        tiklaBagla(L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup));
+        tiklaBagla(L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9 }).addTo(grup));
         for (const ll of seg) bounds.push(ll);
       }
     });
@@ -550,7 +581,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, greyderHamByPlaka, modelMap, secilenSilindirler, sermeRotaNoktalari, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
