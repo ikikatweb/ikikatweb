@@ -32,7 +32,7 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   mukerrerDk: 0,
   mukerrerYaricap: 0,
   canliYenilemeSn: 45,
-  raporCekmeDk: 5,
+  raporCekmeDk: 6, // en az 6 (bir çekim döngüsü ~6 dk sürüyor; daha küçüğü hızlandırmaz)
   guzergahTekrar: 0,
   tekrarPencereSaat: 0,
   gridMesafe: 12,
@@ -63,7 +63,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     mukerrerDk: data.mukerrer_dk ?? 0,
     mukerrerYaricap: data.mukerrer_yaricap ?? 0,
     canliYenilemeSn: data.canli_yenileme_sn ?? 45,
-    raporCekmeDk: data.rapor_cekme_dk ?? 5,
+    raporCekmeDk: data.rapor_cekme_dk ?? 6,
     guzergahTekrar: data.guzergah_tekrar ?? 0,
     tekrarPencereSaat: data.tekrar_pencere_saat ?? 0, // kolon yoksa 0 (kapalı, geriye uyumlu)
     gridMesafe: data.grid_mesafe ?? 12,

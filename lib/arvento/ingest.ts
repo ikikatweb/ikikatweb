@@ -95,12 +95,29 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
   // ---- 0.5) Kontak Alarmı (o günkü ilk açılış / son kapanış saati) ----
   const kontaklar = parseKontakAlarmiBuffer(buf);
   if (kontaklar.length > 0) {
-    const satirlar = kontaklar.map((k) => ({
-      rapor_tarihi: k.tarih,
-      plaka: k.plaka,
-      ilk_kontak: k.ilkAcik,
-      son_kontak: k.sonKapandi,
-    }));
+    // PENCEREYİ SADECE GENİŞLET: araç kapsama dışı (ör. öğle molası) kontak kapatınca olay o an gelmez;
+    // tekrar hatta çıkınca cihaz geç gönderir. Yeni rapor bu geç kapanışı taşırsa son_kontak UZAMALI, ama
+    // kısmi/dar bir rapor onu ERKENE ÇEKMEMELİ. Bu yüzden mevcutla birleştir: en ERKEN ilk, en GEÇ son.
+    const kTarihler = [...new Set(kontaklar.map((k) => k.tarih))];
+    const { data: mvc } = await supabase
+      .from("arac_arvento_rapor")
+      .select("rapor_tarihi, plaka, ilk_kontak, son_kontak")
+      .in("rapor_tarihi", kTarihler);
+    const mvcMap = new Map<string, { ilk: string | null; son: string | null }>();
+    for (const m of (mvc ?? []) as { rapor_tarihi: string; plaka: string; ilk_kontak: string | null; son_kontak: string | null }[]) {
+      mvcMap.set(`${m.rapor_tarihi}|${m.plaka}`, { ilk: m.ilk_kontak, son: m.son_kontak });
+    }
+    const enErken = (a: string | null, b: string | null) => (a == null ? b : b == null ? a : (a < b ? a : b));
+    const enGec = (a: string | null, b: string | null) => (a == null ? b : b == null ? a : (a > b ? a : b));
+    const satirlar = kontaklar.map((k) => {
+      const ex = mvcMap.get(`${k.tarih}|${k.plaka}`);
+      return {
+        rapor_tarihi: k.tarih,
+        plaka: k.plaka,
+        ilk_kontak: enErken(ex?.ilk ?? null, k.ilkAcik ?? null), // "HH:MM:SS" → sözlük sırası = zaman sırası
+        son_kontak: enGec(ex?.son ?? null, k.sonKapandi ?? null),
+      };
+    });
     // Sadece ilk_kontak/son_kontak güncellenir; mevcut çalışma/damper sütunlarına dokunmaz (upsert).
     const { error } = await supabase
       .from("arac_arvento_rapor")

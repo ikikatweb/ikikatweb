@@ -829,12 +829,14 @@ export default function ArventoRaporPage() {
   const ilkSonKontakMap = useMemo(() => {
     // ilkT/sonT = değer rapordan değil GÜZERGAH'tan TÜRETİLDİ (gerçek kontak yok) → arayüzde italik gösterilir.
     const m = new Map<string, { ilk: string | null; son: string | null; ilkT: boolean; sonT: boolean }>();
+    const acikSnMap = new Map<string, number>(); // plaka → motor AÇIK süresi (max kontak/rolanti) — tutarlılık kontrolü için
     for (const k of kayitlar) {
       const key = plakaNorm(k.plaka);
       const ex = m.get(key) ?? { ilk: null, son: null, ilkT: false, sonT: false };
       if (k.ilk_kontak && (!ex.ilk || k.ilk_kontak < ex.ilk)) { ex.ilk = k.ilk_kontak; ex.ilkT = false; }
       if (k.son_kontak && (!ex.son || k.son_kontak > ex.son)) { ex.son = k.son_kontak; ex.sonT = false; }
       m.set(key, ex);
+      acikSnMap.set(key, Math.max(acikSnMap.get(key) ?? 0, k.kontak_sn ?? 0, k.rolanti_sn ?? 0));
     }
     // YEDEK (TÜRETİLMİŞ): Arvento ilk/son kontak DÖNMEYEN araçlar (kontağı gün boyu açık kalan greyder vb.)
     // için güzergah GPS saatlerinden türet. Gün sonu/başı izole park sinyalleri (>2 s boşlukla ayrı) kırpılır.
@@ -844,7 +846,7 @@ export default function ArventoRaporPage() {
     // (cihaz saati ileri/bayat) → türetmeye katma. (TR = UTC+3.)
     const trNow = new Date(Date.now() + 3 * 3600000);
     const bugun = trNow.toISOString().slice(0, 10), simdi = trNow.toISOString().slice(11, 19);
-    const guzSaat = new Map<string, string[]>();
+    const guzSaat = new Map<string, { saat: string; hiz: number }[]>();
     for (const g of guzergahlar) {
       const key = plakaNorm(g.plaka);
       const arr = guzSaat.get(key) ?? [];
@@ -852,19 +854,35 @@ export default function ArventoRaporPage() {
       for (const p of (g.noktalar ?? [])) {
         if (!p.saat) continue;
         if (bugunMu && p.saat > simdi) continue; // bugünün gelecek saatleri (bozuk) → atla
-        arr.push(p.saat as string);
+        arr.push({ saat: p.saat as string, hiz: p.hiz ?? 0 });
       }
       guzSaat.set(key, arr);
     }
-    for (const [key, arr] of guzSaat) {
+    for (const [key, hepsi] of guzSaat) {
       const ex = m.get(key) ?? { ilk: null, son: null, ilkT: false, sonT: false };
-      if ((ex.ilk && ex.son) || !arr.length) continue;
-      const s = arr.slice().sort();
+      if (!hepsi.length) continue;
+      const s = hepsi.map((p) => p.saat).sort();
       let i = 0, j = s.length - 1;
       while (j > i && sn(s[j]) - sn(s[j - 1]) > BOSLUK) j--; // sondaki izole park sinyali
       while (i < j && sn(s[i + 1]) - sn(s[i]) > BOSLUK) i++; // baştaki izole sinyal
+      const gpsSon = s[j];
+      // son_kontak GÜVENİLMEZ mi: araç, raporlanan KAPANIŞTAN SONRA HAREKET etmişse (>5 km/s, ≥3 nokta) kapanış
+      // erken/eksiktir (kapsama dışı kapatma → Arvento kapanış olayını geç verir). "GPS var mı" DEĞİL "HAREKET var
+      // mı": park halinde ping atan makine (ekskavatör: tüm hızlar ≤4, hareket yok) BOZULMAZ; 843 (kamyon) kapanış
+      // sonrası sefer yapıyor → yüzlerce hızlı nokta → yakalanır.
+      const hareketSonrasi = ex.son ? hepsi.filter((p) => p.saat > ex.son! && (p.hiz ?? 0) > 5).length : 0;
+      const sonGuvenilmez = hareketSonrasi >= 3;
+      if (ex.ilk && ex.son && !sonGuvenilmez) continue; // ikisi de gerçek + tutarlı → GPS'e gerek yok
       if (!ex.ilk) { ex.ilk = s[i]; ex.ilkT = true; }
-      if (!ex.son) { ex.son = s[j]; ex.sonT = true; }
+      // Tahmini son = EN GEÇ: (a) son GPS noktası, (b) ilk + motor açık süresi (kontak_sn taze güncellenince uzar).
+      const acik = acikSnMap.get(key) ?? 0;
+      const ilkSnv = ex.ilk ? sn(ex.ilk) : sn(s[i]);
+      const tahminSn = acik > 0 ? Math.max(sn(gpsSon), ilkSnv + acik) : sn(gpsSon);
+      const tahminStr = `${String(Math.floor(tahminSn / 3600)).padStart(2, "0")}:${String(Math.floor((tahminSn % 3600) / 60)).padStart(2, "0")}:${String(Math.floor(tahminSn % 60)).padStart(2, "0")}`;
+      // Güvenilmez son_kontak → bu tahmin (daha geç ise), ~ işaretiyle. Gerçek (geç) kapanış verisi geldiğinde
+      // araç o kapanıştan SONRA hareket etmeyeceği için güvenilmez sayılmaz → gerçek değer yazılır.
+      if (!ex.son) { ex.son = tahminStr; ex.sonT = true; }
+      else if (sonGuvenilmez && tahminSn > sn(ex.son)) { ex.son = tahminStr; ex.sonT = true; }
       m.set(key, ex);
     }
     return m;
@@ -1135,20 +1153,22 @@ export default function ArventoRaporPage() {
               <p className="text-[11px] text-gray-400 mb-2">
                 Araçların <strong>gerçek çalışma raporu</strong> (günlük km, kontak açık, çalışma, ilk/son kontak)
                 Arvento&apos;dan bu aralıkta çekilir. Birimi <strong>dakika</strong>. Senkron makinesindeki görev bu değere
-                göre çalışır; <strong>en az 1 dk</strong> uygulanır.
+                göre çalışır. <strong>En az 6 dk yazılabilir</strong> — bir çekim döngüsü zaten ~6 dk sürüyor
+                (tüm araçlar × bugün+dün, Arvento&apos;ya sıralı sorgu), daha küçük değer çekimi hızlandırmaz.
               </p>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
-                  min={1}
+                  min={6}
                   value={raporCekmeDk || ""}
-                  onChange={(e) => setRaporCekmeDk(Math.max(1, parseInt(e.target.value) || 0))}
-                  placeholder="örn. 5"
+                  onChange={(e) => setRaporCekmeDk(Math.max(0, parseInt(e.target.value) || 0))}
+                  onBlur={() => setRaporCekmeDk((v) => Math.max(6, v || 6))}
+                  placeholder="örn. 6"
                   className={selectClass + " w-24"}
                 />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika</span>
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika (en az 6)</span>
               </div>
-              <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(1, raporCekmeDk || 5)} dk</strong> çekilir.</div>
+              <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(6, raporCekmeDk || 6)} dk</strong> çekilir.</div>
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}

@@ -868,11 +868,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                     <span>{Math.round(r.mesafe_km ?? 0)} km</span>
                     <span className="px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>
                   </span>
-                  {/* İlk kontak açılış saati → kontak açık süresi → çalışma → son kontak kapanış saati */}
-                  {r.ilk_kontak && <span className="text-[10px] text-emerald-600">🟢 {r.ilk_kontak.slice(0, 5)} ilk kontak</span>}
+                  {/* İlk kontak açılış saati → kontak açık süresi → çalışma → son kontak kapanış saati.
+                      ilk/son ilkSonKontakMap'ten alınır → güvenilmez kontak (ör. kapsama dışı kapatma) GPS'ten
+                      türetilmiş "~tahmini" saatle gösterilir; yoksa ham r değerine düşer. */}
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(r.plaka)); const ilk = e?.ilk ?? r.ilk_kontak; const t = !!e?.ilkT; return ilk ? (
+                    <span className={`text-[10px] text-emerald-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — gerçek kontak verisi henüz gelmedi (tahmini)" : undefined}>🟢 {t ? "~" : ""}{ilk.slice(0, 5)} ilk kontak</span>
+                  ) : null; })()}
                   <span className="text-[10px] opacity-80">⏱ {formatSure(r.kontak_sn ?? 0)} kontak açık</span>
                   <span className="text-[10px] opacity-80">⏱ {formatSure(r.hareket_sn ?? 0)} çalışma</span>
-                  {r.son_kontak && <span className="text-[10px] text-red-600">🔴 {r.son_kontak.slice(0, 5)} son kontak</span>}
+                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(r.plaka)); const son = e?.son ?? r.son_kontak; const t = !!e?.sonT; return son ? (
+                    <span className={`text-[10px] text-red-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — gerçek kontak verisi henüz gelmedi (tahmini)" : undefined}>🔴 {t ? "~" : ""}{son.slice(0, 5)} son kontak</span>
+                  ) : null; })()}
                 </span>
               </button>
             );

@@ -153,7 +153,7 @@ function varsayilanGunler() {
   return [trBugun(), trDun()];
 }
 // Çekme aralığı (dk): UI'daki "Rapor Çekme Süresi" (arvento_ayarlar.rapor_cekme_dk) yönetir.
-// Okunamazsa env ARVENTO_RAPOR_ARALIK_DK, o da yoksa 5 dk. 1–120 dk arasına sıkıştırılır.
+// Okunamazsa env ARVENTO_RAPOR_ARALIK_DK, o da yoksa 6 dk. 6–120 dk arasına sıkıştırılır (bir çekim ~6 dk sürer).
 async function araligiOkuDk() {
   const envDk = parseInt(process.env.ARVENTO_RAPOR_ARALIK_DK || "0", 10) || null;
   try {
@@ -162,10 +162,10 @@ async function araligiOkuDk() {
       const { data } = await createClient(url, key)
         .from("arvento_ayarlar").select("rapor_cekme_dk").eq("id", "global").maybeSingle();
       const dk = data?.rapor_cekme_dk;
-      if (dk && dk > 0) return Math.max(1, Math.min(120, dk));
+      if (dk && dk > 0) return Math.max(6, Math.min(120, dk)); // taban 6 dk: bir çekim döngüsü zaten ~6 dk
     }
   } catch { /* DB okunamadı → alta düş */ }
-  return Math.max(1, Math.min(120, envDk || 5));
+  return Math.max(6, Math.min(120, envDk || 6));
 }
 
 // "Son çalışma" damgası — makine-yerel dosyada. Zamanlanmış görev her 1 dk ateşlenir; bu damga
