@@ -143,6 +143,13 @@ export default function ArventoWidget() {
     };
   }, [sezonOncesi, gunluk, sezonUzunluk]);
 
+  // Günlük gösterim: serme, hesaplaGunlukMetrik'in basit yönteminde değil, Serme sekmesiyle birebir per-hücre
+  // algoritmasından (bugunSermeKm) gelir. Reglaj/sıkıştırma/kamyon/makine gün-bazlı zaten doğru.
+  const gunlukGosterim = useMemo<GunlukMetrik>(
+    () => (sezonUzunluk ? { ...gunluk, sermeKm: sezonUzunluk.bugunSermeKm } : gunluk),
+    [gunluk, sezonUzunluk],
+  );
+
   // Eksik günler (01.01 → dün, cache'de olmayan). Doldur ile geçmişe işlenir.
   const eksikGunler = useMemo(() => {
     if (!tarih) return [];
@@ -199,7 +206,7 @@ export default function ArventoWidget() {
               <div className="text-[10px] text-gray-400 mb-2">
                 <span className="font-semibold text-gray-500">Günlük Özet</span> · {formatTarih(tarih)}{guncelleme ? ` ${String(guncelleme.getHours()).padStart(2, "0")}:${String(guncelleme.getMinutes()).padStart(2, "0")}` : ""} raporu
               </div>
-              <MetrikIzgara m={gunluk} />
+              <MetrikIzgara m={gunlukGosterim} />
             </section>
             {/* Sayfa 2 — Sezon */}
             <section className="snap-center shrink-0 w-full">
