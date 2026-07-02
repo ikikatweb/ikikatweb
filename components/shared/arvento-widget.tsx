@@ -3,7 +3,7 @@
 // sezon = arvento_gunluk_metrik cache toplamı + bugünün taze değeri. Eksik günler "Doldur" ile geçmişe işlenir.
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Satellite, ChevronRight } from "lucide-react";
 import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, getArventoRaporSonGuncelleme, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
@@ -75,24 +75,32 @@ export default function ArventoWidget() {
   const [dolduruluyor, setDolduruluyor] = useState<{ toplam: number; kalan: number } | null>(null);
   const kaydirRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const t = await getArventoSonTarih();
-        setTarih(t);
-        if (t) {
-          const [k, g, ps, ay, ocak, sinif, gunc] = await Promise.all([
-            getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t), getArventoRaporSonGuncelleme(t, t),
-          ]);
-          setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc);
-          const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setSinifMap(sm);
-          // Ocak makineleri (aralık-birleşik, bitiş ocağı) — İş Makineleri sekmesiyle BİREBİR; makineSn'den TÜM
-          // günlerde tümden dışlanır (ocak makinesinin çalışması "Makineli Çalışma"ya girmesin, Stabilize'de görünür).
-          try { setOcakMakinePlakalar(await ocakMakineSetiCek(t)); } catch { /* boş bırak */ }
-        }
-      } catch { /* tablo yoksa sessiz */ } finally { setLoading(false); }
-    })();
+  const yukle = useCallback(async () => {
+    try {
+      const t = await getArventoSonTarih();
+      setTarih(t);
+      if (t) {
+        const [k, g, ps, ay, ocak, sinif, gunc] = await Promise.all([
+          getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t), getArventoRaporSonGuncelleme(t, t),
+        ]);
+        setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc);
+        const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setSinifMap(sm);
+        // Ocak makineleri (aralık-birleşik, bitiş ocağı) — İş Makineleri sekmesiyle BİREBİR; makineSn'den TÜM
+        // günlerde tümden dışlanır (ocak makinesinin çalışması "Makineli Çalışma"ya girmesin, Stabilize'de görünür).
+        try { setOcakMakinePlakalar(await ocakMakineSetiCek(t)); } catch { /* boş bırak */ }
+      }
+    } catch { /* tablo yoksa sessiz */ } finally { setLoading(false); }
   }, []);
+
+  // İlk yükleme + sekmeye/pencereye GERİ DÖNÜNCE tazele → yeni gün verisi kendiliğinden gelir (poll YOK,
+  // cache-dostu). "getArventoSonTarih" tekrar okunur; yeni rapor günü gelmişse tarih ilerler, her şey yeniden hesaplanır.
+  useEffect(() => {
+    void yukle();
+    const onGorunur = () => { if (document.visibilityState === "visible") void yukle(); };
+    window.addEventListener("focus", onGorunur);
+    document.addEventListener("visibilitychange", onGorunur);
+    return () => { window.removeEventListener("focus", onGorunur); document.removeEventListener("visibilitychange", onGorunur); };
+  }, [yukle]);
 
   // Günlük 5 metrik — tek kaynak.
   const gunluk = useMemo<GunlukMetrik>(
@@ -120,9 +128,9 @@ export default function ArventoWidget() {
   useEffect(() => {
     if (!tarih || loading) return;
     let iptal = false;
-    sezonUzunlukMetrik(SEZON_BAS, tarih).then((u) => { if (!iptal) setSezonUzunluk(u); }).catch(() => {});
+    sezonUzunlukMetrik(SEZON_BAS, tarih, ocakMakinePlakalar).then((u) => { if (!iptal) setSezonUzunluk(u); }).catch(() => {});
     return () => { iptal = true; };
-  }, [tarih, loading]);
+  }, [tarih, loading, ocakMakinePlakalar]);
   // Bugünün taze değerini cache'e yaz (fire-and-forget; yönetici değilse 403 → sessiz).
   useEffect(() => {
     if (!tarih || loading) return;
@@ -139,7 +147,7 @@ export default function ArventoWidget() {
       kamyonSefer: sezonOncesi.kamyonSefer + gunluk.kamyonSefer,
       sermeKm: sezonUzunluk ? sezonUzunluk.sermeKm : sezonOncesi.sermeKm + gunluk.sermeKm,
       sikistirmaKm: sezonUzunluk ? sezonUzunluk.sikistirmaKm : sezonOncesi.sikistirmaKm + gunluk.sikistirmaKm,
-      makineSn: sezonOncesi.makineSn + gunluk.makineSn,
+      makineSn: sezonUzunluk ? sezonUzunluk.makineSn : sezonOncesi.makineSn + gunluk.makineSn,
     };
   }, [sezonOncesi, gunluk, sezonUzunluk]);
 
@@ -211,7 +219,7 @@ export default function ArventoWidget() {
             {/* Sayfa 2 — Sezon */}
             <section className="snap-center shrink-0 w-full">
               <div className="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
-                <span><span className="font-semibold text-gray-500">Sezon Özeti</span> · {formatTarih(SEZON_BAS)} → bugün</span>
+                <span><span className="font-semibold text-gray-500">Sezon Özeti</span> · {formatTarih(SEZON_BAS)} → {formatTarih(tarih)}</span>
                 {eksikGunler.length > 0 && !dolduruluyor && (
                   <button type="button" onClick={eksikleriDoldur} className="text-blue-600 hover:underline" title="Eksik veya ayar değişikliğiyle güncelliğini yitirmiş günleri yeniden hesapla">{eksikGunler.length} gün güncel değil — Güncelle</button>
                 )}

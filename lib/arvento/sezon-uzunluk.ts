@@ -11,7 +11,29 @@ import { hesaplaGunlukMetrik } from "./gunluk-metrik";
 import { sermeAralikKm, type OncekiDamper } from "./serme-hesap";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 
-export type SezonUzunluk = { reglajKm: number; sermeKm: number; sikistirmaKm: number; bugunSermeKm: number };
+export type SezonUzunluk = { reglajKm: number; sermeKm: number; sikistirmaKm: number; bugunSermeKm: number; makineSn: number };
+
+// "HH:MM:SS" → saniye
+function sureSn(t: string | null): number { if (!t) return 0; const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); }
+
+// İş makinesi çalışma (sn) — İş Makineleri sekmesiyle BİREBİR: ismakine (ocak dışı) araçların gün-gün
+// max(kontak,rölanti) değeri, ilk→son penceresine kırpılı, TOPLANIR. Cache yerine CANLI hesaplanır (cache
+// gün-bazlı ocak yedek-dışlaması yüzünden düşük kalıyordu). ocakMakinePlakalar = aralık-birleşik ocak kümesi.
+function makineCalismaSn(raporlar: AracArventoRapor[], plakaSantiye: Map<string, { sekmeler: string[] | null; sayacTipi: "km" | "saat" | null }>, ocakMakinePlakalar: Set<string> | null | undefined): number {
+  const ismakineAtanmisVar = Array.from(plakaSantiye.values()).some((ps) => ps.sekmeler?.includes("ismakine"));
+  let top = 0;
+  for (const k of raporlar) {
+    const ps = plakaSantiye.get(plakaNorm(k.plaka));
+    const atama = ps?.sekmeler ?? null;
+    const ismakineMi = atama != null ? atama.includes("ismakine") : (ismakineAtanmisVar ? false : ps?.sayacTipi === "saat");
+    if (!ismakineMi) continue;
+    if (ocakMakinePlakalar?.has(plakaNorm(k.plaka))) continue; // ocak makinesi → dışla
+    let c = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0);
+    if (k.ilk_kontak && k.son_kontak) { const s = sureSn(k.son_kontak) - sureSn(k.ilk_kontak); if (s > 0) c = Math.min(c, s); }
+    top += c;
+  }
+  return top;
+}
 
 // Bir rapor satırının damper olaylarını serme "önceki damper" formatına çevirir.
 function damperNoktalari(r: AracArventoRapor): OncekiDamper[] {
@@ -43,8 +65,8 @@ async function oncekiDamperCek(bas: string): Promise<OncekiDamper[]> {
   return out;
 }
 
-export async function sezonUzunlukMetrik(bas: string, bitis: string): Promise<SezonUzunluk> {
-  const bos: SezonUzunluk = { reglajKm: 0, sermeKm: 0, sikistirmaKm: 0, bugunSermeKm: 0 };
+export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakinePlakalar?: Set<string> | null): Promise<SezonUzunluk> {
+  const bos: SezonUzunluk = { reglajKm: 0, sermeKm: 0, sikistirmaKm: 0, bugunSermeKm: 0, makineSn: 0 };
   if (!bas || !bitis) return bos;
   // Aday plakalar: cinsi greyder/silindir OLAN ya da reglaj/serme/sıkıştırmaya ATANMIŞ olanlar (üst küme;
   // içeride cins/atama ile hassas süzülür). Böylece sezon rota çekişi HAFİF kalır (kamyon yok).
@@ -90,5 +112,7 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string): Promise<Se
   const bugunRapor = raporlar.filter((r) => r.rapor_tarihi === bitis);
   const bugunOncekiDamper = [...oncekiDamper, ...raporlar.filter((r) => r.rapor_tarihi < bitis).flatMap(damperNoktalari)];
   const bugunSermeKm = sermeAralikKm({ guzergahRows: bugunGuz, raporlar: bugunRapor, oncekiDamper: bugunOncekiDamper, ...sermeParams });
-  return { reglajKm: m.reglajKm, sermeKm, sikistirmaKm: m.sikistirmaKm, bugunSermeKm };
+  // Makineli çalışma: CANLI (cache değil) → İş Makineleri sekmesiyle birebir.
+  const makineSn = makineCalismaSn(raporlar, plakaSantiye, ocakMakinePlakalar);
+  return { reglajKm: m.reglajKm, sermeKm, sikistirmaKm: m.sikistirmaKm, bugunSermeKm, makineSn };
 }
