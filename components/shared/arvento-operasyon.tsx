@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect } from "@/lib/supabase/queries/arvento";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
-import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
@@ -558,12 +557,9 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       }
     });
     if (sermeMi) {
-      // TÜM gerçek damper (kamyon) noktaları gösterilir — serme yoluna denk gelenler DAHİL. Greyder bu
-      // damperlerin üzerinden geçmişse serme kanıtıdır; gizlenirse serme yolu boş kalıp reglaj gibi görünüyordu.
-      // (serilmemiş yığın sayısı ayrıca header'da "serilmemiş damper" olarak gösterilir.)
+      // Bu sezonun (aralığın) TÜM gerçek damperleri — küçük yuvarlak nokta (serme yolundakiler dahil).
       damperGoster.forEach((o, i) => {
-        // Kamyon ikonu (Tümü/Stabilize ile aynı) — küçük daire yerine belirgin damper kamyonu.
-        L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(DAMPER_RENK, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
+        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95, renderer: yolRenderer })
           .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });

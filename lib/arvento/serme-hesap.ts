@@ -63,13 +63,28 @@ export function reglajRotalariniAyikla(params: {
 }): AracArventoGuzergah[] {
   const { guzergahRows, raporlar, oncekiDamper, sekmeMap, atananSekmeler } = params;
   const dht = damperHucreTarihHesapla(raporlar, oncekiDamper);
-  return guzergahRows.map((row) => {
-    // Yalnız reglaj greyderinden serme noktalarını çıkar; başka araç (silindir vb.) → aynen bırak.
-    if (!operasyondaGorunur(sekmeMap, atananSekmeler, row.arac_sinifi, "reglaj", row.plaka)) return row;
+  // Silindir (sıkıştırma) satırları hem serme hücresi üretmez hem de dokunulmaz (serme greyder işidir; sıkıştırma
+  // bozulmasın). "reglaj" yerine "!sıkıştırma" geçidi: atama olmayan ama sekmede fallback ile görünen greyderler de
+  // kapsanır (reglaj/serme aynı sınıf anahtarına sahip olduğundan "reglaj" geçidi bazı greyderleri atlıyordu).
+  const silindirMi = (row: AracArventoGuzergah) => operasyondaGorunur(sekmeMap, atananSekmeler, row.arac_sinifi, "sikistirma", row.plaka);
+  // 1) SERME HÜCRELERİ: bir greyder'in, o hücreye damper döküldükten SONRA geçtiği hücreler (serme = damper üstü geçiş).
+  const sermeHucreler = new Set<string>();
+  for (const row of guzergahRows) {
+    if (silindirMi(row)) continue;
     const D = row.rapor_tarihi;
+    for (const p of (row.noktalar ?? [])) {
+      if (p?.lat == null || p?.lng == null) continue;
+      if (noktaSermeMi(dht, p.lat, p.lng, `${D} ${p.saat ?? "23:59:59"}`)) sermeHucreler.add(sermeHucreKey(p.lat, p.lng));
+    }
+  }
+  if (sermeHucreler.size === 0) return guzergahRows;
+  // 2) YER-BAZLI ayıklama: serme yapılan hücrelerdeki TÜM greyder noktaları reglajdan çıkarılır (damper-ÖNCESİ
+  // geçişler dahil) → "burası serme ise reglajda hiç görünmez". Silindir satırlarına dokunulmaz.
+  return guzergahRows.map((row) => {
+    if (silindirMi(row)) return row;
     const noktalar = (row.noktalar ?? []).filter((p) => {
       if (p?.lat == null || p?.lng == null) return true;
-      return !noktaSermeMi(dht, p.lat, p.lng, `${D} ${p.saat ?? "23:59:59"}`);
+      return !sermeHucreler.has(sermeHucreKey(p.lat, p.lng));
     });
     return { ...row, noktalar };
   });

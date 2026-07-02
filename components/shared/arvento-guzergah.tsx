@@ -144,18 +144,22 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
 
   // plakaFiltre verilmişse (İş Makineleri haritası) sadece o plakalar gösterilir.
   // ekstraAraclar: güzergahı OLMAYAN araçlar da chip olarak görünsün (rapordan; 0 km olsa da).
+  // REGLAJ = greyder rotası EKSİ serme: Reglaj sekmesinde (plakaFiltre yok) greyderin SERME yaptığı
+  // hücrelerdeki noktaları çıkarır → bir yol hem serme hem reglaj sayılmaz. Hem km (araclar) hem HARİTA
+  // (hamNoktaByPlaka omurga havuzu) bunu kullanmalı; yoksa km düşer ama çizgi serme yolunu çizmeye devam eder.
+  const kayitlarReglaj = useMemo<AracArventoGuzergah[]>(() => {
+    if (plakaFiltre || (damperVeri.raporlar.length === 0 && damperVeri.oncekiDamper.length === 0)) return kayitlar;
+    const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
+    return reglajRotalariniAyikla({ guzergahRows: kayitlar, raporlar: damperVeri.raporlar, oncekiDamper: damperVeri.oncekiDamper, sekmeMap, atananSekmeler });
+  }, [kayitlar, plakaFiltre, damperVeri, sekmeMap]);
+
   const araclar = useMemo<GuzergahArac[]>(() => {
     // plakaFiltre (İş Makineleri haritası) verildiyse o liste kesin; verilmediyse Reglaj sekmesidir:
     // atama VARSA yalnız "reglaj" atanmışlar; atama YOKSA mevcut davranış (tüm güzergahlar).
     const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
-    // REGLAJ = greyder rotası EKSİ serme: Reglaj sekmesinde (plakaFiltre yok) greyderin SERME yaptığı
-    // (damper-öncesi dökülmüş hücrelere denk gelen) noktaları çıkarılır → bir yol hem serme hem reglaj sayılmaz.
-    const kaynak = (!plakaFiltre && (damperVeri.raporlar.length > 0 || damperVeri.oncekiDamper.length > 0))
-      ? reglajRotalariniAyikla({ guzergahRows: kayitlar, raporlar: damperVeri.raporlar, oncekiDamper: damperVeri.oncekiDamper, sekmeMap, atananSekmeler })
-      : kayitlar;
     const guzergahliHam: GuzergahArac[] = plakaFiltre
-      ? kaynak.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
-      : kaynak.filter((k) => {
+      ? kayitlarReglaj.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
+      : kayitlarReglaj.filter((k) => {
           const atama = sekmeMap?.get(plakaNorm(k.plaka));
           // Atama varsa kesin; yoksa "reglaj"a başka araç atanmışsa gizle, değilse tüm güzergahlar.
           return atama ? atama.includes("reglaj") : !atananSekmeler.has("reglaj");
@@ -188,7 +192,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     if (!izinliPlakalar) return tum; // yönetici/izin yok → hepsi
     const izin = new Set(izinliPlakalar.map(plakaNorm));
     return tum.filter((k) => izin.has(plakaNorm(k.plaka)));
-  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar, damperVeri]);
+  }, [kayitlarReglaj, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar]);
 
   // Her SADELEŞTİRİLMİŞ TEK ÇİZGİNİN (omurga parçası) AYRI uzunluğu (km, büyükten küçüğe). Haritada
   // çizilen çizgilerle birebir: git-gel tekrarları sayılmaz. Eşik<1 (ham) ise parça yok → boş.
@@ -223,7 +227,8 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   // olduğu için tek değer taşımaz; tıklanan konuma EN YAKIN ham nokta gösterilir → plaka/model/hız/tarih/saat.
   const hamNoktaByPlaka = useMemo(() => {
     const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string; plaka: string }[]>();
-    for (const row of kayitlar) {
+    // kayitlarReglaj: serme noktaları çıkarılmış → çizilen omurga havuzu da serme yolunu içermez (map ile km tutar).
+    for (const row of kayitlarReglaj) {
       const pk = plakaNorm(row.plaka);
       let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
       for (const p of (row.noktalar ?? [])) {
@@ -231,7 +236,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       }
     }
     return m;
-  }, [kayitlar]);
+  }, [kayitlarReglaj]);
 
   // Seçili = mevcut araçlardan PASİF olmayanlar. Varsayılan hepsi açık; kullanıcı kapatınca pasife eklenir →
   // gün değişse de pasif korunur (yeni araçlar otomatik açık gelir, kapatılanlar kapalı kalır).
