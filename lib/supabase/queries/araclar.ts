@@ -136,6 +136,14 @@ export async function updateArac(id: string, arac: AracUpdate) {
   );
   // Şema kaymasına dayanıklı: DB'de bulunmayan kolonu hata mesajından tespit edip
   // çıkararak tekrar dener (migration çalıştırılmamış kolonlar).
+  // Bildirim diff'i için ESKİ değerleri güncellemeden ÖNCE al.
+  const ARAC_DIFF_ALAN = ["plaka", "marka", "model", "durum", "muayene_bitis", "tasit_karti_bitis", "yili", "cinsi", "yakit_tipi", "sayac_tipi", "motor_no", "sase_no", "hgs_saglayici", "kiralama_firmasi", "kiralik_iletisim", "trafik_sigorta_bitis", "kasko_bitis", "son_muayene_tarihi"];
+  let eskiArac: Record<string, unknown> = {};
+  try {
+    const { data: onceki } = await supabase.from("araclar").select(ARAC_DIFF_ALAN.join(",")).eq("id", id).maybeSingle();
+    eskiArac = (onceki ?? {}) as unknown as Record<string, unknown>;
+  } catch { /* sessiz */ }
+
   const payload = { ...arac, updated_at: new Date().toISOString() };
   let res = await supabase.from("araclar").update(payload).eq("id", id).select().single();
   let guard = 0;
@@ -188,41 +196,33 @@ export async function updateArac(id: string, arac: AracUpdate) {
     }
 
     if (!sadeceKmDegismis && anahtarDegismis) {
-      const { bildirimGonder } = await import("@/lib/bildirim");
-      // Hangi alanlar değişti — okunabilir etiketlerle göster
+      const { bildirimGonder, formatTarih } = await import("@/lib/bildirim");
+      // Alan etiketleri (santiye_id/firma_id hariç — onlar id/uuid; ayrı atama bildirimi zaten var).
       const ALAN_ETIKET: Record<string, string> = {
-        plaka: "Plaka",
-        marka: "Marka",
-        model: "Model",
-        yili: "Model Yılı",
-        cinsi: "Cinsi",
-        durum: "Durum",
-        santiye_id: "Şantiye",
-        firma_id: "Firma",
-        yakit_tipi: "Yakıt Tipi",
-        sayac_tipi: "Sayaç Tipi",
-        muayene_bitis: "Muayene Bitiş",
-        tasit_karti_bitis: "Taşıt Kartı Bitiş",
-        trafik_sigorta_bitis: "Trafik Sigorta Bitiş",
-        kasko_bitis: "Kasko Bitiş",
-        son_muayene_tarihi: "Son Muayene Tarihi",
-        motor_no: "Motor No",
-        sase_no: "Şase No",
-        hgs_saglayici: "HGS Sağlayıcı",
-        kiralama_firmasi: "Kiralama Firması",
+        plaka: "Plaka", marka: "Marka", model: "Model", yili: "Model Yılı", cinsi: "Cinsi", durum: "Durum",
+        yakit_tipi: "Yakıt Tipi", sayac_tipi: "Sayaç Tipi", muayene_bitis: "Muayene Bitiş",
+        tasit_karti_bitis: "Taşıt Kartı Bitiş", trafik_sigorta_bitis: "Trafik Sigorta Bitiş",
+        kasko_bitis: "Kasko Bitiş", son_muayene_tarihi: "Son Muayene Tarihi", motor_no: "Motor No",
+        sase_no: "Şase No", hgs_saglayici: "HGS Sağlayıcı", kiralama_firmasi: "Kiralama Firması",
         kiralik_iletisim: "Kiralık İletişim",
-        ruhsat_url: "Ruhsat",
       };
-      const degisenAlanlar = Object.keys(arac)
-        .filter((k) => k !== "updated_at" && ALAN_ETIKET[k])
-        .map((k) => ALAN_ETIKET[k]);
+      const TARIH = new Set(["muayene_bitis", "tasit_karti_bitis", "trafik_sigorta_bitis", "kasko_bitis", "son_muayene_tarihi"]);
+      const fmt = (k: string, v: unknown): string => {
+        if (v === null || v === undefined || v === "") return "—";
+        if (TARIH.has(k)) return formatTarih(String(v));
+        return String(v);
+      };
+      // GERÇEKTEN değişen alanlar → "Etiket: eski → yeni"
+      const degisenler = ARAC_DIFF_ALAN.filter(
+        (k) => k in arac && ALAN_ETIKET[k] && String(eskiArac[k] ?? "") !== String((arac as Record<string, unknown>)[k] ?? ""),
+      );
       const aracBilgi = `${data.plaka}${data.marka ? " · " + data.marka : ""}${data.model ? " " + data.model : ""}`;
-      const degisikMetin = degisenAlanlar.length > 0
-        ? `Güncellenen: ${degisenAlanlar.join(", ")}`
+      const degisikMetin = degisenler.length > 0
+        ? degisenler.map((k) => `${ALAN_ETIKET[k]}: ${fmt(k, eskiArac[k])} → ${fmt(k, (arac as Record<string, unknown>)[k])}`).join(" · ")
         : "Güncelleme yapıldı";
       bildirimGonder({
         baslik: `🚗 Araç Güncellendi — ${aracBilgi}`,
-        govde: degisikMetin,
+        govde: degisikMetin.slice(0, 250),
         url: "/dashboard/yonetim/araclar",
         tag: "arac",
       });

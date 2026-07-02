@@ -1,8 +1,10 @@
 // Gelen Evrak sayfası - Liste, filtre, yazdır, kopyala, düzenle, sil
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { createPortal, flushSync } from "react-dom";
 import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/gelen-evrak";
+import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
@@ -57,6 +59,7 @@ export default function GelenEvrakPage() {
   const [evraklar, setEvraklar] = useState<GelenEvrakWithRelations[]>([]);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
+  const [printEvrakRef, setPrintEvrakRef] = useState<GelenEvrakWithRelations | null>(null); // yazdırma önizlemesi
 
   // Dialog
   const [formOpen, setFormOpen] = useState(false);
@@ -144,6 +147,31 @@ export default function GelenEvrakPage() {
   }, [authLoading, isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids, kullanici?.santiyesiz_veri_gor]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Evrağı yazdırma önizlemesinde aç (portal + window.print).
+  function printEvrak(e: GelenEvrakWithRelations) {
+    flushSync(() => { setPrintEvrakRef(e); });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => setPrintEvrakRef(null), 1000);
+      });
+    });
+  }
+
+  // Bildirimden ?yazdir={id} ile gelindiyse → o evrağın YAZDIRMA ÖNİZLEMESİNİ otomatik aç.
+  const yazdirAcildiRef = useRef(false);
+  useEffect(() => {
+    if (yazdirAcildiRef.current || loading) return;
+    const id = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("yazdir") : null;
+    if (!id) return;
+    const ev = evraklar.find((e) => e.id === id);
+    if (!ev) return;
+    yazdirAcildiRef.current = true;
+    printEvrak(ev);
+    try { const u = new URL(window.location.href); u.searchParams.delete("yazdir"); window.history.replaceState({}, "", u.toString()); } catch { /* sessiz */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evraklar, loading]);
 
   // NOT: Antet/kaşe ön belleği için DOM'a hidden <img> mount ediliyor (aşağıda).
   // new Image() byte cache'liyor ama decode bitmeden print snapshot alınıyordu.
@@ -684,6 +712,23 @@ export default function GelenEvrakPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Yazdırma önizlemesi portalı (bildirimden ?yazdir ile veya ileride butonla açılır) */}
+      {printEvrakRef && typeof document !== "undefined" && createPortal(
+        <div className="evrak-print-portal evrak-print-area">
+          <GelenEvrakOnIzleme
+            firma={printEvrakRef.firmalar ?? null}
+            evrakTarihi={printEvrakRef.evrak_tarihi}
+            evrakSayiNo={printEvrakRef.evrak_sayi_no}
+            konu={printEvrakRef.konu}
+            muhatap={printEvrakRef.muhatap}
+            ilgi={printEvrakRef.ilgi}
+            icerik={printEvrakRef.icerik}
+            ekler={printEvrakRef.ekler}
+          />
+        </div>,
+        document.body,
+      )}
 
     </div>
   );

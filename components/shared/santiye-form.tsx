@@ -41,7 +41,9 @@ type OrtakRow = { firma_id: string; oran: number; is_pilot: boolean };
 // IS_GRUPLARI artık tanımlamalardan çekilecek
 
 const selectClass =
-  "w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
+  // min-w-0: uzun seçenekli <select> (ör. uzun firma adı) grid/flex içinde min-content ile track'i şişirip
+  // kartı viewport'tan geniş yapıyordu → mobilde her şey sağa taşıp Kaydet butonu ekran dışına kayıyordu.
+  "w-full min-w-0 h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
@@ -534,7 +536,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="overflow-x-clip">
       <Tabs defaultValue="genel" className="w-full">
         <TabsList className="mb-4 flex-wrap">
           <TabsTrigger value="genel">Genel Bilgiler</TabsTrigger>
@@ -652,14 +654,16 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                 const bas = parse(formData.calisilmayan_bas);
                 const bit = parse(formData.calisilmayan_bit);
                 const gunOpts = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+                // flex-1 min-w-0 → mobilde iki select yan yana KÜÇÜLEREK sığar (yoksa form yatay taşıp
+                // "Ay" ile Kaydet/İptal ekran dışına kayıyordu).
                 const gunSelect = (val: string, onCh: (v: string) => void) => (
-                  <select className={selectClass} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
                     <option value="">Gün</option>
                     {gunOpts.map((g) => <option key={g} value={g}>{Number(g)}</option>)}
                   </select>
                 );
                 const aySelect = (val: string, onCh: (v: string) => void) => (
-                  <select className={selectClass} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
                     <option value="">Ay</option>
                     {AYLAR.map((a, i) => <option key={a} value={String(i + 1).padStart(2, "0")}>{a}</option>)}
                   </select>
@@ -1209,11 +1213,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         </TabsContent>
       </Tabs>
 
-      <div className="flex items-center justify-end gap-3 mt-6">
-        <Button type="button" variant="outline" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
+      {/* Buton çubuğu ALTA YAPIŞIK (sticky) → uzun formda kaydırırken Kaydet/İptal ekranın altında görünür kalır,
+          içeriği örtmez (akışta son öğe). Yatay taşma select düzeltmesiyle giderildiği için sağ kenardan da kaçmaz. */}
+      <div className="sticky bottom-0 z-20 mt-6 flex items-center justify-stretch sm:justify-end gap-3 border-t bg-white py-3">
+        <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
           <X size={16} className="mr-1" /> İptal
         </Button>
-        <Button type="submit" className="bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>
+        <Button type="submit" className="flex-1 sm:flex-none bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>

@@ -133,15 +133,7 @@ export async function updatePersonel(id: string, personel: PersonelUpdate) {
 
   if (error) throw error;
 
-  try {
-    const { bildirimGonder } = await import("@/lib/bildirim");
-    bildirimGonder({
-      baslik: `👤 Personel Güncellendi`,
-      govde: `${data.ad_soyad}${data.gorev ? " · " + data.gorev : ""}`,
-      url: "/dashboard/yonetim/personel",
-      tag: "personel",
-    });
-  } catch { /* sessiz */ }
+  // Personel GÜNCELLEME için bildirim gönderilmez (istenmedi). Yeni/pasif/aktif bildirimleri korunur.
 
   return data;
 }

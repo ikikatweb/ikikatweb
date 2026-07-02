@@ -96,7 +96,7 @@ export async function createGelenEvrak(evrak: GelenEvrakInsert) {
     bildirimGonder({
       baslik: `📥 Yeni Gelen Evrak — ${firma}`,
       govde: [muhatapKisa, evrak.konu ? String(evrak.konu).slice(0, 80) : ""].filter(Boolean).join(" · "),
-      url: `/dashboard/yazismalar/gelen-evrak${evrak.evrak_sayi_no ? `?ara=${encodeURIComponent(evrak.evrak_sayi_no)}` : ""}`,
+      url: `/dashboard/yazismalar/gelen-evrak?yazdir=${data.id}`,
       tag: "gelen-evrak",
       santiye_id: evrak.santiye_id ?? null,
       kaynak_tip: "gelen-evrak",

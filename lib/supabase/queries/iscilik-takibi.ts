@@ -72,6 +72,7 @@ export async function upsertIscilikTakibi(
     .eq("santiye_id", santiyeId)
     .single();
 
+  let takipId: string | null = mevcut?.id ?? null; // bildirim URL'i (o işin işçilik takibi detayına gitmek için)
   if (mevcut) {
     const { error } = await supabase
       .from("iscilik_takibi")
@@ -79,10 +80,13 @@ export async function upsertIscilikTakibi(
       .eq("id", mevcut.id);
     if (error) throw error;
   } else {
-    const { error } = await supabase
+    const { data: yeni, error } = await supabase
       .from("iscilik_takibi")
-      .insert({ santiye_id: santiyeId, ...updates });
+      .insert({ santiye_id: santiyeId, ...updates })
+      .select("id")
+      .single();
     if (error) throw error;
+    takipId = yeni?.id ?? null;
   }
 
   // Push bildirim — sadece anlamlı bir DEĞER girildiğinde gönder.
@@ -148,7 +152,7 @@ export async function upsertIscilikTakibi(
     bildirimGonder({
       baslik: `📊 İşçilik Takibi — ${santiyeAd}`,
       govde: govdeKisimlari.join(" · "),
-      url: "/dashboard/iscilik-takibi",
+      url: takipId ? `/dashboard/iscilik-takibi/${takipId}` : "/dashboard/iscilik-takibi",
       tag: "iscilik-takibi",
       santiye_id: santiyeId,
       kaynak_tip: "iscilik-takibi",

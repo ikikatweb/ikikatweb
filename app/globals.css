@@ -92,6 +92,12 @@ thead th {
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
 
+/* Canlı pane (640) pointer-events:none (JS'te) → boş alan/etiketler tıklamayı geçirir. YALNIZ araç
+   markerları tıklanır (aksi halde marker da none miras alırdı). Etiketler tıklanmaz → alttaki KML/rota açılır. */
+.leaflet-marker-icon.canli-ok-wrap,
+.leaflet-interactive.canli-nokta { pointer-events: auto !important; }
+.leaflet-tooltip.canli-etiket { pointer-events: none; }
+
 /* Canlı araç kalıcı etiketi — plaka + model, haritada hep okunur (Arvento tarzı kutu) */
 .leaflet-tooltip.canli-etiket {
   background: rgba(255, 255, 255, 0.95);

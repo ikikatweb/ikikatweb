@@ -17,7 +17,9 @@ export const KML_PANE = "kmlPane";
 export const CANLI_PANE = "canliPane";
 function panelleriKur(map: LeafletMap): void {
   if (!map.getPane(KML_PANE)) { const p = map.createPane(KML_PANE); p.style.zIndex = "350"; }
-  if (!map.getPane(CANLI_PANE)) { const p = map.createPane(CANLI_PANE); p.style.zIndex = "640"; }
+  // Canlı pane EN ÜST (640). pointer-events:none → boş alanlarda (etiketler/pane kutusu) tıklamayı GEÇİRİR,
+  // altındaki KML/rota/güzergah tıklanabilir kalır; yalnız araç markerları (CSS'te auto) tıklanır.
+  if (!map.getPane(CANLI_PANE)) { const p = map.createPane(CANLI_PANE); p.style.zIndex = "640"; p.style.pointerEvents = "none"; }
 }
 
 export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayilan: "uydu" | "sokak" = "uydu"): void {

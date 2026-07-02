@@ -79,6 +79,14 @@ export async function createSantiye(santiye: SantiyeInsert) {
 
 export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
   const supabase = getSupabase();
+  // Bildirim diff'i için ESKİ değerleri güncellemeden ÖNCE al.
+  const anahtarAlanlar = ["is_adi", "sozlesme_bedeli", "durum", "gecici_kabul_tarihi", "kesin_kabul_tarihi", "tasfiye_tarihi", "sozlesme_tarihi"];
+  let eski: Record<string, unknown> = {};
+  try {
+    const { data: onceki } = await supabase.from("santiyeler").select(anahtarAlanlar.join(",")).eq("id", id).maybeSingle();
+    eski = (onceki ?? {}) as unknown as Record<string, unknown>;
+  } catch { /* sessiz */ }
+
   const { data, error } = await supabase
     .from("santiyeler")
     .update({ ...santiye, updated_at: new Date().toISOString() })
@@ -88,16 +96,30 @@ export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
 
   if (error) throw error;
 
-  // Update bildirimi — sadece form kaydet (is_adi, sozlesme_bedeli vs.) için tetiklesin,
-  // inline edit (örn. sozlesme_fiyatlariyla_gerceklesen tek alan) spam etmesin
+  // Update bildirimi — HANGİ alan değişti, ESKİ → YENİ değeriyle. Sadece anahtar alanlar (form kaydet)
+  // için; inline tek-alan edit spam etmesin. Gerçekten DEĞİŞMEYEN alan gösterilmez.
   try {
-    const anahtarAlanlar = ["is_adi", "sozlesme_bedeli", "durum", "gecici_kabul_tarihi", "kesin_kabul_tarihi", "tasfiye_tarihi", "sozlesme_tarihi"];
-    const degisenAnahtar = anahtarAlanlar.some((k) => k in santiye);
-    if (degisenAnahtar && data?.is_adi) {
-      const { bildirimGonder } = await import("@/lib/bildirim");
+    const ETIKET: Record<string, string> = {
+      is_adi: "İş Adı", sozlesme_bedeli: "Sözleşme Bedeli", durum: "Durum",
+      gecici_kabul_tarihi: "Geçici Kabul", kesin_kabul_tarihi: "Kesin Kabul",
+      tasfiye_tarihi: "Tasfiye", sozlesme_tarihi: "Sözleşme Tarihi",
+    };
+    const TARIH = new Set(["gecici_kabul_tarihi", "kesin_kabul_tarihi", "tasfiye_tarihi", "sozlesme_tarihi"]);
+    const { bildirimGonder, formatTL, formatTarih } = await import("@/lib/bildirim");
+    const fmt = (k: string, v: unknown): string => {
+      if (v === null || v === undefined || v === "") return "—";
+      if (k === "sozlesme_bedeli" && typeof v === "number") return formatTL(v);
+      if (TARIH.has(k)) return formatTarih(String(v));
+      return String(v);
+    };
+    const degisenler = anahtarAlanlar.filter(
+      (k) => k in santiye && String(eski[k] ?? "") !== String((santiye as Record<string, unknown>)[k] ?? ""),
+    );
+    if (degisenler.length > 0 && data?.is_adi) {
+      const detay = degisenler.map((k) => `${ETIKET[k]}: ${fmt(k, eski[k])} → ${fmt(k, (santiye as Record<string, unknown>)[k])}`).join(" · ");
       bildirimGonder({
-        baslik: `🏗️ İş Deneyim Güncellendi`,
-        govde: String(data.is_adi).slice(0, 150),
+        baslik: `🏗️ İş Deneyim Güncellendi — ${String(data.is_adi).slice(0, 60)}`,
+        govde: detay.slice(0, 250),
         url: "/dashboard/yonetim/santiyeler",
         tag: "santiye",
       });

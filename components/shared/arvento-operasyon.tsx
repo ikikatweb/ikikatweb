@@ -298,6 +298,32 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return out;
   }, [ozetDampers, izinSet, damperSinif]);
 
+  // HAM damperler (rapor'daki damper_olaylar) — serme ROTASI bu kaynaktan çizilir. ÖZET (damperKoordlu) boş
+  // dönebiliyor (o aralık için sunucu özeti yoksa) → o durumda rotalar var ama ikon yok, serme reglaj gibi
+  // görünüyordu. Fallback: özet boşsa ikonları buradan göster ki rota olan yerde damper ikonu da olsun.
+  const hamDamperNoktalar = useMemo<DamperNokta[]>(() => {
+    const out: DamperNokta[] = [];
+    const seen = new Set<string>();
+    for (const r of raporlar) {
+      if (izinSet && !izinSet.has(plakaNorm(r.plaka))) continue; // kısıtlı kullanıcı: yalnız izinli plakalar
+      for (const o of (r.damper_olaylar ?? []) as DamperOlay[]) {
+        if (o?.lat == null || o?.lng == null) continue;
+        const key = `${plakaNorm(r.plaka)}|${o.lat.toFixed(5)}|${o.lng.toFixed(5)}`;
+        if (seen.has(key)) continue; // aynı konumdaki mükerrer ping'i tekle
+        seen.add(key);
+        out.push({ saat: o.saat, adres: o.adres ?? null, lat: o.lat, lng: o.lng, plaka: r.plaka, _rawLat: o.lat, _rawLng: o.lng });
+      }
+    }
+    return out;
+  }, [raporlar, izinSet]);
+
+  // Serme haritasında/özetinde gösterilecek damperler: ÖZET (sınıflı, mükerrer/arıza ayıklı) varsa o; YOKSA
+  // ham raporlar damperleri (rotayla aynı kaynak → "rota var ikon yok" olmaz).
+  const damperGoster = useMemo<DamperNokta[]>(
+    () => (damperKoordlu.length > 0 ? damperKoordlu : hamDamperNoktalar),
+    [damperKoordlu, hamDamperNoktalar],
+  );
+
   // SERME ROTA NOKTALARI (Sıkıştırma için): serme YAPILAN (damper ≤80 m yakını) greyder omurgalarının
   // noktaları. Silindir bu noktaların üstünden gidip geldiyse o kısım sıkıştırma sayılır.
   // "km yol" = HARİTADA ÇİZİLEN çizginin (eşikli omurga) uzunluğu. Eşik ≥ 1 ama yol eşik kadar
@@ -382,14 +408,14 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) hucreler.add(`${cy + dy}_${cx + dx}`);
     }
     // Serme tespiti HAM konumu kullanıyor → eşleşmeyi ham ile yap; durak da serme yolundaysa yine kaldır.
-    // KALDIR (göstermeden çıkar): damper ham VEYA durak konumu serme yolundaysa (serilmiş → ikon yok).
-    return damperKoordlu.filter((o) => {
+    // "serilmemiş yığın" = serme yoluna denk GELMEYEN damper (henüz greyder üzerinden geçmemiş).
+    return damperGoster.filter((o) => {
       const rl = o._rawLat ?? o.lat, rg = o._rawLng ?? o.lng;
       const hamOk = rl != null && rg != null && hucreler.has(sermeHucreKey(rl as number, rg as number));
       const durakOk = o.lat != null && o.lng != null && hucreler.has(sermeHucreKey(o.lat as number, o.lng as number));
-      return !(hamOk || durakOk); // serme yolunda DEĞİLSE göster (serilmemiş yığın)
+      return !(hamOk || durakOk); // serme yolunda DEĞİLSE serilmemiş sayılır
     });
-  }, [sermeMi, sermeByPlaka, damperKoordlu]);
+  }, [sermeMi, sermeByPlaka, damperGoster]);
 
   // Çip "km yol": SERME'de damper-SONRASI serme omurgası (sermeByPlaka); SIKIŞTIRMA'da silindir omurgası.
   // Serme greyderinin TOPLAM rotası DEĞİL → reglaj ile aynı görünmez. Serme'si olmayan greyder = 0.
@@ -421,8 +447,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // Serme: çoklu chip seçimi + yakınında damper olan greyder hatları
     return greyderler
       .filter((k) => seciliGreyderler.has(k.plaka))
-      .filter((k) => yakinDamperVar(k.noktalar ?? [], damperKoordlu));
-  }, [greyderler, seciliGreyderler, sermeMi, damperKoordlu]);
+      .filter((k) => yakinDamperVar(k.noktalar ?? [], damperGoster));
+  }, [greyderler, seciliGreyderler, sermeMi, damperGoster]);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
@@ -531,8 +557,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       }
     });
     if (sermeMi) {
-      // Ortada damperler — YALNIZ serme yapılan yola denk gelenler (sermeDamperleri). Yuvarlak renkli nokta.
-      sermeDamperleri.forEach((o, i) => {
+      // TÜM gerçek damper (kamyon) noktaları gösterilir — serme yoluna denk gelenler DAHİL. Greyder bu
+      // damperlerin üzerinden geçmişse serme kanıtıdır; gizlenirse serme yolu boş kalıp reglaj gibi görünüyordu.
+      // (serilmemiş yığın sayısı ayrıca header'da "serilmemiş damper" olarak gösterilir.)
+      damperGoster.forEach((o, i) => {
         L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95, renderer: yolRenderer })
           .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
@@ -562,7 +590,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, damperKoordlu, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, sermeByPlaka, damperGoster, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -574,7 +602,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><styleUrl>#rota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
     const orta = sermeMi
-      ? sermeDamperleri.map((o, i) => `
+      ? damperGoster.map((o, i) => `
     <Placemark><name>${esc(o.plaka)} damper ${i + 1}</name><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("")
       : silindirler.map((k) => {
           const n = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
@@ -610,7 +638,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     );
   }
   const veriYok = (sermeMi
-    ? greyderler.length === 0 && sermeDamperleri.length === 0
+    ? greyderler.length === 0 && damperGoster.length === 0
     : greyderler.length === 0 && silindirler.length === 0) && !canliVar;
   if (veriYok) {
     return (
@@ -683,7 +711,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               </div>
               <div>
                 {sermeMi
-                  ? <span><span className="font-semibold" style={{ color: sermeRenkV }}>🟰 {(sermeToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m serme</span> <span className="text-orange-600 font-semibold">· 🔻 {sermeDamperleri.length} serilmemiş damper</span></span>
+                  ? <span><span className="font-semibold" style={{ color: sermeRenkV }}>🟰 {(sermeToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m serme</span> <span className="text-orange-600 font-semibold">· 🔻 {damperGoster.length} damper{sermeDamperleri.length > 0 ? ` (${sermeDamperleri.length} serilmemiş)` : ""}</span></span>
                   : <span><span className="font-semibold" style={{ color: silindirRenkV }}>🟰 {(sikistirmaToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m sıkıştırma</span> <span style={{ color: silindirRenkV }} className="font-semibold">· ⩘ {secilenSilindirler.length} silindir hattı</span></span>}
               </div>
               {sermeMi && (

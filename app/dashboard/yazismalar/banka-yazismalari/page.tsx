@@ -1,7 +1,7 @@
 // Banka Yazışmaları sayfası - Liste, filtre, yazdır, çoğalt, düzenle, sil
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma, createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -114,6 +114,20 @@ export default function BankaYazismalariPage() {
   }, [isYonetici, kullanici?.id, kullanici?.firma_ids]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Bildirimden ?yazdir={id} ile gelindiyse → o yazışmanın YAZDIRMA ÖNİZLEMESİNİ otomatik aç.
+  const yazdirAcildiRef = useRef(false);
+  useEffect(() => {
+    if (yazdirAcildiRef.current || loading) return;
+    const id = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("yazdir") : null;
+    if (!id) return;
+    const y = yazismalar.find((x) => x.id === id);
+    if (!y) return;
+    yazdirAcildiRef.current = true;
+    printYazisma(y);
+    try { const u = new URL(window.location.href); u.searchParams.delete("yazdir"); window.history.replaceState({}, "", u.toString()); } catch { /* sessiz */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yazismalar, loading]);
 
   // NOT: Antet/kaşe ön belleği için DOM'a hidden <img> mount ediliyor (aşağıda).
   // new Image() byte cache'liyor ama decode bitmeden print snapshot alınıyordu.

@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 baslik: "🔐 Kullanıcı Girişi",
                 govde: "Siteye giriş yaptı.",
                 tag: "kullanici-giris",
-                url: "/dashboard/yonetim/kullanicilar",
+                url: "/dashboard",
               }),
             }).catch(() => {});
           }

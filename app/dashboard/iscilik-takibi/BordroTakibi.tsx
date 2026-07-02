@@ -642,7 +642,23 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Ay seçici (default: bu ay). Tüm aylar düzenlenebilir — kullanıcı geçmiş ve gelecek
   // ayların kayıtları üzerinde de işlem yapabilir.
-  const [seciliAy, setSeciliAy] = useState<string>(su_an_ay);
+  // Ay: URL'de ?ay=YYYY-MM varsa (bordro hatırlatmasından gelindiğinde önceki ay) onu, yoksa bu ay.
+  const [seciliAy, setSeciliAy] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search).get("ay");
+      if (q && /^\d{4}-\d{2}$/.test(q)) return q;
+    }
+    return su_an_ay();
+  });
+  // SSR/hydration'da useState initializer sunucuda çalışıp (window yok) bu ayı verir → ?ay okunmaz.
+  // Bu yüzden CLIENT'ta bir kez daha oku (bordro hatırlatmasından ?ay=YYYY-MM ile gelince önceki ay açılsın).
+  const ayParamUygulandiRef = useRef(false);
+  useEffect(() => {
+    if (ayParamUygulandiRef.current) return;
+    ayParamUygulandiRef.current = true;
+    const q = new URLSearchParams(window.location.search).get("ay");
+    if (q && /^\d{4}-\d{2}$/.test(q)) setSeciliAy(q);
+  }, []);
   const buAy = su_an_ay();
   // Sadece görüntüleme yetkisi olan kullanıcılar için tüm yazma aksiyonları kapalı
   // (drag-drop, çift tıkla gün düzenle, sil/geri al butonları, plus butonları)

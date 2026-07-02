@@ -107,7 +107,7 @@ export async function updateAylikVeri(
     bildirimGonder({
       baslik: `📊 İşçilik Takibi — ${santiyeAd}`,
       govde: govdeKisimlari.join(" · "),
-      url: "/dashboard/iscilik-takibi",
+      url: aylikRow.iscilik_takibi_id ? `/dashboard/iscilik-takibi/${aylikRow.iscilik_takibi_id}` : "/dashboard/iscilik-takibi",
       tag: "iscilik-takibi",
       santiye_id: santiyeId ?? null,
       // Kaynak: aylık satır silinince veya 0'lanınca bu bildirim de silinsin

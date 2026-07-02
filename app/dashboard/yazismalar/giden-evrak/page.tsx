@@ -1,7 +1,7 @@
 // Giden Evrak sayfası - Liste, filtre, yazdır, çoğalt, düzenle, sil (kayıt no kontrolü)
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak, createGidenEvrak, getGidenEvrakSayiNo } from "@/lib/supabase/queries/giden-evrak";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -168,6 +168,20 @@ export default function GidenEvrakPage() {
   }, [authLoading, isYonetici, kullanici?.id, kullanici?.rol, kullanici?.santiye_ids, kullanici?.firma_ids, kullanici?.santiyesiz_veri_gor]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Bildirimden ?yazdir={id} ile gelindiyse → o evrağın YAZDIRMA ÖNİZLEMESİNİ otomatik aç.
+  const yazdirAcildiRef = useRef(false);
+  useEffect(() => {
+    if (yazdirAcildiRef.current || loading) return;
+    const id = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("yazdir") : null;
+    if (!id) return;
+    const ev = evraklar.find((e) => e.id === id);
+    if (!ev) return;
+    yazdirAcildiRef.current = true;
+    printEvrak(ev);
+    try { const u = new URL(window.location.href); u.searchParams.delete("yazdir"); window.history.replaceState({}, "", u.toString()); } catch { /* sessiz */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [evraklar, loading]);
 
   // NOT: Antet/kaşe ön belleği için artık DOM'a gerçek <img> mount ediyoruz
   // (sayfanın altındaki hidden div'de). new Image() sadece byte cache'liyor,
