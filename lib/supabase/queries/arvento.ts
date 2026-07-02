@@ -219,6 +219,35 @@ export async function oncekiDamperCek(bas: string): Promise<{ lat: number; lng: 
   return out;
 }
 
+// Bir tarih aralığındaki TÜM damper noktaları (hafif: yalnız plaka + damper_olaylar). Serme sekmesinde
+// "bu sezonki bütün damperler" gösterimi için (rota/GPS çekmeden, sadece damper konumları). Özet boşsa fallback.
+export async function damperNoktalariRange(bas: string, bitis: string): Promise<{ plaka: string; saat: string | null; adres: string | null; lat: number; lng: number }[]> {
+  if (!bas || !bitis) return [];
+  const supabase = getSupabase();
+  const out: { plaka: string; saat: string | null; adres: string | null; lat: number; lng: number }[] = [];
+  const PARCA = 1000;
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_arvento_rapor")
+      .select("plaka, damper_olaylar")
+      .gte("rapor_tarihi", bas)
+      .lte("rapor_tarihi", bitis)
+      .range(offset, offset + PARCA - 1);
+    if (error || !data) break;
+    for (const r of data as { plaka: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null; adres?: string | null }[] | null }[]) {
+      for (const o of (r.damper_olaylar ?? [])) {
+        if (o?.lat == null || o?.lng == null) continue;
+        out.push({ plaka: r.plaka, saat: o.saat ?? null, adres: o.adres ?? null, lat: o.lat, lng: o.lng });
+      }
+    }
+    if (data.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 300000) break;
+  }
+  return out;
+}
+
 // Rapor verisinin (km/çalışma/damper) bu tarih aralığında EN SON yazıldığı an.
 // Rapor senkronu her yazımda created_at'i günceller → haritada "Son güncelleme" olarak gösterilir
 // (canlı konumun değil, RAPOR verisinin tazeliği). Veri yoksa null.

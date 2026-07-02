@@ -13,6 +13,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // GÜVENLİK AĞI: middleware içindeki HERHANGİ bir hata (Supabase erişilemez, havuz tükendi, edge hatası)
+  // tüm siteyi 500 (MIDDLEWARE_INVOCATION_FAILED) yapıyordu. Tüm gövdeyi sarıp hata olursa fail-open:
+  // auth'u atla, isteği geçir → sayfa-seviyesi auth kontrolü devralır (site açık kalır).
+  try {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -112,6 +116,10 @@ export async function middleware(request: NextRequest) {
   }
 
   return supabaseResponse;
+  } catch {
+    // Supabase/edge hatası → siteyi düşürme; auth'u atlayıp geçir (sayfa-seviyesi kontrol devralır).
+    return NextResponse.next({ request });
+  }
 }
 
 export const config = {

@@ -7,7 +7,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, damperNoktalariRange } from "@/lib/supabase/queries/arvento";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
@@ -25,6 +25,9 @@ import "leaflet/dist/leaflet.css";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 
 const DAMPER_RENK = "#f97316";
+// Damper GÖSTERİMİ (kamyon noktaları) sezon başından itibaren TÜM sezonu kapsar — serme rotaları seçili
+// aralıkta kalır ama "nereye damper döküldü" haritası tüm sezonu gösterir (dashboard sezonuyla aynı baş).
+const SEZON_BAS = "2026-01-01";
 // Serme: "önceden damper dökülmüş yol" tespiti için ~50 m sabit ızgara (bölge ~41° enlem).
 // Geçmiş damper noktaları bu ızgaraya (±1 komşu) işlenir; seçilen günün greyder rotasının
 // bu hücrelere denk gelen kısmı = SERME (reglaj sonrası malzeme serilen yol).
@@ -136,6 +139,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // ÖZET damperler: sınıflama (gerçek/arıza/mükerrer) SUNUCUDA hazır (stabilize özetiyle BİREBİR, gün-bazlı
   // ocak). Serme kamyon GPS çekmediği için arizaIsaretle'yi BURADA çalıştıramıyoruz → özetten alıyoruz.
   const [ozetDampers, setOzetDampers] = useState<OzetDamper[]>([]);
+  // Sezon (SEZON_BAS→bitiş) TÜM ham damperleri — özet boşsa ikon fallback'i (bugün değil, tüm sezon görünür).
+  const [sezonHamDamper, setSezonHamDamper] = useState<{ plaka: string; saat: string | null; adres: string | null; lat: number; lng: number }[]>([]);
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları (yakınlık şantiyesine göre) görür.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
   const tumGuzergah = useMemo(() => (izinSet ? tumGuzergahHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : tumGuzergahHam), [tumGuzergahHam, izinSet]);
@@ -186,10 +191,11 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // küçük olduğundan tek sorgu (geniş aralıkta gün-gün yüzlerce istek yerine).
     (async () => {
       try {
-        // Damper sınıflaması özetten (kamyon GPS inmez). Rapor'a bağımsız → hemen paralel başlat.
-        const ozetPromise = getStabilizeOzetDirect(sermeBas, bitis).then((d) => {
+        // Damper GÖSTERİMİ tüm sezonu kapsar (SEZON_BAS→bitiş) — serme rotaları aralıkta kalır. Özet (sınıflı)
+        // + ham (fallback, özet boşsa) sezon bazında paralel çekilir. Rapor'a bağımsız → hemen başlat.
+        const ozetPromise = getStabilizeOzetDirect(SEZON_BAS, bitis).then((d) => {
           if (d.dampers.length > 0) return d.dampers;
-          return fetch(`/api/arvento/stabilize-ozet?bas=${sermeBas}&bitis=${bitis}`)
+          return fetch(`/api/arvento/stabilize-ozet?bas=${SEZON_BAS}&bitis=${bitis}`)
             .then((res) => (res.ok ? res.json() : { dampers: [] })).then((j) => (j.dampers ?? []) as OzetDamper[]).catch(() => [] as OzetDamper[]);
         });
         const r = (await getArventoRaporByRange(sermeBas, bitis)) as AracArventoRapor[];
@@ -201,7 +207,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
           .map((x) => x.plaka))];
         const [g, oz] = await Promise.all([getGuzergahByRange(sermeBas, bitis, ilgili, { tekSorgu: true }), ozetPromise]);
         if (benimNo !== yukNoRef.current) return;
-        setTumGuzergah(g); setRaporlar(r); setOzetDampers(oz as OzetDamper[]);
+        // Özet (sınıflı sezon damperi) doluysa ham sezon scan'ini ATLA (havuzu yorma); yalnız özet boşsa çek.
+        const sezonHam = (oz as OzetDamper[]).length > 0 ? [] : await damperNoktalariRange(SEZON_BAS, bitis).catch(() => []);
+        if (benimNo !== yukNoRef.current) return;
+        setTumGuzergah(g); setRaporlar(r); setOzetDampers(oz as OzetDamper[]); setSezonHamDamper(sezonHam);
       } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -304,18 +313,16 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const hamDamperNoktalar = useMemo<DamperNokta[]>(() => {
     const out: DamperNokta[] = [];
     const seen = new Set<string>();
-    for (const r of raporlar) {
-      if (izinSet && !izinSet.has(plakaNorm(r.plaka))) continue; // kısıtlı kullanıcı: yalnız izinli plakalar
-      for (const o of (r.damper_olaylar ?? []) as DamperOlay[]) {
-        if (o?.lat == null || o?.lng == null) continue;
-        const key = `${plakaNorm(r.plaka)}|${o.lat.toFixed(5)}|${o.lng.toFixed(5)}`;
-        if (seen.has(key)) continue; // aynı konumdaki mükerrer ping'i tekle
-        seen.add(key);
-        out.push({ saat: o.saat, adres: o.adres ?? null, lat: o.lat, lng: o.lng, plaka: r.plaka, _rawLat: o.lat, _rawLng: o.lng });
-      }
+    for (const d of sezonHamDamper) { // TÜM sezon (SEZON_BAS→bitiş) ham damperleri
+      if (izinSet && !izinSet.has(plakaNorm(d.plaka))) continue; // kısıtlı kullanıcı: yalnız izinli plakalar
+      if (d.lat == null || d.lng == null) continue;
+      const key = `${plakaNorm(d.plaka)}|${d.lat.toFixed(5)}|${d.lng.toFixed(5)}`;
+      if (seen.has(key)) continue; // aynı konumdaki mükerrer ping'i tekle
+      seen.add(key);
+      out.push({ saat: d.saat, adres: d.adres, lat: d.lat, lng: d.lng, plaka: d.plaka, _rawLat: d.lat, _rawLng: d.lng });
     }
     return out;
-  }, [raporlar, izinSet]);
+  }, [sezonHamDamper, izinSet]);
 
   // Serme haritasında/özetinde gösterilecek damperler: ÖZET (sınıflı, mükerrer/arıza ayıklı) varsa o; YOKSA
   // ham raporlar damperleri (rotayla aynı kaynak → "rota var ikon yok" olmaz).
