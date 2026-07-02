@@ -55,6 +55,7 @@ import {
   deletePendingMailler,
   type BordroPendingDB,
 } from "@/lib/supabase/queries/bordro-pending";
+import { bordroDonemIsaretle } from "@/lib/supabase/queries/bordro-gonderim";
 import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 
@@ -79,6 +80,8 @@ type SantiyeBasic = {
   is_bitim_tarihi?: string | null;  // manuel girilmişse — yoksa hesaplanır
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
+  calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
+  calisilmayan_bit?: string | null; // çalışılmayan dönem bitişi
 };
 type Firma = {
   id: string;
@@ -88,6 +91,19 @@ type Firma = {
   smtp_user?: string | null;
   smtp_password?: string | null;
 };
+
+// Çalışılmayan dönem HER YIL TEKRAR EDER (yıl yok, "AA-GG" gün-ay). Seçili ayın (YYYY-MM) ayı, bu tekrar eden
+// aralığın aylarına düşüyorsa o şantiyedeki personeller bordroda gri+italik gösterilir. Yıl dönümünü saran
+// aralıkları da (ör. Aralık→Şubat, bas ayı > bit ayı) doğru kapsar. Tek uç girilmişse diğer yön açık kabul edilir.
+function ayCalisilmayanMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
+  if (!bas && !bit) return false;
+  const ay = Number(seciliAy.split("-")[1]);
+  if (!ay) return false;
+  const basAy = bas ? Number(bas.split("-")[0]) : 1;   // "AA-GG" → AA
+  const bitAy = bit ? Number(bit.split("-")[0]) : 12;
+  if (!basAy || !bitAy) return false;
+  return basAy <= bitAy ? (ay >= basAy && ay <= bitAy) : (ay >= basAy || ay <= bitAy);
+}
 
 // Bekleyen değişiklik kaydı (mail kuyruğu için)
 type PendingChange = {
@@ -2287,6 +2303,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       isTeknik?: boolean;
       // Atanmış teknik rolü ismi (örn. "Şantiye Şefi") — Gün ile Not arasında ayrı sütun
       teknikIsim?: string | null;
+      // Şantiyenin "çalışılmayan dönem"i seçili ayla çakışıyorsa true → gri+italik gösterilir.
+      calisilmayan?: boolean;
     };
     const rows: Row[] = [];
     const [yil, ay] = seciliAy.split("-").map(Number);
@@ -2356,6 +2374,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         firmaAd: firma?.firma_adi ?? "(Firma atanmamış)",
         santiyeId: sant.id,
         santiyeAd: sant.is_adi,
+        calisilmayan: ayCalisilmayanMi(sant.calisilmayan_bas, sant.calisilmayan_bit, seciliAy),
         adSoyad: personel.ad_soyad,
         isTeknik,
         teknikIsim,
@@ -2390,6 +2409,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         firmaAd: ilk.firmaAd,
         santiyeId: ilk.santiyeId,
         santiyeAd: ilk.santiyeAd,
+        calisilmayan: ilk.calisilmayan,
         adSoyad: ilk.adSoyad,
         tc: ilk.tc,
         gorev: ilk.gorev,
@@ -2747,11 +2767,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           if (!atanmisKeyler.has(`${isim}#${idx}`)) bostaRoller.push(isim);
         });
 
-        setCell(curRow, 0, `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)`, {
-          font: { bold: true, sz: 12, color: { rgb: "1E3A5F" } },
-          alignment: { horizontal: "left" },
-          fill: { fgColor: { rgb: "E2E8F0" }, patternType: "solid" },
-        });
+        // İŞ ADI başlığı — her iş grubunu net ayır: belirgin bant + üstünde KALIN çizgi (gruplar arası ayrım).
+        for (let c = 0; c < NUM_COLS; c++) {
+          setCell(curRow, c, c === 0 ? `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)` : "", {
+            font: { bold: true, sz: 13, color: { rgb: "FFFFFFFF" } },
+            alignment: { horizontal: "left", vertical: "center" },
+            fill: { fgColor: { rgb: "FF475569" }, patternType: "solid" },
+            border: { top: { style: "medium", color: { rgb: "FF1E3A5F" } } },
+          });
+        }
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
         curRow++;
 
@@ -2795,7 +2819,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             // c === 7 = Teknik personel rolü sütunu (varsa kalın + indigo)
             const isTeknikIsimSutun = c === 7 && !!teknikIsimVal;
             setCell(curRow, c, rowVals[c], {
-              font: isTeknikEtiketSutun || isTeknikIsimSutun
+              // Çalışılmayan dönem → gri + italik (gözden kaçmasın); teknik sütunlar yine kalın.
+              font: r.calisilmayan
+                ? { sz: 10, italic: true, color: { rgb: "FF94A3B8" }, bold: isTeknikEtiketSutun || isTeknikIsimSutun }
+                : isTeknikEtiketSutun || isTeknikIsimSutun
                 ? { sz: 10, bold: true, color: { rgb: "FF4338CA" } }
                 : { sz: 10 },
               alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 8 },
@@ -3240,6 +3267,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       toast.dismiss(tId);
       if (!res.ok) throw new Error(data.error || "Mail gönderilemedi");
       toast.success(data.mesaj || "Bordro raporu gönderildi");
+      // Bu dönem "gönderildi" → dashboard hatırlatması HERKESTE kalkar (paylaşımlı DB).
+      try { await bordroDonemIsaretle(seciliAy, kullanici?.id ?? null, kullanici?.ad_soyad ?? null); } catch { /* uyarı işaretleme kritik değil */ }
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -3312,14 +3341,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
       for (const [santiyeAd, list] of santiyeMap) {
         const sToplam = list.reduce((s, r) => s + r.gun, 0);
+        cursorY += 4; // iş grupları arası belirgin boşluk (alt alta karışmasın)
         // Sayfa kontrolü
         if (cursorY > pageHeight - 30) {
           doc.addPage();
           cursorY = 15;
         }
+        // İŞ ADI başlığı — açık gri bant → her iş grubu net bir bölüm başlığıyla başlar.
+        doc.setFillColor(226, 232, 240);
+        doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "F");
         doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-        doc.text(trAscii(`  ${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY);
-        cursorY += 2;
+        doc.setTextColor(30, 58, 95);
+        doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY + 1);
+        doc.setTextColor(0, 0, 0);
+        cursorY += 3;
         // ATANMAMIŞ teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır.
         // Key format'i "isim#index" şeklinde ve isimler İÇİNDE virgül olabileceği için
         // ham `,` split yapılmaz, regex ile "anyChars#digits" pattern'i aranır.
@@ -3373,6 +3408,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           },
           alternateRowStyles: { fillColor: altRgb },
           margin: { left: 14, right: 14 },
+          // Çalışılmayan dönem satırları → gri + italik (gözden kaçmasın).
+          didParseCell: (data) => {
+            if (data.section === "body" && list[data.row.index]?.calisilmayan) {
+              data.cell.styles.textColor = [148, 163, 184];
+              data.cell.styles.fontStyle = "italic";
+            }
+          },
           // "(Teknik Personel)" suffix'ini SADECE kalın + indigo yap (isim normal kalır).
           // Hücre çizildikten sonra overdraw: önce dolgu rengiyle üzerini kapat,
           // sonra metni iki parça halinde elle çiz. autoTable ile aynı baseline + padding.
@@ -3843,6 +3885,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     };
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
+    // ÇALIŞILMAYAN DÖNEM: bu şantiyenin çalışılmayan dönemi seçili ayla çakışıyorsa personel gri+italik.
+    const santiyeKart = !inPasifCol && !inAtanmamisCol ? santiyeler.find((s) => s.id === sutunKey) : undefined;
+    const donemDisi = ayCalisilmayanMi(santiyeKart?.calisilmayan_bas, santiyeKart?.calisilmayan_bit, seciliAy);
     // Bordro durumu, atama_gecmisi'ne göre — personel.durum'a bakılmaz.
     // Pasif sütununda gri görünüm uygulanır; diğer sütunlarda normal renk.
     const grileştir = inPasifCol && !isReadOnly;
@@ -3876,12 +3921,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         title={sürüklenebilir ? "Tek tıklayıp sürükle: taşıma · Çift tıkla: gün düzenle" : ""}
         className={`bg-white border border-gray-200 rounded-md p-2 mb-2 shadow-sm hover:shadow-md hover:border-blue-300 transition-all select-none ${
           sürüklenebilir ? "cursor-grab active:cursor-grabbing" : "cursor-default"
-        } ${dragPersonelId === p.id ? "opacity-50" : ""} ${grileştir ? "opacity-70 grayscale" : ""}`}
+        } ${dragPersonelId === p.id ? "opacity-50" : ""} ${grileştir ? "opacity-70 grayscale" : ""} ${donemDisi ? "italic opacity-70 bg-gray-50" : ""}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-[#1E3A5F] truncate flex items-center gap-1 flex-wrap">
-              <span className="truncate">{p.ad_soyad}</span>
+            <div className={`font-semibold text-sm truncate flex items-center gap-1 flex-wrap ${donemDisi ? "text-gray-400" : "text-[#1E3A5F]"}`}>
+              <span className="truncate" title={donemDisi ? "Çalışılmayan dönem — bu şantiyede bu ay çalışılmıyor" : undefined}>{p.ad_soyad}</span>
               {p.personel_tipi === "taseron" && (
                 <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
               )}
@@ -4002,7 +4047,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       return { bitimTarihi: fmtTr(bitimTarihi), kalanGun };
     })();
     return (
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden shadow-md">
         <div
           className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
           style={{ borderLeftColor: renk }}
@@ -4187,6 +4232,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const tutarHesap = tutarGun * kullanilanUcret;
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
+    // ÇALIŞILMAYAN DÖNEM: bu şantiyenin çalışılmayan dönemi seçili ayla çakışıyorsa satır gri+italik.
+    const santiyeSatir = !inPasifCol && !inAtanmamisCol ? santiyeler.find((s) => s.id === sutunKey) : undefined;
+    const donemDisi = ayCalisilmayanMi(santiyeSatir?.calisilmayan_bas, santiyeSatir?.calisilmayan_bit, seciliAy);
     // İşten çıkar: atama düzenlemesi → yDuzenle. Geri al: yeni atama → yEkle.
     const showCikis = !inPasifCol && !inAtanmamisCol && yDuzenle;
     const showGeriAl = inPasifCol && yEkle;
@@ -4218,7 +4266,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return (
       <tr
         data-personel-row
-        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""}`}
+        className={`border-b border-gray-100 hover:bg-blue-50/50 transition-colors ${secili ? "bg-blue-50" : "bg-white"} ${gecmisKayit ? "opacity-60" : ""} ${donemDisi ? "italic [&_td]:text-gray-400" : ""}`}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest("button, input")) return;
           if (tiklanabilir) setGunEdit({ personel: p, santiyeId: sutunKey });
@@ -4680,7 +4728,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
                 {/* Firma içerik: işler — soluk gri/yeşil tema, indented sol margin ile hiyerarşi belli */}
                 {firmaAcik && (
-                  <div className="bg-slate-50 border-t border-slate-200 p-3 space-y-2 pl-6">
+                  <div className="bg-slate-50 border-t border-slate-200 p-3 space-y-3 pl-6">
                     {firmaSantiyeler.length === 0 ? (
                       <div className="text-center py-3 text-gray-400 text-xs italic">Bu firmada iş yok</div>
                     ) : (

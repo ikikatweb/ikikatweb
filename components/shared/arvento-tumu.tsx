@@ -145,6 +145,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       ekleOlcumKontrolu(L, map);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
+      // Çizgiler SVG + üst pane (opYolPane z450) → KML'nin (350) ÜSTÜnde ve TIKLANIR (canvas ince hatta tıklamayı
+      // kaçırıyordu + canvas KML'yi boşlukta bile kapatıyordu). SVG boşlukları geçirgen → alttaki KML de tıklanır.
+      if (!map.getPane("opYolPane")) { const yp = map.createPane("opYolPane"); yp.style.zIndex = "450"; }
       veriKatmanRef.current = L.layerGroup().addTo(map);
       canliLayerRef.current = canliKatmanKur(L, map, canliVeriRef.current.konumlar, canliVeriRef.current.cihazMap);
       setTimeout(() => { oto = false; }, 800);
@@ -170,6 +173,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     if (!map || !grup || !L) return;
     grup.clearLayers();
     const bounds: [number, number][] = [];
+    // Çizgiler + damperler SVG üst pane'de → canvas yok → KML (alt) boşluklarda tıklanır; çizgi kesin tıklanır.
+    const yolRenderer = L.svg({ pane: "opYolPane" });
     // Güzergah çizgileri — sınıfa göre operasyon rengi/stili (plaka-bazında BİRLEŞİK → tek hat/araç)
     guzergahBirlesik.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
@@ -186,10 +191,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         : [latlngs];
       const kal = op === "sikistirma" ? silindirKal : reglajKal;
       const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
-      (cizim.length ? cizim : [latlngs]).forEach((seg) =>
-        // Sıkıştırma dahil tüm operasyonlar TEK ÇİZGİ (omurga) çizilir — zikzak kaldırıldı.
-        L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85 })
-          .addTo(grup).bindPopup(`<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`));
+      const popupHtml = `<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`;
+      (cizim.length ? cizim : [latlngs]).forEach((seg) => {
+        // Görünür çizgi (tıklamaz) + üstünde GENİŞ ŞEFFAF isabet-çizgisi (kolay tıklanır) → popup. (Stabilize deseni.)
+        L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85, renderer: yolRenderer, interactive: false }).addTo(grup);
+        L.polyline(seg, { color: cizgiRenk, weight: Math.max(14, kal + 8), opacity: 0, renderer: yolRenderer }).addTo(grup).bindPopup(popupHtml);
+      });
       for (const ll of latlngs) bounds.push(ll);
     });
     // Damper noktaları (Stabilize) — turuncu yuvarlak. YALNIZ GERÇEK (mükerrer/arıza ayıklanmış).

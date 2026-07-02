@@ -167,6 +167,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     kesin_kabul_tarihi: santiye?.kesin_kabul_tarihi ?? null,
     kesin_kabul_url: santiye?.kesin_kabul_url ?? null,
     is_deneyim_url: santiye?.is_deneyim_url ?? null,
+    calisilmayan_bas: santiye?.calisilmayan_bas ?? null,
+    calisilmayan_bit: santiye?.calisilmayan_bit ?? null,
     depo_kapasitesi: santiye?.depo_kapasitesi ?? null,
   });
 
@@ -280,6 +282,11 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
   function handleSelectChange(name: string, value: string) {
     setFormData((prev) => ({ ...prev, [name]: value === "" ? null : value }));
+  }
+
+  // Çalışılmayan dönem alanı (yıl YOK, her yıl tekrar eder) → "AA-GG" gün-ay metni. Ay boşsa alan null.
+  function setGunAy(field: "calisilmayan_bas" | "calisilmayan_bit", ay: string, gun: string) {
+    setFormData((prev) => ({ ...prev, [field]: ay ? `${ay.padStart(2, "0")}-${(gun || "01").padStart(2, "0")}` : null }));
   }
 
   // Ortak girişim fonksiyonları
@@ -633,6 +640,49 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   <Input id="ihale_kayit_no" name="ihale_kayit_no" placeholder="İhale kayıt no" value={formData.ihale_kayit_no ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
               </div>
+
+              {/* Çalışılmayan Dönem (opsiyonel, YIL YOK — her yıl tekrar eder) — gün + ay. Bordro'da bu aralıktaki
+                  personeller gri+italik gösterilir. */}
+              {(() => {
+                const AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+                const parse = (v: string | null) => { const [a, g] = (v ?? "").split("-"); return { ay: a ?? "", gun: g ?? "" }; };
+                const bas = parse(formData.calisilmayan_bas);
+                const bit = parse(formData.calisilmayan_bit);
+                const gunOpts = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, "0"));
+                const gunSelect = (val: string, onCh: (v: string) => void) => (
+                  <select className={selectClass} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                    <option value="">Gün</option>
+                    {gunOpts.map((g) => <option key={g} value={g}>{Number(g)}</option>)}
+                  </select>
+                );
+                const aySelect = (val: string, onCh: (v: string) => void) => (
+                  <select className={selectClass} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                    <option value="">Ay</option>
+                    {AYLAR.map((a, i) => <option key={a} value={String(i + 1).padStart(2, "0")}>{a}</option>)}
+                  </select>
+                );
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Çalışılmayan Dönem — Başlangıç (gün · ay)</Label>
+                      <div className="flex gap-2">
+                        {gunSelect(bas.gun, (v) => setGunAy("calisilmayan_bas", bas.ay, v))}
+                        {aySelect(bas.ay, (v) => setGunAy("calisilmayan_bas", v, bas.gun))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Çalışılmayan Dönem — Bitiş (gün · ay)</Label>
+                      <div className="flex gap-2">
+                        {gunSelect(bit.gun, (v) => setGunAy("calisilmayan_bit", bit.ay, v))}
+                        {aySelect(bit.ay, (v) => setGunAy("calisilmayan_bit", v, bit.gun))}
+                      </div>
+                    </div>
+                    <div className="space-y-2 flex items-end">
+                      <p className="text-xs text-gray-500">Opsiyonel · <strong>yıl yok, her yıl tekrar eder</strong>. Bu aralıkta bu şantiyedeki personeller Bordro&apos;da <span className="italic text-gray-400">gri + italik</span> gösterilir.</p>
+                    </div>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>

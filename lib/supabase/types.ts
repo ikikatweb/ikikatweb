@@ -81,6 +81,8 @@ export type Santiye = {
   kesin_kabul_tarihi: string | null;
   kesin_kabul_url: string | null;
   is_deneyim_url: string | null;
+  calisilmayan_bas: string | null; // çalışılmayan dönem başlangıcı (opsiyonel)
+  calisilmayan_bit: string | null; // çalışılmayan dönem bitişi (opsiyonel)
   depo_kapasitesi: number | null;
   created_at: string;
   updated_at: string;

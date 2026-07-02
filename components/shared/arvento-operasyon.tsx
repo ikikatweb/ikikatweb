@@ -533,7 +533,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     if (sermeMi) {
       // Ortada damperler — YALNIZ serme yapılan yola denk gelenler (sermeDamperleri). Yuvarlak renkli nokta.
       sermeDamperleri.forEach((o, i) => {
-        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95 })
+        L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95, renderer: yolRenderer })
           .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });

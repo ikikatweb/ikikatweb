@@ -33,7 +33,7 @@ export async function getSantiyelerAll() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiyeler")
-    .select("id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, teknik_personel_sayisi, teknik_personeller")
+    .select("id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit")
     .order("is_adi", { ascending: true });
 
   if (error) throw error;
