@@ -8,7 +8,7 @@ import { getArventoAyarlar, getOcakForTarih } from "@/lib/supabase/queries/arven
 import { atananSekmeleriHesapla, type SekmeAtamaMap, type ArventoSekme } from "@/lib/arvento/operasyonlar";
 import { createClient } from "@/lib/supabase/client";
 import { hesaplaGunlukMetrik } from "./gunluk-metrik";
-import { sermeAralikKm, type OncekiDamper } from "./serme-hesap";
+import { sermeAralikKm, reglajRotalariniAyikla, type OncekiDamper } from "./serme-hesap";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 
 export type SezonUzunluk = { reglajKm: number; sermeKm: number; sikistirmaKm: number; bugunSermeKm: number; makineSn: number };
@@ -93,8 +93,11 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
     oncekiDamperCek(bas),               // serme: aralık öncesi damperler
   ]);
 
-  // Reglaj + sıkıştırma: BİRLEŞİK omurga (hesaplaGunlukMetrik, sekmeyle birebir; damper gerektirmez).
-  const birlesik = birlestirGuzergahPlaka(guz);
+  // Reglaj + sıkıştırma: BİRLEŞİK omurga (hesaplaGunlukMetrik, sekmeyle birebir).
+  // REGLAJ = greyder rotası EKSİ serme: serme yapılan (damper-öncesi dökülmüş) greyder noktaları çıkarılır →
+  // bir yol hem serme hem reglaj sayılmaz. Silindir satırlarına dokunulmaz → sıkıştırma değişmez.
+  const guzReglaj = reglajRotalariniAyikla({ guzergahRows: guz, raporlar, oncekiDamper, sekmeMap, atananSekmeler });
+  const birlesik = birlestirGuzergahPlaka(guzReglaj);
   const m = hesaplaGunlukMetrik({
     tarih: null, kayitlar: [], guzergahlar: birlesik, plakaSantiye, ayarlar, gunOcak, sinifMap: new Map(), ocakMakinePlakalar: null,
   });

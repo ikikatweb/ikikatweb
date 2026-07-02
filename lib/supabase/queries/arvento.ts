@@ -191,6 +191,34 @@ export async function getArventoRaporByRange(bas: string, bitis: string): Promis
   return tum;
 }
 
+// Aralık ÖNCESİ tüm damperler (serme "bu yola daha önce damper döküldü mü?" geçmişi). Serme + reglaj
+// ayıklamada kullanılır (Serme sekmesi / Reglaj sekmesi / dashboard hepsi AYNI kaynağı kullansın diye ortak).
+export async function oncekiDamperCek(bas: string): Promise<{ lat: number; lng: number; dt: string }[]> {
+  if (!bas) return [];
+  const supabase = getSupabase();
+  const out: { lat: number; lng: number; dt: string }[] = [];
+  const PARCA = 1000;
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("arac_arvento_rapor")
+      .select("rapor_tarihi, damper_olaylar")
+      .lt("rapor_tarihi", bas)
+      .range(offset, offset + PARCA - 1);
+    if (error || !data) break;
+    for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
+      for (const d of (r.damper_olaylar ?? [])) {
+        if (d?.lat == null || d?.lng == null) continue;
+        out.push({ lat: d.lat, lng: d.lng, dt: `${r.rapor_tarihi} ${d.saat ?? "00:00:00"}` });
+      }
+    }
+    if (data.length < PARCA) break;
+    offset += PARCA;
+    if (offset > 300000) break;
+  }
+  return out;
+}
+
 // Rapor verisinin (km/çalışma/damper) bu tarih aralığında EN SON yazıldığı an.
 // Rapor senkronu her yazımda created_at'i günceller → haritada "Son güncelleme" olarak gösterilir
 // (canlı konumun değil, RAPOR verisinin tazeliği). Veri yoksa null.

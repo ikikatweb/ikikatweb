@@ -6,14 +6,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, oncekiDamperCek, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
+import { reglajRotalariniAyikla, type OncekiDamper } from "@/lib/arvento/serme-hesap";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
-import type { AracArventoGuzergah } from "@/lib/supabase/types";
+import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Route, Download } from "lucide-react";
 import toast from "react-hot-toast";
@@ -62,6 +63,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb"; // BİRLEŞİK reglaj omurgası tek renk (makine bazlı değil)
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
+  // Reglaj = greyder rotası EKSİ serme → serme noktalarını çıkarmak için damper verisi (aralık içi + öncesi).
+  // Yalnız Reglaj sekmesinde (plakaFiltre yok) doldurulur; İş Makineleri haritasında boş kalır.
+  const [damperVeri, setDamperVeri] = useState<{ raporlar: AracArventoRapor[]; oncekiDamper: OncekiDamper[] }>({ raporlar: [], oncekiDamper: [] });
   // PASİF (kullanıcının kapattığı) plakalar — gün değişince (parent remount etse bile) KORUNUR; F5'te sıfırlanır
   // (modül-seviyesi store). secimKey ile İş Makineleri ve Reglaj ayrı saklanır. Seçili = araçlar − pasif.
   const [pasifPlakalar, setPasifPlakalar] = usePasifSecim(`arvento-pasif-${secimKey}`);
@@ -112,13 +116,17 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         let plakalar: string[] | null;
         if (plakaFiltre && plakaFiltre.length > 0) {
           plakalar = plakaFiltre; // İş Makineleri haritası → bu plakalar
+          setDamperVeri({ raporlar: [], oncekiDamper: [] }); // bu haritada serme ayıklama yapılmaz
         } else {
-          const r = await getArventoRaporByRange(bas, bitis); // hafif; reglaj plakalarını bulmak için
+          // Reglaj: rapor (damper_olaylar dahil, reglaj plakaları için) + aralık öncesi damperler paralel çekilir
+          // → greyder rotasından serme noktalarını çıkarmak (reglaj = greyder EKSİ serme) için kullanılır.
+          const [r, oncekiDamper] = await Promise.all([getArventoRaporByRange(bas, bitis), oncekiDamperCek(bas)]);
           if (benimNo !== yukNoRef.current) return;
           const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
           plakalar = [...new Set((r as { plaka: string }[])
             .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "reglaj", x.plaka))
             .map((x) => x.plaka))];
+          setDamperVeri({ raporlar: r, oncekiDamper });
         }
         const k = await getGuzergahByRange(bas, bitis, plakalar);
         if (benimNo === yukNoRef.current) setKayitlar(k);
@@ -140,9 +148,14 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     // plakaFiltre (İş Makineleri haritası) verildiyse o liste kesin; verilmediyse Reglaj sekmesidir:
     // atama VARSA yalnız "reglaj" atanmışlar; atama YOKSA mevcut davranış (tüm güzergahlar).
     const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
+    // REGLAJ = greyder rotası EKSİ serme: Reglaj sekmesinde (plakaFiltre yok) greyderin SERME yaptığı
+    // (damper-öncesi dökülmüş hücrelere denk gelen) noktaları çıkarılır → bir yol hem serme hem reglaj sayılmaz.
+    const kaynak = (!plakaFiltre && (damperVeri.raporlar.length > 0 || damperVeri.oncekiDamper.length > 0))
+      ? reglajRotalariniAyikla({ guzergahRows: kayitlar, raporlar: damperVeri.raporlar, oncekiDamper: damperVeri.oncekiDamper, sekmeMap, atananSekmeler })
+      : kayitlar;
     const guzergahliHam: GuzergahArac[] = plakaFiltre
-      ? kayitlar.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
-      : kayitlar.filter((k) => {
+      ? kaynak.filter((k) => new Set(plakaFiltre.map(plakaNorm)).has(plakaNorm(k.plaka)))
+      : kaynak.filter((k) => {
           const atama = sekmeMap?.get(plakaNorm(k.plaka));
           // Atama varsa kesin; yoksa "reglaj"a başka araç atanmışsa gizle, değilse tüm güzergahlar.
           return atama ? atama.includes("reglaj") : !atananSekmeler.has("reglaj");
@@ -175,7 +188,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     if (!izinliPlakalar) return tum; // yönetici/izin yok → hepsi
     const izin = new Set(izinliPlakalar.map(plakaNorm));
     return tum.filter((k) => izin.has(plakaNorm(k.plaka)));
-  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar]);
+  }, [kayitlar, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar, damperVeri]);
 
   // Her SADELEŞTİRİLMİŞ TEK ÇİZGİNİN (omurga parçası) AYRI uzunluğu (km, büyükten küçüğe). Haritada
   // çizilen çizgilerle birebir: git-gel tekrarları sayılmaz. Eşik<1 (ham) ise parça yok → boş.

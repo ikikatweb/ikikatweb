@@ -21,16 +21,10 @@ function sermeHucreKey(lat: number, lng: number): string {
 
 export type OncekiDamper = { lat: number; lng: number; dt: string };
 
-export function sermeAralikKm(params: {
-  guzergahRows: AracArventoGuzergah[];               // HAM gün-bazlı greyder+silindir rotaları (birleştirilmemiş)
-  raporlar: AracArventoRapor[];                      // aralık içi rapor (damper_olaylar)
-  oncekiDamper: OncekiDamper[];                       // aralık ÖNCESİ damperler
-  sekmeMap?: SekmeAtamaMap;
-  atananSekmeler?: Set<ArventoSekme>;
-  guzergahTekrar: number; gridMesafe: number; transitHiz: number; tekrarPencereSaat: number;
-}): number {
-  const { guzergahRows, raporlar, oncekiDamper, sekmeMap, atananSekmeler, guzergahTekrar, gridMesafe, transitHiz, tekrarPencereSaat } = params;
-  // 1) damperHucreTarih: her hücreye (±1 komşu) o hücredeki EN ERKEN damper DATETIME. Aralık öncesi + içi birleşir.
+// Damper hücre-tarih haritası: her hücreye (±1 komşu) o hücredeki EN ERKEN damper DATETIME. Aralık öncesi
+// (oncekiDamper) + aralık içi (raporlar) birleşir. sermeAralikKm VE reglaj ayıklama AYNI haritayı kullanır
+// → serme ile reglaj birbirini TAM tümler (bir nokta ya serme ya reglaj, ikisi birden değil).
+export function damperHucreTarihHesapla(raporlar: AracArventoRapor[], oncekiDamper: OncekiDamper[]): Map<string, string> {
   const dht = new Map<string, string>();
   const ekle = (lat: number, lng: number, dt: string) => {
     const [cy, cx] = sermeHucreIdx(lat, lng);
@@ -47,6 +41,51 @@ export function sermeAralikKm(params: {
       ekle(o.lat, o.lng, `${r.rapor_tarihi} ${o.saat ?? "00:00:00"}`);
     }
   }
+  return dht;
+}
+
+// Bir greyder noktası SERME mi? = o hücreye, bu geçişten (gecisDt) ÖNCE damper dökülmüşse serme (yoksa reglaj).
+export function noktaSermeMi(dht: Map<string, string>, lat: number, lng: number, gecisDt: string): boolean {
+  const ct = dht.get(sermeHucreKey(lat, lng));
+  return ct != null && ct < gecisDt;
+}
+
+// REGLAJ AYIKLAMA: greyder rotalarından SERME noktalarını çıkarır → geriye YALNIZ reglaj (taze yol, önceden
+// damper yok) kalır. Böylece bir yol hem serme hem reglaj sayılmaz. YALNIZ "reglaj" greyder satırlarına
+// uygulanır; silindir vb. satırlara DOKUNULMAZ (sıkıştırma bozulmasın). Dashboard + Reglaj sekmesi bunu
+// kullanır → ikisi de serme'yi reglajdan düşer, birbiriyle tutar.
+export function reglajRotalariniAyikla(params: {
+  guzergahRows: AracArventoGuzergah[];
+  raporlar: AracArventoRapor[];
+  oncekiDamper: OncekiDamper[];
+  sekmeMap?: SekmeAtamaMap;
+  atananSekmeler?: Set<ArventoSekme>;
+}): AracArventoGuzergah[] {
+  const { guzergahRows, raporlar, oncekiDamper, sekmeMap, atananSekmeler } = params;
+  const dht = damperHucreTarihHesapla(raporlar, oncekiDamper);
+  return guzergahRows.map((row) => {
+    // Yalnız reglaj greyderinden serme noktalarını çıkar; başka araç (silindir vb.) → aynen bırak.
+    if (!operasyondaGorunur(sekmeMap, atananSekmeler, row.arac_sinifi, "reglaj", row.plaka)) return row;
+    const D = row.rapor_tarihi;
+    const noktalar = (row.noktalar ?? []).filter((p) => {
+      if (p?.lat == null || p?.lng == null) return true;
+      return !noktaSermeMi(dht, p.lat, p.lng, `${D} ${p.saat ?? "23:59:59"}`);
+    });
+    return { ...row, noktalar };
+  });
+}
+
+export function sermeAralikKm(params: {
+  guzergahRows: AracArventoGuzergah[];               // HAM gün-bazlı greyder+silindir rotaları (birleştirilmemiş)
+  raporlar: AracArventoRapor[];                      // aralık içi rapor (damper_olaylar)
+  oncekiDamper: OncekiDamper[];                       // aralık ÖNCESİ damperler
+  sekmeMap?: SekmeAtamaMap;
+  atananSekmeler?: Set<ArventoSekme>;
+  guzergahTekrar: number; gridMesafe: number; transitHiz: number; tekrarPencereSaat: number;
+}): number {
+  const { guzergahRows, raporlar, oncekiDamper, sekmeMap, atananSekmeler, guzergahTekrar, gridMesafe, transitHiz, tekrarPencereSaat } = params;
+  // 1) damperHucreTarih: her hücreye o hücredeki EN ERKEN damper DATETIME (reglaj ayıklama ile ORTAK).
+  const dht = damperHucreTarihHesapla(raporlar, oncekiDamper);
   // 2) Her serme greyderinin, geçişten ÖNCE damper dökülmüş hücrelere denk gelen noktaları → plaka bazında topla.
   const byP = new Map<string, { pts: { lat: number; lng: number; hiz?: number | null; ts?: number | null }[] }>();
   for (const row of guzergahRows) {
@@ -57,9 +96,7 @@ export function sermeAralikKm(params: {
     const D = row.rapor_tarihi;
     for (const p of (row.noktalar ?? [])) {
       if (p?.lat == null || p?.lng == null) continue;
-      const ct = dht.get(sermeHucreKey(p.lat, p.lng));
-      const gecisDt = `${D} ${p.saat ?? "23:59:59"}`;
-      if (ct != null && ct < gecisDt) g.pts.push({ lat: p.lat, lng: p.lng, hiz: p.hiz, ts: tsSaniye(D, p.saat) });
+      if (noktaSermeMi(dht, p.lat, p.lng, `${D} ${p.saat ?? "23:59:59"}`)) g.pts.push({ lat: p.lat, lng: p.lng, hiz: p.hiz, ts: tsSaniye(D, p.saat) });
     }
   }
   // 3) Plaka başına omurga (tekrar + pencere) uzunluklarının toplamı (km).
