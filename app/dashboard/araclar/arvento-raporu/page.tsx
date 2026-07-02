@@ -28,6 +28,7 @@ import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaK
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
 import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih, getDamperSiniflar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { ocakMakineDurumu, ocakTespit, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
+import { ocakMakineDetayCek, type OcakMakineDetay } from "@/lib/arvento/gunluk-metrik-client";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed";
 
@@ -579,6 +580,16 @@ export default function ArventoRaporPage() {
     getOcakForTarih(bitis).then((o) => { if (!iptal) setGunOcak(o); }).catch(() => { if (!iptal) setGunOcak(null); });
     return () => { iptal = true; };
   }, [bitis, guzergahRefresh]);
+  // KALICI ocak makineleri + SON bilinen GPS konumu (aralık-birleşik/sezon). Ocak makinesi ocakta GPS'siz
+  // çalıştığı gün rota vermez → o gün ocak sayılamayıp İş Makineleri'ne düşerdi. Bununla: makine geçmişten
+  // ocak makinesiyse o gün rotası olmasa da İş Makineleri'nden dışlanır ve Stabilize'de SON GPS konumunda görünür.
+  const [kaliciOcak, setKaliciOcak] = useState<Map<string, OcakMakineDetay>>(new Map());
+  useEffect(() => {
+    if (!bitis) { setKaliciOcak(new Map()); return; }
+    let iptal = false;
+    ocakMakineDetayCek(bitis).then((m) => { if (!iptal) setKaliciOcak(m); }).catch(() => { if (!iptal) setKaliciOcak(new Map()); });
+    return () => { iptal = true; };
+  }, [bitis, guzergahRefresh]);
   // Damper MANUEL sınıf (override) — plakaNorm|tarih|saat → gerçek/mükerrer/arıza. Serme/Sıkıştırma'da
   // gerçek damper süzmek için (Stabilize ile aynı sınıflama).
   const [damperSinifMap, setDamperSinifMap] = useState<Map<string, DamperSinif>>(new Map());
@@ -775,23 +786,34 @@ export default function ArventoRaporPage() {
     return m;
   }, [rotaByPlakaTumu, damperliSet, etkinOcak, etkinOcakR, izinliPlakaSet]);
 
-  // İŞ MAKİNELERİ sekmesi: ocak DIŞINDAKİ makineler (ocaktakiler Stabilize'de gösterilir).
+  // İŞ MAKİNELERİ sekmesi: ocak DIŞINDAKİ makineler. Aralıkta ocak sayılanlar (ocakMakineMap) VE geçmişten
+  // kalıcı ocak makineleri (kaliciOcak — o gün GPS'siz olsa da) hariç → hepsi Stabilize'de gösterilir.
   const ismakineKayitlar = useMemo(
-    () => tumIsMakineKayitlar.filter((k) => !ocakMakineMap.has(plakaNorm(k.plaka))),
-    [tumIsMakineKayitlar, ocakMakineMap],
+    () => tumIsMakineKayitlar.filter((k) => !ocakMakineMap.has(plakaNorm(k.plaka)) && !kaliciOcak.has(plakaNorm(k.plaka))),
+    [tumIsMakineKayitlar, ocakMakineMap, kaliciOcak],
   );
-  // STABILIZE'de gösterilecek OCAK makineleri: model/cins + çalışma saati (rapordan) + ocak içi konum.
+  // STABILIZE'de gösterilecek OCAK makineleri: model/cins + çalışma saati (rapordan) + konum. Konum: aralıkta
+  // rota varsa ocak-içi ortalama (ocakMakineMap.konum), YOKSA son bilinen GPS konumu (kaliciOcak) → makine
+  // ocakta GPS'siz çalışsa da son yerinde görünür (yeni GPS gelince güncellenir). Yalnız aralıkta çalışmış (rapor) olanlar.
   const ocakMakineleri = useMemo(() => {
     const sn = (t: string) => { const p = t.split(":").map(Number); return (p[0] || 0) * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
     const raporBy = new Map(kayitlar.map((k) => [plakaNorm(k.plaka), k]));
-    return Array.from(ocakMakineMap.entries()).map(([key, v]) => {
+    const cikti = new Map<string, { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }>();
+    const ekle = (key: string, lat: number | null, lng: number | null) => {
       const k = raporBy.get(key);
       const ps = plakaSantiye.get(key);
       let calisma = 0;
       if (k) { calisma = Math.max(k.kontak_sn ?? 0, k.rolanti_sn ?? 0); if (k.ilk_kontak && k.son_kontak) { const span = sn(k.son_kontak) - sn(k.ilk_kontak); if (span > 0) calisma = Math.min(calisma, span); } }
-      return { plaka: k?.plaka ?? key, model: ps?.model ?? null, cins: ps?.cinsi ?? null, calismaSn: calisma, lat: v.konum?.lat ?? null, lng: v.konum?.lng ?? null };
-    });
-  }, [ocakMakineMap, kayitlar, plakaSantiye]);
+      cikti.set(key, { plaka: k?.plaka ?? key, model: ps?.model ?? null, cins: ps?.cinsi ?? null, calismaSn: calisma, lat, lng });
+    };
+    for (const [key, v] of ocakMakineMap) ekle(key, v.konum?.lat ?? null, v.konum?.lng ?? null); // aralıkta rota var
+    for (const [key, pos] of kaliciOcak) {
+      if (cikti.has(key)) continue;      // zaten rota konumuyla eklendi
+      if (!raporBy.has(key)) continue;   // bu aralıkta çalışmamış → gösterme
+      ekle(key, pos.lat, pos.lng);       // rota yok → SON bilinen GPS konumu
+    }
+    return Array.from(cikti.values());
+  }, [ocakMakineMap, kaliciOcak, kayitlar, plakaSantiye]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
