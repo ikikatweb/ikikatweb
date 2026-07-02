@@ -96,12 +96,13 @@ type Firma = {
 // aralığın aylarına düşüyorsa o şantiyedeki personeller bordroda gri+italik gösterilir. Yıl dönümünü saran
 // aralıkları da (ör. Aralık→Şubat, bas ayı > bit ayı) doğru kapsar. Tek uç girilmişse diğer yön açık kabul edilir.
 function ayCalisilmayanMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
-  if (!bas && !bit) return false;
   const ay = Number(seciliAy.split("-")[1]);
   if (!ay) return false;
-  const basAy = bas ? Number(bas.split("-")[0]) : 1;   // "AA-GG" → AA
-  const bitAy = bit ? Number(bit.split("-")[0]) : 12;
-  if (!basAy || !bitAy) return false;
+  const ayOf = (v: string | null | undefined): number | null => { const m = Number((v ?? "").split("-")[0]); return m >= 1 && m <= 12 ? m : null; };
+  const bA = ayOf(bas), tA = ayOf(bit);
+  if (bA == null && tA == null) return false;      // hiç geçerli ay yok
+  const basAy = bA ?? 1;                            // tek uç girildiyse diğer yön açık
+  const bitAy = tA ?? 12;
   return basAy <= bitAy ? (ay >= basAy && ay <= bitAy) : (ay >= basAy || ay <= bitAy);
 }
 
@@ -4046,6 +4047,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       };
       return { bitimTarihi: fmtTr(bitimTarihi), kalanGun };
     })();
+    // Seçili ay çalışılmayan dönem İÇİNDEYSE (başlangıç, bitiş VE aradaki tüm aylar) → iş adının yanında
+    // tam aralığı "GG.AA / GG.AA" olarak göster (ör. 05.12 / 05.03 → 12,1,2,3. aylarda görünür).
+    const calDonemEtiket = (() => {
+      if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
+      const s = santiyeler.find((x) => x.id === santiyeId);
+      if (!s || (!s.calisilmayan_bas && !s.calisilmayan_bit)) return null;
+      if (!ayCalisilmayanMi(s.calisilmayan_bas, s.calisilmayan_bit, seciliAy)) return null;
+      const ga = (v: string | null | undefined) => { const [m, d] = (v ?? "").split("-"); return `${d || "??"}.${m || "??"}`; }; // "AA-GG" → "GG.AA"
+      return `${ga(s.calisilmayan_bas)} / ${ga(s.calisilmayan_bit)}`;
+    })();
     return (
       <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden shadow-md">
         <div
@@ -4055,7 +4066,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         >
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
+            <div className="flex items-center gap-2 min-w-0">
+              <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
+              {calDonemEtiket && (
+                <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap" title="Çalışılmayan dönem">
+                  ⛔ {calDonemEtiket}
+                </span>
+              )}
+            </div>
             {/* ATANMAMIŞ teknik personel listesi — başlık altında uyarı satırı.
                 PDF/Excel çıktısı ile tutarlı: sadece kimseye verilmemiş roller görünür. */}
             {teknikPersoneller && teknikPersoneller.length > 0 && (

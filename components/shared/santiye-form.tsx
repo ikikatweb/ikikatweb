@@ -284,9 +284,12 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     setFormData((prev) => ({ ...prev, [name]: value === "" ? null : value }));
   }
 
-  // Çalışılmayan dönem alanı (yıl YOK, her yıl tekrar eder) → "AA-GG" gün-ay metni. Ay boşsa alan null.
+  // Çalışılmayan dönem alanı (yıl YOK, her yıl tekrar eder) → "AA-GG" gün-ay metni. Ay VEYA gün seçimi
+  // KORUNUR (sıra bağımsız): gün'ü ay'dan önce seçmek günü kaybetmez. İkisi de boşsa alan null.
   function setGunAy(field: "calisilmayan_bas" | "calisilmayan_bit", ay: string, gun: string) {
-    setFormData((prev) => ({ ...prev, [field]: ay ? `${ay.padStart(2, "0")}-${(gun || "01").padStart(2, "0")}` : null }));
+    const a = ay ? ay.padStart(2, "0") : "";
+    const g = gun ? gun.padStart(2, "0") : "";
+    setFormData((prev) => ({ ...prev, [field]: a || g ? `${a}-${g}` : null }));
   }
 
   // Ortak girişim fonksiyonları
