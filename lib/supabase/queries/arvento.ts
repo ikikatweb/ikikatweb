@@ -101,7 +101,11 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
   // tekSorgu: çağıran verinin KÜÇÜK olduğunu biliyorsa (ör. sadece greyder/silindir, ~0,6 MB) → gün-gün 29
   // sorgu yerine TEK aralık sorgusu (round-trip darboğazı biter; 933ms → ~180ms). Büyük (kamyon 8,5 MB)
   // fetch'lerde KULLANMA — tek sorgu tarayıcıda takılır; onlar varsayılan gün-gün yolda kalır.
-  if (opts?.tekSorgu && plakalar && plakalar.length > 0) {
+  // tekSorgu YALNIZ dar aralıkta güvenli: geniş aralıkta 1000 satır (yoğun noktalar) tek sorguda DB
+  // statement-timeout veriyor ("canceling statement due to statement timeout"). Bu yüzden ~10 günden geniş
+  // aralıklarda tekSorgu'yu ATLA → aşağıdaki GÜN-GÜN yola düş (her gün ayrı hafif sorgu, takılmaz).
+  const gunFarki = Math.round((new Date(bitis + "T00:00:00").getTime() - new Date(bas + "T00:00:00").getTime()) / 86400000) + 1;
+  if (opts?.tekSorgu && plakalar && plakalar.length > 0 && gunFarki <= 10) {
     const rows: AracArventoGuzergah[] = [];
     const PARCA = 1000; let offset = 0;
     while (true) {

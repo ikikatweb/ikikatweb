@@ -178,6 +178,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           });
           const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
           if (benimNo !== yukNoRef.current) return;
+          // KAMYON (damper) kaynağı rapordan gelir → HEMEN yaz. Greyder rota / özet fetch'i (geniş aralıkta ağır)
+          // patlasa bile damper listesi/haritası kaybolmasın (önceden Promise.all reddi setRaporlar'ı atlıyordu → "veri yok").
+          setRaporlar(r);
           // KAMYON İZİ: kısa aralıkta (≤7 gün) kamyon rotasını da çek → tıklanabilir iz (aracın gittiği yol).
           // Geniş aralıkta (ay) çekme (8,5 MB → yavaş). Damperler HER durumda özetten gelir; rota yalnız iz için.
           const gunFark = Math.round((new Date(bitis + "T00:00:00").getTime() - new Date(bas + "T00:00:00").getTime()) / 86400000) + 1;
@@ -191,15 +194,18 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 .filter((x) => operasyondaGorunur(sekmeMap, atananSekmeler, null, "stabilize", x.plaka)
                   && !((x.damper_olaylar?.length ?? 0) > 0) && !((x.damper_sayisi ?? 0) > 0))
                 .map((x) => x.plaka))];
-          const [g, ozetRes] = await Promise.all([
-            // Kısa+kamyon → gün-gün (kamyon büyük olabilir, tek sorgu takılmasın). Geniş+greyder → tek sorgu (hızlı).
+          // BAĞIMSIZ: greyder rota VE özet ayrı ayrı — biri patlarsa diğeri (özellikle damper özeti) yine yazılır.
+          const [gRes, ozRes] = await Promise.allSettled([
             getGuzergahByRange(bas, bitis, cekilecek, izDahil ? undefined : { tekSorgu: true }),
             ozetPromise,
           ]);
           if (benimNo !== yukNoRef.current) return;
-          setTumGuzergah(g); setRaporlar(r);
-          setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
-          setOzetGirisler(Array.isArray(ozetRes?.girisler) ? (ozetRes.girisler as OzetGiris[]) : []);
+          if (gRes.status === "fulfilled") setTumGuzergah(gRes.value);
+          if (ozRes.status === "fulfilled") {
+            const ozetRes = ozRes.value;
+            setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
+            setOzetGirisler(Array.isArray(ozetRes?.girisler) ? (ozetRes.girisler as OzetGiris[]) : []);
+          }
         } else {
           const r = (await getArventoRaporByRange(bas, bitis)) as AracArventoRapor[];
           if (benimNo !== yukNoRef.current) return;
