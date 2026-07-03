@@ -119,3 +119,36 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
   const makineSn = makineCalismaSn(raporlar, plakaSantiye, ocakMakinePlakalar);
   return { reglajKm: m.reglajKm, sermeKm, sikistirmaKm: m.sikistirmaKm, bugunSermeKm, makineSn };
 }
+
+// Yalnız BUGÜNÜN serme'si (dashboard "Günlük Özet") — HIZLI. sezonUzunlukMetrik tüm sezonun YOĞUN greyder
+// rotasını (Ocak→bugün, ~6 ay) çekip işlediği için yavaş; oysa günlük serme SADECE bugünün rotası (1 gün) +
+// damper geçmişini (seyrek) ister. Bu fonksiyon o ağır sezon rotasını ATLAR → Günlük Özet anında gelir.
+// Serme sekmesi tek-gün ile ve sezonUzunlukMetrik.bugunSermeKm ile BİREBİR (aynı algoritma, aynı girdi).
+export async function gunlukSermeKm(tarih: string): Promise<number> {
+  if (!tarih) return 0;
+  const atama = await getAraclarAtama();
+  const opRe = /greyder|grayder|silindir|roller|compact/i;
+  const adaylar = atama
+    .filter((a) =>
+      a.sekmeler != null
+        ? (a.sekmeler.includes("reglaj") || a.sekmeler.includes("serme") || a.sekmeler.includes("sikistirma"))
+        : opRe.test(`${a.cinsi ?? ""}`),
+    )
+    .map((a) => a.plaka);
+  if (adaylar.length === 0) return 0;
+  const sekmeMap: SekmeAtamaMap = new Map();
+  for (const a of atama) if (Array.isArray(a.sekmeler)) sekmeMap.set(plakaNorm(a.plaka), a.sekmeler as ArventoSekme[]);
+  const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
+  const [bugunGuz, bugunRapor, ayarlar, oncekiDamper] = await Promise.all([
+    getGuzergahByRange(tarih, tarih, adaylar, { tekSorgu: true }), // YALNIZ bugün → hafif
+    getArventoRaporByRange(tarih, tarih),                          // bugünün damperi
+    getArventoAyarlar(),
+    oncekiDamperCek(tarih),                                        // bugünden ÖNCEKİ tüm damperler (seyrek; yola daha önce döküldüyse bugünkü geçiş serme sayılır)
+  ]);
+  return sermeAralikKm({
+    guzergahRows: bugunGuz, raporlar: bugunRapor, oncekiDamper,
+    sekmeMap, atananSekmeler,
+    guzergahTekrar: ayarlar?.guzergahTekrar ?? 0, gridMesafe: ayarlar?.gridMesafe ?? 12,
+    transitHiz: ayarlar?.transitHiz ?? 20, tekrarPencereSaat: ayarlar?.tekrarPencereSaat ?? 0,
+  });
+}

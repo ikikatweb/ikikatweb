@@ -10,7 +10,7 @@ import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlak
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { hesaplaGunlukMetrik, metrikImza, type GunlukMetrik } from "@/lib/arvento/gunluk-metrik";
 import { ocakMakineSetiCek } from "@/lib/arvento/gunluk-metrik-client";
-import { sezonUzunlukMetrik, type SezonUzunluk } from "@/lib/arvento/sezon-uzunluk";
+import { sezonUzunlukMetrik, gunlukSermeKm, type SezonUzunluk } from "@/lib/arvento/sezon-uzunluk";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 
 const SEZON_BAS = "2026-01-01";
@@ -28,8 +28,8 @@ function gunListesi(bas: string, bitis: string): string[] { const out: string[] 
 
 // 5 metrikli kart ızgarası — hem günlük hem sezon sayfasında kullanılır.
 function MetrikIzgara({ m, yukleniyor }: { m: GunlukMetrik | null; yukleniyor?: boolean }) {
+  // TÜM ızgara tek durum: kesin veriler (serme dahil, sezonUzunluk) hazır olana kadar iskelet → sonra hepsi BİRLİKTE.
   const bekliyor = yukleniyor || m == null;
-  // Yüklenirken "…" yerine animasyonlu iskelet çubuk (içerik geliyormuş hissi; boş görünmesin).
   const isk = () => <span className="inline-block h-4 w-12 bg-gray-200 rounded animate-pulse align-middle" />;
   const num = (v: number) => Math.round(v).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
   return (
@@ -135,6 +135,10 @@ export default function ArventoWidget() {
   const [cachedGunler, setCachedGunler] = useState<Set<string>>(new Set());
   const [sezonUzunluk, setSezonUzunluk] = useState<SezonUzunluk | null>(null); // reglaj/serme/sıkıştırma: aralık-birleşik (sekmeyle birebir)
   const [sezonYuk, setSezonYuk] = useState(true);
+  const [sezonUzYuk, setSezonUzYuk] = useState(true); // ağır sezonUzunluk fetch'i sürüyor mu → Sezon sayfası (page2) iskelet
+  const [bugunSerme, setBugunSerme] = useState<number | null>(null); // bugünün serme'si — HAFİF hesap (sadece bugünün rotası); Günlük Özet page1 için hızlı
+  const [bugunSermeYuk, setBugunSermeYuk] = useState(true);
+  const [sezonGoruldu, setSezonGoruldu] = useState(false); // ağır sezon-uzunluk hesabı YALNIZ Sezon sayfası açılınca çalışsın (page1 açılışta havuzu/CPU'yu yormasın)
   const [dolduruluyor, setDolduruluyor] = useState<{ toplam: number; kalan: number } | null>(null);
   const kaydirRef = useRef<HTMLDivElement>(null);
 
@@ -185,12 +189,43 @@ export default function ArventoWidget() {
   useEffect(() => { if (!tarih || loading) return; void sezonCek(); }, [tarih, loading, sezonCek]);
   // Sezon uzunlukları (reglaj/serme/sıkıştırma) — TOPLANAMAZ büyüklük → aralık-birleşik omurgadan (sekmeyle
   // birebir), gün-gün toplamdan DEĞİL. Damper/çalışma toplanabilir olduğu için onlar cache toplamından gelir.
+  // Günlük Özet serme (page1) — HAFİF: yalnız bugünün rotası+damper geçmişi. Ağır sezon rotasını beklemez → hızlı gelir.
   useEffect(() => {
     if (!tarih || loading) return;
     let iptal = false;
-    sezonUzunlukMetrik(SEZON_BAS, tarih, ocakMakinePlakalar).then((u) => { if (!iptal) setSezonUzunluk(u); }).catch(() => {});
+    setBugunSermeYuk(true);
+    gunlukSermeKm(tarih)
+      .then((s) => { if (!iptal) setBugunSerme(s); })
+      .catch(() => {})
+      .finally(() => { if (!iptal) setBugunSermeYuk(false); });
     return () => { iptal = true; };
-  }, [tarih, loading, ocakMakinePlakalar]);
+  }, [tarih, loading]);
+  // Sezon uzunlukları (page2) — AĞIR (tüm sezon yoğun rotası). Kalıcı hız çözümü: SUNUCU ÖNBELLEĞİ (SWR).
+  //   1) Cache'ten oku → varsa ANINDA göster (skeleton yok), taze ise dur.
+  //   2) Bayat/yoksa arka planda BİR KEZ hesapla → göster + cache'e yaz (sonraki tüm açılışlar anında okur).
+  // YALNIZ Sezon sayfası görülünce çalışır (sezonGoruldu) → page1 açılışta havuzu/CPU'yu yormaz.
+  useEffect(() => {
+    if (!tarih || loading || !sezonGoruldu) return;
+    let iptal = false;
+    (async () => {
+      let cached: SezonUzunluk | null = null, taze = false;
+      try {
+        const r = await fetch(`/api/arvento/sezon-uzunluk?bitis=${tarih}&imza=${encodeURIComponent(imza)}`);
+        if (r.ok) { const j = await r.json() as { deger: SezonUzunluk | null; taze: boolean }; cached = j.deger; taze = j.taze; }
+      } catch { /* cache erişilemedi → hesapla */ }
+      if (iptal) return;
+      if (cached) { setSezonUzunluk(cached); setSezonUzYuk(false); } // bayat da olsa hemen göster (skeleton yok)
+      else setSezonUzYuk(true);                                      // hiç yok → bu SEFERLİK skeleton
+      if (taze) return;                                              // taze → yeniden hesaplama yok
+      try {
+        const u = await sezonUzunlukMetrik(SEZON_BAS, tarih, ocakMakinePlakalar); // ağır — arka planda, kullanıcı bayatı görüyor
+        if (iptal) return;
+        setSezonUzunluk(u); setSezonUzYuk(false);
+        fetch(`/api/arvento/sezon-uzunluk`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bitis: tarih, imza, ...u }) }).catch(() => {}); // cache'i tazele
+      } catch { if (!iptal) setSezonUzYuk(false); }
+    })();
+    return () => { iptal = true; };
+  }, [tarih, loading, ocakMakinePlakalar, sezonGoruldu, imza]);
   // Bugünün taze değerini cache'e yaz (fire-and-forget; yönetici değilse 403 → sessiz).
   useEffect(() => {
     if (!tarih || loading) return;
@@ -214,8 +249,12 @@ export default function ArventoWidget() {
   // Günlük gösterim: serme, hesaplaGunlukMetrik'in basit yönteminde değil, Serme sekmesiyle birebir per-hücre
   // algoritmasından (bugunSermeKm) gelir. Reglaj/sıkıştırma/kamyon/makine gün-bazlı zaten doğru.
   const gunlukGosterim = useMemo<GunlukMetrik>(
-    () => (sezonUzunluk ? { ...gunluk, sermeKm: sezonUzunluk.bugunSermeKm } : gunluk),
-    [gunluk, sezonUzunluk],
+    () => {
+      // Serme: önce HAFİF günlük hesap (bugunSerme, hızlı); yoksa sezon hesabından (bugunSermeKm); o da yoksa basit.
+      const serme = bugunSerme != null ? bugunSerme : (sezonUzunluk ? sezonUzunluk.bugunSermeKm : gunluk.sermeKm);
+      return { ...gunluk, sermeKm: serme };
+    },
+    [gunluk, bugunSerme, sezonUzunluk],
   );
 
   // Eksik günler (01.01 → dün, cache'de olmayan). Doldur ile geçmişe işlenir.
@@ -262,11 +301,14 @@ export default function ArventoWidget() {
         <AracTakipYukleniyor />
       ) : !tarih ? (
         <p className="text-xs text-gray-400 py-4 text-center">Henüz Arvento raporu yok.</p>
+      ) : bugunSermeYuk ? (
+        // Günlük Özet hafif serme hesabı bitene kadar animasyon (iskelet değil) → sonra TÜM rakamlar direk & birlikte.
+        <AracTakipYukleniyor />
       ) : (
         <>
           <div
             ref={kaydirRef}
-            onScroll={(e) => { const el = e.currentTarget; setSayfa(el.scrollLeft > el.clientWidth / 2 ? 1 : 0); }}
+            onScroll={(e) => { const el = e.currentTarget; const s = el.scrollLeft > el.clientWidth / 2 ? 1 : 0; setSayfa(s); if (s === 1) setSezonGoruldu(true); }}
             className="flex overflow-x-auto snap-x snap-mandatory gap-3 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             {/* Sayfa 1 — Günlük */}
@@ -274,6 +316,7 @@ export default function ArventoWidget() {
               <div className="text-[10px] text-gray-400 mb-2">
                 <span className="font-semibold text-gray-500">Günlük Özet</span> · {formatTarih(tarih)}{guncelleme ? ` ${String(guncelleme.getHours()).padStart(2, "0")}:${String(guncelleme.getMinutes()).padStart(2, "0")}` : ""} raporu
               </div>
+              {/* Veri hazır render ediliyor (bugunSermeYuk yukarıda beklendi) → skeleton yok, rakamlar direk. */}
               <MetrikIzgara m={gunlukGosterim} />
             </section>
             {/* Sayfa 2 — Sezon */}
@@ -285,7 +328,8 @@ export default function ArventoWidget() {
                 )}
                 {dolduruluyor && <span className="text-blue-600">Dolduruluyor… {dolduruluyor.toplam - dolduruluyor.kalan}/{dolduruluyor.toplam}</span>}
               </div>
-              <MetrikIzgara m={sezon} yukleniyor={sezonYuk} />
+              {/* Reglaj/serme/sıkıştırma sezonUzunluk'u, kamyon/makine cache'i bekler → ikisi de bitene kadar TÜM ızgara iskelet, sonra hepsi birlikte. */}
+              <MetrikIzgara m={sezon} yukleniyor={sezonYuk || sezonUzYuk} />
             </section>
           </div>
 
@@ -293,7 +337,7 @@ export default function ArventoWidget() {
           <div className="flex items-center justify-center gap-1.5 mt-2.5">
             <button type="button" aria-label="Günlük" onClick={() => kaydirRef.current?.scrollTo({ left: 0, behavior: "smooth" })}
               className={`h-1.5 rounded-full transition-all ${sayfa === 0 ? "w-4 bg-[#1E3A5F]" : "w-1.5 bg-gray-300"}`} />
-            <button type="button" aria-label="Sezon" onClick={() => kaydirRef.current?.scrollTo({ left: kaydirRef.current.clientWidth, behavior: "smooth" })}
+            <button type="button" aria-label="Sezon" onClick={() => { setSezonGoruldu(true); kaydirRef.current?.scrollTo({ left: kaydirRef.current.clientWidth, behavior: "smooth" }); }}
               className={`h-1.5 rounded-full transition-all ${sayfa === 1 ? "w-4 bg-[#1E3A5F]" : "w-1.5 bg-gray-300"}`} />
           </div>
         </>

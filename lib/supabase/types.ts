@@ -692,6 +692,26 @@ export type KasaHareketi = {
   created_by: string | null;
 };
 
+// Ödeme Planı — elle girilen ileriye dönük nakit planı (Kasa Defteri içindeki "Ödeme Planı" sekmesi)
+export type OdemePlaniSatir = {
+  id: string;
+  tarih: string;
+  aciklama: string | null;
+  gider: number;
+  gelir: number;
+  sira: number;
+  created_at: string;
+  updated_at: string;
+};
+export type OdemePlaniKasa = {
+  id: string;
+  etiket: string | null;
+  tutar: number;
+  sira: number;
+  created_at: string;
+  updated_at: string;
+};
+
 // İhale ve sınır değer hesaplama tipleri
 export type Ihale = {
   id: string;

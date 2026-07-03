@@ -10,12 +10,12 @@ import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
   Mail, MailOpen, Landmark, Trash2,
   Shield, Headphones, BarChart3, Wrench, Satellite,
-  ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus,
+  ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock,
   ChevronDown, ChevronUp,
   Swords, AlertTriangle, Crosshair, FileBarChart2, Network, Database,
 } from "lucide-react";
 
-type MenuItem = { label: string; href: string; icon: React.ReactNode };
+type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
 type MenuGroup = { title: string; icon: React.ReactNode; color: string; items: MenuItem[] };
 
 const menuGroups: MenuGroup[] = [
@@ -111,6 +111,7 @@ const menuGroups: MenuGroup[] = [
     color: "text-teal-600 bg-teal-50",
     items: [
       { label: "Kasa Hareketleri", href: "/dashboard/kasa-defteri", icon: <Wallet size={16} /> },
+      { label: "Ödeme Planı", href: "/dashboard/odeme-plani", icon: <CalendarClock size={16} /> },
     ],
   },
   {
@@ -156,16 +157,17 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     }
   }, [pathname]);
 
-  function canView(href: string): boolean {
+  function canView(item: MenuItem): boolean {
     // "Veri Yedeği" ve "Maliyet Raporu" SADECE yöneticiye açık — izin matrisinde tanımlı değil.
-    if (href === "/dashboard/yedek") return isYonetici;
-    if (href === "/dashboard/maliyet-raporu") return isYonetici;
-    const key = hrefToModuleKey(href);
+    if (item.href === "/dashboard/yedek") return isYonetici;
+    if (item.href === "/dashboard/maliyet-raporu") return isYonetici;
+    // moduleKey verilmişse onu kullan (ör. Ödeme Planı — kasa-defteri sayfasının sekmesi ama izni ayrı modül).
+    const key = item.moduleKey ?? hrefToModuleKey(item.href);
     return hasPermission(key, "goruntule");
   }
 
   const filteredGroups = menuGroups
-    .map((g) => ({ ...g, items: g.items.filter((i) => canView(i.href)) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => canView(i)) }))
     .filter((g) => g.items.length > 0);
 
   // Aktif olan grubun otomatik açılması
