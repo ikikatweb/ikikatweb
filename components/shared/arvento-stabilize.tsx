@@ -1077,17 +1077,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="text-gray-400 w-6 text-right">{i + 1}.</span>
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(o.plaka), opacity: gizli ? 0.4 : 1 }} />
                 <span className={`font-bold w-32 truncate ${gizli ? "text-gray-400" : "text-[#1E3A5F]"}`}>{o.surucu?.trim() || o.plaka}</span>
-                {yDuzenle ? (
-                  <button type="button" className="text-gray-400 w-20 truncate text-left hover:text-rose-600 hover:underline cursor-pointer"
-                    title="Tıkla: bu damperi arızaya al / arızadan çıkar"
-                    onClick={() => {
-                      const kapali = o.mukerrer || o.ariza;
-                      if (window.confirm(`${o.plaka} · ${o.saat ?? ""}\nBu damperi ${kapali ? "AKTİF (gerçek) yapmak" : "ARIZAYA almak"} istediğinize emin misiniz?`))
-                        damperSinifDegistir(o.plaka, damperTarih(o), o.saat,kapali ? "gercek" : "ariza");
-                    }}>{o.plaka}</button>
-                ) : (
-                  <span className="text-gray-400 w-20 truncate text-left">{o.plaka}</span>
-                )}
+                {/* Plaka artık tıklanamaz (düz metin) — tıklama arıza-toggle sorgusunu tetikliyordu.
+                    Sınıflama yine sağdaki GERÇEK/MÜKERRER/ARIZA butonlarından yapılır. */}
+                <span className="text-gray-400 w-20 truncate text-left">{o.plaka}</span>
                 <span className={`font-mono whitespace-nowrap font-semibold ${gizli ? "text-gray-400 line-through" : ""}`}
                   style={gizli ? undefined : { color: renkAl(o.plaka) }}>🔻 {o.saat ?? "—"}</span>
                 <span className={`flex-1 truncate ${gizli ? "text-gray-400" : "text-gray-600"}`}>{o.adres ?? "—"}</span>

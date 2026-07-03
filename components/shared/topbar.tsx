@@ -9,6 +9,7 @@ import { Menu, LogOut, Clock, Mail, MessageSquare, X, KeyRound, ZoomIn, Plus, Mi
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
+import PushBildirimAyarlari from "@/components/shared/push-bildirim-ayarlari";
 import SifreDegistirDialog from "@/components/shared/sifre-degistir-dialog";
 import { getKonusmalar } from "@/lib/supabase/queries/mesajlasma";
 
@@ -253,6 +254,8 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
 
         {/* Bildirim Menüsü — yönetici ve şantiye admini görür (kısıtlı kullanıcıya değil) */}
         {(isYonetici || isShantiyeAdmin) && <PushBildirimMenu />}
+        {/* Bildirim Ayarları (⚙️) — kategorileri aç/kapat (giriş bildirimi dahil). Şimdiye dek render edilmiyordu. */}
+        {(isYonetici || isShantiyeAdmin) && <PushBildirimAyarlari />}
 
         {/* Birleşik kullanıcı menüsü: Yazı Boyutu / Şifre Değiştir / Çıkış */}
         <div className="relative" ref={menuRef}>

@@ -92,14 +92,11 @@ export default function ArventoWidget() {
     } catch { /* tablo yoksa sessiz */ } finally { setLoading(false); }
   }, []);
 
-  // İlk yükleme + sekmeye/pencereye GERİ DÖNÜNCE tazele → yeni gün verisi kendiliğinden gelir (poll YOK,
-  // cache-dostu). "getArventoSonTarih" tekrar okunur; yeni rapor günü gelmişse tarih ilerler, her şey yeniden hesaplanır.
+  // YALNIZ İLK YÜKLEME. Eskiden focus/visibilitychange'de de tazeliyordu → sekmeye her dönüşte AĞIR sezon-rota
+  // fetch'leri (ocakMakineSetiCek + sezonUzunlukMetrik + bugünün rotası) yeniden çalışıp Supabase havuzunu
+  // dolduruyordu. Kaldırıldı: veri sayfa yenilenince/yeni açılışta güncellenir (yeni gün verisi zaten günde bir gelir).
   useEffect(() => {
     void yukle();
-    const onGorunur = () => { if (document.visibilityState === "visible") void yukle(); };
-    window.addEventListener("focus", onGorunur);
-    document.addEventListener("visibilitychange", onGorunur);
-    return () => { window.removeEventListener("focus", onGorunur); document.removeEventListener("visibilitychange", onGorunur); };
   }, [yukle]);
 
   // Günlük 5 metrik — tek kaynak.
