@@ -7,7 +7,7 @@ import { getIscilikTakibi, upsertIscilikTakibi } from "@/lib/supabase/queries/is
 import { updateSantiye } from "@/lib/supabase/queries/santiyeler";
 import { getAylikVeriler, createAylikVeri, updateAylikVeri, deleteAylikVeri } from "@/lib/supabase/queries/iscilik-aylik";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
-import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
 import type { IscilikTakibiWithSantiye, IscilikAylik, PersonelAtamaManuelGun, PersonelAtamaGecmisi, PersonelBrutUcret } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -140,7 +140,7 @@ export default function IscilikDetayPage() {
       if (ayYilNum(m.ay) !== hedefNum) continue;
       const ucret = personelUcret(m.personel_id, m.ay, yil);
       if (ucret > 0) {
-        toplam += m.gun * ucret;
+        toplam += aylikBrutTutar(brutUcretGecmisi, m.personel_id, m.ay, m.gun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         dahilEdilen.add(`${m.personel_id}|${ayStr}`);
       }
     }
@@ -151,7 +151,7 @@ export default function IscilikDetayPage() {
       if (gun <= 0) continue;
       if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
       const ucret = personelUcret(pId, ayStr, yil);
-      if (ucret > 0) toplam += gun * ucret;
+      if (ucret > 0) toplam += aylikBrutTutar(brutUcretGecmisi, pId, ayStr, gun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
     }
     return toplam;
   }, [takip?.santiye_id, ayliklar, manuelGunler, gunlukUcretler, atamalar, brutUcretGecmisi]);
@@ -281,7 +281,9 @@ export default function IscilikDetayPage() {
     let value: string | number | null = editValue || null;
     if (editing.field !== "ait_oldugu_ay") {
       const cleaned = editValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-      value = cleaned ? parseFloat(cleaned) : 0;
+      // Boş bırakıldıysa null (girilmedi → tahmin); "0" yazıldıysa 0 (bilerek sıfır → kaydedilir, "0,00" gösterilir).
+      value = cleaned === "" ? null : parseFloat(cleaned);
+      if (typeof value === "number" && Number.isNaN(value)) value = null;
     }
     try {
       await updateAylikVeri(editing.id, { [editing.field]: value });
@@ -580,7 +582,7 @@ export default function IscilikDetayPage() {
                   onClick={() => {
                     if (!yDuzenle) return;
                     setEditing({ id: a.id, field: "alt_yuklenici_tutar" });
-                    setEditValue(a.alt_yuklenici_tutar ? formatPara(a.alt_yuklenici_tutar) : "");
+                    setEditValue(a.alt_yuklenici_tutar != null ? formatPara(a.alt_yuklenici_tutar) : "");
                   }}>
                   {editing?.id === a.id && editing.field === "alt_yuklenici_tutar" ? (
                     <Input ref={inputRef} value={editValue} placeholder="0,00"
@@ -588,7 +590,7 @@ export default function IscilikDetayPage() {
                       onBlur={saveAylikEdit}
                       onKeyDown={(e) => { if (e.key === "Enter") saveAylikEdit(); if (e.key === "Escape") setEditing(null); }}
                       className="h-6 text-xs px-1 text-right min-w-[120px]" />
-                  ) : a.alt_yuklenici_tutar ? formatPara(a.alt_yuklenici_tutar) : <span className="text-gray-300">0,00</span>}
+                  ) : a.alt_yuklenici_tutar != null ? formatPara(a.alt_yuklenici_tutar) : <span className="text-gray-300">0,00</span>}
                 </TableCell>
 
                 {/* Yüklenici */}
@@ -596,7 +598,7 @@ export default function IscilikDetayPage() {
                   onClick={() => {
                     if (!yDuzenle) return;
                     setEditing({ id: a.id, field: "yuklenici_tutar" });
-                    setEditValue(a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : "");
+                    setEditValue(a.yuklenici_tutar != null ? formatPara(a.yuklenici_tutar) : "");
                   }}>
                   {editing?.id === a.id && editing.field === "yuklenici_tutar" ? (
                     <Input ref={inputRef} value={editValue}
@@ -605,7 +607,7 @@ export default function IscilikDetayPage() {
                       onBlur={saveAylikEdit}
                       onKeyDown={(e) => { if (e.key === "Enter") saveAylikEdit(); if (e.key === "Escape") setEditing(null); }}
                       className="h-6 text-xs px-1 text-right min-w-[120px]" />
-                  ) : a.yuklenici_tutar ? formatPara(a.yuklenici_tutar) : (
+                  ) : a.yuklenici_tutar != null ? formatPara(a.yuklenici_tutar) : (
                     a.id === enYeniAyId && bordroToplam > 0
                       ? <span className="text-gray-300" title="Bu ayın bordro tahmini (o aya ait manuel + otomatik atama günü × günlük/brüt ücret)">{formatPara(bordroToplam)}</span>
                       : <span className="text-gray-300">0,00</span>

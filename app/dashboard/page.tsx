@@ -1009,7 +1009,7 @@ export default function DashboardPage() {
   // EKSİK YÜKLENİCİ VERİ GİRİŞİ (widget: "eksik_veri_girisi")
   // ============================================================
   // Mantık: Bulunduğumuz ayın bir öncesindeki ay için yüklenici verisi
-  // (iscilik_aylik.yuklenici_tutar > 0) girilmemiş aktif işleri listeler.
+  // (iscilik_aylik.yuklenici_tutar IS NULL = girilmemiş; 0 dahil girilen değer = girildi) aktif işleri listeler.
   //   - Mayıs'tayken Nisan verisi yapılmadıysa görünür.
   //   - Haziran'a geçildiğinde otomatik olarak Mayıs verisini sorgular.
   //   - O ay için yüklenici verisi DB'ye girildiğinde sonraki refresh'te
@@ -1038,10 +1038,11 @@ export default function DashboardPage() {
     const prevAyNum = prevYil * 100 + prevAy;
     const prevLabel = `${String(prevAy).padStart(2, "0")}.${prevYil}`;
 
-    // iscilik_takibi_id → yuklenici_tutar > 0 olan en son ait_oldugu_ay (orijinal string)
+    // iscilik_takibi_id → yüklenici verisi GİRİLMİŞ en son ait_oldugu_ay (orijinal string).
+    // null = girilmedi; 0 dahil girilen her değer "girildi" sayılır (bilerek 0 → iş listeden kalkar).
     const sonYukleniciAy = new Map<string, string>();
     for (const a of bordroAyliklar) {
-      if (!a.yuklenici_tutar || a.yuklenici_tutar <= 0) continue;
+      if (a.yuklenici_tutar == null) continue;
       const mevcut = sonYukleniciAy.get(a.iscilik_takibi_id);
       if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) {
         sonYukleniciAy.set(a.iscilik_takibi_id, a.ait_oldugu_ay);

@@ -3,7 +3,7 @@
 // Sonuç POZİTİF ise eksik prim var → geçici kabul tarihi atanmamalı.
 import { createClient } from "@/lib/supabase/client";
 import { gunHesaplaAyBazli } from "./bordro";
-import { brutUcretForAy } from "./personel-brut-ucret";
+import { brutUcretForAy, aylikBrutTutar } from "./personel-brut-ucret";
 import type {
   PersonelAtamaGecmisi,
   PersonelAtamaManuelGun,
@@ -115,7 +115,7 @@ export async function getSantiyePrimHesabi(santiyeId: string): Promise<SantiyePr
     const yil = parseInt(m.ay.split("-")[0], 10);
     const ucret = personelUcret(m.personel_id, m.ay, yil);
     if (ucret > 0) {
-      bordroTahmini += m.gun * ucret;
+      bordroTahmini += aylikBrutTutar(brutGecmis, m.personel_id, m.ay, m.gun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
       dahilEdilen.add(`${m.personel_id}|${m.ay}`);
     }
   }
@@ -145,7 +145,7 @@ export async function getSantiyePrimHesabi(santiyeId: string): Promise<SantiyePr
           if (gun <= 0) continue;
           if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
           const ucret = personelUcret(pId, ayStr, yil);
-          if (ucret > 0) bordroTahmini += gun * ucret;
+          if (ucret > 0) bordroTahmini += aylikBrutTutar(brutGecmis, pId, ayStr, gun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         }
         ay += 1;
         if (ay > 12) { ay = 1; yil += 1; }

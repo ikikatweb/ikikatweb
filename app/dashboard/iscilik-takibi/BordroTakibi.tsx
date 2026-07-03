@@ -46,7 +46,7 @@ import {
   getGunlukUcretler,
   type GunlukUcret,
 } from "@/lib/supabase/queries/bordro";
-import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
 import { filtreliSantiyeler as filtreliSantiyelerHelper } from "@/lib/utils/santiye-filtre";
 import {
   getPendingMailler,
@@ -1402,8 +1402,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     let kisiSayisi = 0;
     const goruldu = new Set<string>();
     for (const p of filtreli) {
-      const personelBrut = brutUcretForAy(brutUcretGecmisi, p.id, seciliAy);
-      const kullanilanUcret = personelBrut > 0 ? personelBrut : defaultUcret;
       let personelGorundu = false;
       for (const s of filtreliSantiyeler) {
         const inKanban = (kanbanMap.get(s.id) ?? []).some((px) => px.id === p.id);
@@ -1417,7 +1415,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const naturalGun = naturalGunMap.get(p.id)?.get(s.id) ?? 0;
         const tutarGun = hasManuel ? ozelGun : naturalGun;
         toplamGun += tutarGun;
-        toplamTutar += tutarGun * kullanilanUcret;
+        // Ay içi ücret değişimlerini gerçek çalışılan günlere göre böler (atama aralıkları).
+        toplamTutar += aylikBrutTutar(brutUcretGecmisi, p.id, seciliAy, tutarGun, defaultUcret, atamalar, s.id);
       }
       if (personelGorundu && !goruldu.has(p.id)) {
         goruldu.add(p.id);
@@ -1838,7 +1837,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const ucret = personelUcret(m.personel_id, m.ay, yil);
       if (ucret > 0) {
         const bordroGun = ayBordroGun(m.gun, m.ay);
-        toplam += bordroGun * ucret;
+        toplam += aylikBrutTutar(brutUcretGecmisi, m.personel_id, m.ay, bordroGun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         dahilEdilen.add(`${m.personel_id}|${m.ay}`);
       }
     }
@@ -1892,7 +1891,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // BORDRO KURALI: Ay 31 çekse bile gün sayısı 30'da tavanlanır,
           // Şubat'ta tam ay çalışıldıysa 30'a tamamlanır.
           const bordroGun = ayBordroGun(gun, ayStr);
-          toplam += bordroGun * ucret;
+          toplam += aylikBrutTutar(brutUcretGecmisi, pId, ayStr, bordroGun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         }
       }
       ay += 1;
@@ -4263,7 +4262,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // Tutar hesabı: manuel varsa manuel gün × ücret, yoksa doğal gün × ücret
     // Ücret: personelin brüt ücreti varsa o, yoksa yıl bazlı varsayılan
     const tutarGun = hasManuel ? ozelGun : naturalGun;
-    const tutarHesap = tutarGun * kullanilanUcret;
+    // Ay içi ücret değişimini GERÇEK çalışılan günlere göre böler (atama tarih aralıkları).
+    const tutarHesap = aylikBrutTutar(brutUcretGecmisi, p.id, seciliAy, tutarGun, ucret, atamalar, sutunKey);
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
     // ÇALIŞILMAYAN DÖNEM: bu şantiyenin çalışılmayan dönemi seçili ayla çakışıyorsa satır gri+italik.

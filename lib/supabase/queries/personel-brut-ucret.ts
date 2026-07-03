@@ -2,7 +2,7 @@
 // Tıpkı arac_kira_bedeli mantığında: her değişiklik yeni satır olarak kaydedilir,
 // belirli bir tarih/ay için geçerli ücret latest gecerli_tarih <= o tarih kuralıyla bulunur.
 import { createClient } from "@/lib/supabase/client";
-import type { PersonelBrutUcret } from "@/lib/supabase/types";
+import type { PersonelBrutUcret, PersonelAtamaGecmisi } from "@/lib/supabase/types";
 
 function getSupabase() {
   return createClient();
@@ -130,4 +130,88 @@ export function brutUcretForAy(
     }
   }
   return enUygun?.ucret ?? 0;
+}
+
+// Belirli bir GÜN için geçerli brüt ücret. Her kayıt [gecerli_tarih, sonrakinin bir gün öncesi] aralığında
+// geçerlidir; son kayıt açık. Kural: gecerli_tarih <= gün olan en güncel kayıt. Yoksa 0.
+// gunStr: "YYYY-MM-DD"
+export function brutUcretForGun(
+  history: PersonelBrutUcret[],
+  personelId: string,
+  gunStr: string,
+): number {
+  let enUygun: PersonelBrutUcret | null = null;
+  for (const h of history) {
+    if (h.personel_id !== personelId) continue;
+    if (h.gecerli_tarih > gunStr) continue;
+    if (!enUygun || h.gecerli_tarih > enUygun.gecerli_tarih) enUygun = h;
+  }
+  return enUygun?.ucret ?? 0;
+}
+
+// Bir personel-ayın brüt TUTARI, ay içindeki ücret değişimlerini GERÇEK çalışılan günlere göre böler.
+// - gun: o ayda o personelin (SGK-normalize) toplam günü (ör. tam ay = 30). Değişim yoksa: gun × o ay ücreti.
+// - Değişim VARSA: personelin o ayda ÇALIŞTIĞI günler (atama tarih aralıklarından) tek tek gezilir, her güne
+//   o gün geçerli ücret uygulanır, sonuç SGK gün'üne ölçeklenir. Böylece "girilen tarihler arasında girilen
+//   brüt ücret" uygulanır — çalışılmayan günlere pay verilmez (ör. 02–12.06 çalışan, tümü 2.941 döneminde).
+// - atamalar+santiyeId verilmezse (ya da o ay atama yoksa) takvim-gün oranıyla yaklaşık böler (fallback).
+// - fallbackUcret: o gün için brüt kaydı yoksa kullanılacak (yıllık günlük ücret). 0 ise 0.
+export function aylikBrutTutar(
+  history: PersonelBrutUcret[],
+  personelId: string,
+  ayStr: string,
+  gun: number,
+  fallbackUcret = 0,
+  atamalar?: PersonelAtamaGecmisi[],
+  santiyeId?: string,
+): number {
+  if (gun <= 0) return 0;
+  const [yil, ay] = ayStr.split("-").map(Number);
+  const sonGun = new Date(yil, ay, 0).getDate();
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const ayBas = `${yil}-${p2(ay)}-01`;
+  const ayBit = `${yil}-${p2(ay)}-${p2(sonGun)}`;
+  const kullan = (u: number) => (u > 0 ? u : fallbackUcret);
+  // Bu ayda BAŞLAYAN ücret değişimleri (ay başından SONRAKİ kesim noktaları — gün 1'deki değişim ayı bölmez).
+  const kesimGunleri = history
+    .filter((h) => h.personel_id === personelId && h.gecerli_tarih > ayBas && h.gecerli_tarih <= ayBit)
+    .map((h) => Number(h.gecerli_tarih.slice(8, 10)))
+    .filter((n) => n >= 2 && n <= sonGun)
+    .sort((a, b) => a - b);
+  // Ay içinde değişim yok → tek ücret (o ayın sonunda geçerli).
+  if (kesimGunleri.length === 0) return gun * kullan(brutUcretForAy(history, personelId, ayStr));
+
+  // TAM YÖNTEM: gerçek çalışılan günleri (atama∩ay) tek tek gez, her güne o gün geçerli ücreti uygula, gun'a ölçekle.
+  if (atamalar && santiyeId) {
+    let toplam = 0;
+    let sayac = 0;
+    for (const a of atamalar) {
+      if (a.personel_id !== personelId || a.santiye_id !== santiyeId) continue;
+      const bitHam = a.bitis_tarihi ?? ayBit; // aktif atama → ay sonuna kadar (gün toplamı zaten gun'a ölçeklenir)
+      if (a.baslangic_tarihi > ayBit || bitHam < ayBas) continue;
+      const bas = a.baslangic_tarihi > ayBas ? a.baslangic_tarihi : ayBas;
+      const bit = bitHam < ayBit ? bitHam : ayBit;
+      const d = new Date(bas + "T00:00:00");
+      const end = new Date(bit + "T00:00:00");
+      while (d.getTime() <= end.getTime()) {
+        const ds = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+        toplam += kullan(brutUcretForGun(history, personelId, ds));
+        sayac += 1;
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    if (sayac > 0) return toplam * (gun / sayac); // SGK gün'üne (30 tavan / Şubat tamamlama) ölçekle
+  }
+
+  // FALLBACK (atama yok — ör. tarihsiz manuel): takvim-gün oranıyla böl.
+  const sinirlar = [1, ...kesimGunleri, sonGun + 1];
+  let toplam = 0;
+  for (let i = 0; i < sinirlar.length - 1; i++) {
+    const bas = sinirlar[i], bit = sinirlar[i + 1];
+    const takvimGun = bit - bas;
+    if (takvimGun <= 0) continue;
+    const donemUcret = kullan(brutUcretForGun(history, personelId, `${yil}-${p2(ay)}-${p2(bas)}`));
+    toplam += gun * (takvimGun / sonGun) * donemUcret;
+  }
+  return toplam;
 }

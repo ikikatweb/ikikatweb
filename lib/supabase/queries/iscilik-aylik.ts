@@ -29,8 +29,9 @@ export async function createAylikVeri(
       iscilik_takibi_id: iscilikTakibiId,
       sira_no: siraNo,
       ait_oldugu_ay: aitOlduguAy,
-      alt_yuklenici_tutar: 0,
-      yuklenici_tutar: 0,
+      // null = "henüz girilmedi" (bordro tahmini gösterilir); 0 = kullanıcı bilerek 0 girdi ("0,00" gösterilir).
+      alt_yuklenici_tutar: null,
+      yuklenici_tutar: null,
     })
     .select()
     .single();

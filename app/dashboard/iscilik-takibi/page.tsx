@@ -34,7 +34,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
-import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
 import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi, Personel, PersonelBrutUcret } from "@/lib/supabase/types";
 
 type EditingCell = { id: string; santiyeId: string; field: string } | null;
@@ -235,11 +235,11 @@ export default function IscilikTakibiPage() {
       // En son aya (en büyük ait_oldugu_ay) ait kayıt referansı
       const enSonAyliklar = new Map<string, { ay: string; alt: number; yuk: number }>();
       for (const a of ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; alt_yuklenici_tutar: number | null; yuklenici_tutar: number | null }[]) {
-        if (a.alt_yuklenici_tutar != null && a.alt_yuklenici_tutar > 0) {
+        if (a.alt_yuklenici_tutar != null) { // 0 dahil girilen her değer = "veri girildi"
           const mevcut = taseronMap.get(a.iscilik_takibi_id);
           if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) taseronMap.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
         }
-        if (a.yuklenici_tutar != null && a.yuklenici_tutar > 0) {
+        if (a.yuklenici_tutar != null) {
           const mevcut = yukleniciMap.get(a.iscilik_takibi_id);
           if (!mevcut || ayYilNumerik(a.ait_oldugu_ay) > ayYilNumerik(mevcut)) yukleniciMap.set(a.iscilik_takibi_id, a.ait_oldugu_ay);
         }
@@ -484,7 +484,7 @@ export default function IscilikTakibiPage() {
           const subatGunSayisi = new Date(yil, ayNo, 0).getDate();
           if (m.gun >= subatGunSayisi) bordroGun = 30;
         }
-        bordroToplam += bordroGun * ucret;
+        bordroToplam += aylikBrutTutar(brutUcretGecmisi, m.personel_id, m.ay, bordroGun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         dahilEdilen.add(`${m.personel_id}|${m.ay}`);
       }
     }
@@ -512,7 +512,7 @@ export default function IscilikTakibiPage() {
           if (gun <= 0) continue;
           if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
           const ucret = personelUcret(pId, ayStr, yil);
-          if (ucret > 0) bordroToplam += gun * ucret;
+          if (ucret > 0) bordroToplam += aylikBrutTutar(brutUcretGecmisi, pId, ayStr, gun, gunlukUcretler.find((u) => u.yil === yil)?.ucret ?? 0, atamalar, santiyeId);
         }
         ay += 1;
         if (ay > 12) { ay = 1; yil += 1; }
