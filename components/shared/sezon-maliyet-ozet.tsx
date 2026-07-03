@@ -48,9 +48,11 @@ export default function SezonMaliyetOzet() {
     return () => { iptal = true; };
   }, [isYonetici, loading]);
 
-  if (loading || !isYonetici) return null;
+  // Yalnız auth BİTTİ + yönetici DEĞİL ise gizle. Auth yüklenirken gizleme → aşağıda iskelet göster (boşluk olmasın).
+  if (!loading && !isYonetici) return null;
 
   const toplam = satirlar.reduce((t, s) => t + s.toplam, 0);
+  const bekliyor = loading || yukleniyor; // auth yükleniyor VEYA veri geliyor → iskelet
 
   return (
     <div className="bg-white rounded-xl border p-4">
@@ -60,8 +62,19 @@ export default function SezonMaliyetOzet() {
         </h3>
         <Link href="/dashboard/maliyet-raporu" className="text-xs text-[#1E3A5F] hover:underline">Detay →</Link>
       </div>
-      {yukleniyor ? (
-        <div className="text-sm text-gray-400 py-4">Yükleniyor…</div>
+      {bekliyor ? (
+        <div className="space-y-2.5 py-1" aria-label="Yükleniyor">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <div className="h-4 bg-gray-200 rounded animate-pulse" style={{ width: `${45 + ((i * 13) % 35)}%` }} />
+              <div className="h-4 w-16 bg-gray-200 rounded animate-pulse shrink-0" />
+            </div>
+          ))}
+          <div className="flex items-center gap-1.5 pt-1 text-[11px] text-gray-500">
+            <span className="inline-block h-3.5 w-3.5 border-2 border-gray-300 border-t-rose-500 rounded-full animate-spin" />
+            Sezon maliyeti hesaplanıyor…
+          </div>
+        </div>
       ) : satirlar.length === 0 ? (
         <div className="text-sm text-gray-400 py-4">Kayıt yok.</div>
       ) : (

@@ -28,28 +28,91 @@ function gunListesi(bas: string, bitis: string): string[] { const out: string[] 
 
 // 5 metrikli kart ızgarası — hem günlük hem sezon sayfasında kullanılır.
 function MetrikIzgara({ m, yukleniyor }: { m: GunlukMetrik | null; yukleniyor?: boolean }) {
-  const goster = (v: number, ondalik = false) => yukleniyor || m == null ? "…" : (ondalik ? v : Math.round(v)).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
+  const bekliyor = yukleniyor || m == null;
+  // Yüklenirken "…" yerine animasyonlu iskelet çubuk (içerik geliyormuş hissi; boş görünmesin).
+  const isk = () => <span className="inline-block h-4 w-12 bg-gray-200 rounded animate-pulse align-middle" />;
+  const num = (v: number) => Math.round(v).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
   return (
     <div className="grid grid-cols-3 gap-2">
       <div className="bg-emerald-50 rounded-lg p-2 text-center">
-        <div className="text-lg font-bold text-emerald-700">{goster((m?.reglajKm ?? 0) * 1000)}</div>
+        <div className="text-lg font-bold text-emerald-700">{bekliyor ? isk() : num((m!.reglajKm) * 1000)}</div>
         <div className="text-[9px] text-gray-500">Reglaj Uzunluğu (m)</div>
       </div>
       <div className="bg-blue-50 rounded-lg p-2 text-center">
-        <div className="text-lg font-bold text-blue-700">{goster(m?.kamyonSefer ?? 0)}</div>
+        <div className="text-lg font-bold text-blue-700">{bekliyor ? isk() : num(m!.kamyonSefer)}</div>
         <div className="text-[9px] text-gray-500">Kamyon Sefer Sayısı</div>
       </div>
       <div className="bg-teal-50 rounded-lg p-2 text-center">
-        <div className="text-lg font-bold text-teal-700">{goster((m?.sermeKm ?? 0) * 1000)}</div>
+        <div className="text-lg font-bold text-teal-700">{bekliyor ? isk() : num((m!.sermeKm) * 1000)}</div>
         <div className="text-[9px] text-gray-500">Serme Uzunluğu (m)</div>
       </div>
       <div className="bg-purple-50 rounded-lg p-2 text-center">
-        <div className="text-lg font-bold text-purple-700">{goster((m?.sikistirmaKm ?? 0) * 1000)}</div>
+        <div className="text-lg font-bold text-purple-700">{bekliyor ? isk() : num((m!.sikistirmaKm) * 1000)}</div>
         <div className="text-[9px] text-gray-500">Sıkıştırma Uzunluğu (m)</div>
       </div>
       <div className="bg-orange-50 rounded-lg p-2 text-center">
-        <div className="text-lg font-bold text-orange-700">{yukleniyor || m == null ? "…" : saatDk(m.makineSn)}</div>
+        <div className="text-lg font-bold text-orange-700">{bekliyor ? isk() : saatDk(m!.makineSn)}</div>
         <div className="text-[9px] text-gray-500">Makineli Çalışma (sa:dk)</div>
+      </div>
+    </div>
+  );
+}
+
+// Temalı yükleme animasyonu: BÜRO (bina) ↔ ŞANTİYE (araç) arasında telefon/sinyal görüşmesi.
+// Gri çubuk iskelet yerine — veri "sahadan büroya geliyormuş" hissi. Saf SVG + SMIL (CSS gerekmez).
+function AracTakipYukleniyor() {
+  return (
+    <div className="flex flex-col items-center justify-center py-6 gap-2" aria-label="Yükleniyor">
+      <svg viewBox="0 0 160 52" className="w-52 max-w-full h-auto" role="img">
+        {/* ── BÜRO (sol) ── */}
+        <line x1="23" y1="14" x2="23" y2="8" stroke="#1E3A5F" strokeWidth="1.5" />
+        <circle cx="23" cy="7" r="1.6" fill="#3b82f6" />
+        <circle cx="23" cy="7" r="2" fill="none" stroke="#3b82f6" strokeWidth="1.2">
+          <animate attributeName="r" values="2;6.5" dur="1.4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.9;0" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+        <rect x="10" y="14" width="26" height="30" rx="1.5" fill="#1E3A5F" />
+        <g fill="#93c5fd">
+          <rect x="14" y="18" width="5" height="5" rx="1" /><rect x="22" y="18" width="5" height="5" rx="1" />
+          <rect x="14" y="26" width="5" height="5" rx="1" /><rect x="22" y="26" width="5" height="5" rx="1" />
+          <rect x="14" y="34" width="5" height="5" rx="1" /><rect x="22" y="34" width="5" height="5" rx="1" />
+        </g>
+
+        {/* ── Bağlantı çizgisi ── */}
+        <line x1="42" y1="30" x2="116" y2="30" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="3 3" />
+
+        {/* ── Sinyal noktaları (gidiş mavi / dönüş yeşil) ── */}
+        <circle r="3.6" cy="30" fill="#3b82f6">
+          <animate attributeName="cx" values="44;114" dur="1.4s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.88;1" dur="1.4s" repeatCount="indefinite" />
+        </circle>
+        <circle r="3.6" cy="30" fill="#10b981">
+          <animate attributeName="cx" values="114;44" dur="1.4s" begin="0.7s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.88;1" dur="1.4s" begin="0.7s" repeatCount="indefinite" />
+        </circle>
+
+        {/* ── ŞANTİYE — KEPÇE (ekskavatör) ── */}
+        {/* sinyal (kabinden yukarı) */}
+        <line x1="126" y1="26" x2="126" y2="20" stroke="#f59e0b" strokeWidth="1.5" />
+        <circle cx="126" cy="19" r="1.6" fill="#10b981" />
+        <circle cx="126" cy="19" r="2" fill="none" stroke="#10b981" strokeWidth="1.2">
+          <animate attributeName="r" values="2;6.5" dur="1.4s" begin="0.7s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.9;0" dur="1.4s" begin="0.7s" repeatCount="indefinite" />
+        </circle>
+        {/* paletli taban */}
+        <rect x="118" y="38" width="26" height="6" rx="3" fill="#1f2937" />
+        <circle cx="121" cy="41" r="1.3" fill="#6b7280" /><circle cx="141" cy="41" r="1.3" fill="#6b7280" />
+        {/* gövde + kabin camı */}
+        <rect x="120" y="27" width="16" height="11" rx="2" fill="#f59e0b" />
+        <rect x="122.5" y="29.5" width="5" height="4.5" rx="0.6" fill="#bae6fd" />
+        {/* kol: bom + stick */}
+        <path d="M134 30 L146 22" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" />
+        <path d="M146 22 L149 31" stroke="#f59e0b" strokeWidth="2.4" strokeLinecap="round" />
+        {/* kepçe (kova) */}
+        <path d="M146.5 30 L151.5 31 L150 35.5 L145.8 34 Z" fill="#1f2937" />
+      </svg>
+      <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        <span className="animate-pulse">📞</span> Şantiye ↔ Büro veri alışverişi…
       </div>
     </div>
   );
@@ -196,7 +259,7 @@ export default function ArventoWidget() {
       </div>
 
       {loading ? (
-        <div className="space-y-2">{[...Array(3)].map((_, i) => <div key={i} className="h-4 bg-gray-100 rounded animate-pulse" />)}</div>
+        <AracTakipYukleniyor />
       ) : !tarih ? (
         <p className="text-xs text-gray-400 py-4 text-center">Henüz Arvento raporu yok.</p>
       ) : (
