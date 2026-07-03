@@ -166,32 +166,48 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
   // ---- 2) Genel Rapor / Damper Alarmı (damper indirme, çok günlü; bazıları KOORDİNATLI) ----
   let genel = parseGenelRaporBuffer(buf);
   if (genel.length > 0) {
-    // KOORDİNAT KORUMASI: koordinatsız bir kayıt, daha önce kaydedilmiş KOORDİNATLI kaydı ezmesin.
+    // KOORDİNAT KORUMASI + BİRLEŞTİRME: Genel Rapor GÜN-KÜMÜLATİFTİR (00:00→rapor saati). Sync mailleri
+    // YENİ→ESKİ işleyip upsert REPLACE edince aynı günün ESKİ raporu (az kayıtlı) YENİYİ EZİYORDU → 55 kayıtlık
+    // mail DB'de 41'e düşüyordu (eksikler hep en son saatler). Çözüm: mevcut damper olaylarını yenilerle
+    // BİRLEŞTİR (saat|lat|lng ile tekilleştir) → mail işleme sırası fark etmez, en kapsamlı küme kalır.
+    type Olay = (typeof genel)[number]["olaylar"][number];
     const tarihler = [...new Set(genel.map((g) => g.tarih))];
     const koordluKayit = new Set<string>();
+    const mevcutOlaylar = new Map<string, Olay[]>();
     if (tarihler.length > 0) {
       const { data: mevcut } = await supabase
         .from("arac_arvento_rapor")
         .select("rapor_tarihi, plaka, damper_olaylar")
         .in("rapor_tarihi", tarihler);
-      for (const m of (mevcut ?? []) as { rapor_tarihi: string; plaka: string; damper_olaylar: { lat?: number | null; lng?: number | null }[] | null }[]) {
+      for (const m of (mevcut ?? []) as { rapor_tarihi: string; plaka: string; damper_olaylar: Olay[] | null }[]) {
         const ol = Array.isArray(m.damper_olaylar) ? m.damper_olaylar : [];
+        mevcutOlaylar.set(`${m.rapor_tarihi}|${m.plaka}`, ol);
         if (ol.some((o) => o?.lat != null && o?.lng != null)) koordluKayit.add(`${m.rapor_tarihi}|${m.plaka}`);
       }
     }
+    // Tamamen koordinatsız YENİ grup, koordinatlı mevcudu ezmesin (grup atlansın; union yine korurdu ama net olsun).
     genel = genel.filter((g) => {
       const yeniKoordlu = g.olaylar.some((o) => o.lat != null && o.lng != null);
       return yeniKoordlu || !koordluKayit.has(`${g.tarih}|${g.plaka}`);
     });
-  }
-  if (genel.length > 0) {
-    const satirlar = genel.map((g) => ({
-      rapor_tarihi: g.tarih,
-      plaka: g.plaka,
-      damper_sayisi: g.damper,
-      damper_olaylar: g.olaylar,
-      ...(g.surucu ? { surucu: g.surucu } : {}), // şoför (varsa) Genel Rapor'dan
-    }));
+    const satirlar = genel.map((g) => {
+      const gorulen = new Set<string>();
+      const birlesik: Olay[] = [];
+      for (const o of [...(mevcutOlaylar.get(`${g.tarih}|${g.plaka}`) ?? []), ...g.olaylar]) {
+        const k = `${o.saat ?? ""}|${o.lat ?? ""}|${o.lng ?? ""}`;
+        if (gorulen.has(k)) continue;
+        gorulen.add(k);
+        birlesik.push(o);
+      }
+      birlesik.sort((a, b) => (a.saat ?? "").localeCompare(b.saat ?? ""));
+      return {
+        rapor_tarihi: g.tarih,
+        plaka: g.plaka,
+        damper_sayisi: birlesik.length,
+        damper_olaylar: birlesik,
+        ...(g.surucu ? { surucu: g.surucu } : {}), // şoför (varsa) Genel Rapor'dan
+      };
+    });
     const { error } = await supabase
       .from("arac_arvento_rapor")
       .upsert(satirlar, { onConflict: "rapor_tarihi,plaka" });
