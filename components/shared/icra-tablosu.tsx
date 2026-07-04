@@ -286,7 +286,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         <table className="text-xs text-gray-900 border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
-            <col className="w-[9%]" />{/* Üçüncü Şahıs */}
+            <col className="w-[3%]" />{/* Üçüncü Şahıs (renk noktası) */}
             <col className="w-[7%]" />{/* Dosya Esas No */}
             <col className="w-[7%]" />{/* Gelen Yazı */}
             <col className="w-[7%]" />{/* Tebliğ */}
@@ -304,7 +304,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           <thead className="bg-gray-100">
             <tr>
               <th rowSpan={2} className={th}>S.No</th>
-              <th rowSpan={2} className={th}>Üçüncü Şahıs</th>
+              <th rowSpan={2} className={th}></th>
               <th rowSpan={2} className={th}>Dosya Esas No</th>
               <th rowSpan={2} className={th}>Gelen İcra Yazısı Tarihi</th>
               <th rowSpan={2} className={th}>Tebliğ Tarihi</th>
@@ -338,10 +338,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
                   <td className={`${td} text-center text-gray-500 tabular-nums`}>{siraNo.get(s.id)}</td>
-                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-[11px]" title={s.ucuncu_sahis ?? ""}>
-                    {firmaRengi(s.ucuncu_sahis)
-                      ? <span className="block w-full h-4 rounded" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />
-                      : <span className="block truncate text-gray-400">{s.ucuncu_sahis}</span>}
+                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-center" title={s.ucuncu_sahis ?? ""}>
+                    {firmaRengi(s.ucuncu_sahis) && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />}
                   </td>
                   <td className={td} title={s.dosya_esas_no ?? ""}>{s.dosya_esas_no}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
@@ -392,10 +390,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <div key={s.id} className="bg-white rounded-lg border p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  {s.ucuncu_sahis && (renk
-                    ? <span className="inline-block w-10 h-2.5 rounded" style={{ backgroundColor: renk }} title={s.ucuncu_sahis} />
-                    : <div className="text-[11px] text-gray-500 truncate" title={s.ucuncu_sahis}>{s.ucuncu_sahis}</div>
-                  )}
+                  {renk && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: renk }} title={s.ucuncu_sahis ?? ""} />}
                   <div><div className="text-[10px] text-gray-400">Alacaklı</div><div className="text-sm text-gray-900 truncate">{s.alacakli_adi || "—"}</div></div>
                   <div><div className="text-[10px] text-gray-400">Borçlu</div><div className={`text-sm truncate ${tekrar ? "text-red-600 font-medium" : "text-gray-900"}`}>{s.borclu_adi || "—"}</div></div>
                   <div><div className="text-[10px] text-gray-400">Tebliğ Tarihi</div><div className="text-sm text-gray-800">{tarihGoster(s.teblig_tarihi)}</div></div>
