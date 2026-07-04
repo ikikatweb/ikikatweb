@@ -40,7 +40,7 @@ export default function IcraPage() {
       {sekme === "takip" ? (
         <IcraTablosu canEkle={canEkle} canDuzenle={canDuzenle} canSil={canSil} />
       ) : (
-        <IcraTanimlamalar canEkle={canEkle} canSil={canSil} />
+        <IcraTanimlamalar canEkle={canEkle} canDuzenle={canDuzenle} canSil={canSil} />
       )}
     </div>
   );

@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
+import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -1510,43 +1511,7 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 2: Kasa Defteri Personel Özeti (sol alt) */}
-        {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3 lg:col-span-2 lg:order-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Wallet size={16} className="text-[#1E3A5F]" />
-            <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa — Kullanıcı Özeti</h3>
-          </div>
-          {kasaLoading ? <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
-          : kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
-            <div>
-              <Table className="text-xs">
-                <TableHeader><TableRow>
-                  <TableHead className="px-2 text-[10px]">Personel</TableHead>
-                  <TableHead className="px-2 text-[10px] text-right">Nakit Bakiye</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {kasaOzet.map((k) => (
-                    <TableRow key={k.personel} className="cursor-pointer hover:bg-blue-50"
-                      onClick={() => {
-                        // Next.js Router Cache, query parametresi değişimini segment cache'iyle
-                        // doğru ayırmıyor — aynı segment'e farklı kullanıcı ID'siyle gidince
-                        // önceki state geliyordu. window.location ile tam navigasyon → fresh mount.
-                        window.location.href = `/dashboard/kasa-defteri?personel=${k.personelId}`;
-                      }}>
-                      <TableCell className="px-2">
-                        <div className="font-medium text-[#1E3A5F]">{k.personel}</div>
-                        <div className="text-[9px] text-gray-400 mt-0.5">
-                          Nakit: {formatSayi(k.nakitHarcama)} | Kart: {formatSayi(k.kartHarcama)}
-                        </div>
-                      </TableCell>
-                      <TableCell className={`px-2 text-right font-bold ${k.nakitBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatSayi(k.nakitBakiye)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </div> : null}
+        {/* Kasa özeti → aşağıda İcra + Eksik Evrak ile YAN YANA 3'lü satırda gösteriliyor. */}
 
         {/* Widget 3: Yaklaşan Sigorta/Muayene (üst sıra sağ) */}
         {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
@@ -1943,8 +1908,43 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* Widget 6: Eksik Evrak Numaraları — Kasa Defteri'nin yanına (order-4). */}
-        {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-4">
+        {/* ▼ İcra Takibi + Kasa + Eksik Evrak — YAN YANA (tam genişlik 3'lü satır) */}
+        <div className="lg:col-span-4 lg:order-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* İcra Takibi */}
+            {wg("icra_ozet") ? <IcraDashboard /> : null}
+            {/* Kasa — Kullanıcı Özeti */}
+            {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Wallet size={16} className="text-[#1E3A5F]" />
+                <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa — Kullanıcı Özeti</h3>
+              </div>
+              {kasaLoading ? <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
+              : kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (
+                <div>
+                  <Table className="text-xs">
+                    <TableHeader><TableRow>
+                      <TableHead className="px-2 text-[10px]">Personel</TableHead>
+                      <TableHead className="px-2 text-[10px] text-right">Nakit Bakiye</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {kasaOzet.map((k) => (
+                        <TableRow key={k.personel} className="cursor-pointer hover:bg-blue-50"
+                          onClick={() => { window.location.href = `/dashboard/kasa-defteri?personel=${k.personelId}`; }}>
+                          <TableCell className="px-2">
+                            <div className="font-medium text-[#1E3A5F]">{k.personel}</div>
+                            <div className="text-[9px] text-gray-400 mt-0.5">Nakit: {formatSayi(k.nakitHarcama)} | Kart: {formatSayi(k.kartHarcama)}</div>
+                          </TableCell>
+                          <TableCell className={`px-2 text-right font-bold ${k.nakitBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatSayi(k.nakitBakiye)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div> : null}
+            {/* Eksik Evrak Numaraları */}
+            {wg("eksik_evrak") ? <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={18} className="text-red-600" />
             <div>
@@ -2061,6 +2061,8 @@ export default function DashboardPage() {
             </div>
           )}
         </div> : null}
+          </div>
+        </div>
 
         {/* Widget: Bordro Takibi — Şantiye bazlı mali tablo */}
         {wg("bordro_ozet") ? <div className="bg-white rounded-lg border p-4 md:col-span-2 lg:col-span-4 lg:order-9">

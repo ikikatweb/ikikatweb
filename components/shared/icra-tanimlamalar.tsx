@@ -2,19 +2,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getTanimlamalar, createTanimlama, deleteTanimlama } from "@/lib/supabase/queries/tanimlamalar";
+import { getTanimlamalar, createTanimlama, updateTanimlama, deleteTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import { ICRA_CEVAP_VARSAYILAN } from "@/components/shared/icra-tablosu";
 import type { Tanimlama } from "@/lib/supabase/types";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Pencil, Check, X } from "lucide-react";
 import toast from "react-hot-toast";
 
 const KATEGORI = "icra_cevap_sekli";
 
-export default function IcraTanimlamalar({ canEkle, canSil }: { canEkle: boolean; canSil: boolean }) {
+export default function IcraTanimlamalar({ canEkle, canDuzenle, canSil }: { canEkle: boolean; canDuzenle: boolean; canSil: boolean }) {
   const [liste, setListe] = useState<Tanimlama[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [yeni, setYeni] = useState("");
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  const [duzenleId, setDuzenleId] = useState<string | null>(null);
+  const [duzenleDeger, setDuzenleDeger] = useState("");
 
   const yukle = useCallback(async () => {
     try { const d = await getTanimlamalar(KATEGORI); setListe((d ?? []) as Tanimlama[]); }
@@ -51,6 +53,15 @@ export default function IcraTanimlamalar({ canEkle, canSil }: { canEkle: boolean
     try { await deleteTanimlama(id); await yukle(); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Silinemedi."); }
   }
+  function duzenleBasla(t: Tanimlama) { setDuzenleId(t.id); setDuzenleDeger(t.deger); }
+  async function duzenleKaydet() {
+    if (!duzenleId) return;
+    const v = duzenleDeger.trim();
+    if (!v) { toast.error("Boş olamaz."); return; }
+    if (liste.some((t) => t.id !== duzenleId && t.deger.toLocaleLowerCase("tr") === v.toLocaleLowerCase("tr"))) { toast.error("Bu değer zaten var."); return; }
+    try { await updateTanimlama(duzenleId, { deger: v }); setDuzenleId(null); await yukle(); }
+    catch { toast.error("Güncellenemedi."); }
+  }
 
   const eksikVarsayilan = ICRA_CEVAP_VARSAYILAN.filter((v) => !varMi(v));
 
@@ -74,10 +85,23 @@ export default function IcraTanimlamalar({ canEkle, canSil }: { canEkle: boolean
             {liste.length === 0 && <p className="text-sm text-gray-400 mb-3">Henüz seçenek yok. Aşağıdan ekleyin veya varsayılanları yükleyin.</p>}
             <ul className="divide-y divide-gray-100 mb-3">
               {liste.map((t) => (
-                <li key={t.id} className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-800">{t.deger}</span>
-                  {canSil && (
-                    <button type="button" onClick={() => sil(t.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={15} /></button>
+                <li key={t.id} className="flex items-center justify-between py-2 gap-2">
+                  {duzenleId === t.id ? (
+                    <>
+                      <input value={duzenleDeger} onChange={(e) => setDuzenleDeger(e.target.value)} autoFocus
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void duzenleKaydet(); } if (e.key === "Escape") setDuzenleId(null); }}
+                        className="flex-1 h-8 px-2 text-sm rounded border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30" />
+                      <button type="button" onClick={duzenleKaydet} className="text-emerald-600" title="Kaydet"><Check size={16} /></button>
+                      <button type="button" onClick={() => setDuzenleId(null)} className="text-gray-400 hover:text-gray-600" title="İptal"><X size={16} /></button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm text-gray-800 flex-1">{t.deger}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {canDuzenle && <button type="button" onClick={() => duzenleBasla(t)} className="text-gray-300 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={14} /></button>}
+                        {canSil && <button type="button" onClick={() => sil(t.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={15} /></button>}
+                      </div>
+                    </>
                   )}
                 </li>
               ))}
