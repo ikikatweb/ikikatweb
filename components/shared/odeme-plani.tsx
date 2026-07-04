@@ -9,6 +9,7 @@ import { CalendarClock, Plus, Trash2, Loader2 } from "lucide-react";
 import {
   getOdemePlaniSatirlar, insertOdemePlaniSatir, updateOdemePlaniSatir, deleteOdemePlaniSatir,
   getOdemePlaniKasa, insertOdemePlaniKasa, updateOdemePlaniKasa, deleteOdemePlaniKasa,
+  deleteTumOdemePlani,
 } from "@/lib/supabase/queries/odeme-plani";
 import type { OdemePlaniSatir, OdemePlaniKasa } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -19,8 +20,8 @@ const AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
 const PALET = ["bg-orange-50", "bg-sky-50", "bg-violet-50", "bg-emerald-50", "bg-rose-50", "bg-amber-50", "bg-teal-50"];
 // Kullanılabilir Krediler ve Kasa — 3 grup (tek TOPLAM). grup değeri DB'de saklanır.
 const KASA_GRUPLARI: { key: string; label: string }[] = [
-  { key: "kredi", label: "Kredi / BCH" },
-  { key: "banka", label: "Banka" },
+  { key: "kredi", label: "Kullanılabilir Kredi / BCH" },
+  { key: "banka", label: "Banka Hesaplarımız" },
   { key: "kasa", label: "Kasa" },
 ];
 
@@ -140,6 +141,11 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
     try { await deleteOdemePlaniKasa(id); setKasa((p) => p.filter((k) => k.id !== id)); }
     catch { toast.error("Silinemedi."); }
   }
+  async function tumunuSifirla() {
+    if (typeof window !== "undefined" && !window.confirm("TÜM ödeme planı verileri (satırlar + kasa listesi) KALICI olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?")) return;
+    try { await deleteTumOdemePlani(); setSatirlar([]); setKasa([]); toast.success("Tüm veriler silindi."); }
+    catch { toast.error("Sıfırlanamadı."); }
+  }
 
   const inputCls = "w-full bg-transparent px-1.5 py-1 text-sm outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 read-only:cursor-default disabled:cursor-default";
 
@@ -204,6 +210,12 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
         </h1>
         {sonGuncelleme && (
           <span className="text-xs text-gray-400">Son güncelleme: {tarihSaat(sonGuncelleme)}</span>
+        )}
+        {canSil && (satirlar.length > 0 || kasa.length > 0) && (
+          <button type="button" onClick={tumunuSifirla}
+            className="ml-auto flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border border-red-300 text-red-600 hover:bg-red-50">
+            <Trash2 size={14} /> Tümünü Sıfırla
+          </button>
         )}
       </div>
 
@@ -275,7 +287,6 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
 
         {/* Kullanılabilir Krediler ve Kasa (ÜSTTE, tam genişlik) — 3 grup, TEK TOPLAM */}
         <div className="order-1 w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="bg-gray-200 text-[#1E3A5F] font-semibold text-center px-2 py-2 text-sm">Kullanılabilir Krediler ve Kasa</div>
           <div className="grid grid-cols-1 md:grid-cols-3 md:divide-x divide-gray-200 divide-y md:divide-y-0">
             {KASA_GRUPLARI.map((g) => {
               const grupSatir = kasa.filter((k) => (k.grup ?? "banka") === g.key);

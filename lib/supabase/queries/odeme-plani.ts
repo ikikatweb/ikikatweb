@@ -63,3 +63,12 @@ export async function deleteOdemePlaniKasa(id: string): Promise<void> {
   const { error } = await sb().from("odeme_plani_kasa").delete().eq("id", id);
   if (error) throw error;
 }
+
+// TÜMÜNÜ SIFIRLA — ödeme planı satırlarının VE yan kasa listesinin tamamını siler (geri alınamaz).
+export async function deleteTumOdemePlani(): Promise<void> {
+  const s = sb();
+  const { error: e1 } = await s.from("odeme_plani_satir").delete().not("id", "is", null);
+  if (e1) throw e1;
+  const { error: e2 } = await s.from("odeme_plani_kasa").delete().not("id", "is", null);
+  if (e2) throw e2;
+}

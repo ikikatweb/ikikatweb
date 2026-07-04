@@ -3,14 +3,18 @@
 // otomatik KIRMIZI vurgulanır (tekrarlayan borçlu — Excel'deki gibi).
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Gavel, Plus, Trash2, Loader2, Search } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
+import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
+
+// Cevap Şekli varsayılanları (Tanımlamalar boşsa kullanılır). Tanımlamalar sayfasından yönetilir.
+export const ICRA_CEVAP_VARSAYILAN = ["KEP", "İadeli Taahütlü", "Banka", "Dijital Vergi Dairesi"];
 
 function tlFmt(n: number): string { return "₺" + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function tarihSaat(iso: string): string {
@@ -34,22 +38,26 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // Öneri kaynakları: Yönetim → Firmalar (Üçüncü Şahıs) + Yönetim → Personeller (Borçlu)
   const [firmalar, setFirmalar] = useState<{ firma_adi: string | null }[]>([]);
   const [personeller, setPersoneller] = useState<{ ad_soyad: string | null; tc_kimlik_no: string | null }[]>([]);
+  const [cevapSekilleri, setCevapSekilleri] = useState<string[]>(ICRA_CEVAP_VARSAYILAN); // Tanımlamalar → Cevap Şekli seçenekleri
+  const tableRef = useRef<HTMLTableElement>(null); // Enter ile sonraki hücreye geçiş için
 
   useEffect(() => {
     let iptal = false;
     (async () => {
       try {
         const sb = createClient();
-        const [r, fRes, pRes] = await Promise.all([
+        const [r, fRes, pRes, cevap] = await Promise.all([
           getIcraKayitlar(),
           // Hafif doğrudan sorgu (öneri için) — yetki/RLS yoksa boş döner, hata vermez
           sb.from("firmalar").select("firma_adi").then((x) => (x.data as { firma_adi: string | null }[]) ?? [], () => []),
           sb.from("personel").select("ad_soyad, tc_kimlik_no").then((x) => (x.data as { ad_soyad: string | null; tc_kimlik_no: string | null }[]) ?? [], () => []),
+          getDegerler("icra_cevap_sekli").catch(() => [] as string[]), // Tanımlamalar → Cevap Şekli
         ]);
         if (!iptal) {
           setSatirlar(r);
           setFirmalar(fRes);
           setPersoneller(pRes);
+          setCevapSekilleri(cevap.length > 0 ? cevap : ICRA_CEVAP_VARSAYILAN); // boşsa varsayılan 4
           setHata(null);
         }
       } catch (e) {
@@ -128,12 +136,23 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
 
   const inputCls = "w-full min-w-0 bg-transparent px-1 py-1 text-xs outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 read-only:cursor-default";
 
+  // Enter → SONRAKİ hücre (yan sütun; satır sonunda alt satırın ilk hücresi). DOM sırası = soldan sağa sütun sırası.
+  function sonrakiHucre(e: React.KeyboardEvent<HTMLElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const root = tableRef.current;
+    if (!root) return;
+    const odak = Array.from(root.querySelectorAll<HTMLElement>("input:not([readonly]):not([disabled]), select:not([disabled])"));
+    const i = odak.indexOf(e.currentTarget);
+    if (i >= 0 && i + 1 < odak.length) odak[i + 1].focus();
+  }
+
   // Metin hücresi
   function metinHucre(id: string, field: keyof IcraKayit, value: string | null, ph = "", extra = "", opts?: { list?: string; onPersist?: (v: string | null) => void }) {
     const key = `${id}:${field}`;
     const gosterim = duzen[key] ?? (value ?? "");
     return (
-      <input type="text" readOnly={!canDuzenle} placeholder={ph} list={opts?.list}
+      <input type="text" readOnly={!canDuzenle} placeholder={ph} list={opts?.list} onKeyDown={sonrakiHucre}
         className={`${inputCls} ${extra}`} value={gosterim}
         onChange={(e) => { if (canDuzenle) setDuzen((d) => ({ ...d, [key]: e.target.value })); }}
         onBlur={() => {
@@ -152,7 +171,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // Tarih hücresi
   function tarihHucre(id: string, field: keyof IcraKayit, value: string | null) {
     return (
-      <input type="date" disabled={!canDuzenle} value={value ?? ""}
+      <input type="date" disabled={!canDuzenle} value={value ?? ""} onKeyDown={sonrakiHucre}
         className="w-full min-w-0 bg-transparent px-0.5 py-1 text-[11px] outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 disabled:cursor-default"
         onChange={(e) => guncelle(id, { [field]: e.target.value || null } as Partial<IcraKayit>)} />
     );
@@ -162,7 +181,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const key = `${id}:${field}`;
     const gosterim = duzen[key] ?? sayiToInput(value);
     return (
-      <input type="text" inputMode="decimal" dir="ltr" readOnly={!canDuzenle} placeholder="0"
+      <input type="text" inputMode="decimal" dir="ltr" readOnly={!canDuzenle} placeholder="0" onKeyDown={sonrakiHucre}
         className={`${inputCls} text-right tabular-nums placeholder:text-gray-300 ${extra}`} value={gosterim}
         onChange={(e) => { if (canDuzenle) setDuzen((d) => ({ ...d, [key]: formatParaInput(e.target.value) })); }}
         onBlur={() => {
@@ -172,6 +191,19 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           if (num !== value) guncelle(id, { [field]: num } as Partial<IcraKayit>);
         }}
       />
+    );
+  }
+  // Seçim hücresi (Cevap Şekli — Tanımlamalar'dan gelen dropdown)
+  function secimHucre(id: string, field: keyof IcraKayit, value: string | null, secenekler: string[]) {
+    // Mevcut değer listede yoksa da göster (eski/serbest girilmiş değer kaybolmasın)
+    const ops = value && !secenekler.includes(value) ? [value, ...secenekler] : secenekler;
+    return (
+      <select disabled={!canDuzenle} value={value ?? ""} onKeyDown={sonrakiHucre}
+        className="w-full min-w-0 bg-transparent px-0.5 py-1 text-xs outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 disabled:cursor-default"
+        onChange={(e) => guncelle(id, { [field]: e.target.value || null } as Partial<IcraKayit>)}>
+        <option value=""></option>
+        {ops.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
     );
   }
 
@@ -204,7 +236,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       </div>
 
       <div className="w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="text-xs border-collapse w-full table-fixed">
+        <table ref={tableRef} className="text-xs border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
             <col className="w-[8%]" />{/* Üçüncü Şahıs */}
@@ -213,13 +245,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <col className="w-[6%]" />{/* Tebliğ */}
             <col className="w-[6%]" />{/* Cevap Tarihi */}
             <col className="w-[7%]" />{/* Cevap Şekli */}
+            <col className="w-[6%]" />{/* Ödenen Tutar */}
             <col className="w-[6%]" />{/* Evrak No */}
             <col className="w-[11%]" />{/* Alacaklı Adı */}
             <col className="w-[6%]" />{/* Alacaklı Vergi */}
             <col className="w-[11%]" />{/* Borçlu Adı */}
             <col className="w-[6%]" />{/* Borçlu TC */}
             <col className="w-[6%]" />{/* Borç */}
-            <col className="w-[6%]" />{/* Ödenen */}
             <col className={canSil ? "w-[7%]" : "w-[10%]"} />{/* Açıklama */}
             {canSil && <col className="w-[3%]" />}
           </colgroup>
@@ -232,11 +264,11 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <th rowSpan={2} className={th}>Tebliğ Tarihi</th>
               <th rowSpan={2} className={th}>İcraya Cevap Tarihi</th>
               <th rowSpan={2} className={th}>Cevap Şekli</th>
+              <th rowSpan={2} className={th}>Ödenen Tutar</th>
               <th rowSpan={2} className={th}>Evrak No</th>
               <th colSpan={2} className={th}>Alacaklı Bilgileri</th>
               <th colSpan={2} className={`${th} bg-red-50`}>Borçlu Bilgileri</th>
               <th rowSpan={2} className={th}>Borç Miktarı</th>
-              <th rowSpan={2} className={th}>Ödenen Tutar</th>
               <th rowSpan={2} className={th}>Açıklama</th>
               {canSil && <th rowSpan={2} className={th} />}
             </tr>
@@ -266,7 +298,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   <td className={td}>{tarihHucre(s.id, "gelen_yazi_tarihi", s.gelen_yazi_tarihi)}</td>
                   <td className={td}>{tarihHucre(s.id, "teblig_tarihi", s.teblig_tarihi)}</td>
                   <td className={td}>{tarihHucre(s.id, "cevap_tarihi", s.cevap_tarihi)}</td>
-                  <td className={td}>{metinHucre(s.id, "cevap_sekli", s.cevap_sekli, "Cevap şekli")}</td>
+                  <td className={td}>{secimHucre(s.id, "cevap_sekli", s.cevap_sekli, cevapSekilleri)}</td>
+                  <td className={td}>{paraHucre(s.id, "odenen_tutar", Number(s.odenen_tutar || 0), "text-emerald-700")}</td>
                   <td className={`${td} ${evrakGerekli ? "bg-red-50" : ""}`} title={evrakGerekli ? "Cevap tarihi girildi — evrak no zorunlu" : undefined}>
                     {metinHucre(s.id, "evrak_no", s.evrak_no, evrakGerekli ? "Zorunlu!" : "Evrak no", evrakGerekli ? "ring-1 ring-red-400 placeholder:text-red-500" : "")}
                   </td>
@@ -283,7 +316,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   })}</td>
                   <td className={`${td} ${borcluCls}`}>{metinHucre(s.id, "borclu_tc_no", s.borclu_tc_no, "TC / Vergi no", borcluTxt)}</td>
                   <td className={td}>{paraHucre(s.id, "borc_miktari", Number(s.borc_miktari || 0), "text-red-600")}</td>
-                  <td className={td}>{paraHucre(s.id, "odenen_tutar", Number(s.odenen_tutar || 0), "text-emerald-700")}</td>
                   <td className={td}>{metinHucre(s.id, "aciklama", s.aciklama, "Açıklama")}</td>
                   {canSil && (
                     <td className={`${td} text-center`}>
@@ -296,9 +328,10 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
-              <td className={`${td} text-right`} colSpan={12}>TOPLAM</td>
-              <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
+              <td className={`${td} text-right`} colSpan={7}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
+              <td className={td} colSpan={5} />
+              <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
               <td className={td} />
               {canSil && <td className={td} />}
             </tr>

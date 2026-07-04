@@ -8,39 +8,45 @@ export type ModulTanim = {
   grup: string;
 };
 
+// Sıra + grup + etiketler SIDEBAR ile birebir eşleşir (Yetki Ayarları matrisi sidebar'ı aynen yansıtsın).
+// key'ler DEĞİŞMEZ (route koruması + mevcut izinler bozulmasın); yalnız grup/label güncellenir.
 export const MODUL_LISTESI: ModulTanim[] = [
-  // Yönetim
-  { key: "yonetim-firmalar", label: "Firmalar", grup: "Yönetim" },
-  { key: "yonetim-santiyeler", label: "Şantiyeler", grup: "Yönetim" },
-  { key: "yonetim-personel", label: "Personeller", grup: "Yönetim" },
-  { key: "yonetim-araclar", label: "Araçlar", grup: "Yönetim" },
-  { key: "yonetim-yi-ufe", label: "Yi-ÜFE", grup: "Yönetim" },
-  { key: "yonetim-tanimlamalar", label: "Tanımlamalar", grup: "Yönetim" },
+  // Büro Yönetimi
+  { key: "iscilik-takibi", label: "İşçilik Durum Raporu", grup: "Büro Yönetimi" },
+  { key: "bordro-takibi", label: "Bordro Takibi", grup: "Büro Yönetimi" },
+  { key: "odeme-plani", label: "Ödeme Planı", grup: "Büro Yönetimi" },
+  { key: "icra", label: "İcra Takibi", grup: "Büro Yönetimi" },
+  { key: "ihale", label: "Sınır Değer Hesabı", grup: "Büro Yönetimi" },
   // Yazışmalar
   { key: "yazismalar-gelen-evrak", label: "Gelen Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-giden-evrak", label: "Giden Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-banka-yazismalari", label: "Banka Yazışmaları", grup: "Yazışmalar" },
   { key: "yazismalar-silinen", label: "Silinen", grup: "Yazışmalar" },
-  // Araçlar
-  { key: "araclar-kira-bedeli", label: "Kira Bedeli", grup: "Araçlar" },
-  { key: "araclar-sigorta-muayene", label: "Araç Listesi", grup: "Araçlar" },
-  { key: "araclar-acente-takip", label: "Belgeler", grup: "Araçlar" },
-  { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Araçlar" },
-  { key: "araclar-arvento-raporu", label: "Araç Takip", grup: "Araçlar" },
-  { key: "arac-bakim", label: "Araç Bakım", grup: "Araçlar" },
+  // Kasko & Sigorta
+  { key: "araclar-sigorta-muayene", label: "Araç Listesi", grup: "Kasko & Sigorta" },
+  { key: "araclar-acente-takip", label: "Belgeler", grup: "Kasko & Sigorta" },
+  { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Kasko & Sigorta" },
+  { key: "araclar-kira-bedeli", label: "Kira Bedeli", grup: "Kasko & Sigorta" },
+  // Araç Takip
+  { key: "araclar-arvento-raporu", label: "Araç Çalışma Raporu", grup: "Araç Takip" },
+  // Araç Bakım
+  { key: "arac-bakim", label: "Bakım, Tamirat, Yedek Parça", grup: "Araç Bakım" },
   // Puantaj
   { key: "puantaj-personel", label: "Personel Puantaj", grup: "Puantaj" },
   { key: "puantaj-arac", label: "Araç Puantaj", grup: "Puantaj" },
-  // Tek sayfalar
-  { key: "iscilik-takibi", label: "İşçilik Takibi", grup: "Tek Sayfa" },
-  { key: "bordro-takibi", label: "Bordro Takibi", grup: "Tek Sayfa" },
-  { key: "yakit", label: "Yakıt", grup: "Tek Sayfa" },
-  { key: "kasa-defteri", label: "Kasa", grup: "Tek Sayfa" },
-  { key: "odeme-plani", label: "Ödeme Planı", grup: "Tek Sayfa" },
-  { key: "icra", label: "İcra", grup: "Tek Sayfa" },
-  { key: "santiye-defteri", label: "Şantiye Defteri", grup: "Tek Sayfa" },
-  // İhale
-  { key: "ihale", label: "İhale", grup: "İhale" },
+  // Yakıt
+  { key: "yakit", label: "Yakıt Hareketleri", grup: "Yakıt" },
+  // Kasa
+  { key: "kasa-defteri", label: "Kasa Hareketleri", grup: "Kasa" },
+  // Şantiye Defteri
+  { key: "santiye-defteri", label: "Günlük Kayıtlar", grup: "Şantiye Defteri" },
+  // Ayarlar
+  { key: "yonetim-firmalar", label: "Firmalar", grup: "Ayarlar" },
+  { key: "yonetim-santiyeler", label: "İş Deneyim Belgeleri", grup: "Ayarlar" },
+  { key: "yonetim-personel", label: "Personeller", grup: "Ayarlar" },
+  { key: "yonetim-araclar", label: "Araçlar", grup: "Ayarlar" },
+  { key: "yonetim-yi-ufe", label: "Yi-ÜFE", grup: "Ayarlar" },
+  { key: "yonetim-tanimlamalar", label: "Tanımlamalar", grup: "Ayarlar" },
 ];
 
 // Gruplanmış modül listesi (izin matrisi için)

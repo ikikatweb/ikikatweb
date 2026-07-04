@@ -12,7 +12,7 @@ import {
   Shield, Headphones, BarChart3, Wrench, Satellite,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock, Gavel,
   ChevronDown, ChevronUp,
-  Swords, AlertTriangle, Crosshair, FileBarChart2, Network, Database,
+  FileBarChart2, Database, Briefcase,
 } from "lucide-react";
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
@@ -20,18 +20,15 @@ type MenuGroup = { title: string; icon: React.ReactNode; color: string; items: M
 
 const menuGroups: MenuGroup[] = [
   {
-    title: "Yönetim",
-    icon: <Settings size={20} />,
-    color: "text-[#1E3A5F] bg-[#1E3A5F]/10",
+    title: "Büro Yönetimi",
+    icon: <Briefcase size={20} />,
+    color: "text-slate-700 bg-slate-100",
     items: [
-      { label: "Kullanıcılar", href: "/dashboard/yonetim/kullanicilar", icon: <Users size={16} /> },
-      { label: "Firmalar", href: "/dashboard/yonetim/firmalar", icon: <Building2 size={16} /> },
-      { label: "İş Deneyim Belgeleri", href: "/dashboard/yonetim/santiyeler", icon: <HardHat size={16} /> },
-      { label: "Personeller", href: "/dashboard/yonetim/personel", icon: <UserCog size={16} /> },
-      { label: "Araçlar", href: "/dashboard/yonetim/araclar", icon: <Truck size={16} /> },
-      { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },
-      { label: "Tanımlamalar", href: "/dashboard/yonetim/tanimlamalar", icon: <Settings size={16} /> },
-      { label: "Veri Yedeği", href: "/dashboard/yedek", icon: <Database size={16} /> },
+      { label: "İşçilik Durum Raporu", href: "/dashboard/iscilik-takibi", icon: <ClipboardList size={16} /> },
+      { label: "Bordro Takibi", href: "/dashboard/bordro-takibi", icon: <UserPlus size={16} /> },
+      { label: "Ödeme Planı", href: "/dashboard/odeme-plani", icon: <CalendarClock size={16} /> },
+      { label: "İcra Takibi", href: "/dashboard/icra", icon: <Gavel size={16} /> },
+      { label: "Sınır Değer Hesabı", href: "/dashboard/ihale", icon: <Calculator size={16} /> },
     ],
   },
   {
@@ -89,15 +86,6 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    title: "İşçilik Takibi",
-    icon: <ClipboardList size={20} />,
-    color: "text-amber-600 bg-amber-50",
-    items: [
-      { label: "İşçilik Durum Raporu", href: "/dashboard/iscilik-takibi", icon: <ClipboardList size={16} /> },
-      { label: "Bordro Takibi", href: "/dashboard/bordro-takibi", icon: <UserPlus size={16} /> },
-    ],
-  },
-  {
     title: "Yakıt",
     icon: <Fuel size={20} />,
     color: "text-red-500 bg-red-50",
@@ -111,15 +99,6 @@ const menuGroups: MenuGroup[] = [
     color: "text-teal-600 bg-teal-50",
     items: [
       { label: "Kasa Hareketleri", href: "/dashboard/kasa-defteri", icon: <Wallet size={16} /> },
-      { label: "Ödeme Planı", href: "/dashboard/odeme-plani", icon: <CalendarClock size={16} /> },
-    ],
-  },
-  {
-    title: "İcra",
-    icon: <Gavel size={20} />,
-    color: "text-rose-600 bg-rose-50",
-    items: [
-      { label: "İcra Takibi", href: "/dashboard/icra", icon: <Gavel size={16} /> },
     ],
   },
   {
@@ -131,16 +110,18 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    title: "İhale",
-    icon: <Calculator size={20} />,
-    color: "text-orange-600 bg-orange-50",
+    title: "Ayarlar",
+    icon: <Settings size={20} />,
+    color: "text-[#1E3A5F] bg-[#1E3A5F]/10",
     items: [
-      { label: "Sınır Değer Hesabı", href: "/dashboard/ihale", icon: <Calculator size={16} /> },
-      { label: "Savaş Simülasyonu", href: "/dashboard/ihale/savas-simulasyonu", icon: <Swords size={16} /> },
-      { label: "Kartel Tespiti", href: "/dashboard/ihale/kartel-tespiti", icon: <AlertTriangle size={16} /> },
-      { label: "Sniper Firmalar", href: "/dashboard/ihale/sniper-firmalar", icon: <Crosshair size={16} /> },
-      { label: "Rakip Karneleri", href: "/dashboard/ihale/rakip-karneleri", icon: <FileBarChart2 size={16} /> },
-      { label: "Birlikte Hareket", href: "/dashboard/ihale/birlikte-hareket", icon: <Network size={16} /> },
+      { label: "Kullanıcılar", href: "/dashboard/yonetim/kullanicilar", icon: <Users size={16} /> },
+      { label: "Firmalar", href: "/dashboard/yonetim/firmalar", icon: <Building2 size={16} /> },
+      { label: "İş Deneyim Belgeleri", href: "/dashboard/yonetim/santiyeler", icon: <HardHat size={16} /> },
+      { label: "Personeller", href: "/dashboard/yonetim/personel", icon: <UserCog size={16} /> },
+      { label: "Araçlar", href: "/dashboard/yonetim/araclar", icon: <Truck size={16} /> },
+      { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },
+      { label: "Tanımlamalar", href: "/dashboard/yonetim/tanimlamalar", icon: <Settings size={16} /> },
+      { label: "Veri Yedeği", href: "/dashboard/yedek", icon: <Database size={16} /> },
     ],
   },
 ];

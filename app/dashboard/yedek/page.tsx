@@ -8,10 +8,11 @@ import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Download, ShieldCheck, AlertTriangle, Database, FileJson, FolderArchive, FileArchive } from "lucide-react";
 import toast from "react-hot-toast";
+import { yedekAlindiIsaretle } from "@/lib/supabase/queries/yedek-kaydi";
 
 export default function YedekPage() {
   const router = useRouter();
-  const { isYonetici, loading: authLoading } = useAuth();
+  const { isYonetici, loading: authLoading, kullanici } = useAuth();
   const [yukleniyor, setYukleniyor] = useState(false);
   const [storageYukleniyor, setStorageYukleniyor] = useState(false);
   const [sonYedekBilgi, setSonYedekBilgi] = useState<{
@@ -80,10 +81,11 @@ export default function YedekPage() {
         toplamSatir,
         tabloSayisi,
       });
-      // Dashboard'daki Cumartesi yedek hatırlatması bugün için gizlensin
+      // Dashboard'daki Cumartesi yedek hatırlatması HERKESTE kalksın (PAYLAŞIMLI durum → DB'ye işaretle)
       try {
         const d = new Date();
-        localStorage.setItem("sonYedekTarihi", `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+        const bugun = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        await yedekAlindiIsaretle(bugun, kullanici?.id ?? null, kullanici?.ad_soyad ?? null);
       } catch { /* yoksay */ }
       toast.success("Yedek indirildi!", { id: t });
     } catch (err) {

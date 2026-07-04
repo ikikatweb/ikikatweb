@@ -1,11 +1,12 @@
 "use client";
 
 // Dashboard'da CUMARTESİ günü gösterilen "yedek al" hatırlatması.
-// Yedek alındığında (Yedek Al sayfasında indirilince localStorage'a "sonYedekTarihi" yazılır) gizlenir.
+// Durum PAYLAŞIMLI (DB): herhangi bir kullanıcı yedek alınca o gün işaretlenir → uyarı HERKESTE kalkar.
 // Sekmeye geri dönüldüğünde (focus) yeniden kontrol eder → yedek alıp dönünce kaybolur.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Database, ArrowRight } from "lucide-react";
+import { yedekAlindiMi } from "@/lib/supabase/queries/yedek-kaydi";
 
 function bugunStr(): string {
   const d = new Date(); // yerel = Türkiye saati (PC saat dilimi TR)
@@ -16,15 +17,18 @@ export default function YedekHatirlatma() {
   const [goster, setGoster] = useState(false);
 
   useEffect(() => {
-    const kontrol = () => {
+    let iptal = false;
+    const kontrol = async () => {
       const cumartesi = new Date().getDay() === 6; // 0=Pazar … 6=Cumartesi
-      let sonYedek: string | null = null;
-      try { sonYedek = localStorage.getItem("sonYedekTarihi"); } catch { /* yoksay */ }
-      setGoster(cumartesi && sonYedek !== bugunStr()); // bugün yedek alındıysa gösterme
+      if (!cumartesi) { if (!iptal) setGoster(false); return; }
+      // PAYLAŞIMLI: bugün herhangi bir kullanıcı yedek aldıysa herkeste gizle
+      const alindi = await yedekAlindiMi(bugunStr());
+      if (!iptal) setGoster(!alindi);
     };
-    kontrol();
-    window.addEventListener("focus", kontrol); // yedek alıp dönünce gizlensin
-    return () => window.removeEventListener("focus", kontrol);
+    void kontrol();
+    const onFocus = () => void kontrol(); // yedek alıp dönünce gizlensin
+    window.addEventListener("focus", onFocus);
+    return () => { iptal = true; window.removeEventListener("focus", onFocus); };
   }, []);
 
   if (!goster) return null;
