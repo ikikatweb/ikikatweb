@@ -205,18 +205,22 @@ export default function ArventoWidget() {
   //   2) Bayat/yoksa arka planda BİR KEZ hesapla → göster + cache'e yaz (sonraki tüm açılışlar anında okur).
   // YALNIZ Sezon sayfası görülünce çalışır (sezonGoruldu) → page1 açılışta havuzu/CPU'yu yormaz.
   useEffect(() => {
-    if (!tarih || loading || !sezonGoruldu) return;
+    if (!tarih || loading) return;
     let iptal = false;
     (async () => {
+      // 1) Cache OKUMASI her açılışta (hafif tek-satır) → değer varsa ANINDA göster; sayfa kaydırmayı bekleme.
+      //    Böylece 2. sayfaya geçince skeleton ÇAKMASI olmaz (değer zaten yüklü).
       let cached: SezonUzunluk | null = null, taze = false;
       try {
         const r = await fetch(`/api/arvento/sezon-uzunluk?bitis=${tarih}&imza=${encodeURIComponent(imza)}`);
         if (r.ok) { const j = await r.json() as { deger: SezonUzunluk | null; taze: boolean }; cached = j.deger; taze = j.taze; }
-      } catch { /* cache erişilemedi → hesapla */ }
+      } catch { /* cache erişilemedi → aşağıda hesap */ }
       if (iptal) return;
       if (cached) { setSezonUzunluk(cached); setSezonUzYuk(false); } // bayat da olsa hemen göster (skeleton yok)
-      else setSezonUzYuk(true);                                      // hiç yok → bu SEFERLİK skeleton
-      if (taze) return;                                              // taze → yeniden hesaplama yok
+      // 2) AĞIR yeniden-hesap: yalnız BAYAT + Sezon sayfası GÖRÜLDÜYSE (havuzu boşuna yorma). Taze ise ya da
+      //    sayfa hiç görülmediyse hesaplama yok. Hiç cache yoksa ve sayfa görüldüyse → bu seferlik skeleton.
+      if (taze || !sezonGoruldu) { if (!cached) setSezonUzYuk(true); return; }
+      if (!cached) setSezonUzYuk(true);
       try {
         const u = await sezonUzunlukMetrik(SEZON_BAS, tarih, ocakMakinePlakalar); // ağır — arka planda, kullanıcı bayatı görüyor
         if (iptal) return;
