@@ -713,6 +713,28 @@ export type OdemePlaniKasa = {
   updated_at: string;
 };
 
+// İcra takibi — elle girilen icra dosyaları (Kasa ile Şantiye Defteri arasındaki "İcra" sekmesi)
+export type IcraKayit = {
+  id: string;
+  sira: number;
+  ucuncu_sahis: string | null;
+  dosya_esas_no: string | null;
+  gelen_yazi_tarihi: string | null;
+  teblig_tarihi: string | null;
+  cevap_tarihi: string | null;
+  cevap_sekli: string | null;
+  evrak_no: string | null;
+  alacakli_adi: string | null;
+  alacakli_vergi_no: string | null;
+  borclu_adi: string | null;
+  borclu_tc_no: string | null;
+  borc_miktari: number;
+  odenen_tutar: number;
+  aciklama: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 // İhale ve sınır değer hesaplama tipleri
 export type Ihale = {
   id: string;

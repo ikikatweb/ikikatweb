@@ -1216,11 +1216,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
       {/* Buton çubuğu ALTA YAPIŞIK (sticky) → uzun formda kaydırırken Kaydet/İptal ekranın altında görünür kalır,
           içeriği örtmez (akışta son öğe). Yatay taşma select düzeltmesiyle giderildiği için sağ kenardan da kaçmaz. */}
-      <div className="sticky bottom-0 z-20 mt-6 flex items-center justify-stretch sm:justify-end gap-3 border-t bg-white py-3">
-        <Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
+      {/* Butonlar mobilde ALT ALTA (flex-col-reverse → Kaydet üstte, İptal altta), her biri tam genişlik → uzun
+          form yatay taşısa bile butonlar sola dayalı ve GÖRÜNÜR kalır. Masaüstünde yan yana, sağa dayalı. */}
+      <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
+        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
           <X size={16} className="mr-1" /> İptal
         </Button>
-        <Button type="submit" className="flex-1 sm:flex-none bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>
+        <Button type="submit" className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>

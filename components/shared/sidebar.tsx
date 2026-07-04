@@ -10,7 +10,7 @@ import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
   Mail, MailOpen, Landmark, Trash2,
   Shield, Headphones, BarChart3, Wrench, Satellite,
-  ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock,
+  ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock, Gavel,
   ChevronDown, ChevronUp,
   Swords, AlertTriangle, Crosshair, FileBarChart2, Network, Database,
 } from "lucide-react";
@@ -112,6 +112,14 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: "Kasa Hareketleri", href: "/dashboard/kasa-defteri", icon: <Wallet size={16} /> },
       { label: "Ödeme Planı", href: "/dashboard/odeme-plani", icon: <CalendarClock size={16} /> },
+    ],
+  },
+  {
+    title: "İcra",
+    icon: <Gavel size={20} />,
+    color: "text-rose-600 bg-rose-50",
+    items: [
+      { label: "İcra Takibi", href: "/dashboard/icra", icon: <Gavel size={16} /> },
     ],
   },
   {

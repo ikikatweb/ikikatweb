@@ -37,6 +37,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "yakit", label: "Yakıt", grup: "Tek Sayfa" },
   { key: "kasa-defteri", label: "Kasa", grup: "Tek Sayfa" },
   { key: "odeme-plani", label: "Ödeme Planı", grup: "Tek Sayfa" },
+  { key: "icra", label: "İcra", grup: "Tek Sayfa" },
   { key: "santiye-defteri", label: "Şantiye Defteri", grup: "Tek Sayfa" },
   // İhale
   { key: "ihale", label: "İhale", grup: "İhale" },
