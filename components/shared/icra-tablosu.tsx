@@ -270,8 +270,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         <span className="text-xs text-gray-500">{gorunen.length} kayıt</span>
       </div>
 
-      {/* Masaüstü: tam tablo (mobilde gizli — dik ekranda okunmuyor) */}
-      <div className="hidden lg:block w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Tam tablo — YATAY (landscape) ve masaüstünde. Dik telefonda gizli (okunmuyor). */}
+      <div className="hidden landscape:block lg:block w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="text-xs text-gray-900 border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
@@ -369,8 +369,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         </table>
       </div>
 
-      {/* Mobil (dik ekran): kart görünümü — Alacaklı / Borçlu / Borç (tablo mobilde okunmuyor) */}
-      <div className="lg:hidden space-y-2">
+      {/* DİK (portrait) telefon: kart görünümü — Alacaklı / Borçlu / Borç. Yan çevirince (landscape) gizlenir, tablo gelir. */}
+      <div className="block landscape:hidden lg:hidden space-y-2">
         {gosterilecek.length === 0 ? (
           <div className="bg-white rounded-lg border p-6 text-center text-gray-400 text-sm">
             {arama.trim() ? "Aramayla eşleşen kayıt yok." : "Henüz kayıt yok."}
