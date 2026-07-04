@@ -59,6 +59,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [form, setForm] = useState<IcraForm>(BOS_FORM);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
+  const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
 
   useEffect(() => {
     let iptal = false;
@@ -92,10 +93,11 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const duzenleAcildiRef = useRef(false);
   useEffect(() => {
     if (loading || duzenleAcildiRef.current || typeof window === "undefined") return;
-    const id = new URLSearchParams(window.location.search).get("duzenle");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("duzenle");
     if (!id) return;
     const row = satirlar.find((s) => s.id === id);
-    if (row) { duzenleAcildiRef.current = true; dialogAc(row); }
+    if (row) { duzenleAcildiRef.current = true; dialogAc(row); if (params.get("kilit") === "1") setKilitli(true); }
   }, [loading, satirlar]);
 
   const sirali = useMemo(() => [...satirlar].sort((a, b) => {
@@ -150,6 +152,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         borc_miktari: sayiToInput(Number(row.borc_miktari || 0)),
       });
     } else { setEditId(null); setForm(BOS_FORM); }
+    setKilitli(false); // normal aç (kalem/yeni) → kilitsiz; ?kilit=1 efekti sonra true yapar
     setDialogAcik(true);
   }
   const setF = (k: keyof IcraForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -226,6 +229,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // Form input sınıfları
   const fLbl = "text-xs font-medium text-gray-600 mb-1 block";
   const fInp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30";
+  const kilitInp = kilitli ? "bg-gray-100 text-gray-500 cursor-not-allowed" : ""; // kilitli alan görünümü
   // Zorunlu alanların hepsi dolu mu? (Kaydet butonu buna göre aktifleşir) — cevap tarihi varsa evrak no da zorunlu.
   const formGecerli = Boolean(
     form.ucuncu_sahis.trim() && form.dosya_esas_no.trim() && form.gelen_yazi_tarihi && form.teblig_tarihi &&
@@ -379,46 +383,51 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </DialogHeader>
 
           <div ref={formRef} onKeyDown={formEnter} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {kilitli && (
+              <div className="sm:col-span-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                🔒 Mevcut bilgiler kilitli — yalnız <b>Cevap / Ödeme</b> alanları girilebilir.
+              </div>
+            )}
             {/* ── ZORUNLU ALANLAR (üstte) ── */}
             <div className="sm:col-span-2">
               <label className={fLbl}>Üçüncü Şahıs <span className="text-red-500">*</span></label>
-              <input list="icra-ucuncu-list" className={fInp} value={form.ucuncu_sahis} onChange={(e) => setF("ucuncu_sahis", e.target.value)} placeholder="Firma seçin veya yazın" />
+              <input list="icra-ucuncu-list" readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.ucuncu_sahis} onChange={(e) => setF("ucuncu_sahis", e.target.value)} placeholder="Firma seçin veya yazın" />
             </div>
             <div>
               <label className={fLbl}>Dosya Esas No <span className="text-red-500">*</span></label>
-              <input className={fInp} value={form.dosya_esas_no} onChange={(e) => setF("dosya_esas_no", e.target.value)} placeholder="2020/0000" />
+              <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.dosya_esas_no} onChange={(e) => setF("dosya_esas_no", e.target.value)} placeholder="2020/0000" />
             </div>
             <div>
               <label className={fLbl}>Gelen İcra Yazısı Tarihi <span className="text-red-500">*</span></label>
-              <input type="date" className={fInp} value={form.gelen_yazi_tarihi} onChange={(e) => setF("gelen_yazi_tarihi", e.target.value)} />
+              <input type="date" disabled={kilitli} className={`${fInp} ${kilitInp}`} value={form.gelen_yazi_tarihi} onChange={(e) => setF("gelen_yazi_tarihi", e.target.value)} />
             </div>
             <div>
               <label className={fLbl}>Tebliğ Tarihi <span className="text-red-500">*</span></label>
-              <input type="date" className={fInp} value={form.teblig_tarihi} onChange={(e) => setF("teblig_tarihi", e.target.value)} />
+              <input type="date" disabled={kilitli} className={`${fInp} ${kilitInp}`} value={form.teblig_tarihi} onChange={(e) => setF("teblig_tarihi", e.target.value)} />
             </div>
             <div>
               <label className={fLbl}>Borç Miktarı <span className="text-red-500">*</span></label>
-              <input inputMode="decimal" className={`${fInp} text-right`} value={form.borc_miktari} onChange={(e) => setF("borc_miktari", formatParaInput(e.target.value))} placeholder="0" />
+              <input inputMode="decimal" readOnly={kilitli} className={`${fInp} text-right ${kilitInp}`} value={form.borc_miktari} onChange={(e) => setF("borc_miktari", formatParaInput(e.target.value))} placeholder="0" />
             </div>
 
             <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Alacaklı Bilgileri</div>
             <div>
               <label className={fLbl}>Adı Soyadı / Ünvanı <span className="text-red-500">*</span></label>
-              <input className={fInp} value={form.alacakli_adi} onChange={(e) => setF("alacakli_adi", e.target.value)} />
+              <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.alacakli_adi} onChange={(e) => setF("alacakli_adi", e.target.value)} />
             </div>
             <div>
               <label className={fLbl}>Vergi No</label>
-              <input className={fInp} value={form.alacakli_vergi_no} onChange={(e) => setF("alacakli_vergi_no", e.target.value)} />
+              <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.alacakli_vergi_no} onChange={(e) => setF("alacakli_vergi_no", e.target.value)} />
             </div>
 
             <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Borçlu Bilgileri</div>
             <div>
               <label className={fLbl}>Adı Soyadı / Ünvanı <span className="text-red-500">*</span></label>
-              <input list="icra-borclu-list" className={fInp} value={form.borclu_adi} onChange={(e) => setF("borclu_adi", e.target.value)} onBlur={borcluAdiBlur} placeholder="Personel seçin veya yazın" />
+              <input list="icra-borclu-list" readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.borclu_adi} onChange={(e) => setF("borclu_adi", e.target.value)} onBlur={borcluAdiBlur} placeholder="Personel seçin veya yazın" />
             </div>
             <div>
               <label className={fLbl}>Vergi / TC No <span className="text-red-500">*</span></label>
-              <input className={fInp} value={form.borclu_tc_no} onChange={(e) => setF("borclu_tc_no", e.target.value)} />
+              <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.borclu_tc_no} onChange={(e) => setF("borclu_tc_no", e.target.value)} />
             </div>
 
             {/* ── OPSİYONEL ALANLAR (altta) ── */}

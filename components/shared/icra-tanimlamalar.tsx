@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getTanimlamalar, createTanimlama, updateTanimlama, deleteTanimlama } from "@/lib/supabase/queries/tanimlamalar";
+import { createClient } from "@/lib/supabase/client";
 import { ICRA_CEVAP_VARSAYILAN } from "@/components/shared/icra-tablosu";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { Plus, Trash2, Loader2, Pencil, Check, X } from "lucide-react";
@@ -58,9 +59,16 @@ export default function IcraTanimlamalar({ canEkle, canDuzenle, canSil }: { canE
     if (!duzenleId) return;
     const v = duzenleDeger.trim();
     if (!v) { toast.error("Boş olamaz."); return; }
+    const eski = liste.find((t) => t.id === duzenleId)?.deger ?? ""; // eski değer (icra kayıtlarında saklı)
     if (liste.some((t) => t.id !== duzenleId && t.deger.toLocaleLowerCase("tr") === v.toLocaleLowerCase("tr"))) { toast.error("Bu değer zaten var."); return; }
-    try { await updateTanimlama(duzenleId, { deger: v }); setDuzenleId(null); await yukle(); }
-    catch { toast.error("Güncellenemedi."); }
+    try {
+      await updateTanimlama(duzenleId, { deger: v });
+      // Bu cevap şeklini KULLANAN mevcut icra kayıtlarını da yeni değere güncelle (geriye dönük — tabloda da değişsin)
+      if (eski && eski !== v) {
+        try { await createClient().from("icra").update({ cevap_sekli: v }).eq("cevap_sekli", eski); } catch { /* sessiz */ }
+      }
+      setDuzenleId(null); await yukle();
+    } catch { toast.error("Güncellenemedi."); }
   }
 
   const eksikVarsayilan = ICRA_CEVAP_VARSAYILAN.filter((v) => !varMi(v));
