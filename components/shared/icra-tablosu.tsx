@@ -50,6 +50,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [hata, setHata] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const [hepsiGoster, setHepsiGoster] = useState(false); // ilk 100 kayıt; fazlası "ok" ile açılır
+  const [kompakt, setKompakt] = useState(false); // dar ekran (yatay telefon) → Alacaklı Vergi + Borçlu TC sütunları gizli
   const [firmalar, setFirmalar] = useState<{ firma_adi: string | null; renk?: string | null }[]>([]);
   const [personeller, setPersoneller] = useState<{ ad_soyad: string | null; tc_kimlik_no: string | null }[]>([]);
   const [cevapSekilleri, setCevapSekilleri] = useState<string[]>(ICRA_CEVAP_VARSAYILAN);
@@ -99,6 +100,16 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const row = satirlar.find((s) => s.id === id);
     if (row) { duzenleAcildiRef.current = true; dialogAc(row); if (params.get("kilit") === "1") setKilitli(true); }
   }, [loading, satirlar]);
+
+  // Dar ekran (yatay telefon / küçük pencere, <1024px) → tabloda bazı sütunları gizle
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const uygula = () => setKompakt(mq.matches);
+    uygula();
+    mq.addEventListener("change", uygula);
+    return () => mq.removeEventListener("change", uygula);
+  }, []);
 
   const sirali = useMemo(() => [...satirlar].sort((a, b) => {
     const ta = a.gelen_yazi_tarihi ?? "", tb = b.gelen_yazi_tarihi ?? "";
@@ -284,9 +295,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <col className="w-[7%]" />{/* Ödenen */}
             <col className="w-[6%]" />{/* Evrak No */}
             <col className="w-[10%]" />{/* Alacaklı Adı */}
-            <col className="w-[6%]" />{/* Alacaklı Vergi */}
+            {!kompakt && <col className="w-[6%]" />}{/* Alacaklı Vergi */}
             <col className="w-[10%]" />{/* Borçlu Adı */}
-            <col className="w-[6%]" />{/* Borçlu TC */}
+            {!kompakt && <col className="w-[6%]" />}{/* Borçlu TC */}
             <col className={islemVar ? "w-[8%]" : "w-[10%]"} />{/* Borç */}
             {islemVar && <col className="w-[6%]" />}
           </colgroup>
@@ -301,21 +312,21 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <th rowSpan={2} className={th}>Cevap Şekli</th>
               <th rowSpan={2} className={th}>Ödenen Tutar</th>
               <th rowSpan={2} className={th}>Evrak No</th>
-              <th colSpan={2} className={th}>Alacaklı Bilgileri</th>
-              <th colSpan={2} className={`${th} bg-red-50`}>Borçlu Bilgileri</th>
+              <th colSpan={kompakt ? 1 : 2} className={th}>Alacaklı Bilgileri</th>
+              <th colSpan={kompakt ? 1 : 2} className={`${th} bg-red-50`}>Borçlu Bilgileri</th>
               <th rowSpan={2} className={th}>Borç Miktarı</th>
               {islemVar && <th rowSpan={2} className={th}>İşlem</th>}
             </tr>
             <tr>
               <th className={th}>Adı Soyadı / Ünvanı</th>
-              <th className={th}>Vergi No</th>
+              {!kompakt && <th className={th}>Vergi No</th>}
               <th className={`${th} bg-red-50`}>Adı Soyadı / Ünvanı</th>
-              <th className={`${th} bg-red-50`}>Vergi / TC No</th>
+              {!kompakt && <th className={`${th} bg-red-50`}>Vergi / TC No</th>}
             </tr>
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={islemVar ? 15 : 14} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={(islemVar ? 15 : 14) - (kompakt ? 2 : 0)} className="text-center text-gray-400 py-8">
                 {arama.trim() ? "Aramayla eşleşen kayıt yok." : `Henüz kayıt yok.${canEkle ? " “Yeni İcra Dosyası Ekle” ile başlayın." : ""}`}
               </td></tr>
             )}
@@ -328,10 +339,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
                   <td className={`${td} text-center text-gray-500 tabular-nums`}>{siraNo.get(s.id)}</td>
                   <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-[11px]" title={s.ucuncu_sahis ?? ""}>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {firmaRengi(s.ucuncu_sahis) && <span className="inline-block w-1 h-4 rounded-sm shrink-0" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />}
-                      <span className="truncate">{s.ucuncu_sahis}</span>
-                    </div>
+                    {firmaRengi(s.ucuncu_sahis)
+                      ? <span className="block w-full h-4 rounded" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />
+                      : <span className="block truncate text-gray-400">{s.ucuncu_sahis}</span>}
                   </td>
                   <td className={td} title={s.dosya_esas_no ?? ""}>{s.dosya_esas_no}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
@@ -341,9 +351,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
                   <td className={`${td} ${evrakGerekli ? "bg-red-50 text-red-600" : ""}`} title={evrakGerekli ? "Cevap tarihi girildi — evrak no zorunlu" : (s.evrak_no ?? "")}>{s.evrak_no || (evrakGerekli ? "Zorunlu!" : "")}</td>
                   <td className={td} title={s.alacakli_adi ?? ""}>{s.alacakli_adi}</td>
-                  <td className={td} title={s.alacakli_vergi_no ?? ""}>{s.alacakli_vergi_no}</td>
+                  {!kompakt && <td className={td} title={s.alacakli_vergi_no ?? ""}>{s.alacakli_vergi_no}</td>}
                   <td className={`${td} ${borcluTxt}`} title={s.borclu_adi ?? ""}>{s.borclu_adi}</td>
-                  <td className={td} title={s.borclu_tc_no ?? ""}>{s.borclu_tc_no}</td>
+                  {!kompakt && <td className={td} title={s.borclu_tc_no ?? ""}>{s.borclu_tc_no}</td>}
                   <td className={`${td} text-right tabular-nums text-red-600`}>{paraGoster(Number(s.borc_miktari || 0))}</td>
                   {islemVar && (
                     <td className={`${td} text-center`}>
@@ -361,7 +371,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
               <td className={`${td} text-right`} colSpan={7}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
-              <td className={td} colSpan={5} />
+              <td className={td} colSpan={kompakt ? 3 : 5} />
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
               {islemVar && <td className={td} />}
             </tr>
@@ -382,14 +392,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <div key={s.id} className="bg-white rounded-lg border p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  {s.ucuncu_sahis && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0">
-                      {renk && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: renk }} />}
-                      <span className="truncate">{s.ucuncu_sahis}</span>
-                    </div>
+                  {s.ucuncu_sahis && (renk
+                    ? <span className="inline-block w-10 h-2.5 rounded" style={{ backgroundColor: renk }} title={s.ucuncu_sahis} />
+                    : <div className="text-[11px] text-gray-500 truncate" title={s.ucuncu_sahis}>{s.ucuncu_sahis}</div>
                   )}
                   <div><div className="text-[10px] text-gray-400">Alacaklı</div><div className="text-sm text-gray-900 truncate">{s.alacakli_adi || "—"}</div></div>
                   <div><div className="text-[10px] text-gray-400">Borçlu</div><div className={`text-sm truncate ${tekrar ? "text-red-600 font-medium" : "text-gray-900"}`}>{s.borclu_adi || "—"}</div></div>
+                  <div><div className="text-[10px] text-gray-400">Tebliğ Tarihi</div><div className="text-sm text-gray-800">{tarihGoster(s.teblig_tarihi)}</div></div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-[10px] text-gray-400">Borç</div>
