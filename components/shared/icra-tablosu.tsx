@@ -50,7 +50,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [hata, setHata] = useState<string | null>(null);
   const [arama, setArama] = useState("");
   const [hepsiGoster, setHepsiGoster] = useState(false); // ilk 100 kayıt; fazlası "ok" ile açılır
-  const [firmalar, setFirmalar] = useState<{ firma_adi: string | null }[]>([]);
+  const [firmalar, setFirmalar] = useState<{ firma_adi: string | null; renk?: string | null }[]>([]);
   const [personeller, setPersoneller] = useState<{ ad_soyad: string | null; tc_kimlik_no: string | null }[]>([]);
   const [cevapSekilleri, setCevapSekilleri] = useState<string[]>(ICRA_CEVAP_VARSAYILAN);
   // Dialog
@@ -68,7 +68,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         const sb = createClient();
         const [r, fRes, pRes, cevap] = await Promise.all([
           getIcraKayitlar(),
-          sb.from("firmalar").select("firma_adi").then((x) => (x.data as { firma_adi: string | null }[]) ?? [], () => []),
+          sb.from("firmalar").select("firma_adi, renk").then((x) => (x.data as { firma_adi: string | null; renk?: string | null }[]) ?? [], () => []),
           sb.from("personel").select("ad_soyad, tc_kimlik_no").then((x) => (x.data as { ad_soyad: string | null; tc_kimlik_no: string | null }[]) ?? [], () => []),
           getDegerler("icra_cevap_sekli").catch(() => [] as string[]),
         ]);
@@ -113,6 +113,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     return new Set(Array.from(say.entries()).filter(([, n]) => n > 1).map(([t]) => t));
   }, [satirlar]);
   const ucuncuList = useMemo(() => Array.from(new Set(firmalar.map((f) => (f.firma_adi ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "tr")), [firmalar]);
+  // Firma adı (BÜYÜK) → tanımlı renk (Üçüncü Şahıs hücresinde gösterilir)
+  const firmaRenkMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of firmalar) { const ad = (f.firma_adi ?? "").trim().toLocaleUpperCase("tr"); if (ad && f.renk) m.set(ad, f.renk); }
+    return m;
+  }, [firmalar]);
+  const firmaRengi = (ad: string | null) => firmaRenkMap.get((ad ?? "").trim().toLocaleUpperCase("tr")) ?? null;
   const borcluList = useMemo(() => Array.from(new Set(personeller.map((p) => (p.ad_soyad ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "tr")), [personeller]);
   const borcluTcMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -263,7 +270,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         <span className="text-xs text-gray-500">{gorunen.length} kayıt</span>
       </div>
 
-      <div className="w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Masaüstü: tam tablo (mobilde gizli — dik ekranda okunmuyor) */}
+      <div className="hidden lg:block w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="text-xs text-gray-900 border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
@@ -319,7 +327,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
                   <td className={`${td} text-center text-gray-500 tabular-nums`}>{siraNo.get(s.id)}</td>
-                  <td className={td} title={s.ucuncu_sahis ?? ""}>{s.ucuncu_sahis}</td>
+                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-[11px]" title={s.ucuncu_sahis ?? ""}>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {firmaRengi(s.ucuncu_sahis) && <span className="inline-block w-1 h-4 rounded-sm shrink-0" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />}
+                      <span className="truncate">{s.ucuncu_sahis}</span>
+                    </div>
+                  </td>
                   <td className={td} title={s.dosya_esas_no ?? ""}>{s.dosya_esas_no}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
@@ -354,6 +367,44 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             </tr>
           </tfoot>
         </table>
+      </div>
+
+      {/* Mobil (dik ekran): kart görünümü — Alacaklı / Borçlu / Borç (tablo mobilde okunmuyor) */}
+      <div className="lg:hidden space-y-2">
+        {gosterilecek.length === 0 ? (
+          <div className="bg-white rounded-lg border p-6 text-center text-gray-400 text-sm">
+            {arama.trim() ? "Aramayla eşleşen kayıt yok." : "Henüz kayıt yok."}
+          </div>
+        ) : gosterilecek.map((s) => {
+          const tekrar = tekrarTc.has(tcNorm(s.borclu_tc_no));
+          const renk = firmaRengi(s.ucuncu_sahis);
+          return (
+            <div key={s.id} className="bg-white rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  {s.ucuncu_sahis && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0">
+                      {renk && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: renk }} />}
+                      <span className="truncate">{s.ucuncu_sahis}</span>
+                    </div>
+                  )}
+                  <div><div className="text-[10px] text-gray-400">Alacaklı</div><div className="text-sm text-gray-900 truncate">{s.alacakli_adi || "—"}</div></div>
+                  <div><div className="text-[10px] text-gray-400">Borçlu</div><div className={`text-sm truncate ${tekrar ? "text-red-600 font-medium" : "text-gray-900"}`}>{s.borclu_adi || "—"}</div></div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] text-gray-400">Borç</div>
+                  <div className="text-sm font-bold text-red-600 tabular-nums whitespace-nowrap">{paraGoster(Number(s.borc_miktari || 0))}</div>
+                  {islemVar && (
+                    <div className="flex gap-3 justify-end mt-2">
+                      {canDuzenle && <button type="button" onClick={() => dialogAc(s)} className="text-gray-400 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={16} /></button>}
+                      {canSil && <button type="button" onClick={() => sil(s.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={16} /></button>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* İlk 100 kayıt gösterilir; fazlası "ok" ile açılır. */}
