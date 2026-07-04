@@ -44,7 +44,7 @@ export async function getOdemePlaniKasa(): Promise<OdemePlaniKasa[]> {
 }
 
 export async function insertOdemePlaniKasa(row: {
-  etiket: string | null; tutar: number; sira: number;
+  etiket: string | null; tutar: number; grup: string; sira: number;
 }): Promise<OdemePlaniKasa> {
   const { data, error } = await sb().from("odeme_plani_kasa").insert(row).select().single();
   if (error) throw error;
@@ -52,7 +52,7 @@ export async function insertOdemePlaniKasa(row: {
 }
 
 export async function updateOdemePlaniKasa(id: string, patch: Partial<{
-  etiket: string | null; tutar: number; sira: number;
+  etiket: string | null; tutar: number; grup: string; sira: number;
 }>): Promise<void> {
   const { error } = await sb().from("odeme_plani_kasa")
     .update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);

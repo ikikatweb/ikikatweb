@@ -14,15 +14,21 @@ create table if not exists public.odeme_plani_satir (
   updated_at timestamptz not null default now()
 );
 
--- Yan liste: Kullanılabilir Krediler ve Kasa (etiket + tutar) → TOPLAM = kümülatif başlangıç bakiyesi
+-- Yan liste: Kullanılabilir Krediler ve Kasa (etiket + tutar + grup) → TOPLAM = kümülatif başlangıç bakiyesi
+-- grup: 'kredi' (Kredi/BCH) | 'banka' | 'kasa' — 3 sütun halinde gösterilir, TOPLAM tektir.
 create table if not exists public.odeme_plani_kasa (
   id         uuid primary key default gen_random_uuid(),
   etiket     text,
   tutar      numeric not null default 0,
+  grup       text not null default 'banka',
   sira       integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Mevcut tabloya kolon ekleme (ilk sürümü zaten çalıştırdıysan) + eski satırları otomatik grupla:
+alter table public.odeme_plani_kasa add column if not exists grup text not null default 'banka';
+update public.odeme_plani_kasa set grup = 'kredi' where etiket ilike '%BCH%';
+update public.odeme_plani_kasa set grup = 'kasa'  where etiket ilike '%kasa%';
 
 -- Tarayıcı (authenticated) okur+yazar; erişim uygulama içi izin matrisiyle (odeme-plani modülü) yönetilir.
 alter table public.odeme_plani_satir enable row level security;

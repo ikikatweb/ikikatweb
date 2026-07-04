@@ -707,6 +707,7 @@ export type OdemePlaniKasa = {
   id: string;
   etiket: string | null;
   tutar: number;
+  grup: string; // "kredi" | "banka" | "kasa"
   sira: number;
   created_at: string;
   updated_at: string;

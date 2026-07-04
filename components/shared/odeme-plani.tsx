@@ -17,6 +17,12 @@ const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma"
 const AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 // Tarih grubu renkleri (yumuşak tonlar — hücreler okunur kalsın)
 const PALET = ["bg-orange-50", "bg-sky-50", "bg-violet-50", "bg-emerald-50", "bg-rose-50", "bg-amber-50", "bg-teal-50"];
+// Kullanılabilir Krediler ve Kasa — 3 grup (tek TOPLAM). grup değeri DB'de saklanır.
+const KASA_GRUPLARI: { key: string; label: string }[] = [
+  { key: "kredi", label: "Kredi / BCH" },
+  { key: "banka", label: "Banka" },
+  { key: "kasa", label: "Kasa" },
+];
 
 function gunAdi(tarih: string): string { const d = new Date(tarih + "T00:00:00"); return GUNLER[d.getDay()] ?? ""; }
 function tarihUzun(tarih: string): string {
@@ -122,10 +128,10 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
     setKasa((p) => p.map((k) => (k.id === id ? { ...k, ...patch, updated_at: now } : k)));
     try { await updateOdemePlaniKasa(id, patch); } catch { toast.error("Kaydedilemedi."); }
   }
-  async function kasaEkle() {
+  async function kasaEkle(grup: string) {
     const maxSira = kasa.reduce((m, k) => Math.max(m, k.sira), 0);
     try {
-      const row = await insertOdemePlaniKasa({ etiket: "", tutar: 0, sira: maxSira + 1 });
+      const row = await insertOdemePlaniKasa({ etiket: "", tutar: 0, grup, sira: maxSira + 1 });
       setKasa((p) => [...p, row]);
     } catch { toast.error("Satır eklenemedi."); }
   }
@@ -137,15 +143,17 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
 
   const inputCls = "w-full bg-transparent px-1.5 py-1 text-sm outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 read-only:cursor-default disabled:cursor-default";
 
-  // Sayı hücresi (blur'da parse+kaydet; boş=0)
-  function paraHucre(id: string, field: string, value: number, persist: (n: number) => void, bosZero = true, extra = "") {
+  // Sayı hücresi (blur'da parse+kaydet). 0 DAİMA boş değer olarak tutulur (yazmaya başlayınca "0" alınmaz);
+  // sifirPh=true ise 0 iken SİLİK gri "0" PLACEHOLDER gösterilir (sadece görüntü — gerçek değer boş).
+  function paraHucre(id: string, field: string, value: number, persist: (n: number) => void, extra = "", sifirPh = false) {
     const key = `${id}:${field}`;
-    const gosterim = duzen[key] ?? sayiToInput(value, bosZero);
+    const gosterim = duzen[key] ?? sayiToInput(value, true); // 0 → "" (boş)
     return (
       <input
         type="text" inputMode="decimal" dir="ltr"
         readOnly={!canDuzenle}
-        className={`${inputCls} text-right tabular-nums ${extra}`}
+        placeholder={sifirPh ? "0" : ""}
+        className={`${inputCls} text-right tabular-nums placeholder:text-gray-300 ${extra}`}
         value={gosterim}
         onChange={(e) => { if (canDuzenle) setDuzen((d) => ({ ...d, [key]: formatParaInput(e.target.value) })); }}
         onBlur={() => {
@@ -199,9 +207,9 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
         )}
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-4 items-start">
-        {/* Ana tablo — Ödeme ve Tahsilatlar */}
-        <div className="flex-1 min-w-0 w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="flex flex-col gap-4 items-start">
+        {/* Ana tablo — Ödeme ve Tahsilatlar (ALTTA) */}
+        <div className="order-2 w-full min-w-0 bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
@@ -231,8 +239,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                         <div className="text-[10px] text-gray-500 px-1.5 truncate" title={tarihUzun(s.tarih)}>{gunAdi(s.tarih)}</div>
                       </td>
                       <td className="px-1 py-0.5">{metinHucre(s.id, "aciklama", s.aciklama, (v) => satirGuncelle(s.id, { aciklama: v }), "Açıklama")}</td>
-                      <td className="px-1 py-0.5">{paraHucre(s.id, "gider", Number(s.gider || 0), (n) => satirGuncelle(s.id, { gider: n }), true, "text-red-600")}</td>
-                      <td className="px-1 py-0.5">{paraHucre(s.id, "gelir", Number(s.gelir || 0), (n) => satirGuncelle(s.id, { gelir: n }), true, "text-emerald-700")}</td>
+                      <td className="px-1 py-0.5">{paraHucre(s.id, "gider", Number(s.gider || 0), (n) => satirGuncelle(s.id, { gider: n }), "text-red-600")}</td>
+                      <td className="px-1 py-0.5">{paraHucre(s.id, "gelir", Number(s.gelir || 0), (n) => satirGuncelle(s.id, { gelir: n }), "text-emerald-700")}</td>
                       <td className={`px-2 py-1 text-right tabular-nums font-semibold ${kum < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{tlFmt(kum)}</td>
                       {canSil && (
                         <td className="px-1 py-0.5 text-center">
@@ -265,42 +273,51 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
           )}
         </div>
 
-        {/* Yan tablo — Kullanılabilir Krediler ve Kasa */}
-        <div className="w-full xl:w-80 shrink-0 bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Kullanılabilir Krediler ve Kasa (ÜSTTE, tam genişlik) — 3 grup, TEK TOPLAM */}
+        <div className="order-1 w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
           <div className="bg-gray-200 text-[#1E3A5F] font-semibold text-center px-2 py-2 text-sm">Kullanılabilir Krediler ve Kasa</div>
-          <table className="w-full text-sm border-collapse">
-            <tbody>
-              {kasa.length === 0 && (
-                <tr><td className="text-center text-gray-400 py-6 text-xs">Henüz kayıt yok.</td></tr>
-              )}
-              {kasa.map((k) => (
-                <tr key={k.id} className="border-b border-gray-100">
-                  <td className="px-1 py-0.5 w-28">{paraHucre(k.id, "tutar", Number(k.tutar || 0), (n) => kasaGuncelle(k.id, { tutar: n }), false)}</td>
-                  <td className="px-1 py-0.5">{metinHucre(k.id, "etiket", k.etiket, (v) => kasaGuncelle(k.id, { etiket: v }), "Banka / Kasa")}</td>
-                  {canSil && (
-                    <td className="px-1 py-0.5 text-center w-8">
-                      <button type="button" onClick={() => kasaSil(k.id)} className="text-gray-300 hover:text-red-600" title="Satırı sil">
-                        <Trash2 size={13} />
+          <div className="grid grid-cols-1 md:grid-cols-3 md:divide-x divide-gray-200 divide-y md:divide-y-0">
+            {KASA_GRUPLARI.map((g) => {
+              const grupSatir = kasa.filter((k) => (k.grup ?? "banka") === g.key);
+              return (
+                <div key={g.key} className="flex flex-col">
+                  <div className="bg-gray-50 text-gray-600 font-semibold text-center px-2 py-1.5 text-xs border-b border-gray-200">{g.label}</div>
+                  <table className="w-full text-sm border-collapse">
+                    <tbody>
+                      {grupSatir.length === 0 && (
+                        <tr><td className="text-center text-gray-300 py-3 text-xs">—</td></tr>
+                      )}
+                      {grupSatir.map((k) => (
+                        <tr key={k.id} className="border-b border-gray-100">
+                          <td className="px-1 py-0.5 w-32">{paraHucre(k.id, "tutar", Number(k.tutar || 0), (n) => kasaGuncelle(k.id, { tutar: n }), "", true)}</td>
+                          <td className="px-1 py-0.5">{metinHucre(k.id, "etiket", k.etiket, (v) => kasaGuncelle(k.id, { etiket: v }), "Ad")}</td>
+                          {canSil && (
+                            <td className="px-1 py-0.5 text-center w-7">
+                              <button type="button" onClick={() => kasaSil(k.id)} className="text-gray-300 hover:text-red-600" title="Satırı sil">
+                                <Trash2 size={13} />
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {canEkle && (
+                    <div className="p-2 border-t border-gray-100 mt-auto">
+                      <button type="button" onClick={() => kasaEkle(g.key)} className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 border">
+                        <Plus size={14} /> Satır Ekle
                       </button>
-                    </td>
+                    </div>
                   )}
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold text-[#1E3A5F]">
-                <td className="px-1.5 py-2 text-right tabular-nums">{tlFmt(kasaToplam)}</td>
-                <td className="px-1.5 py-2" colSpan={canSil ? 2 : 1}>TOPLAM</td>
-              </tr>
-            </tfoot>
-          </table>
-          {canEkle && (
-            <div className="p-2 border-t border-gray-100">
-              <button type="button" onClick={kasaEkle} className="flex items-center gap-1.5 h-8 px-3 text-sm rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 border">
-                <Plus size={14} /> Satır Ekle
-              </button>
-            </div>
-          )}
+                </div>
+              );
+            })}
+          </div>
+          {/* Tek TOPLAM (3 grubun tamamı) */}
+          <div className="bg-gray-50 border-t-2 border-gray-300 flex items-center justify-between px-3 py-2 font-bold text-[#1E3A5F]">
+            <span>TOPLAM</span>
+            <span className="tabular-nums">{tlFmt(kasaToplam)}</span>
+          </div>
         </div>
       </div>
 
