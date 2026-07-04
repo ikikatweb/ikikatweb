@@ -43,7 +43,7 @@ type OrtakRow = { firma_id: string; oran: number; is_pilot: boolean };
 const selectClass =
   // min-w-0: uzun seçenekli <select> (ör. uzun firma adı) grid/flex içinde min-content ile track'i şişirip
   // kartı viewport'tan geniş yapıyordu → mobilde her şey sağa taşıp Kaydet butonu ekran dışına kayıyordu.
-  "w-full min-w-0 h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
+  "w-full min-w-0 h-9 rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:opacity-50 text-ellipsis overflow-hidden whitespace-nowrap [&>option]:truncate";
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
@@ -536,9 +536,9 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   }
 
   return (
-    <form onSubmit={handleSubmit} className="overflow-x-clip">
-      <Tabs defaultValue="genel" className="w-full">
-        <TabsList className="mb-4 flex-wrap">
+    <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
+      <Tabs defaultValue="genel" className="w-full min-w-0">
+        <TabsList className="mb-4 w-full overflow-x-auto">
           <TabsTrigger value="genel">Genel Bilgiler</TabsTrigger>
           <TabsTrigger value="sozlesme">Sözleşme ve Mali Veri</TabsTrigger>
           <TabsTrigger value="kabul">Kabul</TabsTrigger>
@@ -556,6 +556,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     id="is_adi"
                     name="is_adi"
                     placeholder="Karabük Cevizlidere Merkez"
+                    className="text-ellipsis"
                     value={formData.is_adi}
                     onChange={handleChange}
                     onBlur={(e) => setFormData((p) => ({ ...p, is_adi: formatBaslik(e.target.value) }))}

@@ -616,7 +616,7 @@ function KasaDefContent() {
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFont("helvetica", "bold"); doc.setFontSize(12);
-    doc.text("Kasa Defteri", 14, 12);
+    doc.text("Kasa", 14, 12);
     doc.setFontSize(9); doc.setFont("helvetica", "normal");
     const pdfPersonel = filtrePersonel ? tr(personelMap.get(filtrePersonel)?.ad_soyad ?? "") : "Tum Kullanicilar";
     const pdfSantiye = filtreSantiye ? tr(santiyeMap.get(filtreSantiye) ?? "") : "Tum Santiyeler";
@@ -833,7 +833,7 @@ function KasaDefContent() {
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
-          <Wallet size={24} /> Kasa Defteri
+          <Wallet size={24} /> Kasa
         </h1>
         {(isYonetici || isShantiyeAdmin) && (
           <div className="flex items-center gap-2">

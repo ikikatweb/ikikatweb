@@ -49,7 +49,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "iscilik-takibi", label: "İşçilik Takibi", emoji: "📊", desc: "Her veri girişi / güncellemede" },
   { tag: "bordro-takibi", label: "Bordro Takibi", emoji: "🧾", desc: "Personel giriş / çıkış / transfer işlemleri" },
   { tag: "yakit", label: "Yakıt", emoji: "⛽", desc: "Yeni yakıt alımı" },
-  { tag: "kasa", label: "Kasa Defteri", emoji: "💰", desc: "Yeni gelir/gider" },
+  { tag: "kasa", label: "Kasa", emoji: "💰", desc: "Yeni gelir/gider" },
   { tag: "santiye-defteri", label: "Şantiye Defteri", emoji: "📓", desc: "Yeni günlük defter açılışı" },
   { tag: "ihale", label: "İhale", emoji: "🏛️", desc: "Yeni ihale kaydı" },
   { tag: "mesaj", label: "Mesajlar", emoji: "💬", desc: "Yeni mesaj geldiğinde" },

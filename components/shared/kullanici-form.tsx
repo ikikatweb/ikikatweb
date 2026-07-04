@@ -35,7 +35,7 @@ const grupluModuller = getGrupluModuller();
 
 const DASHBOARD_WIDGETS = [
   { key: "yiufe", label: "Yi-ÜFE Endeksler" },
-  { key: "kasa_ozet", label: "Kasa Defteri — Personel Özeti" },
+  { key: "kasa_ozet", label: "Kasa — Personel Özeti" },
   { key: "sigorta_muayene", label: "Yaklaşan Sigorta & Muayene" },
   { key: "yaklasan_bakim", label: "Yaklaşan Araç Bakımları" },
   { key: "depo_yakit", label: "Depo Yakıt Durumu" },
@@ -531,7 +531,7 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
                 const modulList = [
                   { label: "Puantaj", islem: puantajIslemGun, setIslem: setPuantajIslemGun, goruntuleme: puantajGoruntulemeGun, setGoruntuleme: setPuantajGoruntulemeGun },
                   { label: "Yakıt", islem: yakitIslemGun, setIslem: setYakitIslemGun, goruntuleme: yakitGoruntulemeGun, setGoruntuleme: setYakitGoruntulemeGun },
-                  { label: "Kasa Defteri", islem: kasaIslemGun, setIslem: setKasaIslemGun, goruntuleme: kasaGoruntulemeGun, setGoruntuleme: setKasaGoruntulemeGun },
+                  { label: "Kasa", islem: kasaIslemGun, setIslem: setKasaIslemGun, goruntuleme: kasaGoruntulemeGun, setGoruntuleme: setKasaGoruntulemeGun },
                   { label: "Şantiye Defteri", islem: santiyeIslemGun, setIslem: setSantiyeIslemGun, goruntuleme: santiyeGoruntulemeGun, setGoruntuleme: setSantiyeGoruntulemeGun },
                 ];
                 return (

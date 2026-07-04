@@ -106,7 +106,7 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    title: "Kasa Defteri",
+    title: "Kasa",
     icon: <Wallet size={20} />,
     color: "text-teal-600 bg-teal-50",
     items: [

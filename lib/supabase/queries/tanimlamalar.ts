@@ -17,7 +17,7 @@ export const SEKME_LISTESI = [
   { key: "yazismalar", label: "Yazışmalar" },
   { key: "puantaj", label: "Puantaj" },
   { key: "yakit", label: "Yakıt" },
-  { key: "kasa-defteri", label: "Kasa Defteri" },
+  { key: "kasa-defteri", label: "Kasa" },
   { key: "santiye-defteri", label: "Şantiye Defteri" },
   { key: "yi-ufe", label: "Yi-ÜFE" },
   { key: "sigorta-muayene", label: "Sigorta & Muayene" },

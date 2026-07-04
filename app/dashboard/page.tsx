@@ -1514,7 +1514,7 @@ export default function DashboardPage() {
         {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3 lg:col-span-2 lg:order-3">
           <div className="flex items-center gap-2 mb-2">
             <Wallet size={16} className="text-[#1E3A5F]" />
-            <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa Defteri — Kullanıcı Özeti</h3>
+            <h3 className="font-bold text-xs text-[#1E3A5F]">Kasa — Kullanıcı Özeti</h3>
           </div>
           {kasaLoading ? <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
           : kasaOzet.length === 0 ? <p className="text-sm text-gray-400">Bu ay işlem yok</p> : (

@@ -921,7 +921,7 @@ export default function SantiyelerPage() {
 
       {/* İş ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleSantiye(null); } }}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="truncate">
               {duzenleSantiye ? `İş Düzenle — ${duzenleSantiye.is_adi}` : "Yeni İş Ekle"}
