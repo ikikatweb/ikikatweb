@@ -53,6 +53,8 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "santiye-defteri", label: "Şantiye Defteri", emoji: "📓", desc: "Yeni günlük defter açılışı" },
   { tag: "ihale", label: "İhale", emoji: "🏛️", desc: "Yeni ihale kaydı" },
   { tag: "mesaj", label: "Mesajlar", emoji: "💬", desc: "Yeni mesaj geldiğinde" },
+  // Yalnız yönetici görür (yonetim-kullanicilar modülüne bağlı → gorunenKategoriler filtresi otomatik gizler).
+  { tag: "kullanici-giris", label: "Kullanıcı Girişi", emoji: "🔐", desc: "Bir kullanıcı siteye giriş yapınca" },
 ];
 
 type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";
