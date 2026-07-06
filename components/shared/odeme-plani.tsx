@@ -50,6 +50,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   const [hata, setHata] = useState<string | null>(null);
   // Düzenlenirken geçici string (id:field) — sayı/metin serbest yazılabilsin, blur'da parse+kaydet
   const [duzen, setDuzen] = useState<Record<string, string>>({});
+  // Tarih düzenleme tamponu: yazarken satır YENİDEN SIRALANMASIN diye; blur/Enter'da kaydedilir.
+  const [tarihDuzen, setTarihDuzen] = useState<{ id: string; val: string } | null>(null);
 
   useEffect(() => {
     let iptal = false;
@@ -242,11 +244,17 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                 )}
                 {sirali.map((s, i) => {
                   const kum = kumulatifler[i] ?? 0;
+                  // Tarihi geçmiş (silinmemiş) satır = ödeme yapılıp temizlenmemiş → kırmızı uyarı.
+                  const gecmis = s.tarih < bugunStr();
                   return (
-                    <tr key={s.id} className={`border-b border-gray-100 ${tarihRenk.get(s.tarih) ?? ""}`}>
+                    <tr key={s.id} className={`border-b border-gray-100 ${gecmis ? "bg-red-100" : (tarihRenk.get(s.tarih) ?? "")}`}>
                       <td className="px-1 py-0.5 align-middle">
-                        <input type="date" value={s.tarih} disabled={!canDuzenle}
-                          onChange={(e) => e.target.value && satirGuncelle(s.id, { tarih: e.target.value })}
+                        <input type="date" disabled={!canDuzenle}
+                          value={tarihDuzen?.id === s.id ? tarihDuzen.val : s.tarih}
+                          onFocus={() => setTarihDuzen({ id: s.id, val: s.tarih })}
+                          onChange={(e) => setTarihDuzen({ id: s.id, val: e.target.value })}
+                          onBlur={() => { const v = tarihDuzen?.id === s.id ? tarihDuzen.val : null; if (v && v !== s.tarih) satirGuncelle(s.id, { tarih: v }); setTarihDuzen(null); }}
+                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                           className="w-full bg-transparent px-1 py-0.5 text-xs outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 disabled:cursor-default" />
                         <div className="text-[10px] text-gray-500 px-1.5 truncate" title={tarihUzun(s.tarih)}>{gunAdi(s.tarih)}</div>
                       </td>

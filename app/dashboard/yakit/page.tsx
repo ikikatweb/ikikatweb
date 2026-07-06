@@ -1893,7 +1893,7 @@ function YakitPageContent() {
       {/* ============ DIALOGS ============ */}
 
       {/* Yakıt Ver Dialog */}
-      <Dialog open={verDialogOpen} onOpenChange={setVerDialogOpen}>
+      <Dialog open={verDialogOpen} onOpenChange={(open) => { if (!open && menzilSoru) return; setVerDialogOpen(open); }}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

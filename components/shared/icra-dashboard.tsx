@@ -71,7 +71,7 @@ export default function IcraDashboard() {
         <div className="max-h-[220px] overflow-y-auto">
           <Table className="text-xs text-gray-900">
             <TableHeader><TableRow>
-              <TableHead className="px-2 text-[10px]">Borçlu</TableHead>
+              <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Gelen Tarih</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Cevap Tarihi</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
@@ -83,9 +83,14 @@ export default function IcraDashboard() {
                 return (
                 <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
                   <TableCell className="px-2">
-                    <div className={`font-medium truncate max-w-[110px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
-                    {s.dosya_esas_no && <div className="text-[9px] text-gray-400 truncate max-w-[110px]">{s.dosya_esas_no}</div>}
-                    {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre doluyor</div>}
+                    <div className="text-[9px] text-gray-400 leading-none">Borçlu</div>
+                    <div className={`font-medium truncate max-w-[150px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
+                    {s.alacakli_adi && <>
+                      <div className="text-[9px] text-gray-400 leading-none mt-1">Alacaklı</div>
+                      <div className="font-medium text-gray-700 truncate max-w-[150px]" title={s.alacakli_adi}>{s.alacakli_adi}</div>
+                    </>}
+                    {s.dosya_esas_no && <div className="text-[9px] text-gray-400 truncate max-w-[150px]">{s.dosya_esas_no}</div>}
+                    {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre {gecen >= CEVAP_SURESI_GUN ? "doldu" : "doluyor"}</div>}
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.gelen_yazi_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
