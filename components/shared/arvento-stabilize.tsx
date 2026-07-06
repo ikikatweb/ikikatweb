@@ -48,6 +48,18 @@ function formatAralik(bas: string, bitis: string): string {
   if (!bas) return "—";
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
+// "HH:MM[:SS]" saatinin bugün itibarıyla ÜSTÜNDEN kaç DAKİKA geçti? Saat gelecekteyse (bugünün henüz
+// gelmemiş saati = geçersiz tahmin) NEGATİF döner. Rapor periyodik yenilendiği için, tahmini son kontak
+// "şu ana yakınsa" araçtan veri geliyordur; 1 saatten eski kalmışsa araç sessizdir. Gece yarısı sarması YOK.
+function saatUstundenGecenDk(hhmm: string | null): number | null {
+  if (!hhmm) return null;
+  const [sStr, dStr] = hhmm.split(":");
+  const sa = Number(sStr), dk = Number(dStr);
+  if (Number.isNaN(sa) || Number.isNaN(dk)) return null;
+  const simdi = new Date();
+  const ref = new Date(simdi.getFullYear(), simdi.getMonth(), simdi.getDate(), sa, dk, 0, 0);
+  return (simdi.getTime() - ref.getTime()) / 60000;
+}
 // İki doğru parçası kesişiyor mu (lat=y, lng=x düzlemi; küçük alanlar için yeterli). Kamyon segmenti
 // kapı (giriş) çizgisini kesiyorsa "kapıdan geçti".
 type Nk = { lat: number; lng: number };
@@ -144,23 +156,6 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [canliKonumlar, canliCihazMap, sekmeMap, atananSekmeler]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliStabilize, cihazMap: canliCihazMap };
-  // Plaka → aracın en son CANLI veri (konum) zamanı (ms). Tahmini "~son kontak" saatini yalnızca
-  // araçtan uzun süredir (≥1 saat) canlı veri gelmiyorsa göstermek için (aktif araçta boş kalsın).
-  const canliSonGorulmeMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const k of canliStabilize ?? []) {
-      if (!k.node || !k.tarih) continue;
-      const plaka = canliCihazMap?.get(k.node.trim())?.plaka;
-      if (!plaka) continue;
-      const ts = new Date(k.tarih).getTime();
-      if (Number.isNaN(ts)) continue;
-      const key = plakaNorm(plaka);
-      const onceki = m.get(key);
-      if (onceki == null || ts > onceki) m.set(key, ts);
-    }
-    return m;
-  }, [canliStabilize, canliCihazMap]);
-  const CANLI_SESSIZ_ESIK_MS = 60 * 60 * 1000; // 1 saat: bundan uzun süre canlı veri gelmezse tahmini son kontak gösterilir
   const katmanIzinliRef = useRef(katmanIzinli); katmanIzinliRef.current = katmanIzinli; // KML izin filtresi
   useCanliKatman(canliLayerRef, canliStabilize, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = tekrarEsigi;
@@ -930,13 +925,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                     const e = ilkSonKontakMap?.get(plakaNorm(r.plaka));
                     const son = e?.son ?? r.son_kontak; const t = !!e?.sonT;
                     if (!son) return null;
-                    // Tahmini (~) son kontak: SADECE araçtan ≥1 saattir canlı veri gelmiyorsa göster; aktifse boş kalsın.
-                    if (t) {
-                      const sonGorulme = canliSonGorulmeMap.get(plakaNorm(r.plaka));
-                      if (sonGorulme != null && Date.now() - sonGorulme < CANLI_SESSIZ_ESIK_MS) return null;
-                    }
+                    // Tahmini (~) son kontak: SADECE araçtan ≥1 saattir HİÇ veri gelmediyse (rapor donmuş) göster.
+                    // Rapor periyodik yenilendiği için tahmini son "şu ana yakınsa" araç aktiftir (veri geliyor) → boş;
+                    // 60 dk'dan eskiyse araç sessizdir → göster. Geleceğe ait (negatif) tahmin de geçersiz → boş.
+                    if (t) { const gecenDk = saatUstundenGecenDk(son); if (gecenDk == null || gecenDk < 60) return null; }
                     return (
-                      <span className={`text-[10px] text-red-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — 1 saattir canlı veri yok (tahmini son kontak)" : undefined}>🔴 {t ? "~" : ""}{son.slice(0, 5)} son kontak</span>
+                      <span className={`text-[10px] text-red-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — gerçek kontak verisi henüz gelmedi (tahmini son kontak)" : undefined}>🔴 {t ? "~" : ""}{son.slice(0, 5)} son kontak</span>
                     );
                   })()}
                 </span>
