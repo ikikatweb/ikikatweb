@@ -4,7 +4,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getTanimlamalar, createTanimlama, updateTanimlama, deleteTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
-import { ICRA_CEVAP_VARSAYILAN } from "@/components/shared/icra-tablosu";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { Plus, Trash2, Loader2, Pencil, Check, X } from "lucide-react";
 import toast from "react-hot-toast";
@@ -40,15 +39,6 @@ export default function IcraTanimlamalar({ canEkle, canDuzenle, canSil }: { canE
     catch { toast.error("Eklenemedi."); }
     finally { setKaydediliyor(false); }
   }
-  async function varsayilanlariEkle() {
-    setKaydediliyor(true);
-    try {
-      let sira = liste.reduce((m, t) => Math.max(m, t.sira), 0);
-      for (const v of ICRA_CEVAP_VARSAYILAN) if (!varMi(v)) { sira += 1; await ekle(v, sira); }
-      await yukle();
-    } catch { toast.error("Eklenemedi."); }
-    finally { setKaydediliyor(false); }
-  }
   async function sil(id: string) {
     if (typeof window !== "undefined" && !window.confirm("Bu değer silinsin mi?")) return;
     try { await deleteTanimlama(id); await yukle(); }
@@ -71,26 +61,18 @@ export default function IcraTanimlamalar({ canEkle, canDuzenle, canSil }: { canE
     } catch { toast.error("Güncellenemedi."); }
   }
 
-  const eksikVarsayilan = ICRA_CEVAP_VARSAYILAN.filter((v) => !varMi(v));
-
   return (
     <div className="max-w-xl">
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-3">
           <h2 className="font-semibold text-gray-800">Cevap Şekli</h2>
-          {canEkle && eksikVarsayilan.length > 0 && (
-            <button type="button" onClick={varsayilanlariEkle} disabled={kaydediliyor}
-              className="text-xs text-blue-600 hover:underline disabled:opacity-50">
-              Varsayılan {eksikVarsayilan.length} seçeneği ekle
-            </button>
-          )}
         </div>
 
         {yukleniyor ? (
           <div className="flex items-center gap-2 text-gray-400 py-6"><Loader2 size={16} className="animate-spin" /> Yükleniyor…</div>
         ) : (
           <>
-            {liste.length === 0 && <p className="text-sm text-gray-400 mb-3">Henüz seçenek yok. Aşağıdan ekleyin veya varsayılanları yükleyin.</p>}
+            {liste.length === 0 && <p className="text-sm text-gray-400 mb-3">Henüz seçenek yok. Aşağıdan ekleyin.</p>}
             <ul className="divide-y divide-gray-100 mb-3">
               {liste.map((t) => (
                 <li key={t.id} className="flex items-center justify-between py-2 gap-2">

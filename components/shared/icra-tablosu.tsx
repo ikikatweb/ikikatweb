@@ -44,6 +44,54 @@ const BOS_FORM: IcraForm = {
   borc_miktari: "",
 };
 
+// Türkçe büyük/küçük harf DUYARSIZ arama yapan açılır liste (native <datalist> İ/i eşleşmesini
+// doğru yapmadığı için: "ikikat" yazınca "İKİKAT" seçeneğini de bulur). Serbest yazıma da izin verir.
+function AramaSecim({ value, onChange, onBlur, secenekler, placeholder, className, kilit }: {
+  value: string; onChange: (v: string) => void; onBlur?: () => void;
+  secenekler: string[]; placeholder?: string; className?: string; kilit?: boolean;
+}) {
+  const [acik, setAcik] = useState(false);
+  const [vurgu, setVurgu] = useState(0);
+  const kapsayici = useRef<HTMLDivElement>(null);
+  const q = trAramaNormalize(value.trim());
+  const filtre = useMemo(() => {
+    const list = q ? secenekler.filter((o) => trAramaNormalize(o).includes(q)) : secenekler;
+    return list.slice(0, 50);
+  }, [secenekler, q]);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (kapsayici.current && !kapsayici.current.contains(e.target as Node)) setAcik(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const sec = (v: string) => { onChange(v); setAcik(false); };
+  return (
+    <div ref={kapsayici} className="relative">
+      <input
+        className={className} value={value} readOnly={kilit} placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); if (!kilit) { setAcik(e.target.value.trim().length > 0); setVurgu(0); } }}
+        onBlur={onBlur}
+        onKeyDown={(e) => {
+          if (!acik || filtre.length === 0) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setVurgu((i) => Math.min(i + 1, filtre.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setVurgu((i) => Math.max(i - 1, 0)); }
+          else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); sec(filtre[vurgu] ?? filtre[0]); }
+          else if (e.key === "Escape") { setAcik(false); }
+        }}
+      />
+      {acik && !kilit && filtre.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+          {filtre.map((o, i) => (
+            <li key={o}>
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); sec(o); }}
+                className={`w-full text-left px-3 py-1.5 ${i === vurgu ? "bg-[#1E3A5F] text-white" : "hover:bg-gray-100"}`}>{o}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: boolean; canDuzenle: boolean; canSil: boolean }) {
   const [satirlar, setSatirlar] = useState<IcraKayit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,11 +166,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     if (!ta && tb) return 1;
     return a.sira - b.sira;
   }), [satirlar]);
-  const tekrarTc = useMemo(() => {
+  // TC/Vergi no → kaç dosyada geçiyor (borçlu bazında). >1 olanlar "tekrar" (isim kırmızı + sayı rozeti).
+  const tcSayim = useMemo(() => {
     const say = new Map<string, number>();
     for (const s of satirlar) { const t = tcNorm(s.borclu_tc_no); if (t) say.set(t, (say.get(t) ?? 0) + 1); }
-    return new Set(Array.from(say.entries()).filter(([, n]) => n > 1).map(([t]) => t));
+    return say;
   }, [satirlar]);
+  const tekrarTc = useMemo(() => new Set(Array.from(tcSayim.entries()).filter(([, n]) => n > 1).map(([t]) => t)), [tcSayim]);
   const ucuncuList = useMemo(() => Array.from(new Set(firmalar.map((f) => (f.firma_adi ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "tr")), [firmalar]);
   // Firma adı (BÜYÜK) → tanımlı renk (Üçüncü Şahıs hücresinde gösterilir)
   const firmaRenkMap = useMemo(() => {
@@ -149,7 +199,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const LIMIT = 100;
   const gosterilecek = hepsiGoster ? gorunen : gorunen.slice(0, LIMIT); // ilk 100; fazlası "ok" ile açılır
   const toplamBorc = useMemo(() => gorunen.reduce((t, s) => t + Number(s.borc_miktari || 0), 0), [gorunen]);
-  const toplamOdenen = useMemo(() => gorunen.reduce((t, s) => t + Number(s.odenen_tutar || 0), 0), [gorunen]);
   const sonGuncelleme = useMemo(() => {
     let en = 0;
     for (const s of satirlar) { const t = new Date(s.updated_at).getTime(); if (t > en) en = t; }
@@ -205,6 +254,14 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     ];
     for (const [v, ad] of zorunlu) if (!v.trim()) { toast.error(`${ad} zorunlu.`); return; }
     if (parseParaInput(form.borc_miktari) <= 0) { toast.error("Borç Miktarı zorunlu."); return; }
+    // Tebliğ Tarihi, Gelen İcra Yazısı Tarihinden önce olamaz (ISO yyyy-mm-dd → metin karşılaştırması yeterli)
+    if (form.gelen_yazi_tarihi && form.teblig_tarihi && form.teblig_tarihi < form.gelen_yazi_tarihi) {
+      toast.error("Tebliğ Tarihi, Gelen İcra Yazısı Tarihinden önce olamaz."); return;
+    }
+    // İcraya Cevap Tarihi, Tebliğ Tarihinden önce olamaz
+    if (form.cevap_tarihi && form.teblig_tarihi && form.cevap_tarihi < form.teblig_tarihi) {
+      toast.error("İcraya Cevap Tarihi, Tebliğ Tarihinden önce olamaz."); return;
+    }
     // İcraya Cevap Tarihi girildiyse Evrak No zorunlu
     if (form.cevap_tarihi && !form.evrak_no.trim()) { toast.error("İcraya cevap tarihi girildi — Evrak No zorunludur."); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -350,7 +407,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   <td className={`${td} ${evrakGerekli ? "bg-red-50 text-red-600" : ""}`} title={evrakGerekli ? "Cevap tarihi girildi — evrak no zorunlu" : (s.evrak_no ?? "")}>{s.evrak_no || (evrakGerekli ? "Zorunlu!" : "")}</td>
                   <td className={td} title={s.alacakli_adi ?? ""}>{s.alacakli_adi}</td>
                   {!kompakt && <td className={td} title={s.alacakli_vergi_no ?? ""}>{s.alacakli_vergi_no}</td>}
-                  <td className={`${td} ${borcluTxt}`} title={s.borclu_adi ?? ""}>{s.borclu_adi}</td>
+                  <td className={`${td} ${borcluTxt}`} title={s.borclu_adi ?? ""}>
+                    <span className="flex items-center gap-1 min-w-0">
+                      <span className="truncate">{s.borclu_adi}</span>
+                      {tekrar && <span className="shrink-0 inline-flex items-center justify-center min-w-[15px] h-[15px] px-1 rounded-full bg-red-600 text-white text-[9px] font-semibold leading-none" title={`Bu borçlu ${tcSayim.get(tcNorm(s.borclu_tc_no)) ?? 0} dosyada geçiyor`}>{tcSayim.get(tcNorm(s.borclu_tc_no)) ?? 0}</span>}
+                    </span>
+                  </td>
                   {!kompakt && <td className={td} title={s.borclu_tc_no ?? ""}>{s.borclu_tc_no}</td>}
                   <td className={`${td} text-right tabular-nums text-red-600`}>{paraGoster(Number(s.borc_miktari || 0))}</td>
                   {islemVar && (
@@ -367,9 +429,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
-              <td className={`${td} text-right`} colSpan={7}>TOPLAM</td>
-              <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
-              <td className={td} colSpan={kompakt ? 3 : 5} />
+              <td className={`${td} text-right`} colSpan={kompakt ? 11 : 13}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
               {islemVar && <td className={td} />}
             </tr>
@@ -392,7 +452,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                 <div className="min-w-0 flex-1 space-y-1.5">
                   {renk && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: renk }} title={s.ucuncu_sahis ?? ""} />}
                   <div><div className="text-[10px] text-gray-400">Alacaklı</div><div className="text-sm text-gray-900 truncate">{s.alacakli_adi || "—"}</div></div>
-                  <div><div className="text-[10px] text-gray-400">Borçlu</div><div className={`text-sm truncate ${tekrar ? "text-red-600 font-medium" : "text-gray-900"}`}>{s.borclu_adi || "—"}</div></div>
+                  <div><div className="text-[10px] text-gray-400">Borçlu</div><div className={`text-sm flex items-center gap-1 min-w-0 ${tekrar ? "text-red-600 font-medium" : "text-gray-900"}`}><span className="truncate">{s.borclu_adi || "—"}</span>{tekrar && <span className="shrink-0 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-semibold leading-none">{tcSayim.get(tcNorm(s.borclu_tc_no)) ?? 0}</span>}</div></div>
                   <div><div className="text-[10px] text-gray-400">Tebliğ Tarihi</div><div className="text-sm text-gray-800">{tarihGoster(s.teblig_tarihi)}</div></div>
                 </div>
                 <div className="text-right shrink-0">
@@ -427,8 +487,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       </p>
 
       {/* Öneri listeleri (form alanları için) */}
-      <datalist id="icra-ucuncu-list">{ucuncuList.map((v) => <option key={v} value={v} />)}</datalist>
-      <datalist id="icra-borclu-list">{borcluList.map((v) => <option key={v} value={v} />)}</datalist>
 
       {/* EKLE / DÜZENLE PENCERESİ */}
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
@@ -446,7 +504,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             {/* ── ZORUNLU ALANLAR (üstte) ── */}
             <div className="sm:col-span-2">
               <label className={fLbl}>Üçüncü Şahıs <span className="text-red-500">*</span></label>
-              <input list="icra-ucuncu-list" readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.ucuncu_sahis} onChange={(e) => setF("ucuncu_sahis", e.target.value)} placeholder="Firma seçin veya yazın" />
+              <AramaSecim value={form.ucuncu_sahis} onChange={(v) => setF("ucuncu_sahis", v)} secenekler={ucuncuList} kilit={kilitli} className={`${fInp} ${kilitInp}`} placeholder="Firma seçin veya yazın" />
             </div>
             <div>
               <label className={fLbl}>Dosya Esas No <span className="text-red-500">*</span></label>
@@ -458,7 +516,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             </div>
             <div>
               <label className={fLbl}>Tebliğ Tarihi <span className="text-red-500">*</span></label>
-              <input type="date" disabled={kilitli} className={`${fInp} ${kilitInp}`} value={form.teblig_tarihi} onChange={(e) => setF("teblig_tarihi", e.target.value)} />
+              <input type="date" disabled={kilitli} min={form.gelen_yazi_tarihi || undefined} className={`${fInp} ${kilitInp}`} value={form.teblig_tarihi} onChange={(e) => setF("teblig_tarihi", e.target.value)} />
             </div>
             <div>
               <label className={fLbl}>Borç Miktarı <span className="text-red-500">*</span></label>
@@ -478,7 +536,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Borçlu Bilgileri</div>
             <div>
               <label className={fLbl}>Adı Soyadı / Ünvanı <span className="text-red-500">*</span></label>
-              <input list="icra-borclu-list" readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.borclu_adi} onChange={(e) => setF("borclu_adi", e.target.value)} onBlur={borcluAdiBlur} placeholder="Personel seçin veya yazın" />
+              <AramaSecim value={form.borclu_adi} onChange={(v) => setF("borclu_adi", v)} onBlur={borcluAdiBlur} secenekler={borcluList} kilit={kilitli} className={`${fInp} ${kilitInp}`} placeholder="Personel seçin veya yazın" />
             </div>
             <div>
               <label className={fLbl}>Vergi / TC No <span className="text-red-500">*</span></label>
@@ -489,7 +547,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme <span className="font-normal text-gray-400">(opsiyonel)</span></div>
             <div>
               <label className={fLbl}>İcraya Cevap Tarihi</label>
-              <input type="date" className={fInp} value={form.cevap_tarihi} onChange={(e) => setF("cevap_tarihi", e.target.value)} />
+              <input type="date" min={form.teblig_tarihi || undefined} className={fInp} value={form.cevap_tarihi} onChange={(e) => setF("cevap_tarihi", e.target.value)} />
             </div>
             <div>
               <label className={fLbl}>Evrak No {form.cevap_tarihi && <span className="text-red-500">*</span>}</label>
