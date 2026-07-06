@@ -144,6 +144,23 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [canliKonumlar, canliCihazMap, sekmeMap, atananSekmeler]);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
   canliVeriRef.current = { konumlar: canliStabilize, cihazMap: canliCihazMap };
+  // Plaka → aracın en son CANLI veri (konum) zamanı (ms). Tahmini "~son kontak" saatini yalnızca
+  // araçtan uzun süredir (≥1 saat) canlı veri gelmiyorsa göstermek için (aktif araçta boş kalsın).
+  const canliSonGorulmeMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const k of canliStabilize ?? []) {
+      if (!k.node || !k.tarih) continue;
+      const plaka = canliCihazMap?.get(k.node.trim())?.plaka;
+      if (!plaka) continue;
+      const ts = new Date(k.tarih).getTime();
+      if (Number.isNaN(ts)) continue;
+      const key = plakaNorm(plaka);
+      const onceki = m.get(key);
+      if (onceki == null || ts > onceki) m.set(key, ts);
+    }
+    return m;
+  }, [canliStabilize, canliCihazMap]);
+  const CANLI_SESSIZ_ESIK_MS = 60 * 60 * 1000; // 1 saat: bundan uzun süre canlı veri gelmezse tahmini son kontak gösterilir
   const katmanIzinliRef = useRef(katmanIzinli); katmanIzinliRef.current = katmanIzinli; // KML izin filtresi
   useCanliKatman(canliLayerRef, canliStabilize, canliCihazMap); // canlı katman pozisyon güncellemelerini kendi içinde yönetir
   const etkinTekrar = tekrarEsigi;
@@ -909,9 +926,19 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   ) : null; })()}
                   <span className="text-[10px] opacity-80">⏱ {formatSure(r.kontak_sn ?? 0)} kontak açık</span>
                   <span className="text-[10px] opacity-80">⏱ {formatSure(r.hareket_sn ?? 0)} çalışma</span>
-                  {(() => { const e = ilkSonKontakMap?.get(plakaNorm(r.plaka)); const son = e?.son ?? r.son_kontak; const t = !!e?.sonT; return son ? (
-                    <span className={`text-[10px] text-red-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — gerçek kontak verisi henüz gelmedi (tahmini)" : undefined}>🔴 {t ? "~" : ""}{son.slice(0, 5)} son kontak</span>
-                  ) : null; })()}
+                  {(() => {
+                    const e = ilkSonKontakMap?.get(plakaNorm(r.plaka));
+                    const son = e?.son ?? r.son_kontak; const t = !!e?.sonT;
+                    if (!son) return null;
+                    // Tahmini (~) son kontak: SADECE araçtan ≥1 saattir canlı veri gelmiyorsa göster; aktifse boş kalsın.
+                    if (t) {
+                      const sonGorulme = canliSonGorulmeMap.get(plakaNorm(r.plaka));
+                      if (sonGorulme != null && Date.now() - sonGorulme < CANLI_SESSIZ_ESIK_MS) return null;
+                    }
+                    return (
+                      <span className={`text-[10px] text-red-600 ${t ? "italic opacity-80" : ""}`} title={t ? "GPS'ten türetildi — 1 saattir canlı veri yok (tahmini son kontak)" : undefined}>🔴 {t ? "~" : ""}{son.slice(0, 5)} son kontak</span>
+                    );
+                  })()}
                 </span>
               </button>
             );
