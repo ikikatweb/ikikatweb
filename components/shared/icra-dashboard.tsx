@@ -89,7 +89,6 @@ export default function IcraDashboard() {
                       <div className="text-[9px] text-gray-400 leading-none mt-1">Alacaklı</div>
                       <div className="font-medium text-gray-700 truncate max-w-[150px]" title={s.alacakli_adi}>{s.alacakli_adi}</div>
                     </>}
-                    {s.dosya_esas_no && <div className="text-[9px] text-gray-400 truncate max-w-[150px]">{s.dosya_esas_no}</div>}
                     {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre {gecen >= CEVAP_SURESI_GUN ? "doldu" : "doluyor"}</div>}
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.gelen_yazi_tarihi)}</TableCell>

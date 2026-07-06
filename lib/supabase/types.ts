@@ -713,6 +713,25 @@ export type OdemePlaniKasa = {
   updated_at: string;
 };
 
+// Kredi Kartları — elle girilen kart durum listesi (Ödeme Planı ile İcra Takibi arasındaki sayfa).
+// Kullanılabilir limit = limit_tutar - guncel_borc (hesaplanır, saklanmaz).
+export type KrediKarti = {
+  id: string;
+  banka_adi: string | null;
+  son4: string | null;          // son 4 hane
+  kart_ozelligi: string | null; // Bonus / Maximum / Platinum MC vb.
+  kart_sahibi: string | null;
+  karti_kullanan: string | null;
+  hesap_kesim: number | null;   // her ayın günü (1-31)
+  son_odeme: number | null;     // her ayın günü (1-31)
+  limit_tutar: number;
+  guncel_borc: number;
+  aciklama: string | null;
+  sira: number;
+  created_at: string;
+  updated_at: string;
+};
+
 // İcra takibi — elle girilen icra dosyaları (Kasa ile Şantiye Defteri arasındaki "İcra" sekmesi)
 export type IcraKayit = {
   id: string;

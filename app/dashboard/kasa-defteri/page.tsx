@@ -409,6 +409,10 @@ function KasaDefContent() {
     return bakiye;
   }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, isShantiyeAdmin, sadeceKendiKayitlari, kullanici]);
 
+  // Özet tutarları YALNIZCA şantiye veya kullanıcı seçiliyken gösterilir. "Tümü/Tümü" iken tüm şantiye ve
+  // kullanıcıların birikmiş nakiti karışıp anlamsız/yanıltıcı olduğu için tutarlar gizlenir (— gösterilir).
+  const ozetTutarGoster = !!(filtreSantiye || filtrePersonel);
+
   // Dialog açma
   function dialogAc() {
     setEditId(null);
@@ -940,24 +944,26 @@ function KasaDefContent() {
             <>
               <div className="bg-white rounded-lg border p-3">
                 <div className="text-[10px] text-gray-500 uppercase font-semibold">Nakit Bakiye</div>
-                {/* Son bakiye = dönem içi nakit bakiye + önceki dönemden devreden */}
-                <div className={`text-xl font-bold ${(devredenBakiye + ozet.nakitBakiye) < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(devredenBakiye + ozet.nakitBakiye)}</div>
+                {/* Son bakiye = dönem içi nakit bakiye + önceki dönemden devreden. Yalnız şantiye/kullanıcı seçiliyken. */}
+                {ozetTutarGoster
+                  ? <div className={`text-xl font-bold ${(devredenBakiye + ozet.nakitBakiye) < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(devredenBakiye + ozet.nakitBakiye)}</div>
+                  : <div className="text-xs text-gray-400 pt-1.5">Şantiye veya kullanıcı seçin</div>}
               </div>
               <div className="bg-white rounded-lg border p-3">
                 <div className="text-[10px] text-gray-500 uppercase font-semibold">Toplam Gelir</div>
-                <div className="text-xl font-bold text-emerald-700">{formatTL(ozet.toplamGelir)}</div>
+                <div className="text-xl font-bold text-emerald-700">{ozetTutarGoster ? formatTL(ozet.toplamGelir) : "—"}</div>
               </div>
               <div className="bg-white rounded-lg border p-3">
                 <div className="text-[10px] text-gray-500 uppercase font-semibold">Gider (Nakit)</div>
-                <div className="text-xl font-bold text-red-600">{formatTL(ozet.toplamGiderNakit)}</div>
+                <div className="text-xl font-bold text-red-600">{ozetTutarGoster ? formatTL(ozet.toplamGiderNakit) : "—"}</div>
               </div>
             </>
           )}
           {filtreOdeme === "kart" && (
             <div className="bg-white rounded-lg border p-3">
               <div className="text-[10px] text-gray-500 uppercase font-semibold">Toplam Gider (Kart)</div>
-              <div className="text-xl font-bold text-purple-700">{formatTL(ozet.toplamGiderKart)}</div>
-              <div className="text-[10px] text-gray-400">Bakiyeyi etkilemez</div>
+              <div className="text-xl font-bold text-purple-700">{ozetTutarGoster ? formatTL(ozet.toplamGiderKart) : "—"}</div>
+              <div className="text-[10px] text-gray-400">{ozetTutarGoster ? "Bakiyeyi etkilemez" : "Şantiye veya kullanıcı seçin"}</div>
             </div>
           )}
         </div>
@@ -1084,7 +1090,7 @@ function KasaDefContent() {
       {/* Devreden Bakiye + Bakiye Toplamı */}
       {filtrelenmis.length > 0 && (
         <div className="mt-3 space-y-2">
-          {devredenBakiye !== 0 && (
+          {ozetTutarGoster && devredenBakiye !== 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center justify-between">
               <span className="text-amber-800 font-semibold text-sm">Önceki Dönem Devreden Bakiye (Nakit)</span>
               <span className={`text-lg font-bold ${devredenBakiye < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{formatTL(devredenBakiye)}</span>
@@ -1096,20 +1102,20 @@ function KasaDefContent() {
             <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end sm:gap-6 gap-2">
               <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gelir</div>
-                <div className="text-emerald-300 font-bold text-sm sm:text-base">+{formatSayi(ozet.toplamGelir)}</div>
+                <div className="text-emerald-300 font-bold text-sm sm:text-base">{ozetTutarGoster ? `+${formatSayi(ozet.toplamGelir)}` : "—"}</div>
               </div>
               <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gider (Nakit)</div>
-                <div className="text-red-300 font-bold text-sm sm:text-base">−{formatSayi(ozet.toplamGiderNakit)}</div>
+                <div className="text-red-300 font-bold text-sm sm:text-base">{ozetTutarGoster ? `−${formatSayi(ozet.toplamGiderNakit)}` : "—"}</div>
               </div>
               <div className="text-left sm:text-right">
                 <div className="text-[10px] text-white/60">Gider (Kart)</div>
-                <div className="text-purple-300 font-bold text-sm sm:text-base">−{formatSayi(ozet.toplamGiderKart)}</div>
+                <div className="text-purple-300 font-bold text-sm sm:text-base">{ozetTutarGoster ? `−${formatSayi(ozet.toplamGiderKart)}` : "—"}</div>
               </div>
               <div className="text-left sm:text-right sm:border-l sm:border-white/30 sm:pl-6">
                 <div className="text-[10px] text-white/60">Güncel Nakit Bakiye</div>
                 <div className={`text-base sm:text-lg font-bold ${(devredenBakiye + ozet.nakitBakiye) < 0 ? "text-red-300" : "text-white"}`}>
-                  {formatTL(devredenBakiye + ozet.nakitBakiye)}
+                  {ozetTutarGoster ? formatTL(devredenBakiye + ozet.nakitBakiye) : "—"}
                 </div>
               </div>
             </div>

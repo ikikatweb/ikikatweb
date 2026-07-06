@@ -15,6 +15,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "iscilik-takibi", label: "İşçilik Durum Raporu", grup: "Büro Yönetimi" },
   { key: "bordro-takibi", label: "Bordro Takibi", grup: "Büro Yönetimi" },
   { key: "odeme-plani", label: "Ödeme Planı", grup: "Büro Yönetimi" },
+  { key: "kredi-kartlari", label: "Kredi Kartları", grup: "Büro Yönetimi" },
   { key: "icra", label: "İcra Takibi", grup: "Büro Yönetimi" },
   { key: "ihale", label: "Sınır Değer Hesabı", grup: "Büro Yönetimi" },
   // Yazışmalar
