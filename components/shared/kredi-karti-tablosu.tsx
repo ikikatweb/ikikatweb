@@ -15,14 +15,22 @@ import { Button } from "@/components/ui/button";
 // Diyalog formu — banka/son4/kart sahibi/hesap kesim/son ödeme tabloda salt-okunur; hepsi burada düzenlenir.
 type KKForm = {
   banka_adi: string; son4: string; kart_ozelligi: string; kart_sahibi: string; karti_kullanan: string;
-  hesap_kesim: string; son_odeme: string; limit_tutar: string; guncel_borc: string; aciklama: string;
+  hesap_kesim: string; son_odeme: string; limit_tutar: string; kullanilabilir: string; aciklama: string;
 };
 const BOS_FORM: KKForm = {
   banka_adi: "", son4: "", kart_ozelligi: "", kart_sahibi: "", karti_kullanan: "",
-  hesap_kesim: "", son_odeme: "", limit_tutar: "", guncel_borc: "", aciklama: "",
+  hesap_kesim: "", son_odeme: "", limit_tutar: "", kullanilabilir: "", aciklama: "",
 };
 
 function tlFmt(n: number): string { return "₺" + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Kart sahibine göre satır rengi: KAD-TEM A.Ş. → mavi, İKİKAT LTD ŞTİ → kırmızı.
+// Kişi isimli kartlar (Mustafa/Erkan/Tugay İkikat) beyaz kalır. Metin daima siyah (yalnız satır zemini).
+function firmaBg(sahibi: string | null): string {
+  const n = trAramaNormalize(sahibi ?? "").replace(/[^a-z0-9]/g, "");
+  if (n.includes("kadtem")) return "bg-blue-50";
+  if (n.includes("ikikat") && n.includes("ltd")) return "bg-red-50"; // yalnız İKİKAT LTD ŞTİ (firma)
+  return "";
+}
 function tarihSaat(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" })} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -107,7 +115,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
         hesap_kesim: k.hesap_kesim != null ? String(k.hesap_kesim) : "",
         son_odeme: k.son_odeme != null ? String(k.son_odeme) : "",
         limit_tutar: sayiToInput(Number(k.limit_tutar || 0), true),
-        guncel_borc: sayiToInput(Number(k.guncel_borc || 0), true),
+        kullanilabilir: sayiToInput(Number(k.limit_tutar || 0) - Number(k.guncel_borc || 0), true),
         aciklama: k.aciklama ?? "",
       });
     } else { setEditId(null); setForm(BOS_FORM); }
@@ -120,7 +128,8 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
       banka_adi: t(form.banka_adi), son4: t(form.son4), kart_ozelligi: t(form.kart_ozelligi),
       kart_sahibi: t(form.kart_sahibi), karti_kullanan: t(form.karti_kullanan),
       hesap_kesim: gun(form.hesap_kesim), son_odeme: gun(form.son_odeme),
-      limit_tutar: parseParaInput(form.limit_tutar), guncel_borc: parseParaInput(form.guncel_borc),
+      limit_tutar: parseParaInput(form.limit_tutar),
+      guncel_borc: parseParaInput(form.limit_tutar) - parseParaInput(form.kullanilabilir), // güncel borç = limit − kullanılabilir
       aciklama: t(form.aciklama),
     };
     setKaydediliyor(true);
@@ -160,7 +169,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
         }} />
     );
   }
-  function paraHucre(id: string, field: keyof KrediKarti, value: number, extra = "") {
+  function paraHucre(id: string, field: string, value: number, persist: (n: number) => void, extra = "") {
     const key = `${id}:${field}`;
     const gosterim = duzen[key] ?? sayiToInput(value, true);
     return (
@@ -172,7 +181,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
           if (duzen[key] === undefined) return;
           const num = parseParaInput(duzen[key]);
           setDuzen((d) => { const c = { ...d }; delete c[key]; return c; });
-          if (num !== value) kartGuncelle(id, { [field]: num } as Partial<KrediKarti>);
+          if (num !== value) persist(num);
         }} />
     );
   }
@@ -254,7 +263,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
             {gorunen.map((k, i) => {
               const kullanilabilir = Number(k.limit_tutar || 0) - Number(k.guncel_borc || 0);
               return (
-                <tr key={k.id} className="border-b border-gray-100 hover:bg-gray-50/60">
+                <tr key={k.id} className={`border-b border-gray-100 ${firmaBg(k.kart_sahibi) || "hover:bg-gray-50/60"}`}>
                   <td className={`${td} text-center text-gray-500 tabular-nums px-1.5`}>{i + 1}</td>
                   <td className={`${tdOku} min-w-[130px] truncate`} title={k.banka_adi ?? ""}>{k.banka_adi || "—"}</td>
                   <td className={`${tdOku} min-w-[80px] truncate`} title={k.son4 ?? ""}>{k.son4 || "—"}</td>
@@ -264,8 +273,8 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
                   <td className={`${tdOku} w-14 text-center`}>{k.hesap_kesim ?? "—"}</td>
                   <td className={`${tdOku} w-14 text-center`}>{k.son_odeme ?? "—"}</td>
                   <td className={`${tdOku} min-w-[100px] text-right tabular-nums`}>{tlFmt(Number(k.limit_tutar || 0))}</td>
-                  <td className={`${td} min-w-[100px]`}>{paraHucre(k.id, "guncel_borc", Number(k.guncel_borc || 0), "text-red-600")}</td>
-                  <td className={`${td} px-2 text-right tabular-nums font-semibold ${kullanilabilir < 0 ? "text-red-600" : "text-emerald-700"}`}>{tlFmt(kullanilabilir)}</td>
+                  <td className={`${tdOku} min-w-[100px] text-right tabular-nums`}>{tlFmt(Number(k.guncel_borc || 0))}</td>
+                  <td className={`${td} min-w-[110px]`}>{paraHucre(k.id, "kullanilabilir", kullanilabilir, (n) => kartGuncelle(k.id, { guncel_borc: Number(k.limit_tutar || 0) - n }), "font-semibold")}</td>
                   <td className={`${td} min-w-[160px]`}>{metinHucre(k.id, "aciklama", k.aciklama, "Açıklama")}</td>
                   {islemVar && (
                     <td className={`${td} text-center px-1 whitespace-nowrap`}>
@@ -283,8 +292,8 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
               <td className={`${td} text-right px-2`} colSpan={8}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamLimit)}</td>
-              <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
-              <td className={`${td} text-right tabular-nums px-2 ${toplamKullanilabilir < 0 ? "text-red-600" : "text-emerald-700"}`}>{tlFmt(toplamKullanilabilir)}</td>
+              <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamBorc)}</td>
+              <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamKullanilabilir)}</td>
               <td className={td} />
               {islemVar && <td className={td} />}
             </tr>
@@ -334,8 +343,9 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
               <input inputMode="decimal" className={`${fInp} text-right`} value={form.limit_tutar} onChange={(e) => setF("limit_tutar", formatParaInput(e.target.value))} placeholder="0" />
             </div>
             <div>
-              <label className={fLbl}>Güncel Borç</label>
-              <input inputMode="decimal" className={`${fInp} text-right`} value={form.guncel_borc} onChange={(e) => setF("guncel_borc", formatParaInput(e.target.value))} placeholder="0" />
+              <label className={fLbl}>Kullanılabilir Limit</label>
+              <input inputMode="decimal" className={`${fInp} text-right`} value={form.kullanilabilir} onChange={(e) => setF("kullanilabilir", formatParaInput(e.target.value))} placeholder="0" />
+              <div className="text-[10px] text-gray-400 mt-1">Güncel Borç = Limit − Kullanılabilir (otomatik)</div>
             </div>
             <div className="sm:col-span-2">
               <label className={fLbl}>Açıklama</label>
