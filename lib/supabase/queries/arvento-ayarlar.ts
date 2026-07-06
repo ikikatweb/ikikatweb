@@ -25,6 +25,8 @@ export type ArventoAyarlar = {
   ocakLat: number | null;    // Stabilize ocağı (yükleme noktası) — elle ayarlanmışsa; yoksa otomatik tespit
   ocakLng: number | null;
   ocakYaricap: number;       // "ocağa geldi" sayılma yarıçapı (m) — damper gerçek/arıza ayrımı için
+  damperSyncBasSaat: number; // Damper API senkronu bu saatte BAŞLAR (0-23)
+  damperSyncBitSaat: number; // ...ve bu saate kadar çalışır (dahil). Gece çalışılmıyorsa ör. 6-21.
 };
 
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
@@ -49,6 +51,8 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   ocakLat: null,
   ocakLng: null,
   ocakYaricap: 150,
+  damperSyncBasSaat: 6,
+  damperSyncBitSaat: 21,
 };
 
 const TABLO = "arvento_ayarlar";
@@ -80,6 +84,8 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     ocakLat: data.ocak_lat ?? null,   // kolon yoksa undefined → null (otomatik tespit devreye girer)
     ocakLng: data.ocak_lng ?? null,
     ocakYaricap: data.ocak_yaricap ?? 150,
+    damperSyncBasSaat: data.damper_sync_bas_saat ?? 6,
+    damperSyncBitSaat: data.damper_sync_bit_saat ?? 21,
   };
 }
 
@@ -179,6 +185,8 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     serme_renk: a.sermeRenk,
     silindir_renk: a.silindirRenk,
     kamyon_izi_renk: a.kamyonIziRenk,
+    damper_sync_bas_saat: a.damperSyncBasSaat,
+    damper_sync_bit_saat: a.damperSyncBitSaat,
   });
   if (error) throw error;
 }

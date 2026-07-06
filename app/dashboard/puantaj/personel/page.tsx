@@ -17,6 +17,7 @@ import {
   getPersonelPuantajByAySantiye,
   getDigerSantiyePersonelCakismalari,
   getPersonelPuantajKayitlari,
+  getPuantajliSantiyeIds,
   upsertPersonelPuantaj,
   deletePersonelPuantaj,
 } from "@/lib/supabase/queries/personel-puantaj";
@@ -140,6 +141,7 @@ export default function PersonelPuantajPage() {
   // Tab
   const [aktifTab, setAktifTab] = useState<"puantaj" | "atama">("puantaj");
   const [kapanmisGoster, setKapanmisGoster] = useState(false); // kapanmış (aktif olmayan) işleri de listede göster
+  const [puantajliSantiyeIds, setPuantajliSantiyeIds] = useState<Set<string> | null>(null); // puantaj kaydı olan şantiyeler (tembel yüklenir)
   // Atama yükleme göstergesi
   const [atamaYuklenenId, setAtamaYuklenenId] = useState<string | null>(null);
 
@@ -260,6 +262,14 @@ export default function PersonelPuantajPage() {
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // "Kapanmış işleri göster" AÇILINCA bir kez: puantaj kaydı olan şantiye id'lerini çek (boş işleri gösterme).
+  useEffect(() => {
+    if (!kapanmisGoster || puantajliSantiyeIds !== null) return;
+    getPuantajliSantiyeIds()
+      .then((ids) => setPuantajliSantiyeIds(new Set(ids)))
+      .catch(() => setPuantajliSantiyeIds(new Set()));
+  }, [kapanmisGoster, puantajliSantiyeIds]);
 
   // Atama fonksiyonları — çoklu atama destekli
   async function handleAta(personelId: string) {
@@ -423,12 +433,14 @@ export default function PersonelPuantajPage() {
         santiyePersonelSayisi.set(sid, (santiyePersonelSayisi.get(sid) ?? 0) + 1);
       }
     }
-    // En az 1 görünür personeli olan şantiyeler dropdown'da. Kapanmış (aktif olmayan) işler yalnızca
-    // "Kapanmış işleri göster" açıkken; seçili şantiye her zaman listede kalır (seçince kaybolmasın).
-    const atamasiOlanlar = santiyeler.filter((s) =>
-      (santiyePersonelSayisi.get(s.id) ?? 0) > 0 && (kapanmisGoster || s.durum === "aktif" || s.id === santiyeId));
-    return filtreliSantiyeler(atamasiOlanlar, kullanici);
-  }, [santiyeler, personelSantiyeMap, personeller, kullanici, yil, ay, kapanmisGoster, santiyeId]);
+    // Varsayılan: en az 1 görünür personeli ATANMIŞ + aktif şantiyeler. "Kapanmış işleri göster" açıkken
+    // PUANTAJ KAYDI OLAN şantiyeler de gelir (atama kalmamış eski işler) — puantajı olmayan boş işler GELMEZ.
+    // Seçili şantiye her zaman listede kalır (seçince kaybolmasın).
+    const gorunur = kapanmisGoster
+      ? santiyeler.filter((s) => (puantajliSantiyeIds?.has(s.id) ?? false) || (santiyePersonelSayisi.get(s.id) ?? 0) > 0 || s.id === santiyeId)
+      : santiyeler.filter((s) => (santiyePersonelSayisi.get(s.id) ?? 0) > 0 && (s.durum === "aktif" || s.id === santiyeId));
+    return filtreliSantiyeler(gorunur, kullanici);
+  }, [santiyeler, personelSantiyeMap, personeller, kullanici, yil, ay, kapanmisGoster, santiyeId, puantajliSantiyeIds]);
 
   // Atama sekmesi: boştaki (bu şantiyeye henüz atanmamışlar) ve bu şantiyedeki personeller
   const atamaBostakiler = useMemo(() => {

@@ -192,6 +192,8 @@ export default function ArventoRaporPage() {
   const [canliYenilemeSn, setCanliYenilemeSn] = useState<number>(45); // Canlı sekmesi yenileme aralığı (sn)
   const [canliBirim, setCanliBirim] = useState<"sn" | "dk">("sn");    // UI birimi (gösterim) — kayıt hep sn
   const [raporCekmeDk, setRaporCekmeDk] = useState<number>(5);        // Gerçek rapor çekme aralığı (dk)
+  const [damperSyncBas, setDamperSyncBas] = useState<number>(6);      // Damper API senkronu başlangıç saati (0-23)
+  const [damperSyncBit, setDamperSyncBit] = useState<number>(21);     // ...bitiş saati (dahil)
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [tekrarPencereSaat, setTekrarPencereSaat] = useState<number>(0); // eşik kadar geçiş bu süre (saat) içinde olmalı; 0 = kapalı
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
@@ -223,6 +225,8 @@ export default function ArventoRaporPage() {
         setMukerrerYaricap(a.mukerrerYaricap);
         setCanliYenilemeSn(a.canliYenilemeSn);
         setRaporCekmeDk(a.raporCekmeDk);
+        setDamperSyncBas(a.damperSyncBasSaat);
+        setDamperSyncBit(a.damperSyncBitSaat);
         setGuzergahTekrar(a.guzergahTekrar);
         setTekrarPencereSaat(a.tekrarPencereSaat);
         setGridMesafe(a.gridMesafe);
@@ -250,13 +254,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -1201,6 +1205,26 @@ export default function ArventoRaporPage() {
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika (en az 6)</span>
               </div>
               <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(6, raporCekmeDk || 6)} dk</strong> çekilir.</div>
+            </div>
+            {/* Damper Senkron Saatleri — damper API senkronu yalnız bu saat aralığında çalışır (gece çalışılmıyorsa). */}
+            <div className="border rounded-lg p-3 bg-orange-50/40 border-orange-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Damper Senkron Saatleri</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Damper verisi Arvento&apos;dan <strong>saat başı</strong> otomatik çekilir; ama yalnız bu
+                <strong> başlangıç–bitiş</strong> saat aralığında (gece çalışılmıyorsa boşuna çalışmasın).
+                Örn. <strong>6–21</strong> = sabah 06:00 ile akşam 21:00 arası. Gece de çalışacaksanız 0–23 yapın.
+              </p>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={23} value={damperSyncBas}
+                  onChange={(e) => setDamperSyncBas(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className={selectClass + " w-20"} />
+                <span className="text-[11px] text-gray-500">ile</span>
+                <input type="number" min={0} max={23} value={damperSyncBit}
+                  onChange={(e) => setDamperSyncBit(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className={selectClass + " w-20"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">arası (0–23)</span>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-1">Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, saat başı.</div>
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}

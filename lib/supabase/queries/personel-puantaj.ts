@@ -7,6 +7,15 @@ function getSupabase() {
   return createClient();
 }
 
+// Puantaj kaydı BULUNAN şantiyelerin distinct id'leri (kapanmış/atamasız işlerin geçmiş puantajını
+// dropdown'da gösterebilmek için). Tek kolon çekilip tarayıcıda tekilleştirilir.
+export async function getPuantajliSantiyeIds(): Promise<string[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("personel_puantaj").select("santiye_id").limit(200000);
+  if (error) throw error;
+  return [...new Set((data ?? []).map((r) => (r as { santiye_id: string | null }).santiye_id).filter((x): x is string => !!x))];
+}
+
 // Bir ay için belirli şantiyenin puantaj kayıtlarını getir
 // Her kayda created_by'ın çözülmüş ad_soyad'ı (created_by_ad) eklenir
 export async function getPersonelPuantajByAySantiye(
