@@ -139,6 +139,7 @@ export default function PersonelPuantajPage() {
 
   // Tab
   const [aktifTab, setAktifTab] = useState<"puantaj" | "atama">("puantaj");
+  const [kapanmisGoster, setKapanmisGoster] = useState(false); // kapanmış (aktif olmayan) işleri de listede göster
   // Atama yükleme göstergesi
   const [atamaYuklenenId, setAtamaYuklenenId] = useState<string | null>(null);
 
@@ -246,11 +247,12 @@ export default function PersonelPuantajPage() {
       // Tüm personeller dahil (taşeron işçiler dahil) — bir şantiyede sadece
       // taşeron olsa bile o şantiye ve personeller dropdown'da/listede görünür.
       setPersoneller(pData ?? []);
-      const sList = (sData ?? []).filter((s) => s.durum === "aktif");
-      setSantiyeler(sList);
+      // TÜM şantiyeleri yükle (kapanmışlar dahil) → eski/kapanmış işlerin (ör. kampüs) geçmiş puantajı da
+      // görülebilsin. Dropdown'da varsayılan yalnız AKTİF gösterilir; "Kapanmış işleri göster" ile açılır.
+      setSantiyeler(sData ?? []);
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
-      // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç
-      const otoId = otomatikSantiyeId(sList, kullanici);
+      // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç (aktif olanlar arasından)
+      const otoId = otomatikSantiyeId((sData ?? []).filter((s) => s.durum === "aktif"), kullanici);
       if (otoId) setSantiyeId(otoId);
 
       setLoading(false);
@@ -421,10 +423,12 @@ export default function PersonelPuantajPage() {
         santiyePersonelSayisi.set(sid, (santiyePersonelSayisi.get(sid) ?? 0) + 1);
       }
     }
-    // Sadece en az 1 görünür personeli olan şantiyeler dropdown'da
-    const atamasiOlanlar = santiyeler.filter((s) => (santiyePersonelSayisi.get(s.id) ?? 0) > 0);
+    // En az 1 görünür personeli olan şantiyeler dropdown'da. Kapanmış (aktif olmayan) işler yalnızca
+    // "Kapanmış işleri göster" açıkken; seçili şantiye her zaman listede kalır (seçince kaybolmasın).
+    const atamasiOlanlar = santiyeler.filter((s) =>
+      (santiyePersonelSayisi.get(s.id) ?? 0) > 0 && (kapanmisGoster || s.durum === "aktif" || s.id === santiyeId));
     return filtreliSantiyeler(atamasiOlanlar, kullanici);
-  }, [santiyeler, personelSantiyeMap, personeller, kullanici, yil, ay]);
+  }, [santiyeler, personelSantiyeMap, personeller, kullanici, yil, ay, kapanmisGoster, santiyeId]);
 
   // Atama sekmesi: boştaki (bu şantiyeye henüz atanmamışlar) ve bu şantiyedeki personeller
   const atamaBostakiler = useMemo(() => {
@@ -1167,6 +1171,10 @@ export default function PersonelPuantajPage() {
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-400">Şantiye</Label>
           <SantiyeSelect santiyeler={personelliSantiyeler} value={santiyeId} onChange={setSantiyeId} className={selectClass + " w-full"} />
+          <label className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-1 cursor-pointer select-none">
+            <input type="checkbox" checked={kapanmisGoster} onChange={(e) => setKapanmisGoster(e.target.checked)} className="accent-[#1E3A5F]" />
+            Kapanmış işleri de göster (eski işlerin geçmiş puantajı)
+          </label>
           {personelliSantiyeler.length === 0 && !loading && (
             <p className="text-[10px] text-gray-400">
               Henüz personel ataması yapılmış şantiye yok.
@@ -1477,7 +1485,7 @@ export default function PersonelPuantajPage() {
         <TabsContent value="atama">
           <div className="mb-4">
             <Label className="text-[10px] text-gray-400">Şantiye</Label>
-            <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler, kullanici)} value={santiyeId} onChange={setSantiyeId} className={selectClass + " w-full md:w-1/2"} />
+            <SantiyeSelect santiyeler={filtreliSantiyeler(santiyeler.filter((s) => s.durum === "aktif" || s.id === santiyeId), kullanici)} value={santiyeId} onChange={setSantiyeId} className={selectClass + " w-full md:w-1/2"} />
             <p className="text-[10px] text-gray-400 mt-1">
               Soldaki &quot;Boştaki Personeller&quot; tablosundan bir personele tıklayıp seçili şantiyeye ekleyin. Başka şantiyeye atanmış personeller de burada görünür.
             </p>

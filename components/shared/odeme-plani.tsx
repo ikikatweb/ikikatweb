@@ -31,6 +31,8 @@ function tarihUzun(tarih: string): string {
   return `${d.getDate()} ${AYLAR[d.getMonth()] ?? ""} ${d.getFullYear()} ${GUNLER[d.getDay()] ?? ""}`;
 }
 function tlFmt(n: number): string { return "₺" + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// Para birimi biçimi (₺ YOK, hep 2 ondalık): 1.235.652,00 — Gelir/Gider/Kümülatif sütunları için.
+function paraFmt(n: number): string { return n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function tarihSaat(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" })} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
@@ -38,7 +40,7 @@ function tarihSaat(iso: string): string {
 // number → input gösterimi ("1.234.567,89"); boşZero=true ise 0 boş görünür
 function sayiToInput(n: number, bosZero = true): string {
   if (bosZero && (!n || n === 0)) return "";
-  const s = Number(n).toFixed(2).replace(/\.00$/, "").replace(".", ","); // yalnız tam ",00"u kaldır (,30 gibi korunur)
+  const s = Number(n).toFixed(2).replace(".", ","); // hep 2 ondalık (1.235.652,00)
   return formatParaInput(s || "0");
 }
 function bugunStr(): string { return new Date().toISOString().slice(0, 10); }
@@ -261,7 +263,7 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                       <td className="px-1 py-0.5">{metinHucre(s.id, "aciklama", s.aciklama, (v) => satirGuncelle(s.id, { aciklama: v }), "Açıklama")}</td>
                       <td className="px-1 py-0.5">{paraHucre(s.id, "gider", Number(s.gider || 0), (n) => satirGuncelle(s.id, { gider: n }), "text-red-600")}</td>
                       <td className="px-1 py-0.5">{paraHucre(s.id, "gelir", Number(s.gelir || 0), (n) => satirGuncelle(s.id, { gelir: n }), "text-emerald-700")}</td>
-                      <td className={`px-2 py-1 text-right tabular-nums font-semibold ${kum < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{tlFmt(kum)}</td>
+                      <td className={`px-2 py-1 text-right tabular-nums font-semibold ${kum < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{paraFmt(kum)}</td>
                       {canSil && (
                         <td className="px-1 py-0.5 text-center">
                           <button type="button" onClick={() => satirSil(s.id)} className="text-gray-300 hover:text-red-600" title="Satırı sil">
@@ -276,9 +278,9 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
               <tfoot>
                 <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
                   <td className="px-2 py-2" colSpan={2}>TOPLAM</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-red-600">{tlFmt(toplamGider)}</td>
-                  <td className="px-2 py-2 text-right tabular-nums text-emerald-700">{tlFmt(toplamGelir)}</td>
-                  <td className={`px-2 py-2 text-right tabular-nums ${sonKumulatif < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{tlFmt(sonKumulatif)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-red-600">{paraFmt(toplamGider)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums text-emerald-700">{paraFmt(toplamGelir)}</td>
+                  <td className={`px-2 py-2 text-right tabular-nums ${sonKumulatif < 0 ? "text-red-600" : "text-[#1E3A5F]"}`}>{paraFmt(sonKumulatif)}</td>
                   {canSil && <td />}
                 </tr>
               </tfoot>

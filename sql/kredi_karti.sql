@@ -14,9 +14,15 @@ create table if not exists public.kredi_karti (
   guncel_borc    numeric not null default 0,
   aciklama       text,
   sira           integer not null default 0,
+  kullanilabilir_tarihi timestamptz,          -- kullanılabilir limit/güncel borç en son ne zaman güncellendi
+  kullanilabilir_guncelleyen text,            -- en son güncelleyen kullanıcının adı
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
+-- Mevcut tabloya kolon ekleme (ilk sürümü zaten çalıştırdıysan) + geçmiş kartlara updated_at'i yaz:
+alter table public.kredi_karti add column if not exists kullanilabilir_tarihi timestamptz;
+alter table public.kredi_karti add column if not exists kullanilabilir_guncelleyen text;
+update public.kredi_karti set kullanilabilir_tarihi = updated_at where kullanilabilir_tarihi is null;
 
 -- Tarayıcı (authenticated) okur+yazar; erişim uygulama içi izin matrisiyle (kredi-kartlari modülü) yönetilir.
 alter table public.kredi_karti enable row level security;

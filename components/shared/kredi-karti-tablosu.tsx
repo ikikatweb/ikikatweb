@@ -2,10 +2,12 @@
 // Kullanılabilir Limit = Limit - Güncel Borç (otomatik). Satırlar inline düzenlenir; yetkiye göre kilitli.
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { CreditCard, Plus, Trash2, Loader2, Search, Pencil } from "lucide-react";
+import { CreditCard, Plus, Trash2, Loader2, Search, Pencil, ChevronDown } from "lucide-react";
 import { getKrediKartlar, insertKrediKarti, updateKrediKarti, deleteKrediKarti } from "@/lib/supabase/queries/kredi-karti";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks";
 import type { KrediKarti } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -23,17 +25,53 @@ const BOS_FORM: KKForm = {
 };
 
 function tlFmt(n: number): string { return "₺" + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-// Kart sahibine göre satır rengi: KAD-TEM A.Ş. → mavi, İKİKAT LTD ŞTİ → kırmızı.
-// Kişi isimli kartlar (Mustafa/Erkan/Tugay İkikat) beyaz kalır. Metin daima siyah (yalnız satır zemini).
-function firmaBg(sahibi: string | null): string {
-  const n = trAramaNormalize(sahibi ?? "").replace(/[^a-z0-9]/g, "");
-  if (n.includes("kadtem")) return "bg-blue-50";
-  if (n.includes("ikikat") && n.includes("ltd")) return "bg-red-50"; // yalnız İKİKAT LTD ŞTİ (firma)
-  return "";
+// Kart Sahibi için firma otomatik-tamamlama (Türkçe duyarsız). Firmalardan seçilebilir, serbest de yazılabilir.
+function FirmaSecim({ value, onChange, secenekler, placeholder, className }: {
+  value: string; onChange: (v: string) => void; secenekler: string[]; placeholder?: string; className?: string;
+}) {
+  const [acik, setAcik] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const q = trAramaNormalize(value.trim());
+  const filtre = useMemo(() => (q ? secenekler.filter((o) => trAramaNormalize(o).includes(q)) : secenekler).slice(0, 30), [secenekler, q]);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const sec = (v: string) => { onChange(v); setAcik(false); };
+  return (
+    <div ref={ref} className="relative">
+      <input className={className} value={value} placeholder={placeholder}
+        onChange={(e) => { onChange(e.target.value); setAcik(e.target.value.trim().length > 0); }} />
+      {acik && filtre.length > 0 && (
+        <ul className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+          {filtre.map((o) => (
+            <li key={o}>
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); sec(o); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-gray-100">{o}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 function tarihSaat(iso: string): string {
   const d = new Date(iso);
   return `${d.toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" })} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+function tarihKisa(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+}
+function bugunMu(iso: string | null): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const b = new Date();
+  return d.getFullYear() === b.getFullYear() && d.getMonth() === b.getMonth() && d.getDate() === b.getDate();
 }
 function sayiToInput(n: number, bosZero = true): string {
   if (bosZero && (!n || n === 0)) return "";
@@ -41,13 +79,48 @@ function sayiToInput(n: number, bosZero = true): string {
   return formatParaInput(s || "0");
 }
 
+// Çoklu seçim (checkbox'lı açılır liste) — birden çok banka / kart sahibi seçilebilsin.
+function CokluSecim({ etiket, secenekler, secili, setSecili }: { etiket: string; secenekler: string[]; secili: string[]; setSecili: (v: string[]) => void }) {
+  const [acik, setAcik] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const toggle = (o: string) => setSecili(secili.includes(o) ? secili.filter((x) => x !== o) : [...secili, o]);
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setAcik((a) => !a)}
+        className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 bg-white outline-none hover:bg-gray-50 flex items-center gap-1 max-w-[200px]">
+        <span className="truncate">{secili.length === 0 ? `${etiket} (tümü)` : `${etiket}: ${secili.length}`}</span>
+        <ChevronDown size={14} className="text-gray-400 shrink-0" />
+      </button>
+      {acik && (
+        <div className="absolute z-50 mt-1 min-w-[220px] max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg p-1 text-sm">
+          {secenekler.length === 0 && <div className="px-2 py-1.5 text-gray-400">Seçenek yok</div>}
+          {secenekler.map((o) => (
+            <label key={o} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+              <input type="checkbox" checked={secili.includes(o)} onChange={() => toggle(o)} className="accent-[#1E3A5F]" />
+              <span className="truncate">{o}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { canEkle: boolean; canDuzenle: boolean; canSil: boolean }) {
+  const { kullanici } = useAuth();
+  const guncelleyenAd = kullanici?.ad_soyad ?? null;
   const [kartlar, setKartlar] = useState<KrediKarti[]>([]);
+  const [firmalar, setFirmalar] = useState<{ firma_adi: string; renk: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
   const [arama, setArama] = useState("");
-  const [filtreBanka, setFiltreBanka] = useState("");
-  const [filtreSahip, setFiltreSahip] = useState("");
+  const [filtreBanka, setFiltreBanka] = useState<string[]>([]);
+  const [filtreSahip, setFiltreSahip] = useState<string[]>([]);
   const [duzen, setDuzen] = useState<Record<string, string>>({}); // düzenlenirken geçici string (id:field)
   const [dialogAcik, setDialogAcik] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -59,9 +132,15 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
     let iptal = false;
     (async () => {
       try {
-        const k = await getKrediKartlar();
+        const [k, fRes] = await Promise.all([
+          getKrediKartlar(),
+          createClient().from("firmalar").select("firma_adi, renk").order("firma_adi", { ascending: true }),
+        ]);
         if (iptal) return;
-        setKartlar(k); setHata(null);
+        setKartlar(k);
+        setFirmalar(((fRes.data ?? []) as { firma_adi: string | null; renk: string | null }[])
+          .filter((f) => (f.firma_adi ?? "").trim()).map((f) => ({ firma_adi: f.firma_adi!.trim(), renk: f.renk })));
+        setHata(null);
       } catch (e) {
         if (iptal) return;
         let msg = "Bilinmeyen hata";
@@ -79,14 +158,23 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
     return () => { iptal = true; };
   }, []);
 
+  // Firma adı (BÜYÜK) → tanımlı renk; ve otomatik-tamamlama için firma adı listesi.
+  const firmaRenkMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of firmalar) { const ad = f.firma_adi.trim().toLocaleUpperCase("tr"); if (ad && f.renk) m.set(ad, f.renk); }
+    return m;
+  }, [firmalar]);
+  const firmaRengi = (ad: string | null) => firmaRenkMap.get((ad ?? "").trim().toLocaleUpperCase("tr")) ?? null;
+  const firmaListe = useMemo(() => [...new Set(firmalar.map((f) => f.firma_adi))].sort((a, b) => a.localeCompare(b, "tr")), [firmalar]);
+
   const bankalar = useMemo(() => [...new Set(kartlar.map((k) => (k.banka_adi ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")), [kartlar]);
   const sahipler = useMemo(() => [...new Set(kartlar.map((k) => (k.kart_sahibi ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")), [kartlar]);
 
   const gorunen = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
     return kartlar.filter((k) => {
-      if (filtreBanka && (k.banka_adi ?? "").trim() !== filtreBanka) return false;
-      if (filtreSahip && (k.kart_sahibi ?? "").trim() !== filtreSahip) return false;
+      if (filtreBanka.length && !filtreBanka.includes((k.banka_adi ?? "").trim())) return false;
+      if (filtreSahip.length && !filtreSahip.includes((k.kart_sahibi ?? "").trim())) return false;
       if (q && !trAramaNormalize([k.banka_adi, k.son4, k.kart_ozelligi, k.kart_sahibi, k.karti_kullanan, k.aciklama].filter(Boolean).join(" ")).includes(q)) return false;
       return true;
     });
@@ -103,8 +191,10 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
 
   async function kartGuncelle(id: string, patch: Partial<KrediKarti>) {
     const now = new Date().toISOString();
-    setKartlar((p) => p.map((k) => (k.id === id ? { ...k, ...patch, updated_at: now } : k)));
-    try { await updateKrediKarti(id, patch); } catch { toast.error("Kaydedilemedi."); }
+    const yerel: Partial<KrediKarti> = { ...patch, updated_at: now };
+    if (patch.guncel_borc !== undefined) { yerel.kullanilabilir_tarihi = now; yerel.kullanilabilir_guncelleyen = guncelleyenAd; } // kullanılabilir değişti → tarih + güncelleyen
+    setKartlar((p) => p.map((k) => (k.id === id ? { ...k, ...yerel } : k)));
+    try { await updateKrediKarti(id, patch, guncelleyenAd); } catch { toast.error("Kaydedilemedi."); }
   }
   function dialogAc(k: KrediKarti | null) {
     if (k) {
@@ -135,11 +225,12 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
     setKaydediliyor(true);
     try {
       if (editId) {
-        await updateKrediKarti(editId, payload);
-        setKartlar((p) => p.map((k) => (k.id === editId ? { ...k, ...payload, updated_at: new Date().toISOString() } : k)));
+        const now = new Date().toISOString();
+        await updateKrediKarti(editId, payload, guncelleyenAd);
+        setKartlar((p) => p.map((k) => (k.id === editId ? { ...k, ...payload, updated_at: now, kullanilabilir_tarihi: now, kullanilabilir_guncelleyen: guncelleyenAd } : k)));
       } else {
         const maxSira = kartlar.reduce((m, k) => Math.max(m, k.sira), 0);
-        const row = await insertKrediKarti({ ...payload, sira: maxSira + 1 });
+        const row = await insertKrediKarti({ ...payload, sira: maxSira + 1 }, guncelleyenAd);
         setKartlar((p) => [...p, row]);
       }
       setDialogAcik(false);
@@ -193,7 +284,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
   const td = "border border-gray-100 px-0.5 py-0.5 align-middle";
   const tdOku = "border border-gray-100 px-1.5 py-1.5 align-middle text-xs"; // salt-okunur hücre
   const islemVar = canDuzenle || canSil;
-  const kolon = islemVar ? 13 : 12;
+  const kolon = islemVar ? 14 : 13;
   const fLbl = "text-xs font-medium text-gray-600 mb-1 block";
   const fInp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30";
 
@@ -218,25 +309,33 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
             placeholder="Banka, kart sahibi, kullanan, açıklama…"
             className="w-full h-9 pl-8 pr-3 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30" />
         </div>
-        <select value={filtreBanka} onChange={(e) => setFiltreBanka(e.target.value)}
-          className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 bg-white outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30 max-w-[180px]">
-          <option value="">Banka (tümü)</option>
-          {bankalar.map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <select value={filtreSahip} onChange={(e) => setFiltreSahip(e.target.value)}
-          className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 bg-white outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30 max-w-[180px]">
-          <option value="">Kart sahibi (tümü)</option>
-          {sahipler.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        {(filtreBanka || filtreSahip || arama) && (
-          <button type="button" onClick={() => { setArama(""); setFiltreBanka(""); setFiltreSahip(""); }}
+        <CokluSecim etiket="Banka" secenekler={bankalar} secili={filtreBanka} setSecili={setFiltreBanka} />
+        <CokluSecim etiket="Kart sahibi" secenekler={sahipler} secili={filtreSahip} setSecili={setFiltreSahip} />
+        {(filtreBanka.length > 0 || filtreSahip.length > 0 || arama) && (
+          <button type="button" onClick={() => { setArama(""); setFiltreBanka([]); setFiltreSahip([]); }}
             className="h-9 px-2.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">Temizle</button>
         )}
         <span className="text-xs text-gray-500">{gorunen.length} kart</span>
       </div>
 
       <div className="w-full bg-white rounded-lg border border-gray-200 overflow-x-auto">
-        <table className="text-xs text-gray-900 border-collapse w-full">
+        <table className="text-xs text-gray-900 border-collapse w-full table-fixed min-w-[1536px]">
+          <colgroup>
+            <col style={{ width: "40px" }} />{/* S.No */}
+            <col style={{ width: "150px" }} />{/* Banka Adı */}
+            <col style={{ width: "120px" }} />{/* Son 4 Hane */}
+            <col style={{ width: "110px" }} />{/* Kart Özelliği */}
+            <col style={{ width: "120px" }} />{/* Kart Sahibi */}
+            <col style={{ width: "150px" }} />{/* Kartı Kullanan */}
+            <col style={{ width: "92px" }} />{/* Hesap Kesim */}
+            <col style={{ width: "92px" }} />{/* Son Ödeme */}
+            <col style={{ width: "105px" }} />{/* Limit */}
+            <col style={{ width: "105px" }} />{/* Güncel Borç */}
+            <col style={{ width: "105px" }} />{/* Kullanılabilir */}
+            <col style={{ width: "42px" }} />{/* Güncelleme (renkli nokta) */}
+            <col />{/* Açıklama — kalan alan */}
+            {islemVar && <col style={{ width: "64px" }} />}{/* İşlem */}
+          </colgroup>
           <thead className="bg-gray-100">
             <tr>
               <th className={th}>S.No</th>
@@ -250,6 +349,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
               <th className={th}>Limit</th>
               <th className={th}>Güncel Borç</th>
               <th className={th}>Kullanılabilir<br />Limit</th>
+              <th className={th} title="Güncelleme (yeşil: bugün · kırmızı: bugün değil)" />
               <th className={`${th} text-left`}>Açıklama</th>
               {islemVar && <th className={th}>İşlem</th>}
             </tr>
@@ -263,19 +363,26 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
             {gorunen.map((k, i) => {
               const kullanilabilir = Number(k.limit_tutar || 0) - Number(k.guncel_borc || 0);
               return (
-                <tr key={k.id} className={`border-b border-gray-100 ${firmaBg(k.kart_sahibi) || "hover:bg-gray-50/60"}`}>
+                <tr key={k.id} className={`border-b border-gray-100 ${firmaRengi(k.kart_sahibi) ? "" : "hover:bg-gray-50/60"}`}
+                  style={firmaRengi(k.kart_sahibi) ? { backgroundColor: firmaRengi(k.kart_sahibi)! + "22" } : undefined}>
                   <td className={`${td} text-center text-gray-500 tabular-nums px-1.5`}>{i + 1}</td>
                   <td className={`${tdOku} min-w-[130px] truncate`} title={k.banka_adi ?? ""}>{k.banka_adi || "—"}</td>
                   <td className={`${tdOku} min-w-[80px] truncate`} title={k.son4 ?? ""}>{k.son4 || "—"}</td>
                   <td className={`${tdOku} min-w-[90px] truncate`} title={k.kart_ozelligi ?? ""}>{k.kart_ozelligi || "—"}</td>
                   <td className={`${tdOku} min-w-[110px] truncate`} title={k.kart_sahibi ?? ""}>{k.kart_sahibi || "—"}</td>
-                  <td className={`${td} min-w-[110px]`}>{metinHucre(k.id, "karti_kullanan", k.karti_kullanan, "Kullanan")}</td>
+                  <td className={`${td} w-[150px]`}>{metinHucre(k.id, "karti_kullanan", k.karti_kullanan, "Kullanan")}</td>
                   <td className={`${tdOku} w-14 text-center`}>{k.hesap_kesim ?? "—"}</td>
                   <td className={`${tdOku} w-14 text-center`}>{k.son_odeme ?? "—"}</td>
                   <td className={`${tdOku} min-w-[100px] text-right tabular-nums`}>{tlFmt(Number(k.limit_tutar || 0))}</td>
                   <td className={`${tdOku} min-w-[100px] text-right tabular-nums`}>{tlFmt(Number(k.guncel_borc || 0))}</td>
-                  <td className={`${td} min-w-[110px]`}>{paraHucre(k.id, "kullanilabilir", kullanilabilir, (n) => kartGuncelle(k.id, { guncel_borc: Number(k.limit_tutar || 0) - n }), "font-semibold")}</td>
-                  <td className={`${td} min-w-[160px]`}>{metinHucre(k.id, "aciklama", k.aciklama, "Açıklama")}</td>
+                  <td className={`${td} w-[96px]`}>{paraHucre(k.id, "kullanilabilir", kullanilabilir, (n) => kartGuncelle(k.id, { guncel_borc: Number(k.limit_tutar || 0) - n }), "font-semibold")}</td>
+                  <td className={`${tdOku} text-center`}>
+                    {k.kullanilabilir_tarihi && (
+                      <span className={`inline-block w-3 h-3 rounded-full align-middle ${bugunMu(k.kullanilabilir_tarihi) ? "bg-emerald-500" : "bg-red-500"}`}
+                        title={`${tarihKisa(k.kullanilabilir_tarihi)}${k.kullanilabilir_guncelleyen ? "\n" + k.kullanilabilir_guncelleyen : ""}`} />
+                    )}
+                  </td>
+                  <td className={td}>{metinHucre(k.id, "aciklama", k.aciklama, "Açıklama")}</td>
                   {islemVar && (
                     <td className={`${td} text-center px-1 whitespace-nowrap`}>
                       <div className="flex items-center justify-center gap-2">
@@ -294,6 +401,7 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
               <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamLimit)}</td>
               <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamBorc)}</td>
               <td className={`${td} text-right tabular-nums px-2`}>{tlFmt(toplamKullanilabilir)}</td>
+              <td className={td} />
               <td className={td} />
               {islemVar && <td className={td} />}
             </tr>
@@ -324,7 +432,8 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
             </div>
             <div>
               <label className={fLbl}>Kart Sahibi</label>
-              <input className={fInp} value={form.kart_sahibi} onChange={(e) => setF("kart_sahibi", e.target.value)} placeholder="Kart sahibi" />
+              <FirmaSecim value={form.kart_sahibi} onChange={(v) => setF("kart_sahibi", v)} secenekler={firmaListe} className={fInp} placeholder="Firma (ör. kad…) ya da yeni isim" />
+              <div className="text-[10px] text-gray-400 mt-1">Firmalardan seçersen satır o firmanın rengiyle işaretlenir.</div>
             </div>
             <div>
               <label className={fLbl}>Kartı Kullanan</label>

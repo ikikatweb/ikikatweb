@@ -18,15 +18,20 @@ export async function getKrediKartlar(): Promise<KrediKarti[]> {
   return (data ?? []) as KrediKarti[];
 }
 
-export async function insertKrediKarti(row: KrediKartiYazi): Promise<KrediKarti> {
-  const { data, error } = await sb().from("kredi_karti").insert(row).select().single();
+export async function insertKrediKarti(row: KrediKartiYazi, guncelleyen?: string | null): Promise<KrediKarti> {
+  const now = new Date().toISOString();
+  const { data, error } = await sb().from("kredi_karti")
+    .insert({ ...row, kullanilabilir_tarihi: now, kullanilabilir_guncelleyen: guncelleyen ?? null }).select().single();
   if (error) throw error;
   return data as KrediKarti;
 }
 
-export async function updateKrediKarti(id: string, patch: Partial<KrediKartiYazi>): Promise<void> {
-  const { error } = await sb().from("kredi_karti")
-    .update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+export async function updateKrediKarti(id: string, patch: Partial<KrediKartiYazi>, guncelleyen?: string | null): Promise<void> {
+  const now = new Date().toISOString();
+  const govde: Record<string, unknown> = { ...patch, updated_at: now };
+  // Güncel borç (dolayısıyla kullanılabilir limit) değiştiyse tarihini + güncelleyeni de yaz.
+  if (patch.guncel_borc !== undefined) { govde.kullanilabilir_tarihi = now; govde.kullanilabilir_guncelleyen = guncelleyen ?? null; }
+  const { error } = await sb().from("kredi_karti").update(govde).eq("id", id);
   if (error) throw error;
 }
 

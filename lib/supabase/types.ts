@@ -728,6 +728,8 @@ export type KrediKarti = {
   guncel_borc: number;
   aciklama: string | null;
   sira: number;
+  kullanilabilir_tarihi: string | null; // kullanılabilir limit/güncel borç en son ne zaman güncellendi
+  kullanilabilir_guncelleyen: string | null; // en son güncelleyen kullanıcının adı
   created_at: string;
   updated_at: string;
 };
