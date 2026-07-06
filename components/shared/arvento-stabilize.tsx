@@ -560,7 +560,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           if (parcaKesisir(p1 as Nk, p2 as Nk, A, B)) { if (Math.sign(yon3(A, B, p2 as Nk)) === ocakTaraf) go++; else gd++; }
         }
       }
-      if (g + m + a > 0 || go + gd > 0) sat.push({ plaka: r.plaka, surucu: r.surucu, gercek: g, mukerrer: m, ariza: a, girisOcak: go, girisDokum: gd });
+      // Damper/sefer 0 olsa bile her kamyon listelensin (tablo hiç gizlenmesin) → 0 değerleriyle eklenir.
+      sat.push({ plaka: r.plaka, surucu: r.surucu, gercek: g, mukerrer: m, ariza: a, girisOcak: go, girisDokum: gd });
     }
     sat.sort((x, y) => y.gercek - x.gercek);
     return sat;
@@ -1018,8 +1019,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <thead>
                 <tr className="text-gray-400 text-[10px] border-b">
                   <th className="text-left py-1 pr-2">Kamyon</th>
-                  <th className="text-right px-2" title={gunGiris ? "Kamyon çizgisinin giriş kapısını OCAĞA doğru kesme sayısı" : "Yüklenip döküme inen sefer (= gerçek)"}>Ocağa gidiş{gunGiris ? " 🚪" : ""}</th>
-                  <th className="text-right px-2" title={gunGiris ? "Giriş kapısını DÖKÜME doğru kesme sayısı" : "Toplam döküm seferi (gerçek + arızalı)"}>Döküme gidiş{gunGiris ? " 🚪" : ""}</th>
+                  <th className="text-right px-2" title="Kamyonun ocak çemberine giriş (yükleme) sayısı — GPS rotasından">Ocağa gidiş</th>
+                  <th className="text-right px-2" title="Kamyonun ocak çemberinden çıkış (döküme gidiş) sayısı — GPS rotasından">Döküme gidiş</th>
                   {/* TIKLANABİLİR sınıf başlıkları → haritada SADECE o sınıftaki damperleri göster (görsel filtre). */}
                   <th className="text-right px-2">
                     <button type="button" onClick={() => setDamperFiltre("gercek")} title="Haritada gerçek damperleri göster"
@@ -1040,8 +1041,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 {seferAnaliz.map((s) => (
                   <tr key={s.plaka} className="border-b border-gray-50 last:border-0">
                     <td className="py-1 pr-2"><span className="font-semibold text-[#1E3A5F]">{s.plaka}</span>{s.surucu ? <span className="text-gray-400"> · {s.surucu}</span> : null}</td>
-                    <td className="text-right px-2 tabular-nums">{gunGiris ? s.girisOcak : s.gercek}</td>
-                    <td className="text-right px-2 tabular-nums">{gunGiris ? s.girisDokum : s.gercek + s.ariza}</td>
+                    <td className="text-right px-2 tabular-nums">{s.girisOcak}</td>
+                    <td className="text-right px-2 tabular-nums">{s.girisDokum}</td>
                     <td className="text-right px-2 tabular-nums font-semibold text-emerald-700">{s.gercek}</td>
                     <td className="text-right px-2 tabular-nums text-rose-600">{s.ariza}</td>
                     <td className="text-right px-2 tabular-nums text-amber-600">{s.mukerrer}</td>
@@ -1056,8 +1057,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   <tfoot>
                     <tr className="border-t font-semibold text-[#1E3A5F]">
                       <td className="py-1 pr-2">TOPLAM</td>
-                      <td className="text-right px-2 tabular-nums">{gunGiris ? tGO : tG}</td>
-                      <td className="text-right px-2 tabular-nums">{gunGiris ? tGD : tG + tA}</td>
+                      <td className="text-right px-2 tabular-nums">{tGO}</td>
+                      <td className="text-right px-2 tabular-nums">{tGD}</td>
                       <td className="text-right px-2 tabular-nums text-emerald-700">{tG}</td>
                       <td className="text-right px-2 tabular-nums text-rose-600">{tA}</td>
                       <td className="text-right px-2 tabular-nums text-amber-600">{tM}</td>
@@ -1069,9 +1070,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             </table>
           </div>
           <p className="text-[10px] text-gray-400 mt-1.5">
-            {gunGiris
-              ? "🚪 Ocağa/Döküme gidiş = kamyon çizgisinin GİRİŞ KAPISINI o yöne kesme sayısı (kapıyı oynatınca değişir). "
-              : "Ocağa gidiş = yüklenip döküme inen (gerçek). Döküme gidiş = gerçek + arızalı. "}
+            Ocağa gidiş = kamyonun ocak çemberine giriş (yükleme) sayısı; Döküme gidiş = çemberden çıkış sayısı — GPS rotasından (damper gerekmez).
             Arızalı = ocağa uğramadan döken (yüklemesiz). Mükerrer = aynı yerde yanlış tetiklenen.
           </p>
         </div>

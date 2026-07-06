@@ -242,6 +242,7 @@ function YakitPageContent() {
   const [verDialogDepoFull, setVerDialogDepoFull] = useState(false);
   const [verDialogDisYakit, setVerDialogDisYakit] = useState<boolean | null>(null);
   const [verDialogLoading, setVerDialogLoading] = useState(false);
+  const [menzilSoru, setMenzilSoru] = useState<{ fark: number; menzil: number; birim: string } | null>(null); // 1 depo menzili aşımı Evet/Hayır sorusu
 
   // Dialog: Yakıt Düzeltme (SADECE yönetici) — eksik/fazla mazotu araçlara hisse oranında dağıt
   const [duzDialogOpen, setDuzDialogOpen] = useState(false);
@@ -1235,6 +1236,25 @@ function YakitPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verDialogAracId, verEditId, yakitKayitlari]);
 
+  // 1 DEPO MENZİLİ AŞIMI (anlık uyarı): girilen km/saat, son (km/saat > 0) kayda göre aracın 1 depoyla
+  // katedeceği mesafeden (depo_menzil) fazla artmışsa uyar. depo_menzil tanımsızsa (0) uyarı yok.
+  const verMenzilUyari = useMemo(() => {
+    if (!verDialogAracId || !verDialogKmSaat.trim()) return null;
+    const arac = aracMap.get(verDialogAracId);
+    const menzil = arac?.depo_menzil ?? 0;
+    if (menzil <= 0) return null;
+    const km = parseParaInput(verDialogKmSaat);
+    if (isNaN(km) || km <= 0) return null;
+    const sonK = yakitKayitlari
+      .filter((y) => y.arac_id === verDialogAracId && y.id !== verEditId && (y.km_saat ?? 0) > 0)
+      .sort((a, b) => hareketKey(b).localeCompare(hareketKey(a)))[0] ?? null;
+    if (!sonK || km <= sonK.km_saat) return null;
+    const fark = km - sonK.km_saat;
+    if (fark <= menzil) return null;
+    return { fark, menzil, birim: arac?.sayac_tipi === "saat" ? "saat" : "km" };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verDialogAracId, verDialogKmSaat, verEditId, yakitKayitlari, aracMap]);
+
   // Seçili şantiyedeki kullanılabilir araçlar (pasif olmayan — trafikten çekildi dahil)
   // Trafikten çekildi araçlara da yakıt verilebilir, sadece "pasif" olanlar hariç tutulur.
   const verDialogAraclari = useMemo(() => {
@@ -2027,6 +2047,7 @@ function YakitPageContent() {
                   inputMode="decimal"
                   value={verDialogKmSaat}
                   onChange={(e) => setVerDialogKmSaat(formatParaInput(e.target.value))}
+                  onBlur={() => { if (verMenzilUyari) setMenzilSoru(verMenzilUyari); }}
                   placeholder={verDialogSonKayit ? String(verDialogSonKayit.km_saat) : "Örn: 125000"}
                   className={selectClass + " w-full"}
                   disabled={verDialogLoading}
@@ -2411,6 +2432,27 @@ function YakitPageContent() {
       </Dialog>
 
       {/* Silme Onay Dialog */}
+      {/* 1 depo menzili aşımı — Evet/Hayır onayı (km/saat alanından çıkınca açılır) */}
+      <Dialog open={!!menzilSoru} onOpenChange={(o) => !o && setMenzilSoru(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><span>⚠️</span> Girilen değer fazla</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 text-sm text-gray-600">
+            {menzilSoru && (<>
+              Girilen değer son kayda göre <strong>{formatSayi(menzilSoru.fark, 0)} {menzilSoru.birim}</strong> artmış.
+              Bu araç 1 depo ile ~<strong>{formatSayi(menzilSoru.menzil, 0)} {menzilSoru.birim}</strong> yol yapar;
+              girilen {menzilSoru.birim} değeri <strong>fazla</strong> görünüyor.<br /><br />
+              Girilen değer doğru mu?
+            </>)}
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => { setMenzilSoru(null); setVerDialogKmSaat(""); }}>Hayır, düzelteceğim</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => setMenzilSoru(null)}>Evet, doğru</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!silOnay} onOpenChange={(o) => !o && setSilOnay(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

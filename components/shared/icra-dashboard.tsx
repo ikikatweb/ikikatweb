@@ -1,5 +1,7 @@
 // Dashboard İcra Takibi widget'ı — İCRAYA CEVABI VERİLMEMİŞ (İcraya Cevap Tarihi boş) dosyaları listeler.
 // "Cevap Tarihi" sütunundaki "Tarih gir" butonuna tıklayıp tarih girilince kayıt güncellenir ve satır düşer.
+// SÜRE: tebliğ tarihinden itibaren 7 gün içinde cevap verilmeli. Cevap yoksa 6. günden itibaren (son 2 gün:
+// 6. ve 7. gün ve sonrası) satır KIRMIZI vurgulanır (süre doluyor uyarısı).
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,6 +13,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");
+// Tebliğ tarihinden bugüne kaç TAM gün geçti (null = tarih yok/geçersiz). 7 günlük cevap süresi bundan sayılır.
+const CEVAP_SURESI_GUN = 7;
+const ACIL_ESIK_GUN = 6; // 6. günden itibaren (son 2 gün) kırmızı
+function tebligGunGecen(v: string | null): number | null {
+  if (!v) return null;
+  const t = new Date(v + "T00:00:00");
+  if (Number.isNaN(t.getTime())) return null;
+  const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+  return Math.floor((bugun.getTime() - t.getTime()) / 86400000);
+}
 
 export default function IcraDashboard() {
   const { isYonetici, hasPermission } = useAuth();
@@ -30,7 +42,8 @@ export default function IcraDashboard() {
   const bekleyen = useMemo(
     () => satirlar
       .filter((s) => !(s.cevap_tarihi ?? "").trim())
-      .sort((a, b) => (a.gelen_yazi_tarihi ?? "").localeCompare(b.gelen_yazi_tarihi ?? "")),
+      // En acil üste: tebliği en eski (süresi en çok dolmuş) önce. Tebliğ yoksa gelen yazı tarihine düş.
+      .sort((a, b) => (a.teblig_tarihi ?? a.gelen_yazi_tarihi ?? "").localeCompare(b.teblig_tarihi ?? b.gelen_yazi_tarihi ?? "")),
     [satirlar],
   );
 
@@ -64,11 +77,15 @@ export default function IcraDashboard() {
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {bekleyen.map((s) => (
-                <TableRow key={s.id} className="hover:bg-red-50/40">
+              {bekleyen.map((s) => {
+                const gecen = tebligGunGecen(s.teblig_tarihi);
+                const acil = gecen != null && gecen >= ACIL_ESIK_GUN; // 6. gün ve sonrası → kırmızı
+                return (
+                <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
                   <TableCell className="px-2">
-                    <div className="font-medium text-[#1E3A5F] truncate max-w-[110px]" title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
+                    <div className={`font-medium truncate max-w-[110px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
                     {s.dosya_esas_no && <div className="text-[9px] text-gray-400 truncate max-w-[110px]">{s.dosya_esas_no}</div>}
+                    {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre doluyor</div>}
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.gelen_yazi_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
@@ -83,7 +100,8 @@ export default function IcraDashboard() {
                   </TableCell>
                   <TableCell className="px-2 text-right tabular-nums text-red-600">{fmt(Number(s.borc_miktari || 0))}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </div>

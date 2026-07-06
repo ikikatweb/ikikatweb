@@ -14,10 +14,27 @@ import { ocakTespit, rotaTemizle, type LatLng } from "./ocak";
 
 // Geometri (arvento-stabilize.tsx ile BİREBİR): kamyon segmenti giriş kapı çizgisini kesiyor mu + hangi yön.
 type Pt = { lat: number; lng: number };
-function yon3(p: Pt, q: Pt, r: Pt): number { return (q.lng - p.lng) * (r.lat - q.lat) - (q.lat - p.lat) * (r.lng - q.lng); }
-function parcaKesisir(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
-  const d1 = yon3(c, d, a), d2 = yon3(c, d, b), d3 = yon3(a, b, c), d4 = yon3(a, b, d);
-  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+// İki nokta arası yaklaşık mesafe (metre) — küçük alanlar için düzlem yaklaşımı yeterli.
+function mesafeM(p: Pt, o: Pt): number {
+  const dLat = (p.lat - o.lat) * 111320;
+  const dLng = (p.lng - o.lng) * 111320 * Math.cos((o.lat * Math.PI) / 180);
+  return Math.hypot(dLat, dLng);
+}
+// OCAK ÇEMBERİ giriş/çıkış sayımı (GPS rotasından; damper/kapı gerekmez). Kamyon çembere her girişte
+// "ocağa gidiş" +1, her çıkışta "döküme gidiş" +1. Sınır titremesini süzmek için histerezis: içeri = d<yarıçap,
+// dışarı sayımı için d>yarıçap*1.3.
+function ocakGirisCikis(rota: { lat: number | null; lng: number | null }[], o: Pt, yaricap: number): { giris: number; cikis: number } {
+  const disEsik = yaricap * 1.3;
+  let ic: boolean | null = null; // başlangıç durumu bilinmiyor
+  let giris = 0, cikis = 0;
+  for (const p of rota) {
+    if (p.lat == null || p.lng == null) continue;
+    const d = mesafeM({ lat: p.lat, lng: p.lng }, o);
+    if (ic === null) { ic = d < yaricap; continue; }
+    if (!ic && d < yaricap) { giris++; ic = true; }        // dışarıdan içeri → ocağa gidiş
+    else if (ic && d > disEsik) { cikis++; ic = false; }   // içeriden dışarı → döküme gidiş
+  }
+  return { giris, cikis };
 }
 
 const SEKME = "stabilize";
@@ -122,12 +139,23 @@ export async function gunOzetiHesapla(
   const damperli = raporlar.filter(
     (r) => (Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0) > 0 || (r.damper_sayisi ?? 0) > 0,
   );
-  // BOŞ gün (damperli kamyon yok) → güzergah/ocak/giriş sorgularını ATLA, hemen boş dön. Geniş aralıkta
-  // veri olmayan yüzlerce gün her biri 3 sorgu yapıp API'yi yavaşlatıyordu (16 boş gün ≈ 10 sn).
-  if (damperli.length === 0) return { imza: "bos", payload: { dampers: [], girisler: [] } };
+  // BOŞ gün (o gün hiç rapor yok) → güzergah/ocak sorgularını ATLA, hemen boş dön (geniş aralıkta yüzlerce
+  // veri-yok günü API'yi yavaşlatmasın). Rapor VARSA damper olmasa da ocak çemberi giriş/çıkışı sayılır.
+  if (raporlar.length === 0) return { imza: "bos", payload: { dampers: [], girisler: [] } };
 
-  // 2) O kamyonların güzergahı (sadece bu plakalara scoped). Plaka → temizlenmiş rota.
-  const plakalar = [...new Set(damperli.map((r) => r.plaka))];
+  // Stabilize'a ATANMIŞ kamyonlar (araclar.arvento_sekmeler ⊇ "stabilize"). Ocağa/Döküme gidiş yalnız bunlar
+  // için sayılır (tüm filoyu çekip ağırlaştırmamak için). Küçük tablo → hafif.
+  const { data: aracRows } = await supabase.from("araclar").select("plaka, arvento_sekmeler");
+  const stabilizeSet = new Set<string>();
+  for (const a of (aracRows ?? []) as { plaka: string; arvento_sekmeler: string[] | null }[]) {
+    if (Array.isArray(a.arvento_sekmeler) && a.arvento_sekmeler.includes("stabilize")) stabilizeSet.add(plakaKey(a.plaka));
+  }
+
+  // 2) Güzergah: damper sınıflaması için damperli kamyonlar + ocak çemberi sayımı için stabilize kamyonları.
+  const gerekli = new Set<string>();
+  for (const r of damperli) gerekli.add(r.plaka);
+  for (const r of raporlar) if (stabilizeSet.has(plakaKey(r.plaka))) gerekli.add(r.plaka);
+  const plakalar = [...gerekli];
   const rotaMap = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null }[]>();
   if (plakalar.length > 0) {
     const { data: guzData, error: guzErr } = await supabase
@@ -177,22 +205,16 @@ export async function gunOzetiHesapla(
     dampers.push(...sinifli);
   }
 
-  // 6) Sefer Analizi giriş/döküm: giriş KAPI çizgisi (gün bazlı) + kamyon rotası → kesme sayısı (per plaka).
-  //    Kamyon rotası gerektiği için SUNUCUDA hesaplanıp özete eklenir (tarayıcıya kamyon GPS inmiyor).
+  // 6) Sefer Analizi — Ocağa/Döküme gidiş = OCAK ÇEMBERİ giriş/çıkış sayısı (GPS rotasından; damper/kapı
+  //    GEREKMEZ). Stabilize'a atanmış her kamyon için: çembere giriş = ocağa gidiş, çıkış = döküme gidiş.
+  //    Kamyon rotası gerektiği için SUNUCUDA hesaplanır (tarayıcıya kamyon GPS inmiyor). giris yalnız imza için.
   const giris = await getGirisServer(supabase, gun);
   const girisler: OzetGiris[] = [];
-  if (giris && ocak) {
-    const A: Pt = { lat: giris.lat, lng: giris.lng };
-    const B: Pt = { lat: giris.lat2, lng: giris.lng2 };
-    const ocakTaraf = Math.sign(yon3(A, B, ocak)); // ocak hangi tarafta → "ocağa" yönü
-    for (const r of damperli) {
+  if (ocak) {
+    for (const r of raporlar) {
+      if (!stabilizeSet.has(plakaKey(r.plaka))) continue; // yalnız stabilize kamyonları
       const rota = rotaMap.get(plakaKey(r.plaka)) ?? [];
-      let go = 0, gd = 0;
-      for (let i = 1; i < rota.length; i++) {
-        const p1 = rota[i - 1], p2 = rota[i];
-        if (p1.lat == null || p1.lng == null || p2.lat == null || p2.lng == null) continue;
-        if (parcaKesisir(p1, p2, A, B)) { if (Math.sign(yon3(A, B, p2)) === ocakTaraf) go++; else gd++; }
-      }
+      const { giris: go, cikis: gd } = ocakGirisCikis(rota, ocak, ocakYaricap);
       if (go || gd) girisler.push({ plaka: r.plaka, girisOcak: go, girisDokum: gd });
     }
   }
