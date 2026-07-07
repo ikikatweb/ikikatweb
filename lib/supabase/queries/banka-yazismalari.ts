@@ -118,25 +118,20 @@ export async function getSilinenBankaYazismalari(olusturanId?: string) {
   if (error) throw error;
 
   if (data && data.length > 0) {
-    const userIds = [
-      ...new Set([
-        ...data.map((e) => e.olusturan_id).filter(Boolean),
-        ...data.map((e) => e.silen_id).filter(Boolean),
-      ]),
-    ];
-    if (userIds.length > 0) {
-      const { data: kullanicilar } = await supabase
-        .from("kullanicilar")
-        .select("id, ad_soyad")
-        .in("id", userIds);
-      const map = new Map<string, string>();
-      (kullanicilar ?? []).forEach((k) => map.set(k.id, k.ad_soyad));
-      return data.map((e) => ({
-        ...e,
-        kullanicilar: e.olusturan_id ? { ad_soyad: map.get(e.olusturan_id) ?? "—" } : null,
-        silen_kullanici: e.silen_id ? { ad_soyad: map.get(e.silen_id) ?? "—" } : null,
-      }));
-    }
+    // RLS bypass için API route üzerinden kullanıcı adlarını çek (kısıtlı kullanıcı direkt çekemez → aksi halde isimler "—" görünür)
+    const map = new Map<string, string>();
+    try {
+      const res = await fetch("/api/kullanicilar/adlar");
+      if (res.ok) {
+        const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
+        adlar.forEach((k) => map.set(k.id, k.ad_soyad));
+      }
+    } catch { /* sessiz */ }
+    return data.map((e) => ({
+      ...e,
+      kullanicilar: e.olusturan_id ? { ad_soyad: map.get(e.olusturan_id) ?? "—" } : null,
+      silen_kullanici: e.silen_id ? { ad_soyad: map.get(e.silen_id) ?? "—" } : null,
+    }));
   }
   return (data ?? []).map((e) => ({ ...e, kullanicilar: null, silen_kullanici: null }));
 }

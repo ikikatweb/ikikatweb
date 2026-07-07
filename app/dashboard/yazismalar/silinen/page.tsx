@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { createPortal, flushSync } from "react-dom";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import {
   getSilinenGelenEvraklar,
@@ -31,13 +32,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2, RotateCcw, Trash, Eye } from "lucide-react";
+import { Trash2, RotateCcw, Trash, Printer } from "lucide-react";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
@@ -98,7 +96,8 @@ export default function SilinenPage() {
   // Dialog'lar
   const [geriYukleDialog, setGeriYukleDialog] = useState<BirlesikSilinen | null>(null);
   const [kaliciSilDialog, setKaliciSilDialog] = useState<BirlesikSilinen | null>(null);
-  const [onIzlemeKayit, setOnIzlemeKayit] = useState<BirlesikSilinen | null>(null);
+  // Yazdırma için seçili kayıt (gizli print-portal'a render edilir → window.print())
+  const [printKayit, setPrintKayit] = useState<BirlesikSilinen | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -225,6 +224,17 @@ export default function SilinenPage() {
     finally { setKaliciSilDialog(null); }
   }
 
+  // Yazdırma — gizli print-portal'a evrağı render edip tarayıcı yazdırma önizlemesini aç (ana sayfalarla aynı)
+  function yazdir(k: BirlesikSilinen) {
+    flushSync(() => { setPrintKayit(k); });
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.print();
+        setTimeout(() => setPrintKayit(null), 1000);
+      });
+    });
+  }
+
   return (
     <div>
       {/* Başlık + özet sayılar */}
@@ -325,11 +335,11 @@ export default function SilinenPage() {
                     <TableCell className="px-2">
                       <div className="flex items-center justify-center gap-0.5">
                         <button
-                          onClick={() => setOnIzlemeKayit(k)}
+                          onClick={() => yazdir(k)}
                           className="p-1 text-gray-400 hover:text-[#1E3A5F]"
-                          title="Ön İzleme"
+                          title="Yazdır"
                         >
-                          <Eye size={14} />
+                          <Printer size={14} />
                         </button>
                         {yEkle && (
                           <button
@@ -358,77 +368,6 @@ export default function SilinenPage() {
           </Table>
         </div>
       )}
-
-      {/* Ön İzleme Dialog'u */}
-      <Dialog open={!!onIzlemeKayit} onOpenChange={() => setOnIzlemeKayit(null)}>
-        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {onIzlemeKayit && (
-                <Badge className={TUR_ETIKET[onIzlemeKayit.tur].color + " text-[10px]"}>
-                  {TUR_ETIKET[onIzlemeKayit.tur].label}
-                </Badge>
-              )}
-              <span className="font-mono text-sm">{onIzlemeKayit?.evrak_sayi_no}</span>
-              <span className="text-xs text-gray-500 font-normal">— Ön İzleme (Salt Okunur)</span>
-            </DialogTitle>
-          </DialogHeader>
-          {onIzlemeKayit && (
-            <div className="border rounded-lg shadow-sm overflow-hidden mx-auto mt-2" style={{ width: "210mm" }}>
-              {onIzlemeKayit.tur === "gelen" && (
-                <GelenEvrakOnIzleme
-                  firma={(onIzlemeKayit.raw as GelenEvrakWithRelations).firmalar ?? null}
-                  evrakTarihi={onIzlemeKayit.raw.evrak_tarihi}
-                  evrakSayiNo={onIzlemeKayit.raw.evrak_sayi_no}
-                  konu={onIzlemeKayit.raw.konu}
-                  muhatap={onIzlemeKayit.raw.muhatap}
-                  ilgi={(onIzlemeKayit.raw as GelenEvrakWithRelations).ilgi}
-                  icerik={(onIzlemeKayit.raw as GelenEvrakWithRelations).icerik}
-                  ekler={(onIzlemeKayit.raw as GelenEvrakWithRelations).ekler}
-                />
-              )}
-              {onIzlemeKayit.tur === "giden" && (
-                <GidenEvrakOnIzleme
-                  firma={(onIzlemeKayit.raw as GidenEvrakWithRelations).firmalar ?? null}
-                  evrakTarihi={onIzlemeKayit.raw.evrak_tarihi}
-                  evrakSayiNo={onIzlemeKayit.raw.evrak_sayi_no}
-                  konu={onIzlemeKayit.raw.konu}
-                  muhatap={onIzlemeKayit.raw.muhatap}
-                  ilgiListesi={(onIzlemeKayit.raw as GidenEvrakWithRelations).ilgi_listesi ?? []}
-                  metin={(onIzlemeKayit.raw as GidenEvrakWithRelations).metin}
-                  ekler={(onIzlemeKayit.raw as GidenEvrakWithRelations).ekler ?? []}
-                  kaseDahil={(onIzlemeKayit.raw as GidenEvrakWithRelations).kase_dahil ?? false}
-                />
-              )}
-              {onIzlemeKayit.tur === "banka" && (
-                <BankaYazismaOnIzleme
-                  firma={(onIzlemeKayit.raw as BankaYazismaWithRelations).firmalar ?? null}
-                  evrakTarihi={onIzlemeKayit.raw.evrak_tarihi}
-                  evrakSayiNo={onIzlemeKayit.raw.evrak_sayi_no}
-                  konu={onIzlemeKayit.raw.konu}
-                  muhatap={onIzlemeKayit.raw.muhatap}
-                  ilgiListesi={(onIzlemeKayit.raw as BankaYazismaWithRelations).ilgi_listesi ?? []}
-                  metin={(onIzlemeKayit.raw as BankaYazismaWithRelations).metin}
-                  ekler={(onIzlemeKayit.raw as BankaYazismaWithRelations).ekler ?? []}
-                  kaseDahil={(onIzlemeKayit.raw as BankaYazismaWithRelations).kase_dahil ?? false}
-                />
-              )}
-            </div>
-          )}
-          {onIzlemeKayit && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md text-xs">
-              <div className="font-semibold text-red-700 mb-1">Silme Bilgisi</div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700">
-                <div><span className="text-gray-500">Silen:</span> <span className="font-medium">{onIzlemeKayit.silen_ad ?? "—"}</span></div>
-                <div><span className="text-gray-500">Silme Tarihi:</span> <span className="font-medium">{formatTarihSaat(onIzlemeKayit.silme_tarihi)}</span></div>
-                <div className="col-span-2"><span className="text-gray-500">Neden:</span> <span className="font-medium">{onIzlemeKayit.silme_nedeni ?? "—"}</span></div>
-                <div><span className="text-gray-500">Oluşturan:</span> <span className="font-medium">{onIzlemeKayit.olusturan_ad ?? "—"}</span></div>
-                <div><span className="text-gray-500">Oluşturma Tarihi:</span> <span className="font-medium">{formatTarihSaat(onIzlemeKayit.raw.olusturma_tarihi)}</span></div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Geri Yükleme Onay */}
       <AlertDialog open={!!geriYukleDialog} onOpenChange={() => setGeriYukleDialog(null)}>
@@ -465,6 +404,52 @@ export default function SilinenPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Yazdırma — Portal ile body'ye render edilir; "evrak-print-area" SADECE print'te görünür, ekranda gizli */}
+      {printKayit && typeof document !== "undefined" && createPortal(
+        <div className="evrak-print-portal evrak-print-area">
+          {printKayit.tur === "gelen" && (
+            <GelenEvrakOnIzleme
+              firma={(printKayit.raw as GelenEvrakWithRelations).firmalar ?? null}
+              evrakTarihi={printKayit.raw.evrak_tarihi}
+              evrakSayiNo={printKayit.raw.evrak_sayi_no}
+              konu={printKayit.raw.konu}
+              muhatap={printKayit.raw.muhatap}
+              ilgi={(printKayit.raw as GelenEvrakWithRelations).ilgi}
+              icerik={(printKayit.raw as GelenEvrakWithRelations).icerik}
+              ekler={(printKayit.raw as GelenEvrakWithRelations).ekler}
+            />
+          )}
+          {printKayit.tur === "giden" && (
+            <GidenEvrakOnIzleme
+              firma={(printKayit.raw as GidenEvrakWithRelations).firmalar ?? null}
+              evrakTarihi={printKayit.raw.evrak_tarihi}
+              tarihGosterim={(printKayit.raw as GidenEvrakWithRelations).tarih_gosterim ?? null}
+              evrakSayiNo={printKayit.raw.evrak_sayi_no}
+              konu={printKayit.raw.konu}
+              muhatap={printKayit.raw.muhatap}
+              ilgiListesi={(printKayit.raw as GidenEvrakWithRelations).ilgi_listesi ?? []}
+              metin={(printKayit.raw as GidenEvrakWithRelations).metin}
+              ekler={(printKayit.raw as GidenEvrakWithRelations).ekler ?? []}
+              kaseDahil={(printKayit.raw as GidenEvrakWithRelations).kase_dahil ?? false}
+            />
+          )}
+          {printKayit.tur === "banka" && (
+            <BankaYazismaOnIzleme
+              firma={(printKayit.raw as BankaYazismaWithRelations).firmalar ?? null}
+              evrakTarihi={printKayit.raw.evrak_tarihi}
+              evrakSayiNo={printKayit.raw.evrak_sayi_no}
+              konu={printKayit.raw.konu}
+              muhatap={printKayit.raw.muhatap}
+              ilgiListesi={(printKayit.raw as BankaYazismaWithRelations).ilgi_listesi ?? []}
+              metin={(printKayit.raw as BankaYazismaWithRelations).metin}
+              ekler={(printKayit.raw as BankaYazismaWithRelations).ekler ?? []}
+              kaseDahil={(printKayit.raw as BankaYazismaWithRelations).kase_dahil ?? false}
+            />
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
