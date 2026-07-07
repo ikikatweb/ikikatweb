@@ -98,15 +98,42 @@ async function main() {
   const zaman = () => new Date().toLocaleString("tr-TR");
   const force = process.argv.includes("--force"); // saat penceresini yok say (elle test için)
 
-  // SAAT PENCERESİ: Tanımlamalar'daki damper_sync_bas/bit_saat aralığı dışındaysa hiç çalışma (Playwright bile açma).
-  if (!force) {
+  // Servis-rol client — saat/periyot kapısı okuması + başarıdan sonra "son çalışma" damgası için.
+  const sb = (() => {
+    try { return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } }); }
+    catch { return null; }
+  })();
+
+  // KAPI (Tanımlamalar → "Damper Senkron Saatleri"): görev 5 dk'da bir tetiklenir; asıl sıklığı BU belirler.
+  //  1) Saat penceresi (bas–bit) dışındaysa hiç çalışma.  2) Son başarılı çekimden PERİYOT kadar dk geçmediyse atla.
+  // Her ikisi de Playwright açılmadan ÖNCE bakılır → boş tetiklerde ~1 sn'de çıkar (ucuz).
+  if (!force && sb) {
+    let bas = 6, bit = 21, periyot = 60, son = 0, periyotKolonVar = true;
     try {
-      const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-      const { data } = await sb.from("arvento_ayarlar").select("damper_sync_bas_saat, damper_sync_bit_saat").eq("id", "global").maybeSingle();
-      const bas = data?.damper_sync_bas_saat ?? 6, bit = data?.damper_sync_bit_saat ?? 21;
-      const saat = new Date().getHours();
-      if (saat < bas || saat > bit) { console.log(`${zaman()} → saat ${saat}:xx, çalışma penceresi (${bas}–${bit}) DIŞINDA — atlanıyor.`); return; }
-    } catch { /* ayar okunamazsa yine de dene (varsayılan davranış) */ }
+      const { data, error } = await sb.from("arvento_ayarlar")
+        .select("damper_sync_bas_saat, damper_sync_bit_saat, damper_sync_periyot_dk, damper_sync_son_calisma")
+        .eq("id", "global").maybeSingle();
+      if (error) throw error;
+      bas = data?.damper_sync_bas_saat ?? 6; bit = data?.damper_sync_bit_saat ?? 21;
+      periyot = Math.max(5, data?.damper_sync_periyot_dk ?? 60);
+      son = data?.damper_sync_son_calisma ? new Date(data.damper_sync_son_calisma as string).getTime() : 0;
+    } catch {
+      // Periyot/son_calisma kolonları henüz yok (SQL çalışmadı) → sadece saat penceresini oku.
+      periyotKolonVar = false;
+      try {
+        const { data } = await sb.from("arvento_ayarlar").select("damper_sync_bas_saat, damper_sync_bit_saat").eq("id", "global").maybeSingle();
+        bas = data?.damper_sync_bas_saat ?? 6; bit = data?.damper_sync_bit_saat ?? 21;
+      } catch { /* o da okunamazsa varsayılan 6–21 */ }
+    }
+    const saat = new Date().getHours();
+    if (saat < bas || saat > bit) { console.log(`${zaman()} → saat ${saat}:xx, çalışma penceresi (${bas}–${bit}) DIŞINDA — atlanıyor.`); return; }
+    if (periyotKolonVar) {
+      const gecenDk = (Date.now() - son) / 60000;
+      if (son && gecenDk < periyot) { console.log(`${zaman()} → son çekimden ${Math.floor(gecenDk)} dk geçti (periyot ${periyot} dk) — henüz erken, atlanıyor.`); return; }
+    } else if (new Date().getMinutes() >= 5) {
+      // SQL bekliyor: periyot bilinmiyor → 5 dk'lık tetikte spam olmasın diye saat başı davran (yalnız ilk 5 dk penceresi).
+      console.log(`${zaman()} → periyot ayarı yok (SQL bekliyor), saat başı modunda — atlanıyor.`); return;
+    }
   }
 
   const browser = await chromium.launch({ headless: true });
@@ -156,6 +183,8 @@ async function main() {
 
   const { ingestArventoBuffer } = await import("@/lib/arvento/ingest");
   const sonuc = await ingestArventoBuffer(buf!);
+  // Başarılı çekim damgası → periyot bir sonraki çalışmayı bu zamandan sayar.
+  if (sb) { try { await sb.from("arvento_ayarlar").update({ damper_sync_son_calisma: new Date().toISOString() }).eq("id", "global"); } catch { /* damga yazılamazsa sorun değil */ } }
   console.log(`${zaman()} → OK | ${uretilenTarih} raporu işlendi · ${sonuc.damperGunler.map((g) => `${g.tarih}:${g.sayi}`).join(", ") || "damper olayı yok"}`);
 }
 

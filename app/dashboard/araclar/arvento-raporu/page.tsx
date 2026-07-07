@@ -194,6 +194,7 @@ export default function ArventoRaporPage() {
   const [raporCekmeDk, setRaporCekmeDk] = useState<number>(5);        // Gerçek rapor çekme aralığı (dk)
   const [damperSyncBas, setDamperSyncBas] = useState<number>(6);      // Damper API senkronu başlangıç saati (0-23)
   const [damperSyncBit, setDamperSyncBit] = useState<number>(21);     // ...bitiş saati (dahil)
+  const [damperSyncPeriyot, setDamperSyncPeriyot] = useState<number>(60); // ...periyot (dakika): bu kadar süre geçmeden tekrar çekmez
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [tekrarPencereSaat, setTekrarPencereSaat] = useState<number>(0); // eşik kadar geçiş bu süre (saat) içinde olmalı; 0 = kapalı
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
@@ -227,6 +228,7 @@ export default function ArventoRaporPage() {
         setRaporCekmeDk(a.raporCekmeDk);
         setDamperSyncBas(a.damperSyncBasSaat);
         setDamperSyncBit(a.damperSyncBitSaat);
+        setDamperSyncPeriyot(a.damperSyncPeriyotDk);
         setGuzergahTekrar(a.guzergahTekrar);
         setTekrarPencereSaat(a.tekrarPencereSaat);
         setGridMesafe(a.gridMesafe);
@@ -254,13 +256,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -1096,64 +1098,10 @@ export default function ArventoRaporPage() {
           )}
           <fieldset disabled={!yDuzenle} className="min-w-0 border-0 p-0 m-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Araç Km — yanlış/anomali kaldırma eşiği (filtre çubuğundan buraya taşındı).
-                Bu km'yi AŞAN günler 'Gen. Ort Km' hesabına katılmaz (outlier eleme). */}
-            <div className="border rounded-lg p-3 bg-blue-50/40 border-blue-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Araç Km — Ortalama Üst Sınır</div>
-              <p className="text-[11px] text-gray-400 mb-2">
-                Bu km/gün değerini aşan günler &quot;Gen. Ort Km&quot; hesabına katılmaz (anomali eleme). 0/boş = filtre yok.
-              </p>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={0}
-                  value={kmEsik || ""}
-                  onChange={(e) => setKmEsik(Math.max(0, parseInt(e.target.value) || 0))}
-                  placeholder="örn. 500"
-                  className={selectClass + " w-32"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">km/gün</span>
-                {kmEsik > 0 && (
-                  <button type="button" onClick={() => setKmEsik(0)}
-                    className="text-gray-400 hover:text-red-500 text-xs px-1" title="Filtreyi temizle">
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-            {/* Yanlış kaldırma eşiği — Stabilize'dan buraya taşındı. Damper sayısından
-                FARKLI: bu, art arda gelen yanlış damperleri temizler (zaman bazlı). */}
-            <div className="border rounded-lg p-3 bg-amber-50/40 border-amber-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Yanlış Kaldırma Eşiği (dk + yarıçap)</div>
-              <p className="text-[11px] text-gray-400 mb-2">
-                Stabilize&apos;de bir damper, önceki dampere <strong>hem süre (dk) hem yarıçap (m) içinde</strong> ise
-                mükerrer (yanlış tetik) sayılır — <strong>ikisi birlikte</strong> gerçekleşmeli. &quot;Damper İndirme
-                Sayısı&quot;ndan farklıdır. Süre <strong>veya</strong> yarıçap 0 = temizleme yok.
-              </p>
-              <div className="flex items-center gap-1 flex-wrap">
-                <input
-                  type="number"
-                  min={0}
-                  value={mukerrerDk || ""}
-                  onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
-                  placeholder="örn. 2"
-                  className={selectClass + " w-20"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap mr-2">dk</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={mukerrerYaricap || ""}
-                  onChange={(e) => setMukerrerYaricap(Math.max(0, parseInt(e.target.value) || 0))}
-                  placeholder="örn. 15"
-                  className={selectClass + " w-20"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">m yarıçap</span>
-                {(mukerrerDk > 0 || mukerrerYaricap > 0) && (
-                  <button type="button" onClick={() => { setMukerrerDk(0); setMukerrerYaricap(0); }}
-                    className="text-gray-400 hover:text-red-500 text-xs px-1" title="Temizle">✕</button>
-                )}
-              </div>
+            {/* ═══ GRUP 1: Araç & İş Makinesi Verisi (tüm araçlar/makineler için genel veri) ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-1">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🚛 Araç &amp; İş Makinesi Verisi</span>
+              <div className="flex-1 h-px bg-gray-200" />
             </div>
             {/* Canlı Yenileme Süresi — Canlı sekmesi haritasının otomatik yenileme aralığı */}
             <div className="border rounded-lg p-3 bg-teal-50/40 border-teal-200">
@@ -1206,6 +1154,45 @@ export default function ArventoRaporPage() {
               </div>
               <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(6, raporCekmeDk || 6)} dk</strong> çekilir.</div>
             </div>
+            {/* ═══ GRUP 2: Stabilize — Damper ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-3">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🏗️ Stabilize (Damper)</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            {/* Yanlış kaldırma eşiği — Stabilize damper mükerrer (yanlış tetik) temizleme. Damper sayısından
+                FARKLI: bu, art arda gelen yanlış damperleri temizler (zaman bazlı). */}
+            <div className="border rounded-lg p-3 bg-amber-50/40 border-amber-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Yanlış Kaldırma Eşiği (dk + yarıçap)</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Stabilize&apos;de bir damper, önceki dampere <strong>hem süre (dk) hem yarıçap (m) içinde</strong> ise
+                mükerrer (yanlış tetik) sayılır — <strong>ikisi birlikte</strong> gerçekleşmeli. &quot;Damper İndirme
+                Sayısı&quot;ndan farklıdır. Süre <strong>veya</strong> yarıçap 0 = temizleme yok.
+              </p>
+              <div className="flex items-center gap-1 flex-wrap">
+                <input
+                  type="number"
+                  min={0}
+                  value={mukerrerDk || ""}
+                  onChange={(e) => setMukerrerDk(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 2"
+                  className={selectClass + " w-20"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap mr-2">dk</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={mukerrerYaricap || ""}
+                  onChange={(e) => setMukerrerYaricap(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 15"
+                  className={selectClass + " w-20"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">m yarıçap</span>
+                {(mukerrerDk > 0 || mukerrerYaricap > 0) && (
+                  <button type="button" onClick={() => { setMukerrerDk(0); setMukerrerYaricap(0); }}
+                    className="text-gray-400 hover:text-red-500 text-xs px-1" title="Temizle">✕</button>
+                )}
+              </div>
+            </div>
             {/* Damper Senkron Saatleri — damper API senkronu yalnız bu saat aralığında çalışır (gece çalışılmıyorsa). */}
             <div className="border rounded-lg p-3 bg-orange-50/40 border-orange-200">
               <div className="text-xs font-semibold text-gray-700 mb-1">Damper Senkron Saatleri</div>
@@ -1224,7 +1211,31 @@ export default function ArventoRaporPage() {
                   className={selectClass + " w-20"} />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">arası (0–23)</span>
               </div>
-              <div className="text-[10px] text-gray-400 mt-1">Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, saat başı.</div>
+              {/* Senkron periyodu (dakika) — kaç dakikada bir çekileceği */}
+              <div className="text-[11px] font-semibold text-gray-600 mt-3 mb-1">Güncelleme Sıklığı</div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Damper verisini kaç <strong>dakikada bir</strong> güncellesin? (en az 5 dk)</p>
+              <div className="flex items-center gap-2">
+                <input type="number" min={5} max={720} step={5} value={damperSyncPeriyot}
+                  onChange={(e) => setDamperSyncPeriyot(Math.min(720, Math.max(5, parseInt(e.target.value) || 5)))}
+                  className={selectClass + " w-24"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakikada bir</span>
+                <div className="flex gap-1">
+                  {[30, 60, 120, 180].map((dk) => (
+                    <button key={dk} type="button" onClick={() => setDamperSyncPeriyot(dk)}
+                      className={`px-2 h-7 text-[10px] rounded border ${damperSyncPeriyot === dk ? "bg-orange-500 text-white border-orange-500" : "border-gray-300 text-gray-500 hover:bg-orange-50"}`}>
+                      {dk < 60 ? `${dk} dk` : `${dk / 60} saat`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-2">
+                Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, <strong>{damperSyncPeriyot < 60 ? `${damperSyncPeriyot} dakikada` : damperSyncPeriyot % 60 === 0 ? `${damperSyncPeriyot / 60} saatte` : `${damperSyncPeriyot} dakikada`} bir</strong>.
+              </div>
+            </div>
+            {/* ═══ GRUP 3: Reglaj & Serme ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-3">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🛣️ Reglaj &amp; Serme</span>
+              <div className="flex-1 h-px bg-gray-200" />
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
                 Greyder gibi aynı hattı defalarca tarayan araçların üst üste binen çizgilerini birleştirir. */}
@@ -1278,30 +1289,6 @@ export default function ArventoRaporPage() {
                 </div>
               </div>
             </div>
-            {/* Silindir Tekrar Eşiği — Sıkıştırma sekmesindeki silindir zikzakı için.
-                Bir yol parçasından bu sayı ve üzeri silindir geçişi varsa zikzak çizilir, altı boş kalır. */}
-            <div className="border rounded-lg p-3 bg-purple-50/40 border-purple-200">
-              <div className="text-xs font-semibold text-gray-700 mb-1">Silindir Tekrar Eşiği</div>
-              <p className="text-[11px] text-gray-400 mb-2">
-                Sıkıştırma&apos;da bir yol parçasından bu sayı <strong>ve üzeri</strong> silindir geçişi varsa
-                <strong> zikzak</strong> çizilir; <strong>altındaki</strong> yerler çizilmez (boş kalır). 0 = sadeleştirme yok.
-              </p>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={0}
-                  value={silindirTekrar || ""}
-                  onChange={(e) => setSilindirTekrar(Math.max(0, parseInt(e.target.value) || 0))}
-                  placeholder="örn. 2"
-                  className={selectClass + " w-32"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">geçiş</span>
-                {silindirTekrar > 0 && (
-                  <button type="button" onClick={() => setSilindirTekrar(0)}
-                    className="text-gray-400 hover:text-red-500 text-xs px-1" title="Sadeleştirmeyi kapat">✕</button>
-                )}
-              </div>
-            </div>
             {/* Yan Yana Çizgi Mesafesi — sadeleştirme ızgara toleransı (m).
                 İki geçiş bu mesafeden uzaksa "aynı güzergah" sayılmaz, tekrara katılmaz. */}
             <div className="border rounded-lg p-3 bg-slate-50 border-slate-200">
@@ -1342,6 +1329,40 @@ export default function ArventoRaporPage() {
                 />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">km/s (0 = kapalı)</span>
               </div>
+            </div>
+            {/* ═══ GRUP 4: Sıkıştırma (Silindir) ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-3">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🧱 Sıkıştırma</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            {/* Silindir Tekrar Eşiği — Sıkıştırma sekmesindeki silindir zikzakı için.
+                Bir yol parçasından bu sayı ve üzeri silindir geçişi varsa zikzak çizilir, altı boş kalır. */}
+            <div className="border rounded-lg p-3 bg-purple-50/40 border-purple-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Silindir Tekrar Eşiği</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Sıkıştırma&apos;da bir yol parçasından bu sayı <strong>ve üzeri</strong> silindir geçişi varsa
+                <strong> zikzak</strong> çizilir; <strong>altındaki</strong> yerler çizilmez (boş kalır). 0 = sadeleştirme yok.
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={0}
+                  value={silindirTekrar || ""}
+                  onChange={(e) => setSilindirTekrar(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 2"
+                  className={selectClass + " w-32"}
+                />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">geçiş</span>
+                {silindirTekrar > 0 && (
+                  <button type="button" onClick={() => setSilindirTekrar(0)}
+                    className="text-gray-400 hover:text-red-500 text-xs px-1" title="Sadeleştirmeyi kapat">✕</button>
+                )}
+              </div>
+            </div>
+            {/* ═══ GRUP 5: Harita Çizgileri — Kalınlık & Renk (tüm operasyonlar) ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-3">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🎨 Harita Çizgileri — Kalınlık &amp; Renk</span>
+              <div className="flex-1 h-px bg-gray-200" />
             </div>
             {/* Çizgi Kalınlıkları & Renkleri — Reglaj / Serme / Silindir (haritadaki çizgi) */}
             <div className="border rounded-lg p-3 bg-indigo-50/40 border-indigo-200 md:col-span-3">

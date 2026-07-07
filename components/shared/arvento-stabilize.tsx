@@ -84,6 +84,15 @@ function ocakIkonHtml(): string {
   </svg></div>`;
 }
 
+// Döküm sahası işareti — kırmızı konum pini + malzeme yığını (üçgen) simgesi. Ocak (mavi) ile ayrışır.
+function dokumSahaIkonHtml(): string {
+  return `<div class="dokum-wrap"><svg width="22" height="28" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 37 C6 26 1 20 1 13 a14 14 0 0 1 28 0 C29 20 24 26 15 37 Z" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="15" cy="13" r="8.5" fill="#ffffff"/>
+    <path d="M7.5 17.5 L15 7 L22.5 17.5 Z" fill="#dc2626"/>
+  </svg></div>`;
+}
+
 // Ocakta çalışan iş makinesi (ekskavatör vb.) işareti — turuncu daire + makine simgesi.
 function ocakMakineIkonHtml(): string {
   return `<div style="width:24px;height:24px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center">
@@ -125,6 +134,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);          // kamyon damper olayları
   const [ozetDampers, setOzetDampers] = useState<OzetDamper[]>([]);             // ÖZET MODU: sunucuda sınıflanmış damperler
   const [ozetGirisler, setOzetGirisler] = useState<OzetGiris[]>([]);            // ÖZET MODU: sunucuda hesaplanan giriş/döküm sayıları
+  // Ana döküm sahası + ocaktan yol mesafesi (sunucuda hesaplanır — kamyon rotası tarayıcıya inmiyor).
+  const [dokumSaha, setDokumSaha] = useState<{ saha: { lat: number; lng: number }; mesafeM: number; straightM: number; oran: number; dumpCount: number } | null>(null);
   // İZİN FİLTRESİ: kısıtlı kullanıcı yalnız izinli plakaları görür (yakınlık şantiyesine göre). Tüm
   // downstream aynı isimli (tumGuzergah/raporlar) filtrelenmiş memo'yu kullanır → otomatik kısıtlanır.
   const izinSet = useMemo(() => (izinliPlakalar ? new Set(izinliPlakalar.map(plakaNorm)) : null), [izinliPlakalar]);
@@ -239,6 +250,28 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       }
     })();
   }, [bas, bitis, refreshKey, sekmeMap, atananSekmeler]);
+
+  // Ana döküm sahası + ocaktan yol mesafesi — sunucudan (kamyon rotası tarayıcıya inmediği için).
+  // refreshKey her tazeleme (rapor çekme) turunda değişir → mesafe DE yenilenir. Değer AYNI ise state'i
+  // güncelleme (referansı koru) → harita boşuna yeniden çizilip titremesin.
+  useEffect(() => {
+    let iptal = false;
+    if (!bas || !bitis) { setDokumSaha(null); return; }
+    fetch(`/api/arvento/dokum-mesafe?bas=${bas}&bitis=${bitis}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (iptal) return;
+        const yeni = d && d.saha ? d : null;
+        setDokumSaha((eski) => {
+          if (!yeni) return eski ? null : eski;
+          if (eski && Math.abs(yeni.mesafeM - eski.mesafeM) < 1
+            && Math.abs(yeni.saha.lat - eski.saha.lat) < 1e-6 && Math.abs(yeni.saha.lng - eski.saha.lng) < 1e-6) return eski;
+          return yeni;
+        });
+      })
+      .catch(() => { /* hata: eski değeri koru */ });
+    return () => { iptal = true; };
+  }, [bas, bitis, refreshKey]);
 
   // Rotalardaki İZOLE GPS çöp noktalarını ayıkla (731 km gibi sapan hatalı okumalar) — sonraki tüm
   // hesaplar (çizim, ocak tespiti, mesafe, arıza sınıflama) temiz veri üzerinden yapılır.
@@ -769,6 +802,18 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         kenarM.on("dragend", kaydet);
       }
     }
+    // ── Ana döküm sahası: kırmızı işaret + çember (sunucuda tespit — en çok malzeme çekilen yer). ──
+    if (dokumSaha?.saha) {
+      const ds = dokumSaha.saha;
+      const dsKm = (dokumSaha.mesafeM / 1000).toFixed(1);
+      const dsKus = (dokumSaha.straightM / 1000).toFixed(1);
+      // Popup: işarete VE çembere bağlanır → küçük pini ıskalayıp saha alanına tıklayınca da mesafe görünür.
+      const dsPopup = `<b>🔻 Döküm Sahası</b><br>Ocağa uzaklık (yol boyunca): <b>${dsKm} km</b><br><span style="color:#64748b;font-size:11px">Kuş uçuşu ${dsKus} km${dokumSaha.oran ? ` · dökümün %${dokumSaha.oran}'i burada` : ""}</span>`;
+      L.circle([ds.lat, ds.lng], { radius: 250, color: "#b91c1c", weight: 1.5, opacity: 0.7, fillColor: "#ef4444", fillOpacity: 0.08, dashArray: "5 4" }).addTo(grup).bindPopup(dsPopup);
+      const dsIkon = L.divIcon({ html: dokumSahaIkonHtml(), className: "dokum-ikon", iconSize: [22, 28], iconAnchor: [11, 27], popupAnchor: [0, -26] });
+      L.marker([ds.lat, ds.lng], { icon: dsIkon, zIndexOffset: 900 }).addTo(grup).bindPopup(dsPopup);
+      bounds.push([ds.lat, ds.lng]);
+    }
     // OCAK GİRİŞİ KAPI ÇİZGİSİ (yeşil A–B) — kamyonlar yüklenmeye girerken bu çizgiyi keser. Geniş
     // girişlerde uçlardaki tutamaklar sürüklenerek uzatılıp daraltılır. Tanımlı değilse ve düzenleme
     // yetkisi varsa ocağın yanında kısa bir çizgi gösterilir (ilk tanımlama için).
@@ -814,7 +859,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih, dokumSaha]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   function exportKML() {
@@ -969,6 +1014,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
               <div className="text-sky-700">📏 Toplam yol: <b>{ozet.toplamKm.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} km</b></div>
               <div className="text-purple-700">⏱ Toplam çalışma: <b>{formatSure(ozet.toplamHareket)}</b></div>
               <div className="text-orange-700">🔻 Toplam damper: <b>{ozet.toplamDamper}</b></div>
+              {dokumSaha && dokumSaha.mesafeM > 0 && (
+                <div className="text-red-700" title={`Ana döküm sahası (dökümün %${dokumSaha.oran}'i burada) · kuş uçuşu ${(dokumSaha.straightM / 1000).toFixed(1)} km`}>
+                  📍 Döküm sahası: <b>{(dokumSaha.mesafeM / 1000).toFixed(1)} km</b> <span className="text-gray-400 font-normal">(ocaktan, yol)</span>
+                </div>
+              )}
               {sonGuncelleme && (
                 <div className="text-[10px] text-gray-400 mt-0.5 pt-1 border-t border-gray-100">
                   🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b>

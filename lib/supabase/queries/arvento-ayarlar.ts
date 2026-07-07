@@ -27,6 +27,7 @@ export type ArventoAyarlar = {
   ocakYaricap: number;       // "ocağa geldi" sayılma yarıçapı (m) — damper gerçek/arıza ayrımı için
   damperSyncBasSaat: number; // Damper API senkronu bu saatte BAŞLAR (0-23)
   damperSyncBitSaat: number; // ...ve bu saate kadar çalışır (dahil). Gece çalışılmıyorsa ör. 6-21.
+  damperSyncPeriyotDk: number; // Damper senkron periyodu (dakika): son çekimden bu kadar süre geçmeden tekrar çekmez. Görev 5 dk'da bir tetiklenir; asıl sıklığı BU belirler.
 };
 
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
@@ -53,6 +54,7 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   ocakYaricap: 150,
   damperSyncBasSaat: 6,
   damperSyncBitSaat: 21,
+  damperSyncPeriyotDk: 60,
 };
 
 const TABLO = "arvento_ayarlar";
@@ -86,6 +88,7 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     ocakYaricap: data.ocak_yaricap ?? 150,
     damperSyncBasSaat: data.damper_sync_bas_saat ?? 6,
     damperSyncBitSaat: data.damper_sync_bit_saat ?? 21,
+    damperSyncPeriyotDk: data.damper_sync_periyot_dk ?? 60,
   };
 }
 
@@ -187,6 +190,7 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     kamyon_izi_renk: a.kamyonIziRenk,
     damper_sync_bas_saat: a.damperSyncBasSaat,
     damper_sync_bit_saat: a.damperSyncBitSaat,
+    damper_sync_periyot_dk: a.damperSyncPeriyotDk,
   });
   if (error) throw error;
 }
