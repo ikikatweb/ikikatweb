@@ -54,6 +54,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   const [duzen, setDuzen] = useState<Record<string, string>>({});
   // Tarih düzenleme tamponu: yazarken satır YENİDEN SIRALANMASIN diye; blur/Enter'da kaydedilir.
   const [tarihDuzen, setTarihDuzen] = useState<{ id: string; val: string } | null>(null);
+  // Seçili satırlar (tik kutuları) — toplam görüntüleme + toplu silme için
+  const [secili, setSecili] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let iptal = false;
@@ -98,6 +100,13 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   }, [sirali]);
   const toplamGider = useMemo(() => satirlar.reduce((t, s) => t + Number(s.gider || 0), 0), [satirlar]);
   const toplamGelir = useMemo(() => satirlar.reduce((t, s) => t + Number(s.gelir || 0), 0), [satirlar]);
+  // Seçili satırların toplamı (tiklenenler)
+  const seciliOzet = useMemo(() => {
+    let gider = 0, gelir = 0, adet = 0;
+    for (const s of sirali) if (secili.has(s.id)) { gider += Number(s.gider || 0); gelir += Number(s.gelir || 0); adet++; }
+    return { gider, gelir, adet };
+  }, [sirali, secili]);
+  const tumSecili = sirali.length > 0 && sirali.every((s) => secili.has(s.id));
   const sonKumulatif = kumulatifler.length ? kumulatifler[kumulatifler.length - 1] : kasaToplam;
   // En son güncelleme = tüm satır + kasa updated_at'larının en yenisi
   const sonGuncelleme = useMemo(() => {
@@ -123,8 +132,24 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   }
   async function satirSil(id: string) {
     if (typeof window !== "undefined" && !window.confirm("Bu satır silinsin mi?")) return;
-    try { await deleteOdemePlaniSatir(id); setSatirlar((p) => p.filter((s) => s.id !== id)); }
+    try { await deleteOdemePlaniSatir(id); setSatirlar((p) => p.filter((s) => s.id !== id)); setSecili((p) => { const n = new Set(p); n.delete(id); return n; }); }
     catch { toast.error("Silinemedi."); }
+  }
+  // ---- Seçim (tik) işlemleri ----
+  function seciliToggle(id: string) {
+    setSecili((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  function tumSec() { setSecili(tumSecili ? new Set() : new Set(sirali.map((s) => s.id))); }
+  async function seciliSil() {
+    const ids = sirali.filter((s) => secili.has(s.id)).map((s) => s.id);
+    if (ids.length === 0) return;
+    if (typeof window !== "undefined" && !window.confirm(`Seçili ${ids.length} satır KALICI olarak silinecek. Emin misiniz?`)) return;
+    try {
+      await Promise.all(ids.map((id) => deleteOdemePlaniSatir(id)));
+      setSatirlar((p) => p.filter((s) => !ids.includes(s.id)));
+      setSecili(new Set());
+      toast.success(`${ids.length} satır silindi.`);
+    } catch { toast.error("Silinemedi."); }
   }
 
   // ---- Yan kasa işlemleri ----
@@ -166,6 +191,7 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
         className={`${inputCls} text-right tabular-nums placeholder:text-gray-300 ${extra}`}
         value={gosterim}
         onChange={(e) => { if (canDuzenle) setDuzen((d) => ({ ...d, [key]: formatParaInput(e.target.value) })); }}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
         onBlur={() => {
           if (duzen[key] === undefined) return;
           const num = parseParaInput(duzen[key]);
@@ -215,12 +241,20 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
         {sonGuncelleme && (
           <span className="text-xs text-gray-400">Son güncelleme: {tarihSaat(sonGuncelleme)}</span>
         )}
-        {canSil && (satirlar.length > 0 || kasa.length > 0) && (
-          <button type="button" onClick={tumunuSifirla}
-            className="ml-auto flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border border-red-300 text-red-600 hover:bg-red-50">
-            <Trash2 size={14} /> Tümünü Sıfırla
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {canSil && seciliOzet.adet > 0 && (
+            <button type="button" onClick={seciliSil}
+              className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md bg-red-600 text-white hover:bg-red-700">
+              <Trash2 size={14} /> Seçilenleri Sil ({seciliOzet.adet})
+            </button>
+          )}
+          {canSil && (satirlar.length > 0 || kasa.length > 0) && (
+            <button type="button" onClick={tumunuSifirla}
+              className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border border-red-300 text-red-600 hover:bg-red-50">
+              <Trash2 size={14} /> Tümünü Sıfırla
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 items-start">
@@ -230,7 +264,13 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-[#F0A868] text-[#5b3a1a]">
-                  <th className="text-left font-semibold px-2 py-2 w-44">Tarih</th>
+                  <th className="text-left font-semibold px-2 py-2 w-44">
+                    <div className="flex items-center gap-1.5">
+                      <input type="checkbox" checked={tumSecili} onChange={tumSec}
+                        className="shrink-0 accent-[#5b3a1a] cursor-pointer" title="Tümünü seç" />
+                      Tarih
+                    </div>
+                  </th>
                   <th className="text-left font-semibold px-2 py-2">Ödeme ve Tahsilatlar</th>
                   <th className="text-right font-semibold px-2 py-2 w-32">Gider</th>
                   <th className="text-right font-semibold px-2 py-2 w-32">Gelir</th>
@@ -251,14 +291,20 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                   return (
                     <tr key={s.id} className={`border-b border-gray-100 ${gecmis ? "bg-red-100" : (tarihRenk.get(s.tarih) ?? "")}`}>
                       <td className="px-1 py-0.5 align-middle">
-                        <input type="date" disabled={!canDuzenle}
-                          value={tarihDuzen?.id === s.id ? tarihDuzen.val : s.tarih}
-                          onFocus={() => setTarihDuzen({ id: s.id, val: s.tarih })}
-                          onChange={(e) => setTarihDuzen({ id: s.id, val: e.target.value })}
-                          onBlur={() => { const v = tarihDuzen?.id === s.id ? tarihDuzen.val : null; if (v && v !== s.tarih) satirGuncelle(s.id, { tarih: v }); setTarihDuzen(null); }}
-                          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                          className="w-full bg-transparent px-1 py-0.5 text-xs outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 disabled:cursor-default" />
-                        <div className="text-[10px] text-gray-500 px-1.5 truncate" title={tarihUzun(s.tarih)}>{gunAdi(s.tarih)}</div>
+                        <div className="flex items-center gap-1.5">
+                          <input type="checkbox" checked={secili.has(s.id)} onChange={() => seciliToggle(s.id)}
+                            className="shrink-0 accent-[#F0A868] cursor-pointer" title="Bu satırı seç" />
+                          <div className="min-w-0 flex-1">
+                            <input type="date" disabled={!canDuzenle}
+                              value={tarihDuzen?.id === s.id ? tarihDuzen.val : s.tarih}
+                              onFocus={() => setTarihDuzen({ id: s.id, val: s.tarih })}
+                              onChange={(e) => setTarihDuzen({ id: s.id, val: e.target.value })}
+                              onBlur={() => { const v = tarihDuzen?.id === s.id ? tarihDuzen.val : null; if (v && v !== s.tarih) satirGuncelle(s.id, { tarih: v }); setTarihDuzen(null); }}
+                              onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                              className="w-full bg-transparent px-1 py-0.5 text-xs outline-none rounded focus:bg-white focus:ring-1 focus:ring-blue-300 disabled:cursor-default" />
+                            <div className="text-[10px] text-gray-500 px-1.5 truncate" title={tarihUzun(s.tarih)}>{gunAdi(s.tarih)}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-1 py-0.5">{metinHucre(s.id, "aciklama", s.aciklama, (v) => satirGuncelle(s.id, { aciklama: v }), "Açıklama")}</td>
                       <td className="px-1 py-0.5">{paraHucre(s.id, "gider", Number(s.gider || 0), (n) => satirGuncelle(s.id, { gider: n }), "text-red-600")}</td>
@@ -334,10 +380,17 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
               );
             })}
           </div>
-          {/* Tek TOPLAM (3 grubun tamamı) */}
-          <div className="bg-gray-50 border-t-2 border-gray-300 flex items-center justify-between px-3 py-2 font-bold text-[#1E3A5F]">
-            <span>TOPLAM</span>
-            <span className="tabular-nums">{tlFmt(kasaToplam)}</span>
+          {/* Alt bar: SOLDA seçili satırların toplamı (Kullanılabilir Kredi/BCH altı), SAĞDA TOPLAM rakamın yanında */}
+          <div className="bg-gray-50 border-t-2 border-gray-300 flex items-center justify-between gap-3 px-3 py-2 font-bold text-[#1E3A5F]">
+            <span className="text-sm font-semibold text-blue-800 tabular-nums">
+              {seciliOzet.adet > 0 && (
+                <>Seçili {seciliOzet.adet}: <span className="text-red-600">{paraFmt(seciliOzet.gider)}</span> gider · <span className="text-emerald-700">{paraFmt(seciliOzet.gelir)}</span> gelir · Toplam: <span className={seciliOzet.gelir - seciliOzet.gider < 0 ? "text-red-600" : "text-emerald-700"}>{seciliOzet.gelir - seciliOzet.gider < 0 ? "−" : "+"}{paraFmt(Math.abs(seciliOzet.gelir - seciliOzet.gider))}</span></>
+              )}
+            </span>
+            <span className="flex items-center gap-2 whitespace-nowrap">
+              <span>TOPLAM</span>
+              <span className="tabular-nums">{tlFmt(kasaToplam)}</span>
+            </span>
           </div>
         </div>
       </div>
