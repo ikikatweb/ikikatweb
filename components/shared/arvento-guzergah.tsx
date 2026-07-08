@@ -424,15 +424,15 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         for (const ll of latlngs) tumBounds.push(ll);
       }
     }
-    // ── EKSKAVATÖR ÇALIŞMA NOKTALARI — yerinde çalışan makineler iz bırakmaz; kontak açıkken kaydedilen
-    // konumlar belirgin nokta olarak çizilir (makine rengi + beyaz kenar). Çerçeveye de katılır (sparse
-    // güzergah yerine buraya odaklan). Bkz. makine_calisma_noktasi + arvento-anlik-sync (ekskavatör). ──
+    // ── EKSKAVATÖR ÇALIŞMA NOKTALARI — yerinde çalışan makinenin geçmişte çalıştığı yerler. Canlı DURUM
+    // noktalarıyla (dolu mavi/kırmızı/yeşil) karışmasın diye İÇİ BOŞ HALKA (makine rengi kenar, saydam iç) →
+    // "burada çalıştı" izi olduğu net olur, "şu an açık/kapalı" durumu değil. Bkz. makine_calisma_noktasi. ──
     for (const n of calismaNoktalari ?? []) {
       if (n.lat == null || n.lng == null) continue;
       const renk = renkAl(n.plaka);
       const tarih = n.rapor_tarihi ? n.rapor_tarihi.split("-").reverse().join(".") : "";
-      L.circleMarker([n.lat, n.lng], { radius: 5, color: "#ffffff", weight: 1.5, fillColor: renk, fillOpacity: 0.95, renderer: yolRenderer })
-        .addTo(grup).bindPopup(`<b>🛠️ ${n.plaka}</b> · çalışma noktası<br>${tarih}${n.saat ? " " + String(n.saat).slice(0, 5) : ""}`);
+      L.circleMarker([n.lat, n.lng], { radius: 5, color: renk, weight: 2, fillColor: renk, fillOpacity: 0.15, renderer: yolRenderer })
+        .addTo(grup).bindPopup(`<b>🛠️ ${n.plaka}</b> · çalışma noktası (burada çalıştı)<br>${tarih}${n.saat ? " " + String(n.saat).slice(0, 5) : ""}`);
       tumBounds.push([n.lat, n.lng]);
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
