@@ -49,7 +49,9 @@ function yonHesap(a: { lat: number; lng: number }, b: { lat: number; lng: number
 }
 
 // Katmanı temizleyip güncel konumlarla yeniden doldurur.
-export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: CanliKonum[], cihazMap?: CihazMap): void {
+// kontakByPlaka (opsiyonel): parent'tan DÜZELTİLMİŞ "çalışıyor" durumu (plakaNorm → bool). Verilirse ham
+// "k.kontak" proxy'si yerine BU kullanılır → heartbeat cihazının kapalıyken "açık" görünmesi (mola) düzelir.
+export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: CanliKonum[], cihazMap?: CihazMap, kontakByPlaka?: Map<string, boolean>, normPlaka?: (s: string) => string): void {
   layer.clearLayers();
   for (const k of konumlar) {
     if (k.lat == null || k.lng == null) continue;
@@ -70,8 +72,19 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
     const yon = k.yon ?? hesapYon;
     // "Çalışmıyor": uzun süredir hiç kımıldamadı (canlı feed kontak vermediği için hareket bazlı yaklaşım).
     const calismiyor = simdi - sonHareket > CALISMIYOR_ESIK_MS;
-    // Renk: hareket=YEŞIL. Duruyorsa → kontak KAPALI ya da uzun süre HAREKETSİZ ise KIRMIZI; aksi halde MAVI.
-    const renk = hareket ? "#16a34a" : ((k.kontak === false || calismiyor) ? "#dc2626" : "#2563eb");
+    // DÜZELTİLMİŞ "çalışıyor" durumu (parent'tan; rapor gerçek kapanışını da dikkate alır). Verilmezse ham proxy.
+    const cor = (kontakByPlaka && normPlaka && c?.plaka) ? kontakByPlaka.get(normPlaka(c.plaka)) : undefined;
+    // KONTAK AÇIK (çalışıyor): düzeltilmiş değer varsa onu, yoksa proxy (kontak açık ya da hareket).
+    const kontakAcik = cor !== undefined ? cor : (k.kontak === true || hareket);
+    // Renk: hareket=YEŞIL. Duruyorsa → çalışıyorsa MAVI, değilse (kapalı/uzun hareketsiz) KIRMIZI.
+    const renk = hareket ? "#16a34a" : (kontakAcik ? "#2563eb" : "#dc2626");
+    // KONTAK AÇIK ise marker'ın ALTINA yeşil NABIZ halkası koy (hareketli/duruyor fark etmez → çalışıyor belli olsun).
+    if (kontakAcik) {
+      L.marker([k.lat, k.lng], {
+        pane: CANLI_PANE, interactive: false,
+        icon: L.divIcon({ className: "canli-halka", iconSize: [30, 30], iconAnchor: [15, 15], html: "<span></span>" }),
+      }).addTo(layer);
+    }
     // Kalıcı etiket: plaka (kalın) + model (alt satır) — haritada hep görünür, Arvento'daki gibi.
     const etiket = `<span class="ce-plaka">${ad}</span>${model ? `<span class="ce-model">${model}</span>` : ""}`;
     // Hareket eden + yönü bilinen araç → gittiği yöne dönük OK; aksi halde (durağan/yön yok) nokta.
@@ -90,7 +103,9 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
-        `${hareket ? "🟢 hareket" : (k.kontak === false ? "🔴 kontak kapalı" : calismiyor ? "🔴 çalışmıyor (uzun süre hareketsiz)" : "🔵 duruyor")} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
+        `${kontakAcik
+            ? `⚡ <b>KONTAK AÇIK</b> · ${hareket ? "hareketli" : "yerinde çalışıyor"}`
+            : (calismiyor ? "⭘ çalışmıyor (uzun süre hareketsiz)" : "⭘ kontak kapalı")} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +
         `${formatSaat(k.tarih)}<br>${k.adres ?? ""}`,
       )
       .bindTooltip(etiket, { permanent: true, direction: "top", offset: [0, -9], className: "canli-etiket", opacity: 1, pane: CANLI_PANE });
@@ -123,9 +138,9 @@ export function aracKonumunaOdaklan(
 }
 
 // Harita kurulduktan sonra çağrılır: canlı LayerGroup oluşturup haritaya ekler, ilk çizimi yapar.
-export function canliKatmanKur(L: LeafletStatic, map: LeafletMap, konumlar: CanliKonum[] | undefined, cihazMap?: CihazMap): LayerGroup {
+export function canliKatmanKur(L: LeafletStatic, map: LeafletMap, konumlar: CanliKonum[] | undefined, cihazMap?: CihazMap, kontakByPlaka?: Map<string, boolean>, normPlaka?: (s: string) => string): LayerGroup {
   const layer = L.layerGroup().addTo(map);
-  cizCanliKatman(L, layer, konumlar ?? [], cihazMap);
+  cizCanliKatman(L, layer, konumlar ?? [], cihazMap, kontakByPlaka, normPlaka);
   return layer;
 }
 
@@ -134,6 +149,8 @@ export function useCanliKatman(
   layerRef: RefObject<LayerGroup | null>,
   konumlar: CanliKonum[] | undefined,
   cihazMap: CihazMap | undefined,
+  kontakByPlaka?: Map<string, boolean>,
+  normPlaka?: (s: string) => string,
 ): void {
   useEffect(() => {
     const layer = layerRef.current;
@@ -141,8 +158,8 @@ export function useCanliKatman(
     let iptal = false;
     (async () => {
       const L = (await import("leaflet")).default;
-      if (!iptal && layerRef.current) cizCanliKatman(L, layerRef.current, konumlar ?? [], cihazMap);
+      if (!iptal && layerRef.current) cizCanliKatman(L, layerRef.current, konumlar ?? [], cihazMap, kontakByPlaka, normPlaka);
     })();
     return () => { iptal = true; };
-  }, [layerRef, konumlar, cihazMap]);
+  }, [layerRef, konumlar, cihazMap, kontakByPlaka, normPlaka]);
 }

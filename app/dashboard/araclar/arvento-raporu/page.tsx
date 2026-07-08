@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -195,6 +195,7 @@ export default function ArventoRaporPage() {
   const [damperSyncBas, setDamperSyncBas] = useState<number>(6);      // Damper API senkronu başlangıç saati (0-23)
   const [damperSyncBit, setDamperSyncBit] = useState<number>(21);     // ...bitiş saati (dahil)
   const [damperSyncPeriyot, setDamperSyncPeriyot] = useState<number>(60); // ...periyot (dakika): bu kadar süre geçmeden tekrar çekmez
+  const [ekskavatorNoktaDk, setEkskavatorNoktaDk] = useState<number>(10); // Ekskavatör çalışma noktası kayıt sıklığı (dakika)
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [tekrarPencereSaat, setTekrarPencereSaat] = useState<number>(0); // eşik kadar geçiş bu süre (saat) içinde olmalı; 0 = kapalı
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
@@ -229,6 +230,7 @@ export default function ArventoRaporPage() {
         setDamperSyncBas(a.damperSyncBasSaat);
         setDamperSyncBit(a.damperSyncBitSaat);
         setDamperSyncPeriyot(a.damperSyncPeriyotDk);
+        setEkskavatorNoktaDk(a.ekskavatorNoktaDk);
         setGuzergahTekrar(a.guzergahTekrar);
         setTekrarPencereSaat(a.tekrarPencereSaat);
         setGridMesafe(a.gridMesafe);
@@ -256,13 +258,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, ekskavatorNoktaDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, ekskavatorNoktaDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -403,10 +405,10 @@ export default function ArventoRaporPage() {
     }
   }, [cihazSayisiYukle]);
 
-  // Canlı overlay: açıkken anlık konumları çek + Tanımlamalar aralığında otomatik yenile.
-  // Cihaz (node→plaka/şoför) eşlemesi açılışta bir kez yüklenir.
+  // Anlık konumları HER ZAMAN çek (Canlı kapalıyken de) — "çalışıyor" rozeti + kontak durumu sürekli güncel olsun.
+  // İşaretlerin haritaya ÇİZİLMESİ yine "Canlı" butonuna bağlı (canliKonumlarIzinli). Kapalıyken seyrek (60 sn)
+  // çekilir → Vercel az yorulur; açıkken ayar aralığında sık. Cihaz (node→plaka) eşlemesi de bir kez yüklenir.
   useEffect(() => {
-    if (!canliAcik) { setCanliKonumlar([]); return; }
     let iptal = false;
     // Cihaz eşlemesini yükle (bir kez)
     fetch("/api/arvento/cihaz", { cache: "no-store" })
@@ -426,11 +428,12 @@ export default function ArventoRaporPage() {
         const r = await fetch("/api/arvento/anlik", { cache: "no-store" });
         const d = await r.json();
         if (!iptal && r.ok) setCanliKonumlar((d.araclar ?? []) as CanliKonum[]);
-        else if (!iptal && !r.ok) toast.error(`Canlı: ${d?.error ?? r.status}`, { duration: toastSuresi() });
+        else if (!iptal && !r.ok && canliAcik) toast.error(`Canlı: ${d?.error ?? r.status}`, { duration: toastSuresi() });
       } catch { /* sessiz */ } finally { if (!iptal) setCanliYukleniyor(false); }
     };
     cek();
-    const sn = Math.max(15, canliYenilemeSn || 45);
+    // Canlı AÇIKKEN sık (ayar aralığı), KAPALIYKEN seyrek (60 sn) — rozet için yeter, Vercel'i az yorar.
+    const sn = canliAcik ? Math.max(15, canliYenilemeSn || 45) : 60;
     const id = setInterval(cek, sn * 1000);
     return () => { iptal = true; clearInterval(id); };
   }, [canliAcik, canliYenilemeSn]);
@@ -648,10 +651,12 @@ export default function ArventoRaporPage() {
     return herhangiIzinli(pts, izinliIller);
   }, [izinliIller]);
   // CANLI: aracın ANLIK konumu izinli ilde mi (araç il dışına çıkınca anında kaybolur). Yönetici → hepsi.
-  const canliKonumlarIzinli = useMemo<CanliKonum[]>(() => {
+  const canliKonumlarIlIzinli = useMemo<CanliKonum[]>(() => {
     if (!izinliIller) return canliKonumlar;
     return canliKonumlar.filter((k) => k.lat != null && k.lng != null && noktaIzinli(k.lat, k.lng, izinliIller));
   }, [canliKonumlar, izinliIller]);
+  // İŞARETLER yalnız "Canlı" AÇIKKEN çizilir; kapalıyken boş → harita marker/nabız halkası çizilmez.
+  const canliKonumlarIzinli = useMemo<CanliKonum[]>(() => (canliAcik ? canliKonumlarIlIzinli : []), [canliAcik, canliKonumlarIlIzinli]);
 
   // Şantiyenin il'ini elle ayarla (il izni için — addan otomatik bulunamayan/yanlış olanlar).
   async function santiyeIlDegistir(id: string, il: string) {
@@ -822,6 +827,16 @@ export default function ArventoRaporPage() {
   }, [ocakMakineMap, kaliciOcak, kayitlar, plakaSantiye]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
+  // Ekskavatör çalışma noktaları (İş Makineleri haritasında nokta olarak) — yalnız ismakine sekmesi açıkken çek.
+  const [ismakineNoktalar, setIsmakineNoktalar] = useState<MakineNokta[]>([]);
+  useEffect(() => {
+    let iptal = false;
+    if (aktifSekme !== "ismakine" || ismakinePlakalari.length === 0) { setIsmakineNoktalar([]); return; }
+    getMakineCalismaNoktalari(baslangic, bitis, ismakinePlakalari)
+      .then((n) => { if (!iptal) setIsmakineNoktalar(n); })
+      .catch(() => { if (!iptal) setIsmakineNoktalar([]); });
+    return () => { iptal = true; };
+  }, [aktifSekme, baslangic, bitis, ismakinePlakalari, guzergahRefresh]);
   // Tüm iş makineleri (km + cins) — haritada güzergahı olmayanlar da chip olarak görünsün
   const ismakineEkstra = useMemo(
     () => ismakineKayitlar.map((k) => ({
@@ -925,6 +940,24 @@ export default function ArventoRaporPage() {
     }
     return m;
   }, [kayitlar, guzergahlar]);
+  // KONTAK durumu (plaka → şu an çalışıyor mu) — HER ZAMAN güncel (Canlı kapalı olsa da) → chip "çalışıyor" rozeti.
+  // Heartbeat cihazları kontak KAPALIYKEN de ara sıra paket atıp canlı "kontak" proxy'sini yanıltır (öğle molasında
+  // bile "açık"). Bu yüzden: HAREKET ediyorsa (>5 km/s) her zaman çalışıyor; DURUYORSA ancak canlı taze VE rapor
+  // bugün GERÇEK bir kapanış (son_kontak, sonT=false — tahmini değil) yazmamışsa çalışıyor say. Rapor mola/kapanış
+  // görürse "çalışıyor" demez → yerinde çalışan makine gün içi kapanınca yanlışlıkla "çalışıyor" görünmez.
+  const canliKontakMap = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const k of canliKonumlarIlIzinli) {
+      const p = k.node ? canliCihazMap?.get(k.node.trim())?.plaka : null;
+      if (!p) continue;
+      const pn = plakaNorm(p);
+      const hareket = (k.hiz ?? 0) > 5;
+      const e = ilkSonKontakMap.get(pn);
+      const raporKapandi = !!(e?.son && e.sonT === false); // bugün GERÇEK (tahmini değil) kapanış kaydı var
+      if (hareket || (k.kontak === true && !raporKapandi)) m.set(pn, true);
+    }
+    return m;
+  }, [canliKonumlarIlIzinli, canliCihazMap, ilkSonKontakMap]);
   // Plaka(norm) → araç modeli (chip'lerde "İş Makinesi/cins" yerine model göstermek için).
   const modelMap = useMemo(() => new Map(Array.from(plakaSantiye.entries()).map(([p, ps]) => [p, ps.model ?? null])), [plakaSantiye]);
 
@@ -1022,6 +1055,7 @@ export default function ArventoRaporPage() {
               <ArventoGuzergah secimKey="ismakine" bas={baslangic} bitis={bitis} tekrarEsigi={0} gridMesafe={gridMesafe} transitHiz={transitHiz}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri" modelGoster
+                calismaNoktalari={ismakineNoktalar} canliKontakByPlaka={canliKontakMap}
                 canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef}
                 izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
             </div>
@@ -1067,7 +1101,7 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} canliKontakByPlaka={canliKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
         <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
@@ -1153,6 +1187,31 @@ export default function ArventoRaporPage() {
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika (en az 6)</span>
               </div>
               <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(6, raporCekmeDk || 6)} dk</strong> çekilir.</div>
+            </div>
+            {/* Ekskavatör Çalışma Noktası Sıklığı — paletli/yerinde çalışan makineler iz bırakmadığı için,
+                kontak açıkken bu aralıkta bir konum noktası kaydedilir → haritada nerede çalıştığı görünür. */}
+            <div className="border rounded-lg p-3 bg-lime-50/50 border-lime-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Ekskavatör Çalışma Noktası Sıklığı</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                <strong>Ekskavatörler</strong> yerinde çalıştığı için iz bırakmaz. Kontak açıkken, bu aralıkta
+                (dakika) bir kez o anki konumu <strong>çalışma noktası</strong> olarak kaydedilir; İş Makineleri
+                haritasında nokta olarak görünür → gün sonunda nerelerde çalıştığı belli olur. Yalnız <strong>Ekskavatör</strong>
+                cinsi için geçerlidir. En az 1 dk.
+              </p>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} max={120} value={ekskavatorNoktaDk}
+                  onChange={(e) => setEkskavatorNoktaDk(Math.min(120, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className={selectClass + " w-24"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakikada bir</span>
+                <div className="flex gap-1">
+                  {[5, 10, 15, 30].map((dk) => (
+                    <button key={dk} type="button" onClick={() => setEkskavatorNoktaDk(dk)}
+                      className={`px-2 h-7 text-[10px] rounded border ${ekskavatorNoktaDk === dk ? "bg-lime-600 text-white border-lime-600" : "border-gray-300 text-gray-500 hover:bg-lime-50"}`}>
+                      {dk} dk
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             {/* ═══ GRUP 2: Stabilize — Damper ═══ */}
             <div className="md:col-span-3 flex items-center gap-2 pt-3">

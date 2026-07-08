@@ -138,6 +138,56 @@ async function rotaBirik(sb, konumlar) {
   return yazRota.length;
 }
 
+// --- EKSKAVATÖR çalışma noktaları: yerinde çalışan makineler iz bırakmadığı için, kontak açıkken
+// Tanımlamalar'daki "Ekskavatör Nokta Sıklığı" (ekskavator_nokta_dk) aralığında bir konum kaydedilir. ---
+let ekskCache = null; // { plakalar:Set, aralikDk, sonZaman:Map<plaka,ms>, gun, yuklendi }
+async function ekskYukle(sb) {
+  const gun = trBugun();
+  if (ekskCache && ekskCache.gun === gun && Date.now() - ekskCache.yuklendi < 600000) return ekskCache; // 10 dk önbellek (plaka listesi + aralık)
+  const [{ data: ar }, { data: ay }] = await Promise.all([
+    sb.from("araclar").select("plaka, cinsi"),
+    sb.from("arvento_ayarlar").select("ekskavator_nokta_dk").eq("id", "global").maybeSingle(),
+  ]);
+  const plakalar = new Set((ar || []).filter((a) => /(ekskavat|eskavat)/i.test(a.cinsi || "")).map((a) => a.plaka).filter(Boolean));
+  const aralikDk = Math.max(1, ay?.ekskavator_nokta_dk ?? 10);
+  // Bugün GERÇEK kapanış (son_kontak) kaydı olan ekskavatörler → kontak proxy'si (heartbeat) yanılsa da DURUYORSA
+  // nokta yazma (öğle molası noktaları birikmesin). Her cache turunda (10 dk) tazelenir.
+  const kapali = new Set();
+  if (plakalar.size) {
+    const { data: rap } = await sb.from("arac_arvento_rapor").select("plaka, son_kontak").eq("rapor_tarihi", gun).in("plaka", [...plakalar]);
+    for (const r of (rap || [])) if (r.son_kontak) kapali.add(r.plaka);
+  }
+  // Son nokta zamanlarını (bugün) koru; gün değiştiyse veya ilk yüklemede DB'den doldur.
+  const sonZaman = (ekskCache && ekskCache.gun === gun) ? ekskCache.sonZaman : new Map();
+  if (sonZaman.size === 0 && plakalar.size) {
+    const { data: pts } = await sb.from("makine_calisma_noktasi").select("plaka, created_at").eq("rapor_tarihi", gun).in("plaka", [...plakalar]);
+    for (const p of (pts || [])) { const ms = Date.parse(p.created_at); const ex = sonZaman.get(p.plaka) || 0; if (ms > ex) sonZaman.set(p.plaka, ms); }
+  }
+  ekskCache = { plakalar, aralikDk, kapali, sonZaman, gun, yuklendi: Date.now() };
+  return ekskCache;
+}
+async function ekskNoktaBirik(sb, konumlar) {
+  const c = await ekskYukle(sb);
+  if (!c.plakalar.size) return 0;
+  const cihaz = await cihazlariYukle(sb);
+  const now = Date.now(), aralikMs = c.aralikDk * 60000, gun = trBugun();
+  const yaz = [];
+  for (const k of konumlar) {
+    if (k.lat == null || k.lng == null || !k.kontak) continue;          // kontak KAPALI (çalışmıyor) → nokta yok
+    const plaka = cihaz.get((k.node || "").trim())?.plaka;
+    if (!plaka || !c.plakalar.has(plaka)) continue;                     // ekskavatör değil
+    if (c.kapali.has(plaka) && (k.hiz ?? 0) <= 5) continue;             // rapor GERÇEK kapanış + duruyor (mola) → yazma
+    if (now - (c.sonZaman.get(plaka) || 0) < aralikMs) continue;        // sıklık aralığı henüz dolmadı
+    yaz.push({ rapor_tarihi: gun, plaka, saat: saatAl(k.tarih), lat: k.lat, lng: k.lng });
+    c.sonZaman.set(plaka, now);
+  }
+  if (yaz.length) {
+    const { error } = await sb.from("makine_calisma_noktasi").insert(yaz);
+    if (error) throw new Error(`Ekskavatör nokta yazma: ${error.message}`);
+  }
+  return yaz.length;
+}
+
 async function cekAnlik() {
   const user = process.env.ARVENTO_WS_USERNAME, pin1 = process.env.ARVENTO_WS_PIN1,
         pin2 = process.env.ARVENTO_WS_PIN2, lang = process.env.ARVENTO_WS_LANG || "tr";
@@ -182,11 +232,14 @@ async function birKez() {
   const anlikSatir = satirlar.map(({ odo, ...rest }) => rest); // eslint-disable-line no-unused-vars
   const { error } = await sb.from("arvento_anlik").upsert(anlikSatir, { onConflict: "node" });
   if (error) throw new Error(`Supabase yazma hatası: ${error.message}`);
+  // Ekskavatör çalışma noktaları (kontak açıkken, ayar sıklığında) — hata olsa da canlı senkronu bozmasın.
+  let ekskN = 0;
+  try { ekskN = await ekskNoktaBirik(sb, satirlar); } catch (e) { console.error("  ekskavatör nokta:", e.message); }
   // ROTA ARTIK BURADA YAZILMIYOR. Sparse (dakikada 1 nokta) biriktirme hem düşük kaliteliydi hem de
   // (eksik okuma / iki süreç) rota uzunluğunu DÜŞÜRÜP geri çıkarıyordu. Rota (güzergah) artık YOĞUN +
   // DOĞRU + DALGALANMAYAN şekilde SpeedReport'tan geliyor (scripts/arvento-speed-sync.mjs, bugünü periyodik
   // çeker → her çalışma o ana kadarki TAM izi yazar, idempotent). anlik yalnız CANLI KONUM (arvento_anlik) yazar.
-  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı (rota: SpeedReport senkronundan).`);
+  console.log(new Date().toLocaleTimeString(), `→ ${satirlar.length} araç konumu yazıldı${ekskN ? ` · +${ekskN} ekskavatör çalışma noktası` : ""} (rota: SpeedReport senkronundan).`);
 }
 
 // Yenileme aralığı (sn): UI'daki "Canlı Yenileme Süresi" (arvento_ayarlar.canli_yenileme_sn)

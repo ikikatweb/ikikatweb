@@ -92,6 +92,20 @@ thead th {
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
 
+/* KONTAK AÇIK göstergesi — canlı marker'ın ALTINDA yeşil NABIZ halkası. Kontağı açık (çalışan) araç/makine
+   hareketli de olsa yerinde de olsa bu halkayla belli olur → "duruyor/mavi" görünce yanlışlıkla kapalı sanılmaz. */
+.leaflet-div-icon.canli-halka { background: transparent; border: none; }
+.canli-halka span {
+  display: block; width: 30px; height: 30px; border-radius: 50%;
+  border: 2.5px solid #16a34a; box-sizing: border-box;
+  animation: canliNabiz 1.6s ease-out infinite;
+}
+@keyframes canliNabiz {
+  0%   { transform: scale(0.5);  opacity: 0.95; }
+  70%  { transform: scale(1.15); opacity: 0.12; }
+  100% { transform: scale(1.2);  opacity: 0; }
+}
+
 /* Canlı pane (640) pointer-events:none (JS'te) → boş alan/etiketler tıklamayı geçirir. YALNIZ araç
    markerları tıklanır (aksi halde marker da none miras alırdı). Etiketler tıklanmaz → alttaki KML/rota açılır. */
 .leaflet-marker-icon.canli-ok-wrap,

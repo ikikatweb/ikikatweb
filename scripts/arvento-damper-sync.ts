@@ -128,8 +128,12 @@ async function main() {
     const saat = new Date().getHours();
     if (saat < bas || saat > bit) { console.log(`${zaman()} → saat ${saat}:xx, çalışma penceresi (${bas}–${bit}) DIŞINDA — atlanıyor.`); return; }
     if (periyotKolonVar) {
-      const gecenDk = (Date.now() - son) / 60000;
-      if (son && gecenDk < periyot) { console.log(`${zaman()} → son çekimden ${Math.floor(gecenDk)} dk geçti (periyot ${periyot} dk) — henüz erken, atlanıyor.`); return; }
+      // SAAT BAŞINA (periyot dilimine) HİZALI: periyot=60 → her saat başı (09:00, 10:00…); 30 → :00/:30; 120 → çift saatler.
+      // "Son çekimden 60 dk" DEĞİL — o, elle tetikleme (--force) araya girince saati kaydırıyordu. Dilim mantığı:
+      // son çalışmanın dilimi ≠ şimdiki dilim ise çalış → elle tetikleme olsa da sonraki saat başı kaçmaz. (TR = UTC+3
+      // tam saat farkı olduğu için epoch-dilim sınırları yerel :00/:30 ile çakışır.)
+      const dilim = (ms: number) => Math.floor(ms / 60000 / periyot);
+      if (son && dilim(Date.now()) === dilim(son)) { console.log(`${zaman()} → bu ${periyot} dk'lık dilimde zaten çekildi — atlanıyor.`); return; }
     } else if (new Date().getMinutes() >= 5) {
       // SQL bekliyor: periyot bilinmiyor → 5 dk'lık tetikte spam olmasın diye saat başı davran (yalnız ilk 5 dk penceresi).
       console.log(`${zaman()} → periyot ayarı yok (SQL bekliyor), saat başı modunda — atlanıyor.`); return;

@@ -94,6 +94,21 @@ export function birlestirGuzergahPlaka(rows: AracArventoGuzergah[]): AracArvento
 // İlgisiz araçların (oto/iş mak./başka sekme) ağır GPS verisi indirilmez → sayfa çok hızlanır.
 //   - undefined/null → TÜM araçlar (eski davranış; "Tümü" sekmesi).
 //   - boş dizi []     → ilgili araç yok → boş döner (gereksiz sorgu atılmaz).
+// Ekskavatör (iş makinesi) ÇALIŞMA NOKTALARI — yerinde çalışan makinelerin kontak açıkken kaydedilen konumları.
+// İş Makineleri haritasında nokta olarak çizilir. plakalar verilmezse boş döner (tüm tabloyu çekmesin).
+export type MakineNokta = { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number };
+export async function getMakineCalismaNoktalari(bas: string, bitis: string, plakalar?: string[] | null): Promise<MakineNokta[]> {
+  if (!bas || !bitis || !plakalar || plakalar.length === 0) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("makine_calisma_noktasi")
+    .select("plaka, rapor_tarihi, saat, lat, lng")
+    .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis).in("plaka", plakalar)
+    .order("rapor_tarihi").order("saat");
+  if (error) throw error;
+  return (data ?? []) as MakineNokta[];
+}
+
 export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null, opts?: { tekSorgu?: boolean }): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
   if (plakalar && plakalar.length === 0) return []; // bu sekmeye ait araç yok → çekme

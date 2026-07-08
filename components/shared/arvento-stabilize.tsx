@@ -252,8 +252,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [bas, bitis, refreshKey, sekmeMap, atananSekmeler]);
 
   // Ana döküm sahası + ocaktan yol mesafesi — sunucudan (kamyon rotası tarayıcıya inmediği için).
-  // refreshKey her tazeleme (rapor çekme) turunda değişir → mesafe DE yenilenir. Değer AYNI ise state'i
-  // güncelleme (referansı koru) → harita boşuna yeniden çizilip titremesin.
+  // Tarih VEYA rapor verisi GERÇEKTEN güncellenince yenilenir (sonGuncelleme.getTime değişince) — her 20-45 sn'lik
+  // boş tazeleme turunda DEĞİL. Vercel Active CPU'yu korur; ağır hesabı yalnız yeni veri gelince yapar.
+  // Değer AYNI ise state'i güncelleme (referansı koru) → harita boşuna yeniden çizilip titremesin.
+  const sonGuncellemeMs = sonGuncelleme?.getTime() ?? 0;
   useEffect(() => {
     let iptal = false;
     if (!bas || !bitis) { setDokumSaha(null); return; }
@@ -271,7 +273,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       })
       .catch(() => { /* hata: eski değeri koru */ });
     return () => { iptal = true; };
-  }, [bas, bitis, refreshKey]);
+  }, [bas, bitis, sonGuncellemeMs]);
 
   // Rotalardaki İZOLE GPS çöp noktalarını ayıkla (731 km gibi sapan hatalı okumalar) — sonraki tüm
   // hesaplar (çizim, ocak tespiti, mesafe, arıza sınıflama) temiz veri üzerinden yapılır.
