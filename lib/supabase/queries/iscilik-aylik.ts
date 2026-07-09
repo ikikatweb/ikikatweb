@@ -1,5 +1,6 @@
 // İşçilik takibi aylık veri sorguları
 import { createClient } from "@/lib/supabase/client";
+import { degerAyni } from "@/lib/supabase/queries/iscilik-takibi";
 
 function getSupabase() {
   return createClient();
@@ -45,6 +46,19 @@ export async function updateAylikVeri(
   updates: Record<string, unknown>
 ) {
   const supabase = getSupabase();
+  // DEĞİŞİKLİK KONTROLÜ: hücre blur'da her zaman kaydettiği için, kullanıcı tıklayıp değiştirmeden
+  // çıktığında da DB yazımı + "güncellendi" bildirimi gidiyordu. Önce mevcut değerlere bak;
+  // hiçbir alan değişmediyse hiçbir şey yapma (yazma da bildirim de yok).
+  const alanlar = Object.keys(updates);
+  if (alanlar.length > 0) {
+    const { data: onceki } = await supabase
+      .from("iscilik_aylik")
+      .select(alanlar.join(", "))
+      .eq("id", id)
+      .maybeSingle();
+    const o = onceki as unknown as Record<string, unknown> | null;
+    if (o && alanlar.every((k) => degerAyni(o[k], updates[k]))) return;
+  }
   const { error } = await supabase
     .from("iscilik_aylik")
     .update(updates)

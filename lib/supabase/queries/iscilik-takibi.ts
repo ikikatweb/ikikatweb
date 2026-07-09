@@ -59,24 +59,50 @@ export async function getSilinenIscilikTakibi() {
   return data;
 }
 
+// İki hücre değeri "AYNI" mı? — Hücre düzenlemeleri blur'da HER ZAMAN kaydettiği için, kullanıcı
+// hücreye tıklayıp DEĞİŞTİRMEDEN çıktığında da DB yazımı + yanlış "güncellendi" bildirimi gidiyordu.
+// null/undefined/"" birbirine eşit sayılır; sayısal görünümlüler sayı olarak (12.5 == "12.5"),
+// gerisi (tarih "2026-07-09" dahil) birebir metin olarak karşılaştırılır.
+export function degerAyni(a: unknown, b: unknown): boolean {
+  const bos = (x: unknown) => x === null || x === undefined || x === "";
+  if (bos(a) || bos(b)) return bos(a) === bos(b);
+  const sayisal = (x: unknown) => typeof x === "number" || (typeof x === "string" && /^-?\d+([.,]\d+)?$/.test(x.trim()));
+  if (sayisal(a) && sayisal(b)) {
+    const na = typeof a === "number" ? a : parseFloat(String(a).replace(",", "."));
+    const nb = typeof b === "number" ? b : parseFloat(String(b).replace(",", "."));
+    return Math.abs(na - nb) < 1e-9;
+  }
+  return String(a) === String(b);
+}
+
 export async function upsertIscilikTakibi(
   santiyeId: string,
   updates: Record<string, unknown>
 ) {
   const supabase = getSupabase();
 
-  // Mevcut kayıt var mı kontrol et
-  const { data: mevcut } = await supabase
+  // Mevcut kayıt + güncellenen alanların ŞU ANKİ değerleri (değişiklik karşılaştırması için)
+  const alanlar = Object.keys(updates).filter((k) => k !== "updated_at" && k !== "created_at");
+  const { data: mevcutData } = await supabase
     .from("iscilik_takibi")
-    .select("id")
+    .select(["id", ...alanlar].join(", "))
     .eq("santiye_id", santiyeId)
     .single();
+  const mevcut = mevcutData as unknown as ({ id: string } & Record<string, unknown>) | null;
 
   let takipId: string | null = mevcut?.id ?? null; // bildirim URL'i (o işin işçilik takibi detayına gitmek için)
+  let etkinUpdates = updates; // bildirim yalnız GERÇEKTEN değişen alanlar için atılır
   if (mevcut) {
+    // Değişmeyen alanları ELE: hiçbir alan değişmediyse ne DB yazımı ne bildirim (kullanıcı hücreye
+    // tıklayıp değiştirmeden çıktı) → "rakam aynıyken güncellendi bildirimi" sorunu burada biter.
+    const degisen = Object.fromEntries(
+      Object.entries(updates).filter(([k, v]) => k === "updated_at" || k === "created_at" || !degerAyni(v, mevcut[k])),
+    );
+    if (Object.keys(degisen).filter((k) => k !== "updated_at" && k !== "created_at").length === 0) return;
+    etkinUpdates = degisen;
     const { error } = await supabase
       .from("iscilik_takibi")
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({ ...etkinUpdates, updated_at: new Date().toISOString() })
       .eq("id", mevcut.id);
     if (error) throw error;
   } else {
@@ -96,8 +122,8 @@ export async function upsertIscilikTakibi(
   try {
     // Aylık senkron için kullanılan türemiş alanlar — bunlar update'te varsa bildirim atma
     const TUREMIS_ALANLAR = new Set(["yatan_prim", "toplam_son_veri_tutari"]);
-    // updates içinde gerçek bir değer var mı? (null/undefined/boş string ise atla)
-    const anlamliAlanlar = Object.entries(updates).filter(([k, v]) => {
+    // YALNIZ değişen alanlar (etkinUpdates) bildirime girer; değişmeyenler yukarıda elendi.
+    const anlamliAlanlar = Object.entries(etkinUpdates).filter(([k, v]) => {
       if (k === "updated_at" || k === "created_at") return false;
       if (TUREMIS_ALANLAR.has(k)) return false;
       if (v === null || v === undefined) return false;
