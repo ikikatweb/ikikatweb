@@ -196,11 +196,18 @@ export default function ArventoRaporPage() {
   const [damperSyncBit, setDamperSyncBit] = useState<number>(21);     // ...bitiş saati (dahil)
   const [damperSyncPeriyot, setDamperSyncPeriyot] = useState<number>(60); // ...periyot (dakika): bu kadar süre geçmeden tekrar çekmez
   const [ekskavatorNoktaDk, setEkskavatorNoktaDk] = useState<number>(10); // Ekskavatör çalışma noktası kayıt sıklığı (dakika)
+  const [ekskavatorBas, setEkskavatorBas] = useState<number>(7);  // Ekskavatör çalışma noktası kaydı başlangıç saati (0-23)
+  const [ekskavatorBit, setEkskavatorBit] = useState<number>(19); // ...bitiş saati (dahil)
   const [guzergahTekrar, setGuzergahTekrar] = useState<number>(0); // tek çizgi sadeleştirme eşiği
   const [tekrarPencereSaat, setTekrarPencereSaat] = useState<number>(0); // eşik kadar geçiş bu süre (saat) içinde olmalı; 0 = kapalı
   const [silindirTekrar, setSilindirTekrar] = useState<number>(0); // silindir zikzak eşiği
   const [gridMesafe, setGridMesafe] = useState<number>(12);    // yan yana çizgi toleransı (m)
   const [transitHiz, setTransitHiz] = useState<number>(20);    // reglaj transit hız eşiği (km/s); üstü = asfalt git-gel, sayılmaz; 0=kapalı
+  // SERME'ye AYRI ince ayarlar (greyder sermede farklı davranır)
+  const [sermeGuzergahTekrar, setSermeGuzergahTekrar] = useState<number>(0);
+  const [sermeTekrarPencere, setSermeTekrarPencere] = useState<number>(0);
+  const [sermeGridMesafe, setSermeGridMesafe] = useState<number>(12);
+  const [sermeTransitHiz, setSermeTransitHiz] = useState<number>(20);
   // Çizgi kalınlıkları (haritada) — Reglaj / Serme / Silindir ayrı ayrı, ortak (global).
   const [reglajKalinlik, setReglajKalinlik] = useState<number>(4);
   const [sermeKalinlik, setSermeKalinlik] = useState<number>(3);
@@ -231,10 +238,16 @@ export default function ArventoRaporPage() {
         setDamperSyncBit(a.damperSyncBitSaat);
         setDamperSyncPeriyot(a.damperSyncPeriyotDk);
         setEkskavatorNoktaDk(a.ekskavatorNoktaDk);
+        setEkskavatorBas(a.ekskavatorBasSaat);
+        setEkskavatorBit(a.ekskavatorBitSaat);
         setGuzergahTekrar(a.guzergahTekrar);
         setTekrarPencereSaat(a.tekrarPencereSaat);
         setGridMesafe(a.gridMesafe);
         setTransitHiz(a.transitHiz);
+        setSermeGuzergahTekrar(a.sermeGuzergahTekrar);
+        setSermeTekrarPencere(a.sermeTekrarPencereSaat);
+        setSermeGridMesafe(a.sermeGridMesafe);
+        setSermeTransitHiz(a.sermeTransitHiz);
         setSilindirTekrar(a.silindirTekrar);
         setReglajKalinlik(a.reglajKalinlik);
         setSermeKalinlik(a.sermeKalinlik);
@@ -258,13 +271,13 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
-    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, ekskavatorNoktaDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
+    const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, ekskavatorNoktaDk, ekskavatorBasSaat: ekskavatorBas, ekskavatorBitSaat: ekskavatorBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, sermeGuzergahTekrar, sermeTekrarPencereSaat: sermeTekrarPencere, sermeGridMesafe, sermeTransitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
     const snapshot = JSON.stringify(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
       .then(() => { sonAyarRef.current = snapshot; })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
-  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, ekskavatorNoktaDk, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
+  }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, ekskavatorNoktaDk, ekskavatorBas, ekskavatorBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, sermeGuzergahTekrar, sermeTekrarPencere, sermeGridMesafe, sermeTransitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
   // Haritalara geçilecek çizgi kalınlıkları + renkleri (sabit referans — gereksiz re-render olmasın)
   const kalinliklar = useMemo(
@@ -941,23 +954,17 @@ export default function ArventoRaporPage() {
     return m;
   }, [kayitlar, guzergahlar]);
   // KONTAK durumu (plaka → şu an çalışıyor mu) — HER ZAMAN güncel (Canlı kapalı olsa da) → chip "çalışıyor" rozeti.
-  // Heartbeat cihazları kontak KAPALIYKEN de ara sıra paket atıp canlı "kontak" proxy'sini yanıltır (öğle molasında
-  // bile "açık"). Bu yüzden: HAREKET ediyorsa (>5 km/s) her zaman çalışıyor; DURUYORSA ancak canlı taze VE rapor
-  // bugün GERÇEK bir kapanış (son_kontak, sonT=false — tahmini değil) yazmamışsa çalışıyor say. Rapor mola/kapanış
-  // görürse "çalışıyor" demez → yerinde çalışan makine gün içi kapanınca yanlışlıkla "çalışıyor" görünmez.
+  // "çalışıyor" = HAREKET ediyor (>5 km/s) VEYA canlı kontak proxy'si açık (son paket taze). Mola, KONTAK_TAZE_DK
+  // (sync=3 dk) sayesinde ayıklanır: molada heartbeat paketi çabuk bayatlar → kontak=kapalı. (Rapor son_kontak'a
+  // BAKMIYORUZ — makine öğleden sonra tekrar çalışınca "çalışmıyor" gösteriyordu.)
   const canliKontakMap = useMemo(() => {
     const m = new Map<string, boolean>();
     for (const k of canliKonumlarIlIzinli) {
       const p = k.node ? canliCihazMap?.get(k.node.trim())?.plaka : null;
-      if (!p) continue;
-      const pn = plakaNorm(p);
-      const hareket = (k.hiz ?? 0) > 5;
-      const e = ilkSonKontakMap.get(pn);
-      const raporKapandi = !!(e?.son && e.sonT === false); // bugün GERÇEK (tahmini değil) kapanış kaydı var
-      if (hareket || (k.kontak === true && !raporKapandi)) m.set(pn, true);
+      if (p && (k.kontak === true || (k.hiz ?? 0) > 5)) m.set(plakaNorm(p), true);
     }
     return m;
-  }, [canliKonumlarIlIzinli, canliCihazMap, ilkSonKontakMap]);
+  }, [canliKonumlarIlIzinli, canliCihazMap]);
   // Plaka(norm) → araç modeli (chip'lerde "İş Makinesi/cins" yerine model göstermek için).
   const modelMap = useMemo(() => new Map(Array.from(plakaSantiye.entries()).map(([p, ps]) => [p, ps.model ?? null])), [plakaSantiye]);
 
@@ -1075,8 +1082,7 @@ export default function ArventoRaporPage() {
                     <TableHead className="text-white text-[11px] px-2">Marka/Model</TableHead>
                     <TableHead className="text-white text-[11px] px-2">Sürücü</TableHead>
                     <TableHead className="text-white text-[11px] px-2 text-right"><Route size={12} className="inline" /> Mesafe (km)</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right"><Clock size={12} className="inline" /> Hareket</TableHead>
-                    <TableHead className="text-white text-[11px] px-2 text-right">Rölanti</TableHead>
+                    <TableHead className="text-white text-[11px] px-2 text-right">Çalışma</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1089,8 +1095,7 @@ export default function ArventoRaporPage() {
                         <TableCell className="px-2 text-gray-600 max-w-[150px] truncate">{[k.marka ?? ps?.marka, k.model ?? ps?.model].filter(Boolean).join(" ") || "—"}</TableCell>
                         <TableCell className="px-2 max-w-[130px] truncate">{k.surucu ?? "—"}</TableCell>
                         <TableCell className="px-2 text-right tabular-nums font-semibold">{formatKm(k.mesafe_km)}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums font-semibold">{formatSure(k.hareket_sn)}</TableCell>
-                        <TableCell className="px-2 text-right tabular-nums text-gray-500">{formatSure(k.rolanti_sn)}</TableCell>
+                        <TableCell className="px-2 text-right tabular-nums font-semibold text-emerald-700">{formatSure(ismakineCalismaMap.get(plakaNorm(k.plaka)) ?? 0)}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -1107,7 +1112,7 @@ export default function ArventoRaporPage() {
         <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={sermeGuzergahTekrar} tekrarPencereSaat={sermeTekrarPencere} silindirEsik={silindirTekrar} gridMesafe={sermeGridMesafe} transitHiz={sermeTransitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
@@ -1212,6 +1217,20 @@ export default function ArventoRaporPage() {
                   ))}
                 </div>
               </div>
+              {/* Çalışma saatleri — nokta kaydı yalnız bu saatler arası (gece boşuna sorgu yok) */}
+              <div className="text-[11px] font-semibold text-gray-600 mt-3 mb-1">Çalışma Saatleri</div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Nokta kaydı yalnız bu saatler arasında yapılır; dışında Arvento&apos;yu boşuna yormaz.</p>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={23} value={ekskavatorBas}
+                  onChange={(e) => setEkskavatorBas(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className={selectClass + " w-20"} />
+                <span className="text-[11px] text-gray-500">ile</span>
+                <input type="number" min={0} max={23} value={ekskavatorBit}
+                  onChange={(e) => setEkskavatorBit(Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className={selectClass + " w-20"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">arası (0–23)</span>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-2">Etkin: her gün <strong>{ekskavatorBas}:00–{ekskavatorBit}:00</strong> arası, <strong>{ekskavatorNoktaDk} dk</strong>'da bir.</div>
             </div>
             {/* ═══ GRUP 2: Stabilize — Damper ═══ */}
             <div className="md:col-span-3 flex items-center gap-2 pt-3">
@@ -1291,9 +1310,9 @@ export default function ArventoRaporPage() {
                 Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, <strong>{damperSyncPeriyot < 60 ? `${damperSyncPeriyot} dakikada` : damperSyncPeriyot % 60 === 0 ? `${damperSyncPeriyot / 60} saatte` : `${damperSyncPeriyot} dakikada`} bir</strong>.
               </div>
             </div>
-            {/* ═══ GRUP 3: Reglaj & Serme ═══ */}
+            {/* ═══ GRUP 3: Reglaj ═══ */}
             <div className="md:col-span-3 flex items-center gap-2 pt-3">
-              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🛣️ Reglaj &amp; Serme</span>
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🛣️ Reglaj</span>
               <div className="flex-1 h-px bg-gray-200" />
             </div>
             {/* Güzergah Tekrar Eşiği — Reglaj & Stabilize haritasında tek çizgi sadeleştirme.
@@ -1355,7 +1374,8 @@ export default function ArventoRaporPage() {
               <p className="text-[11px] text-gray-400 mb-2">
                 Yan yana şeritleri tek orta hatta toplama yarıçapı (orta hattan ±m). Tekrar Eşiği ≥ 1 iken
                 etkilidir. Aynı yolda yan yana sapan şeritler bu bant içindeyse ortalanıp tek hat olur.
-                Geniş yol için büyüt (ör. 10-15). Varsayılan 12.
+                <strong> Greyder için 18-25 önerilir</strong> — çok küçük değer (ör. 2-5) çapraz yolda çizgiyi
+                kopuk kopuk gösterir (şerit hücreleri ayrışır). Varsayılan 25.
               </p>
               <div className="flex items-center gap-1">
                 <input
@@ -1386,6 +1406,57 @@ export default function ArventoRaporPage() {
                   placeholder="20"
                   className={selectClass + " w-32"}
                 />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">km/s (0 = kapalı)</span>
+              </div>
+            </div>
+            {/* ═══ GRUP 3.5: SERME (reglajdan AYRI ince ayar) ═══ */}
+            <div className="md:col-span-3 flex items-center gap-2 pt-3">
+              <span className="text-[13px] font-bold text-[#1E3A5F] whitespace-nowrap">🌫️ Serme</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            <div className="md:col-span-3 text-[11px] text-gray-400 -mt-1">
+              Greyder <strong>sermede</strong> reglajdan farklı davranabilir (farklı hız/tekrar). Aşağıdakiler <strong>yalnız Serme sekmesi</strong> için; boş/varsayılan bırakırsan Reglaj ayarlarıyla aynı davranır.
+            </div>
+            {/* Serme Tekrar Eşiği */}
+            <div className="border rounded-lg p-3 bg-emerald-50/40 border-emerald-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Serme Tekrar Eşiği</div>
+              <p className="text-[11px] text-gray-400 mb-2">Serme haritasında bir yolun <strong>bu sayı ve üzeri</strong> geçilmesi gerekir. 0 = ham. (Serme genelde reglajdan <strong>az</strong> geçişle olur → daha düşük tutabilirsin.)</p>
+              <div className="flex items-center gap-1">
+                <input type="number" min={0} value={sermeGuzergahTekrar || ""}
+                  onChange={(e) => setSermeGuzergahTekrar(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="örn. 1" className={selectClass + " w-32"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">geçiş</span>
+              </div>
+              {/* Serme Tekrar Süresi */}
+              <div className="mt-2 pt-2 border-t border-emerald-200/70">
+                <div className="text-[11px] font-semibold text-gray-600 mb-1">Serme Tekrar Süresi (opsiyonel)</div>
+                <div className="flex items-center gap-1">
+                  <input type="number" min={0} step={0.5} value={sermeTekrarPencere || ""}
+                    onChange={(e) => setSermeTekrarPencere(Math.max(0, parseFloat(e.target.value) || 0))}
+                    placeholder="0" className={selectClass + " w-32"} />
+                  <span className="text-[10px] text-gray-400 whitespace-nowrap">saat (0 = kapalı)</span>
+                </div>
+              </div>
+            </div>
+            {/* Serme Yan Yana Mesafe */}
+            <div className="border rounded-lg p-3 bg-emerald-50/40 border-emerald-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Serme Yan Yana Çizgi Mesafesi (m)</div>
+              <p className="text-[11px] text-gray-400 mb-2">Serme sadeleştirme ızgara toleransı. Sermede şeritler daha geniş yayılıyorsa büyüt.</p>
+              <div className="flex items-center gap-1">
+                <input type="number" min={0} value={sermeGridMesafe || ""}
+                  onChange={(e) => setSermeGridMesafe(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="12" className={selectClass + " w-32"} />
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">metre</span>
+              </div>
+            </div>
+            {/* Serme Transit Hız */}
+            <div className="border rounded-lg p-3 bg-emerald-50/40 border-emerald-200">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Serme Transit Hız Eşiği (km/s)</div>
+              <p className="text-[11px] text-gray-400 mb-2">Bu hızın ÜSTÜndeki geçiş serme sayımına katılmaz (transit). Serme hızı reglajdan farklıysa ayrı ayarla. 0 = kapalı.</p>
+              <div className="flex items-center gap-1">
+                <input type="number" min={0} value={sermeTransitHiz}
+                  onChange={(e) => setSermeTransitHiz(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="20" className={selectClass + " w-32"} />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">km/s (0 = kapalı)</span>
               </div>
             </div>

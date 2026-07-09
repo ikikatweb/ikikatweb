@@ -41,7 +41,7 @@ const sayi = (v) => { if (v == null) return null; const n = parseFloat(String(v)
 // Bu yüzden PROXY: son paket tazeliği. Kontak açıkken cihaz sık (saniyede bir) paket gönderir; kontak
 // kapanınca gönderim kesilir → son paket eskir. Son paket KONTAK_TAZE_DK dakikadan yeniyse "açık", aksi
 // halde "kapalı". GMT zamanı (dtgmtdatetime, UTC) kullanılır → makine saat diliminden bağımsız doğru.
-const KONTAK_TAZE_DK = 5;
+const KONTAK_TAZE_DK = 3; // son paket bu dk'dan yeniyse "kontak açık" (çalışıyor). Kısa: molada heartbeat paketi çabuk bayatlar → durdu sayılır.
 const kontakTazelik = (h) => {
   const g = h.dtgmtdatetime;
   if (!g) return null;
@@ -146,29 +146,29 @@ async function ekskYukle(sb) {
   if (ekskCache && ekskCache.gun === gun && Date.now() - ekskCache.yuklendi < 600000) return ekskCache; // 10 dk önbellek (plaka listesi + aralık)
   const [{ data: ar }, { data: ay }] = await Promise.all([
     sb.from("araclar").select("plaka, cinsi"),
-    sb.from("arvento_ayarlar").select("ekskavator_nokta_dk").eq("id", "global").maybeSingle(),
+    sb.from("arvento_ayarlar").select("ekskavator_nokta_dk, ekskavator_bas_saat, ekskavator_bit_saat").eq("id", "global").maybeSingle(),
   ]);
   const plakalar = new Set((ar || []).filter((a) => /(ekskavat|eskavat)/i.test(a.cinsi || "")).map((a) => a.plaka).filter(Boolean));
   const aralikDk = Math.max(1, ay?.ekskavator_nokta_dk ?? 10);
-  // Bugün GERÇEK kapanış (son_kontak) kaydı olan ekskavatörler → kontak proxy'si (heartbeat) yanılsa da DURUYORSA
-  // nokta yazma (öğle molası noktaları birikmesin). Her cache turunda (10 dk) tazelenir.
-  const kapali = new Set();
-  if (plakalar.size) {
-    const { data: rap } = await sb.from("arac_arvento_rapor").select("plaka, son_kontak").eq("rapor_tarihi", gun).in("plaka", [...plakalar]);
-    for (const r of (rap || [])) if (r.son_kontak) kapali.add(r.plaka);
-  }
+  const basSaat = ay?.ekskavator_bas_saat ?? 7, bitSaat = ay?.ekskavator_bit_saat ?? 19; // çalışma saatleri
+  // NOT: Rapor son_kontak'a bakan "mola guard"ı KALDIRILDI — makine öğleden sonra tekrar YERİNDE çalışınca
+  // (son_kontak sabahtan kalma) nokta yazmıyordu. Mola artık KONTAK proxy'siyle engellenir: çalışırken cihaz
+  // sık paket atar (kontak=açık); molada paket seyrekleşir → kontak=kapalı → nokta yok. (KONTAK_TAZE_DK=3)
   // Son nokta zamanlarını (bugün) koru; gün değiştiyse veya ilk yüklemede DB'den doldur.
   const sonZaman = (ekskCache && ekskCache.gun === gun) ? ekskCache.sonZaman : new Map();
   if (sonZaman.size === 0 && plakalar.size) {
     const { data: pts } = await sb.from("makine_calisma_noktasi").select("plaka, created_at").eq("rapor_tarihi", gun).in("plaka", [...plakalar]);
     for (const p of (pts || [])) { const ms = Date.parse(p.created_at); const ex = sonZaman.get(p.plaka) || 0; if (ms > ex) sonZaman.set(p.plaka, ms); }
   }
-  ekskCache = { plakalar, aralikDk, kapali, sonZaman, gun, yuklendi: Date.now() };
+  ekskCache = { plakalar, aralikDk, basSaat, bitSaat, sonZaman, gun, yuklendi: Date.now() };
   return ekskCache;
 }
 async function ekskNoktaBirik(sb, konumlar) {
   const c = await ekskYukle(sb);
   if (!c.plakalar.size) return 0;
+  // ÇALIŞMA SAATLERİ: bu aralık dışındaysa nokta yazma (gece/çalışılmayan saatlerde boşuna işlem yok). TR = UTC+3.
+  const trSaat = new Date(Date.now() + 3 * 3600000).getUTCHours();
+  if (trSaat < c.basSaat || trSaat > c.bitSaat) return 0;
   const cihaz = await cihazlariYukle(sb);
   const now = Date.now(), aralikMs = c.aralikDk * 60000, gun = trBugun();
   const yaz = [];
@@ -176,7 +176,6 @@ async function ekskNoktaBirik(sb, konumlar) {
     if (k.lat == null || k.lng == null || !k.kontak) continue;          // kontak KAPALI (çalışmıyor) → nokta yok
     const plaka = cihaz.get((k.node || "").trim())?.plaka;
     if (!plaka || !c.plakalar.has(plaka)) continue;                     // ekskavatör değil
-    if (c.kapali.has(plaka) && (k.hiz ?? 0) <= 5) continue;             // rapor GERÇEK kapanış + duruyor (mola) → yazma
     if (now - (c.sonZaman.get(plaka) || 0) < aralikMs) continue;        // sıklık aralığı henüz dolmadı
     yaz.push({ rapor_tarihi: gun, plaka, saat: saatAl(k.tarih), lat: k.lat, lng: k.lng });
     c.sonZaman.set(plaka, now);

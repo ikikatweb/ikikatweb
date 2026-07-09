@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, damperNoktalariRange } from "@/lib/supabase/queries/arvento";
+import { kmlRenk, yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
@@ -597,32 +598,53 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     }
   }, [haritaHazir, sermeByPlaka, damperGoster, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
-  function exportKML() {
+  async function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    // Her makine KENDİ renginde: renge göre stil üret (tekrar etme).
+    let stiller = "";
+    const stilVar = new Set<string>();
+    const stilEkle = (hex: string, tip: "line" | "icon") => {
+      const sid = `${tip}_${hex.replace(/[^\w]/g, "")}`, c = kmlRenk(hex);
+      if (!stilVar.has(sid)) {
+        stiller += tip === "line"
+          ? `<Style id="${sid}"><LineStyle><color>${c}</color><width>4</width></LineStyle></Style>`
+          : `<Style id="${sid}"><IconStyle><color>${c}</color><scale>1.0</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`;
+        stilVar.add(sid);
+      }
+      return sid;
+    };
     const cizgiler = gosterilenGreyder.map((k) => {
       const n = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (n.length === 0) return "";
       const coords = n.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
+      const sid = stilEkle(greyderRenkAl(k.plaka), "line");
       return `
-    <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><styleUrl>#rota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+    <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
     const orta = sermeMi
-      ? damperGoster.map((o, i) => `
-    <Placemark><name>${esc(o.plaka)} damper ${i + 1}</name><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("")
+      ? damperGoster.map((o, i) => {
+          const sid = stilEkle(greyderRenkAl(o.plaka), "icon");
+          return `
+    <Placemark><name>${esc(o.plaka)} damper ${i + 1}</name><styleUrl>#${sid}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`;
+        }).join("")
       : silindirler.map((k) => {
           const n = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
           if (n.length === 0) return "";
           const coords = n.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
+          const sid = stilEkle(silindirRenkAl(k.plaka), "line");
           return `
-    <Placemark><name>${esc(k.plaka)} silindir</name><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+    <Placemark><name>${esc(k.plaka)} silindir</name><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
         }).join("");
-    if (!cizgiler && !orta) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
+    // Yüklü KML katmanları (referans) — ortak yardımcı
+    const { stiller: ykStil, folder: ykFolder } = await yukluKatmanlarKml(katmanIzinliRef.current ?? undefined);
+    stiller += ykStil;
+    if (!cizgiler && !orta && !ykFolder) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `${def.ad} ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${esc(baslik)}</name>
-    <Style id="rota"><LineStyle><color>ff69b005</color><width>4</width></LineStyle></Style>${cizgiler}${orta}
+    <name>${esc(baslik)}</name>${stiller}
+    <Folder><name>${esc(def.ad)}</name>${cizgiler}${orta}</Folder>${ykFolder}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });

@@ -6,13 +6,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
+import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { damperKamyonIkonHtml } from "@/lib/arvento/damper-ikon";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -32,6 +32,13 @@ function formatAralik(bas: string, bitis: string): string {
   if (!bas) return "—";
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
+
+// Her araca/makineye sabit ayrı renk (diğer sekmelerdeki ARAC_RENKLERI ile aynı palet).
+const ARAC_RENKLERI = [
+  "#ef4444", "#06b6d4", "#84cc16", "#a855f7", "#f59e0b", "#ec4899",
+  "#10b981", "#f97316", "#3b82f6", "#d946ef", "#14b8a6", "#eab308",
+  "#8b5cf6", "#22c55e", "#f43f5e", "#0ea5e9",
+];
 
 export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
@@ -80,6 +87,14 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     }
     return out;
   }, [raporlar, guzergahlar, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif]);
+  // Her araç/makineye SABİT ayrı renk (plaka bazında) — operasyon rengi yerine (diğer sekmeler gibi).
+  const plakaRenk = useMemo(() => {
+    const plakalar = [...new Set([...guzergahBirlesik.map((k) => k.plaka), ...damperKoordlu.map((o) => o.plaka)])].sort();
+    const m = new Map<string, string>();
+    plakalar.forEach((p, i) => m.set(p, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
+    return m;
+  }, [guzergahBirlesik, damperKoordlu]);
+  const renkAl = (p: string) => plakaRenk.get(p) ?? "#2563eb";
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -118,10 +133,13 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
 
   // Katman özeti (kaç greyder / silindir çizgisi, kaç damper)
   const ozet = useMemo(() => {
-    const greyder = guzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka)).length;
-    const silindir = guzergahBirlesik.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
+    const rotali = guzergahBirlesik.filter((k) => (k.noktalar ?? []).some((p) => p.lat != null && p.lng != null));
+    const greyder = rotali.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka)).length;
+    const silindir = rotali.filter((k) => operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
+    // Diğer: rotalı ama reglaj/sıkıştırma sınıfına girmeyen (kamyon rotası, ekskavatör vb.) — Tümü'de artık bunlar da çizilir.
+    const diger = rotali.filter((k) => !operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) && !operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka)).length;
     const damper = damperKoordlu.length; // yalnız gerçek damper sayısı
-    return { greyder, silindir, damper };
+    return { greyder, silindir, diger, damper, toplamArac: rotali.length };
   }, [guzergahBirlesik, damperKoordlu, sekmeMap, atananSekmeler]);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
@@ -182,16 +200,15 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (latlngs.length === 0) return;
       const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
         : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
-      if (!op) return; // tanınmayan sınıf → çizme
-      const def = OPERASYONLAR[op];
-      // Greyder → Güzergah Tekrar Eşiği, Silindir → Silindir Tekrar Eşiği
-      const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
+      // TÜMÜ = o gün ÇALIŞAN her araç. op yoksa (kamyon/ekskavatör/diğer) yine ÇİZ: HAM rota, sadeleştirmesiz, ince.
+      const def = op ? OPERASYONLAR[op] : null;
+      const esik = op === "sikistirma" ? silindirEsik : op === "reglaj" ? tekrarEsigi : 0;
       const cizim: [number, number][][] = esik >= 1
         ? sadelesGuzergah(noktalar, esik, gridMesafe, transitHiz).parcalar
         : [latlngs];
-      const kal = op === "sikistirma" ? silindirKal : reglajKal;
-      const cizgiRenk = op === "sikistirma" ? silindirRenkV : reglajRenkV;
-      const popupHtml = `<b>${k.plaka}</b><br>${def.ad} · ${k.arac_sinifi ?? ""}`;
+      const kal = op === "sikistirma" ? silindirKal : op === "reglaj" ? reglajKal : 3;
+      const cizgiRenk = renkAl(k.plaka); // HER MAKİNE AYRI RENK (operasyon rengi değil)
+      const popupHtml = `<b>${k.plaka}</b><br>${def ? def.ad + " · " : ""}${k.arac_sinifi ?? "Araç"}`;
       (cizim.length ? cizim : [latlngs]).forEach((seg) => {
         // Görünür çizgi (tıklamaz) + üstünde GENİŞ ŞEFFAF isabet-çizgisi (kolay tıklanır) → popup. (Stabilize deseni.)
         L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85, renderer: yolRenderer, interactive: false }).addTo(grup);
@@ -199,10 +216,11 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       });
       for (const ll of latlngs) bounds.push(ll);
     });
-    // Damper noktaları (Stabilize) — turuncu yuvarlak. YALNIZ GERÇEK (mükerrer/arıza ayıklanmış).
+    // Damper noktaları (Stabilize) — YUVARLAK NOKTA (diğer sekmelerle aynı; kamyon ikonu DEĞİL). Turuncu
+    // (stabilize operasyon rengi). YALNIZ GERÇEK (mükerrer/arıza ayıklanmış).
     damperKoordlu.forEach((o) => {
       if (o.lat == null || o.lng == null) return;
-      L.marker([o.lat as number, o.lng as number], { icon: L.divIcon({ html: damperKamyonIkonHtml(OPERASYONLAR.stabilize.renk, 1), className: "damper-ikon", iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -15] }) })
+      L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: renkAl(o.plaka), fillOpacity: 0.95, renderer: yolRenderer })
         .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b><br>Stabilize (gerçek damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
       bounds.push([o.lat as number, o.lng as number]);
     });
@@ -216,42 +234,51 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, reglajRenkV, silindirRenkV, sekmeMap, atananSekmeler, gorunumRef]);
+  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, plakaRenk, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
-  function exportKML() {
+  async function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const kmlRenk = (hex: string) => { const h = hex.replace("#", ""); return `ff${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`; };
-    let placemarks = "";
+    // HER MAKİNE/KAMYON: kendi renginde + AYRI KATMAN (folder). plaka → çizgi/nokta placemark'ları.
+    const sidOf = (p: string) => "m_" + p.replace(/[^\w]/g, "");
+    const perMakine = new Map<string, { cizgi: string[]; nokta: string[] }>();
+    const al = (p: string) => { let e = perMakine.get(p); if (!e) { e = { cizgi: [], nokta: [] }; perMakine.set(p, e); } return e; };
     guzergahBirlesik.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return;
       const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
         : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
-      if (!op) return;
-      const def = OPERASYONLAR[op];
-      const esik = op === "sikistirma" ? silindirEsik : tekrarEsigi;
+      // TÜMÜ = o gün çalışan HER araç. op yoksa (kamyon/ekskavatör/diğer) yine dahil et: HAM rota, sadeleştirmesiz.
+      const def = op ? OPERASYONLAR[op] : null;
+      const esik = op === "sikistirma" ? silindirEsik : op === "reglaj" ? tekrarEsigi : 0;
       const cizim: [number, number][][] = esik >= 1
         ? sadelesGuzergah(noktalar, esik, gridMesafe, transitHiz).parcalar
         : [noktalar.map((p) => [p.lat, p.lng] as [number, number])];
+      const opAd = def ? def.ad : (k.arac_sinifi ?? "rota");
       cizim.forEach((seg) => {
         if (seg.length < 2) return;
         const coords = seg.map(([lat, lng]) => `${lng.toFixed(6)},${lat.toFixed(6)},0`).join(" ");
-        placemarks += `
-    <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><Style><LineStyle><color>${kmlRenk(def.renk)}</color><width>4</width></LineStyle></Style><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+        al(k.plaka).cizgi.push(`<Placemark><name>${esc(k.plaka)} ${esc(opAd)}</name><styleUrl>#${sidOf(k.plaka)}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`);
       });
     });
     damperKoordlu.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
-      placemarks += `
-    <Placemark><name>${esc(o.plaka)} damper</name><description>${esc(o.saat ?? "")}</description><styleUrl>#damper</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`;
+      al(o.plaka).nokta.push(`<Placemark><name>${esc(o.plaka)} damper</name><description>${esc(o.saat ?? "")}</description><styleUrl>#${sidOf(o.plaka)}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`);
     });
-    if (!placemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
+    let stiller = "", folders = "";
+    for (const [plaka, e] of perMakine) {
+      const renk = kmlRenk(renkAl(plaka));
+      stiller += `<Style id="${sidOf(plaka)}"><LineStyle><color>${renk}</color><width>4</width></LineStyle><IconStyle><color>${renk}</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`;
+      folders += `\n    <Folder><name>${esc(plaka)}</name>\n      ${[...e.cizgi, ...e.nokta].join("\n      ")}\n    </Folder>`;
+    }
+    // Yüklü KML katmanları (referans) — ortak yardımcı
+    const { stiller: ykStil, folder: ykFolder } = await yukluKatmanlarKml(katmanIzinliRef.current ?? undefined);
+    if (!folders && !ykFolder) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `Tumu ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${esc(baslik)}</name>
-    <Style id="damper"><IconStyle><color>${kmlRenk(OPERASYONLAR.stabilize.renk)}</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>${placemarks}
+    <name>${esc(baslik)}</name>${stiller}${ykStil}${folders}${ykFolder}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
@@ -277,18 +304,14 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     <div className="space-y-3 harita-tamekran-kapsayici relative">
       {/* Lejant + özet */}
       <div className="bg-white rounded-lg border p-3 flex flex-wrap items-center gap-x-5 gap-y-2 harita-arac-panel">
-        <span className="text-xs font-semibold text-gray-600">{formatAralik(bas, bitis)} — Tüm operasyonlar</span>
-        <span className="flex items-center gap-1.5 text-xs">
-          <span className="inline-block w-4 h-1.5 rounded" style={{ background: OPERASYONLAR.reglaj.renk }} />
-          Reglaj / Serme (greyder) <strong className="text-gray-500">· {ozet.greyder} çizgi</strong>
-        </span>
-        <span className="flex items-center gap-1.5 text-xs">
-          <span className="inline-block w-4 h-1.5 rounded" style={{ background: OPERASYONLAR.sikistirma.renk }} />
-          Sıkıştırma (silindir hattı) <strong className="text-gray-500">· {ozet.silindir} çizgi</strong>
-        </span>
-        <span className="flex items-center gap-1.5 text-xs">
+        <span className="text-xs font-semibold text-gray-600">{formatAralik(bas, bitis)} — Çalışan tüm araçlar (<strong>{ozet.toplamArac}</strong>)</span>
+        <span className="text-[10px] text-gray-400">🎨 haritada her araç ayrı renkte</span>
+        <span className="text-xs text-gray-600">Reglaj/Serme: <strong className="text-gray-500">{ozet.greyder}</strong></span>
+        <span className="text-xs text-gray-600">Sıkıştırma: <strong className="text-gray-500">{ozet.silindir}</strong></span>
+        <span className="text-xs text-gray-600">Diğer (kamyon/makine): <strong className="text-gray-500">{ozet.diger}</strong></span>
+        <span className="flex items-center gap-1.5 text-xs text-gray-600">
           <span className="inline-block w-3 h-3 rounded-full border border-orange-800" style={{ background: OPERASYONLAR.stabilize.renk }} />
-          Stabilize (damper) <strong className="text-gray-500">· {ozet.damper} nokta</strong>
+          Damper: <strong className="text-gray-500">{ozet.damper} nokta</strong>
         </span>
         {sonGuncelleme && (
           <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>

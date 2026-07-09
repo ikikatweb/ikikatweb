@@ -11,6 +11,7 @@ import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { reglajRotalariniAyikla, type OncekiDamper } from "@/lib/arvento/serme-hesap";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
@@ -376,28 +377,30 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       cizgi.bindPopup(icerikYap(p, plakalar)).openPopup([p.lat, p.lng]);
     });
     if (etkinTekrar >= 1) {
-      // ── BİRLEŞİK REGLAJ OMURGASI ──
-      // Tüm seçili greyderlerin (tüm günler) noktaları TEK havuzda birleşir → tek omurga çıkarılır.
-      // Makine fark etmez: bir yolda TOPLAM geçiş (hangi greyder olursa olsun) ≥ eşik ise tek çizgiye iner.
-      // Aynı yolu farklı greyderler taramış olabilir; reglaj birleşik sayılır. Tek renk (reglajRenkV).
-      // HAM (per-gün) noktalar → her nokta kendi TARİH+SAAT'ini taşır (ts). "Tekrar süresi" penceresi bunları
-      // kullanır; merged araclar.noktalar tarihi kaybettiği için ham kaynaktan (hamNoktaByPlaka) kurulur.
-      const havuz: { lat: number; lng: number; hiz?: number | null; ts?: number | null }[] = [];
+      // ── REGLAJ OMURGASI — HER GREYDER KENDİ RENGİNDE (kart rozetiyle AYNI) ──
+      // Eskiden tüm greyderler tek havuzda birleşip tek renkle çiziliyordu. Artık HER greyderin kendi
+      // noktaları AYRI sadeleştirilip kendi renginde (renkAl = kart rozet rengi) çizilir → haritada hangi
+      // yolu HANGİ greyderin regleajladığı ayırt edilir. Bir yolu birden çok greyder taradıysa her biri
+      // kendi eşiğini KENDİ geçişleriyle karşılamalı; çizgiler kendi renklerinde üst üste görünür.
+      // HAM (per-gün) noktalar her nokta kendi TARİH+SAAT'ini (ts) taşır → "tekrar süresi" penceresi için.
       for (const kayit of secilenler) {
-        for (const p of (hamNoktaByPlaka.get(plakaNorm(kayit.plaka)) ?? [])) {
+        const pk = plakaNorm(kayit.plaka);
+        const havuz: { lat: number; lng: number; hiz?: number | null; ts?: number | null }[] = [];
+        for (const p of (hamNoktaByPlaka.get(pk) ?? [])) {
           havuz.push({ lat: p.lat, lng: p.lng, hiz: p.hiz, ts: tsSaniye(p.tarih, p.saat) }); tumBounds.push([p.lat, p.lng]);
         }
+        if (havuz.length < 2) continue;
+        const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat * 3600).parcalar;
+        const renk = renkAl(kayit.plaka);
+        for (const parca of cizgiler) {
+          // Popup: tıklanan konuma en yakın ham nokta (bu greyder) → plaka·model / hız / tarih saat.
+          const cizgi = L.polyline(parca, { color: renk, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup);
+          tiklaBagla(cizgi, [pk]);
+          cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
+          cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
+        }
       }
-      const cizgiler = sadelesGuzergah(havuz, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat * 3600).parcalar;
-      const seciliPlakaList = secilenler.map((k) => plakaNorm(k.plaka)); // popup EN YAKIN ham noktayı bu plakalarda arar
-      for (const parca of cizgiler) {
-        // Popup: tıklanan konuma en yakın ham nokta → plaka·model / hız / tarih saat (km & nokta gösterilmez).
-        const cizgi = L.polyline(parca, { color: reglajRenkV, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup);
-        tiklaBagla(cizgi, seciliPlakaList);
-        cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
-        cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
-      }
-      // else: omurga yok (hiçbir yol eşik kadar taranmamış) → çizgi yok.
+      // omurga yok (hiçbir yol eşik kadar taranmamış) → o greyder için çizgi yok.
     } else {
       // ── HAM MOD (eşik < 1): her aracın izini AYRI çiz (kendi renginde) ──
       for (const kayit of secilenler) {
@@ -447,27 +450,46 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     }
   }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat, reglajKal, reglajRenkV, renkAl, hamNoktaByPlaka, modelMap, gorunumRef, calismaNoktalari]);
 
-  // KML export — seçili tüm araçların rotaları (her biri kendi renginde)
-  function exportKML() {
+  // KML export — Google Earth için: (1) seçili her ARAÇ/MAKİNE'nin rotası KENDİ RENGİNDE, (2) ekskavatör
+  // ÇALIŞMA NOKTALARI (makine rengi, nokta), (3) haritaya YÜKLÜ KML katmanları (referans NetCAD/KML) kendi
+  // renginde. Hepsi tek .kml'de → Google Earth'te güzergahlar + referans planlar birlikte görünür.
+  async function exportKML() {
     if (secilenler.length === 0) { toast.error("Seçili araç yok.", { duration: toastSuresi() }); return; }
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     let stiller = "";
-    let placemarks = "";
+    // 1) ROTALAR — her araç kendi renginde
+    let rotaPm = "";
     secilenler.forEach((kayit, idx) => {
       const noktalar = (kayit.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return;
       const coords = noktalar.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
-      const sid = `r${idx}`;
-      stiller += `<Style id="${sid}"><LineStyle><color>${kmlRenk(renkAl(kayit.plaka))}</color><width>4</width></LineStyle></Style>`;
-      placemarks += `
-    <Placemark><name>${esc(kayit.plaka)} rotası</name><description>${esc(`${kayit.arac_sinifi ?? ""} ${kayit.marka ?? ""} ${kayit.model ?? ""} · ${noktalar.length} nokta · ${kayit.toplam_mesafe ?? 0} km`)}</description><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+      const sid = `r${idx}`, renk = kmlRenk(renkAl(kayit.plaka));
+      stiller += `<Style id="${sid}"><LineStyle><color>${renk}</color><width>4</width></LineStyle></Style>`;
+      rotaPm += `
+      <Placemark><name>${esc(kayit.plaka)} rotası</name><description>${esc(`${kayit.arac_sinifi ?? ""} ${kayit.marka ?? ""} ${kayit.model ?? ""} · ${noktalar.length} nokta · ${kayit.toplam_mesafe ?? 0} km`)}</description><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     });
-    if (!placemarks) { toast.error("Rota verisi yok.", { duration: toastSuresi() }); return; }
+    // 2) ÇALIŞMA NOKTALARI — ekskavatör vb. (makine rengiyle nokta)
+    let noktaPm = "";
+    const seciliSet = new Set(secilenler.map((k) => plakaNorm(k.plaka)));
+    const noktaStilVar = new Set<string>();
+    for (const n of (calismaNoktalari ?? [])) {
+      if (n.lat == null || n.lng == null || !seciliSet.has(plakaNorm(n.plaka))) continue;
+      const sid = `n_${plakaNorm(n.plaka)}`;
+      if (!noktaStilVar.has(sid)) { stiller += `<Style id="${sid}"><IconStyle><color>${kmlRenk(renkAl(n.plaka))}</color><scale>0.8</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon></IconStyle></Style>`; noktaStilVar.add(sid); }
+      noktaPm += `
+      <Placemark><name>${esc(n.plaka)}</name><description>çalışma noktası · ${esc((n.rapor_tarihi ?? "") + (n.saat ? " " + String(n.saat).slice(0, 5) : ""))}</description><styleUrl>#${sid}</styleUrl><Point><coordinates>${n.lng.toFixed(6)},${n.lat.toFixed(6)},0</coordinates></Point></Placemark>`;
+    }
+    // 3) YÜKLÜ KML KATMANLARI (referans NetCAD/KML) — ortak yardımcı, izinli+görünür olanlar kendi renginde
+    const { stiller: ykStil, folder: ykFolder } = await yukluKatmanlarKml(katmanIzinliRef.current ?? undefined);
+    stiller += ykStil;
+
+    if (!rotaPm && !noktaPm && !ykFolder) { toast.error("Verilecek veri yok.", { duration: toastSuresi() }); return; }
     const dosyaBaslik = `${baslik.replace(/[^\w]+/g, "_")}_${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>${esc(dosyaBaslik)}</name>${stiller}${placemarks}
+    <name>${esc(dosyaBaslik)}</name>${stiller}
+    <Folder><name>Rotalar</name>${rotaPm}</Folder>${noktaPm ? `\n    <Folder><name>Çalışma Noktaları</name>${noktaPm}</Folder>` : ""}${ykFolder}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
@@ -477,7 +499,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     a.download = `${dosyaBaslik.replace(/[^\w-]+/g, "_")}.kml`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Reglaj KML olarak indirildi.", { duration: toastSuresi() });
+    toast.success("KML indirildi (rotalar + çalışma noktaları + yüklü katmanlar) — Google Earth'te açabilirsiniz.", { duration: toastSuresi() });
   }
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;

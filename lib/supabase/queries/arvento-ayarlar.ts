@@ -13,7 +13,12 @@ export type ArventoAyarlar = {
   tekrarPencereSaat: number; // güzergah tekrar SÜRESİ (saat): eşik kadar geçiş bu süre içinde olursa yol çizilir; 0 = kapalı (zaman şartı yok). Ondalık olabilir (1.5 = 90 dk)
   gridMesafe: number;
   silindirTekrar: number;
-  transitHiz: number; // REGLAJ/SERME omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı. (Sıkıştırma bu filtreyi KULLANMAZ — silindir yalnız kendi tekrar eşiğiyle çizilir.)
+  transitHiz: number; // REGLAJ omurgasında bu hızın (km/s) ÜSTÜndeki geçişler = transit (asfalta git-gel) sayılmaz; 0 = kapalı. (Sıkıştırma bu filtreyi KULLANMAZ — silindir yalnız kendi tekrar eşiğiyle çizilir.)
+  // SERME'ye AYRI ince ayarlar (greyder sermede farklı davranır). Boşken reglaj değerine düşer (getArventoAyarlar).
+  sermeGuzergahTekrar: number;   // serme tekrar eşiği
+  sermeTekrarPencereSaat: number; // serme tekrar süresi (saat)
+  sermeGridMesafe: number;        // serme yan yana çizgi mesafesi (m)
+  sermeTransitHiz: number;        // serme transit hız eşiği (km/s)
   reglajKalinlik: number;
   sermeKalinlik: number;
   silindirKalinlik: number;
@@ -29,6 +34,8 @@ export type ArventoAyarlar = {
   damperSyncBitSaat: number; // ...ve bu saate kadar çalışır (dahil). Gece çalışılmıyorsa ör. 6-21.
   damperSyncPeriyotDk: number; // Damper senkron periyodu (dakika): son çekimden bu kadar süre geçmeden tekrar çekmez. Görev 5 dk'da bir tetiklenir; asıl sıklığı BU belirler.
   ekskavatorNoktaDk: number;   // Ekskavatör çalışma noktası kayıt sıklığı (dakika): kontak açıkken bu aralıkta bir konum makine_calisma_noktasi'na yazılır.
+  ekskavatorBasSaat: number;   // Ekskavatör çalışma noktası kaydı bu saatte BAŞLAR (0-23)
+  ekskavatorBitSaat: number;   // ...ve bu saate kadar (dahil). Bu aralık DIŞINDA nokta yazılmaz (gece boşuna sorgu yok).
 };
 
 export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
@@ -42,6 +49,10 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   gridMesafe: 12,
   silindirTekrar: 0,
   transitHiz: 20,
+  sermeGuzergahTekrar: 0,
+  sermeTekrarPencereSaat: 0,
+  sermeGridMesafe: 12,
+  sermeTransitHiz: 20,
   reglajKalinlik: 4,
   sermeKalinlik: 3,
   silindirKalinlik: 3,
@@ -57,6 +68,8 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
   damperSyncBitSaat: 21,
   damperSyncPeriyotDk: 60,
   ekskavatorNoktaDk: 10,
+  ekskavatorBasSaat: 7,
+  ekskavatorBitSaat: 19,
 };
 
 const TABLO = "arvento_ayarlar";
@@ -77,6 +90,11 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     gridMesafe: data.grid_mesafe ?? 12,
     silindirTekrar: data.silindir_tekrar ?? 0,
     transitHiz: data.transit_hiz ?? 20,   // kolon yoksa varsayılan 20 (geriye uyumlu)
+    // SERME ayrı ayarları — BOŞSA (null) reglaj değerine düşer → kullanıcı ayırana kadar davranış aynı kalır.
+    sermeGuzergahTekrar: data.serme_guzergah_tekrar ?? data.guzergah_tekrar ?? 0,
+    sermeTekrarPencereSaat: data.serme_tekrar_pencere_saat ?? data.tekrar_pencere_saat ?? 0,
+    sermeGridMesafe: data.serme_grid_mesafe ?? data.grid_mesafe ?? 12,
+    sermeTransitHiz: data.serme_transit_hiz ?? data.transit_hiz ?? 20,
     reglajKalinlik: data.reglaj_kalinlik ?? 4,
     sermeKalinlik: data.serme_kalinlik ?? 3,
     silindirKalinlik: data.silindir_kalinlik ?? 3,
@@ -92,6 +110,8 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
     damperSyncBitSaat: data.damper_sync_bit_saat ?? 21,
     damperSyncPeriyotDk: data.damper_sync_periyot_dk ?? 60,
     ekskavatorNoktaDk: data.ekskavator_nokta_dk ?? 10,
+    ekskavatorBasSaat: data.ekskavator_bas_saat ?? 7,
+    ekskavatorBitSaat: data.ekskavator_bit_saat ?? 19,
   };
 }
 
@@ -183,6 +203,10 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     grid_mesafe: a.gridMesafe,
     silindir_tekrar: a.silindirTekrar,
     transit_hiz: a.transitHiz,
+    serme_guzergah_tekrar: a.sermeGuzergahTekrar,
+    serme_tekrar_pencere_saat: a.sermeTekrarPencereSaat,
+    serme_grid_mesafe: a.sermeGridMesafe,
+    serme_transit_hiz: a.sermeTransitHiz,
     reglaj_kalinlik: a.reglajKalinlik,
     serme_kalinlik: a.sermeKalinlik,
     silindir_kalinlik: a.silindirKalinlik,
@@ -195,6 +219,8 @@ export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
     damper_sync_bit_saat: a.damperSyncBitSaat,
     damper_sync_periyot_dk: a.damperSyncPeriyotDk,
     ekskavator_nokta_dk: a.ekskavatorNoktaDk,
+    ekskavator_bas_saat: a.ekskavatorBasSaat,
+    ekskavator_bit_saat: a.ekskavatorBitSaat,
   });
   if (error) throw error;
 }

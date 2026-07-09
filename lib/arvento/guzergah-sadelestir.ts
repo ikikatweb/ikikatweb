@@ -149,7 +149,12 @@ function birlestirParcalar(
     return Math.atan2((ic[0] - uc[0]) * METRE_DERECE, (ic[1] - uc[1]) * METRE_DERECE * cosOrt);
   };
   const aciFarki = (a: number, b: number) => { let d = Math.abs(a - b); if (d > Math.PI) d = 2 * Math.PI - d; return d; };
-  const MAKS_DONUS = (70 * Math.PI) / 180; // join'de izin verilen sapma (üstü = ayrı yol/dik kol)
+  const MAKS_DONUS = (70 * Math.PI) / 180; // uzak uçlarda izin verilen sapma (üstü = ayrı yol/dik kol)
+  // Çok yakın uçlarda (≤ yakinEsik) açı kapısını GEVŞET: o kadar yakın iki uç neredeyse kesin aynı yolun
+  // ızgara-şarapneli (çapraz yolda hücre başına kopan parçalar); greyderin keskin virajı/köşesi de burada.
+  // Greedy skor düz join'i (düşük dönüş cezası) yine önce seçtiğinden kavşaklarda yanlış birleşme olmaz.
+  const yakinEsik = kopruM * 0.45; // ~yarım hücre
+  const MAKS_DONUS_YAKIN = (125 * Math.PI) / 180;
   const combos: [boolean, boolean][] = [[false, false], [false, true], [true, false], [true, true]];
 
   let degisti = true;
@@ -167,7 +172,8 @@ function birlestirParcalar(
           const iDis = iceYon(pi, iSon) + Math.PI; // i ucunda dışa yön
           const jDis = iceYon(pj, jSon) + Math.PI; // j ucunda dışa yön
           const donus = Math.PI - aciFarki(iDis, jDis); // düz join'de uçlar birbirine bakar → ~0
-          if (donus > MAKS_DONUS) continue;
+          const kapi = m <= yakinEsik ? MAKS_DONUS_YAKIN : MAKS_DONUS;
+          if (donus > kapi) continue;
           const skor = m + donus * 30; // mesafe (m) + dönüş cezası
           if (!best || skor < best.skor) best = { i, j, iSon, jSon, skor };
         }
@@ -306,10 +312,12 @@ function sadelesGuzergahCore(
   for (const k of komsu.keys()) izle(k); // kalan kapalı döngüler (hepsi derece 2)
 
   // "Kesik kesik" giderme: uçları yakın + aynı yönde devam eden parçaları tek çizgiye bağla.
-  // Köprü mesafesi = ~1.5 hücre (eşik-altı 1-2 hücrelik boşlukları kapatır; dik kolları açı kapısı ayırır).
-  const kopru = birlestirParcalar(parcalar, g * 1.5, cosOrt);
+  // Köprü mesafesi = ~2 hücre. Çapraz yolda ızgara ayrıklaştırması yüzünden eşik-altına düşüp KOPAN
+  // (~13m) parçaları kapatır; dik kollar/kavşaklar açı kapısıyla (70°) yine ayrı kalır → yanlış birleşme yok.
+  const kopru = birlestirParcalar(parcalar, g * 2, cosOrt);
 
-  // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at (≤ ~1 hücre)
-  const temiz = kopru.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.012, (gridM * 1.2) / 1000));
+  // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
+  // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
+  const temiz = kopru.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }

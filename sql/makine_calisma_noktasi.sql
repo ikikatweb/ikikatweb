@@ -19,3 +19,6 @@ create policy "makine_nokta_read" on public.makine_calisma_noktasi for select to
 
 -- Ekskavatör çalışma noktası kayıt sıklığı (dakika) — kontak açıkken bu aralıkta bir konum yazılır.
 alter table public.arvento_ayarlar add column if not exists ekskavator_nokta_dk integer not null default 10;
+-- Ekskavatör çalışma SAATLERİ — nokta kaydı yalnız bu saatler arası yapılır (gece/çalışılmayan saatlerde boşuna sorgu yok).
+alter table public.arvento_ayarlar add column if not exists ekskavator_bas_saat integer not null default 7;
+alter table public.arvento_ayarlar add column if not exists ekskavator_bit_saat integer not null default 19;

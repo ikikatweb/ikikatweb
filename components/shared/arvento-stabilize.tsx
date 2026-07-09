@@ -13,6 +13,7 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type Kat
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
+import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
@@ -311,18 +312,37 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return Array.from(m.values());
   }, [raporlar]);
 
+  // Araç sınıfı (guzergah arac_sinifi'nden) → plaka bazlı. Chip sırasında KAMYONLARI SOLA, İŞ
+  // MAKİNELERİNİ (loader/greyder/ekskavatör vb.) SAĞA dizmek için. Sınıf yoksa (ör. geniş aralıkta
+  // kamyon rotası inmemişse) damper aktivitesine düşülür: damper atıyorsa kamyon sayılır.
+  const araSinifMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const k of tumGuzergahTemizBirlesik) if (k.arac_sinifi) m.set(plakaNorm(k.plaka), k.arac_sinifi);
+    return m;
+  }, [tumGuzergahTemizBirlesik]);
+  const IS_MAKINE_RE = /iş\s*mak|makine|loder|loader|beko|kep[çc]e|greyder|silindir|ekskavat|dozer|paletli|forklift|vin[cç]/i;
+  const kamyonMu = useCallback((r: AracArventoRapor) => {
+    const sinif = araSinifMap.get(plakaNorm(r.plaka));
+    if (sinif) return !IS_MAKINE_RE.test(sinif); // sınıf biliniyorsa: iş makinesi DEĞİLse kamyon
+    return damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0; // sınıf yoksa: damper atıyorsa kamyon
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [araSinifMap]);
+
   // Stabilize kamyonları:
   //  - Atama VARSA: "stabilize" atanmış her araç (damper ŞART DEĞİL — API'de damper gelmese de
   //    rota/km/kontak ile görünsün).
   //  - Atama YOKSA: damperli her araç (stabilize'e başka atama yoksa).
+  // Sıra: önce KAMYONLAR (sola), sonra İŞ MAKİNELERİ (sağa) — her grup içinde plakaya göre sabit.
   const kamyonlar = useMemo(
     () => birlesikRaporlar.filter((r) => {
       const atama = sekmeMap?.get(plakaNorm(r.plaka));
       if (atama) return atama.includes("stabilize");
       const damperli = damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0;
       return damperli && !atananSekmeler.has("stabilize");
-    }).sort((a, b) => a.plaka.localeCompare(b.plaka, "tr", { numeric: true })), // PLAKAYA göre SABİT sıra (her tazelemede aynı + renkler sabit)
-    [birlesikRaporlar, sekmeMap, atananSekmeler],
+    }).sort((a, b) =>
+      (kamyonMu(b) ? 1 : 0) - (kamyonMu(a) ? 1 : 0) ||           // kamyonlar önce, iş makineleri sonra
+      a.plaka.localeCompare(b.plaka, "tr", { numeric: true })),  // grup içinde plakaya göre sabit sıra
+    [birlesikRaporlar, sekmeMap, atananSekmeler, kamyonMu],
   );
 
   // Kamyon plakaları — kamyon izini reglaj çizgisinden AYIRMAK için
@@ -864,10 +884,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih, dokumSaha]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
-  function exportKML() {
+  async function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     // KML rengi aabbggrr formatında — #rrggbb → ff bb gg rr
     const kmlRenk = (hex: string) => "ff" + hex.slice(5, 7) + hex.slice(3, 5) + hex.slice(1, 3);
+    let ekStil = "";
     const cizgiler = reglajRefleri.map((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return "";
@@ -875,13 +896,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       return `
     <Placemark><name>${esc(k.plaka)} reglaj</name><styleUrl>#rota</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
-    // Kamyon izi — reglajdan ayrı stil/renk
+    // Kamyon izi — HER KAMYON KENDİ renginde (renkAl per plaka).
+    const izStilVar = new Set<string>();
+    const izStilId = (hex: string) => "iz" + hex.replace(/[^\w]/g, "");
     const izCizgiler = kamyonIzleri.filter((k) => seciliPlakalar.has(k.plaka)).map((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       if (noktalar.length === 0) return "";
       const coords = noktalar.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)},0`).join(" ");
+      const hex = renkAl(k.plaka), sid = izStilId(hex);
+      if (!izStilVar.has(sid)) { ekStil += `<Style id="${sid}"><LineStyle><color>${kmlRenk(hex)}</color><width>${kamyonIziKalinlik}</width></LineStyle></Style>`; izStilVar.add(sid); }
       return `
-    <Placemark><name>${esc(k.plaka)} kamyon izi</name><styleUrl>#iz</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
+    <Placemark><name>${esc(k.plaka)} kamyon izi</name><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
     const renkStilId = (hex: string) => "d" + hex.slice(1);
     const kullanilanRenkler = Array.from(new Set(damperKoordlu.map((o) => renkAl(o.plaka))));
@@ -890,14 +915,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     ).join("");
     const damperPlacemarks = damperKoordlu.map((o, i) => `
     <Placemark><name>${esc((o.surucu ?? o.plaka) + " damper " + (i + 1))}</name><description>${esc([o.plaka, o.saat ?? "", o.adres ?? ""].filter(Boolean).join(" · "))}</description><styleUrl>#${renkStilId(renkAl(o.plaka))}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`).join("");
-    if (!cizgiler && !izCizgiler && !damperPlacemarks) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
+    // Yüklü KML katmanları (referans) — ortak yardımcı
+    const { stiller: ykStil, folder: ykFolder } = await yukluKatmanlarKml(katmanIzinliRef.current ?? undefined);
+    if (!cizgiler && !izCizgiler && !damperPlacemarks && !ykFolder) { toast.error("Veri yok.", { duration: toastSuresi() }); return; }
     const baslik = `Stabilize ${bas === bitis ? bas : `${bas}_${bitis}`}`;
     const kml = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>${esc(baslik)}</name>
-    <Style id="rota"><LineStyle><color>${kmlRenk(reglajRenkV)}</color><width>${reglajKal}</width></LineStyle></Style>
-    <Style id="iz"><LineStyle><color>${kmlRenk(kamyonIziRenk)}</color><width>${kamyonIziKalinlik}</width></LineStyle></Style>${damperStilleri}${cizgiler}${izCizgiler}${damperPlacemarks}
+    <Style id="rota"><LineStyle><color>${kmlRenk(reglajRenkV)}</color><width>${reglajKal}</width></LineStyle></Style>${ekStil}${damperStilleri}${ykStil}
+    <Folder><name>Stabilize</name>${cizgiler}${izCizgiler}${damperPlacemarks}</Folder>${ykFolder}
   </Document>
 </kml>`;
     const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
