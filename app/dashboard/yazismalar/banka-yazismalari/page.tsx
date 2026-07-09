@@ -271,7 +271,7 @@ export default function BankaYazismalariPage() {
     flushSync(() => {
       setPrintRef(y);
     });
-    evrakYazdir().finally(() => setTimeout(() => setPrintRef(null), 500));
+    evrakYazdir(`${y.evrak_sayi_no ?? ""} ${y.konu ?? ""}`).finally(() => setTimeout(() => setPrintRef(null), 500));
   }
 
   return (

@@ -344,7 +344,7 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
                 <Button variant="ghost" size="sm" onClick={() => setOnIzleme(false)} className="text-gray-500">
                   <ArrowLeft size={16} className="mr-1" /> Düzenlemeye Dön
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => evrakYazdir()}>
+                <Button variant="outline" size="sm" onClick={() => evrakYazdir(konuOtomatik)}>
                   <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
                 </Button>
               </div>

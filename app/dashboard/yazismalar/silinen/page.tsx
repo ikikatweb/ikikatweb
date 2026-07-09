@@ -230,7 +230,7 @@ export default function SilinenPage() {
     flushSync(() => { setPrintKayit(k); });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        evrakYazdir().finally(() => setTimeout(() => setPrintKayit(null), 500));
+        evrakYazdir(`${k.evrak_sayi_no ?? ""} ${k.konu ?? ""}`).finally(() => setTimeout(() => setPrintKayit(null), 500));
       });
     });
   }

@@ -12,7 +12,10 @@ export function iosMu(): boolean {
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS kendini "Mac" gösterir
 }
 
-export async function evrakYazdir(): Promise<void> {
+// dosyaAdi: PDF'in kaydedilme adı (ör. "KAT-26/DİD.001 Hakediş") — uzantısız ver, ".pdf" eklenir.
+// Verilmezse "evrak.pdf". Ad, isimli File nesnesiyle taşınır; çıplak Blob URL'si Safari'de
+// "unknown.pdf" oluyordu.
+export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
   if (!iosMu()) { window.print(); return; }
   const portal = document.querySelector<HTMLElement>(".evrak-print-portal");
   const hedef = portal?.querySelector<HTMLElement>(".evrak-onizleme") ?? portal;
@@ -29,7 +32,12 @@ export async function evrakYazdir(): Promise<void> {
     const sayfaPx = Math.floor((canvas.width * 297) / 210); // bir A4 sayfasına düşen kaynak piksel yüksekliği
     let y = 0, sayfa = 0;
     while (y < canvas.height) {
-      const h = Math.min(sayfaPx, canvas.height - y);
+      const kalan = canvas.height - y;
+      // Evrak kutusu tam A4 boyunda (min-height 297mm); mm→px çevriminin yuvarlama artığı (birkaç
+      // piksel-yarım cm) döngüde fazladan tur açıp BOMBOŞ ikinci sayfa üretiyordu. Bir sayfanın
+      // %5'inden (≈15mm) küçük artık gerçek içerik olamaz (evrağın alt boşluğu zaten 2.5cm) → atla.
+      if (sayfa > 0 && kalan < sayfaPx * 0.05) break;
+      const h = Math.min(sayfaPx, kalan);
       const dilim = document.createElement("canvas");
       dilim.width = canvas.width; dilim.height = h;
       const ctx = dilim.getContext("2d");
@@ -40,7 +48,11 @@ export async function evrakYazdir(): Promise<void> {
       pdf.addImage(dilim.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, (h * 210) / canvas.width);
       y += sayfaPx; sayfa++;
     }
-    const url = URL.createObjectURL(pdf.output("blob"));
+    // Dosya adı: yasak karakterleri temizle ("sayı no konu" gibi / içerebilir) → isimli File.
+    // Safari, File'lı object URL'de kaydet/paylaşta bu adı kullanır (çıplak Blob → "unknown.pdf").
+    const ad = (dosyaAdi ?? "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "evrak";
+    const file = new File([pdf.output("blob")], `${ad}.pdf`, { type: "application/pdf" });
+    const url = URL.createObjectURL(file);
     if (sekme && !sekme.closed) sekme.location.href = url;
     else window.location.href = url; // popup engellendiyse aynı sekmede aç (geri ile dönülür)
   } catch {

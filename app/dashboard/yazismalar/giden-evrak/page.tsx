@@ -358,7 +358,7 @@ export default function GidenEvrakPage() {
       requestAnimationFrame(() => {
         // Masaüstü: window.print(); iOS: portal PDF'e çevrilip açılır (Safari'nin URL/tarih alt bilgisi
         // yalnız web sayfası yazdırmasında basılır, PDF'te basılmaz). Portal iş bitene kadar mount kalır.
-        evrakYazdir().finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
+        evrakYazdir(`${e.evrak_sayi_no ?? ""} ${e.konu ?? ""}`).finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
       });
     });
   }

@@ -154,7 +154,7 @@ export default function GelenEvrakPage() {
     flushSync(() => { setPrintEvrakRef(e); });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        evrakYazdir().finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
+        evrakYazdir(`${e.evrak_sayi_no ?? ""} ${e.konu ?? ""}`).finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
       });
     });
   }
