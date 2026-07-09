@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -73,6 +73,23 @@ function formatSure(sn: number | null): string {
 function formatKm(v: number | null): string {
   if (v == null) return "—";
   return v.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+}
+
+// Tanımlamalar ayarlarının imza alanları — SABİT sıra. ayarImza hem yüklemede (getArventoAyarlar
+// dönüşü) hem kaydetme kontrolünde kullanılır; alan eklerken buraya da ekle (yoksa o alan
+// karşılaştırmaya girmez ve değişikliği kaydedilmez sanılır).
+const AYAR_ALANLARI = [
+  "kmEsik", "mukerrerDk", "mukerrerYaricap", "canliYenilemeSn", "raporCekmeDk",
+  "damperSyncBasSaat", "damperSyncBitSaat", "damperSyncPeriyotDk",
+  "ekskavatorNoktaDk", "ekskavatorBasSaat", "ekskavatorBitSaat",
+  "guzergahTekrar", "tekrarPencereSaat", "gridMesafe", "transitHiz",
+  "sermeGuzergahTekrar", "sermeTekrarPencereSaat", "sermeGridMesafe", "sermeTransitHiz",
+  "silindirTekrar", "reglajKalinlik", "sermeKalinlik", "silindirKalinlik", "kamyonIziKalinlik",
+  "reglajRenk", "sermeRenk", "silindirRenk", "kamyonIziRenk",
+  "ocakLat", "ocakLng", "ocakYaricap",
+] as const;
+function ayarImza(o: Record<string, unknown>): string {
+  return AYAR_ALANLARI.map((k) => `${k}=${o[k] ?? ""}`).join("|");
 }
 
 // Bugün (TR saati) — YYYY-MM-DD
@@ -173,18 +190,38 @@ export default function ArventoRaporPage() {
   // Ekrandaki verilerin en son tazelendiği an (haritalarda "Son güncelleme" olarak gösterilir)
   const [veriGuncelleme, setVeriGuncelleme] = useState<Date | null>(null);
 
-  // Aktif sekmeyi F5/yenileme arası KORU: mount'ta localStorage'dan oku, her değişimde yaz.
-  // Böylece Stabilize'dayken yenileyince yine Stabilize'da kalır (varsayılana atmaz).
+  // Aktif sekme + tarih aralığı URL'de taşınır (?sekme=guzergah&bas=...&bitis=...) → F5 sonrası aynı
+  // görünüme dönülür ve "şu haritaya bak" diye link paylaşılabilir. Mount önceliği:
+  // URL parametresi > localStorage (eski davranış) > varsayılan.
+  const urlHazirRef = useRef(false); // mount'taki ilk render, URL paramlarını varsayılanlarla ezmesin
   useEffect(() => {
+    const gecerli = ["calisma", "ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu", "tanimlamalar"];
     try {
-      const k = localStorage.getItem("arventoAktifSekme");
-      const gecerli = ["calisma", "ismakine", "guzergah", "genel", "serme", "sikistirma", "tumu", "tanimlamalar"];
-      if (k && gecerli.includes(k)) setAktifSekme(k as typeof aktifSekme);
-    } catch { /* localStorage yoksa yoksay */ }
+      const p = new URLSearchParams(window.location.search);
+      const sekme = p.get("sekme");
+      const bas = p.get("bas"), bit = p.get("bitis");
+      const tarihMi = (s: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      if (sekme && gecerli.includes(sekme)) setAktifSekme(sekme as typeof aktifSekme);
+      else {
+        const k = localStorage.getItem("arventoAktifSekme");
+        if (k && gecerli.includes(k)) setAktifSekme(k as typeof aktifSekme);
+      }
+      if (tarihMi(bas) && tarihMi(bit) && bas <= bit) { setBaslangicInput(bas); setBitisInput(bit); }
+    } catch { /* URL/localStorage yoksa yoksay */ }
+    const t = setTimeout(() => { urlHazirRef.current = true; }, 0); // URL yazımı bir tur ertele
+    return () => clearTimeout(t);
   }, []);
   useEffect(() => {
     try { localStorage.setItem("arventoAktifSekme", aktifSekme); } catch { /* yoksay */ }
-  }, [aktifSekme]);
+    if (!urlHazirRef.current) return;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("sekme", aktifSekme);
+      if (baslangic) u.searchParams.set("bas", baslangic);
+      if (bitis) u.searchParams.set("bitis", bitis);
+      window.history.replaceState(null, "", u); // navigasyon/scroll tetiklemeden adres çubuğunu güncelle
+    } catch { /* yoksay */ }
+  }, [aktifSekme, baslangic, bitis]);
   // Tanımlamalar eşikleri — ORTAK (kullanıcı bazlı DEĞİL): DB'den yüklenir, herkes aynı değeri görür.
   // Sadece "düzenle" yetkisi olan değiştirebilir (aşağıdaki kaydetme effect'i yetkiyle korunur).
   const [mukerrerDk, setMukerrerDk] = useState<number>(0);     // yanlış (art arda) damper eşiği (dk)
@@ -224,6 +261,9 @@ export default function ArventoRaporPage() {
   const [ocakYaricap, setOcakYaricap] = useState<number>(150);
   const [ayarYuklendi, setAyarYuklendi] = useState(false);     // ilk DB yüklemesi tamamlandı mı
   const sonAyarRef = useRef<string>("");                       // son kaydedilen/yüklenen snapshot (gereksiz yazmayı önler)
+  // Ayar imzası — SABİT alan sırasıyla üretilir ve yükleme/kaydetme karşılaştırmasının İKİSİ de bunu
+  // kullanır. (Önceki JSON.stringify yaklaşımı alan sırasına duyarlıydı: yüklenen nesne ile buradaki
+  // literal farklı sırada dizilince imzalar hiç eşleşmiyor, her açılışta gereksiz DB yazımı oluyordu.)
 
   // İlk açılışta ortak ayarları DB'den çek
   useEffect(() => {
@@ -260,11 +300,19 @@ export default function ArventoRaporPage() {
         setOcakLat(a.ocakLat);
         setOcakLng(a.ocakLng);
         setOcakYaricap(a.ocakYaricap);
-        sonAyarRef.current = JSON.stringify(a); // yüklenen değeri "kaydedilmiş" say → geri yazma olmaz
+        sonAyarRef.current = ayarImza(a as unknown as Record<string, unknown>); // yüklenen değeri "kaydedilmiş" say → geri yazma olmaz
       })
       .catch(() => { /* tablo yoksa varsayılanlarla devam */ })
       .finally(() => setAyarYuklendi(true));
   }, []);
+
+  // Tanımlamalar'da kısa süreli "✓ kaydedildi" rozeti (kaydetme sessizdi; kullanıcıya görsel onay)
+  const [ayarKaydedildi, setAyarKaydedildi] = useState(false);
+  useEffect(() => {
+    if (!ayarKaydedildi) return;
+    const t = setTimeout(() => setAyarKaydedildi(false), 2500);
+    return () => clearTimeout(t);
+  }, [ayarKaydedildi]);
 
   // Kullanıcı bir eşiği/kalınlığı DEĞİŞTİRİNCE DB'ye yaz — sadece düzenleme yetkisi olan + ilk yükleme bitmişken.
   // Yüklenen değerle aynıysa yazma (mount'ta gereksiz istek/hata olmasın).
@@ -272,10 +320,10 @@ export default function ArventoRaporPage() {
     if (!ayarYuklendi || !yDuzenle) return;
     // ocak alanları snapshot bütünlüğü için dahil; setArventoAyarlar bunları YAZMAZ (ocak ayrı kaydedilir).
     const guncel = { kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBasSaat: damperSyncBas, damperSyncBitSaat: damperSyncBit, damperSyncPeriyotDk: damperSyncPeriyot, ekskavatorNoktaDk, ekskavatorBasSaat: ekskavatorBas, ekskavatorBitSaat: ekskavatorBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, sermeGuzergahTekrar, sermeTekrarPencereSaat: sermeTekrarPencere, sermeGridMesafe, sermeTransitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap };
-    const snapshot = JSON.stringify(guncel);
+    const snapshot = ayarImza(guncel);
     if (snapshot === sonAyarRef.current) return;
     setArventoAyarlar(guncel)
-      .then(() => { sonAyarRef.current = snapshot; })
+      .then(() => { sonAyarRef.current = snapshot; setAyarKaydedildi(true); })
       .catch((err) => { toast.error(`Ayar kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); });
   }, [kmEsik, mukerrerDk, mukerrerYaricap, canliYenilemeSn, raporCekmeDk, damperSyncBas, damperSyncBit, damperSyncPeriyot, ekskavatorNoktaDk, ekskavatorBas, ekskavatorBit, guzergahTekrar, tekrarPencereSaat, gridMesafe, transitHiz, sermeGuzergahTekrar, sermeTekrarPencere, sermeGridMesafe, sermeTransitHiz, silindirTekrar, reglajKalinlik, sermeKalinlik, silindirKalinlik, kamyonIziKalinlik, reglajRenk, sermeRenk, silindirRenk, kamyonIziRenk, ocakLat, ocakLng, ocakYaricap, ayarYuklendi, yDuzenle]);
 
@@ -476,27 +524,46 @@ export default function ArventoRaporPage() {
   // "Son güncelleme" = RAPOR verisinin (km/çalışma/damper) DB'ye en son yazıldığı an (canlı konum DEĞİL).
   useEffect(() => {
     let iptal = false;
-    const tazeleGuncelleme = async () => {
-      try { const t = await getArventoRaporSonGuncelleme(baslangic, bitis); if (!iptal) setVeriGuncelleme(t); }
-      catch { /* sessiz — eski değeri koru */ }
+    // İMZA KAPISI: tick'te önce 2 UCUZ sorgu (rapor + güzergah son yazım anı) atılır; ikisi de
+    // DEĞİŞMEDİYSE guzergahRefresh artırılmaz → ne sayfadaki filo GPS fetch'i ne harita
+    // bileşenlerinin kendi refetch'i çalışır. Veri günde birkaç kez değiştiği için tick'lerin büyük
+    // çoğunluğu artık sıfıra yakın maliyetli. (İlk çağrı yalnız imzayı kaydeder — mount'taki
+    // yüklemeler zaten güncel veriyle çalıştı, fazladan tam tazeleme tetiklenmesin.)
+    let sonImza: string | null = null; // effect-yerel → tarih aralığı değişince otomatik sıfırlanır
+    const tazele = async () => {
+      try {
+        const [raporT, guzT] = await Promise.all([
+          getArventoRaporSonGuncelleme(baslangic, bitis),
+          getGuzergahSonYazim(baslangic, bitis),
+        ]);
+        if (iptal) return;
+        // "Son güncelleme" göstergesi: değer aynıysa eski referansı koru (gereksiz re-render olmasın)
+        setVeriGuncelleme((prev) => ((prev?.getTime() ?? null) === (raporT?.getTime() ?? null) ? prev : raporT));
+        const imza = `${raporT?.getTime() ?? ""}|${guzT ?? ""}`;
+        const ilk = sonImza === null;
+        if (!ilk && imza !== sonImza) setGuzergahRefresh((v) => v + 1);
+        sonImza = imza;
+      } catch { /* sessiz — imza alınamazsa bir sonraki tick yeniden dener */ }
     };
-    tazeleGuncelleme(); // ilk gösterim
+    tazele(); // ilk gösterim (yalnız imza kaydı + "Son güncelleme")
     const sn = Math.max(20, canliYenilemeSn || 45);
     const id = setInterval(() => {
-      if (document.hidden) return; // gizli sekmede rakam tazeleme boşa Supabase sorgusu — atlansın
-      setGuzergahRefresh((v) => v + 1);
-      tazeleGuncelleme();
+      if (document.hidden) return; // gizli sekmede boşa sorgu atma
+      tazele();
     }, sn * 1000);
-    // Sekmeye geri dönüldüğünde rakamları hemen tazele.
-    const gorunum = () => { if (!document.hidden) { setGuzergahRefresh((v) => v + 1); tazeleGuncelleme(); } };
+    // Sekmeye geri dönüldüğünde hemen kontrol et (değiştiyse tazelenir).
+    const gorunum = () => { if (!document.hidden) tazele(); };
     document.addEventListener("visibilitychange", gorunum);
     return () => { iptal = true; clearInterval(id); document.removeEventListener("visibilitychange", gorunum); };
   }, [canliYenilemeSn, baslangic, bitis]);
 
-  // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.
+  // Ham günlük kayıtlar ("Gen. Ort" kolonu) — tek kullanım yeri Araç Çalışma Raporu sekmesi.
+  // Tüm tarih geçmişini (100 bin satıra kadar) indirdiği için diğer sekmelerde çekmek israftı →
+  // yalnız bu sekme açılınca ve daha önce inmemişse bir kez çek.
   useEffect(() => {
+    if (aktifSekme !== "calisma" || hamKayitlar.length > 0) return;
     getArventoHamKayitlar().then(setHamKayitlar).catch(() => { /* sessiz */ });
-  }, []);
+  }, [aktifSekme, hamKayitlar.length]);
 
   // Mailden çek — inbox'taki Arvento rapor mailini anında işle (cron'u beklemeden)
   async function maildenCek() {
@@ -611,7 +678,11 @@ export default function ArventoRaporPage() {
     // Tarih değişti → eski güzergahı HEMEN temizle (yoksa türetilmiş ~ilk/son kontak + çalışma ~10 sn eski kalır).
     if (guzYapiRef.current !== yapi) { guzYapiRef.current = yapi; setGuzergahlar([]); }
     let iptal = false; // deps değişince eski .then yok sayılır (stale-overwrite koruması)
-    getGuzergahByRange(baslangic, bitis).then((g) => { if (!iptal) setGuzergahlar(g); }).catch(() => { if (!iptal) setGuzergahlar([]); });
+    // Veri AYNIYSA eski dizi referansını koru → ilkSonKontakMap gibi ağır türetmeler ve harita
+    // katmanları boş yere yeniden hesaplanmaz/kurulmaz (imza: satır kimlikleri + nokta sayıları).
+    getGuzergahByRange(baslangic, bitis)
+      .then((g) => { if (!iptal) setGuzergahlar((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g)); })
+      .catch(() => { if (!iptal) setGuzergahlar([]); });
     return () => { iptal = true; };
   }, [baslangic, bitis, guzergahRefresh]);
   // Gün bazlı ocak (haritada görünen çember) — ocaktaki iş makinelerini saptamak için.
@@ -1146,7 +1217,10 @@ export default function ArventoRaporPage() {
         <div className="space-y-4">
         <div className="bg-white rounded-lg border p-4 space-y-4">
           <div>
-            <h3 className="font-bold text-sm text-[#1E3A5F] mb-1">Tanımlamalar</h3>
+            <h3 className="font-bold text-sm text-[#1E3A5F] mb-1 flex items-center gap-2">
+              Tanımlamalar
+              {ayarKaydedildi && <span className="text-[11px] font-medium text-emerald-600 animate-pulse">✓ kaydedildi</span>}
+            </h3>
             <p className="text-xs text-gray-400">
               Araç/makine bazlı eşik ve norm değerleri burada tanımlanacak (damper indirme sayısı,
               araç km, makine çalışma saati). Veri modeli netleşince doldurulacak — şimdilik taslak.

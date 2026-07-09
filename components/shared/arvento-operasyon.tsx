@@ -7,7 +7,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, damperNoktalariRange } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, damperNoktalariRange, oncekiDamperCek, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
+import { aracRengi } from "@/lib/arvento/arac-renk";
+import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { kmlRenk, yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
@@ -16,7 +18,6 @@ import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, t
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type OperasyonTip, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { createClient } from "@/lib/supabase/client";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -60,12 +61,7 @@ function altUstParalel(seg: [number, number][], offsetM: number): { ust: [number
   }
   return { ust, alt };
 }
-// Her silindir aracına ayırt edici sabit renk (Stabilize kamyon paletiyle aynı).
-const ARAC_RENKLERI = [
-  "#ef4444", "#06b6d4", "#84cc16", "#a855f7", "#f59e0b", "#ec4899",
-  "#10b981", "#f97316", "#3b82f6", "#d946ef", "#14b8a6", "#eab308",
-  "#8b5cf6", "#22c55e", "#f43f5e", "#0ea5e9",
-];
+// Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
 // saniye → "2sa 15dk" / "0"
 function formatSure(sn: number): string {
@@ -211,7 +207,10 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         // Özet (sınıflı sezon damperi) doluysa ham sezon scan'ini ATLA (havuzu yorma); yalnız özet boşsa çek.
         const sezonHam = (oz as OzetDamper[]).length > 0 ? [] : await damperNoktalariRange(SEZON_BAS, bitis).catch(() => []);
         if (benimNo !== yukNoRef.current) return;
-        setTumGuzergah(g); setRaporlar(r); setOzetDampers(oz as OzetDamper[]); setSezonHamDamper(sezonHam);
+        // Veri AYNIYSA eski referansları koru → periyodik tazelemede serme ızgarası/omurga/harita boş yere kurulmaz.
+        setTumGuzergah((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g));
+        setRaporlar((prev) => (raporVeriImza(prev) === raporVeriImza(r) ? prev : r));
+        setOzetDampers(oz as OzetDamper[]); setSezonHamDamper(sezonHam);
       } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -243,12 +242,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // PASİF silindirler — gün değişse de KORUNUR; F5'te sıfırlanır (modül-seviyesi store).
   const [pasifSilindirler, setPasifSilindirler] = usePasifSecim(`arvento-pasif-silindir-${operasyon}`);
   const seciliSilindirler = useMemo(() => new Set(silindirChipler.map((k) => k.plaka).filter((p) => !pasifSilindirler.has(p))), [silindirChipler, pasifSilindirler]);
-  const silindirRenk = useMemo(() => {
-    const m = new Map<string, string>();
-    silindirChipler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
-    return m;
-  }, [silindirChipler]);
-  const silindirRenkAl = useCallback((p: string) => silindirRenk.get(p) ?? silindirRenkV, [silindirRenk, silindirRenkV]);
+  const silindirRenkAl = useCallback((p: string) => aracRengi(p), []); // merkezi renk — her sekmede aynı
   const secilenSilindirler = useMemo(() => silindirler.filter((k) => seciliSilindirler.has(k.plaka)), [silindirler, seciliSilindirler]);
   const silindirToggle = (p: string) => setPasifSilindirler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); // pasife ekle/çıkar (gün değişse korunur)
 
@@ -256,12 +250,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // PASİF greyderler — gün değişse de KORUNUR; F5'te sıfırlanır (modül-seviyesi store).
   const [pasifGreyderler, setPasifGreyderler] = usePasifSecim(`arvento-pasif-greyder-${operasyon}`);
   const seciliGreyderler = useMemo(() => new Set(greyderler.map((k) => k.plaka).filter((p) => !pasifGreyderler.has(p))), [greyderler, pasifGreyderler]);
-  const greyderRenk = useMemo(() => {
-    const m = new Map<string, string>();
-    greyderler.forEach((k, i) => m.set(k.plaka, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
-    return m;
-  }, [greyderler]);
-  const greyderRenkAl = useCallback((p: string) => greyderRenk.get(p) ?? sermeRenkV, [greyderRenk, sermeRenkV]);
+  const greyderRenkAl = useCallback((p: string) => aracRengi(p), []); // merkezi renk — her sekmede aynı
   const greyderToggle = (p: string) => setPasifGreyderler((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); // pasife ekle/çıkar (gün değişse korunur)
 
   // Chip kaynağı: serme → greyderler, sıkıştırma → silindirChipler (tek tip normalize liste)
@@ -499,29 +488,13 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     // loading: yükleme bitince (harita div'i DOM'a girince) kurulum çalışsın. Periyodik tazelemede değişmez.
   }, [gorunumRef, loading]);
 
-  // SERME geçmiş damper taraması: SEZON BAŞINDAN (sermeBas) önceki damperleri TARİHLİ çek (genelde boş —
-  // sezon içi damperler raporlar'dan gelir). Aralık içi damperler raporlar'dan → damperHucreTarih memo'da birleşir.
+  // SERME geçmiş damper taraması: SEZON BAŞINDAN (sermeBas) önceki damperler (genelde boş — sezon içi
+  // damperler raporlar'dan gelir). oncekiDamperCek KULLANILIR: deterministik sıralı sayfalama + oturum
+  // cache'i (geçmiş değişmez → tabloyu bir kez tarar; eskiden buradaki kopya her seferinde tarıyordu).
   useEffect(() => {
     if (!sermeMi || !sermeBas) { setOncekiDamper([]); return; }
     let iptal = false;
-    (async () => {
-      const sb = createClient();
-      const out: { lat: number; lng: number; dt: string }[] = [];
-      const PARCA = 1000; let offset = 0;
-      while (!iptal) {
-        const { data, error } = await sb.from("arac_arvento_rapor").select("rapor_tarihi, damper_olaylar").lt("rapor_tarihi", sermeBas).range(offset, offset + PARCA - 1);
-        if (error || !data) break;
-        for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
-          for (const d of (r.damper_olaylar ?? [])) {
-            if (d?.lat == null || d?.lng == null) continue;
-            out.push({ lat: d.lat, lng: d.lng, dt: `${r.rapor_tarihi} ${d.saat ?? "00:00:00"}` });
-          }
-        }
-        if (data.length < PARCA) break;
-        offset += PARCA; if (offset > 300000) break;
-      }
-      if (!iptal) setOncekiDamper(out);
-    })();
+    oncekiDamperCek(sermeBas).then((out) => { if (!iptal) setOncekiDamper(out); }).catch(() => { if (!iptal) setOncekiDamper([]); });
     return () => { iptal = true; };
   }, [sermeMi, sermeBas]);
 
@@ -655,7 +628,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     toast.success(`${def.ad} KML olarak indirildi.`, { duration: toastSuresi() });
   }
 
-  if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
+  if (loading) return <HaritaIskelet />;
   if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">

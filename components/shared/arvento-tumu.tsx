@@ -3,10 +3,12 @@
 // üst üste gösterir. Renkli lejant ile hangi rengin hangi operasyon olduğu belirtilir.
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka } from "@/lib/supabase/queries/arvento";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
+import { aracRengi } from "@/lib/arvento/arac-renk";
+import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
@@ -33,12 +35,7 @@ function formatAralik(bas: string, bitis: string): string {
   return bas === bitis ? formatTarih(bas) : `${formatTarih(bas)} – ${formatTarih(bitis)}`;
 }
 
-// Her araca/makineye sabit ayrı renk (diğer sekmelerdeki ARAC_RENKLERI ile aynı palet).
-const ARAC_RENKLERI = [
-  "#ef4444", "#06b6d4", "#84cc16", "#a855f7", "#f59e0b", "#ec4899",
-  "#10b981", "#f97316", "#3b82f6", "#d946ef", "#14b8a6", "#eab308",
-  "#8b5cf6", "#22c55e", "#f43f5e", "#0ea5e9",
-];
+// Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
 export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
@@ -87,14 +84,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     }
     return out;
   }, [raporlar, guzergahlar, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif]);
-  // Her araç/makineye SABİT ayrı renk (plaka bazında) — operasyon rengi yerine (diğer sekmeler gibi).
-  const plakaRenk = useMemo(() => {
-    const plakalar = [...new Set([...guzergahBirlesik.map((k) => k.plaka), ...damperKoordlu.map((o) => o.plaka)])].sort();
-    const m = new Map<string, string>();
-    plakalar.forEach((p, i) => m.set(p, ARAC_RENKLERI[i % ARAC_RENKLERI.length]));
-    return m;
-  }, [guzergahBirlesik, damperKoordlu]);
-  const renkAl = (p: string) => plakaRenk.get(p) ?? "#2563eb";
+  // Her araç/makineye SABİT ayrı renk — merkezi atama (tüm sekmelerde aynı plaka = aynı renk).
+  const renkAl = useCallback((p: string) => aracRengi(p), []);
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm
@@ -119,15 +110,33 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri gelene kadar eski rakamlar görünür) + yükleniyor göster.
     if (yapisal) { yapiRef.current = yapi; setLoading(true); setGuzergahlar([]); setRaporlar([]); }
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
-    Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)])
-      .then(([g, r]) => { if (benimNo === yukNoRef.current) { setGuzergahlar(g); setRaporlar(r); } }) // eski istek → yok say
-      .catch((err) => {
+    (async () => {
+      try {
+        // KISITLI kullanıcıda GPS'i SORGUDA daralt: önce hafif rapor iner, izinli plakalar süzülür, ağır
+        // rota YALNIZ onlar için çekilir (eskiden tüm filo inip client'ta atılıyordu). Yönetici
+        // (izinSet yok) için eski paralel yol: Tümü zaten her çalışan aracı gösterir, daraltma olmaz.
+        let g: AracArventoGuzergah[], r: AracArventoRapor[];
+        if (izinSet) {
+          r = await getArventoRaporByRange(bas, bitis);
+          if (benimNo !== yukNoRef.current) return;
+          const plakalar = [...new Set(r.filter((x) => izinSet.has(plakaNorm(x.plaka))).map((x) => x.plaka))];
+          g = plakalar.length ? await getGuzergahByRange(bas, bitis, plakalar) : [];
+        } else {
+          [g, r] = await Promise.all([getGuzergahByRange(bas, bitis), getArventoRaporByRange(bas, bitis)]);
+        }
+        if (benimNo !== yukNoRef.current) return; // eski istek → yok say
+        // Veri AYNIYSA eski referansları koru → damper sınıflama + omurga + Leaflet katmanı boş yere kurulmaz.
+        setGuzergahlar((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g));
+        setRaporlar((prev) => (raporVeriImza(prev) === raporVeriImza(r) ? prev : r));
+      } catch (err) {
         if (benimNo !== yukNoRef.current) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("does not exist")) toast.error("Tablo yok — SQL'i çalıştırın.", { duration: toastSuresi() });
-      })
-      .finally(() => { if (benimNo === yukNoRef.current) setLoading(false); }); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
-  }, [bas, bitis, refreshKey]);
+      } finally {
+        if (benimNo === yukNoRef.current) setLoading(false); // en güncel istek → loading kapat (StrictMode çift-çalışmada da)
+      }
+    })();
+  }, [bas, bitis, refreshKey, izinSet]);
 
   const atananSekmeler = useMemo(() => atananSekmeleriHesapla(sekmeMap), [sekmeMap]);
 
@@ -234,7 +243,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, reglajKal, silindirKal, plakaRenk, sekmeMap, atananSekmeler, gorunumRef]);
+  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, transitHiz, reglajKal, silindirKal, renkAl, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   async function exportKML() {
@@ -289,7 +298,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     toast.success("Tümü KML olarak indirildi.", { duration: toastSuresi() });
   }
 
-  if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
+  if (loading) return <HaritaIskelet />;
   if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">

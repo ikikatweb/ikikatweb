@@ -7,7 +7,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect } from "@/lib/supabase/queries/arvento";
+import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
+import { aracRengi } from "@/lib/arvento/arac-renk";
+import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
@@ -101,27 +103,7 @@ function ocakMakineIkonHtml(): string {
   </div>`;
 }
 
-// Her kamyona ayırt edici sabit renk — uydu görüntüsünde okunur, parlak tonlar.
-// Sıralama hue olarak en uzaktan başlar: az sayıda kamyonda bile renkler net ayrılsın
-// (örn. 2 kamyon → kırmızı + camgöbeği). Reglaj çizgisi mavi olduğundan onun tonundan kaçınıldı.
-const KAMYON_RENKLERI = [
-  "#ef4444", // kırmızı
-  "#06b6d4", // camgöbeği
-  "#84cc16", // fıstık yeşili
-  "#a855f7", // mor
-  "#f59e0b", // amber
-  "#ec4899", // pembe
-  "#10b981", // zümrüt
-  "#f97316", // turuncu
-  "#3b82f6", // mavi
-  "#d946ef", // fuşya
-  "#14b8a6", // turkuaz
-  "#eab308", // sarı
-  "#8b5cf6", // menekşe
-  "#22c55e", // yeşil
-  "#f43f5e", // gül
-  "#0ea5e9", // gök
-];
+// Kamyon/araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
 // ÖZET MODU: damper sınıflaması SUNUCUDA önceden hesaplanıp (arvento_harita_ozet) küçük JSON olarak çekilir
 // → 7,8 MB kamyon GPS inmez, tarayıcıda sınıflama yapılmaz (aylık aralık uçar). Sınıflama mantığı birebir
@@ -204,7 +186,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           if (benimNo !== yukNoRef.current) return;
           // KAMYON (damper) kaynağı rapordan gelir → HEMEN yaz. Greyder rota / özet fetch'i (geniş aralıkta ağır)
           // patlasa bile damper listesi/haritası kaybolmasın (önceden Promise.all reddi setRaporlar'ı atlıyordu → "veri yok").
-          setRaporlar(r);
+          // Veri AYNIYSA eski referansı koru → periyodik tazelemede damper sınıflama zinciri boş yere koşmaz.
+          setRaporlar((prev) => (raporVeriImza(prev) === raporVeriImza(r) ? prev : r));
           // KAMYON İZİ: kısa aralıkta (≤7 gün) kamyon rotasını da çek → tıklanabilir iz (aracın gittiği yol).
           // Geniş aralıkta (ay) çekme (8,5 MB → yavaş). Damperler HER durumda özetten gelir; rota yalnız iz için.
           const gunFark = Math.round((new Date(bitis + "T00:00:00").getTime() - new Date(bas + "T00:00:00").getTime()) / 86400000) + 1;
@@ -224,7 +207,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             ozetPromise,
           ]);
           if (benimNo !== yukNoRef.current) return;
-          if (gRes.status === "fulfilled") setTumGuzergah(gRes.value);
+          if (gRes.status === "fulfilled") setTumGuzergah((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(gRes.value) ? prev : gRes.value));
           if (ozRes.status === "fulfilled") {
             const ozetRes = ozRes.value;
             setOzetDampers(Array.isArray(ozetRes?.dampers) ? (ozetRes.dampers as OzetDamper[]) : []);
@@ -240,7 +223,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
             .map((x) => x.plaka))];
           const g = await getGuzergahByRange(bas, bitis, ilgili);
           if (benimNo !== yukNoRef.current) return;
-          setTumGuzergah(g); setRaporlar(r);
+          setTumGuzergah((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g));
+          setRaporlar((prev) => (raporVeriImza(prev) === raporVeriImza(r) ? prev : r));
         }
       } catch (err) {
         if (benimNo !== yukNoRef.current) return;
@@ -451,13 +435,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return () => { try { delete (window as unknown as { __damperSinifSet?: unknown }).__damperSinifSet; } catch { /* yoksay */ } };
   }, []);
 
-  // Her kamyona sabit renk ata — chip ↔ harita ↔ liste hep aynı renk
-  const plakaRenk = useMemo(() => {
-    const m = new Map<string, string>();
-    kamyonlar.forEach((r, i) => m.set(r.plaka, KAMYON_RENKLERI[i % KAMYON_RENKLERI.length]));
-    return m;
-  }, [kamyonlar]);
-  const renkAl = useCallback((plaka: string) => plakaRenk.get(plaka) ?? "#f97316", [plakaRenk]);
+  // Her kamyona sabit renk — merkezi atama: chip ↔ harita ↔ liste ↔ DİĞER SEKMELER hep aynı renk
+  const renkAl = useCallback((plaka: string) => aracRengi(plaka), []);
 
   // Araç KÜMESİ değişince (tarih/yeni araç) varsayılan: tüm kamyonlar seçili. Periyodik tazelemede
   // aynı plakalar gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, redraw olmasın).
@@ -935,7 +914,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     toast.success("Stabilize KML olarak indirildi.", { duration: toastSuresi() });
   }
 
-  if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
+  if (loading) return <HaritaIskelet chip={7} />;
   if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">

@@ -238,8 +238,13 @@ export async function getArventoRaporByRange(bas: string, bitis: string): Promis
 
 // Aralık ÖNCESİ tüm damperler (serme "bu yola daha önce damper döküldü mü?" geçmişi). Serme + reglaj
 // ayıklamada kullanılır (Serme sekmesi / Reglaj sekmesi / dashboard hepsi AYNI kaynağı kullansın diye ortak).
+// Geçmiş (aralık öncesi) damperler DEĞİŞMEZ → oturum boyu modül cache'i: aynı `bas` için tablo
+// taraması yalnız İLK çağrıda yapılır; periyodik tazeleme (refreshKey) tekrarında bedava döner.
+const oncekiDamperCache = new Map<string, { lat: number; lng: number; dt: string }[]>();
 export async function oncekiDamperCek(bas: string): Promise<{ lat: number; lng: number; dt: string }[]> {
   if (!bas) return [];
+  const ezber = oncekiDamperCache.get(bas);
+  if (ezber) return ezber;
   const supabase = getSupabase();
   const out: { lat: number; lng: number; dt: string }[] = [];
   const PARCA = 1000;
@@ -249,8 +254,10 @@ export async function oncekiDamperCek(bas: string): Promise<{ lat: number; lng: 
       .from("arac_arvento_rapor")
       .select("rapor_tarihi, damper_olaylar")
       .lt("rapor_tarihi", bas)
+      .order("rapor_tarihi", { ascending: true })
+      .order("id", { ascending: true }) // deterministik sayfalama: sırasız range satır atlar/tekrarlar
       .range(offset, offset + PARCA - 1);
-    if (error || !data) break;
+    if (error || !data) { if (error) return out; break; } // hata → cache'leme (eksik sonuç kalıcı olmasın)
     for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
       for (const d of (r.damper_olaylar ?? [])) {
         if (d?.lat == null || d?.lng == null) continue;
@@ -261,6 +268,7 @@ export async function oncekiDamperCek(bas: string): Promise<{ lat: number; lng: 
     offset += PARCA;
     if (offset > 300000) break;
   }
+  oncekiDamperCache.set(bas, out);
   return out;
 }
 
@@ -278,6 +286,8 @@ export async function damperNoktalariRange(bas: string, bitis: string): Promise<
       .select("plaka, damper_olaylar")
       .gte("rapor_tarihi", bas)
       .lte("rapor_tarihi", bitis)
+      .order("rapor_tarihi", { ascending: true })
+      .order("id", { ascending: true }) // deterministik sayfalama
       .range(offset, offset + PARCA - 1);
     if (error || !data) break;
     for (const r of data as { plaka: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null; adres?: string | null }[] | null }[]) {
@@ -291,6 +301,42 @@ export async function damperNoktalariRange(bas: string, bitis: string): Promise<
     if (offset > 300000) break;
   }
   return out;
+}
+
+// ===== Veri imzaları — "değişmediyse indirme / state'i ezme" kapıları =====
+// Periyodik tazeleme (refreshKey) her tick'te MB'larca GPS'i yeniden indirip AYNI veriyi yeni dizi
+// referansıyla state'e yazıyordu → tüm memo zinciri + Leaflet katmanı boş yere yeniden kuruluyordu.
+// Bu imzalar iki katmanda kullanılır:
+//  1) getGuzergahSonYazim: tick'te 1 satırlık ucuz sorgu — son yazım değişmediyse fetch HİÇ yapılmaz.
+//  2) guzergahVeriImza / raporVeriImza: indirilen dizinin hafif özeti — öncekiyle aynıysa eski
+//     referans korunur (setState(prev => aynıysa prev)) → re-render/yeniden çizim olmaz.
+
+// Güzergah tablosunun bu aralıktaki EN SON yazım anı (ISO string) — ucuz tazelik kapısı.
+export async function getGuzergahSonYazim(bas: string, bitis: string): Promise<string | null> {
+  if (!bas || !bitis) return null;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_arvento_guzergah")
+    .select("created_at")
+    .gte("rapor_tarihi", bas)
+    .lte("rapor_tarihi", bitis)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.created_at) return null;
+  return String(data.created_at);
+}
+
+// Güzergah dizisinin hafif imzası: satır kimlikleri + nokta sayısı (gün içinde rota büyüdükçe değişir).
+export function guzergahVeriImza(rows: AracArventoGuzergah[]): string {
+  return rows.map((r) => `${r.plaka}|${r.rapor_tarihi}|${Array.isArray(r.noktalar) ? r.noktalar.length : 0}`).join(";");
+}
+
+// Rapor dizisinin hafif imzası: gösterime giren sayısal alanlar (değişince kartlar/tablolar tazelenmeli).
+export function raporVeriImza(rows: AracArventoRapor[]): string {
+  return rows.map((r) =>
+    `${r.plaka}|${r.rapor_tarihi}|${r.mesafe_km ?? ""}|${r.kontak_sn ?? ""}|${r.hareket_sn ?? ""}|${r.damper_sayisi ?? ""}|${r.ilk_kontak ?? ""}|${r.son_kontak ?? ""}|${Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0}`,
+  ).join(";");
 }
 
 // Rapor verisinin (km/çalışma/damper) bu tarih aralığında EN SON yazıldığı an.
