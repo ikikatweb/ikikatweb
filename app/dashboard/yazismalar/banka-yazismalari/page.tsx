@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma, createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { BankaYazismaWithRelations, Firma } from "@/lib/supabase/types";
@@ -270,8 +271,7 @@ export default function BankaYazismalariPage() {
     flushSync(() => {
       setPrintRef(y);
     });
-    window.print();
-    setTimeout(() => setPrintRef(null), 1000);
+    evrakYazdir().finally(() => setTimeout(() => setPrintRef(null), 500));
   }
 
   return (

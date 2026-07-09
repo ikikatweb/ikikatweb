@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak, createGidenEvrak, getGidenEvrakSayiNo } from "@/lib/supabase/queries/giden-evrak";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -355,8 +356,9 @@ export default function GidenEvrakPage() {
     // (hesaplaSehirOfset) doğru render edilmiş bounding box'lara erişebilsin.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        window.print();
-        setTimeout(() => setPrintEvrakRef(null), 1000);
+        // Masaüstü: window.print(); iOS: portal PDF'e çevrilip açılır (Safari'nin URL/tarih alt bilgisi
+        // yalnız web sayfası yazdırmasında basılır, PDF'te basılmaz). Portal iş bitene kadar mount kalır.
+        evrakYazdir().finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
       });
     });
   }

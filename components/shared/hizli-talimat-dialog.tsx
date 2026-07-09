@@ -26,6 +26,7 @@ import { Zap, Save, Plus, Eye, ArrowLeft, Printer } from "lucide-react";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import { formatKisiAdi } from "@/lib/utils/isim";
+import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import toast from "react-hot-toast";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
@@ -343,7 +344,7 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
                 <Button variant="ghost" size="sm" onClick={() => setOnIzleme(false)} className="text-gray-500">
                   <ArrowLeft size={16} className="mr-1" /> Düzenlemeye Dön
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <Button variant="outline" size="sm" onClick={() => evrakYazdir()}>
                   <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
                 </Button>
               </div>

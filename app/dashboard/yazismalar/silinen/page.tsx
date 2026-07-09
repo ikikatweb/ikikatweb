@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import {
   getSilinenGelenEvraklar,
   restoreGelenEvrak,
@@ -229,8 +230,7 @@ export default function SilinenPage() {
     flushSync(() => { setPrintKayit(k); });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        window.print();
-        setTimeout(() => setPrintKayit(null), 1000);
+        evrakYazdir().finally(() => setTimeout(() => setPrintKayit(null), 500));
       });
     });
   }

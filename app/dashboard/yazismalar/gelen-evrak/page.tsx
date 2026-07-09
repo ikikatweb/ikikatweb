@@ -6,6 +6,7 @@ import { createPortal, flushSync } from "react-dom";
 import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/gelen-evrak";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GelenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -148,13 +149,12 @@ export default function GelenEvrakPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Evrağı yazdırma önizlemesinde aç (portal + window.print).
+  // Evrağı yazdırma önizlemesinde aç (portal + evrakYazdir: masaüstü print / iOS PDF).
   function printEvrak(e: GelenEvrakWithRelations) {
     flushSync(() => { setPrintEvrakRef(e); });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        window.print();
-        setTimeout(() => setPrintEvrakRef(null), 1000);
+        evrakYazdir().finally(() => setTimeout(() => setPrintEvrakRef(null), 500));
       });
     });
   }
