@@ -502,10 +502,19 @@ thead th {
   }
 }
 
-/* Ekranda print-PORTAL (body'ye Portal ile mount edilen) görünmesin
-   .evrak-print-area class'ı form ön izlemede de kullanıldığı için ona dokunmuyoruz */
+/* Ekranda print-PORTAL (body'ye Portal ile mount edilen) görünmesin.
+   .evrak-print-area class'ı form ön izlemede de kullanıldığı için ona dokunmuyoruz.
+   ÖNEMLİ — display:none KULLANMA: display:none içerik HİÇ layout almaz; iOS Safari
+   window.print() anında önizleme fotoğrafını layout bitmeden çeker → İLK yazdırma BOŞ
+   çıkıyordu (telefon yatay-dikey çevrilince reflow olup görünüyordu). Ekran DIŞINA
+   taşı + visibility:hidden: kutular ekrandayken hesaplanır, ilk print'te içerik hazır. */
 @media screen {
   .evrak-print-portal {
-    display: none !important;
+    position: absolute !important;
+    left: -10000px !important;
+    top: 0 !important;
+    width: 210mm !important; /* A4 genişliği — print'teki satır kırılımıyla aynı layout */
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 }

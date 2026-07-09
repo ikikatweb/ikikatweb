@@ -37,7 +37,7 @@ function formatAralik(bas: string, bitis: string): string {
 
 // Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -52,6 +52,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const guzergahBirlesik = useMemo(() => birlestirGuzergahPlaka(guzergahlar), [guzergahlar]);
   const raporlar = useMemo(() => (izinSet ? raporlarHam.filter((k) => izinSet.has(plakaNorm(k.plaka))) : raporlarHam), [raporlarHam, izinSet]);
   const [loading, setLoading] = useState(true);
+  // Güzergah (hareket izi) çizgileri göster/gizle — damper + çalışma noktaları bundan etkilenmez.
+  const [guzergahGoster, setGuzergahGoster] = useState(true);
 
   // Damper noktaları — YALNIZ GERÇEK (Stabilize/Serme ile AYNI sınıflama): mükerrer + arıza ayıklanır,
   // manuel override uygulanır, gösterilen konum o saatteki DURMUŞ rota noktasına oturtulur. Tümü sekmesi
@@ -202,8 +204,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     const bounds: [number, number][] = [];
     // Çizgiler + damperler SVG üst pane'de → canvas yok → KML (alt) boşluklarda tıklanır; çizgi kesin tıklanır.
     const yolRenderer = L.svg({ pane: "opYolPane" });
-    // Güzergah çizgileri — sınıfa göre operasyon rengi/stili (plaka-bazında BİRLEŞİK → tek hat/araç)
-    guzergahBirlesik.forEach((k) => {
+    // Güzergah çizgileri — sınıfa göre operasyon rengi/stili (plaka-bazında BİRLEŞİK → tek hat/araç).
+    // "Güzergah çizgileri" düğmesiyle KAPATILABİLİR (damper + çalışma noktaları yine görünür).
+    if (guzergahGoster) guzergahBirlesik.forEach((k) => {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
@@ -233,6 +236,17 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b><br>Stabilize (gerçek damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
       bounds.push([o.lat as number, o.lng as number]);
     });
+    // EKSKAVATÖR ÇALIŞMA NOKTALARI — İş Makineleri sekmesindekiyle AYNI stil: İÇİ BOŞ HALKA (makine
+    // rengi kenar, saydam iç) → "burada çalıştı" izi. Tümü, tüm sekmelerin izlerini topladığı için burada da
+    // gösterilir; güzergah düğmesinden BAĞIMSIZ (hareket izi değil, yerinde çalışma izi).
+    for (const n of calismaNoktalari ?? []) {
+      if (n.lat == null || n.lng == null) continue;
+      if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue; // il-sınırı izni
+      const tarih = n.rapor_tarihi ? n.rapor_tarihi.split("-").reverse().join(".") : "";
+      L.circleMarker([n.lat, n.lng], { radius: 5, color: renkAl(n.plaka), weight: 2, fillColor: renkAl(n.plaka), fillOpacity: 0.15, renderer: yolRenderer })
+        .addTo(grup).bindPopup(`<b>🛠️ ${n.plaka}</b> · çalışma noktası (burada çalıştı)<br>${tarih}${n.saat ? " " + String(n.saat).slice(0, 5) : ""}`);
+      bounds.push([n.lat, n.lng]);
+    }
     // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
       if (k.lat != null && k.lng != null) bounds.push([k.lat, k.lng]);
@@ -243,7 +257,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, guzergahBirlesik, damperKoordlu, tekrarEsigi, silindirEsik, gridMesafe, transitHiz, reglajKal, silindirKal, renkAl, sekmeMap, atananSekmeler, gorunumRef]);
+  }, [haritaHazir, guzergahBirlesik, damperKoordlu, calismaNoktalari, izinSet, guzergahGoster, tekrarEsigi, silindirEsik, gridMesafe, transitHiz, reglajKal, silindirKal, renkAl, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   async function exportKML() {
@@ -274,6 +288,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     damperKoordlu.filter((o) => o.lat != null && o.lng != null).forEach((o) => {
       al(o.plaka).nokta.push(`<Placemark><name>${esc(o.plaka)} damper</name><description>${esc(o.saat ?? "")}</description><styleUrl>#${sidOf(o.plaka)}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`);
     });
+    // Ekskavatör çalışma noktaları — haritadakiyle aynı: makinenin kendi katmanına/rengine
+    for (const n of calismaNoktalari ?? []) {
+      if (n.lat == null || n.lng == null) continue;
+      if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue;
+      al(n.plaka).nokta.push(`<Placemark><name>${esc(n.plaka)} çalışma noktası</name><description>${esc(`${n.rapor_tarihi ?? ""} ${n.saat ?? ""}`.trim())}</description><styleUrl>#${sidOf(n.plaka)}</styleUrl><Point><coordinates>${n.lng.toFixed(6)},${n.lat.toFixed(6)},0</coordinates></Point></Placemark>`);
+    }
     let stiller = "", folders = "";
     for (const [plaka, e] of perMakine) {
       const renk = kmlRenk(renkAl(plaka));
@@ -326,6 +346,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
         )}
         <div className="flex flex-col gap-1.5 ml-auto">
+          {/* Güzergah (hareket izi) çizgilerini aç/kapat — damper + çalışma noktaları görünmeye devam eder */}
+          <button type="button" onClick={() => setGuzergahGoster((v) => !v)}
+            title="Araçların hareket ederken bıraktığı güzergah çizgilerini gizle/göster (damper ve çalışma noktaları etkilenmez)"
+            className={`h-9 px-2.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap ${guzergahGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
+            {guzergahGoster ? "Güzergahları gizle" : "Güzergahları göster"}
+          </button>
           {kmlIndir && (
             <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
               className="h-9 gap-1 text-xs">

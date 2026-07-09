@@ -933,12 +933,18 @@ export default function ArventoRaporPage() {
   }, [ocakMakineMap, kaliciOcak, kayitlar, plakaSantiye]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
-  // Ekskavatör çalışma noktaları (İş Makineleri haritasında nokta olarak) — yalnız ismakine sekmesi açıkken çek.
+  // Ekskavatör çalışma noktaları — İş Makineleri VE Tümü sekmelerinde gösterilir (Tümü "tüm izler"i
+  // toplar). ismakine: kendi plaka filtresiyle; Tümü: TÜM makinelerin noktaları (plaka filtresi yok —
+  // rapor satırı olmayan makinenin noktası da görünsün). Diğer sekmelerde çekilmez.
   const [ismakineNoktalar, setIsmakineNoktalar] = useState<MakineNokta[]>([]);
   useEffect(() => {
     let iptal = false;
-    if (aktifSekme !== "ismakine" || ismakinePlakalari.length === 0) { setIsmakineNoktalar([]); return; }
-    getMakineCalismaNoktalari(baslangic, bitis, ismakinePlakalari)
+    const gerekli = aktifSekme === "ismakine" ? (ismakinePlakalari.length > 0 ? ismakinePlakalari : null) : aktifSekme === "tumu" ? null : undefined;
+    if (gerekli === undefined || (aktifSekme === "ismakine" && !gerekli)) {
+      setIsmakineNoktalar((prev) => (prev.length ? [] : prev)); // boşsa referansı koru (gereksiz render olmasın)
+      return;
+    }
+    getMakineCalismaNoktalari(baslangic, bitis, gerekli)
       .then((n) => { if (!iptal) setIsmakineNoktalar(n); })
       .catch(() => { if (!iptal) setIsmakineNoktalar([]); });
     return () => { iptal = true; };
@@ -1211,7 +1217,7 @@ export default function ArventoRaporPage() {
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMap} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} calismaNoktalari={ismakineNoktalar} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">
