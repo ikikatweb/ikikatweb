@@ -374,15 +374,14 @@ thead th {
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
-  /* @page margin: 0 — BİLEREK sıfır. Tarayıcıların otomatik üst/alt bilgisi (URL, tarih, sayfa no)
-     @page kenar boşluğu ALANINA basılır; iOS Safari'de kapatma düğmesi yok → alan bırakmayınca
-     basamaz. Kenar boşlukları .evrak-onizleme'nin KENDİ padding'iyle verilir (aşağıda) — böylece
-     210mm'lik evrak kutusu daraltılmış baskı alanına küçültülmez, birebir ölçekte basılır.
-     Not: çok sayfalı evrakta ORTA sayfaların üst/alt boşluğu padding ile sağlanamaz (kutu sayfalara
-     yayılır) — bu bilinen ödünleşim; evraklar tipik tek sayfa. */
+  /* @page margin — her sayfada tutarlı kenar boşluğu:
+     üst 1.25cm, sağ 2.25cm, alt 2.5cm, sol 2.25cm
+     (iOS Safari'nin URL/tarih alt bilgisi sorunu BURADAN çözülmez — iOS yazdırması artık
+     lib/utils/evrak-yazdir.ts ile PDF üzerinden gidiyor; PDF ekran düzeninden üretilir ve
+     bu @media print bloğuna hiç girmez. Bu blok yalnız masaüstü/Android window.print() içindir.) */
   @page {
     size: A4;
-    margin: 0;
+    margin: 1.25cm 2.25cm 2.5cm 2.25cm;
     marks: none;
 
     /* Tüm margin box'larını agresif şekilde temizle — browser URL/tarih/sayfa
@@ -431,14 +430,14 @@ thead th {
     height: auto !important;
   }
 
-  /* Onizleme kutusu — kenar boşlukları BURADAN verilir (@page margin: 0 olduğu için; üstteki
-     @page yorumuna bak). üst 1.25cm, sağ 2.25cm, alt 2.5cm, sol 2.25cm. Zemin BEYAZ sabitlenir
-     (aşağıdaki >div kuralı transparent yapıyor; gövde grisi görünmesin). */
+  /* Onizleme kutusu — baskıda padding'i sıfırla çünkü @page margin zaten
+     kenar boşluğunu sağlıyor. Aksi halde çift margin olur. Zemin BEYAZ sabitlenir
+     (aşağıdaki >div kuralı transparent yapıyor; gövdenin grisi kağıda basılmasın). */
   .evrak-print-area .evrak-onizleme {
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
-    padding: 1.25cm 2.25cm 2.5cm 2.25cm !important;
+    padding: 0 !important;
     width: 100% !important;
     min-height: 0 !important;
     background: #fff !important;
