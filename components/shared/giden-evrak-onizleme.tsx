@@ -341,8 +341,10 @@ export default function GidenEvrakOnIzleme({
         {/* Sağ: Kaşe — 1cm sola, 1cm yukarı */}
         {kaseDahil && firma?.kase_url && (
           <div style={{ flexShrink: 0, marginRight: "1cm", marginTop: "-1cm" }}>
+            {/* Kaşe kağıtta EN FAZLA 5cm × 2.5cm kutusuna oturur (oran korunur; İkikat kaşesi ~2:1
+                oranlı olduğundan tam 4.95×2.5cm basılır). Eski sınır 105px (~2.78cm yükseklik) idi. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} loading="eager" decoding="sync" />
+            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "2.5cm", maxWidth: "5cm", width: "auto", height: "auto" }} loading="eager" decoding="sync" />
           </div>
         )}
       </div>
