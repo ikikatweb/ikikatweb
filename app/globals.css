@@ -374,12 +374,15 @@ thead th {
    .evrak-print-area Portal ile body'nin direkt çocuğu olarak render edilir,
    bu sayede ilk sayfa boş kalmaz ve sayfa akışı düzgün olur */
 @media print {
-  /* @page margin — her sayfada tutarlı kenar boşluğu:
-     üst 1.25cm, sağ 2.25cm, alt 2.5cm, sol 2.25cm
-     Alttaki 2.5cm boşluğun ortasına sayfa numarası yazılır (çok sayfalı evrakta). */
+  /* @page margin: 0 — BİLEREK sıfır. Tarayıcıların otomatik üst/alt bilgisi (URL, tarih, sayfa no)
+     @page kenar boşluğu ALANINA basılır; iOS Safari'de kapatma düğmesi yok → alan bırakmayınca
+     basamaz. Kenar boşlukları .evrak-onizleme'nin KENDİ padding'iyle verilir (aşağıda) — böylece
+     210mm'lik evrak kutusu daraltılmış baskı alanına küçültülmez, birebir ölçekte basılır.
+     Not: çok sayfalı evrakta ORTA sayfaların üst/alt boşluğu padding ile sağlanamaz (kutu sayfalara
+     yayılır) — bu bilinen ödünleşim; evraklar tipik tek sayfa. */
   @page {
     size: A4;
-    margin: 1.25cm 2.25cm 2.5cm 2.25cm;
+    margin: 0;
     marks: none;
 
     /* Tüm margin box'larını agresif şekilde temizle — browser URL/tarih/sayfa
@@ -410,6 +413,9 @@ thead th {
     padding: 0 !important;
     height: auto !important;
     overflow: visible !important;
+    /* Ekranın gri gövde arka planı (#FAFAFA) kağıda basılmasın — evrak zemininin arkasında
+       "gri alan" olarak görünüyordu (print-color-adjust: exact arka planları da basar). */
+    background: #fff !important;
   }
 
   /* body'nin tüm direkt çocuklarını gizle (dashboard layout, sidebar vb.) */
@@ -425,15 +431,17 @@ thead th {
     height: auto !important;
   }
 
-  /* Onizleme kutusu — baskıda padding'i sıfırla çünkü @page margin zaten
-     kenar boşluğunu sağlıyor. Aksi halde çift margin olur */
+  /* Onizleme kutusu — kenar boşlukları BURADAN verilir (@page margin: 0 olduğu için; üstteki
+     @page yorumuna bak). üst 1.25cm, sağ 2.25cm, alt 2.5cm, sol 2.25cm. Zemin BEYAZ sabitlenir
+     (aşağıdaki >div kuralı transparent yapıyor; gövde grisi görünmesin). */
   .evrak-print-area .evrak-onizleme {
     box-shadow: none !important;
     border: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 1.25cm 2.25cm 2.5cm 2.25cm !important;
     width: 100% !important;
     min-height: 0 !important;
+    background: #fff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
