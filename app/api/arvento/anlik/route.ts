@@ -50,7 +50,14 @@ export async function GET() {
       (en, r) => (r.guncelleme && (!en || r.guncelleme > en) ? r.guncelleme : en),
       null,
     );
-    return NextResponse.json({ araclar, guncelleme, kaynak: "db" });
+    // CDN önbelleği (Vercel Edge): aynı 30 sn içinde kaç kullanıcı/sekme sorarsa sorsun fonksiyon 1 kez
+    // çalışır → Fluid Active CPU + invocation hacmi düşer. Veri zaten senkron script'ten 1-3 dk'da bir
+    // yazıldığından 30 sn bayatlık gösterimi etkilemez. stale-while-revalidate: süre dolunca eskiyi anında
+    // servis et, arkada tazele (kullanıcı bekletilmez).
+    return NextResponse.json(
+      { araclar, guncelleme, kaynak: "db" },
+      { headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" } },
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });

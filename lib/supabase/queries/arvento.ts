@@ -35,6 +35,32 @@ export async function getStabilizeOzetDirect(bas: string, bitis: string): Promis
   return { dampers, girisler };
 }
 
+// ===== Canlı konum + cihaz eşlemesi — DOĞRUDAN okuma (Vercel API'yi atla) =====
+// arvento_anlik / arvento_cihaz'a "authenticated SELECT" RLS politikası gerekir
+// (sql/arvento_anlik_rls.sql); yoksa RLS boş döner → çağıran API rotasına düşer (çalışır ama Vercel yorar).
+
+export type AnlikSatir = {
+  node: string | null; lat: number | null; lng: number | null; hiz: number | null;
+  yon: number | null; tarih: string | null; adres: string | null; kontak: boolean | null;
+};
+export async function getAnlikKonumlarDirect(): Promise<AnlikSatir[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("arvento_anlik").select("*");
+  if (error) return [];
+  return ((data ?? []) as (AnlikSatir & { kontak?: boolean | null })[]).map((r) => ({
+    node: r.node, lat: r.lat, lng: r.lng, hiz: r.hiz, yon: r.yon,
+    tarih: r.tarih, adres: r.adres, kontak: r.kontak ?? null,
+  }));
+}
+
+export type CihazSatir = { node: string; plaka: string | null; surucu: string | null; model: string | null };
+export async function getCihazlarDirect(): Promise<CihazSatir[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("arvento_cihaz").select("node, plaka, surucu, model");
+  if (error) return [];
+  return (data ?? []) as CihazSatir[];
+}
+
 // ===== Güzergah (Mesafe Bilgisi / rota) sorguları =====
 
 // Güzergah verisi olan tarihler (yeni → eski)

@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -423,32 +423,50 @@ export default function ArventoRaporPage() {
   // çekilir → Vercel az yorulur; açıkken ayar aralığında sık. Cihaz (node→plaka) eşlemesi de bir kez yüklenir.
   useEffect(() => {
     let iptal = false;
-    // Cihaz eşlemesini yükle (bir kez)
-    fetch("/api/arvento/cihaz", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => {
-        if (iptal || !Array.isArray(d.cihazlar)) return;
+    // Cihaz eşlemesini yükle (bir kez) — ÖNCE doğrudan Supabase (Vercel'e istek yok); RLS politikası
+    // henüz yoksa boş döner → API rotasına düş (eski davranış, çalışır). Bkz. sql/arvento_anlik_rls.sql.
+    (async () => {
+      try {
+        let cihazlar: { node: string; plaka: string | null; surucu: string | null; model: string | null }[] =
+          await getCihazlarDirect();
+        if (cihazlar.length === 0) {
+          const r = await fetch("/api/arvento/cihaz", { cache: "no-store" });
+          const d = await r.json();
+          if (Array.isArray(d.cihazlar)) cihazlar = d.cihazlar;
+        }
+        if (iptal) return;
         const m: CihazMap = new Map();
-        for (const c of d.cihazlar as { node: string; plaka: string | null; surucu: string | null; model: string | null }[]) {
+        for (const c of cihazlar) {
           if (c.node) m.set(c.node.trim(), { plaka: c.plaka, surucu: c.surucu, model: c.model });
         }
         setCanliCihazMap(m);
-      })
-      .catch(() => { /* sessiz */ });
+      } catch { /* sessiz */ }
+    })();
     const cek = async () => {
+      if (document.hidden) return; // GİZLİ sekme: boşa sorgu/fonksiyon çalıştırma — açık unutulan sekmeler CPU yakmasın
       setCanliYukleniyor(true);
       try {
-        const r = await fetch("/api/arvento/anlik", { cache: "no-store" });
-        const d = await r.json();
-        if (!iptal && r.ok) setCanliKonumlar((d.araclar ?? []) as CanliKonum[]);
-        else if (!iptal && !r.ok && canliAcik) toast.error(`Canlı: ${d?.error ?? r.status}`, { duration: toastSuresi() });
+        // ÖNCE doğrudan Supabase (Vercel fonksiyonu HİÇ çalışmaz); RLS yoksa boş → API fallback.
+        const direkt = await getAnlikKonumlarDirect();
+        if (direkt.length > 0) {
+          if (!iptal) setCanliKonumlar(direkt.map((r) => ({ ...r, plaka: null })) as CanliKonum[]);
+        } else {
+          const r = await fetch("/api/arvento/anlik", { cache: "no-store" });
+          const d = await r.json();
+          if (!iptal && r.ok) setCanliKonumlar((d.araclar ?? []) as CanliKonum[]);
+          else if (!iptal && !r.ok && canliAcik) toast.error(`Canlı: ${d?.error ?? r.status}`, { duration: toastSuresi() });
+        }
       } catch { /* sessiz */ } finally { if (!iptal) setCanliYukleniyor(false); }
     };
     cek();
-    // Canlı AÇIKKEN sık (ayar aralığı), KAPALIYKEN seyrek (60 sn) — rozet için yeter, Vercel'i az yorar.
-    const sn = canliAcik ? Math.max(15, canliYenilemeSn || 45) : 60;
+    // Canlı AÇIKKEN sık (ayar aralığı), KAPALIYKEN seyrek (180 sn) — rozet ("çalışıyor") için 3 dk tazelik
+    // yeterli; Vercel Fluid CPU'yu asıl yoran bu yoklamanın HACMİ olduğundan kapalıyken seyreltildi.
+    const sn = canliAcik ? Math.max(15, canliYenilemeSn || 45) : 180;
     const id = setInterval(cek, sn * 1000);
-    return () => { iptal = true; clearInterval(id); };
+    // Sekmeye GERİ dönüldüğünde hemen tazele (gizliyken atlanan yoklamaları bekletmeden telafi et).
+    const gorunum = () => { if (!document.hidden) cek(); };
+    document.addEventListener("visibilitychange", gorunum);
+    return () => { iptal = true; clearInterval(id); document.removeEventListener("visibilitychange", gorunum); };
   }, [canliAcik, canliYenilemeSn]);
 
   // Ekrandaki RAKAMLARI periyodik tazele: sayfa yenilemeden km/çalışma/damper güncellensin.
@@ -465,10 +483,14 @@ export default function ArventoRaporPage() {
     tazeleGuncelleme(); // ilk gösterim
     const sn = Math.max(20, canliYenilemeSn || 45);
     const id = setInterval(() => {
+      if (document.hidden) return; // gizli sekmede rakam tazeleme boşa Supabase sorgusu — atlansın
       setGuzergahRefresh((v) => v + 1);
       tazeleGuncelleme();
     }, sn * 1000);
-    return () => { iptal = true; clearInterval(id); };
+    // Sekmeye geri dönüldüğünde rakamları hemen tazele.
+    const gorunum = () => { if (!document.hidden) { setGuzergahRefresh((v) => v + 1); tazeleGuncelleme(); } };
+    document.addEventListener("visibilitychange", gorunum);
+    return () => { iptal = true; clearInterval(id); document.removeEventListener("visibilitychange", gorunum); };
   }, [canliYenilemeSn, baslangic, bitis]);
 
   // Ham günlük kayıtları bir kez çek (ortalama hesabı için). Tarih değişse de yeniden çekmeye gerek yok.

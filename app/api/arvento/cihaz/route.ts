@@ -26,7 +26,12 @@ export async function GET() {
       .from("arvento_cihaz")
       .select("node, plaka, tescil, surucu, marka, model, sinif");
     if (error) throw new Error(error.message);
-    return NextResponse.json({ cihazlar: data ?? [] });
+    // Cihaz↔plaka eşlemesi nadiren değişir (yalnız Excel yüklenince) → 5 dk CDN önbelleği: her sayfa
+    // açılışında fonksiyon çalıştırmak yerine Edge'den servis edilir (Fluid CPU tasarrufu).
+    return NextResponse.json(
+      { cihazlar: data ?? [] },
+      { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
+    );
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
