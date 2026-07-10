@@ -170,13 +170,16 @@ function trAscii(s: string): string {
     .replace(/ç/g, "c").replace(/Ç/g, "C").replace(/ı/g, "i").replace(/İ/g, "I");
 }
 
-// Hızlı manuel gün girişi kartı (gün düzenle dialogunun başında)
+// Hızlı manuel gün girişi kartı (gün düzenle dialogunun başında).
+// KAYDETMEZ — değişikliği onDegis ile üst dialoga bildirir; kayıt, dialogun altındaki TEK
+// "Kaydet" butonuyla (diğer bölümlerle birlikte) yapılır.
 function ManuelGunHizliKart({
-  mevcutGun, aySonGun, onSave, adminBypass = false, ayMinGun = 0,
+  mevcutGun, aySonGun, onDegis, adminBypass = false, ayMinGun = 0,
 }: {
   mevcutGun: number;
   aySonGun: number;
-  onSave: (N: number) => Promise<void> | void;
+  // null = değişiklik yok (mevcut değere dönüldü); {deger, gecerli} = bekleyen değişiklik.
+  onDegis: (p: { deger: number; gecerli: boolean } | null) => void;
   // adminBypass=true → kullanıcı admin (yönetici); sınır aşılsa bile kaydedilebilir,
   // ama uyarı görsel olarak hâlâ kırmızı görünür.
   adminBypass?: boolean;
@@ -187,7 +190,6 @@ function ManuelGunHizliKart({
   const [val, setVal] = useState(String(mevcutGun));
   useEffect(() => { setVal(String(mevcutGun)); }, [mevcutGun]);
   // CLAMP YAPMA — kullanıcı yazdığı değeri görsün; sınır aşılırsa hata göster.
-  // Admin için kayıt butonu yine de etkin (adminBypass).
   const N = Math.max(0, parseInt(val) || 0);
   const tooHigh = N > aySonGun;
   // Çıkışı yapılmış (kapalı) atamaların günleri kesinleşmiştir; manuel toplam bu
@@ -197,10 +199,13 @@ function ManuelGunHizliKart({
   // Geçerli aralık [ayMinGun, aySonGun] arasıdır. Bu aralıkta uyarı YOK.
   // Kırmızı yalnızca: max'ı aşınca (tooHigh) veya kesinleşmiş taban altına inince (tooLowFloor).
   const uyari = tooHigh || tooLowFloor;
-  const degisti = N !== mevcutGun;
-  // tooHigh: admin bypass edebilir. tooLowFloor: SADECE UYARI — kaydetmeyi engellemez
-  // (bilerek daha az gün girilebilir; kullanıcı yine de kaydedebilir).
-  const canSave = degisti && (!tooHigh || adminBypass);
+  // tooHigh: admin bypass edebilir. tooLowFloor: SADECE UYARI — kaydetmeyi engellemez.
+  const bildir = (s: string) => {
+    setVal(s);
+    const n = Math.max(0, parseInt(s) || 0);
+    const hi = n > aySonGun;
+    onDegis(n !== mevcutGun ? { deger: n, gecerli: !hi || !!adminBypass } : null);
+  };
   return (
     <div className={`border-2 rounded-lg p-3 ${uyari ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
       <div className={`text-xs font-semibold mb-1.5 ${uyari ? "text-red-700" : "text-blue-700"}`}>
@@ -213,24 +218,12 @@ function ManuelGunHizliKart({
           // (tooLowFloor) — native min'e koyulursa ok tuşları taban altında kilitlenir/çalışmaz.
           min={0}
           value={val}
-          onChange={(e) => setVal(e.target.value)}
+          onChange={(e) => bildir(e.target.value)}
           className={`w-24 h-10 text-2xl font-bold text-center bg-white border-2 rounded-lg outline-none ${
             uyari ? "text-red-700 border-red-400 focus:border-red-500" : "text-blue-700 border-blue-300 focus:border-blue-500"
           }`}
         />
         <span className="text-sm text-gray-600">gün <span className="text-[10px] text-gray-400">{ayMinGun > 0 ? `/ min ${ayMinGun} – max ${aySonGun}` : `/ max ${aySonGun}`}</span></span>
-        <button
-          type="button"
-          disabled={!canSave}
-          onClick={() => onSave(N)}
-          className={`ml-auto px-3 py-1.5 text-sm rounded-md text-white disabled:bg-gray-300 disabled:cursor-not-allowed ${
-            tooHigh && adminBypass
-              ? "bg-red-600 hover:bg-red-700"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          Kaydet
-        </button>
       </div>
       {tooHigh && (
         <p className="text-xs text-red-700 font-semibold mt-2">
@@ -257,62 +250,62 @@ function ManuelGunHizliKart({
 
 // Bilgi Notu kartı: gün düzenle dialogu içinde kullanılır.
 // Not personel × şantiye bazlı KALICIDIR — kullanıcı silmedikçe her ay görünür.
+// KAYDETMEZ — değişikliği onDegis ile üst dialoga bildirir (null = değişmedi, "" = notu sil);
+// kayıt, dialogun altındaki TEK "Kaydet" ile yapılır. "Sil" yalnız kutuyu boşaltır.
 function BilgiNotuKarti({
-  personelId, santiyeId, notlar, onKaydet,
+  personelId, santiyeId, notlar, onDegis,
 }: {
   personelId: string;
   santiyeId: string;
   notlar: BilgiNotu[];
-  onKaydet: (yeniNot: string) => Promise<void> | void;
+  onDegis: (yeniNot: string | null) => void;
 }) {
   const mevcut = notlar.find((n) => n.personel_id === personelId && n.santiye_id === santiyeId);
   const mevcutNot = mevcut?.icerik ?? "";
   const [val, setVal] = useState(mevcutNot);
   useEffect(() => { setVal(mevcutNot); }, [mevcutNot]);
+  const bildir = (s: string) => { setVal(s); onDegis(s !== mevcutNot ? s : null); };
   const degisti = val !== mevcutNot;
   return (
     <div className="bg-amber-50 border-2 border-amber-200 rounded-lg p-3">
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-xs text-amber-800 font-semibold">📝 Bilgi Notu</div>
-        {mevcut && <span className="text-[10px] text-gray-500">Mevcut not var</span>}
+        <span className="text-[10px] text-gray-500">
+          {degisti ? "değişiklik bekliyor — alttaki Kaydet ile kaydedilir" : mevcut ? "Mevcut not var" : ""}
+        </span>
       </div>
       <textarea
         value={val}
-        onChange={(e) => setVal(e.target.value)}
+        onChange={(e) => bildir(e.target.value)}
         rows={3}
         placeholder="Bu personel için bu ay/şantiye ile ilgili not (PDF ve Excel'de yazılır)..."
         className="w-full text-sm border border-amber-200 rounded p-2 outline-none focus:border-amber-500 bg-white resize-y"
       />
-      <div className="flex justify-end gap-1 mt-1.5">
-        {mevcut && (
+      {mevcut && (
+        <div className="flex justify-end mt-1.5">
           <button
             type="button"
-            onClick={() => onKaydet("")}
+            onClick={() => bildir("")}
             className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50"
+            title="Kutuyu boşaltır; alttaki Kaydet'e basınca not silinir"
           >
             Sil
           </button>
-        )}
-        <button
-          type="button"
-          disabled={!degisti}
-          onClick={() => onKaydet(val)}
-          className="px-3 py-1 text-[11px] bg-amber-600 text-white rounded hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-        >
-          Kaydet
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// Atama satır editörü (gün düzenle dialogu için)
+// Atama satır editörü (gün düzenle dialogu için).
+// KAYDETMEZ — tarih değişikliğini onDegis ile üst dialoga bildirir (null = değişiklik yok);
+// kayıt, dialogun altındaki TEK "Kaydet" ile yapılır. "Sil" anında çalışır (yıkıcı işlem).
 function AtamaSatir({
-  atama, gunSayisi, onSave, onDelete, isYonetici,
+  atama, gunSayisi, onDegis, onDelete, isYonetici,
 }: {
   atama: PersonelAtamaGecmisi;
   gunSayisi: number;
-  onSave: (baslangic: string, bitis: string | null) => void;
+  onDegis: (p: { bas: string; bit: string | null; gecerli: boolean } | null) => void;
   onDelete: () => void;
   // Yönetici → tarihte kısıtlama yok. Diğerleri (şantiye yöneticisi dahil): max bugün, min bugünden 9 gün önce.
   isYonetici: boolean;
@@ -324,18 +317,25 @@ function AtamaSatir({
     || (halen ? atama.bitis_tarihi !== null : bit !== (atama.bitis_tarihi ?? ""));
   // Çıkış tarihi başlangıçtan önce olamaz
   const tarihHatasi = !halen && bit && bas && bit < bas;
-  const kaydedilebilir = degisti && !tarihHatasi;
+  // Her tarih/halen değişiminde bekleyen durumu üst dialoga bildir
+  const bildir = (nBas: string, nBit: string, nHalen: boolean) => {
+    setBas(nBas); setBit(nBit); setHalen(nHalen);
+    const nDegisti = nBas !== atama.baslangic_tarihi
+      || (nHalen ? atama.bitis_tarihi !== null : nBit !== (atama.bitis_tarihi ?? ""));
+    const nHata = !nHalen && !!nBit && !!nBas && nBit < nBas;
+    onDegis(nDegisti ? { bas: nBas, bit: nHalen ? null : (nBit || null), gecerli: !nHata } : null);
+  };
   // Yönetici hariç tüm kullanıcılar için tarih kısıtlaması: bugünden max 9 gün geri, bugünden ileri yok
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const todayStr = tarihStr(today);
   const minDate = new Date(today); minDate.setDate(minDate.getDate() - 9);
   const minDateStr = tarihStr(minDate);
   return (
-    <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+    <div className={`border rounded-lg p-3 ${degisti ? "border-blue-300 bg-blue-50" : "border-gray-200 bg-gray-50"}`}>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label className="text-[10px] text-gray-500">İşe Başlama</label>
-          <input type="date" value={bas} onChange={(e) => setBas(e.target.value)}
+          <input type="date" value={bas} onChange={(e) => bildir(e.target.value, bit, halen)}
             min={isYonetici ? undefined : minDateStr}
             max={isYonetici ? undefined : todayStr}
             className="w-full h-8 border rounded px-2 text-xs" />
@@ -344,11 +344,11 @@ function AtamaSatir({
           <label className="text-[10px] text-gray-500 flex items-center justify-between">
             <span>İşten Çıkış</span>
             <span className="flex items-center gap-1">
-              <input type="checkbox" checked={halen} onChange={(e) => setHalen(e.target.checked)} className="cursor-pointer" />
+              <input type="checkbox" checked={halen} onChange={(e) => bildir(bas, bit, e.target.checked)} className="cursor-pointer" />
               <span className="text-[10px]">Halen</span>
             </span>
           </label>
-          <input type="date" value={halen ? "" : bit} onChange={(e) => setBit(e.target.value)}
+          <input type="date" value={halen ? "" : bit} onChange={(e) => bildir(bas, e.target.value, halen)}
             min={isYonetici ? (bas || undefined) : (bas && bas > minDateStr ? bas : minDateStr)}
             max={isYonetici ? undefined : todayStr}
             disabled={halen}
@@ -362,15 +362,13 @@ function AtamaSatir({
       )}
       <div className="flex items-center justify-between">
         <span className="text-xs text-emerald-700 font-semibold">Bu ayda: {gunSayisi} gün</span>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-2">
+          {degisti && !tarihHatasi && (
+            <span className="text-[10px] text-blue-600">değişiklik bekliyor — alttaki Kaydet ile</span>
+          )}
           <button type="button" onClick={onDelete}
             className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50">
             Sil
-          </button>
-          <button type="button" disabled={!kaydedilebilir}
-            onClick={() => onSave(bas, halen ? null : (bit || null))}
-            className="px-3 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
-            Kaydet
           </button>
         </div>
       </div>
@@ -451,12 +449,13 @@ function YeniAtamaSatir({
 // Atama listesi — şantiye-bazlı atamaları gösterir.
 // Varsayılan: en yeni 2 tanesini gösterir. Daha fazlası varsa "Devamını Gör" butonu çıkar.
 function AtamaListesi({
-  atamalar, liste, ayInGun, onSave, onDelete, isYonetici,
+  atamalar, liste, ayInGun, onDegis, onDelete, isYonetici,
 }: {
   atamalar: PersonelAtamaGecmisi[];
   liste: PersonelAtamaGecmisi[];
   ayInGun: (a: PersonelAtamaGecmisi) => number;
-  onSave: (atamaId: string, baslangic: string, bitis: string | null) => void;
+  // Satırdaki tarih değişikliği bekleyen olarak üst dialoga bildirilir (null = o satırda değişiklik kalmadı)
+  onDegis: (atamaId: string, p: { bas: string; bit: string | null; gecerli: boolean } | null) => void;
   onDelete: (atamaId: string) => void;
   isYonetici: boolean;
 }) {
@@ -481,7 +480,7 @@ function AtamaListesi({
             key={a.id}
             atama={a}
             gunSayisi={aylikGun}
-            onSave={(bas, bit) => onSave(a.id, bas, bit)}
+            onDegis={(p) => onDegis(a.id, p)}
             onDelete={() => onDelete(a.id)}
             isYonetici={isYonetici}
           />
@@ -582,6 +581,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Gün düzenleme dialog: bir personelin belirli bir şantiyedeki atamaları
   const [gunEdit, setGunEdit] = useState<{ personel: Personel; santiyeId: string } | null>(null);
+  // Gün düzenle dialogu — TOPLU KAYDET: bölümlerin (manuel gün / atama tarihleri / bilgi notu)
+  // kendi Kaydet butonları kaldırıldı; her bölüm değişikliğini buraya bildirir, alttaki TEK
+  // "Kaydet" hepsini birden kaydeder. not: undefined = değişmedi, "" = notu sil.
+  const [gunEditBekleyen, setGunEditBekleyen] = useState<{
+    manuelGun?: { deger: number; gecerli: boolean };
+    atamalar: Map<string, { bas: string; bit: string | null; gecerli: boolean }>;
+    not?: string;
+  }>({ atamalar: new Map() });
+  const [gunEditKaydediyor, setGunEditKaydediyor] = useState(false);
+  useEffect(() => { setGunEditBekleyen({ atamalar: new Map() }); }, [gunEdit]); // dialog açılış/kapanışında sıfırla
 
   // Accordion: hangi firmalar / hangi şantiyeler açık
   const [expandedFirmalar, setExpandedFirmalar] = useState<Set<string>>(new Set());
@@ -1274,6 +1283,30 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return Math.max(0, target - mevcut);
   }, [santiyeler, aktifTeknikSayisiMap]);
 
+  // Şantiyenin BOŞTAKİ teknik rol KEY'leri ("isim#index" formatında, liste sırasıyla).
+  // Personel eklerken "teknik personel" onayı verilince rol OTOMATİK buradan atanır:
+  // teknik sayımı (rozet/PDF/Excel) personel_teknik'te İSİMLİ kayıt ister; eskiden yalnız
+  // bayrak yazıldığı için onaylanan kişi teknik olarak GÖRÜNMÜYORDU.
+  const bosTeknikRolKeyleri = useCallback((santiyeId: string): string[] => {
+    const santiye = santiyeler.find((s) => s.id === santiyeId);
+    const isimler = (santiye?.teknik_personeller ?? []).filter((s) => s && s.trim().length > 0);
+    if (isimler.length === 0) return [];
+    const atanmis = new Set<string>();
+    for (const r of teknikKayitlari) {
+      if (r.santiye_id !== santiyeId || !r.is_teknik || !r.teknik_isim) continue;
+      const matches = Array.from(r.teknik_isim.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
+      if (matches.length > 0) {
+        for (const m of matches) atanmis.add(`${m[1].trim()}#${m[2]}`);
+      } else {
+        const idx = isimler.findIndex((i) => i === r.teknik_isim!.trim());
+        if (idx >= 0) atanmis.add(`${isimler[idx]}#${idx}`);
+      }
+    }
+    const out: string[] = [];
+    isimler.forEach((isim, idx) => { const k = `${isim}#${idx}`; if (!atanmis.has(k)) out.push(k); });
+    return out;
+  }, [santiyeler, teknikKayitlari]);
+
   // Filtrele: arama (Türkçe karakter ve büyük/küçük harf duyarlılığı YOK)
   // OR mantığı:
   //  (a) Normal metin araması: ad, TC, görev, meslek alanlarında geçer mi?
@@ -1900,7 +1933,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return toplam;
   }
 
-  async function gunEditAtamaUpdate(atamaId: string, baslangic: string, bitis: string | null) {
+  // sonlandir=false → toplu kaydetten çağrılıyor: dialog kapatma + loadData'yı toplu kaydet yapar.
+  async function gunEditAtamaUpdate(atamaId: string, baslangic: string, bitis: string | null, sonlandir = true) {
     if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     if (bitis && bitis < baslangic) {
       toast.error("İşten çıkış tarihi, işe başlama tarihinden önce olamaz.");
@@ -1948,8 +1982,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       } else {
         toast.success("Atama güncellendi");
       }
-      setGunEdit(null); // Kaydet sonrası pencereyi kapat
-      await loadData();
+      if (sonlandir) {
+        setGunEdit(null); // Kaydet sonrası pencereyi kapat
+        await loadData();
+      }
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -2013,7 +2049,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //  - Sadece o ay × o şantiye için "manuel_gun" tablosuna override yazılır.
   //  - Atama henüz yoksa açık bir atama (bitis_tarihi=null) oluşturulur.
   //  - 0 girilirse override silinir → doğal hesaplamaya döner.
-  async function kaydetManuelGun(personelId: string, santiyeId: string, ayStr: string, N: number) {
+  // sonlandir=false → toplu kaydetten çağrılıyor: dialog kapatma + loadData'yı toplu kaydet yapar.
+  async function kaydetManuelGun(personelId: string, santiyeId: string, ayStr: string, N: number, sonlandir = true) {
     if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
     const [yil, ay] = ayStr.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
@@ -2071,10 +2108,54 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         }
       }
 
-      setGunEdit(null); // Pencereyi kapat
-      await loadData();
+      if (sonlandir) {
+        setGunEdit(null); // Pencereyi kapat
+        await loadData();
+      }
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Bilgi notunu kaydet/sil — gün düzenle dialogunun toplu kaydetinden çağrılır.
+  async function kaydetBilgiNotu(personelId: string, santiyeId: string, yeniNot: string, sonlandir = true) {
+    if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
+    try {
+      if (yeniNot.trim()) {
+        await setBilgiNotu(personelId, santiyeId, yeniNot);
+        toast.success("Not kaydedildi");
+      } else {
+        await deleteBilgiNotu(personelId, santiyeId);
+        toast.success("Not silindi");
+      }
+      if (sonlandir) { setGunEdit(null); await loadData(); }
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Gün düzenle dialogunun TEK "Kaydet"i: bölümlerde biriken tüm değişiklikleri sırayla kaydeder
+  // (atama tarihleri → manuel gün → bilgi notu), sonra dialogu kapatıp veriyi BİR kez tazeler.
+  async function gunEditToptanKaydet() {
+    if (!gunEdit) return;
+    const b = gunEditBekleyen;
+    const atamaList = [...b.atamalar.entries()];
+    if (b.manuelGun === undefined && atamaList.length === 0 && b.not === undefined) return;
+    setGunEditKaydediyor(true);
+    try {
+      for (const [id, v] of atamaList) {
+        await gunEditAtamaUpdate(id, v.bas, v.bit, false);
+      }
+      if (b.manuelGun !== undefined) {
+        await kaydetManuelGun(gunEdit.personel.id, gunEdit.santiyeId, seciliAy, b.manuelGun.deger, false);
+      }
+      if (b.not !== undefined) {
+        await kaydetBilgiNotu(gunEdit.personel.id, gunEdit.santiyeId, b.not, false);
+      }
+      setGunEdit(null);
+      await loadData();
+    } finally {
+      setGunEditKaydediyor(false);
     }
   }
 
@@ -2206,6 +2287,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       let normalSayilan = 0;
       let atlandi = 0;
       const atlananAdlar: string[] = [];
+      // "Evet" cevabında teknik kişilere şantiyenin BOŞTAKİ rollerinden SIRAYLA rol atanır
+      // (personel_teknik'e isimli kayıt). Rol listesi tanımsızsa null → yalnız bayrak (eski model).
+      const bosRoller = teknikIlkN > 0 ? bosTeknikRolKeyleri(topluEkleSantiyeId) : [];
       let idx = 0;
       for (const personelId of topluSecilenler) {
         try {
@@ -2225,6 +2309,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           const buKisininTarihi = (idx < teknikIlkN && teknikTeslim) ? teknikTeslim : kullanilanTarih;
           const buKisininTeknikMi = idx < teknikIlkN;
           await insertAtama(personelId, topluEkleSantiyeId, buKisininTarihi, null, buKisininTeknikMi);
+          // TEKNİK ROL ATAMASI — "Evet" onayı verilen kişi personel_teknik'e İSİMLİ yazılır;
+          // rozet/PDF teknik sayımı isimli kayıt istediği için bu olmadan kişi teknik GÖRÜNMÜYORDU.
+          if (buKisininTeknikMi) {
+            const rol = bosRoller.shift() ?? null;
+            try {
+              await setPersonelTeknikSantiye(personelId, topluEkleSantiyeId, true, rol);
+            } catch (tknErr) {
+              console.warn("Teknik rol ataması başarısız:", tknErr);
+            }
+          }
           await kuyrugaEkle({ tip: "giris", personel, santiyeAd, santiyeId: topluEkleSantiyeId, tarih: buKisininTarihi });
           basari++;
           if (idx < teknikIlkN) teknikSayilan++; else normalSayilan++;
@@ -3692,13 +3786,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           console.warn("Otomatik şantiye ataması başarısız:", atErr);
         }
       }
-      // Teknik personel işaretliyse personel_teknik tablosuna kayıt aç (sadece bilgi amaçlı)
+      // Teknik personel işaretliyse personel_teknik tablosuna İSİMLİ kayıt aç: şantiyenin
+      // BOŞTAKİ ilk rolü otomatik atanır (rozet/PDF teknik sayımı isimli kayıt ister; yalnız
+      // bayrak yazılınca kişi teknik GÖRÜNMÜYORDU). Rol listesi tanımsızsa null (eski model).
       // Kalan slot yoksa atla (kullanıcı dialog açıkken araya başka kayıt sıkışmış olabilir)
       if (ekleTeknik && ekleSantiye && yeni?.id) {
         const kalan = teknikKalanSlot(ekleSantiye);
         if (kalan > 0) {
+          const rol = bosTeknikRolKeyleri(ekleSantiye)[0] ?? null;
           try {
-            await setPersonelTeknikSantiye(yeni.id, ekleSantiye, true);
+            await setPersonelTeknikSantiye(yeni.id, ekleSantiye, true, rol);
           } catch (tknErr) {
             console.warn("Teknik personel kaydı başarısız:", tknErr);
           }
@@ -5396,7 +5493,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       aySonGun={max}
                       ayMinGun={Math.min(kapaliGun, max)}
                       adminBypass={isYonetici}
-                      onSave={(N) => kaydetManuelGun(gunEdit.personel.id, gunEdit.santiyeId, seciliAy, N)}
+                      onDegis={(p) => setGunEditBekleyen((prev) => ({ ...prev, manuelGun: p ?? undefined }))}
                     />
                   );
                 })()}
@@ -5415,7 +5512,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       atamalar={tumAtamalar}
                       liste={liste}
                       ayInGun={ayInGun}
-                      onSave={(id, bas, bit) => gunEditAtamaUpdate(id, bas, bit)}
+                      onDegis={(id, p) => setGunEditBekleyen((prev) => {
+                        const m = new Map(prev.atamalar);
+                        if (p) m.set(id, p); else m.delete(id);
+                        return { ...prev, atamalar: m };
+                      })}
                       onDelete={(id) => gunEditAtamaSil(id)}
                       isYonetici={isYonetici}
                     />
@@ -5434,27 +5535,36 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   personelId={gunEdit.personel.id}
                   santiyeId={gunEdit.santiyeId}
                   notlar={bilgiNotlari}
-                  onKaydet={async (yeniNot) => {
-                    if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
-                    try {
-                      if (yeniNot.trim()) {
-                        await setBilgiNotu(gunEdit.personel.id, gunEdit.santiyeId, yeniNot);
-                        toast.success("Not kaydedildi");
-                      } else {
-                        await deleteBilgiNotu(gunEdit.personel.id, gunEdit.santiyeId);
-                        toast.success("Not silindi");
-                      }
-                      setGunEdit(null); // Kaydet sonrası dialog'u kapat
-                      await loadData();
-                    } catch (err) {
-                      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);
-                    }
-                  }}
+                  onDegis={(v) => setGunEditBekleyen((prev) => ({ ...prev, not: v ?? undefined }))}
                 />
 
-                <div className="flex justify-end pt-2 border-t">
-                  <Button variant="outline" onClick={() => setGunEdit(null)}>Kapat</Button>
-                </div>
+                {/* TEK KAYDET: bölümlerde biriken tüm değişiklikler (manuel gün + atama tarihleri +
+                    bilgi notu) birlikte kaydedilir. Geçersiz değişiklik (tarih hatası / limit aşımı)
+                    varken buton kilitli kalır. */}
+                {(() => {
+                  const b = gunEditBekleyen;
+                  const bekleyenSayi = (b.manuelGun !== undefined ? 1 : 0) + b.atamalar.size + (b.not !== undefined ? 1 : 0);
+                  const hepsiGecerli = (b.manuelGun?.gecerli ?? true) && [...b.atamalar.values()].every((x) => x.gecerli);
+                  return (
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                      {bekleyenSayi > 0 && (
+                        <span className={`text-[11px] mr-auto ${hepsiGecerli ? "text-blue-600" : "text-red-600"}`}>
+                          {hepsiGecerli
+                            ? `${bekleyenSayi} bekleyen değişiklik`
+                            : "Geçersiz değişiklik var — kırmızı uyarıları düzeltin"}
+                        </span>
+                      )}
+                      <Button variant="outline" onClick={() => setGunEdit(null)}>Kapat</Button>
+                      <Button
+                        disabled={bekleyenSayi === 0 || !hepsiGecerli || gunEditKaydediyor}
+                        onClick={gunEditToptanKaydet}
+                        className="bg-[#1E3A5F] hover:bg-[#16304f] text-white"
+                      >
+                        {gunEditKaydediyor ? "Kaydediliyor..." : "Kaydet"}
+                      </Button>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
