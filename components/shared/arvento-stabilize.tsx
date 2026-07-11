@@ -297,18 +297,22 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [raporlar]);
 
   // Araç sınıfı (guzergah arac_sinifi'nden) → plaka bazlı. Chip sırasında KAMYONLARI SOLA, İŞ
-  // MAKİNELERİNİ (loader/greyder/ekskavatör vb.) SAĞA dizmek için. Sınıf yoksa (ör. geniş aralıkta
-  // kamyon rotası inmemişse) damper aktivitesine düşülür: damper atıyorsa kamyon sayılır.
+  // MAKİNELERİNİ (loader/greyder/ekskavatör vb.) SAĞA dizmek için.
+  // Sınıf, o günkü ROTA satırından gelir → araç o gün hiç yol yapmadıysa sınıf BİLİNMEZ. Eski yedek
+  // ("damper atıyorsa kamyon") bu durumda 0 damperli kamyonları iş makinesi tarafına savuruyordu
+  // (gün başında 842/844 ortaya düşüyordu). Yeni sıra: sınıf → marka/model tanısı → varsayılan KAMYON
+  // (bu sekme esasen kamyon sekmesi; iş makineleri isim/markasından yakalanır: Hidromek/HMK vb.).
   const araSinifMap = useMemo(() => {
     const m = new Map<string, string>();
     for (const k of tumGuzergahTemizBirlesik) if (k.arac_sinifi) m.set(plakaNorm(k.plaka), k.arac_sinifi);
     return m;
   }, [tumGuzergahTemizBirlesik]);
-  const IS_MAKINE_RE = /iş\s*mak|makine|loder|loader|beko|kep[çc]e|greyder|silindir|ekskavat|dozer|paletli|forklift|vin[cç]/i;
+  const IS_MAKINE_RE = /iş\s*mak|makine|loder|loader|beko|kep[çc]e|greyder|silindir|ekskavat|dozer|paletli|forklift|vin[cç]|hidromek|hmk/i;
   const kamyonMu = useCallback((r: AracArventoRapor) => {
     const sinif = araSinifMap.get(plakaNorm(r.plaka));
     if (sinif) return !IS_MAKINE_RE.test(sinif); // sınıf biliniyorsa: iş makinesi DEĞİLse kamyon
-    return damperOlaylariniAl(r).length > 0 || (r.damper_sayisi ?? 0) > 0; // sınıf yoksa: damper atıyorsa kamyon
+    if (IS_MAKINE_RE.test(`${r.marka ?? ""} ${r.model ?? ""}`)) return false; // marka/model iş makinesi diyor
+    return true; // bilinmiyor → kamyon say (rotasız günde kamyonlar sağa savrulmasın)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [araSinifMap]);
 
@@ -579,6 +583,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     if (OZET_MODU) for (const gi of ozetGirisler) girisM.set(gi.plaka, gi);
     const sat: { plaka: string; surucu: string | null; gercek: number; mukerrer: number; ariza: number; girisOcak: number; girisDokum: number }[] = [];
     for (const r of kamyonlar) {
+      if (!kamyonMu(r)) continue; // Sefer Analizi YALNIZ kamyonlar içindir — iş makinesi (loader vb.) sefer yapmaz
       const c = sinifM.get(r.plaka);
       let g = c?.g ?? 0, m = c?.m ?? 0, a = c?.a ?? 0;
       if (damperOlaylariniAl(r).length === 0) { g = r.damper_sayisi ?? 0; m = 0; a = 0; } // detay yok → damper_sayisi
@@ -599,7 +604,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     }
     sat.sort((x, y) => y.gercek - x.gercek);
     return sat;
-  }, [kamyonlar, tumDamperSinifli, rotaByPlaka, ocak, gunGiris, ozetGirisler]);
+  }, [kamyonlar, kamyonMu, tumDamperSinifli, rotaByPlaka, ocak, gunGiris, ozetGirisler]);
 
   // Seçili kamyonların özeti: araç sayısı, toplam km, toplam GERÇEK damper (mükerrer + arıza ayıklanmış).
   const ozet = useMemo(() => {
