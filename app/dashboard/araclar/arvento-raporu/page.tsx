@@ -892,16 +892,22 @@ export default function ArventoRaporPage() {
   // OCAK MAKİNELERİ (plakaNorm → ocak içi konum): rotası ocak çemberinin ÇOĞUNLUĞUNDA + damper YOK
   // (kamyon değil) + izinli. "İş makinesi" sınıfına bağlı DEĞİL → araç kaydı eşleşmese de (node-id'li
   // makineler) yakalanır.
+  // KAMYON/OTO CİNSİ DIŞLAMASI: damper kontrolü tek başına yetmiyordu — geceyi ocak İÇİNDE park
+  // halinde geçiren kamyon, gün başında (henüz damper atmadan) "ocakta çalışıyor" sayılıyordu.
+  // Araç kaydındaki cinsi kamyon/oto olan hiçbir araç ocak makinesi OLAMAZ; cinsi bilinmeyen
+  // (node-id'li) araçlarda eski damper kuralı geçerli kalır.
   const ocakMakineMap = useMemo(() => {
+    const KAMYON_CINS_RE = /kamyon|kamyonet|oto|otomobil|pikap|minib|çekici|tır/i;
     const m = new Map<string, { konum: LatLng | null }>();
     for (const [key, rota] of rotaByPlakaTumu) {
       if (damperliSet.has(key)) continue;
+      if (KAMYON_CINS_RE.test(plakaSantiye.get(key)?.cinsi ?? "")) continue; // cinsi kamyon/oto → ocak makinesi değil
       if (izinliPlakaSet && !izinliPlakaSet.has(key)) continue;
       const d = ocakMakineDurumu(rota, etkinOcak, etkinOcakR);
       if (d.icinde) m.set(key, { konum: d.konum });
     }
     return m;
-  }, [rotaByPlakaTumu, damperliSet, etkinOcak, etkinOcakR, izinliPlakaSet]);
+  }, [rotaByPlakaTumu, damperliSet, plakaSantiye, etkinOcak, etkinOcakR, izinliPlakaSet]);
 
   // İŞ MAKİNELERİ sekmesi: ocak DIŞINDAKİ makineler. Aralıkta ocak sayılanlar (ocakMakineMap) VE geçmişten
   // kalıcı ocak makineleri (kaliciOcak — o gün GPS'siz olsa da) hariç → hepsi Stabilize'de gösterilir.
