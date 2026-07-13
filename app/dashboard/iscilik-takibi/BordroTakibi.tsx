@@ -56,7 +56,7 @@ import {
   type BordroPendingDB,
 } from "@/lib/supabase/queries/bordro-pending";
 import { bordroDonemIsaretle } from "@/lib/supabase/queries/bordro-gonderim";
-import type { Personel, PersonelAtamaGecmisi, PersonelAtamaManuelGun, PersonelBrutUcret } from "@/lib/supabase/types";
+import { OGRENIM_DURUMLARI, type Personel, type PersonelAtamaGecmisi, type PersonelAtamaManuelGun, type PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 
 // Telefon formatlama: 0535 535 35 35
@@ -561,6 +561,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [ekleTc, setEkleTc] = useState("");
   const [ekleGorev, setEkleGorev] = useState("");
   const [ekleMeslek, setEkleMeslek] = useState("");
+  const [ekleOgrenim, setEkleOgrenim] = useState(""); // öğrenim durumu — zorunlu
   const [ekleSantiye, setEkleSantiye] = useState("");
   const [ekleTarih, setEkleTarih] = useState(() => yerelBugun());
   const [ekleCepTelefon, setEkleCepTelefon] = useState("");
@@ -3755,6 +3756,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (!ekleTc.trim() || ekleTc.length !== 11) { toast.error("11 haneli TC gerekli"); return; }
     if (!ekleCepTelefon.trim()) { toast.error("Cep telefonu zorunlu"); return; }
     if (!ekleMeslek.trim()) { toast.error("Meslek zorunlu"); return; }
+    if (!ekleOgrenim.trim()) { toast.error("Öğrenim durumu zorunlu"); return; }
     setKaydetYukleniyor(true);
     try {
       // Admin'se ekleTarih (eski tarih girebilir), değilse her zaman bugün
@@ -3765,6 +3767,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         tc_kimlik_no: ekleTc.trim(),
         gorev: null,
         meslek: ekleMeslek || null,
+        ogrenim_durumu: ekleOgrenim || null,
         santiye_id: ekleSantiye || null,
         maas: null,
         izin_hakki: null,
@@ -3809,7 +3812,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       await kuyrugaEkle({ tip: "giris", personel: yeni, santiyeAd, santiyeId: ekleSantiye || undefined });
       // Kapat + reload
       setEkleAcik(false);
-      setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek("");
+      setEkleAd(""); setEkleTc(""); setEkleGorev(""); setEkleMeslek(""); setEkleOgrenim("");
       setEkleSantiye(""); setEkleTarih(yerelBugun()); setEkleCepTelefon("");
       setEkleTeknik(false);
       await loadData();
@@ -5007,6 +5010,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   Meslek listesi boş. Tanımlamalar &gt; <code>personel_meslek</code> kategorisinden ekleyin.
                 </p>
               )}
+            </div>
+            <div>
+              <Label className="text-xs">Öğrenim Durumu <span className="text-red-500">*</span></Label>
+              <select value={ekleOgrenim} onChange={(e) => setEkleOgrenim(e.target.value)}
+                className="w-full h-9 rounded-md border border-input bg-white px-3 text-sm">
+                <option value="">Seçiniz</option>
+                {OGRENIM_DURUMLARI.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
             </div>
             <div>
               <Label className="text-xs">Şantiye <span className="text-red-500">*</span></Label>

@@ -18,7 +18,7 @@ import type { Tanimlama, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, formatBaslik } from "@/lib/utils/isim";
 import { useAuth } from "@/hooks";
 import { Trash2, Plus } from "lucide-react";
-import type { Personel, PersonelInsert } from "@/lib/supabase/types";
+import { OGRENIM_DURUMLARI, type Personel, type PersonelInsert } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +93,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     cep_telefon: personel?.cep_telefon ?? null,
     durum: personel?.durum ?? "aktif",
     pasif_tarihi: personel?.pasif_tarihi ?? null,
+    ogrenim_durumu: personel?.ogrenim_durumu ?? null,
   });
 
   // Brüt ücret geçmişini yükle (sadece düzenleme modunda + yetkili kullanıcı için)
@@ -184,6 +185,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
         cep_telefon: mevcut.cep_telefon ?? null,
         durum: "aktif",
         pasif_tarihi: null,
+        ogrenim_durumu: mevcut.ogrenim_durumu ?? null,
       });
       setMaasInput("");
 
@@ -231,6 +233,11 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
       return;
     }
 
+    // Öğrenim durumu zorunlu
+    if (!formData.ogrenim_durumu || !formData.ogrenim_durumu.trim()) {
+      toast.error("Öğrenim durumu zorunludur.");
+      return;
+    }
     // Cep telefonu zorunlu
     if (!formData.cep_telefon || !formData.cep_telefon.trim()) {
       toast.error("Cep telefonu zorunludur.");
@@ -728,6 +735,18 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                 value={formData.ev_telefon ?? ""}
                 onChange={(e) => setFormData((p) => ({ ...p, ev_telefon: formatTelefon(e.target.value) || null }))}
                 disabled={loading} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ogrenim_durumu">Öğrenim Durumu <span className="text-red-500">*</span></Label>
+              <select id="ogrenim_durumu" className={selectClass}
+                value={formData.ogrenim_durumu ?? ""}
+                onChange={(e) => setFormData((p) => ({ ...p, ogrenim_durumu: e.target.value || null }))}
+                required
+                disabled={loading}>
+                <option value="">Seçin...</option>
+                {OGRENIM_DURUMLARI.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
             </div>
           </div>
 

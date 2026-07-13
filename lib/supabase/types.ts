@@ -142,9 +142,25 @@ export type Personel = {
   // Teknik personel bayrağı — sadece bilgi amaçlı (rozet için).
   // Giriş/çıkış/atama mantığını ETKİLEMEZ. Eski şemada bu kolon yoksa undefined gelir.
   is_teknik?: boolean;
+  // Öğrenim durumu — personel/taşeron EKLERKEN zorunlu (form doğrulaması).
+  // Eski kayıtlarda NULL olabilir; kolon yoksa sql/personel_ogrenim.sql çalıştırılmalı.
+  ogrenim_durumu?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+// Öğrenim durumu seçenekleri — personel formu + bordro taşeron ekleme aynı listeyi kullanır.
+export const OGRENIM_DURUMLARI = [
+  "Okur-Yazar Değil",
+  "Okur-Yazar",
+  "İlkokul",
+  "Ortaokul",
+  "Lise",
+  "Ön Lisans",
+  "Lisans",
+  "Yüksek Lisans",
+  "Doktora",
+] as const;
 
 export type PersonelInsert = Omit<Personel, "id" | "created_at" | "updated_at">;
 export type PersonelUpdate = Partial<PersonelInsert>;
