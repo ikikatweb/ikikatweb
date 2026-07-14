@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       ekBilgi,
       gonderenKullaniciAd,
       teknik,
+      personelOgrenim,
     } = body as {
       firmaId: string;
       muhasebeEmail: string;
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       ekBilgi?: string;
       gonderenKullaniciAd?: string;
       teknik?: boolean;
+      personelOgrenim?: string; // öğrenim durumu — mail gövdesinde gösterilir
     };
 
     if (!muhasebeEmail) {
@@ -87,6 +89,7 @@ export async function POST(request: Request) {
         `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
         (personelGorev ? `Görev : ${personelGorev}\n` : "") +
+        (personelOgrenim ? `Öğrenim Durumu : ${personelOgrenim}\n` : "") +
         (santiyeAd ? `Şantiye : ${santiyeAd}\n` : "") +
         `İşe Başlama Tarihi : ${tarih}\n\n` +
         `Sigorta giriş işlemlerinin yapılmasını rica ederiz.\n\n` +
@@ -100,6 +103,7 @@ export async function POST(request: Request) {
         `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
         (personelGorev ? `Görev : ${personelGorev}\n` : "") +
+        (personelOgrenim ? `Öğrenim Durumu : ${personelOgrenim}\n` : "") +
         (onceSantiyeAd ? `Son Şantiye : ${onceSantiyeAd}\n` : "") +
         `İşten Çıkış Tarihi : ${tarih}\n\n` +
         `Sigorta çıkış işlemlerinin yapılmasını rica ederiz.\n\n` +
@@ -112,6 +116,7 @@ export async function POST(request: Request) {
         `Aşağıda bilgileri verilen personel şantiye değişikliği yapmıştır:\n\n` +
         `Ad Soyad : ${personelAd}${teknik ? " (Teknik Personel)" : ""}\n` +
         (personelTc ? `TC Kimlik No : ${personelTc}\n` : "") +
+        (personelOgrenim ? `Öğrenim Durumu : ${personelOgrenim}\n` : "") +
         (onceSantiyeAd ? `Önceki Şantiye : ${onceSantiyeAd}\n` : "") +
         (santiyeAd ? `Yeni Şantiye : ${santiyeAd}\n` : "") +
         `Transfer Tarihi : ${tarih}\n\n` +

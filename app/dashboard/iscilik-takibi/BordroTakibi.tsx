@@ -114,6 +114,7 @@ type PendingChange = {
   personelTc?: string;
   personelGorev?: string;
   personelMeslek?: string;
+  personelOgrenim?: string; // öğrenim durumu — mail gövdesinde gösterilir
   santiyeAd?: string;     // hedef şantiye (giriş/transfer)
   onceSantiyeAd?: string; // önceki şantiye (çıkış/transfer)
   tarih: string;          // YYYY-MM-DD
@@ -691,6 +692,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     personelTc: r.personel_tc ?? undefined,
     personelGorev: r.personel_gorev ?? undefined,
     personelMeslek: r.personel_meslek ?? undefined,
+    personelOgrenim: r.personel_ogrenim ?? undefined,
     santiyeAd: r.santiye_ad ?? undefined,
     onceSantiyeAd: r.once_santiye_ad ?? undefined,
     tarih: r.tarih,
@@ -755,6 +757,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             personel_tc: p.personelTc ?? null,
             personel_gorev: p.personelGorev ?? null,
             personel_meslek: p.personelMeslek ?? null,
+            personel_ogrenim: p.personelOgrenim ?? null,
             santiye_ad: p.santiyeAd ?? null,
             once_santiye_ad: p.onceSantiyeAd ?? null,
             tarih: p.tarih,
@@ -857,6 +860,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       personel_tc: p.personelTc ?? null,
       personel_gorev: p.personelGorev ?? null,
       personel_meslek: p.personelMeslek ?? null,
+      personel_ogrenim: p.personelOgrenim ?? null,
       santiye_ad: p.santiyeAd ?? null,
       once_santiye_ad: p.onceSantiyeAd ?? null,
       tarih: p.tarih,
@@ -1528,6 +1532,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       // Görev alanı bordroda gösterilmez/iletilmez — sadece meslek kullanılır
       personelGorev: undefined,
       personelMeslek: payload.personel.meslek ?? undefined,
+      personelOgrenim: payload.personel.ogrenim_durumu ?? undefined,
       tarih,
     };
 

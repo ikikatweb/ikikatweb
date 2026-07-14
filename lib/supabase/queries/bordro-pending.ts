@@ -13,6 +13,7 @@ export type BordroPendingDB = {
   personel_tc: string | null;
   personel_gorev: string | null;
   personel_meslek?: string | null;
+  personel_ogrenim?: string | null; // öğrenim durumu — mailde gösterilir (kolon yoksa undefined)
   santiye_ad: string | null;
   once_santiye_ad: string | null;
   tarih: string; // YYYY-MM-DD

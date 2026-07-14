@@ -11,6 +11,7 @@ type Change = {
   personelTc?: string;
   personelGorev?: string;
   personelMeslek?: string;
+  personelOgrenim?: string; // öğrenim durumu — cümlede "öğrenim durumu X olan" biçiminde geçer
   santiyeAd?: string;
   onceSantiyeAd?: string;
   // Tarih anlamları:
@@ -146,6 +147,7 @@ export async function POST(request: Request) {
     for (const c of changes.filter((c) => c.tip === "giris")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const ogrenim = c.personelOgrenim ? `öğrenim durumu ${c.personelOgrenim} olan ` : "";
       const teknikEk = c.teknik ? " (Teknik Personel)" : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.santiyeAd ?? "—";
@@ -153,7 +155,7 @@ export async function POST(request: Request) {
         parcalar: [
           { tip: "metin", deger: tc },
           { tip: "vurguYesil", deger: `${c.personelAd}${teknikEk}` },
-          { tip: "metin", deger: ` isimli ${meslek}personeli ` },
+          { tip: "metin", deger: ` isimli ${meslek}${ogrenim}personeli ` },
           { tip: "vurguYesil", deger: tarihStr },
           { tip: "metin", deger: ` tarihinde ${firmaAdi} bünyesinde bulunan ${santiye} işine ` },
           { tip: "vurguYesil", deger: "giriş" },
@@ -168,6 +170,7 @@ export async function POST(request: Request) {
     for (const c of changes.filter((c) => c.tip === "cikis")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const ogrenim = c.personelOgrenim ? `öğrenim durumu ${c.personelOgrenim} olan ` : "";
       const teknikEk = c.teknik ? " (Teknik Personel)" : "";
       const tarihStr = tarihFormatla(c.tarih);
       const santiye = c.onceSantiyeAd ?? "—";
@@ -175,7 +178,7 @@ export async function POST(request: Request) {
         parcalar: [
           { tip: "metin", deger: tc },
           { tip: "vurguKirmizi", deger: `${c.personelAd}${teknikEk}` },
-          { tip: "metin", deger: ` isimli ${meslek}personel ` },
+          { tip: "metin", deger: ` isimli ${meslek}${ogrenim}personel ` },
           { tip: "vurguKirmizi", deger: tarihStr },
           { tip: "metin", deger: ` tarihinde ${firmaAdi} bünyesinde bulunan ${santiye} işinden ` },
           { tip: "vurguKirmizi", deger: "ayrılmıştır" },
@@ -190,6 +193,7 @@ export async function POST(request: Request) {
     for (const c of changes.filter((c) => c.tip === "transfer")) {
       const tc = c.personelTc ? `${c.personelTc} TC kimlik numaralı ` : "";
       const meslek = c.personelMeslek ? `${c.personelMeslek} mesleğindeki ` : "";
+      const ogrenim = c.personelOgrenim ? `öğrenim durumu ${c.personelOgrenim} olan ` : "";
       const teknikEk = c.teknik ? " (Teknik Personel)" : "";
       const girisTarihStr = tarihFormatla(c.tarih);
       // cikisTarih yoksa girişle aynı kullanılır (uyum için)
@@ -200,7 +204,7 @@ export async function POST(request: Request) {
         parcalar: [
           { tip: "metin", deger: tc },
           { tip: "vurguYesil", deger: `${c.personelAd}${teknikEk}` },
-          { tip: "metin", deger: ` isimli ${meslek}personelin ${firmaAdi} bünyesindeki ${eski} şantiyesinden ` },
+          { tip: "metin", deger: ` isimli ${meslek}${ogrenim}personelin ${firmaAdi} bünyesindeki ${eski} şantiyesinden ` },
           { tip: "vurguKirmizi", deger: `çıkış tarihi ${cikisTarihStr}` },
           { tip: "metin", deger: `, ${yeni} şantiyesine ` },
           { tip: "vurguYesil", deger: `giriş tarihi ${girisTarihStr}` },
