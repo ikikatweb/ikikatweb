@@ -81,17 +81,36 @@ export function ocakTespit(rotalar: Nokta[][], gridM = 40): LatLng | null {
 // ⚠️ DİKKAT: `rota` mutlaka TEK GÜNE ait olmalı (eşleşme gün-içi SAAT ile yapılır). Çok-günlü/havuzlanmış
 // (plaka bazında tüm günler birleşik) rota verilirse damper, BAŞKA bir günün aynı saatteki duruşuna oturup
 // yanlış yere (ör. ocağa) taşınır. Çağıranlar her zaman gün-bazlı rota (plaka|tarih) geçmeli.
-export function damperDurakKonumu(rota: { saat?: string | null; lat?: number | null; lng?: number | null; hiz?: number | null }[], saat: string | null | undefined, maxYakinSn = 420): [number, number] | null {
+// alarm + maxUzakM: alarm konumu verilirse seçim MESAFE ÖNCELİKLİDİR — pencere içindeki rota noktaları
+// arasından alarma mesafece en yakın olana oturtulur (≤ maxUzakM şartıyla; zaman farkı kırıcı).
+// Veri analizi (14.07.2026): alarm GPS'leri aracın gerçek rotasına ≤25m isabetli; eski "zamana en yakın
+// DURUŞ" seçimi ise mesafe sınırsız olduğundan ikonları ORTALAMA 200m kaydırıyordu (kamyon döküm sonrası
+// uzaktaki kavşak/sıra duruşuna yapışıyordu). Yeni seçim: önce DURMUŞ noktalar; hiç durmuş nokta yoksa
+// (yavaş seyirde döküm) herhangi bir rota noktası → ikon yolun üstüne, GERÇEK döküm yerine oturur.
+export function damperDurakKonumu(
+  rota: { saat?: string | null; lat?: number | null; lng?: number | null; hiz?: number | null }[],
+  saat: string | null | undefined,
+  maxYakinSn = 420,
+  alarm?: { lat: number; lng: number } | null,
+  maxUzakM = 80,
+): [number, number] | null {
   const ds = saatSn(saat); if (ds == null || !rota.length) return null;
-  let best: [number, number] | null = null, bestDt = Infinity;
+  let durmus: [number, number] | null = null, durmusSkor = Infinity;
+  let herhangi: [number, number] | null = null, herhangiSkor = Infinity;
   for (const p of rota) {
     if (p.lat == null || p.lng == null) continue;
     const ps = saatSn(p.saat); if (ps == null) continue;
     const dt = Math.abs(ps - ds);
-    if (dt > maxYakinSn || (p.hiz ?? 99) > 3) continue;   // pencere dışı veya HAREKET halinde → atla
-    if (dt < bestDt) { bestDt = dt; best = [p.lat, p.lng]; }
+    if (dt > maxYakinSn) continue; // zaman penceresi dışı
+    const dm = alarm ? mesafeMetre(p.lat, p.lng, alarm.lat, alarm.lng) : 0;
+    if (alarm && dm > maxUzakM) continue; // alarmdan uzak → dökme yeri değil
+    const skor = alarm ? dm + dt * 0.05 : dt; // alarm varsa mesafe öncelikli (zaman kırıcı), yoksa eski davranış (zaman)
+    if ((p.hiz ?? 99) <= 3 && skor < durmusSkor) { durmusSkor = skor; durmus = [p.lat, p.lng]; }
+    if (skor < herhangiSkor) { herhangiSkor = skor; herhangi = [p.lat, p.lng]; }
   }
-  return best;
+  // Alarm verildiyse durmuş nokta yoksa yakınındaki HERHANGİ rota noktasına oturt (yavaş dökümde hız >3
+  // olabilir); alarm yoksa eski davranış korunur (yalnız durmuş nokta, yoksa null → çağıran ham konuma döner).
+  return durmus ?? (alarm ? herhangi : null);
 }
 
 // Bir iş makinesinin (sabit ekskavatör vb.) OCAK çemberi içinde çalışıp çalışmadığı: rota (GPS)

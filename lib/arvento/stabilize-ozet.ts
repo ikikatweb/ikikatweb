@@ -48,7 +48,9 @@ export function siniflaGunDamper(
   const muk = mukerrerIsaretle(dampers, pencSn, ayar.mukerrerYaricap);
   const sinifli = arizaIsaretle(muk, rota, ocak, ayar.ocakYaricap);
   return sinifli.map((o) => {
-    const durak = damperDurakKonumu(rota, o.saat);
+    // Alarm konumu MESAFE SINIRI ile oturt: sınırsız oturtma, uzak kavşak/sıra duruşuna yapışıp
+    // ikonu ~200m kaydırıyordu (bkz. ocak.ts damperDurakKonumu notu).
+    const durak = damperDurakKonumu(rota, o.saat, 420, (o.lat != null && o.lng != null) ? { lat: o.lat, lng: o.lng } : null);
     return {
       plaka,
       saat: o.saat ?? null,

@@ -79,7 +79,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         let mk = o.mukerrer, ar = o.ariza;
         if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
         if (!mk && !ar && o.lat != null && o.lng != null) {
-          const [la, ln] = damperDurakKonumu(rota, o.saat) ?? [o.lat, o.lng];
+          const [la, ln] = damperDurakKonumu(rota, o.saat, 420, { lat: o.lat as number, lng: o.lng as number }) ?? [o.lat, o.lng];
           out.push({ ...o, lat: la, lng: ln, plaka: r.plaka });
         }
       }

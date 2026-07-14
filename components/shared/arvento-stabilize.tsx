@@ -746,12 +746,23 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       // günün aynı saatteki ocak-duruşuna oturup yanlışlıkla OCAĞA taşınıyordu (ham yeri km'lerce uzakta olsa bile).
       let lat: number, lng: number;
       if (OZET_MODU) {
-        // ÖZET: durak konumu sunucuda hazır; yoksa snapReglaj(ham) — eski yolla birebir (damperDurakKonumu ?? snapReglaj)
-        if (o._durakLat != null && o._durakLng != null) { lat = o._durakLat; lng = o._durakLng; }
-        else { const s = snapReglaj(o.lat as number, o.lng as number); lat = s[0]; lng = s[1]; }
+        // ÖZET: durak konumu sunucuda hazır; MESAFE KORUMASI: eski özetlerdeki durak, alarm (ham) konumdan
+        // >80m uzağa oturmuş olabilir (200m'ye varan kayma — eski algoritma). O durumda sırasıyla:
+        // 1) gün rotası eldeyse (kısa aralıkta kamyon izi iner) alarm çevresine YENİDEN oturt,
+        // 2) yoksa snapReglaj(ham).
+        const durakOk = o._durakLat != null && o._durakLng != null
+          && (o.lat == null || o.lng == null || mesafeMetre(o._durakLat, o._durakLng, o.lat as number, o.lng as number) <= 80);
+        if (durakOk) { lat = o._durakLat as number; lng = o._durakLng as number; }
+        else {
+          const gunRotasi = rotaByPlakaGun.get(`${plakaNorm(o.plaka)}|${damperTarih(o)}`) ?? [];
+          const alarm = (o.lat != null && o.lng != null) ? { lat: o.lat as number, lng: o.lng as number } : null;
+          const s = damperDurakKonumu(gunRotasi, o.saat, 420, alarm) ?? snapReglaj(o.lat as number, o.lng as number);
+          lat = s[0]; lng = s[1];
+        }
       } else {
         const gunRotasi = rotaByPlakaGun.get(`${plakaNorm(o.plaka)}|${damperTarih(o)}`) ?? [];
-        const s = damperDurakKonumu(gunRotasi, o.saat) ?? snapReglaj(o.lat as number, o.lng as number);
+        const alarm = (o.lat != null && o.lng != null) ? { lat: o.lat as number, lng: o.lng as number } : null;
+        const s = damperDurakKonumu(gunRotasi, o.saat, 420, alarm) ?? snapReglaj(o.lat as number, o.lng as number);
         lat = s[0]; lng = s[1];
       }
       const anahtar = `${o.plaka}|${lat.toFixed(4)}|${lng.toFixed(4)}`;

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, damperNoktalariRange, oncekiDamperCek, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
 import { aracRengi } from "@/lib/arvento/arac-renk";
+import { mesafeMetre } from "@/lib/arvento/ocak";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { kmlRenk, yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { type OzetDamper } from "@/lib/arvento/stabilize-ozet";
@@ -317,7 +318,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       const ov = damperSinif?.get(`${plakaNorm(d.plaka)}|${d.tarih}|${d.saat ?? ""}`); // manuel override
       if (ov === "gercek") { mk = false; ar = false; } else if (ov === "mukerrer") { mk = true; ar = false; } else if (ov === "ariza") { ar = true; mk = false; }
       if (mk || ar) continue; // yalnız gerçek
-      const la = d.durakLat ?? d.rawLat, ln = d.durakLng ?? d.rawLng;
+      // MESAFE KORUMASI: eski özetlerdeki durak konumu, alarm (ham) konumdan >80m uzağa oturmuş
+      // olabilir (200m'ye varan kayma) → o durumda HAM konumu göster (ham, araç rotasına ≤25m isabetli).
+      const durakOk = d.durakLat != null && d.durakLng != null
+        && (d.rawLat == null || d.rawLng == null || mesafeMetre(d.durakLat, d.durakLng, d.rawLat, d.rawLng) <= 80);
+      const la = durakOk ? d.durakLat : (d.rawLat ?? d.durakLat);
+      const ln = durakOk ? d.durakLng : (d.rawLng ?? d.durakLng);
       if (la == null || ln == null) continue;
       out.push({ saat: d.saat, adres: d.adres, lat: la, lng: ln, plaka: d.plaka, _rawLat: d.rawLat, _rawLng: d.rawLng, _t: d.tarih });
     }
