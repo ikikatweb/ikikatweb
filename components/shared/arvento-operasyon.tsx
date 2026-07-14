@@ -30,6 +30,15 @@ const DAMPER_RENK = "#f97316";
 // Damper GÖSTERİMİ (kamyon noktaları) sezon başından itibaren TÜM sezonu kapsar — serme rotaları seçili
 // aralıkta kalır ama "nereye damper döküldü" haritası tüm sezonu gösterir (dashboard sezonuyla aynı baş).
 const SEZON_BAS = "2026-01-01";
+
+// GEÇMİŞ greyder rotaları (sezon başı → aralık öncesi) — "serilmiş damper" tespiti için oturum cache'i.
+// Geçmiş değişmez → aynı (aralık başı + plaka kümesi) için tablo taraması oturumda 1 kez yapılır.
+const gecmisRotaCache = new Map<string, AracArventoGuzergah[]>();
+function gunOnce(t: string): string {
+  const d = new Date(t + "T00:00:00");
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 // Serme: "önceden damper dökülmüş yol" tespiti için ~50 m sabit ızgara (bölge ~41° enlem).
 // Geçmiş damper noktaları bu ızgaraya (±1 komşu) işlenir; seçilen günün greyder rotasının
 // bu hücrelere denk gelen kısmı = SERME (reglaj sonrası malzeme serilen yol).
@@ -74,7 +83,7 @@ function formatSure(sn: number): string {
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 // _rawLat/_rawLng: damperin HAM (alarm GPS) konumu. Gösterim DURAK'a oturur ama serme yol eşleşmesi HAM ile
 // yapılır (serme tespiti de ham konumu kullanıyor → tutarlı; durak snap'i yarısını kaçırıyordu).
-type DamperNokta = DamperOlay & { plaka: string; _rawLat?: number | null; _rawLng?: number | null };
+type DamperNokta = DamperOlay & { plaka: string; _rawLat?: number | null; _rawLng?: number | null; _t?: string | null }; // _t: döküm TARİHİ (YYYY-MM-DD) — "sonradan serildi mi" karşılaştırması için
 type LeafletStatic = typeof import("leaflet");
 
 function formatTarih(t: string | null): string {
@@ -132,6 +141,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   // SERME: seçilen aralık BAŞINDAN ÖNCEKİ damperler (tarih+saat = dt). Aralık içi damperler raporlar'dan gelir.
   const [oncekiDamper, setOncekiDamper] = useState<{ lat: number; lng: number; dt: string }[]>([]);
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]);
+  // GEÇMİŞ greyder rotaları (sezon başı → aralık öncesi) — yalnız SERME'de, "serilmiş damper" tespiti için.
+  const [gecmisGreyder, setGecmisGreyder] = useState<AracArventoGuzergah[]>([]);
   const [raporlarHam, setRaporlar] = useState<AracArventoRapor[]>([]);
   // ÖZET damperler: sınıflama (gerçek/arıza/mükerrer) SUNUCUDA hazır (stabilize özetiyle BİREBİR, gün-bazlı
   // ocak). Serme kamyon GPS çekmediği için arizaIsaretle'yi BURADA çalıştıramıyoruz → özetten alıyoruz.
@@ -207,6 +218,22 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         // Özet (sınıflı sezon damperi) doluysa ham sezon scan'ini ATLA (havuzu yorma); yalnız özet boşsa çek.
         const sezonHam = (oz as OzetDamper[]).length > 0 ? [] : await damperNoktalariRange(SEZON_BAS, bitis).catch(() => []);
         if (benimNo !== yukNoRef.current) return;
+        // GEÇMİŞ GREYDER GEÇİŞLERİ (sezon başı → aralık öncesi) — "serilmiş damper" tespiti için:
+        // damper, aralıktan ÖNCEKİ günlerde serilmişse de gizlenmeli (kullanıcı isteği). Geçmiş değişmez
+        // → oturum cache'i: aynı aralık başı + plaka kümesi için tablo taraması oturumda 1 kez yapılır.
+        let gecmis: AracArventoGuzergah[] = [];
+        if (sermeMi && sermeBas > SEZON_BAS && ilgili.length > 0) {
+          const ck = `${sermeBas}|${[...ilgili].sort().join(",")}`;
+          const ez = gecmisRotaCache.get(ck);
+          if (ez) {
+            gecmis = ez;
+          } else {
+            gecmis = await getGuzergahByRange(SEZON_BAS, gunOnce(sermeBas), ilgili, { tekSorgu: true }).catch(() => [] as AracArventoGuzergah[]);
+            gecmisRotaCache.set(ck, gecmis);
+          }
+        }
+        if (benimNo !== yukNoRef.current) return;
+        setGecmisGreyder(gecmis);
         // Veri AYNIYSA eski referansları koru → periyodik tazelemede serme ızgarası/omurga/harita boş yere kurulmaz.
         setTumGuzergah((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g));
         setRaporlar((prev) => (raporVeriImza(prev) === raporVeriImza(r) ? prev : r));
@@ -292,7 +319,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       if (mk || ar) continue; // yalnız gerçek
       const la = d.durakLat ?? d.rawLat, ln = d.durakLng ?? d.rawLng;
       if (la == null || ln == null) continue;
-      out.push({ saat: d.saat, adres: d.adres, lat: la, lng: ln, plaka: d.plaka, _rawLat: d.rawLat, _rawLng: d.rawLng });
+      out.push({ saat: d.saat, adres: d.adres, lat: la, lng: ln, plaka: d.plaka, _rawLat: d.rawLat, _rawLng: d.rawLng, _t: d.tarih });
     }
     return out;
   }, [ozetDampers, izinSet, damperSinif]);
@@ -394,25 +421,64 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     return m;
   }, [tumGuzergah]);
 
-  // SERME DAMPERLERİ: TÜM gerçek damperler GÖSTERİLİR, AMA üzerinde serme yapılmış (greyderin serilen yoluna
-  // denk gelen) damperler KALDIRILIR — o pile dağıtıldı, serilen yolda damper ikonu olmaz. Yani: henüz
-  // SERİLMEMİŞ damper yığınları kalır + serilen yollar iki çizgi olarak görünür.
+  // Her hücre için SON greyder geçiş DATETIME'ı — GEÇMİŞ (sezon→aralık öncesi) + aralık rotaları birlikte.
+  // "Serilmiş damper" tespitinin kaynağı: damper kendi döküm anından SONRA bu hücrelerden geçilmişse
+  // serilmiştir. Chip seçiminden BAĞIMSIZ (greyder chip'i kapatınca damperler geri gelmesin).
+  const sonGecisHucre = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!sermeMi) return m;
+    const isle = (rows: AracArventoGuzergah[]) => {
+      for (const row of rows) {
+        if (!operasyondaGorunur(sekmeMap, atananSekmeler, row.arac_sinifi, "serme", row.plaka)) continue;
+        const D = row.rapor_tarihi;
+        for (const p of (row.noktalar ?? [])) {
+          if (p?.lat == null || p?.lng == null) continue;
+          const dt = `${D} ${p.saat ?? "23:59:59"}`;
+          const [cy, cx] = sermeHucreIdx(p.lat, p.lng);
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const key = `${cy + dy}_${cx + dx}`;
+            const mev = m.get(key);
+            if (mev == null || dt > mev) m.set(key, dt);
+          }
+        }
+      }
+    };
+    isle(gecmisGreyder);
+    isle(tumGuzergah);
+    return m;
+  }, [sermeMi, gecmisGreyder, tumGuzergah, sekmeMap, atananSekmeler]);
+
+  // SERME DAMPERLERİ: TÜM gerçek damperler GÖSTERİLİR, AMA SERİLMİŞ (dökümünden SONRA üzerinden greyder
+  // geçmiş) damperler KALDIRILIR — önceki günlerde serilenler DAHİL (kullanıcı isteği). Aynı yere yeni
+  // döküm yapılırsa yeni yığının tarihi son geçişten YENİ olur → yine görünür. Kalan turuncu noktalar =
+  // serilmeyi bekleyen dökümler.
   const sermeDamperleri = useMemo<DamperNokta[]>(() => {
     if (!sermeMi) return [];
+    // Tarihsiz damper (ham fallback — özet boşken) için eski yöntem: aralıktaki serme yoluna denk gelme.
     const hucreler = new Set<string>(); // serme YAPILAN yol hücreleri (±1)
     for (const g of sermeByPlaka) for (const seg of g.parcalar) for (const [la, ln] of seg) {
       const [cy, cx] = sermeHucreIdx(la, ln);
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) hucreler.add(`${cy + dy}_${cx + dx}`);
     }
-    // Serme tespiti HAM konumu kullanıyor → eşleşmeyi ham ile yap; durak da serme yolundaysa yine kaldır.
-    // "serilmemiş yığın" = serme yoluna denk GELMEYEN damper (henüz greyder üzerinden geçmemiş).
-    return damperGoster.filter((o) => {
+    const serilmisMi = (o: DamperNokta): boolean => {
+      const dt = o._t ? `${o._t} ${o.saat ?? "00:00:00"}` : null;
+      const konumlar: [number, number][] = [];
       const rl = o._rawLat ?? o.lat, rg = o._rawLng ?? o.lng;
-      const hamOk = rl != null && rg != null && hucreler.has(sermeHucreKey(rl as number, rg as number));
-      const durakOk = o.lat != null && o.lng != null && hucreler.has(sermeHucreKey(o.lat as number, o.lng as number));
-      return !(hamOk || durakOk); // serme yolunda DEĞİLSE serilmemiş sayılır
-    });
-  }, [sermeMi, sermeByPlaka, damperGoster]);
+      if (rl != null && rg != null) konumlar.push([rl as number, rg as number]);
+      if (o.lat != null && o.lng != null) konumlar.push([o.lat as number, o.lng as number]);
+      for (const [la, ln] of konumlar) {
+        const key = sermeHucreKey(la, ln);
+        if (dt) {
+          const g = sonGecisHucre.get(key);
+          if (g != null && g > dt) return true; // dökümden SONRA geçiş var → serilmiş
+        } else if (hucreler.has(key)) {
+          return true; // tarihsiz → aralık serme yoluna denk geliyor
+        }
+      }
+      return false;
+    };
+    return damperGoster.filter((o) => !serilmisMi(o));
+  }, [sermeMi, sermeByPlaka, sonGecisHucre, damperGoster]);
 
   // Çip "km yol": SERME'de damper-SONRASI serme omurgası (sermeByPlaka); SIKIŞTIRMA'da silindir omurgası.
   // Serme greyderinin TOPLAM rotası DEĞİL → reglaj ile aynı görünmez. Serme'si olmayan greyder = 0.
@@ -538,10 +604,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       }
     });
     if (sermeMi) {
-      // Bu sezonun (aralığın) TÜM gerçek damperleri — küçük yuvarlak nokta (serme yolundakiler dahil).
-      damperGoster.forEach((o, i) => {
+      // YALNIZ SERİLMEMİŞ damperler — üzerinden greyder geçip serilen (işlenen) yığınların ikonu
+      // KALDIRILIR (kullanıcı isteği: yol işlendiyse damper haritada durmasın). Serilen yol zaten
+      // çift çizgiyle görünür; kalan turuncu noktalar = serilmeyi bekleyen döküm.
+      sermeDamperleri.forEach((o, i) => {
         L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: DAMPER_RENK, fillOpacity: 0.95, renderer: yolRenderer })
-          .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1}<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
+          .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b> · Damper ${i + 1} (serilmemiş)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
         bounds.push([o.lat as number, o.lng as number]);
       });
     } else {
@@ -569,7 +637,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
       } catch { /* harita hazır değil/yıkılıyor → sessiz geç */ }
     }
-  }, [haritaHazir, sermeByPlaka, damperGoster, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
+  }, [haritaHazir, sermeByPlaka, sermeDamperleri, greyderRenkAl, hamNoktaByPlaka, modelMap, secilenSilindirler, silindirRenkAl, etkinTekrar, etkinSilindir, gridMesafe, transitHiz, sermeMi, sermeKal, silindirKal, reglajKal, sermeRenkV, silindirRenkV, reglajRenkV, gorunumRef]);
 
   async function exportKML() {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -595,7 +663,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     <Placemark><name>${esc(k.plaka)} ${esc(def.ad)}</name><styleUrl>#${sid}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${coords}</coordinates></LineString></Placemark>`;
     }).join("");
     const orta = sermeMi
-      ? damperGoster.map((o, i) => {
+      ? sermeDamperleri.map((o, i) => { // haritayla aynı: yalnız serilmemiş damperler KML'e gider
           const sid = stilEkle(greyderRenkAl(o.plaka), "icon");
           return `
     <Placemark><name>${esc(o.plaka)} damper ${i + 1}</name><styleUrl>#${sid}</styleUrl><Point><coordinates>${(o.lng as number).toFixed(6)},${(o.lat as number).toFixed(6)},0</coordinates></Point></Placemark>`;
@@ -711,7 +779,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
               </div>
               <div>
                 {sermeMi
-                  ? <span><span className="font-semibold" style={{ color: sermeRenkV }}>🟰 {(sermeToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m serme</span> <span className="text-orange-600 font-semibold">· 🔻 {damperGoster.length} damper{sermeDamperleri.length > 0 ? ` (${sermeDamperleri.length} serilmemiş)` : ""}</span></span>
+                  ? <span><span className="font-semibold" style={{ color: sermeRenkV }}>🟰 {(sermeToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m serme</span> <span className="text-orange-600 font-semibold" title="Haritada yalnız serilmemiş (üzerinden greyder geçmemiş) damperler gösterilir; serilenler kaldırılır.">· 🔻 {sermeDamperleri.length} serilmemiş damper (toplam {damperGoster.length})</span></span>
                   : <span><span className="font-semibold" style={{ color: silindirRenkV }}>🟰 {(sikistirmaToplamKm * 1000).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} m sıkıştırma</span> <span style={{ color: silindirRenkV }} className="font-semibold">· ⩘ {secilenSilindirler.length} silindir hattı</span></span>}
               </div>
               {sermeMi && (
