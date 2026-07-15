@@ -17,7 +17,6 @@ import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
-import { addPersonelSantiye } from "@/lib/supabase/queries/personel-santiye";
 import {
   getTeknikPersonelKayitlari,
   setPersonelTeknikSantiye,
@@ -3783,17 +3782,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         durum: "aktif",
         pasif_tarihi: null,
       });
-      // Şantiye seçildiyse personel_santiye junction tablosuna da ekle
-      // (Personeller sayfasında listede görünmesi + puantaj listesi için gerekli).
-      // sessiz=true → "Personel Atandı" bildirimi gönderilmez; bordro zaten kendi
-      // "İşe Giriş — Bordro Takibi" bildirimini yolluyor (çift bildirimi önler).
-      if (ekleSantiye && yeni?.id) {
-        try {
-          await addPersonelSantiye(yeni.id, ekleSantiye, true);
-        } catch (atErr) {
-          console.warn("Otomatik şantiye ataması başarısız:", atErr);
-        }
-      }
+      // NOT: personel_santiye (puantaj ataması) BİLEREK YAZILMIYOR — bordro takibi ile puantaj
+      // birbirinden BAĞIMSIZDIR (kullanıcı isteği, 14.07.2026): bordrodan eklenen taşeron personel
+      // puantaja otomatik DÜŞMEZ. Puantaja girmesi gerekiyorsa oradan ayrıca atanır.
       // Teknik personel işaretliyse personel_teknik tablosuna İSİMLİ kayıt aç: şantiyenin
       // BOŞTAKİ ilk rolü otomatik atanır (rozet/PDF teknik sayımı isimli kayıt ister; yalnız
       // bayrak yazılınca kişi teknik GÖRÜNMÜYORDU). Rol listesi tanımsızsa null (eski model).
