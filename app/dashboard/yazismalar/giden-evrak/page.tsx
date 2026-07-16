@@ -6,6 +6,7 @@ import { createPortal, flushSync } from "react-dom";
 import { getGidenEvraklar, softDeleteGidenEvrak, updateGidenEvrak, createGidenEvrak, getGidenEvrakSayiNo } from "@/lib/supabase/queries/giden-evrak";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
+import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -849,8 +850,8 @@ export default function GidenEvrakPage() {
           </DialogHeader>
           {onizlemeEvrak && (
             <>
-              <div>
-                <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+              <OnizlemeSayfa>
+                <div className="border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
                   <GidenEvrakOnIzleme
                     firma={onizlemeEvrak.firmalar ?? null}
                     evrakTarihi={onizlemeEvrak.evrak_tarihi}
@@ -864,7 +865,7 @@ export default function GidenEvrakPage() {
                     kaseDahil={onizlemeEvrak.kase_dahil ?? false}
                   />
                 </div>
-              </div>
+              </OnizlemeSayfa>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setOnizlemeEvrak(null)}>Kapat</Button>
                 <Button

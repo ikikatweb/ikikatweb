@@ -6,6 +6,7 @@ import { createPortal, flushSync } from "react-dom";
 import { getBankaYazismalari, softDeleteBankaYazisma, createBankaYazisma, getBankaYazismaSayiNo } from "@/lib/supabase/queries/banka-yazismalari";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
+import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { BankaYazismaWithRelations, Firma } from "@/lib/supabase/types";
@@ -633,8 +634,8 @@ export default function BankaYazismalariPage() {
           </DialogHeader>
           {onizlemeYazisma && (
             <>
-              <div>
-                <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+              <OnizlemeSayfa>
+                <div className="border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
                   <BankaYazismaOnIzleme
                     firma={onizlemeYazisma.firmalar ?? null}
                     evrakTarihi={onizlemeYazisma.evrak_tarihi}
@@ -647,7 +648,7 @@ export default function BankaYazismalariPage() {
                     kaseDahil={onizlemeYazisma.kase_dahil ?? false}
                   />
                 </div>
-              </div>
+              </OnizlemeSayfa>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setOnizlemeYazisma(null)}>Kapat</Button>
                 <Button

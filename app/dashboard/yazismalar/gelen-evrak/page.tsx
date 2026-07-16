@@ -7,6 +7,7 @@ import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/g
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
+import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { useAuth } from "@/hooks";
 import type { GelenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -725,8 +726,8 @@ export default function GelenEvrakPage() {
           </DialogHeader>
           {onizlemeEvrak && (
             <>
-              <div>
-                <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+              <OnizlemeSayfa>
+                <div className="border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
                   <GelenEvrakOnIzleme
                     firma={onizlemeEvrak.firmalar ?? null}
                     evrakTarihi={onizlemeEvrak.evrak_tarihi}
@@ -738,7 +739,7 @@ export default function GelenEvrakPage() {
                     ekler={onizlemeEvrak.ekler}
                   />
                 </div>
-              </div>
+              </OnizlemeSayfa>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setOnizlemeEvrak(null)}>Kapat</Button>
                 <Button
