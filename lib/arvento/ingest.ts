@@ -24,6 +24,24 @@ function serviceClient() {
   return createClient(url, key);
 }
 
+// Plaka normalizasyonu — araclar tablosuyla eşleştirme anahtarı (tire/boşluk vb. atılır)
+function plakaNorm(s: unknown): string {
+  return String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+// KANONİK PLAKA: Arvento aynı aracı farklı yazımla gönderebiliyor (ör. "3400245563" ↔ "34-00-24-5563").
+// (rapor_tarihi, plaka) upsert anahtarı ayrışınca AYNI güne İKİ satır oluşuyordu → tablolarda mükerrer
+// kart + km/çalışma çift sayımı. Gelen plaka, Tanımlamalar'daki (araclar) kayıtlı yazıma çevrilir;
+// araclar'da olmayan plaka olduğu gibi kalır (görüntü katmanı tanımsızları zaten süzer).
+async function kanonikPlakaCevirici(supabase: ReturnType<typeof serviceClient>): Promise<(plaka: string) => string> {
+  const { data } = await supabase.from("araclar").select("plaka");
+  const m = new Map<string, string>();
+  for (const r of (data ?? []) as { plaka: string }[]) {
+    const n = plakaNorm(r.plaka);
+    if (n) m.set(n, r.plaka);
+  }
+  return (plaka) => m.get(plakaNorm(plaka)) ?? plaka;
+}
+
 export type IngestSonuc = {
   calismaGunler: { tarih: string; sayi: number }[]; // işlenen çalışma raporları
   damperGunler: { tarih: string; sayi: number }[];   // damper güncellenen günler
@@ -56,11 +74,22 @@ async function stabilizeOzetTazele(supabase: ReturnType<typeof serviceClient>, s
 
 export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<IngestSonuc> {
   const supabase = serviceClient();
+  const kanonik = await kanonikPlakaCevirici(supabase); // tüm rapor tiplerinde plaka tek yazıma iner
   const sonuc: IngestSonuc = { calismaGunler: [], damperGunler: [], guzergahGunler: [] };
 
   // ---- 0) Mesafe Bilgisi (Güzergah / Rota) ----
-  const guzergahlar = parseMesafeBilgisiBuffer(buf);
-  if (guzergahlar.length > 0) {
+  const guzergahHam = parseMesafeBilgisiBuffer(buf);
+  if (guzergahHam.length > 0) {
+    for (const g of guzergahHam) g.plaka = kanonik(g.plaka);
+    // Kanonikleştirme sonrası aynı (tarih, plaka) batch içinde çakışabilir → en çok noktalıyı tut
+    // (aynı upsert batch'inde çift anahtar Postgres hatası verir).
+    const tekilG = new Map<string, (typeof guzergahHam)[number]>();
+    for (const g of guzergahHam) {
+      const k = `${g.tarih}|${g.plaka}`;
+      const ex = tekilG.get(k);
+      if (!ex || g.noktalar.length > ex.noktalar.length) tekilG.set(k, g);
+    }
+    const guzergahlar = Array.from(tekilG.values());
     const satirlar = guzergahlar.map((g) => ({
       rapor_tarihi: g.tarih,
       plaka: g.plaka,
@@ -95,6 +124,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
   // ---- 0.5) Kontak Alarmı (o günkü ilk açılış / son kapanış saati) ----
   const kontaklar = parseKontakAlarmiBuffer(buf);
   if (kontaklar.length > 0) {
+    for (const k of kontaklar) k.plaka = kanonik(k.plaka);
     // PENCEREYİ SADECE GENİŞLET: araç kapsama dışı (ör. öğle molası) kontak kapatınca olay o an gelmez;
     // tekrar hatta çıkınca cihaz geç gönderir. Yeni rapor bu geç kapanışı taşırsa son_kontak UZAMALI, ama
     // kısmi/dar bir rapor onu ERKENE ÇEKMEMELİ. Bu yüzden mevcutla birleştir: en ERKEN ilk, en GEÇ son.
@@ -109,7 +139,15 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
     }
     const enErken = (a: string | null, b: string | null) => (a == null ? b : b == null ? a : (a < b ? a : b));
     const enGec = (a: string | null, b: string | null) => (a == null ? b : b == null ? a : (a > b ? a : b));
-    const satirlar = kontaklar.map((k) => {
+    // Kanonikleştirme sonrası aynı (tarih, plaka) batch içinde çakışabilir → pencereleri birleştir
+    const tekilK = new Map<string, (typeof kontaklar)[number]>();
+    for (const k of kontaklar) {
+      const key = `${k.tarih}|${k.plaka}`;
+      const ex = tekilK.get(key);
+      if (!ex) tekilK.set(key, k);
+      else { ex.ilkAcik = enErken(ex.ilkAcik, k.ilkAcik); ex.sonKapandi = enGec(ex.sonKapandi, k.sonKapandi); }
+    }
+    const satirlar = Array.from(tekilK.values()).map((k) => {
       const ex = mvcMap.get(`${k.tarih}|${k.plaka}`);
       return {
         rapor_tarihi: k.tarih,
@@ -133,6 +171,7 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
   // ---- 1) Araç Çalışma Raporu (km/süre) ----
   const work = parseArventoBuffer(buf);
   if (work.araclar.length > 0) {
+    for (const a of work.araclar) a.plaka = kanonik(a.plaka); // tekil-dedupe kanonik yazım üzerinden çalışsın
     const tarih = work.raporTarihi ?? trBugun();
     // Aynı plaka birden çok kez geçebilir → en aktif kaydı tut (in-batch çakışmayı önle)
     const aktiflik = (a: typeof work.araclar[number]) => (a.mesafe_km ?? 0) + (a.hareket_sn ?? 0) / 1000;
@@ -166,6 +205,16 @@ export async function ingestArventoBuffer(buf: ArrayBuffer | Buffer): Promise<In
   // ---- 2) Genel Rapor / Damper Alarmı (damper indirme, çok günlü; bazıları KOORDİNATLI) ----
   let genel = parseGenelRaporBuffer(buf);
   if (genel.length > 0) {
+    for (const g of genel) g.plaka = kanonik(g.plaka);
+    // Kanonikleştirme sonrası aynı (tarih, plaka) grupları birleştir (olaylar aşağıda saat|lat|lng ile tekilleşir)
+    const grup = new Map<string, (typeof genel)[number]>();
+    for (const g of genel) {
+      const k = `${g.tarih}|${g.plaka}`;
+      const ex = grup.get(k);
+      if (!ex) grup.set(k, g);
+      else { ex.olaylar = [...ex.olaylar, ...g.olaylar]; ex.damper = ex.olaylar.length; if (!ex.surucu) ex.surucu = g.surucu; }
+    }
+    genel = Array.from(grup.values());
     // KOORDİNAT KORUMASI + BİRLEŞTİRME: Genel Rapor GÜN-KÜMÜLATİFTİR (00:00→rapor saati). Sync mailleri
     // YENİ→ESKİ işleyip upsert REPLACE edince aynı günün ESKİ raporu (az kayıtlı) YENİYİ EZİYORDU → 55 kayıtlık
     // mail DB'de 41'e düşüyordu (eksikler hep en son saatler). Çözüm: mevcut damper olaylarını yenilerle

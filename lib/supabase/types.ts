@@ -240,6 +240,9 @@ export type Arac = {
   // Arvento canlı takip cihaz node'u (strNode) — web servisi konumu node ile döndürür,
   // plaka ile değil; bu eşleme bir kez kurulur. null = eşlenmemiş.
   arvento_node?: string | null;
+  // ŞOFÖR OVERRIDE — Tanımlamalar → Araç Sekme Atamaları "Şoför" kolonu. Dolu ise sitede
+  // Arvento'dan gelen sürücü adının YERİNE gösterilir; "-" = isim hiç gösterilmez; null = Arvento adı.
+  surucu?: string | null;
   created_at: string;
   updated_at: string;
 };

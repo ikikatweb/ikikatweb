@@ -219,7 +219,8 @@
       "Bash(grep -n \"<ArventoWidget\\\\|col-span\\\\|lg:col-span\\\\|md:col-span\\\\|{/\\\\* Widget\" app/dashboard/page.tsx)",
       "Bash(curl -s --max-time 30 \"https://ws.arvento.com/v1/report.asmx\" -o /tmp/asmx.html)",
       "Bash(grep -viE 'ReturnObject$')",
-      "Bash(curl -s --max-time 30 \"https://ws.arvento.com/v1/report.asmx?op=GeneralReport\")"
+      "Bash(curl -s --max-time 30 \"https://ws.arvento.com/v1/report.asmx?op=GeneralReport\")",
+      "Bash(node \"C:\\\\Users\\\\MSI\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-MSI-Desktop-ikikatweb\\\\4979d012-09b4-4119-8cc6-dd269710b3c9\\\\scratchpad\\\\plaka-sil-kontrol.mjs\")"
     ]
   }
 }

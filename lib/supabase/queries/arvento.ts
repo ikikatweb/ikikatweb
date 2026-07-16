@@ -32,7 +32,8 @@ export async function getStabilizeOzetDirect(bas: string, bitis: string): Promis
     }
   }
   const girisler: OzetGiris[] = [...girisM.entries()].map(([plaka, v]) => ({ plaka, girisOcak: v.girisOcak, girisDokum: v.girisDokum }));
-  return { dampers, girisler };
+  // Özet payload sunucuda ham tablodan hesaplanır → tanımlı-araç süzgeci burada da uygulanır.
+  return { dampers: await tanimliSuz(dampers), girisler: await tanimliSuz(girisler) };
 }
 
 // ===== Canlı konum + cihaz eşlemesi — DOĞRUDAN okuma (Vercel API'yi atla) =====
@@ -87,7 +88,7 @@ export async function getGuzergahByTarih(tarih: string): Promise<AracArventoGuze
     .eq("rapor_tarihi", tarih)
     .order("plaka");
   if (error) throw error;
-  return (data ?? []) as AracArventoGuzergah[];
+  return tanimliSuz((data ?? []) as AracArventoGuzergah[]);
 }
 
 // Güzergah satırlarını PLAKA bazında birleştir (TÜM günlerin noktalarını tek diziye, tarih sırasıyla).
@@ -135,7 +136,7 @@ export async function getMakineCalismaNoktalari(bas: string, bitis: string, plak
   if (plakalar) q = q.in("plaka", plakalar);
   const { data, error } = await q.order("rapor_tarihi").order("saat");
   if (error) throw error;
-  return (data ?? []) as MakineNokta[];
+  return tanimliSuz((data ?? []) as MakineNokta[]);
 }
 
 export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null, opts?: { tekSorgu?: boolean }): Promise<AracArventoGuzergah[]> {
@@ -163,7 +164,7 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
       if (d.length < PARCA) break;
       offset += PARCA; if (offset > 100000) break;
     }
-    return rows;
+    return tanimliSuz(rows);
   }
   // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla. plakalar verilirse her gün-sorgusu .in ile scoped
   // (küçük). KANITLANMIŞ yol: tek dev sorgu/haftalık paralel ağır sorgular tarayıcıda (RLS) TAKILIYORDU;
@@ -184,7 +185,7 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
     }));
     for (const r of sonuclar) { if (r.error) throw r.error; for (const row of (r.data ?? []) as AracArventoGuzergah[]) rows.push(row); }
   }
-  return rows;
+  return tanimliSuz(rows);
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için
@@ -211,8 +212,28 @@ export async function getArventoRaporByTarih(tarih: string): Promise<AracArvento
     .eq("rapor_tarihi", tarih)
     .order("mesafe_km", { ascending: false, nullsFirst: false });
   if (error) throw error;
-  return (data ?? []) as AracArventoRapor[];
+  return tanimliSuz((data ?? []) as AracArventoRapor[]);
 }
+
+// ===== ŞOFÖR OVERRIDE (araclar.surucu) =====
+// Tanımlamalar → Araç Sekme Atamaları'ndaki "Şoför" kolonu. DOLU ise Arvento'dan gelen sürücü adının
+// YERİNE gösterilir (işten çıkan şoförün adı kartlarda kalmasın). "-" yazılırsa isim hiç gösterilmez;
+// boş/NULL = Arvento'dan gelen ad aynen kullanılır. Kısa TTL'li modül cache → rapor sorgusu her
+// çağrıda ekstra tablo taraması yapmaz.
+let surucuOverrideCache: { t: number; m: Map<string, string> } | null = null;
+export async function getSurucuOverrideMap(): Promise<Map<string, string>> {
+  if (surucuOverrideCache && Date.now() - surucuOverrideCache.t < 60000) return surucuOverrideCache.m;
+  const supabase = getSupabase();
+  const { data } = await supabase.from("araclar").select("plaka, surucu").not("surucu", "is", null);
+  const m = new Map<string, string>();
+  for (const r of (data ?? []) as { plaka: string; surucu: string | null }[]) {
+    if (r.surucu && r.surucu.trim()) m.set(plakaNorm(r.plaka), r.surucu.trim());
+  }
+  surucuOverrideCache = { t: Date.now(), m };
+  return m;
+}
+// Ayar kaydedilince cache'i düşür (yeni ad hemen görünsün)
+export function surucuOverrideCacheTemizle(): void { surucuOverrideCache = null; }
 
 // Tarih aralığındaki tüm araç kayıtları (çok günlük damper toplamı için)
 export async function getArventoRaporByRange(bas: string, bitis: string): Promise<AracArventoRapor[]> {
@@ -236,7 +257,16 @@ export async function getArventoRaporByRange(bas: string, bitis: string): Promis
     offset += PARCA;
     if (offset > 100000) break;
   }
-  return tum;
+  // ŞOFÖR OVERRIDE: Tanımlamalar'da yazılan ad, rapordan gelen sürücünün yerine geçer ("-" = gizle).
+  // Merkezî burada uygulanır → kartlar/tablolar/sefer analizi hepsi otomatik yeni adı gösterir.
+  const ov = await getSurucuOverrideMap().catch(() => new Map<string, string>());
+  if (ov.size > 0) {
+    for (const r of tum) {
+      const o = ov.get(plakaNorm(r.plaka));
+      if (o !== undefined) r.surucu = o === "-" ? null : o;
+    }
+  }
+  return tanimliSuz(tum);
 }
 
 // Aralık ÖNCESİ tüm damperler (serme "bu yola daha önce damper döküldü mü?" geçmişi). Serme + reglaj
@@ -303,7 +333,7 @@ export async function damperNoktalariRange(bas: string, bitis: string): Promise<
     offset += PARCA;
     if (offset > 300000) break;
   }
-  return out;
+  return tanimliSuz(out);
 }
 
 // ===== Veri imzaları — "değişmediyse indirme / state'i ezme" kapıları =====
@@ -335,10 +365,12 @@ export function guzergahVeriImza(rows: AracArventoGuzergah[]): string {
   return rows.map((r) => `${r.plaka}|${r.rapor_tarihi}|${Array.isArray(r.noktalar) ? r.noktalar.length : 0}`).join(";");
 }
 
-// Rapor dizisinin hafif imzası: gösterime giren sayısal alanlar (değişince kartlar/tablolar tazelenmeli).
+// Rapor dizisinin hafif imzası: gösterime giren alanlar (değişince kartlar/tablolar tazelenmeli).
+// surucu DAHİL — şoför override'ı değişince kartlardaki isim güncellenebilsin (yoksa referans
+// koruması eski isimli diziyi tutuyordu).
 export function raporVeriImza(rows: AracArventoRapor[]): string {
   return rows.map((r) =>
-    `${r.plaka}|${r.rapor_tarihi}|${r.mesafe_km ?? ""}|${r.kontak_sn ?? ""}|${r.hareket_sn ?? ""}|${r.damper_sayisi ?? ""}|${r.ilk_kontak ?? ""}|${r.son_kontak ?? ""}|${Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0}`,
+    `${r.plaka}|${r.rapor_tarihi}|${r.mesafe_km ?? ""}|${r.kontak_sn ?? ""}|${r.hareket_sn ?? ""}|${r.damper_sayisi ?? ""}|${r.ilk_kontak ?? ""}|${r.son_kontak ?? ""}|${r.surucu ?? ""}|${Array.isArray(r.damper_olaylar) ? r.damper_olaylar.length : 0}`,
   ).join(";");
 }
 
@@ -416,7 +448,7 @@ export async function getArventoHamKayitlar(): Promise<ArventoHamKayit[]> {
     offset += PARCA;
     if (offset > 100000) break;
   }
-  return tum;
+  return tanimliSuz(tum);
 }
 
 // Ham kayıtlardan plaka başına ortalama hesapla.
@@ -449,6 +481,39 @@ export function plakaNorm(s: unknown): string {
   return String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+// ===== TANIMLI ARAÇ FİLTRESİ =====
+// Araç Takip tablolarında/haritalarında YALNIZ Tanımlamalar'da (araclar tablosu) kayıtlı plakalar
+// görünür: Arvento raporlarına karışan yabancı yazımlar (node-id, satılmış/başka firmanın aracı)
+// hiçbir sekmede listelenmez. Ayrıca plaka KANONİKLEŞTİRİLİR: Arvento aynı aracı farklı yazımla
+// gönderse de (ör. "3400245563" ↔ "34-00-24-5563") tabloda araclar'daki yazımla TEK kayıt görünür.
+// Kısa TTL'li modül cache → her rapor sorgusu ekstra tablo taraması yapmaz.
+let kanonikPlakaCache: { t: number; m: Map<string, string> } | null = null;
+async function getKanonikPlakaMap(): Promise<Map<string, string>> {
+  if (kanonikPlakaCache && Date.now() - kanonikPlakaCache.t < 60000) return kanonikPlakaCache.m;
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("araclar").select("plaka");
+  if (error) return kanonikPlakaCache?.m ?? new Map(); // hata → eski cache / boş (fail-open, cache'leme)
+  const m = new Map<string, string>();
+  for (const r of (data ?? []) as { plaka: string }[]) {
+    const n = plakaNorm(r.plaka);
+    if (n) m.set(n, r.plaka);
+  }
+  kanonikPlakaCache = { t: Date.now(), m };
+  return m;
+}
+// Satırları tanımlı araçlara süz + plakayı kanonik yazıma çevir. araclar boş/hata → süzme (sayfa boşalmasın).
+async function tanimliSuz<T extends { plaka: string }>(rows: T[]): Promise<T[]> {
+  const m = await getKanonikPlakaMap();
+  if (m.size === 0) return rows;
+  const out: T[] = [];
+  for (const r of rows) {
+    const kanonik = m.get(plakaNorm(r.plaka));
+    if (kanonik === undefined) continue; // Tanımlamalar'da yok → gösterme
+    out.push(kanonik === r.plaka ? r : { ...r, plaka: kanonik });
+  }
+  return out;
+}
+
 // Plaka → Şantiye eşlemesi: araç puantajdan (o tarihteki kayıt), yoksa aracın atanmış şantiyesi.
 export type PlakaSantiye = { santiyeId: string | null; santiyeAdi: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null };
 export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, PlakaSantiye>> {
@@ -474,16 +539,27 @@ export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, Pla
 }
 
 // Atama tablosu için TÜM araçlar (plaka, sınıf, mevcut sekme ataması).
-export type AracAtama = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null };
+export type AracAtama = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null; surucu: string | null };
 export async function getAraclarAtama(): Promise<AracAtama[]> {
   const supabase = getSupabase();
-  const { data } = await supabase
+  // surucu kolonu henüz eklenmemişse (sql/arac_surucu.sql çalıştırılmadan) tablo boş kalmasın →
+  // kolonsuz yeniden dene (geriye uyumlu).
+  const res = await supabase
     .from("araclar")
-    .select("id, plaka, marka, model, cinsi, sayac_tipi, arvento_sekmeler")
+    .select("id, plaka, marka, model, cinsi, sayac_tipi, arvento_sekmeler, surucu")
     .eq("tip", "ozmal") // yalnız özmal araçlar (kiralıklar hariç)
     .order("plaka");
-  const rows = (data ?? []) as { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: "km" | "saat" | null; arvento_sekmeler: string[] | null }[];
-  return rows.map((a) => ({ id: a.id, plaka: a.plaka, marka: a.marka, model: a.model, cinsi: a.cinsi, sayacTipi: a.sayac_tipi, sekmeler: Array.isArray(a.arvento_sekmeler) ? a.arvento_sekmeler : null }));
+  let veri: unknown[] | null = res.data;
+  if (res.error) {
+    const res2 = await supabase
+      .from("araclar")
+      .select("id, plaka, marka, model, cinsi, sayac_tipi, arvento_sekmeler")
+      .eq("tip", "ozmal")
+      .order("plaka");
+    veri = res2.data;
+  }
+  const rows = (veri ?? []) as { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: "km" | "saat" | null; arvento_sekmeler: string[] | null; surucu?: string | null }[];
+  return rows.map((a) => ({ id: a.id, plaka: a.plaka, marka: a.marka, model: a.model, cinsi: a.cinsi, sayacTipi: a.sayac_tipi, sekmeler: Array.isArray(a.arvento_sekmeler) ? a.arvento_sekmeler : null, surucu: a.surucu ?? null }));
 }
 
 // En güncel rapor tarihini döndür (dashboard widget için)
