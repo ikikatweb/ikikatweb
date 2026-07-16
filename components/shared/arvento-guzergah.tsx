@@ -219,20 +219,40 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     }
     return m;
   }, [araclar, etkinTekrar, gridMesafe, transitHiz]);
+  // Ham rotasında (serme ayıklaması ÖNCESİ) ≥2 koordinatlı nokta olan plakalar: bu araçların GPS verisi
+  // var demektir → km yol (reglaj) değeri hep hesaplanabilir olmalı (0 olsa bile). Chip'in ham
+  // toplam_mesafe'ye düşmesi YALNIZ hiç koordinat verisi olmayan araçlara kalır.
+  const hamNoktaliPlakalar = useMemo(() => {
+    const say = new Map<string, number>();
+    for (const row of kayitlar) {
+      const pk = plakaNorm(row.plaka);
+      let c = say.get(pk) ?? 0;
+      if (c >= 2) continue;
+      for (const p of row.noktalar ?? []) { if (p.lat != null && p.lng != null) { c++; if (c >= 2) break; } }
+      say.set(pk, c);
+    }
+    return new Set(Array.from(say).filter(([, c]) => c >= 2).map(([k]) => k));
+  }, [kayitlar]);
   // "Reglaj km" (TOPLAM): omurga parçaları varsa onların TOPLAMI. EŞİK ≥ 1 ama omurga YOKSA (greyder
   // yolu eşik kadar tekrar taramamış) → reglaj sayılmaz = 0. Yalnız HAM modda (eşik < 1) kapsanan yola düşülür.
   const omurgaKmMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const k of araclar) {
       const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-      if (noktalar.length < 2) continue;
+      if (noktalar.length < 2) {
+        // Rota aslında VAR ama noktaları serme ayıklamasında elendi (bugünkü tüm çalışması serme) →
+        // reglaj = 0 göster. Eskiden kayıt haritaya hiç girmeyip chip ham "N km"ye düşüyordu; Reglaj
+        // sekmesinde 3 km reglaj yapılmış gibi okunuyordu.
+        if (hamNoktaliPlakalar.has(plakaNorm(k.plaka))) m.set(k.plaka, 0);
+        continue;
+      }
       const parts = parcaUzunlukMap.get(k.plaka);
       if (parts) m.set(k.plaka, parts.reduce((a, b) => a + b, 0));
       else if (etkinTekrar < 1) m.set(k.plaka, kapsananYolKm(noktalar, gridMesafe)); // ham mod: eşik yok
       else m.set(k.plaka, 0); // eşik var, omurga boş → tekrar yetmedi, reglaj tamamlanmadı
     }
     return m;
-  }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar]);
+  }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar, hamNoktaliPlakalar]);
 
   // Yol tıklandığında popup için HAM noktalar (saat + hız + tarih) — plaka bazında. Omurga birleşik/tek çizgi
   // olduğu için tek değer taşımaz; tıklanan konuma EN YAKIN ham nokta gösterilir → plaka/model/hız/tarih/saat.
