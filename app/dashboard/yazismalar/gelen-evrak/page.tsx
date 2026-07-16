@@ -159,7 +159,9 @@ export default function GelenEvrakPage() {
     });
   }
 
-  // Bildirimden ?yazdir={id} ile gelindiyse → o evrağın YAZDIRMA ÖNİZLEMESİNİ otomatik aç.
+  // Bildirimden ?yazdir={id} ile gelindiyse → evrağın ÖNİZLEMESİNİ aç (yazdırma DEĞİL — kullanıcı
+  // isteği: bildirime tıklayınca yazıyı görmek; istenirse önizlemenin içindeki Yazdır kullanılır).
+  const [onizlemeEvrak, setOnizlemeEvrak] = useState<GelenEvrakWithRelations | null>(null);
   const yazdirAcildiRef = useRef(false);
   useEffect(() => {
     if (yazdirAcildiRef.current || loading) return;
@@ -168,7 +170,7 @@ export default function GelenEvrakPage() {
     const ev = evraklar.find((e) => e.id === id);
     if (!ev) return;
     yazdirAcildiRef.current = true;
-    printEvrak(ev);
+    setOnizlemeEvrak(ev);
     try { const u = new URL(window.location.href); u.searchParams.delete("yazdir"); window.history.replaceState({}, "", u.toString()); } catch { /* sessiz */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evraklar, loading]);
@@ -710,6 +712,44 @@ export default function GelenEvrakPage() {
             <Button variant="outline" onClick={() => setSilDialog(null)}>İptal</Button>
             <Button className="bg-red-500 hover:bg-red-600 text-white" onClick={handleSil} disabled={!silmeNedeni.trim()}>Sil</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bildirimden gelen ÖNİZLEME — yazdırma diyaloğu yerine evrağın kendisi gösterilir (kullanıcı
+          isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
+      <Dialog open={!!onizlemeEvrak} onOpenChange={(o) => { if (!o) setOnizlemeEvrak(null); }}>
+        {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp. */}
+        <DialogContent className="!w-[90vw] !max-w-none max-h-[95vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Evrak Önizleme — {onizlemeEvrak?.evrak_sayi_no ?? ""}</DialogTitle>
+          </DialogHeader>
+          {onizlemeEvrak && (
+            <>
+              <div>
+                <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+                  <GelenEvrakOnIzleme
+                    firma={onizlemeEvrak.firmalar ?? null}
+                    evrakTarihi={onizlemeEvrak.evrak_tarihi}
+                    evrakSayiNo={onizlemeEvrak.evrak_sayi_no}
+                    konu={onizlemeEvrak.konu}
+                    muhatap={onizlemeEvrak.muhatap}
+                    ilgi={onizlemeEvrak.ilgi}
+                    icerik={onizlemeEvrak.icerik}
+                    ekler={onizlemeEvrak.ekler}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setOnizlemeEvrak(null)}>Kapat</Button>
+                <Button
+                  className="bg-[#1E3A5F] hover:bg-[#16304f] text-white"
+                  onClick={() => { const ev = onizlemeEvrak; setOnizlemeEvrak(null); if (ev) printEvrak(ev); }}
+                >
+                  Yazdır
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

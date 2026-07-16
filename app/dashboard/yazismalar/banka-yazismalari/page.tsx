@@ -116,7 +116,9 @@ export default function BankaYazismalariPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Bildirimden ?yazdir={id} ile gelindiyse → o yazışmanın YAZDIRMA ÖNİZLEMESİNİ otomatik aç.
+  // Bildirimden ?yazdir={id} ile gelindiyse → yazışmanın ÖNİZLEMESİNİ aç (yazdırma DEĞİL — kullanıcı
+  // isteği: bildirime tıklayınca yazıyı görmek; istenirse önizlemenin içindeki Yazdır kullanılır).
+  const [onizlemeYazisma, setOnizlemeYazisma] = useState<BankaYazismaWithRelations | null>(null);
   const yazdirAcildiRef = useRef(false);
   useEffect(() => {
     if (yazdirAcildiRef.current || loading) return;
@@ -125,7 +127,7 @@ export default function BankaYazismalariPage() {
     const y = yazismalar.find((x) => x.id === id);
     if (!y) return;
     yazdirAcildiRef.current = true;
-    printYazisma(y);
+    setOnizlemeYazisma(y);
     try { const u = new URL(window.location.href); u.searchParams.delete("yazdir"); window.history.replaceState({}, "", u.toString()); } catch { /* sessiz */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yazismalar, loading]);
@@ -620,6 +622,45 @@ export default function BankaYazismalariPage() {
           </span>
         ))}
       </div>
+
+      {/* Bildirimden gelen ÖNİZLEME — yazdırma diyaloğu yerine yazışmanın kendisi gösterilir (kullanıcı
+          isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
+      <Dialog open={!!onizlemeYazisma} onOpenChange={(o) => { if (!o) setOnizlemeYazisma(null); }}>
+        {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp. */}
+        <DialogContent className="!w-[90vw] !max-w-none max-h-[95vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Yazışma Önizleme — {onizlemeYazisma?.evrak_sayi_no ?? ""}</DialogTitle>
+          </DialogHeader>
+          {onizlemeYazisma && (
+            <>
+              <div>
+                <div className="border rounded-lg shadow-sm overflow-hidden mx-auto" style={{ width: "210mm" }}>
+                  <BankaYazismaOnIzleme
+                    firma={onizlemeYazisma.firmalar ?? null}
+                    evrakTarihi={onizlemeYazisma.evrak_tarihi}
+                    evrakSayiNo={onizlemeYazisma.evrak_sayi_no}
+                    konu={onizlemeYazisma.konu}
+                    muhatap={onizlemeYazisma.muhatap}
+                    ilgiListesi={onizlemeYazisma.ilgi_listesi ?? []}
+                    metin={onizlemeYazisma.metin}
+                    ekler={onizlemeYazisma.ekler ?? []}
+                    kaseDahil={onizlemeYazisma.kase_dahil ?? false}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setOnizlemeYazisma(null)}>Kapat</Button>
+                <Button
+                  className="bg-[#1E3A5F] hover:bg-[#16304f] text-white"
+                  onClick={() => { const y = onizlemeYazisma; setOnizlemeYazisma(null); if (y) printYazisma(y); }}
+                >
+                  Yazdır
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Yazdırma için — Portal ile body'nin direkt çocuğu olarak render edilir
           (CSS body > .evrak-print-area kuralı bu sayede eşleşir) */}

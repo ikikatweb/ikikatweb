@@ -236,16 +236,32 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b><br>Stabilize (gerçek damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
       bounds.push([o.lat as number, o.lng as number]);
     });
-    // EKSKAVATÖR ÇALIŞMA NOKTALARI — İş Makineleri sekmesindekiyle AYNI stil: İÇİ BOŞ HALKA (makine
-    // rengi kenar, saydam iç) → "burada çalıştı" izi. Tümü, tüm sekmelerin izlerini topladığı için burada da
-    // gösterilir; güzergah düğmesinden BAĞIMSIZ (hareket izi değil, yerinde çalışma izi).
-    for (const n of calismaNoktalari ?? []) {
-      if (n.lat == null || n.lng == null) continue;
-      if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue; // il-sınırı izni
-      const tarih = n.rapor_tarihi ? n.rapor_tarihi.split("-").reverse().join(".") : "";
-      L.circleMarker([n.lat, n.lng], { radius: 5, color: renkAl(n.plaka), weight: 2, fillColor: renkAl(n.plaka), fillOpacity: 0.15, renderer: yolRenderer })
-        .addTo(grup).bindPopup(`<b>🛠️ ${n.plaka}</b> · çalışma noktası (burada çalıştı)<br>${tarih}${n.saat ? " " + String(n.saat).slice(0, 5) : ""}`);
-      bounds.push([n.lat, n.lng]);
+    // EKSKAVATÖR ÇALIŞMA NOKTALARI — İş Makineleri sekmesindekiyle AYNI stil: BEYAZ DOLGULU + makine
+    // rengi kenarlıklı, AYNI KONUMDAKİLER KÜMELİ (yerinde çalışan makine saatlerce aynı koordinata
+    // kayıt atar; üst üste binince "nokta yok" sanılıyordu — marker kayıt sayısıyla büyür, popup
+    // "N kayıt · ilk–son saat" gösterir). Güzergah düğmesinden BAĞIMSIZ (yerinde çalışma izi).
+    {
+      const kumeler = new Map<string, { plaka: string; lat: number; lng: number; sayi: number; ilk: string | null; son: string | null; tarih: string }>();
+      for (const n of calismaNoktalari ?? []) {
+        if (n.lat == null || n.lng == null) continue;
+        if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue; // il-sınırı izni
+        const key = `${plakaNorm(n.plaka)}|${n.rapor_tarihi}|${n.lat.toFixed(5)}|${n.lng.toFixed(5)}`;
+        const e = kumeler.get(key);
+        if (e) {
+          e.sayi++;
+          if (n.saat && (!e.ilk || n.saat < e.ilk)) e.ilk = n.saat;
+          if (n.saat && (!e.son || n.saat > e.son)) e.son = n.saat;
+        } else {
+          kumeler.set(key, { plaka: n.plaka, lat: n.lat, lng: n.lng, sayi: 1, ilk: n.saat ?? null, son: n.saat ?? null, tarih: n.rapor_tarihi });
+        }
+      }
+      for (const k of kumeler.values()) {
+        const tarih = k.tarih ? k.tarih.split("-").reverse().join(".") : "";
+        const aralik = k.ilk ? `${String(k.ilk).slice(0, 5)}${k.son && k.son !== k.ilk ? "–" + String(k.son).slice(0, 5) : ""}` : "";
+        L.circleMarker([k.lat, k.lng], { radius: Math.min(11, 4 + k.sayi * 0.5), color: renkAl(k.plaka), weight: 2.5, fillColor: "#ffffff", fillOpacity: 1, renderer: yolRenderer })
+          .addTo(grup).bindPopup(`<b>🛠️ ${k.plaka}</b> · çalışma noktası<br>${tarih} ${aralik}<br>${k.sayi} kayıt${k.sayi > 1 ? " (bu noktada çalışmış)" : ""}`);
+        bounds.push([k.lat, k.lng]);
+      }
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (operasyon verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {

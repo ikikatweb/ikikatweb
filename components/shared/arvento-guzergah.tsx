@@ -421,16 +421,33 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         for (const ll of latlngs) tumBounds.push(ll);
       }
     }
-    // ── EKSKAVATÖR ÇALIŞMA NOKTALARI — yerinde çalışan makinenin geçmişte çalıştığı yerler. Canlı DURUM
-    // noktalarıyla (dolu mavi/kırmızı/yeşil) karışmasın diye İÇİ BOŞ HALKA (makine rengi kenar, saydam iç) →
-    // "burada çalıştı" izi olduğu net olur, "şu an açık/kapalı" durumu değil. Bkz. makine_calisma_noktasi. ──
-    for (const n of calismaNoktalari ?? []) {
-      if (n.lat == null || n.lng == null) continue;
-      const renk = renkAl(n.plaka);
-      const tarih = n.rapor_tarihi ? n.rapor_tarihi.split("-").reverse().join(".") : "";
-      L.circleMarker([n.lat, n.lng], { radius: 5, color: renk, weight: 2, fillColor: renk, fillOpacity: 0.15, renderer: yolRenderer })
-        .addTo(grup).bindPopup(`<b>🛠️ ${n.plaka}</b> · çalışma noktası (burada çalıştı)<br>${tarih}${n.saat ? " " + String(n.saat).slice(0, 5) : ""}`);
-      tumBounds.push([n.lat, n.lng]);
+    // ── EKSKAVATÖR ÇALIŞMA NOKTALARI — yerinde çalışan makinenin geçmişte çalıştığı yerler.
+    // BEYAZ DOLGULU + makine rengi kenarlıklı (saydam halka kendi rota çizgisinde kayboluyordu).
+    // KÜMELEME: yerinde çalışan makine saatlerce AYNI koordinata kayıt atar (10dk'da bir) → 15 kayıt
+    // haritada tek nokta gibi görünüp "nokta atılmamış" sanılıyordu. Aynı konum (≈1m) tek marker'da
+    // toplanır; kayıt sayısı arttıkça marker BÜYÜR, popup "N kayıt · ilk–son saat" gösterir. ──
+    {
+      const kumeler = new Map<string, { plaka: string; lat: number; lng: number; sayi: number; ilk: string | null; son: string | null; tarih: string }>();
+      for (const n of calismaNoktalari ?? []) {
+        if (n.lat == null || n.lng == null) continue;
+        const key = `${plakaNorm(n.plaka)}|${n.rapor_tarihi}|${n.lat.toFixed(5)}|${n.lng.toFixed(5)}`;
+        const e = kumeler.get(key);
+        if (e) {
+          e.sayi++;
+          if (n.saat && (!e.ilk || n.saat < e.ilk)) e.ilk = n.saat;
+          if (n.saat && (!e.son || n.saat > e.son)) e.son = n.saat;
+        } else {
+          kumeler.set(key, { plaka: n.plaka, lat: n.lat, lng: n.lng, sayi: 1, ilk: n.saat ?? null, son: n.saat ?? null, tarih: n.rapor_tarihi });
+        }
+      }
+      for (const k of kumeler.values()) {
+        const renk = renkAl(k.plaka);
+        const tarih = k.tarih ? k.tarih.split("-").reverse().join(".") : "";
+        const aralik = k.ilk ? `${String(k.ilk).slice(0, 5)}${k.son && k.son !== k.ilk ? "–" + String(k.son).slice(0, 5) : ""}` : "";
+        L.circleMarker([k.lat, k.lng], { radius: Math.min(11, 4 + k.sayi * 0.5), color: renk, weight: 2.5, fillColor: "#ffffff", fillOpacity: 1, renderer: yolRenderer })
+          .addTo(grup).bindPopup(`<b>🛠️ ${k.plaka}</b> · çalışma noktası<br>${tarih} ${aralik}<br>${k.sayi} kayıt${k.sayi > 1 ? " (bu noktada çalışmış)" : ""}`);
+        tumBounds.push([k.lat, k.lng]);
+      }
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rota verisi olmayan günde canlıya odaklan)
     for (const k of canliVeriRef.current.konumlar ?? []) {
