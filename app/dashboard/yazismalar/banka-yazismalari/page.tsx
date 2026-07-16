@@ -628,12 +628,14 @@ export default function BankaYazismalariPage() {
           isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
       <Dialog open={!!onizlemeYazisma} onOpenChange={(o) => { if (!o) setOnizlemeYazisma(null); }}>
         {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp. */}
-        <DialogContent className="!w-[90vw] !max-w-none max-h-[95vh] overflow-y-auto">
+        {/* !flex !flex-col + iç kaydırma: kaydırma yalnız SAYFA alanında → açılışta üstten başlar. */}
+        <DialogContent className="!w-[90vw] !max-w-none !flex !flex-col max-h-[95vh]">
           <DialogHeader>
             <DialogTitle>Yazışma Önizleme — {onizlemeYazisma?.evrak_sayi_no ?? ""}</DialogTitle>
           </DialogHeader>
           {onizlemeYazisma && (
             <>
+              <div className="flex-1 min-h-0 overflow-y-auto">
               <OnizlemeSayfa>
                 <div className="border rounded-lg shadow-sm overflow-hidden" style={{ width: "210mm" }}>
                   <BankaYazismaOnIzleme
@@ -649,7 +651,8 @@ export default function BankaYazismalariPage() {
                   />
                 </div>
               </OnizlemeSayfa>
-              <div className="flex justify-end gap-2 pt-2">
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t">
                 <Button variant="outline" onClick={() => setOnizlemeYazisma(null)}>Kapat</Button>
                 <Button
                   className="bg-[#1E3A5F] hover:bg-[#16304f] text-white"
