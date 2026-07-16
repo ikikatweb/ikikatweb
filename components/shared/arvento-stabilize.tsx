@@ -960,8 +960,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       <div className="bg-white rounded-lg border p-3 harita-arac-panel">
         {/* Masaüstü: tek satır (özet kartların yanında). Mobil: alt alta (özet kartların altında) → taşma yok. */}
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          {/* Sol: kamyon chip'leri — MOBİL: sarmalı (hepsi görünür). MASAÜSTÜ: tek satır + yatay kaydırma. */}
-          <div className="flex flex-wrap items-stretch gap-1.5 md:flex-nowrap md:flex-1 md:min-w-0 md:overflow-x-auto">
+          {/* Sol: kamyon chip'leri — her ekranda SARMALI (scrollbar yok, hepsi görünür; sığmayan alt satıra iner). */}
+          <div className="flex flex-wrap items-stretch gap-1.5 md:flex-1 md:min-w-0">
           {kamyonlar.length === 0 && <span className="text-xs text-gray-400">Bu aralıkta Stabilize aracı/kamyonu yok.</span>}
           {kamyonlar.map((r) => {
             const secili = seciliPlakalar.has(r.plaka);

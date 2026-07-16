@@ -1711,6 +1711,7 @@ export default function ArventoRaporPage() {
                   <tr className="border-b bg-gray-50 text-gray-500">
                     <th className="text-left font-semibold px-2 py-2">Plaka</th>
                     <th className="text-left font-semibold px-2 py-2">Cins</th>
+                    <th className="text-left font-semibold px-2 py-2">Marka/Model</th>
                     <th className="text-left font-semibold px-2 py-2" title="Dolu ise sitede Arvento'dan gelen sürücü adının YERİNE bu gösterilir. Boş = Arvento adı. Tire (-) = isim hiç gösterilmez.">Şoför</th>
                     {ATAMA_SEKMELERI.map((s) => (
                       <th key={s.key} className="font-semibold px-2 py-2 text-center whitespace-nowrap">{s.ad}</th>
@@ -1734,6 +1735,9 @@ export default function ArventoRaporPage() {
                         <tr key={a.id} className="border-b hover:bg-gray-50">
                           <td className="px-2 py-1.5 font-medium text-gray-700 whitespace-nowrap">{a.plaka}</td>
                           <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{a.cinsi ?? "—"}</td>
+                          <td className="px-2 py-1.5 text-gray-500 max-w-[220px] truncate" title={[a.marka, a.model].filter(Boolean).join(" ") || undefined}>
+                            {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
+                          </td>
                           {/* ŞOFÖR override — dolu ise sitede Arvento sürücüsü yerine bu ad gösterilir ("-" = gizle) */}
                           <td className="px-2 py-1.5">
                             <input type="text" value={a.surucu ?? ""}
@@ -1763,7 +1767,7 @@ export default function ArventoRaporPage() {
                       );
                     })}
                   {atamalar.length === 0 && (
-                    <tr><td colSpan={ATAMA_SEKMELERI.length + 4} className="px-2 py-4 text-center text-gray-400">Araç bulunamadı.</td></tr>
+                    <tr><td colSpan={ATAMA_SEKMELERI.length + 5} className="px-2 py-4 text-center text-gray-400">Araç bulunamadı.</td></tr>
                   )}
                 </tbody>
               </table>
