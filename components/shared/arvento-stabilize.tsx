@@ -307,11 +307,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     for (const k of tumGuzergahTemizBirlesik) if (k.arac_sinifi) m.set(plakaNorm(k.plaka), k.arac_sinifi);
     return m;
   }, [tumGuzergahTemizBirlesik]);
-  const IS_MAKINE_RE = /iş\s*mak|makine|loder|loader|beko|kep[çc]e|greyder|silindir|ekskavat|dozer|paletli|forklift|vin[cç]|hidromek|hmk/i;
+  const IS_MAKINE_RE = /iş\s*mak|makine|loder|loader|beko|kep[çc]e|greyder|silindir|ekskavat|dozer|paletli|forklift|vin[cç]|hidromek|hmk/;
+  // TÜRKÇE KÜÇÜLTME ŞART: JS'nin /i bayrağı Türkçe İ'yi eşleyemez — "HİDROMEK", /hidromek/i ile
+  // YAKALANMIYORDU → 7675 rotasız günde kamyon sanılıp listenin BAŞINA geçiyordu.
+  const kucult = (s: string) => s.toLocaleLowerCase("tr");
   const kamyonMu = useCallback((r: AracArventoRapor) => {
     const sinif = araSinifMap.get(plakaNorm(r.plaka));
-    if (sinif) return !IS_MAKINE_RE.test(sinif); // sınıf biliniyorsa: iş makinesi DEĞİLse kamyon
-    if (IS_MAKINE_RE.test(`${r.marka ?? ""} ${r.model ?? ""}`)) return false; // marka/model iş makinesi diyor
+    if (sinif) return !IS_MAKINE_RE.test(kucult(sinif)); // sınıf biliniyorsa: iş makinesi DEĞİLse kamyon
+    if (IS_MAKINE_RE.test(kucult(`${r.marka ?? ""} ${r.model ?? ""}`))) return false; // marka/model iş makinesi diyor
     return true; // bilinmiyor → kamyon say (rotasız günde kamyonlar sağa savrulmasın)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [araSinifMap]);
