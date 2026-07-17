@@ -54,8 +54,13 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
     const onTouchStart = (e: TouchEvent) => {
       const startEl = e.target instanceof Element ? e.target : null;
       // Sadece scroll en üstteyken başlat; ARA kaydırıcı (iç tablo/liste) yukarı kayabiliyorsa
-      // hareket ona ait — PTR başlamaz.
-      if (target.scrollTop > 0 || icKaydiriciYukariKayabilir(startEl, target)) {
+      // hareket ona ait — PTR başlamaz. HARİTA (Leaflet) üzerinde başlayan dokunuş da haritanın
+      // pan/zoom hareketidir: aşağı sürükleme = haritayı kaydırma, yenileme DEĞİL.
+      if (
+        target.scrollTop > 0 ||
+        icKaydiriciYukariKayabilir(startEl, target) ||
+        startEl?.closest(".leaflet-container, .harita-leaflet")
+      ) {
         startYRef.current = null;
         startElRef.current = null;
         aktifRef.current = false;
