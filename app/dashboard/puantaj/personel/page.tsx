@@ -3,6 +3,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import PersonelForm from "@/components/shared/personel-form";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getPersoneller, setPersonelPasif, setPersonelAktif } from "@/lib/supabase/queries/personel";
@@ -106,12 +107,14 @@ export default function PersonelPuantajPage() {
   const yDuzenle = hasPermission("puantaj-personel", "duzenle");
   const ySil = hasPermission("puantaj-personel", "sil");
 
-  // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri
+  // URL parametreleri — bildirimden gelen santiye/yil/ay ile başlangıç değerleri.
+  // useSearchParams: SSR'da da aynı değeri verir. (Eski `typeof window` dallanması sunucuda boş,
+  // client'ta dolu değer üretip hydration mismatch hatası veriyordu.)
   const bugun = new Date();
-  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-  const urlSantiye = urlParams?.get("santiye") ?? "";
-  const urlYil = urlParams?.get("yil");
-  const urlAy = urlParams?.get("ay");
+  const urlParams = useSearchParams();
+  const urlSantiye = urlParams.get("santiye") ?? "";
+  const urlYil = urlParams.get("yil");
+  const urlAy = urlParams.get("ay");
 
   const [yil, setYil] = useState(urlYil ? parseInt(urlYil, 10) : bugun.getFullYear());
   const [ay, setAy] = useState(urlAy ? parseInt(urlAy, 10) : bugun.getMonth() + 1); // 1-12

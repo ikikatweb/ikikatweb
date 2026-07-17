@@ -1,7 +1,7 @@
 // Root layout - Inter font, Toaster, global meta bilgileri
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import Script from "next/script";
+import { cookies } from "next/headers";
 import ToasterX from "@/components/shared/toaster-x";
 import TruncateTooltip from "@/components/shared/truncate-tooltip";
 import "./globals.css";
@@ -35,21 +35,24 @@ export const viewport = {
   viewportFit: "cover" as const,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Yazı boyutu tercihi: COOKIE'den SSR'da okunup <html>'e inline stil basılır → açılışta flicker yok.
+  // React ağacında <script> YOK — inline script çözümleri (next/script beforeInteractive ve düz
+  // dangerouslySetInnerHTML) React 19'un "Encountered a script tag" uyarısını tetikliyordu (client
+  // re-mount'ta script'ler çalıştırılmadığı için React her koşulda uyarıyor). Cookie'yi topbar'daki
+  // zoom ayarı yazar; yalnız localStorage'ı olan eski tercih, topbar mount olunca uygulanıp cookie'ye
+  // de yazılır → bir sonraki açılıştan itibaren flicker'sız.
+  const zoomHam = (await cookies()).get("site-font-zoom")?.value;
+  const zoom = zoomHam ? parseInt(zoomHam, 10) : NaN;
+  const fontSize = Number.isFinite(zoom) && zoom >= 50 && zoom <= 200 ? `${(zoom / 100) * 16}px` : undefined;
   return (
-    <html lang="tr" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="tr" className={`${inter.variable} h-full antialiased`}
+      style={fontSize ? { fontSize } : undefined} suppressHydrationWarning>
       <body className="min-h-full flex flex-col font-sans">
-        {/* Yazı boyutu tercihi: sayfa açılır açılmaz uygulansın (flicker olmasın).
-             FontSizeAyari komponenti localStorage'a "site-font-zoom" anahtarıyla yazıyor.
-             next/script ile beforeInteractive: SSR yerine HTML'e gömülür, hidrasyondan
-             ÖNCE çalışır — React'in script tag uyarısını da tetiklemez. */}
-        <Script id="font-zoom-init" strategy="beforeInteractive">
-          {`try{var z=localStorage.getItem("site-font-zoom");if(z){var p=parseInt(z,10);if(p>=50&&p<=200){document.documentElement.style.fontSize=(p/100*16)+"px";}}}catch(e){}`}
-        </Script>
         {children}
         <ToasterX />
         <TruncateTooltip />

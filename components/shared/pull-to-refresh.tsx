@@ -15,10 +15,24 @@ type Props = {
 const THRESHOLD = 70; // px — bu kadar çekilince yenileme tetiklenir
 const MAX_PULL = 120; // px — görsel maksimum çekme mesafesi
 
+// Dokunulan noktadan scroll hedefine kadar, YUKARI kayabilecek (scrollTop > 0) bir İÇ kaydırıcı var mı?
+// (İç tablo/liste kendi overflow kutusunda aşağı kaydırılmışsa hedefin scrollTop'u 0 kalır; PTR o
+// hareketi sahiplenip preventDefault ile iç kutunun geri kaymasını da engelliyordu → tablo yukarı
+// çıkmıyor, sayfa yenileniyordu. İç kaydırıcı yukarı kayabiliyorsa PTR hiç başlamamalı.)
+function icKaydiriciYukariKayabilir(baslangic: Element | null, sinir: HTMLElement): boolean {
+  let el: Element | null = baslangic;
+  while (el && el !== sinir) {
+    if (el instanceof HTMLElement && el.scrollTop > 0) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
   const [pull, setPull] = useState(0); // mevcut çekme mesafesi (px)
   const [yenileniyor, setYenileniyor] = useState(false);
   const startYRef = useRef<number | null>(null);
+  const startElRef = useRef<Element | null>(null); // dokunuşun başladığı element (iç kaydırıcı kontrolü için)
   const aktifRef = useRef(false);
   // Listener'lar bu ref'leri okur → her state değişiminde yeniden bağlanmaz
   const pullRef = useRef(0);
@@ -38,24 +52,30 @@ export default function PullToRefresh({ scrollTargetId, onRefresh }: Props) {
     if (!target) return;
 
     const onTouchStart = (e: TouchEvent) => {
-      // Sadece scroll en üstteyken başlat
-      if (target.scrollTop > 0) {
+      const startEl = e.target instanceof Element ? e.target : null;
+      // Sadece scroll en üstteyken başlat; ARA kaydırıcı (iç tablo/liste) yukarı kayabiliyorsa
+      // hareket ona ait — PTR başlamaz.
+      if (target.scrollTop > 0 || icKaydiriciYukariKayabilir(startEl, target)) {
         startYRef.current = null;
+        startElRef.current = null;
         aktifRef.current = false;
         return;
       }
       if (yenileniyorRef.current) return;
       startYRef.current = e.touches[0].clientY;
+      startElRef.current = startEl;
       aktifRef.current = true;
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (!aktifRef.current || startYRef.current === null) return;
       if (yenileniyorRef.current) return;
-      // Hareket sırasında scroll yukarı çıktıysa iptal
-      if (target.scrollTop > 0) {
+      // Hareket sırasında hedef scroll'u ya da bir İÇ kaydırıcı yukarıdan uzaklaştıysa iptal
+      // (aynı parmak hareketi içinde önce yukarı kaydırıp sonra aşağı çekme durumu).
+      if (target.scrollTop > 0 || icKaydiriciYukariKayabilir(startElRef.current, target)) {
         aktifRef.current = false;
         startYRef.current = null;
+        startElRef.current = null;
         setPull(0);
         return;
       }

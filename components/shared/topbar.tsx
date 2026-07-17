@@ -25,6 +25,13 @@ function uygulaFontPx(zoomYuzde: number) {
   document.documentElement.style.fontSize = `${px}px`;
 }
 
+// Tercihi COOKIE'ye de yaz: root layout SSR'da okuyup <html>'e inline stil basar → sonraki
+// açılışlarda flicker'sız (localStorage'a inline <script> gerekmiyor; script React uyarısı veriyordu).
+function yazFontCookie(zoomYuzde: number) {
+  if (typeof document === "undefined") return;
+  try { document.cookie = `${FONT_LS_KEY}=${zoomYuzde}; path=/; max-age=31536000; samesite=lax`; } catch { /* sessiz */ }
+}
+
 type TopbarProps = {
   onMenuToggle: () => void;
 };
@@ -93,6 +100,7 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         if (Number.isFinite(y) && y >= 50 && y <= 200) {
           setZoomYuzde(y);
           uygulaFontPx(y);
+          yazFontCookie(y); // eski (yalnız localStorage'lı) tercihi cookie'ye taşı → sonraki açılış SSR'dan gelir
         }
       }
     } catch { /* sessiz */ }
@@ -116,6 +124,7 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
     setZoomYuzde(clamp);
     uygulaFontPx(clamp);
     try { window.localStorage.setItem(FONT_LS_KEY, String(clamp)); } catch { /* sessiz */ }
+    yazFontCookie(clamp);
   }
   function azaltZoom() {
     const yeni = Math.round((zoomYuzde - FONT_ADIM) / FONT_ADIM) * FONT_ADIM;
