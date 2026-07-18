@@ -981,10 +981,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                   {/* PLAKA en üstte, ŞÖFÖR adı hemen ALTINDA (ayrı satır) */}
                   <span className="font-semibold">{r.plaka}</span>
                   {r.surucu?.trim() && <span className="text-[10px] font-normal opacity-60">{r.surucu.trim()}</span>}
-                  {/* Alt satır: km + damper sayısı */}
+                  {/* Alt satır: km + damper sayısı. Damper rozeti YALNIZ kamyonlarda — Stabilize'e elle
+                      atanan iş makinesinde (loader vb.) damper kavramı yok, 🔻0 rozeti kafa karıştırıyordu. */}
                   <span className="text-[10px] opacity-90 flex items-center gap-1.5">
                     <span>{Math.round(r.mesafe_km ?? 0)} km</span>
-                    <span className="px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>
+                    {kamyonMu(r) && <span className="px-1 rounded" style={{ background: secili ? renk + "2e" : "#f3f4f6" }}>🔻{adet}</span>}
                   </span>
                   {/* İlk kontak açılış saati → kontak açık süresi → çalışma → son kontak kapanış saati.
                       ilk/son ilkSonKontakMap'ten alınır → güvenilmez kontak (ör. kapsama dışı kapatma) GPS'ten
