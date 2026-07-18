@@ -245,6 +245,7 @@ export default function SigortaMuayenePage() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!policeAracId) return;
     if (!pBitisTarih) { toast.error("Bitiş tarihi girin."); return; }
+    if (!pDosya) { toast.error("Poliçe PDF dosyası yükleyin (zorunlu)."); return; }
     setPoliceSaving(true);
     try {
       const result = await insertAracPolice({
@@ -261,13 +262,18 @@ export default function SigortaMuayenePage() {
         created_by: kullanici?.id ?? null,
       });
 
-      // PDF yükle
+      // PDF yükle (ZORUNLU) — yükleme başarısız olursa poliçe PDF'siz kalmasın: kayıt geri alınır
       if (pDosya && result.id) {
-        const url = await uploadPolice(pDosya, result.id);
-        // URL'i güncelle — basit insert sonrası update gerekli
-        const { createClient } = await import("@/lib/supabase/client");
-        const supabase = createClient();
-        await supabase.from("arac_police").update({ police_url: url }).eq("id", result.id);
+        try {
+          const url = await uploadPolice(pDosya, result.id);
+          // URL'i güncelle — basit insert sonrası update gerekli
+          const { createClient } = await import("@/lib/supabase/client");
+          const supabase = createClient();
+          await supabase.from("arac_police").update({ police_url: url }).eq("id", result.id);
+        } catch (err) {
+          await deleteAracPolice(result.id).catch(() => { /* geri alma başarısızsa kayıt PDF'siz kalır */ });
+          throw new Error(`Poliçe PDF yüklenemedi, kayıt geri alındı: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       // Aracın ilgili bitiş tarihini güncelle — mevcut poliçeler + yeni poliçe içindeki en ileri bitiş
@@ -569,7 +575,7 @@ export default function SigortaMuayenePage() {
                 className={selectClass + " w-full"} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Poliçe PDF</Label>
+              <Label className="text-xs">Poliçe PDF <span className="text-red-500">*</span></Label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPDosya(e.target.files?.[0] ?? null)}
                 className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
             </div>
