@@ -117,23 +117,40 @@ function sanitizeHtmlTamHtml(text: string): string {
       const pStyle = el.getAttribute("style") ?? "";
       const indentMatch = pStyle.match(/text-indent\s*:\s*([^;]+)/i);
 
-      // Liste maddesi veya kısa etiket mi kontrol et
-      const plainText = icerik.replace(/<[^>]+>/g, "").trim();
-      const listeMaddesi = /^[a-zçğıöşüA-ZÇĞİÖŞÜ][\.\)]\s|^\d+[\.\)]\s|^[-•*◦–—]\s|^["'„]/.test(plainText);
-      const kisaEtiket = plainText.length < 30 && /[:;]$/.test(plainText);
-      const coKisa = plainText.length < 15;
-
-      let dpStyle = "text-align:justify;margin:0";
-      if (indentMatch) {
-        const indentDeger = indentMatch[1].trim();
-        if (indentDeger && !/^0(pt|px|cm|mm|em|%)?\s*$/.test(indentDeger)) {
-          dpStyle += `;text-indent:${indentDeger}`;
+      // Bir satır/paragraf HTML'i için stil üret (liste maddesi / kısa etiket girintisiz kalır)
+      const stilUret = (parcaHtml: string): string => {
+        const plainText = parcaHtml.replace(/<[^>]+>/g, "").trim();
+        const listeMaddesi = /^[a-zçğıöşüA-ZÇĞİÖŞÜ][\.\)]\s|^\d+[\.\)]\s|^[-•*◦–—]\s|^["'„]/.test(plainText);
+        const kisaEtiket = plainText.length < 30 && /[:;]$/.test(plainText);
+        const coKisa = plainText.length < 15;
+        const tabIleBasliyor = /^\t/.test(parcaHtml); // elle tab girintisi varsa ikinci girinti ekleme
+        let dpStyle = "text-align:justify;margin:0";
+        if (indentMatch) {
+          const indentDeger = indentMatch[1].trim();
+          if (indentDeger && !/^0(pt|px|cm|mm|em|%)?\s*$/.test(indentDeger)) {
+            dpStyle += `;text-indent:${indentDeger}`;
+          }
+        } else if (!listeMaddesi && !kisaEtiket && !coKisa && !tabIleBasliyor) {
+          // Uzun prose paragraflarda varsayılan tab girinti
+          dpStyle += ";text-indent:1.25cm";
         }
-      } else if (!listeMaddesi && !kisaEtiket && !coKisa) {
-        // Uzun prose paragraflarda varsayılan tab girinti
-        dpStyle += ";text-indent:1.25cm";
+        return dpStyle;
+      };
+
+      // DÜZ METİN paragrafı \n içeriyorsa her satırı AYRI blok yap: text-indent CSS'te yalnız bloğun
+      // İLK satırına uygulanır — \n'li tek blokta 2. ve sonraki paragraflar girintisiz kalıyordu
+      // (whiteSpace: pre-wrap satırı kırar ama girinti vermez). Blok çocuğu (div/p) olan zengin
+      // içerikte bölme YAPILMAZ — \n'ler orada yalnız biçimlendirme boşluğudur.
+      if (!el.querySelector("div,p") && /\n/.test(icerik)) {
+        return icerik
+          .split("\n")
+          .map((satir) => {
+            if (!satir.replace(/<br\s*\/?>/gi, "").trim()) return `<${tag} style="margin:0"><br></${tag}>`;
+            return `<${tag} style="${stilUret(satir)}">${satir}</${tag}>`;
+          })
+          .join("");
       }
-      return `<${tag} style="${dpStyle}">${icerik}</${tag}>`;
+      return `<${tag} style="${stilUret(icerik)}">${icerik}</${tag}>`;
     }
     // b, i, u — tag'ı olduğu gibi koru
     return `<${tag}>${icerik}</${tag}>`;
