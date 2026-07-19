@@ -495,10 +495,15 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     const out: DamperIsaretliEl[] = [];
     if (OZET_MODU) {
       // ÖZET MODU: sınıflama sunucuda hazır (ozetDampers). durak konumu (_durakLat/_durakLng) çizimde kullanılır.
+      // ŞOFÖR: payload'daki sürücü HAM Arvento adıdır — Tanımlamalar'daki şoför override'ı rapor
+      // satırlarına uygulanıyor (getArventoRaporByRange) ama payload'a uygulanmıyordu → Arvento'su boş
+      // araçta (ör. 842) damper listesi/tooltip isim gösteremiyordu. Rapordaki (override'lı) ad önceliklidir.
+      const surucuByPlaka = new Map<string, string | null>();
+      for (const r of kamyonlar) surucuByPlaka.set(plakaNorm(r.plaka), r.surucu);
       for (const d of ozetDampers) {
         if (izinSet && !izinSet.has(plakaNorm(d.plaka))) continue; // KISITLI kullanıcı: yalnız izinli plakalar
         const e: DamperIsaretliEl = {
-          plaka: d.plaka, surucu: d.surucu, saat: d.saat, adres: d.adres,
+          plaka: d.plaka, surucu: surucuByPlaka.get(plakaNorm(d.plaka)) ?? d.surucu, saat: d.saat, adres: d.adres,
           lat: d.rawLat, lng: d.rawLng, _t: d.tarih,
           _durakLat: d.durakLat, _durakLng: d.durakLng,
           mukerrer: d.mukerrer, ariza: d.ariza, dogrulanmamis: d.dogrulanmamis,
