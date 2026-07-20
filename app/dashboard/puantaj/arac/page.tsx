@@ -190,6 +190,10 @@ export default function AracPuantajPage() {
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
   const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
   const [yakitGoster, setYakitGoster] = useState(true);
+  // ÇIKTI SEÇİMİ: işaretli araçlar PDF/Excel çıktısına girer; HİÇBİRİ seçili değilse TÜMÜ çıkar
+  // (eski davranış). Şantiye değişince temizlenir (başka şantiyenin araç id'leri bayat kalmasın).
+  const [ciktiSecimi, setCiktiSecimi] = useState<Set<string>>(new Set());
+  useEffect(() => { setCiktiSecimi(new Set()); }, [santiyeId]);
   // Diğer şantiye çakışmaları: arac_id -> (gün -> { santiye_id, santiye_adi })
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
@@ -1213,8 +1217,14 @@ export default function AracPuantajPage() {
     return puantajExportExcel();
   }
 
+  // Çıktıya girecek araçlar: seçim varsa yalnız seçilenler, yoksa tümü (eski davranış).
+  function ciktiAraclariAl() {
+    return ciktiSecimi.size > 0 ? goruntulenenAraclar.filter((a) => ciktiSecimi.has(a.id)) : goruntulenenAraclar;
+  }
+
   function puantajExportPDF() {
     if (!seciliSantiye) return;
+    const ciktiAraclar = ciktiAraclariAl();
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -1260,7 +1270,7 @@ export default function AracPuantajPage() {
 
     // Body: ilk kolon boş bırakılır (didDrawCell ile özel çizilir),
     // gün hücreleri pdfShort, son kolon toplam
-    const body = goruntulenenAraclar.map((a) => {
+    const body = ciktiAraclar.map((a) => {
       const gunMap = aracGunMap.get(a.id);
       return [
         "", // İlk kolon - özel çizim
@@ -1295,7 +1305,7 @@ export default function AracPuantajPage() {
       // İlk kolon: plaka büyük + marka/model küçük yazıyla manuel çiz
       didDrawCell: (data) => {
         if (data.section === "body" && data.column.index === 0) {
-          const arac = goruntulenenAraclar[data.row.index];
+          const arac = ciktiAraclar[data.row.index];
           if (!arac) return;
           const x = data.cell.x + 1.5;
           const y = data.cell.y;
@@ -1339,7 +1349,7 @@ export default function AracPuantajPage() {
 
     // Açıklamalı puantajları altta listele
     const aciklamalilar: { plaka: string; tarih: string; durum: string; aciklama: string }[] = [];
-    for (const a of goruntulenenAraclar) {
+    for (const a of ciktiAraclar) {
       const gunMap = aracGunMap.get(a.id);
       if (!gunMap) continue;
       for (const [g, p] of gunMap.entries()) {
@@ -1369,13 +1379,15 @@ export default function AracPuantajPage() {
       });
     }
 
-    doc.save(`arac-puantaj-${seciliSantiye.is_adi.replace(/\s+/g, "-")}-${yil}-${String(ay).padStart(2, "0")}.pdf`);
+    const secEk = ciktiSecimi.size > 0 ? "-secili" : "";
+    doc.save(`arac-puantaj-${seciliSantiye.is_adi.replace(/\s+/g, "-")}-${yil}-${String(ay).padStart(2, "0")}${secEk}.pdf`);
   }
 
   function puantajExportExcel() {
     if (!seciliSantiye) return;
+    const ciktiAraclar = ciktiAraclariAl();
     const headers = ["Plaka", "Marka", "Model", ...gunler.map((g) => `${g} (${gunAdi(g)})`), "Toplam"];
-    const data = goruntulenenAraclar.map((a) => {
+    const data = ciktiAraclar.map((a) => {
       const gunMap = aracGunMap.get(a.id);
       return [
         a.plaka,
@@ -1390,13 +1402,26 @@ export default function AracPuantajPage() {
         aracToplamGun(a.id),
       ];
     });
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    // Açıklamalı puantajlar — tablonun ALTINA ayrı bölüm olarak (PDF'teki "Açıklamalı Puantajlar" gibi)
+    const aciklamaSatirlari: (string | number)[][] = [];
+    for (const a of ciktiAraclar) {
+      const gunMap = aracGunMap.get(a.id);
+      if (!gunMap) continue;
+      for (const [g, p] of gunMap.entries()) {
+        if (p.aciklama) aciklamaSatirlari.push([a.plaka, `${g}/${ay}/${yil}`, DURUM_MAP.get(p.durum)?.label ?? "", p.aciklama]);
+      }
+    }
+    const altBolum: (string | number)[][] = aciklamaSatirlari.length > 0
+      ? [[], ["Açıklamalı Puantajlar"], ["Plaka", "Tarih", "Durum", "Açıklama"], ...aciklamaSatirlari]
+      : [];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data, ...altBolum]);
     ws["!cols"] = headers.map((h, i) => ({
       wch: i < 3 ? Math.max(h.length + 2, 12) : i === headers.length - 1 ? 8 : 14,
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `${AY_ADLARI[ay - 1]}-${yil}`);
-    XLSX.writeFile(wb, `arac-puantaj-${seciliSantiye.is_adi.replace(/\s+/g, "-")}-${yil}-${String(ay).padStart(2, "0")}.xlsx`);
+    const secEk = ciktiSecimi.size > 0 ? "-secili" : "";
+    XLSX.writeFile(wb, `arac-puantaj-${seciliSantiye.is_adi.replace(/\s+/g, "-")}-${yil}-${String(ay).padStart(2, "0")}${secEk}.xlsx`);
   }
 
   // ========== ÖZET RAPOR EXPORT (tarih aralığı bazlı) ==========
@@ -1773,12 +1798,21 @@ export default function AracPuantajPage() {
             const label = puantajAktif ? "Puantaj" : "Özet";
             return (
               <>
+                {/* Çıktı seçimi göstergesi — seçim varken PDF/Excel yalnız seçilenleri içerir */}
+                {puantajAktif && ciktiSecimi.size > 0 && (
+                  <span className="flex items-center gap-1.5 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2 h-8">
+                    Çıktı: {ciktiSecimi.size} araç seçili
+                    <button type="button" className="text-blue-500 hover:text-blue-800 underline" onClick={() => setCiktiSecimi(new Set())} title="Seçimi temizle — çıktılar yeniden tüm araçları içerir">
+                      Temizle
+                    </button>
+                  </span>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={exportPDF}
                   disabled={!veriVarMi}
-                  title={`${label} tablosunu PDF olarak indir`}
+                  title={`${label} tablosunu PDF olarak indir${puantajAktif && ciktiSecimi.size > 0 ? ` (yalnız seçili ${ciktiSecimi.size} araç)` : ""}`}
                 >
                   <FileDown size={16} className="mr-1" /> PDF
                 </Button>
@@ -1787,7 +1821,7 @@ export default function AracPuantajPage() {
                   size="sm"
                   onClick={exportExcel}
                   disabled={!veriVarMi}
-                  title={`${label} tablosunu Excel olarak indir`}
+                  title={`${label} tablosunu Excel olarak indir${puantajAktif && ciktiSecimi.size > 0 ? ` (yalnız seçili ${ciktiSecimi.size} araç)` : ""}`}
                 >
                   <FileSpreadsheet size={16} className="mr-1" /> Excel
                 </Button>
@@ -1926,7 +1960,23 @@ export default function AracPuantajPage() {
               <tr className="bg-[#64748B]">
                 <th
                   className="text-white text-[11px] px-2 h-10 text-left align-middle font-medium whitespace-nowrap bg-[#64748B] min-w-[110px] max-w-[130px] border-b border-gray-200 sticky top-0 left-0 z-[60]"
-                >Araç</th>
+                >
+                  <span className="flex items-center gap-1.5">
+                    {/* Çıktı seçimi: işaretli araçlar PDF/Excel'e girer; hiçbiri işaretli değilse TÜMÜ çıkar */}
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 cursor-pointer accent-white"
+                      checked={ciktiSecimi.size > 0 && goruntulenenAraclar.every((a) => ciktiSecimi.has(a.id))}
+                      onChange={() =>
+                        setCiktiSecimi((prev) =>
+                          prev.size > 0 ? new Set() : new Set(goruntulenenAraclar.map((a) => a.id)),
+                        )
+                      }
+                      title="Çıktı için tümünü seç / seçimi temizle (seçim yokken çıktılara tüm araçlar girer)"
+                    />
+                    Araç
+                  </span>
+                </th>
                 {gunler.map((g) => (
                   <th
                     key={g}
@@ -1948,11 +1998,28 @@ export default function AracPuantajPage() {
                 const toplam = aracToplamGun(a.id);
                 return (
                   <TableRow key={a.id} className="hover:bg-gray-50">
-                    {/* Araç kolonu - plaka üstte, marka/model altta küçük punto */}
+                    {/* Araç kolonu - çıktı seçim kutusu + plaka üstte, marka/model altta küçük punto */}
                     <TableCell className="px-2 sticky left-0 bg-white z-[40] border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
-                      <div className="font-bold text-xs leading-tight">{a.plaka}</div>
-                      <div className="text-[9px] text-gray-500 leading-tight truncate max-w-[110px]">
-                        {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-[#1E3A5F]"
+                          checked={ciktiSecimi.has(a.id)}
+                          onChange={() =>
+                            setCiktiSecimi((prev) => {
+                              const n = new Set(prev);
+                              if (n.has(a.id)) n.delete(a.id); else n.add(a.id);
+                              return n;
+                            })
+                          }
+                          title="Bu aracı PDF/Excel çıktısına dahil et (seçim yokken tüm araçlar çıkar)"
+                        />
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs leading-tight">{a.plaka}</div>
+                          <div className="text-[9px] text-gray-500 leading-tight truncate max-w-[95px]">
+                            {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
+                          </div>
+                        </div>
                       </div>
                     </TableCell>
                     {gunler.map((g) => {
