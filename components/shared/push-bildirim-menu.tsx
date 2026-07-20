@@ -116,6 +116,17 @@ export default function PushBildirimMenu() {
   }, []);
 
   // Sayfada açıldığında ve periyodik olarak okunmamış sayısını çek (badge için)
+  // Panel AÇIKKEN arka plan (sayfa) kaydırmasını kilitle — mobilde panel üzerindeki dikey
+  // kaydırma bildirim listesi yerine sayfayı kaydırıyordu. Panel kapanınca eski hâline döner.
+  useEffect(() => {
+    if (!acik) return;
+    const main = document.getElementById("dashboard-main");
+    if (!main) return;
+    const eski = main.style.overflow;
+    main.style.overflow = "hidden";
+    return () => { main.style.overflow = eski; };
+  }, [acik]);
+
   useEffect(() => {
     if (durum !== "acik" && durum !== "kapali") return;
     const cek = async () => {
@@ -467,8 +478,9 @@ export default function PushBildirimMenu() {
                   </button>
                 )}
               </div>
-              {/* Bildirim listesi */}
-              <div className="max-h-[400px] overflow-y-auto">
+              {/* Bildirim listesi — overscroll-contain: liste sınıra gelince kaydırma sayfaya
+                  ZİNCİRLENMESİN; pan-y: dokunmatikte dikey kaydırma bu listeye hedeflensin. */}
+              <div className="max-h-[400px] overflow-y-auto overscroll-contain" style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}>
                 {gecmisYukleniyor ? (
                   <div className="p-6 text-center text-xs text-gray-400">Yükleniyor...</div>
                 ) : bildirimler.length === 0 ? (
@@ -558,7 +570,7 @@ export default function PushBildirimMenu() {
               </div>
             </div>
 
-            <div className="max-h-[360px] overflow-y-auto space-y-0.5">
+            <div className="max-h-[360px] overflow-y-auto overscroll-contain space-y-0.5" style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}>
               {gorunenKategoriler.length === 0 ? (
                 <div className="text-center py-6 text-xs text-gray-400">
                   Bildirim alabileceğiniz tanımlı modül yok.
