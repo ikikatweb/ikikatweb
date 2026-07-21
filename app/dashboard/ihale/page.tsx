@@ -861,6 +861,9 @@ function IhalePageContent() {
   const searchParams = useSearchParams();
   const otoYukleRef = useRef<string>("");
   const otoPdfRef = useRef<string>("");
+  // Bildirimden gelişte PDF, uygulama İÇİNDE tam ekran önizlenir (indirme/gezinme YOK) —
+  // mobilde harici PDF görüntüleyici kapatılınca boş ekran kalıyordu; modalda ✕ → ihale sayfası altında.
+  const [pdfOnizleme, setPdfOnizleme] = useState<{ url: string; ad: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -1103,32 +1106,11 @@ function IhalePageContent() {
       u.searchParams.delete("pdf");
       window.history.replaceState(null, "", u.toString());
     } catch { /* URL temizlenemezse eski davranış */ }
-    // MOBİL: hareketsiz (otomatik) indirme, PDF'i uygulama penceresinin YERİNE açıyor —
-    // görüntüleyici kapatılınca geriye boş ekran kalıyordu (iOS/PWA blob gezinmesi). Mobilde
-    // otomatik indirme yerine DOKUNARAK indirme butonu gösterilir: kullanıcı hareketiyle açılan
-    // PDF kapatılınca ihale sayfası yerinde kalır. Masaüstünde otomatik indirme aynen sürer.
-    const mobil = typeof window !== "undefined" && window.matchMedia?.("(hover: none), (pointer: coarse)").matches;
-    if (mobil) {
-      toast(
-        (t) => (
-          <button
-            type="button"
-            className="text-sm font-medium text-[#1E3A5F] text-left"
-            onClick={() => {
-              toast.dismiss(t.id);
-              try { exportPDF(); } catch (err) { console.error("PDF hatası:", err); }
-            }}
-          >
-            📄 İhale analizi hazır — PDF&apos;i indirmek için dokunun
-          </button>
-        ),
-        { duration: 15000 },
-      );
-      return;
-    }
-    // Bir tick bekle ki UI render bitsin
+    // PDF'i uygulama İÇİNDE tam ekran AÇ (indirme/harici görüntüleyici değil): masaüstünde ve
+    // mobilde aynı — ✕ ile kapatınca ihale sınır değer sayfası altında hazır durur (gezinme
+    // olmadığı için mobildeki "boş ekran" durumu imkânsız). Bir tick bekle ki UI render bitsin.
     setTimeout(() => {
-      try { exportPDF(); } catch (err) { console.error("Auto PDF hatası:", err); }
+      try { exportPDF("onizleme"); } catch (err) { console.error("Auto PDF hatası:", err); }
     }, 300);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, currentIhaleId, analizYapildi, hesap]);
@@ -1578,8 +1560,9 @@ function IhalePageContent() {
     }
   }
 
-  // PDF Export
-  function exportPDF() {
+  // PDF Export — hedef "indir": dosya olarak kaydet (buton). "onizleme": uygulama içi tam ekran
+  // modalda göster (bildirimden geliş — indirme/pencere açma yok, ✕ ile ihale sayfasına dönülür).
+  function exportPDF(hedef: "indir" | "onizleme" = "indir") {
     if (!hesap) return;
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
@@ -1673,6 +1656,13 @@ function IhalePageContent() {
     });
 
     const pdfAdi = (isAdi || ihaleKayitNo || "sinir-deger-rapor").replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s-]/g, "").replace(/\s+/g, "-").slice(0, 100);
+    if (hedef === "onizleme") {
+      setPdfOnizleme((eski) => {
+        if (eski) { try { URL.revokeObjectURL(eski.url); } catch { /* sessiz */ } }
+        return { url: String(doc.output("bloburl")), ad: pdfAdi };
+      });
+      return;
+    }
     doc.save(`${pdfAdi}.pdf`);
   }
 
@@ -1976,7 +1966,7 @@ function IhalePageContent() {
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={exportExcel} disabled={!hesap}>
                       <FileSpreadsheet size={12} className="mr-1" /> Excel
                     </Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={exportPDF} disabled={!hesap}>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => exportPDF()} disabled={!hesap}>
                       <FileDown size={12} className="mr-1" /> PDF
                     </Button>
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={whatsappPaylas} disabled={!hesap}>
@@ -2587,6 +2577,27 @@ function IhalePageContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bildirimden gelişte PDF ÖNİZLEME — uygulama içi tam ekran (yeni pencere/gezinme YOK).
+          ✕ → modal kapanır, ihale sınır değer sayfası altında hazır. İndir → dosya olarak kaydeder. */}
+      {pdfOnizleme && (
+        <div className="fixed inset-0 z-[1200] bg-black/70 flex flex-col">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-white border-b shrink-0">
+            <span className="text-sm font-semibold text-[#1E3A5F] truncate">Sınır Değer Analizi — PDF</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => { try { exportPDF(); } catch { /* sessiz */ } }}
+                className="h-9 px-3 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 flex items-center gap-1.5">
+                <FileDown size={14} /> İndir
+              </button>
+              <button type="button"
+                onClick={() => { try { URL.revokeObjectURL(pdfOnizleme.url); } catch { /* sessiz */ } setPdfOnizleme(null); }}
+                className="h-9 w-9 rounded-lg border border-gray-300 hover:bg-gray-50 flex items-center justify-center text-gray-600 font-bold"
+                title="Kapat — ihale sayfasına dön" aria-label="Kapat">✕</button>
+            </div>
+          </div>
+          <iframe src={pdfOnizleme.url} title="İhale PDF önizleme" className="flex-1 w-full bg-gray-200" />
+        </div>
+      )}
     </div>
   );
 }
