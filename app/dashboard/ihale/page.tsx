@@ -841,6 +841,55 @@ async function parseDocx(file: File): Promise<ParsedData> {
 // İş Grubu tipi
 type IsGrubu = { id: string; deger: string; kisa_ad: string | null; sira: number; aktif: boolean };
 
+// PDF önizleme gövdesi — pdf.js ile HER SAYFA ayrı canvas'a çizilir (gömülü <iframe> mobil
+// WebKit'te yalnız İLK sayfayı gösteriyordu). Canvas'lar kapsayıcı GENİŞLİĞİNE ölçeklenir
+// (width:100%) → yatay kaydırma çıkmaz; sayfalar alt alta dikey kaydırılır.
+function PdfOnizlemeSayfalar({ data }: { data: ArrayBuffer }) {
+  const kapRef = useRef<HTMLDivElement>(null);
+  const [durum, setDurum] = useState<"yukleniyor" | "hata" | "hazir">("yukleniyor");
+  useEffect(() => {
+    let iptal = false;
+    (async () => {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+        // pdf.js buffer'ı devralıp boşaltıyor (transfer) → KOPYA ver (strict-mode/yeniden açılış bozulmasın)
+        const doc = await pdfjs.getDocument({ data: new Uint8Array(data.slice(0)) }).promise;
+        if (iptal) return;
+        const kap = kapRef.current;
+        if (!kap) return;
+        kap.innerHTML = "";
+        const genislik = Math.max(1, kap.clientWidth || window.innerWidth - 16);
+        const dpr = Math.min(3, window.devicePixelRatio || 1); // netlik için cihaz pikseline çiz
+        for (let i = 1; i <= doc.numPages; i++) {
+          const sayfa = await doc.getPage(i);
+          const v1 = sayfa.getViewport({ scale: 1 });
+          const vp = sayfa.getViewport({ scale: (genislik / v1.width) * dpr });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.floor(vp.width);
+          canvas.height = Math.floor(vp.height);
+          canvas.style.cssText = "width:100%;height:auto;display:block;background:#fff;border-radius:4px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.25)";
+          await sayfa.render({ canvas, viewport: vp }).promise;
+          if (iptal) return;
+          kap.appendChild(canvas);
+        }
+        if (!iptal) setDurum("hazir");
+      } catch (err) {
+        console.error("PDF önizleme render hatası:", err);
+        if (!iptal) setDurum("hata");
+      }
+    })();
+    return () => { iptal = true; };
+  }, [data]);
+  return (
+    <div className="flex-1 overflow-y-auto overscroll-contain p-2" style={{ touchAction: "pan-y" }}>
+      {durum === "yukleniyor" && <p className="text-center text-white/90 text-sm py-6">PDF hazırlanıyor…</p>}
+      {durum === "hata" && <p className="text-center text-white/90 text-sm py-6">Önizleme oluşturulamadı — üstteki İndir düğmesini kullanın.</p>}
+      <div ref={kapRef} className="max-w-3xl mx-auto" />
+    </div>
+  );
+}
+
 // useSearchParams() Suspense gerektirir — wrap edip içerideki component'i çağırıyoruz.
 export default function IhalePage() {
   return (
@@ -863,7 +912,8 @@ function IhalePageContent() {
   const otoPdfRef = useRef<string>("");
   // Bildirimden gelişte PDF, uygulama İÇİNDE tam ekran önizlenir (indirme/gezinme YOK) —
   // mobilde harici PDF görüntüleyici kapatılınca boş ekran kalıyordu; modalda ✕ → ihale sayfası altında.
-  const [pdfOnizleme, setPdfOnizleme] = useState<{ url: string; ad: string } | null>(null);
+  // İçerik ArrayBuffer olarak tutulur; pdf.js sayfaları canvas'a çizer (iframe WebKit'te tek sayfa gösteriyordu).
+  const [pdfOnizleme, setPdfOnizleme] = useState<{ data: ArrayBuffer; ad: string } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -1657,10 +1707,7 @@ function IhalePageContent() {
 
     const pdfAdi = (isAdi || ihaleKayitNo || "sinir-deger-rapor").replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s-]/g, "").replace(/\s+/g, "-").slice(0, 100);
     if (hedef === "onizleme") {
-      setPdfOnizleme((eski) => {
-        if (eski) { try { URL.revokeObjectURL(eski.url); } catch { /* sessiz */ } }
-        return { url: String(doc.output("bloburl")), ad: pdfAdi };
-      });
+      setPdfOnizleme({ data: doc.output("arraybuffer") as ArrayBuffer, ad: pdfAdi });
       return;
     }
     doc.save(`${pdfAdi}.pdf`);
@@ -2590,12 +2637,12 @@ function IhalePageContent() {
                 <FileDown size={14} /> İndir
               </button>
               <button type="button"
-                onClick={() => { try { URL.revokeObjectURL(pdfOnizleme.url); } catch { /* sessiz */ } setPdfOnizleme(null); }}
+                onClick={() => setPdfOnizleme(null)}
                 className="h-9 w-9 rounded-lg border border-gray-300 hover:bg-gray-50 flex items-center justify-center text-gray-600 font-bold"
                 title="Kapat — ihale sayfasına dön" aria-label="Kapat">✕</button>
             </div>
           </div>
-          <iframe src={pdfOnizleme.url} title="İhale PDF önizleme" className="flex-1 w-full bg-gray-200" />
+          <PdfOnizlemeSayfalar data={pdfOnizleme.data} />
         </div>
       )}
     </div>
