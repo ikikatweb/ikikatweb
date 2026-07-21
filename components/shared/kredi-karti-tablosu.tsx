@@ -226,8 +226,17 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
     try {
       if (editId) {
         const now = new Date().toISOString();
-        await updateKrediKarti(editId, payload, guncelleyenAd);
-        setKartlar((p) => p.map((k) => (k.id === editId ? { ...k, ...payload, updated_at: now, kullanilabilir_tarihi: now, kullanilabilir_guncelleyen: guncelleyenAd } : k)));
+        // Renkli nokta (kullanılabilir-limit güncelleme damgası) YALNIZ kullanılabilir limit
+        // gerçekten değiştiyse atılır — açıklama/limit günü gibi diğer alan düzenlemeleri
+        // noktayı yeşile çevirmesin.
+        const eski = kartlar.find((k) => k.id === editId);
+        const eskiKullanilabilir = Number(eski?.limit_tutar || 0) - Number(eski?.guncel_borc || 0);
+        const yeniKullanilabilir = payload.limit_tutar - payload.guncel_borc;
+        const kullanilabilirDegisti = Math.abs(yeniKullanilabilir - eskiKullanilabilir) > 0.004;
+        await updateKrediKarti(editId, payload, guncelleyenAd, kullanilabilirDegisti);
+        setKartlar((p) => p.map((k) => (k.id === editId
+          ? { ...k, ...payload, updated_at: now, ...(kullanilabilirDegisti ? { kullanilabilir_tarihi: now, kullanilabilir_guncelleyen: guncelleyenAd } : {}) }
+          : k)));
       } else {
         const maxSira = kartlar.reduce((m, k) => Math.max(m, k.sira), 0);
         const row = await insertKrediKarti({ ...payload, sira: maxSira + 1 }, guncelleyenAd);

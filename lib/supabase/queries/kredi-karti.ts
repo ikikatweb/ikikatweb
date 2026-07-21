@@ -26,11 +26,16 @@ export async function insertKrediKarti(row: KrediKartiYazi, guncelleyen?: string
   return data as KrediKarti;
 }
 
-export async function updateKrediKarti(id: string, patch: Partial<KrediKartiYazi>, guncelleyen?: string | null): Promise<void> {
+// kullanilabilirDamga: kullanılabilir-limit tarih/güncelleyen damgası atılsın mı?
+//   undefined → eski davranış: patch'te guncel_borc VARSA damgala (satır içi hücre düzenlemesi
+//   yalnız değer değişince patch gönderdiği için doğru). Düzenle DİYALOĞU guncel_borc'u her
+//   kayıtta gönderir → oradan AÇIKÇA geçilir (yalnız kullanılabilir GERÇEKTEN değiştiyse true);
+//   yoksa açıklama gibi alan düzeltmeleri de tabloda "bugün güncellendi" (yeşil nokta) görünüyordu.
+export async function updateKrediKarti(id: string, patch: Partial<KrediKartiYazi>, guncelleyen?: string | null, kullanilabilirDamga?: boolean): Promise<void> {
   const now = new Date().toISOString();
   const govde: Record<string, unknown> = { ...patch, updated_at: now };
-  // Güncel borç (dolayısıyla kullanılabilir limit) değiştiyse tarihini + güncelleyeni de yaz.
-  if (patch.guncel_borc !== undefined) { govde.kullanilabilir_tarihi = now; govde.kullanilabilir_guncelleyen = guncelleyen ?? null; }
+  const damga = kullanilabilirDamga ?? patch.guncel_borc !== undefined;
+  if (damga) { govde.kullanilabilir_tarihi = now; govde.kullanilabilir_guncelleyen = guncelleyen ?? null; }
   const { error } = await sb().from("kredi_karti").update(govde).eq("id", id);
   if (error) throw error;
 }
