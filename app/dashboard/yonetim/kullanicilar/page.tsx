@@ -202,6 +202,7 @@ export default function KullanicilarPage() {
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-30 bg-white shadow-sm">
               <TableRow>
+                <TableHead className="w-10 text-center text-gray-400">#</TableHead>
                 <TableHead
                   style={{ position: "sticky", left: 0, zIndex: 35, backgroundColor: "white" }}
                   className="shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
@@ -227,7 +228,7 @@ export default function KullanicilarPage() {
                 if (liste.length === 0) {
                   return (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-10 text-gray-400 text-sm">
+                      <TableCell colSpan={9} className="text-center py-10 text-gray-400 text-sm">
                         {aktifSekme === "pasif"
                           ? "Pasif kullanıcı yok."
                           : (arama.trim() ? "Eşleşen aktif kullanıcı yok." : "Aktif kullanıcı yok.")}
@@ -235,8 +236,9 @@ export default function KullanicilarPage() {
                     </TableRow>
                   );
                 }
-                return liste.map((k) => (
+                return liste.map((k, sira) => (
                 <TableRow key={k.id} className={!k.aktif ? "bg-gray-100 opacity-50" : ""}>
+                  <TableCell className="text-center text-gray-400 tabular-nums text-xs">{sira + 1}</TableCell>
                   <TableCell
                     style={{ position: "sticky", left: 0, zIndex: 5 }}
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}

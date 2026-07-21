@@ -349,6 +349,7 @@ export default function PersonelPage() {
           <Table noWrapper>
             <TableHeader className="sticky top-0 z-10 bg-white shadow-sm">
               <TableRow>
+                <TableHead className="w-10 text-center text-gray-400">#</TableHead>
                 <TableHead>TC Kimlik No</TableHead>
                 <TableHead>Ad Soyad</TableHead>
                 <TableHead>Şantiye</TableHead>
@@ -360,10 +361,11 @@ export default function PersonelPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtrelenmis.map((p) => {
+              {filtrelenmis.map((p, sira) => {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={pasif ? "opacity-60 bg-gray-50" : undefined}>
+                    <TableCell className="text-center text-gray-400 tabular-nums text-xs w-px">{sira + 1}</TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap w-px">{p.tc_kimlik_no}</TableCell>
                     <TableCell className="font-medium whitespace-nowrap w-px">
                       <div className="flex items-center gap-1.5">
