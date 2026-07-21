@@ -1046,7 +1046,7 @@ export default function AracPuantajPage() {
 
     // Geriye dönük gün sınırı kontrolü
     const tarih = tarihStr(yil, ay, gun);
-    if (!tarihIzinliMi(kullanici, tarih)) {
+    if (!tarihIzinliMi(kullanici, tarih, "puantaj")) {
       toast.error(
         `Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün izniniz var.`,
       );

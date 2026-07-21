@@ -578,7 +578,7 @@ function YakitPageContent() {
       // Kısıtlı kullanıcı: ek olarak sadece kendi kayıtlarını ve izinli tarih aralığını görsün
       if (sadeceKendiKayitlari && kullanici) {
         if (h.created_by !== kullanici.id) return false;
-        if (!tarihIzinliMi(kullanici, h.tarih)) return false;
+        if (!tarihIzinliMi(kullanici, h.tarih, "yakit", "goruntuleme")) return false;
       }
 
       // Tarih aralığı (yönetici + şantiye admini için)
@@ -953,7 +953,7 @@ function YakitPageContent() {
     if (!verDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!verDialogAracId) { toast.error("Araç seçin."); return; }
     if (!verDialogTarih) { toast.error("Tarih girin."); return; }
-    if (!tarihIzinliMi(kullanici, verDialogTarih)) {
+    if (!tarihIzinliMi(kullanici, verDialogTarih, "yakit")) {
       toast.error(`Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün izniniz var.`);
       return;
     }
@@ -1056,7 +1056,7 @@ function YakitPageContent() {
     if (!isYonetici) { toast.error("Düzeltme yetkiniz yok."); return; }
     if (!duzDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!duzDialogTarih) { toast.error("Tarih girin."); return; }
-    if (!tarihIzinliMi(kullanici, duzDialogTarih)) {
+    if (!tarihIzinliMi(kullanici, duzDialogTarih, "yakit")) {
       toast.error(`Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün izniniz var.`);
       return;
     }
@@ -1103,7 +1103,7 @@ function YakitPageContent() {
     if (alEditId ? !yDuzenle : !yEkle) { toast.error(alEditId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!alDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!alDialogTarih) { toast.error("Tarih girin."); return; }
-    if (!tarihIzinliMi(kullanici, alDialogTarih)) {
+    if (!tarihIzinliMi(kullanici, alDialogTarih, "yakit")) {
       toast.error(`Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün izniniz var.`);
       return;
     }
@@ -1162,7 +1162,7 @@ function YakitPageContent() {
     if (!virDialogAlan) { toast.error("Alan şantiye seçin."); return; }
     if (virDialogGonderen === virDialogAlan) { toast.error("Gönderen ve alan şantiye aynı olamaz."); return; }
     if (!virDialogTarih) { toast.error("Tarih girin."); return; }
-    if (!tarihIzinliMi(kullanici, virDialogTarih)) {
+    if (!tarihIzinliMi(kullanici, virDialogTarih, "yakit")) {
       toast.error(`Bu tarihe işlem yapamazsınız. Geriye dönük en fazla ${kullanici?.geriye_donus_gun ?? 0} gün izniniz var.`);
       return;
     }

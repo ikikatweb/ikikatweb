@@ -316,7 +316,7 @@ function SantiyeDefContent() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!yeniIcerik.trim()) { toast.error("İçerik girin."); return; }
     if (!filtreSantiye) { toast.error("Şantiye seçin."); return; }
-    if (!tarihIzinliMi(kullanici, seciliTarih)) { toast.error("Bu tarihe kayıt yapamazsınız."); return; }
+    if (!tarihIzinliMi(kullanici, seciliTarih, "santiye_defteri")) { toast.error("Bu tarihe kayıt yapamazsınız."); return; }
     setSaving(true);
     try {
       let defterId = defter?.id;
@@ -654,7 +654,9 @@ function SantiyeDefContent() {
     return !gecerli(s.gecici_kabul_tarihi) && !gecerli(s.kesin_kabul_tarihi)
       && !gecerli(s.tasfiye_tarihi) && !gecerli(s.devir_tarihi);
   });
-  const tarihIzinli = tarihIzinliMi(kullanici, seciliTarih);
+  // Modül parametresi ŞART: verilmezse kullanıcı ayarındaki "Şantiye Defteri İşlem (gün)" yerine
+  // eski genel varsayılan (2 gün) uygulanıyordu → İşlem=7 ayarlanmış kullanıcı 3 gün öncesine yazamıyordu.
+  const tarihIzinli = tarihIzinliMi(kullanici, seciliTarih, "santiye_defteri");
   const HavaIcon = HAVA_ICONLARI[havaDurumu] ?? Sun;
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
