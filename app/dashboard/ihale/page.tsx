@@ -1103,6 +1103,29 @@ function IhalePageContent() {
       u.searchParams.delete("pdf");
       window.history.replaceState(null, "", u.toString());
     } catch { /* URL temizlenemezse eski davranış */ }
+    // MOBİL: hareketsiz (otomatik) indirme, PDF'i uygulama penceresinin YERİNE açıyor —
+    // görüntüleyici kapatılınca geriye boş ekran kalıyordu (iOS/PWA blob gezinmesi). Mobilde
+    // otomatik indirme yerine DOKUNARAK indirme butonu gösterilir: kullanıcı hareketiyle açılan
+    // PDF kapatılınca ihale sayfası yerinde kalır. Masaüstünde otomatik indirme aynen sürer.
+    const mobil = typeof window !== "undefined" && window.matchMedia?.("(hover: none), (pointer: coarse)").matches;
+    if (mobil) {
+      toast(
+        (t) => (
+          <button
+            type="button"
+            className="text-sm font-medium text-[#1E3A5F] text-left"
+            onClick={() => {
+              toast.dismiss(t.id);
+              try { exportPDF(); } catch (err) { console.error("PDF hatası:", err); }
+            }}
+          >
+            📄 İhale analizi hazır — PDF&apos;i indirmek için dokunun
+          </button>
+        ),
+        { duration: 15000 },
+      );
+      return;
+    }
     // Bir tick bekle ki UI render bitsin
     setTimeout(() => {
       try { exportPDF(); } catch (err) { console.error("Auto PDF hatası:", err); }
