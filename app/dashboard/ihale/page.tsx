@@ -1095,6 +1095,14 @@ function IhalePageContent() {
     if (!analizYapildi || !hesap) return;
     if (otoPdfRef.current === urlIhaleId) return;
     otoPdfRef.current = urlIhaleId;
+    // pdf=1 bayrağını URL'den HEMEN düş: sayfa yenilenince PDF her defasında yeniden inmesin
+    // (ref sayfa yenilenince sıfırlanıyor; kalıcı koruma URL temizliği). ?ihale=<id> kalır —
+    // yenilemede aynı ihale forma yüklenmeye devam eder, yalnız indirme tekrarlanmaz.
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("pdf");
+      window.history.replaceState(null, "", u.toString());
+    } catch { /* URL temizlenemezse eski davranış */ }
     // Bir tick bekle ki UI render bitsin
     setTimeout(() => {
       try { exportPDF(); } catch (err) { console.error("Auto PDF hatası:", err); }
