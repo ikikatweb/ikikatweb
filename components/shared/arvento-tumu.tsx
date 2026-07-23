@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
-import { aracRengi } from "@/lib/arvento/arac-renk";
+import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
@@ -87,7 +87,11 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     return out;
   }, [raporlar, guzergahlar, mukerrerDk, mukerrerYaricap, ocakLat, ocakLng, ocakYaricap, damperSinif]);
   // Her araç/makineye SABİT ayrı renk — merkezi atama (tüm sekmelerde aynı plaka = aynı renk).
-  const renkAl = useCallback((p: string) => aracRengi(p), []);
+  // Liste verilerek: BU EKRANDA görünen araçlar asla aynı rengi paylaşmaz (çakışma onarımı).
+  const renkAl = useMemo(() => aracRenkSecici([
+    ...guzergahlar.map((g) => g.plaka),
+    ...raporlar.map((r) => r.plaka),
+  ]), [guzergahlar, raporlar]);
   const mapRef = useRef<HTMLDivElement>(null);
   const yerelGorunumRef = useRef<HaritaGorunum | null>(null);
   const gorunumRef = disGorunumRef ?? yerelGorunumRef; // dışarıdan verilirse sekmeler arası PAYLAŞILAN görünüm

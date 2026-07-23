@@ -6,10 +6,17 @@
 // Renk SEÇİMİ atanma sırasına göredir (hash DEĞİL): palet, ardışık girişler birbirinden EN UZAK ton
 // olacak şekilde dizilmiştir → az araçta bile renkler net ayrılır (hash yönteminde komşu tonlar —
 // kırmızı/gül, camgöbeği/gök — yan yana düşebiliyordu; kullanıcı "renkler birbirine çok yakın" dedi).
+//
+// ÇAKIŞMA SORUNU (çözüldü): Araç sayısı palet boyunu aşınca eski yedek formül (sıra % palet) daha önce
+// VERİLMİŞ renkleri tekrar dağıtıyordu ve bu localStorage'a kalıcı yazılıyordu → bazı bilgisayarlarda
+// Reglaj/Serme'deki iki greyder aynı renge düşüyordu. Artık: (1) palet 24 renk, (2) palet tükenince EN AZ
+// KULLANILAN renk seçilir, (3) aracRenkSecici() ile AYNI EKRANDA görünen araçların renkleri birbirinden
+// farklı olacak şekilde onarılır (onarım kalıcı kaydedilir → sekmeler arası tutarlılık korunur).
 
 // Uydu görüntüsünde okunur parlak tonlar. SIRA ÖNEMLİ: her giriş, kendinden öncekilerden hue olarak
 // olabildiğince uzak seçildi; benzer tonlar (gül≈kırmızı, gök≈mavi, menekşe≈mor) LİSTE SONUNA atıldı —
-// onlara ancak 12+ araç aynı oturumda renk isterse sıra gelir.
+// onlara ancak 12+ araç aynı oturumda renk isterse sıra gelir. Son 8 giriş: aynı hue'ların KOYU tonları
+// (parlak eşlerinden açıklık farkıyla ayrılır) — yalnız 16 araç aşılınca devreye girer.
 export const ARAC_RENK_PALETI = [
   "#ef4444", // kırmızı      (0°)
   "#3b82f6", // mavi         (217°)
@@ -27,6 +34,14 @@ export const ARAC_RENK_PALETI = [
   "#10b981", // zümrüt       (160°) — yeşile yakın, sona
   "#f43f5e", // gül          (350°) — kırmızıya yakın, sona
   "#8b5cf6", // menekşe      (258°) — mora yakın, sona
+  "#be123c", // koyu kızıl   (350° koyu)
+  "#1d4ed8", // koyu mavi    (224° koyu)
+  "#15803d", // koyu yeşil   (142° koyu)
+  "#c2410c", // kiremit      (21° koyu)
+  "#7e22ce", // koyu mor     (272° koyu)
+  "#0f766e", // koyu turkuaz (175° koyu)
+  "#a21caf", // koyu fuşya   (295° koyu)
+  "#4d7c0f", // zeytin       (85° koyu)
 ] as const;
 
 // Plaka normalizasyonu — queries/arvento.ts plakaNorm ile AYNI kural ("60 BP 842" = "60BP842").
@@ -40,12 +55,11 @@ function norm(s: unknown): string {
 // KULLANILMAMIŞ en öndeki (en uzak) ton verilir ve o da kalıcı kaydedilir.
 const STORAGE_KEY = "aracRenkAtama";
 const atanan = new Map<string, string>();     // normPlaka → renk (tüm sekmeler ortak)
-const kullanilan = new Set<string>();         // verilmiş renkler (yeni plakaya kullanılmamışı seç)
 if (typeof window !== "undefined") {
   try {
     const ham = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Record<string, string>;
     for (const [p, r] of Object.entries(ham)) {
-      if (typeof r === "string" && /^#[0-9a-f]{6}$/i.test(r)) { atanan.set(p, r); kullanilan.add(r); }
+      if (typeof r === "string" && /^#[0-9a-f]{6}$/i.test(r)) atanan.set(p, r);
     }
   } catch { /* bozuk kayıt → sıfırdan başla */ }
 }
@@ -54,15 +68,72 @@ function kaydet() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(atanan))); } catch { /* dolu/kapalı → yoksay */ }
 }
 
+// Renk → kaç araca verildi (paletin tükendiği durumda EN AZ kullanılanı seçmek için).
+function kullanimSayaci(): Map<string, number> {
+  const m = new Map<string, number>(ARAC_RENK_PALETI.map((r) => [r, 0]));
+  for (const r of atanan.values()) m.set(r, (m.get(r) ?? 0) + 1);
+  return m;
+}
+
+// Bir plakaya YENİ renk seç: önce hiç kullanılmamış (palet sırasıyla en uzak) ton; palet tükenmişse
+// EN AZ kullanılan ton (eski "sıra % palet" formülü kullanılmış renkleri körlemesine tekrar veriyordu).
+// hariç: bu seçimde kullanılmaması gereken renkler (aynı ekranda zaten görünenler).
+function yeniRenkSec(haric?: Set<string>): string {
+  const sayac = kullanimSayaci();
+  let enIyi: string = ARAC_RENK_PALETI[0];
+  let enIyiSkor = Infinity;
+  for (const r of ARAC_RENK_PALETI) {
+    if (haric?.has(r)) continue;
+    const skor = sayac.get(r) ?? 0;
+    if (skor < enIyiSkor) { enIyi = r; enIyiSkor = skor; if (skor === 0) break; } // hiç kullanılmamış → hemen al
+  }
+  return enIyi;
+}
+
 export function aracRengi(plaka: unknown): string {
   const p = norm(plaka);
   if (!p) return ARAC_RENK_PALETI[0];
   const ez = atanan.get(p);
   if (ez) return ez;
-  // Önce hiç kullanılmamış en öndeki (en uzak) ton; palet doluysa sıra döngüsel devam eder.
-  const renk = ARAC_RENK_PALETI.find((r) => !kullanilan.has(r)) ?? ARAC_RENK_PALETI[atanan.size % ARAC_RENK_PALETI.length];
+  const renk = yeniRenkSec();
   atanan.set(p, renk);
-  kullanilan.add(renk);
   kaydet();
   return renk;
+}
+
+// AYNI EKRANDA gösterilecek araçlar için renk seçici üretir: verilen listedeki hiçbir iki araç
+// aynı rengi almaz (palet yettiği sürece). Çakışan araç, o listede kullanılmayan bir renge kaydırılır
+// ve bu KALICI yazılır → sekmeler arası tutarlılık bozulmaz, düzeltme kalıcı olur.
+// Liste dışı bir plaka sorulursa (ör. canlı konum) normal kalıcı renge düşer.
+export function aracRenkSecici(plakalar: Iterable<unknown>): (plaka: unknown) => string {
+  const gorunen: string[] = [];
+  const gorulen = new Set<string>();
+  for (const pl of plakalar) {
+    const p = norm(pl);
+    if (!p || gorulen.has(p)) continue;
+    gorulen.add(p);
+    gorunen.push(p);
+  }
+  const kullanilanBuEkranda = new Set<string>();
+  let degisti = false;
+  for (const p of gorunen) {
+    let renk = atanan.get(p);
+    if (!renk) {
+      renk = yeniRenkSec(kullanilanBuEkranda);
+      atanan.set(p, renk);
+      degisti = true;
+    } else if (kullanilanBuEkranda.has(renk) && kullanilanBuEkranda.size < ARAC_RENK_PALETI.length) {
+      // ÇAKIŞMA: bu ekranda aynı renk zaten var → boşta olan bir renge kaydır (kalıcı)
+      renk = yeniRenkSec(kullanilanBuEkranda);
+      atanan.set(p, renk);
+      degisti = true;
+    }
+    kullanilanBuEkranda.add(renk);
+  }
+  if (degisti) kaydet();
+  return (plaka: unknown) => {
+    const p = norm(plaka);
+    if (!p) return ARAC_RENK_PALETI[0];
+    return atanan.get(p) ?? aracRengi(p);
+  };
 }

@@ -12,7 +12,7 @@ import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/l
 import { reglajRotalariniAyikla, type OncekiDamper } from "@/lib/arvento/serme-hesap";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
-import { aracRengi } from "@/lib/arvento/arac-renk";
+import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -302,8 +302,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     toast.error("Aracın konumu bulunamadı (canlı kapalı ve bu aralıkta güzergah yok).", { duration: toastSuresi() });
   }, [araclar]);
 
-  // Her araca sabit renk — merkezi atama (tüm sekmelerde aynı plaka = aynı renk)
-  const renkAl = useCallback((p: string) => aracRengi(p), []);
+  // Her araca sabit renk — merkezi atama (tüm sekmelerde aynı plaka = aynı renk).
+  // Liste verilerek: BU EKRANDA görünen araçlar asla aynı rengi paylaşmaz (çakışma onarımı).
+  const renkAl = useMemo(() => aracRenkSecici(araclar.map((k) => k.plaka)), [araclar]);
 
   const toggle = (p: string) => setPasifPlakalar((s) => { // pasife ekle/çıkar (gün değişse de korunur)
     const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n;

@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzergahPlaka, getStabilizeOzetDirect, guzergahVeriImza, raporVeriImza } from "@/lib/supabase/queries/arvento";
-import { aracRengi } from "@/lib/arvento/arac-renk";
+import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
@@ -442,8 +442,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     return () => { try { delete (window as unknown as { __damperSinifSet?: unknown }).__damperSinifSet; } catch { /* yoksay */ } };
   }, []);
 
-  // Her kamyona sabit renk — merkezi atama: chip ↔ harita ↔ liste ↔ DİĞER SEKMELER hep aynı renk
-  const renkAl = useCallback((plaka: string) => aracRengi(plaka), []);
+  // Her kamyona sabit renk — merkezi atama: chip ↔ harita ↔ liste ↔ DİĞER SEKMELER hep aynı renk.
+  // Liste verilerek: BU EKRANDA görünen kamyonlar asla aynı rengi paylaşmaz (çakışma onarımı).
+  const renkAl = useMemo(() => aracRenkSecici(kamyonlar.map((r) => r.plaka)), [kamyonlar]);
 
   // Araç KÜMESİ değişince (tarih/yeni araç) varsayılan: tüm kamyonlar seçili. Periyodik tazelemede
   // aynı plakalar gelirse seçim KORUNUR (kullanıcının kapattığı araçlar geri açılmasın, redraw olmasın).

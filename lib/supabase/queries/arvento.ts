@@ -150,19 +150,46 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
   // statement-timeout veriyor ("canceling statement due to statement timeout"). Bu yüzden ~10 günden geniş
   // aralıklarda tekSorgu'yu ATLA → aşağıdaki GÜN-GÜN yola düş (her gün ayrı hafif sorgu, takılmaz).
   const gunFarki = Math.round((new Date(bitis + "T00:00:00").getTime() - new Date(bas + "T00:00:00").getTime()) / 86400000) + 1;
-  if (opts?.tekSorgu && plakalar && plakalar.length > 0 && gunFarki <= 10) {
+  // Bir tarih PENCERESİNİ sayfalayarak çek (1000'lik parçalar) — pencere ≤10 gün tutulur ki
+  // DB statement-timeout'a girmesin.
+  const pencereCek = async (pBas: string, pBitis: string): Promise<AracArventoGuzergah[]> => {
     const rows: AracArventoGuzergah[] = [];
     const PARCA = 1000; let offset = 0;
     while (true) {
-      const { data, error } = await supabase
+      let q = supabase
         .from("arac_arvento_guzergah").select("*")
-        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis).in("plaka", plakalar)
-        .order("rapor_tarihi").range(offset, offset + PARCA - 1);
+        .gte("rapor_tarihi", pBas).lte("rapor_tarihi", pBitis);
+      if (plakalar && plakalar.length > 0) q = q.in("plaka", plakalar);
+      // (rapor_tarihi, plaka) tabloda BENZERSİZ → ikisiyle sıralama sayfalamayı deterministik yapar
+      // (yalnız tarihe göre sıralanınca geniş pencerede sayfa sınırında satır atlanabilir/tekrarlanabilir).
+      const { data, error } = await q.order("rapor_tarihi").order("plaka").range(offset, offset + PARCA - 1);
       if (error) throw error;
       const d = (data ?? []) as AracArventoGuzergah[];
       rows.push(...d);
       if (d.length < PARCA) break;
       offset += PARCA; if (offset > 100000) break;
+    }
+    return rows;
+  };
+  if (opts?.tekSorgu && plakalar && plakalar.length > 0) {
+    if (gunFarki <= 10) return tanimliSuz(await pencereCek(bas, bitis));
+    // GENİŞ ARALIK (ör. Serme'nin sezon-başı geçmişi ~200 gün): gün-gün ~200 istek yerine
+    // 10 GÜNLÜK PENCERELER, yine 4'erli paralel → havuz yükü aynı, round-trip ~10 kat az.
+    const pencereler: [string, string][] = [];
+    const iter = new Date(bas + "T00:00:00");
+    const sonG = new Date(bitis + "T00:00:00");
+    const gunStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    while (iter <= sonG) {
+      const pBas = gunStr(iter);
+      const bitisDt = new Date(iter); bitisDt.setDate(bitisDt.getDate() + 9); // 10 günlük pencere
+      const pBitis = bitisDt > sonG ? gunStr(sonG) : gunStr(bitisDt);
+      pencereler.push([pBas, pBitis]);
+      iter.setDate(iter.getDate() + 10);
+    }
+    const rows: AracArventoGuzergah[] = [];
+    for (let i = 0; i < pencereler.length; i += 4) {
+      const sonuclar = await Promise.all(pencereler.slice(i, i + 4).map(([a, b]) => pencereCek(a, b)));
+      for (const s of sonuclar) rows.push(...s);
     }
     return tanimliSuz(rows);
   }
