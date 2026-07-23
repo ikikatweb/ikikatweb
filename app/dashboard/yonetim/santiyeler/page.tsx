@@ -30,7 +30,9 @@ import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, 
 import { useAuth } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+// xlsx-js-style: standart xlsx hücre stilini (renk dolgusu) desteklemez —
+// Excel çıktısı ekrandaki renklerle birebir olsun diye stilli sürüm kullanılır.
+import * as XLSXStyle from "xlsx-js-style";
 import { paletGetBg } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -418,63 +420,98 @@ export default function SantiyelerPage() {
     doc.text(`Yi-UFE Orani: ${seciliAyAdi} ${yiUfeStr}`, pageW - 14, 11, { align: "right" });
     doc.setFont("helvetica", "normal");
 
+    // Kolon sırası EKRANDAKİ tabloyla birebir (önceden Durum 4. sıradaydı, sayfada 12.)
     const head = [[
-      "No", tr("Is Tanimlari"), tr("Ihale Kayit No"), "Durum",
-      "Ekap Belge No", tr("Isin Adi"),
-      tr("Sozlesme Tarihi"),
+      tr("Sira No"), tr("Is Tanimlari"), "Ekap Belge No", tr("Isin Adi"),
+      tr("Ihale Kayit No"), tr("Sozlesme Tarihi"),
       "F.F. Dahil\nKalan Tutar", tr("Sozl. Fiy.\nGerceklesen"),
-      tr("Gecici Kabul"), "Kesin Kabul", tr("Is Deneyim"),
+      tr("Gecici Kabul"), "Kesin Kabul", tr("Is Deneyim"), "Durum",
       tr("Guncel Is\nDeneyim Tutari"), tr("Fiyat Farki"),
     ]];
+
+    // hex → [r,g,b] (jsPDF renkleri için)
+    const rgb = (hex: string | null | undefined, varsayilan: [number, number, number]): [number, number, number] => {
+      const m = (hex ?? "").match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+      if (!m) return varsayilan;
+      return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+    };
+    // PDF fontu ₺/€ basamıyor — para gösterimini ASCII'ye indir (sayfadaki sayıyla aynı)
+    const paraPdf = (n: number | null, pb: string | null | undefined) =>
+      n == null ? "—" : `${pb === "USD" ? "$" : pb === "EUR" ? "EUR " : ""}${formatPara(n)}`;
 
     let startY = 20;
 
     for (const grup of firmaGruplari) {
-      // Firma başlığı — ortada, koyu arka plan
-      doc.setFillColor(21, 45, 74);
+      // Firma başlığı — sayfadaki gibi FİRMA RENGİNDE, siyah yazı, ortalı
+      const firmaRgb = rgb(grup.firmaRenk, [21, 45, 74]);
+      doc.setFillColor(firmaRgb[0], firmaRgb[1], firmaRgb[2]);
       doc.rect(14, startY, pageW - 28, 6, "F");
-      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(0, 0, 0);
       doc.text(tr(grup.firmaAdi), pageW / 2, startY + 4, { align: "center" });
-      doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal");
+      doc.setFont("helvetica", "normal");
+
+      // Satır zemin renkleri (iş grubu) + durum rozet renkleri — didParseCell'de uygulanır
+      const satirZemin: ([number, number, number] | null)[] = [];
+      const durumZemin: [number, number, number][] = [];
 
       const body: string[][] = [];
       for (let si = 0; si < grup.satirlar.length; si++) {
         const satir = grup.satirlar[si];
         const s = satir.santiye;
         const c = calc(s, satir.ortakOrani);
+        const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
+        satirZemin.push(isGrubuRengi ? rgb(isGrubuRengi, [255, 255, 255]) : null);
+        durumZemin.push(
+          s.devir_tarihi ? [168, 85, 247] : s.tasfiye_tarihi ? [239, 68, 68]
+            : s.kesin_kabul_tarihi ? [107, 114, 128] : s.gecici_kabul_tarihi ? [202, 138, 4] : [22, 163, 74],
+        );
         body.push([
           String(si + 1),
           tr(s.is_grubu ?? "—"),
-          s.ihale_kayit_no ?? "—",
-          tr(getDurum(s)),
           s.ekap_belge_no ?? "—",
           tr(s.is_adi),
+          s.ihale_kayit_no ?? "—",
           formatTarih(s.sozlesme_tarihi),
-          c.ffDahilKalan != null ? formatPara(c.ffDahilKalan) : "—",
-          s.sozlesme_fiyatlariyla_gerceklesen != null ? formatPara(s.sozlesme_fiyatlariyla_gerceklesen) : "—",
+          paraPdf(c.ffDahilKalan, s.para_birimi),
+          paraPdf(s.sozlesme_fiyatlariyla_gerceklesen, s.para_birimi),
           formatTarih(s.gecici_kabul_tarihi),
           formatTarih(s.kesin_kabul_tarihi),
           s.tasfiye_tarihi ? "—" : s.is_deneyim_url ? "Var" : "Yok",
-          c.guncelDeneyim != null ? formatPara(c.guncelDeneyim) : "—",
+          tr(getDurum(s)),
+          paraPdf(c.guncelDeneyim, s.para_birimi),
           c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—",
         ]);
       }
 
+      // Tablo başlığı — sayfadaki gibi firma renginin AÇIKLAŞTIRILMIŞI, siyah yazı
+      const baslikRgb = rgb(aciklastir(grup.firmaRenk ?? "#152d4a", 0.25), [200, 214, 229]);
+
       autoTable(doc, {
         startY: startY + 7, head, body,
-        styles: { fontSize: 5.5, cellPadding: 1, halign: "right" },
-        headStyles: { fillColor: [30, 58, 95], textColor: 255, fontSize: 5.5, halign: "center" },
+        styles: { fontSize: 5.5, cellPadding: 1, halign: "center", textColor: [0, 0, 0] },
+        headStyles: { fillColor: baslikRgb, textColor: [0, 0, 0], fontSize: 5.5, halign: "center" },
         columnStyles: {
-          0: { cellWidth: 7, halign: "center" },
-          1: { halign: "left" },
-          2: { halign: "left" },
-          3: { halign: "left" },
-          4: { halign: "center" },
-          5: { cellWidth: 32, halign: "left" },
-          6: { halign: "center" },
-          9: { halign: "center" },
-          10: { halign: "center" },
-          11: { halign: "center" },
+          0: { cellWidth: 8 },                  // Sıra No (sayfada en dar)
+          3: { cellWidth: 34, halign: "left" }, // İşin Adı (sayfada en geniş)
+          6: { halign: "right" },               // F.F. Dahil Kalan
+          7: { halign: "right" },               // Sözl. Fiy. Gerçekleşen
+          12: { halign: "right" },              // Güncel İş Deneyim
+        },
+        // Satır zemini = iş grubu rengi; Durum ve İş Deneyim = sayfadaki rozet renkleri
+        didParseCell: (data) => {
+          if (data.section !== "body") return;
+          const zemin = satirZemin[data.row.index];
+          if (zemin) data.cell.styles.fillColor = zemin;
+          if (data.column.index === 11) {
+            data.cell.styles.fillColor = durumZemin[data.row.index];
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
+          }
+          if (data.column.index === 10) {
+            const v = (data.cell.text[0] ?? "").trim();
+            if (v === "Var") { data.cell.styles.fillColor = [22, 163, 74]; data.cell.styles.textColor = [255, 255, 255]; data.cell.styles.fontStyle = "bold"; }
+            else if (v === "Yok") { data.cell.styles.fillColor = [241, 245, 249]; data.cell.styles.textColor = [15, 23, 42]; }
+          }
         },
       });
 
@@ -489,28 +526,158 @@ export default function SantiyelerPage() {
     doc.save("santiyeler.pdf");
   }
 
+  // Excel: EKRANDAKİ tabloyla birebir — aynı 14 kolon/sıra, firma renkli başlık,
+  // açıklaştırılmış tablo başlığı, iş grubu renkli satırlar, durum/iş deneyim rozet renkleri.
+  // Kolon genişlikleri sayfadaki px oranlarına göre (İşin Adı en geniş, Sıra No en dar).
   function santiyeExportExcel() {
-    const headers = ["Firma", "İş Adı", "İş Tanımları", "Sözleşme Tarihi", "Gerçekleşen", "FF Dahil Kalan", "Güncel Deneyim", "Durum"];
-    const data: (string | number)[][] = [];
+    // Sayfadaki min/max-w px değerlerinin karakter birimine oranlı karşılığı
+    const KOLONLAR: { label: string; wch: number }[] = [
+      { label: "Sıra No", wch: 6 },
+      { label: "İş Tanımları", wch: 13 },
+      { label: "Ekap Belge No", wch: 13 },
+      { label: "İşin Adı", wch: 20 },
+      { label: "İhale Kayıt No", wch: 13 },
+      { label: "Sözleşme Tarihi", wch: 13 },
+      { label: "F.F. Dahil\nKalan Tutar", wch: 15 },
+      { label: "Sözl. Fiy.\nGerçekleşen", wch: 15 },
+      { label: "Geçici Kabul", wch: 13 },
+      { label: "Kesin Kabul", wch: 13 },
+      { label: "İş Deneyim", wch: 11 },
+      { label: "Durum", wch: 13 },
+      { label: "Güncel İş\nDeneyim Tutarı", wch: 16 },
+      { label: "Fiyat Farkı", wch: 11 },
+    ];
+    const N = KOLONLAR.length;
+    const hx = (h: string | null | undefined, varsayilan: string) =>
+      (h ?? varsayilan).replace("#", "").toUpperCase();
+    // Para hücresi: SAYI olarak yazılır (toplanabilir) ama sayfadaki gibi görünür.
+    // TRY sembolsüz, USD/EUR sembol önde — formatParaIle ile aynı gösterim.
+    const paraFmt = (pb: string | null | undefined) =>
+      pb === "USD" ? '"$"#,##0.00' : pb === "EUR" ? '"€"#,##0.00' : "#,##0.00";
+    const kenar = {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } },
+    } as const;
+
+    type Hucre = { v: string | number; t: "s" | "n"; z?: string; s?: Record<string, unknown> };
+    const satirlar: Hucre[][] = [];
+    const merges: { s: { r: number; c: number }; e: { r: number; c: number } }[] = [];
+
     for (const grup of firmaGruplari) {
-      for (const satir of grup.satirlar) {
+      const firmaHex = hx(grup.firmaRenk, "#152d4a");
+      const baslikHex = hx(aciklastir(grup.firmaRenk ?? "#152d4a", 0.25), "#152d4a");
+
+      // 1) Firma başlığı — tüm kolonlar boyunca birleştirilmiş, firma renginde (sayfadaki gibi siyah yazı)
+      merges.push({ s: { r: satirlar.length, c: 0 }, e: { r: satirlar.length, c: N - 1 } });
+      satirlar.push([
+        {
+          v: grup.firmaAdi, t: "s",
+          s: {
+            fill: { patternType: "solid", fgColor: { rgb: firmaHex } },
+            font: { bold: true, sz: 12, color: { rgb: "000000" } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: kenar,
+          },
+        },
+        ...Array.from({ length: N - 1 }, () => ({
+          v: "", t: "s" as const,
+          s: { fill: { patternType: "solid", fgColor: { rgb: firmaHex } }, border: kenar },
+        })),
+      ]);
+
+      // 2) Tablo başlığı — firma renginin açıklaştırılmışı (sayfadaki gibi her grupta tekrarlanır)
+      satirlar.push(
+        KOLONLAR.map((k) => ({
+          // \n korunur — wrapText ile Excel'de sayfadaki gibi iki satıra bölünür
+          v: k.label, t: "s" as const,
+          s: {
+            fill: { patternType: "solid", fgColor: { rgb: baslikHex } },
+            font: { bold: true, sz: 10, color: { rgb: "000000" } },
+            alignment: { horizontal: "center", vertical: "center", wrapText: true },
+            border: kenar,
+          },
+        })),
+      );
+
+      // 3) Veri satırları — arka plan İŞ GRUBU rengi (sayfadaki satır rengiyle aynı), yazı siyah
+      for (let i = 0; i < grup.satirlar.length; i++) {
+        const satir = grup.satirlar[i];
         const s = satir.santiye;
         const c = calc(s, satir.ortakOrani);
-        data.push([
-          grup.firmaAdi, s.is_adi, s.is_grubu ?? "",
-          formatTarih(s.sozlesme_tarihi),
-          s.sozlesme_fiyatlariyla_gerceklesen ?? "",
-          c.ffDahilKalan ?? "",
-          c.guncelDeneyim ?? "",
-          getDurum(s),
+        const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
+        const zeminHex = isGrubuRengi ? hx(isGrubuRengi, "#FFFFFF") : "FFFFFF";
+        const zemin = { patternType: "solid", fgColor: { rgb: zeminHex } };
+        const ortak = { fill: zemin, font: { sz: 10, color: { rgb: "000000" } }, border: kenar };
+        const metin = (v: string, hiza: "left" | "center" | "right" = "center", kalin = false): Hucre => ({
+          v, t: "s",
+          s: { ...ortak, font: { ...ortak.font, bold: kalin }, alignment: { horizontal: hiza, vertical: "center" } },
+        });
+        const para = (n: number | null): Hucre =>
+          n == null
+            ? metin("—", "right")
+            : { v: n, t: "n", z: paraFmt(s.para_birimi), s: { ...ortak, alignment: { horizontal: "right", vertical: "center" } } };
+        // Rozet hücresi — sayfadaki Badge renkleriyle aynı (beyaz yazı)
+        const rozet = (v: string, hex: string, yazi = "FFFFFF"): Hucre => ({
+          v, t: "s",
+          s: {
+            fill: { patternType: "solid", fgColor: { rgb: hex } },
+            font: { bold: true, sz: 10, color: { rgb: yazi } },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: kenar,
+          },
+        });
+        // Durum rengi — sayfadaki durumColor ile birebir
+        const durumHex = s.devir_tarihi ? "A855F7" : s.tasfiye_tarihi ? "EF4444"
+          : s.kesin_kabul_tarihi ? "6B7280" : s.gecici_kabul_tarihi ? "CA8A04" : "16A34A";
+
+        satirlar.push([
+          metin(String(i + 1)),
+          metin(s.is_grubu ?? "—", "center", true),
+          metin(s.ekap_belge_no ?? "—"),
+          metin(s.is_adi, "left"),
+          metin(s.ihale_kayit_no ?? "—"),
+          metin(formatTarih(s.sozlesme_tarihi)),
+          para(c.ffDahilKalan),
+          para(s.sozlesme_fiyatlariyla_gerceklesen),
+          metin(formatTarih(s.gecici_kabul_tarihi)),
+          metin(formatTarih(s.kesin_kabul_tarihi)),
+          // İş Deneyim: tasfiyede "—", varsa yeşil "Var", yoksa gri "Yok" (sayfadaki Badge'ler)
+          s.tasfiye_tarihi ? metin("—") : s.is_deneyim_url ? rozet("Var", "16A34A") : rozet("Yok", "F1F5F9", "0F172A"),
+          rozet(getDurum(s), durumHex),
+          para(c.guncelDeneyim),
+          metin(c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—"),
         ]);
       }
+
+      // Gruplar arasında boş ayırıcı satır (sayfadaki kart aralığı gibi)
+      satirlar.push(Array.from({ length: N }, () => ({ v: "", t: "s" as const })));
     }
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    ws["!cols"] = headers.map(() => ({ wch: 18 }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Santiyeler");
-    XLSX.writeFile(wb, "santiyeler.xlsx");
+
+    const ws = XLSXStyle.utils.aoa_to_sheet(satirlar.map((r) => r.map((h) => h.v)));
+    // Stilleri ve sayı formatlarını hücrelere uygula
+    for (let r = 0; r < satirlar.length; r++) {
+      for (let c = 0; c < satirlar[r].length; c++) {
+        const kaynak = satirlar[r][c];
+        const ref = XLSXStyle.utils.encode_cell({ r, c });
+        if (!ws[ref]) ws[ref] = { v: kaynak.v, t: kaynak.t };
+        ws[ref].t = kaynak.t;
+        if (kaynak.z) ws[ref].z = kaynak.z;
+        if (kaynak.s) ws[ref].s = kaynak.s;
+      }
+    }
+    ws["!cols"] = KOLONLAR.map((k) => ({ wch: k.wch }));
+    ws["!merges"] = merges;
+    // Firma başlığı ve tablo başlığı satırlarını biraz yüksek tut (sayfadaki gibi)
+    ws["!rows"] = satirlar.map((_, r) => {
+      const firmaBaslik = merges.some((m) => m.s.r === r);
+      return { hpt: firmaBaslik ? 22 : r > 0 && merges.some((m) => m.s.r === r - 1) ? 28 : 16 };
+    });
+
+    const wb = XLSXStyle.utils.book_new();
+    XLSXStyle.utils.book_append_sheet(wb, ws, "Is Deneyim Belgeleri");
+    XLSXStyle.writeFile(wb, "is-deneyim-belgeleri.xlsx");
   }
 
   // Durum: sadece düzenle butonu, dropdown kaldırıldı

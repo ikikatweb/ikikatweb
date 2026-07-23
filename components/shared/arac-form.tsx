@@ -433,7 +433,8 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                 className={selectClass}
               >
                 <option value="">Seçiniz</option>
-                {Array.from({ length: new Date().getFullYear() - 1989 }, (_, i) => new Date().getFullYear() - i).map((y) => (
+                {/* Model yılı: bu yıldan 1960'a kadar (eski iş makineleri için 1990 sınırı yetmiyordu) */}
+                {Array.from({ length: new Date().getFullYear() - 1959 }, (_, i) => new Date().getFullYear() - i).map((y) => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
