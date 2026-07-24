@@ -49,9 +49,36 @@ async function login(ctx: BrowserContext, page: Page, user: string, pass: string
   throw new Error("Giriş başarısız — SESSION çerezi alınamadı (kullanıcı adı/şifre veya 2FA?).");
 }
 
-// Genel Rapor'u UI'dan tetikle: tüm cihazlar + Enlem/Boylam + Damper İndi + bugün + XLS → Çalıştır.
+// Genel Rapor'u UI'dan tetikle: tüm cihazlar + Enlem/Boylam + Damper İndi + (tarih) + XLS → Çalıştır.
 // NOT: koordinatlar 1500x950 sabit viewport'a göredir; DOM tabanlı adımlar (kolon/alarm/XLS/Çalıştır) daha sağlamdır.
-async function tetikleGenelRapor(page: Page): Promise<void> {
+// gunTarih verilirse (YYYY-MM-DD) rapor O GÜN için üretilir (Başlangıç/Bitiş dateboxları ayarlanır);
+// verilmezse Arvento varsayılanı = bugün. Geçmiş günün kaçan damperini geri çekmek için kullanılır.
+async function tetikleGenelRapor(page: Page, gunTarih?: string): Promise<void> {
+  // GEÇMİŞ GÜN: rapor tarihi Arvento'nun ÖZEL tarih bileşeninden geliyor (dxDateBox DEĞİL) → UI'dan
+  // ayarlamak güvenilmez. Bunun yerine "Çalıştır"ın gönderdiği /reporting/execute isteğini UÇARKEN
+  // yakalayıp payload.filter.date.dateRange'i istenen güne çeviriyoruz (UI tüm cihaz/kolon/alarm
+  // seçimini doğru kurar; biz yalnız tarihi cerrahi olarak değiştiririz → en sağlam yol).
+  if (gunTarih && /^\d{4}-\d{2}-\d{2}$/.test(gunTarih)) {
+    const ymd = gunTarih.replace(/-/g, "");
+    await page.route("**/reporting/execute", async (route) => {
+      try {
+        const body = route.request().postData();
+        if (body) {
+          const j = JSON.parse(body);
+          if (j?.filter?.date?.dateRange) {
+            j.filter.date.dateRange.start = `${ymd}000000`;
+            j.filter.date.dateRange.end = `${ymd}235959`;
+            if (typeof j.filter.date.dateType !== "undefined") j.filter.date.dateType = 0; // "Detaylı/aralık" modu
+            console.log(`   execute isteği ${gunTarih} olarak yeniden yazıldı`);
+            await route.continue({ postData: JSON.stringify(j) });
+            return;
+          }
+        }
+      } catch (e) { console.log("   execute yeniden yazma hatası:", e instanceof Error ? e.message : e); }
+      await route.continue();
+    });
+  }
+
   await page.goto(`${BASE}/reports.aspx`, { waitUntil: "networkidle", timeout: 60000 });
   await bekle(page, 4000);
   await page.mouse.click(519, 474); // "Genel Rapor" kartı → Raporu Aç (sol üst kart)
@@ -85,7 +112,7 @@ async function tetikleGenelRapor(page: Page): Promise<void> {
   if (await xls.count()) await xls.click();
   await bekle(page, 1200);
 
-  // 5) Çalıştır
+  // 5) Çalıştır (geçmiş gün istenmişse yukarıdaki route interceptor tarihi uçarken değiştirir)
   const calistir = page.getByText("Çalıştır", { exact: true }).first();
   if (await calistir.count()) await calistir.click({ force: true }).catch(() => page.mouse.click(1040, 580));
   else await page.mouse.click(1040, 580);
@@ -97,6 +124,12 @@ async function main() {
   if (!user || !pass) throw new Error(".env.local'da ARVENTO_WEB_USER / ARVENTO_WEB_PASS tanımlı değil.");
   const zaman = () => new Date().toLocaleString("tr-TR");
   const force = process.argv.includes("--force"); // saat penceresini yok say (elle test için)
+  // Geçmiş gün: --gun YYYY-MM-DD → o günün raporunu çek (kaçan damperi geri getirme). Verilince
+  // saat/periyot kapısı otomatik atlanır (force gibi) — geçmiş çekim her saat mümkün olmalı.
+  const gunArg = process.argv.find((a) => /^--gun=\d{4}-\d{2}-\d{2}$/.test(a))?.split("=")[1]
+    ?? (process.argv.includes("--gun") ? process.argv[process.argv.indexOf("--gun") + 1] : undefined);
+  const gecmisGun = gunArg && /^\d{4}-\d{2}-\d{2}$/.test(gunArg) ? gunArg : undefined;
+  const kapiyiAtla = force || !!gecmisGun;
 
   // Servis-rol client — saat/periyot kapısı okuması + başarıdan sonra "son çalışma" damgası için.
   const sb = (() => {
@@ -107,7 +140,7 @@ async function main() {
   // KAPI (Tanımlamalar → "Damper Senkron Saatleri"): görev 5 dk'da bir tetiklenir; asıl sıklığı BU belirler.
   //  1) Saat penceresi (bas–bit) dışındaysa hiç çalışma.  2) Son başarılı çekimden PERİYOT kadar dk geçmediyse atla.
   // Her ikisi de Playwright açılmadan ÖNCE bakılır → boş tetiklerde ~1 sn'de çıkar (ucuz).
-  if (!force && sb) {
+  if (!kapiyiAtla && sb) {
     let bas = 6, bit = 21, periyot = 60, son = 0, periyotKolonVar = true;
     try {
       const { data, error } = await sb.from("arvento_ayarlar")
@@ -161,8 +194,8 @@ async function main() {
 
     // Tetikten ÖNCE mevcut istekleri işaretle → sonra SADECE bu koşumun ürettiği yeni general_report'u al.
     const oncekiler = new Set((await reqList()).map(anahtar));
-    await tetikleGenelRapor(page);
-    console.log(`${zaman()} → rapor tetiklendi, çıktı bekleniyor...`);
+    await tetikleGenelRapor(page, gecmisGun);
+    console.log(`${zaman()} → rapor tetiklendi${gecmisGun ? ` (GEÇMİŞ GÜN: ${gecmisGun})` : ""}, çıktı bekleniyor...`);
 
     // Yeni, tamamlanmış general_report çıktısını yokla (rapor genelde ~5 sn'de biter; 120 sn tavan).
     let outUrl: string | null = null;
@@ -187,8 +220,9 @@ async function main() {
 
   const { ingestArventoBuffer } = await import("@/lib/arvento/ingest");
   const sonuc = await ingestArventoBuffer(buf!);
-  // Başarılı çekim damgası → periyot bir sonraki çalışmayı bu zamandan sayar.
-  if (sb) { try { await sb.from("arvento_ayarlar").update({ damper_sync_son_calisma: new Date().toISOString() }).eq("id", "global"); } catch { /* damga yazılamazsa sorun değil */ } }
+  // Başarılı çekim damgası → periyot bir sonraki çalışmayı bu zamandan sayar. GEÇMİŞ GÜN çekiminde
+  // damga YAZMA: aksi halde bugünkü periyodik akış "az önce çekildi" sanıp o saati atlar.
+  if (sb && !gecmisGun) { try { await sb.from("arvento_ayarlar").update({ damper_sync_son_calisma: new Date().toISOString() }).eq("id", "global"); } catch { /* damga yazılamazsa sorun değil */ } }
   console.log(`${zaman()} → OK | ${uretilenTarih} raporu işlendi · ${sonuc.damperGunler.map((g) => `${g.tarih}:${g.sayi}`).join(", ") || "damper olayı yok"}`);
 }
 
