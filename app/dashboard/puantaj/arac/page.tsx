@@ -27,7 +27,7 @@ import {
   getAracOzetOverridesByRange,
   upsertAracOzetOverride,
 } from "@/lib/supabase/queries/arac-ozet";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
   AracWithRelations, AracPuantaj, AracPuantajDurum,
   AracKiraBedeli, AracPuantajOverride,
@@ -155,9 +155,9 @@ export default function AracPuantajPage() {
   // Özet rapor — firma filtresi (sahibi: özmal firma_adi + kiralık kiralama_firmasi)
   const [ozetFiltreFirma, setOzetFiltreFirma] = useState<string>("tumu");
   // Özet rapor — arama (sondaki boşluk: tam kelime modu — yakıt sayfasındaki gibi)
-  const [ozetArama, setOzetArama] = useState<string>("");
+  const [ozetArama, setOzetArama] = useOturumFiltresi<string>("puantaj-arac:ozetArama", "");
   // Puantaj sekmesi için genel arama (plaka, marka, model, cinsi)
-  const [puantajArama, setPuantajArama] = useState<string>("");
+  const [puantajArama, setPuantajArama] = useOturumFiltresi<string>("puantaj-arac:arama", "");
   // Mobil/dokunmatik cihaz tespiti — masaüstünde tek tık ile puantaj,
   // mobilde tek tık not gösterir, çift tık ile puantajlanır.
   const [isTouch, setIsTouch] = useState(false);
@@ -182,14 +182,14 @@ export default function AracPuantajPage() {
   });
 
   // Aktif tab - PDF/Excel butonları ve çıkış bu değere göre değişir
-  const [aktifTab, setAktifTab] = useState<"puantaj" | "atama" | "ozet">("puantaj");
+  const [aktifTab, setAktifTab] = useOturumFiltresi<"puantaj" | "atama" | "ozet">("puantaj-arac:tab", "puantaj");
 
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [santiyeId, setSantiyeId] = useState(urlSantiye);
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
   const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
-  const [yakitGoster, setYakitGoster] = useState(true);
+  const [yakitGoster, setYakitGoster] = useOturumFiltresi("puantaj-arac:yakit", true);
   // ÇIKTI SEÇİMİ: işaretli araçlar PDF/Excel çıktısına girer; HİÇBİRİ seçili değilse TÜMÜ çıkar
   // (eski davranış). Şantiye değişince temizlenir (başka şantiyenin araç id'leri bayat kalmasın).
   const [ciktiSecimi, setCiktiSecimi] = useState<Set<string>>(new Set());

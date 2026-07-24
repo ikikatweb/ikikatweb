@@ -9,7 +9,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { GelenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import GelenEvrakForm from "@/components/shared/gelen-evrak-form";
 import {
@@ -95,18 +95,15 @@ export default function GelenEvrakPage() {
     return liste;
   }
 
-  // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
-  const [fArama, setFArama] = useState(() =>
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("ara") ?? ""
-      : ""
-  );
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
-  const [fFirma, setFFirma] = useState("");
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). fArama URL'den ?ara ile de başlayabilir.
+  const [fArama, setFArama] = useOturumFiltresi("gelen-evrak:arama",
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ara") ?? "" : "");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("gelen-evrak:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("gelen-evrak:bit", "");
+  const [fFirma, setFFirma] = useOturumFiltresi("gelen-evrak:firma", "");
   const [fFirmaArama, setFFirmaArama] = useState("");
   const [fFirmaDropdownAcik, setFFirmaDropdownAcik] = useState(false);
-  const [fMuhatap, setFMuhatap] = useState("");
+  const [fMuhatap, setFMuhatap] = useOturumFiltresi("gelen-evrak:muhatap", "");
   // Muhatap filtresi — aranabilir + seçilebilir dropdown için ek state'ler
   const [fMuhatapArama, setFMuhatapArama] = useState("");
   const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);

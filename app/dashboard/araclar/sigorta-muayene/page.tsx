@@ -8,7 +8,7 @@ import {
 } from "@/lib/supabase/queries/araclar";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -83,8 +83,9 @@ export default function SigortaMuayenePage() {
   const [sigortaFirmalari, setSigortaFirmalari] = useState<string[]>([]);
   const [cinsSiralama, setCinsSiralama] = useState<Map<string, number>>(new Map());
   const [acenteler, setAcenteler] = useState<string[]>([]);
-  const [arama, setArama] = useState("");
-  const [durumFiltre, setDurumFiltre] = useState<"tumu" | "aktif" | "pasif">("aktif");
+  // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
+  const [arama, setArama] = useOturumFiltresi("sigorta-muayene:arama", "");
+  const [durumFiltre, setDurumFiltre] = useOturumFiltresi<"tumu" | "aktif" | "pasif">("sigorta-muayene:durum", "aktif");
 
   // Inline edit (muayene/taşıt kartı)
   const [editKey, setEditKey] = useState<string | null>(null);

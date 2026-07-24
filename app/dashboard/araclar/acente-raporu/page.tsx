@@ -16,7 +16,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { trAramaNormalize } from "@/lib/utils/isim";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -64,16 +64,17 @@ export default function AcenteRaporuPage() {
   const [loading, setLoading] = useState(true);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
-  const [arama, setArama] = useState("");
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
+  // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
+  const [arama, setArama] = useOturumFiltresi("acente-raporu:arama", "");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("acente-raporu:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("acente-raporu:bit", "");
   const [acikAcenteler, setAcikAcenteler] = useState<Record<string, boolean>>({});
   const [acikSirketler, setAcikSirketler] = useState<Record<string, boolean>>({});
   // Tanımlamalardaki sıra (Yönetim > Tanımlamalar)
   const [acenteSiraMap, setAcenteSiraMap] = useState<Map<string, number>>(new Map());
   const [sirketSiraMap, setSirketSiraMap] = useState<Map<string, number>>(new Map());
   // Aktif/Pasif filtresi — varsayılan: aktif (bitis_tarihi >= bugün)
-  const [pasifGoster, setPasifGoster] = useState(false);
+  const [pasifGoster, setPasifGoster] = useOturumFiltresi("acente-raporu:pasif", false);
 
   const loadData = useCallback(async () => {
     setLoading(true);

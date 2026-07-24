@@ -29,7 +29,7 @@ import {
   deleteYakitVirman,
   getAracCinsiYakitLimitler,
 } from "@/lib/supabase/queries/yakit";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
   AracWithRelations,
   AracYakit,
@@ -199,26 +199,20 @@ function YakitPageContent() {
 
   // Filtre state'leri
   const bugun = new Date();
-  const [filtreSantiyeId, setFiltreSantiyeId] = useState<string>(() => yakitSearchParams.get("santiye") ?? "");
-  // URL'deki santiye parametresi değişirse filtreyi güncelle (Dashboard'dan navigasyonda)
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). URL'de santiye varsa (deep link)
+  // aşağıdaki effect onu zorlar → URL önceliklidir.
+  const [filtreSantiyeId, setFiltreSantiyeId] = useOturumFiltresi<string>("yakit:santiye", yakitSearchParams.get("santiye") ?? "");
+  // URL'deki santiye parametresi değişirse filtreyi güncelle (Dashboard'dan navigasyonda) — sessionStorage'ı ezer.
   const urlSantiyeParam = yakitSearchParams.get("santiye");
   useEffect(() => {
     if (urlSantiyeParam) {
       setFiltreSantiyeId(urlSantiyeParam);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSantiyeParam]);
-  const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
-    const y = bugun.getFullYear();
-    const m = bugun.getMonth() + 1;
-    return `${y}-${String(m).padStart(2, "0")}-01`;
-  });
-  const [filtreBitis, setFiltreBitis] = useState(() => {
-    const y = bugun.getFullYear();
-    const m = bugun.getMonth() + 1;
-    const son = new Date(y, m, 0).getDate();
-    return `${y}-${String(m).padStart(2, "0")}-${String(son).padStart(2, "0")}`;
-  });
-  const [arama, setArama] = useState("");
+  const [filtreBaslangic, setFiltreBaslangic] = useOturumFiltresi("yakit:bas", `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}-01`);
+  const [filtreBitis, setFiltreBitis] = useOturumFiltresi("yakit:bit", `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}-${String(new Date(bugun.getFullYear(), bugun.getMonth() + 1, 0).getDate()).padStart(2, "0")}`);
+  const [arama, setArama] = useOturumFiltresi("yakit:arama", "");
   // Sadece limit dışı (anomali) kayıtları göster
   const [sadeceLimitDisi, setSadeceLimitDisi] = useState(false);
   // Mobil performans için sayfalama — ilk 200 satır görünür, "Daha fazla" ile artar

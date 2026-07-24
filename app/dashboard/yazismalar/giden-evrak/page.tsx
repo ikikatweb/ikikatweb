@@ -8,7 +8,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import GidenEvrakForm from "@/components/shared/giden-evrak-form";
 import {
@@ -117,18 +117,16 @@ export default function GidenEvrakPage() {
   // Yazdırma için seçili evrak
   const [printEvrakRef, setPrintEvrakRef] = useState<GidenEvrakWithRelations | null>(null);
 
-  // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
-  const [fArama, setFArama] = useState(() =>
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("ara") ?? ""
-      : ""
-  );
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
-  const [fFirma, setFFirma] = useState("");
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). fArama URL'den ?ara ile de
+  // başlayabilir (bildirim linki); taze gelişte sessionStorage boş olduğundan URL değeri kullanılır.
+  const [fArama, setFArama] = useOturumFiltresi("giden-evrak:arama",
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ara") ?? "" : "");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("giden-evrak:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("giden-evrak:bit", "");
+  const [fFirma, setFFirma] = useOturumFiltresi("giden-evrak:firma", "");
   const [fFirmaArama, setFFirmaArama] = useState("");
   const [fFirmaDropdownAcik, setFFirmaDropdownAcik] = useState(false);
-  const [fMuhatap, setFMuhatap] = useState("");
+  const [fMuhatap, setFMuhatap] = useOturumFiltresi("giden-evrak:muhatap", "");
   // Muhatap filtresi — aranabilir + seçilebilir dropdown state'leri
   const [fMuhatapArama, setFMuhatapArama] = useState("");
   const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);

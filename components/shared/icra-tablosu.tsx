@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useOturumFiltresi } from "@/hooks";
 import toast from "react-hot-toast";
 import { Gavel, Plus, Trash2, Loader2, Search, Pencil, ChevronDown } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
@@ -96,7 +97,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [satirlar, setSatirlar] = useState<IcraKayit[]>([]);
   const [loading, setLoading] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
-  const [arama, setArama] = useState("");
+  const [arama, setArama] = useOturumFiltresi("icra-tablosu:arama", "");
   const [hepsiGoster, setHepsiGoster] = useState(false); // ilk 100 kayıt; fazlası "ok" ile açılır
   const [kompakt, setKompakt] = useState(false); // dar ekran (yatay telefon) → Alacaklı Vergi + Borçlu TC sütunları gizli
   const [firmalar, setFirmalar] = useState<{ firma_adi: string | null; renk?: string | null }[]>([]);

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Building2, Search, Truck, Trash2, Power, FileDown, FileSpreadsheet, ArrowUp, ArrowDown, Plus } from "lucide-react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -36,8 +36,9 @@ export default function FirmalarPage() {
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>("tumu");
-  const [arama, setArama] = useState("");
+  // Filtreler oturum-içi: F5.te korunur, sayfadan cikip donunce sifirlanir.
+  const [filtre, setFiltre] = useOturumFiltresi<Filtre>("yonetim-firmalar:filtre", "tumu");
+  const [arama, setArama] = useOturumFiltresi("yonetim-firmalar:arama", "");
   // Firma ekleme/düzenleme penceresi (ekleme: duzenleFirma null; düzenleme: dolu)
   const [duzenleFirma, setDuzenleFirma] = useState<Firma | null>(null);
   const [formAcik, setFormAcik] = useState(false);

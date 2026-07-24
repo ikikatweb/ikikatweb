@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect } from "react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -540,9 +540,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [muhasebeEmail, setMuhasebeEmail] = useState<string>("");
   const [gorevSecenekleri, setGorevSecenekleri] = useState<string[]>([]);
   const [meslekSecenekleri, setMeslekSecenekleri] = useState<string[]>([]);
-  const [arama, setArama] = useState("");
+  const [arama, setArama] = useOturumFiltresi("bordro-takibi:arama", "");
   // Personel tipi filtresi: "tumu" | "teknik" — yalnız teknik personeli süzmek için
-  const [tipFiltre, setTipFiltre] = useState<"tumu" | "teknik">("tumu");
+  const [tipFiltre, setTipFiltre] = useOturumFiltresi<"tumu" | "teknik">("bordro-takibi:tip", "tumu");
   // "Limit Dışı" filtresi: aktifken efektif toplam günü 30'dan FARKLI personeller.
   //  - Halen aktif (açık atama) olanlar: 30'un altı da üstü de listelenir.
   //  - İşten ayrılmış olanlar: SADECE 30'u aşanlar (SGK çift sigorta ihlali) listelenir.

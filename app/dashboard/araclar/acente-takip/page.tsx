@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { getAraclar, getTumPoliceler, deleteAracPolice, updateAracPolice, uploadPolice } from "@/lib/supabase/queries/araclar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -48,10 +48,11 @@ export default function AcenteTakipPage() {
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
-  const [arama, setArama] = useState("");
-  const [tipFiltre, setTipFiltre] = useState<"" | "kasko" | "trafik">("");
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
+  // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
+  const [arama, setArama] = useOturumFiltresi("acente-takip:arama", "");
+  const [tipFiltre, setTipFiltre] = useOturumFiltresi<"" | "kasko" | "trafik">("acente-takip:tip", "");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("acente-takip:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("acente-takip:bit", "");
   const [silOnay, setSilOnay] = useState<string | null>(null);
   const [sigortaFirmalari, setSigortaFirmalari] = useState<string[]>([]);
   const [acenteler, setAcenteler] = useState<string[]>([]);

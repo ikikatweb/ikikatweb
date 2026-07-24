@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -921,7 +921,7 @@ function IhalePageContent() {
   const [gecmisIhaleler, setGecmisIhaleler] = useState<Ihale[]>([]);
 
   // Ana sekme
-  const [aktifTab, setAktifTab] = useState<"hesaplama" | "gecmis">("hesaplama");
+  const [aktifTab, setAktifTab] = useOturumFiltresi<"hesaplama" | "gecmis">("ihale:tab", "hesaplama");
 
   // Hesaplama state
   const [seciliIsGrubu, setSeciliIsGrubu] = useState("");
@@ -977,7 +977,7 @@ function IhalePageContent() {
   const [igSilOnay, setIgSilOnay] = useState<string | null>(null);
 
   // Geçmiş filtre
-  const [gecmisArama, setGecmisArama] = useState("");
+  const [gecmisArama, setGecmisArama] = useOturumFiltresi("ihale:arama", "");
   // Çoklu iş grubu seçimi — boşken filtre yok, dolduğunda sadece seçilenler gösterilir
   const [isGrubuFiltre, setIsGrubuFiltre] = useState<Set<string>>(new Set());
   const [hesapDetayAcik, setHesapDetayAcik] = useState(false);
@@ -995,7 +995,7 @@ function IhalePageContent() {
     | "hesaplanan_yaklasik_maliyet" | "yaklasik_maliyet" | "muhtemel_kazanan_tutar"
     | "katilimci_sayisi" | "muhtemel_kazanan";
   type SortItem = { field: SortField; dir: "asc" | "desc" };
-  const [sortConfig, setSortConfig] = useState<SortItem[]>([]);
+  const [sortConfig, setSortConfig] = useOturumFiltresi<SortItem[]>("ihale:sort", []);
 
   function toggleSort(field: SortField, shiftKey: boolean) {
     setSortConfig((prev) => {

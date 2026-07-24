@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useOturumFiltresi } from "@/hooks";
 import {
   getKullanicilar,
   updateKullanici,
@@ -43,9 +44,9 @@ export default function KullanicilarPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editKullanici, setEditKullanici] = useState<Kullanici | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [arama, setArama] = useState("");
+  const [arama, setArama] = useOturumFiltresi("yonetim-kullanicilar:arama", "");
   // Aktif / Pasif sekmesi — aktif ve pasif kullanıcılar ayrı tablolarda gösterilir
-  const [aktifSekme, setAktifSekme] = useState<"aktif" | "pasif">("aktif");
+  const [aktifSekme, setAktifSekme] = useOturumFiltresi<"aktif" | "pasif">("yonetim-kullanicilar:sekme", "aktif");
   const [santiyeMap, setSantiyeMap] = useState<Record<string, string>>({});
   const [aktifSantiyeSayisi, setAktifSantiyeSayisi] = useState(0);
 

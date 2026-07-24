@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import IcraTablosu from "@/components/shared/icra-tablosu";
 import IcraTanimlamalar from "@/components/shared/icra-tanimlamalar";
 import { Gavel, ListChecks } from "lucide-react";
@@ -13,7 +13,7 @@ export default function IcraPage() {
   const canEkle = isYonetici || hasPermission("icra", "ekle");
   const canDuzenle = isYonetici || hasPermission("icra", "duzenle");
   const canSil = isYonetici || hasPermission("icra", "sil");
-  const [sekme, setSekme] = useState<"takip" | "tanim">("takip");
+  const [sekme, setSekme] = useOturumFiltresi<"takip" | "tanim">("icra:sekme", "takip");
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
   if (!gor) return <div className="text-center py-16 text-gray-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;

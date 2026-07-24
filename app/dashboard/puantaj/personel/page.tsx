@@ -22,7 +22,7 @@ import {
   upsertPersonelPuantaj,
   deletePersonelPuantaj,
 } from "@/lib/supabase/queries/personel-puantaj";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
   PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum,
 } from "@/lib/supabase/types";
@@ -122,7 +122,7 @@ export default function PersonelPuantajPage() {
   const [loading, setLoading] = useState(true);
   const [personeller, setPersoneller] = useState<PersonelWithRelations[]>([]);
   // Genel arama (ad soyad, TC, görev, meslek)
-  const [puantajArama, setPuantajArama] = useState("");
+  const [puantajArama, setPuantajArama] = useOturumFiltresi("puantaj-personel:arama", "");
   // Mobil/dokunmatik cihaz tespiti — masaüstünde tek tık ile puantaj,
   // mobilde tek tık not gösterir, çift tık ile puantajlanır.
   const [isTouch, setIsTouch] = useState(false);
@@ -142,8 +142,8 @@ export default function PersonelPuantajPage() {
   // aktif_alma_tarihi alanları boş olsa bile bu tablodan tespit edilebilir).
 
   // Tab
-  const [aktifTab, setAktifTab] = useState<"puantaj" | "atama">("puantaj");
-  const [kapanmisGoster, setKapanmisGoster] = useState(false); // kapanmış (aktif olmayan) işleri de listede göster
+  const [aktifTab, setAktifTab] = useOturumFiltresi<"puantaj" | "atama">("puantaj-personel:tab", "puantaj");
+  const [kapanmisGoster, setKapanmisGoster] = useOturumFiltresi("puantaj-personel:kapanmis", false); // kapanmış işleri de listede göster
   const [puantajliSantiyeIds, setPuantajliSantiyeIds] = useState<Set<string> | null>(null); // puantaj kaydı olan şantiyeler (tembel yüklenir)
   // Atama yükleme göstergesi
   const [atamaYuklenenId, setAtamaYuklenenId] = useState<string | null>(null);

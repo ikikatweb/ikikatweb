@@ -8,7 +8,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { BankaYazismaWithRelations, Firma } from "@/lib/supabase/types";
 import BankaYazismaForm from "@/components/shared/banka-yazisma-form";
 import {
@@ -71,18 +71,15 @@ export default function BankaYazismalariPage() {
   // Yazdırma için seçili yazışma
   const [printRef, setPrintRef] = useState<BankaYazismaWithRelations | null>(null);
 
-  // Filtreler — URL'den ?ara=... ile başlat (bildirimden tıklanarak gelindiğinde)
-  const [fArama, setFArama] = useState(() =>
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("ara") ?? ""
-      : ""
-  );
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
-  const [fFirma, setFFirma] = useState("");
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). fArama URL'den ?ara ile de başlayabilir.
+  const [fArama, setFArama] = useOturumFiltresi("banka-yazismalari:arama",
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ara") ?? "" : "");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("banka-yazismalari:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("banka-yazismalari:bit", "");
+  const [fFirma, setFFirma] = useOturumFiltresi("banka-yazismalari:firma", "");
   const [fFirmaArama, setFFirmaArama] = useState("");
   const [fFirmaDropdownAcik, setFFirmaDropdownAcik] = useState(false);
-  const [fMuhatap, setFMuhatap] = useState("");
+  const [fMuhatap, setFMuhatap] = useOturumFiltresi("banka-yazismalari:muhatap", "");
   // Muhatap filtresi — aranabilir + seçilebilir dropdown state'leri
   const [fMuhatapArama, setFMuhatapArama] = useState("");
   const [fMuhatapDropdownAcik, setFMuhatapDropdownAcik] = useState(false);

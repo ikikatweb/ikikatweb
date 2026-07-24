@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import { CreditCard, Plus, Trash2, Loader2, Search, Pencil, ChevronDown } from "lucide-react";
 import { getKrediKartlar, insertKrediKarti, updateKrediKarti, deleteKrediKarti } from "@/lib/supabase/queries/kredi-karti";
 import { createClient } from "@/lib/supabase/client";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { KrediKarti } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -118,9 +118,10 @@ export default function KrediKartiTablosu({ canEkle, canDuzenle, canSil }: { can
   const [firmalar, setFirmalar] = useState<{ firma_adi: string; renk: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
-  const [arama, setArama] = useState("");
-  const [filtreBanka, setFiltreBanka] = useState<string[]>([]);
-  const [filtreSahip, setFiltreSahip] = useState<string[]>([]);
+  // Filtreler oturum-ici: F5.te korunur; sayfadan cikip geri donunce ve sekme kapaninca sifirlanir.
+  const [arama, setArama] = useOturumFiltresi("kredi-kartlari:arama", "");
+  const [filtreBanka, setFiltreBanka] = useOturumFiltresi<string[]>("kredi-kartlari:banka", []);
+  const [filtreSahip, setFiltreSahip] = useOturumFiltresi<string[]>("kredi-kartlari:sahip", []);
   const [duzen, setDuzen] = useState<Record<string, string>>({}); // düzenlenirken geçici string (id:field)
   const [dialogAcik, setDialogAcik] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);

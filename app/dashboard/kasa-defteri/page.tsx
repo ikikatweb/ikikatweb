@@ -19,7 +19,7 @@ import {
 import { aracBakimGuncelleByKasa, aracBakimVarByKasa, getOdenmemisAracBakimlar, aracBakimOdemeIsaretle } from "@/lib/supabase/queries/arac-bakim";
 import type { AracBakimWithArac, AracBakimTipi } from "@/lib/supabase/types";
 import { getGoruntulemeLimit, ngunOnce } from "@/lib/supabase/queries/goruntuleme-limit";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { KasaHareketi } from "@/lib/supabase/types";
 type KasaKullanici = { id: string; ad_soyad: string; aktif?: boolean };
 import {
@@ -105,7 +105,9 @@ function KasaDefContent() {
 
   // Filtreler
   const bugun = new Date();
-  const [filtreSantiye, setFiltreSantiye] = useState("");
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). filtrePersonel HARİÇ — o
+  // deep-link/key-remount mekanizmasıyla URL'den init olur (aşağıda), sessionStorage'a alınmaz.
+  const [filtreSantiye, setFiltreSantiye] = useOturumFiltresi("kasa-defteri:santiye", "");
   // filtrePersonel — useState ile URL'den init. Dashboard'dan farklı kişilere
   // tıklandığında: KasaDefContentWithKey wrapper key remount yapar, useState
   // tekrar URL'den init olur, doğru kişi gelir. Dropdown değişimi sadece state'i
@@ -114,17 +116,10 @@ function KasaDefContent() {
   // Varsayılan ödeme filtresi:
   //  - Yönetici: "nakit" (çoğunlukla nakit takibi yapar, isterse Kart/Tümü seçer)
   //  - Kısıtlı kullanıcı: "" (Tümü) — kendi tüm hareketlerini hem nakit hem kart görsün
-  const [filtreOdeme, setFiltreOdeme] = useState<"" | "nakit" | "kart">(isYonetici ? "nakit" : "");
-  const [filtreBaslangic, setFiltreBaslangic] = useState(() => {
-    const y = bugun.getFullYear(); const m = bugun.getMonth() + 1;
-    return `${y}-${String(m).padStart(2,"0")}-01`;
-  });
-  const [filtreBitis, setFiltreBitis] = useState(() => {
-    const y = bugun.getFullYear(); const m = bugun.getMonth() + 1;
-    const son = new Date(y, m, 0).getDate();
-    return `${y}-${String(m).padStart(2,"0")}-${String(son).padStart(2,"0")}`;
-  });
-  const [arama, setArama] = useState("");
+  const [filtreOdeme, setFiltreOdeme] = useOturumFiltresi<"" | "nakit" | "kart">("kasa-defteri:odeme", isYonetici ? "nakit" : "");
+  const [filtreBaslangic, setFiltreBaslangic] = useOturumFiltresi("kasa-defteri:bas", `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}-01`);
+  const [filtreBitis, setFiltreBitis] = useOturumFiltresi("kasa-defteri:bit", `${bugun.getFullYear()}-${String(bugun.getMonth() + 1).padStart(2, "0")}-${String(new Date(bugun.getFullYear(), bugun.getMonth() + 1, 0).getDate()).padStart(2, "0")}`);
+  const [arama, setArama] = useOturumFiltresi("kasa-defteri:arama", "");
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);

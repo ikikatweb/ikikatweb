@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
 import SantiyeSelect from "@/components/shared/santiye-select";
 import {
@@ -105,7 +105,7 @@ function SantiyeDefContent() {
   const [loading, setLoading] = useState(true);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [defterliSantiyeIds, setDefterliSantiyeIds] = useState<Set<string>>(new Set());
-  const [filtreSantiye, setFiltreSantiye] = useState("");
+  const [filtreSantiye, setFiltreSantiye] = useOturumFiltresi("santiye-defteri:santiye", "");
   const [seciliTarih, setSeciliTarih] = useState(() => new Date().toISOString().slice(0, 10));
 
   const [defterListesi, setDefterListesi] = useState<(SantiyeDefteri & { kayitlar: SantiyeDefterKayit[] })[]>([]);
@@ -120,11 +120,12 @@ function SantiyeDefContent() {
   const [pdfPreviewBaslik, setPdfPreviewBaslik] = useState<string>("");
   const [pdfPreviewDoc, setPdfPreviewDoc] = useState<jsPDF | null>(null);
 
-  // Filtreler — ay bazlı liste
+  // Filtreler — ay bazlı liste. Ay filtresi kalıcı DEĞİL (her açılışta içinde bulunulan ay gelsin);
+  // şantiye ve arama filtreleri KALICI (F5'te korunur).
   const [filtreAy, setFiltreAy] = useState(() => {
     const b = new Date(); return `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, "0")}`;
   });
-  const [defterArama, setDefterArama] = useState("");
+  const [defterArama, setDefterArama] = useOturumFiltresi("santiye-defteri:arama", "");
 
   const [havaDurumu, setHavaDurumu] = useState("");
   const [sicaklik, setSicaklik] = useState("");

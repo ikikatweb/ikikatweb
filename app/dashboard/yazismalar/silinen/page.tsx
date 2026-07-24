@@ -20,7 +20,7 @@ import {
   restoreBankaYazisma,
   hardDeleteBankaYazisma,
 } from "@/lib/supabase/queries/banka-yazismalari";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
   GelenEvrakWithRelations,
   GidenEvrakWithRelations,
@@ -89,10 +89,10 @@ export default function SilinenPage() {
   const [loading, setLoading] = useState(true);
 
   // Filtreler
-  const [fArama, setFArama] = useState("");
+  const [fArama, setFArama] = useOturumFiltresi("yazismalar-silinen:arama", "");
   const [fTur, setFTur] = useState<"tumu" | YazismaTuru>("tumu");
-  const [fBaslangic, setFBaslangic] = useState("");
-  const [fBitis, setFBitis] = useState("");
+  const [fBaslangic, setFBaslangic] = useOturumFiltresi("yazismalar-silinen:bas", "");
+  const [fBitis, setFBitis] = useOturumFiltresi("yazismalar-silinen:bit", "");
 
   // Dialog'lar
   const [geriYukleDialog, setGeriYukleDialog] = useState<BirlesikSilinen | null>(null);

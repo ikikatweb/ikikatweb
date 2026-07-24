@@ -12,7 +12,7 @@ import {
 } from "@/lib/supabase/queries/arac-bakim";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getPersoneller } from "@/lib/supabase/queries/personel";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { AracBakimWithArac, AracBakimTipi, AracWithRelations } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -112,12 +112,13 @@ export default function AracBakimPage() {
     ? new URLSearchParams(window.location.search).get("arac") ?? ""
     : "";
 
-  // Filtreler
-  const [arama, setArama] = useState("");
-  const [filtreArac, setFiltreArac] = useState(urlAracParam);
-  const [filtreTip, setFiltreTip] = useState<"" | AracBakimTipi>("");
-  const [filtreBaslangic, setFiltreBaslangic] = useState("");
-  const [filtreBitis, setFiltreBitis] = useState("");
+  // Filtreler oturum-içi (F5'te korunur, sayfadan çıkınca sıfırlanır). filtreArac deep-link'ten (?arac)
+  // gelirse taze gelişte URL değeri, F5'te sessionStorage kullanılır (URL zaten temizleniyor).
+  const [arama, setArama] = useOturumFiltresi("arac-bakim:arama", "");
+  const [filtreArac, setFiltreArac] = useOturumFiltresi("arac-bakim:arac", urlAracParam);
+  const [filtreTip, setFiltreTip] = useOturumFiltresi<"" | AracBakimTipi>("arac-bakim:tip", "");
+  const [filtreBaslangic, setFiltreBaslangic] = useOturumFiltresi("arac-bakim:bas", "");
+  const [filtreBitis, setFiltreBitis] = useOturumFiltresi("arac-bakim:bit", "");
 
   // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -16,7 +16,7 @@ import {
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import type { IscilikTakibiWithSantiye, Tanimlama } from "@/lib/supabase/types";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -156,7 +156,7 @@ export default function IscilikTakibiPage() {
   const [firmaSiraMap, setFirmaSiraMap] = useState<Map<string, number>>(new Map());
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
-  const [arama, setArama] = useState("");
+  const [arama, setArama] = useOturumFiltresi("iscilik-takibi:arama", "");
   // Aktif işler için çoklu seçim filtresi — kullanıcı görmek istediği işleri seçer
   // Set boş ise tümü gösterilir (varsayılan davranış); doluysa sadece seçilenler.
   // Günlük ücret tutarı (manuel — sadece rakam, localStorage'da saklanır)
@@ -164,7 +164,7 @@ export default function IscilikTakibiPage() {
   const [isAdiSabit, setIsAdiSabit] = useState(true);
   const [isGrupSiralama, setIsGrupSiralama] = useState<Map<string, number>>(new Map());
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [sekme, setSekme] = useState<"aktif" | "gecici-kabul" | "cop">("aktif");
+  const [sekme, setSekme] = useOturumFiltresi<"aktif" | "gecici-kabul" | "cop">("iscilik-takibi:sekme", "aktif");
   const [silinenler, setSilinenler] = useState<IscilikTakibiWithSantiye[]>([]);
   const [manuelGunler, setManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);

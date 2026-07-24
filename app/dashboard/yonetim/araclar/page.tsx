@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import { trAramaNormalize } from "@/lib/utils/isim";
 
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
@@ -88,15 +88,16 @@ export default function AraclarPage() {
   const [cinsSiralama, setCinsSiralama] = useState<Map<string, number>>(new Map());
   const [cinsListesi, setCinsListesi] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [arama, setArama] = useState("");
-  const [filtre, setFiltre] = useState<Filtre>("tumu");
-  const [mulkiyetFiltre, setMulkiyetFiltre] = useState<"tumu" | "ozmal" | "kiralik">("ozmal");
-  const [cinsFiltre, setCinsFiltre] = useState("tumu");
+  // Filtreler oturum-içi: F5.te korunur, sayfadan cikip donunce sifirlanir.
+  const [arama, setArama] = useOturumFiltresi("yonetim-araclar:arama", "");
+  const [filtre, setFiltre] = useOturumFiltresi<Filtre>("yonetim-araclar:filtre", "tumu");
+  const [mulkiyetFiltre, setMulkiyetFiltre] = useOturumFiltresi<"tumu" | "ozmal" | "kiralik">("yonetim-araclar:mulkiyet", "ozmal");
+  const [cinsFiltre, setCinsFiltre] = useOturumFiltresi("yonetim-araclar:cins", "tumu");
   // Firma filtresi ÇOKLU seçim: boş dizi = tüm firmalar; doluysa sadece seçili firmalar gösterilir
-  const [firmaSecili, setFirmaSecili] = useState<string[]>([]);
+  const [firmaSecili, setFirmaSecili] = useOturumFiltresi<string[]>("yonetim-araclar:firma", []);
   const [firmaDropdownAcik, setFirmaDropdownAcik] = useState(false);
   // Varsayılan sıralama: 1) Firma sira_no asc, 2) Cinsi asc (tanımlama sırası), 3) Yılı desc (en yeni en üstte)
-  const [sortList, setSortList] = useState<{ key: string; dir: "asc" | "desc" }[]>([
+  const [sortList, setSortList] = useOturumFiltresi<{ key: string; dir: "asc" | "desc" }[]>("yonetim-araclar:sort", [
     { key: "firma", dir: "asc" },
     { key: "cinsi", dir: "asc" },
     { key: "yili", dir: "desc" },

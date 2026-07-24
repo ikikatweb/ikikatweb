@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getMaliyetRaporu, getMaliyetGizliSantiyeler, setMaliyetGizliSantiye, type MaliyetSatir, SGK_ORAN } from "@/lib/supabase/queries/maliyet";
 import { FileBarChart2, Trash2, RotateCcw } from "lucide-react";
 
@@ -28,7 +28,7 @@ export default function MaliyetRaporuPage() {
   const [hata, setHata] = useState<string | null>(null);
   // Gizlenen (Silinenler) şantiyeler — PAYLAŞIMLI (DB). Bir yöneticinin gizlediği herkeste gizli.
   const [gizliIds, setGizliIds] = useState<Set<string>>(new Set());
-  const [sekme, setSekme] = useState<"aktif" | "silinen">("aktif");
+  const [sekme, setSekme] = useOturumFiltresi<"aktif" | "silinen">("maliyet-raporu:sekme", "aktif");
 
   // Gizli listeyi DB'den yükle (yönetici girişinde).
   useEffect(() => {

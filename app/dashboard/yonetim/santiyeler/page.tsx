@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import SantiyeForm from "@/components/shared/santiye-form";
 import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOturumFiltresi } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 // xlsx-js-style: standart xlsx hücre stilini (renk dolgusu) desteklemez —
@@ -188,11 +188,12 @@ export default function SantiyelerPage() {
   const [isGruplari, setIsGruplari] = useState<string[]>([]);
   const [isGrubuRenkMap, setIsGrubuRenkMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [filtre, setFiltre] = useState<Filtre>("aktif");
-  const [isGrupFiltre, setIsGrupFiltre] = useState<string>("tumu");
-  const [firmaFiltre, setFirmaFiltre] = useState<string>("tumu");
-  const [arama, setArama] = useState("");
-  const [sorts, setSorts] = useState<SortConfig[]>([]);
+  // Filtreler oturum-içi: F5.te korunur, sayfadan cikip donunce sifirlanir.
+  const [filtre, setFiltre] = useOturumFiltresi<Filtre>("yonetim-santiyeler:filtre", "aktif");
+  const [isGrupFiltre, setIsGrupFiltre] = useOturumFiltresi<string>("yonetim-santiyeler:isgrup", "tumu");
+  const [firmaFiltre, setFirmaFiltre] = useOturumFiltresi<string>("yonetim-santiyeler:firma", "tumu");
+  const [arama, setArama] = useOturumFiltresi("yonetim-santiyeler:arama", "");
+  const [sorts, setSorts] = useOturumFiltresi<SortConfig[]>("yonetim-santiyeler:sort", []);
   const [editing, setEditing] = useState<EditingCell>(null);
   const [editValue, setEditValue] = useState("");
   const [tasfiyeDialog, setTasfiyeDialog] = useState<string | null>(null);
