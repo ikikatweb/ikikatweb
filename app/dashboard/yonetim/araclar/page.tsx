@@ -398,6 +398,11 @@ export default function AraclarPage() {
       return 0;
     });
 
+  // Görünen (filtrelenmiş) araçların araç bedeli toplamı — tablo altında gösterilir.
+  // Filtre/arama uygulandıkça yalnız görünenlerin toplamı yansır; bedeli girilmemiş araç 0 sayılır.
+  const toplamAracBedeli = filtrelenmis.reduce((t, a) => t + (a.arac_degeri ?? 0), 0);
+  const bedelliAracSayisi = filtrelenmis.filter((a) => (a.arac_degeri ?? 0) > 0).length;
+
   return (
     <div>
       {/* Başlık ve butonlar */}
@@ -755,6 +760,20 @@ export default function AraclarPage() {
                 </TableRow>
               ))}
             </TableBody>
+            {/* Araç bedeli TOPLAMI — görünen (filtrelenmiş) araçlara göre. Araç Bedeli kolonu hizasında. */}
+            <tfoot className="sticky bottom-0 z-10">
+              <TableRow className="bg-[#1E3A5F] hover:bg-[#1E3A5F]">
+                {/* No + Mülkiyet + Plaka + Marka/Model + Cinsi + Yılı = 6 kolon birleşik "Toplam" etiketi */}
+                <TableCell colSpan={6} className="text-right font-semibold text-white whitespace-nowrap">
+                  Toplam Araç Bedeli
+                  <span className="ml-2 text-[11px] font-normal text-white/70">({bedelliAracSayisi} araç)</span>
+                </TableCell>
+                <TableCell className="hidden md:table-cell text-right font-bold tabular-nums text-white whitespace-nowrap">
+                  {toplamAracBedeli > 0 ? `${toplamAracBedeli.toLocaleString("tr-TR")} ₺` : "—"}
+                </TableCell>
+                <TableCell colSpan={8} className="bg-[#1E3A5F]" />
+              </TableRow>
+            </tfoot>
           </Table>
         </div>
       )}
