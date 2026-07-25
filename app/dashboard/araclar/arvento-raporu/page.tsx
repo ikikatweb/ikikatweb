@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, getSurucuOverrideMap, surucuOverrideCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getGuzergahTumuHizli, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -441,6 +441,7 @@ export default function ArventoRaporPage() {
         await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null });
       }
       surucuOverrideCacheTemizle(); // yeni şoför adı bir sonraki veri çekiminde hemen görünsün
+      arventoRaporCacheTemizle();   // rapor cache'i düş → yeni şoför adı cache'lenmiş rapordan gelmesin
       getSurucuOverrideMap().then(setSurucuOverride).catch(() => { /* sessiz */ });
       setGuzergahRefresh((v) => v + 1); // kartlar/haritalar F5 beklemeden yeni isimle tazelensin
       toast.success("Sekme atamaları kaydedildi.", { duration: toastSuresi() });
@@ -552,7 +553,7 @@ export default function ArventoRaporPage() {
         setVeriGuncelleme((prev) => ((prev?.getTime() ?? null) === (raporT?.getTime() ?? null) ? prev : raporT));
         const imza = `${raporT?.getTime() ?? ""}|${guzT ?? ""}`;
         const ilk = sonImza === null;
-        if (!ilk && imza !== sonImza) setGuzergahRefresh((v) => v + 1);
+        if (!ilk && imza !== sonImza) { arventoRaporCacheTemizle(); setGuzergahRefresh((v) => v + 1); } // server'da yeni veri → rapor cache'i düş
         sonImza = imza;
       } catch { /* sessiz — imza alınamazsa bir sonraki tick yeniden dener */ }
     };
@@ -630,6 +631,7 @@ export default function ArventoRaporPage() {
       const data = await guvenliJson(res);
       if (!res.ok) throw new Error(data.error ?? "İçe aktarılamadı");
       toast.success(data.mesaj ?? "İçe aktarıldı.", { duration: toastSuresi() });
+      arventoRaporCacheTemizle(); // içe aktarım yeni veri yazdı → rapor cache'i düş (bayat gösterilmesin)
       // İçe aktarılan ilk çalışma/damper günü (güzergah varsa onun günü) aralık olarak seçilsin
       const yeniTarih: string | undefined =
         data.guzergahGunler?.[0]?.tarih ?? data.calismaGunler?.[0]?.tarih ?? data.damperGunler?.[0]?.tarih ?? data.kontakGunler?.[0]?.tarih;
@@ -691,7 +693,7 @@ export default function ArventoRaporPage() {
     let iptal = false; // deps değişince eski .then yok sayılır (stale-overwrite koruması)
     // Veri AYNIYSA eski dizi referansını koru → ilkSonKontakMap gibi ağır türetmeler ve harita
     // katmanları boş yere yeniden hesaplanmaz/kurulmaz (imza: satır kimlikleri + nokta sayıları).
-    getGuzergahByRange(baslangic, bitis)
+    getGuzergahTumuHizli(baslangic, bitis) // service-role tek sorgu (RLS/gün-gün yerine) → hızlı + bağlantı rahatlar
       .then((g) => { if (!iptal) setGuzergahlar((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(g) ? prev : g)); })
       .catch(() => { if (!iptal) setGuzergahlar([]); });
     return () => { iptal = true; };

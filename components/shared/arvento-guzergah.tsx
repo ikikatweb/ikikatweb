@@ -138,7 +138,10 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
           // Rapor AYNIYSA eski referansı koru → serme ayıklama + omurga zinciri boş yere yeniden koşmaz
           setDamperVeri((prev) => (raporVeriImza(prev.raporlar) === raporVeriImza(r) ? prev : { raporlar: r, oncekiDamper }));
         }
-        const k = await getGuzergahByRange(bas, bitis, plakalar);
+        // tekSorgu: dar aralıkta (≤10 gün) tek plaka-kapsamlı sorgu (gün-gün N istek yerine). Stabilize/Serme
+        // zaten böyle çekiyordu; Reglaj eksikti → dar aralıkta gereksiz gün-gün gidiyordu. Geniş aralık
+        // getGuzergahByRange içinde otomatik gün-gün'e düşer (RLS timeout koruması).
+        const k = await getGuzergahByRange(bas, bitis, plakalar, plakalar && plakalar.length > 0 ? { tekSorgu: true } : undefined);
         // Veri AYNIYSA eski referansı koru → sadelesGuzergah/harita katmanı yeniden kurulmaz (tick maliyeti ~0)
         if (benimNo === yukNoRef.current) setKayitlar((prev) => (guzergahVeriImza(prev) === guzergahVeriImza(k) ? prev : k));
       } catch (err) {
@@ -409,7 +412,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const renk = renkAl(kayit.plaka);
         for (const parca of cizgiler) {
           // Popup: tıklanan konuma en yakın ham nokta (bu greyder) → plaka·model / hız / tarih saat.
-          const cizgi = L.polyline(parca, { color: renk, weight: reglajKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup);
+          const cizgi = L.polyline(parca, { color: renk, weight: reglajKal, opacity: 0.9, smoothFactor: 2, renderer: yolRenderer }).addTo(grup);
           tiklaBagla(cizgi, [pk]);
           cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
           cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.9 }));
@@ -424,7 +427,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         if (latlngs.length === 0) continue;
         const renk = renkAl(kayit.plaka);
         // Popup: tıklanan konuma en yakın ham nokta → plaka·model / hız / tarih saat (km & nokta gösterilmez).
-        const cizgi = L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, renderer: yolRenderer }).addTo(grup);
+        const cizgi = L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, smoothFactor: 2, renderer: yolRenderer }).addTo(grup);
         tiklaBagla(cizgi, [plakaNorm(kayit.plaka)]);
         cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
         cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));

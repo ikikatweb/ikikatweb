@@ -228,7 +228,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       (cizim.length ? cizim : [latlngs]).forEach((seg) => {
         // Görünür çizgi (tıklamaz) + üstünde GENİŞ ŞEFFAF isabet-çizgisi (kolay tıklanır) → popup. (Stabilize deseni.)
         L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85, renderer: yolRenderer, interactive: false }).addTo(grup);
-        L.polyline(seg, { color: cizgiRenk, weight: Math.max(14, kal + 8), opacity: 0, renderer: yolRenderer }).addTo(grup).bindPopup(popupHtml);
+        L.polyline(seg, { color: cizgiRenk, weight: Math.max(14, kal + 8), opacity: 0, smoothFactor: 2, renderer: yolRenderer }).addTo(grup).bindPopup(popupHtml);
       });
       for (const ll of latlngs) bounds.push(ll);
     });

@@ -611,8 +611,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       for (const seg of g.parcalar) {
         // İKİ PARALEL ÇİZGİ (altlı üstlü) — serilen şeridi belli eder.
         const { ust, alt } = altUstParalel(seg, 6);
-        yolTikla(L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), [g.plaka]);
-        yolTikla(L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), [g.plaka]);
+        yolTikla(L.polyline(ust, { color: renk, weight: sermeKal, opacity: 0.9, smoothFactor: 2, renderer: yolRenderer }).addTo(grup), [g.plaka]);
+        yolTikla(L.polyline(alt, { color: renk, weight: sermeKal, opacity: 0.9, smoothFactor: 2, renderer: yolRenderer }).addTo(grup), [g.plaka]);
         for (const ll of seg) bounds.push(ll);
       }
     });
@@ -633,7 +633,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       for (const k of secilenSilindirler) for (const p of (k.noktalar ?? [])) if (p.lat != null && p.lng != null) silHavuz.push({ lat: p.lat, lng: p.lng, hiz: p.hiz });
       const silPlakalar = secilenSilindirler.map((k) => k.plaka);
       parcalar(silHavuz, etkinSilindir, gridMesafe, 0).forEach((seg) => {
-        yolTikla(L.polyline(seg, { color: silindirRenkV, weight: silindirKal, opacity: 0.9, renderer: yolRenderer }).addTo(grup), silPlakalar);
+        yolTikla(L.polyline(seg, { color: silindirRenkV, weight: silindirKal, opacity: 0.9, smoothFactor: 2, renderer: yolRenderer }).addTo(grup), silPlakalar);
         for (const ll of seg) bounds.push(ll);
       });
     }

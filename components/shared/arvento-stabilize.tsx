@@ -705,7 +705,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         : [latlngs];
       const cizilen = cizim.length ? cizim : [latlngs];
       const rStil = { color: reglajRenkV, weight: reglajKal, opacity: 0.6 };
-      const cizgi = L.polyline(cizilen, { ...rStil, renderer: yolRenderer })
+      const cizgi = L.polyline(cizilen, { ...rStil, smoothFactor: 2, renderer: yolRenderer })
         .addTo(grup).bindPopup(`<b>${k.plaka}</b> (reglaj çizgisi)<br>${k.arac_sinifi ?? ""}`);
       cizgi.on("click", () => vurgulaYol(cizgi, rStil));
       for (const seg of cizilen) for (const pt of seg) reglajNoktalari.push(pt);
@@ -718,10 +718,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
       if (latlngs.length === 0) return;
       const iStil = { color: kamyonIziRenk, weight: kamyonIziKalinlik, opacity: 0.85, dashArray: "6 4" };
-      const cizgi = L.polyline(latlngs, { ...iStil, interactive: false, renderer: yolRenderer }).addTo(grup); // görünür (kesikli) — tıklamayı YAKALAMAZ
+      const cizgi = L.polyline(latlngs, { ...iStil, interactive: false, smoothFactor: 2, renderer: yolRenderer }).addTo(grup); // görünür (kesikli) — tıklamayı YAKALAMAZ
       // GENİŞ görünmez tıklama hedefi (16px): ince/kesikli çizgiyi kolayca tıklamak için. Damperler üstteki pane'de
       // olduğu için onların üzerinde damper öne çıkar; boş yolda bu hedef yakalar. Ölçüm açıkken CSS onu da geçirgen yapar.
-      const tikHedef = L.polyline(latlngs, { color: "#000", opacity: 0, weight: 16, renderer: yolRenderer }).addTo(grup);
+      const tikHedef = L.polyline(latlngs, { color: "#000", opacity: 0, weight: 16, smoothFactor: 2, renderer: yolRenderer }).addTo(grup);
       tikHedef.on("click", (e) => {
         const pt = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
         let best: { saat: string | null; hiz: number | null } | null = null, bd = Infinity;
