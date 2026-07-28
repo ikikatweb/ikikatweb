@@ -172,10 +172,10 @@ function ManuelTetikBtn({ raporSon, onTetik, onSuresiDoldu }: { raporSon: number
   return (
     <button type="button" onClick={tikla} disabled={pasif}
       title="Rapor çekme süresini ve damperleri şimdi güncelle (en erken 7 dk'da bir; senkronu bozmaz)"
-      className={`h-9 px-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${
+      className={`h-6 px-1.5 w-full flex items-center justify-center gap-1 rounded-md border text-[10px] font-medium whitespace-nowrap transition-colors ${
         pasif ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-sky-600 text-white border-sky-600 hover:bg-sky-700"
       }`}>
-      <RefreshCw size={13} className={tetikleniyor ? "animate-spin" : ""} />
+      <RefreshCw size={11} className={tetikleniyor ? "animate-spin" : ""} />
       {tetikleniyor ? "Tetikleniyor…" : kalanSn > 0 ? `Şimdi çek · ${dk > 0 ? `${dk}:${String(sn).padStart(2, "0")}` : `${sn}s`}` : "Raporu şimdi çek"}
     </button>
   );
@@ -1170,8 +1170,8 @@ export default function ArventoRaporPage() {
   const canliButton = (
     <button type="button" onClick={() => setCanliAcik((v) => !v)}
       title="Anlık araç konumlarını bu haritaya bindir/kaldır"
-      className={`h-9 px-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${canliAcik ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
-      <span className={`inline-block w-2 h-2 rounded-full ${canliAcik ? "bg-white animate-pulse" : "bg-emerald-500"}`} />
+      className={`h-6 px-1.5 w-full flex items-center justify-center gap-1 rounded-md border text-[10px] font-medium whitespace-nowrap transition-colors ${canliAcik ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}>
+      <span className={`inline-block w-1.5 h-1.5 rounded-full ${canliAcik ? "bg-white animate-pulse" : "bg-emerald-500"}`} />
       {canliAcik ? `Canlı açık${canliKonumlar.length ? ` · ${canliKonumlar.length}` : ""}${canliYukleniyor ? " ⟳" : ""}` : "Canlı"}
     </button>
   );

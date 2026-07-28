@@ -1061,17 +1061,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-0.5">
               {kamyonIzleri.length > 0 && (
                 <button type="button" onClick={() => setKamyonIziGoster((v) => !v)}
                   title="Kamyon izi çizgilerini göster/gizle"
-                  className={`h-9 px-2.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap ${kamyonIziGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
+                  className={`h-6 px-1.5 rounded-md border text-[10px] font-medium transition-colors whitespace-nowrap ${kamyonIziGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
                   {kamyonIziGoster ? "Kamyon izini gizle" : "Kamyon izini göster"}
                 </button>
               )}
               {kmlIndir && (
-                <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-                  <Download size={14} /> KML İndir
+                <Button variant="outline" size="sm" onClick={exportKML} className="h-6 px-1.5 gap-1 text-[10px]">
+                  <Download size={11} /> KML İndir
                 </Button>
               )}
               {canliButton}
