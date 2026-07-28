@@ -187,6 +187,12 @@ async function main() {
     }
   }
 
+  // ÇAKIŞMA ÖNLEME: çekime karar verildi → damper_sync_son_calisma'yı Playwright açılmadan ÖNCE damgala.
+  // Görev 1 dk'da ateşlenip damper çekimi ~1 dk sürdüğü için, damga yalnız sonda (satır ~225) yazılırsa aradaki
+  // fire aynı dilimi görüp İKİNCİ bir headless tarayıcı + Arvento login başlatır. Başta damgalayınca sonraki
+  // fire "bu dilimde çekildi" deyip atlar. (Geçmiş gün hariç — o damga yazmaz ki bugünkü periyodu kaydırmasın.)
+  if (sb && !gecmisGun) { try { await sb.from("arvento_ayarlar").update({ damper_sync_son_calisma: new Date().toISOString() }).eq("id", "global"); } catch { /* damga yazılamazsa yine de çekmeyi dene */ } }
+
   const browser = await chromium.launch({ headless: true });
   let buf: Buffer | null = null;
   let uretilenTarih = "";

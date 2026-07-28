@@ -253,7 +253,12 @@ if (loop) {
   if (manuel || now >= izinliDilim) {
     const sebep = manuel ? "MANUEL tetik" : `zamanlı dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}`;
     console.log(`${new Date().toLocaleTimeString("tr-TR")} → ${sebep}, çekim başlıyor...`);
-    try { await birKez(gunler); await damgala(); } catch (e) { console.error("HATA:", e.message); kod = 1; }
+    // ÖNCE damgala (çekimin BAŞINDA): görev 1 dk'da ateşlenip çekim ~2 dk sürdüğü için, damga sonda yazılırsa
+    // aradaki fire'lar aynı slotu görüp ÇAKIŞAN ikinci çekim başlatır. Başta damgalayınca sonraki fire'lar
+    // izinliDilim'i ileri görür → atlar. Ayrıca buton çekim başlar başlamaz pasife düşer, cooldown çekimin
+    // BAŞINDAN sayılır (18:00'da başladıysa 18:07'de aktif; bitişe göre kaymaz).
+    await damgala();
+    try { await birKez(gunler); } catch (e) { console.error("HATA:", e.message); kod = 1; }
     setTimeout(() => process.exit(kod), 400);
   } else {
     console.log(`${new Date().toLocaleTimeString("tr-TR")} → çekim zamanı değil (sonraki dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}), atlandı.`);
