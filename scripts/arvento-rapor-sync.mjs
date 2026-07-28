@@ -208,12 +208,14 @@ async function tetikDurumOku() {
   } catch { /* kolon yoksa / DB okunamadı → yerel damga */ }
   return { son: yerel, istek: 0 };
 }
-// Başarılı çekim damgası: yerel dosya + DB (rapor_son_calisma). Frontend geri sayımı DB'yi okur.
-async function damgala() {
-  sonCalismaYaz();
+// Çekim damgası: yerel dosya + DB (rapor_son_calisma). ms verilir → o AN damgalanır (otomatikte hizalı dilim
+// sınırı = "Rapor güncellendi 18:00"; manuelde tıklama anı). Frontend buton geri sayımı bu damgayı okur.
+async function damgala(ms) {
+  const iso = new Date(ms).toISOString();
+  try { fs.writeFileSync(DAMGA, iso); } catch { /* yerel yazılamazsa DB'ye güven */ }
   try {
     const sb = sbClient();
-    if (sb) await sb.from("arvento_ayarlar").update({ rapor_son_calisma: new Date().toISOString() }).eq("id", "global");
+    if (sb) await sb.from("arvento_ayarlar").update({ rapor_son_calisma: iso }).eq("id", "global");
   } catch { /* kolon yoksa / yazılamazsa yerel damga yeterli */ }
 }
 
@@ -247,21 +249,27 @@ if (loop) {
   const dk = await araligiOkuDk();
   const { son, istek } = await tetikDurumOku();
   const now = Date.now();
-  const araMs = dk * 60 * 1000, minGapMs = 6 * 60 * 1000;
-  const manuel = istek > 0 && istek > son && now - son >= minGapMs;
-  const izinliDilim = son ? Math.ceil((son + minGapMs) / araMs) * araMs : Math.floor(now / araMs) * araMs;
-  if (manuel || now >= izinliDilim) {
-    const sebep = manuel ? "MANUEL tetik" : `zamanlı dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}`;
+  const araMs = dk * 60 * 1000;
+  const manuelGapMs = 420 * 1000;                    // buton cooldown (7 dk) — manuel istek bu kadar sonra geçerli
+  const dilim = Math.floor(now / araMs) * araMs;     // içinde bulunulan HİZALI dilim sınırı (18:00 / 18:15 / 18:30…)
+  // ZAMANLI: bu dilim, son çekimden EN AZ BİR TAM ARALIK (araMs) sonra mı? → normalde her 15 dk (18:00→18:15→18:30);
+  // manuel araya girerse o çekimden bir tam aralık geçmeden dilim atlanır (18:24 manuel → 18:30 atlanır → 18:45).
+  const zamanli = dilim >= son + araMs;
+  // MANUEL: buton isteği son çekimden sonra + en az 7 dk (cooldown) geçmiş.
+  const manuel = istek > 0 && istek > son && now - son >= manuelGapMs;
+  if (manuel || zamanli) {
+    // Otomatikte damga = HİZALI dilim sınırı (18:00:00) → "Rapor güncellendi" tam saati gösterir, çekim ~2 dk
+    // sürse de kaymaz. Manuelde damga = tıklama anı. ÖNCE damgala: 1 dk'lık görevde çakışan ikinci çekimi önler
+    // + buton çekim başlar başlamaz pasife düşer, cooldown çekimin BAŞINDAN sayılır.
+    const damgaMs = manuel ? now : dilim;
+    const sebep = manuel ? "MANUEL tetik" : `zamanlı dilim ${new Date(dilim).toLocaleTimeString("tr-TR")}`;
     console.log(`${new Date().toLocaleTimeString("tr-TR")} → ${sebep}, çekim başlıyor...`);
-    // ÖNCE damgala (çekimin BAŞINDA): görev 1 dk'da ateşlenip çekim ~2 dk sürdüğü için, damga sonda yazılırsa
-    // aradaki fire'lar aynı slotu görüp ÇAKIŞAN ikinci çekim başlatır. Başta damgalayınca sonraki fire'lar
-    // izinliDilim'i ileri görür → atlar. Ayrıca buton çekim başlar başlamaz pasife düşer, cooldown çekimin
-    // BAŞINDAN sayılır (18:00'da başladıysa 18:07'de aktif; bitişe göre kaymaz).
-    await damgala();
+    await damgala(damgaMs);
     try { await birKez(gunler); } catch (e) { console.error("HATA:", e.message); kod = 1; }
     setTimeout(() => process.exit(kod), 400);
   } else {
-    console.log(`${new Date().toLocaleTimeString("tr-TR")} → çekim zamanı değil (sonraki dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}), atlandı.`);
+    const sonraki = Math.ceil((son + araMs) / araMs) * araMs; // yaklaşık sonraki otomatik çekim (hizalı)
+    console.log(`${new Date().toLocaleTimeString("tr-TR")} → çekim zamanı değil (yaklaşık ${new Date(sonraki).toLocaleTimeString("tr-TR")}), atlandı.`);
     setTimeout(() => process.exit(0), 200);
   }
 }
