@@ -174,17 +174,62 @@ const DAMGA = path.join(__dirname, ".rapor-son.txt");
 function sonCalismaOku() { try { return new Date(fs.readFileSync(DAMGA, "utf8").trim()).getTime() || 0; } catch { return 0; } }
 function sonCalismaYaz() { try { fs.writeFileSync(DAMGA, new Date().toISOString()); } catch { /* yoksay */ } }
 
+// SAAT BAŞINA HİZALI dilim: çekimler günün başından (00:00 yerel) itibaren dk aralıklı SABİT dilimlere oturur
+// → 15 dk için 17:00, 17:15, 17:30... Görev her 1 dk ateşlenir; bulunulan dilimde henüz çekilmediyse çeker.
+// Kaymayı önler (eski "son çekimden geçen süre" mantığı 17:03, 17:18... gibi kayabiliyordu).
+function dilimBasiMs(dk) {
+  const now = new Date();
+  const geceyarisi = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+  const araMs = dk * 60 * 1000;
+  return geceyarisi + Math.floor((now.getTime() - geceyarisi) / araMs) * araMs;
+}
+
+// Servis-rol client (manuel tetik durumu okuma + DB damgası yazma). Yoksa null.
+function sbClient() {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (url && key) return createClient(url, key);
+  } catch { /* yoksay */ }
+  return null;
+}
+// Son çekim + manuel istek durumu: rapor_son_calisma (DB, yoksa yerel dosya damgası) ve manuel_tetikle_istek.
+// UI butonu manuel_tetikle_istek yazar; geri sayım rapor_son_calisma'yı okur.
+async function tetikDurumOku() {
+  const yerel = sonCalismaOku();
+  try {
+    const sb = sbClient();
+    if (sb) {
+      const { data } = await sb.from("arvento_ayarlar")
+        .select("rapor_son_calisma, manuel_tetikle_istek").eq("id", "global").maybeSingle();
+      const son = data?.rapor_son_calisma ? new Date(data.rapor_son_calisma).getTime() : yerel;
+      const istek = data?.manuel_tetikle_istek ? new Date(data.manuel_tetikle_istek).getTime() : 0;
+      return { son: son || 0, istek };
+    }
+  } catch { /* kolon yoksa / DB okunamadı → yerel damga */ }
+  return { son: yerel, istek: 0 };
+}
+// Başarılı çekim damgası: yerel dosya + DB (rapor_son_calisma). Frontend geri sayımı DB'yi okur.
+async function damgala() {
+  sonCalismaYaz();
+  try {
+    const sb = sbClient();
+    if (sb) await sb.from("arvento_ayarlar").update({ rapor_son_calisma: new Date().toISOString() }).eq("id", "global");
+  } catch { /* kolon yoksa / yazılamazsa yerel damga yeterli */ }
+}
+
 const args = process.argv.slice(2).filter((a) => a !== "--loop" && a !== "--dun");
 const loop = process.argv.includes("--loop");
 const dunMod = process.argv.includes("--dun"); // --dun → BİR ÖNCEKİ günü çek (gate yok). Günlük 09:00 görevi için.
 const elle = args.length > 0 || dunMod;        // belirli gün VEYA --dun → gate uygulanmaz, hemen çek
 const gunler = dunMod ? [trDun()] : (args.length ? args : varsayilanGunler());
 if (loop) {
-  console.log(`Sürekli mod: aralık ayardan okunur (Rapor Çekme Süresi). Ctrl+C ile durur.`);
+  console.log(`Sürekli mod: SAAT BAŞINA HİZALI dilimlerde çeker (Rapor Çekme Süresi). Ctrl+C ile durur.`);
   for (;;) {
     try { await birKez(varsayilanGunler()); } catch (e) { console.error("HATA:", e.message); }
+    // Bir sonraki dk-dilim başına kadar uyu → çekimler 17:00, 17:15, 17:30... sabit saatlerine oturur (kaymaz).
     const dk = await araligiOkuDk();
-    await uyku(dk * 60 * 1000);
+    const sonrakiDilim = dilimBasiMs(dk) + dk * 60 * 1000;
+    await uyku(Math.max(1000, sonrakiDilim - Date.now()));
   }
 } else if (elle) {
   // Elle (gün argümanlı) çalıştırma: gate yok, hemen çek.
@@ -192,18 +237,26 @@ if (loop) {
   try { await birKez(gunler); } catch (e) { console.error("HATA:", e.message); kod = 1; }
   setTimeout(() => process.exit(kod), 400);
 } else {
-  // Zamanlanmış Görev modu: görev belirli aralıkla ateşlenir; ayardaki dakika dolmadıysa ucuz çık.
-  // PAY (100 sn): çekim ~25 sn sürdüğü için damga fire'dan geç düşer; sonraki fire eşiğin hemen
-  // ALTINDA gelip atlanmasın diye eşiği 100 sn düşürürüz (yoksa efektif aralık ~2 katına çıkar).
+  // Zamanlanmış Görev modu: görev her 1 dk ateşlenir. İki yol:
+  //  • MANUEL: UI "Raporu şimdi çek" butonu arvento_ayarlar.manuel_tetikle_istek yazar → istek son çekimden
+  //    sonraysa (ve ≥6 dk geçmişse) hemen çekilir. Çekim damgası istek'i geçince kendi kapanır (istek≤son).
+  //  • ZAMANLI: SAAT BAŞINA HİZALI dilim + en az 6 dk ara. Son çekimden ≥6 dk sonraki İLK dilim sınırına gelince
+  //    çekilir → 17:00/17:15/17:30... Manuel araya girse de sonraki dilim kaçmaz: son=17:14 → izinli dilim 17:30
+  //    (17:14+6dk=17:20 → sonraki 15'lik sınır 17:30, yani 17:15 boş geçer).
   let kod = 0;
   const dk = await araligiOkuDk();
-  const esikMs = Math.max(0, dk * 60 - 100) * 1000;
-  const gecen = Date.now() - sonCalismaOku();
-  if (sonCalismaOku() && gecen < esikMs) {
-    console.log(`${new Date().toLocaleTimeString("tr-TR")} → erken (${Math.round(gecen / 60000)}/${dk} dk), çekim atlandı.`);
-    setTimeout(() => process.exit(0), 200);
-  } else {
-    try { await birKez(gunler); sonCalismaYaz(); } catch (e) { console.error("HATA:", e.message); kod = 1; }
+  const { son, istek } = await tetikDurumOku();
+  const now = Date.now();
+  const araMs = dk * 60 * 1000, minGapMs = 6 * 60 * 1000;
+  const manuel = istek > 0 && istek > son && now - son >= minGapMs;
+  const izinliDilim = son ? Math.ceil((son + minGapMs) / araMs) * araMs : Math.floor(now / araMs) * araMs;
+  if (manuel || now >= izinliDilim) {
+    const sebep = manuel ? "MANUEL tetik" : `zamanlı dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}`;
+    console.log(`${new Date().toLocaleTimeString("tr-TR")} → ${sebep}, çekim başlıyor...`);
+    try { await birKez(gunler); await damgala(); } catch (e) { console.error("HATA:", e.message); kod = 1; }
     setTimeout(() => process.exit(kod), 400);
+  } else {
+    console.log(`${new Date().toLocaleTimeString("tr-TR")} → çekim zamanı değil (sonraki dilim ${new Date(izinliDilim).toLocaleTimeString("tr-TR")}), atlandı.`);
+    setTimeout(() => process.exit(0), 200);
   }
 }

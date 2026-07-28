@@ -26,7 +26,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
 import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
-import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih, getDamperSiniflar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih, getDamperSiniflar, getRaporTetikDurum, manuelRaporTetikle, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { ocakMakineDurumu, ocakTespit, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
 import { ocakMakineDetayCek, type OcakMakineDetay } from "@/lib/arvento/gunluk-metrik-client";
 
@@ -130,6 +130,57 @@ function aralikTopla(rows: AracArventoRapor[]): AracArventoRapor[] {
   return Array.from(m.values());
 }
 
+// "Raporu şimdi çek" butonu (yalnız Stabilize sekmesinde, Canlı butonunun altında). Kendi 1 sn'lik geri sayım
+// tikini yönetir → her saniye yalnız BU küçük bileşen render olur (ağır ana sayfa değil). raporSon = son rapor
+// çekim damgası (ms); buton en erken bundan 420 sn (7 dk) sonra aktif olur. Basınca manuel_tetikle_istek yazılır
+// → dizüstündeki görev ≤1 dk içinde hem raporu hem damperi çeker.
+const MANUEL_COOLDOWN_SN = 420;
+function ManuelTetikBtn({ raporSon, onTetik, onSuresiDoldu }: { raporSon: number | null; onTetik: (ms: number) => void; onSuresiDoldu?: () => void }) {
+  const [simdi, setSimdi] = useState<number>(() => Date.now());
+  const [tetikleniyor, setTetikleniyor] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setSimdi(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const kalanSn = raporSon ? Math.max(0, Math.ceil(MANUEL_COOLDOWN_SN - (simdi - raporSon) / 1000)) : 0;
+  const pasif = kalanSn > 0 || tetikleniyor;
+  // Geri sayım >0'dan 0'a düştüğü an DB'yi bir kez daha yokla: o an bir ZAMANLI çekim (ör. 17:30) olduysa buton
+  // yanlışlıkla aktif olmadan tekrar pasife düşsün (yeni rapor_son_calisma → yeni 420 sn).
+  const oncekiKalanRef = useRef(kalanSn);
+  useEffect(() => {
+    if (oncekiKalanRef.current > 0 && kalanSn === 0) onSuresiDoldu?.();
+    oncekiKalanRef.current = kalanSn;
+  }, [kalanSn, onSuresiDoldu]);
+  const tikla = async () => {
+    setTetikleniyor(true);
+    try {
+      const r = await manuelRaporTetikle();
+      if (r.ok) {
+        onTetik(Date.now());
+        toast.success("Rapor ve damper manuel tetiklendi — ~1 dk içinde güncellenecek.", { duration: toastSuresi() });
+      } else if (r.kalanSn) {
+        if (r.raporSonCalisma) onTetik(new Date(r.raporSonCalisma).getTime());
+        toast.error(`Henüz erken — ${r.kalanSn} sn sonra tekrar deneyin.`, { duration: toastSuresi() });
+      } else {
+        toast.error(r.error || "Tetiklenemedi.", { duration: toastSuresi() });
+      }
+    } catch (e) {
+      toast.error(`Tetikleme hatası: ${e instanceof Error ? e.message : String(e)}`, { duration: toastSuresi() });
+    } finally { setTetikleniyor(false); }
+  };
+  const dk = Math.floor(kalanSn / 60), sn = kalanSn % 60;
+  return (
+    <button type="button" onClick={tikla} disabled={pasif}
+      title="Rapor çekme süresini ve damperleri şimdi güncelle (en erken 7 dk'da bir; senkronu bozmaz)"
+      className={`h-9 px-2.5 w-full flex items-center justify-center gap-1.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${
+        pasif ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" : "bg-sky-600 text-white border-sky-600 hover:bg-sky-700"
+      }`}>
+      <RefreshCw size={13} className={tetikleniyor ? "animate-spin" : ""} />
+      {tetikleniyor ? "Tetikleniyor…" : kalanSn > 0 ? `Şimdi çek · ${dk > 0 ? `${dk}:${String(sn).padStart(2, "0")}` : `${sn}s`}` : "Raporu şimdi çek"}
+    </button>
+  );
+}
+
 export default function ArventoRaporPage() {
   const { hasPermission, kullanici, isYonetici, loading: authYukleniyor } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
@@ -170,6 +221,19 @@ export default function ArventoRaporPage() {
   const [canliKonumlar, setCanliKonumlar] = useState<CanliKonum[]>([]);
   const [canliCihazMap, setCanliCihazMap] = useState<CihazMap>(new Map());
   const [canliYukleniyor, setCanliYukleniyor] = useState(false);
+  // "Raporu şimdi çek" (Stabilize) geri sayımı için: son rapor çekim damgası (ms). DB'den (rapor_son_calisma)
+  // yüklenir + 30 sn'de bir tazelenir → zamanlı çekimler de geri sayımı sıfırlar. null = hiç çekilmemiş/kolon yok.
+  const [raporSon, setRaporSon] = useState<number | null>(null);
+  // Damgayı DB'den tazele — 15 sn'de bir + geri sayım sıfırlanınca (ManuelTetikBtn onSuresiDoldu). Böylece ZAMANLI
+  // çekim (ör. 17:30) olur olmaz buton pasife düşer; erken tıklama ayrıca sunucuda (API 429) engellenir.
+  const raporDurumTazele = useCallback(() => getRaporTetikDurum()
+    .then((d) => setRaporSon(d.raporSonCalisma ? new Date(d.raporSonCalisma).getTime() : null))
+    .catch(() => { /* sessiz */ }), []);
+  useEffect(() => {
+    raporDurumTazele();
+    const t = setInterval(raporDurumTazele, 15000);
+    return () => clearInterval(t);
+  }, [raporDurumTazele]);
   // Sekmeler arası PAYLAŞILAN harita görünümü (merkez+zoom) — Reglaj/Serme/Sıkıştırma/Stabilize/Tümü/İş Makineleri
   // geçişlerinde harita aynı konum ve yakınlıkta kalsın diye tek ortak ref tüm haritalara verilir.
   const haritaGorunumRef = useRef<HaritaGorunum | null>(null);
@@ -1236,7 +1300,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} canliKontakByPlaka={canliKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={canliButton} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={<>{canliButton}<ManuelTetikBtn raporSon={raporSon} onTetik={setRaporSon} onSuresiDoldu={raporDurumTazele} /></>} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={sermeGuzergahTekrar} tekrarPencereSaat={sermeTekrarPencere} silindirEsik={silindirTekrar} gridMesafe={sermeGridMesafe} transitHiz={sermeTransitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
@@ -1305,21 +1369,18 @@ export default function ArventoRaporPage() {
               <div className="text-xs font-semibold text-gray-700 mb-1">Rapor Çekme Süresi</div>
               <p className="text-[11px] text-gray-400 mb-2">
                 Araçların <strong>gerçek çalışma raporu</strong> (günlük km, kontak açık, çalışma, ilk/son kontak)
-                Arvento&apos;dan bu aralıkta çekilir. Birimi <strong>dakika</strong>. Senkron makinesindeki görev bu değere
-                göre çalışır. <strong>En az 6 dk yazılabilir</strong> — bir çekim döngüsü zaten ~6 dk sürüyor
-                (tüm araçlar × bugün+dün, Arvento&apos;ya sıralı sorgu), daha küçük değer çekimi hızlandırmaz.
+                Arvento&apos;dan bu aralıkta çekilir. Aşağıdan seçin. Çekimler <strong>saat başına hizalıdır</strong>
+                — ör. 15 dk için <strong>17:00, 17:15, 17:30…</strong> gibi sabit saatlerde çalışır (kaymaz).
+                Bir çekim döngüsü zaten ~6 dk sürüyor (tüm araçlar × bugün+dün, Arvento&apos;ya sıralı sorgu),
+                bu yüzden en kısa seçenek 10 dk&apos;dır.
               </p>
-              <div className="flex items-center gap-1">
-                <input
-                  type="number"
-                  min={6}
-                  value={raporCekmeDk || ""}
-                  onChange={(e) => setRaporCekmeDk(Math.max(0, parseInt(e.target.value) || 0))}
-                  onBlur={() => setRaporCekmeDk((v) => Math.max(6, v || 6))}
-                  placeholder="örn. 6"
-                  className={selectClass + " w-24"}
-                />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakika (en az 6)</span>
+              <div className="flex gap-1">
+                {[10, 15, 30, 60].map((dk) => (
+                  <button key={dk} type="button" onClick={() => setRaporCekmeDk(dk)}
+                    className={`px-3 h-8 text-[11px] rounded border ${(raporCekmeDk || 6) === dk ? "bg-sky-600 text-white border-sky-600" : "border-gray-300 text-gray-500 hover:bg-sky-50"}`}>
+                    {dk} dk
+                  </button>
+                ))}
               </div>
               <div className="text-[10px] text-gray-400 mt-1">Etkin: her <strong>{Math.max(6, raporCekmeDk || 6)} dk</strong> çekilir.</div>
             </div>
@@ -1421,23 +1482,17 @@ export default function ArventoRaporPage() {
               </div>
               {/* Senkron periyodu (dakika) — kaç dakikada bir çekileceği */}
               <div className="text-[11px] font-semibold text-gray-600 mt-3 mb-1">Güncelleme Sıklığı</div>
-              <p className="text-[10px] text-gray-400 mb-1.5">Damper verisini kaç <strong>dakikada bir</strong> güncellesin? (en az 5 dk)</p>
-              <div className="flex items-center gap-2">
-                <input type="number" min={5} max={720} step={5} value={damperSyncPeriyot}
-                  onChange={(e) => setDamperSyncPeriyot(Math.min(720, Math.max(5, parseInt(e.target.value) || 5)))}
-                  className={selectClass + " w-24"} />
-                <span className="text-[10px] text-gray-400 whitespace-nowrap">dakikada bir</span>
-                <div className="flex gap-1">
-                  {[30, 60, 120, 180].map((dk) => (
-                    <button key={dk} type="button" onClick={() => setDamperSyncPeriyot(dk)}
-                      className={`px-2 h-7 text-[10px] rounded border ${damperSyncPeriyot === dk ? "bg-orange-500 text-white border-orange-500" : "border-gray-300 text-gray-500 hover:bg-orange-50"}`}>
-                      {dk < 60 ? `${dk} dk` : `${dk / 60} saat`}
-                    </button>
-                  ))}
-                </div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Damper verisini kaç <strong>dakikada bir</strong> güncellesin? Aşağıdan seçin.</p>
+              <div className="flex gap-1">
+                {[10, 15, 30, 60].map((dk) => (
+                  <button key={dk} type="button" onClick={() => setDamperSyncPeriyot(dk)}
+                    className={`px-3 h-8 text-[11px] rounded border ${damperSyncPeriyot === dk ? "bg-orange-500 text-white border-orange-500" : "border-gray-300 text-gray-500 hover:bg-orange-50"}`}>
+                    {dk} dk
+                  </button>
+                ))}
               </div>
               <div className="text-[10px] text-gray-400 mt-2">
-                Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, <strong>{damperSyncPeriyot < 60 ? `${damperSyncPeriyot} dakikada` : damperSyncPeriyot % 60 === 0 ? `${damperSyncPeriyot / 60} saatte` : `${damperSyncPeriyot} dakikada`} bir</strong>.
+                Etkin: her gün <strong>{damperSyncBas}:00–{damperSyncBit}:00</strong> arası, <strong>{damperSyncPeriyot} dakikada bir</strong>.
               </div>
             </div>
             {/* ═══ GRUP 3: Reglaj ═══ */}

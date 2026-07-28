@@ -115,6 +115,29 @@ export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
   };
 }
 
+// ── Manuel rapor/damper tetikleme + geri sayım durumu ───────────────────────────────────
+// UI'daki "Raporu şimdi çek" butonu için. rapor_son_calisma = senkron script'inin son başarılı çekim damgası
+// (geri sayım bundan hesaplanır). manuel_tetikle_istek = butonun yazdığı istek damgası (script bir sonraki
+// ateşlemede görüp hemen çeker). Kolonlar yoksa (SQL çalışmadıysa) null döner → buton aktif görünür, basınca
+// API anlaşılır uyarı verir. Okuma anon ile (arvento_ayarlar anon-okunur); yazma service-role API'den.
+export async function getRaporTetikDurum(): Promise<{ raporSonCalisma: string | null; manuelTetikleIstek: string | null }> {
+  const supabase = createClient();
+  const { data } = await supabase.from(TABLO)
+    .select("rapor_son_calisma, manuel_tetikle_istek").eq("id", SATIR_ID).maybeSingle();
+  return {
+    raporSonCalisma: (data as { rapor_son_calisma?: string | null } | null)?.rapor_son_calisma ?? null,
+    manuelTetikleIstek: (data as { manuel_tetikle_istek?: string | null } | null)?.manuel_tetikle_istek ?? null,
+  };
+}
+
+// Butona basınca çağrılır → service-role API manuel_tetikle_istek'i yazar (cooldown'ı sunucu doğrular).
+export async function manuelRaporTetikle(): Promise<{ ok: boolean; raporSonCalisma: string | null; kalanSn?: number; error?: string }> {
+  const r = await fetch("/api/arvento/manuel-tetikle", { method: "POST" });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, raporSonCalisma: d?.raporSonCalisma ?? null, kalanSn: d?.kalanSn, error: d?.error };
+  return { ok: true, raporSonCalisma: d?.raporSonCalisma ?? null };
+}
+
 // ── Stabilize ocağı: GÜN BAZLI (geçerlilik tarihli) ────────────────────────────────────
 // arvento_ocak(gecerli_tarih, lat, lng, yaricap): ocak "bu tarihten itibaren" geçerlidir. Belirli bir
 // gün için, o güne ≤ olan EN SON kayıt kullanılır. Ocak ara sıra değişir → her değişiklikte o günün

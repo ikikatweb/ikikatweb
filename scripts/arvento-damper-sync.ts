@@ -137,10 +137,24 @@ async function main() {
     catch { return null; }
   })();
 
+  // MANUEL tetik (UI "Raporu şimdi çek" butonu): arvento_ayarlar.manuel_tetikle_istek yazılır. İstek son DAMPER
+  // çekiminden sonraysa pencere/periyot kapısı ATLANIR → kullanıcı "şimdi çek" dedi, hemen çekilir. Çekim sonrası
+  // damper_sync_son_calisma güncellenince istek≤son olur → kendi kapanır (tekrar tetiklemez).
+  let manuelForce = false;
+  if (!kapiyiAtla && sb) {
+    try {
+      const { data } = await sb.from("arvento_ayarlar")
+        .select("manuel_tetikle_istek, damper_sync_son_calisma").eq("id", "global").maybeSingle();
+      const istek = data?.manuel_tetikle_istek ? new Date(data.manuel_tetikle_istek as string).getTime() : 0;
+      const sonD = data?.damper_sync_son_calisma ? new Date(data.damper_sync_son_calisma as string).getTime() : 0;
+      if (istek && istek > sonD) { manuelForce = true; console.log(`${zaman()} → MANUEL tetik algılandı — pencere/periyot atlanıyor.`); }
+    } catch { /* kolon yoksa manuel yok */ }
+  }
+
   // KAPI (Tanımlamalar → "Damper Senkron Saatleri"): görev 5 dk'da bir tetiklenir; asıl sıklığı BU belirler.
   //  1) Saat penceresi (bas–bit) dışındaysa hiç çalışma.  2) Son başarılı çekimden PERİYOT kadar dk geçmediyse atla.
-  // Her ikisi de Playwright açılmadan ÖNCE bakılır → boş tetiklerde ~1 sn'de çıkar (ucuz).
-  if (!kapiyiAtla && sb) {
+  // Her ikisi de Playwright açılmadan ÖNCE bakılır → boş tetiklerde ~1 sn'de çıkar (ucuz). MANUEL tetikte atlanır.
+  if (!kapiyiAtla && !manuelForce && sb) {
     let bas = 6, bit = 21, periyot = 60, son = 0, periyotKolonVar = true;
     try {
       const { data, error } = await sb.from("arvento_ayarlar")
