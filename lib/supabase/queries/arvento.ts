@@ -62,6 +62,22 @@ export async function getCihazlarDirect(): Promise<CihazSatir[]> {
   return (data ?? []) as CihazSatir[];
 }
 
+// Cihaz modelini (haritada plaka altında görünen yazı, ör. "AROCS") güncelle — node ile.
+// Araç Sekme Atamaları tablosundan elle düzenleme için (eski toplu Excel yüklemenin yerine).
+export async function updateCihazModelByNode(node: string, model: string | null): Promise<void> {
+  // arvento_cihaz'da anon/authenticated UPDATE RLS politikası yok → client update 0 satır etkiler (sessizce
+  // başarısız, eski değer geri gelir). Bu yüzden service-role API üzerinden yazıyoruz (okuma fallback'iyle aynı desen).
+  const res = await fetch("/api/arvento/cihaz", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ node, model: model?.trim() || "" }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => null);
+    throw new Error(j?.error || `Cihaz etiketi güncellenemedi (${res.status})`);
+  }
+}
+
 // ===== Güzergah (Mesafe Bilgisi / rota) sorguları =====
 
 // Güzergah verisi olan tarihler (yeni → eski)

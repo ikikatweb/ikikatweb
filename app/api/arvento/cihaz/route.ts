@@ -4,7 +4,9 @@
 // Web servisi anlık konumu cihaz NODE'u ile döndürdüğü için Canlı sekmesi bu eşlemeyle
 // plaka/şoför gösterir.
 import { NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +87,35 @@ export async function POST(request: Request) {
     if (error) throw new Error(error.message);
     const surucuSayi = kayitlar.filter((k) => k.surucu).length;
     return NextResponse.json({ ok: true, sayi: kayitlar.length, surucuSayi });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
+  }
+}
+
+// PATCH /api/arvento/cihaz  { node, model } → tek cihazın harita etiketini (model) güncelle.
+// arvento_cihaz'da anon/authenticated UPDATE RLS politikası YOK (client update 0 satır etkiler, sessizce başarısız).
+// Bu yüzden etiket düzenlemesi service role ile buradan yazılır. Oturum kontrolü: yalnız giriş yapmış kullanıcı.
+export async function PATCH(request: Request) {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const cookieStore = await cookies();
+    const auth = createServerClient(url, anon, { cookies: { getAll() { return cookieStore.getAll(); }, setAll() {} } });
+    const { data: { user } } = await auth.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
+
+    const body = await request.json().catch(() => null);
+    const node = typeof body?.node === "string" ? body.node.trim() : "";
+    if (!node) return NextResponse.json({ error: "node zorunlu" }, { status: 400 });
+    const model = typeof body?.model === "string" ? body.model.trim() : "";
+
+    const supabase = serviceClient();
+    const { error } = await supabase
+      .from("arvento_cihaz")
+      .update({ model: model || null })
+      .eq("node", node);
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }

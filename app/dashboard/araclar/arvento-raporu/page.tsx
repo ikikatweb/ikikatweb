@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahByRange, getGuzergahTumuHizli, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahTumuHizli, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, updateCihazModelByNode, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Satellite, Upload, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff, MapPin } from "lucide-react";
+import { Satellite, Upload, RefreshCw, Gauge, Route, Clock, ChevronLeft, ChevronRight, Layers, Trash2, Eye, EyeOff } from "lucide-react";
 import ArventoGuzergah from "@/components/shared/arvento-guzergah";
 import ArventoStabilize from "@/components/shared/arvento-stabilize";
 import ArventoOperasyon from "@/components/shared/arvento-operasyon";
@@ -24,7 +24,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { createClient } from "@/lib/supabase/client";
-import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, setSantiyeIl, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
+import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
 import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih, getDamperSiniflar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { ocakMakineDurumu, ocakTespit, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
@@ -176,6 +176,9 @@ export default function ArventoRaporPage() {
   // Araç → Sekme atamaları (Tanımlamalar'da düzenlenir; haritalarda hangi araç hangi sekmede)
   const [atamalar, setAtamalar] = useState<AracAtama[]>([]);
   const [atamaKaydet, setAtamaKaydet] = useState(false); // kayıt sürüyor mu
+  // Cihaz modeli düzenleme (haritada plaka altındaki "AROCS" yazısı = arvento_cihaz.model). plakaNorm → yeni değer.
+  // "Atamaları Kaydet" ile arvento_cihaz'a yazılır. Yalnız DEĞİŞTİRİLEN plakalar tutulur.
+  const [cihazModelDuzen, setCihazModelDuzen] = useState<Map<string, string>>(new Map());
   // ŞOFÖR OVERRIDE haritası (araclar.surucu) — canlı harita popup'larında cihazdan gelen ad yerine kullanılır.
   const [surucuOverride, setSurucuOverride] = useState<Map<string, string>>(new Map());
   useEffect(() => { getSurucuOverrideMap().then(setSurucuOverride).catch(() => { /* kolon yoksa sessiz */ }); }, []);
@@ -348,12 +351,7 @@ export default function ArventoRaporPage() {
   const [katmanYukleniyor, setKatmanYukleniyor] = useState(false);
   const [katmanRenk, setKatmanRenk] = useState<string>("#ff3b30");
   const [santiyeSecenekleri, setSantiyeSecenekleri] = useState<SantiyeSecenek[]>([]);
-  const [katmanSantiyeId, setKatmanSantiyeId] = useState<string>(""); // KML yüklemeden ÖNCE seçilecek şantiye
   const katmanFileRef = useRef<HTMLInputElement>(null);
-  // Cihaz listesi (Canlı takip node→plaka eşlemesi) yükleme
-  const [cihazSayisi, setCihazSayisi] = useState<number | null>(null);
-  const [cihazYukleniyor, setCihazYukleniyor] = useState(false);
-  const cihazFileRef = useRef<HTMLInputElement>(null);
 
   // yükleme sıra no + son yapı — ESKİ (geçersiz kılınmış) isteğin yanıtı yeni veriyi EZMESİN; tarih
   // değişiminde eski veri temizlenir (refresh çağrısında — aynı tarih — flaş olmasın diye temizlenmez).
@@ -432,6 +430,19 @@ export default function ArventoRaporPage() {
   const atamaSurucuDegis = useCallback((id: string, deger: string) => {
     setAtamalar((prev) => prev.map((a) => (a.id === id ? { ...a, surucu: deger } : a)));
   }, []);
+  // Cihaz modeli alanını güncelle (yalnız state — DB'ye "Atamaları Kaydet" ile yazılır). plakaNorm anahtar.
+  const cihazModelDegis = useCallback((plaka: string, deger: string) => {
+    setCihazModelDuzen((prev) => { const n = new Map(prev); n.set(plakaNorm(plaka), deger); return n; });
+  }, []);
+  // plakaNorm → { node, model }: canlı cihaz eşlemesinden (node→plaka/model) plaka bazlı erişim.
+  // Atama tablosunda cihaz modelini göstermek/düzenlemek için (bir plaka birden çok node'a düşerse İLKİ).
+  const cihazByPlaka = useMemo(() => {
+    const m = new Map<string, { node: string; model: string | null }>();
+    for (const [node, c] of canliCihazMap) {
+      if (c.plaka) { const k = plakaNorm(c.plaka); if (!m.has(k)) m.set(k, { node, model: c.model ?? null }); }
+    }
+    return m;
+  }, [canliCihazMap]);
 
   // Tüm atamaları DB'ye yaz (araclar.arvento_sekmeler + araclar.surucu)
   const atamalariKaydet = useCallback(async () => {
@@ -440,43 +451,40 @@ export default function ArventoRaporPage() {
       for (const a of atamalar) {
         await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null });
       }
+      // Cihaz modeli (haritadaki "AROCS") değişiklikleri → arvento_cihaz.model (node ile). Yalnız cihazı olan plakalar.
+      // Uygulanan değişiklikleri topla → hem yerel haritayı güncellemek için (arvento_cihaz anon SELECT RLS ile
+      // engelli, getCihazlarDirect boş döner; API GET'te de s-maxage=300 CDN bayat kalabilir → yeniden çekmiyoruz).
+      const uygulanan: { node: string; model: string | null }[] = [];
+      for (const [normP, deger] of cihazModelDuzen) {
+        const c = cihazByPlaka.get(normP);
+        if (!c) continue; // bu plakanın cihaz kaydı yok → yazılamaz
+        const yeni = deger.trim() || null;
+        if (yeni === (c.model ?? null)) continue; // değişmemiş
+        await updateCihazModelByNode(c.node, yeni); // service-role API (PATCH) — RLS'i atlar, kalıcı yazar
+        uygulanan.push({ node: c.node.trim(), model: yeni });
+      }
       surucuOverrideCacheTemizle(); // yeni şoför adı bir sonraki veri çekiminde hemen görünsün
       arventoRaporCacheTemizle();   // rapor cache'i düş → yeni şoför adı cache'lenmiş rapordan gelmesin
       getSurucuOverrideMap().then(setSurucuOverride).catch(() => { /* sessiz */ });
       setGuzergahRefresh((v) => v + 1); // kartlar/haritalar F5 beklemeden yeni isimle tazelensin
+      setCihazModelDuzen(new Map()); // düzenleme tamponunu temizle
+      if (uygulanan.length) setCanliCihazMap((prev) => { // haritadaki etiketi anında güncelle (yeniden çekmeden)
+        const m: CihazMap = new Map(prev);
+        for (const u of uygulanan) {
+          const cur = m.get(u.node);
+          m.set(u.node, { plaka: cur?.plaka ?? null, surucu: cur?.surucu ?? null, model: u.model });
+        }
+        return m;
+      });
       toast.success("Sekme atamaları kaydedildi.", { duration: toastSuresi() });
       await loadAtamalar();
     } catch (err) {
       toast.error(`Kayıt hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
     } finally { setAtamaKaydet(false); }
-  }, [atamalar, loadAtamalar]);
+  }, [atamalar, loadAtamalar, cihazModelDuzen, cihazByPlaka]);
 
   // Cihaz listesi (Canlı node→plaka) — kayıtlı sayıyı yükle + Excel içe aktar
-  const cihazSayisiYukle = useCallback(async () => {
-    try {
-      const r = await fetch("/api/arvento/cihaz", { cache: "no-store" });
-      const d = await r.json();
-      if (r.ok && Array.isArray(d.cihazlar)) setCihazSayisi(d.cihazlar.length);
-    } catch { /* sessiz */ }
-  }, []);
-  useEffect(() => { cihazSayisiYukle(); }, [cihazSayisiYukle]);
-  const cihazYukle = useCallback(async (file: File) => {
-    setCihazYukleniyor(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/arvento/cihaz", { method: "POST", body: fd });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
-      toast.success(`${d.sayi} cihaz işlendi (${d.surucuSayi} şoför).`, { duration: toastSuresi() });
-      await cihazSayisiYukle();
-    } catch (err) {
-      toast.error(`Yükleme hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
-    } finally {
-      setCihazYukleniyor(false);
-      if (cihazFileRef.current) cihazFileRef.current.value = "";
-    }
-  }, [cihazSayisiYukle]);
+  // Cihaz Excel yükleme kaldırıldı — node→plaka eşlemesi arvento_cihaz tablosunda kalıcı, canlı takip onu okur.
 
   // Anlık konumları HER ZAMAN çek (Canlı kapalıyken de) — "çalışıyor" rozeti + kontak durumu sürekli güncel olsun.
   // İşaretlerin haritaya ÇİZİLMESİ yine "Canlı" butonuna bağlı (canliKonumlarIzinli). Kapalıyken seyrek (60 sn)
@@ -663,23 +671,6 @@ export default function ArventoRaporPage() {
   }, []);
   useEffect(() => { loadKatmanlar(); }, [loadKatmanlar]);
   useEffect(() => { getSantiyeSecenekleri().then(setSantiyeSecenekleri).catch(() => {}); }, []);
-  // KML katmanlarını ŞANTİYE bazında grupla (Tanımlamalar listesi): şantiye adı başlık, KML'ler altında.
-  const katmanGruplari = useMemo(() => {
-    const ad = new Map(santiyeSecenekleri.map((s) => [s.id, s.is_adi]));
-    const grup = new Map<string, HaritaKatman[]>();
-    for (const k of haritaKatmanlari) {
-      const anahtar = k.santiye_id ?? "";
-      if (!grup.has(anahtar)) grup.set(anahtar, []);
-      grup.get(anahtar)!.push(k);
-    }
-    const arr = Array.from(grup.entries()).map(([sid, layers]) => ({
-      santiyeId: sid || null,
-      ad: sid ? (ad.get(sid) ?? "Bilinmeyen şantiye") : "Atanmamış",
-      layers,
-    }));
-    arr.sort((a, b) => (a.santiyeId ? 0 : 1) - (b.santiyeId ? 0 : 1) || a.ad.localeCompare(b.ad, "tr"));
-    return arr;
-  }, [haritaKatmanlari, santiyeSecenekleri]);
 
   // ----- İL SINIRI İZNİ -----
   // Kullanıcının şantiyeleri → o şantiyelerin İLLERİ → kullanıcı O İLLERİN sınırı içindeki her şeyi
@@ -777,21 +768,18 @@ export default function ArventoRaporPage() {
   // İŞARETLER yalnız "Canlı" AÇIKKEN çizilir; kapalıyken boş → harita marker/nabız halkası çizilmez.
   const canliKonumlarIzinli = useMemo<CanliKonum[]>(() => (canliAcik ? canliKonumlarIlIzinli : []), [canliAcik, canliKonumlarIlIzinli]);
 
-  // Şantiyenin il'ini elle ayarla (il izni için — addan otomatik bulunamayan/yanlış olanlar).
-  async function santiyeIlDegistir(id: string, il: string) {
-    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok.", { duration: toastSuresi() }); return; }
-    setSantiyeSecenekleri((list) => list.map((s) => (s.id === id ? { ...s, il: il || null } : s)));
-    try { await setSantiyeIl(id, il); } catch (err) { toast.error(`İl kaydedilemedi: ${hataMetni(err)}`, { duration: toastSuresi() }); }
-  }
+  // İl artık İş Deneyim Belgeleri → İş Düzenle → Genel Bilgiler'deki "İl" alanından yönetilir
+  // (yeni işte zorunlu). Görme izni (izinliIller) doğrudan santiyeler.il'i kullanır.
 
   async function katmanYukle(file: File) {
     if (!yEkle) { toast.error("KML eklemek için 'ekleme' yetkiniz yok.", { duration: toastSuresi() }); return; }
-    if (!katmanSantiyeId) { toast.error("Önce bir şantiye seçin, sonra KML yükleyin.", { duration: toastSuresi() }); return; }
     setKatmanYukleniyor(true);
     try {
       const geometriler = await dosyadanGeometriler(file);
       const ad = file.name.replace(/\.(kml|kmz)$/i, "");
-      await ekleHaritaKatman({ ad, renk: katmanRenk, geometriler, santiyeId: katmanSantiyeId });
+      // Şantiye ataması YOK: KML görünürlüğü coğrafidir — katmanın geometrisi hangi ilin sınırındaysa
+      // o ile atanmış kullanıcılar görür (katmanIzinli → izinliIller). santiye_id = null.
+      await ekleHaritaKatman({ ad, renk: katmanRenk, geometriler, santiyeId: null });
       const sayilar = geometriler.reduce((a, g) => { a[g.tip] = (a[g.tip] ?? 0) + 1; return a; }, {} as Record<string, number>);
       toast.success(`"${ad}" eklendi — ${sayilar.cizgi ?? 0} çizgi, ${sayilar.alan ?? 0} alan, ${sayilar.nokta ?? 0} nokta.`, { duration: toastSuresi() });
       await loadKatmanlar();
@@ -948,8 +936,17 @@ export default function ArventoRaporPage() {
       if (!raporBy.has(key)) continue;   // bu aralıkta çalışmamış → gösterme
       ekle(key, pos.lat, pos.lng);       // rota yok → SON bilinen GPS konumu
     }
-    return Array.from(cikti.values());
-  }, [ocakMakineMap, kaliciOcak, kayitlar, plakaSantiye]);
+    // YOL MAKİNELERİNİ (greyder/silindir/trencher = Reglaj/Serme/Sıkıştırma) Stabilize'den ÇIKAR: rotaları ocak
+    // çemberinden geçtiği için ocak makinesi sanılıp Stabilize'de görünüyorlardı. Açıkça "stabilize" atanmışsa korunur.
+    const YOL_MAKINE_RE = /greyder|silindir|trencher/i;
+    return Array.from(cikti.values()).filter((mk) => {
+      const atama = sekmeMap.get(plakaNorm(mk.plaka));
+      if (atama?.includes("stabilize")) return true; // kullanıcı açıkça Stabilize'e atadıysa göster
+      if (atama && (atama.includes("reglaj") || atama.includes("serme") || atama.includes("sikistirma"))) return false;
+      if (YOL_MAKINE_RE.test(mk.cins ?? "")) return false;
+      return true;
+    });
+  }, [ocakMakineMap, kaliciOcak, kayitlar, plakaSantiye, sekmeMap]);
   // İş makinelerinin plakaları — harita (güzergah) filtresi için
   const ismakinePlakalari = useMemo(() => ismakineKayitlar.map((k) => k.plaka), [ismakineKayitlar]);
   // Ekskavatör çalışma noktaları — İş Makineleri VE Tümü sekmelerinde gösterilir (Tümü "tüm izler"i
@@ -1714,6 +1711,7 @@ export default function ArventoRaporPage() {
                     <th className="text-left font-semibold px-2 py-2">Plaka</th>
                     <th className="text-left font-semibold px-2 py-2">Cins</th>
                     <th className="text-left font-semibold px-2 py-2">Marka/Model</th>
+                    <th className="text-left font-semibold px-2 py-2" title="Haritada plaka altında görünen yazı (araç etiketi, ör. AROCS). Buradan düzenlenir; cihaz kaydı olmayan araçta değiştirilemez.">Araç Etiketi</th>
                     <th className="text-left font-semibold px-2 py-2" title="Dolu ise sitede Arvento'dan gelen sürücü adının YERİNE bu gösterilir. Boş = Arvento adı. Tire (-) = isim hiç gösterilmez.">Şoför</th>
                     {ATAMA_SEKMELERI.map((s) => (
                       <th key={s.key} className="font-semibold px-2 py-2 text-center whitespace-nowrap">{s.ad}</th>
@@ -1740,6 +1738,21 @@ export default function ArventoRaporPage() {
                           <td className="px-2 py-1.5 text-gray-500 max-w-[220px] truncate" title={[a.marka, a.model].filter(Boolean).join(" ") || undefined}>
                             {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
                           </td>
+                          {/* CİHAZ MODELİ (haritada plaka altındaki yazı, ör. AROCS) = arvento_cihaz.model. Cihaz kaydı yoksa düzenlenemez. */}
+                          {(() => {
+                            const normP = plakaNorm(a.plaka);
+                            const cihaz = cihazByPlaka.get(normP);
+                            const deger = cihazModelDuzen.has(normP) ? cihazModelDuzen.get(normP)! : (cihaz?.model ?? "");
+                            return (
+                              <td className="px-2 py-1.5">
+                                <input type="text" value={deger} disabled={!cihaz}
+                                  onChange={(e) => cihazModelDegis(a.plaka, e.target.value)}
+                                  placeholder={cihaz ? "Araç etiketi" : "Cihaz kaydı yok"}
+                                  title={cihaz ? "Haritada plaka altında görünür (kaydetmek için Atamaları Kaydet)" : "Bu plakaya bağlı canlı cihaz kaydı yok — etiket düzenlenemez"}
+                                  className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed" />
+                              </td>
+                            );
+                          })()}
                           {/* ŞOFÖR override — dolu ise sitede Arvento sürücüsü yerine bu ad gösterilir ("-" = gizle) */}
                           <td className="px-2 py-1.5">
                             <input type="text" value={a.surucu ?? ""}
@@ -1769,7 +1782,7 @@ export default function ArventoRaporPage() {
                       );
                     })}
                   {atamalar.length === 0 && (
-                    <tr><td colSpan={ATAMA_SEKMELERI.length + 5} className="px-2 py-4 text-center text-gray-400">Araç bulunamadı.</td></tr>
+                    <tr><td colSpan={ATAMA_SEKMELERI.length + 6} className="px-2 py-4 text-center text-gray-400">Araç bulunamadı.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1788,30 +1801,8 @@ export default function ArventoRaporPage() {
           })()}
         </div>
 
-        {/* Cihaz Listesi (Canlı Takip) — node→plaka/şoför eşlemesi için Arvento cihaz Excel'i */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <h3 className="font-bold text-sm text-[#1E3A5F] mb-1">Cihaz Listesi (Canlı Takip)</h3>
-              <p className="text-xs text-gray-400 max-w-2xl">
-                Canlı konum web servisi araçları <strong>cihaz no (node)</strong> ile döndürür, plaka ile değil.
-                Plaka/şoför gösterimi için Arvento&apos;dan indirdiğiniz <strong>Cihazlar_*.xlsx</strong> dosyasını
-                yükleyin. Cihaz değişince tekrar yükleyip güncelleyebilirsiniz.
-                {cihazSayisi != null && <span className="block mt-1 text-emerald-700">Kayıtlı cihaz: <strong>{cihazSayisi}</strong></span>}
-              </p>
-            </div>
-            {yEkle && (
-              <>
-                <input ref={cihazFileRef} type="file" accept=".xlsx,.xls" className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) cihazYukle(f); }} />
-                <Button variant="outline" size="sm" onClick={() => cihazFileRef.current?.click()}
-                  disabled={cihazYukleniyor} className="h-9 gap-1 text-xs">
-                  <Upload size={14} /> {cihazYukleniyor ? "Yükleniyor..." : "Cihaz Excel Yükle"}
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        {/* Not: "Cihaz Listesi (Canlı Takip)" yükleme bölümü kaldırıldı. Node→plaka eşlemesi arvento_cihaz
+             tablosunda duruyor; canlı takip getCihazlarDirect ile onu okumaya devam eder. */}
 
         {/* Harita Katmanları (NetCAD/KML) — yüklenen çizgiler tüm haritalara biner */}
         <div className="bg-white rounded-lg border p-4 space-y-3">
@@ -1822,19 +1813,12 @@ export default function ArventoRaporPage() {
                 NetCAD vb. çiziminizi <strong>KML/KMZ</strong> olarak yükleyin; tüm Arvento haritalarına
                 (Reglaj, Stabilize, Serme, Sıkıştırma, Tümü) referans olarak biner. NetCAD&apos;de: çizimi
                 seçip &quot;Google Earth&apos;e Aktar / KML kaydet&quot; ile dosyayı üretin.
+                <br /><strong>Görünürlük coğrafidir:</strong> yüklediğiniz katman hangi ilin sınırındaysa,
+                o ile atanmış kullanıcılar onu görür (şantiye seçimi gerekmez). Yöneticiler her katmanı görür.
               </p>
             </div>
             {yEkle ? (
               <div className="flex items-center gap-2 flex-wrap">
-                <label className="flex items-center gap-1 text-xs text-gray-600">
-                  Şantiye
-                  <select value={katmanSantiyeId} onChange={(e) => setKatmanSantiyeId(e.target.value)}
-                    className={`h-8 rounded border px-2 text-xs bg-white max-w-[200px] ${katmanSantiyeId ? "" : "border-amber-400 text-amber-700"}`}
-                    title="Önce şantiye seçin, sonra KML yükleyin">
-                    <option value="">— Önce şantiye seçin —</option>
-                    {santiyeSecenekleri.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
-                  </select>
-                </label>
                 <label className="flex items-center gap-1 text-xs text-gray-600">
                   Renk
                   <input type="color" value={katmanRenk} onChange={(e) => setKatmanRenk(e.target.value)}
@@ -1843,7 +1827,7 @@ export default function ArventoRaporPage() {
                 <input ref={katmanFileRef} type="file" accept=".kml,.kmz" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) katmanYukle(f); }} />
                 <Button variant="outline" size="sm" onClick={() => katmanFileRef.current?.click()}
-                  disabled={katmanYukleniyor || !katmanSantiyeId} title={!katmanSantiyeId ? "Önce şantiye seçin" : "KML/KMZ yükle"}
+                  disabled={katmanYukleniyor} title="KML/KMZ yükle"
                   className="h-9 gap-1 text-xs">
                   <Upload size={14} /> {katmanYukleniyor ? "Yükleniyor..." : "KML/KMZ Yükle"}
                 </Button>
@@ -1858,16 +1842,8 @@ export default function ArventoRaporPage() {
           {haritaKatmanlari.length === 0 ? (
             <p className="text-xs text-gray-400">Henüz katman yok. Yukarıdan bir KML/KMZ yükleyin.</p>
           ) : (
-            <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
-              {katmanGruplari.map((grp) => (
-                <div key={grp.santiyeId ?? "yok"}>
-                  <div className="flex items-center gap-2 mb-1.5 sticky top-0 bg-white py-1 z-10">
-                    <span className={`text-xs font-bold truncate ${grp.santiyeId ? "text-[#1E3A5F]" : "text-amber-700"}`} title={grp.ad}>{grp.ad}</span>
-                    <span className="text-[10px] text-gray-400 shrink-0">{grp.layers.length} katman</span>
-                    <div className="flex-1 border-t border-gray-100" />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5">
-                    {grp.layers.map((k) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-1.5 max-h-[50vh] overflow-auto pr-1">
+              {haritaKatmanlari.map((k) => (
                   <div key={k.id} className="border rounded-md p-1.5 flex flex-col gap-1 text-xs">
                     {/* Üst: renk + ad + göster/gizle + sil */}
                     <div className="flex items-center gap-1.5">
@@ -1887,15 +1863,7 @@ export default function ArventoRaporPage() {
                         </button>
                       )}
                     </div>
-                    {/* Şantiye ataması — yüklerken seçilir, buradan değiştirilebilir */}
-                    <select value={k.santiye_id ?? ""} disabled={!yDuzenle}
-                      onChange={(e) => katmanDegis(k.id, { santiye_id: e.target.value || null })}
-                      title="Bu katmanın şantiyesi"
-                      className={`h-6 rounded border px-1 text-[10px] w-full bg-white disabled:opacity-70 disabled:cursor-not-allowed ${k.santiye_id ? "text-gray-700" : "text-amber-700 border-amber-300"}`}>
-                      <option value="">— Atanmamış —</option>
-                      {santiyeSecenekleri.map((s) => <option key={s.id} value={s.id}>{s.is_adi}</option>)}
-                    </select>
-                    {/* Alt: geometri sayısı + kalınlık stepper */}
+                    {/* Alt: geometri sayısı + kalınlık stepper (şantiye ataması KALDIRILDI — görünürlük coğrafi/il bazlı) */}
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] text-gray-400">{(k.geometriler ?? []).length} geo.</span>
                       <div className="flex items-center gap-0.5" title="Çizgi kalınlığı (px)">
@@ -1909,46 +1877,13 @@ export default function ArventoRaporPage() {
                       </div>
                     </div>
                   </div>
-                    ))}
-                  </div>
-                </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Şantiye → İl (görme izni): kısıtlı kullanıcı, atandığı şantiyenin İL SINIRI içindeki her şeyi görür */}
-        <div className="bg-white rounded-lg border p-4 space-y-3">
-          <div>
-            <h3 className="font-bold text-sm text-[#1E3A5F] mb-1 flex items-center gap-1.5"><MapPin size={16} /> Şantiye İlleri (görme izni)</h3>
-            <p className="text-xs text-gray-400 max-w-2xl">
-              Kısıtlı kullanıcı, atandığı şantiyelerin <strong>il sınırı</strong> içindeki tüm canlı araç, KML ve damperleri görür
-              (araç il dışına çıkınca canlıda anında kaybolur; geçmişte o il içindeki veriler her zaman görünür). İl, şantiye
-              adından <strong>otomatik</strong> bulunur; yanlışsa aşağıdan düzeltin. <strong>Yöneticiler her şeyi görür.</strong>
-            </p>
-          </div>
-          {santiyeSecenekleri.length === 0 ? (
-            <p className="text-xs text-gray-400">Şantiye yok.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5 max-h-[40vh] overflow-auto pr-1">
-              {santiyeSecenekleri.map((s) => {
-                const oto = adtanIl(s.is_adi, iller.map((i) => i.ad));
-                return (
-                  <div key={s.id} className="border rounded-md p-1.5 flex items-center gap-2 text-xs">
-                    <span className="flex-1 truncate text-gray-700" title={s.is_adi}>{s.is_adi}</span>
-                    <select value={s.il ?? ""} disabled={!yDuzenle || iller.length === 0}
-                      onChange={(e) => santiyeIlDegistir(s.id, e.target.value)}
-                      title={s.il ? "Elle ayarlı" : oto ? `Otomatik: ${oto}` : "İl bulunamadı — elle seçin"}
-                      className={`h-6 rounded border px-1 text-[10px] bg-white shrink-0 w-28 disabled:opacity-60 disabled:cursor-not-allowed ${s.il ? "text-gray-800 font-medium" : oto ? "text-emerald-700" : "text-amber-700 border-amber-300"}`}>
-                      <option value="">{oto ? `Otomatik: ${oto}` : "— İl seçin —"}</option>
-                      {iller.map((i) => <option key={i.ad} value={i.ad}>{i.ad}</option>)}
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {/* Not: "Şantiye İlleri (görme izni)" bölümü kaldırıldı. İl artık İş Deneyim Belgeleri → İş Düzenle →
+             Genel Bilgiler'deki "İl" alanından yönetilir (yeni işte zorunlu). Görme izni doğrudan o ili kullanır. */}
         </div>
       ) : filtrelenmis.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-lg border">
