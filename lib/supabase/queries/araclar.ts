@@ -484,6 +484,27 @@ export async function deleteSigortaTekliflerByAracTip(aracId: string, policeTipi
   if (error) throw error;
 }
 
+// ===== Sigorta takibinden VAZGEÇME (dashboard'dan kaldır) — araç+tip bazlı =====
+// Kasko/trafik yaptırmaktan vazgeçilen araçlar dashboard "Yaklaşan Sigorta" widget'ında görünmez.
+export async function getSigortaVazgecler(): Promise<{ arac_id: string; police_tipi: "kasko" | "trafik" }[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from("sigorta_vazgec").select("arac_id, police_tipi");
+  if (error) throw error;
+  return (data ?? []) as { arac_id: string; police_tipi: "kasko" | "trafik" }[];
+}
+export async function addSigortaVazgec(aracId: string, policeTipi: "kasko" | "trafik") {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_vazgec")
+    .upsert({ arac_id: aracId, police_tipi: policeTipi }, { onConflict: "arac_id,police_tipi" });
+  if (error) throw error;
+}
+export async function removeSigortaVazgec(aracId: string, policeTipi: "kasko" | "trafik") {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_vazgec")
+    .delete().eq("arac_id", aracId).eq("police_tipi", policeTipi);
+  if (error) throw error;
+}
+
 // Poliçe girilince: o araç+tip'in HENÜZ BAĞLANMAMIŞ (güncel dönem) tekliflerini yeni poliçeye bağla.
 // Böylece teklifler silinmez → poliçe listesinden (Belgeler) sonradan görülebilir; yeni dönem temiz (null) başlar.
 export async function linkSigortaTekliflerToPolice(aracId: string, policeTipi: "kasko" | "trafik", policeId: string) {

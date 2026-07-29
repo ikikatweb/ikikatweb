@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, linkSigortaTekliflerToPolice } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
@@ -30,6 +30,10 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
@@ -139,6 +143,9 @@ export default function DashboardPage() {
   const [policeDialogOpen, setPoliceDialogOpen] = useState(false);
   const [policeAracId, setPoliceAracId] = useState("");
   const [pTip, setPTip] = useState<"kasko" | "trafik">("trafik");
+  // Sigorta takibinden vazgeçilen araç+tip'ler (dashboard'dan gizlenir) + onay diyaloğu
+  const [sigortaVazgecler, setSigortaVazgecler] = useState<{ arac_id: string; police_tipi: "kasko" | "trafik" }[]>([]);
+  const [vazgecOnayAcik, setVazgecOnayAcik] = useState(false);
   const [pTutar, setPTutar] = useState("");
   const [pFirma, setPFirma] = useState("");
   const [pAcente, setPAcente] = useState("");
@@ -225,7 +232,7 @@ export default function DashboardPage() {
     // BACKGROUND BATCH 1: Sigorta widget verileri (araclar, polisler, tanımlar, bakım)
     (async () => {
       try {
-        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, sigTek] = await Promise.all([
+        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, sigTek, sigVaz] = await Promise.all([
           getAraclar().catch(() => []),
           getTumPoliceler().catch(() => []),
           getTeklifGonderimler().catch(() => []),
@@ -235,6 +242,7 @@ export default function DashboardPage() {
           getDegerler("sigorta_yaklasir_gun").catch(() => []),
           getDegerler("kasko_yaklasir_gun").catch(() => []),
           getSigortaTeklifler().catch(() => []),
+          getSigortaVazgecler().catch(() => []),
         ]);
         setAraclar(arac as AracWithRelations[]);
         setPoliceler(pol as AracPolice[]);
@@ -243,6 +251,7 @@ export default function DashboardPage() {
         setSigortaAcenteler(acData as string[]);
         setAracBakimlar(bakimData as AracBakimWithArac[]);
         setSigortaTeklifler(sigTek as SigortaTeklif[]);
+        setSigortaVazgecler(sigVaz as { arac_id: string; police_tipi: "kasko" | "trafik" }[]);
         const trafikGunVal = yakGun.length > 0 ? (parseInt(yakGun[0]) || 30) : 30;
         setYaklasirGun(trafikGunVal);
         setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(kaskoGun[0]) || trafikGunVal) : trafikGunVal);
@@ -534,6 +543,8 @@ export default function DashboardPage() {
       ? new Set(kullanici.santiye_ids)
       : null;
     const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
+    // Sigorta takibinden vazgeçilen araç+tip'ler (dashboard'dan gizle) — "aracId|kasko"/"aracId|trafik"
+    const vazgecSet = new Set(sigortaVazgecler.map((v) => `${v.arac_id}|${v.police_tipi}`));
     for (const a of araclar) {
       if (a.tip !== "ozmal") continue;
       if (a.durum === "trafikten_cekildi") continue;
@@ -557,6 +568,9 @@ export default function DashboardPage() {
       ];
       for (const [tip, field, tarih, acente] of fields) {
         if (!tarih) continue;
+        // Kasko/trafik takibinden vazgeçildiyse o satırı dashboard'da gösterme.
+        const vazgecTip = field === "kasko_bitis" ? "kasko" : field === "trafik_sigorta_bitis" ? "trafik" : null;
+        if (vazgecTip && vazgecSet.has(`${a.id}|${vazgecTip}`)) continue;
         const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
         const esik = field === "kasko_bitis" ? kaskoYaklasirGun : yaklasirGun; // kasko ayrı eşik
         if (kalan <= esik) {
@@ -565,7 +579,7 @@ export default function DashboardPage() {
       }
     }
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
-  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, isYonetici, kullanici]);
+  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, sigortaVazgecler, isYonetici, kullanici]);
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
   const yaklasanBakimlar = useMemo(() => {
@@ -1260,6 +1274,22 @@ export default function DashboardPage() {
     setDefterPdfData(null);
   }
 
+  // Kırmızı "Vazgeç" → onaylanınca araç+tip'i takipten çıkar (dashboard'dan kalksın).
+  async function vazgecOnayla() {
+    if (!policeAracId) return;
+    try {
+      await addSigortaVazgec(policeAracId, pTip);
+      setVazgecOnayAcik(false);
+      setPoliceDialogOpen(false);
+      await loadAll();
+      toast.success("Bu araç için kasko istenmiyor olarak işaretlendi — dashboard kasko uyarısından kaldırıldı.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/does not exist|relation/i.test(msg)) toast.error("‘sigorta_vazgec’ tablosu yok — migrasyon SQL'ini çalıştırın.", { duration: toastSuresi() });
+      else toast.error("İşlem başarısız: " + msg);
+    }
+  }
+
   function policeDialogAc(aracId: string, tip: string) {
     setPoliceAracId(aracId);
     setPTip(tip === "Kasko" ? "kasko" : "trafik");
@@ -1272,6 +1302,8 @@ export default function DashboardPage() {
   async function policeKaydet() {
     if (!policeAracId) return;
     if (!pBitisTarih) { toast.error("Bitiş tarihi girin."); return; }
+    if (!pPoliceNo.trim()) { toast.error("Poliçe numarası zorunludur."); return; }
+    if (!pDosya) { toast.error("Poliçe PDF dosyası zorunludur."); return; }
     setPoliceSaving(true);
     try {
       const result = await insertAracPolice({
@@ -1301,6 +1333,7 @@ export default function DashboardPage() {
       // gelen TEKLİFLERİ ise silme; yeni poliçeye BAĞLA → Belgeler'den sonradan görülebilir.
       await deleteTeklifGonderimlerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ });
       if (result?.id) await linkSigortaTekliflerToPolice(policeAracId, pTip, result.id).catch(() => { /* sessiz */ });
+      await removeSigortaVazgec(policeAracId, pTip).catch(() => { /* sessiz — vazgeçilmişse takibe geri al */ });
 
       await loadAll();
       setPoliceDialogOpen(false);
@@ -1583,10 +1616,10 @@ export default function DashboardPage() {
         {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
-            <div className="max-h-[200px] overflow-y-auto">
-              <Table className="text-xs">
-                <TableHeader><TableRow>
-                  <TableHead className="px-2 text-[10px]">Plaka</TableHead>
+            <div className="max-h-[200px] overflow-auto">
+              <Table className="text-xs" noWrapper>
+                <TableHeader><TableRow className="bg-white">
+                  <TableHead className="px-2 text-[10px] sticky left-0 z-30 bg-white">Plaka</TableHead>
                   <TableHead className="px-2 text-[10px]">Tip</TableHead>
                   <TableHead className="px-2 text-[10px]">Mevcut Acente</TableHead>
                   <TableHead className="px-2 text-[10px] text-center">Bitiş</TableHead>
@@ -1596,7 +1629,7 @@ export default function DashboardPage() {
                 <TableBody>
                   {yaklasanlar.map((y, i) => (
                     <TableRow key={`${y.plaka}-${y.tip}-${i}`}>
-                      <TableCell className="px-2">
+                      <TableCell className="px-2 sticky left-0 z-10 bg-white shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
                       </TableCell>
                       <TableCell className="px-2">{y.tip}</TableCell>
@@ -2564,6 +2597,24 @@ export default function DashboardPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Vazgeç onayı — araç+tip'i sigorta takibinden çıkar (dashboard'dan kalksın) */}
+      <AlertDialog open={vazgecOnayAcik} onOpenChange={setVazgecOnayAcik}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Emin misiniz?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <b>{araclar.find((a) => a.id === policeAracId)?.plaka ?? "Bu araç"}</b> için{" "}
+              <b>kasko istemiyorum</b> olarak işaretlenecek. Bu araç, dashboard&apos;daki yaklaşan <b>kasko</b>
+              {" "}uyarısından kaldırılacak (trafik/muayene etkilenmez). İstediğinizde kasko poliçesi girerek tekrar takibe alabilirsiniz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hayır</AlertDialogCancel>
+            <AlertDialogAction onClick={vazgecOnayla} className="bg-red-600 hover:bg-red-700">Evet, kasko istemiyorum</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Poliçe Ekle Dialog */}
       <Dialog open={policeDialogOpen} onOpenChange={setPoliceDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
@@ -2610,16 +2661,23 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Poliçe Numarası</Label>
+              <Label className="text-xs">Poliçe Numarası <span className="text-red-500">*</span></Label>
               <input type="text" value={pPoliceNo} onChange={(e) => setPPoliceNo(e.target.value)} placeholder="Poliçe No"
                 className="w-full h-8 text-xs border rounded px-2 outline-none focus:border-[#1E3A5F]" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Poliçe PDF</Label>
+              <Label className="text-xs">Poliçe PDF <span className="text-red-500">*</span></Label>
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setPDosya(e.target.files?.[0] ?? null)}
                 className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
             </div>
             <div className="flex gap-2 justify-end pt-2">
+              {pTip === "kasko" && (
+                <Button variant="outline" onClick={() => setVazgecOnayAcik(true)}
+                  title="Bu araç için kasko istemiyorum — dashboard'daki kasko uyarısından kalksın"
+                  className="mr-auto text-red-600 border-red-300 hover:bg-red-50 hover:text-red-700">
+                  Kasko İstemiyorum
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setPoliceDialogOpen(false)}>İptal</Button>
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={policeKaydet} disabled={policeSaving}>
                 {policeSaving ? "Kaydediliyor..." : "Kaydet"}

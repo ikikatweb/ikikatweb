@@ -4,9 +4,9 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   getAraclar, updateArac,
-  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice, linkSigortaTekliflerToPolice,
+  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice, linkSigortaTekliflerToPolice, removeSigortaVazgec, insertTeklifGonderim,
 } from "@/lib/supabase/queries/araclar";
-import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
+import { getDegerler, getTanimlamalar, getTumTanimlamalar, unpackAcenteKisaAd } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
@@ -27,6 +27,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 
@@ -107,6 +108,15 @@ export default function SigortaMuayenePage() {
 
   // Poliçe listesi dialog
   const [policeListeAracId, setPoliceListeAracId] = useState<string | null>(null);
+
+  // Teklif İste dialog — istediğin aracı seç, kasko/trafik seç, acentelere mail gönder
+  const [teklifDialogOpen, setTeklifDialogOpen] = useState(false);
+  const [teklifArac, setTeklifArac] = useState<{ aracId: string; plaka: string; firmaId: string | null; ruhsatUrl: string | null } | null>(null);
+  const [teklifTip, setTeklifTip] = useState<"kasko" | "trafik">("trafik");
+  const [acenteListesi, setAcenteListesi] = useState<{ id: string; ad: string; eposta: string }[]>([]);
+  const [seciliAcenteler, setSeciliAcenteler] = useState<Set<string>>(new Set());
+  const [teklifEkBilgi, setTeklifEkBilgi] = useState("");
+  const [teklifGonderiliyor, setTeklifGonderiliyor] = useState(false);
 
   // Silme onayı
   const [silOnay, setSilOnay] = useState<string | null>(null);
@@ -247,11 +257,69 @@ export default function SigortaMuayenePage() {
     setPoliceDialogOpen(true);
   }
 
+  // ===== Teklif İste (istediğin araç + kasko/trafik → acentelere mail) =====
+  async function teklifDialogAc(a: AracWithRelations) {
+    setTeklifArac({ aracId: a.id, plaka: a.plaka, firmaId: a.firma_id ?? null, ruhsatUrl: a.ruhsat_url ?? null });
+    setTeklifTip("trafik");
+    setSeciliAcenteler(new Set());
+    setTeklifEkBilgi("");
+    try {
+      const tum = await getTumTanimlamalar();
+      const acnt = tum
+        .filter((t) => t.kategori === "sigorta_acente" && t.aktif)
+        .map((t) => { const info = unpackAcenteKisaAd(t.kisa_ad); return { id: t.id, ad: t.deger, eposta: info.eposta }; })
+        .filter((a2) => a2.eposta);
+      setAcenteListesi(acnt);
+    } catch { setAcenteListesi([]); }
+    setTeklifDialogOpen(true);
+  }
+  function acenteToggle(id: string) {
+    setSeciliAcenteler((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  async function teklifGonder() {
+    if (!teklifArac || seciliAcenteler.size === 0) return;
+    if (!teklifArac.firmaId) { toast.error("Aracın firma kaydı yok. Araç düzenleme sayfasından firma atayın."); return; }
+    setTeklifGonderiliyor(true);
+    try {
+      const emails = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.eposta);
+      const res = await fetch("/api/teklif-mail", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          acenteEmails: emails, plaka: teklifArac.plaka, policeTipi: teklifTip,
+          ruhsatUrl: teklifArac.ruhsatUrl, ekBilgi: teklifEkBilgi, firmaId: teklifArac.firmaId,
+          gonderenKullanici: kullanici?.ad_soyad ?? null,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.sonuclar) {
+          for (const s of data.sonuclar) {
+            if (s.basarili) toast.success(`${s.email} → Gönderildi`, { duration: toastSuresi() });
+            else toast.error(`${s.email} → HATA: ${s.hata}`, { duration: toastSuresi() });
+          }
+        } else toast.success(data.mesaj, { duration: toastSuresi() });
+        try {
+          const seciliAdlar = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.ad);
+          await insertTeklifGonderim({
+            arac_id: teklifArac.aracId, police_tipi: teklifTip,
+            acente_adlari: seciliAdlar.join(", "), acente_emailleri: emails.join(", "),
+          });
+        } catch { /* sessiz */ }
+        setTeklifDialogOpen(false);
+      } else {
+        toast.error(data.error ?? "Mail gönderilemedi.", { duration: toastSuresi() });
+      }
+    } catch (err) {
+      toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
+    } finally { setTeklifGonderiliyor(false); }
+  }
+
   // Poliçe kaydet
   async function policeKaydet() {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     if (!policeAracId) return;
     if (!pBitisTarih) { toast.error("Bitiş tarihi girin."); return; }
+    if (!pPoliceNo.trim()) { toast.error("Poliçe numarası zorunludur."); return; }
     if (!pDosya) { toast.error("Poliçe PDF dosyası yükleyin (zorunlu)."); return; }
     setPoliceSaving(true);
     try {
@@ -296,6 +364,7 @@ export default function SigortaMuayenePage() {
 
       // Bu araç+tip için girilmiş (güncel dönem) teklifleri yeni poliçeye bağla → Belgeler'den görülebilir.
       if (result?.id) await linkSigortaTekliflerToPolice(policeAracId, pTip, result.id).catch(() => { /* sessiz */ });
+      await removeSigortaVazgec(policeAracId, pTip).catch(() => { /* vazgeçilmişse takibe geri al */ });
 
       await loadData();
       setPoliceDialogOpen(false);
@@ -525,6 +594,11 @@ export default function SigortaMuayenePage() {
                           <Plus size={11} /> Poliçe Ekle
                         </button>
                       )}
+                      {yEkle && (
+                        <button type="button" onClick={() => teklifDialogAc(a)} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 whitespace-nowrap">
+                          Teklif İste
+                        </button>
+                      )}
                       <button type="button" onClick={() => setPoliceListeAracId(a.id)} className="p-1 text-gray-400 hover:text-blue-600" title="Poliçeler">
                         <FileText size={14} />
                       </button>
@@ -536,6 +610,65 @@ export default function SigortaMuayenePage() {
           </Table>
         </div>
       )}
+
+      {/* Teklif İste Dialog — araç + kasko/trafik seç, acentelere mail gönder */}
+      <Dialog open={teklifDialogOpen} onOpenChange={setTeklifDialogOpen}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Teklif İste — {teklifArac?.plaka}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Poliçe tipi */}
+            <div>
+              <Label className="text-xs font-semibold mb-1.5 block">Poliçe Tipi</Label>
+              <div className="flex gap-2">
+                {([["trafik", "Trafik Sigortası"], ["kasko", "Kasko"]] as const).map(([k, l]) => (
+                  <button key={k} type="button" onClick={() => setTeklifTip(k)}
+                    className={`flex-1 h-9 text-xs rounded-lg border font-medium transition-colors ${teklifTip === k ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Acente Listesi */}
+            <div>
+              <Label className="text-xs font-semibold mb-2 block">
+                Acente Listesi <span className="text-red-500">*</span>
+                <span className="text-gray-400 font-normal ml-2">{seciliAcenteler.size} seçili</span>
+              </Label>
+              {acenteListesi.length === 0 ? (
+                <p className="text-sm text-gray-400">E-posta adresi olan acente bulunamadı. Tanımlamalardan acente ekleyin.</p>
+              ) : (
+                <div className="space-y-1 max-h-[200px] overflow-y-auto border rounded-lg p-2">
+                  {acenteListesi.map((a) => (
+                    <label key={a.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={seciliAcenteler.has(a.id)} onChange={() => acenteToggle(a.id)} className="rounded border-gray-300" />
+                      <div className="flex-1"><div className="text-xs font-semibold">{a.ad}</div></div>
+                      <span className="text-[10px] text-gray-400">{a.eposta}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Ek Bilgi */}
+            <div>
+              <Label className="text-xs font-semibold mb-1 block">Ek Bilgi / Not (Opsiyonel)</Label>
+              <textarea value={teklifEkBilgi} onChange={(e) => setTeklifEkBilgi(e.target.value)}
+                placeholder="Mail içeriğine eklemek istediğiniz notu buraya yazabilirsiniz..."
+                rows={3} className="w-full text-sm border rounded-lg px-3 py-2 outline-none focus:border-[#1E3A5F]" />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setTeklifDialogOpen(false)}>Vazgeç</Button>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={teklifGonder} disabled={teklifGonderiliyor || seciliAcenteler.size === 0}>
+                {teklifGonderiliyor ? "Gönderiliyor..." : `Seçili Acentelere Gönder (${seciliAcenteler.size})`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Poliçe Ekle Dialog */}
       <Dialog open={policeDialogOpen} onOpenChange={setPoliceDialogOpen}>
@@ -583,7 +716,7 @@ export default function SigortaMuayenePage() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Poliçe Numarası</Label>
+              <Label className="text-xs">Poliçe Numarası <span className="text-red-500">*</span></Label>
               <input type="text" value={pPoliceNo} onChange={(e) => setPPoliceNo(e.target.value)} placeholder="Poliçe No"
                 className={selectClass + " w-full"} />
             </div>
