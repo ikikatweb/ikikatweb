@@ -35,6 +35,18 @@ export async function GET(request: Request) {
     }
   } catch { /* sessiz, varsayılan 30 ile devam */ }
 
+  // Kasko için AYRI eşik (boşsa trafik değerine düşer).
+  let kaskoYaklasirGun = yaklasirGun;
+  try {
+    const { data: kt } = await supabase
+      .from("tanimlamalar").select("deger")
+      .eq("kategori", "kasko_yaklasir_gun").eq("aktif", true).limit(1).maybeSingle();
+    if (kt?.deger) {
+      const n = parseInt(String(kt.deger), 10);
+      if (!Number.isNaN(n) && n > 0) kaskoYaklasirGun = n;
+    }
+  } catch { /* sessiz, trafik eşiğiyle devam */ }
+
   // ========== YAKLAŞAN SİGORTA/MUAYENE ==========
   // Araçların trafik/kasko/muayene/taşıt kartı bitiş tarihleri + poliçe bitişleri
   const { data: araclar } = await supabase
@@ -70,8 +82,9 @@ export async function GET(request: Request) {
     for (const [tip, tarih] of kontroller) {
       if (!tarih) continue;
       const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
-      // Tanımlamalardan gelen yaklaşır gün eşiği — geçenleri (-7 gün) de dahil et
-      if (kalan <= yaklasirGun && kalan >= -7) {
+      // Tanımlamalardan gelen yaklaşır gün eşiği (kasko ayrı) — geçenleri (-7 gün) de dahil et
+      const esik = tip === "Kasko" ? kaskoYaklasirGun : yaklasirGun;
+      if (kalan <= esik && kalan >= -7) {
         yaklasanlar.push({ plaka: a.plaka, tip, tarih, kalanGun: kalan });
       }
     }

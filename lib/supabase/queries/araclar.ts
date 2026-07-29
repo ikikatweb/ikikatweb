@@ -433,3 +433,53 @@ export async function deleteTeklifGonderimlerByAracTip(
     .eq("police_tipi", policeTipi);
   if (error) throw error;
 }
+
+// ===== Gelen sigorta teklifleri (kasko/trafik) — firma+tutar karşılaştırma =====
+export async function getSigortaTeklifler(): Promise<import("@/lib/supabase/types").SigortaTeklif[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("sigorta_teklif")
+    .select("*")
+    .order("teklif_tutari", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as import("@/lib/supabase/types").SigortaTeklif[];
+}
+
+export async function insertSigortaTeklif(t: import("@/lib/supabase/types").SigortaTeklifInsert) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_teklif").insert(t);
+  if (error) throw error;
+}
+
+export async function updateSigortaTeklif(
+  id: string,
+  updates: Partial<import("@/lib/supabase/types").SigortaTeklifInsert>,
+) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_teklif").update(updates).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteSigortaTeklif(id: string) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_teklif").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Bir teklifi "seçilen" işaretle — aynı araç+tip grubundaki diğerlerini sıfırla (tek seçim).
+export async function secSigortaTeklif(id: string, aracId: string, policeTipi: "kasko" | "trafik") {
+  const supabase = getSupabase();
+  const { error: e1 } = await supabase.from("sigorta_teklif")
+    .update({ secildi: false }).eq("arac_id", aracId).eq("police_tipi", policeTipi);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from("sigorta_teklif").update({ secildi: true }).eq("id", id);
+  if (e2) throw e2;
+}
+
+// Poliçe girildikten sonra o araç+tip'in tekliflerini temizle (yeni dönem temiz başlasın).
+export async function deleteSigortaTekliflerByAracTip(aracId: string, policeTipi: "kasko" | "trafik") {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_teklif")
+    .delete().eq("arac_id", aracId).eq("police_tipi", policeTipi);
+  if (error) throw error;
+}

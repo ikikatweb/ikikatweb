@@ -227,6 +227,11 @@ export default function TanimlamalarPage() {
     kategoriler.push({ key: "sigorta_yaklasir_gun", sekme: "sigorta-muayene" });
     katSet.add("sigorta_yaklasir_gun");
   }
+  // Kasko için AYRI yaklaşan-gün eşiği (trafik sigortasından farklı olabilir). Boş bırakılırsa trafik değeri kullanılır.
+  if (!katSet.has("kasko_yaklasir_gun")) {
+    kategoriler.push({ key: "kasko_yaklasir_gun", sekme: "sigorta-muayene" });
+    katSet.add("kasko_yaklasir_gun");
+  }
   // Bordro takibi muhasebe email
   if (!katSet.has("muhasebe_email")) {
     kategoriler.push({ key: "muhasebe_email", sekme: "bordro-takibi" });
@@ -609,7 +614,7 @@ export default function TanimlamalarPage() {
             <Card key={kat.key}>
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-semibold text-[#1E3A5F]">{kat.key}</h3>
+                  <h3 className="font-semibold text-[#1E3A5F]">{kat.key === "sigorta_yaklasir_gun" ? "Trafik Sigortası – Yaklaşan Uyarı Günü" : kat.key === "kasko_yaklasir_gun" ? "Kasko – Yaklaşan Uyarı Günü" : kat.key}</h3>
                   <div className="flex items-center gap-1">
                     <Badge variant="secondary">{tumItems.filter((t) => t.aktif).length}</Badge>
                     {yDuzenle && (

@@ -111,19 +111,22 @@ export default function SigortaMuayenePage() {
   // Silme onayı
   const [silOnay, setSilOnay] = useState<string | null>(null);
 
-  // Uyarı gün süreleri (tanımlamalardan)
+  // Uyarı gün süreleri (tanımlamalardan) — trafik sigortası (+ muayene/taşıt kartı) ve kasko AYRI.
   const [yaklasirGun, setYaklasirGun] = useState(30);
   const azKaldiGun = Math.round(yaklasirGun / 3);
+  const [kaskoYaklasirGun, setKaskoYaklasirGun] = useState(30); // kasko boşsa trafik değerine düşürülür (loadData)
+  const kaskoAzKaldiGun = Math.round(kaskoYaklasirGun / 3);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData, yakGun, cinsData] = await Promise.all([
+      const [aData, pData, sfData, acData, yakGun, kaskoGun, cinsData] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
         getDegerler("sigorta_yaklasir_gun").catch(() => []),
+        getDegerler("kasko_yaklasir_gun").catch(() => []),
         getTanimlamalar("arac_cinsi").catch(() => []),
       ]);
       const araclarData = (aData as AracWithRelations[]) ?? [];
@@ -153,7 +156,10 @@ export default function SigortaMuayenePage() {
       setPoliceler(policelerData);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
-      if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
+      const trafikGunVal = yakGun.length > 0 ? (parseInt(yakGun[0]) || 30) : 30;
+      setYaklasirGun(trafikGunVal);
+      // Kasko boş bırakıldıysa trafik değerine düş (geriye uyumlu: tek eşik girenler için davranış aynı kalır).
+      setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(kaskoGun[0]) || trafikGunVal) : trafikGunVal);
     } catch (err) {
       console.error(err);
     } finally {
@@ -365,7 +371,10 @@ export default function SigortaMuayenePage() {
   function SigortaCell({ arac, tip }: { arac: AracWithRelations; tip: "kasko" | "trafik" }) {
     const police = sonPoliceMap.get(arac.id)?.[tip];
     const tarih = police?.bitis_tarihi ?? null;
-    const { durum, kalanGun } = tarihDurumHesapla(tarih, yaklasirGun, azKaldiGun);
+    // Kasko ve trafik AYRI eşik kullanır (kullanıcı ayrı girer; kasko boşsa trafik değerine düşmüştü).
+    const esikY = tip === "kasko" ? kaskoYaklasirGun : yaklasirGun;
+    const esikAz = tip === "kasko" ? kaskoAzKaldiGun : azKaldiGun;
+    const { durum, kalanGun } = tarihDurumHesapla(tarih, esikY, esikAz);
 
     return (
       <div className={`text-center px-1.5 py-1 rounded text-xs ${tarihClass(durum)}`} title={police ? "Bu tarih aktif poliçeden gelir" : "Poliçe ekleyin"}>

@@ -277,6 +277,21 @@ export type TeklifGonderim = {
   created_at: string;
 };
 
+// Gelen sigorta teklifi (kasko/trafik) — hangi acente ne kadar teklif verdi. Karşılaştırıp en uygunu seçmek için.
+export type SigortaTeklif = {
+  id: string;
+  arac_id: string;
+  police_tipi: "kasko" | "trafik";
+  acente_adi: string;        // teklif isteği gönderilen acentelerden (teklif_gonderim) seçilir
+  sigorta_firmasi: string | null; // teklifin ait olduğu sigorta firması (ör. AXA Sigorta) — sigorta_firmasi tanımından
+  teklif_tutari: number;
+  teklif_tarihi: string | null;
+  secildi: boolean; // kullanıcının seçtiği teklif (en ucuz OTOMATİK "en uygun" vurgulanır; bu ayrıca elle seçim)
+  notlar: string | null;
+  created_at: string;
+};
+export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi"> & { secildi?: boolean };
+
 export type AracWithRelations = Arac & {
   firmalar?: { firma_adi: string; renk?: string | null; sira_no?: number | null } | null;
   santiyeler?: { is_adi: string } | null;

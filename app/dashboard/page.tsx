@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, deleteSigortaTekliflerByAracTip } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
-import type { TeklifGonderim, AracBakimWithArac } from "@/lib/supabase/types";
+import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
@@ -100,8 +100,6 @@ export default function DashboardPage() {
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
   const [aracBakimlar, setAracBakimlar] = useState<AracBakimWithArac[]>([]);
-  // Teklif listesinin genişletildiği satır(lar)ın key'i — "aracId|tipKey" formatında
-  const [teklifAcikKeyler, setTeklifAcikKeyler] = useState<Set<string>>(new Set());
   const [yakitAlimlar, setYakitAlimlar] = useState<YakitAlim[]>([]);
   const [yakitDagitimlar, setYakitDagitimlar] = useState<AracYakit[]>([]);
   // Stok hesabı için TÜM ZAMAN alım + dağıtım + virman (son 30 gün değil)
@@ -130,6 +128,7 @@ export default function DashboardPage() {
   const [bordroBrutUcretler, setBordroBrutUcretler] = useState<PersonelBrutUcret[]>([]);
   const [bordroLoading, setBordroLoading] = useState(true);
   const [yaklasirGun, setYaklasirGun] = useState(30);
+  const [kaskoYaklasirGun, setKaskoYaklasirGun] = useState(30); // kasko ayrı eşik; boşsa trafik değerine düşer
   const [editEvrakId, setEditEvrakId] = useState<string | null>(null);
   const [eksikEvrakKisiFiltre, setEksikEvrakKisiFiltre] = useState<string | null>(null);
   const [editSigortaKey, setEditSigortaKey] = useState<string | null>(null);
@@ -149,6 +148,13 @@ export default function DashboardPage() {
   const [pPoliceNo, setPPoliceNo] = useState("");
   const [pDosya, setPDosya] = useState<File | null>(null);
   const [policeSaving, setPoliceSaving] = useState(false);
+
+  // Gelen sigorta teklifleri (firma+tutar karşılaştırma)
+  const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
+  const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string } | null>(null);
+  // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar (acente → değer).
+  const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
+  const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
 
   // Teklif İste dialog
   const [teklifDialogOpen, setTeklifDialogOpen] = useState(false);
@@ -218,7 +224,7 @@ export default function DashboardPage() {
     // BACKGROUND BATCH 1: Sigorta widget verileri (araclar, polisler, tanımlar, bakım)
     (async () => {
       try {
-        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun] = await Promise.all([
+        const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, sigTek] = await Promise.all([
           getAraclar().catch(() => []),
           getTumPoliceler().catch(() => []),
           getTeklifGonderimler().catch(() => []),
@@ -226,6 +232,8 @@ export default function DashboardPage() {
           getDegerler("sigorta_acente").catch(() => []),
           getAracBakimlar().catch(() => []),
           getDegerler("sigorta_yaklasir_gun").catch(() => []),
+          getDegerler("kasko_yaklasir_gun").catch(() => []),
+          getSigortaTeklifler().catch(() => []),
         ]);
         setAraclar(arac as AracWithRelations[]);
         setPoliceler(pol as AracPolice[]);
@@ -233,7 +241,10 @@ export default function DashboardPage() {
         setSigortaFirmalari(sfData as string[]);
         setSigortaAcenteler(acData as string[]);
         setAracBakimlar(bakimData as AracBakimWithArac[]);
-        if (yakGun.length > 0) setYaklasirGun(parseInt(yakGun[0]) || 30);
+        setSigortaTeklifler(sigTek as SigortaTeklif[]);
+        const trafikGunVal = yakGun.length > 0 ? (parseInt(yakGun[0]) || 30) : 30;
+        setYaklasirGun(trafikGunVal);
+        setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(kaskoGun[0]) || trafikGunVal) : trafikGunVal);
       } catch { /* sessiz */ }
     })();
 
@@ -546,13 +557,14 @@ export default function DashboardPage() {
       for (const [tip, field, tarih, acente] of fields) {
         if (!tarih) continue;
         const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
-        if (kalan <= yaklasirGun) {
+        const esik = field === "kasko_bitis" ? kaskoYaklasirGun : yaklasirGun; // kasko ayrı eşik
+        if (kalan <= esik) {
           result.push({ aracId: a.id, plaka: a.plaka, tip, field, bitis: tarih, kalanGun: kalan, acente, firmaId: a.firma_id, ruhsatUrl: a.ruhsat_url });
         }
       }
     }
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
-  }, [araclar, policeler, yaklasirGun, isYonetici, kullanici]);
+  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, isYonetici, kullanici]);
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
   const yaklasanBakimlar = useMemo(() => {
@@ -1287,6 +1299,7 @@ export default function DashboardPage() {
       // Poliçe girildi → bu araç+tip için olan tüm teklif kayıtlarını sil
       // (bir sonraki dönem boş başlasın, yeni teklif istenirse yan yana biriksin)
       await deleteTeklifGonderimlerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ });
+      await deleteSigortaTekliflerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ }); // gelen teklifleri de temizle
 
       await loadAll();
       setPoliceDialogOpen(false);
@@ -1296,6 +1309,59 @@ export default function DashboardPage() {
     } finally {
       setPoliceSaving(false);
     }
+  }
+
+  // ===== Gelen teklif karşılaştırma (firma+tutar) =====
+  async function teklifleriYenile() {
+    try { setSigortaTeklifler(await getSigortaTeklifler()); } catch { /* sessiz */ }
+  }
+  function teklifKarsilastirAc(y: { aracId: string; plaka: string; tip: string }) {
+    // Açılışta mevcut teklifleri acente bazlı input'lara doldur (firma + tutar).
+    const tip = y.tip === "Kasko" ? "kasko" : "trafik";
+    const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tip);
+    const fMap: Record<string, string> = {}, tMap: Record<string, string> = {};
+    for (const t of grup) {
+      fMap[t.acente_adi] = t.sigorta_firmasi ?? "";
+      tMap[t.acente_adi] = formatParaInput(t.teklif_tutari.toFixed(2).replace(".", ","));
+    }
+    setTeklifFirma(fMap); setTeklifTutar(tMap);
+    setTeklifKarsilastirArac({ aracId: y.aracId, plaka: y.plaka, tip: y.tip });
+  }
+  // Bir acente satırını kaydet: firma + tutar. Tutar boşsa varsa siler; firma seçilmemişse bekler (kaydetmez).
+  // firmaVal/tutarVal verilirse onları kullanır (onChange'de state henüz güncellenmemiş olabilir → stale okumayı önler).
+  async function teklifSatirKaydet(acente: string, firmaVal?: string, tutarVal?: string) {
+    if (!teklifKarsilastirArac) return;
+    const tip = teklifKarsilastirArac.tip === "Kasko" ? "kasko" : "trafik";
+    const mevcut = sigortaTeklifler.find((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tip && t.acente_adi === acente);
+    const firma = (firmaVal ?? teklifFirma[acente] ?? "").trim();
+    const tutarStr = tutarVal ?? teklifTutar[acente] ?? "";
+    const tutar = parseParaInput(tutarStr);
+    try {
+      if (!tutarStr.trim() || isNaN(tutar) || tutar <= 0) {
+        if (mevcut) { await deleteSigortaTeklif(mevcut.id); await teklifleriYenile(); } // tutar boşaltıldı → sil
+        return;
+      }
+      if (!firma) return; // firma seçilene kadar kaydetme (geçersiz teklif)
+      if (mevcut) {
+        if (mevcut.teklif_tutari !== tutar || (mevcut.sigorta_firmasi ?? "") !== firma) {
+          await updateSigortaTeklif(mevcut.id, { sigorta_firmasi: firma, teklif_tutari: tutar });
+          await teklifleriYenile();
+        }
+      } else {
+        await insertSigortaTeklif({
+          arac_id: teklifKarsilastirArac.aracId, police_tipi: tip, acente_adi: acente,
+          sigorta_firmasi: firma, teklif_tutari: tutar, teklif_tarihi: new Date().toISOString().slice(0, 10), notlar: null,
+        });
+        await teklifleriYenile();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/does not exist|relation|column/i.test(msg)) toast.error("‘sigorta_teklif’ tablosu/kolonu yok — migrasyon SQL'ini çalıştırın.", { duration: toastSuresi() });
+      else toast.error("Kaydedilemedi: " + msg);
+    }
+  }
+  async function teklifSec(t: SigortaTeklif) {
+    try { await secSigortaTeklif(t.id, t.arac_id, t.police_tipi); await teklifleriYenile(); } catch { toast.error("Seçilemedi."); }
   }
 
   async function teklifDialogAc(y: { aracId: string; plaka: string; tip: string; firmaId: string | null; ruhsatUrl: string | null }) {
@@ -1532,71 +1598,6 @@ export default function DashboardPage() {
                     <TableRow key={`${y.plaka}-${y.tip}-${i}`}>
                       <TableCell className="px-2">
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
-                        {(y.tip === "Kasko" || y.tip === "Trafik Sigorta") && (() => {
-                          const tipKey = y.tip === "Kasko" ? "kasko" : "trafik";
-                          const gonderimler = teklifGonderimler.filter((g) => g.arac_id === y.aracId && g.police_tipi === tipKey);
-                          if (gonderimler.length === 0) return null;
-                          // Tekrarsız acente isimleri listesi
-                          const tumAcenteler = Array.from(new Set(
-                            gonderimler.flatMap((g) => g.acente_adlari.split(",").map((s) => s.trim())).filter(Boolean),
-                          ));
-                          if (tumAcenteler.length === 0) return null;
-                          const acikKey = `${y.aracId}|${tipKey}`;
-                          const acik = teklifAcikKeyler.has(acikKey);
-                          const cokluMu = tumAcenteler.length > 1;
-                          return (
-                            <div className="text-[9px] text-purple-500 max-w-[140px]">
-                              {!acik ? (
-                                <span className="flex items-center gap-0.5">
-                                  <span className="truncate" title={tumAcenteler.join(", ")}>
-                                    Teklif: {tumAcenteler[0]}
-                                  </span>
-                                  {cokluMu && (
-                                    <button
-                                      type="button"
-                                      className="text-purple-700 font-bold hover:underline cursor-pointer"
-                                      title={`${tumAcenteler.length - 1} daha göster`}
-                                      onClick={() => {
-                                        setTeklifAcikKeyler((prev) => {
-                                          const yeni = new Set(prev);
-                                          yeni.add(acikKey);
-                                          return yeni;
-                                        });
-                                      }}
-                                    >
-                                      ...
-                                    </button>
-                                  )}
-                                </span>
-                              ) : (
-                                <div>
-                                  <div className="flex items-center gap-1">
-                                    <span className="font-semibold">Teklifler:</span>
-                                    <button
-                                      type="button"
-                                      className="text-purple-700 font-bold hover:underline cursor-pointer text-[10px]"
-                                      title="Gizle"
-                                      onClick={() => {
-                                        setTeklifAcikKeyler((prev) => {
-                                          const yeni = new Set(prev);
-                                          yeni.delete(acikKey);
-                                          return yeni;
-                                        });
-                                      }}
-                                    >
-                                      ▲
-                                    </button>
-                                  </div>
-                                  <div className="flex flex-col">
-                                    {tumAcenteler.map((a, idx) => (
-                                      <span key={idx} className="truncate">• {a}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
                       </TableCell>
                       <TableCell className="px-2">{y.tip}</TableCell>
                       <TableCell className="px-2 text-gray-500 text-[10px]">{y.acente || "—"}</TableCell>
@@ -1657,6 +1658,19 @@ export default function DashboardPage() {
                               className="inline-flex items-center gap-0.5 text-[9px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
                               Teklif İste
                             </button>
+                            {(() => {
+                              const tipKey = y.tip === "Kasko" ? "kasko" : "trafik";
+                              const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tipKey);
+                              const enUcuz = grup.length ? Math.min(...grup.map((t) => t.teklif_tutari)) : null;
+                              return (
+                                <button type="button"
+                                  onClick={() => teklifKarsilastirAc(y)}
+                                  title={enUcuz != null ? `En uygun: ${enUcuz.toLocaleString("tr-TR")} ₺` : "Gelen teklifleri gir/karşılaştır"}
+                                  className="inline-flex items-center gap-0.5 text-[9px] text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 hover:bg-purple-100">
+                                  Teklifler{grup.length ? ` (${grup.length})` : ""}
+                                </button>
+                              );
+                            })()}
                           </div>
                         )}
                       </TableCell>
@@ -2612,6 +2626,87 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
+      <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Teklifler — {teklifKarsilastirArac?.plaka} {teklifKarsilastirArac?.tip}</DialogTitle>
+          </DialogHeader>
+          {teklifKarsilastirArac && (() => {
+            const tipKey = teklifKarsilastirArac.tip === "Kasko" ? "kasko" : "trafik";
+            // Mail gönderilen (teklif İstenen) acenteler OTOMATİK satır olur — her biri için firma + tutar girilir.
+            const istenenAcenteler = Array.from(new Set(
+              teklifGonderimler
+                .filter((g) => g.arac_id === teklifKarsilastirArac.aracId && g.police_tipi === tipKey)
+                .flatMap((g) => g.acente_adlari.split(",").map((s) => s.trim()))
+                .filter(Boolean),
+            ));
+            const teklifByAcente = new Map(
+              sigortaTeklifler
+                .filter((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tipKey)
+                .map((t) => [t.acente_adi, t] as const),
+            );
+            const gecerli = istenenAcenteler.map((a) => teklifByAcente.get(a)).filter((t): t is SigortaTeklif => !!t);
+            const enUcuzTutar = gecerli.length ? Math.min(...gecerli.map((t) => t.teklif_tutari)) : null;
+            const enUcuz = enUcuzTutar != null ? gecerli.find((t) => t.teklif_tutari === enUcuzTutar) ?? null : null;
+            const selCls = "h-8 text-xs w-full rounded-md border border-input bg-white px-1.5 outline-none focus:border-ring";
+            return (
+              <div className="space-y-2 py-1">
+                {istenenAcenteler.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">
+                    Bu araç için henüz <b>“Teklif İste”</b> yapılmamış.<br />Önce teklif isteyin; mail gönderilen acenteler burada otomatik listelenir.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-[1fr_1fr_92px] gap-1.5 px-1 text-[10px] text-gray-400 font-medium">
+                      <span>Acente</span><span>Sigorta Firması</span><span className="text-right">Tutar ₺</span>
+                    </div>
+                    <div className="space-y-1">
+                      {istenenAcenteler.map((acente) => {
+                        const mevcut = teklifByAcente.get(acente);
+                        const buEnUcuz = mevcut != null && mevcut.teklif_tutari === enUcuzTutar;
+                        return (
+                          <div key={acente} className={`grid grid-cols-[1fr_1fr_92px] gap-1.5 items-center px-1.5 py-1 rounded border ${buEnUcuz ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-100"}`}>
+                            <div className="min-w-0 flex items-center gap-1">
+                              <span className="text-xs font-medium truncate" title={acente}>{acente}</span>
+                              {buEnUcuz && <span className="text-[8px] bg-emerald-600 text-white px-1 py-0.5 rounded-full shrink-0">uygun</span>}
+                              {mevcut?.secildi && <span className="text-[8px] bg-blue-600 text-white px-1 py-0.5 rounded-full shrink-0">seçili</span>}
+                            </div>
+                            <select value={teklifFirma[acente] ?? ""} className={selCls}
+                              onChange={(e) => { const v = e.target.value; setTeklifFirma((p) => ({ ...p, [acente]: v })); teklifSatirKaydet(acente, v); }}>
+                              <option value="">Firma seçin…</option>
+                              {sigortaFirmalari.map((f) => <option key={f} value={f}>{f}</option>)}
+                            </select>
+                            <input inputMode="decimal" value={teklifTutar[acente] ?? ""}
+                              onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
+                              onBlur={() => teklifSatirKaydet(acente)}
+                              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                              placeholder="tutar" className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring`} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {enUcuz && enUcuzTutar != null ? (
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t">
+                        <p className="text-[11px] text-gray-600">
+                          En uygun: <b className="text-emerald-700">{enUcuz.sigorta_firmasi || "—"}</b> · {enUcuz.acente_adi} — <b>{enUcuzTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</b>
+                        </p>
+                        <button type="button" onClick={() => teklifSec(enUcuz)}
+                          className={`text-[10px] px-2 py-0.5 rounded border shrink-0 ${enUcuz.secildi ? "bg-blue-600 text-white border-blue-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"}`}>
+                          {enUcuz.secildi ? "Seçildi" : "Bunu seç"}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-gray-400 pt-1">Firma seçip tutar girin — en düşük teklif otomatik “en uygun” işaretlenir.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
