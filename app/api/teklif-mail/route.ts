@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { KASKO_TEKLIF_KATEGORI, cinsToKaskoSinif, kaskoSablonVarsayilan, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -81,11 +82,39 @@ export async function POST(request: Request) {
     // Mail konusu
     const konu = `${plaka} - ${policeTipi === "kasko" ? "Kasko" : "Trafik Sigortası"} Teklif Talebi`;
 
-    // Kırmızı not (her iki tip için de eklenir)
-    const notMetni = "NOT: Fiyat Bilgisi İle Sigorta Firması Bilgisinide İletiniz.";
+    // KASKO: araç SINIFINA göre şartlar metnini en ÜSTE ekle (Tanımlamalar → kasko_teklif_sablon; yoksa varsayılan).
+    // Trafik sigortası maili DEĞİŞMEZ. Sınıf, aracın cinsinden türetilir (çekici/kamyonet/kamyon/binek).
+    let kaskoUst = "";
+    if (policeTipi === "kasko") {
+      try {
+        const { data: aracRow } = await supabase.from("araclar").select("cinsi").eq("plaka", plaka).limit(1).maybeSingle();
+        const sinif = cinsToKaskoSinif(aracRow?.cinsi as string | null | undefined);
+        if (sinif) {
+          const { data: sab } = await supabase.from("tanimlamalar")
+            .select("deger").eq("kategori", KASKO_TEKLIF_KATEGORI).eq("kisa_ad", sinif).limit(1).maybeSingle();
+          const ozel = sab?.deger ? String(sab.deger).trim() : "";
+          kaskoUst = ozel || kaskoSablonVarsayilan(sinif);
+        }
+      } catch { /* sessiz — şartlar eklenemezse standart mail gider */ }
+    }
+
+    // Teklif TALEP cümlesi — KASKO ve TRAFİK AYRI (kisa_ad = "kasko"/"trafik"). Böylece kaskoya özel düzenleme
+    // trafik mailini etkilemez. Legacy tek "genel" kayıt varsa yalnız kaskoda geri-uyum için kullanılır.
+    // {plaka} ve {tip} yer tutucuları.
+    let talepSablon = TEKLIF_TALEP_VARSAYILAN;
+    try {
+      const { data: talepRows } = await supabase.from("tanimlamalar")
+        .select("kisa_ad, deger").eq("kategori", TEKLIF_TALEP_KATEGORI);
+      const byKisa = (k: string) => (talepRows ?? []).find((r) => r.kisa_ad === k)?.deger as string | undefined;
+      const val = byKisa(policeTipi) ?? (policeTipi === "kasko" ? byKisa("genel") : undefined);
+      if (val && String(val).trim()) talepSablon = String(val);
+    } catch { /* sessiz — varsayılan kullanılır */ }
+    const talepText = talepSablon.replace(/\{plaka\}/g, plaka).replace(/\{tip\}/g, tipMetni);
 
     // Mail metni (düz metin sürümü — HTML desteklemeyen istemciler için)
-    let metin = `Ekte ruhsat fotokopisi bulunan ${plaka} plakalı aracımızın süresi dolan ${tipMetni} poliçesi için yenileme teklifi çalışmasının yapılmasını rica ederiz.`;
+    let metin = "";
+    if (kaskoUst.trim()) metin += `${kaskoUst.trim()}\n\n`;
+    metin += talepText;
     if (ekBilgi && ekBilgi.trim()) {
       metin += `\n\n${ekBilgi.trim()}`;
     }
@@ -93,19 +122,24 @@ export async function POST(request: Request) {
     if (gonderenKullanici && gonderenKullanici.trim()) {
       metin += `\n${gonderenKullanici.trim()}`;
     }
-    metin += `\n\n${notMetni}`;
 
     // HTML sürüm — not kırmızı ve kalın görünsün
     const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const htmlBr = (s: string) => htmlEscape(s).replace(/\n/g, "<br>");
-    let html = `<p>Ekte ruhsat fotokopisi bulunan <strong>${htmlEscape(plaka)}</strong> plakalı aracımızın süresi dolan ${htmlEscape(tipMetni)} poliçesi için yenileme teklifi çalışmasının yapılmasını rica ederiz.</p>`;
+    const talepHtml = htmlEscape(talepSablon)
+      .replace(/\{plaka\}/g, `<strong>${htmlEscape(plaka)}</strong>`)
+      .replace(/\{tip\}/g, htmlEscape(tipMetni))
+      .replace(/\n/g, "<br>");
+    let html = "";
+    if (kaskoUst.trim()) html += `<p style="margin-bottom:14px;">${htmlBr(kaskoUst.trim())}</p>`;
+    html += `<p>${talepHtml}</p>`;
+    // Kullanıcının yazdığı not KIRMIZI ve kalın görünsün.
     if (ekBilgi && ekBilgi.trim()) {
-      html += `<p>${htmlBr(ekBilgi.trim())}</p>`;
+      html += `<p style="color:#dc2626;font-weight:bold;">${htmlBr(ekBilgi.trim())}</p>`;
     }
     html += gonderenKullanici && gonderenKullanici.trim()
       ? `<p>İyi çalışmalar.<br>${htmlEscape(gonderenKullanici.trim())}</p>`
       : `<p>İyi çalışmalar.</p>`;
-    html += `<p style="color:#dc2626;font-weight:bold;">${htmlEscape(notMetni)}</p>`;
 
     // Ruhsat ekini hazırla
     const attachments: { filename: string; content: Buffer }[] = [];

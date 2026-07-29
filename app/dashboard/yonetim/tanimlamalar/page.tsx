@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet, Search } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
+import { KASKO_TEKLIF_SINIFLAR, KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 
@@ -78,6 +79,47 @@ export default function TanimlamalarPage() {
   const yDuzenle = hasPermission("yonetim-tanimlamalar", "duzenle");
   const ySil = hasPermission("yonetim-tanimlamalar", "sil");
   const [tanimlamalar, setTanimlamalar] = useState<Tanimlama[]>([]);
+  // Kasko teklif şablonları (araç sınıfına göre) — key → metin. Kayıt yoksa varsayılan gösterilir.
+  const [kaskoSablon, setKaskoSablon] = useState<Record<string, string>>({});
+  const [teklifTalepKasko, setTeklifTalepKasko] = useState<string>(TEKLIF_TALEP_VARSAYILAN);   // kasko talep cümlesi
+  const [teklifTalepTrafik, setTeklifTalepTrafik] = useState<string>(TEKLIF_TALEP_VARSAYILAN); // trafik talep cümlesi (AYRI)
+  const [kaskoSablonKaydediyor, setKaskoSablonKaydediyor] = useState(false);
+  useEffect(() => {
+    const m: Record<string, string> = {};
+    for (const s of KASKO_TEKLIF_SINIFLAR) {
+      const row = tanimlamalar.find((t) => t.kategori === KASKO_TEKLIF_KATEGORI && t.kisa_ad === s.key);
+      m[s.key] = row?.deger ?? s.varsayilan;
+    }
+    setKaskoSablon(m);
+    const talep = (k: string) => tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === k)?.deger;
+    const legacy = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === "genel")?.deger;
+    setTeklifTalepKasko(talep("kasko") ?? legacy ?? TEKLIF_TALEP_VARSAYILAN); // kaskoda eski "genel" düzenlemesi korunur
+    setTeklifTalepTrafik(talep("trafik") ?? TEKLIF_TALEP_VARSAYILAN);        // trafik AYRI — legacy'e düşmez
+  }, [tanimlamalar]);
+  async function kaskoSablonKaydet() {
+    setKaskoSablonKaydediyor(true);
+    try {
+      // Talep cümleleri — kasko ve trafik AYRI (kisa_ad ile)
+      const talepKaydet = async (kisa: string, deger: string) => {
+        const val = deger.trim() || TEKLIF_TALEP_VARSAYILAN;
+        const row = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === kisa);
+        if (row) { if ((row.deger ?? "") !== val) await updateTanimlama(row.id, { deger: val }); }
+        else await createTanimlama({ kategori: TEKLIF_TALEP_KATEGORI, sekme: "sigorta-muayene", deger: val, kisa_ad: kisa, sira: 1, aktif: true });
+      };
+      await talepKaydet("kasko", teklifTalepKasko);
+      await talepKaydet("trafik", teklifTalepTrafik);
+      // Kasko şartları (sınıf bazlı)
+      for (const s of KASKO_TEKLIF_SINIFLAR) {
+        const deger = (kaskoSablon[s.key] ?? "").trim();
+        const row = tanimlamalar.find((t) => t.kategori === KASKO_TEKLIF_KATEGORI && t.kisa_ad === s.key);
+        if (row) { if ((row.deger ?? "") !== deger) await updateTanimlama(row.id, { deger }); }
+        else await createTanimlama({ kategori: KASKO_TEKLIF_KATEGORI, sekme: "sigorta-muayene", deger, kisa_ad: s.key, sira: 1, aktif: true });
+      }
+      await loadData();
+      toast.success("Teklif mail metinleri kaydedildi.");
+    } catch (err) { toast.error(`Kaydedilemedi: ${err instanceof Error ? err.message : String(err)}`); }
+    finally { setKaskoSablonKaydediyor(false); }
+  }
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [loading, setLoading] = useState(true);
   const [yeniDegerler, setYeniDegerler] = useState<Record<string, string>>({});
@@ -593,7 +635,7 @@ export default function TanimlamalarPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay"].includes(k.key)).map((kat) => {
+        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay", KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI].includes(k.key)).map((kat) => {
           const isMuhatap = kat.key.toLowerCase() === "muhatap" || kat.key.toLowerCase() === "banka_muhatap";
           const aramaQ = isMuhatap ? (muhatapArama[kat.key] ?? "").trim() : "";
           const tumItems = getKategoriItems(kat.key).filter((t) => t.deger !== "(boş)");
@@ -1274,6 +1316,65 @@ export default function TanimlamalarPage() {
               >
                 {kasaLimitKaydediyor ? "Kaydediliyor..." : "Kaydet"}
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Teklif Mail Metinleri — talep cümlesi (kasko+trafik) + kasko şartları (araç sınıfına göre) */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-[#1E3A5F] flex items-center gap-1.5">
+                <Settings size={14} /> Teklif Mail Metinleri
+              </h3>
+            </div>
+
+            {/* Talep cümleleri — KASKO ve TRAFİK AYRI */}
+            <div className="mb-2">
+              <Label className="text-[11px] font-semibold text-gray-600">Talep Cümlesi — Kasko</Label>
+              <textarea
+                value={teklifTalepKasko}
+                onChange={(e) => setTeklifTalepKasko(e.target.value)}
+                disabled={!yDuzenle}
+                rows={3}
+                className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400" />
+            </div>
+            <div className="mb-3">
+              <Label className="text-[11px] font-semibold text-gray-600">Talep Cümlesi — Trafik</Label>
+              <textarea
+                value={teklifTalepTrafik}
+                onChange={(e) => setTeklifTalepTrafik(e.target.value)}
+                disabled={!yDuzenle}
+                rows={3}
+                className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400" />
+              <p className="text-[9px] text-gray-400 mt-1">
+                <code>{"{plaka}"}</code> = araç plakası, <code>{"{tip}"}</code> = &quot;kasko&quot; / &quot;trafik sigortası&quot;. Kasko ve trafik cümleleri BAĞIMSIZDIR.
+              </p>
+            </div>
+
+            <div className="text-[11px] font-semibold text-gray-600 border-t pt-2 mb-1">Kasko Şartları (araç sınıfına göre)</div>
+            <p className="text-[10px] text-gray-400 mb-3">
+              Bu metinler yalnız <strong>KASKO</strong> mailinde, talep cümlesinin <strong>üstüne</strong> (aracın
+              cinsine göre) eklenir. Trafik maili etkilenmez.
+            </p>
+            <div className="space-y-3">
+              {KASKO_TEKLIF_SINIFLAR.map((s) => (
+                <div key={s.key}>
+                  <Label className="text-[11px] font-semibold text-gray-600">{s.label}</Label>
+                  <textarea
+                    value={kaskoSablon[s.key] ?? ""}
+                    onChange={(e) => setKaskoSablon((p) => ({ ...p, [s.key]: e.target.value }))}
+                    disabled={!yDuzenle}
+                    rows={s.key === "binek" ? 6 : s.key === "kamyon" ? 7 : 6}
+                    className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400 whitespace-pre-wrap" />
+                </div>
+              ))}
+              {yDuzenle && (
+                <Button size="sm" className="w-full h-8 bg-[#F97316] hover:bg-[#ea580c] text-white text-xs"
+                  disabled={kaskoSablonKaydediyor} onClick={kaskoSablonKaydet}>
+                  {kaskoSablonKaydediyor ? "Kaydediliyor..." : "Teklif Metinlerini Kaydet"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
