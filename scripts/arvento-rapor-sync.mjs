@@ -261,7 +261,7 @@ if (loop) {
     // Otomatikte damga = HİZALI dilim sınırı (18:00:00) → "Rapor güncellendi" tam saati gösterir, çekim ~2 dk
     // sürse de kaymaz. Manuelde damga = tıklama anı. ÖNCE damgala: 1 dk'lık görevde çakışan ikinci çekimi önler
     // + buton çekim başlar başlamaz pasife düşer, cooldown çekimin BAŞINDAN sayılır.
-    const damgaMs = manuel ? now : dilim;
+    const damgaMs = manuel ? istek : dilim; // manuel: TIKLAMA anı (frontend geri sayımıyla birebir → sıçrama yok)
     const sebep = manuel ? "MANUEL tetik" : `zamanlı dilim ${new Date(dilim).toLocaleTimeString("tr-TR")}`;
     console.log(`${new Date().toLocaleTimeString("tr-TR")} → ${sebep}, çekim başlıyor...`);
     await damgala(damgaMs);

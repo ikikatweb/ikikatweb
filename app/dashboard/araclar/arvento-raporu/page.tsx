@@ -221,13 +221,21 @@ export default function ArventoRaporPage() {
   const [canliKonumlar, setCanliKonumlar] = useState<CanliKonum[]>([]);
   const [canliCihazMap, setCanliCihazMap] = useState<CihazMap>(new Map());
   const [canliYukleniyor, setCanliYukleniyor] = useState(false);
-  // "Raporu şimdi çek" (Stabilize) geri sayımı için: son rapor çekim damgası (ms). DB'den (rapor_son_calisma)
-  // yüklenir + 30 sn'de bir tazelenir → zamanlı çekimler de geri sayımı sıfırlar. null = hiç çekilmemiş/kolon yok.
+  // "Raporu şimdi çek" (Stabilize) geri sayımı için: son ETKİNLİK anı (ms) = max(rapor_son_calisma, manuel_tetikle_istek).
+  // Neden max: butona basınca API yalnız manuel_tetikle_istek'i yazar; rapor_son_calisma ancak script gerçekten
+  // çekince (~1-2 dk sonra) güncellenir. Sadece rapor_son_calisma'ya bakılsaydı, tıklamadan hemen sonraki yoklama
+  // ESKİ damgayı okuyup geri sayımı iptal ederdi (buton yanlışlıkla aktifleşir), sonra çekim olunca yeniden başlardı.
+  // manuel_tetikle_istek tıklama anında yazıldığı için max onu yakalar → çekim gerçekleşene dek buton pasif kalır.
   const [raporSon, setRaporSon] = useState<number | null>(null);
   // Damgayı DB'den tazele — 15 sn'de bir + geri sayım sıfırlanınca (ManuelTetikBtn onSuresiDoldu). Böylece ZAMANLI
   // çekim (ör. 17:30) olur olmaz buton pasife düşer; erken tıklama ayrıca sunucuda (API 429) engellenir.
   const raporDurumTazele = useCallback(() => getRaporTetikDurum()
-    .then((d) => setRaporSon(d.raporSonCalisma ? new Date(d.raporSonCalisma).getTime() : null))
+    .then((d) => {
+      const son = d.raporSonCalisma ? new Date(d.raporSonCalisma).getTime() : 0;
+      const istek = d.manuelTetikleIstek ? new Date(d.manuelTetikleIstek).getTime() : 0;
+      const enSon = Math.max(son, istek);
+      setRaporSon(enSon > 0 ? enSon : null);
+    })
     .catch(() => { /* sessiz */ }), []);
   useEffect(() => {
     raporDurumTazele();
