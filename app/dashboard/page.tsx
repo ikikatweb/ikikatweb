@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, deleteSigortaTekliflerByAracTip } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, linkSigortaTekliflerToPolice } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
@@ -1296,10 +1296,10 @@ export default function DashboardPage() {
       const updateField = pTip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
       await updateArac(policeAracId, { [updateField]: pBitisTarih });
 
-      // Poliçe girildi → bu araç+tip için olan tüm teklif kayıtlarını sil
-      // (bir sonraki dönem boş başlasın, yeni teklif istenirse yan yana biriksin)
+      // Poliçe girildi → teklif İSTEĞİ kayıtlarını sil (bir sonraki dönem temiz başlasın),
+      // gelen TEKLİFLERİ ise silme; yeni poliçeye BAĞLA → Belgeler'den sonradan görülebilir.
       await deleteTeklifGonderimlerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ });
-      await deleteSigortaTekliflerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ }); // gelen teklifleri de temizle
+      if (result?.id) await linkSigortaTekliflerToPolice(policeAracId, pTip, result.id).catch(() => { /* sessiz */ });
 
       await loadAll();
       setPoliceDialogOpen(false);
@@ -1318,7 +1318,7 @@ export default function DashboardPage() {
   function teklifKarsilastirAc(y: { aracId: string; plaka: string; tip: string }) {
     // Açılışta mevcut teklifleri acente bazlı input'lara doldur (firma + tutar).
     const tip = y.tip === "Kasko" ? "kasko" : "trafik";
-    const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tip);
+    const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tip && !t.police_id);
     const fMap: Record<string, string> = {}, tMap: Record<string, string> = {};
     for (const t of grup) {
       fMap[t.acente_adi] = t.sigorta_firmasi ?? "";
@@ -1332,7 +1332,7 @@ export default function DashboardPage() {
   async function teklifSatirKaydet(acente: string, firmaVal?: string, tutarVal?: string) {
     if (!teklifKarsilastirArac) return;
     const tip = teklifKarsilastirArac.tip === "Kasko" ? "kasko" : "trafik";
-    const mevcut = sigortaTeklifler.find((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tip && t.acente_adi === acente);
+    const mevcut = sigortaTeklifler.find((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tip && t.acente_adi === acente && !t.police_id);
     const firma = (firmaVal ?? teklifFirma[acente] ?? "").trim();
     const tutarStr = tutarVal ?? teklifTutar[acente] ?? "";
     const tutar = parseParaInput(tutarStr);
@@ -1359,9 +1359,6 @@ export default function DashboardPage() {
       if (/does not exist|relation|column/i.test(msg)) toast.error("‘sigorta_teklif’ tablosu/kolonu yok — migrasyon SQL'ini çalıştırın.", { duration: toastSuresi() });
       else toast.error("Kaydedilemedi: " + msg);
     }
-  }
-  async function teklifSec(t: SigortaTeklif) {
-    try { await secSigortaTeklif(t.id, t.arac_id, t.police_tipi); await teklifleriYenile(); } catch { toast.error("Seçilemedi."); }
   }
 
   async function teklifDialogAc(y: { aracId: string; plaka: string; tip: string; firmaId: string | null; ruhsatUrl: string | null }) {
@@ -1660,7 +1657,7 @@ export default function DashboardPage() {
                             </button>
                             {(() => {
                               const tipKey = y.tip === "Kasko" ? "kasko" : "trafik";
-                              const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tipKey);
+                              const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tipKey && !t.police_id);
                               const enUcuz = grup.length ? Math.min(...grup.map((t) => t.teklif_tutari)) : null;
                               return (
                                 <button type="button"
@@ -2646,12 +2643,11 @@ export default function DashboardPage() {
             ));
             const teklifByAcente = new Map(
               sigortaTeklifler
-                .filter((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tipKey)
+                .filter((t) => t.arac_id === teklifKarsilastirArac.aracId && t.police_tipi === tipKey && !t.police_id)
                 .map((t) => [t.acente_adi, t] as const),
             );
             const gecerli = istenenAcenteler.map((a) => teklifByAcente.get(a)).filter((t): t is SigortaTeklif => !!t);
             const enUcuzTutar = gecerli.length ? Math.min(...gecerli.map((t) => t.teklif_tutari)) : null;
-            const enUcuz = enUcuzTutar != null ? gecerli.find((t) => t.teklif_tutari === enUcuzTutar) ?? null : null;
             const selCls = "h-8 text-xs w-full rounded-md border border-input bg-white px-1.5 outline-none focus:border-ring";
             return (
               <div className="space-y-2 py-1">
@@ -2673,35 +2669,27 @@ export default function DashboardPage() {
                             <div className="min-w-0 flex items-center gap-1">
                               <span className="text-xs font-medium truncate" title={acente}>{acente}</span>
                               {buEnUcuz && <span className="text-[8px] bg-emerald-600 text-white px-1 py-0.5 rounded-full shrink-0">uygun</span>}
-                              {mevcut?.secildi && <span className="text-[8px] bg-blue-600 text-white px-1 py-0.5 rounded-full shrink-0">seçili</span>}
                             </div>
                             <select value={teklifFirma[acente] ?? ""} className={selCls}
                               onChange={(e) => { const v = e.target.value; setTeklifFirma((p) => ({ ...p, [acente]: v })); teklifSatirKaydet(acente, v); }}>
                               <option value="">Firma seçin…</option>
                               {sigortaFirmalari.map((f) => <option key={f} value={f}>{f}</option>)}
                             </select>
-                            <input inputMode="decimal" value={teklifTutar[acente] ?? ""}
-                              onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
-                              onBlur={() => teklifSatirKaydet(acente)}
-                              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                              placeholder="tutar" className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring`} />
+                            {(() => {
+                              const firmaSecili = !!(teklifFirma[acente] ?? "").trim();
+                              return (
+                                <input inputMode="decimal" value={teklifTutar[acente] ?? ""} disabled={!firmaSecili}
+                                  onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
+                                  onBlur={() => teklifSatirKaydet(acente)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                  placeholder={firmaSecili ? "tutar" : "önce firma"} title={firmaSecili ? "" : "Önce sigorta firması seçin"}
+                                  className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:placeholder:text-gray-300`} />
+                              );
+                            })()}
                           </div>
                         );
                       })}
                     </div>
-                    {enUcuz && enUcuzTutar != null ? (
-                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t">
-                        <p className="text-[11px] text-gray-600">
-                          En uygun: <b className="text-emerald-700">{enUcuz.sigorta_firmasi || "—"}</b> · {enUcuz.acente_adi} — <b>{enUcuzTutar.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} ₺</b>
-                        </p>
-                        <button type="button" onClick={() => teklifSec(enUcuz)}
-                          className={`text-[10px] px-2 py-0.5 rounded border shrink-0 ${enUcuz.secildi ? "bg-blue-600 text-white border-blue-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"}`}>
-                          {enUcuz.secildi ? "Seçildi" : "Bunu seç"}
-                        </button>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-gray-400 pt-1">Firma seçip tutar girin — en düşük teklif otomatik “en uygun” işaretlenir.</p>
-                    )}
                   </>
                 )}
               </div>

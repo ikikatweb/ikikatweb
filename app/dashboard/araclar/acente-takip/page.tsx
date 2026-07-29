@@ -2,11 +2,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { getAraclar, getTumPoliceler, deleteAracPolice, updateAracPolice, uploadPolice } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, deleteAracPolice, updateAracPolice, uploadPolice, getSigortaTeklifler } from "@/lib/supabase/queries/araclar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { useAuth, useOturumFiltresi } from "@/hooks";
-import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
+import type { AracWithRelations, AracPolice, SigortaTeklif } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -69,20 +69,25 @@ export default function AcenteTakipPage() {
   const [ePoliceNo, setEPoliceNo] = useState("");
   const [eDosya, setEDosya] = useState<File | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  // Poliçeye bağlı gelen teklifler + görüntüleme diyaloğu
+  const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
+  const [teklifGor, setTeklifGor] = useState<{ policeId: string; plaka: string; tip: string } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData] = await Promise.all([
+      const [aData, pData, sfData, acData, sigTek] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
+        getSigortaTeklifler().catch(() => []),
       ]);
       setAraclar((aData as AracWithRelations[]) ?? []);
       setPoliceler(pData as AracPolice[]);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
+      setSigortaTeklifler(sigTek as SigortaTeklif[]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -97,6 +102,19 @@ export default function AcenteTakipPage() {
     for (const a of araclar) m.set(a.id, a);
     return m;
   }, [araclar]);
+
+  // Poliçe id → o poliçeye bağlı gelen teklifler (ucuzdan pahalıya).
+  const teklifByPolice = useMemo(() => {
+    const m = new Map<string, SigortaTeklif[]>();
+    for (const t of sigortaTeklifler) {
+      if (!t.police_id) continue;
+      const arr = m.get(t.police_id) ?? [];
+      arr.push(t);
+      m.set(t.police_id, arr);
+    }
+    for (const arr of m.values()) arr.sort((a, b) => a.teklif_tutari - b.teklif_tutari);
+    return m;
+  }, [sigortaTeklifler]);
 
   const filtrelenmis = useMemo(() => {
     const q = trAramaNormalize(arama.trim());
@@ -343,6 +361,7 @@ export default function AcenteTakipPage() {
                 <TableHead className="text-white text-[11px] px-2 text-center">Bitiş</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">Poliçe No</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center">PDF</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-center">Teklifler</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center w-[50px]">İşlem</TableHead>
               </TableRow>
             </TableHeader>
@@ -378,6 +397,21 @@ export default function AcenteTakipPage() {
                       ) : "—"}
                     </TableCell>
                     <TableCell className="px-2 text-center">
+                      {(() => {
+                        const tk = teklifByPolice.get(p.id) ?? [];
+                        if (tk.length === 0) return <span className="text-gray-300">—</span>;
+                        const enUcuz = tk[0].teklif_tutari;
+                        return (
+                          <button type="button"
+                            onClick={() => setTeklifGor({ policeId: p.id, plaka: arac?.plaka ?? "—", tip: p.police_tipi === "kasko" ? "Kasko" : "Trafik" })}
+                            title={`En uygun: ${enUcuz.toLocaleString("tr-TR")} ₺ · ${tk.length} teklif`}
+                            className="inline-flex items-center gap-1 text-[10px] text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 hover:bg-purple-100 whitespace-nowrap">
+                            {tk.length} teklif
+                          </button>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell className="px-2 text-center">
                       <div className="flex items-center justify-center gap-0.5">
                         {yDuzenle && (
                           <button type="button" onClick={() => duzenleAc(p)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={13} /></button>
@@ -394,6 +428,40 @@ export default function AcenteTakipPage() {
           </Table>
         </div>
       )}
+
+      {/* Gelen Teklifler (poliçeye bağlı) — görüntüle */}
+      <Dialog open={!!teklifGor} onOpenChange={(o) => { if (!o) setTeklifGor(null); }}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Gelen Teklifler — {teklifGor?.plaka} {teklifGor?.tip}</DialogTitle>
+          </DialogHeader>
+          {teklifGor && (() => {
+            const tk = teklifByPolice.get(teklifGor.policeId) ?? [];
+            const enUcuz = tk.length ? tk[0].teklif_tutari : null;
+            return tk.length === 0 ? (
+              <p className="text-xs text-gray-400 py-4 text-center">Bu poliçe için teklif kaydı yok.</p>
+            ) : (
+              <div className="space-y-1 py-1">
+                {tk.map((t) => {
+                  const uc = t.teklif_tutari === enUcuz;
+                  return (
+                    <div key={t.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded border ${uc ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200"}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium truncate">{t.sigorta_firmasi || "—"}</span>
+                          {uc && <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded-full shrink-0">✓ En uygun</span>}
+                        </div>
+                        <span className="text-[10px] text-gray-400 truncate">{t.acente_adi}</span>
+                      </div>
+                      <span className={`text-sm font-bold tabular-nums shrink-0 ${uc ? "text-emerald-700" : "text-gray-700"}`}>{formatPara(t.teklif_tutari)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Silme Onayı */}
       <Dialog open={!!silOnay} onOpenChange={(o) => !o && setSilOnay(null)}>

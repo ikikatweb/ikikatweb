@@ -284,13 +284,14 @@ export type SigortaTeklif = {
   police_tipi: "kasko" | "trafik";
   acente_adi: string;        // teklif isteği gönderilen acentelerden (teklif_gonderim) seçilir
   sigorta_firmasi: string | null; // teklifin ait olduğu sigorta firması (ör. AXA Sigorta) — sigorta_firmasi tanımından
+  police_id: string | null;  // poliçe girilince o poliçeye bağlanır (null = güncel dönem, henüz poliçe yok)
   teklif_tutari: number;
   teklif_tarihi: string | null;
   secildi: boolean; // kullanıcının seçtiği teklif (en ucuz OTOMATİK "en uygun" vurgulanır; bu ayrıca elle seçim)
   notlar: string | null;
   created_at: string;
 };
-export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi"> & { secildi?: boolean };
+export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi" | "police_id"> & { secildi?: boolean; police_id?: string | null };
 
 export type AracWithRelations = Arac & {
   firmalar?: { firma_adi: string; renk?: string | null; sira_no?: number | null } | null;

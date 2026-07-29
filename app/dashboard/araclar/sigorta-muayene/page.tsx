@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   getAraclar, updateArac,
-  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice,
+  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice, linkSigortaTekliflerToPolice,
 } from "@/lib/supabase/queries/araclar";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
@@ -293,6 +293,9 @@ export default function SigortaMuayenePage() {
       }
       const updateField = pTip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
       await updateArac(policeAracId, { [updateField]: enIleriBitis });
+
+      // Bu araç+tip için girilmiş (güncel dönem) teklifleri yeni poliçeye bağla → Belgeler'den görülebilir.
+      if (result?.id) await linkSigortaTekliflerToPolice(policeAracId, pTip, result.id).catch(() => { /* sessiz */ });
 
       await loadData();
       setPoliceDialogOpen(false);

@@ -483,3 +483,13 @@ export async function deleteSigortaTekliflerByAracTip(aracId: string, policeTipi
     .delete().eq("arac_id", aracId).eq("police_tipi", policeTipi);
   if (error) throw error;
 }
+
+// Poliçe girilince: o araç+tip'in HENÜZ BAĞLANMAMIŞ (güncel dönem) tekliflerini yeni poliçeye bağla.
+// Böylece teklifler silinmez → poliçe listesinden (Belgeler) sonradan görülebilir; yeni dönem temiz (null) başlar.
+export async function linkSigortaTekliflerToPolice(aracId: string, policeTipi: "kasko" | "trafik", policeId: string) {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("sigorta_teklif")
+    .update({ police_id: policeId })
+    .eq("arac_id", aracId).eq("police_tipi", policeTipi).is("police_id", null);
+  if (error) throw error;
+}
