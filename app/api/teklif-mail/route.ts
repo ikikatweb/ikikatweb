@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
-import { KASKO_TEKLIF_KATEGORI, cinsToKaskoSinif, kaskoSablonVarsayilan, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
+import { KASKO_TEKLIF_KATEGORI, cinsToKaskoSinif, kaskoSablonVarsayilan, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -98,15 +98,17 @@ export async function POST(request: Request) {
       } catch { /* sessiz — şartlar eklenemezse standart mail gider */ }
     }
 
-    // Teklif TALEP cümlesi — KASKO ve TRAFİK AYRI (kisa_ad = "kasko"/"trafik"). Böylece kaskoya özel düzenleme
-    // trafik mailini etkilemez. Legacy tek "genel" kayıt varsa yalnız kaskoda geri-uyum için kullanılır.
-    // {plaka} ve {tip} yer tutucuları.
+    // Teklif TALEP cümlesi — KASKO ve TRAFİK AYRI KATEGORİ. Kasko, kaydı yoksa eski "genel" kayda düşer (geri-uyum).
+    // Trafik legacy'e DÜŞMEZ → temiz varsayılanı kullanır. {plaka} ve {tip} yer tutucuları.
     let talepSablon = TEKLIF_TALEP_VARSAYILAN;
     try {
-      const { data: talepRows } = await supabase.from("tanimlamalar")
-        .select("kisa_ad, deger").eq("kategori", TEKLIF_TALEP_KATEGORI);
-      const byKisa = (k: string) => (talepRows ?? []).find((r) => r.kisa_ad === k)?.deger as string | undefined;
-      const val = byKisa(policeTipi) ?? (policeTipi === "kasko" ? byKisa("genel") : undefined);
+      const kat = policeTipi === "kasko" ? TEKLIF_TALEP_KASKO_KATEGORI : TEKLIF_TALEP_TRAFIK_KATEGORI;
+      const { data: tr } = await supabase.from("tanimlamalar").select("deger").eq("kategori", kat).limit(1).maybeSingle();
+      let val = tr?.deger as string | undefined;
+      if ((!val || !String(val).trim()) && policeTipi === "kasko") {
+        const { data: lg } = await supabase.from("tanimlamalar").select("deger").eq("kategori", TEKLIF_TALEP_KATEGORI).limit(1).maybeSingle();
+        val = lg?.deger as string | undefined;
+      }
       if (val && String(val).trim()) talepSablon = String(val);
     } catch { /* sessiz — varsayılan kullanılır */ }
     const talepText = talepSablon.replace(/\{plaka\}/g, plaka).replace(/\{tip\}/g, tipMetni);

@@ -4,9 +4,12 @@
 
 export const KASKO_TEKLIF_KATEGORI = "kasko_teklif_sablon";
 
-// Teklif TALEP cümlesi (hem kasko hem trafik mailinde kullanılır) — tek satırlık, düzenlenebilir.
+// Teklif TALEP cümlesi — KASKO ve TRAFİK AYRI KATEGORİ (her kategoride tek satır). Ayrı kategori olması,
+// tanimlamalar (kategori,deger) benzersiz kısıtıyla çakışmayı önler (aynı metin iki tipte olsa bile sorun olmaz).
 // Yer tutucular: {plaka} = araç plakası, {tip} = "kasko" / "trafik sigortası".
-export const TEKLIF_TALEP_KATEGORI = "teklif_talep_metni";
+export const TEKLIF_TALEP_KATEGORI = "teklif_talep_metni"; // LEGACY (eski tek "genel" kayıt) — yalnız geri-uyum okuması
+export const TEKLIF_TALEP_KASKO_KATEGORI = "teklif_talep_kasko";
+export const TEKLIF_TALEP_TRAFIK_KATEGORI = "teklif_talep_trafik";
 export const TEKLIF_TALEP_VARSAYILAN =
   "Ekte ruhsat fotokopisi bulunan {plaka} plakalı aracımızın süresi dolan {tip} poliçesi için yenileme teklifi çalışmasının yapılmasını rica ederiz.";
 

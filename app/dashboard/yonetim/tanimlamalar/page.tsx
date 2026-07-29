@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet, Search } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
-import { KASKO_TEKLIF_SINIFLAR, KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
+import { KASKO_TEKLIF_SINIFLAR, KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 
@@ -91,23 +91,23 @@ export default function TanimlamalarPage() {
       m[s.key] = row?.deger ?? s.varsayilan;
     }
     setKaskoSablon(m);
-    const talep = (k: string) => tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === k)?.deger;
-    const legacy = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === "genel")?.deger;
-    setTeklifTalepKasko(talep("kasko") ?? legacy ?? TEKLIF_TALEP_VARSAYILAN); // kaskoda eski "genel" düzenlemesi korunur
-    setTeklifTalepTrafik(talep("trafik") ?? TEKLIF_TALEP_VARSAYILAN);        // trafik AYRI — legacy'e düşmez
+    const katDeger = (k: string) => tanimlamalar.find((t) => t.kategori === k)?.deger;
+    const legacy = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI)?.deger;
+    setTeklifTalepKasko(katDeger(TEKLIF_TALEP_KASKO_KATEGORI) ?? legacy ?? TEKLIF_TALEP_VARSAYILAN); // kaskoda eski "genel" korunur
+    setTeklifTalepTrafik(katDeger(TEKLIF_TALEP_TRAFIK_KATEGORI) ?? TEKLIF_TALEP_VARSAYILAN);         // trafik AYRI — legacy'e düşmez
   }, [tanimlamalar]);
   async function kaskoSablonKaydet() {
     setKaskoSablonKaydediyor(true);
     try {
-      // Talep cümleleri — kasko ve trafik AYRI (kisa_ad ile)
-      const talepKaydet = async (kisa: string, deger: string) => {
+      // Talep cümleleri — kasko ve trafik AYRI KATEGORİ (her kategoride tek satır → benzersiz kısıt çakışması yok)
+      const talepKaydet = async (kat: string, deger: string) => {
         const val = deger.trim() || TEKLIF_TALEP_VARSAYILAN;
-        const row = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI && t.kisa_ad === kisa);
+        const row = tanimlamalar.find((t) => t.kategori === kat);
         if (row) { if ((row.deger ?? "") !== val) await updateTanimlama(row.id, { deger: val }); }
-        else await createTanimlama({ kategori: TEKLIF_TALEP_KATEGORI, sekme: "sigorta-muayene", deger: val, kisa_ad: kisa, sira: 1, aktif: true });
+        else await createTanimlama({ kategori: kat, sekme: "sigorta-muayene", deger: val, kisa_ad: "genel", sira: 1, aktif: true });
       };
-      await talepKaydet("kasko", teklifTalepKasko);
-      await talepKaydet("trafik", teklifTalepTrafik);
+      await talepKaydet(TEKLIF_TALEP_KASKO_KATEGORI, teklifTalepKasko);
+      await talepKaydet(TEKLIF_TALEP_TRAFIK_KATEGORI, teklifTalepTrafik);
       // Kasko şartları (sınıf bazlı)
       for (const s of KASKO_TEKLIF_SINIFLAR) {
         const deger = (kaskoSablon[s.key] ?? "").trim();
@@ -117,7 +117,10 @@ export default function TanimlamalarPage() {
       }
       await loadData();
       toast.success("Teklif mail metinleri kaydedildi.");
-    } catch (err) { toast.error(`Kaydedilemedi: ${err instanceof Error ? err.message : String(err)}`); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message ?? JSON.stringify(err);
+      toast.error(`Kaydedilemedi: ${msg}`);
+    }
     finally { setKaskoSablonKaydediyor(false); }
   }
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -635,7 +638,7 @@ export default function TanimlamalarPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay", KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI].includes(k.key)).map((kat) => {
+        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay", KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI].includes(k.key)).map((kat) => {
           const isMuhatap = kat.key.toLowerCase() === "muhatap" || kat.key.toLowerCase() === "banka_muhatap";
           const aramaQ = isMuhatap ? (muhatapArama[kat.key] ?? "").trim() : "";
           const tumItems = getKategoriItems(kat.key).filter((t) => t.deger !== "(boş)");
