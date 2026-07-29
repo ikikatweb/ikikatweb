@@ -152,9 +152,10 @@ export default function DashboardPage() {
   // Gelen sigorta teklifleri (firma+tutar karşılaştırma)
   const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
   const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string } | null>(null);
-  // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar (acente → değer).
+  // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
+  const [teklifNot, setTeklifNot] = useState<Record<string, string>>({});
 
   // Teklif İste dialog
   const [teklifDialogOpen, setTeklifDialogOpen] = useState(false);
@@ -1319,12 +1320,13 @@ export default function DashboardPage() {
     // Açılışta mevcut teklifleri acente bazlı input'lara doldur (firma + tutar).
     const tip = y.tip === "Kasko" ? "kasko" : "trafik";
     const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tip && !t.police_id);
-    const fMap: Record<string, string> = {}, tMap: Record<string, string> = {};
+    const fMap: Record<string, string> = {}, tMap: Record<string, string> = {}, nMap: Record<string, string> = {};
     for (const t of grup) {
       fMap[t.acente_adi] = t.sigorta_firmasi ?? "";
       tMap[t.acente_adi] = formatParaInput(t.teklif_tutari.toFixed(2).replace(".", ","));
+      nMap[t.acente_adi] = t.notlar ?? "";
     }
-    setTeklifFirma(fMap); setTeklifTutar(tMap);
+    setTeklifFirma(fMap); setTeklifTutar(tMap); setTeklifNot(nMap);
     setTeklifKarsilastirArac({ aracId: y.aracId, plaka: y.plaka, tip: y.tip });
   }
   // Bir acente satırını kaydet: firma + tutar. Tutar boşsa varsa siler; firma seçilmemişse bekler (kaydetmez).
@@ -1336,6 +1338,7 @@ export default function DashboardPage() {
     const firma = (firmaVal ?? teklifFirma[acente] ?? "").trim();
     const tutarStr = tutarVal ?? teklifTutar[acente] ?? "";
     const tutar = parseParaInput(tutarStr);
+    const not = (teklifNot[acente] ?? "").trim() || null;
     try {
       if (!tutarStr.trim() || isNaN(tutar) || tutar <= 0) {
         if (mevcut) { await deleteSigortaTeklif(mevcut.id); await teklifleriYenile(); } // tutar boşaltıldı → sil
@@ -1343,14 +1346,14 @@ export default function DashboardPage() {
       }
       if (!firma) return; // firma seçilene kadar kaydetme (geçersiz teklif)
       if (mevcut) {
-        if (mevcut.teklif_tutari !== tutar || (mevcut.sigorta_firmasi ?? "") !== firma) {
-          await updateSigortaTeklif(mevcut.id, { sigorta_firmasi: firma, teklif_tutari: tutar });
+        if (mevcut.teklif_tutari !== tutar || (mevcut.sigorta_firmasi ?? "") !== firma || (mevcut.notlar ?? "") !== (not ?? "")) {
+          await updateSigortaTeklif(mevcut.id, { sigorta_firmasi: firma, teklif_tutari: tutar, notlar: not });
           await teklifleriYenile();
         }
       } else {
         await insertSigortaTeklif({
           arac_id: teklifKarsilastirArac.aracId, police_tipi: tip, acente_adi: acente,
-          sigorta_firmasi: firma, teklif_tutari: tutar, teklif_tarihi: new Date().toISOString().slice(0, 10), notlar: null,
+          sigorta_firmasi: firma, teklif_tutari: tutar, teklif_tarihi: new Date().toISOString().slice(0, 10), notlar: not,
         });
         await teklifleriYenile();
       }
@@ -2628,7 +2631,7 @@ export default function DashboardPage() {
 
       {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
       <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Teklifler — {teklifKarsilastirArac?.plaka} {teklifKarsilastirArac?.tip}</DialogTitle>
           </DialogHeader>
@@ -2657,15 +2660,15 @@ export default function DashboardPage() {
                   </p>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[1fr_1fr_92px] gap-1.5 px-1 text-[10px] text-gray-400 font-medium">
-                      <span>Acente</span><span>Sigorta Firması</span><span className="text-right">Tutar ₺</span>
+                    <div className="grid grid-cols-[1fr_1fr_84px_1.1fr] gap-1.5 px-1 text-[10px] text-gray-400 font-medium">
+                      <span>Acente</span><span>Sigorta Firması</span><span className="text-right">Tutar ₺</span><span>Açıklama</span>
                     </div>
                     <div className="space-y-1">
                       {istenenAcenteler.map((acente) => {
                         const mevcut = teklifByAcente.get(acente);
                         const buEnUcuz = mevcut != null && mevcut.teklif_tutari === enUcuzTutar;
                         return (
-                          <div key={acente} className={`grid grid-cols-[1fr_1fr_92px] gap-1.5 items-center px-1.5 py-1 rounded border ${buEnUcuz ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-100"}`}>
+                          <div key={acente} className={`grid grid-cols-[1fr_1fr_84px_1.1fr] gap-1.5 items-center px-1.5 py-1 rounded border ${buEnUcuz ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-100"}`}>
                             <div className="min-w-0 flex items-center gap-1">
                               <span className="text-xs font-medium truncate" title={acente}>{acente}</span>
                               {buEnUcuz && <span className="text-[8px] bg-emerald-600 text-white px-1 py-0.5 rounded-full shrink-0">uygun</span>}
@@ -2678,12 +2681,20 @@ export default function DashboardPage() {
                             {(() => {
                               const firmaSecili = !!(teklifFirma[acente] ?? "").trim();
                               return (
-                                <input inputMode="decimal" value={teklifTutar[acente] ?? ""} disabled={!firmaSecili}
-                                  onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
-                                  onBlur={() => teklifSatirKaydet(acente)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                                  placeholder={firmaSecili ? "tutar" : "önce firma"} title={firmaSecili ? "" : "Önce sigorta firması seçin"}
-                                  className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:placeholder:text-gray-300`} />
+                                <>
+                                  <input inputMode="decimal" value={teklifTutar[acente] ?? ""} disabled={!firmaSecili}
+                                    onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
+                                    onBlur={() => teklifSatirKaydet(acente)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                    placeholder={firmaSecili ? "tutar" : "önce firma"} title={firmaSecili ? "" : "Önce sigorta firması seçin"}
+                                    className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:placeholder:text-gray-300`} />
+                                  <input type="text" value={teklifNot[acente] ?? ""} disabled={!firmaSecili}
+                                    onChange={(e) => setTeklifNot((p) => ({ ...p, [acente]: e.target.value }))}
+                                    onBlur={() => teklifSatirKaydet(acente)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                    placeholder={firmaSecili ? "açıklama (ops.)" : ""} title="Bu teklif için not (ör. teminat farkı, muafiyet)"
+                                    className="h-8 text-xs w-full rounded-md border border-input bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:cursor-not-allowed" />
+                                </>
                               );
                             })()}
                           </div>

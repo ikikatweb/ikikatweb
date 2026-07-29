@@ -452,6 +452,7 @@ export default function AcenteTakipPage() {
                           {uc && <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded-full shrink-0">✓ En uygun</span>}
                         </div>
                         <span className="text-[10px] text-gray-400 truncate">{t.acente_adi}</span>
+                        {t.notlar && <span className="block text-[10px] text-gray-500 italic truncate" title={t.notlar}>“{t.notlar}”</span>}
                       </div>
                       <span className={`text-sm font-bold tabular-nums shrink-0 ${uc ? "text-emerald-700" : "text-gray-700"}`}>{formatPara(t.teklif_tutari)}</span>
                     </div>
