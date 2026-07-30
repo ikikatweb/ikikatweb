@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { CalendarClock, Plus, Trash2, Loader2 } from "lucide-react";
+import { CalendarClock, Plus, Trash2, Loader2, Printer } from "lucide-react";
 import {
   getOdemePlaniSatirlar, insertOdemePlaniSatir, updateOdemePlaniSatir, deleteOdemePlaniSatir,
   getOdemePlaniKasa, insertOdemePlaniKasa, updateOdemePlaniKasa, deleteOdemePlaniKasa,
@@ -152,6 +152,48 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
     } catch { toast.error("Silinemedi."); }
   }
 
+  // Seçili satırları (yoksa tümünü) ayrı pencerede tablo olarak yazdır.
+  function yazdir() {
+    const secilenler = secili.size > 0 ? sirali.filter((s) => secili.has(s.id)) : sirali;
+    if (secilenler.length === 0) { toast.error("Yazdırılacak satır yok."); return; }
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let gider = 0, gelir = 0;
+    const satirHtml = secilenler.map((s, i) => {
+      const g = Number(s.gider || 0), gl = Number(s.gelir || 0);
+      gider += g; gelir += gl;
+      return `<tr><td>${i + 1}</td><td>${esc(tarihUzun(s.tarih))}</td><td>${esc(s.aciklama ?? "")}</td>`
+        + `<td class="num red">${g ? paraFmt(g) : ""}</td><td class="num green">${gl ? paraFmt(gl) : ""}</td></tr>`;
+    }).join("");
+    const net = gelir - gider;
+    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Ödeme Planı</title>
+      <style>
+        body{font-family:Arial,Helvetica,sans-serif;color:#1E3A5F;margin:24px}
+        h1{font-size:18px;margin:0 0 2px}.alt{font-size:11px;color:#666;margin:0 0 14px}
+        table{width:100%;border-collapse:collapse;font-size:12px}
+        th,td{border:1px solid #ddd;padding:5px 7px;text-align:left}
+        th{background:#f1f5f9}.num{text-align:right;font-variant-numeric:tabular-nums}
+        .red{color:#dc2626}.green{color:#059669}
+        tfoot td{font-weight:bold;background:#f8fafc}
+        @media print{body{margin:0}}
+      </style></head><body>
+      <h1>Ödeme Planı</h1>
+      <p class="alt">${esc(tarihUzun(bugunStr()))} · ${secilenler.length} kalem${secili.size > 0 ? " (seçili)" : ""}</p>
+      <table>
+        <thead><tr><th>#</th><th>Tarih</th><th>Açıklama</th><th class="num">Gider</th><th class="num">Gelir</th></tr></thead>
+        <tbody>${satirHtml}</tbody>
+        <tfoot>
+          <tr><td colspan="3">TOPLAM</td><td class="num red">${paraFmt(gider)}</td><td class="num green">${paraFmt(gelir)}</td></tr>
+          <tr><td colspan="4">NET (Gelir − Gider)</td><td class="num ${net < 0 ? "red" : "green"}">${net < 0 ? "−" : "+"}${paraFmt(Math.abs(net))}</td></tr>
+        </tfoot>
+      </table></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { toast.error("Açılır pencere engellendi — tarayıcıdan izin verin."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { try { w.print(); } catch { /* kullanıcı elle yazdırır */ } }, 300);
+  }
+
   // ---- Yan kasa işlemleri ----
   async function kasaGuncelle(id: string, patch: Partial<OdemePlaniKasa>) {
     const now = new Date().toISOString();
@@ -242,6 +284,13 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
           <span className="text-xs text-gray-400">Son güncelleme: {tarihSaat(sonGuncelleme)}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {satirlar.length > 0 && (
+            <button type="button" onClick={yazdir}
+              title={seciliOzet.adet > 0 ? "Seçili satırları yazdır" : "Tüm satırları yazdır"}
+              className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50">
+              <Printer size={14} /> Yazdır{seciliOzet.adet > 0 ? ` (${seciliOzet.adet})` : ""}
+            </button>
+          )}
           {canSil && seciliOzet.adet > 0 && (
             <button type="button" onClick={seciliSil}
               className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md bg-red-600 text-white hover:bg-red-700">
