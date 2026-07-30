@@ -16,23 +16,43 @@ const GECERLI = /^(\d{4})-/;
 
 export default function TarihYilKoruma() {
   useEffect(() => {
-    const handler = (e: Event) => {
+    // React controlled input'ta da anlaşılsın diye native value setter + input event ile yaz.
+    const yaz = (t: HTMLInputElement, v: string) => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+      if (setter) { setter.call(t, v); t.dispatchEvent(new Event("input", { bubbles: true })); }
+      else t.value = v;
+    };
+
+    // 1) YAZARKEN (input): yıl 4 haneyi AŞARSA fazlasını kes → alana 4 haneden fazla girilemez.
+    //    (2026'yı rakam rakam yazma çalışır; 5. rakam eklenince ilk 4 haneye kırpılır.)
+    const inputHandler = (e: Event) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || !TARIH_TIPLERI.has(t.type) || !t.value) return;
+      const yilToken = t.value.split("-")[0];
+      if (yilToken.length > 4) {
+        yaz(t, yilToken.slice(0, 4) + t.value.slice(yilToken.length));
+        toast.error("Yıl en fazla 4 haneli olabilir (ör. 2026).", { id: "tarih-yil-koruma" });
+      }
+    };
+
+    // 2) ALANDAN ÇIKINCA (focusout): yıl 4 haneli ama makul aralık (1900–2100) dışındaysa temizle + uyar.
+    const blurHandler = (e: Event) => {
       const t = e.target;
       if (!(t instanceof HTMLInputElement) || !TARIH_TIPLERI.has(t.type) || !t.value) return;
       const m = t.value.match(GECERLI);
       const yil = m ? parseInt(m[1], 10) : NaN;
       if (m && yil >= 1900 && yil <= 2100) return; // geçerli → dokunma
-      // React controlled input'lar da güncellensin: native setter + input event
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-      if (setter) { setter.call(t, ""); t.dispatchEvent(new Event("input", { bubbles: true })); }
-      else t.value = "";
+      yaz(t, "");
       toast.error("Geçersiz tarih: yıl 4 haneli olmalı (ör. 2026). Lütfen tarihi yeniden girin.", { id: "tarih-yil-koruma" });
     };
-    // focusout (change DEĞİL): yıl rakam rakam yazılırken (0002→0020→0202→2026) her adımda change tetiklenip
-    // alanı temizliyordu. Alandan ÇIKINCA doğrulamak → kullanıcı 4 haneli yılı yazıp bitirebilir; yalnız
-    // son (geçersiz) değer temizlenir. capture: stopPropagation'lı formlar da kapsansın.
-    document.addEventListener("focusout", handler, true);
-    return () => document.removeEventListener("focusout", handler, true);
+
+    // capture: stopPropagation'lı formlar da kapsansın.
+    document.addEventListener("input", inputHandler, true);
+    document.addEventListener("focusout", blurHandler, true);
+    return () => {
+      document.removeEventListener("input", inputHandler, true);
+      document.removeEventListener("focusout", blurHandler, true);
+    };
   }, []);
   return null;
 }
