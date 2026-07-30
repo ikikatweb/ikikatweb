@@ -732,7 +732,9 @@ export default function ArventoRaporPage() {
 
   // Oklarla tek gün ileri-geri: başlangıç & bitiş aynı güne ayarlanır (referans = bitiş)
   function gunGez(delta: number) {
-    const yeni = gunEkle(bitisInput || baslangicInput, delta);
+    let yeni = gunEkle(bitisInput || baslangicInput, delta);
+    const bugun = trBugun();
+    if (yeni > bugun) yeni = bugun; // ileri tarihe geçme — bugünü aşamaz
     setBaslangicInput(yeni);
     setBitisInput(yeni);
   }
@@ -1192,10 +1194,10 @@ export default function ArventoRaporPage() {
       <div className="flex items-center gap-0.5">
         <button type="button" onClick={() => gunGez(-1)} title="Önceki gün"
           className="h-6 w-6 shrink-0 flex items-center justify-center rounded-md border bg-white hover:bg-gray-100"><ChevronLeft size={13} /></button>
-        <input type="date" value={baslangicInput} max={bitisInput || undefined}
+        <input type="date" value={baslangicInput} max={bitisInput && bitisInput < trBugun() ? bitisInput : trBugun()}
           onChange={(e) => setBaslangicInput(e.target.value)}
           className="flex-1 min-w-0 h-6 text-[10px] border rounded-md px-1 outline-none focus:border-[#1E3A5F]" />
-        <input type="date" value={bitisInput} min={baslangicInput || undefined}
+        <input type="date" value={bitisInput} min={baslangicInput || undefined} max={trBugun()}
           onChange={(e) => setBitisInput(e.target.value)}
           className="flex-1 min-w-0 h-6 text-[10px] border rounded-md px-1 outline-none focus:border-[#1E3A5F]" />
         <button type="button" onClick={() => gunGez(1)} title="Sonraki gün"
@@ -1246,12 +1248,12 @@ export default function ArventoRaporPage() {
         </button>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Başlangıç</Label>
-          <input type="date" value={baslangicInput} max={bitisInput || undefined}
+          <input type="date" value={baslangicInput} max={bitisInput && bitisInput < trBugun() ? bitisInput : trBugun()}
             onChange={(e) => setBaslangicInput(e.target.value)} className={selectClass} />
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Bitiş</Label>
-          <input type="date" value={bitisInput} min={baslangicInput || undefined}
+          <input type="date" value={bitisInput} min={baslangicInput || undefined} max={trBugun()}
             onChange={(e) => setBitisInput(e.target.value)} className={selectClass} />
         </div>
         <button type="button" onClick={() => gunGez(1)}
