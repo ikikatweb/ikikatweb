@@ -338,6 +338,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
 
   // Kamyon plakaları — kamyon izini reglaj çizgisinden AYIRMAK için
   const kamyonPlakaSet = useMemo(() => new Set(kamyonlar.map((r) => plakaNorm(r.plaka))), [kamyonlar]);
+  // Araç etiketi (arvento_cihaz.model) plaka bazlı — chip'te şoför YOKSA bunu göster (ör. iş makineleri).
+  const modelByPlaka = useMemo(() => {
+    const m = new Map<string, string>();
+    if (canliCihazMap) for (const c of canliCihazMap.values()) {
+      if (c.plaka && c.model) m.set(plakaNorm(c.plaka), c.model);
+    }
+    return m;
+  }, [canliCihazMap]);
   // Kamyon izi: kamyonların KENDİ güzergahı (reglaj değil). Ayrı renk/kalınlıkla çizilir.
   const kamyonIzleri = useMemo(() => tumGuzergahTemiz.filter((k) => kamyonPlakaSet.has(plakaNorm(k.plaka))), [tumGuzergahTemiz, kamyonPlakaSet]);
   // Sağ-tık "Araca odaklan" menüsü — haritayı aracın canlı konumuna/güzergahına götürür.
@@ -986,7 +994,11 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
                 <span className="flex flex-col items-start leading-tight">
                   {/* PLAKA en üstte, ŞÖFÖR adı hemen ALTINDA (ayrı satır) */}
                   <span className="font-semibold">{r.plaka}</span>
-                  {r.surucu?.trim() && <span className="text-[10px] font-normal opacity-60">{r.surucu.trim()}</span>}
+                  {(() => {
+                    // Şoför varsa şoför, yoksa araç etiketi (model) — iş makinelerinde etiket görünsün.
+                    const alt = r.surucu?.trim() || modelByPlaka.get(plakaNorm(r.plaka));
+                    return alt ? <span className="text-[10px] font-normal opacity-60">{alt}</span> : null;
+                  })()}
                   {/* Alt satır: km + damper sayısı. Damper rozeti YALNIZ kamyonlarda — Stabilize'e elle
                       atanan iş makinesinde (loader vb.) damper kavramı yok, 🔻0 rozeti kafa karıştırıyordu. */}
                   <span className="text-[10px] opacity-90 flex items-center gap-1.5">
