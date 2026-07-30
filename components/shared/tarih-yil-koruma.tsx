@@ -28,9 +28,11 @@ export default function TarihYilKoruma() {
       else t.value = "";
       toast.error("Geçersiz tarih: yıl 4 haneli olmalı (ör. 2026). Lütfen tarihi yeniden girin.", { id: "tarih-yil-koruma" });
     };
-    // capture: change olayını her formdan önce yakala (stopPropagation'lı bileşenler de kapsansın)
-    document.addEventListener("change", handler, true);
-    return () => document.removeEventListener("change", handler, true);
+    // focusout (change DEĞİL): yıl rakam rakam yazılırken (0002→0020→0202→2026) her adımda change tetiklenip
+    // alanı temizliyordu. Alandan ÇIKINCA doğrulamak → kullanıcı 4 haneli yılı yazıp bitirebilir; yalnız
+    // son (geçersiz) değer temizlenir. capture: stopPropagation'lı formlar da kapsansın.
+    document.addEventListener("focusout", handler, true);
+    return () => document.removeEventListener("focusout", handler, true);
   }, []);
   return null;
 }
