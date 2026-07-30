@@ -1184,6 +1184,30 @@ export default function ArventoRaporPage() {
     </button>
   );
 
+  // Kompakt tarih navigatörü — Stabilize sekmesinde "Raporu şimdi çek" butonunun ALTINA konur (üstteki tam
+  // navigatör Stabilize'de gizlenir). Oklar günü ileri/geri alır; iki tarih kutusu başlangıç/bitiş.
+  const tarihNavKompakt = (
+    <div className="mt-0.5 pt-1 border-t border-gray-100 flex flex-col gap-0.5 min-w-[230px]">
+      {/* Tarihler YAN YANA (eskisi gibi); gerekirse yığın sola doğru genişler (min-w) */}
+      <div className="flex items-center gap-0.5">
+        <button type="button" onClick={() => gunGez(-1)} title="Önceki gün"
+          className="h-6 w-6 shrink-0 flex items-center justify-center rounded-md border bg-white hover:bg-gray-100"><ChevronLeft size={13} /></button>
+        <input type="date" value={baslangicInput} max={bitisInput || undefined}
+          onChange={(e) => setBaslangicInput(e.target.value)}
+          className="flex-1 min-w-0 h-6 text-[10px] border rounded-md px-1 outline-none focus:border-[#1E3A5F]" />
+        <input type="date" value={bitisInput} min={baslangicInput || undefined}
+          onChange={(e) => setBitisInput(e.target.value)}
+          className="flex-1 min-w-0 h-6 text-[10px] border rounded-md px-1 outline-none focus:border-[#1E3A5F]" />
+        <button type="button" onClick={() => gunGez(1)} title="Sonraki gün"
+          className="h-6 w-6 shrink-0 flex items-center justify-center rounded-md border bg-white hover:bg-gray-100"><ChevronRight size={13} /></button>
+      </div>
+      {(baslangic !== trBugun() || bitis !== trBugun()) && (
+        <button type="button" onClick={() => { const b = trBugun(); setBaslangicInput(b); setBitisInput(b); }}
+          className="h-5 text-[10px] rounded-md border bg-white hover:bg-gray-100">Bugüne dön</button>
+      )}
+    </div>
+  );
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -1213,7 +1237,8 @@ export default function ArventoRaporPage() {
         )}
       </div>
 
-      {/* Filtreler + özet */}
+      {/* Filtreler + özet — Stabilize'de GİZLİ (tarih navigatörü "Raporu şimdi çek" altına taşındı) */}
+      {aktifSekme !== "genel" && (
       <div className="bg-white rounded-lg border p-3 mb-4 flex flex-wrap items-end gap-3">
         <button type="button" onClick={() => gunGez(-1)}
           title="Önceki gün (başlangıç = bitiş)" className="h-9 w-8 mb-px flex items-center justify-center rounded-lg border bg-white hover:bg-gray-100">
@@ -1238,6 +1263,7 @@ export default function ArventoRaporPage() {
             title="Bugüne dön" className="h-9 px-2 text-[11px] rounded-lg border bg-white hover:bg-gray-100 mb-px">Bugün</button>
         )}
       </div>
+      )}
 
       {/* Sekmeler — satır kaydırmalı (wrap): yatay scroll olmadan tek ekranda görünür */}
       <div className="flex flex-wrap gap-x-1 gap-y-0.5 mb-3 border-b">
@@ -1308,7 +1334,7 @@ export default function ArventoRaporPage() {
         <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} canliKontakByPlaka={canliKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={<>{canliButton}<ManuelTetikBtn raporSon={raporSon} onTetik={setRaporSon} onSuresiDoldu={raporDurumTazele} /></>} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} sonGuncellemeRapor={raporSon ? new Date(raporSon) : null} />
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={<>{canliButton}<ManuelTetikBtn raporSon={raporSon} onTetik={setRaporSon} onSuresiDoldu={raporDurumTazele} />{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} sonGuncellemeRapor={raporSon ? new Date(raporSon) : null} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
         <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={sermeGuzergahTekrar} tekrarPencereSaat={sermeTekrarPencere} silindirEsik={silindirTekrar} gridMesafe={sermeGridMesafe} transitHiz={sermeTransitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={canliButton} kmlIndir={kmlIndirYetki} />
