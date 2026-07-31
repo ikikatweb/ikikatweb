@@ -194,7 +194,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     const yapi = `${sermeBas}|${bitis}|${sermeMi}`;
     const yapisal = yapiRef.current !== yapi;
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski rakamlar görünür) + yükleniyor göster.
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
+    if (yapisal) { const ilkY = yapiRef.current === ""; yapiRef.current = yapi; if (ilkY) { setLoading(true); setTumGuzergah([]); setRaporlar([]); } } // yalnız İLK yüklemede iskelet; reload'da eski içerik yerinde (tam ekran bozulmaz)
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     // Veri SEZON BAŞINDAN bitişe (sermeBas→bitis): greyder/silindir rotası + özet damperler + rapor. Greyder
     // küçük olduğundan tek sorgu (geniş aralıkta gün-gün yüzlerce istek yerine).
@@ -709,7 +709,8 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     toast.success(`${def.ad} KML olarak indirildi.`, { duration: toastSuresi() });
   }
 
-  if (loading) return <HaritaIskelet />;
+  // Kapsayıcıyı kök yap → tarih değişince (loading) tam ekran kapanmaz (DOM node korunur).
+  if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet /></div>;
   if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
@@ -804,15 +805,15 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
                 <div className="text-[10px] text-gray-400 mt-0.5">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></div>
               )}
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <button type="button" onClick={() => setHamGoster((v) => !v)}
                 title="Açıkken tüm Tanımlamalar filtreleri (tekrar + silindir eşiği) yok sayılır — ham veri gösterilir"
-                className={`h-9 px-2.5 rounded-lg border text-xs font-medium whitespace-nowrap transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
+                className={`h-6 px-1.5 rounded-md border text-[10px] font-medium whitespace-nowrap transition-colors ${hamGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
                 {hamGoster ? "✓ Güzergahı Göster" : "Güzergahı Göster"}
               </button>
               {kmlIndir && (
-                <Button variant="outline" size="sm" onClick={exportKML} className="h-9 gap-1 text-xs">
-                  <Download size={14} /> KML İndir
+                <Button variant="outline" size="sm" onClick={exportKML} className="h-6 px-1.5 gap-1 text-[10px]">
+                  <Download size={11} /> KML İndir
                 </Button>
               )}
               {canliButton}

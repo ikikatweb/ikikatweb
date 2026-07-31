@@ -114,7 +114,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     const yapi = `${bas}|${bitis}`;
     const yapisal = yapiRef.current !== yapi;
     // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri gelene kadar eski rakamlar görünür) + yükleniyor göster.
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); setGuzergahlar([]); setRaporlar([]); }
+    if (yapisal) { const ilkY = yapiRef.current === ""; yapiRef.current = yapi; if (ilkY) { setLoading(true); setGuzergahlar([]); setRaporlar([]); } } // yalnız İLK yüklemede iskelet; reload'da eski içerik yerinde (tam ekran bozulmaz)
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     (async () => {
       try {
@@ -338,7 +338,8 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     toast.success("Tümü KML olarak indirildi.", { duration: toastSuresi() });
   }
 
-  if (loading) return <HaritaIskelet />;
+  // Kapsayıcıyı kök yap → tarih değişince (loading) tam ekran kapanmaz (DOM node korunur).
+  if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet /></div>;
   if (!bas || !bitis) {
     return (
       <div className="text-center py-16 bg-white rounded-lg border">
@@ -365,17 +366,17 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         {sonGuncelleme && (
           <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
         )}
-        <div className="flex flex-col gap-1.5 ml-auto">
+        <div className="flex flex-col gap-1 ml-auto">
           {/* Güzergah (hareket izi) çizgilerini aç/kapat — damper + çalışma noktaları görünmeye devam eder */}
           <button type="button" onClick={() => setGuzergahGoster((v) => !v)}
             title="Araçların hareket ederken bıraktığı güzergah çizgilerini gizle/göster (damper ve çalışma noktaları etkilenmez)"
-            className={`h-9 px-2.5 rounded-lg border text-xs font-medium transition-colors whitespace-nowrap ${guzergahGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
+            className={`h-6 px-1.5 rounded-md border text-[10px] font-medium transition-colors whitespace-nowrap ${guzergahGoster ? "bg-white text-gray-700 border-gray-300 hover:bg-gray-50" : "bg-[#1E3A5F] text-white border-[#1E3A5F]"}`}>
             {guzergahGoster ? "Güzergahları gizle" : "Güzergahları göster"}
           </button>
           {kmlIndir && (
             <Button variant="outline" size="sm" onClick={exportKML} disabled={veriYok}
-              className="h-9 gap-1 text-xs">
-              <Download size={14} /> KML İndir
+              className="h-6 px-1.5 gap-1 text-[10px]">
+              <Download size={11} /> KML İndir
             </Button>
           )}
           {canliButton}

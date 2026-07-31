@@ -162,8 +162,10 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     if (!bas || !bitis) { yukNoRef.current++; setTumGuzergah([]); setRaporlar([]); setLoading(false); return; }
     const yapi = `${bas}|${bitis}`;
     const yapisal = yapiRef.current !== yapi; // tarih değişimi → yükleme göster; periyodik tazeleme → sessiz
-    // Tarih değişti → ESKİ VERİYİ HEMEN TEMİZLE (yoksa yeni veri/çizim gelene kadar eski veri görünür) + yükleniyor göster.
-    if (yapisal) { yapiRef.current = yapi; setLoading(true); setTumGuzergah([]); setRaporlar([]); }
+    const ilkYukleme = yapiRef.current === "";
+    // YALNIZ ilk yüklemede iskelet göster + temizle. Tarih değişiminde (reload) ESKİ HARİTA/KARTLAR YERİNDE KALIR,
+    // yeni veri gelince güncellenir → TAM EKRANDA layout bozulmaz / iskelet flash'ı olmaz / tam ekran korunur.
+    if (yapisal) { yapiRef.current = yapi; if (ilkYukleme) { setLoading(true); setTumGuzergah([]); setRaporlar([]); } }
     const benimNo = ++yukNoRef.current; // bu yüklemenin sırası; yanıt gelince hâlâ en güncel mi diye bakılır
     // HIZLANDIRMA: önce hafif rapor (damper buradan), sonra YALNIZ stabilize araçlarının rotası:
     // damperli kamyon + greyder (reglaj referansı). İlgisiz araçlar (oto/iş mak. ~5 MB) çekilmez + scoped
@@ -880,7 +882,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const ikon = L.divIcon({ html: ocakMakineIkonHtml(), className: "ocak-makine-ikon", iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -12] });
       L.marker([mk.lat, mk.lng], { icon: ikon, zIndexOffset: 900 })
         .addTo(grup)
-        .bindPopup(`<b>⛏️ ${mk.model || mk.cins || "İş Makinesi"}</b><br>${mk.plaka}<br>Çalışma: ${sa}:${String(dk).padStart(2, "0")} (sa:dk)`);
+        .bindPopup(`<b>⛏️ ${modelByPlaka.get(plakaNorm(mk.plaka)) || mk.model || mk.cins || "İş Makinesi"}</b><br>${mk.plaka}<br>Çalışma: ${sa}:${String(dk).padStart(2, "0")} (sa:dk)`);
       bounds.push([mk.lat, mk.lng]);
     }
     // Canlı açıksa araç konumlarını da çerçeveye kat (rapor verisi olmayan günde de canlıya odaklan)
@@ -947,23 +949,29 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     toast.success("Stabilize KML olarak indirildi.", { duration: toastSuresi() });
   }
 
-  if (loading) return <HaritaIskelet chip={7} />;
+  // ÖNEMLİ: tüm durumlar AYNI "harita-tamekran-kapsayici" div'ini kök yapar → React DOM node'u yeniden kullanır,
+  // tarih değişince (loading) div DOM'dan kalkmaz → TAM EKRAN KAPANMAZ.
+  if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet chip={7} /></div>;
   if (!bas || !bitis) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Layers size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
+        </div>
       </div>
     );
   }
   if (kamyonlar.length === 0 && greyderler.length === 0 && !(canliKonumlar && canliKonumlar.length > 0)) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">
-          {formatAralik(bas, bitis)} için kamyon damper verisi ya da reglaj çizgisi yok.
-          <br />Damper (Genel) raporunu ve/veya greyder Mesafe Bilgisi raporunu yükleyin.
-        </p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Layers size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">
+            {formatAralik(bas, bitis)} için kamyon damper verisi ya da reglaj çizgisi yok.
+            <br />Damper (Genel) raporunu ve/veya greyder Mesafe Bilgisi raporunu yükleyin.
+          </p>
+        </div>
       </div>
     );
   }
@@ -1033,14 +1041,14 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           {ocakMakineleri.map((mk) => {
             const sa = Math.floor(mk.calismaSn / 3600), dk = Math.floor((mk.calismaSn % 3600) / 60);
             return (
-              <div key={`om-${mk.plaka}`} title={`${mk.model || mk.cins || "İş Makinesi"} · ${mk.plaka} — çift tıkla/sağ tık: makineye odaklan`}
+              <div key={`om-${mk.plaka}`} title={`${modelByPlaka.get(plakaNorm(mk.plaka)) || mk.model || mk.cins || "İş Makinesi"} · ${mk.plaka} — çift tıkla/sağ tık: makineye odaklan`}
                 onDoubleClick={() => aracaOdaklan(mk.plaka)}
                 onContextMenu={(e) => { e.preventDefault(); setOdakMenu({ x: e.clientX, y: e.clientY, plaka: mk.plaka }); }}
                 className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-xs flex items-center gap-2 shrink-0 select-none cursor-pointer">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-amber-500" />
                 <span className="flex flex-col items-start leading-tight text-gray-700 max-w-[104px]">
                   <span className="font-semibold truncate max-w-full">⛏️ {mk.plaka}</span>
-                  <span className="text-[10px] opacity-60 truncate max-w-full">{mk.model || mk.cins || "İş Makinesi"}</span>
+                  <span className="text-[10px] opacity-60 truncate max-w-full">{modelByPlaka.get(plakaNorm(mk.plaka)) || mk.model || mk.cins || "İş Makinesi"}</span>
                   <span className="text-[10px] text-amber-700">ocakta çalışıyor</span>
                   {(() => { const e = ilkSonKontakMap?.get(plakaNorm(mk.plaka)); return e?.ilk ? (
                     <span className={`text-[10px] text-emerald-600 ${e.ilkT ? "italic opacity-80" : ""}`} title={e.ilkT ? "GPS'ten türetildi — Arvento kontak vermedi (tahmini)" : undefined}>🟢 {e.ilkT ? "~" : ""}{e.ilk.slice(0, 5)} ilk kontak</span>
