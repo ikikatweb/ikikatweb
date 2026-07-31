@@ -203,8 +203,21 @@ export default function ArventoRaporPage() {
   const [bitisInput, setBitisInput] = useState<string>(trBugun());
   const [baslangic, setBaslangic] = useState<string>(trBugun());
   const [bitis, setBitis] = useState<string>(trBugun());
+  // GERÇEK tarih mi? (ör. 2026-04-31 = Nisan 31 GEÇERSİZ — JS'te 1 Mayıs'a kayar; bileşenleri yakalar.)
+  const gecerliTarih = (s: string): boolean => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const [y, m, d] = s.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  };
   useEffect(() => {
-    const id = setTimeout(() => { setBaslangic(baslangicInput); setBitis(bitisInput); }, 500);
+    const id = setTimeout(() => {
+      // Yalnız GEÇERLİ ve tutarlı (bas ≤ bitis) aralığı uygula. Geçersiz/boş/ters girişte SON GEÇERLİ aralık
+      // korunur → "tarih seçin" boş-durumu tetiklenmez, harita/navigatör kaybolmaz.
+      if (gecerliTarih(baslangicInput) && gecerliTarih(bitisInput) && baslangicInput <= bitisInput) {
+        setBaslangic(baslangicInput); setBitis(bitisInput);
+      }
+    }, 500);
     return () => clearTimeout(id);
   }, [baslangicInput, bitisInput]);
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);

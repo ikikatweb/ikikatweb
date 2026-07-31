@@ -541,20 +541,26 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet /></div>;
   if (!bas || !bitis) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Route size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Route size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
+          <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+        </div>
       </div>
     );
   }
   if (araclar.length === 0 && !(canliKonumlar && canliKonumlar.length > 0)) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Route size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">
-          {formatAralik(bas, bitis)} için {plakaFiltre ? "bu makinelere ait güzergah (Mesafe Bilgisi)" : "güzergah (Mesafe Bilgisi)"} verisi yok.
-          <br />Üstteki tarihi değiştirin ya da &quot;Excel Yükle&quot; ile Mesafe Bilgisi raporu yükleyin.
-        </p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Route size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">
+            {formatAralik(bas, bitis)} için {plakaFiltre ? "bu makinelere ait güzergah (Mesafe Bilgisi)" : "güzergah (Mesafe Bilgisi)"} verisi yok.
+            <br />Tarihi değiştirin ya da &quot;Excel Yükle&quot; ile Mesafe Bilgisi raporu yükleyin.
+          </p>
+          <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+        </div>
       </div>
     );
   }

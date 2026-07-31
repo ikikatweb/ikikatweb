@@ -713,9 +713,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet /></div>;
   if (!bas || !bitis) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Layers size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
+          <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+        </div>
       </div>
     );
   }
@@ -724,14 +727,18 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
     : greyderler.length === 0 && silindirler.length === 0) && !canliVar;
   if (veriYok) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Layers size={48} className="mx-auto mb-4" style={{ color: def.renk, opacity: 0.5 }} />
-        <p className="text-gray-500">
-          {formatAralik(bas, bitis)} için <strong style={{ color: def.renk }}>{def.ad}</strong> verisi yok.
-          <br />{sermeMi
-            ? "Greyder Mesafe Bilgisi ve/veya damper raporunu yükleyin."
-            : "Greyder Mesafe Bilgisi (alan) ve silindir Mesafe Bilgisi raporunu yükleyin."}
-        </p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Layers size={48} className="mx-auto mb-4" style={{ color: def.renk, opacity: 0.5 }} />
+          <p className="text-gray-500">
+            {formatAralik(bas, bitis)} için <strong style={{ color: def.renk }}>{def.ad}</strong> verisi yok.
+            <br />{sermeMi
+              ? "Greyder Mesafe Bilgisi ve/veya damper raporunu yükleyin."
+              : "Greyder Mesafe Bilgisi (alan) ve silindir Mesafe Bilgisi raporunu yükleyin."}
+          </p>
+          {/* Navigatör burada da erişilebilir → kullanıcı sıkışmasın (tam ekran + tarih değiştirilebilir). */}
+          <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+        </div>
       </div>
     );
   }

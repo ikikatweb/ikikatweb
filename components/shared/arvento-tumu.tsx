@@ -342,9 +342,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   if (loading) return <div className="space-y-3 harita-tamekran-kapsayici relative"><HaritaIskelet /></div>;
   if (!bas || !bitis) {
     return (
-      <div className="text-center py-16 bg-white rounded-lg border">
-        <Layers size={48} className="mx-auto text-gray-300 mb-4" />
-        <p className="text-gray-500">Yukarıdan bir tarih aralığı seçin.</p>
+      <div className="space-y-3 harita-tamekran-kapsayici relative">
+        <div className="text-center py-16 bg-white rounded-lg border">
+          <Layers size={48} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
+          <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+        </div>
       </div>
     );
   }
