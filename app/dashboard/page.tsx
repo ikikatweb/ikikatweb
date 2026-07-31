@@ -2709,6 +2709,13 @@ export default function DashboardPage() {
             );
             const gecerli = istenenAcenteler.map((a) => teklifByAcente.get(a)).filter((t): t is SigortaTeklif => !!t);
             const enUcuzTutar = gecerli.length ? Math.min(...gecerli.map((t) => t.teklif_tutari)) : null;
+            // Satırları ucuzdan pahalıya sırala; fiyat girilmemiş (boş) olanlar en ALTTA (ada göre).
+            const siraliAcenteler = [...istenenAcenteler].sort((a, b) => {
+              const ta = teklifByAcente.get(a)?.teklif_tutari, tb = teklifByAcente.get(b)?.teklif_tutari;
+              const va = typeof ta === "number" && ta > 0 ? ta : Infinity;
+              const vb = typeof tb === "number" && tb > 0 ? tb : Infinity;
+              return va !== vb ? va - vb : a.localeCompare(b, "tr");
+            });
             const selCls = "h-8 text-xs w-full rounded-md border border-input bg-white px-1.5 outline-none focus:border-ring";
             return (
               <div className="space-y-2 py-1">
@@ -2722,7 +2729,7 @@ export default function DashboardPage() {
                       <span>Acente</span><span>Sigorta Firması</span><span className="text-right">Tutar ₺</span><span>Açıklama</span>
                     </div>
                     <div className="space-y-1">
-                      {istenenAcenteler.map((acente) => {
+                      {siraliAcenteler.map((acente) => {
                         const mevcut = teklifByAcente.get(acente);
                         const buEnUcuz = mevcut != null && mevcut.teklif_tutari === enUcuzTutar;
                         return (
