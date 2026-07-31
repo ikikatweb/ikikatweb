@@ -338,7 +338,7 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                   // Tarihi geçmiş (silinmemiş) satır = ödeme yapılıp temizlenmemiş → kırmızı uyarı.
                   const gecmis = s.tarih < bugunStr();
                   return (
-                    <tr key={s.id} className={`border-b border-gray-100 ${gecmis ? "bg-red-100" : (tarihRenk.get(s.tarih) ?? "")}`}>
+                    <tr key={s.id} className={`border-b border-gray-300 ${gecmis ? "bg-red-100" : (tarihRenk.get(s.tarih) ?? "")}`}>
                       <td className="px-1 py-0.5 align-middle">
                         <div className="flex items-center gap-1.5">
                           <input type="checkbox" checked={secili.has(s.id)} onChange={() => seciliToggle(s.id)}
