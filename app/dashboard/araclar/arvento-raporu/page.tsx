@@ -532,30 +532,73 @@ export default function ArventoRaporPage() {
     }
     return m;
   }, [canliCihazMap]);
+  // Bir araç için bağlı cihazı bul: ÖNCE sabit NODE kodu (araclar.arvento_node), yoksa PLAKA eşleşmesi.
+  // Plaka değişebilir ama node kodu (ör. C11L00017274) her cihazda sabittir → asıl köprü budur.
+  const aracCihaz = useCallback((a: AracAtama): { node: string; model: string | null } | null => {
+    const nd = a.arventoNode?.trim();
+    if (nd) { const c = canliCihazMap.get(nd); return { node: nd, model: c?.model ?? null }; }
+    return cihazByPlaka.get(plakaNorm(a.plaka)) ?? null;
+  }, [canliCihazMap, cihazByPlaka]);
+  // Cihaz kodlarını Arvento'dan (arvento_cihaz, plaka eşleşmesiyle) araclar.arvento_node'a SABİTLE — bir kez.
+  // Amaç: plaka sonradan değişse de kod sabit kalsın. Yalnız node'u BOŞ olan + plakası cihazla eşleşen araçları doldurur
+  // (elle bağlanmışları ezmez). Node yazılınca haritadaki etiket/şoför köprüsü kalıcılaşır.
+  const nodeSabitlendiRef = useRef(false);
+  useEffect(() => {
+    if (nodeSabitlendiRef.current) return;
+    if (atamalar.length === 0 || cihazByPlaka.size === 0) return; // ikisi de hazır olmalı
+    const eksik = atamalar.filter((a) => !a.arventoNode?.trim() && cihazByPlaka.get(plakaNorm(a.plaka)));
+    nodeSabitlendiRef.current = true;
+    if (eksik.length === 0) return;
+    (async () => {
+      let yazilan = 0;
+      for (const a of eksik) {
+        const c = cihazByPlaka.get(plakaNorm(a.plaka));
+        if (!c) continue;
+        try { await updateArac(a.id, { arvento_node: c.node }); yazilan++; } catch { /* kolon yoksa sessiz */ }
+      }
+      setAtamalar((prev) => prev.map((a) => {
+        if (a.arventoNode?.trim()) return a;
+        const c = cihazByPlaka.get(plakaNorm(a.plaka));
+        return c ? { ...a, arventoNode: c.node } : a;
+      }));
+      if (yazilan > 0) toast.success(`${yazilan} araç için cihaz kodu Arvento'dan eşlenip kaydedildi.`, { duration: toastSuresi() });
+    })();
+  }, [atamalar, cihazByPlaka]);
 
-  // Tüm atamaları DB'ye yaz (araclar.arvento_sekmeler + araclar.surucu)
+  // Tüm atamaları DB'ye yaz (araclar.arvento_sekmeler + araclar.surucu + araclar.arvento_node)
   const atamalariKaydet = useCallback(async () => {
     setAtamaKaydet(true);
     try {
       for (const a of atamalar) {
-        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null });
+        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null, arvento_node: a.arventoNode?.trim() || null });
       }
       // Cihaz modeli (haritadaki "AROCS") değişiklikleri → arvento_cihaz.model (node ile). Yalnız cihazı olan plakalar.
       // Uygulanan değişiklikleri topla → hem yerel haritayı güncellemek için (arvento_cihaz anon SELECT RLS ile
       // engelli, getCihazlarDirect boş döner; API GET'te de s-maxage=300 CDN bayat kalabilir → yeniden çekmiyoruz).
       const uygulanan: { node: string; model: string | null }[] = [];
+      let araclarModelDegisti = false;
       for (const [normP, deger] of cihazModelDuzen) {
-        const c = cihazByPlaka.get(normP);
-        if (!c) continue; // bu plakanın cihaz kaydı yok → yazılamaz
         const yeni = deger.trim() || null;
-        if (yeni === (c.model ?? null)) continue; // değişmemiş
-        await updateCihazModelByNode(c.node, yeni); // service-role API (PATCH) — RLS'i atlar, kalıcı yazar
-        uygulanan.push({ node: c.node.trim(), model: yeni });
+        const atama = atamalar.find((a) => plakaNorm(a.plaka) === normP);
+        const c = atama ? aracCihaz(atama) : cihazByPlaka.get(normP) ?? null; // node → yoksa plaka
+        if (c) {
+          // Cihaz bağlı (node veya plaka) → arvento_cihaz.model (node ile) — haritadaki etiket.
+          if (yeni === (c.model ?? null)) continue;
+          await updateCihazModelByNode(c.node, yeni); // service-role API (PATCH) — RLS'i atlar, kalıcı yazar
+          uygulanan.push({ node: c.node.trim(), model: yeni });
+        } else {
+          // Cihaz kaydı YOK → etiketi araclar.model'e yaz (plaka bazlı). modelMap araclar.model'e düştüğü için görünür.
+          if (!atama) continue;
+          if (yeni === (atama.model ?? null)) continue;
+          await updateArac(atama.id, { model: yeni });
+          araclarModelDegisti = true;
+        }
       }
       surucuOverrideCacheTemizle(); // yeni şoför adı bir sonraki veri çekiminde hemen görünsün
       arventoRaporCacheTemizle();   // rapor cache'i düş → yeni şoför adı cache'lenmiş rapordan gelmesin
       getSurucuOverrideMap().then(setSurucuOverride).catch(() => { /* sessiz */ });
       setGuzergahRefresh((v) => v + 1); // kartlar/haritalar F5 beklemeden yeni isimle tazelensin
+      if (araclarModelDegisti) getPlakaSantiyeMap(bitis).then(setPlakaSantiye).catch(() => { /* sessiz */ }); // araclar.model → modelMap/etiket tazele
       setCihazModelDuzen(new Map()); // düzenleme tamponunu temizle
       if (uygulanan.length) setCanliCihazMap((prev) => { // haritadaki etiketi anında güncelle (yeniden çekmeden)
         const m: CihazMap = new Map(prev);
@@ -570,7 +613,7 @@ export default function ArventoRaporPage() {
     } catch (err) {
       toast.error(`Kayıt hatası: ${err instanceof Error ? err.message : String(err)}`, { duration: toastSuresi() });
     } finally { setAtamaKaydet(false); }
-  }, [atamalar, loadAtamalar, cihazModelDuzen, cihazByPlaka]);
+  }, [atamalar, loadAtamalar, cihazModelDuzen, cihazByPlaka, aracCihaz, bitis]);
 
   // Cihaz listesi (Canlı node→plaka) — kayıtlı sayıyı yükle + Excel içe aktar
   // Cihaz Excel yükleme kaldırıldı — node→plaka eşlemesi arvento_cihaz tablosunda kalıcı, canlı takip onu okur.
@@ -1827,10 +1870,11 @@ export default function ArventoRaporPage() {
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="border-b bg-gray-50 text-gray-500">
+                    <th className="text-left font-semibold px-2 py-2" title="Cihazın sabit NODE kodu (ör. C11L00017274) — Arvento'dan gelir, DEĞİŞTİRİLEMEZ. Plaka değişse de bu kod sabit kalır → araç–cihaz eşleşmesi bununla yapılır.">Cihaz Kodu</th>
                     <th className="text-left font-semibold px-2 py-2">Plaka</th>
                     <th className="text-left font-semibold px-2 py-2">Cins</th>
                     <th className="text-left font-semibold px-2 py-2">Marka/Model</th>
-                    <th className="text-left font-semibold px-2 py-2" title="Haritada plaka altında görünen yazı (araç etiketi, ör. AROCS). Buradan düzenlenir; cihaz kaydı olmayan araçta değiştirilemez.">Araç Etiketi</th>
+                    <th className="text-left font-semibold px-2 py-2" title="Haritada plaka altında görünen yazı (araç etiketi, ör. AROCS). Buradan düzenlenir.">Araç Etiketi</th>
                     <th className="text-left font-semibold px-2 py-2" title="Dolu ise sitede Arvento'dan gelen sürücü adının YERİNE bu gösterilir. Boş = Arvento adı. Tire (-) = isim hiç gösterilmez.">Şoför</th>
                     {ATAMA_SEKMELERI.map((s) => (
                       <th key={s.key} className="font-semibold px-2 py-2 text-center whitespace-nowrap">{s.ad}</th>
@@ -1852,23 +1896,30 @@ export default function ArventoRaporPage() {
                       const atanmis = Array.isArray(a.sekmeler);
                       return (
                         <tr key={a.id} className="border-b hover:bg-gray-50">
+                          {/* CİHAZ KODU (NODE) — Arvento'dan gelen sabit köprü. Salt-okunur; plaka değişse de sabit kalır. */}
+                          {(() => { const nd = a.arventoNode?.trim() || aracCihaz(a)?.node || null; return (
+                            <td className="px-2 py-1.5 font-mono text-[11px] text-gray-500 whitespace-nowrap" title={nd ? "Cihazın sabit node kodu (Arvento'dan) — değiştirilemez." : "Bu araç için cihaz kodu bulunamadı (plaka eşleşmiyor)."}>
+                              {nd ?? "—"}
+                            </td>
+                          ); })()}
                           <td className="px-2 py-1.5 font-medium text-gray-700 whitespace-nowrap">{a.plaka}</td>
                           <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap">{a.cinsi ?? "—"}</td>
                           <td className="px-2 py-1.5 text-gray-500 max-w-[220px] truncate" title={[a.marka, a.model].filter(Boolean).join(" ") || undefined}>
                             {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
                           </td>
-                          {/* CİHAZ MODELİ (haritada plaka altındaki yazı, ör. AROCS) = arvento_cihaz.model. Cihaz kaydı yoksa düzenlenemez. */}
+                          {/* ARAÇ ETİKETİ (haritada plaka altındaki yazı, ör. AROCS). Cihaz bağlı VARSA (node/plaka)
+                              arvento_cihaz.model'e, YOKSA araclar.model'e yazılır → her araç için düzenlenebilir. */}
                           {(() => {
                             const normP = plakaNorm(a.plaka);
-                            const cihaz = cihazByPlaka.get(normP);
-                            const deger = cihazModelDuzen.has(normP) ? cihazModelDuzen.get(normP)! : (cihaz?.model ?? "");
+                            const cihaz = aracCihaz(a);
+                            const deger = cihazModelDuzen.has(normP) ? cihazModelDuzen.get(normP)! : (cihaz?.model ?? a.model ?? "");
                             return (
                               <td className="px-2 py-1.5">
-                                <input type="text" value={deger} disabled={!cihaz}
+                                <input type="text" value={deger}
                                   onChange={(e) => cihazModelDegis(a.plaka, e.target.value)}
-                                  placeholder={cihaz ? "Araç etiketi" : "Cihaz kaydı yok"}
-                                  title={cihaz ? "Haritada plaka altında görünür (kaydetmek için Atamaları Kaydet)" : "Bu plakaya bağlı canlı cihaz kaydı yok — etiket düzenlenemez"}
-                                  className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed" />
+                                  placeholder="Araç etiketi"
+                                  title={cihaz ? "Cihaza bağlı: haritada plaka altında görünür (Atamaları Kaydet)" : "Cihazsız: etiket araca (model) kaydedilir (Atamaları Kaydet)"}
+                                  className="h-7 w-28 rounded border border-gray-200 bg-white px-2 text-xs outline-none focus:border-[#1E3A5F]" />
                               </td>
                             );
                           })()}
