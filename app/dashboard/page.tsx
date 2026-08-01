@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
+import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
@@ -1544,6 +1545,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
       <YedekHatirlatma />
       <BordroHatirlatma />
+      <BildirgeHatirlatma />
 
       {/* Sezon Maliyeti özeti (yalnız yönetici; gizlenen şantiyeler hariç) */}
       <div className="mb-4">

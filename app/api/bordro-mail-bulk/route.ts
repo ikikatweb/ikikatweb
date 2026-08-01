@@ -296,6 +296,29 @@ export async function POST(request: Request) {
         text: metin,
         html,
       });
+      // Muhasebe cevabı (SGK bildirgesi) takibi için "bekliyor" kaydı aç — yalnız giriş/çıkış
+      // (transfer SGK bildirgesi üretmez). PC tarafı scripts/personel-bildirge-sync cevabı yakalayınca kapatır.
+      // Mail başarıyla gitti; takip kaydı yazılamasa bile gönderim başarılı sayılır (sessiz geç).
+      try {
+        const trBugun = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" }); // YYYY-MM-DD (TR)
+        const { data: mevcut } = await supabase
+          .from("personel_islem_takip").select("personel_tc, tip").eq("durum", "bekliyor");
+        const varSet = new Set((mevcut ?? []).map((r) => `${r.tip}|${(r.personel_tc ?? "").replace(/\D/g, "")}`));
+        const takip = changes
+          .filter((c) => c.tip === "giris" || c.tip === "cikis")
+          .filter((c) => !varSet.has(`${c.tip}|${(c.personelTc ?? "").replace(/\D/g, "")}`)) // aynı açık talebi ikiye bölme
+          .map((c) => ({
+            firma_id: firmaId,
+            personel_ad: c.personelAd,
+            personel_tc: c.personelTc ?? null,
+            tip: c.tip,
+            islem_tarihi: /^\d{4}-\d{2}-\d{2}$/.test(c.tarih) ? c.tarih : null,
+            gonderim_tarihi: trBugun,
+            durum: "bekliyor",
+            created_by_ad: gonderenKullaniciAd ?? null,
+          }));
+        if (takip.length > 0) await supabase.from("personel_islem_takip").insert(takip);
+      } catch { /* takip kaydı opsiyonel — mail gönderimini etkilemez */ }
       return NextResponse.json({
         mesaj: `${changes.length} değişiklik tek mailde gönderildi`,
         messageId: info.messageId,
