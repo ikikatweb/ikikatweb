@@ -19,7 +19,7 @@ export type BildirgeSonuc = {
 };
 
 // Türkçe harfleri sadeleştirip büyük harfe çevir (PDF başlığı eşleştirmesi için — SGK formu Türkçe).
-function trUpper(s: string): string {
+export function trUpper(s: string): string {
   return s
     .replace(/İ/g, "I").replace(/ı/g, "I").replace(/i/g, "I")
     .replace(/Ş/g, "S").replace(/ş/g, "S")
@@ -48,7 +48,7 @@ async function pdfMetin(buf: Buffer): Promise<string> {
 }
 
 // PDF metninden bildirge tipini anla: SGK "SİGORTALI İŞE GİRİŞ BİLDİRGESİ" / "SİGORTALI İŞTEN AYRILIŞ BİLDİRGESİ".
-function bildirgeTipi(metinUpper: string): "giris" | "cikis" | null {
+export function bildirgeTipi(metinUpper: string): "giris" | "cikis" | null {
   const t = metinUpper.replace(/\s+/g, " ");
   const ayrilis = t.includes("AYRILIS") || t.includes("ISTEN CIKIS");
   const giris = t.includes("ISE GIRIS");
@@ -62,6 +62,38 @@ function bildirgeTipi(metinUpper: string): "giris" | "cikis" | null {
 
 const tcNorm = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
+// DD.MM.YYYY / DD/MM/YYYY / DD-MM-YYYY → YYYY-MM-DD (bekleyen kaydın islem_tarihi formatı)
+function tarihNormalize(g: string, a: string, y: string): string {
+  return `${y}-${a.padStart(2, "0")}-${g.padStart(2, "0")}`;
+}
+// YYYY-MM-DD → DD.MM.YYYY (kullanıcıya gösterim). Geçersizse olduğu gibi döndür.
+function ymdToTr(s: string | null | undefined): string {
+  const m = (s ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : (s ?? "?");
+}
+// PDF metnindeki TÜM tarihleri YYYY-MM-DD kümesi olarak döndür (gün.ay.yıl varyantları + yyyy-mm-dd)
+export function tumTarihler(norm: string): Set<string> {
+  const set = new Set<string>();
+  for (const m of norm.matchAll(/\b(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})\b/g)) set.add(tarihNormalize(m[1], m[2], m[3]));
+  for (const m of norm.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) set.add(`${m[1]}-${m[2]}-${m[3]}`);
+  return set;
+}
+// İlgili etikete (İşe Giriş / İşten Ayrılış Tarihi) EN YAKIN tarihi bul — en güvenilir sinyal.
+// `norm`: Türkçe sadeleştirilmiş, boşlukları teke indirilmiş BÜYÜK harf metin (rakamlar/nokta korunur).
+export function etiketliTarih(norm: string, tip: "giris" | "cikis"): string | null {
+  const etiketler = tip === "giris"
+    ? ["ISE GIRIS TARIHI", "GIRIS TARIHI", "ISE BASLAMA TARIHI"]
+    : ["ISTEN AYRILIS TARIHI", "AYRILIS TARIHI", "ISTEN CIKIS TARIHI", "CIKIS TARIHI"];
+  for (const et of etiketler) {
+    const i = norm.indexOf(et);
+    if (i < 0) continue;
+    const pencere = norm.slice(i + et.length, i + et.length + 30); // etiketten sonraki ilk tarih
+    const m = pencere.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+    if (m) return tarihNormalize(m[1], m[2], m[3]);
+  }
+  return null;
+}
+
 // Açık talepleri tara, muhasebe kutularındaki bildirge PDF'lerini oku, eşleşenleri kapat.
 export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -72,14 +104,14 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
   const kapatilan: BildirgeSonuc["kapatilan"] = [];
   const uyari: string[] = [];
 
-  // 1) Açık talepler (TC'si olanlar — eşleştirme TC ile yapılır)
+  // 1) Açık talepler (TC'si olanlar — eşleştirme TC + tip + TARİH ile yapılır)
   const { data: acik, error: acikErr } = await supabase
     .from("personel_islem_takip")
-    .select("id, personel_ad, personel_tc, tip")
+    .select("id, personel_ad, personel_tc, tip, islem_tarihi")
     .eq("durum", "bekliyor");
   if (acikErr) throw new Error("Açık talepler okunamadı: " + acikErr.message);
   const bekleyen = (acik ?? []).filter((r) => tcNorm(r.personel_tc).length === 11) as {
-    id: string; personel_ad: string; personel_tc: string | null; tip: "giris" | "cikis";
+    id: string; personel_ad: string; personel_tc: string | null; tip: "giris" | "cikis"; islem_tarihi: string | null;
   }[];
   if (bekleyen.length === 0) return { taranan: 0, eslesme: 0, kapatilan, uyari: ["Bekleyen talep yok."] };
 
@@ -134,12 +166,43 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
             let metin = "";
             try { metin = await pdfMetin(ek.content as Buffer); }
             catch (e) { uyari.push(`PDF okunamadı (${ek.filename ?? "?"}): ${e instanceof Error ? e.message : String(e)}`); continue; }
-            const tip = bildirgeTipi(trUpper(metin));
-            if (!tip) continue;
+            // Normalleştirilmiş metin (Türkçe sadeleştirilmiş, boşluk teke indirilmiş) → tip + tarih tespiti
+            const norm = trUpper(metin).replace(/\s+/g, " ");
+            const tip = bildirgeTipi(norm);
+            if (!tip) continue; // içerik giriş/çıkış bildirgesi değil
             const digits = metin.replace(/\D/g, "");
-            // Eşleş: aynı tip + TC PDF metninde geçiyor + hâlâ bekliyor (yerel listede)
-            const aday = bekleyen.find((r) => r.tip === tip && digits.includes(tcNorm(r.personel_tc)));
-            if (!aday) continue;
+            // Bu PDF'teki tarihler: önce etikete yakın olan (İşe Giriş/İşten Ayrılış Tarihi), sonra tüm tarihler
+            const pdfTarihler = tumTarihler(norm);
+            const etiket = etiketliTarih(norm, tip);
+            if (etiket) pdfTarihler.add(etiket);
+            const pdfTarihVar = pdfTarihler.size > 0;
+
+            // Adaylar: aynı tip + TC PDF'te geçiyor (aynı TC'de hem giriş hem çıkış olabilir → tip ayırır)
+            const adaylar = bekleyen.filter((r) => r.tip === tip && digits.includes(tcNorm(r.personel_tc)));
+            if (adaylar.length === 0) continue;
+
+            // TARİH TEYİDİ: bizim gönderdiğimiz islem_tarihi PDF'teki tarihle (tercihen etiketli) tutmalı.
+            // 1) Tarihi tutan aday → kesin eşleşme. 2) Tarihsiz kayıt varsa (islem_tarihi boş) → doğrulanamaz, kabul.
+            // 3) PDF'te hiç tarih yoksa → doğrulayamadık, tip+TC ile eşleştir ama uyar. 4) Tarih tutmuyorsa → KAPATMA, uyar.
+            let aday = adaylar.find((r) => r.islem_tarihi && pdfTarihler.has(r.islem_tarihi))
+                    ?? adaylar.find((r) => !r.islem_tarihi)
+                    ?? null;
+            if (!aday) {
+              if (!pdfTarihVar) {
+                aday = adaylar[0]; // PDF'ten tarih okunamadı → sadece tip+TC ile eşle
+                uyari.push(`${adaylar[0].personel_ad} (${tip === "giris" ? "giriş" : "çıkış"}): tarih PDF'ten okunamadı, TC+tip ile eşleştirildi.`);
+              } else {
+                // Tip+TC uyuyor ama TARİH tutmuyor (ör. 31.07 çıkış beklenirken PDF'te 25.07) → KAPATMA,
+                // uyuşmazlığı kayda yaz → ana sayfada uyarının yanında görünsün. Kayıt "bekliyor" kalır.
+                const hedef = adaylar[0];
+                const pdfTr = [...pdfTarihler].map(ymdToTr).join(", ");
+                const not = `Gelen ${tip === "giris" ? "giriş" : "çıkış"} bildirgesindeki tarih (${pdfTr}) sizin kaydınızla (${ymdToTr(hedef.islem_tarihi)}) uyuşmuyor.`;
+                await supabase.from("personel_islem_takip")
+                  .update({ uyusmazlik: not }).eq("id", hedef.id).eq("durum", "bekliyor");
+                uyari.push(`${hedef.personel_ad}: ${not}`);
+                continue;
+              }
+            }
             const { error: updErr } = await supabase
               .from("personel_islem_takip")
               .update({
@@ -148,6 +211,7 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
                 cevap_pdf_ad: ek.filename ?? null,
                 cevap_kutu: kutu.etiket,
                 cevap_gonderen: gonderen || null,
+                uyusmazlik: null, // varsa önceki uyuşmazlık işareti temizlenir (doğru bildirge geldi)
               })
               .eq("id", aday.id).eq("durum", "bekliyor");
             if (!updErr) {

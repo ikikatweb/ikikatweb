@@ -10,6 +10,7 @@ export type PersonelIslemTakip = {
   islem_tarihi: string | null;
   gonderim_tarihi: string; // YYYY-MM-DD
   durum: "bekliyor" | "tamamlandi";
+  uyusmazlik: string | null; // gelen bildirge kayıtla tutmuyorsa açıklama (ör. tarih farkı)
   created_by_ad: string | null;
   created_at: string;
 };
@@ -19,7 +20,7 @@ export async function getBekleyenBildirgeler(): Promise<PersonelIslemTakip[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("personel_islem_takip")
-    .select("id, personel_ad, personel_tc, tip, islem_tarihi, gonderim_tarihi, durum, created_by_ad, created_at")
+    .select("id, personel_ad, personel_tc, tip, islem_tarihi, gonderim_tarihi, durum, uyusmazlik, created_by_ad, created_at")
     .eq("durum", "bekliyor")
     .order("gonderim_tarihi", { ascending: true });
   if (error) return []; // tablo yoksa / RLS → sessiz (dashboard kartı gizlenir)

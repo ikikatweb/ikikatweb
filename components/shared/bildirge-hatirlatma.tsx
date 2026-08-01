@@ -42,6 +42,7 @@ export default function BildirgeHatirlatma() {
 
   const bugun = trBugun();
   const gecikmis = kayitlar.filter((k) => gunFarki(k.gonderim_tarihi, bugun) >= 1).length;
+  const uyusmazlikSayi = kayitlar.filter((k) => k.uyusmazlik).length;
 
   return (
     <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-red-900 shadow-sm">
@@ -54,20 +55,29 @@ export default function BildirgeHatirlatma() {
           <div className="text-xs text-red-700">
             Muhasebeye giriş/çıkış maili gönderildi, işe giriş/çıkış bildirgesi (cevap) henüz gelmedi.
             {gecikmis > 0 && <span className="font-semibold"> {gecikmis} tanesi gün aşımında.</span>}
+            {uyusmazlikSayi > 0 && <span className="font-semibold text-red-800"> {uyusmazlikSayi} tanesinde gelen bildirge kayıtla uyuşmuyor.</span>}
           </div>
         </div>
       </div>
-      <ul className="mt-2 space-y-1 pl-9 text-sm">
+      <ul className="mt-2 space-y-1.5 pl-9 text-sm">
         {kayitlar.slice(0, 12).map((k) => {
           const fark = gunFarki(k.gonderim_tarihi, bugun);
           const gecikme = fark >= 1 ? ` — ${fark} gün gecikti` : " — bugün bekliyor";
           return (
-            <li key={k.id} className="flex items-center gap-2">
-              <span className={k.tip === "giris" ? "text-emerald-700 font-medium" : "text-red-700 font-medium"}>
-                {k.tip === "giris" ? "İşe giriş" : "İşten çıkış"}
-              </span>
-              <span className="text-red-900">{k.personel_ad}</span>
-              <span className={fark >= 1 ? "text-red-600 text-xs font-semibold" : "text-red-500 text-xs"}>{gecikme}</span>
+            <li key={k.id}>
+              <div className="flex items-center gap-2">
+                <span className={k.tip === "giris" ? "text-emerald-700 font-medium" : "text-red-700 font-medium"}>
+                  {k.tip === "giris" ? "İşe giriş" : "İşten çıkış"}
+                </span>
+                <span className="text-red-900">{k.personel_ad}</span>
+                <span className={fark >= 1 ? "text-red-600 text-xs font-semibold" : "text-red-500 text-xs"}>{gecikme}</span>
+              </div>
+              {k.uyusmazlik && (
+                <div className="mt-0.5 flex items-start gap-1 rounded-md bg-amber-100 border border-amber-300 px-2 py-1 text-xs text-amber-900">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-600" />
+                  <span>{k.uyusmazlik}</span>
+                </div>
+              )}
             </li>
           );
         })}

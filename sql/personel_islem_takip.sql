@@ -16,9 +16,12 @@ create table if not exists personel_islem_takip (
   cevap_pdf_ad     text,                           -- ekteki PDF dosya adı
   cevap_kutu       text,                           -- hangi posta kutusunda bulundu (ikikat/kadtem)
   cevap_gonderen   text,                           -- bilgi amaçlı (filtre değil)
+  uyusmazlik       text,                           -- gelen bildirge kayıtla tutmuyorsa (ör. tarih farkı) açıklama → ana sayfada gösterilir
   created_by_ad    text,
   created_at       timestamptz not null default now()
 );
+-- Tabloyu önceki sürümde kurduysanız kolonu ekleyin:
+alter table personel_islem_takip add column if not exists uyusmazlik text;
 create index if not exists personel_islem_takip_durum_idx on personel_islem_takip (durum);
 create index if not exists personel_islem_takip_tc_idx on personel_islem_takip (personel_tc);
 create index if not exists personel_islem_takip_gonderim_idx on personel_islem_takip (gonderim_tarihi);
