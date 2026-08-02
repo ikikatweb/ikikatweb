@@ -36,10 +36,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const girisKaydet = useCallback(() => {
     if (!girisYapildiRef.current) return;
     try {
-      const sonPing = parseInt(localStorage.getItem("sonGirisPing") ?? "0", 10);
-      if (Date.now() - sonPing <= 120000) return;
+      // Gerçek (şifreli) giriş bayrağı — login sayfası set eder. Bildirim SADECE bunda gider;
+      // odak/görünürlük ping'leri (gercek=false) yalnız son_giris'i günceller.
+      const gercek = localStorage.getItem("gercekGirisPing") === "1";
+      if (gercek) {
+        localStorage.removeItem("gercekGirisPing");
+      } else {
+        // Otomatik ping — 2 dk throttle (gerçek girişte throttle atlanır ki bildirim kaçmasın)
+        const sonPing = parseInt(localStorage.getItem("sonGirisPing") ?? "0", 10);
+        if (Date.now() - sonPing <= 120000) return;
+      }
       localStorage.setItem("sonGirisPing", String(Date.now()));
-      fetch("/api/kullanicilar/giris", { method: "POST" })
+      fetch("/api/kullanicilar/giris", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gercek }),
+      })
         .then((r) => r.json())
         .then((j) => {
           if (j?.yeniGiris) {

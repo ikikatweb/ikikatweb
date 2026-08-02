@@ -7,7 +7,13 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-export async function POST() {
+export async function POST(request: Request) {
+  // Bildirim SADECE gerçek (şifreli) girişte gönderilir. Sekme öne gelince/odak alınca yapılan
+  // otomatik ping'ler (gercek=false) son_giris'i günceller ama YÖNETİCİLERE bildirim ATMAZ
+  // → KMS aktivatörü gibi odak-çalan olayların ürettiği "hayalet giriş" bildirimleri engellenir.
+  let gercek = false;
+  try { const b = await request.json(); gercek = b?.gercek === true; } catch { /* gövdesiz ping → gercek=false */ }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -25,20 +31,9 @@ export async function POST() {
 
   const supabase = createClient(url, service);
 
-  // Önceki son_giris'i oku → "yeni giriş" mi? (30 dk'dan eski/boşsa yeni oturum sayılır;
-  // böylece sayfa yenilemelerinde değil, gerçekten siteye yeniden girişte bildirim atılır.)
-  let yeniGiris = false;
-  try {
-    const { data: cur, error: selErr } = await supabase
-      .from("kullanicilar")
-      .select("son_giris")
-      .eq("auth_id", user.id)
-      .single();
-    if (!selErr) {
-      const oncekiMs = cur?.son_giris ? new Date(cur.son_giris).getTime() : 0;
-      yeniGiris = Date.now() - oncekiMs > 30 * 60 * 1000;
-    }
-  } catch { /* kolon yoksa: yeniGiris=false */ }
+  // "Yeni giriş" = yalnız gerçek şifreli giriş (login sayfasından). Otomatik ping'ler (odak/görünürlük)
+  // bildirim üretmez. Böylece bildirim GERÇEKTEN siteye giriş yapılınca gider, hayalet tetiklerde değil.
+  const yeniGiris = gercek;
 
   // son_giris kolonu yoksa hata döner — sessizce yut (migration çalıştırılana kadar
   // GET tarafı Auth'un last_sign_in_at değerine düşer).

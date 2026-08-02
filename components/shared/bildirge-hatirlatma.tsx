@@ -5,13 +5,20 @@
 // Kayıtlar app/api/bordro-mail-bulk açar; scripts/personel-bildirge-sync cevabı yakalayınca kapatır
 // → uyarı otomatik kalkar. Sekmeye dönünce (focus) yeniden kontrol edilir.
 import { useEffect, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
+import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
-import { getBekleyenBildirgeler, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
+import { toastSuresi } from "@/lib/utils/toast-sure";
+import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
 
 // TR bugünün YYYY-MM-DD değeri
 function trBugun(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Istanbul" });
+}
+// YYYY-MM-DD → DD.MM.YYYY
+function ymdToTr(s: string | null): string {
+  const m = (s ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : (s ?? "");
 }
 function gunFarki(fromYmd: string, todayYmd: string): number {
   const a = new Date(fromYmd + "T00:00:00").getTime();
@@ -24,6 +31,7 @@ export default function BildirgeHatirlatma() {
   const { hasPermission } = useAuth();
   const yetkili = hasPermission("bordro-takibi", "ekle") || hasPermission("bordro-takibi", "duzenle");
   const [kayitlar, setKayitlar] = useState<PersonelIslemTakip[]>([]);
+  const [dozeltiliyor, setDozeltiliyor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!yetkili) { setKayitlar([]); return; }
@@ -37,6 +45,20 @@ export default function BildirgeHatirlatma() {
     window.addEventListener("focus", onFocus);
     return () => { iptal = true; window.removeEventListener("focus", onFocus); };
   }, [yetkili]);
+
+  // "Düzelt" — bildirgedeki resmi tarihi kaydımıza uygula ve talebi kapat (muhasebe geç işlediğinde)
+  const dozelt = async (k: PersonelIslemTakip) => {
+    if (!k.bildirge_tarihi) return;
+    setDozeltiliyor(k.id);
+    const ok = await bildirgeTarihiniKabulEt(k.id, k.bildirge_tarihi);
+    setDozeltiliyor(null);
+    if (ok) {
+      setKayitlar((prev) => prev.filter((x) => x.id !== k.id));
+      toast.success(`${k.personel_ad}: tarih ${ymdToTr(k.bildirge_tarihi)} olarak düzeltildi.`, { duration: toastSuresi() });
+    } else {
+      toast.error("Düzeltilemedi.", { duration: toastSuresi() });
+    }
+  };
 
   if (!yetkili || kayitlar.length === 0) return null;
 
@@ -73,9 +95,20 @@ export default function BildirgeHatirlatma() {
                 <span className={fark >= 1 ? "text-red-600 text-xs font-semibold" : "text-red-500 text-xs"}>{gecikme}</span>
               </div>
               {k.uyusmazlik && (
-                <div className="mt-0.5 flex items-start gap-1 rounded-md bg-amber-100 border border-amber-300 px-2 py-1 text-xs text-amber-900">
+                <div className="mt-0.5 flex items-start gap-2 rounded-md bg-amber-100 border border-amber-300 px-2 py-1 text-xs text-amber-900">
                   <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-600" />
-                  <span>{k.uyusmazlik}</span>
+                  <span className="flex-1">{k.uyusmazlik}</span>
+                  {k.bildirge_tarihi && (
+                    <button
+                      type="button"
+                      onClick={() => dozelt(k)}
+                      disabled={dozeltiliyor === k.id}
+                      title={`Kaydınızı ${ymdToTr(k.islem_tarihi)} → ${ymdToTr(k.bildirge_tarihi)} olarak düzeltip kapat`}
+                      className="shrink-0 inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <Check size={12} /> {ymdToTr(k.bildirge_tarihi)} olarak düzelt
+                    </button>
+                  )}
                 </div>
               )}
             </li>

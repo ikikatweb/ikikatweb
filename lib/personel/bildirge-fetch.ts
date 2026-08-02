@@ -192,13 +192,15 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
                 aday = adaylar[0]; // PDF'ten tarih okunamadı → sadece tip+TC ile eşle
                 uyari.push(`${adaylar[0].personel_ad} (${tip === "giris" ? "giriş" : "çıkış"}): tarih PDF'ten okunamadı, TC+tip ile eşleştirildi.`);
               } else {
-                // Tip+TC uyuyor ama TARİH tutmuyor (ör. 31.07 çıkış beklenirken PDF'te 25.07) → KAPATMA,
-                // uyuşmazlığı kayda yaz → ana sayfada uyarının yanında görünsün. Kayıt "bekliyor" kalır.
+                // Tip+TC uyuyor ama TARİH tutmuyor (ör. muhasebe işlemi geç girmiş → resmi tarih farklı) → KAPATMA,
+                // uyuşmazlığı + bildirgedeki resmi tarihi kayda yaz → ana sayfada "düzelt?" olarak görünsün.
                 const hedef = adaylar[0];
-                const pdfTr = [...pdfTarihler].map(ymdToTr).join(", ");
-                const not = `Gelen ${tip === "giris" ? "giriş" : "çıkış"} bildirgesindeki tarih (${pdfTr}) sizin kaydınızla (${ymdToTr(hedef.islem_tarihi)}) uyuşmuyor.`;
+                // Bildirgedeki resmi tarih: tercihen etiketli (İşe Giriş/İşten Ayrılış Tarihi), yoksa tek tarih varsa o.
+                const resmiTarih = etiket ?? (pdfTarihler.size === 1 ? [...pdfTarihler][0] : null);
+                const pdfTr = resmiTarih ? ymdToTr(resmiTarih) : [...pdfTarihler].map(ymdToTr).join(", ");
+                const not = `Muhasebe işlemi geç girmiş olabilir: gelen ${tip === "giris" ? "giriş" : "çıkış"} bildirgesindeki tarih (${pdfTr}) sizin kaydınızla (${ymdToTr(hedef.islem_tarihi)}) uyuşmuyor. Düzeltmek ister misiniz?`;
                 await supabase.from("personel_islem_takip")
-                  .update({ uyusmazlik: not }).eq("id", hedef.id).eq("durum", "bekliyor");
+                  .update({ uyusmazlik: not, bildirge_tarihi: resmiTarih }).eq("id", hedef.id).eq("durum", "bekliyor");
                 uyari.push(`${hedef.personel_ad}: ${not}`);
                 continue;
               }
@@ -211,7 +213,7 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
                 cevap_pdf_ad: ek.filename ?? null,
                 cevap_kutu: kutu.etiket,
                 cevap_gonderen: gonderen || null,
-                uyusmazlik: null, // varsa önceki uyuşmazlık işareti temizlenir (doğru bildirge geldi)
+                uyusmazlik: null, bildirge_tarihi: null, // varsa önceki uyuşmazlık işareti temizlenir (doğru bildirge geldi)
               })
               .eq("id", aday.id).eq("durum", "bekliyor");
             if (!updErr) {
