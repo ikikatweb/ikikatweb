@@ -28,12 +28,18 @@ export async function getBekleyenBildirgeler(): Promise<PersonelIslemTakip[]> {
   return (data ?? []) as PersonelIslemTakip[];
 }
 
-// "Düzelt" — gelen bildirgedeki resmi tarihi kaydımıza uygula ve talebi kapat (muhasebe geç işlediğinde).
-export async function bildirgeTarihiniKabulEt(id: string, bildirgeTarihi: string): Promise<boolean> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("personel_islem_takip")
-    .update({ islem_tarihi: bildirgeTarihi, durum: "tamamlandi", uyusmazlik: null, cevap_tarihi: new Date().toISOString() })
-    .eq("id", id);
-  return !error;
+// "Düzelt" — gelen bildirgedeki resmi tarihi kabul et: HEM bordroyu (personel_atama_gecmisi tarihi)
+// HEM takip kaydını düzeltir. Sunucu route'u TC→personel→atama eşlemesini yapıp güvenilir günceller.
+export async function bildirgeTarihiniKabulEt(id: string): Promise<{ ok: boolean; atamaGuncellendi: number }> {
+  try {
+    const r = await fetch("/api/personel-bildirge/duzelt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok && j?.ok === true, atamaGuncellendi: j?.atamaGuncellendi ?? 0 };
+  } catch {
+    return { ok: false, atamaGuncellendi: 0 };
+  }
 }

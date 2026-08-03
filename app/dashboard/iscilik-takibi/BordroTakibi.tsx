@@ -4385,8 +4385,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         isenCikis = matches[0].bitis_tarihi;
       }
     }
-    // İşten çıkış tarihi varsa bu personel "geçmiş" — butonlar ve seçim devre dışı
-    const gecmisKayit = !!isenCikis;
+    // Çıkış SEÇİLİ AYDAN SONRAYSA (ör. Temmuz görünümü, çıkış 02.08) bu ay hâlâ AKTİF sayılır →
+    // greyleme/kısıtlama yok, çıkış hücresi o ay için "—" gösterilir. Çıkış seçili ay veya öncesindeyse geçmiş.
+    const donemselCikis = isenCikis && isenCikis.slice(0, 7) <= seciliAy ? isenCikis : null;
+    // İşten çıkış tarihi (bu ay/öncesi) varsa bu personel "geçmiş" — butonlar ve seçim devre dışı
+    const gecmisKayit = !!donemselCikis;
     const formatTr = (d: string) => {
       const dt = new Date(d + "T00:00:00");
       return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("tr-TR");
@@ -4455,7 +4458,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               {iseBaslama ? formatTr(iseBaslama) : "—"}
             </td>
             <td className="px-2 py-1.5 whitespace-nowrap text-red-600 font-semibold text-[11px]">
-              {isenCikis ? formatTr(isenCikis) : "—"}
+              {donemselCikis ? formatTr(donemselCikis) : "—"}
             </td>
             <td className="px-2 py-1.5 text-right whitespace-nowrap">
               {ozelGun > 0 ? (

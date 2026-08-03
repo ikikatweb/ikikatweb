@@ -50,11 +50,12 @@ export default function BildirgeHatirlatma() {
   const dozelt = async (k: PersonelIslemTakip) => {
     if (!k.bildirge_tarihi) return;
     setDozeltiliyor(k.id);
-    const ok = await bildirgeTarihiniKabulEt(k.id, k.bildirge_tarihi);
+    const res = await bildirgeTarihiniKabulEt(k.id);
     setDozeltiliyor(null);
-    if (ok) {
+    if (res.ok) {
       setKayitlar((prev) => prev.filter((x) => x.id !== k.id));
-      toast.success(`${k.personel_ad}: tarih ${ymdToTr(k.bildirge_tarihi)} olarak düzeltildi.`, { duration: toastSuresi() });
+      const bordroNot = res.atamaGuncellendi > 0 ? " (bordro da düzeltildi)" : " (bordroda eşleşen kayıt bulunamadı)";
+      toast.success(`${k.personel_ad}: tarih ${ymdToTr(k.bildirge_tarihi)} olarak düzeltildi${bordroNot}.`, { duration: toastSuresi() });
     } else {
       toast.error("Düzeltilemedi.", { duration: toastSuresi() });
     }
