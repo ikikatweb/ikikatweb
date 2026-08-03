@@ -50,9 +50,6 @@ export default function LoginPage() {
       if (error) {
         toast.error("Kullanıcı adı veya şifre hatalı.");
       } else {
-        // Gerçek (şifreli) giriş işareti — dashboard'a geçince auth-context bunu görüp
-        // "Kullanıcı Girişi" bildirimini SADECE bu durumda gönderir (hayalet girişler değil).
-        localStorage.setItem("gercekGirisPing", "1");
         // Beni hatırla: localStorage'a kaydet
         if (rememberMe) {
           localStorage.setItem("rememberMe", "true");
