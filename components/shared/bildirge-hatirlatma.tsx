@@ -5,7 +5,7 @@
 // Kayıtlar app/api/bordro-mail-bulk açar; scripts/personel-bildirge-sync cevabı yakalayınca kapatır
 // → uyarı otomatik kalkar. Sekmeye dönünce (focus) yeniden kontrol edilir.
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -32,6 +32,7 @@ export default function BildirgeHatirlatma() {
   const yetkili = hasPermission("bordro-takibi", "ekle") || hasPermission("bordro-takibi", "duzenle");
   const [kayitlar, setKayitlar] = useState<PersonelIslemTakip[]>([]);
   const [dozeltiliyor, setDozeltiliyor] = useState<string | null>(null);
+  const [acik, setAcik] = useState(false); // fazla isimde: varsayılan 2 göster, ok tuşuyla açılır
 
   useEffect(() => {
     if (!yetkili) { setKayitlar([]); return; }
@@ -83,7 +84,7 @@ export default function BildirgeHatirlatma() {
         </div>
       </div>
       <ul className="mt-2 space-y-1.5 pl-9 text-sm">
-        {kayitlar.slice(0, 12).map((k) => {
+        {(acik ? kayitlar : kayitlar.slice(0, 2)).map((k) => {
           const fark = gunFarki(k.gonderim_tarihi, bugun);
           const gecikme = fark >= 1 ? ` — ${fark} gün gecikti` : " — bugün bekliyor";
           return (
@@ -115,10 +116,18 @@ export default function BildirgeHatirlatma() {
             </li>
           );
         })}
-        {kayitlar.length > 12 && (
-          <li className="text-xs text-red-600">…ve {kayitlar.length - 12} işlem daha</li>
-        )}
       </ul>
+      {kayitlar.length > 2 && (
+        <button
+          type="button"
+          onClick={() => setAcik((v) => !v)}
+          className="mt-1 ml-9 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+        >
+          {acik
+            ? <><ChevronUp size={14} /> Gizle</>
+            : <><ChevronDown size={14} /> {kayitlar.length - 2} işlem daha göster</>}
+        </button>
+      )}
     </div>
   );
 }

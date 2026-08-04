@@ -354,7 +354,10 @@ export function gunHesaplaAyBazli(
     if (tamAyKapsanmis) gun = 30;
     if (!result.has(a.personel_id)) result.set(a.personel_id, new Map());
     const inner = result.get(a.personel_id)!;
-    inner.set(a.santiye_id, (inner.get(a.santiye_id) ?? 0) + gun);
+    // SGK TAVAN: bir personelin bir ayda prim günü 30'u AŞAMAZ. Ay içi bölünmüş atamalarda
+    // (çıkış+giriş / transfer) parçalar toplanınca 31 çeken ayda 31 çıkıyordu → 30'a sabitle.
+    // Böylece taban 30 olur; 1 gün eksik girişte 30→29 (yanlış 31→30 değil).
+    inner.set(a.santiye_id, Math.min(30, (inner.get(a.santiye_id) ?? 0) + gun));
   }
   return result;
 }
