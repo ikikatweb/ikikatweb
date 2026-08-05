@@ -90,9 +90,25 @@ function yeniRenkSec(haric?: Set<string>): string {
   return enIyi;
 }
 
+// MANUEL renkler — Tanımlamalar → Araç Sekme Atamaları'ndan seçilip DB'ye (araclar.arvento_renk) yazılır.
+// EN YÜKSEK öncelik: manuel rengi olan araç her sekmede/bilgisayarda bu rengi alır; otomatik atama ve
+// çakışma onarımı ona DOKUNMAZ, hatta o rengi başka araçlara vermekten kaçınır. localStorage'a yazılmaz
+// (kaynak DB). setManuelRenkler her açılışta/atama kaydında çağrılır.
+const manuel = new Map<string, string>(); // normPlaka → hex
+export function setManuelRenkler(kayit: Record<string, string | null | undefined> | Map<string, string | null | undefined>): void {
+  manuel.clear();
+  const gir = kayit instanceof Map ? kayit.entries() : Object.entries(kayit);
+  for (const [p, r] of gir) {
+    const np = norm(p);
+    if (np && typeof r === "string" && /^#[0-9a-f]{6}$/i.test(r)) manuel.set(np, r);
+  }
+}
+
 export function aracRengi(plaka: unknown): string {
   const p = norm(plaka);
   if (!p) return ARAC_RENK_PALETI[0];
+  const m = manuel.get(p);
+  if (m) return m;
   const ez = atanan.get(p);
   if (ez) return ez;
   const renk = yeniRenkSec();
@@ -115,8 +131,11 @@ export function aracRenkSecici(plakalar: Iterable<unknown>): (plaka: unknown) =>
     gorunen.push(p);
   }
   const kullanilanBuEkranda = new Set<string>();
+  // 1) ÖNCE manuel renkli araçları rezerve et → otomatik atama bu renkleri başkasına vermesin.
+  for (const p of gorunen) { const m = manuel.get(p); if (m) kullanilanBuEkranda.add(m); }
   let degisti = false;
   for (const p of gorunen) {
+    if (manuel.has(p)) continue; // manuel renk sabit — otomatik atama/onarım DOKUNMAZ
     let renk = atanan.get(p);
     if (!renk) {
       renk = yeniRenkSec(kullanilanBuEkranda);
@@ -134,6 +153,6 @@ export function aracRenkSecici(plakalar: Iterable<unknown>): (plaka: unknown) =>
   return (plaka: unknown) => {
     const p = norm(plaka);
     if (!p) return ARAC_RENK_PALETI[0];
-    return atanan.get(p) ?? aracRengi(p);
+    return manuel.get(p) ?? atanan.get(p) ?? aracRengi(p);
   };
 }

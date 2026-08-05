@@ -7,6 +7,7 @@ import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYaz
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
+import { ARAC_RENK_PALETI, setManuelRenkler } from "@/lib/arvento/arac-renk";
 import { ATAMA_SEKMELERI, type ArventoSekme, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 import {
@@ -481,7 +482,12 @@ export default function ArventoRaporPage() {
 
   // Araç → Sekme atamalarını yükle (tarihten bağımsız; bir kez + kayıt sonrası yenilenir)
   const loadAtamalar = useCallback(async () => {
-    try { setAtamalar(await getAraclarAtama()); } catch { /* sessiz */ }
+    try {
+      const rows = await getAraclarAtama();
+      setAtamalar(rows);
+      // Manuel renkleri (araclar.arvento_renk) renk motoruna uygula → tüm sekmelerde/bilgisayarlarda aynı.
+      setManuelRenkler(new Map(rows.map((a) => [plakaNorm(a.plaka), a.renk])));
+    } catch { /* sessiz */ }
   }, []);
   useEffect(() => { loadAtamalar(); }, [loadAtamalar]);
 
@@ -518,6 +524,10 @@ export default function ArventoRaporPage() {
   // Şoför override alanını güncelle (yalnız state — DB'ye "Atamaları Kaydet" ile yazılır)
   const atamaSurucuDegis = useCallback((id: string, deger: string) => {
     setAtamalar((prev) => prev.map((a) => (a.id === id ? { ...a, surucu: deger } : a)));
+  }, []);
+  // Araç rengini seç/temizle (renk = null → otomatik). Yalnız state — "Atamaları Kaydet" ile DB'ye yazılır.
+  const atamaRenkDegis = useCallback((id: string, renk: string | null) => {
+    setAtamalar((prev) => prev.map((a) => (a.id === id ? { ...a, renk } : a)));
   }, []);
   // Cihaz modeli alanını güncelle (yalnız state — DB'ye "Atamaları Kaydet" ile yazılır). plakaNorm anahtar.
   const cihazModelDegis = useCallback((plaka: string, deger: string) => {
@@ -570,8 +580,10 @@ export default function ArventoRaporPage() {
     setAtamaKaydet(true);
     try {
       for (const a of atamalar) {
-        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null, arvento_node: a.arventoNode?.trim() || null });
+        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null, arvento_node: a.arventoNode?.trim() || null, arvento_renk: a.renk || null });
       }
+      // Manuel renkleri hemen uygula → sekmelere geçince yeni renkler görünür (localStorage'a yazılmaz, kaynak DB).
+      setManuelRenkler(new Map(atamalar.map((a) => [plakaNorm(a.plaka), a.renk])));
       // Cihaz modeli (haritadaki "AROCS") değişiklikleri → arvento_cihaz.model (node ile). Yalnız cihazı olan plakalar.
       // Uygulanan değişiklikleri topla → hem yerel haritayı güncellemek için (arvento_cihaz anon SELECT RLS ile
       // engelli, getCihazlarDirect boş döner; API GET'te de s-maxage=300 CDN bayat kalabilir → yeniden çekmiyoruz).
@@ -1528,7 +1540,7 @@ export default function ArventoRaporPage() {
                   className={selectClass + " w-20"} />
                 <span className="text-[10px] text-gray-400 whitespace-nowrap">arası (0–23)</span>
               </div>
-              <div className="text-[10px] text-gray-400 mt-2">Etkin: her gün <strong>{ekskavatorBas}:00–{ekskavatorBit}:00</strong> arası, <strong>{ekskavatorNoktaDk} dk</strong>'da bir.</div>
+              <div className="text-[10px] text-gray-400 mt-2">Etkin: her gün <strong>{ekskavatorBas}:00–{ekskavatorBit}:00</strong> arası, <strong>{ekskavatorNoktaDk} dk</strong>&apos;da bir.</div>
             </div>
             {/* ═══ GRUP 2: Stabilize — Damper ═══ */}
             <div className="md:col-span-3 flex items-center gap-2 pt-3">
@@ -1876,6 +1888,7 @@ export default function ArventoRaporPage() {
                     <th className="text-left font-semibold px-2 py-2">Marka/Model</th>
                     <th className="text-left font-semibold px-2 py-2" title="Haritada plaka altında görünen yazı (araç etiketi, ör. AROCS). Buradan düzenlenir.">Araç Etiketi</th>
                     <th className="text-left font-semibold px-2 py-2" title="Dolu ise sitede Arvento'dan gelen sürücü adının YERİNE bu gösterilir. Boş = Arvento adı. Tire (-) = isim hiç gösterilmez.">Şoför</th>
+                    <th className="text-left font-semibold px-2 py-2" title="Aracın haritalarda/chip'lerde kullanılacağı renk. Seçilirse tüm sekmelerde ve tüm bilgisayarlarda aynı olur. Boş = otomatik.">Renk</th>
                     {ATAMA_SEKMELERI.map((s) => (
                       <th key={s.key} className="font-semibold px-2 py-2 text-center whitespace-nowrap">{s.ad}</th>
                     ))}
@@ -1929,6 +1942,27 @@ export default function ArventoRaporPage() {
                               onChange={(e) => atamaSurucuDegis(a.id, e.target.value)}
                               placeholder="Arvento adı"
                               className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs outline-none focus:border-[#1E3A5F]" />
+                          </td>
+                          {/* RENK — 24 hazır ayrık renk paleti (details/popover). Seçilen renk tüm sekmelerde/bilgisayarlarda aynı. */}
+                          <td className="px-2 py-1.5">
+                            <details className="relative inline-block">
+                              <summary className="list-none [&::-webkit-details-marker]:hidden cursor-pointer inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 h-7"
+                                title={a.renk ? `Seçili renk: ${a.renk}` : "Otomatik renk (seçmek için tıklayın)"}>
+                                <span className="h-4 w-4 rounded-sm border border-gray-300" style={a.renk ? { background: a.renk } : { backgroundImage: "linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,#fff 25%,#fff 75%,#ddd 75%)", backgroundSize: "8px 8px", backgroundPosition: "0 0,4px 4px" }} />
+                                <span className="text-[10px] text-gray-400">{a.renk ? "" : "Oto"}</span>
+                              </summary>
+                              <div className="absolute z-30 mt-1 w-[184px] rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
+                                <button type="button" onClick={() => atamaRenkDegis(a.id, null)}
+                                  className="mb-1.5 w-full rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50">Otomatik (renk yok)</button>
+                                <div className="grid grid-cols-8 gap-1">
+                                  {ARAC_RENK_PALETI.map((c) => (
+                                    <button key={c} type="button" onClick={() => atamaRenkDegis(a.id, c)} title={c}
+                                      className={`h-5 w-5 rounded-sm border ${a.renk?.toLowerCase() === c.toLowerCase() ? "ring-2 ring-offset-1 ring-[#1E3A5F] border-white" : "border-gray-300 hover:scale-110"} transition`}
+                                      style={{ background: c }} />
+                                  ))}
+                                </div>
+                              </div>
+                            </details>
                           </td>
                           {ATAMA_SEKMELERI.map((s) => (
                             <td key={s.key} className="px-2 py-1.5 text-center">

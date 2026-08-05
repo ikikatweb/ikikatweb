@@ -597,20 +597,21 @@ export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, Pla
 }
 
 // Atama tablosu için TÜM araçlar (plaka, sınıf, mevcut sekme ataması).
-export type AracAtama = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null; surucu: string | null; arventoNode: string | null };
+export type AracAtama = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null; surucu: string | null; arventoNode: string | null; renk: string | null };
 export async function getAraclarAtama(): Promise<AracAtama[]> {
   const supabase = getSupabase();
-  // surucu / arvento_node kolonları henüz eklenmemiş olabilir → kademeli fallback (geriye uyumlu, tablo boş kalmasın).
+  // surucu / arvento_node / arvento_renk kolonları henüz eklenmemiş olabilir → kademeli fallback (geriye uyumlu).
   const sec = (ekstra: string) => supabase
     .from("araclar")
     .select(`id, plaka, marka, model, cinsi, sayac_tipi, arvento_sekmeler${ekstra}`)
     .eq("tip", "ozmal") // yalnız özmal araçlar (kiralıklar hariç)
     .order("plaka");
-  let res = await sec(", surucu, arvento_node");
+  let res = await sec(", surucu, arvento_node, arvento_renk");
+  if (res.error) res = await sec(", surucu, arvento_node"); // arvento_renk kolonu yok
   if (res.error) res = await sec(", surucu");   // arvento_node kolonu yok
   if (res.error) res = await sec("");            // surucu da yok
-  const rows = (res.data ?? []) as unknown as { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: "km" | "saat" | null; arvento_sekmeler: string[] | null; surucu?: string | null; arvento_node?: string | null }[];
-  return rows.map((a) => ({ id: a.id, plaka: a.plaka, marka: a.marka, model: a.model, cinsi: a.cinsi, sayacTipi: a.sayac_tipi, sekmeler: Array.isArray(a.arvento_sekmeler) ? a.arvento_sekmeler : null, surucu: a.surucu ?? null, arventoNode: a.arvento_node ?? null }));
+  const rows = (res.data ?? []) as unknown as { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: "km" | "saat" | null; arvento_sekmeler: string[] | null; surucu?: string | null; arvento_node?: string | null; arvento_renk?: string | null }[];
+  return rows.map((a) => ({ id: a.id, plaka: a.plaka, marka: a.marka, model: a.model, cinsi: a.cinsi, sayacTipi: a.sayac_tipi, sekmeler: Array.isArray(a.arvento_sekmeler) ? a.arvento_sekmeler : null, surucu: a.surucu ?? null, arventoNode: a.arvento_node ?? null, renk: a.arvento_renk ?? null }));
 }
 
 // En güncel rapor tarihini döndür (dashboard widget için)

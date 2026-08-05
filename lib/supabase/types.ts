@@ -243,6 +243,9 @@ export type Arac = {
   // ŞOFÖR OVERRIDE — Tanımlamalar → Araç Sekme Atamaları "Şoför" kolonu. Dolu ise sitede
   // Arvento'dan gelen sürücü adının YERİNE gösterilir; "-" = isim hiç gösterilmez; null = Arvento adı.
   surucu?: string | null;
+  // ARAÇ RENGİ OVERRIDE — Tanımlamalar → Araç Sekme Atamaları "Renk" kolonu. Dolu ise haritalarda/chip'lerde
+  // otomatik atanan renk YERİNE bu kullanılır (tüm bilgisayarlarda aynı). null = otomatik. Hex "#rrggbb".
+  arvento_renk?: string | null;
   created_at: string;
   updated_at: string;
 };
