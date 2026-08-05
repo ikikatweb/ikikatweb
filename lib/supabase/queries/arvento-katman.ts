@@ -51,6 +51,16 @@ export async function getHaritaKatmanlari(): Promise<HaritaKatman[]> {
   return (data ?? []) as HaritaKatman[];
 }
 
+// Hafif KML imzası (cache eskitme için): katman sayısı + en son değişiklik zamanı. KML değişince
+// (ekle/sil/güncelle) değer değişir → serme metriği yeniden hesaplanır. Geometri indirmeden çalışır.
+export async function getKmlImza(): Promise<string> {
+  const supabase = createClient();
+  const { data, error } = await supabase.from(TABLO).select("id, created_at").order("created_at", { ascending: false });
+  if (error || !data) return "kml:0";
+  const son = data.length ? (data[0] as { created_at: string }).created_at : "";
+  return `kml:${data.length}:${son}`;
+}
+
 export async function ekleHaritaKatman(k: { ad: string; renk: string; geometriler: HaritaGeometri[]; santiyeId: string | null }): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase

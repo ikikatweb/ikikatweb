@@ -8,7 +8,8 @@ import { getArventoAyarlar, getOcakForTarih } from "@/lib/supabase/queries/arven
 import { atananSekmeleriHesapla, type SekmeAtamaMap, type ArventoSekme } from "@/lib/arvento/operasyonlar";
 import { createClient } from "@/lib/supabase/client";
 import { hesaplaGunlukMetrik } from "./gunluk-metrik";
-import { sermeAralikKm, reglajRotalariniAyikla, type OncekiDamper } from "./serme-hesap";
+import { sermeAralikKm, reglajRotalariniAyikla, kmlYollariHazirla, SERME_KOPRULUK_M, SERME_YOL_YAKINLIK_M, type OncekiDamper } from "./serme-hesap";
+import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
 import type { AracArventoRapor } from "@/lib/supabase/types";
 
 export type SezonUzunluk = { reglajKm: number; sermeKm: number; sikistirmaKm: number; bugunSermeKm: number; makineSn: number };
@@ -84,14 +85,16 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
   for (const a of atama) if (Array.isArray(a.sekmeler)) sekmeMap.set(plakaNorm(a.plaka), a.sekmeler as ArventoSekme[]);
   const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
 
-  const [guz, plakaSantiye, ayarlar, gunOcak, raporlar, oncekiDamper] = await Promise.all([
+  const [guz, plakaSantiye, ayarlar, gunOcak, raporlar, oncekiDamper, katmanlar] = await Promise.all([
     getGuzergahByRange(bas, bitis, adaylar, { tekSorgu: true }), // hafif tek-sorgu (greyder/silindir ~MB altı)
     getPlakaSantiyeMap(bitis),
     getArventoAyarlar(),
     getOcakForTarih(bitis),
     getArventoRaporByRange(bas, bitis), // serme: aralık içi damperler
     oncekiDamperCek(bas),               // serme: aralık öncesi damperler
+    getHaritaKatmanlari(),              // serme: KML yol izdüşümü (yoksa eski omurga yöntemine düşer)
   ]);
+  const yollar = kmlYollariHazirla(katmanlar);
 
   // Reglaj + sıkıştırma: BİRLEŞİK omurga (hesaplaGunlukMetrik, sekmeyle birebir).
   // REGLAJ = greyder rotası EKSİ serme: serme yapılan (damper-öncesi dökülmüş) greyder noktaları çıkarılır →
@@ -106,6 +109,7 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
     sekmeMap, atananSekmeler,
     guzergahTekrar: ayarlar?.guzergahTekrar ?? 0, gridMesafe: ayarlar?.gridMesafe ?? 12,
     transitHiz: ayarlar?.transitHiz ?? 20, tekrarPencereSaat: ayarlar?.tekrarPencereSaat ?? 0,
+    yollar, koprulukM: SERME_KOPRULUK_M, yolYakinlikM: SERME_YOL_YAKINLIK_M,
   };
   const sermeKm = sermeAralikKm({ guzergahRows: guz, raporlar, oncekiDamper, ...sermeParams });
   // BUGÜN (bitiş günü) serme'si — dashboard "Günlük Özet" için AYNI algoritma (Serme sekmesi tek-gün ile birebir).
@@ -139,16 +143,18 @@ export async function gunlukSermeKm(tarih: string): Promise<number> {
   const sekmeMap: SekmeAtamaMap = new Map();
   for (const a of atama) if (Array.isArray(a.sekmeler)) sekmeMap.set(plakaNorm(a.plaka), a.sekmeler as ArventoSekme[]);
   const atananSekmeler = atananSekmeleriHesapla(sekmeMap);
-  const [bugunGuz, bugunRapor, ayarlar, oncekiDamper] = await Promise.all([
+  const [bugunGuz, bugunRapor, ayarlar, oncekiDamper, katmanlar] = await Promise.all([
     getGuzergahByRange(tarih, tarih, adaylar, { tekSorgu: true }), // YALNIZ bugün → hafif
     getArventoRaporByRange(tarih, tarih),                          // bugünün damperi
     getArventoAyarlar(),
     oncekiDamperCek(tarih),                                        // bugünden ÖNCEKİ tüm damperler (seyrek; yola daha önce döküldüyse bugünkü geçiş serme sayılır)
+    getHaritaKatmanlari(),                                         // KML yol izdüşümü
   ]);
   return sermeAralikKm({
     guzergahRows: bugunGuz, raporlar: bugunRapor, oncekiDamper,
     sekmeMap, atananSekmeler,
     guzergahTekrar: ayarlar?.guzergahTekrar ?? 0, gridMesafe: ayarlar?.gridMesafe ?? 12,
     transitHiz: ayarlar?.transitHiz ?? 20, tekrarPencereSaat: ayarlar?.tekrarPencereSaat ?? 0,
+    yollar: kmlYollariHazirla(katmanlar), koprulukM: SERME_KOPRULUK_M, yolYakinlikM: SERME_YOL_YAKINLIK_M,
   });
 }

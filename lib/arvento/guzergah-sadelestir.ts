@@ -14,7 +14,7 @@ export type SadelesSonuc = {
   maksGecis: number;              // en çok geçilen kenarın geçiş sayısı
 };
 
-const METRE_DERECE = 111320; // 1 derece ~ 111.32 km (yaklaşık)
+export const METRE_DERECE = 111320; // 1 derece ~ 111.32 km (yaklaşık)
 
 // "YYYY-MM-DD" + "HH:MM:SS" → MUTLAK saniye (gün-farkı dahil). "Tekrar süresi" penceresi için NoktaH.ts değeri.
 // Date.UTC saf/deterministik (Date.now yok) — çok-günlü havuzda pencere günleri karıştırmaz.
@@ -49,6 +49,57 @@ export function parcalarUzunlukKm(parcalar: [number, number][][]): number {
     }
   }
   return metre / 1000;
+}
+
+// ── KML yol izdüşümü (Serme sürekli kaplama hesabı için) ──────────────────────────────
+// Bir polyline'ın her vertex'inin yol-boyu KÜMÜLATİF mesafesi (metre). kumul[0]=0.
+export function kumulMesafe(noktalar: [number, number][]): number[] {
+  const k = [0];
+  for (let i = 1; i < noktalar.length; i++) {
+    const cosL = Math.max(0.1, Math.cos(((noktalar[i - 1][0] + noktalar[i][0]) / 2) * Math.PI / 180));
+    const dy = (noktalar[i][0] - noktalar[i - 1][0]) * METRE_DERECE;
+    const dx = (noktalar[i][1] - noktalar[i - 1][1]) * METRE_DERECE * cosL;
+    k.push(k[i - 1] + Math.hypot(dx, dy));
+  }
+  return k;
+}
+
+// Bir noktanın polyline'a en yakın DİK izdüşümü: yola dik mesafe (dikM) + yol-boyu konum (chainM).
+// Küçük alanlarda düz eş-düzlem metrik yeterli. noktalar boşsa dikM=Infinity.
+export function noktaPolylineIzdusum(
+  lat: number, lng: number, noktalar: [number, number][], kumulM: number[],
+): { dikM: number; chainM: number } {
+  let enDik = Infinity, enChain = 0;
+  for (let i = 1; i < noktalar.length; i++) {
+    const a = noktalar[i - 1], b = noktalar[i];
+    const cosL = Math.max(0.1, Math.cos(((a[0] + b[0]) / 2) * Math.PI / 180));
+    const ax = a[1] * METRE_DERECE * cosL, ay = a[0] * METRE_DERECE;
+    const bx = b[1] * METRE_DERECE * cosL, by = b[0] * METRE_DERECE;
+    const px = lng * METRE_DERECE * cosL, py = lat * METRE_DERECE;
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+    const cx = ax + t * dx, cy = ay + t * dy;
+    const dik = Math.hypot(px - cx, py - cy);
+    if (dik < enDik) { enDik = dik; enChain = kumulM[i - 1] + t * (kumulM[i] - kumulM[i - 1]); }
+  }
+  return { dikM: enDik, chainM: enChain };
+}
+
+// Polyline'ın [c0,c1] chainage aralığına düşen dilimini (uçlar interpolasyonlu) [lat,lng][] döndürür.
+export function polylineDilim(noktalar: [number, number][], kumulM: number[], c0: number, c1: number): [number, number][] {
+  const nokta = (c: number): [number, number] => {
+    if (c <= 0) return noktalar[0];
+    const son = kumulM[kumulM.length - 1];
+    if (c >= son) return noktalar[noktalar.length - 1];
+    let i = 1; while (i < kumulM.length && kumulM[i] < c) i++;
+    const t = (c - kumulM[i - 1]) / Math.max(1e-9, kumulM[i] - kumulM[i - 1]);
+    return [noktalar[i - 1][0] + (noktalar[i][0] - noktalar[i - 1][0]) * t, noktalar[i - 1][1] + (noktalar[i][1] - noktalar[i - 1][1]) * t];
+  };
+  const out: [number, number][] = [nokta(c0)];
+  for (let i = 0; i < kumulM.length; i++) if (kumulM[i] > c0 && kumulM[i] < c1) out.push(noktalar[i]);
+  out.push(nokta(c1));
+  return out;
 }
 
 // Rotayı SABİT ADIMLA (adimM) yol boyunca yeniden örnekler: her adimM metrede bir nokta üretir.

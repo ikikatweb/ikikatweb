@@ -13,7 +13,7 @@ export type GunlukMetrik = { reglajKm: number; kamyonSefer: number; sermeKm: num
 
 // Metriği ETKİLEYEN ayarların parmak izi. Değişince cache'lenmiş günler "eski imzalı" olur → dashboard onları
 // yeniden hesaplatır (renk/kalınlık gibi metriği etkilemeyen ayarlar imzaya girmez, gereksiz tazeleme olmasın).
-export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<string, PlakaSantiye> | null, ocakMakinePlakalar?: Set<string> | null): string {
+export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<string, PlakaSantiye> | null, ocakMakinePlakalar?: Set<string> | null, kmlImza?: string | null): string {
   const a = ayarlar;
   const ayarKimlik = [
     a?.guzergahTekrar ?? 0, a?.tekrarPencereSaat ?? 0, a?.gridMesafe ?? 12, a?.silindirTekrar ?? 0,
@@ -31,7 +31,8 @@ export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<st
     : "";
   // Ocak makinesi kümesi de makineSn'i etkiler (bunlar TÜMDEN dışlanır) → değişince cache tazelensin.
   const ocakKimlik = ocakMakinePlakalar ? Array.from(ocakMakinePlakalar).sort().join(",") : "";
-  return `${ayarKimlik}#${atamaKimlik}#${ocakKimlik}`;
+  // KML yol katmanları serme ölçümüne (KML izdüşümü) girer → değişince (ekle/sil) cache eskisin.
+  return `${ayarKimlik}#${atamaKimlik}#${ocakKimlik}#${kmlImza ?? ""}`;
 }
 
 // OCAK MAKİNELERİ (plakaNorm kümesi) — İş Makineleri sekmesindeki `ocakMakineMap` ile AYNI mantık, verilen

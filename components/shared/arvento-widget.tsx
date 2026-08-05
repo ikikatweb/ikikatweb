@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Satellite, ChevronRight } from "lucide-react";
 import { getArventoSonTarih, getArventoRaporByTarih, getGuzergahByTarih, getPlakaSantiyeMap, getArventoRaporSonGuncelleme, plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type ArventoAyarlar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getKmlImza } from "@/lib/supabase/queries/arvento-katman";
 import { hesaplaGunlukMetrik, metrikImza, type GunlukMetrik } from "@/lib/arvento/gunluk-metrik";
 import { ocakMakineSetiCek } from "@/lib/arvento/gunluk-metrik-client";
 import { sezonUzunlukMetrik, gunlukSermeKm, type SezonUzunluk } from "@/lib/arvento/sezon-uzunluk";
@@ -128,6 +129,7 @@ export default function ArventoWidget() {
   const [sinifMap, setSinifMap] = useState<Map<string, DamperSinif>>(new Map());
   const [ocakMakinePlakalar, setOcakMakinePlakalar] = useState<Set<string>>(new Set()); // ocak makineleri (makineSn'den tümden dışlı)
   const [guncelleme, setGuncelleme] = useState<Date | null>(null);
+  const [kmlImza, setKmlImza] = useState<string>(""); // KML katman imzası — değişince serme cache eskir
   const [loading, setLoading] = useState(true);
 
   const [sayfa, setSayfa] = useState(0); // 0 = günlük, 1 = sezon
@@ -147,10 +149,10 @@ export default function ArventoWidget() {
       const t = await getArventoSonTarih();
       setTarih(t);
       if (t) {
-        const [k, g, ps, ay, ocak, sinif, gunc] = await Promise.all([
-          getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t), getArventoRaporSonGuncelleme(t, t),
+        const [k, g, ps, ay, ocak, sinif, gunc, kml] = await Promise.all([
+          getArventoRaporByTarih(t), getGuzergahByTarih(t), getPlakaSantiyeMap(t), getArventoAyarlar(), getOcakForTarih(t), getDamperSiniflar(t, t), getArventoRaporSonGuncelleme(t, t), getKmlImza(),
         ]);
-        setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc);
+        setKayitlar(k); setGuzergahlar(g); setPlakaSantiye(ps); setAyarlar(ay); setGunOcak(ocak); setGuncelleme(gunc); setKmlImza(kml);
         const sm = new Map<string, DamperSinif>(); for (const r of sinif) sm.set(`${plakaNorm(r.plaka)}|${r.tarih}|${r.saat}`, r.sinif); setSinifMap(sm);
         // Ocak makineleri (aralık-birleşik, bitiş ocağı) — İş Makineleri sekmesiyle BİREBİR; makineSn'den TÜM
         // günlerde tümden dışlanır (ocak makinesinin çalışması "Makineli Çalışma"ya girmesin, Stabilize'de görünür).
@@ -172,7 +174,7 @@ export default function ArventoWidget() {
     [tarih, kayitlar, guzergahlar, plakaSantiye, ayarlar, gunOcak, sinifMap, ocakMakinePlakalar],
   );
   // Ayar imzası — metriği etkileyen ayar/atama/ocak-makine değişince değişir; eşleşmeyen cache günü "güncel değil".
-  const imza = useMemo(() => metrikImza(ayarlar, plakaSantiye, ocakMakinePlakalar), [ayarlar, plakaSantiye, ocakMakinePlakalar]);
+  const imza = useMemo(() => metrikImza(ayarlar, plakaSantiye, ocakMakinePlakalar, kmlImza), [ayarlar, plakaSantiye, ocakMakinePlakalar, kmlImza]);
 
   // Sezon: cache toplamını (01.01 → dün, YALNIZ güncel imzalı günler) çek + bugünü cache'e yaz.
   const sezonCek = useMemo(() => async () => {
