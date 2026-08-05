@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import ToasterX from "@/components/shared/toaster-x";
+import PwaEkleBanner from "@/components/shared/pwa-ekle-banner";
 import TarihYilKoruma from "@/components/shared/tarih-yil-koruma";
 import TruncateTooltip from "@/components/shared/truncate-tooltip";
 import "./globals.css";
@@ -55,6 +56,7 @@ export default async function RootLayout({
       style={fontSize ? { fontSize } : undefined} suppressHydrationWarning>
       <body className="min-h-full flex flex-col font-sans">
         {children}
+        <PwaEkleBanner />
         <ToasterX />
         <TarihYilKoruma />
         <TruncateTooltip />
