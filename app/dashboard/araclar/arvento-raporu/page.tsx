@@ -1952,11 +1952,11 @@ export default function ArventoRaporPage() {
                                 <span className="text-[10px] text-gray-400">{a.renk ? "" : "Oto"}</span>
                               </summary>
                               <div className="absolute z-30 mt-1 w-[184px] rounded-lg border border-gray-200 bg-white p-2 shadow-lg">
-                                <button type="button" onClick={() => atamaRenkDegis(a.id, null)}
+                                <button type="button" onClick={(e) => { atamaRenkDegis(a.id, null); e.currentTarget.closest("details")?.removeAttribute("open"); }}
                                   className="mb-1.5 w-full rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50">Otomatik (renk yok)</button>
                                 <div className="grid grid-cols-8 gap-1">
                                   {ARAC_RENK_PALETI.map((c) => (
-                                    <button key={c} type="button" onClick={() => atamaRenkDegis(a.id, c)} title={c}
+                                    <button key={c} type="button" onClick={(e) => { atamaRenkDegis(a.id, c); e.currentTarget.closest("details")?.removeAttribute("open"); }} title={c}
                                       className={`h-5 w-5 rounded-sm border ${a.renk?.toLowerCase() === c.toLowerCase() ? "ring-2 ring-offset-1 ring-[#1E3A5F] border-white" : "border-gray-300 hover:scale-110"} transition`}
                                       style={{ background: c }} />
                                   ))}
