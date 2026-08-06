@@ -840,11 +840,12 @@ export default function GidenEvrakPage() {
       {/* Bildirimden gelen ÖNİZLEME — yazdırma diyaloğu yerine evrağın kendisi gösterilir (kullanıcı
           isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
       <Dialog open={!!onizlemeEvrak} onOpenChange={(o) => { if (!o) setOnizlemeEvrak(null); }}>
-        {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp.
-            PreviewScaler dialog içinde yanlış ölçüyordu (sayfa kırpılıyordu). */}
+        {/* Dialog genişliği A4'e (210mm≈794px) yakın tutulur → OnizlemeSayfa sayfayı ortalarken kenarda
+            büyük boşluk kalmaz (eskiden 90vw'de sayfa ortada küçük, iki yanı bomboştu). Dar ekranda
+            (95vw) OnizlemeSayfa sayfayı sığacak kadar küçültür → yatay kaydırma çıkmaz. */}
         {/* !flex !flex-col + iç kaydırma: kaydırma yalnız SAYFA alanında olur → dialog açılışta
             alttaki butona odaklanıp aşağı kaymaz (masaüstünde üst kısım görünmüyordu). */}
-        <DialogContent className="!w-[90vw] !max-w-none !flex !flex-col max-h-[95vh]">
+        <DialogContent className="!w-[95vw] md:!w-[860px] !max-w-none !flex !flex-col max-h-[95vh]">
           <DialogHeader>
             <DialogTitle>Evrak Önizleme — {onizlemeEvrak?.evrak_sayi_no ?? ""}</DialogTitle>
           </DialogHeader>
