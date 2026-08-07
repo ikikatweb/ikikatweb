@@ -213,7 +213,7 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
       const supabase = createClient();
       await supabase.auth.signOut();
       toast.success("Çıkış yapıldı.");
-      router.push("/login");
+      router.push("/"); // login yerine ana sayfaya (herkese açık tanıtım sayfası)
       router.refresh();
     } catch {
       toast.error("Çıkış yapılırken bir hata oluştu.");

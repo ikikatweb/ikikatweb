@@ -29,15 +29,22 @@ export async function getSantiyelerBasic() {
   return data;
 }
 
-export async function getSantiyelerAll() {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("santiyeler")
-    .select("id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit")
-    .order("is_adi", { ascending: true });
+export type SantiyeAllRow = {
+  id: string; is_adi: string; durum: string;
+  gecici_kabul_tarihi: string | null; kesin_kabul_tarihi: string | null; tasfiye_tarihi: string | null; devir_tarihi: string | null;
+  depo_kapasitesi: number | null; yuklenici_firma_id: string | null; isyeri_teslim_tarihi: string | null;
+  is_suresi: number | null; is_bitim_tarihi: string | null; teknik_personel_sayisi: number | null; teknik_personeller: string[] | null;
+  calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
+};
 
-  if (error) throw error;
-  return data;
+export async function getSantiyelerAll(): Promise<SantiyeAllRow[]> {
+  const supabase = getSupabase();
+  const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit";
+  // ihaleli kolonu henüz eklenmemiş olabilir (tipli client tanımaz) → varsa al, yoksa fallback.
+  const r1 = await supabase.from("santiyeler").select(base + ", ihaleli").order("is_adi", { ascending: true });
+  const r = r1.error ? await supabase.from("santiyeler").select(base).order("is_adi", { ascending: true }) : r1;
+  if (r.error) throw r.error;
+  return (r.data ?? []) as unknown as SantiyeAllRow[];
 }
 
 export async function getSantiyeById(id: string) {
@@ -54,12 +61,12 @@ export async function getSantiyeById(id: string) {
 
 export async function createSantiye(santiye: SantiyeInsert) {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("santiyeler")
-    .insert(santiye)
-    .select()
-    .single();
-
+  let { data, error } = await supabase.from("santiyeler").insert(santiye).select().single();
+  // "ihaleli" kolonu henüz eklenmemişse (migration çalışmadan) o alanı çıkarıp tekrar dene → form kilitlenmesin.
+  if (error && /ihaleli/i.test(error.message)) {
+    const s2 = { ...santiye }; delete (s2 as Record<string, unknown>).ihaleli;
+    ({ data, error } = await supabase.from("santiyeler").insert(s2).select().single());
+  }
   if (error) throw error;
 
   try {
@@ -87,13 +94,13 @@ export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
     eski = (onceki ?? {}) as unknown as Record<string, unknown>;
   } catch { /* sessiz */ }
 
-  const { data, error } = await supabase
-    .from("santiyeler")
-    .update({ ...santiye, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
-
+  const payload = { ...santiye, updated_at: new Date().toISOString() };
+  let { data, error } = await supabase.from("santiyeler").update(payload).eq("id", id).select().single();
+  // "ihaleli" kolonu yoksa o alanı çıkarıp tekrar dene → İş Deneyim kaydetme kilitlenmesin (migration öncesi).
+  if (error && /ihaleli/i.test(error.message)) {
+    const p2 = { ...payload }; delete (p2 as Record<string, unknown>).ihaleli;
+    ({ data, error } = await supabase.from("santiyeler").update(p2).eq("id", id).select().single());
+  }
   if (error) throw error;
 
   // Update bildirimi — HANGİ alan değişti, ESKİ → YENİ değeriyle. Sadece anahtar alanlar (form kaydet)

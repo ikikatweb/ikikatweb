@@ -44,6 +44,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   // Ayarlar
   { key: "yonetim-firmalar", label: "Firmalar", grup: "Ayarlar" },
   { key: "yonetim-santiyeler", label: "İş Deneyim Belgeleri", grup: "Ayarlar" },
+  { key: "yonetim-haberler", label: "Bizden Haberler", grup: "Ayarlar" },
   { key: "yonetim-personel", label: "Personeller", grup: "Ayarlar" },
   { key: "yonetim-araclar", label: "Araçlar", grup: "Ayarlar" },
   { key: "yonetim-yi-ufe", label: "Yi-ÜFE", grup: "Ayarlar" },

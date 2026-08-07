@@ -81,12 +81,29 @@ export type Santiye = {
   kesin_kabul_tarihi: string | null;
   kesin_kabul_url: string | null;
   is_deneyim_url: string | null;
+  // İHALELİ İŞ mi? true (varsayılan) → ana sayfa "Projelerimiz" ve Bordro "Şantiye Özeti"nde görünür.
+  // false → bu iki yerde GÖSTERİLMEZ (ör. ihalesiz/özel işler). Form'da "İş Tanımları" yanındaki tik.
+  ihaleli?: boolean;
   calisilmayan_bas: string | null; // çalışılmayan dönem başlangıcı (opsiyonel)
   calisilmayan_bit: string | null; // çalışılmayan dönem bitişi (opsiyonel)
   depo_kapasitesi: number | null;
   created_at: string;
   updated_at: string;
 };
+
+// Bizden Haberler — ana sayfada gösterilen firma haberleri (yönetim: /dashboard/yonetim/haberler).
+export type Haber = {
+  id: string;
+  baslik: string;
+  ozet: string | null;
+  icerik: string;
+  gorsel_url: string | null;
+  yayinda: boolean;
+  created_at: string;
+  created_by: string | null;
+};
+export type HaberInsert = Omit<Haber, "id" | "created_at">;
+export type HaberUpdate = Partial<HaberInsert>;
 
 export type SantiyeInsert = Omit<Santiye, "id" | "sira_no" | "created_at" | "updated_at">;
 export type SantiyeUpdate = Partial<SantiyeInsert>;

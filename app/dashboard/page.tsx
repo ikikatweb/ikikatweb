@@ -47,7 +47,7 @@ import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import ArventoWidget from "@/components/shared/arvento-widget";
 
-type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null };
+type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null; ihaleli?: boolean | null };
 type FirmaBasic = { id: string; firma_adi: string; renk: string | null; sira_no?: number | null };
 type YiUfe = { id: string; yil: number; ay: number; endeks: number; created_at: string };
 type YakitAlim = { id: string; santiye_id: string; tarih: string; saat: string; tedarikci_firma: string | null; miktar_lt: number; birim_fiyat: number; notu: string | null };
@@ -975,6 +975,7 @@ export default function DashboardPage() {
       if (!info) continue;
       const sant = santiyeler.find((s) => s.id === sid);
       if (!sant) continue;
+      if (sant.ihaleli === false) continue; // ihaleli olmayan iş → Şantiye Özeti'nde gösterilmez
       const kisi = buAyPersonelKumeleri.get(sid)?.size ?? 0;
       const firmaId = sant.yuklenici_firma_id ?? null;
       const firmaRengi = firmaId ? (firmaRenkMap.get(firmaId) ?? null) : null;

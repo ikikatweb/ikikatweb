@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks";
 import { hrefToModuleKey } from "@/lib/permissions";
 import {
-  Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings,
+  Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings, Newspaper,
   Mail, MailOpen, Landmark, Trash2,
   Shield, Headphones, BarChart3, Wrench, Satellite,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock, Gavel, CreditCard,
@@ -118,6 +118,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Kullanıcılar", href: "/dashboard/yonetim/kullanicilar", icon: <Users size={16} /> },
       { label: "Firmalar", href: "/dashboard/yonetim/firmalar", icon: <Building2 size={16} /> },
       { label: "İş Deneyim Belgeleri", href: "/dashboard/yonetim/santiyeler", icon: <HardHat size={16} /> },
+      { label: "Bizden Haberler", href: "/dashboard/yonetim/haberler", icon: <Newspaper size={16} />, moduleKey: "yonetim-haberler" },
       { label: "Personeller", href: "/dashboard/yonetim/personel", icon: <UserCog size={16} /> },
       { label: "Araçlar", href: "/dashboard/yonetim/araclar", icon: <Truck size={16} /> },
       { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },

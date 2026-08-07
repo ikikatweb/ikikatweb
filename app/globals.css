@@ -3,6 +3,18 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Ana sayfa (landing) çapa kaydırmaları: sticky header (~65px) altında kalmasın.
+   Logo (#ust) tıklamasında hedef 0'ın altına düşüp tepeye clamp'lenir → temiz ilk görünüm,
+   altta boşluk kalmaz. Menü linkleri de bölümleri header'ın altına sokmaz. Dashboard kendi
+   scroll alanını (#dashboard-main) kullandığından bu kural yalnız landing'i etkiler. */
+html {
+  /* header yüksekliği (~81px) kadar; çapa kaydırmalarında bölüm header'ın hemen altına hizalanır */
+  scroll-padding-top: 81px;
+  /* Her bölüm başına yaklaşınca otomatik hizala (proximity = sadece yakınken çeker, ortada takılmaz).
+     Snap noktaları landing bölümlerindeki .snap-start ile tanımlı → yalnız ana sayfayı etkiler. */
+  scroll-snap-type: y proximity;
+}
+
 /* Tüm tablo başlıkları sayfa scroll'unda sabit kalır */
 thead {
   position: sticky;

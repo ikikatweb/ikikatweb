@@ -140,6 +140,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     is_adi: santiye?.is_adi ?? "",
     il: santiye?.il ?? null,
     is_grubu: santiye?.is_grubu ?? null,
+    ihaleli: santiye?.ihaleli ?? true, // varsayılan: ihaleli (ana sayfa + bordro özetinde görünür)
     benzer_is_grubu: santiye?.benzer_is_grubu ?? null,
     ekap_belge_no: santiye?.ekap_belge_no ?? "",
     ihale_kayit_no: santiye?.ihale_kayit_no ?? "",
@@ -576,6 +577,19 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     <option value="">Seçiniz</option>
                     {isGruplari.map((g) => (<option key={g} value={g}>{g}</option>))}
                   </select>
+                </div>
+                {/* İHALELİ İŞ tiki — İş Tanımları'nın sağındaki hücre. Açıklama altında. */}
+                <div className="space-y-1.5">
+                  <label className="flex cursor-pointer items-center gap-2 pt-7 text-sm font-medium text-gray-700">
+                    <input type="checkbox" checked={formData.ihaleli ?? true}
+                      onChange={(e) => setFormData((p) => ({ ...p, ihaleli: e.target.checked }))}
+                      disabled={loading} className="h-4 w-4 accent-[#1E3A5F]" />
+                    İhaleli iş
+                  </label>
+                  <p className="text-[11px] leading-snug text-gray-400">
+                    İşaretliyse bu iş ana sayfadaki <strong>Projelerimiz</strong> ve <strong>Bordro — Şantiye Özeti</strong>
+                    tablosunda görünür. İşaret kaldırılırsa bu iki yerde <strong>gösterilmez</strong>. (Varsayılan: işaretli)
+                  </p>
                 </div>
                 {/* İş Grubu (Benzer İş) genel bilgilerde gösterilmez — kabul sekmesindeki İş Grubu Dağılımı'ndan seçilir */}
               </div>
