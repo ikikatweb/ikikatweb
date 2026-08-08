@@ -213,8 +213,9 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
       const supabase = createClient();
       await supabase.auth.signOut();
       toast.success("Çıkış yapıldı.");
-      router.push("/"); // login yerine ana sayfaya (herkese açık tanıtım sayfası)
-      router.refresh();
+      // SERT yönlendirme: router.push (soft-nav) mobil/PWA'da eski oturum ağacını taşıyıp bazen login'e
+      // düşürüyordu. window.location tam sayfa yükler → oturum tamamen temizlenir, ana sayfaya (public) gider.
+      window.location.href = "/";
     } catch {
       toast.error("Çıkış yapılırken bir hata oluştu.");
     }

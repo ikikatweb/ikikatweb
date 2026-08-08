@@ -10,9 +10,9 @@
 html {
   /* header yüksekliği (~81px) kadar; çapa kaydırmalarında bölüm header'ın hemen altına hizalanır */
   scroll-padding-top: 81px;
-  /* Her bölüm başına yaklaşınca otomatik hizala (proximity = sadece yakınken çeker, ortada takılmaz).
-     Snap noktaları landing bölümlerindeki .snap-start ile tanımlı → yalnız ana sayfayı etkiler. */
-  scroll-snap-type: y proximity;
+  /* scroll-snap KALDIRILDI — fare tekerleğinde "takılıp mouse oynayınca devam etme" sorununa yol
+     açıyordu (Chromium). Menü tıklamalarındaki hizalama scroll-padding-top ile korunuyor. */
+  scroll-snap-type: none;
 }
 
 /* Tüm tablo başlıkları sayfa scroll'unda sabit kalır */

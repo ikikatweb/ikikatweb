@@ -116,7 +116,7 @@ export default async function AnaSayfa() {
       </header>
 
       {/* HERO + İSTATİSTİK — birlikte ilk ekranı (header hariç) tam doldurur → "Firmamız" ancak scroll'da görünür */}
-      <div className="flex flex-col snap-start" style={{ minHeight: "calc(100svh - 81px)" }}>
+      <div className="flex flex-col" style={{ minHeight: "calc(100svh - 81px)" }}>
       {/* HERO */}
       <section id="ust" className="relative isolate flex flex-1 items-center overflow-hidden">
         <img src="/site/img1.jpg" alt="" className="absolute inset-0 -z-10 h-full w-full object-cover" />
@@ -154,7 +154,7 @@ export default async function AnaSayfa() {
       </div>
 
       {/* FİRMAMIZ */}
-      <section id="firmamiz" className="snap-start mx-auto max-w-6xl px-4 py-16 md:py-20">
+      <section id="firmamiz" className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <div className="grid items-center gap-10 md:grid-cols-2">
           <div>
             <h2 className="text-2xl font-bold text-[#1E3A5F] md:text-3xl">Firmamız</h2>
@@ -184,7 +184,7 @@ export default async function AnaSayfa() {
       </section>
 
       {/* HİZMETLER */}
-      <section id="hizmetler" className="snap-start bg-slate-50 py-16 md:py-20">
+      <section id="hizmetler" className="bg-slate-50 py-16 md:py-20">
         <div className="mx-auto max-w-6xl px-4">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-[#1E3A5F] md:text-3xl">Hizmetlerimiz</h2>
@@ -206,7 +206,7 @@ export default async function AnaSayfa() {
       </section>
 
       {/* PROJELER — Devam Eden / Tamamlanan (sitedeki resmi listeye göre) */}
-      <section id="projeler" className="snap-start mx-auto max-w-6xl px-4 py-16 md:py-20">
+      <section id="projeler" className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-[#1E3A5F] md:text-3xl">Projelerimiz</h2>
           <div className="mx-auto mt-2 h-1 w-16 rounded bg-[#F97316]" />
@@ -220,7 +220,7 @@ export default async function AnaSayfa() {
 
       {/* BİZDEN HABERLER — yayında haber varsa gösterilir (yönetim: /dashboard/yonetim/haberler) */}
       {haberler.length > 0 && (
-        <section id="haberler" className="snap-start bg-slate-50 py-16 md:py-20">
+        <section id="haberler" className="bg-slate-50 py-16 md:py-20">
           <div className="mx-auto max-w-6xl px-4">
             <div className="text-center">
               <h2 className="text-2xl font-bold text-[#1E3A5F] md:text-3xl">Bizden Haberler</h2>
@@ -247,7 +247,7 @@ export default async function AnaSayfa() {
       </section>
 
       {/* İLETİŞİM */}
-      <section id="iletisim" className="snap-start mx-auto max-w-6xl px-4 py-16 md:py-20">
+      <section id="iletisim" className="mx-auto max-w-6xl px-4 py-16 md:py-20">
         <div className="grid gap-10 md:grid-cols-2">
           <div>
             <h2 className="text-2xl font-bold text-[#1E3A5F] md:text-3xl">İletişim</h2>
