@@ -39,6 +39,8 @@ import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
+import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
+import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
@@ -1547,6 +1549,8 @@ export default function DashboardPage() {
       <YedekHatirlatma />
       <BordroHatirlatma />
       <BildirgeHatirlatma />
+      <IscilikBilgiHatirlatma />
+      <TeknikAtamaHatirlatma />
 
       {/* Sezon Maliyeti özeti (yalnız yönetici; gizlenen şantiyeler hariç) */}
       <div className="mb-4">

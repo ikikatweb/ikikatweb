@@ -18,6 +18,10 @@ export type BildirgeSonuc = {
   uyari: string[];
 };
 
+// SGK sicil yardımcıları saf modülde (lib/personel/sicil) — IMAP/DB'siz, client de kullanır. Buradan re-export.
+import { isyeriSicili, sicilDuz, sicilEslesir } from "@/lib/personel/sicil";
+export { isyeriSicili, sicilCekirdek, sicilEslesir } from "@/lib/personel/sicil";
+
 // Türkçe harfleri sadeleştirip büyük harfe çevir (PDF başlığı eşleştirmesi için — SGK formu Türkçe).
 export function trUpper(s: string): string {
   return s
@@ -74,12 +78,42 @@ export function olayTarihi(norm: string): string | null {
   return uniq[0] ?? null; // eleme sonrası genelde tek tarih kalır
 }
 
+type SicilCozum = { santiyeId: string | null; sicil: string | null };
+
 // Açık talepleri tara, muhasebe kutularındaki bildirge PDF'lerini oku, eşleşenleri kapat.
 export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Supabase yapılandırması eksik (URL / SERVICE_ROLE_KEY).");
   const supabase = createClient(url, key);
+
+  // Kişinin bu işleme (giriş/çıkış) ait ŞANTİYESİNİ ve o şantiyenin iscilik_takibi.sicil_no'sunu bul.
+  // Yol: TC → personel(tc_kimlik_no) → personel_atama_gecmisi → santiye_id → iscilik_takibi.sicil_no.
+  // Atama, giriş için baslangic_tarihi, çıkış için bitis_tarihi == islem_tarihi olanla eşlenir; tarih
+  // tutmazsa (muhasebe geç girdi) en güncel atamaya düşülür. Bulunamazsa null → geçit "sicil yok" sorar.
+  const santiyeSiciliBul = async (tc: string | null, tip: "giris" | "cikis", islemTarihi: string | null): Promise<SicilCozum> => {
+    const tcn = sicilDuz(tc);
+    if (tcn.length !== 11) return { santiyeId: null, sicil: null };
+    const { data: p } = await supabase.from("personel").select("id").eq("tc_kimlik_no", tcn).maybeSingle();
+    const personelId = (p as { id?: string } | null)?.id;
+    if (!personelId) return { santiyeId: null, sicil: null };
+    const alan = tip === "cikis" ? "bitis_tarihi" : "baslangic_tarihi";
+    let santiyeId: string | null = null;
+    if (islemTarihi) {
+      const { data: at } = await supabase.from("personel_atama_gecmisi")
+        .select("santiye_id").eq("personel_id", personelId).eq(alan, islemTarihi).limit(1).maybeSingle();
+      santiyeId = (at as { santiye_id?: string } | null)?.santiye_id ?? null;
+    }
+    if (!santiyeId) {
+      const { data: ats } = await supabase.from("personel_atama_gecmisi")
+        .select("santiye_id").eq("personel_id", personelId).order("baslangic_tarihi", { ascending: false }).limit(1);
+      santiyeId = (ats as { santiye_id?: string }[] | null)?.[0]?.santiye_id ?? null;
+    }
+    if (!santiyeId) return { santiyeId: null, sicil: null };
+    const { data: it } = await supabase.from("iscilik_takibi")
+      .select("sicil_no").eq("santiye_id", santiyeId).maybeSingle();
+    return { santiyeId, sicil: (it as { sicil_no?: string | null } | null)?.sicil_no ?? null };
+  };
 
   const kapatilan: BildirgeSonuc["kapatilan"] = [];
   const uyari: string[] = [];
@@ -180,12 +214,47 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
                   const hedef = adaylar[0];
                   const not = `Muhasebe işlemi geç girmiş olabilir: gelen ${tip === "giris" ? "giriş" : "çıkış"} bildirgesindeki tarih (${ymdToTr(olay)}) sizin kaydınızla (${ymdToTr(hedef.islem_tarihi)}) uyuşmuyor. Düzeltmek ister misiniz?`;
                   await supabase.from("personel_islem_takip")
-                    .update({ uyusmazlik: not, bildirge_tarihi: olay }).eq("id", hedef.id).eq("durum", "bekliyor");
+                    .update({ uyusmazlik: not, uyusmazlik_tip: "tarih", bildirge_tarihi: olay }).eq("id", hedef.id).eq("durum", "bekliyor");
                   uyari.push(`${hedef.personel_ad}: ${not}`);
                   continue;
                 }
               }
             }
+            // ── SİCİL DOĞRULAMA ──────────────────────────────────────────────────────────────────
+            // Tarih teyidi geçti, kapatmak üzereyiz. Son kontrol: bildirgedeki İŞYERİ SİCİL NO, kişinin
+            // şantiyesinin iscilik_takibi.sicil_no'su ile tutmalı. Tutmuyor/boş/okunamıyorsa KAPATMA →
+            // ana sayfada "devam edeyim mi?" sorusu bırak (kullanıcı onaylayınca /api/.../onayla kapatır).
+            const bildirgeSicil = isyeriSicili(norm);        // "4 4100 ..." | null
+            const cozum = await santiyeSiciliBul(aday.personel_tc, tip, aday.islem_tarihi);
+            const sicilKaydiVar = sicilDuz(cozum.sicil).length > 0;
+            if (!bildirgeSicil) {
+              await supabase.from("personel_islem_takip").update({
+                uyusmazlik: "Bildirgede işyeri sicil numarası okunamadı. Yine de kapatayım mı?",
+                uyusmazlik_tip: "sicil_yok", cevap_sicil: null, sicil_santiye_id: cozum.santiyeId,
+                cevap_pdf_ad: ek.filename ?? null, cevap_kutu: kutu.etiket, cevap_gonderen: gonderen || null,
+              }).eq("id", aday.id).eq("durum", "bekliyor");
+              uyari.push(`${aday.personel_ad} (${tip === "giris" ? "giriş" : "çıkış"}): bildirgeden sicil okunamadı.`);
+              continue;
+            }
+            if (!sicilKaydiVar) {
+              await supabase.from("personel_islem_takip").update({
+                uyusmazlik: `İşçilik takibinde sicil numarası yazılı değil. Bildirgedeki sicil: ${bildirgeSicil}. Devam edeyim mi?`,
+                uyusmazlik_tip: "sicil_yok", cevap_sicil: bildirgeSicil, sicil_santiye_id: cozum.santiyeId,
+                cevap_pdf_ad: ek.filename ?? null, cevap_kutu: kutu.etiket, cevap_gonderen: gonderen || null,
+              }).eq("id", aday.id).eq("durum", "bekliyor");
+              uyari.push(`${aday.personel_ad} (${tip === "giris" ? "giriş" : "çıkış"}): işçilik takibinde sicil yok.`);
+              continue;
+            }
+            if (!sicilEslesir(cozum.sicil, bildirgeSicil)) {
+              await supabase.from("personel_islem_takip").update({
+                uyusmazlik: `İşçilik takibindeki sicil (${cozum.sicil}) ile bildirgedeki sicil (${bildirgeSicil}) tutmuyor. Devam edeyim mi?`,
+                uyusmazlik_tip: "sicil_farkli", cevap_sicil: bildirgeSicil, sicil_santiye_id: cozum.santiyeId,
+                cevap_pdf_ad: ek.filename ?? null, cevap_kutu: kutu.etiket, cevap_gonderen: gonderen || null,
+              }).eq("id", aday.id).eq("durum", "bekliyor");
+              uyari.push(`${aday.personel_ad} (${tip === "giris" ? "giriş" : "çıkış"}): sicil uyuşmuyor (${cozum.sicil} ≠ ${bildirgeSicil}).`);
+              continue;
+            }
+            // Sicil tutuyor → normal kapat.
             const { error: updErr } = await supabase
               .from("personel_islem_takip")
               .update({
@@ -194,7 +263,8 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
                 cevap_pdf_ad: ek.filename ?? null,
                 cevap_kutu: kutu.etiket,
                 cevap_gonderen: gonderen || null,
-                uyusmazlik: null, bildirge_tarihi: null, // varsa önceki uyuşmazlık işareti temizlenir (doğru bildirge geldi)
+                cevap_sicil: bildirgeSicil,
+                uyusmazlik: null, uyusmazlik_tip: null, bildirge_tarihi: null, sicil_santiye_id: null, // önceki uyuşmazlık işaretleri temizlenir
               })
               .eq("id", aday.id).eq("durum", "bekliyor");
             if (!updErr) {

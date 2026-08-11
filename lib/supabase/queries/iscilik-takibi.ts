@@ -21,6 +21,57 @@ export async function getIscilikTakibi(dahilSilinen = false) {
   return data;
 }
 
+// İHALELİ + AKTİF işlerden, eklendikten 1 GÜN sonra hâlâ işçilik takibinde SİCİL NO veya ASGARİ İŞÇİLİK
+// ORANI girilmemiş olanları getir → ana sayfa uyarısı (components/shared/iscilik-bilgi-hatirlatma).
+// KAPSAM = EŞİK TARİHTEN (01.07.2026) SONRA eklenen işler (kalıcı, doldurulana kadar). Eşik öncesi = eski
+// birikim (2026-04-17'de toplu aktarılan 143 harita/kadastro işi dahil) → HARİÇ. Kullanıcı kararı (2026-08-11).
+// Rolling pencere DEĞİL: yeni bir iş doldurulana kadar uyarıda kalır, tarih geçince düşmez.
+const ISCILIK_UYARI_ESIK = Date.parse("2026-07-01T00:00:00+03:00"); // TR saati; bundan sonra eklenenler uyarılır
+export type EksikIscilikBilgi = {
+  santiye_id: string;
+  is_adi: string;
+  created_at: string;
+  sicil_no: string | null;
+  iscilik_orani: number | null;
+  sicilEksik: boolean;
+  oranEksik: boolean;
+};
+export async function getEksikIscilikBilgileri(): Promise<EksikIscilikBilgi[]> {
+  const supabase = getSupabase();
+  // Aktif + ihaleli işler (ihaleli varsayılan true → yalnız açıkça false olanlar hariç)
+  const { data: santiyeler, error } = await supabase
+    .from("santiyeler").select("id, is_adi, created_at, ihaleli, durum").eq("durum", "aktif");
+  if (error) return [];
+  const isler = (santiyeler ?? []).filter((s: { ihaleli?: boolean | null }) => s.ihaleli !== false) as
+    { id: string; is_adi: string; created_at: string }[];
+  if (isler.length === 0) return [];
+  const ids = isler.map((s) => s.id);
+
+  // İlgili işçilik takibi kayıtları (sicil_no + iscilik_orani)
+  const { data: itData } = await supabase.from("iscilik_takibi").select("santiye_id, sicil_no, iscilik_orani").in("santiye_id", ids);
+  const itMap = new Map<string, { sicil_no: string | null; iscilik_orani: number | null }>();
+  for (const it of (itData ?? []) as { santiye_id: string; sicil_no: string | null; iscilik_orani: number | null }[]) itMap.set(it.santiye_id, it);
+
+  const birGunOnce = Date.now() - 86400000;        // eklendikten 1 günden yeniyse henüz uyarma (girmeye süre tanı)
+  const bosMetin = (s: string | null) => s == null || String(s).trim() === "";
+  const sonuc: EksikIscilikBilgi[] = [];
+  for (const s of isler) {
+    // Eşik (01.07.2026) SONRASI eklenmiş + en az 1 gün geçmiş işler. Eşik öncesi eski birikim → hariç.
+    if (!s.created_at) continue;
+    const t = new Date(s.created_at).getTime();
+    if (t < ISCILIK_UYARI_ESIK || t > birGunOnce) continue;
+    const it = itMap.get(s.id);
+    const sicil = it?.sicil_no ?? null;
+    const oran = it?.iscilik_orani ?? null;
+    const sicilEksik = bosMetin(sicil);
+    const oranEksik = oran == null || oran === 0; // asgari işçilik oranı 0 olamaz → 0/null = girilmemiş
+    if (sicilEksik || oranEksik) {
+      sonuc.push({ santiye_id: s.id, is_adi: s.is_adi, created_at: s.created_at, sicil_no: sicil, iscilik_orani: oran, sicilEksik, oranEksik });
+    }
+  }
+  return sonuc.sort((a, b) => a.is_adi.localeCompare(b.is_adi, "tr"));
+}
+
 // Tüm şantiyelerin keşif artışı değerlerini Map olarak getir (santiyeler listesi için)
 // Pagination ile 1000+ kayıt destekle, silindi filtresi yok (her satırı oku)
 export async function getKesifArtisMap(): Promise<Map<string, number>> {

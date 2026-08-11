@@ -60,6 +60,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const { kullanici } = useAuth();
   const [loading, setLoading] = useState(false);
   const [onIzleme, setOnIzleme] = useState(false);
+  const [kapatOnay, setKapatOnay] = useState(false); // düzenlemede ESC → "kaydedeyim mi?" onay dialog'u
 
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -87,6 +88,23 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [ekUploading, setEkUploading] = useState(false);
   const [ekUploadingIdx, setEkUploadingIdx] = useState<number>(-1);
   const [kaseDahil, setKaseDahil] = useState(evrak?.kase_dahil ?? false);
+
+  // ESC davranışı (Base UI Dialog escape-kapatmasını CAPTURE'da yakalayıp durdururuz):
+  //  • Önizlemedeyken → düzenlemeye dön (setOnIzleme(false)).
+  //  • Düzenlemedeyken → "Belgeyi kaydedeyim mi?" onay dialog'unu aç (kapatmadan önce sor).
+  //  • Alt dialog (muhatap ekle / kaydet-onayı) açıkken karışma → onların kendi escape'i çalışsın.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (muhatapDialogOpen || kapatOnay) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (onIzleme) setOnIzleme(false);
+      else setKapatOnay(true);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onIzleme, muhatapDialogOpen, kapatOnay]);
 
   useEffect(() => {
     async function load() {
@@ -594,6 +612,25 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>
+
+      {/* ESC ile kapatmadan önce "kaydedeyim mi?" onayı */}
+      <Dialog open={kapatOnay} onOpenChange={setKapatOnay}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Belgeyi kaydedeyim mi?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 py-1">Kapatmadan önce değişiklikleri kaydetmek ister misiniz?</p>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setKapatOnay(false)} disabled={loading}>Vazgeç</Button>
+            <Button variant="outline" onClick={() => { setKapatOnay(false); onCancel(); }} disabled={loading}>
+              Kaydetmeden Kapat
+            </Button>
+            <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={() => { setKapatOnay(false); handleSubmit(); }} disabled={loading}>
+              <Save size={16} className="mr-1" /> Kaydet ve Kapat
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Yeni Muhatap Ekleme Dialog (Tanımlamalardaki ile aynı format) */}
       <Dialog open={muhatapDialogOpen} onOpenChange={setMuhatapDialogOpen}>

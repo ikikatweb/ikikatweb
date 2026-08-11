@@ -685,8 +685,17 @@ export default function GidenEvrakPage() {
         </div>
       )}
 
-      {/* Form Dialog — boşluğa veya Esc'e tıklayınca kapanmaz; sadece ✕ / İptal / Kaydet ile kapanır */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen} disablePointerDismissal>
+      {/* Form Dialog — boşluğa veya Esc'e tıklayınca kapanmaz; sadece ✕ / İptal / Kaydet ile kapanır.
+          ESC ile kapanma ENGELLENİR (Base UI reason='escape-key'); önizlemedeyken ESC = düzenlemeye dön
+          (GidenEvrakForm kendi capture listener'ıyla önizlemeyi kapatır). */}
+      <Dialog
+        open={formOpen}
+        onOpenChange={(open, details) => {
+          if (!open && (details as { reason?: string } | undefined)?.reason === "escape-key") return;
+          setFormOpen(open);
+        }}
+        disablePointerDismissal
+      >
         <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Giden Evrak Düzenle" : "Yeni Giden Evrak"}</DialogTitle>

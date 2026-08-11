@@ -65,6 +65,8 @@ export type Santiye = {
   // DB sütunu: teknik_personel_sayisi INTEGER NULL, teknik_personeller TEXT[] NULL.
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
+  // İşyeri tesliminden sonra teknik personel ataması için tanınan süre (gün). null = takip yok.
+  teknik_atama_gun?: number | null;
   sozlesme_tarihi: string | null;
   isyeri_teslim_tarihi: string | null;
   is_suresi: number | null;

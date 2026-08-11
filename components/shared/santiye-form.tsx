@@ -1,7 +1,7 @@
 // Şantiye formu bileşeni - 4 sekmeli: Genel, Sözleşme, Kabul, Depo
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   createSantiye,
@@ -15,6 +15,7 @@ import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/quer
 import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { getKullanicilar, updateKullanici } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyePrimHesabi } from "@/lib/supabase/queries/prim-hesap";
+import { getTeknikPersonelKayitlari } from "@/lib/supabase/queries/personel-teknik";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
@@ -134,6 +135,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   const [teknikPersonelGerekliDegil, setTeknikPersonelGerekliDegil] = useState<boolean>(
     Array.isArray(santiye?.teknik_personeller) && santiye!.teknik_personeller!.length === 0,
   );
+  // Teknik personel ATAMA SÜRESİ (gün) — işyeri tesliminden sonra atama için tanınan süre. Boş = takip yok.
+  const [teknikAtamaGun, setTeknikAtamaGun] = useState<string>(
+    santiye?.teknik_atama_gun != null ? String(santiye.teknik_atama_gun) : "",
+  );
+  // Bu şantiyede bordroda ATANMIŞ teknik personel kayıtlarının teknik_isim'leri (mükerrer olabilir → DİZİ,
+  // Set değil). Her atama listede TEK bir satıra bağlanır → N atama en fazla N satırı yeşil yapar (aşağıda
+  // yesilIndexler). Düzenleme modunda çekilir.
+  const [atananTeknikList, setAtananTeknikList] = useState<string[]>([]);
 
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
@@ -253,6 +262,51 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     })();
   }, [isEdit, santiye?.id]);
 
+  // Bu şantiyede atanmış teknik personel isimlerini çek → listede eşleşen satır yeşil olur (düzenleme modu).
+  useEffect(() => {
+    if (!santiye?.id) return;
+    let iptal = false;
+    (async () => {
+      try {
+        const kayitlar = await getTeknikPersonelKayitlari();
+        if (iptal) return;
+        const liste: string[] = [];
+        for (const k of kayitlar) {
+          if (k.santiye_id === santiye.id && k.is_teknik && k.teknik_isim && k.teknik_isim.trim().length > 0) {
+            liste.push(k.teknik_isim.trim());
+          }
+        }
+        setAtananTeknikList(liste);
+      } catch { /* atama rozeti opsiyonel */ }
+    })();
+    return () => { iptal = true; };
+  }, [santiye?.id]);
+
+  // YEŞİL olacak liste index'leri: her atamayı (teknik_isim) TEK bir satıra bağla → N atama en fazla N satır.
+  // (1) "rol#index" biçimli atamalar → kesin o index'e; (2) düz atamalar → eşleşen ilk BOŞ index'e (greedy).
+  // Böylece mükerrer rolde (ör. iki "Saha Elemanı") 3 atama varsa 3 satır yeşil olur, 4.'sü değil.
+  const yesilTeknikIndexler = useMemo(() => {
+    const claimed = new Set<number>();
+    const liste = teknikPersonelList.map((d) => d.trim());
+    const kalanDuz: string[] = [];
+    for (const a of atananTeknikList) {
+      const m = a.match(/^(.*)#(\d+)$/);
+      if (m) {
+        const rol = m[1].trim(); const idx = parseInt(m[2], 10);
+        if (idx >= 0 && idx < liste.length && liste[idx] === rol && !claimed.has(idx)) { claimed.add(idx); continue; }
+        kalanDuz.push(rol); // index geçersiz/çakışıyor → düz gibi ele al
+      } else {
+        kalanDuz.push(a.trim());
+      }
+    }
+    for (const rol of kalanDuz) {
+      for (let i = 0; i < liste.length; i++) {
+        if (!claimed.has(i) && liste[i] === rol) { claimed.add(i); break; }
+      }
+    }
+    return claimed;
+  }, [teknikPersonelList, atananTeknikList]);
+
   // İş süresi değişince iş bitim tarihini hesapla
   useEffect(() => {
     if (formData.isyeri_teslim_tarihi && formData.is_suresi && formData.is_suresi > 0) {
@@ -330,6 +384,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
     if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
+    if (!formData.sozlesme_tarihi) { toast.error("Sözleşme tarihi zorunludur."); return; } // teknik atama uyarısı teslim yoksa sözleşmeye düşer → hep dolu olmalı
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
@@ -395,6 +450,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         // Teknik personel listesi ve sayım birlikte güncellenir
         teknik_personeller: teknikPersonellerTemiz,
         teknik_personel_sayisi: teknikPersonellerTemiz.length,
+        // Atama süresi (gün): "gerekli değil" ise takip yok (null); değilse girilen sayı (boş→null)
+        teknik_atama_gun: teknikPersonelGerekliDegil ? null : (parseInt(teknikAtamaGun, 10) || null),
       };
 
       if (isEdit) {
@@ -748,7 +805,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi</Label>
+                  <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi <span className="text-red-500">*</span></Label>
                   <Input
                     id="sozlesme_tarihi"
                     name="sozlesme_tarihi"
@@ -813,19 +870,31 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   {!teknikPersonelGerekliDegil && (
                     <>
                       <div className="space-y-1.5">
-                        {teknikPersonelList.map((deger, i) => (
+                        {teknikPersonelList.map((deger, i) => {
+                          // Yeşil = bu satır index'i bir atamaya bağlandıysa (yesilTeknikIndexler, greedy 1-1 eşleme).
+                          const atandi = yesilTeknikIndexler.has(i);
+                          return (
                           <div key={i} className="flex items-center gap-1.5">
-                            <Input
-                              type="text"
-                              placeholder={`Teknik personel ${i + 1}`}
-                              value={deger}
-                              onChange={(e) => {
-                                const yeni = [...teknikPersonelList];
-                                yeni[i] = e.target.value;
-                                setTeknikPersonelList(yeni);
-                              }}
-                              disabled={loading}
-                            />
+                            <div className="relative flex-1">
+                              <Input
+                                type="text"
+                                placeholder={`Teknik personel ${i + 1}`}
+                                value={deger}
+                                onChange={(e) => {
+                                  const yeni = [...teknikPersonelList];
+                                  yeni[i] = e.target.value;
+                                  setTeknikPersonelList(yeni);
+                                }}
+                                disabled={loading}
+                                title={atandi ? "Bu role bordroda teknik personel atanmış" : undefined}
+                                className={atandi ? "border-green-500 bg-green-50 text-green-800 pr-16" : ""}
+                              />
+                              {atandi && (
+                                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-green-600">
+                                  ✓ atandı
+                                </span>
+                              )}
+                            </div>
                             {teknikPersonelList.length > 1 && (
                               <button
                                 type="button"
@@ -840,7 +909,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                               </button>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                         <button
                           type="button"
                           onClick={() => setTeknikPersonelList([...teknikPersonelList, ""])}
@@ -853,6 +923,23 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                       <p className="text-[10px] text-gray-500 mt-1">
                         Boş bırakılan satırlar kaydedilmez. İsim yerine görev veya açıklama da yazabilirsiniz.
                       </p>
+                      {/* Teknik personel ATAMA SÜRESİ (gün) — işyeri tesliminden sonra atama için süre. */}
+                      <div className="mt-2 space-y-1">
+                        <Label htmlFor="teknik_atama_gun" className="text-sm">Atama süresi (gün)</Label>
+                        <Input
+                          id="teknik_atama_gun"
+                          type="number"
+                          min="0"
+                          placeholder="ör. 10"
+                          value={teknikAtamaGun}
+                          onChange={(e) => setTeknikAtamaGun(e.target.value)}
+                          disabled={loading}
+                          className="w-32"
+                        />
+                        <p className="text-[10px] text-gray-500">
+                          İşyeri tesliminden sonra teknik personelin bordroda atanması için tanınan süre. Son tarihe 3 gün kala geri sayım, geçince gecikme uyarısı ana sayfada çıkar. Boş = takip yok.
+                        </p>
+                      </div>
                     </>
                   )}
                 </div>

@@ -1091,8 +1091,12 @@ export default function SantiyelerPage() {
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleSantiye(null); } }}>
         <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle className="truncate">
-              {duzenleSantiye ? `İş Düzenle — ${duzenleSantiye.is_adi}` : "Yeni İş Ekle"}
+            {/* İş adı uzunsa string düzeyinde kısalt (…) → başlık dialog'u genişletip Kaydet'i taşımasın.
+                truncate da kalsın (dar ekran). pr-8: sağ üstteki × kapat butonuna yer bırak. */}
+            <DialogTitle className="truncate pr-8">
+              {duzenleSantiye
+                ? `İş Düzenle — ${duzenleSantiye.is_adi.length > 55 ? duzenleSantiye.is_adi.slice(0, 55).trimEnd() + "…" : duzenleSantiye.is_adi}`
+                : "Yeni İş Ekle"}
             </DialogTitle>
           </DialogHeader>
           {formAcik && (

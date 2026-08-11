@@ -24,6 +24,10 @@ create table if not exists personel_islem_takip (
 -- Tabloyu önceki sürümde kurduysanız kolonları ekleyin:
 alter table personel_islem_takip add column if not exists uyusmazlik text;
 alter table personel_islem_takip add column if not exists bildirge_tarihi date;
+-- SİCİL doğrulaması (bkz. sql/personel_bildirge_sicil.sql):
+alter table personel_islem_takip add column if not exists cevap_sicil text;      -- bildirgeden okunan işyeri sicil no
+alter table personel_islem_takip add column if not exists uyusmazlik_tip text;   -- 'tarih' | 'sicil_yok' | 'sicil_farkli'
+alter table personel_islem_takip add column if not exists sicil_santiye_id uuid references santiyeler(id) on delete set null;
 create index if not exists personel_islem_takip_durum_idx on personel_islem_takip (durum);
 create index if not exists personel_islem_takip_tc_idx on personel_islem_takip (personel_tc);
 create index if not exists personel_islem_takip_gonderim_idx on personel_islem_takip (gonderim_tarihi);

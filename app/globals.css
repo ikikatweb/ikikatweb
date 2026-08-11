@@ -255,6 +255,32 @@ thead th {
   background: #9ca3af;
 }
 
+/* GLOBAL scrollbar — Windows/Chrome klasik YUKARI/AŞAĞI OK butonlarını kaldırır + ince modern görünüm.
+   Kullanıcı isteği (2026-08-11): dialog vb. kaydırılabilir alanlardaki ok butonları istenmiyor.
+   .scrollbar-thin (daha yüksek özgüllük) ve .scrollbar-hidden (!important) kendi stillerini korur. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-button {
+  display: none;               /* ← yukarı/aşağı okları kaldırır */
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+html {
+  scrollbar-width: thin;       /* Firefox — okları zaten göstermez */
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
