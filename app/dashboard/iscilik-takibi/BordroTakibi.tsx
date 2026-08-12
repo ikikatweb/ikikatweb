@@ -77,6 +77,7 @@ type SantiyeBasic = {
   isyeri_teslim_tarihi?: string | null;
   is_suresi?: number | null;  // toplam gün sayısı (bitim hesabı için)
   is_bitim_tarihi?: string | null;  // manuel girilmişse — yoksa hesaplanır
+  sure_uzatimli_tarih?: string | null;  // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim kullanılır)
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
   calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
@@ -4115,6 +4116,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     void santiyeId;
 
     // İş bitim tarihi ve kalan gün hesabı — öncelik sırası:
+    // 0) SÜRE UZATIMI VARSA → santiye.sure_uzatimli_tarih (nihai/uzatımlı bitiş). Kullanıcı isteği:
+    //    uzatım yoksa bu alan boştur → normal bitim tarihine düşülür (1-3).
     // 1) iscilik_takibi.baslangic_tarihi + sure_text toplam (işçilik durum raporu formatı)
     // 2) santiye.is_bitim_tarihi manuel
     // 3) santiye.isyeri_teslim_tarihi + is_suresi
@@ -4123,8 +4126,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const info = iscilikBitimMap.get(santiyeId);
       const s = santiyeler.find((x) => x.id === santiyeId);
       let bitimTarihi: string | null = null;
+      // 0) Süre uzatımlı nihai bitiş tarihi (varsa) — hepsinin önünde.
+      if (s?.sure_uzatimli_tarih) bitimTarihi = s.sure_uzatimli_tarih;
       // 1) iscilik_takibi: baslangic_tarihi + sure_text
-      if (info?.baslangic_tarihi && info.sure_text) {
+      if (!bitimTarihi && info?.baslangic_tarihi && info.sure_text) {
         const toplamGun = info.sure_text.split("+").reduce((t, p) => t + (parseInt(p.trim()) || 0), 0);
         if (toplamGun > 0) {
           const d = new Date(info.baslangic_tarihi + "T00:00:00");

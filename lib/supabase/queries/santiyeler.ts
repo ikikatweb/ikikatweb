@@ -35,11 +35,12 @@ export type SantiyeAllRow = {
   depo_kapasitesi: number | null; yuklenici_firma_id: string | null; isyeri_teslim_tarihi: string | null;
   is_suresi: number | null; is_bitim_tarihi: string | null; teknik_personel_sayisi: number | null; teknik_personeller: string[] | null;
   calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
+  sure_uzatimli_tarih: string | null; // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim_tarihi kullanılır)
 };
 
 export async function getSantiyelerAll(): Promise<SantiyeAllRow[]> {
   const supabase = getSupabase();
-  const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit";
+  const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, sure_uzatimli_tarih, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit";
   // ihaleli kolonu henüz eklenmemiş olabilir (tipli client tanımaz) → varsa al, yoksa fallback.
   const r1 = await supabase.from("santiyeler").select(base + ", ihaleli").order("is_adi", { ascending: true });
   const r = r1.error ? await supabase.from("santiyeler").select(base).order("is_adi", { ascending: true }) : r1;
