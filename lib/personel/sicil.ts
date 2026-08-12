@@ -1,11 +1,12 @@
 // SGK İŞYERİ SİCİL — saf yardımcılar. IMAP/DB/Node bağımlılığı YOK → hem sunucu sync'i (bildirge-fetch)
 // hem client (dashboard: getBekleyenBildirgeler) güvenle import eder. bildirge-fetch bunları re-export eder.
 
-// SGK işyeri sicil no — grup: mahiyet(1) işkolu(4) ünite(2) sıra(7) il(3) ilçe(2) aracı(2) [kontrol(3)].
+// SGK işyeri sicil no — grup: mahiyet(1) işkolu(4) ünite(2) [ünite-eski(2)] sıra(7) il(3) ilçe(2) aracı(2) [kontrol(3)].
 // Örnek (çıkış): "4 4100 01 1070267 060 04 67 000". Boşluk ZORUNLU (\s+): giriş formunda önünde kişinin
 // 10 haneli SGK no'su var; \s* olsa gürültüye kayar. KONTROL grubu (000) OPSİYONEL: çıkış 8 grup verir,
-// GİRİŞ formu son "000"i düşürür ("...64 5120.10") → 7 grupla da eşleşir.
-const ISYERI_SICIL_RE = /(\d)\s+(\d{4})\s+(\d{2})\s+(\d{7})\s+(\d{3})\s+(\d{2})\s+(\d{2})(?:\s+(\d{3}))?(?!\d)/;
+// GİRİŞ formu son "000"i düşürür ("...64 5120.10") → 7 grupla da eşleşir. İKİNCİ ÜNİTE (yeni/eski) OPSİYONEL:
+// bazı SGK formları (ör. isimle gelen "Naci Şahin.pdf") sicili "4 4299 01 01 1135903..." (çift ünite) verir.
+const ISYERI_SICIL_RE = /(\d)\s+(\d{4})\s+(\d{2})(?:\s+(\d{2}))?\s+(\d{7})\s+(\d{3})\s+(\d{2})\s+(\d{2})(?:\s+(\d{3}))?(?!\d)/;
 
 // `norm`: trUpper + boşluk teke inmiş metin. Dönüş: tek boşluklu sicil ("4 4100 ...") | null.
 export function isyeriSicili(norm: string): string | null {

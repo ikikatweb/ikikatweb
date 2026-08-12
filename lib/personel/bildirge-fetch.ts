@@ -181,19 +181,36 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
             // toplu PDF'ler (onlarca TC, sütun başlıklarında "işe giriş/çıkış tarihi") YANLIŞLIKLA eşleşmez.
             const fn = ek.filename ?? "";
             const fnUp = trUpper(fn);
-            const tcFn = tcNorm((fn.match(/\d{11}/) ?? [])[0]);
-            const tip: "giris" | "cikis" | null =
+            let tcFn = tcNorm((fn.match(/\d{11}/) ?? [])[0]);
+            let tip: "giris" | "cikis" | null =
               /AYRIL|ISTEN|CIKIS/.test(fnUp) ? "cikis" : (/GIRIS|ISE/.test(fnUp) ? "giris" : null);
-            if (!tip || tcFn.length !== 11) continue; // bildirge dosyası değil → atla (bordro vb.)
+            let metin = ""; // PDF metni: içerik-fallback'te erken okunursa aşağıda tekrar okunmaz
+            if (!tip || tcFn.length !== 11) {
+              // İÇERİK FALLBACK: dosya adı TC+tip vermedi (ör. muhasebe SGK PDF'ini "Naci Şahin.pdf" gibi İSİMLE
+              // gönderdi). GERÇEK tekil SGK bildirgesiyse (başlıkta "SİGORTALI İŞTEN AYRILIŞ/İŞE GİRİŞ BİLDİRGESİ")
+              // TC + tip'i İÇERİKTEN çıkar. Toplu bordro/ücret PDF'i bu başlığı taşımaz → yanlış eşleşme olmaz.
+              try { metin = await pdfMetin(ek.content as Buffer); } catch { continue; }
+              const norm0 = trUpper(metin).replace(/\s+/g, " ");
+              const icTip: "giris" | "cikis" | null =
+                /SIGORTALI ISTEN AYRILIS BILDIRGE/.test(norm0) ? "cikis"
+                : /SIGORTALI ISE GIRIS BILDIRGE/.test(norm0) ? "giris" : null;
+              // TC formda kutucuklu (tek tek boşluklu) yazılır: "1 6 7 0 3 2 5 8 7 5 4". Sıfır-dolu boilerplate elenir.
+              const icTC = ([...norm0.matchAll(/(?<!\d)(?:\d ){10}\d(?!\d)/g)]
+                .map((m) => m[0].replace(/\s/g, ""))
+                .find((t) => /^[1-9]\d{10}$/.test(t))) ?? "";
+              if (!icTip || icTC.length !== 11) continue; // tekil bildirge değil / TC yok → atla (bordro korunur)
+              tip = icTip; tcFn = icTC;
+            }
 
             // Eşleşecek açık talep yoksa PDF'i hiç açma (boşuna pdfjs çalıştırma)
             const adaylar = bekleyen.filter((r) => r.tip === tip && tcNorm(r.personel_tc) === tcFn);
             if (adaylar.length === 0) continue;
 
             taranan++;
-            let metin = "";
-            try { metin = await pdfMetin(ek.content as Buffer); }
-            catch (e) { uyari.push(`PDF okunamadı (${fn || "?"}): ${e instanceof Error ? e.message : String(e)}`); continue; }
+            if (!metin) { // içerik-fallback yolunda zaten okunduysa tekrar okuma
+              try { metin = await pdfMetin(ek.content as Buffer); }
+              catch (e) { uyari.push(`PDF okunamadı (${fn || "?"}): ${e instanceof Error ? e.message : String(e)}`); continue; }
+            }
             const norm = trUpper(metin).replace(/\s+/g, " ");
             const olay = olayTarihi(norm); // bildirgedeki gerçek giriş/çıkış tarihi (YYYY-MM-DD) | null
 
