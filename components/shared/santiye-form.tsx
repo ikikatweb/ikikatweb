@@ -33,6 +33,10 @@ import { Save, X, Upload, Plus, Trash2 } from "lucide-react";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import toast from "react-hot-toast";
 
+// Yeni iş kaydından sonraki "Kullanıcı Atama" dialog'unda EN SON seçilen kullanıcılar (localStorage) →
+// bir sonraki yeni işte otomatik ön-seçili gelir (genelde aynı kişiler atanıyor; kullanıcı isterse çıkarır).
+const SON_KULLANICI_KEY = "santiye-yeni-is-son-kullanicilar";
+
 // onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
 // (dialog/pencere içinde kullanım için). Verilmezse eski davranış: santiyeler sayfasına gider.
 type SantiyeFormProps = { santiye?: Santiye; onSuccess?: () => void; onCancel?: () => void };
@@ -543,7 +547,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
             return;
           }
           setKullaniciListesi(filtreli);
-          setSeciliKullaniciIds(new Set());
+          // EN SON seçilenler otomatik seçili gelsin (mevcut listede olanlarla kesişim). İstersen çıkarırsın.
+          setSeciliKullaniciIds((() => {
+            try {
+              const ids: string[] = JSON.parse(localStorage.getItem(SON_KULLANICI_KEY) ?? "[]");
+              const mevcut = new Set(filtreli.map((k) => k.id));
+              return new Set(ids.filter((id) => mevcut.has(id)));
+            } catch { return new Set<string>(); }
+          })());
           setYeniKaydedilenSantiyeId(savedId);
           setKullaniciDialogAcik(true);
           // Loading durumunu bırak — dialog açıldı, kullanıcı seçim yapacak
@@ -581,6 +592,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         }
       }
       if (seciliKullaniciIds.size > 0) {
+        // Bir sonraki yeni işte ön-seçili gelsin diye bu seçimi hatırla.
+        try { localStorage.setItem(SON_KULLANICI_KEY, JSON.stringify([...seciliKullaniciIds])); } catch { /* sessiz */ }
         toast.success(`${basari}/${seciliKullaniciIds.size} kullanıcıya iş atandı.`);
       } else {
         toast("Hiç kullanıcı seçilmedi — atama yapılmadı.", { icon: "ℹ️" });
