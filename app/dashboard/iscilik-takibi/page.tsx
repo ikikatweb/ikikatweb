@@ -643,7 +643,7 @@ export default function IscilikTakibiPage() {
           const yatacak = (bedel + kesif + ff) * oran / 100;
           const kalan = yatacak - (row.yatan_prim ?? 0);
           if (kalan < 0) data.cell.styles.textColor = [220, 38, 38];
-          else if (kalan > 0) { data.cell.styles.textColor = [0, 0, 0]; data.cell.styles.fontStyle = "bold"; }
+          else if (kalan > 0) { data.cell.styles.textColor = [22, 163, 74]; data.cell.styles.fontStyle = "bold"; }
         }
 
         // İş bitim tarihi renklendirmesi
@@ -664,8 +664,9 @@ export default function IscilikTakibiPage() {
           }
           if (bitimStr) {
             const kalanGun = Math.ceil((new Date(bitimStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-            if (kalanGun <= 30) data.cell.styles.textColor = [220, 38, 38];
-            else if (kalanGun <= 60) data.cell.styles.textColor = [249, 115, 22];
+            // Süre geçmiş → kırmızı; 30 gün ve altı kalmış → turuncu; fazlası → normal (tablo ile aynı).
+            if (kalanGun < 0) data.cell.styles.textColor = [220, 38, 38];
+            else if (kalanGun <= 30) data.cell.styles.textColor = [249, 115, 22];
           }
         }
       },
@@ -877,15 +878,18 @@ export default function IscilikTakibiPage() {
                       const oran = row.iscilik_orani ?? 0;
                       const yatacak = (bedel + kesif + ff) * oran / 100;
                       const kalan = yatacak - (row.yatan_prim ?? 0);
+                      // Kalan prim > 0 → yeşil (yatacak var), < 0 → kırmızı (fazla yatmış).
                       if (kalan < 0) kalanPrimClass = " text-red-600 font-bold";
-                      else if (kalan > 0) kalanPrimClass = " text-gray-900 font-bold";
+                      else if (kalan > 0) kalanPrimClass = " text-green-600 font-bold";
                     }
 
-                    // İş bitim tarihi renklendirmesi
+                    // İş bitim tarihi renklendirmesi — GÖSTERİLEN tarihe göre (süre uzatımlı tarih öncelikli).
                     let bitimTarihiClass = "";
                     if (col.key === "is_bitim_tarihi") {
                       let bitimStr: string | null = null;
-                      if (row.baslangic_tarihi && row.sure_text) {
+                      if (row.santiyeler?.sure_uzatimli_tarih) {
+                        bitimStr = row.santiyeler.sure_uzatimli_tarih;
+                      } else if (row.baslangic_tarihi && row.sure_text) {
                         const toplam = row.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
                         if (toplam > 0) {
                           const d = new Date(row.baslangic_tarihi);
@@ -897,9 +901,9 @@ export default function IscilikTakibiPage() {
                       }
                       if (bitimStr) {
                         const kalanGun = Math.ceil((new Date(bitimStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        // Süre geçmiş → kırmızı; 30 gün ve altı kalmış → turuncu; fazlası → normal.
                         if (kalanGun < 0) bitimTarihiClass = " text-red-600 font-bold";
-                        else if (kalanGun <= 30) bitimTarihiClass = " text-red-600 font-bold";
-                        else if (kalanGun <= 60) bitimTarihiClass = " text-orange-500 font-bold";
+                        else if (kalanGun <= 30) bitimTarihiClass = " text-orange-500 font-bold";
                       }
                     }
 
