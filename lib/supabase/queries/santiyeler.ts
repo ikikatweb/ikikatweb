@@ -63,11 +63,12 @@ export async function getSantiyeById(id: string) {
 export async function createSantiye(santiye: SantiyeInsert) {
   const supabase = getSupabase();
   let { data, error } = await supabase.from("santiyeler").insert(santiye).select().single();
-  // "ihaleli" / "gecici_kabul_itibar_tarihi" kolonları migration öncesi yoksa o alanları çıkarıp tekrar dene → form kilitlenmesin.
-  if (error && /ihaleli|gecici_kabul_itibar_tarihi/i.test(error.message)) {
+  // "ihaleli" / "gecici_kabul_itibar_tarihi" / "sozlesme_imzalanmadi" kolonları migration öncesi yoksa o alanları çıkarıp tekrar dene → form kilitlenmesin.
+  if (error && /ihaleli|gecici_kabul_itibar_tarihi|sozlesme_imzalanmadi/i.test(error.message)) {
     const s2 = { ...santiye };
     delete (s2 as Record<string, unknown>).ihaleli;
     delete (s2 as Record<string, unknown>).gecici_kabul_itibar_tarihi;
+    delete (s2 as Record<string, unknown>).sozlesme_imzalanmadi;
     ({ data, error } = await supabase.from("santiyeler").insert(s2).select().single());
   }
   if (error) throw error;
@@ -99,11 +100,12 @@ export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
 
   const payload = { ...santiye, updated_at: new Date().toISOString() };
   let { data, error } = await supabase.from("santiyeler").update(payload).eq("id", id).select().single();
-  // "ihaleli" / "gecici_kabul_itibar_tarihi" kolonları yoksa o alanları çıkarıp tekrar dene (migration öncesi).
-  if (error && /ihaleli|gecici_kabul_itibar_tarihi/i.test(error.message)) {
+  // "ihaleli" / "gecici_kabul_itibar_tarihi" / "sozlesme_imzalanmadi" kolonları yoksa o alanları çıkarıp tekrar dene (migration öncesi).
+  if (error && /ihaleli|gecici_kabul_itibar_tarihi|sozlesme_imzalanmadi/i.test(error.message)) {
     const p2 = { ...payload };
     delete (p2 as Record<string, unknown>).ihaleli;
     delete (p2 as Record<string, unknown>).gecici_kabul_itibar_tarihi;
+    delete (p2 as Record<string, unknown>).sozlesme_imzalanmadi;
     ({ data, error } = await supabase.from("santiyeler").update(p2).eq("id", id).select().single());
   }
   if (error) throw error;
@@ -235,8 +237,9 @@ export async function deleteSantiye(id: string) {
   if (error) throw error;
 }
 
-// SÖZLEŞME TARİHİ HATIRLATMASI — "Henüz Sözleşme imzalanmadı" ile boş kaydedilmiş (sozlesme_tarihi NULL)
-// aktif işlerde, iş oluşturulduktan 7 GÜN sonra "sözleşme tarihini girin" ana sayfa uyarısı.
+// SÖZLEŞME TARİHİ HATIRLATMASI — SADECE "Henüz Sözleşme imzalanmadı" TİKİ İŞARETLİ (sozlesme_imzalanmadi=true) +
+// tarihi hâlâ boş aktif işlerde, iş oluşturulduktan 7 GÜN sonra "sözleşme tarihini girin" ana sayfa uyarısı.
+// (Eski/ihalesiz boş-tarihli işler tik işaretli olmadığından uyarıya DÜŞMEZ.)
 export type SozlesmeTarihiEksik = {
   santiye_id: string;
   is_adi: string;
@@ -247,8 +250,9 @@ export async function getSozlesmeTarihiEksikleri(): Promise<SozlesmeTarihiEksik[
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("santiyeler")
-    .select("id, is_adi, created_at, sozlesme_tarihi, durum")
+    .select("id, is_adi, created_at, sozlesme_tarihi, durum, sozlesme_imzalanmadi")
     .eq("durum", "aktif")
+    .eq("sozlesme_imzalanmadi", true)
     .is("sozlesme_tarihi", null);
   if (error) return [];
   const HATIRLATMA_GUN = 7;

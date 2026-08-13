@@ -122,10 +122,10 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     formatParaInput(santiye?.sozlesme_bedeli ?? null)
   );
 
-  // "Henüz Sözleşme imzalanmadı": işaretliyse sözleşme tarihi zorunlu değil (boş kaydedilir).
-  // Düzenlemede sözleşme tarihi YOKSA imzalanmamış sayılır → tik işaretli gelir.
-  // (Kaydedilmiş boş tarih = tik işaretliydi; ana sayfa 7 gün sonra "tarihi girin" hatırlatır.)
-  const [sozlesmeImzalanmadi, setSozlesmeImzalanmadi] = useState<boolean>(isEdit ? !santiye?.sozlesme_tarihi : false);
+  // "Henüz Sözleşme imzalanmadı": işaretliyse sözleşme tarihi zorunlu değil (boş kaydedilir) ve
+  // ana sayfa 7 gün sonra "tarihi girin" hatırlatır. Kalıcı boolean kolonda tutulur (sozlesme_imzalanmadi) —
+  // eski/ihalesiz boş-tarihli işler yanlışlıkla uyarıya düşmesin diye null tarihten ÇIKARIM yapılmaz.
+  const [sozlesmeImzalanmadi, setSozlesmeImzalanmadi] = useState<boolean>(isEdit ? !!santiye?.sozlesme_imzalanmadi : false);
 
   // Kaydette eksik zorunlu alan → o alanın kutusu kırmızıya boyanır ve o alanın sekmesine geçilir.
   const [aktifSekme, setAktifSekme] = useState<string>("genel");
@@ -544,8 +544,9 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         teknik_personel_sayisi: teknikPersonellerTemiz.length,
         // Atama süresi (gün): "gerekli değil" ise takip yok (null); değilse girilen sayı — boş/geçersiz → 10 (varsayılan)
         teknik_atama_gun: teknikPersonelGerekliDegil ? null : (parseInt(teknikAtamaGun, 10) || 10),
-        // Henüz imzalanmadı işaretliyse sözleşme tarihi boş kaydedilir.
+        // Henüz imzalanmadı işaretliyse sözleşme tarihi boş kaydedilir; tik durumu kalıcı kolonda tutulur.
         sozlesme_tarihi: sozlesmeImzalanmadi ? null : formData.sozlesme_tarihi,
+        sozlesme_imzalanmadi: sozlesmeImzalanmadi,
         // "Onay tarihi yok" işaretliyse geçici kabul onay tarihi boş kaydedilir.
         gecici_kabul_tarihi: onayTarihiYok ? null : formData.gecici_kabul_tarihi,
       };

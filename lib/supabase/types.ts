@@ -69,6 +69,7 @@ export type Santiye = {
   // Teknik gerekli işlerde null/boş → 10 gün varsayılır (takip yapılır); "teknik gerekli değil" işlerde null = takip yok.
   teknik_atama_gun?: number | null;
   sozlesme_tarihi: string | null;
+  sozlesme_imzalanmadi?: boolean | null; // "Henüz Sözleşme imzalanmadı" — true → sözleşme tarihi opsiyonel + 7g ana sayfa hatırlatma
   isyeri_teslim_tarihi: string | null;
   is_suresi: number | null;
   is_bitim_tarihi: string | null;
