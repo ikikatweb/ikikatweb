@@ -269,6 +269,8 @@ export default function IscilikTakibiPage() {
       // İş grubu sırasına göre sırala, aynı gruptakiler oluşturulma sırasına göre
       const sorted = ((data as IscilikTakibiWithSantiye[]) ?? [])
         .filter((r) => {
+          // İhaleli iş tiki kaldırılmış (açıkça false) işler işçilik takibinde gösterilmez.
+          if ((r.santiyeler as { ihaleli?: boolean | null } | null)?.ihaleli === false) return false;
           if (!izinliSantiyeler) return true;
           if (!r.santiye_id) return santiyesizDahil;
           return izinliSantiyeler.has(r.santiye_id);
@@ -403,6 +405,8 @@ export default function IscilikTakibiPage() {
       const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
       const filtreli = ((data as IscilikTakibiWithSantiye[]) ?? [])
         .filter((r) => {
+          // İhaleli olmayan (açıkça false) işler çöp sekmesinde de gösterilmez.
+          if ((r.santiyeler as { ihaleli?: boolean | null } | null)?.ihaleli === false) return false;
           if (!izinliSantiyeler) return true;
           if (!r.santiye_id) return santiyesizDahil;
           return izinliSantiyeler.has(r.santiye_id);
