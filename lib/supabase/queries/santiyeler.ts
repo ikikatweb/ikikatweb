@@ -147,6 +147,68 @@ export async function toggleSantiyeDurum(id: string, durum: "aktif" | "tamamland
   if (error) throw error;
 }
 
+// İşi (şantiyeyi) kalıcı siler. Önce bu işe bağlı HERHANGİ bir veri var mı diye bakar —
+// (araç/personel ataması, puantaj, işçilik, kasa, yakıt, bordro, evrak, harita katmanı vb.)
+// varsa silmeyi engeller ki dolu bir iş yanlışlıkla silinmesin. İşin kendi tanım verileri
+// (ortaklar, iş grubu dağılımı, gizli maliyet) ise bağımsız veri sayılmaz, iş ile birlikte silinir.
+export async function deleteSantiye(id: string) {
+  const supabase = getSupabase();
+
+  // Bağlı veri kontrolü — santiye_id (veya özel kolon) ile bu işe bağlı tüm tablolar.
+  // error (tablo/kolon yoksa) → o kontrol atlanır; DB'deki FK + UI fallback yine korur.
+  const kontroller: { tablo: string; alan: string; label: string }[] = [
+    { tablo: "araclar", alan: "santiye_id", label: "atanmış araç" },
+    { tablo: "personel", alan: "santiye_id", label: "atanmış personel" },
+    { tablo: "personel_santiye", alan: "santiye_id", label: "personel-şantiye ataması" },
+    { tablo: "arac_puantaj", alan: "santiye_id", label: "araç puantajı" },
+    { tablo: "personel_puantaj", alan: "santiye_id", label: "personel puantajı" },
+    { tablo: "personel_atama_gecmisi", alan: "santiye_id", label: "personel atama geçmişi" },
+    { tablo: "personel_atama_manuel_gun", alan: "santiye_id", label: "manuel puantaj günü" },
+    { tablo: "personel_atama_bilgi_notu", alan: "santiye_id", label: "personel bilgi notu" },
+    { tablo: "santiye_defteri", alan: "santiye_id", label: "şantiye defteri kaydı" },
+    { tablo: "iscilik_takibi", alan: "santiye_id", label: "işçilik takibi kaydı" },
+    { tablo: "kasa_hareketi", alan: "santiye_id", label: "kasa hareketi" },
+    { tablo: "arac_yakit", alan: "santiye_id", label: "yakıt kaydı" },
+    { tablo: "yakit_alim", alan: "santiye_id", label: "yakıt alımı" },
+    { tablo: "yakit_virman", alan: "gonderen_santiye_id", label: "yakıt virmanı (gönderen)" },
+    { tablo: "yakit_virman", alan: "alan_santiye_id", label: "yakıt virmanı (alan)" },
+    { tablo: "arac_puantaj_override", alan: "santiye_id", label: "araç puantaj düzeltmesi" },
+    { tablo: "arac_bakim", alan: "santiye_id", label: "araç bakım kaydı" },
+    { tablo: "gelen_evrak", alan: "santiye_id", label: "gelen evrak" },
+    { tablo: "giden_evrak", alan: "santiye_id", label: "giden evrak" },
+    { tablo: "arvento_katman", alan: "santiye_id", label: "harita katmanı" },
+    { tablo: "personel_islem_takip", alan: "sicil_santiye_id", label: "personel işlem takibi" },
+  ];
+
+  const sonuclar = await Promise.all(
+    kontroller.map(async (k) => {
+      const { count, error } = await supabase
+        .from(k.tablo)
+        .select(k.alan, { count: "exact", head: true })
+        .eq(k.alan, id);
+      return error ? null : { label: k.label, count: count ?? 0 };
+    }),
+  );
+
+  const engeller = sonuclar.filter(
+    (r): r is { label: string; count: number } => !!r && r.count > 0,
+  );
+  if (engeller.length > 0) {
+    const detay = engeller.map((e) => `${e.count} ${e.label}`).join(", ");
+    throw new Error(
+      `Bu işe bağlı veri bulunuyor (${detay}). İş silinemez — önce bu kayıtları kaldırın.`,
+    );
+  }
+
+  // İşin kendi tanım verileri — iş ile birlikte temizlenir (bağımsız veri değil).
+  await supabase.from("santiye_ortaklari").delete().eq("santiye_id", id);
+  await supabase.from("santiye_is_gruplari").delete().eq("santiye_id", id);
+  await supabase.from("maliyet_gizli_santiye").delete().eq("santiye_id", id);
+
+  const { error } = await supabase.from("santiyeler").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function uploadSantiyeFile(
   file: File,
   santiyeId: string,
