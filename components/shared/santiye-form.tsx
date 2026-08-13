@@ -460,7 +460,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       if (!bedel || bedel <= 0) { alanHatasi("sozlesme", "sozlesme_bedeli", "Sözleşme bedeli zorunludur."); return; }
     }
     if (formData.ihaleli !== false && !sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { alanHatasi("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); return; }
-    if (!formData.is_suresi || formData.is_suresi <= 0) { alanHatasi("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); return; }
+    if (formData.ihaleli !== false && (!formData.is_suresi || formData.is_suresi <= 0)) { alanHatasi("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); return; }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
@@ -1025,7 +1025,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
                 {/* İş Süresi (Gün) */}
                 <div className="space-y-2">
-                  <Label htmlFor="is_suresi">İş Süresi (Gün) <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="is_suresi">İş Süresi (Gün) {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <Input id="is_suresi" name="is_suresi" type="text" inputMode="numeric" placeholder="Örn: 365" value={formData.is_suresi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("is_suresi")} />
                 </div>
 
