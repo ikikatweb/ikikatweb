@@ -6,10 +6,12 @@ import { useRouter } from "next/navigation";
 import {
   createSantiye,
   updateSantiye,
+  deleteSantiye,
   uploadSantiyeFile,
   saveOrtaklar,
   getOrtaklar,
 } from "@/lib/supabase/queries/santiyeler";
+import { useAuth } from "@/hooks";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/queries/santiyeler";
 import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
@@ -70,6 +72,8 @@ function parseParaInput(value: string): number | null {
 export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const ySil = hasPermission("yonetim-santiyeler", "sil");
 
   const [loading, setLoading] = useState(false);
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -381,6 +385,28 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       toast.success("PDF silindi.");
     } catch (err) {
       toast.error(`Silme hatası: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // İşi (şantiyeyi) kalıcı sil — deleteSantiye önce işe bağlı herhangi bir veri (araç/personel
+  // ataması, puantaj, işçilik, kasa, yakıt, evrak vb.) var mı diye bakar; varsa engeller.
+  async function handleSil() {
+    if (!santiye?.id) return;
+    if (!confirm(`"${santiye.is_adi}" işini kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+    setLoading(true);
+    try {
+      await deleteSantiye(santiye.id);
+      toast.success("İş silindi.");
+      if (onSuccess) { onSuccess(); return; }
+      window.location.href = "/dashboard/yonetim/santiyeler";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/violates foreign key|referenced|constraint/i.test(msg)) {
+        toast.error("Bu işe bağlı kayıtlar bulunuyor. İş silinemez — önce bağlı verileri kaldırın.");
+      } else {
+        toast.error(msg);
+      }
+      setLoading(false);
     }
   }
 
@@ -1333,6 +1359,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       {/* Butonlar mobilde ALT ALTA (flex-col-reverse → Kaydet üstte, İptal altta), her biri tam genişlik → uzun
           form yatay taşısa bile butonlar sola dayalı ve GÖRÜNÜR kalır. Masaüstünde yan yana, sağa dayalı. */}
       <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
+        {isEdit && ySil && (
+          <Button type="button" variant="outline"
+            className="w-full sm:w-auto sm:mr-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={handleSil} disabled={loading}>
+            <Trash2 size={16} className="mr-1" /> Sil
+          </Button>
+        )}
         <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
           <X size={16} className="mr-1" /> İptal
         </Button>

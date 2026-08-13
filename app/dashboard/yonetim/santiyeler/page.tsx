@@ -6,7 +6,6 @@ import {
   getSantiyeler,
   toggleSantiyeDurum,
   updateSantiye,
-  deleteSantiye,
   getTumOrtaklar,
   getTumSantiyeIsGruplari,
 } from "@/lib/supabase/queries/santiyeler";
@@ -27,7 +26,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import SantiyeForm from "@/components/shared/santiye-form";
-import { Plus, HardHat, Pencil, Trash2, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
+import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -1053,36 +1052,14 @@ export default function SantiyelerPage() {
                     </TableCell>
                     {/* Fiyat Farkı - sadece devam eden işlerde */}
                     <TableCell className="text-center px-1.5 tabular-nums">{c.ffYuzde != null ? `%${c.ffYuzde.toFixed(2)}` : "—"}</TableCell>
-                    {/* İşlem - düzenle + sil */}
+                    {/* İşlem - sadece düzenle (silme işlem düzenleme penceresinde) */}
                     <TableCell className="text-center px-2">
-                      <div className="flex items-center justify-center gap-0.5">
                       {yDuzenle && (
                       <Button variant="ghost" size="sm" title="Düzenle"
                         onClick={() => { setDuzenleSantiye(s); setFormAcik(true); }}>
                         <Pencil size={14} />
                       </Button>
                       )}
-                      {ySil && (
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" title="Sil"
-                        onClick={async () => {
-                          if (!confirm(`"${s.is_adi}" işini kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
-                          try {
-                            await deleteSantiye(s.id);
-                            setSantiyeler((prev) => prev.filter((x) => x.id !== s.id));
-                            toast.success("İş silindi.");
-                          } catch (err) {
-                            const msg = err instanceof Error ? err.message : String(err);
-                            if (/violates foreign key|referenced|constraint/i.test(msg)) {
-                              toast.error("Bu işe bağlı kayıtlar bulunuyor. İş silinemez — önce bağlı verileri kaldırın.");
-                            } else {
-                              toast.error(msg);
-                            }
-                          }
-                        }}>
-                        <Trash2 size={14} />
-                      </Button>
-                      )}
-                      </div>
                     </TableCell>
                   </TableRow>
                 );
