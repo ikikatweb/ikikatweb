@@ -433,6 +433,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       toast.error("En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
       return;
     }
+    // Atama süresi zorunlu: teknik personel gerekliyse ve süre boş/geçersizse, 10 gün varsayılacağını onaylat.
+    if (!teknikPersonelGerekliDegil) {
+      const atamaGunSayi = parseInt(teknikAtamaGun, 10);
+      if (!atamaGunSayi || atamaGunSayi <= 0) {
+        if (!confirm("Atama süresi (gün) boş bırakıldı. 10 gün olarak hesaplanacaktır. Onaylıyor musunuz?")) return;
+      }
+    }
     // Sözleşme ve işyeri teslim tarihi ihale tarihinden önce olamaz
     if (formData.ihale_tarihi) {
       if (formData.sozlesme_tarihi && formData.sozlesme_tarihi < formData.ihale_tarihi) {
