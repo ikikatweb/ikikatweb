@@ -840,7 +840,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç) {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <div className="flex gap-2">
-                    <div className="relative flex-1">
+                    <div className="flex-1">
                       <Input
                         id="sozlesme_bedeli"
                         placeholder="0,00"
@@ -853,15 +853,12 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                         disabled={loading || tutarKilitli}
                         title={tutarKilitli ? "Geçici kabulü yapılmış işin sözleşme bedeli değiştirilemez" : undefined}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                        {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
-                      </span>
                     </div>
                     <select
                       value={formData.para_birimi ?? "TRY"}
                       onChange={(e) => setFormData((prev) => ({ ...prev, para_birimi: e.target.value as "TRY" | "USD" | "EUR" }))}
                       disabled={loading || tutarKilitli}
-                      className="h-10 px-2 text-sm border border-gray-300 rounded-md bg-white outline-none focus:border-[#1E3A5F] w-20 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="h-8 px-2 text-sm border border-input rounded-lg bg-white outline-none focus:border-[#1E3A5F] w-20 disabled:opacity-60 disabled:cursor-not-allowed"
                       title={tutarKilitli ? "Kilitli" : "Para birimi"}
                     >
                       <option value="TRY">TL</option>
