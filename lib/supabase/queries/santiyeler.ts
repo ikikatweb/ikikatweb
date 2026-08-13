@@ -166,7 +166,6 @@ export async function deleteSantiye(id: string) {
     { tablo: "personel_atama_manuel_gun", alan: "santiye_id", label: "manuel puantaj günü" },
     { tablo: "personel_atama_bilgi_notu", alan: "santiye_id", label: "personel bilgi notu" },
     { tablo: "santiye_defteri", alan: "santiye_id", label: "şantiye defteri kaydı" },
-    { tablo: "iscilik_takibi", alan: "santiye_id", label: "işçilik takibi kaydı" },
     { tablo: "kasa_hareketi", alan: "santiye_id", label: "kasa hareketi" },
     { tablo: "arac_yakit", alan: "santiye_id", label: "yakıt kaydı" },
     { tablo: "yakit_alim", alan: "santiye_id", label: "yakıt alımı" },
@@ -193,6 +192,24 @@ export async function deleteSantiye(id: string) {
   const engeller = sonuclar.filter(
     (r): r is { label: string; count: number } => !!r && r.count > 0,
   );
+
+  // İşçilik takibi satırı HER iş için otomatik oluşturulur (kullanıcı verisi değil) → tek başına
+  // engel değildir; işle birlikte silinir. Gerçek işçilik verisi AYLIK kayıtlardadır (iscilik_aylik) —
+  // yalnızca o varsa engelle.
+  let iscilikTakibiIds: string[] = [];
+  try {
+    const { data: itRows } = await supabase
+      .from("iscilik_takibi").select("id").eq("santiye_id", id);
+    iscilikTakibiIds = (itRows ?? []).map((r) => (r as { id: string }).id);
+    if (iscilikTakibiIds.length > 0) {
+      const { count } = await supabase
+        .from("iscilik_aylik")
+        .select("id", { count: "exact", head: true })
+        .in("iscilik_takibi_id", iscilikTakibiIds);
+      if (count && count > 0) engeller.push({ label: "işçilik (aylık) verisi", count });
+    }
+  } catch { /* tablo yoksa sessiz */ }
+
   if (engeller.length > 0) {
     const detay = engeller.map((e) => `${e.count} ${e.label}`).join(", ");
     throw new Error(
@@ -200,10 +217,15 @@ export async function deleteSantiye(id: string) {
     );
   }
 
-  // İşin kendi tanım verileri — iş ile birlikte temizlenir (bağımsız veri değil).
+  // İşin kendi tanım/otomatik verileri — iş ile birlikte temizlenir (bağımsız veri değil).
   await supabase.from("santiye_ortaklari").delete().eq("santiye_id", id);
   await supabase.from("santiye_is_gruplari").delete().eq("santiye_id", id);
   await supabase.from("maliyet_gizli_santiye").delete().eq("santiye_id", id);
+  // İşçilik takibi (otomatik satır) + aylık verisi (engel yoksa boştur) — önce çocuk, sonra üst satır.
+  if (iscilikTakibiIds.length > 0) {
+    await supabase.from("iscilik_aylik").delete().in("iscilik_takibi_id", iscilikTakibiIds);
+    await supabase.from("iscilik_takibi").delete().eq("santiye_id", id);
+  }
 
   const { error } = await supabase.from("santiyeler").delete().eq("id", id);
   if (error) throw error;

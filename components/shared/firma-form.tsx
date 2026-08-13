@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   createFirma,
   updateFirma,
+  deleteFirma,
   uploadFirmaFile,
   deleteFirmaFile,
 } from "@/lib/supabase/queries/firmalar";
+import { useAuth } from "@/hooks";
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import type { Firma, FirmaInsert } from "@/lib/supabase/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -32,6 +34,8 @@ type FirmaFormProps = {
 export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps) {
   const isEdit = !!firma;
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const ySil = hasPermission("yonetim-firmalar", "sil");
 
   const [loading, setLoading] = useState(false);
   const [kaseFile, setKaseFile] = useState<File | null>(null);
@@ -61,6 +65,28 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
       const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
       toast.error(`Silme başarısız: ${msg}`);
     } finally {
+      setLoading(false);
+    }
+  }
+
+  // Firmayı kalıcı sil — deleteFirma önce bağlı veri (araç, şantiye, evrak vb.) var mı kontrol eder;
+  // varsa anlaşılır bir hata fırlatır ve silmez.
+  async function handleSil() {
+    if (!firma?.id) return;
+    if (!confirm(`"${firma.firma_adi}" firmasını kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+    setLoading(true);
+    try {
+      await deleteFirma(firma.id);
+      toast.success("Firma silindi.");
+      if (onSuccess) { onSuccess(); return; }
+      window.location.href = "/dashboard/yonetim/firmalar";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/violates foreign key|referenced|constraint/i.test(msg)) {
+        toast.error("Bu firmaya bağlı kayıtlar (araç, şantiye, evrak vb.) bulunuyor. Firma silinemez.");
+      } else {
+        toast.error(msg);
+      }
       setLoading(false);
     }
   }
@@ -426,11 +452,25 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         </TabsContent>
       </Tabs>
 
-      {/* Alt butonlar */}
-      <div className="flex items-center justify-end gap-3 mt-6">
+      {/* Alt butonlar — sticky: uzun firma adı/içerikte pencere kaydırılırken Kaydet/İptal her zaman görünür.
+          Sil solda (sadece düzenleme + yetki), İptal/Kaydet sağda. */}
+      <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
+        {isEdit && ySil && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-auto sm:mr-auto border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={handleSil}
+            disabled={loading}
+          >
+            <Trash2 size={16} className="mr-1" />
+            Sil
+          </Button>
+        )}
         <Button
           type="button"
           variant="outline"
+          className="w-full sm:w-auto"
           onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/firmalar")}
           disabled={loading}
         >
@@ -439,7 +479,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         </Button>
         <Button
           type="submit"
-          className="bg-[#F97316] hover:bg-[#ea580c] text-white"
+          className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white"
           disabled={loading}
         >
           <Save size={16} className="mr-1" />
