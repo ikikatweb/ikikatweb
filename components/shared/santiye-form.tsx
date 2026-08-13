@@ -459,7 +459,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       const bedel = parseParaInput(sozlesmeBedeliStr);
       if (!bedel || bedel <= 0) { alanHatasi("sozlesme", "sozlesme_bedeli", "Sözleşme bedeli zorunludur."); return; }
     }
-    if (!sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { alanHatasi("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); return; }
+    if (formData.ihaleli !== false && !sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { alanHatasi("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); return; }
     if (!formData.is_suresi || formData.is_suresi <= 0) { alanHatasi("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); return; }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
@@ -885,7 +885,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                 {/* Sözleşme Tarihi + "Henüz Sözleşme imzalanmadı" tiki */}
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_tarihi">
-                    Sözleşme Tarihi {!sozlesmeImzalanmadi && <span className="text-red-500">*</span>}
+                    Sözleşme Tarihi {formData.ihaleli !== false && !sozlesmeImzalanmadi && <span className="text-red-500">*</span>}
                   </Label>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
