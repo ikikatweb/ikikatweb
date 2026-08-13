@@ -425,11 +425,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
     if (!formData.is_grubu) { toast.error("İş tanımı seçimi zorunludur."); return; }
     if (!formData.yuklenici_firma_id) { toast.error("Yüklenici firma seçimi zorunludur."); return; }
-    // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no zorunlu; ihaleli tiki kaldırıldıysa değil.
+    // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no + sözleşme bedeli zorunlu; ihaleli tiki kaldırıldıysa değil.
     if (formData.ihaleli !== false) {
       if (!formData.ilan_tarihi) { toast.error("İlan tarihi zorunludur."); return; }
       if (!formData.ihale_tarihi) { toast.error("İhale tarihi zorunludur."); return; }
       if (!formData.ihale_kayit_no?.trim()) { toast.error("İhale kayıt numarası zorunludur."); return; }
+      const bedel = parseParaInput(sozlesmeBedeliStr);
+      if (!bedel || bedel <= 0) { toast.error("Sözleşme bedeli zorunludur."); return; }
     }
     if (!formData.sozlesme_tarihi) { toast.error("Sözleşme tarihi zorunludur."); return; } // teknik atama uyarısı teslim yoksa sözleşmeye düşer → hep dolu olmalı
     if (!formData.is_suresi || formData.is_suresi <= 0) { toast.error("İş süresi (gün) zorunludur."); return; }
@@ -836,7 +838,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
             <CardContent className="pt-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç)</Label>
+                  <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç) {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Input
