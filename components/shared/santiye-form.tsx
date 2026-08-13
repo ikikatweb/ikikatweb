@@ -423,6 +423,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     e.preventDefault();
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
     if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
+    if (!formData.is_grubu) { toast.error("İş tanımı seçimi zorunludur."); return; }
+    if (!formData.yuklenici_firma_id) { toast.error("Yüklenici firma seçimi zorunludur."); return; }
+    // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no zorunlu; ihaleli tiki kaldırıldıysa değil.
+    if (formData.ihaleli !== false) {
+      if (!formData.ilan_tarihi) { toast.error("İlan tarihi zorunludur."); return; }
+      if (!formData.ihale_tarihi) { toast.error("İhale tarihi zorunludur."); return; }
+      if (!formData.ihale_kayit_no?.trim()) { toast.error("İhale kayıt numarası zorunludur."); return; }
+    }
     if (!formData.sozlesme_tarihi) { toast.error("Sözleşme tarihi zorunludur."); return; } // teknik atama uyarısı teslim yoksa sözleşmeye düşer → hep dolu olmalı
     if (!formData.is_suresi || formData.is_suresi <= 0) { toast.error("İş süresi (gün) zorunludur."); return; }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
@@ -685,7 +693,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>İş Tanımları</Label>
+                  <Label>İş Tanımları <span className="text-red-500">*</span></Label>
                   <select name="is_grubu" value={formData.is_grubu ?? ""} onChange={(e) => handleSelectChange("is_grubu", e.target.value)} disabled={loading} className={selectClass}>
                     <option value="">Seçiniz</option>
                     {isGruplari.map((g) => (<option key={g} value={g}>{g}</option>))}
@@ -709,7 +717,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Yüklenici Firma</Label>
+                  <Label>Yüklenici Firma <span className="text-red-500">*</span></Label>
                   <select name="yuklenici_firma_id" value={formData.yuklenici_firma_id ?? ""} onChange={(e) => handleSelectChange("yuklenici_firma_id", e.target.value)} disabled={loading} className={selectClass}>
                     <option value="">Seçiniz</option>
                     {firmalar.map((f) => (<option key={f.id} value={f.id}>{f.firma_adi}</option>))}
@@ -761,15 +769,15 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="ilan_tarihi">İlan Tarihi</Label>
+                  <Label htmlFor="ilan_tarihi">İlan Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <Input id="ilan_tarihi" name="ilan_tarihi" type="date" value={formData.ilan_tarihi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ihale_tarihi">İhale Tarihi</Label>
+                  <Label htmlFor="ihale_tarihi">İhale Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <Input id="ihale_tarihi" name="ihale_tarihi" type="date" value={formData.ihale_tarihi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ihale_kayit_no">İhale Kayıt Numarası</Label>
+                  <Label htmlFor="ihale_kayit_no">İhale Kayıt Numarası {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <Input id="ihale_kayit_no" name="ihale_kayit_no" placeholder="İhale kayıt no" value={formData.ihale_kayit_no ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
               </div>
