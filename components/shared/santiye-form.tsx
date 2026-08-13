@@ -151,9 +151,10 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   const [teknikPersonelGerekliDegil, setTeknikPersonelGerekliDegil] = useState<boolean>(
     Array.isArray(santiye?.teknik_personeller) && santiye!.teknik_personeller!.length === 0,
   );
-  // Teknik personel ATAMA SÜRESİ (gün) — işyeri tesliminden sonra atama için tanınan süre. Boş = takip yok.
+  // Teknik personel ATAMA SÜRESİ (gün) — işyeri tesliminden sonra atama için tanınan süre.
+  // Zorunlu alan: varsayılan 10 (boş bırakılırsa 10 olarak kaydedilir; takip her zaman yapılır).
   const [teknikAtamaGun, setTeknikAtamaGun] = useState<string>(
-    santiye?.teknik_atama_gun != null ? String(santiye.teknik_atama_gun) : "",
+    santiye?.teknik_atama_gun != null ? String(santiye.teknik_atama_gun) : "10",
   );
   // Bu şantiyede bordroda ATANMIŞ teknik personel kayıtlarının teknik_isim'leri (mükerrer olabilir → DİZİ,
   // Set değil). Her atama listede TEK bir satıra bağlanır → N atama en fazla N satırı yeşil yapar (aşağıda
@@ -489,8 +490,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         // Teknik personel listesi ve sayım birlikte güncellenir
         teknik_personeller: teknikPersonellerTemiz,
         teknik_personel_sayisi: teknikPersonellerTemiz.length,
-        // Atama süresi (gün): "gerekli değil" ise takip yok (null); değilse girilen sayı (boş→null)
-        teknik_atama_gun: teknikPersonelGerekliDegil ? null : (parseInt(teknikAtamaGun, 10) || null),
+        // Atama süresi (gün): "gerekli değil" ise takip yok (null); değilse girilen sayı — boş/geçersiz → 10 (varsayılan)
+        teknik_atama_gun: teknikPersonelGerekliDegil ? null : (parseInt(teknikAtamaGun, 10) || 10),
       };
 
       if (isEdit) {
@@ -973,7 +974,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                       </p>
                       {/* Teknik personel ATAMA SÜRESİ (gün) — işyeri tesliminden sonra atama için süre. */}
                       <div className="mt-2 space-y-1">
-                        <Label htmlFor="teknik_atama_gun" className="text-sm">Atama süresi (gün)</Label>
+                        <Label htmlFor="teknik_atama_gun" className="text-sm">Atama süresi (gün) <span className="text-red-500">*</span></Label>
                         <Input
                           id="teknik_atama_gun"
                           type="number"
@@ -985,7 +986,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                           className="w-32"
                         />
                         <p className="text-[10px] text-gray-500">
-                          İşyeri tesliminden sonra teknik personelin bordroda atanması için tanınan süre. Son tarihe 3 gün kala geri sayım, geçince gecikme uyarısı ana sayfada çıkar. Boş = takip yok.
+                          İşyeri tesliminden sonra teknik personelin bordroda atanması için tanınan süre. Son tarihe 3 gün kala geri sayım, geçince gecikme uyarısı ana sayfada çıkar. Boş bırakılırsa 10 gün olarak hesaplanır.
                         </p>
                       </div>
                     </>
