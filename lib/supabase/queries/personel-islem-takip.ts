@@ -19,6 +19,7 @@ export type PersonelIslemTakip = {
   created_by_ad: string | null;
   created_at: string;
   // Dashboard gösterimi için TC→personel→atama→şantiye ile ÇÖZÜLEN alanlar (DB'de tutulmaz):
+  santiye_id?: string | null;      // kişinin bu işleme ait şantiye id'si (kısıtlı kullanıcı görünürlük filtresi için)
   santiye_ad?: string | null;      // kişinin bu işleme ait şantiyesi (is_adi)
   santiye_sicil?: string | null;   // o şantiyenin iscilik_takibi.sicil_no'su
 };
@@ -81,6 +82,7 @@ export async function getBekleyenBildirgeler(): Promise<PersonelIslemTakip[]> {
 
     for (const k of kayitlar) {
       const sid = kayitSantiye(k);
+      k.santiye_id = sid ?? null;
       k.santiye_ad = sid ? (adById.get(sid) ?? null) : null;
       k.santiye_sicil = sid ? (sicilBySid.get(sid) ?? null) : null;
     }

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { getTeknikAtamaEksikleri, type TeknikAtamaEksik } from "@/lib/supabase/queries/personel-teknik";
+import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 // YYYY-MM-DD → DD.MM.YYYY
 function ymdToTr(s: string | null): string {
@@ -17,7 +18,7 @@ function ymdToTr(s: string | null): string {
 
 export default function TeknikAtamaHatirlatma() {
   const router = useRouter();
-  const { hasPermission } = useAuth();
+  const { hasPermission, kullanici } = useAuth();
   const yetkili = hasPermission("bordro-takibi", "duzenle") || hasPermission("bordro-takibi", "ekle");
   const [kayitlar, setKayitlar] = useState<TeknikAtamaEksik[]>([]);
 
@@ -26,13 +27,14 @@ export default function TeknikAtamaHatirlatma() {
     let iptal = false;
     const kontrol = async () => {
       const veri = await getTeknikAtamaEksikleri();
-      if (!iptal) setKayitlar(veri);
+      // Kısıtlı/şantiye admini: sadece yetkili olduğu şantiyelerdeki uyarılar.
+      if (!iptal) setKayitlar(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
     };
     void kontrol();
     const onFocus = () => void kontrol(); // atama yapılıp dönünce güncellensin
     window.addEventListener("focus", onFocus);
     return () => { iptal = true; window.removeEventListener("focus", onFocus); };
-  }, [yetkili]);
+  }, [yetkili, kullanici]);
 
   if (!yetkili || kayitlar.length === 0) return null;
 

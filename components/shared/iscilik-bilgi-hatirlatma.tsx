@@ -9,9 +9,10 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { getEksikIscilikBilgileri, upsertIscilikTakibi, type EksikIscilikBilgi } from "@/lib/supabase/queries/iscilik-takibi";
+import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 export default function IscilikBilgiHatirlatma() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, kullanici } = useAuth();
   const yetkili = hasPermission("iscilik-takibi", "duzenle") || hasPermission("iscilik-takibi", "ekle");
   const [kayitlar, setKayitlar] = useState<EksikIscilikBilgi[]>([]);
   const [sicilInput, setSicilInput] = useState<Record<string, string>>({});
@@ -23,13 +24,14 @@ export default function IscilikBilgiHatirlatma() {
     let iptal = false;
     const kontrol = async () => {
       const veri = await getEksikIscilikBilgileri();
-      if (!iptal) setKayitlar(veri);
+      // Kısıtlı/şantiye admini: sadece yetkili olduğu şantiyelerdeki uyarılar.
+      if (!iptal) setKayitlar(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
     };
     void kontrol();
     const onFocus = () => void kontrol(); // başka sekmede girilince dönünce gizlensin
     window.addEventListener("focus", onFocus);
     return () => { iptal = true; window.removeEventListener("focus", onFocus); };
-  }, [yetkili]);
+  }, [yetkili, kullanici]);
 
   const kaydet = async (k: EksikIscilikBilgi) => {
     const updates: Record<string, unknown> = {};

@@ -10,6 +10,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, bildirgeSiciliniOnayla, bildirgeyiIptalEt, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
+import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 // TR bugünün YYYY-MM-DD değeri
 function trBugun(): string {
@@ -28,7 +29,7 @@ function gunFarki(fromYmd: string, todayYmd: string): number {
 }
 
 export default function BildirgeHatirlatma() {
-  const { hasPermission, isYonetici } = useAuth();
+  const { hasPermission, isYonetici, kullanici } = useAuth();
   const yetkili = hasPermission("bordro-takibi", "ekle") || hasPermission("bordro-takibi", "duzenle");
   const [kayitlar, setKayitlar] = useState<PersonelIslemTakip[]>([]);
   const [dozeltiliyor, setDozeltiliyor] = useState<string | null>(null);
@@ -43,13 +44,14 @@ export default function BildirgeHatirlatma() {
     let iptal = false;
     const kontrol = async () => {
       const veri = await getBekleyenBildirgeler();
-      if (!iptal) setKayitlar(veri);
+      // Kısıtlı/şantiye admini: sadece yetkili olduğu şantiyelerdeki bildirgeler (kişinin çözülen şantiyesine göre).
+      if (!iptal) setKayitlar(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
     };
     void kontrol();
     const onFocus = () => void kontrol(); // cevap gelip kapanınca dönünce gizlensin
     window.addEventListener("focus", onFocus);
     return () => { iptal = true; window.removeEventListener("focus", onFocus); };
-  }, [yetkili]);
+  }, [yetkili, kullanici]);
 
   // "Düzelt" — bildirgedeki resmi tarihi kaydımıza uygula ve talebi kapat (muhasebe geç işlediğinde)
   const dozelt = async (k: PersonelIslemTakip) => {

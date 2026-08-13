@@ -7,10 +7,11 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { getSozlesmeTarihiEksikleri, type SozlesmeTarihiEksik } from "@/lib/supabase/queries/santiyeler";
+import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 export default function SozlesmeTarihiHatirlatma() {
   const router = useRouter();
-  const { hasPermission } = useAuth();
+  const { hasPermission, kullanici } = useAuth();
   const yetkili = hasPermission("yonetim-santiyeler", "duzenle") || hasPermission("yonetim-santiyeler", "ekle");
   const [kayitlar, setKayitlar] = useState<SozlesmeTarihiEksik[]>([]);
 
@@ -19,13 +20,14 @@ export default function SozlesmeTarihiHatirlatma() {
     let iptal = false;
     const kontrol = async () => {
       const veri = await getSozlesmeTarihiEksikleri();
-      if (!iptal) setKayitlar(veri);
+      // Kısıtlı/şantiye admini: sadece yetkili olduğu şantiyelerdeki uyarılar.
+      if (!iptal) setKayitlar(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
     };
     void kontrol();
     const onFocus = () => void kontrol(); // tarih girilip dönünce güncellensin
     window.addEventListener("focus", onFocus);
     return () => { iptal = true; window.removeEventListener("focus", onFocus); };
-  }, [yetkili]);
+  }, [yetkili, kullanici]);
 
   if (!yetkili || kayitlar.length === 0) return null;
 
