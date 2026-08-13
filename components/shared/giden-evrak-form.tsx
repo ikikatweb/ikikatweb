@@ -615,12 +615,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
       {/* ESC ile kapatmadan önce "kaydedeyim mi?" onayı */}
       <Dialog open={kapatOnay} onOpenChange={setKapatOnay}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="w-[95vw] max-w-md">
           <DialogHeader>
             <DialogTitle>Belgeyi kaydedeyim mi?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-gray-600 py-1">Kapatmadan önce değişiklikleri kaydetmek ister misiniz?</p>
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse sm:flex-row sm:flex-wrap sm:justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setKapatOnay(false)} disabled={loading}>Vazgeç</Button>
             <Button variant="outline" onClick={() => { setKapatOnay(false); onCancel(); }} disabled={loading}>
               Kaydetmeden Kapat
