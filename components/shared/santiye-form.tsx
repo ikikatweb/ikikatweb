@@ -69,6 +69,14 @@ function parseParaInput(value: string): number | null {
   return isNaN(num) ? null : num;
 }
 
+// ISO tarihi (YYYY-MM-DD) → gg.aa.yyyy gösterimi (İş Yeri Teslim Tarihi ile aynı format).
+// Salt-okunur alanlarda gösterim için; timezone kaymasını önlemek için saf string dönüşümü.
+function formatTarihTR(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const m = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso);
+}
+
 export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
@@ -1045,7 +1053,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>İş Bitim Tarihi</Label>
-                  <Input value={formData.is_bitim_tarihi ?? ""} disabled className="bg-gray-100" />
+                  <Input value={formatTarihTR(formData.is_bitim_tarihi)} disabled className="bg-gray-100" />
                   <p className="text-xs text-gray-400">Teslim tarihi + iş süresinden otomatik hesaplanır</p>
                 </div>
                 <div className="space-y-2">
@@ -1087,7 +1095,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Süre Uzatımlı Bitiş Tarihi</Label>
-                  <Input value={formData.sure_uzatimli_tarih ?? ""} disabled className="bg-gray-100" />
+                  <Input value={formatTarihTR(formData.sure_uzatimli_tarih)} disabled className="bg-gray-100" />
                   <p className="text-xs text-gray-400">İş bitim tarihi + toplam uzatım günlerinden otomatik hesaplanır</p>
                 </div>
                 <div className="space-y-2">
