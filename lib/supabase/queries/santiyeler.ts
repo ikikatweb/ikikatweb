@@ -88,6 +88,16 @@ export async function createSantiye(santiye: SantiyeInsert) {
   return data;
 }
 
+// Yeni iş oluşturan kısıtlı/şantiye admini kullanıcıyı bu işe otomatik atar (kendi santiye_ids'ine ekler).
+// Sunucu tarafı yönetici için atlar. Güvenli: kullanıcı yalnız KENDİ kaydına ekleme yapar.
+export async function kendimeSantiyeAta(santiyeId: string): Promise<void> {
+  await fetch("/api/santiyeler/kendime-ata", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ santiye_id: santiyeId }),
+  });
+}
+
 export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
   const supabase = getSupabase();
   // Bildirim diff'i için ESKİ değerleri güncellemeden ÖNCE al.

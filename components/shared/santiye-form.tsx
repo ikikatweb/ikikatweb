@@ -7,6 +7,7 @@ import {
   createSantiye,
   updateSantiye,
   deleteSantiye,
+  kendimeSantiyeAta,
   uploadSantiyeFile,
   saveOrtaklar,
   getOrtaklar,
@@ -80,7 +81,7 @@ function formatTarihTR(iso: string | null | undefined): string {
 export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
-  const { hasPermission } = useAuth();
+  const { hasPermission, isYonetici } = useAuth();
   const ySil = hasPermission("yonetim-santiyeler", "sil");
 
   const [loading, setLoading] = useState(false);
@@ -627,6 +628,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       // Yeni iş eklendiyse: kullanıcı atama dialogu aç, kullanıcı seçimi sonrası yönlendir.
       // Düzenleme ise direkt yönlendir.
       if (!isEdit) {
+        // Yönetici DEĞİLSE (kısıtlı/şantiye admini): başkalarını atayamaz; oluşturduğu işi görebilmesi için
+        // kendine atanır (server-side). Atama dialog'u yalnız yöneticide açılır.
+        if (!isYonetici) {
+          try { await kendimeSantiyeAta(savedId); } catch (e) { console.warn("Kendine atama başarısız:", e); }
+          if (onSuccess) { onSuccess(); return; }
+          window.location.href = "/dashboard/yonetim/santiyeler";
+          return;
+        }
         try {
           // Kullanıcı listesini çek (sadece santiye_admin + kisitli)
           const tumKullanicilar = await getKullanicilar();
