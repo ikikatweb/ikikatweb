@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { getFirmalar, toggleFirmaDurum, deleteFirma, updateFirmaSiraNo } from "@/lib/supabase/queries/firmalar";
+import { getFirmalar, toggleFirmaDurum, updateFirmaSiraNo } from "@/lib/supabase/queries/firmalar";
 import { getAraclar, updateArac, toggleAracDurum } from "@/lib/supabase/queries/araclar";
 import type { Firma, AracWithRelations } from "@/lib/supabase/types";
 import {
@@ -45,7 +45,6 @@ export default function FirmalarPage() {
   const { hasPermission } = useAuth();
   const yEkle = hasPermission("yonetim-firmalar", "ekle");
   const yDuzenle = hasPermission("yonetim-firmalar", "duzenle");
-  const ySil = hasPermission("yonetim-firmalar", "sil");
 
   async function loadFirmalar() {
     try {
@@ -284,31 +283,12 @@ export default function FirmalarPage() {
                     </button>
                   </TableCell>
                   <TableCell className="text-right">
+                    {/* Silme artık Firma Düzenle penceresinde (bağlı-veri kontrollü). Tabloda sadece düzenle. */}
                     <div className="flex items-center justify-end gap-1">
                       {yDuzenle && (
                         <Button variant="ghost" size="sm"
                           onClick={() => { setDuzenleFirma(firma); setFormAcik(true); }}>
                           <Pencil size={16} />
-                        </Button>
-                      )}
-                      {ySil && (
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" title="Sil"
-                          onClick={async () => {
-                            if (!confirm(`"${firma.firma_adi}" firmasını silmek istediğinize emin misiniz?`)) return;
-                            try {
-                              await deleteFirma(firma.id);
-                              setFirmalar((prev) => prev.filter((f) => f.id !== firma.id));
-                              toast.success(`${firma.firma_adi} silindi.`);
-                            } catch (err) {
-                              const msg = err instanceof Error ? err.message : String(err);
-                              if (msg.includes("violates foreign key") || msg.includes("referenced") || msg.includes("constraint")) {
-                                toast.error("Bu firmaya ait araç, şantiye, evrak veya başka veri bulunuyor. Firma silinemez.", { duration: toastSuresi() });
-                              } else {
-                                toast.error(`Silme hatası: ${msg}`, { duration: toastSuresi() });
-                              }
-                            }
-                          }}>
-                          <Trash2 size={16} />
                         </Button>
                       )}
                     </div>
