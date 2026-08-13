@@ -126,6 +126,8 @@ const COLUMNS: ColDef[] = [
     }, getRaw: () => null },
   { key: "is_bitim_tarihi", label: "İşin Bitim\nTarihi", fromSantiye: true,
     getValue: (r) => {
+      // Süre uzatımı olan işlerde nihai (uzatımlı) bitiş tarihi öncelikli (bordro ile tutarlı).
+      if (r.santiyeler?.sure_uzatimli_tarih) return formatTarih(r.santiyeler.sure_uzatimli_tarih);
       if (r.baslangic_tarihi && r.sure_text) {
         const toplam = r.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
         if (toplam > 0) {
@@ -647,7 +649,10 @@ export default function IscilikTakibiPage() {
         // İş bitim tarihi renklendirmesi
         if (colIdx === bitimTarihiIdx) {
           let bitimStr: string | null = null;
-          if (row.baslangic_tarihi && row.sure_text) {
+          if (row.santiyeler?.sure_uzatimli_tarih) {
+            // Süre uzatımı olan işlerde nihai (uzatımlı) bitiş tarihi öncelikli (tablo ile tutarlı).
+            bitimStr = row.santiyeler.sure_uzatimli_tarih;
+          } else if (row.baslangic_tarihi && row.sure_text) {
             const toplam = row.sure_text.split("+").reduce((t: number, s: string) => t + (parseInt(s.trim()) || 0), 0);
             if (toplam > 0) {
               const d = new Date(row.baslangic_tarihi);

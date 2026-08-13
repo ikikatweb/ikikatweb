@@ -354,8 +354,10 @@ export type IscilikTakibiWithSantiye = IscilikTakibi & {
     sira_no: number;
     is_adi: string;
     is_grubu: string | null;
+    ihaleli: boolean | null;
     sozlesme_bedeli: number | null;
     sure_uzatimi: number | null;
+    sure_uzatimli_tarih: string | null;
     is_suresi: number | null;
     is_bitim_tarihi: string | null;
     isyeri_teslim_tarihi: string | null;
