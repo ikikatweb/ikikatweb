@@ -415,6 +415,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
     if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
     if (!formData.sozlesme_tarihi) { toast.error("Sözleşme tarihi zorunludur."); return; } // teknik atama uyarısı teslim yoksa sözleşmeye düşer → hep dolu olmalı
+    if (!formData.is_suresi || formData.is_suresi <= 0) { toast.error("İş süresi (gün) zorunludur."); return; }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
@@ -1036,7 +1037,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="is_suresi">İş Süresi (Gün)</Label>
+                  <Label htmlFor="is_suresi">İş Süresi (Gün) <span className="text-red-500">*</span></Label>
                   <Input id="is_suresi" name="is_suresi" type="text" inputMode="numeric" placeholder="Örn: 365" value={formData.is_suresi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
               </div>
