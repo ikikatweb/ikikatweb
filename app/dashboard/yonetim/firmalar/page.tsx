@@ -432,10 +432,14 @@ export default function FirmalarPage() {
 
       {/* Firma ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleFirma(null); } }}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-5">
           <DialogHeader>
-            <DialogTitle className="truncate">
-              {duzenleFirma ? `Firma Düzenle — ${duzenleFirma.firma_adi}` : "Yeni Firma Ekle"}
+            {/* Uzun firma adı başlığı genişletip yatay kaydırmaya yol açmasın: string düzeyinde kısalt + truncate.
+                pr-8: sağ üstteki × kapat butonuna yer bırak. */}
+            <DialogTitle className="truncate pr-8">
+              {duzenleFirma
+                ? `Firma Düzenle — ${duzenleFirma.firma_adi.length > 55 ? duzenleFirma.firma_adi.slice(0, 55).trimEnd() + "…" : duzenleFirma.firma_adi}`
+                : "Yeni Firma Ekle"}
             </DialogTitle>
           </DialogHeader>
           {formAcik && (

@@ -179,7 +179,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
   }
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
       <Tabs defaultValue="bilgiler" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="bilgiler">Firma Bilgileri</TabsTrigger>
