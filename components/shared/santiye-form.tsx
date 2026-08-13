@@ -122,6 +122,21 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     formatParaInput(santiye?.sozlesme_bedeli ?? null)
   );
 
+  // "Henüz Sözleşme imzalanmadı": işaretliyse sözleşme tarihi zorunlu değil (boş kaydedilir).
+  // Düzenlemede sözleşme tarihi YOKSA imzalanmamış sayılır → tik işaretli gelir.
+  // (Kaydedilmiş boş tarih = tik işaretliydi; ana sayfa 7 gün sonra "tarihi girin" hatırlatır.)
+  const [sozlesmeImzalanmadi, setSozlesmeImzalanmadi] = useState<boolean>(isEdit ? !santiye?.sozlesme_tarihi : false);
+
+  // Kaydette eksik zorunlu alan → o alanın kutusu kırmızıya boyanır ve o alanın sekmesine geçilir.
+  const [aktifSekme, setAktifSekme] = useState<string>("genel");
+  const [hataliAlan, setHataliAlan] = useState<string | null>(null);
+
+  // Geçici kabul: "Onay tarihi yok" — bazı kurumlar onay tarihi vermez. İşaretliyse onay tarihi zorunlu değil, boş kaydedilir.
+  // Düzenlemede itibar VAR + onay YOK ise → onay bilinçli boş bırakılmış sayılır (tik işaretli gelir).
+  const [onayTarihiYok, setOnayTarihiYok] = useState<boolean>(
+    isEdit ? (!!santiye?.gecici_kabul_itibar_tarihi && !santiye?.gecici_kabul_tarihi) : false,
+  );
+
   // Keşif Artışı — iscilik_takibi tablosunda tutulur, işçilik takibi sayfasıyla ortak veri
   const [kesifArtisiStr, setKesifArtisiStr] = useState("");
 
@@ -191,6 +206,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     sozlesme_fiyatlariyla_gerceklesen: santiye?.sozlesme_fiyatlariyla_gerceklesen ?? null,
     tasfiye_tarihi: santiye?.tasfiye_tarihi ?? null,
     devir_tarihi: santiye?.devir_tarihi ?? null,
+    gecici_kabul_itibar_tarihi: santiye?.gecici_kabul_itibar_tarihi ?? null,
     gecici_kabul_tarihi: santiye?.gecici_kabul_tarihi ?? null,
     gecici_kabul_url: santiye?.gecici_kabul_url ?? null,
     kesin_kabul_tarihi: santiye?.kesin_kabul_tarihi ?? null,
@@ -345,6 +361,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
+    if (hataliAlan) setHataliAlan(null); // kullanıcı düzeltmeye başladı → kırmızıyı kaldır
     const numericFields = ["ortaklik_orani", "depo_kapasitesi", "is_suresi", "sure_uzatimi"];
     setFormData((prev) => ({
       ...prev,
@@ -355,6 +372,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   }
 
   function handleSelectChange(name: string, value: string) {
+    if (hataliAlan) setHataliAlan(null);
     setFormData((prev) => ({ ...prev, [name]: value === "" ? null : value }));
   }
 
@@ -419,28 +437,45 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     }
   }
 
+  // Zorunlu alan eksikse: ilgili sekmeye geç, kutuyu kırmızıya boya, uyarı ver.
+  function alanHatasi(sekme: string, alan: string, mesaj: string) {
+    setAktifSekme(sekme);
+    setHataliAlan(alan);
+    toast.error(mesaj);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!formData.is_adi?.trim()) { toast.error("İşin adı zorunludur."); return; }
-    if (!isEdit && !formData.il) { toast.error("İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
-    if (!formData.is_grubu) { toast.error("İş tanımı seçimi zorunludur."); return; }
-    if (!formData.yuklenici_firma_id) { toast.error("Yüklenici firma seçimi zorunludur."); return; }
+    setHataliAlan(null); // her denemede sıfırla; aşağıdaki ilk eksik alan yeniden işaretlenir
+    if (!formData.is_adi?.trim()) { alanHatasi("genel", "is_adi", "İşin adı zorunludur."); return; }
+    if (!isEdit && !formData.il) { alanHatasi("genel", "il", "İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
+    if (!formData.is_grubu) { alanHatasi("genel", "is_grubu", "İş tanımı seçimi zorunludur."); return; }
+    if (!formData.yuklenici_firma_id) { alanHatasi("genel", "yuklenici_firma_id", "Yüklenici firma seçimi zorunludur."); return; }
     // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no + sözleşme bedeli zorunlu; ihaleli tiki kaldırıldıysa değil.
     if (formData.ihaleli !== false) {
-      if (!formData.ilan_tarihi) { toast.error("İlan tarihi zorunludur."); return; }
-      if (!formData.ihale_tarihi) { toast.error("İhale tarihi zorunludur."); return; }
-      if (!formData.ihale_kayit_no?.trim()) { toast.error("İhale kayıt numarası zorunludur."); return; }
+      if (!formData.ilan_tarihi) { alanHatasi("genel", "ilan_tarihi", "İlan tarihi zorunludur."); return; }
+      if (!formData.ihale_tarihi) { alanHatasi("genel", "ihale_tarihi", "İhale tarihi zorunludur."); return; }
+      if (!formData.ihale_kayit_no?.trim()) { alanHatasi("genel", "ihale_kayit_no", "İhale kayıt numarası zorunludur."); return; }
       const bedel = parseParaInput(sozlesmeBedeliStr);
-      if (!bedel || bedel <= 0) { toast.error("Sözleşme bedeli zorunludur."); return; }
+      if (!bedel || bedel <= 0) { alanHatasi("sozlesme", "sozlesme_bedeli", "Sözleşme bedeli zorunludur."); return; }
     }
-    if (!formData.sozlesme_tarihi) { toast.error("Sözleşme tarihi zorunludur."); return; } // teknik atama uyarısı teslim yoksa sözleşmeye düşer → hep dolu olmalı
-    if (!formData.is_suresi || formData.is_suresi <= 0) { toast.error("İş süresi (gün) zorunludur."); return; }
+    if (!sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { alanHatasi("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); return; }
+    if (!formData.is_suresi || formData.is_suresi <= 0) { alanHatasi("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); return; }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
       : teknikPersonelList.map((s) => s.trim()).filter((s) => s.length > 0);
     if (!teknikPersonelGerekliDegil && teknikPersonellerTemiz.length === 0) {
-      toast.error("En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
+      alanHatasi("sozlesme", "teknik", "En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
+      return;
+    }
+    // Geçici kabul: itibar ↔ onay birlikte girilmeli. Onay "yok" işaretliyse onay muaf.
+    if (formData.gecici_kabul_tarihi && !formData.gecici_kabul_itibar_tarihi) {
+      alanHatasi("kabul", "gecici_kabul_itibar_tarihi", "Geçici Kabul Onay Tarihi girildiyse İtibar Tarihi de zorunludur.");
+      return;
+    }
+    if (formData.gecici_kabul_itibar_tarihi && !formData.gecici_kabul_tarihi && !onayTarihiYok) {
+      alanHatasi("kabul", "gecici_kabul_tarihi", "Geçici Kabul İtibar Tarihi girildiyse Onay Tarihi de zorunludur (veya 'Onay tarihi yok' işaretleyin).");
       return;
     }
     // Atama süresi zorunlu: teknik personel gerekliyse ve süre boş/geçersizse, 10 gün varsayılacağını onaylat.
@@ -509,6 +544,10 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         teknik_personel_sayisi: teknikPersonellerTemiz.length,
         // Atama süresi (gün): "gerekli değil" ise takip yok (null); değilse girilen sayı — boş/geçersiz → 10 (varsayılan)
         teknik_atama_gun: teknikPersonelGerekliDegil ? null : (parseInt(teknikAtamaGun, 10) || 10),
+        // Henüz imzalanmadı işaretliyse sözleşme tarihi boş kaydedilir.
+        sozlesme_tarihi: sozlesmeImzalanmadi ? null : formData.sozlesme_tarihi,
+        // "Onay tarihi yok" işaretliyse geçici kabul onay tarihi boş kaydedilir.
+        gecici_kabul_tarihi: onayTarihiYok ? null : formData.gecici_kabul_tarihi,
       };
 
       if (isEdit) {
@@ -659,10 +698,13 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     }
   }
 
+  // Eksik zorunlu alanın kutusunu açık kırmızı (kırmızı ring + açık kırmızı zemin) yapar.
+  const hataCls = (alan: string) => (hataliAlan === alan ? " ring-2 ring-red-400 bg-red-50" : "");
+
   return (
     <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
-      <Tabs defaultValue="genel" className="w-full min-w-0">
-        <TabsList className="mb-4 w-full overflow-x-auto">
+      <Tabs value={aktifSekme} onValueChange={setAktifSekme} className="w-full min-w-0">
+        <TabsList className="mb-4 w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="genel">Genel Bilgiler</TabsTrigger>
           <TabsTrigger value="sozlesme">Sözleşme ve Mali Veri</TabsTrigger>
           <TabsTrigger value="kabul">Kabul</TabsTrigger>
@@ -680,7 +722,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     id="is_adi"
                     name="is_adi"
                     placeholder="Karabük Cevizlidere Merkez"
-                    className="text-ellipsis"
+                    className={`text-ellipsis${hataCls("is_adi")}`}
                     value={formData.is_adi}
                     onChange={handleChange}
                     onBlur={(e) => setFormData((p) => ({ ...p, is_adi: formatBaslik(e.target.value) }))}
@@ -689,14 +731,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="il">İl <span className="text-red-500">*</span></Label>
-                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => setFormData((p) => ({ ...p, il: e.target.value || null }))} disabled={loading} className={selectClass}>
+                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => { if (hataliAlan) setHataliAlan(null); setFormData((p) => ({ ...p, il: e.target.value || null })); }} disabled={loading} className={`${selectClass}${hataCls("il")}`}>
                     <option value="">Seçiniz</option>
                     {TR_ILLER.map((il) => (<option key={il} value={il}>{il}</option>))}
                   </select>
                 </div>
                 <div className="space-y-2">
                   <Label>İş Tanımları <span className="text-red-500">*</span></Label>
-                  <select name="is_grubu" value={formData.is_grubu ?? ""} onChange={(e) => handleSelectChange("is_grubu", e.target.value)} disabled={loading} className={selectClass}>
+                  <select name="is_grubu" value={formData.is_grubu ?? ""} onChange={(e) => handleSelectChange("is_grubu", e.target.value)} disabled={loading} className={`${selectClass}${hataCls("is_grubu")}`}>
                     <option value="">Seçiniz</option>
                     {isGruplari.map((g) => (<option key={g} value={g}>{g}</option>))}
                   </select>
@@ -720,7 +762,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Yüklenici Firma <span className="text-red-500">*</span></Label>
-                  <select name="yuklenici_firma_id" value={formData.yuklenici_firma_id ?? ""} onChange={(e) => handleSelectChange("yuklenici_firma_id", e.target.value)} disabled={loading} className={selectClass}>
+                  <select name="yuklenici_firma_id" value={formData.yuklenici_firma_id ?? ""} onChange={(e) => handleSelectChange("yuklenici_firma_id", e.target.value)} disabled={loading} className={`${selectClass}${hataCls("yuklenici_firma_id")}`}>
                     <option value="">Seçiniz</option>
                     {firmalar.map((f) => (<option key={f.id} value={f.id}>{f.firma_adi}</option>))}
                   </select>
@@ -772,15 +814,15 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="ilan_tarihi">İlan Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
-                  <Input id="ilan_tarihi" name="ilan_tarihi" type="date" value={formData.ilan_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                  <Input id="ilan_tarihi" name="ilan_tarihi" type="date" value={formData.ilan_tarihi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ilan_tarihi")} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ihale_tarihi">İhale Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
-                  <Input id="ihale_tarihi" name="ihale_tarihi" type="date" value={formData.ihale_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                  <Input id="ihale_tarihi" name="ihale_tarihi" type="date" value={formData.ihale_tarihi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ihale_tarihi")} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ihale_kayit_no">İhale Kayıt Numarası {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
-                  <Input id="ihale_kayit_no" name="ihale_kayit_no" placeholder="İhale kayıt no" value={formData.ihale_kayit_no ?? ""} onChange={handleChange} disabled={loading} />
+                  <Input id="ihale_kayit_no" name="ihale_kayit_no" placeholder="İhale kayıt no" value={formData.ihale_kayit_no ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ihale_kayit_no")} />
                 </div>
               </div>
 
@@ -836,7 +878,51 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         <TabsContent value="sozlesme">
           <Card>
             <CardContent className="pt-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Sözleşme ve Mali Veri — SOL sütun: sözleşme/para/tarih alanları; SAĞ sütun: Teknik Personel + süre alanları. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {/* SOL SÜTUN */}
+                <div className="space-y-4">
+                {/* Sözleşme Tarihi + "Henüz Sözleşme imzalanmadı" tiki */}
+                <div className="space-y-2">
+                  <Label htmlFor="sozlesme_tarihi">
+                    Sözleşme Tarihi {!sozlesmeImzalanmadi && <span className="text-red-500">*</span>}
+                  </Label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <Input
+                        id="sozlesme_tarihi"
+                        name="sozlesme_tarihi"
+                        type="date"
+                        value={sozlesmeImzalanmadi ? "" : (formData.sozlesme_tarihi ?? "")}
+                        min={formData.ihale_tarihi ?? undefined}
+                        onChange={handleChange}
+                        disabled={loading || sozlesmeImzalanmadi}
+                        className={hataCls("sozlesme_tarihi")}
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer shrink-0 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[#1E3A5F]"
+                        checked={sozlesmeImzalanmadi}
+                        onChange={(e) => {
+                          setSozlesmeImzalanmadi(e.target.checked);
+                          if (e.target.checked) setFormData((p) => ({ ...p, sozlesme_tarihi: null }));
+                        }}
+                        disabled={loading}
+                      />
+                      Henüz Sözleşme imzalanmadı
+                    </label>
+                  </div>
+                  {!sozlesmeImzalanmadi && formData.ihale_tarihi && formData.sozlesme_tarihi && formData.sozlesme_tarihi < formData.ihale_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ Sözleşme tarihi ihale tarihinden önce olamaz.</p>
+                  )}
+                  <p className="text-[10px] text-gray-400">
+                    &quot;Henüz Sözleşme imzalanmadı&quot;yı işaretlerseniz sözleşme tarihi zorunlu olmaz; iş oluşturulduktan 7 gün sonra tarih hâlâ boşsa ana sayfada hatırlatma çıkar.
+                  </p>
+                </div>
+
+                {/* Sözleşme Bedeli */}
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç) {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
                   <div className="flex gap-2">
@@ -845,13 +931,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                         id="sozlesme_bedeli"
                         placeholder="0,00"
                         value={sozlesmeBedeliStr}
-                        onChange={(e) => setSozlesmeBedeliStr(e.target.value)}
+                        onChange={(e) => { if (hataliAlan) setHataliAlan(null); setSozlesmeBedeliStr(e.target.value); }}
                         onBlur={() => {
                           const val = parseParaInput(sozlesmeBedeliStr);
                           setSozlesmeBedeliStr(val != null ? formatParaInput(val) : "");
                         }}
                         disabled={loading || tutarKilitli}
                         title={tutarKilitli ? "Geçici kabulü yapılmış işin sözleşme bedeli değiştirilemez" : undefined}
+                        className={hataCls("sozlesme_bedeli")}
                       />
                     </div>
                     <select
@@ -867,27 +954,9 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     </select>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sozlesme_tarihi">Sözleşme Tarihi <span className="text-red-500">*</span></Label>
-                  <Input
-                    id="sozlesme_tarihi"
-                    name="sozlesme_tarihi"
-                    type="date"
-                    value={formData.sozlesme_tarihi ?? ""}
-                    min={formData.ihale_tarihi ?? undefined}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                  {formData.ihale_tarihi && formData.sozlesme_tarihi && formData.sozlesme_tarihi < formData.ihale_tarihi && (
-                    <p className="text-[10px] text-red-600 font-semibold">⚠️ Sözleşme tarihi ihale tarihinden önce olamaz.</p>
-                  )}
-                </div>
-              </div>
 
-              {/* Fiyat Farkı + Teknik Personel Sayısı — yan yana */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Fiyat Farkı Hesaplaması Toggle */}
-                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2 h-full">
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
                   <input
                     type="checkbox"
                     id="ff_hesaplanacak"
@@ -904,6 +973,72 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   </Label>
                 </div>
 
+                {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
+                <div className="space-y-2">
+                  <Label htmlFor="kesif_artisi">Keşif Artışı</Label>
+                  <div className="relative">
+                    <Input
+                      id="kesif_artisi"
+                      placeholder="0,00"
+                      value={kesifArtisiStr}
+                      onChange={(e) => setKesifArtisiStr(e.target.value)}
+                      onBlur={() => {
+                        const val = parseParaInput(kesifArtisiStr);
+                        setKesifArtisiStr(val != null ? formatParaInput(val) : "");
+                      }}
+                      disabled={loading}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                      {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    İşçilik Takibi sayfasındaki Keşif Artışı ile aynı veridir — biri değişince diğeri de güncellenir.
+                    Para birimi sözleşme ile aynı (yukarıdan değiştirilebilir).
+                  </p>
+                </div>
+
+                {/* İş Yeri Teslim Tarihi */}
+                <div className="space-y-2">
+                  <Label htmlFor="isyeri_teslim_tarihi">İş Yeri Teslim Tarihi</Label>
+                  <Input
+                    id="isyeri_teslim_tarihi"
+                    name="isyeri_teslim_tarihi"
+                    type="date"
+                    value={formData.isyeri_teslim_tarihi ?? ""}
+                    // Min: hem ihale hem sözleşme tarihinden büyük/eşit olmalı → max'larını al
+                    min={(() => {
+                      const candidates = [formData.ihale_tarihi, formData.sozlesme_tarihi].filter(Boolean) as string[];
+                      if (candidates.length === 0) return undefined;
+                      return candidates.reduce((a, b) => (a > b ? a : b));
+                    })()}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {formData.ihale_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.ihale_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi ihale tarihinden önce olamaz.</p>
+                  )}
+                  {formData.sozlesme_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.sozlesme_tarihi && (
+                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi sözleşme tarihinden önce olamaz.</p>
+                  )}
+                </div>
+
+                {/* İş Süresi (Gün) */}
+                <div className="space-y-2">
+                  <Label htmlFor="is_suresi">İş Süresi (Gün) <span className="text-red-500">*</span></Label>
+                  <Input id="is_suresi" name="is_suresi" type="text" inputMode="numeric" placeholder="Örn: 365" value={formData.is_suresi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("is_suresi")} />
+                </div>
+
+                {/* İş Bitim Tarihi */}
+                <div className="space-y-2">
+                  <Label>İş Bitim Tarihi</Label>
+                  <Input value={formatTarihTR(formData.is_bitim_tarihi)} disabled className="bg-gray-100" />
+                  <p className="text-xs text-gray-400">Teslim tarihi + iş süresinden otomatik hesaplanır</p>
+                </div>
+                </div>
+
+                {/* SAĞ SÜTUN */}
+                <div className="space-y-4">
                 {/* Teknik Personel listesi — serbest metin, + ile çoğaltılabilir.
                     "Gerekli değil" tikli ise gizlenir ve zorunluluk kalkar. */}
                 <div className="space-y-1">
@@ -941,16 +1076,17 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                             <div className="relative flex-1">
                               <Input
                                 type="text"
-                                placeholder={`Teknik personel ${i + 1}`}
+                                placeholder="Örn: Harita Mühendisi 3 Yıl Deneyimli"
                                 value={deger}
                                 onChange={(e) => {
+                                  if (hataliAlan) setHataliAlan(null);
                                   const yeni = [...teknikPersonelList];
                                   yeni[i] = e.target.value;
                                   setTeknikPersonelList(yeni);
                                 }}
                                 disabled={loading}
                                 title={atandi ? "Bu role bordroda teknik personel atanmış" : undefined}
-                                className={atandi ? "border-green-500 bg-green-50 text-green-800 pr-16" : ""}
+                                className={`${atandi ? "border-green-500 bg-green-50 text-green-800 pr-16" : ""}${i === 0 ? hataCls("teknik") : ""}`}
                               />
                               {atandi && (
                                 <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-green-600">
@@ -1006,71 +1142,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     </>
                   )}
                 </div>
-              </div>
-
-              {/* Keşif Artışı — işçilik takibi sayfasıyla ortak veri */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="kesif_artisi">Keşif Artışı</Label>
-                  <div className="relative">
-                    <Input
-                      id="kesif_artisi"
-                      placeholder="0,00"
-                      value={kesifArtisiStr}
-                      onChange={(e) => setKesifArtisiStr(e.target.value)}
-                      onBlur={() => {
-                        const val = parseParaInput(kesifArtisiStr);
-                        setKesifArtisiStr(val != null ? formatParaInput(val) : "");
-                      }}
-                      disabled={loading}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                      {formData.para_birimi === "USD" ? "$" : formData.para_birimi === "EUR" ? "€" : "₺"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-400">
-                    İşçilik Takibi sayfasındaki Keşif Artışı ile aynı veridir — biri değişince diğeri de güncellenir.
-                    Para birimi sözleşme ile aynı (yukarıdan değiştirilebilir).
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="isyeri_teslim_tarihi">İş Yeri Teslim Tarihi</Label>
-                  <Input
-                    id="isyeri_teslim_tarihi"
-                    name="isyeri_teslim_tarihi"
-                    type="date"
-                    value={formData.isyeri_teslim_tarihi ?? ""}
-                    // Min: hem ihale hem sözleşme tarihinden büyük/eşit olmalı → max'larını al
-                    min={(() => {
-                      const candidates = [formData.ihale_tarihi, formData.sozlesme_tarihi].filter(Boolean) as string[];
-                      if (candidates.length === 0) return undefined;
-                      return candidates.reduce((a, b) => (a > b ? a : b));
-                    })()}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                  {formData.ihale_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.ihale_tarihi && (
-                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi ihale tarihinden önce olamaz.</p>
-                  )}
-                  {formData.sozlesme_tarihi && formData.isyeri_teslim_tarihi && formData.isyeri_teslim_tarihi < formData.sozlesme_tarihi && (
-                    <p className="text-[10px] text-red-600 font-semibold">⚠️ İşyeri teslim tarihi sözleşme tarihinden önce olamaz.</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="is_suresi">İş Süresi (Gün) <span className="text-red-500">*</span></Label>
-                  <Input id="is_suresi" name="is_suresi" type="text" inputMode="numeric" placeholder="Örn: 365" value={formData.is_suresi ?? ""} onChange={handleChange} disabled={loading} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>İş Bitim Tarihi</Label>
-                  <Input value={formatTarihTR(formData.is_bitim_tarihi)} disabled className="bg-gray-100" />
-                  <p className="text-xs text-gray-400">Teslim tarihi + iş süresinden otomatik hesaplanır</p>
-                </div>
+                {/* Süre Uzatımları (Gün) */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label>Süre Uzatımları (Gün)</Label>
@@ -1105,17 +1177,19 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     <p className="text-xs text-gray-400">Henüz süre uzatımı eklenmedi.</p>
                   )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Toplam Uzatım */}
+                <div className="space-y-2">
+                  <Label>Toplam Uzatım</Label>
+                  <Input value={formData.sure_uzatimi ? `${formData.sure_uzatimi} gün` : "—"} disabled className="bg-gray-100" />
+                </div>
+
+                {/* Süre Uzatımlı Bitiş Tarihi */}
                 <div className="space-y-2">
                   <Label>Süre Uzatımlı Bitiş Tarihi</Label>
                   <Input value={formatTarihTR(formData.sure_uzatimli_tarih)} disabled className="bg-gray-100" />
                   <p className="text-xs text-gray-400">İş bitim tarihi + toplam uzatım günlerinden otomatik hesaplanır</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Toplam Uzatım</Label>
-                  <Input value={formData.sure_uzatimi ? `${formData.sure_uzatimi} gün` : "—"} disabled className="bg-gray-100" />
                 </div>
               </div>
             </CardContent>
@@ -1147,9 +1221,33 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="gecici_kabul_tarihi">Geçici Kabul Tarihi</Label>
-                  <Input id="gecici_kabul_tarihi" name="gecici_kabul_tarihi" type="date" value={formData.gecici_kabul_tarihi ?? ""} onChange={handleChange} disabled={loading} />
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="gecici_kabul_itibar_tarihi">Geçici Kabul İtibar Tarihi</Label>
+                    <Input id="gecici_kabul_itibar_tarihi" name="gecici_kabul_itibar_tarihi" type="date" value={formData.gecici_kabul_itibar_tarihi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("gecici_kabul_itibar_tarihi")} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gecici_kabul_tarihi">Geçici Kabul Onay Tarihi</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <Input id="gecici_kabul_tarihi" name="gecici_kabul_tarihi" type="date" value={onayTarihiYok ? "" : (formData.gecici_kabul_tarihi ?? "")} onChange={handleChange} disabled={loading || onayTarihiYok} className={hataCls("gecici_kabul_tarihi")} />
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer shrink-0 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[#1E3A5F]"
+                          checked={onayTarihiYok}
+                          onChange={(e) => {
+                            setOnayTarihiYok(e.target.checked);
+                            if (e.target.checked) setFormData((p) => ({ ...p, gecici_kabul_tarihi: null }));
+                            if (hataliAlan) setHataliAlan(null);
+                          }}
+                          disabled={loading}
+                        />
+                        Onay tarihi yok
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Geçici Kabul Belgesi (PDF)</Label>

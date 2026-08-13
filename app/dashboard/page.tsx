@@ -41,6 +41,7 @@ import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
+import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
@@ -1551,6 +1552,7 @@ export default function DashboardPage() {
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
       <TeknikAtamaHatirlatma />
+      <SozlesmeTarihiHatirlatma />
 
       {/* Sezon Maliyeti özeti (yalnız yönetici; gizlenen şantiyeler hariç) */}
       <div className="mb-4">

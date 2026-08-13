@@ -1089,8 +1089,11 @@ export default function SantiyelerPage() {
 
       {/* İş ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleSantiye(null); } }}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
-          <DialogHeader>
+        {/* SABİT yükseklik (h-[92vh]) → sekme değişince pencere zıplamaz, en yüksek sekmeye göre sabit.
+            Başlık üstte sabit; SADECE içerik alanı (flex-1) taşınca kayar → boşken scrollbar çıkmaz,
+            veri (ör. çok teknik personel) eklenince scroll görünür. */}
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             {/* İş adı uzunsa string düzeyinde kısalt (…) → başlık dialog'u genişletip Kaydet'i taşımasın.
                 truncate da kalsın (dar ekran). pr-8: sağ üstteki × kapat butonuna yer bırak. */}
             <DialogTitle className="truncate pr-8">
@@ -1100,11 +1103,13 @@ export default function SantiyelerPage() {
             </DialogTitle>
           </DialogHeader>
           {formAcik && (
-            <SantiyeForm
-              santiye={duzenleSantiye ?? undefined}
-              onSuccess={() => { setFormAcik(false); setDuzenleSantiye(null); loadData(); }}
-              onCancel={() => { setFormAcik(false); setDuzenleSantiye(null); }}
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+              <SantiyeForm
+                santiye={duzenleSantiye ?? undefined}
+                onSuccess={() => { setFormAcik(false); setDuzenleSantiye(null); loadData(); }}
+                onCancel={() => { setFormAcik(false); setDuzenleSantiye(null); }}
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>

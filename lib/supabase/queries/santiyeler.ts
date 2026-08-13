@@ -63,9 +63,11 @@ export async function getSantiyeById(id: string) {
 export async function createSantiye(santiye: SantiyeInsert) {
   const supabase = getSupabase();
   let { data, error } = await supabase.from("santiyeler").insert(santiye).select().single();
-  // "ihaleli" kolonu henüz eklenmemişse (migration çalışmadan) o alanı çıkarıp tekrar dene → form kilitlenmesin.
-  if (error && /ihaleli/i.test(error.message)) {
-    const s2 = { ...santiye }; delete (s2 as Record<string, unknown>).ihaleli;
+  // "ihaleli" / "gecici_kabul_itibar_tarihi" kolonları migration öncesi yoksa o alanları çıkarıp tekrar dene → form kilitlenmesin.
+  if (error && /ihaleli|gecici_kabul_itibar_tarihi/i.test(error.message)) {
+    const s2 = { ...santiye };
+    delete (s2 as Record<string, unknown>).ihaleli;
+    delete (s2 as Record<string, unknown>).gecici_kabul_itibar_tarihi;
     ({ data, error } = await supabase.from("santiyeler").insert(s2).select().single());
   }
   if (error) throw error;
@@ -97,9 +99,11 @@ export async function updateSantiye(id: string, santiye: SantiyeUpdate) {
 
   const payload = { ...santiye, updated_at: new Date().toISOString() };
   let { data, error } = await supabase.from("santiyeler").update(payload).eq("id", id).select().single();
-  // "ihaleli" kolonu yoksa o alanı çıkarıp tekrar dene → İş Deneyim kaydetme kilitlenmesin (migration öncesi).
-  if (error && /ihaleli/i.test(error.message)) {
-    const p2 = { ...payload }; delete (p2 as Record<string, unknown>).ihaleli;
+  // "ihaleli" / "gecici_kabul_itibar_tarihi" kolonları yoksa o alanları çıkarıp tekrar dene (migration öncesi).
+  if (error && /ihaleli|gecici_kabul_itibar_tarihi/i.test(error.message)) {
+    const p2 = { ...payload };
+    delete (p2 as Record<string, unknown>).ihaleli;
+    delete (p2 as Record<string, unknown>).gecici_kabul_itibar_tarihi;
     ({ data, error } = await supabase.from("santiyeler").update(p2).eq("id", id).select().single());
   }
   if (error) throw error;
@@ -229,6 +233,34 @@ export async function deleteSantiye(id: string) {
 
   const { error } = await supabase.from("santiyeler").delete().eq("id", id);
   if (error) throw error;
+}
+
+// SÖZLEŞME TARİHİ HATIRLATMASI — "Henüz Sözleşme imzalanmadı" ile boş kaydedilmiş (sozlesme_tarihi NULL)
+// aktif işlerde, iş oluşturulduktan 7 GÜN sonra "sözleşme tarihini girin" ana sayfa uyarısı.
+export type SozlesmeTarihiEksik = {
+  santiye_id: string;
+  is_adi: string;
+  created_at: string;
+  gunGecti: number; // 7 günlük süreyi kaç gün aştı (0 = bugün doldu)
+};
+export async function getSozlesmeTarihiEksikleri(): Promise<SozlesmeTarihiEksik[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("santiyeler")
+    .select("id, is_adi, created_at, sozlesme_tarihi, durum")
+    .eq("durum", "aktif")
+    .is("sozlesme_tarihi", null);
+  if (error) return [];
+  const HATIRLATMA_GUN = 7;
+  const bugun = Date.now();
+  const sonuc: SozlesmeTarihiEksik[] = [];
+  for (const s of (data ?? []) as { id: string; is_adi: string; created_at: string | null }[]) {
+    if (!s.created_at) continue;
+    const gecen = Math.floor((bugun - new Date(s.created_at).getTime()) / 86400000);
+    if (gecen < HATIRLATMA_GUN) continue; // 7 gün dolmadı → henüz uyarma
+    sonuc.push({ santiye_id: s.id, is_adi: s.is_adi, created_at: s.created_at, gunGecti: gecen - HATIRLATMA_GUN });
+  }
+  return sonuc.sort((a, b) => b.gunGecti - a.gunGecti);
 }
 
 export async function uploadSantiyeFile(
