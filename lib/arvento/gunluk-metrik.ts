@@ -32,7 +32,11 @@ export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<st
   // Ocak makinesi kümesi de makineSn'i etkiler (bunlar TÜMDEN dışlanır) → değişince cache tazelensin.
   const ocakKimlik = ocakMakinePlakalar ? Array.from(ocakMakinePlakalar).sort().join(",") : "";
   // KML yol katmanları serme ölçümüne (KML izdüşümü) girer → değişince (ekle/sil) cache eskisin.
-  return `${ayarKimlik}#${atamaKimlik}#${ocakKimlik}#${kmlImza ?? ""}`;
+  // ALGORİTMA SÜRÜMÜ — omurga/reglaj hesabı değişince (paralel birleştirme, RDP düzleştirme, ts-tabanlı
+  // reglaj penceresi) BUMP et: imza değişir → cache'lenmiş TÜM günler "eski imzalı" olur, dashboard yeniden
+  // hesaplayıp yeni algoritma değerini gösterir/yazar. (v2: paralel birleştirme + RDP + ana sayfa=chip toplamı.)
+  const ALGO_VER = "v2";
+  return `${ALGO_VER}|${ayarKimlik}#${atamaKimlik}#${ocakKimlik}#${kmlImza ?? ""}`;
 }
 
 // OCAK MAKİNELERİ (plakaNorm kümesi) — İş Makineleri sekmesindeki `ocakMakineMap` ile AYNI mantık, verilen
