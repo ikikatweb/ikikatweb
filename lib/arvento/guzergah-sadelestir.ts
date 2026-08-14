@@ -418,8 +418,9 @@ function sadelesGuzergahCore(
   const kopru = birlestirParcalar(parcalar, g * 2, cosOrt);
 
   // YAN YANA PARALEL BİRLEŞTİRME — aynı yolun ızgara sınırına denk gelip komşu hücrelere düşen iki geçişini
-  // tek çizgiye indir → uzunluk iki kez sayılmasın ("yan yana çizgi mesafesi" = gridM; hücre çapı = g = 2×gridM).
-  const paralelsiz = paralelBirlestir(kopru, g);
+  // tek çizgiye indir → uzunluk iki kez sayılmasın. tol = 1,5×hücre çapı: ızgara paralel şeridi tam bir hücre
+  // (g) kadar uzağa itebildiğinden, güvenli yakalama için g'nin biraz üstü. %60 örtüşme şartı kavşağı korur.
+  const paralelsiz = paralelBirlestir(kopru, g * 1.5);
 
   // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
   // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
