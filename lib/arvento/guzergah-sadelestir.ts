@@ -258,7 +258,7 @@ function paralelBirlestir(parcalar: [number, number][][], tolM: number): [number
     for (const t of tutulan) {
       let ic = 0;
       for (const q of p) if (noktaPolylineIzdusum(q[0], q[1], t.p, t.kumul).dikM <= tolM) ic++;
-      if (p.length > 0 && ic / p.length >= 0.6) { duplike = true; break; }
+      if (p.length > 0 && ic / p.length >= 0.4) { duplike = true; break; }
     }
     if (!duplike) tutulan.push({ p, kumul: kumulMesafe(p) });
   }
