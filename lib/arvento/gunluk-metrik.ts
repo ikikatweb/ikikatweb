@@ -2,7 +2,7 @@
 // (arvento_gunluk_metrik → sezon toplamı) AYNI hesabı kullansın diye saf (pure) fonksiyon.
 // 5 metrik: reglaj uzunluğu (km), kamyon sefer (gerçek damper), serme uzunluğu (km), sıkıştırma uzunluğu (km),
 // iş makinesi çalışma (sn). Girdi verilerinin FETCH'i çağırana aittir (widget tarayıcıda, cache sunucuda çeker).
-import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm } from "@/lib/arvento/guzergah-sadelestir";
+import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { gercekDamperSayisi } from "@/lib/arvento/damper-say";
 import { rotaTemizle, ocakTespit, ocakMakineDurumu, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
 import { plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
@@ -101,20 +101,27 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     return cinsRe.test(`${sinif ?? ""} ${plakaSantiye.get(plakaNorm(plaka))?.cinsi ?? ""}`);
   };
 
-  // 1) REGLAJ UZUNLUĞU (km) — greyderlerin sadeleştirilmiş omurga uzunluklarının toplamı.
+  // 1) REGLAJ UZUNLUĞU (km) — Reglaj sekmesi chip TOPLAMIYLA BİREBİR: her greyderin noktalarını PLAKA bazında
+  // (gün-farkı taşıyan ts ile) havuzla, sadelesGuzergah'ı AYNI tekrar penceresiyle (pencereSn) çağır, topla.
+  // Paralel birleştirme + RDP düzleştirme sadelesGuzergah içinde → chip ile aynı sonucu verir.
   const esikReglaj = ayarlar?.guzergahTekrar ?? 0;
   const greyderMi = (p: string, sinif: string | null) => /greyder|grayder/i.test(`${sinif ?? ""} ${plakaSantiye.get(plakaNorm(p))?.cinsi ?? ""}`);
-  const reglajKm = guzergahlar.reduce((s, g) => {
-    if (!greyderMi(g.plaka, g.arac_sinifi)) return s;
-    const noktalar = (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-    if (noktalar.length < 2) return s;
-    if (esikReglaj < 1) return s + kapsananYolKm(noktalar, grid);
-    // NOT: buradaki g.noktalar zaman damgası (ts) taşımadığından pencereSn UYGULANAMAZ (uygulanırsa 0'a düşer).
-    // Chip (arvento-guzergah) ham+ts havuzu kullandığı için pencere uygulayabiliyor; ana sayfa metriği
-    // ham+ts havuzuna geçirilene kadar burada pencere-siz kalır (ayrı düzeltilecek).
-    const parts = sadelesGuzergah(noktalar, esikReglaj, grid, transitHiz).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
-    return s + parts.reduce((a, b) => a + b, 0);
-  }, 0);
+  const greyderHavuz = new Map<string, { lat: number; lng: number; hiz: number | null; ts: number | null }[]>();
+  for (const g of guzergahlar) {
+    if (!greyderMi(g.plaka, g.arac_sinifi)) continue;
+    const pk = plakaNorm(g.plaka);
+    let arr = greyderHavuz.get(pk); if (!arr) { arr = []; greyderHavuz.set(pk, arr); }
+    for (const p of (g.noktalar ?? [])) {
+      if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, hiz: p.hiz ?? null, ts: tsSaniye(g.rapor_tarihi, p.saat) });
+    }
+  }
+  let reglajKm = 0;
+  for (const havuz of greyderHavuz.values()) {
+    if (havuz.length < 2) continue;
+    if (esikReglaj < 1) { reglajKm += kapsananYolKm(havuz, grid); continue; }
+    const parts = sadelesGuzergah(havuz, esikReglaj, grid, transitHiz, pencereSn).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
+    reglajKm += parts.reduce((a, b) => a + b, 0);
+  }
 
   // 1b) SERME UZUNLUĞU (km) — serme greyder omurgası, yalnız hattın ≤80 m'sinde (GERÇEK) damper varsa.
   // Manuel arıza/mükerrer işaretlenen damper GERÇEK dökme sayılmaz → serme'ye de KATILMAZ (kamyon seferle tutarlı;
