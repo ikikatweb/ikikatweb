@@ -265,6 +265,34 @@ function paralelBirlestir(parcalar: [number, number][][], tolM: number): [number
   return tutulan.map((t) => t.p);
 }
 
+// Ramer-Douglas-Peucker: polyline'ı, ORİJİNAL UÇLARI KORUYARAK, çizgiye ε (metre) dik-mesafeden daha yakın
+// ara noktaları atarak sadeleştirir. Izgara nicemleme zikzağını (gerçek yola göre uzunluğu şişiren küçük
+// sapmalar) düzleştirir → ölçülen uzunluk cetvelle çekilen düz hatta yaklaşır. Uçları koruduğu için kapsama
+// DÜŞMEZ (eskiden kaldırılan averaj-yumuşatmanın "kısa zinciri büzme" sorunu burada YOK).
+function rdpSadelestir(p: [number, number][], epsM: number): [number, number][] {
+  if (p.length < 3 || epsM <= 0) return p;
+  const cosOrt = Math.max(0.1, Math.cos((p[0][0] * Math.PI) / 180));
+  const dikM = (pt: [number, number], a: [number, number], b: [number, number]): number => {
+    const ax = a[1] * METRE_DERECE * cosOrt, ay = a[0] * METRE_DERECE;
+    const bx = b[1] * METRE_DERECE * cosOrt, by = b[0] * METRE_DERECE;
+    const px = pt[1] * METRE_DERECE * cosOrt, py = pt[0] * METRE_DERECE;
+    const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    if (len2 === 0) return Math.hypot(px - ax, py - ay);
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  };
+  const kalan = new Array(p.length).fill(false);
+  kalan[0] = true; kalan[p.length - 1] = true;
+  const yigin: [number, number][] = [[0, p.length - 1]];
+  while (yigin.length) {
+    const [i, j] = yigin.pop()!;
+    let maks = 0, idx = -1;
+    for (let k = i + 1; k < j; k++) { const d = dikM(p[k], p[i], p[j]); if (d > maks) { maks = d; idx = k; } }
+    if (maks > epsM && idx > i) { kalan[idx] = true; yigin.push([i, idx], [idx, j]); }
+  }
+  return p.filter((_, i) => kalan[i]);
+}
+
 // noktalar: zaman sırasına göre GPS noktaları.
 // esik: bir grid kenarı EN AZ kaç kez geçilmişse AĞA dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
@@ -395,6 +423,8 @@ function sadelesGuzergahCore(
 
   // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
   // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
-  const temiz = paralelsiz.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
+  const temiz = paralelsiz
+    .map((p) => rdpSadelestir(p, gridM * 0.5)) // ızgara nicemleme zikzağını düzleştir → uzunluk cetveldeki gerçek yola yaklaşsın
+    .filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }
