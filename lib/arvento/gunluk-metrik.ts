@@ -34,8 +34,9 @@ export function metrikImza(ayarlar: ArventoAyarlar | null, plakaSantiye?: Map<st
   // KML yol katmanları serme ölçümüne (KML izdüşümü) girer → değişince (ekle/sil) cache eskisin.
   // ALGORİTMA SÜRÜMÜ — omurga/reglaj hesabı değişince (paralel birleştirme, RDP düzleştirme, ts-tabanlı
   // reglaj penceresi) BUMP et: imza değişir → cache'lenmiş TÜM günler "eski imzalı" olur, dashboard yeniden
-  // hesaplayıp yeni algoritma değerini gösterir/yazar. (v2: paralel birleştirme + RDP + ana sayfa=chip toplamı.)
-  const ALGO_VER = "v2";
+  // hesaplayıp yeni algoritma değerini gösterir/yazar. (v3: birleştirilmemiş per-gün girdiyle reglaj penceresi
+  // doğru ts kullanır + sıkıştırma plaka-havuzu → ana sayfa reglaj = chip toplamı, gün-birleştirme şişirmesi yok.)
+  const ALGO_VER = "v3";
   return `${ALGO_VER}|${ayarKimlik}#${atamaKimlik}#${ocakKimlik}#${kmlImza ?? ""}`;
 }
 
@@ -120,11 +121,14 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     }
   }
   let reglajKm = 0;
-  for (const havuz of greyderHavuz.values()) {
+  for (const [pk, havuz] of greyderHavuz) {
     if (havuz.length < 2) continue;
     if (esikReglaj < 1) { reglajKm += kapsananYolKm(havuz, grid); continue; }
     const parts = sadelesGuzergah(havuz, esikReglaj, grid, transitHiz, pencereSn).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
-    reglajKm += parts.reduce((a, b) => a + b, 0);
+    const km = parts.reduce((a, b) => a + b, 0);
+    reglajKm += km;
+    // GEÇİCİ TEŞHİS — sezon (tarih===null) reglaj: greyder başına nokta sayısı + km. Chip ile karşılaştır (push öncesi sil).
+    if (tarih === null) console.log("[REGLAJ-TEŞHİS]", pk, "nokta:", havuz.length, "km:", km.toFixed(3), "parça:", parts.length, "esik:", esikReglaj, "pencereSn:", pencereSn);
   }
 
   // 1b) SERME UZUNLUĞU (km) — serme greyder omurgası, yalnız hattın ≤80 m'sinde (GERÇEK) damper varsa.
@@ -140,10 +144,23 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
   const yakin = (ns: { lat: number | null; lng: number | null }[]) => damperler.length > 0 && ns.some((p) => p.lat != null && p.lng != null && damperler.some((d) => mesafeMetre(p.lat as number, p.lng as number, d.lat, d.lng) <= 80));
   const sermeKm = guzergahlar.reduce((s, g) => (opGorunur(g.plaka, g.arac_sinifi, "serme", /greyder|grayder/i) && yakin(g.noktalar ?? [])) ? s + omurgaKm(g.noktalar ?? [], esikReglaj, grid, transitHiz, pencereSn) : s, 0);
 
-  // 1c) SIKIŞTIRMA UZUNLUĞU (km) — silindir omurgası, SİLİNDİR tekrar eşiğiyle. Sıkıştırma sekmesinin per-araç
-  // "km yol"u ile aynı: transit, pencere YOK.
+  // 1c) SIKIŞTIRMA UZUNLUĞU (km) — silindir omurgası, SİLİNDİR tekrar eşiğiyle. REGLAJ gibi PLAKA bazında havuzla
+  // (girdi gün-bazlı/birleştirilmemiş satırlar olsa bile her silindir bir kez sayılır, gün-gün toplayıp şişirmez).
+  // pencere YOK (0). arac_sinifi plaka başına sabit olduğundan görünürlük ilk satırdan yeterli.
   const esikSil = ayarlar?.silindirTekrar ?? 0;
-  const sikistirmaKm = guzergahlar.reduce((s, g) => opGorunur(g.plaka, g.arac_sinifi, "sikistirma", /silindir|roller|compact/i) ? s + omurgaKm(g.noktalar ?? [], esikSil, grid, transitHiz, 0) : s, 0);
+  const silHavuz = new Map<string, { lat: number; lng: number; hiz: number | null }[]>();
+  for (const g of guzergahlar) {
+    if (!opGorunur(g.plaka, g.arac_sinifi, "sikistirma", /silindir|roller|compact/i)) continue;
+    const pk = plakaNorm(g.plaka);
+    let arr = silHavuz.get(pk); if (!arr) { arr = []; silHavuz.set(pk, arr); }
+    for (const p of (g.noktalar ?? [])) if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, hiz: p.hiz ?? null });
+  }
+  let sikistirmaKm = 0;
+  for (const havuz of silHavuz.values()) {
+    if (havuz.length < 2) continue;
+    if (esikSil < 1) { sikistirmaKm += kapsananYolKm(havuz, grid); continue; }
+    sikistirmaKm += sadelesGuzergah(havuz, esikSil, grid, transitHiz, 0).parcalar.reduce((a, p) => a + parcalarUzunlukKm([p]), 0);
+  }
 
   // 2) KAMYON SEFER = Stabilize GERÇEK damper toplamı (mükerrer + ocağa göre arıza ayıklanır, manuel override).
   const mukerrerDk = ayarlar?.mukerrerDk ?? 0, mukerrerYaricap = ayarlar?.mukerrerYaricap ?? 0;

@@ -245,24 +245,59 @@ function birlestirParcalar(
 
 // YAN YANA PARALEL şeritleri TEK çizgiye indirir. Izgara sabit-lattice olduğundan, gerçek yol 25 m arayla
 // git-gel taransa bile iki geçiş komşu hücrelere düşüp AYRI iki paralel omurga olarak çizilebiliyor → uzunluk
-// iki kez sayılıyor. Burada konumdan BAĞIMSIZ çözüm: uzun→kısa sırala; bir parçanın noktalarının ÇOĞU (≥%60)
+// iki kez sayılıyor. Burada konumdan BAĞIMSIZ çözüm: uzun→kısa sırala; bir parçanın noktalarının ÇOĞU (≥%70)
 // daha uzun/korunan bir parçaya tolM dik-mesafesinde ise o parça DUPLİKE sayılır ve düşürülür. Kavşak/dik kol
-// (düşük örtüşme) korunur → yanlış birleşme olmaz. tolM = hücre çapı (2×gridM); "yan yana çizgi mesafesi" ayarı.
+// VE başı/sonu uzayan parça (benzersiz kısmı ≥%30) korunur → greyderin fazla gittiği yer kırpılmaz, yanlış
+// birleşme de olmaz. tolM = hücre çapı (2×gridM); "yan yana çizgi mesafesi" ayarı.
 function paralelBirlestir(parcalar: [number, number][][], tolM: number): [number, number][][] {
   if (tolM <= 0 || parcalar.length < 2 || parcalar.length > 400) return parcalar;
   const uzunlukM = (p: [number, number][]) => parcalarUzunlukKm([p]) * 1000;
   const sirali = [...parcalar].sort((a, b) => uzunlukM(b) - uzunlukM(a)); // uzun önce → korunacak
   const tutulan: { p: [number, number][]; kumul: number[] }[] = [];
+  const ekle = (q: [number, number][]) => { if (q.length >= 2) tutulan.push({ p: q, kumul: kumulMesafe(q) }); };
+  const kurtarEsik = Math.max(15, tolM * 0.25); // benzersiz uzantı ancak bu kadar uzunsa korunur (gürültü değil)
   for (const p of sirali) {
-    let duplike = false;
-    for (const t of tutulan) {
-      let ic = 0;
-      for (const q of p) if (noktaPolylineIzdusum(q[0], q[1], t.p, t.kumul).dikM <= tolM) ic++;
-      if (p.length > 0 && ic / p.length >= 0.4) { duplike = true; break; }
+    // Her noktanın, TUTULAN herhangi bir parçaya tolM dik-mesafede olup olmadığı. ÖNEMLİ: bu adımdan ÖNCE izeOturt
+    // çalıştığından paralel şeritler aynı orta hatta ÇAKIŞIK → örtüşen kısım gerçekten üst üste (kayma yok).
+    const yakin = p.map((q) => tutulan.some((t) => noktaPolylineIzdusum(q[0], q[1], t.p, t.kumul).dikM <= tolM));
+    const ic = yakin.filter(Boolean).length;
+    if (tutulan.length === 0 || ic / p.length < 0.7) { ekle(p); continue; } // yeterince benzersiz → tümünü tut
+    // Çoğu örtüşüyor (duplike). Tümünü ATMA — yalnız YAKIN OLMAYAN (benzersiz) kesintisiz alt-koşuları kurtar
+    // (greyderin fazla gittiği baş/son uzantısı korunur, sadece tekrar sayılan orta kısım düşer). Çakışık
+    // olduğundan uzantının örtüşen komşuya 1 nokta bağlanması boşluk bırakmaz.
+    let i = 0;
+    while (i < p.length) {
+      if (yakin[i]) { i++; continue; }
+      let j = i; while (j < p.length && !yakin[j]) j++;
+      const alt = p.slice(Math.max(0, i - 1), Math.min(p.length, j + 1)); // örtüşen komşuyla 1 nokta bağla
+      if (uzunlukM(alt) > kurtarEsik) ekle(alt);
+      i = j;
     }
-    if (!duplike) tutulan.push({ p, kumul: kumulMesafe(p) });
   }
   return tutulan.map((t) => t.p);
+}
+
+// U-DÖNÜŞ BÖLME — greyder aynı yolda git-gel yapınca ızgara omurgası "kendi üstüne katlanan" TEK polyline
+// üretir (yukarı git → ~180° dön → paralel geri gel). Parça-bazlı paralel birleştirme bunu bölemez (tek parça).
+// Burada yön ~esikAci'den fazla tersine döndüğü (U-dönüş) noktada parça İKİYE ayrılır → iki ayrı paralel şerit
+// olur, ardından paralelBirlestir birini düşürür → çift çizgi/çift uzunluk gider. Gerçek yol virajları
+// (dönüş < esikAci) bölünmez, olduğu gibi kalır.
+function uTurnBol(parcalar: [number, number][][], cosOrt: number, esikAci: number): [number, number][][] {
+  const out: [number, number][][] = [];
+  for (const p of parcalar) {
+    if (p.length < 3) { out.push(p); continue; }
+    let bas = 0;
+    for (let i = 1; i < p.length - 1; i++) {
+      const inx = (p[i][1] - p[i - 1][1]) * cosOrt, iny = p[i][0] - p[i - 1][0];
+      const outx = (p[i + 1][1] - p[i][1]) * cosOrt, outy = p[i + 1][0] - p[i][0];
+      const mag = Math.hypot(inx, iny) * Math.hypot(outx, outy);
+      if (mag <= 0) continue;
+      const donus = Math.acos(Math.max(-1, Math.min(1, (inx * outx + iny * outy) / mag))); // 0=düz, π=tam geri
+      if (donus >= esikAci) { out.push(p.slice(bas, i + 1)); bas = i; }
+    }
+    out.push(p.slice(bas));
+  }
+  return out.filter((q) => q.length >= 2);
 }
 
 // Ramer-Douglas-Peucker: polyline'ı, ORİJİNAL UÇLARI KORUYARAK, çizgiye ε (metre) dik-mesafeden daha yakın
@@ -291,6 +326,75 @@ function rdpSadelestir(p: [number, number][], epsM: number): [number, number][] 
     if (maks > epsM && idx > i) { kalan[idx] = true; yigin.push([i, idx], [idx, j]); }
   }
   return p.filter((_, i) => kalan[i]);
+}
+
+// İZE OTURT — omurga noktalarını HAM GPS izine geri çeker: her (iç) omurga noktası, yarıçap R içindeki gerçek
+// greyder noktalarının ağırlıklı ortalamasına kaydırılır (üçgen çekirdek: yakın nokta daha ağır). Izgara-snap'ten
+// doğan, yolun DIŞINA (greyderin gitmediği tarlaya) taşan sıçrama/kırıklar → o konumdaki gerçek noktalar yolun
+// üstünde olduğundan hat yola geri oturur; ayrıca birleştirmede tek şeride inen hat iki şeridin tam ortasına gelir.
+// Topoloji (parça sırası) DEĞİŞMEZ; yalnız nokta KONUMU düzeltilir. UÇLAR sabit → yol baştan/sondan kırpılmaz.
+function izeOturt(
+  parcalar: [number, number][][],
+  pts: { lat: number; lng: number }[],
+  cosOrt: number,
+  yariCapM: number,
+): [number, number][][] {
+  if (yariCapM <= 0 || pts.length === 0) return parcalar;
+  const latStep = yariCapM / METRE_DERECE;
+  const lngStep = yariCapM / (METRE_DERECE * cosOrt);
+  const kova = new Map<string, { lat: number; lng: number }[]>();
+  for (const p of pts) {
+    const k = `${Math.round(p.lat / latStep)}_${Math.round(p.lng / lngStep)}`;
+    let a = kova.get(k); if (!a) { a = []; kova.set(k, a); } a.push(p);
+  }
+  const r2 = yariCapM * yariCapM;
+  const cek = (la: number, ln: number): [number, number] => {
+    const ci = Math.round(la / latStep), cj = Math.round(ln / lngStep);
+    let sLat = 0, sLng = 0, sw = 0;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      const arr = kova.get(`${ci + di}_${cj + dj}`); if (!arr) continue;
+      for (const p of arr) {
+        const dx = (p.lng - ln) * METRE_DERECE * cosOrt, dy = (p.lat - la) * METRE_DERECE;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2) continue;
+        const w = 1 - Math.sqrt(d2) / yariCapM; // üçgen çekirdek
+        sLat += p.lat * w; sLng += p.lng * w; sw += w;
+      }
+    }
+    return sw > 0 ? [sLat / sw, sLng / sw] : [la, ln];
+  };
+  return parcalar.map((p) =>
+    p.map(([la, ln], i) => (i === 0 || i === p.length - 1 ? [la, ln] : cek(la, ln))),
+  );
+}
+
+// YUMUŞAT (EĞİME DUYARLI) — uçları SABİT tutan Laplacian (0,25·önce + 0,5·kendi + 0,25·sonra), `gecis` kez, ama her
+// noktaya UYGULAMA AĞIRLIĞI o noktadaki dönüş açısına göre: DÜZ yerde (açı ≈ 0) tam yumuşat → düz kısımdaki tümsek/
+// zikzak silinir; KESKİN virajda (açı ≥ korunanAci) dokunma → gerçek viraj kesilmez. w = 1 − dönüş/korunanAci.
+function puruzsuzles(
+  parcalar: [number, number][][], gecis: number, cosOrt: number, korunanAci: number,
+): [number, number][][] {
+  if (gecis <= 0) return parcalar;
+  return parcalar.map((p) => {
+    if (p.length < 3) return p;
+    let q = p;
+    for (let it = 0; it < gecis; it++) {
+      const r = q.slice();
+      for (let i = 1; i < q.length - 1; i++) {
+        const inx = (q[i][1] - q[i - 1][1]) * cosOrt, iny = q[i][0] - q[i - 1][0];
+        const outx = (q[i + 1][1] - q[i][1]) * cosOrt, outy = q[i + 1][0] - q[i][0];
+        const mag = Math.hypot(inx, iny) * Math.hypot(outx, outy);
+        const donus = mag > 0 ? Math.acos(Math.max(-1, Math.min(1, (inx * outx + iny * outy) / mag))) : 0;
+        const w = Math.max(0, 1 - donus / korunanAci); // düz→1, keskin viraj→0
+        if (w <= 0) continue;
+        const lx = q[i - 1][0] * 0.25 + q[i][0] * 0.5 + q[i + 1][0] * 0.25;
+        const ly = q[i - 1][1] * 0.25 + q[i][1] * 0.5 + q[i + 1][1] * 0.25;
+        r[i] = [q[i][0] + w * (lx - q[i][0]), q[i][1] + w * (ly - q[i][1])];
+      }
+      q = r;
+    }
+    return q;
+  });
 }
 
 // noktalar: zaman sırasına göre GPS noktaları.
@@ -417,15 +521,34 @@ function sadelesGuzergahCore(
   // (~13m) parçaları kapatır; dik kollar/kavşaklar açı kapısıyla (70°) yine ayrı kalır → yanlış birleşme yok.
   const kopru = birlestirParcalar(parcalar, g * 2, cosOrt);
 
-  // YAN YANA PARALEL BİRLEŞTİRME — aynı yolun ızgara sınırına denk gelip komşu hücrelere düşen iki geçişini
-  // tek çizgiye indir → uzunluk iki kez sayılmasın. tol = 1,5×hücre çapı: ızgara paralel şeridi tam bir hücre
-  // (g) kadar uzağa itebildiğinden, güvenli yakalama için g'nin biraz üstü. %60 örtüşme şartı kavşağı korur.
-  const paralelsiz = paralelBirlestir(kopru, g * 1.5);
+  // GİT-GEL (hairpin) BÖL — greyder aynı yolda git-gel yapınca oluşan "kendi üstüne katlanan" tek hattı
+  // U-dönüşünde (yön ~180° tersine döndüğü nokta) İKİYE ayır → aşağıdaki paralel birleştirme birini düşürebilir
+  // (tek parça iken düşüremiyordu). Gerçek yol virajları (<135°) bölünmez.
+  const bolunmus = uTurnBol(kopru, cosOrt, (135 * Math.PI) / 180);
+
+  // İZE OTURT (paralel birleştirmeden ÖNCE) — omurga noktalarını gerçek greyder izine çeker. KRİTİK: yan yana
+  // iki paralel şerit de aradaki noktaların ortalamasına, yani AYNI orta hatta çekilir → artık ÇAKIŞIRLAR.
+  // Böylece ızgara-snap kırıkları yola döner VE bir sonraki adım paralelleri kaymasız/boşluksuz düşürebilir.
+  // Yarıçap = gridM (0,5×hücre): viraja sıkı yapışır ama yan şeridi (±gridM) yine ortalar; uçlar sabit → baş kırpılmaz.
+  const oturtulmus = izeOturt(bolunmus, pts, cosOrt, g * 0.5);
+
+  // YAN YANA PARALEL BİRLEŞTİRME — üstte çakışık hale gelen iki paralel şeridin (git-gel ya da ızgara sınırı)
+  // duplike olanını düşür → uzunluk iki kez sayılmasın. tol = 1,5×hücre çapı.
+  const paralelsiz = paralelBirlestir(oturtulmus, g * 1.5);
+
+  // SON DİKİŞ — clip'ten sonra baş/son uzantıları ayrı parça olarak kalabiliyor; uç uca hizalı (≤2 hücre, açı
+  // kapısı 70°) bu parçaları TEK SÜREKLİ hatta bağla → yolun ortasındaki kesiklik/boşluk kapanır. Dik kol/kavşak
+  // ve git-gel (U-dönüş, 180°>70°) açı kapısıyla yine ayrı kalır → yanlış birleşme yok.
+  const dikilmis = birlestirParcalar(paralelsiz, g * 2, cosOrt);
+
+  // ZİKZAK/TÜMSEK YUMUŞATMA (eğime duyarlı) — DÜZ kısımdaki yanal sapmayı bastır, KESKİN virajı (≥35°) koru
+  // (uçlar sabit → baş/son kaymaz). 3 geçiş: düz yerde tümsek/zikzak silinir ama viraj kesilmez.
+  const puruzsuz = puruzsuzles(dikilmis, 3, cosOrt, (35 * Math.PI) / 180);
 
   // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
   // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
-  const temiz = paralelsiz
-    .map((p) => rdpSadelestir(p, gridM * 0.3)) // ızgara nicemleme zikzağını hafif düzleştir → yolu takip et, köşe kesme (ε tunable)
+  const temiz = puruzsuz
+    .map((p) => rdpSadelestir(p, gridM * 0.2)) // düz kısımdaki <5m GPS jitter'ını temizle (pürüzsüz segment) → gerçek viraj (>ε sapma) korunur, köşe kesme yok (ε tunable)
     .filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }

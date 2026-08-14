@@ -3,7 +3,7 @@
 // rotalarını BİRLEŞTİRİP tek omurga çıkarır (tekrar taranan yol tek çizgi), dashboard'ın "gün-gün topla"
 // yöntemi ise şişirir. Reglaj/sıkıştırma: hesaplaGunlukMetrik'in (sekmeyle birebir) hesabı, birleşik girdiyle.
 // Serme: sermeAralikKm (damper-öncesi/sonrası per-hücre zamansal yöntem) → Serme sekmesiyle birebir.
-import { getAraclarAtama, getGuzergahByRange, getArventoRaporByRange, getPlakaSantiyeMap, birlestirGuzergahPlaka, plakaNorm } from "@/lib/supabase/queries/arvento";
+import { getAraclarAtama, getGuzergahByRange, getArventoRaporByRange, getPlakaSantiyeMap, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih } from "@/lib/supabase/queries/arvento-ayarlar";
 import { atananSekmeleriHesapla, type SekmeAtamaMap, type ArventoSekme } from "@/lib/arvento/operasyonlar";
 import { createClient } from "@/lib/supabase/client";
@@ -99,10 +99,12 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
   // Reglaj + sıkıştırma: BİRLEŞİK omurga (hesaplaGunlukMetrik, sekmeyle birebir).
   // REGLAJ = greyder rotası EKSİ serme: serme yapılan (damper-öncesi dökülmüş) greyder noktaları çıkarılır →
   // bir yol hem serme hem reglaj sayılmaz. Silindir satırlarına dokunulmaz → sıkıştırma değişmez.
+  // BİRLEŞTİRMEDEN (gün-bazlı) geçir: hesaplaGunlukMetrik reglaj/sıkıştırmayı zaten PLAKA bazında havuzluyor.
+  // birlestirGuzergahPlaka tarihi ilk güne sabitliyordu → reglaj tekrar penceresi ayrı günleri aynı güne toplayıp
+  // ŞİŞİRİYORDU (ana sayfa > chip). Ham per-gün satır → tsSaniye doğru gün tarihini alır → chip toplamıyla birebir.
   const guzReglaj = reglajRotalariniAyikla({ guzergahRows: guz, raporlar, oncekiDamper, sekmeMap, atananSekmeler });
-  const birlesik = birlestirGuzergahPlaka(guzReglaj);
   const m = hesaplaGunlukMetrik({
-    tarih: null, kayitlar: [], guzergahlar: birlesik, plakaSantiye, ayarlar, gunOcak, sinifMap: new Map(), ocakMakinePlakalar: null,
+    tarih: null, kayitlar: [], guzergahlar: guzReglaj, plakaSantiye, ayarlar, gunOcak, sinifMap: new Map(), ocakMakinePlakalar: null,
   });
   // Serme: HAM (birleştirilmemiş) rotalar + damper geçmişi → per-hücre zamansal (Serme sekmesiyle birebir).
   const sermeParams = {
