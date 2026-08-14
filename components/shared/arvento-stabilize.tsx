@@ -800,14 +800,21 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const esc = (s: string) => String(s ?? "").replace(/['\\]/g, "\\$&");
         const bStil = "font-size:10px;padding:0 5px;margin-left:3px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer";
         const liste = g.olaylar
-          .map((o) => `🔻 ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`
-            + (yDuzenle
-              ? `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','gercek')">Gerçek</button>`
-                + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
-                + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`
-              : ""))
+          .map((o) => {
+            // Bu kaydın sınıfı manuel override mı (arvento_damper_sinif'te var mı) → "elle" rozeti göster.
+            const elle = damperSinif.get(sinifKey(g.plaka, damperTarih(o), o.saat)) != null;
+            return `🔻 ${o.saat ?? "—"}${o.adres ? " · " + o.adres : ""}`
+              + (elle ? ` <span style="font-size:9px;font-weight:600;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 3px">elle</span>` : "")
+              + (yDuzenle
+                ? `<br><button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','gercek')">Gerçek</button>`
+                  + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','mukerrer')">Mükerrer</button>`
+                  + `<button style="${bStil}" onclick="window.__damperSinifSet&&window.__damperSinifSet('${esc(g.plaka)}','${esc(damperTarih(o))}','${esc(o.saat ?? "")}','ariza')">Arıza</button>`
+                : "");
+          })
           .join("<hr style='margin:3px 0;border:none;border-top:1px solid #eee'>");
-        return `<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b><br>${g.plaka}<br>${liste}`;
+        // Grupta manuel override'lı en az bir kayıt varsa başlıkta da "· elle" göster.
+        const grupElle = g.olaylar.some((o) => damperSinif.get(sinifKey(g.plaka, damperTarih(o), o.saat)) != null);
+        return `<b>🔻 ${g.surucu ?? g.plaka}</b> · ${adet} damper · <b>${sinifAd}</b>${grupElle ? ` <span style="font-size:9px;font-weight:600;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:0 3px">elle</span>` : ""}<br>${g.plaka}<br>${liste}`;
       };
       // TÜM damperler: kamyon rengine göre YUVARLAK nokta. SVG + damperPane (kamyon izinin üstünde, KESİN tıklanır).
       L.circleMarker([g.lat, g.lng], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: renk, fillOpacity: 0.95, renderer: damperRenderer })
@@ -895,7 +902,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih, dokumSaha]);
+  }, [haritaHazir, reglajRefleri, kamyonIzleri, kamyonIziGoster, seciliPlakalar, damperGosterilecek, damperFiltre, rotaByPlaka, rotaByPlakaGun, etkinTekrar, gridMesafe, renkAl, reglajKal, reglajRenkV, kamyonIziRenk, kamyonIziKalinlik, gorunumRef, ocak, etkinOcakYaricap, yDuzenle, gunOcak, gunGiris, ocakElleMi, ocakMakineleri, damperTarih, dokumSaha, damperSinif, sinifKey]);
 
   // KML: kamyon damper noktaları (+ referans greyder çizgileri)
   async function exportKML() {
