@@ -424,7 +424,7 @@ function sadelesGuzergahCore(
   // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
   // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
   const temiz = paralelsiz
-    .map((p) => rdpSadelestir(p, gridM * 0.5)) // ızgara nicemleme zikzağını düzleştir → uzunluk cetveldeki gerçek yola yaklaşsın
+    .map((p) => rdpSadelestir(p, gridM * 0.3)) // ızgara nicemleme zikzağını hafif düzleştir → yolu takip et, köşe kesme (ε tunable)
     .filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }
