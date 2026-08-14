@@ -109,7 +109,9 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     const noktalar = (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
     if (noktalar.length < 2) return s;
     if (esikReglaj < 1) return s + kapsananYolKm(noktalar, grid);
-    // Reglaj sekmesinin per-araç "km yol"u ile BİREBİR: transit (tekrar süresi/pencere YOK), yalnız >0.5 m parçalar.
+    // NOT: buradaki g.noktalar zaman damgası (ts) taşımadığından pencereSn UYGULANAMAZ (uygulanırsa 0'a düşer).
+    // Chip (arvento-guzergah) ham+ts havuzu kullandığı için pencere uygulayabiliyor; ana sayfa metriği
+    // ham+ts havuzuna geçirilene kadar burada pencere-siz kalır (ayrı düzeltilecek).
     const parts = sadelesGuzergah(noktalar, esikReglaj, grid, transitHiz).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
     return s + parts.reduce((a, b) => a + b, 0);
   }, 0);

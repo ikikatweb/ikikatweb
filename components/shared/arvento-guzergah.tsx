@@ -208,20 +208,39 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     return tum.filter((k) => izin.has(plakaNorm(k.plaka)));
   }, [kayitlarReglaj, plakaFiltre, ekstraAraclar, sekmeMap, izinliPlakalar]);
 
-  // Her SADELEŞTİRİLMİŞ TEK ÇİZGİNİN (omurga parçası) AYRI uzunluğu (km, büyükten küçüğe). Haritada
-  // çizilen çizgilerle birebir: git-gel tekrarları sayılmaz. Eşik<1 (ham) ise parça yok → boş.
+  // Yol tıklandığında popup için HAM noktalar (saat + hız + tarih) — plaka bazında. Omurga birleşik/tek çizgi
+  // olduğu için tek değer taşımaz; tıklanan konuma EN YAKIN ham nokta gösterilir → plaka/model/hız/tarih/saat.
+  // NOT: parcaUzunlukMap (chip km) bu ham+ts havuzunu kullandığından burada — chip hesabından ÖNCE — tanımlı.
+  const hamNoktaByPlaka = useMemo(() => {
+    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string; plaka: string }[]>();
+    // kayitlarReglaj: serme noktaları çıkarılmış → çizilen omurga havuzu da serme yolunu içermez (map ile km tutar).
+    for (const row of kayitlarReglaj) {
+      const pk = plakaNorm(row.plaka);
+      let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
+      for (const p of (row.noktalar ?? [])) {
+        if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat, hiz: p.hiz, tarih: row.rapor_tarihi, plaka: row.plaka });
+      }
+    }
+    return m;
+  }, [kayitlarReglaj]);
+
+  // Her SADELEŞTİRİLMİŞ TEK ÇİZGİNİN (omurga parçası) AYRI uzunluğu (km, büyükten küçüğe). Chip km'i, haritaya
+  // ÇİZİLEN kırmızı hatla BİREBİR olsun diye AYNI kaynağı ve pencereyi kullanır: hamNoktaByPlaka (ts'li ham
+  // noktalar) + tekrarPencereSaat penceresi (git-gel tekrarları zaman penceresinde toplanır, mesafe şişmez).
   const parcaUzunlukMap = useMemo(() => {
     const m = new Map<string, number[]>();
     if (etkinTekrar < 1) return m;
     for (const k of araclar) {
-      const noktalar = (k.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
-      if (noktalar.length < 2) continue;
-      const uz = sadelesGuzergah(noktalar, etkinTekrar, gridMesafe, transitHiz).parcalar
+      const havuz = (hamNoktaByPlaka.get(plakaNorm(k.plaka)) ?? [])
+        .filter((p) => p.lat != null && p.lng != null)
+        .map((p) => ({ lat: p.lat, lng: p.lng, hiz: p.hiz, ts: tsSaniye(p.tarih, p.saat) }));
+      if (havuz.length < 2) continue;
+      const uz = sadelesGuzergah(havuz, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat * 3600).parcalar
         .map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005).sort((a, b) => b - a);
       if (uz.length) m.set(k.plaka, uz);
     }
     return m;
-  }, [araclar, etkinTekrar, gridMesafe, transitHiz]);
+  }, [araclar, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat, hamNoktaByPlaka]);
   // Ham rotasında (serme ayıklaması ÖNCESİ) ≥2 koordinatlı nokta olan plakalar: bu araçların GPS verisi
   // var demektir → km yol (reglaj) değeri hep hesaplanabilir olmalı (0 olsa bile). Chip'in ham
   // toplam_mesafe'ye düşmesi YALNIZ hiç koordinat verisi olmayan araçlara kalır.
@@ -257,20 +276,6 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
     return m;
   }, [araclar, gridMesafe, parcaUzunlukMap, etkinTekrar, hamNoktaliPlakalar]);
 
-  // Yol tıklandığında popup için HAM noktalar (saat + hız + tarih) — plaka bazında. Omurga birleşik/tek çizgi
-  // olduğu için tek değer taşımaz; tıklanan konuma EN YAKIN ham nokta gösterilir → plaka/model/hız/tarih/saat.
-  const hamNoktaByPlaka = useMemo(() => {
-    const m = new Map<string, { lat: number; lng: number; saat: string | null; hiz: number | null; tarih: string; plaka: string }[]>();
-    // kayitlarReglaj: serme noktaları çıkarılmış → çizilen omurga havuzu da serme yolunu içermez (map ile km tutar).
-    for (const row of kayitlarReglaj) {
-      const pk = plakaNorm(row.plaka);
-      let arr = m.get(pk); if (!arr) { arr = []; m.set(pk, arr); }
-      for (const p of (row.noktalar ?? [])) {
-        if (p.lat != null && p.lng != null) arr.push({ lat: p.lat, lng: p.lng, saat: p.saat, hiz: p.hiz, tarih: row.rapor_tarihi, plaka: row.plaka });
-      }
-    }
-    return m;
-  }, [kayitlarReglaj]);
 
   // Seçili = mevcut araçlardan PASİF olmayanlar. Varsayılan hepsi açık; kullanıcı kapatınca pasife eklenir →
   // gün değişse de pasif korunur (yeni araçlar otomatik açık gelir, kapatılanlar kapalı kalır).
