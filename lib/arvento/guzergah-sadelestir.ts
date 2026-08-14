@@ -243,6 +243,28 @@ function birlestirParcalar(
   return list;
 }
 
+// YAN YANA PARALEL şeritleri TEK çizgiye indirir. Izgara sabit-lattice olduğundan, gerçek yol 25 m arayla
+// git-gel taransa bile iki geçiş komşu hücrelere düşüp AYRI iki paralel omurga olarak çizilebiliyor → uzunluk
+// iki kez sayılıyor. Burada konumdan BAĞIMSIZ çözüm: uzun→kısa sırala; bir parçanın noktalarının ÇOĞU (≥%60)
+// daha uzun/korunan bir parçaya tolM dik-mesafesinde ise o parça DUPLİKE sayılır ve düşürülür. Kavşak/dik kol
+// (düşük örtüşme) korunur → yanlış birleşme olmaz. tolM = hücre çapı (2×gridM); "yan yana çizgi mesafesi" ayarı.
+function paralelBirlestir(parcalar: [number, number][][], tolM: number): [number, number][][] {
+  if (tolM <= 0 || parcalar.length < 2 || parcalar.length > 400) return parcalar;
+  const uzunlukM = (p: [number, number][]) => parcalarUzunlukKm([p]) * 1000;
+  const sirali = [...parcalar].sort((a, b) => uzunlukM(b) - uzunlukM(a)); // uzun önce → korunacak
+  const tutulan: { p: [number, number][]; kumul: number[] }[] = [];
+  for (const p of sirali) {
+    let duplike = false;
+    for (const t of tutulan) {
+      let ic = 0;
+      for (const q of p) if (noktaPolylineIzdusum(q[0], q[1], t.p, t.kumul).dikM <= tolM) ic++;
+      if (p.length > 0 && ic / p.length >= 0.6) { duplike = true; break; }
+    }
+    if (!duplike) tutulan.push({ p, kumul: kumulMesafe(p) });
+  }
+  return tutulan.map((t) => t.p);
+}
+
 // noktalar: zaman sırasına göre GPS noktaları.
 // esik: bir grid kenarı EN AZ kaç kez geçilmişse AĞA dahil edilir (>= esik). Az geçilen sapmalar atılır.
 // gridM: orta hattan sağa-sola YARIÇAP (m). Yan yana yakın şeritleri tek hatta toplar (hücre = 2×gridM).
@@ -367,8 +389,12 @@ function sadelesGuzergahCore(
   // (~13m) parçaları kapatır; dik kollar/kavşaklar açı kapısıyla (70°) yine ayrı kalır → yanlış birleşme yok.
   const kopru = birlestirParcalar(parcalar, g * 2, cosOrt);
 
+  // YAN YANA PARALEL BİRLEŞTİRME — aynı yolun ızgara sınırına denk gelip komşu hücrelere düşen iki geçişini
+  // tek çizgiye indir → uzunluk iki kez sayılmasın ("yan yana çizgi mesafesi" = gridM; hücre çapı = g = 2×gridM).
+  const paralelsiz = paralelBirlestir(kopru, g);
+
   // Birleştirmeden sonra kalan çok kısa spur/gürültü parçalarını at. Eşik DÜŞÜK tutulur (~0.5 hücre) ki
   // köprülenememiş ama GEÇERLİ kısa parçalar (kısa reglaj kesimleri) yanlışlıkla silinip boşluk bırakmasın.
-  const temiz = kopru.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
+  const temiz = paralelsiz.filter((p) => p.length >= 2 && parcalarUzunlukKm([p]) > Math.max(0.008, (gridM * 0.5) / 1000));
   return { parcalar: temiz, gosterilenSegment: gosterilen, toplamSegment, maksGecis };
 }
