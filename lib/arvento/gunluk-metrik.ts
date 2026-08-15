@@ -121,14 +121,11 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     }
   }
   let reglajKm = 0;
-  for (const [pk, havuz] of greyderHavuz) {
+  for (const havuz of greyderHavuz.values()) {
     if (havuz.length < 2) continue;
     if (esikReglaj < 1) { reglajKm += kapsananYolKm(havuz, grid); continue; }
     const parts = sadelesGuzergah(havuz, esikReglaj, grid, transitHiz, pencereSn).parcalar.map((p) => parcalarUzunlukKm([p])).filter((u) => u > 0.0005);
-    const km = parts.reduce((a, b) => a + b, 0);
-    reglajKm += km;
-    // GEÇİCİ TEŞHİS — sezon (tarih===null) reglaj: greyder başına nokta sayısı + km. Chip ile karşılaştır (push öncesi sil).
-    if (tarih === null) console.log("[REGLAJ-TEŞHİS]", pk, "nokta:", havuz.length, "km:", km.toFixed(3), "parça:", parts.length, "esik:", esikReglaj, "pencereSn:", pencereSn);
+    reglajKm += parts.reduce((a, b) => a + b, 0);
   }
 
   // 1b) SERME UZUNLUĞU (km) — serme greyder omurgası, yalnız hattın ≤80 m'sinde (GERÇEK) damper varsa.
