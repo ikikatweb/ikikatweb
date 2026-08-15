@@ -30,6 +30,17 @@ function modulGunSayisi(
   return kullanici.geriye_donus_gun ?? 2;
 }
 
+// Bir modül+mod için etkin gün limitini döndür (banner/bilgi notu metni için).
+// modulGunSayisi ile aynı mantık — modül-özel alan yoksa legacy geriye_donus_gun'a düşer.
+export function izinGunSayisi(
+  kullanici: KullaniciIzinLite,
+  modul: IzinModul,
+  mod: IzinMod = "goruntuleme",
+): number | null {
+  if (!kullanici) return null;
+  return modulGunSayisi(kullanici, modul, mod);
+}
+
 export function tarihIzinliMi(
   kullanici: KullaniciIzinLite,
   tarihStr: string, // "YYYY-MM-DD"

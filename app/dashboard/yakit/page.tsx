@@ -55,7 +55,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
+import { tarihIzinliMi, izinGunSayisi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 import { formatBaslik, trAramaNormalize } from "@/lib/utils/isim";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -1558,6 +1558,23 @@ function YakitPageContent() {
           </div>
         )}
 
+        {/* Kısıtlı kullanıcı (filtre grid'ini görmeyen) için arama — plaka, marka/model, not vb. */}
+        {!(isYonetici || isShantiyeAdmin) && (
+          <div className="space-y-1">
+            <Label className="text-[10px] text-gray-500">Arama</Label>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={arama}
+                onChange={(e) => setArama(e.target.value)}
+                placeholder="Plaka, marka, model, not... (sonuna boşluk: tam kelime)"
+                className={selectClass + " w-full pl-8"}
+              />
+            </div>
+          </div>
+        )}
+
         {yEkle && (
           <div className={`grid grid-cols-1 sm:grid-cols-3 ${isYonetici ? "lg:grid-cols-4" : ""} gap-2 w-full sm:w-auto`}>
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={verDialogAc}>
@@ -1620,7 +1637,7 @@ function YakitPageContent() {
       {/* Kısıtlı kullanıcı bilgi notu (şantiye admini görmesin) */}
       {sadeceKendiKayitlari && kullanici && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-4 text-xs text-amber-800">
-          Sadece kendi girdiğiniz kayıtları görebilirsiniz{kullanici.geriye_donus_gun != null ? ` (son ${kullanici.geriye_donus_gun} gün)` : ""}.
+          Sadece kendi girdiğiniz kayıtları görebilirsiniz{(() => { const g = izinGunSayisi(kullanici, "yakit", "goruntuleme"); return g != null ? ` (son ${g} gün)` : ""; })()}.
         </div>
       )}
 
