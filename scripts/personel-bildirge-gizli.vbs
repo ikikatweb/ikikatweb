@@ -1,3 +1,3 @@
-' Personel BILDIRGE sync'ini PENCERE ACMADAN (gizli) calistirir.
-' Gorev Zamanlayici bu dosyayi cagirir; muhasebe cevabindaki SGK bildirge PDF'ini yakalayip acik talebi kapatir.
-CreateObject("WScript.Shell").Run """C:\Users\MSI\Desktop\ikikatweb\scripts\personel-bildirge-sync.bat""", 0, False
+' Yol-bagimsiz gizli calistirici. Kendi klasorunden personel-bildirge-sync.bat dosyasini penceresiz calistirir.
+dir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+CreateObject("WScript.Shell").Run """" & dir & "\personel-bildirge-sync.bat""", 0, False

@@ -1,4 +1,3 @@
-' Arvento SpeedReport (guzergah) sync'ini PENCERE ACMADAN (gizli) calistirir.
-' Gorev Zamanlayici bu dosyayi cagirir; her ~15 dk'da bir bugunun yogun rotasini Supabase'e yazar.
-' Run(komut, 0, False): 0 = gizli pencere, False = bekleme.
-CreateObject("WScript.Shell").Run """C:\Users\MSI\Desktop\ikikatweb\scripts\arvento-speed-sync.bat""", 0, False
+' Yol-bagimsiz gizli calistirici. Kendi klasorunden arvento-speed-sync.bat dosyasini penceresiz calistirir.
+dir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+CreateObject("WScript.Shell").Run """" & dir & "\arvento-speed-sync.bat""", 0, False
