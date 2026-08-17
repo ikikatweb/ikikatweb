@@ -63,7 +63,14 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   const t = new Date();
   const damga = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}_${String(t.getHours()).padStart(2, "0")}-${String(t.getMinutes()).padStart(2, "0")}`;
   const cikti = path.join(klasor, `ikikatweb-yedek-${damga}.json`);
-  const akis = fs.createWriteStream(cikti, { encoding: "utf8" });
+  // ELEKTRİK KESİNTİSİ GÜVENLİĞİ: önce ".yaziliyor" uzantısıyla yaz, ancak dosya EKSİKSİZ
+  // bittiğinde nihai ada taşı. Kesinti olursa geriye adı ".yaziliyor" olan yarım dosya kalır —
+  // tam görünen ama içi eksik bir yedekle karıştırılamaz. Önceki çalışmadan kalmış yarımları da temizle.
+  const gecici = `${cikti}.yaziliyor`;
+  for (const eskiYarim of fs.readdirSync(klasor).filter((d) => d.endsWith(".yaziliyor"))) {
+    try { fs.unlinkSync(path.join(klasor, eskiYarim)); log(`  yarim kalmis yedek silindi: ${eskiYarim}`); } catch { /* yoksay */ }
+  }
+  const akis = fs.createWriteStream(gecici, { encoding: "utf8" });
   const yaz = (metin: string) =>
     new Promise<void>((coz, hata) => { akis.write(metin, (e) => (e ? hata(e) : coz())); });
 
@@ -127,6 +134,7 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   };
   await yaz(`},"meta":${JSON.stringify(meta)}}`);
   await new Promise<void>((coz) => akis.end(coz));
+  fs.renameSync(gecici, cikti); // dosya TAM → nihai adına al (bu satıra kadar gelen yedek eksiksizdir)
 
   const boyut = fs.statSync(cikti).size;
   log(`Veritabanı: ${meta.toplam_satir.toLocaleString("tr-TR")} satır / ${YEDEK_TABLOLARI.length} tablo → ${path.basename(cikti)} (${mb(boyut)})`);
@@ -183,7 +191,11 @@ async function dosyaYedegi(): Promise<{ yeni: number; atlanan: number; bayt: num
         const r = await fetch(`${URL_}/storage/v1/object/${bucket}/${d.yol.split("/").map(encodeURIComponent).join("/")}`, { headers: BASLIK });
         if (!r.ok) { hata++; log(`  HATA indirilemedi ${bucket}/${d.yol}: HTTP ${r.status}`); continue; }
         fs.mkdirSync(path.dirname(hedefYol), { recursive: true });
-        fs.writeFileSync(hedefYol, Buffer.from(await r.arrayBuffer()));
+        // Önce geçici ada yaz, sonra taşı: kesintide yarım dosya nihai adı almaz (bir sonraki
+        // çalışmada boyut eşleşmesi doğru olur, yarım dosya "inmiş" sanılıp atlanmaz).
+        const gecici = `${hedefYol}.iniyor`;
+        fs.writeFileSync(gecici, Buffer.from(await r.arrayBuffer()));
+        fs.renameSync(gecici, hedefYol);
         yeni++; bYeni++; bayt += d.boyut;
       } catch (e) {
         hata++; log(`  HATA ${bucket}/${d.yol}: ${e instanceof Error ? e.message : String(e)}`);
