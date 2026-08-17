@@ -56,12 +56,28 @@ export default function YedekPage() {
       const blob = await res.blob();
       const boyutMB = (blob.size / (1024 * 1024)).toFixed(2);
 
-      // Yedek meta bilgisini blob'dan oku (download başlatmadan önce)
-      const metin = await blob.text();
-      const yedek = JSON.parse(metin);
-      const tabloSayisi = yedek.meta?.toplam_tablo ?? 0;
-      const toplamSatir = Object.values(yedek.meta?.tablo_satir_sayilari ?? {})
-        .reduce((s: number, n) => s + (typeof n === "number" ? n : 0), 0);
+      // Meta bilgisi dosyanın SONUNDA. 100+ MB'lık JSON'u tarayıcıda baştan sona parse etmek
+      // sekmeyi dondurur → sadece son parçayı okuyup meta'yı oradan çıkar. Meta bulunamazsa
+      // indirme yarıda kesilmiş demektir (yedek eksik) → kullanıcıyı uyar.
+      const kuyruk = await blob.slice(Math.max(0, blob.size - 2 * 1024 * 1024)).text();
+      const metaBas = kuyruk.lastIndexOf('"meta":');
+      let tabloSayisi = 0;
+      let toplamSatir = 0;
+      if (metaBas === -1) {
+        throw new Error("Yedek yarıda kesilmiş görünüyor (meta bölümü yok). Otomatik yedeği kullanın: C:\\ikikatweb-yedek");
+      }
+      try {
+        const meta = JSON.parse(kuyruk.slice(metaBas + 7, kuyruk.lastIndexOf("}")));
+        tabloSayisi = meta?.toplam_tablo ?? 0;
+        toplamSatir = meta?.toplam_satir
+          ?? Object.values(meta?.tablo_satir_sayilari ?? {}).reduce((s: number, n) => s + (typeof n === "number" ? n : 0), 0);
+        if (meta?.hatalar?.length) {
+          toast.error(`${meta.hatalar.length} tablo çekilemedi: ${meta.hatalar.map((h: { tablo: string }) => h.tablo).join(", ")}`, { duration: 8000 });
+        }
+        if (meta?.uyarilar?.length) {
+          toast.error(meta.uyarilar.join(" · "), { duration: 8000 });
+        }
+      } catch { /* meta okunamadıysa dosya yine de indirilsin */ }
 
       // Dosyayı tarayıcıya indir
       const url = URL.createObjectURL(blob);
@@ -150,10 +166,18 @@ export default function YedekPage() {
         <div className="text-xs text-amber-800 space-y-1">
           <p className="font-semibold">Önemli notlar:</p>
           <ul className="list-disc pl-4 space-y-0.5">
-            <li>Bu yedek sadece <strong>veritabanı kayıtlarını</strong> içerir (firma, şantiye, evrak metadata, kasa hareketleri, vb.).</li>
-            <li><strong>PDF dosyaları (Üst Yazı, Ekler, kaşeler vb.) yedeklemez</strong> — bu dosyalar Supabase Storage&apos;da ayrı tutulur.</li>
+            <li>
+              <strong>Asıl yedek otomatik alınıyor:</strong> senkron bilgisayarında her Cumartesi 12:00&apos;de
+              tam yedek (veritabanı + tüm dosyalar) <code>C:\ikikatweb-yedek</code> klasörüne yazılır.
+              Buradaki butonlar <strong>ek/elle</strong> yedek içindir.
+            </li>
+            <li>Veritabanı yedeği <strong>~110 MB</strong>; indirme birkaç dakika sürebilir, sayfayı kapatmayın.</li>
+            <li>
+              İndirilen JSON&apos;un <strong>sonunda <code>&quot;meta&quot;</code> bölümü olmalı</strong>. Yoksa indirme
+              yarıda kesilmiştir (süre limiti) ve o yedek eksiktir — otomatik yedeği kullanın.
+            </li>
+            <li><strong>PDF/görseller ayrı:</strong> aşağıdaki Dosya Yedeği (ZIP) butonuyla iner; 480 MB&apos;ı aşan arşivler süre limitine takılabilir.</li>
             <li>Yedek dosyasını <strong>güvenli bir yere</strong> (harici disk, Google Drive vb.) saklayın.</li>
-            <li>Yedek boyutu büyük olabilir, indirme birkaç dakika sürebilir.</li>
             <li>Hassas veri içerir — yetkisiz kişilerle paylaşmayın.</li>
           </ul>
         </div>

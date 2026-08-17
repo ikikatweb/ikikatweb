@@ -12,16 +12,16 @@ import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import JSZip from "jszip";
+import { BUCKET_DISI, YEDEK_BUCKET_LISTESI } from "@/lib/yedek/kapsam";
 
-// Bilinen bucket isimleri — yeni bucket eklenirse buraya da ekle.
-// /api/upload route'unda kullanılan tüm bucket'lar burada listeli.
-const BUCKETLAR = [
-  "yazismalar",   // Gelen/giden evrak PDF'leri, ekler
-  "firmalar",     // Antet, kaşe görselleri
-  "santiyeler",   // Şantiye dosyaları (iş deneyim, geçici/kesin kabul)
-  "araclar",      // Araç dosyaları (ruhsat vb.)
-  "arac-bakim",   // Bakım dosyaları
-];
+// Bucket listesi CANLI olarak Supabase'den okunur — sabit liste tutmak, yeni bucket
+// eklendiğinde (ör. kasa-slipleri: 436 dosya / 106 MB) o dosyaların yedeksiz kalmasına
+// yol açıyordu. Kapsam tanımı lib/yedek/kapsam.ts'te (yerel yedek script'i de aynısını kullanır).
+async function bucketAdlari(supabase: SupabaseClient): Promise<string[]> {
+  const { data, error } = await supabase.storage.listBuckets();
+  if (error || !data?.length) return YEDEK_BUCKET_LISTESI.filter((b) => !BUCKET_DISI.has(b));
+  return data.map((b) => b.name).filter((ad) => !BUCKET_DISI.has(ad));
+}
 
 // Tek bucket içindeki dosyaları RECURSIVE listele (alt klasörler dahil).
 async function listeleHepsi(
@@ -262,7 +262,7 @@ export async function GET() {
     hatalar: [],
   };
 
-  for (const bucket of BUCKETLAR) {
+  for (const bucket of await bucketAdlari(supabase)) {
     try {
       const dosyalar = await listeleHepsi(supabase, bucket);
       let basarili = 0;

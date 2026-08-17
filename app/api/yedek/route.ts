@@ -3,72 +3,20 @@
 // Service role ile çalışır → RLS bypass, tüm satırlar dahil.
 //
 // Kullanım: GET /api/yedek  → application/json dosyası döner (Content-Disposition ile download).
+//
+// Yanıt AKIŞ (stream) olarak üretilir: tablolar sırayla çekilip anında yazılır, tamamı
+// bellekte tutulmaz. "meta" alanı SONA yazılır — dosyanın sonunda meta YOKSA indirme
+// yarıda kesilmiştir (süre limiti) ve o yedek EKSİKTİR.
+//
+// Hangi tabloların yedeklendiği lib/yedek/kapsam.ts'te (tek kaynak; yerel yedek script'i
+// de aynı listeyi kullanır). Tam ve garantili yedek için: scripts/yedek-al.ts —
+// bu makinedeki haftalık görev, süre/boyut limitine takılmaz.
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { YEDEK_TABLOLARI, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA } from "@/lib/yedek/kapsam";
 
-// Yedeklenecek tablolar — proje genelinde tüm veri saklayan tablolar.
-// Yeni tablo eklendikçe buraya da ekle.
-const YEDEK_TABLOLARI = [
-  // Yönetim
-  "firmalar",
-  "santiyeler",
-  "santiye_ortaklari",
-  "santiye_is_gruplari",
-  "kullanicilar",
-  "izin_sablonlari",
-  // Personel
-  "personel",
-  "personel_santiye",
-  "personel_atama_gecmisi",
-  "personel_atama_manuel_gun",
-  "personel_teknik",
-  "personel_brut_ucret",
-  // Araç
-  "araclar",
-  "arac_police",
-  "arac_bakim",
-  "arac_puantaj",
-  "teklif_gonderim",
-  // Yazışmalar
-  "gelen_evrak",
-  "giden_evrak",
-  "banka_yazismalari",
-  // Yakıt
-  "yakit_alimlar",
-  "arac_yakitlar",
-  "yakit_virmanlar",
-  // Kasa
-  "kasa_hareketleri",
-  // İşçilik / Bordro
-  "iscilik_takibi",
-  "iscilik_aylik",
-  "bordro_pending_mail",
-  "gunluk_ucretler",
-  // Şantiye defteri
-  "santiye_defteri",
-  // Tanımlamalar
-  "tanimlamalar",
-  "yi_ufe",
-  "kasa_islem_tipleri",
-  // Mesajlaşma
-  "mesaj_konusma",
-  "mesaj_uye",
-  "mesaj",
-  // İhale (varsa)
-  "ihale",
-  // Arvento (araç takip) — tüm sekmelerin verisi
-  "arvento_cihaz",          // cihaz ↔ plaka ↔ şoför eşlemesi
-  "arvento_ayarlar",        // Tanımlamalar eşik/ayarları
-  "arvento_ocak",           // gün bazlı stabilize ocağı
-  "arvento_harita_katmani", // NetCAD/KML kayıtlı katmanlar
-  "arac_arvento_rapor",     // günlük km/kontak/çalışma/damper (Araç Çalışma Raporu/Stabilize/Serme/Sıkıştırma)
-  "arac_arvento_guzergah",  // günlük GPS güzergahları (Reglaj/İş Makineleri/Tümü) — büyük olabilir
-  "arvento_anlik",          // canlı/anlık konum — yedek anındaki ANLIK görüntü (15 sn'de bir yenilenir)
-  // NOT: Araç↔sekme atamaları "araclar.arvento_sekmeler" kolonunda → "araclar" tablosuyla zaten yedekleniyor.
-];
-
-const PARCA_BOYUTU = 1000;
+export const maxDuration = 60;
 
 export async function GET() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -134,64 +82,109 @@ export async function GET() {
 
   // YEDEK ALMA
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  const yedek: Record<string, unknown[]> = {};
   const hatalar: { tablo: string; hata: string }[] = [];
+  const uyarilar: string[] = [];
+  const satirSayilari: Record<string, number> = {};
 
-  for (const tablo of YEDEK_TABLOLARI) {
-    try {
-      const tumKayitlar: unknown[] = [];
-      let offset = 0;
-      while (true) {
-        const { data, error } = await supabase
-          .from(tablo)
-          .select("*")
-          .range(offset, offset + PARCA_BOYUTU - 1);
-        if (error) {
-          // Tablo yoksa atlayalım (örn. ihale gibi opsiyonel tablolar).
-          // PGRST205 = "Table not found in schema cache"
-          if (error.code === "PGRST205" || error.message?.toLowerCase().includes("not exist")) {
-            break;
-          }
-          throw error;
-        }
-        const parca = data ?? [];
-        tumKayitlar.push(...parca);
-        if (parca.length < PARCA_BOYUTU) break;
-        offset += PARCA_BOYUTU;
-        // Güvenlik: 1 milyon satırda kes
-        if (offset > 1_000_000) break;
+  // Liste denetimi: veritabanında olup ne YEDEK_TABLOLARI'nda ne YEDEK_DISI'nda olan bir tablo
+  // varsa (yeni tablo eklenmiş ama yedeğe konmamışsa) uyarı olarak bildirilir. Eskiden yanlış
+  // yazılmış tablo adları sessizce boş geçiliyordu — artık her iki durum da meta'da görünür.
+  try {
+    const spec = await fetch(`${supabaseUrl}/rest/v1/`, {
+      headers: { apikey: supabaseServiceKey, Authorization: `Bearer ${supabaseServiceKey}` },
+    }).then((r) => (r.ok ? r.json() : null));
+    const canliTablolar: string[] = Object.keys(spec?.definitions ?? {});
+    if (canliTablolar.length) {
+      const listelenmemis = canliTablolar.filter((t) => !YEDEK_TABLOLARI.includes(t) && !(t in YEDEK_DISI));
+      if (listelenmemis.length) {
+        uyarilar.push(`Yedek listesinde OLMAYAN tablolar (veri kaybı riski): ${listelenmemis.join(", ")}`);
       }
-      yedek[tablo] = tumKayitlar;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hatalar.push({ tablo, hata: msg });
-      yedek[tablo] = [];
+      const bulunmayan = YEDEK_TABLOLARI.filter((t) => !canliTablolar.includes(t));
+      if (bulunmayan.length) {
+        uyarilar.push(`Listede olup veritabanında BULUNMAYAN tablolar (ad yanlış olabilir): ${bulunmayan.join(", ")}`);
+      }
+    }
+  } catch {
+    uyarilar.push("Tablo listesi denetimi yapılamadı (şema özeti okunamadı).");
+  }
+
+  // Bir tablonun satırlarını parça parça getirir. Ağır tablolarda Supabase 500 dönebiliyor;
+  // o durumda parça boyutu küçültülüp yeniden denenir (10 satırın altına inilmez).
+  async function* tabloParcalari(sb: SupabaseClient, tablo: string) {
+    let offset = 0;
+    let parcaBoyutu = OZEL_PARCA[tablo] ?? PARCA_BOYUTU;
+    while (true) {
+      const { data, error } = await sb.from(tablo).select("*").range(offset, offset + parcaBoyutu - 1);
+      if (error) {
+        const yokHatasi = error.code === "PGRST205" || error.message?.toLowerCase().includes("not exist");
+        if (!yokHatasi && parcaBoyutu > 10) {
+          parcaBoyutu = Math.max(10, Math.floor(parcaBoyutu / 4));
+          continue;
+        }
+        throw error;
+      }
+      const parca = data ?? [];
+      if (parca.length) yield parca;
+      if (parca.length < parcaBoyutu) return;
+      offset += parcaBoyutu;
+      if (offset > 1_000_000) return; // güvenlik freni
     }
   }
 
   const tarih = new Date();
   const tarihStr = `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, "0")}-${String(tarih.getDate()).padStart(2, "0")}_${String(tarih.getHours()).padStart(2, "0")}-${String(tarih.getMinutes()).padStart(2, "0")}`;
 
-  const sonuc = {
-    meta: {
-      proje: "ikikatweb",
-      yedek_tarihi: tarih.toISOString(),
-      toplam_tablo: YEDEK_TABLOLARI.length,
-      basarili_tablo: YEDEK_TABLOLARI.length - hatalar.length,
-      hatalar,
-      tablo_satir_sayilari: Object.fromEntries(
-        Object.entries(yedek).map(([t, k]) => [t, k.length]),
-      ),
+  const kodlayici = new TextEncoder();
+  const akis = new ReadableStream<Uint8Array>({
+    async start(kontrol) {
+      const yaz = (metin: string) => kontrol.enqueue(kodlayici.encode(metin));
+      try {
+        yaz('{"veriler":{');
+        let ilkTablo = true;
+        for (const tablo of YEDEK_TABLOLARI) {
+          yaz(`${ilkTablo ? "" : ","}${JSON.stringify(tablo)}:[`);
+          ilkTablo = false;
+          let sayi = 0;
+          try {
+            for await (const parca of tabloParcalari(supabase, tablo)) {
+              for (const kayit of parca) {
+                yaz(`${sayi ? "," : ""}${JSON.stringify(kayit)}`);
+                sayi++;
+              }
+            }
+          } catch (err) {
+            // Artık sessizce geçilmiyor: hata meta'ya yazılır, tablo boş dizi olarak kapanır.
+            hatalar.push({ tablo, hata: err instanceof Error ? err.message : String(err) });
+          }
+          satirSayilari[tablo] = sayi;
+          yaz("]");
+        }
+        const meta = {
+          proje: "ikikatweb",
+          yedek_tarihi: tarih.toISOString(),
+          kaynak: "web (/api/yedek)",
+          toplam_tablo: YEDEK_TABLOLARI.length,
+          basarili_tablo: YEDEK_TABLOLARI.length - hatalar.length,
+          toplam_satir: Object.values(satirSayilari).reduce((s, n) => s + n, 0),
+          yedek_disi: YEDEK_DISI,
+          hatalar,
+          uyarilar,
+          tablo_satir_sayilari: satirSayilari,
+        };
+        yaz(`},"meta":${JSON.stringify(meta)}}`);
+        kontrol.close();
+      } catch (err) {
+        kontrol.error(err);
+      }
     },
-    veriler: yedek,
-  };
+  });
 
-  const json = JSON.stringify(sonuc, null, 2);
-  return new NextResponse(json, {
+  return new NextResponse(akis, {
     status: 200,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Content-Disposition": `attachment; filename="ikikatweb-yedek-${tarihStr}.json"`,
+      "Cache-Control": "no-store",
     },
   });
 }
