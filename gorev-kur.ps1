@@ -45,8 +45,9 @@ CreateObject("WScript.Shell").Run """" & dir & "\$bat""", 0, False
 Write-Host "VBS sarmalayicilar yol-bagimsiz yazildi.`n"
 
 # --- 2) Ortak nesneler ---
-$prinS4U = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U         -RunLevel Limited
-$prinInt = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+# S4U = "oturum acik olmasa da calis, parolayi saklama". Tum gorevler bunu kullanir ki
+# elektrik kesintisi sonrasi bilgisayar kendi acilinca kimse giris yapmadan is donsun.
+$prinS4U = New-ScheduledTaskPrincipal -UserId $user -LogonType S4U -RunLevel Limited
 $setStd  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
              -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
 $setPers = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -67,20 +68,30 @@ Write-Host "Gorevler kuruluyor..."
 # --- S4U: oturum acik olmasa da calisir ---
 Kur 'Arvento Anlik Senkron' (Act '_anlik_hidden.vbs') (Rep 1) $prinS4U $setStd
 Kur 'Arvento Gercek Rapor'  (Act '_rapor_hidden.vbs') (Rep 1) $prinS4U $setStd
-# Mail: gunde 7 kez 08:03..20:03 (2 saatte bir)
-$mailTrgs = '08:03','10:03','12:03','14:03','16:03','18:03','20:03' | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ }
-Kur 'Arvento Mail Senkron' (Act '_mail_hidden.vbs') $mailTrgs $prinS4U $setStd
-# --- Interactive: oturum acik olmali (Lenovo oto-login) ---
-Kur 'ArventoDamperSync'   (Act 'arvento-damper-gizli.vbs') (Rep 1)  $prinInt $setStd
-Kur 'ArventoGuzergahSync' (Act 'arvento-sync-gizli.vbs')   (Rep 15) $prinInt $setStd
-Kur 'Personel Bildirge Sync' (Act 'personel-bildirge-gizli.vbs') (Rep 30) $prinInt $setPers
+# KALDIRILDI (17.08.2026): 'Arvento Mail Senkron' - gunde 7 kez calisiyordu ama isleyecek
+#   mail yoktu. IMAP kutusu (muhasebe@kadtem.com.tr) 120 gun geriye tarandi: hicbir klasorde
+#   (INBOX, Archive, Junk, Spam, INBOX_OLD) tek bir Arvento rapor maili yok. Veri artik
+#   WS + damper senkronlarindan geliyor.
+#   Yeniden acmak icin: Arvento panelinden periyodik rapor mailleri tekrar acilsin, sonra
+#   asagidaki iki satirin basindaki # kaldirilip bu script yeniden calistirilsin.
+#   (scripts/arvento-mail-sync.ts ve lib/arvento/mail-fetch.ts yerinde duruyor.)
+# $mailTrgs = '08:03','10:03','12:03','14:03','16:03','18:03','20:03' | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ }
+# Kur 'Arvento Mail Senkron' (Act '_mail_hidden.vbs') $mailTrgs $prinS4U $setStd
+# --- Bunlar da S4U: oturum acik olmasa da calisirlar ---
+#     Eskiden Interactive idiler (eski makinede oto-login vardi). Interactive gorevler
+#     kimse Windows'a giris yapmadan calismaz -> elektrik kesintisinden sonra bilgisayar
+#     kendi acilsa bile bu uc senkron duruyordu. Interactive olmalari gerekmiyor: damper
+#     senkronu Playwright'i HEADLESS aciyor, digerleri sadece ag istegi yapiyor.
+Kur 'ArventoDamperSync'   (Act 'arvento-damper-gizli.vbs') (Rep 1)  $prinS4U $setStd
+Kur 'ArventoGuzergahSync' (Act 'arvento-sync-gizli.vbs')   (Rep 15) $prinS4U $setStd
+Kur 'Personel Bildirge Sync' (Act 'personel-bildirge-gizli.vbs') (Rep 30) $prinS4U $setPers
 # --- Haftalik TAM yedek: Cumartesi 12:00 (dashboard'daki Cumartesi hatirlatmasiyla ayni gun) ---
 #     Veritabani JSON + Storage dosya aynasi -> C:\ikikatweb-yedek
 Kur 'ikikatweb Haftalik Yedek' (Act '_yedek_hidden.vbs') `
     (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At '12:00') $prinS4U $setYedek
 
 Write-Host "`n=== Kurulan gorevler ==="
-$adlar = 'Arvento Anlik Senkron','Arvento Gercek Rapor','Arvento Mail Senkron','ArventoDamperSync','ArventoGuzergahSync','Personel Bildirge Sync','ikikatweb Haftalik Yedek'
+$adlar = 'Arvento Anlik Senkron','Arvento Gercek Rapor','ArventoDamperSync','ArventoGuzergahSync','Personel Bildirge Sync','ikikatweb Haftalik Yedek'
 Get-ScheduledTask | Where-Object { $_.TaskName -in $adlar } | Select-Object TaskName,State | Format-Table -AutoSize
 Write-Host "Tamam. Gorevler ETKIN; tetikleyicilerine gore calismaya baslayacaklar."
 Write-Host "SONRAKI: eski dizustundeki gorevleri KAPATMADAN once burada birkac dakika calistigini dogrula."
