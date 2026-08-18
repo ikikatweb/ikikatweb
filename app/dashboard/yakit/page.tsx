@@ -28,7 +28,6 @@ import {
   updateYakitVirman,
   deleteYakitVirman,
   getAracCinsiYakitLimitler,
-  getSantiyeYakitAracIds,
 } from "@/lib/supabase/queries/yakit";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
@@ -277,9 +276,6 @@ function YakitPageContent() {
 
   // Hızlı araç atama (yakıt dialog içinden)
   const [hizliAtamaOpen, setHizliAtamaOpen] = useState(false);
-  // Bu şantiyeden daha önce yakıt almış araçlar (kalıcı üyelik) + "+" ile bu oturumda eklenenler.
-  const [santiyeYakitAracIds, setSantiyeYakitAracIds] = useState<Set<string>>(new Set());
-  const [geciciEklenen, setGeciciEklenen] = useState<Set<string>>(new Set());
   const [hizliAtamaArama, setHizliAtamaArama] = useState("");
 
   // Veri yükleme. sessiz=true ise loading iskeleti gösterilmez (tablo DOM'da kalır) —
@@ -1253,29 +1249,14 @@ function YakitPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verDialogAracId, verDialogKmSaat, verEditId, yakitKayitlari, aracMap]);
 
-  // Şantiye değişince o şantiyenin yakıt geçmişindeki araçları çek (kalıcı üyelik listesi).
-  useEffect(() => {
-    if (!verDialogSantiyeId) { setSantiyeYakitAracIds(new Set()); return; }
-    let iptal = false;
-    getSantiyeYakitAracIds(verDialogSantiyeId)
-      .then((ids) => { if (!iptal) setSantiyeYakitAracIds(new Set(ids)); })
-      .catch(() => { if (!iptal) setSantiyeYakitAracIds(new Set()); });
-    return () => { iptal = true; };
-  }, [verDialogSantiyeId]);
-
-  // Seçili şantiyede yakıt verilebilecek araçlar (pasif olmayan — trafikten çekildi dahil).
-  // ÜÇ kaynak birleşir; araç bir şantiyeye girdiyse bir daha DÜŞMEZ (aynı anda birden çok
-  // şantiyede görünebilir — bir şantiyeden mazot almak diğerinden çıkarmaz):
-  //   1) Kadrosu bu şantiye olan araçlar (araclar.santiye_id)
-  //   2) Bu şantiyeden DAHA ÖNCE yakıt almış araçlar (arac_yakit geçmişi, tarih sınırı yok)
-  //   3) Bu oturumda "+" ile eklenenler (henüz kaydı yok → hemen listede görünsün)
+  // Seçili şantiyedeki kullanılabilir araçlar (pasif olmayan — trafikten çekildi dahil)
+  // Trafikten çekildi araçlara da yakıt verilebilir, sadece "pasif" olanlar hariç tutulur.
   const verDialogAraclari = useMemo(() => {
     if (!verDialogSantiyeId) return [] as AracWithRelations[];
     return araclar
-      .filter((a) => (a.durum ?? "aktif") !== "pasif")
-      .filter((a) => a.santiye_id === verDialogSantiyeId || santiyeYakitAracIds.has(a.id) || geciciEklenen.has(a.id))
+      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id === verDialogSantiyeId)
       .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
-  }, [araclar, verDialogSantiyeId, santiyeYakitAracIds, geciciEklenen]);
+  }, [araclar, verDialogSantiyeId]);
 
   // ============ EXPORT ============
 
@@ -2003,12 +1984,8 @@ function YakitPageContent() {
                   />
                   <div className="max-h-[150px] overflow-y-auto space-y-0.5">
                     {araclar
-                      // Trafikten çekildi araçlara da yakıt verilebilmeli — sadece "pasif" hariç.
-                      // Zaten listede olanları (kadro + yakıt geçmişi + bu oturumda eklenen) gösterme.
-                      .filter((a) => (a.durum ?? "aktif") !== "pasif"
-                        && a.santiye_id !== verDialogSantiyeId
-                        && !santiyeYakitAracIds.has(a.id)
-                        && !geciciEklenen.has(a.id))
+                      // Trafikten çekildi araçlara da yakıt verilebilmeli — sadece "pasif" hariç
+                      .filter((a) => (a.durum ?? "aktif") !== "pasif" && a.santiye_id !== verDialogSantiyeId)
                       .filter((a) => {
                         if (!hizliAtamaArama.trim()) return true;
                         const q = trAramaNormalize(hizliAtamaArama.trim());
@@ -2019,19 +1996,17 @@ function YakitPageContent() {
                         <button
                           key={a.id}
                           type="button"
-                          onClick={() => {
-                            // ARACIN KADROSU (araclar.santiye_id) DEĞİŞTİRİLMEZ. Eskiden burada
-                            // updateArac ile araç bu şantiyeye TAŞINIYORDU: tek bir dolum, aracı
-                            // aylardır çalıştığı şantiyeden düşürüyor, eski şantiyede listeden
-                            // kayboluyordu (ör. 60 AEY 683 → 1 dolumla Doğanlı'ya taşınmıştı).
-                            // Artık araç yalnızca bu şantiyenin listesine EKLENİR; yakıt kaydı
-                            // yazıldıktan sonra geçmişten geldiği için kalıcı olarak görünür ve
-                            // eski şantiyesinde de durmaya devam eder.
-                            setGeciciEklenen((prev) => new Set(prev).add(a.id));
-                            setVerDialogAracId(a.id);
-                            setHizliAtamaOpen(false);
-                            setHizliAtamaArama("");
-                            toast.success(`${a.plaka} listeye eklendi — aracın kadrosu değişmedi.`);
+                          onClick={async () => {
+                            try {
+                              await updateArac(a.id, { santiye_id: verDialogSantiyeId });
+                              setAraclar((prev) => prev.map((x) => x.id === a.id ? { ...x, santiye_id: verDialogSantiyeId } : x));
+                              setVerDialogAracId(a.id);
+                              setHizliAtamaOpen(false);
+                              setHizliAtamaArama("");
+                              toast.success(`${a.plaka} bu şantiyeye atandı.`);
+                            } catch (err) {
+                              toast.error(`Atama hatası: ${err instanceof Error ? err.message : String(err)}`);
+                            }
                           }}
                           className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left rounded hover:bg-blue-50"
                         >
