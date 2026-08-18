@@ -9,7 +9,7 @@
 // Supabase'e AĞIR PARALEL sorgu atılmaz (havuz tükeniyor) → günler SIRALI işlenir.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { siniflaGunDamper, ozetImza, type OzetAyar, type OzetDamper, type OzetGiris } from "./stabilize-ozet";
+import { siniflaGunDamper, ozetImza, OZET_ALGO, type OzetAyar, type OzetDamper, type OzetGiris } from "./stabilize-ozet";
 import { ocakTespit, rotaTemizle, type LatLng } from "./ocak";
 
 // Geometri (arvento-stabilize.tsx ile BİREBİR): kamyon segmenti giriş kapı çizgisini kesiyor mu + hangi yön.
@@ -253,13 +253,18 @@ export async function ozetGetir(bas: string, bitis: string, force = false): Prom
   // çekiyordu → API 5+ sn sürüyordu.) Ocak/ayar geçmiş bir gün için değişirse o gün backfill ile tazelenir.
   const { data: cacheRows } = await supabase
     .from("arvento_harita_ozet")
-    .select("rapor_tarihi, payload")
+    .select("rapor_tarihi, imza, payload")
     .eq("sekme", SEKME)
     .gte("rapor_tarihi", gunler[0])
     .lte("rapor_tarihi", gunler[gunler.length - 1]);
   type CachePayload = { dampers?: OzetDamper[]; girisler?: OzetGiris[] };
   const cacheMap = new Map<string, CachePayload>();
-  for (const r of (cacheRows ?? []) as { rapor_tarihi: string; payload: CachePayload }[]) {
+  // ALGORİTMA SÜRÜMÜ kontrolü: imzası eski sürümle yazılmış satır önbellekte YOK sayılır → o gün
+  // yeniden hesaplanır. (Ocak/ayar değişikliği için imza hâlâ karşılaştırılmıyor — orası backfill'e
+  // bırakılmış bilinçli bir hız tercihi; ama mantık değişikliği sessizce eski sonuç göstermemeli.)
+  const algoOnEk = `v:${OZET_ALGO}|`;
+  for (const r of (cacheRows ?? []) as { rapor_tarihi: string; imza: string | null; payload: CachePayload }[]) {
+    if (!String(r.imza ?? "").startsWith(algoOnEk)) continue;
     cacheMap.set(String(r.rapor_tarihi), r.payload);
   }
 

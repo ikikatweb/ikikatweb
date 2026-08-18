@@ -69,6 +69,15 @@ export function siniflaGunDamper(
 }
 
 // O günün ocak+ayar+giriş parmak izi → imza. Değişirse özet yeniden hesaplanır.
+// SINIFLAMA ALGORİTMA SÜRÜMÜ — sınıflama mantığı (lib/arvento/ocak.ts: arizaIsaretle / mukerrerIsaretle)
+// her değiştiğinde BURAYI artır. İmzanın başına yazılır; sunucu önbellekte farklı sürüm görünce o günü
+// yeniden hesaplar. Yoksa geçmiş günler eski mantıkla hesaplanmış sonucu sonsuza kadar gösterir
+// (önbellek gün-gün imza karşılaştırmıyordu; a2 öncesi düzeltmeler elle backfill gerektiriyordu).
+//   a1 → ilk sürüm
+//   a2 → "ocakta döküm" kararı artık döküm ANINDAKİ konuma bakıyor (ham koordinat → ±3 dk rota → karar yok);
+//        eskiden ±7 dk içindeki en yakın DURUŞ kullanılıyor, saha teslimleri ocakta döküm sanılıyordu.
+export const OZET_ALGO = "a2";
+
 export function ozetImza(
   ocak: LatLng | null,
   ayar: OzetAyar,
@@ -76,5 +85,5 @@ export function ozetImza(
 ): string {
   const o = ocak ? `${ocak.lat.toFixed(6)},${ocak.lng.toFixed(6)}` : "yok";
   const g = giris ? `${giris.lat.toFixed(6)},${giris.lng.toFixed(6)},${giris.lat2.toFixed(6)},${giris.lng2.toFixed(6)}` : "yok";
-  return `o:${o}|oy:${ayar.ocakYaricap}|md:${ayar.mukerrerDk}|my:${ayar.mukerrerYaricap}|g:${g}`;
+  return `v:${OZET_ALGO}|o:${o}|oy:${ayar.ocakYaricap}|md:${ayar.mukerrerDk}|my:${ayar.mukerrerYaricap}|g:${g}`;
 }

@@ -166,11 +166,13 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   const durakSnArr = duraklar.map((d) => d.sn); // DURMUŞ (≤3 km/h) noktaların SN'leri (rs sıralı → sıralı)
   const ilkBuyuk = (arr: number[], x: number): number => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] > x) hi = m; else lo = m + 1; } return lo; };
   const aralikta = (arr: number[], alt: number, ust: number): boolean => { const i = ilkBuyuk(arr, alt); return i < arr.length && arr[i] <= ust; }; // (alt, ust] içinde eleman var mı
-  const enYakinDurak = (sn: number, maxSn: number): { lat: number; lng: number } | null => {
-    if (!duraklar.length) return null;
-    let lo = 0, hi = duraklar.length; while (lo < hi) { const m = (lo + hi) >> 1; if (duraklar[m].sn < sn) lo = m + 1; else hi = m; }
+  // Damper anına ZAMANCA en yakın rota noktası (durmuş olması ŞART DEĞİL). Damperin kendi koordinatı
+  // yoksa "araç o an neredeydi" sorusunun tek cevabı budur; pencere dar tutulur (bkz. DOKUM_KONUM_PENCERE_SN).
+  const enYakinRota = (sn: number, maxSn: number): { lat: number; lng: number } | null => {
+    if (!rs.length) return null;
+    let lo = 0, hi = rs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (rs[m].sn < sn) lo = m + 1; else hi = m; }
     let best: { lat: number; lng: number } | null = null, bestDt = Infinity;
-    for (const i of [lo - 1, lo]) { if (i < 0 || i >= duraklar.length) continue; const dt = Math.abs(duraklar[i].sn - sn); if (dt <= maxSn && dt < bestDt) { bestDt = dt; best = duraklar[i]; } }
+    for (const i of [lo - 1, lo]) { if (i < 0 || i >= rs.length) continue; const dt = Math.abs(rs[i].sn - sn); if (dt <= maxSn && dt < bestDt) { bestDt = dt; best = rs[i]; } }
     return best;
   };
   const sirali = olaylar
@@ -179,7 +181,10 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
   const arizaSet = new Set<T>();
   const dogrulanmamisSet = new Set<T>();
   let sonGercekSn = -1; // -1 → ilk pencere gün başından
-  const HAREKET_PENCERE_SN = 600;    // ±10 dk: döküm anına yakın duruş aranır (gerçek dökümlerin %99'u bu pencerede durur)
+  // Damper koordinatı YOKSA konumu rotadan tahmin etme penceresi. DAR tutulur: 7 dk gibi geniş bir
+  // pencere, aracın döküm sonrası ocağa dönüşünü "döküm yeri" sanmaya yol açıyordu (bkz. aşağıdaki not).
+  const DOKUM_KONUM_PENCERE_SN = 180;
+  const HAREKET_PENCERE_SN = 600;// ±10 dk: döküm anına yakın duruş aranır (gerçek dökümlerin %99'u bu pencerede durur)
   const BOSLUK_SN = 60;              // damper bu kadar sn'lik rota BOŞLUĞUNA denk geliyorsa = araç DURMUŞ (seyreltme durağanı atar) → hareketli sayma
   for (const { o, sn } of sirali) {
     if (o.mukerrer) continue;        // mükerrer zaten dışlandı
@@ -195,13 +200,20 @@ export function arizaIsaretle<T extends Nokta & { mukerrer?: boolean }>(
     const sonrakiSn = bi < rotaSnArr.length ? rotaSnArr[bi] : null;
     const damperBosluk = oncekiSn == null || sonrakiSn == null || (sonrakiSn - oncekiSn > BOSLUK_SN);
     if (!damperBosluk && !aralikta(durakSnArr, hAlt, hUst)) { arizaSet.add(o); continue; }
-    // OCAKTA DÖKÜM → ARIZA: damperin DURMUŞ rota konumu VEYA HAM damper koordinatı ocak çemberi
-    // içindeyse araç ocakta döktü → gerçek teslim değil. (Yalnız durmuş konuma bakılırsa: ham koordinatı
-    // ocakta olup duruşu dışarıda kalan damper gerçek sayılıp ocak üstünde görünüyordu.) sonGercek güncellenmez.
-    const d = enYakinDurak(sn, 420);
+    // OCAKTA DÖKÜM → ARIZA: araç ocağın İÇİNDE döktüyse gerçek teslim değil. Karar DÖKÜM ANINDAKİ
+    // konuma göre verilir, üç kademeli: (1) damperin KENDİ koordinatı varsa o kullanılır (olayların
+    // ~%94'ü; GPS izine sapması ortanca 6 m), (2) yoksa damper anına ±3 dk içindeki rota noktası,
+    // (3) o da yoksa KARAR VERİLMEZ (kanıt yok → işaretleme).
+    // ESKİDEN: "±7 dk içindeki en yakın DURUŞ" kullanılıyordu ve saha teslimlerini ocakta döküm
+    // sanıyordu. Sebep: kamyon boşaltmak için durunca seyreltme nokta üretmez (14 m ilerlemeyen araç
+    // kaydedilmez) → döküm duruşu GÖRÜNMEZ olur; penceredeki tek duruş, aracın 5-6 dk sonra ocağa
+    // dönüp yüklenirken yaptığı duruştur. Sefer ne kadar kısaysa hata o kadar sık → kısa mesafeli
+    // seferler sistematik olarak eksik sayılıyordu (1-18 Ağustos: 21 yanlış arıza, 906→927 damper).
     const ocaktaMi = (la: number | null | undefined, ln: number | null | undefined) =>
       la != null && ln != null && mesafeMetre(la as number, ln as number, ocak.lat, ocak.lng) <= yaricapM;
-    if ((d && ocaktaMi(d.lat, d.lng)) || ocaktaMi(o.lat, o.lng)) { arizaSet.add(o); continue; }
+    const hamKonumVar = o.lat != null && o.lng != null;
+    const dokumKonum = hamKonumVar ? { lat: o.lat as number, lng: o.lng as number } : enYakinRota(sn, DOKUM_KONUM_PENCERE_SN);
+    if (dokumKonum && ocaktaMi(dokumKonum.lat, dokumKonum.lng)) { arizaSet.add(o); continue; }
     // DEVİR YÜKÜ — rota-yok kontrolünden ÖNCE (çünkü senaryo ZATEN "ocakta hat çekmiyor → sabah verisi yok"):
     // araç güne OCAKTA/OCAK AĞZINDA başlamış (gece yüklü park) + gün içinde ocağa YENİDEN giriyor (cycle
     // doğrulandı) + bu döküm o ilk girişten ÖNCE → önceki günden taşınan yükün teslimi → GERÇEK. Rota olsa da
