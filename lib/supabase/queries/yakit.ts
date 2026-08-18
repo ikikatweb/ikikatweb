@@ -84,6 +84,23 @@ export async function getSonAracYakit(aracId: string): Promise<AracYakit | null>
   return rows[0] ?? null;
 }
 
+// Bir şantiyeden DAHA ÖNCE yakıt almış araçların id'leri (TARİH SINIRI YOK).
+// "Yakıt ver" listesi bunu kullanır: bir araç bir şantiyeden bir kez mazot aldıysa o şantiyenin
+// listesinde KALICI olarak kalır. Böylece araç başka şantiyeden de yakıt alınca eskisinden düşmez —
+// aynı anda birden fazla şantiyede görünebilir (araç kadrosu `araclar.santiye_id` değişmez).
+export async function getSantiyeYakitAracIds(santiyeId: string): Promise<string[]> {
+  if (!santiyeId) return [];
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_yakit")
+    .select("arac_id")
+    .eq("santiye_id", santiyeId);
+  if (error) throw error;
+  const set = new Set<string>();
+  for (const r of (data ?? []) as { arac_id: string | null }[]) if (r.arac_id) set.add(r.arac_id);
+  return [...set];
+}
+
 export async function insertAracYakit(data: {
   arac_id: string;
   santiye_id: string;
