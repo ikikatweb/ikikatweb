@@ -89,21 +89,32 @@ async function getOcakServer(
   return { lat: data.lat as number, lng: data.lng as number, yaricap: (data.yaricap as number) ?? 150 };
 }
 
-// getGirisForTarih'in SUNUCU karşılığı: ≤tarih en son arvento_giris kaydı (kapı çizgisi A–B).
+// getGirisForTarih'in SUNUCU karşılığı: ≤tarih en son arvento_giris kaydı (ÇOK NOKTALI kapı çizgisi).
+// noktalar kolonu yoksa/boşsa eski A–B kolonlarından iki noktalı dizi üretilir.
 async function getGirisServer(
   supabase: SupabaseClient,
   tarih: string,
-): Promise<{ lat: number; lng: number; lat2: number; lng2: number } | null> {
+): Promise<{ lat: number; lng: number; lat2: number; lng2: number; noktalar: Pt[] } | null> {
   if (!tarih) return null;
   const { data, error } = await supabase
     .from("arvento_giris")
-    .select("lat, lng, lat2, lng2")
+    .select("lat, lng, lat2, lng2, noktalar")
     .lte("gecerli_tarih", tarih)
     .order("gecerli_tarih", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error || !data || data.lat == null || data.lng == null) return null;
-  return { lat: data.lat as number, lng: data.lng as number, lat2: (data.lat2 as number) ?? (data.lat as number), lng2: (data.lng2 as number) ?? (data.lng as number) };
+  const ham = Array.isArray(data.noktalar) ? (data.noktalar as Pt[]) : [];
+  const noktalar = ham.filter((n) => Number.isFinite(n?.lat) && Number.isFinite(n?.lng));
+  if (noktalar.length < 2) {
+    noktalar.length = 0;
+    noktalar.push(
+      { lat: data.lat as number, lng: data.lng as number },
+      { lat: (data.lat2 as number) ?? (data.lat as number), lng: (data.lng2 as number) ?? (data.lng as number) },
+    );
+  }
+  const ilk = noktalar[0], son = noktalar[noktalar.length - 1];
+  return { lat: ilk.lat, lng: ilk.lng, lat2: son.lat, lng2: son.lng, noktalar };
 }
 
 type RaporRow = {

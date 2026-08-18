@@ -180,7 +180,10 @@ export async function setOcakForTarih(tarih: string, lat: number, lng: number, y
 // ── Stabilize ocağı GİRİŞİ: ÇİZGİ (kapı) — A(lat,lng)–B(lat2,lng2). Kamyon çizgisi bu kapıyı kestiğinde
 // "girişten geçti" sayılır; geniş girişlerde uçları uzatılabilir. Okuma/yazma SUNUCU (service role) →
 // RLS baypas. Gün bazlı (ocak gibi): belirli güne ≤ EN SON kayıt geçerlidir.
-export type GirisCizgi = { lat: number; lng: number; lat2: number; lng2: number };
+// Ocak girişi KAPI ÇİZGİSİ. Artık ÇOK NOKTALI (köşelendirilebilir): noktalar[] asıl veridir.
+// lat/lng ve lat2/lng2 = ilk ve son nokta — eski kayıtlar ve eski kod yolları için korunur.
+export type GirisNokta = { lat: number; lng: number };
+export type GirisCizgi = { lat: number; lng: number; lat2: number; lng2: number; noktalar: GirisNokta[] };
 
 export async function getGirisForTarih(tarih: string): Promise<GirisCizgi | null> {
   if (!tarih) return null;
@@ -192,11 +195,14 @@ export async function getGirisForTarih(tarih: string): Promise<GirisCizgi | null
   } catch { return null; }
 }
 
-export async function setGirisForTarih(tarih: string, lat: number, lng: number, lat2: number, lng2: number): Promise<void> {
+// Kapı çizgisini kaydeder. noktalar EN AZ 2 nokta olmalı; ilk/son nokta lat/lng + lat2/lng2'ye de
+// yazılır (eski kayıt biçimiyle uyum). Köşe ekleme/silme de bu fonksiyonla kaydedilir.
+export async function setGirisForTarih(tarih: string, noktalar: GirisNokta[]): Promise<void> {
+  if (!Array.isArray(noktalar) || noktalar.length < 2) throw new Error("Kapı çizgisi en az 2 nokta olmalı");
   const r = await fetch("/api/arvento/giris", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tarih, lat, lng, lat2, lng2 }),
+    body: JSON.stringify({ tarih, noktalar }),
   });
   if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d?.error ?? "Kaydedilemedi"); }
 }

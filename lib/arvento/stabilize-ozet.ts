@@ -81,9 +81,16 @@ export const OZET_ALGO = "a2";
 export function ozetImza(
   ocak: LatLng | null,
   ayar: OzetAyar,
-  giris?: { lat: number; lng: number; lat2: number; lng2: number } | null,
+  // Kapı çizgisi ÇOK NOKTALI olabilir → imza TÜM noktaları kapsar, yoksa köşe eklenip çıkarıldığında
+  // önbellek tazelenmez. Eski çağrılar (yalnız lat/lng+lat2/lng2) için A–B'ye düşer.
+  giris?: { lat: number; lng: number; lat2: number; lng2: number; noktalar?: LatLng[] } | null,
 ): string {
   const o = ocak ? `${ocak.lat.toFixed(6)},${ocak.lng.toFixed(6)}` : "yok";
-  const g = giris ? `${giris.lat.toFixed(6)},${giris.lng.toFixed(6)},${giris.lat2.toFixed(6)},${giris.lng2.toFixed(6)}` : "yok";
+  const gn = giris
+    ? (giris.noktalar && giris.noktalar.length >= 2
+      ? giris.noktalar
+      : [{ lat: giris.lat, lng: giris.lng }, { lat: giris.lat2, lng: giris.lng2 }])
+    : null;
+  const g = gn ? gn.map((n) => `${n.lat.toFixed(6)},${n.lng.toFixed(6)}`).join(";") : "yok";
   return `v:${OZET_ALGO}|o:${o}|oy:${ayar.ocakYaricap}|md:${ayar.mukerrerDk}|my:${ayar.mukerrerYaricap}|g:${g}`;
 }

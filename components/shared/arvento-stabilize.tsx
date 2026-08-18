@@ -387,7 +387,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // GÜN BAZLI ocak: bu tarihin (bas) GEÇERLİ ocağını (≤ bas EN SON kayıt) DB'den çek. Tarih değişince yenilenir.
   // Marker sürüklenince O GÜN için kaydedilir → geçmiş günler kendi ocağını korur, etkilenmez.
   const [gunOcak, setGunOcak] = useState<{ lat: number; lng: number; yaricap: number } | null>(null);
-  const [gunGiris, setGunGiris] = useState<{ lat: number; lng: number; lat2: number; lng2: number } | null>(null); // ocak girişi KAPI ÇİZGİSİ (A–B)
+  // ocak girişi KAPI ÇİZGİSİ — ÇOK NOKTALI (köşelendirilebilir). lat/lng + lat2/lng2 = ilk/son nokta.
+  const [gunGiris, setGunGiris] = useState<{ lat: number; lng: number; lat2: number; lng2: number; noktalar?: { lat: number; lng: number }[] } | null>(null);
   // OCAK işlemleri BİTİŞ gününe göre çözülür. Geniş aralıkta (ör. 01.06–26.06) başlangıç günü ocak
   // KAYDINDAN ÖNCE olabilir (ilk ocak 10.06) → getOcakForTarih(bas)=null → yanlış/yedek ocak → ocaktaki
   // damperler "ocakta döküm" sayılmayıp gerçek görünüyordu. Bitiş gününde gerçek ocak hep vardır.
@@ -586,10 +587,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // Ocağa gidiş (yüklü) = gerçek; Döküme gidiş = gerçek + arıza (arıza = ocağa uğramadan döken).
   const seferAnaliz = useMemo(() => {
     // Giriş KAPI çizgisi tanımlıysa: rota segmentleri bu çizgiyi kestikçe yön (ocağa mı/dökümе mi) ile say.
-    const A = gunGiris ? { lat: gunGiris.lat, lng: gunGiris.lng } : null;
-    const B = gunGiris ? { lat: gunGiris.lat2, lng: gunGiris.lng2 } : null;
+    // Çizgi ÇOK NOKTALI olabilir → HER segmenti ayrı ayrı kontrol ederiz.
+    const gNokta: Nk[] = gunGiris
+      ? ((gunGiris.noktalar && gunGiris.noktalar.length >= 2)
+        ? gunGiris.noktalar
+        : [{ lat: gunGiris.lat, lng: gunGiris.lng }, { lat: gunGiris.lat2, lng: gunGiris.lng2 }])
+      : [];
     // Yön: kesişimden sonra araç GİRİŞ ÇİZGİSİNİN ocak tarafına geçtiyse "ocağa", diğer tarafa geçtiyse
-    // "döküme". Çizginin tam konumundan BAĞIMSIZ (ocak hangi taraftaysa o taraf = ocağa) → tutarlı.
+    // "döküme". Referans olarak çizginin İLK–SON ekseni kullanılır (köşeler eksenin yönünü değiştirmez).
+    const A = gNokta.length >= 2 ? gNokta[0] : null;
+    const B = gNokta.length >= 2 ? gNokta[gNokta.length - 1] : null;
     const ocakTaraf = (A && B && ocak) ? Math.sign(yon3(A, B, ocak)) : 0;
     // Sınıf sayıları TEK kaynaktan (tumDamperSinifli) — özet/eski fark etmez, manuel override dahil.
     const sinifM = new Map<string, { g: number; m: number; a: number }>();
@@ -615,7 +622,12 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         for (let i = 1; i < rota.length; i++) {
           const p1 = rota[i - 1], p2 = rota[i];
           if (p1.lat == null || p1.lng == null || p2.lat == null || p2.lng == null) continue;
-          if (parcaKesisir(p1 as Nk, p2 as Nk, A, B)) { if (Math.sign(yon3(A, B, p2 as Nk)) === ocakTaraf) go++; else gd++; }
+          // Kapının HERHANGİ bir segmentini kesmek yeterli (aynı adımda birden çok kesişim tek sayılır).
+          let kesti = false;
+          for (let k = 1; k < gNokta.length && !kesti; k++) {
+            if (parcaKesisir(p1 as Nk, p2 as Nk, gNokta[k - 1], gNokta[k])) kesti = true;
+          }
+          if (kesti) { if (Math.sign(yon3(A, B, p2 as Nk)) === ocakTaraf) go++; else gd++; }
         }
       }
       // Damper/sefer 0 olsa bile her kamyon listelensin (tablo hiç gizlenmesin) → 0 değerleriyle eklenir.
@@ -861,23 +873,73 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
     // girişlerde uçlardaki tutamaklar sürüklenerek uzatılıp daraltılır. Tanımlı değilse ve düzenleme
     // yetkisi varsa ocağın yanında kısa bir çizgi gösterilir (ilk tanımlama için).
     {
-      const gz = gunGiris ?? (yDuzenle && ocak ? { lat: ocak.lat + 0.0006, lng: ocak.lng, lat2: ocak.lat - 0.0006, lng2: ocak.lng } : null);
-      if (gz) {
-        const cizgi = L.polyline([[gz.lat, gz.lng], [gz.lat2, gz.lng2]], { color: "#16a34a", weight: 5, opacity: 0.95 }).addTo(grup);
-        cizgi.bindPopup(`<b>🚪 Ocak Girişi (kapı)</b> · ${basRef.current}<br>Kamyonlar buradan geçer${yDuzenle ? "<br><i>Uçlardaki tutamakları sürükleyerek uzatın/daraltın + konumlandırın</i>" : ""}${gunGiris ? "" : "<br><i>(henüz tanımlanmadı — uçları sürükleyin)</i>"}`);
-        bounds.push([gz.lat, gz.lng], [gz.lat2, gz.lng2]);
+      // Çizgi ÇOK NOKTALI: köşe eklenebilir. Tanımsızsa (ve düzenleme yetkisi varsa) ocağın yanında
+      // kısa bir iki noktalı çizgi gösterilir (ilk tanımlama için).
+      const varsayilan = yDuzenle && ocak
+        ? [{ lat: ocak.lat + 0.0006, lng: ocak.lng }, { lat: ocak.lat - 0.0006, lng: ocak.lng }]
+        : null;
+      const noktalar: { lat: number; lng: number }[] | null =
+        (gunGiris?.noktalar && gunGiris.noktalar.length >= 2)
+          ? gunGiris.noktalar.map((n) => ({ lat: n.lat, lng: n.lng }))
+          : gunGiris
+            ? [{ lat: gunGiris.lat, lng: gunGiris.lng }, { lat: gunGiris.lat2, lng: gunGiris.lng2 }]
+            : varsayilan;
+      if (noktalar) {
+        const cizgi = L.polyline(noktalar.map((n) => [n.lat, n.lng] as [number, number]), { color: "#16a34a", weight: 5, opacity: 0.95 }).addTo(grup);
+        cizgi.bindPopup(`<b>🚪 Ocak Girişi (kapı)</b> · ${basRef.current}<br>Kamyonlar buradan geçer${yDuzenle ? "<br><i>Yeşil tutamakları sürükleyin · aradaki <b>+</b> işaretini sürükleyerek KÖŞE ekleyin · köşeye çift tıklayarak silin</i>" : ""}${gunGiris ? "" : "<br><i>(henüz tanımlanmadı — tutamakları sürükleyin)</i>"}`);
+        for (const n of noktalar) bounds.push([n.lat, n.lng]);
+
         if (yDuzenle) {
-          const tutamac = L.divIcon({ className: "giris-tutamac", html: '<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 0 0 1.5px #16a34a"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-          const mA = L.marker([gz.lat, gz.lng], { icon: tutamac, draggable: true, zIndexOffset: 1200 }).addTo(grup);
-          const mB = L.marker([gz.lat2, gz.lng2], { icon: tutamac, draggable: true, zIndexOffset: 1200 }).addTo(grup);
-          const guncelle = () => cizgi.setLatLngs([mA.getLatLng(), mB.getLatLng()]);
+          // Sürükleme sırasında state'e yazmıyoruz (her harekette tüm harita yeniden çizilirdi);
+          // yerel dizi güncellenip çizgi anında tazeleniyor, bırakılınca bir kez kaydediliyor.
+          const calisma = noktalar.map((n) => ({ ...n }));
+          const tutamacIkon = L.divIcon({ className: "giris-tutamac", html: '<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 0 0 1.5px #16a34a"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+          const artiIkon = L.divIcon({ className: "giris-arti", html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #16a34a;color:#16a34a;font:bold 13px/12px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:grab">+</div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+
           const kaydet = () => {
-            const a = mA.getLatLng(), b = mB.getLatLng();
-            setGunGiris({ lat: a.lat, lng: a.lng, lat2: b.lat, lng2: b.lng });
-            setGirisForTarih(basRef.current, a.lat, a.lng, b.lat, b.lng)
+            setGunGiris({
+              lat: calisma[0].lat, lng: calisma[0].lng,
+              lat2: calisma[calisma.length - 1].lat, lng2: calisma[calisma.length - 1].lng,
+              noktalar: calisma.map((n) => ({ ...n })),
+            });
+            setGirisForTarih(basRef.current, calisma.map((n) => ({ ...n })))
               .catch((e: unknown) => toast.error(`Giriş kaydedilemedi — ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: toastSuresi() }));
           };
-          mA.on("drag", guncelle); mB.on("drag", guncelle); mA.on("dragend", kaydet); mB.on("dragend", kaydet);
+          // Tutamaklar + "+" işaretleri her değişiklikten sonra yeniden kurulur (köşe sayısı değişiyor).
+          const katman = L.layerGroup().addTo(grup);
+          const ciz = () => {
+            katman.clearLayers();
+            cizgi.setLatLngs(calisma.map((n) => [n.lat, n.lng] as [number, number]));
+            // KÖŞE tutamakları — sürükle: taşı, çift tıkla: sil (en az 2 nokta kalmalı)
+            calisma.forEach((n, i) => {
+              const m = L.marker([n.lat, n.lng], { icon: tutamacIkon, draggable: true, zIndexOffset: 1200 }).addTo(katman);
+              m.on("drag", () => { const p = m.getLatLng(); calisma[i] = { lat: p.lat, lng: p.lng }; cizgi.setLatLngs(calisma.map((x) => [x.lat, x.lng] as [number, number])); });
+              m.on("dragend", () => { ciz(); kaydet(); });
+              m.on("dblclick", (e: L.LeafletMouseEvent) => {
+                L.DomEvent.stop(e);
+                if (calisma.length <= 2) { toast.error("Kapı çizgisi en az 2 nokta olmalı", { duration: toastSuresi() }); return; }
+                calisma.splice(i, 1); ciz(); kaydet();
+              });
+            });
+            // "+" işaretleri — her segmentin ortasında. Sürükleyip bırakınca oraya YENİ KÖŞE eklenir.
+            for (let i = 0; i < calisma.length - 1; i++) {
+              const a = calisma[i], b = calisma[i + 1];
+              const orta = L.marker([(a.lat + b.lat) / 2, (a.lng + b.lng) / 2], { icon: artiIkon, draggable: true, zIndexOffset: 1100 }).addTo(katman);
+              orta.bindTooltip("Sürükleyerek köşe ekle", { direction: "top", offset: [0, -10] });
+              // Sürüklerken çizgi, yeni köşe oradaymış gibi görünsün (canlı önizleme)
+              orta.on("drag", () => {
+                const p = orta.getLatLng();
+                const onizleme = [...calisma.slice(0, i + 1), { lat: p.lat, lng: p.lng }, ...calisma.slice(i + 1)];
+                cizgi.setLatLngs(onizleme.map((x) => [x.lat, x.lng] as [number, number]));
+              });
+              orta.on("dragend", () => {
+                const p = orta.getLatLng();
+                calisma.splice(i + 1, 0, { lat: p.lat, lng: p.lng });
+                ciz(); kaydet();
+              });
+            }
+          };
+          ciz();
         }
       }
     }
