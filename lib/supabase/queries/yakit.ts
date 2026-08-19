@@ -200,6 +200,25 @@ export async function updateAracYakit(id: string, data: {
   if (error) throw error;
 }
 
+// Bir aracın GÖSTERGE değeri taşıyan en son yakıt kaydı (km_saat > 0; düzeltme kayıtlarında
+// km_saat null olduğu için onlar zaten dışarıda kalır). Yanlış girilen bir kayıt SİLİNDİKTEN sonra
+// aracın guncel_gosterge'sini bir öncekine döndürmek için kullanılır — silme öncesi tarih aralığına
+// bağlı olmasın diye doğrudan DB'den okunur.
+export async function getSonGostergeKaydi(aracId: string): Promise<AracYakit | null> {
+  if (!aracId) return null;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("arac_yakit")
+    .select("*")
+    .eq("arac_id", aracId)
+    .gt("km_saat", 0)
+    .order("tarih", { ascending: false })
+    .order("saat", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return ((data ?? []) as AracYakit[])[0] ?? null;
+}
+
 export async function deleteAracYakit(id: string): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("arac_yakit").delete().eq("id", id);

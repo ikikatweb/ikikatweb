@@ -23,8 +23,13 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const aracId = body.arac_id ? String(body.arac_id) : null;
+  // km = sayı → göstergeyi o değere ayarla.  km = null + temizle:true → göstergeyi BOŞALT.
+  // (Yanlış girilen yakıt kaydı silindiğinde, geriye gösterge taşıyan başka kayıt kalmadıysa
+  //  aracın göstergesi silinen kaydın değerinde kalmamalı.)
+  const temizle = body.temizle === true;
   const km = typeof body.km === "number" ? body.km : null;
-  if (!aracId || km == null || isNaN(km) || km < 0) {
+  if (!aracId) return NextResponse.json({ error: "arac_id gerekli" }, { status: 400 });
+  if (!temizle && (km == null || isNaN(km) || km < 0)) {
     return NextResponse.json({ error: "arac_id ve geçerli km gerekli" }, { status: 400 });
   }
 
@@ -35,7 +40,7 @@ export async function POST(req: Request) {
   );
   const { error } = await supabase
     .from("araclar")
-    .update({ guncel_gosterge: km, updated_at: new Date().toISOString() })
+    .update({ guncel_gosterge: temizle ? null : km, updated_at: new Date().toISOString() })
     .eq("id", aracId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

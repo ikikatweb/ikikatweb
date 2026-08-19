@@ -28,6 +28,7 @@ import {
   updateYakitVirman,
   deleteYakitVirman,
   getAracCinsiYakitLimitler,
+  getSonGostergeKaydi,
 } from "@/lib/supabase/queries/yakit";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import type {
@@ -1208,7 +1209,32 @@ function YakitPageContent() {
     if (!silOnay) return;
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     try {
-      if (silOnay.tip === "arac_yakit") await deleteAracYakit(silOnay.id);
+      if (silOnay.tip === "arac_yakit") {
+        // Yakıt kaydı eklenirken girilen km/saat araca da yazılıyor (araclar.guncel_gosterge).
+        // Kayıt silinince bu değer araçta kalıyordu → yanlış girilen km silinse bile araç yüksek
+        // göstergede kalıyor, bakım zamanı gelmiş gibi görünüyordu. Silinen kayıt göstergenin
+        // KAYNAĞIYSA (araçtaki değer = silinen kaydın km'si) bir öncekine döndürülür.
+        const silinen = yakitKayitlari.find((y) => y.id === silOnay.id);
+        const aracId = silinen?.arac_id ?? null;
+        const gostergeKaynagiydi =
+          !!silinen && silinen.km_saat > 0 && aracMap.get(silinen.arac_id)?.guncel_gosterge === silinen.km_saat;
+
+        await deleteAracYakit(silOnay.id);
+
+        if (aracId && gostergeKaynagiydi) {
+          try {
+            // Silme SONRASI kalan en son gösterge kaydı (yoksa göstergeyi boşalt)
+            const onceki = await getSonGostergeKaydi(aracId);
+            await fetch("/api/arac-gosterge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(onceki ? { arac_id: aracId, km: onceki.km_saat } : { arac_id: aracId, temizle: true }),
+            });
+          } catch (e) {
+            console.warn("Araç göstergesi geri alınamadı:", e);
+          }
+        }
+      }
       else if (silOnay.tip === "alim") await deleteYakitAlim(silOnay.id);
       else await deleteYakitVirman(silOnay.id);
       await loadAll(true);
