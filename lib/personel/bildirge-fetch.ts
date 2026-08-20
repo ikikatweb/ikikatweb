@@ -121,11 +121,12 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
   // 1) Açık talepler (TC'si olanlar — eşleştirme TC + tip + TARİH ile yapılır)
   const { data: acik, error: acikErr } = await supabase
     .from("personel_islem_takip")
-    .select("id, personel_ad, personel_tc, tip, islem_tarihi")
+    .select("id, personel_ad, personel_tc, tip, islem_tarihi, gonderim_tarihi")
     .eq("durum", "bekliyor");
   if (acikErr) throw new Error("Açık talepler okunamadı: " + acikErr.message);
   const bekleyen = (acik ?? []).filter((r) => tcNorm(r.personel_tc).length === 11) as {
-    id: string; personel_ad: string; personel_tc: string | null; tip: "giris" | "cikis"; islem_tarihi: string | null;
+    id: string; personel_ad: string; personel_tc: string | null; tip: "giris" | "cikis";
+    islem_tarihi: string | null; gonderim_tarihi: string | null;
   }[];
   if (bekleyen.length === 0) return { taranan: 0, eslesme: 0, kapatilan, uyari: ["Bekleyen talep yok."] };
 
@@ -147,7 +148,17 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
   if (kutuMap.size === 0) return { taranan: 0, eslesme: 0, kapatilan, uyari: ["IMAP kutusu bulunamadı (firmalar SMTP boş)."] };
 
   const port = parseInt(process.env.BILDIRGE_IMAP_PORT ?? "993", 10);
-  const since = new Date(Date.now() - gun * 86400000);
+  // TARAMA PENCERESİ: en eski AÇIK talebin gönderim gününden geriye bakmaya gerek yok — o tarihten
+  // önce gelen mailler zaten hiçbir açık talebe cevap olamaz. Böylece hem gereksiz mail okunmaz hem
+  // de eski bildirgelerin yeni taleplere eşleşme ihtimali baştan ortadan kalkar.
+  // (Gönderim tarihi olmayan kayıt varsa güvenli tarafta kalıp klasik `gun` penceresi kullanılır.)
+  const varsayilanSince = new Date(Date.now() - gun * 86400000);
+  const gonderimGunleri = bekleyen.map((r) => r.gonderim_tarihi).filter((g): g is string => !!g);
+  const hepsindeGonderimVar = gonderimGunleri.length === bekleyen.length && gonderimGunleri.length > 0;
+  const enEskiGonderim = hepsindeGonderimVar
+    ? new Date(gonderimGunleri.reduce((a, b) => (a < b ? a : b)) + "T00:00:00")
+    : null;
+  const since = enEskiGonderim && enEskiGonderim > varsayilanSince ? enEskiGonderim : varsayilanSince;
   let taranan = 0;
 
   // 3) Her kutuyu tara
@@ -170,6 +181,12 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
           if (!msg.source) continue;
           let parsed;
           try { parsed = await simpleParser(msg.source as Buffer); } catch { continue; }
+          // Mailin geliş günü (YEREL saat, YYYY-MM-DD) — aşağıdaki "talep gönderildikten sonra
+          // gelmiş olmalı" kapısı için. UTC'ye çevirmiyoruz: gece yarısına yakın gelen mail bir
+          // önceki güne kaymasın.
+          const mailGunu = parsed.date
+            ? `${parsed.date.getFullYear()}-${String(parsed.date.getMonth() + 1).padStart(2, "0")}-${String(parsed.date.getDate()).padStart(2, "0")}`
+            : null;
           const pdfEkler = (parsed.attachments ?? []).filter(
             (a) => /\.pdf$/i.test(a.filename ?? "") || /pdf/i.test(a.contentType ?? ""),
           );
@@ -203,7 +220,15 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
             }
 
             // Eşleşecek açık talep yoksa PDF'i hiç açma (boşuna pdfjs çalıştırma)
-            const adaylar = bekleyen.filter((r) => r.tip === tip && tcNorm(r.personel_tc) === tcFn);
+            // ZAMAN KAPISI: bildirge, talebin muhasebeye GÖNDERİLDİĞİ günde ya da SONRASINDA gelmiş
+            // olmalı. Aksi halde aynı kişinin ESKİ bildirgesi (ör. 12.08'de gelen çıkış bildirgesi)
+            // bugün açılan talebe eşleşip "tarih uyuşmuyor" uyarısı üretiyordu — cevap gelmeden
+            // uyuşmazlık çıkıyordu. Mail tarihi okunamazsa kapı uygulanmaz (eski davranış).
+            const adaylar = bekleyen.filter((r) => {
+              if (r.tip !== tip || tcNorm(r.personel_tc) !== tcFn) return false;
+              if (!mailGunu || !r.gonderim_tarihi) return true;
+              return mailGunu >= String(r.gonderim_tarihi).slice(0, 10);
+            });
             if (adaylar.length === 0) continue;
 
             taranan++;
