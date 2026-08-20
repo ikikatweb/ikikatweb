@@ -494,12 +494,34 @@ export default function IscilikDetayPage() {
                           try {
                             const yeniDeger = headerEditValue || null;
                             await upsertIscilikTakibi(takip.santiye_id, { sure_text: yeniDeger });
-                            // SYNC: santiyeler tablosuna toplam gün sayısı olarak yansıt (is_suresi)
-                            const toplamGun = yeniDeger
-                              ? yeniDeger.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0)
-                              : null;
+                            // SYNC → şantiye: "420 + 27 + 45" biçiminde İLK sayı ana iş süresi,
+                            // KALANLAR süre uzatımlarıdır. Böylece buraya "+27" eklemek, İş Deneyim
+                            // ekranındaki "Süre Uzatımı" alanına da 27 olarak işlenir.
+                            // (Eskiden tüm parçaların TOPLAMI is_suresi'ne yazılıyordu → uzatım
+                            //  ana süreye gömülüyor, şantiyedeki uzatım alanı boş kalıyordu.)
+                            const parcalar = yeniDeger
+                              ? yeniDeger.split("+").map((s) => parseInt(s.trim()) || 0).filter((n) => n > 0)
+                              : [];
+                            const anaSure = parcalar.length > 0 ? parcalar[0] : null;
+                            const uzatimlar = parcalar.slice(1);
+                            const toplamUzatim = uzatimlar.reduce((t, n) => t + n, 0);
+                            // Tarihler şantiye formundaki formülle BİREBİR aynı hesaplanır:
+                            //   iş bitim      = işyeri teslim + ana süre
+                            //   uzatımlı tarih = iş bitim + toplam uzatım
+                            const gunEkle = (tarih: string, gun: number) => {
+                              const d = new Date(tarih); d.setDate(d.getDate() + gun);
+                              return d.toISOString().split("T")[0];
+                            };
+                            const teslim = takip.baslangic_tarihi;
+                            const isBitim = teslim && anaSure ? gunEkle(teslim, anaSure) : null;
                             try {
-                              await updateSantiye(takip.santiye_id, { is_suresi: toplamGun });
+                              await updateSantiye(takip.santiye_id, {
+                                is_suresi: anaSure,
+                                sure_uzatimlari: uzatimlar,
+                                sure_uzatimi: toplamUzatim > 0 ? toplamUzatim : null,
+                                is_bitim_tarihi: isBitim,
+                                sure_uzatimli_tarih: isBitim && toplamUzatim > 0 ? gunEkle(isBitim, toplamUzatim) : null,
+                              });
                             } catch (e) { console.warn("santiye sync hatası:", e); }
                             setTakip((p) => p ? { ...p, sure_text: yeniDeger } : p);
                           } catch { toast.error("Güncelleme hatası."); }

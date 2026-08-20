@@ -592,12 +592,19 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       try {
         const kesifArtisi = parseParaInput(kesifArtisiStr);
         const sureGun = formData.is_suresi ?? null;
+        // SYNC: ana süre + SÜRE UZATIMLARI → iscilik_takibi.sure_text  ("420 + 27" biçiminde)
+        // İşçilik Durum Raporu bu alanı "+" ile ayırıp topluyor; ilk sayı ana süre, kalanlar uzatım.
+        // Eskiden yalnız is_suresi yazılıyordu → burada girilen süre uzatımı işçilik raporuna hiç
+        // yansımıyor, üstelik raporda elle yazılan "+27" bu kayıtta eziliyordu.
+        const uzatimlar = (formData.sure_uzatimlari ?? []).filter((g) => (g || 0) > 0);
+        const sureText = sureGun != null
+          ? [sureGun, ...uzatimlar].join(" + ")
+          : (uzatimlar.length > 0 ? uzatimlar.join(" + ") : null);
         await upsertIscilikTakibi(sId, {
           kesif_artisi: kesifArtisi,
           // SYNC: isyeri_teslim_tarihi → iscilik_takibi.baslangic_tarihi
           baslangic_tarihi: formData.isyeri_teslim_tarihi ?? null,
-          // SYNC: is_suresi (sayı) → iscilik_takibi.sure_text (string)
-          sure_text: sureGun != null ? String(sureGun) : null,
+          sure_text: sureText,
         });
       } catch (err) {
         console.warn("İşçilik takibi sync hatası:", err);
