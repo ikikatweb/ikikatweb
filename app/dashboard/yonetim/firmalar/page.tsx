@@ -261,10 +261,12 @@ export default function FirmalarPage() {
                         className="p-0.5 text-gray-400 hover:text-[#1E3A5F] disabled:opacity-20"><ArrowDown size={14} /></button>
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">
-                    <span className="inline-flex items-center gap-2">
+                  {/* Uzun firma adları (adi ortaklık/iş ortaklığı isimleri) tabloyu genişletip yatay
+                      kaydırma çubuğu çıkarıyordu → tek satırda kısaltılır, tamamı üzerine gelince görünür. */}
+                  <TableCell className="font-medium max-w-[220px] sm:max-w-[360px] lg:max-w-[560px]">
+                    <span className="flex items-center gap-2 min-w-0">
                       <span className="inline-block w-3 h-3 rounded-full border border-gray-300 flex-shrink-0" style={{ backgroundColor: firma.renk ?? "#1E3A5F" }} title="Firma rengi" />
-                      {firma.firma_adi}
+                      <span className="truncate" title={firma.firma_adi}>{firma.firma_adi}</span>
                     </span>
                   </TableCell>
                   <TableCell>{firma.kisa_adi ?? "—"}</TableCell>
@@ -334,7 +336,10 @@ export default function FirmalarPage() {
                     const iletisim = aracListesi.find((a) => a.kiralik_iletisim)?.kiralik_iletisim ?? "—";
                     return (
                       <TableRow key={firmaAdi}>
-                        <TableCell className="font-medium">{firmaAdi}</TableCell>
+                        {/* Kiralama firması adı da uzun olabilir → aynı şekilde kısaltılır. */}
+                        <TableCell className="font-medium max-w-[220px] sm:max-w-[360px] lg:max-w-[560px]">
+                          <span className="block truncate" title={firmaAdi}>{firmaAdi}</span>
+                        </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="secondary">{aracListesi.length}</Badge>
                         </TableCell>
