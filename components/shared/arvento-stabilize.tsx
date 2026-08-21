@@ -20,7 +20,9 @@ import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "
 import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { gunMetrikTazele } from "@/lib/arvento/gunluk-metrik-client";
-import { getOcakForTarih, setOcakForTarih, getGirisForTarih, setGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+// setGirisForTarih artık kullanılmıyor: kapı çizgisi elle konumlandırılmıyor, yerine ocakla birlikte
+// hareket eden görsel halka çiziliyor. getGirisForTarih korunuyor (sefer analizinin özet-dışı yolu).
+import { getOcakForTarih, setOcakForTarih, getGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { type OzetDamper, type OzetGiris } from "@/lib/arvento/stabilize-ozet";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -109,6 +111,9 @@ function ocakMakineIkonHtml(): string {
 // → 7,8 MB kamyon GPS inmez, tarayıcıda sınıflama yapılmaz (aylık aralık uçar). Sınıflama mantığı birebir
 // aynı (lib/arvento/stabilize-ozet → siniflaGunDamper). Sorun çıkarsa false yap → eski (ham) yola döner.
 const OZET_MODU = true;
+// Ocak girişi halkasının ocak çemberine uzaklığı (metre). Halka salt görseldir; sefer sayımı
+// ocak çemberinin kendisinden yapılır (bkz. stabilize-ozet-server → ocakGirisCikis).
+const OCAK_GIRIS_HALKA_M = 50;
 
 export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, sonGuncellemeRapor = null, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, kmlIndir = true, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; sonGuncellemeRapor?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; kmlIndir?: boolean; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
@@ -869,80 +874,22 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       L.marker([ds.lat, ds.lng], { icon: dsIkon, zIndexOffset: 900 }).addTo(grup).bindPopup(dsPopup);
       bounds.push([ds.lat, ds.lng]);
     }
-    // OCAK GİRİŞİ KAPI ÇİZGİSİ (yeşil A–B) — kamyonlar yüklenmeye girerken bu çizgiyi keser. Geniş
-    // girişlerde uçlardaki tutamaklar sürüklenerek uzatılıp daraltılır. Tanımlı değilse ve düzenleme
-    // yetkisi varsa ocağın yanında kısa bir çizgi gösterilir (ilk tanımlama için).
-    {
-      // Çizgi ÇOK NOKTALI: köşe eklenebilir. Tanımsızsa (ve düzenleme yetkisi varsa) ocağın yanında
-      // kısa bir iki noktalı çizgi gösterilir (ilk tanımlama için).
-      const varsayilan = yDuzenle && ocak
-        ? [{ lat: ocak.lat + 0.0006, lng: ocak.lng }, { lat: ocak.lat - 0.0006, lng: ocak.lng }]
-        : null;
-      const noktalar: { lat: number; lng: number }[] | null =
-        (gunGiris?.noktalar && gunGiris.noktalar.length >= 2)
-          ? gunGiris.noktalar.map((n) => ({ lat: n.lat, lng: n.lng }))
-          : gunGiris
-            ? [{ lat: gunGiris.lat, lng: gunGiris.lng }, { lat: gunGiris.lat2, lng: gunGiris.lng2 }]
-            : varsayilan;
-      if (noktalar) {
-        const cizgi = L.polyline(noktalar.map((n) => [n.lat, n.lng] as [number, number]), { color: "#16a34a", weight: 5, opacity: 0.95 }).addTo(grup);
-        cizgi.bindPopup(`<b>🚪 Ocak Girişi (kapı)</b> · ${basRef.current}<br>Kamyonlar buradan geçer${yDuzenle ? "<br><i>Yeşil tutamakları sürükleyin · aradaki <b>+</b> işaretini sürükleyerek KÖŞE ekleyin · köşeye çift tıklayarak silin</i>" : ""}${gunGiris ? "" : "<br><i>(henüz tanımlanmadı — tutamakları sürükleyin)</i>"}`);
-        for (const n of noktalar) bounds.push([n.lat, n.lng]);
-
-        if (yDuzenle) {
-          // Sürükleme sırasında state'e yazmıyoruz (her harekette tüm harita yeniden çizilirdi);
-          // yerel dizi güncellenip çizgi anında tazeleniyor, bırakılınca bir kez kaydediliyor.
-          const calisma = noktalar.map((n) => ({ ...n }));
-          const tutamacIkon = L.divIcon({ className: "giris-tutamac", html: '<div style="width:14px;height:14px;border-radius:50%;background:#16a34a;border:2px solid #fff;box-shadow:0 0 0 1.5px #16a34a"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-          const artiIkon = L.divIcon({ className: "giris-arti", html: '<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #16a34a;color:#16a34a;font:bold 13px/12px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);cursor:grab">+</div>', iconSize: [16, 16], iconAnchor: [8, 8] });
-
-          const kaydet = () => {
-            setGunGiris({
-              lat: calisma[0].lat, lng: calisma[0].lng,
-              lat2: calisma[calisma.length - 1].lat, lng2: calisma[calisma.length - 1].lng,
-              noktalar: calisma.map((n) => ({ ...n })),
-            });
-            setGirisForTarih(basRef.current, calisma.map((n) => ({ ...n })))
-              .catch((e: unknown) => toast.error(`Giriş kaydedilemedi — ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: toastSuresi() }));
-          };
-          // Tutamaklar + "+" işaretleri her değişiklikten sonra yeniden kurulur (köşe sayısı değişiyor).
-          const katman = L.layerGroup().addTo(grup);
-          const ciz = () => {
-            katman.clearLayers();
-            cizgi.setLatLngs(calisma.map((n) => [n.lat, n.lng] as [number, number]));
-            // KÖŞE tutamakları — sürükle: taşı, çift tıkla: sil (en az 2 nokta kalmalı)
-            calisma.forEach((n, i) => {
-              const m = L.marker([n.lat, n.lng], { icon: tutamacIkon, draggable: true, zIndexOffset: 1200 }).addTo(katman);
-              m.on("drag", () => { const p = m.getLatLng(); calisma[i] = { lat: p.lat, lng: p.lng }; cizgi.setLatLngs(calisma.map((x) => [x.lat, x.lng] as [number, number])); });
-              m.on("dragend", () => { ciz(); kaydet(); });
-              m.on("dblclick", (e: L.LeafletMouseEvent) => {
-                L.DomEvent.stop(e);
-                if (calisma.length <= 2) { toast.error("Kapı çizgisi en az 2 nokta olmalı", { duration: toastSuresi() }); return; }
-                calisma.splice(i, 1); ciz(); kaydet();
-              });
-            });
-            // "+" işaretleri — her segmentin ortasında. Sürükleyip bırakınca oraya YENİ KÖŞE eklenir.
-            for (let i = 0; i < calisma.length - 1; i++) {
-              const a = calisma[i], b = calisma[i + 1];
-              const orta = L.marker([(a.lat + b.lat) / 2, (a.lng + b.lng) / 2], { icon: artiIkon, draggable: true, zIndexOffset: 1100 }).addTo(katman);
-              orta.bindTooltip("Sürükleyerek köşe ekle", { direction: "top", offset: [0, -10] });
-              // Sürüklerken çizgi, yeni köşe oradaymış gibi görünsün (canlı önizleme)
-              orta.on("drag", () => {
-                const p = orta.getLatLng();
-                const onizleme = [...calisma.slice(0, i + 1), { lat: p.lat, lng: p.lng }, ...calisma.slice(i + 1)];
-                cizgi.setLatLngs(onizleme.map((x) => [x.lat, x.lng] as [number, number]));
-              });
-              orta.on("dragend", () => {
-                const p = orta.getLatLng();
-                calisma.splice(i + 1, 0, { lat: p.lat, lng: p.lng });
-                ciz(); kaydet();
-              });
-            }
-          };
-          ciz();
-        }
-      }
+    // OCAK GİRİŞİ HALKASI — ocak çemberinin 50 m dışında, ocakla BİRLİKTE hareket eden/büyüyen çember.
+    // Kamyonlar yüklenmeye girerken bu halkayı geçer. Eskiden burada elle konumlandırılan çok noktalı
+    // yeşil bir "kapı çizgisi" vardı (tutamaklar + köşe ekleme "+" işaretleri); haritayı kalabalıklaştırıyor
+    // ve ocak taşınınca ayrıca düzeltilmesi gerekiyordu. Üstelik SEFER SAYIMI o çizgiyi hiç kullanmıyor:
+    // giriş/döküm sayısı sunucuda ocak ÇEMBERİNDEN hesaplanıyor (stabilize-ozet-server → ocakGirisCikis).
+    // Bu yüzden çizgi kaldırıldı, yerine hesapla uyumlu bu halka kondu. Halka SALT GÖRSELDİR; hiçbir
+    // sayıyı etkilemez (arvento_giris kayıtları da olduğu gibi duruyor, yalnızca çizilmiyor).
+    if (ocak) {
+      const halkaYaricap = etkinOcakYaricap + OCAK_GIRIS_HALKA_M;
+      L.circle([ocak.lat, ocak.lng], {
+        radius: halkaYaricap, color: "#16a34a", weight: 3, opacity: 0.9, fill: false, dashArray: "10 6",
+      })
+        .addTo(grup)
+        .bindPopup(`<b>🚪 Ocak Girişi</b> · ${basRef.current}<br>Kamyonlar yüklenmeye girerken bu halkayı geçer.<br>Ocak çemberinin ${OCAK_GIRIS_HALKA_M} m dışında — ocakla birlikte hareket eder ve büyür/küçülür.`);
     }
+
     // OCAK İŞ MAKİNELERİ — ocak çemberi içinde çalışan ekskavatör vb. (yükleme yapan). İş Makineleri
     // sekmesinde DEĞİL, burada gösterilir; konum = rotasının ocak içi ağırlık merkezi.
     for (const mk of ocakMakineleri) {
