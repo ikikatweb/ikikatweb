@@ -1638,6 +1638,8 @@ export default function DashboardPage() {
                 <TableBody>
                   {yaklasanlar.map((y, i) => (
                     <TableRow key={`${y.plaka}-${y.tip}-${i}`}>
+                      {/* Plaka sütunu yatay kaydırmada sabit kalır (z-10); başlık satırı z-20 olduğu
+                          için dikey kaydırmada "Plaka" başlığı bu hücrenin üstünde kalır. */}
                       <TableCell className="px-2 sticky left-0 z-10 bg-white shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
                       </TableCell>

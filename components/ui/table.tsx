@@ -32,7 +32,10 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b sticky top-0 z-10", className)}
+      // z-20: sabit BAŞLIK satırı, sabit SÜTUN hücrelerinin (genelde "sticky left-0 z-10")
+      // ÜSTÜNDE kalmalı. Eşit z-index'te DOM'da sonra gelen gövde hücresi başlığın üstüne biniyor,
+      // dikey kaydırmada başlık plaka/şantiye değeriyle örtülüyordu.
+      className={cn("[&_tr]:border-b sticky top-0 z-20", className)}
       {...props}
     />
   )
