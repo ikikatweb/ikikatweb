@@ -304,14 +304,20 @@ export async function POST(request: Request) {
         const { data: mevcut } = await supabase
           .from("personel_islem_takip").select("personel_tc, tip").eq("durum", "bekliyor");
         const varSet = new Set((mevcut ?? []).map((r) => `${r.tip}|${(r.personel_tc ?? "").replace(/\D/g, "")}`));
+        // TRANSFER = SGK'da ESKİ işyerinden ÇIKIŞ + YENİ işyerine GİRİŞ → İKİ bildirge beklenir.
+        // Bu yüzden transfer, takip kaydı olarak "cikis" ve "giris" diye İKİYE açılır. (Önceden
+        // transferler hiç kaydedilmiyordu → mail gidiyor ama dashboard'da "bildirge bekleniyor"
+        // uyarısı çıkmıyordu; iki bildirgenin gelip gelmediği takip edilemiyordu.)
+        const takipTipleri = (c: Change): ("giris" | "cikis")[] =>
+          c.tip === "transfer" ? ["cikis", "giris"] : c.tip === "giris" ? ["giris"] : c.tip === "cikis" ? ["cikis"] : [];
         const takip = changes
-          .filter((c) => c.tip === "giris" || c.tip === "cikis")
-          .filter((c) => !varSet.has(`${c.tip}|${(c.personelTc ?? "").replace(/\D/g, "")}`)) // aynı açık talebi ikiye bölme
-          .map((c) => ({
+          .flatMap((c) => takipTipleri(c).map((t) => ({ c, t })))
+          .filter(({ c, t }) => !varSet.has(`${t}|${(c.personelTc ?? "").replace(/\D/g, "")}`)) // aynı açık talebi ikiye bölme
+          .map(({ c, t }) => ({
             firma_id: firmaId,
             personel_ad: c.personelAd,
             personel_tc: c.personelTc ?? null,
-            tip: c.tip,
+            tip: t,
             islem_tarihi: /^\d{4}-\d{2}-\d{2}$/.test(c.tarih) ? c.tarih : null,
             gonderim_tarihi: trBugun,
             durum: "bekliyor",
