@@ -480,11 +480,18 @@ export default function ArventoRaporPage() {
   // Excel Yükle sonrası yenilenir. Anlık araç konumları ise ayrı "Canlı" katmanında
   // (haritayı yeniden kurmadan) tazelenir.
 
+  // Şoför adlarının yüklenme anındaki hali (id → ad). Kaydetmede "elle silindi" ile "hiç yazılmamış"ı ayırır.
+  const ilkSurucuRef = useRef<Map<string, string>>(new Map());
+
   // Araç → Sekme atamalarını yükle (tarihten bağımsız; bir kez + kayıt sonrası yenilenir)
   const loadAtamalar = useCallback(async () => {
     try {
       const rows = await getAraclarAtama();
       setAtamalar(rows);
+      // Şoför adının YÜKLENDİĞİ ANDAKİ hali — kaydederken "silindi mi, hiç yazılmamış mı" ayrımı için.
+      // (Boş kaydetmek null yazıyordu; null = "Tanımlamalar'da yok" sayıldığı için Arvento cihazından
+      //  gelen eski ad etikette kalmaya devam ediyordu. bkz. atamalariKaydet)
+      ilkSurucuRef.current = new Map(rows.map((a) => [a.id, a.surucu ?? ""]));
       // Manuel renkleri (araclar.arvento_renk) renk motoruna uygula → tüm sekmelerde/bilgisayarlarda aynı.
       setManuelRenkler(new Map(rows.map((a) => [plakaNorm(a.plaka), a.renk])));
     } catch { /* sessiz */ }
@@ -580,8 +587,17 @@ export default function ArventoRaporPage() {
     setAtamaKaydet(true);
     try {
       for (const a of atamalar) {
-        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: a.surucu?.trim() || null, arvento_node: a.arventoNode?.trim() || null, arvento_renk: a.renk || null });
+        // ŞOFÖR: alan boşaltıldıysa null yazmak YETMİYOR — null "Tanımlamalar'da tanımlı değil" demek
+        // ve etikette Arvento cihazından gelen eski ad görünmeye devam ediyor. Bu yüzden ÖNCEDEN adı
+        // olan bir araçta alan boşaltıldıysa gizleme işareti ("-") yazılır → ad etiketten kalkar.
+        // Hiç adı olmayan araçlarda null korunur; böylece cihazdan gelen adları (5 araç) silmiş olmayız.
+        const yeniSurucu = a.surucu?.trim() ?? "";
+        const oncekiSurucu = (ilkSurucuRef.current.get(a.id) ?? "").trim();
+        const surucuYaz = yeniSurucu ? yeniSurucu : (oncekiSurucu ? "-" : null);
+        await updateArac(a.id, { arvento_sekmeler: a.sekmeler ?? null, surucu: surucuYaz, arvento_node: a.arventoNode?.trim() || null, arvento_renk: a.renk || null });
       }
+      // Kaydedilen değerler artık "önceki" sayılır (aynı ekranda ikinci kayıtta yanlış "-" yazılmasın).
+      ilkSurucuRef.current = new Map(atamalar.map((a) => [a.id, a.surucu?.trim() || ""]));
       // Manuel renkleri hemen uygula → sekmelere geçince yeni renkler görünür (localStorage'a yazılmaz, kaynak DB).
       setManuelRenkler(new Map(atamalar.map((a) => [plakaNorm(a.plaka), a.renk])));
       // Cihaz modeli (haritadaki "AROCS") değişiklikleri → arvento_cihaz.model (node ile). Yalnız cihazı olan plakalar.
@@ -1938,9 +1954,10 @@ export default function ArventoRaporPage() {
                           })()}
                           {/* ŞOFÖR override — dolu ise sitede Arvento sürücüsü yerine bu ad gösterilir ("-" = gizle) */}
                           <td className="px-2 py-1.5">
-                            <input type="text" value={a.surucu ?? ""}
+                            {/* "-" gizleme işaretidir; kullanıcıya BOŞ gösterilir (ad silinmiş demektir). */}
+                            <input type="text" value={a.surucu === "-" ? "" : (a.surucu ?? "")}
                               onChange={(e) => atamaSurucuDegis(a.id, e.target.value)}
-                              placeholder="Arvento adı"
+                              placeholder={a.surucu === "-" ? "(gizli)" : "Arvento adı"}
                               className="h-7 w-36 rounded border border-gray-200 bg-white px-2 text-xs outline-none focus:border-[#1E3A5F]" />
                           </td>
                           {/* RENK — 24 hazır ayrık renk paleti (details/popover). Seçilen renk tüm sekmelerde/bilgisayarlarda aynı. */}
