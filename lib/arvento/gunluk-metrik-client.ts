@@ -4,7 +4,7 @@
 // değişmiyordu. Override sonrası bu çağrılır → o günün kamyon sefer + uzunluk metrikleri tazelenir.
 import { getArventoRaporByTarih, getGuzergahByTarih, getGuzergahByRange, getPlakaSantiyeMap, getAraclarAtama, getArventoSonTarih, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih, getDamperSiniflar, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
-import { mesafeMetre } from "@/lib/arvento/ocak";
+import { mesafeMetre, ocakYokMu } from "@/lib/arvento/ocak";
 import { hesaplaGunlukMetrik, metrikImza, ocakMakineSeti } from "./gunluk-metrik";
 
 const SEZON_BAS = "2026-01-01";
@@ -49,8 +49,10 @@ export async function ocakMakineDetayCek(bitis?: string | null): Promise<Map<str
     getOcakForTarih(son),
     getArventoAyarlar(),
   ]);
-  const ocak = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
-  const ocakR = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
+  // ocakYokMu → o günden itibaren ocak kaldırılmış: global ayar ocağına DÜŞME (silinen ocak geri gelmesin).
+  const ocakKaldirildi = ocakYokMu(gunOcak);
+  const ocak = ocakKaldirildi ? null : (gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null));
+  const ocakR = (ocakKaldirildi ? null : gunOcak?.yaricap) ?? ayarlar?.ocakYaricap ?? 150;
   if (!ocak) return out;
   // Plaka bazında: ocak-içi oranı + EN SON tarihli rotanın SON noktası (son bilinen GPS konumu).
   const byP = new Map<string, { top: number; ic: number; sonTarih: string; sonLat: number; sonLng: number }>();

@@ -10,7 +10,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { siniflaGunDamper, ozetImza, OZET_ALGO, type OzetAyar, type OzetDamper, type OzetGiris } from "./stabilize-ozet";
-import { ocakTespit, rotaTemizle, type LatLng } from "./ocak";
+import { ocakTespit, ocakYokMu, rotaTemizle, type LatLng } from "./ocak";
 
 // Geometri (arvento-stabilize.tsx ile BİREBİR): kamyon segmenti giriş kapı çizgisini kesiyor mu + hangi yön.
 type Pt = { lat: number; lng: number };
@@ -86,6 +86,7 @@ async function getOcakServer(
     .limit(1)
     .maybeSingle();
   if (error || !data || data.lat == null || data.lng == null) return null;
+  // yaricap 0 ("ocak yok" işareti) satırı da AYNEN döner — null dönseydi çağıran yedek ocağa düşerdi.
   return { lat: data.lat as number, lng: data.lng as number, yaricap: (data.yaricap as number) ?? 150 };
 }
 
@@ -183,16 +184,20 @@ export async function gunOzetiHesapla(
   }
 
   // 3) Ocak çözümü: gün-bazlı kayıt > ayar > otomatik tespit.
+  //    yaricap 0 = "ocak yok" işareti (kullanıcı o günden itibaren ocağı kaldırdı) → yedeğe DÜŞÜLMEZ.
   const ocakRow = await getOcakServer(supabase, gun);
+  const ocakKaldirildi = ocakYokMu(ocakRow);
   let ocak: LatLng | null = null;
-  if (ocakRow) {
+  if (ocakKaldirildi) {
+    ocak = null;
+  } else if (ocakRow) {
     ocak = { lat: ocakRow.lat, lng: ocakRow.lng };
   } else if (ayarCache.ocakLat != null && ayarCache.ocakLng != null) {
     ocak = { lat: ayarCache.ocakLat, lng: ayarCache.ocakLng };
   } else {
     ocak = ocakTespit([...rotaMap.values()]);
   }
-  const ocakYaricap = ocakRow?.yaricap ?? ayarCache.ocakYaricap ?? 150;
+  const ocakYaricap = (ocakKaldirildi ? null : ocakRow?.yaricap) ?? ayarCache.ocakYaricap ?? 150;
 
   // 4) ayar paketi.
   const ayar: OzetAyar = {

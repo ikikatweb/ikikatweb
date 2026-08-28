@@ -25,7 +25,9 @@ export async function GET(req: Request) {
     const sb = serviceClient();
     // 1) Ocak (bitişe göre en son kayıt) + yarıçap
     const { data: ocakRow } = await sb.from("arvento_ocak").select("lat, lng, yaricap").lte("gecerli_tarih", bitis).order("gecerli_tarih", { ascending: false }).limit(1).maybeSingle();
-    if (!ocakRow || ocakRow.lat == null) return NextResponse.json({ saha: null, mesafeM: 0, oran: 0, dumpCount: 0 });
+    // yaricap ≤ 0 → o günden itibaren "ocak yok" işareti (bkz. arvento-ayarlar.ts OCAK_YOK_YARICAP)
+    if (!ocakRow || ocakRow.lat == null || ((ocakRow.yaricap as number | null) != null && (ocakRow.yaricap as number) <= 0))
+      return NextResponse.json({ saha: null, mesafeM: 0, oran: 0, dumpCount: 0 });
     const ocak: P = { lat: ocakRow.lat as number, lng: ocakRow.lng as number };
     const { data: ayar } = await sb.from("arvento_ayarlar").select("ocak_yaricap").eq("id", "global").maybeSingle();
     const yaricap = (ocakRow.yaricap as number) ?? (ayar?.ocak_yaricap as number) ?? 150;

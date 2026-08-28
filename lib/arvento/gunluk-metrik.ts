@@ -4,7 +4,7 @@
 // iş makinesi çalışma (sn). Girdi verilerinin FETCH'i çağırana aittir (widget tarayıcıda, cache sunucuda çeker).
 import { sadelesGuzergah, parcalarUzunlukKm, kapsananYolKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { gercekDamperSayisi } from "@/lib/arvento/damper-say";
-import { rotaTemizle, ocakTespit, ocakMakineDurumu, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
+import { rotaTemizle, ocakTespit, ocakMakineDurumu, ocakYokMu, mesafeMetre, type LatLng } from "@/lib/arvento/ocak";
 import { plakaNorm, type PlakaSantiye } from "@/lib/supabase/queries/arvento";
 import type { ArventoAyarlar, DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
@@ -59,9 +59,11 @@ export function ocakMakineSeti(
   }
   const damperli = new Set<string>();
   for (const k of kayitlar) if (Array.isArray(k.damper_olaylar) && k.damper_olaylar.length > 0) damperli.add(plakaNorm(k.plaka));
-  let ocak: LatLng | null = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
-  const ocakR = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
-  if (!ocak) ocak = ocakTespit(Array.from(rotaBy.values()).map((r) => rotaTemizle(r)).filter((x) => x.length));
+  // ocakYokMu → o gün ocak KALDIRILMIŞ: yedek zincire (ayar / otomatik tespit) DÜŞME, ocak yok say.
+  const ocakYok = ocakYokMu(gunOcak);
+  let ocak: LatLng | null = ocakYok ? null : (gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null));
+  const ocakR = (ocakYok ? null : gunOcak?.yaricap) ?? ayarlar?.ocakYaricap ?? 150;
+  if (!ocak && !ocakYok) ocak = ocakTespit(Array.from(rotaBy.values()).map((r) => rotaTemizle(r)).filter((x) => x.length));
   const set = new Set<string>();
   for (const [key, rota] of rotaBy) {
     if (damperli.has(key)) continue; // damperli = kamyon, ocak makinesi değil
@@ -176,9 +178,10 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
     return damperli && !stabilizeAtanmisVar;
   });
   const rotaBy = new Map(guzergahlar.map((g) => [plakaNorm(g.plaka), rotaTemizle((g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null))]));
-  let ocak: LatLng | null = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
-  const ocakYaricap = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
-  if (!ocak) ocak = ocakTespit(kamyonlar.map((r) => rotaBy.get(plakaNorm(r.plaka)) ?? []).filter((x) => x.length));
+  const ocakKaldirildi = ocakYokMu(gunOcak);   // o günden itibaren ocak yok → yedeğe düşme
+  let ocak: LatLng | null = ocakKaldirildi ? null : (gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null));
+  const ocakYaricap = (ocakKaldirildi ? null : gunOcak?.yaricap) ?? ayarlar?.ocakYaricap ?? 150;
+  if (!ocak && !ocakKaldirildi) ocak = ocakTespit(kamyonlar.map((r) => rotaBy.get(plakaNorm(r.plaka)) ?? []).filter((x) => x.length));
   const kamyonSefer = kamyonlar.reduce((s, r) => {
     const ol = Array.isArray(r.damper_olaylar) ? r.damper_olaylar : [];
     const g = ol.length > 0
@@ -189,8 +192,8 @@ export function hesaplaGunlukMetrik({ tarih, kayitlar, guzergahlar, plakaSantiye
 
   // 3) İŞ MAKİNELERİ ÇALIŞMA (sn) — ocakta çalışanlar hariç; max(kontak, rölanti), ilk→son penceresiyle sınırlı.
   const ismakineAtanmisVar = Array.from(plakaSantiye.values()).some((ps) => ps.sekmeler?.includes("ismakine"));
-  const ocakM: LatLng | null = gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null);
-  const ocakR = gunOcak?.yaricap ?? ayarlar?.ocakYaricap ?? 150;
+  const ocakM: LatLng | null = ocakKaldirildi ? null : (gunOcak ? { lat: gunOcak.lat, lng: gunOcak.lng } : (ayarlar?.ocakLat != null && ayarlar?.ocakLng != null ? { lat: ayarlar.ocakLat, lng: ayarlar.ocakLng } : null));
+  const ocakR = (ocakKaldirildi ? null : gunOcak?.yaricap) ?? ayarlar?.ocakYaricap ?? 150;
   const rotaMakine = new Map(guzergahlar.map((g) => [plakaNorm(g.plaka), (g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null)]));
   const mkMap = new Map<string, number>();
   for (const k of kayitlar) {

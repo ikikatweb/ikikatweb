@@ -17,12 +17,12 @@ import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
-import { ocakTespit, arizaIsaretle, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
+import { ocakTespit, arizaIsaretle, ocakYokMu, rotaTemizle, mesafeMetre, damperDurakKonumu, type LatLng } from "@/lib/arvento/ocak";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { gunMetrikTazele } from "@/lib/arvento/gunluk-metrik-client";
 // setGirisForTarih artık kullanılmıyor: kapı çizgisi elle konumlandırılmıyor, yerine ocakla birlikte
 // hareket eden görsel halka çiziliyor. getGirisForTarih korunuyor (sefer analizinin özet-dışı yolu).
-import { getOcakForTarih, setOcakForTarih, getGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
+import { getOcakForTarih, setOcakForTarih, ocakKaldirForTarih, getGirisForTarih, getDamperSiniflar, setDamperSinif, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
 import { type OzetDamper, type OzetGiris } from "@/lib/arvento/stabilize-ozet";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ import { Layers, Download, MapPin, CheckCircle2, AlertTriangle, Copy } from "luc
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import "leaflet/dist/leaflet.css";
-import type { Map as LeafletMap, LayerGroup, Polyline as LeafletPolyline } from "leaflet";
+import type { Map as LeafletMap, LayerGroup, Polyline as LeafletPolyline, LeafletMouseEvent, LatLngLiteral } from "leaflet";
 
 type DamperOlay = { saat: string | null; adres: string | null; harita?: string | null; lat?: number | null; lng?: number | null };
 type DamperNokta = DamperOlay & { plaka: string; surucu: string | null };
@@ -409,13 +409,17 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   }, [bitis]);
   // Çözünürlük: gün-ocağı → (eski global prop ocak) → otomatik tespit. useMemo: referans her render'da
   // değişmesin (yoksa sınıflama memo'ları ve harita çizimi her render tetiklenir = flicker).
+  // ocakYokMu(gunOcak) → kullanıcı o günden itibaren ocağı kaldırdı: ocak YOK, yedek zincire (global ayar
+  // ocağı / otomatik tespit) düşülmez — yoksa silinen ocak kendiliğinden geri gelirdi.
   const ocak = useMemo<LatLng | null>(
-    () => gunOcak
-      ? { lat: gunOcak.lat, lng: gunOcak.lng }
-      : (ocakLat != null && ocakLng != null ? { lat: ocakLat, lng: ocakLng } : otomatikOcak),
+    () => ocakYokMu(gunOcak)
+      ? null
+      : gunOcak
+        ? { lat: gunOcak.lat, lng: gunOcak.lng }
+        : (ocakLat != null && ocakLng != null ? { lat: ocakLat, lng: ocakLng } : otomatikOcak),
     [gunOcak, ocakLat, ocakLng, otomatikOcak],
   );
-  const etkinOcakYaricap = gunOcak?.yaricap ?? ocakYaricap;            // sayı → sabit
+  const etkinOcakYaricap = (gunOcak && gunOcak.yaricap > 0 ? gunOcak.yaricap : null) ?? ocakYaricap;  // sayı → sabit
   const ocakElleMi = gunOcak != null || (ocakLat != null && ocakLng != null); // otomatik mi (popup notu)
   // Hava durumu kutusu ocağın bulunduğu bölgeyi gösterir (şantiye taşınınca hava da oraya kayar).
   useEffect(() => { ocakKonumRef.current = ocak; }, [ocak]);
@@ -854,10 +858,45 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         .addTo(grup).bindPopup(popupFn);
       bounds.push([g.lat, g.lng]);
     });
+    // ── Haritada SAĞ TIK MENÜSÜ (ocak ekle / sil) ────────────────────────────────────────────
+    // Sağ tık hiçbir zaman doğrudan işlem yapmaz: küçük bir menü açar, kullanıcı seçeneğe tıklayınca
+    // işlem çalışır. Menü, Leaflet popup'ı olarak açılır → harita kaydırılınca/başka yere tıklanınca kapanır.
+    const sagMenuAc = (konum: LatLngLiteral, ogeler: { etiket: string; renk?: string; calis: () => void }[]) => {
+      const kutu = document.createElement("div");
+      kutu.style.cssText = "min-width:160px;display:flex;flex-direction:column;gap:4px";
+      for (const o of ogeler) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = o.etiket;
+        b.style.cssText = `text-align:left;font-size:12px;font-weight:500;padding:6px 9px;border-radius:6px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;color:${o.renk ?? "#111827"}`;
+        b.onmouseenter = () => { b.style.background = "#f3f4f6"; };
+        b.onmouseleave = () => { b.style.background = "#fff"; };
+        L.DomEvent.on(b, "click", (ev: Event) => { L.DomEvent.stop(ev); map.closePopup(menu); o.calis(); });
+        kutu.appendChild(b);
+      }
+      const menu = L.popup({ closeButton: false, className: "harita-sag-menu", autoPan: false })
+        .setLatLng(konum).setContent(kutu).openOn(map);
+    };
+    // Boş haritaya sağ tık → "Buraya ocak ekle" (ocak varsa "Ocağı buraya taşı"). map.off: bu efekt her
+    // veri değişiminde yeniden çalışır, dinleyici birikmesin.
+    map.off("contextmenu");
+    if (yDuzenle) {
+      map.on("contextmenu", (e: LeafletMouseEvent) => {
+        const varOlan = ocak != null;
+        sagMenuAc(e.latlng, [{ etiket: varOlan ? "⛏️ Ocağı buraya taşı" : "⛏️ Buraya ocak ekle", calis: () => {
+          const r = Math.max(20, Math.round(etkinOcakYaricap));
+          setGunOcak({ lat: e.latlng.lat, lng: e.latlng.lng, yaricap: r });
+          setOcakForTarih(basRef.current, e.latlng.lat, e.latlng.lng, r)
+            .then(() => toast.success(`Ocak ${basRef.current} tarihinden itibaren buraya alındı (yarıçap ${r} m).`, { duration: toastSuresi() }))
+            .catch(() => toast.error("Ocak kaydedilemedi.", { duration: toastSuresi() }));
+        } }]);
+      });
+    }
+
     // ── Stabilize ocağı: yarıçap dairesi + işaret (yetki varsa sürüklenebilir) ──
     if (ocak) {
       // Ocak çemberi = GERÇEK sınıflama yarıçapı (etkinOcakYaricap, metre → zoom'la ölçeklenir).
-      const cember = L.circle([ocak.lat, ocak.lng], { radius: etkinOcakYaricap, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.08, dashArray: "5 4" }).addTo(grup);
+      const cember = L.circle([ocak.lat, ocak.lng], { radius: etkinOcakYaricap, color: "#1d4ed8", weight: 1.5, opacity: 0.7, fillColor: "#3b82f6", fillOpacity: 0.08, dashArray: "5 4", bubblingMouseEvents: false }).addTo(grup);
       const ocakIkon = L.divIcon({ html: ocakIkonHtml(), className: "ocak-ikon", iconSize: [22, 28], iconAnchor: [11, 27], popupAnchor: [0, -26] });
       const ocakM = L.marker([ocak.lat, ocak.lng], { icon: ocakIkon, draggable: yDuzenle, zIndexOffset: 1000 }).addTo(grup);
       ocakM.bindPopup(`<b>⛏️ Stabilize Ocağı</b> · ${basRef.current}<br>Yükleme noktası (yarıçap ${Math.round(etkinOcakYaricap)} m)${yDuzenle ? "<br><i>Pini sürükle: taşı · kenar tutamağını sürükle: çapı büyüt/küçült</i>" : ""}${ocakElleMi ? "" : "<br><i>(otomatik tespit)</i>"}`);
@@ -874,6 +913,20 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         };
         ocakM.on("drag", () => { const c = ocakM.getLatLng(); cember.setLatLng(c); kenarM.setLatLng(kenarKonum()); });
         ocakM.on("dragend", kaydet);
+        // SAĞ TIK → MENÜ aç ("Ocak yerini sil"). Doğrudan SİLMİYORUZ: yanlış tıklayan ocağı uçurmasın.
+        // Silme = o güne "ocak yok" işareti; ÖNCEKİ günler ocaklarını korur, o günden itibaren ocak görünmez.
+        // Marker (varsayılan bubblingMouseEvents:false) ve çember (yukarıda false verildi) sağ tıkı haritaya
+        // SIZDIRMAZ → ocağın üstünde yalnız "sil", boş haritada yalnız "ekle" menüsü açılır.
+        const ocakSilMenusu = (e: LeafletMouseEvent) => {
+          sagMenuAc(e.latlng, [{ etiket: "🗑️ Ocak yerini sil", renk: "#b91c1c", calis: () => {
+            const c = ocakM.getLatLng();
+            ocakKaldirForTarih(basRef.current, c.lat, c.lng)
+              .then(() => { setGunOcak({ lat: c.lat, lng: c.lng, yaricap: 0 }); toast.success(`Ocak kaldırıldı — ${basRef.current} ve sonrası için ocak yok (önceki günler değişmedi).`, { duration: toastSuresi() }); })
+              .catch(() => toast.error("Ocak kaldırılamadı.", { duration: toastSuresi() }));
+          } }]);
+        };
+        ocakM.on("contextmenu", ocakSilMenusu);
+        cember.on("contextmenu", ocakSilMenusu);   // çemberin içine sağ tıklayınca da aynı menü
         kenarM.on("drag", () => { const c = ocakM.getLatLng(), h = kenarM.getLatLng(); cember.setRadius(Math.max(20, mesafeMetre(c.lat, c.lng, h.lat, h.lng))); });
         kenarM.on("dragend", kaydet);
       }

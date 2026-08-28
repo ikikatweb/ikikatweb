@@ -45,6 +45,14 @@ export function rotaTemizle<T extends Nokta>(noktalar: T[], esikKm = 20): T[] {
   return noktalar.filter((p) => !cop.has(p));
 }
 
+// Gün-bazlı ocak kaydı "ocak yok" işareti mi? (arvento_ocak.yaricap = 0 → kullanıcı o günden itibaren
+// ocağı kaldırdı). Kayıt SİLİNMEZ, çünkü ocak çözümü "≤ tarih en son kayıt"tır: silinseydi ocak bir
+// önceki güne geri dönerdi. İşaretli günde ocak YOKTUR — global ayar ocağına / otomatik tespite de
+// DÜŞÜLMEZ (yoksa silinen ocak yedekten geri gelir).
+export function ocakYokMu(gunOcak: { yaricap: number } | null | undefined): boolean {
+  return gunOcak != null && gunOcak.yaricap <= 0;
+}
+
 // Otomatik ocak tespiti: kamyon rotalarını ~gridM'lik hücrelere böler, EN ÇOK ARACIN uğradığı
 // (eşitlikte en çok noktanın olduğu) hücrenin merkezini döndürür. Ocak, tüm kamyonların her
 // turda uğradığı ortak noktadır → en yüksek "farklı araç" yoğunluğu oradadır. Başlangıç tahminidir;

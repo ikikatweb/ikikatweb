@@ -142,6 +142,13 @@ export async function manuelRaporTetikle(): Promise<{ ok: boolean; raporSonCalis
 // arvento_ocak(gecerli_tarih, lat, lng, yaricap): ocak "bu tarihten itibaren" geçerlidir. Belirli bir
 // gün için, o güne ≤ olan EN SON kayıt kullanılır. Ocak ara sıra değişir → her değişiklikte o günün
 // kaydı eklenir; geçmiş günler kendi (eski) ocaklarını korur, değişmez.
+//
+// "OCAK YOK" İŞARETİ (yaricap = 0): kullanıcı bir günün ocağını silince satırı SİLMEK yanlış olur —
+// çözüm "≤ tarih en son kayıt" olduğu için ocak bir öncekine geri döner. Bunun yerine o güne
+// yaricap=0 kaydı yazılır: geçmiş günler kendi ocaklarını KORUR, o günden itibaren ocak YOKTUR
+// (yeni bir ocak eklenene kadar). Tüm okuyucular yaricap ≤ 0'ı "ocak yok" sayar.
+export const OCAK_YOK_YARICAP = 0;
+
 export async function getOcakForTarih(tarih: string): Promise<{ lat: number; lng: number; yaricap: number } | null> {
   if (!tarih) return null;
   const supabase = createClient();
@@ -153,6 +160,9 @@ export async function getOcakForTarih(tarih: string): Promise<{ lat: number; lng
     .limit(1)
     .maybeSingle();
   if (error || !data || data.lat == null || data.lng == null) return null;
+  // yaricap 0 → "ocak yok" işareti. null DÖNMEZ: null "kayıt yok" demek olurdu ve çağıranlar global
+  // ayar ocağına / otomatik tespite düşüp ocağı geri getirirdi. Sentinel kayıt aynen döner; çağıranlar
+  // ocakYokMu() ile ayırt eder (bkz. lib/arvento/ocak.ts).
   return { lat: data.lat as number, lng: data.lng as number, yaricap: (data.yaricap as number) ?? 150 };
 }
 
@@ -166,7 +176,7 @@ export async function getTumOcaklar(): Promise<{ gecerli_tarih: string; lat: num
     .order("gecerli_tarih", { ascending: false });
   if (error || !data) return [];
   return data
-    .filter((o) => o.lat != null && o.lng != null)
+    .filter((o) => o.lat != null && o.lng != null && ((o.yaricap as number | null) == null || (o.yaricap as number) > 0))
     .map((o) => ({ gecerli_tarih: o.gecerli_tarih as string, lat: o.lat as number, lng: o.lng as number, yaricap: (o.yaricap as number) ?? 150 }));
 }
 
@@ -174,6 +184,18 @@ export async function getTumOcaklar(): Promise<{ gecerli_tarih: string; lat: num
 export async function setOcakForTarih(tarih: string, lat: number, lng: number, yaricap: number): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from("arvento_ocak").upsert({ gecerli_tarih: tarih, lat, lng, yaricap });
+  if (error) throw error;
+}
+
+// Ocağı O TARİHTEN İTİBAREN kaldırır (haritada ocağa sağ tıklayıp "Ocak yerini sil").
+// Satır SİLİNMEZ — o güne yaricap=0 ("ocak yok") kaydı yazılır. Böylece:
+//   • tarihten ÖNCEKİ günler kendi ocaklarını aynen korur (hiçbir eski kayda dokunulmaz),
+//   • tarihten İTİBAREN ocak görünmez (yeni bir ocak eklenene kadar).
+// lat/lng NOT NULL olduğu için mevcut/0 koordinat yazılır; okuyucular yalnız yaricap ≤ 0'a bakar.
+export async function ocakKaldirForTarih(tarih: string, lat = 0, lng = 0): Promise<void> {
+  if (!tarih) return;
+  const supabase = createClient();
+  const { error } = await supabase.from("arvento_ocak").upsert({ gecerli_tarih: tarih, lat, lng, yaricap: OCAK_YOK_YARICAP });
   if (error) throw error;
 }
 

@@ -28,7 +28,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getHaritaKatmanlari, ekleHaritaKatman, silHaritaKatman, guncelleHaritaKatman, getSantiyeSecenekleri, type HaritaKatman, type SantiyeSecenek } from "@/lib/supabase/queries/arvento-katman";
 import { dosyadanGeometriler } from "@/lib/arvento/kml-parse";
 import { getArventoAyarlar, setArventoAyarlar, getOcakForTarih, getDamperSiniflar, getRaporTetikDurum, manuelRaporTetikle, type DamperSinif } from "@/lib/supabase/queries/arvento-ayarlar";
-import { ocakMakineDurumu, ocakTespit, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
+import { ocakMakineDurumu, ocakTespit, ocakYokMu, rotaTemizle, type LatLng } from "@/lib/arvento/ocak";
 import { ocakMakineDetayCek, type OcakMakineDetay } from "@/lib/arvento/gunluk-metrik-client";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 disabled:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed";
@@ -1041,11 +1041,12 @@ export default function ArventoRaporPage() {
   }, [guzergahlar]);
   // Etkin ocak (gün bazlı > ayar > otomatik) + yarıçap — Stabilize haritasındaki çemberle aynı.
   const etkinOcak = useMemo<LatLng | null>(() => {
+    if (ocakYokMu(gunOcak)) return null;   // o günden itibaren ocak kaldırıldı → yedeğe (ayar/tespit) DÜŞME
     if (gunOcak) return { lat: gunOcak.lat, lng: gunOcak.lng };
     if (ocakLat != null && ocakLng != null) return { lat: ocakLat, lng: ocakLng };
     return ocakTespit(Array.from(rotaByPlakaTumu.values()).map((r) => rotaTemizle(r)));
   }, [gunOcak, ocakLat, ocakLng, rotaByPlakaTumu]);
-  const etkinOcakR = gunOcak?.yaricap ?? ocakYaricap;
+  const etkinOcakR = (gunOcak && gunOcak.yaricap > 0 ? gunOcak.yaricap : null) ?? ocakYaricap;
   // Damper olayı OLAN plakalar = kamyon (ocak makinesi DEĞİL) — ocak içi tespitinde dışlanır.
   const damperliSet = useMemo(() => {
     const s = new Set<string>();
