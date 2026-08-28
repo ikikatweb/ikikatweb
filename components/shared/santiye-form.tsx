@@ -81,7 +81,7 @@ function formatTarihTR(iso: string | null | undefined): string {
 export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
-  const { hasPermission, isYonetici } = useAuth();
+  const { hasPermission, isYonetici, kullanici } = useAuth();
   const ySil = hasPermission("yonetim-santiyeler", "sil");
 
   const [loading, setLoading] = useState(false);
@@ -400,6 +400,16 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   // Ya da storage'dan da silmek istersek ekstra adım gerekir; şimdilik hızlı çözüm.
   async function pdfSil(field: "gecici_kabul_url" | "kesin_kabul_url" | "is_deneyim_url") {
     if (!santiye?.id) return;
+    // Kabul tarihi doluyken belgeyi silmek "tarih var, belge yok" durumunu geri getirir → engelle.
+    // Belge değiştirilecekse doğrudan yeni PDF seçilir (yükleme mevcut kaydın üzerine yazar).
+    if (field === "gecici_kabul_url" && (formData.gecici_kabul_itibar_tarihi || formData.gecici_kabul_tarihi)) {
+      toast.error("Geçici kabul tarihi dolu olduğu sürece belge silinemez. Değiştirmek için doğrudan yeni PDF yükleyin.");
+      return;
+    }
+    if (field === "kesin_kabul_url" && formData.kesin_kabul_tarihi) {
+      toast.error("Kesin kabul tarihi dolu olduğu sürece belge silinemez. Değiştirmek için doğrudan yeni PDF yükleyin.");
+      return;
+    }
     if (!confirm("Bu PDF'i silmek istediğinize emin misiniz? Yeni bir dosya yükleyebilirsiniz.")) return;
     try {
       await updateSantiye(santiye.id, { [field]: null });
@@ -435,6 +445,38 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
         toast.error(msg);
       }
       setLoading(false);
+    }
+  }
+
+  // Geçici kabul belgesini muhasebeye mail atar (Tanımlamalar > muhasebe_email adreslerine).
+  // Kayıt akışını bloklamaz — çağıran void ile çağırır; sonuç toast ile bildirilir.
+  async function geciciKabulMailGonder(sId: string, pdfUrl: string, dosyaAdi: string) {
+    try {
+      const adresler = (await getDegerler("muhasebe_email")).filter(Boolean);
+      if (adresler.length === 0) {
+        toast.error("Geçici kabul belgesi mail atılamadı: muhasebe e-postası tanımlı değil (Tanımlamalar > muhasebe_email).");
+        return;
+      }
+      const res = await fetch("/api/kabul-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firmaId: formData.yuklenici_firma_id ?? null,
+          muhasebeEmail: adresler.join(", "),
+          santiyeAdi: formData.is_adi ?? "",
+          santiyeId: sId,
+          pdfUrl,
+          dosyaAdi,
+          itibarTarihi: formData.gecici_kabul_itibar_tarihi ?? null,
+          onayTarihi: onayTarihiYok ? null : (formData.gecici_kabul_tarihi ?? null),
+          gonderenKullaniciAd: kullanici?.ad_soyad ?? undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Mail gönderilemedi");
+      toast.success(data.mesaj ?? "Geçici kabul belgesi muhasebeye gönderildi.");
+    } catch (err) {
+      toast.error(`Geçici kabul belgesi muhasebeye gönderilemedi: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -477,6 +519,18 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     }
     if (formData.gecici_kabul_itibar_tarihi && !formData.gecici_kabul_tarihi && !onayTarihiYok) {
       alanHatasi("kabul", "gecici_kabul_tarihi", "Geçici Kabul İtibar Tarihi girildiyse Onay Tarihi de zorunludur (veya 'Onay tarihi yok' işaretleyin).");
+      return;
+    }
+    // Kabul tarihi GİRİLDİĞİNDE/DEĞİŞTİĞİNDE belge de zorunlu — tarihi olup belgesi olmayan kabul kalmasın.
+    // Yeni seçilen dosya (…File) veya daha önce yüklenmiş URL yeterlidir. Zorunluluk yalnız tarih bu
+    // düzenlemede değiştiyse işler: eskiden beri tarihi olup belgesi olmayan işlerde (49 kayıt) alakasız
+    // bir alanı düzenlemek kilitlenmesin — belge, tarihe dokunulduğu anda istenir.
+    if (geciciKabulTarihDegisti && !geciciKabulFile && !formData.gecici_kabul_url) {
+      alanHatasi("kabul", "gecici_kabul_pdf", "Geçici kabul tarihi girildiğinde Geçici Kabul Belgesi (PDF) zorunludur.");
+      return;
+    }
+    if (kesinKabulTarihDegisti && !kesinKabulFile && !formData.kesin_kabul_url) {
+      alanHatasi("kabul", "kesin_kabul_pdf", "Kesin kabul tarihi girildiğinde Kesin Kabul Belgesi (PDF) zorunludur.");
       return;
     }
     // Atama süresi zorunlu: teknik personel gerekliyse ve süre boş/geçersizse, 10 gün varsayılacağını onaylat.
@@ -614,6 +668,10 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
       if (geciciKabulFile) {
         const url = await uploadSantiyeFile(geciciKabulFile, sId, "gecici_kabul");
         await updateSantiye(sId, { gecici_kabul_url: url });
+        // Her geçici kabul eklenişinde belge MUHASEBEYE mail atılır. await: kayıt sonrası yönlendirme
+        // isteği yarıda kesmesin ve sonuç toast'ı görünsün. Mail hatası kaydı BOZMAZ (fonksiyon kendi
+        // içinde yakalar) — iş zaten kaydedilmiştir, kullanıcı belgeyi elle iletebilir.
+        await geciciKabulMailGonder(sId, url, geciciKabulFile.name);
       }
       if (kesinKabulFile) {
         const url = await uploadSantiyeFile(kesinKabulFile, sId, "kesin_kabul");
@@ -717,6 +775,12 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
   // Eksik zorunlu alanın kutusunu açık kırmızı (kırmızı ring + açık kırmızı zemin) yapar.
   const hataCls = (alan: string) => (hataliAlan === alan ? " ring-2 ring-red-400 bg-red-50" : "");
+  // Kabul tarihi BU DÜZENLEMEDE girildi/değişti mi? (yeni işte: doldurulduysa) → belge zorunluluğu buna bağlı.
+  const geciciKabulTarihDegisti =
+    (!!formData.gecici_kabul_itibar_tarihi && formData.gecici_kabul_itibar_tarihi !== (santiye?.gecici_kabul_itibar_tarihi ?? null))
+    || (!!formData.gecici_kabul_tarihi && formData.gecici_kabul_tarihi !== (santiye?.gecici_kabul_tarihi ?? null));
+  const kesinKabulTarihDegisti =
+    !!formData.kesin_kabul_tarihi && formData.kesin_kabul_tarihi !== (santiye?.kesin_kabul_tarihi ?? null);
 
   return (
     <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
@@ -1267,8 +1331,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Geçici Kabul Belgesi (PDF)</Label>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <Label>Geçici Kabul Belgesi (PDF) {geciciKabulTarihDegisti && <span className="text-red-500">*</span>}</Label>
+                  <div className={`flex items-center gap-2 flex-wrap rounded-md${hataCls("gecici_kabul_pdf")}`}>
                     <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
                       <Upload size={16} />
                       {geciciKabulFile ? geciciKabulFile.name : "PDF Yükle"}
@@ -1298,8 +1362,8 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   <Input id="kesin_kabul_tarihi" name="kesin_kabul_tarihi" type="date" value={formData.kesin_kabul_tarihi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Kesin Kabul Belgesi (PDF)</Label>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <Label>Kesin Kabul Belgesi (PDF) {kesinKabulTarihDegisti && <span className="text-red-500">*</span>}</Label>
+                  <div className={`flex items-center gap-2 flex-wrap rounded-md${hataCls("kesin_kabul_pdf")}`}>
                     <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
                       <Upload size={16} />
                       {kesinKabulFile ? kesinKabulFile.name : "PDF Yükle"}
