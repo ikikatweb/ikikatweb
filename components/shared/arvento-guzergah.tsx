@@ -10,7 +10,7 @@ import { getGuzergahByRange, getArventoRaporByRange, oncekiDamperCek, plakaNorm,
 import { atananSekmeleriHesapla, operasyondaGorunur, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/lib/arvento/guzergah-sadelestir";
 import { reglajRotalariniAyikla, type OncekiDamper } from "@/lib/arvento/serme-hesap";
-import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
@@ -76,6 +76,9 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const canliLayerRef = useRef<LayerGroup | null>(null);
   // Harita BİR KEZ kurulur; veri ayrı LayerGroup'ta → veri değişince flicker olmaz (sadece grup yeniden çizilir).
   const mapInstanceRef = useRef<LeafletMap | null>(null);
+  // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
+  const havaTemizleRef = useRef<(() => void) | null>(null);
+  const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0);
@@ -347,6 +350,16 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
+      // HAVA DURUMU (sağ üst, katman seçicinin yanında): araçların çalıştığı bölgenin anlık
+      // havası + yağış tahmini. Konum = ocak varsa ocak, yoksa haritanın o anki merkezi.
+      havaTemizleRef.current = ekleHavaDurumu(L, map, () => {
+        const o = ocakKonumRef.current;
+        if (o) return o;
+        const m = mapInstanceRef.current;
+        if (!m) return null;
+        const c = m.getCenter();
+        return { lat: c.lat, lng: c.lng };
+      });
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return;
       // NOT: KML pane'i (350) yükseltilmez → güzergah çizgileri (SVG yolPane 450) KML'nin ÜSTÜNDE görünür.
@@ -361,6 +374,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       iptal = true;
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
+      havaTemizleRef.current?.(); havaTemizleRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }

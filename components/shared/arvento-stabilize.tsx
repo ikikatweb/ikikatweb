@@ -11,7 +11,7 @@ import { getGuzergahByRange, getArventoRaporByRange, plakaNorm, birlestirGuzerga
 import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { sadelesGuzergah } from "@/lib/arvento/guzergah-sadelestir";
-import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
@@ -140,6 +140,9 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   // Harita BİR KEZ kurulur; veri katmanları ayrı LayerGroup'ta tutulur → veri değişince harita
   // yeniden kurulmaz (tile reload/flicker YOK), sadece bu grup temizlenip yeniden çizilir.
   const mapInstanceRef = useRef<LeafletMap | null>(null);
+  // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
+  const havaTemizleRef = useRef<(() => void) | null>(null);
+  const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0); // kurulum bitince ilk çizimi tetikler
@@ -414,6 +417,8 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   );
   const etkinOcakYaricap = gunOcak?.yaricap ?? ocakYaricap;            // sayı → sabit
   const ocakElleMi = gunOcak != null || (ocakLat != null && ocakLng != null); // otomatik mi (popup notu)
+  // Hava durumu kutusu ocağın bulunduğu bölgeyi gösterir (şantiye taşınınca hava da oraya kayar).
+  useEffect(() => { ocakKonumRef.current = ocak; }, [ocak]);
 
   // ── Damper manuel sınıflandırma (override) — gerçek/mükerrer/arıza elle değiştirilir, kalıcı ──
   // Anahtar: plaka|tarih(bas)|saat. Liste ve popup AYNI map'ten türediği için otomatik senkron.
@@ -670,6 +675,16 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
+      // HAVA DURUMU (sağ üst, katman seçicinin yanında): araçların çalıştığı bölgenin anlık
+      // havası + yağış tahmini. Konum = ocak varsa ocak, yoksa haritanın o anki merkezi.
+      havaTemizleRef.current = ekleHavaDurumu(L, map, () => {
+        const o = ocakKonumRef.current;
+        if (o) return o;
+        const m = mapInstanceRef.current;
+        if (!m) return null;
+        const c = m.getCenter();
+        return { lat: c.lat, lng: c.lng };
+      });
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // STABİLİZE: kayıtlı KML yollarını canvas damperlerin ÜSTÜNE al → tıklanabilir kalsın (damper canvas'ı
@@ -685,6 +700,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
       iptal = true;
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
+      havaTemizleRef.current?.(); havaTemizleRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }

@@ -318,3 +318,122 @@ export async function ekleKayitliKatmanlar(L: LeafletStatic, map: LeafletMap, ka
     /* katman çizimi haritayı bozmasın */
   }
 }
+
+// ── HAVA DURUMU KONTROLÜ (sağ üst, katman seçicinin yanında) ────────────────────────────────
+// Araçların ÇALIŞTIĞI bölgenin anlık havası + yağış tahmini. Konum sabit değildir: ocak (ya da
+// harita merkezi) nerede ise oranın havası gösterilir → şantiye taşınınca kendiliğinden takip eder.
+// Kaynak: Open-Meteo (api.open-meteo.com) — anahtar/kayıt gerektirmez, tarayıcıdan doğrudan çağrılır.
+type HavaKonum = () => { lat: number; lng: number } | null;
+
+// WMO hava kodu → simge + Türkçe metin (Open-Meteo weather_code).
+function havaKodu(k: number): { ikon: string; metin: string } {
+  if (k === 0) return { ikon: "☀️", metin: "Açık" };
+  if (k === 1) return { ikon: "🌤️", metin: "Az bulutlu" };
+  if (k === 2) return { ikon: "⛅", metin: "Parçalı bulutlu" };
+  if (k === 3) return { ikon: "☁️", metin: "Kapalı" };
+  if (k === 45 || k === 48) return { ikon: "🌫️", metin: "Sisli" };
+  if (k >= 51 && k <= 57) return { ikon: "🌦️", metin: "Çisenti" };
+  if (k >= 61 && k <= 65) return { ikon: "🌧️", metin: "Yağmurlu" };
+  if (k === 66 || k === 67) return { ikon: "🌧️", metin: "Dondurucu yağmur" };
+  if (k >= 71 && k <= 77) return { ikon: "🌨️", metin: "Kar yağışlı" };
+  if (k >= 80 && k <= 82) return { ikon: "🌧️", metin: "Sağanak" };
+  if (k === 85 || k === 86) return { ikon: "🌨️", metin: "Kar sağanağı" };
+  if (k >= 95) return { ikon: "⛈️", metin: "Gök gürültülü sağanak" };
+  return { ikon: "🌡️", metin: "—" };
+}
+
+export function ekleHavaDurumu(L: LeafletStatic, map: LeafletMap, konumGetir: HavaKonum): () => void {
+  let kutu: HTMLDivElement | null = null;
+  let sonAnahtar = "";           // aynı koordinat için tekrar tekrar istek atma
+  let sonCekim = 0;
+  let durduruldu = false;
+
+  const Kontrol = L.Control.extend({
+    options: { position: "topright" as const },
+    onAdd() {
+      const div = L.DomUtil.create("div", "leaflet-bar") as HTMLDivElement;
+      div.style.cssText = "background:#fff;padding:4px 8px;font:600 11px/1.35 system-ui;color:#1E3A5F;box-shadow:0 1px 4px rgba(0,0,0,.25);border-radius:4px;min-width:104px";
+      div.innerHTML = '<div style="opacity:.5">hava durumu…</div>';
+      L.DomEvent.disableClickPropagation(div);   // kutuya tıklayınca harita kaymasın
+      L.DomEvent.disableScrollPropagation(div);
+      kutu = div;
+      return div;
+    },
+  });
+  const kontrol = new Kontrol();
+  map.addControl(kontrol);
+  // Leaflet sağ üst köşedeki kontrolleri ALT ALTA dizer; istenen: hava kutusu katman seçicinin SOLUNDA.
+  // Köşeyi yatay (ters yönlü) dizilime çeviriyoruz: ilk eklenen (katman seçici) sağda, sonra eklenen
+  // (hava durumu) onun solunda kalır. Yalnız bu haritanın sağ-üst köşesini etkiler.
+  const kose = map.getContainer().querySelector(".leaflet-top.leaflet-right") as HTMLElement | null;
+  if (kose) {
+    kose.style.display = "flex";
+    kose.style.flexDirection = "row-reverse";
+    kose.style.alignItems = "flex-start";
+  }
+
+  const yaz = (html: string) => { if (kutu) kutu.innerHTML = html; };
+
+  const cek = async () => {
+    if (durduruldu) return;
+    const k = konumGetir();
+    if (!k) return;
+    const anahtar = `${k.lat.toFixed(3)},${k.lng.toFixed(3)}`;
+    // Aynı konum için 15 dakikadan sık çekme (Open-Meteo verisi de saatlik güncellenir).
+    if (anahtar === sonAnahtar && Date.now() - sonCekim < 15 * 60 * 1000) return;
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${k.lat}&longitude=${k.lng}`
+        + "&current=temperature_2m,weather_code,precipitation,wind_speed_10m"
+        + "&hourly=precipitation_probability,precipitation"
+        + "&forecast_days=1&timezone=Europe%2FIstanbul";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json() as {
+        current?: { temperature_2m?: number; weather_code?: number; precipitation?: number; wind_speed_10m?: number };
+        hourly?: { time?: string[]; precipitation_probability?: number[]; precipitation?: number[] };
+      };
+      if (durduruldu) return;
+      sonAnahtar = anahtar; sonCekim = Date.now();
+      const c = d.current ?? {};
+      const { ikon, metin } = havaKodu(c.weather_code ?? -1);
+      const derece = c.temperature_2m != null ? `${Math.round(c.temperature_2m)}°C` : "—";
+      const ruzgar = c.wind_speed_10m != null ? `${Math.round(c.wind_speed_10m)} km/s` : "";
+
+      // YAĞIŞ TAHMİNİ: şu andan sonraki ilk 6 saatte en yüksek ihtimal + ilk yağış saati.
+      let tahmin = "Önümüzdeki 6 saat yağışsız";
+      const saatler = d.hourly?.time ?? [];
+      const ihtimaller = d.hourly?.precipitation_probability ?? [];
+      const miktarlar = d.hourly?.precipitation ?? [];
+      const simdi = new Date();
+      let enYuksek = 0, ilkYagisSaat = "";
+      for (let i = 0; i < saatler.length; i++) {
+        const t = new Date(saatler[i]);
+        if (t < simdi || t.getTime() - simdi.getTime() > 6 * 3600 * 1000) continue;
+        const ih = ihtimaller[i] ?? 0;
+        if (ih > enYuksek) enYuksek = ih;
+        if (!ilkYagisSaat && ((miktarlar[i] ?? 0) > 0.1 || ih >= 50)) {
+          ilkYagisSaat = `${String(t.getHours()).padStart(2, "0")}:00`;
+        }
+      }
+      if (ilkYagisSaat) tahmin = `${ilkYagisSaat}'de yağış bekleniyor (%${enYuksek})`;
+      else if (enYuksek >= 20) tahmin = `Yağış ihtimali %${enYuksek}`;
+
+      yaz(
+        `<div style="display:flex;align-items:center;gap:5px"><span style="font-size:15px">${ikon}</span>`
+        + `<span style="font-size:13px">${derece}</span></div>`
+        + `<div style="font-weight:500;color:#475569">${metin}${ruzgar ? ` · ${ruzgar}` : ""}</div>`
+        + `<div style="font-weight:500;color:${ilkYagisSaat ? "#b45309" : "#64748b"};margin-top:1px">${tahmin}</div>`,
+      );
+    } catch {
+      yaz('<div style="opacity:.55">hava durumu alınamadı</div>');
+    }
+  };
+
+  void cek();
+  const zaman = setInterval(() => void cek(), 15 * 60 * 1000); // 15 dakikada bir tazele
+  return () => {
+    durduruldu = true;
+    clearInterval(zaman);
+    try { map.removeControl(kontrol); } catch { /* harita zaten kaldırılmış olabilir */ }
+  };
+}

@@ -11,7 +11,7 @@ import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
-import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
@@ -98,6 +98,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const canliLayerRef = useRef<LayerGroup | null>(null);
   // Harita BİR KEZ kurulur; veri ayrı LayerGroup'ta → veri değişince flicker olmaz (sadece grup yeniden çizilir).
   const mapInstanceRef = useRef<LeafletMap | null>(null);
+  // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
+  const havaTemizleRef = useRef<(() => void) | null>(null);
+  const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0);
@@ -176,6 +179,16 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       });
       ekleHaritaKatmanlari(L, map, "uydu");
       ekleOlcumKontrolu(L, map);
+      // HAVA DURUMU (sağ üst, katman seçicinin yanında): araçların çalıştığı bölgenin anlık
+      // havası + yağış tahmini. Konum = ocak varsa ocak, yoksa haritanın o anki merkezi.
+      havaTemizleRef.current = ekleHavaDurumu(L, map, () => {
+        const o = ocakKonumRef.current;
+        if (o) return o;
+        const m = mapInstanceRef.current;
+        if (!m) return null;
+        const c = m.getCenter();
+        return { lat: c.lat, lng: c.lng };
+      });
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // Çizgiler SVG + üst pane (opYolPane z450) → KML'nin (350) ÜSTÜnde ve TIKLANIR (canvas ince hatta tıklamayı
@@ -191,6 +204,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       iptal = true;
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
+      havaTemizleRef.current?.(); havaTemizleRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }
