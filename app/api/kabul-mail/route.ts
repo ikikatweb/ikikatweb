@@ -51,20 +51,16 @@ export async function POST(request: Request) {
     if (!muhasebeEmail) return NextResponse.json({ error: "Muhasebe e-posta adresi tanımlı değil (Tanımlamalar > muhasebe_email)" }, { status: 400 });
     if (!pdfUrl) return NextResponse.json({ error: "PDF adresi gerekli" }, { status: 400 });
 
-    // SMTP: önce işin yüklenici firması, o firmada ayar yoksa SMTP'si olan herhangi bir firma.
-    const firmaBul = async (): Promise<Record<string, string | null> | null> => {
-      if (firmaId) {
-        const { data } = await supabase.from("firmalar").select("*").eq("id", firmaId).maybeSingle();
-        if (data?.smtp_host && data?.smtp_user && data?.smtp_password) return data;
-      }
-      const { data: alternatif } = await supabase
-        .from("firmalar").select("*")
-        .not("smtp_host", "is", null).not("smtp_user", "is", null).not("smtp_password", "is", null)
-        .limit(1).maybeSingle();
-      return alternatif ?? null;
-    };
-    const firma = await firmaBul();
-    if (!firma) return NextResponse.json({ error: "Hiçbir firmada SMTP ayarları yok" }, { status: 400 });
+    // SMTP = İŞİN YÜKLENİCİ FİRMASI. Başka firmaya YEDEK DÜŞÜLMEZ: mail, işin ait olduğu firmanın
+    // hesabından gitmelidir (bordro-mail-bulk ile aynı kural — yanlış firmadan mail gitmesin).
+    if (!firmaId) return NextResponse.json({ error: "İşin yüklenici firması belirli değil" }, { status: 400 });
+    const { data: firma } = await supabase.from("firmalar").select("*").eq("id", firmaId).maybeSingle();
+    if (!firma) return NextResponse.json({ error: "İşin yüklenici firması bulunamadı" }, { status: 404 });
+    if (!firma.smtp_host || !firma.smtp_user || !firma.smtp_password) {
+      return NextResponse.json({
+        error: `${firma.firma_adi} firmasının mail (SMTP) ayarları tanımlı değil — belge gönderilemedi. Yönetim > Firmalar'dan tanımlayın.`,
+      }, { status: 400 });
+    }
 
     // PDF'i storage'dan indir (service role → bucket public olmasa da iner). Olmazsa doğrudan URL'den çek.
     let pdf: Buffer | null = null;
