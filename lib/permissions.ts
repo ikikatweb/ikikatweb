@@ -32,6 +32,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "araclar-arvento-raporu", label: "Araç Çalışma Raporu", grup: "Araç Takip" },
   // Araç Bakım
   { key: "arac-bakim", label: "Bakım, Tamirat, Yedek Parça", grup: "Araç Bakım" },
+  { key: "arac-bakim-arac-listesi", label: "Araç Listesi", grup: "Araç Bakım" },
   // Puantaj
   { key: "puantaj-personel", label: "Personel Puantaj", grup: "Puantaj" },
   { key: "puantaj-arac", label: "Araç Puantaj", grup: "Puantaj" },

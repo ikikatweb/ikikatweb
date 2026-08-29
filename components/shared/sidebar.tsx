@@ -75,8 +75,7 @@ const menuGroups: MenuGroup[] = [
     color: "text-cyan-600 bg-cyan-50",
     items: [
       { label: "Bakım, Tamirat, Yedek Parça", href: "/dashboard/arac-bakim", icon: <Wrench size={16} /> },
-      // Salt-okunur özet liste — ayrı izin anahtarı yok, "arac-bakim" izniyle görünür.
-      { label: "Araç Listesi", href: "/dashboard/arac-bakim/arac-listesi", icon: <ListChecks size={16} />, moduleKey: "arac-bakim" },
+      { label: "Araç Listesi", href: "/dashboard/arac-bakim/arac-listesi", icon: <ListChecks size={16} /> },
     ],
   },
   {

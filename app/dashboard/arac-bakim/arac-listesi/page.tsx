@@ -62,9 +62,9 @@ type Satir = {
 };
 
 export default function AracBakimListesiPage() {
-  // Bu sayfa Bakım modülünün salt-okunur görünümü → ayrı izin anahtarı YOK, "arac-bakim" görüntüleme izni yeter.
+  // Yetki Ayarları'da "Araç Bakım > Araç Listesi" satırı bu anahtarı yönetir (salt-okunur sayfa → görüntüle yeter).
   const { hasPermission } = useAuth();
-  const yGoruntule = hasPermission("arac-bakim", "goruntule");
+  const yGoruntule = hasPermission("arac-bakim-arac-listesi", "goruntule");
 
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
