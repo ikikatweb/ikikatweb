@@ -1761,7 +1761,7 @@ function YakitPageContent() {
                       <div className="text-[11px] font-semibold">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
                       <div className="text-[10px] text-gray-500">{h.saat.slice(0, 5)}</div>
                     </TableCell>
-                    <TableCell className="px-2 max-w-[140px] sticky left-0 z-10 bg-white">
+                    <TableCell className="px-2 max-w-[140px] sticky left-0 bg-white">
                       <div className="truncate" style={{ maxWidth: "20ch" }} title={
                         h.tip === "arac_yakit"
                           ? `${aracMap.get(h.arac_id)?.plaka ?? ""} ${[aracMap.get(h.arac_id)?.marka, aracMap.get(h.arac_id)?.model, aracMap.get(h.arac_id)?.cinsi].filter(Boolean).join(" · ")}`

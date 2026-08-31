@@ -241,7 +241,7 @@ export default function KullanicilarPage() {
                 <TableRow key={k.id} className={!k.aktif ? "bg-gray-100 opacity-50" : ""}>
                   <TableCell className="text-center text-gray-400 tabular-nums text-xs">{sira + 1}</TableCell>
                   <TableCell
-                    style={{ position: "sticky", left: 0, zIndex: 5 }}
+                    style={{ position: "sticky", left: 0 }}
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
                   >{k.ad_soyad}</TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>

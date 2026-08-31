@@ -577,7 +577,7 @@ export default function AraclarPage() {
                     </Badge>
                   </TableCell>
                   <TableCell
-                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: arac.durum === "pasif" ? "#f3f4f6" : "white" }}
+                    style={{ position: "sticky", left: 0, backgroundColor: arac.durum === "pasif" ? "#f3f4f6" : "white" }}
                     className="font-bold shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                   >
                     {/* Firma rengi şeridi (sol kenar) — kiralık araçlarda renk yok, default gri.

@@ -372,7 +372,7 @@ export default function AcenteTakipPage() {
                   <TableRow key={p.id} className="hover:bg-gray-50">
                     <TableCell className="px-2 whitespace-nowrap">{formatTarih(p.islem_tarihi)}</TableCell>
                     <TableCell
-                      style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                      style={{ position: "sticky", left: 0, backgroundColor: "white" }}
                       className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                     >{arac?.plaka ?? "—"}</TableCell>
                     <TableCell className="px-2 truncate max-w-[150px]" title={arac?.firmalar?.firma_adi ?? ""}>

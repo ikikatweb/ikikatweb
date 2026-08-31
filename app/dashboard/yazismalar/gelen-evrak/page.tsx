@@ -531,7 +531,7 @@ export default function GelenEvrakPage() {
                       z-index INLINE 5 — header sticky'nin (z:100) ALTINDA kalmasını garanti eder. */}
                   <TableCell
                     className="px-2 whitespace-nowrap"
-                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                    style={{ position: "sticky", left: 0, backgroundColor: "white" }}
                   >
                     <div className="flex items-center gap-2">
                       <span

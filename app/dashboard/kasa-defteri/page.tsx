@@ -1022,7 +1022,7 @@ function KasaDefContent() {
                       )}
                     </TableCell>
                     <TableCell
-                      style={{ position: "sticky", left: 0, zIndex: 5 }}
+                      style={{ position: "sticky", left: 0 }}
                       className={`px-2 text-gray-700 truncate min-w-[150px] max-w-[180px] shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${stickyBg}`}
                       title={h.aciklama ?? ""}
                     >

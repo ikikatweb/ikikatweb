@@ -954,7 +954,7 @@ export default function SantiyelerPage() {
                     {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim.
                         max-width 120 → sayfaya sığsın diye daha agresif kırpıldı. */}
                     <TableCell
-                      style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: isGrubuRengi ?? "#ffffff" }}
+                      style={{ position: "sticky", left: 0, backgroundColor: isGrubuRengi ?? "#ffffff" }}
                       className="px-1.5 font-medium max-w-[120px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                       title={s.is_adi}
                     >{s.is_adi}</TableCell>

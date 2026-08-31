@@ -32,9 +32,15 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      // z-20: sabit BAŞLIK satırı, sabit SÜTUN hücrelerinin (genelde "sticky left-0 z-10")
-      // ÜSTÜNDE kalmalı. Eşit z-index'te DOM'da sonra gelen gövde hücresi başlığın üstüne biniyor,
-      // dikey kaydırmada başlık plaka/şantiye değeriyle örtülüyordu.
+      // z-20: sabit BAŞLIK satırı sabit sütun hücrelerinin ÜSTÜNDE kalsın.
+      //
+      // DİKKAT — sabit sütun (sticky left-0) GÖVDE hücrelerine z-index VERMEYİN. Tarayıcıda
+      // ölçüldü: gövde <td>'sine pozitif bir z-index (z-10 / zIndex:5) verildiğinde hücre, bu
+      // thead'in z-20'sine RAĞMEN başlığın üstüne çiziliyor ve dikey kaydırmada başlık metni
+      // (ör. "Plaka") gövde değeriyle örtülüyor. Başlık hücresine daha yüksek z vermek de
+      // çözmüyor (th, thead'in yığın bağlamına sıkışıyor).
+      // Doğrusu: gövde hücresi yalnız "sticky left-0" olsun — z-index'siz sticky hücre zaten
+      // konumsuz komşu hücrelerin üstünde kalır, yani yatay sabitleme bozulmaz.
       className={cn("[&_tr]:border-b sticky top-0 z-20", className)}
       {...props}
     />

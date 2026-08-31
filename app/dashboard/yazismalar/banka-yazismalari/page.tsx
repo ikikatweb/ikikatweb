@@ -505,7 +505,7 @@ export default function BankaYazismalariPage() {
                       sticky left-0 INLINE — header sticky'nin (z:100) altında kalsın (z:5). */}
                   <TableCell
                     className="px-2 whitespace-nowrap"
-                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                    style={{ position: "sticky", left: 0, backgroundColor: "white" }}
                   >
                     <div className="flex items-center gap-2">
                       <span

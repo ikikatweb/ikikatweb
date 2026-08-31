@@ -1638,9 +1638,9 @@ export default function DashboardPage() {
                 <TableBody>
                   {yaklasanlar.map((y, i) => (
                     <TableRow key={`${y.plaka}-${y.tip}-${i}`}>
-                      {/* Plaka sütunu yatay kaydırmada sabit kalır (z-10); başlık satırı z-20 olduğu
-                          için dikey kaydırmada "Plaka" başlığı bu hücrenin üstünde kalır. */}
-                      <TableCell className="px-2 sticky left-0 z-10 bg-white shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                      {/* Plaka sütunu yatay kaydırmada sabit kalır. z-index VERİLMEZ — bkz.
+                          components/ui/table.tsx: pozitif z'li gövde hücresi sticky başlığı örtüyor. */}
+                      <TableCell className="px-2 sticky left-0 bg-white shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
                       </TableCell>
                       <TableCell className="px-2">{y.tip}</TableCell>
@@ -2219,7 +2219,7 @@ export default function DashboardPage() {
                       <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
                         {/* Şantiye sütunu sticky — sağa-sola scroll'da solda sabit kalır.
                             Mobile'da diğer sütunlara kayarken şantiye adı her zaman görünür. */}
-                        <TableCell className="px-2 py-1.5 sticky left-0 z-10 bg-white">
+                        <TableCell className="px-2 py-1.5 sticky left-0 bg-white">
                           {/* Şantiye adının solunda firma rengi şeridi (İşçilik Durum Raporu pattern'i). */}
                           <div className="flex items-center gap-2">
                             <span

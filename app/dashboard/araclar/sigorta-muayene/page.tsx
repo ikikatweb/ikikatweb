@@ -574,7 +574,7 @@ export default function SigortaMuayenePage() {
                 <TableRow key={a.id} className="hover:bg-gray-50">
                   <TableCell className="px-2 text-center text-gray-400">{i + 1}</TableCell>
                   <TableCell
-                    style={{ position: "sticky", left: 0, zIndex: 5, backgroundColor: "white" }}
+                    style={{ position: "sticky", left: 0, backgroundColor: "white" }}
                     className="px-2 font-bold text-[#1E3A5F] shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                   >{a.plaka}</TableCell>
                   <TableCell className="px-2">{a.marka ?? "—"}</TableCell>

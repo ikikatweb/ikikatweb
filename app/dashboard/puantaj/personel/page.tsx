@@ -1308,7 +1308,7 @@ export default function PersonelPuantajPage() {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-100" : ""}`}>
-                    <TableCell className={`px-2 sticky left-0 z-10 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
+                    <TableCell className={`px-2 sticky left-0 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
