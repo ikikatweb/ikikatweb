@@ -175,12 +175,16 @@ function trAscii(s: string): string {
 // KAYDETMEZ — değişikliği onDegis ile üst dialoga bildirir; kayıt, dialogun altındaki TEK
 // "Kaydet" butonuyla (diğer bölümlerle birlikte) yapılır.
 function ManuelGunHizliKart({
-  mevcutGun, aySonGun, onDegis, adminBypass = false, ayMinGun = 0,
+  mevcutGun, kayitliMi, aySonGun, onDegis, adminBypass = false, ayMinGun = 0,
 }: {
   mevcutGun: number;
+  // Bu personel × şantiye × ay için KAYITLI bir manuel gün var mı?
+  // Yoksa kutu BOŞ açılır (0 yazılı gelmez) ve kullanıcının yazdığı 0 gerçek bir değer sayılır:
+  // "girişi yapılmış ama hiç çalışmamış" personel 0 gün olarak kaydedilip muhasebeye gönderilebilsin.
+  kayitliMi: boolean;
   aySonGun: number;
-  // null = değişiklik yok (mevcut değere dönüldü); {deger, gecerli} = bekleyen değişiklik.
-  onDegis: (p: { deger: number; gecerli: boolean } | null) => void;
+  // null = değişiklik yok; {deger, gecerli} = bekleyen değişiklik. deger=null → kaydı SİL (doğal hesaba dön).
+  onDegis: (p: { deger: number | null; gecerli: boolean } | null) => void;
   // adminBypass=true → kullanıcı admin (yönetici); sınır aşılsa bile kaydedilebilir,
   // ama uyarı görsel olarak hâlâ kırmızı görünür.
   adminBypass?: boolean;
@@ -188,11 +192,13 @@ function ManuelGunHizliKart({
   // Manuel toplam bunun ALTINA inemez (admin dahil) — kapalı dönem günleriyle oynanmaz.
   ayMinGun?: number;
 }) {
-  const [val, setVal] = useState(String(mevcutGun));
-  useEffect(() => { setVal(String(mevcutGun)); }, [mevcutGun]);
+  // Kayıt yoksa BOŞ aç — "0" yazılı gelirse kullanıcı 0'ı kaydedemiyordu (değişiklik sayılmıyordu).
+  const [val, setVal] = useState(kayitliMi ? String(mevcutGun) : "");
+  useEffect(() => { setVal(kayitliMi ? String(mevcutGun) : ""); }, [mevcutGun, kayitliMi]);
+  const bos = val.trim() === "";
   // CLAMP YAPMA — kullanıcı yazdığı değeri görsün; sınır aşılırsa hata göster.
   const N = Math.max(0, parseInt(val) || 0);
-  const tooHigh = N > aySonGun;
+  const tooHigh = !bos && N > aySonGun;
   // Çıkışı yapılmış (kapalı) atamaların günleri kesinleşmiştir; manuel toplam bu
   // tabanın (ayMinGun) ALTINA inemez — admin dahil. Bu günleri değiştirmek için
   // detay editöründen ilgili atamanın çıkış tarihi düzenlenir.
@@ -203,9 +209,16 @@ function ManuelGunHizliKart({
   // tooHigh: admin bypass edebilir. tooLowFloor: SADECE UYARI — kaydetmeyi engellemez.
   const bildir = (s: string) => {
     setVal(s);
+    if (s.trim() === "") {
+      // Kutuyu boşaltmak = manuel günü KALDIR (doğal hesaba dön). Zaten kayıt yoksa değişiklik yok.
+      onDegis(kayitliMi ? { deger: null, gecerli: true } : null);
+      return;
+    }
     const n = Math.max(0, parseInt(s) || 0);
     const hi = n > aySonGun;
-    onDegis(n !== mevcutGun ? { deger: n, gecerli: !hi || !!adminBypass } : null);
+    // Kayıt YOKSA her değer (0 dahil) yeni bir kayıttır; varsa yalnız farklıysa değişiklik sayılır.
+    const degisti = !kayitliMi || n !== mevcutGun;
+    onDegis(degisti ? { deger: n, gecerli: !hi || !!adminBypass } : null);
   };
   return (
     <div className={`border-2 rounded-lg p-3 ${uyari ? "bg-red-50 border-red-300" : "bg-blue-50 border-blue-200"}`}>
@@ -219,6 +232,7 @@ function ManuelGunHizliKart({
           // (tooLowFloor) — native min'e koyulursa ok tuşları taban altında kilitlenir/çalışmaz.
           min={0}
           value={val}
+          placeholder="—"
           onChange={(e) => bildir(e.target.value)}
           className={`w-24 h-10 text-2xl font-bold text-center bg-white border-2 rounded-lg outline-none ${
             uyari ? "text-red-700 border-red-400 focus:border-red-500" : "text-blue-700 border-blue-300 focus:border-blue-500"
@@ -244,6 +258,10 @@ function ManuelGunHizliKart({
       <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
         Sadece bu ay içindeki gün sayısını günceller — atamanın <strong>çıkış tarihi atılmaz</strong>, personel halen aktif kalır.
         Çıkış için aşağıdaki detay editöründe &quot;İşten Çıkış&quot; tarihini elle girin.
+        <span className="block mt-1">
+          <strong>0</strong> yazıp kaydedebilirsiniz — girişi yapılmış ama hiç çalışmamış personel bu ay
+          <strong> 0 gün</strong> olarak muhasebeye gider. Kutuyu <strong>boş bırakırsanız</strong> manuel kayıt kaldırılır.
+        </span>
       </p>
     </div>
   );
@@ -587,7 +605,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // kendi Kaydet butonları kaldırıldı; her bölüm değişikliğini buraya bildirir, alttaki TEK
   // "Kaydet" hepsini birden kaydeder. not: undefined = değişmedi, "" = notu sil.
   const [gunEditBekleyen, setGunEditBekleyen] = useState<{
-    manuelGun?: { deger: number; gecerli: boolean };
+    manuelGun?: { deger: number | null; gecerli: boolean };   // deger=null → manuel gün kaydını sil
     atamalar: Map<string, { bas: string; bit: string | null; gecerli: boolean }>;
     not?: string;
   }>({ atamalar: new Map() });
@@ -2056,7 +2074,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //  - Atama henüz yoksa açık bir atama (bitis_tarihi=null) oluşturulur.
   //  - 0 girilirse override silinir → doğal hesaplamaya döner.
   // sonlandir=false → toplu kaydetten çağrılıyor: dialog kapatma + loadData'yı toplu kaydet yapar.
-  async function kaydetManuelGun(personelId: string, santiyeId: string, ayStr: string, N: number, sonlandir = true) {
+  // N = null → manuel gün kaydını SİL (doğal hesaba dön). N = 0 → GERÇEK bir değer olarak kaydedilir
+  // (girişi yapılmış ama hiç çalışmamış personel "0 gün" olarak muhasebeye gitsin).
+  async function kaydetManuelGun(personelId: string, santiyeId: string, ayStr: string, N: number | null, sonlandir = true) {
     if (!yDuzenle && !yEkle) { toast.error("Yetkiniz yok."); return; }
     const [yil, ay] = ayStr.split("-").map(Number);
     const ayBas = `${yil}-${String(ay).padStart(2, "0")}-01`;
@@ -2074,21 +2094,28 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     });
 
     try {
-      if (liste.length === 0 && N > 0) {
+      if (liste.length === 0 && N != null && N > 0) {
         // Atama yoksa: AÇIK atama oluştur (bitis_tarihi=null) — kullanıcı çıkış tarihi atmadıkça kapatılmaz
         await insertAtama(personelId, santiyeId, ayBas, null);
       }
-      if (N <= 0) {
-        // Override sil (varsa) — doğal hesaplamaya dön
+      if (N == null) {
+        // Kutu boşaltıldı → override sil, doğal hesaplamaya dön
         await deleteManuelGun(personelId, santiyeId, ayStr).catch(() => {});
+        toast.success("Manuel gün kaydı kaldırıldı (doğal hesaba dönüldü)");
       } else {
-        // Override yaz/güncelle — atama tarihleri DOKUNULMAZ
+        // Override yaz/güncelle (0 DAHİL) — atama tarihleri DOKUNULMAZ
         await setManuelGun(personelId, santiyeId, ayStr, N);
+        toast.success(
+          N === 0
+            ? "Gün sayısı 0 olarak kaydedildi — bu ay sigortalı gün bildirilmeyecek (atama açık kaldı)"
+            : `Gün sayısı ${N} olarak kaydedildi (atama açık kaldı)`,
+        );
       }
-      toast.success(`Gün sayısı ${N} olarak kaydedildi (atama açık kaldı)`);
 
-      // SGK 30 gün uyarısı — bildirim amaçlı (kayıt iptal edilmez)
-      if (N > 30) {
+      // SGK 30 gün uyarısı — bildirim amaçlı (kayıt iptal edilmez). Silmede (N=null) uyarı yok.
+      if (N == null) {
+        /* kayıt silindi — gün uyarısı anlamsız */
+      } else if (N > 30) {
         toast(
           `⚠️ Bu şantiyede ${N} gün girdiniz. SGK'da bir ay için en fazla 30 gün sayılır.`,
           { icon: "⚠️", duration: toastSuresi(), style: { background: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D" } },
@@ -4466,8 +4493,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               {donemselCikis ? formatTr(donemselCikis) : "—"}
             </td>
             <td className="px-2 py-1.5 text-right whitespace-nowrap">
-              {ozelGun > 0 ? (
-                <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold">
+              {/* hasManuel (ozelGun > 0 DEĞİL): manuel girilen 0 da gerçek bir değerdir — yeşil "0"
+                  gösterilir. Yoksa "0 gün kaydedildi" ile "hiç girilmedi" ayırt edilemiyordu. */}
+              {hasManuel ? (
+                <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold" title="Manuel girilen gün">
                   {ozelGun}
                 </span>
               ) : naturalGun > 0 ? (
@@ -5505,6 +5534,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   return (
                     <ManuelGunHizliKart
                       mevcutGun={gunMap.get(gunEdit.personel.id)?.get(gunEdit.santiyeId) ?? 0}
+                      // Kayıt yoksa kutu BOŞ açılsın; kullanıcının yazdığı 0 gerçek değer olarak kaydedilsin.
+                      kayitliMi={manuelGunler.some((m) => m.personel_id === gunEdit.personel.id && m.santiye_id === gunEdit.santiyeId && m.ay === seciliAy)}
                       aySonGun={max}
                       ayMinGun={Math.min(kapaliGun, max)}
                       adminBypass={isYonetici}
