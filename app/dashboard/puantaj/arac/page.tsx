@@ -134,7 +134,7 @@ function tr(s: string): string {
 }
 
 export default function AracPuantajPage() {
-  const { kullanici, hasPermission, isYonetici, sadeceKendiKayitlari } = useAuth();
+  const { kullanici, hasPermission, isYonetici, sadeceKendiKayitlari, loading: yetkiYukleniyor } = useAuth();
   const yEkle = hasPermission("puantaj-arac", "ekle");
   const yDuzenle = hasPermission("puantaj-arac", "duzenle");
   const ySil = hasPermission("puantaj-arac", "sil");
@@ -350,6 +350,12 @@ export default function AracPuantajPage() {
       setDigerCakismalar(new Map());
       return;
     }
+    // ÖNCE TEMİZLE: ay/şantiye değişince yeni veri gelene kadar ESKİ ayın kayıtları
+    // yeni ayın gün sütunlarında çizilmeye devam ediyordu — kısıtlı kullanıcıda bu
+    // "görünüp sonra kaybolan" veri sızıntısı oluyordu.
+    setPuantajlar([]);
+    setAylikYakitlar([]);
+    setDigerCakismalar(new Map());
     try {
       const baslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
       // Bitiş: ayın SON GÜNÜ (kapsayıcı). Önceden sonraki ayın 1'i kullanılıyordu
@@ -483,9 +489,11 @@ export default function AracPuantajPage() {
   // GÖRÜNTÜLEME SINIRI — Kullanıcı Ayarları > "Puantaj görüntüleme (gün)". Eskiden yalnız işlem
   // (yazma) kontrol ediliyordu; görüntüleme değeri kaydediliyor ama uygulanmıyordu, kısıtlı kullanıcı
   // geçmiş tüm günleri görebiliyordu. Sınır dışındaki günün hücresi artık boş çizilir.
+  // Yetki profili HENÜZ YÜKLENMEDİYSE gizle (fail-closed): tarihIzinliMi(null) true döner,
+  // bu yüzden ilk render'da tüm günler görünüp profil gelince kayboluyordu.
   const gunGorunur = useCallback(
-    (g: number) => tarihIzinliMi(kullanici, tarihStr(yil, ay, g), "puantaj", "goruntuleme"),
-    [kullanici, yil, ay],
+    (g: number) => !yetkiYukleniyor && tarihIzinliMi(kullanici, tarihStr(yil, ay, g), "puantaj", "goruntuleme"),
+    [kullanici, yetkiYukleniyor, yil, ay],
   );
   const gorGunLimit = izinGunSayisi(kullanici, "puantaj", "goruntuleme");
 
