@@ -48,7 +48,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
+import { tarihIzinliMi, izinGunSayisi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
@@ -342,6 +342,14 @@ export default function PersonelPuantajPage() {
 
   const ayinGunSayisi = gunSayisi(yil, ay);
   const gunler = useMemo(() => Array.from({ length: ayinGunSayisi }, (_, i) => i + 1), [ayinGunSayisi]);
+  // GÖRÜNTÜLEME SINIRI — Kullanıcı Ayarları > "Puantaj görüntüleme (gün)". Bu güne kadar YALNIZCA
+  // işlem (yazma) kontrolü vardı; görüntüleme değeri kaydediliyor ama hiç uygulanmıyordu, bu yüzden
+  // kısıtlı kullanıcı geçmiş tüm günleri görebiliyordu. Sınır dışındaki günün hücresi artık boş çizilir.
+  const gunGorunur = useCallback(
+    (g: number) => tarihIzinliMi(kullanici, tarihStr(yil, ay, g), "puantaj", "goruntuleme"),
+    [kullanici, yil, ay],
+  );
+  const gorGunLimit = izinGunSayisi(kullanici, "puantaj", "goruntuleme");
 
   // Seçili şantiyede gösterilecek personeller
   // - Sadece seçili şantiyeye atanmış olanlar
@@ -1287,8 +1295,8 @@ export default function PersonelPuantajPage() {
                   <th
                     key={g}
                     style={{ position: "sticky", top: 0, zIndex: 30 }}
-                    className={`text-white text-[10px] text-center px-0 h-10 align-middle font-medium whitespace-nowrap min-w-[35px] w-[35px] border-b border-gray-200 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : "bg-[#64748B]"}`}
-                    title={gunAdi(g)}
+                    className={`text-white text-[10px] text-center px-0 h-10 align-middle font-medium whitespace-nowrap min-w-[35px] w-[35px] border-b border-gray-200 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : "bg-[#64748B]"} ${gunGorunur(g) ? "" : "opacity-40"}`}
+                    title={gunGorunur(g) ? gunAdi(g) : `${gunAdi(g)} — görüntüleme izniniz dışında`}
                   >
                     <div>{g}</div>
                     <div className="text-[8px] opacity-75">{gunAdi(g).slice(0, 1)}</div>
@@ -1353,6 +1361,24 @@ export default function PersonelPuantajPage() {
                         ? digerCakismalar.get(p.id)?.get(g)
                         : null;
                       const kilitli = !!digerCakisma;
+
+                      // GÖRÜNTÜLEME SINIRI dışındaki gün: veri hiç çizilmez (durum, not, hepsi gizli).
+                      // pasif/kilitli dallarından ÖNCE gelir — o dallar da veri sızdırmasın.
+                      if (!gunGorunur(g)) {
+                        return (
+                          <TableCell
+                            key={g}
+                            className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-50 ${haftaSonu ? "bg-gray-100" : ""}`}
+                          >
+                            <div
+                              className="w-full h-[35px] flex items-center justify-center text-gray-300 select-none"
+                              title={gorGunLimit != null ? `Görüntüleme izniniz son ${gorGunLimit} gün ile sınırlı` : "Görüntüleme izniniz dışında"}
+                            >
+                              ·
+                            </div>
+                          </TableCell>
+                        );
+                      }
 
                       if (pasifGun) {
                         // Hangi tip pasif aralığı olduğuna göre tooltip değişir
