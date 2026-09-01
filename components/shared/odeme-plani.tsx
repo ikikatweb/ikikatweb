@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { CalendarClock, Plus, Trash2, Loader2, Printer } from "lucide-react";
+import { CalendarClock, Plus, Trash2, Loader2, Printer, Search, X } from "lucide-react";
 import {
   getOdemePlaniSatirlar, insertOdemePlaniSatir, updateOdemePlaniSatir, deleteOdemePlaniSatir,
   getOdemePlaniKasa, insertOdemePlaniKasa, updateOdemePlaniKasa, deleteOdemePlaniKasa,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/queries/odeme-plani";
 import type { OdemePlaniSatir, OdemePlaniKasa } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { trAramaNormalize } from "@/lib/utils/isim";
 
 const GUNLER = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
 const AYLAR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
@@ -58,6 +59,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   const [secili, setSecili] = useState<Set<string>>(new Set());
   // "Tümünü Sıfırla" onay penceresi (native confirm yerine — bkz. tumunuSifirlaOnayli)
   const [tumSilOnay, setTumSilOnay] = useState(false);
+  // Genel arama: açıklama metni VEYA tutar (gider/gelir/kümülatif) üzerinden filtreler.
+  const [arama, setArama] = useState("");
 
   useEffect(() => {
     let iptal = false;
@@ -108,7 +111,35 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
     for (const s of sirali) if (secili.has(s.id)) { gider += Number(s.gider || 0); gelir += Number(s.gelir || 0); adet++; }
     return { gider, gelir, adet };
   }, [sirali, secili]);
-  const tumSecili = sirali.length > 0 && sirali.every((s) => secili.has(s.id));
+  // ARAMA — satırlar filtrelenir ama KÜMÜLATİF tam listeden hesaplanmış haliyle taşınır:
+  // filtrede kalan satırın "Kümülatif" değeri planın gerçek yürüyen bakiyesidir, yeniden hesaplanmaz.
+  // Eşleşme: tarih (gg.aa.yyyy ve ham), açıklama, gider/gelir/kümülatif tutarları.
+  // Sorgu sadece rakamsa (2.500 / 2500 gibi) noktalama atılıp rakam-rakam aranır → "70.000" da "70000" de bulur.
+  const gorunen = useMemo(() => {
+    const tum = sirali.map((s, i) => ({ s, kum: kumulatifler[i] ?? 0 }));
+    const ham = arama.trim();
+    if (!ham) return tum;
+    const q = trAramaNormalize(ham);
+    const qRakam = ham.replace(/[^\d]/g, "");
+    const sadeceSayi = qRakam.length > 0 && /^[\d.,\s₺]+$/.test(ham);
+    return tum.filter(({ s, kum }) => {
+      if (sadeceSayi) {
+        const alanlar = [s.gider, s.gelir, kum].map((n) => paraFmt(Number(n || 0)).replace(/[^\d]/g, ""));
+        if (alanlar.some((a2) => a2.includes(qRakam))) return true;
+        // tarih de rakamla aranabilsin (01092026 / 0109 gibi)
+        if (s.tarih.replace(/[^\d]/g, "").includes(qRakam)) return true;
+        return false;
+      }
+      const metin = trAramaNormalize([
+        s.aciklama ?? "", s.tarih, tarihUzun(s.tarih), gunAdi(s.tarih),
+        paraFmt(Number(s.gider || 0)), paraFmt(Number(s.gelir || 0)), paraFmt(kum),
+      ].join(" "));
+      return metin.includes(q);
+    });
+  }, [sirali, kumulatifler, arama]);
+  const filtreliMi = arama.trim().length > 0;
+
+  const tumSecili = gorunen.length > 0 && gorunen.every(({ s }) => secili.has(s.id));
   const sonKumulatif = kumulatifler.length ? kumulatifler[kumulatifler.length - 1] : kasaToplam;
   // En son güncelleme = tüm satır + kasa updated_at'larının en yenisi
   const sonGuncelleme = useMemo(() => {
@@ -141,7 +172,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   function seciliToggle(id: string) {
     setSecili((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
-  function tumSec() { setSecili(tumSecili ? new Set() : new Set(sirali.map((s) => s.id))); }
+  // Filtre varken "tümünü seç" YALNIZ görünen satırları seçer (gizli satır farkında olmadan silinmesin).
+  function tumSec() { setSecili(tumSecili ? new Set() : new Set(gorunen.map(({ s }) => s.id))); }
   async function seciliSil() {
     const ids = sirali.filter((s) => secili.has(s.id)).map((s) => s.id);
     if (ids.length === 0) return;
@@ -289,6 +321,31 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
           <span className="text-xs text-gray-400">Son güncelleme: {tarihSaat(sonGuncelleme)}</span>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {/* GENEL ARAMA — hem açıklama metni hem tutar. Tutarda noktalama önemsiz: "70.000" da "70000" de bulur. */}
+          {satirlar.length > 0 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="text"
+                value={arama}
+                onChange={(e) => setArama(e.target.value)}
+                placeholder="Ara: açıklama veya tutar…"
+                title="Açıklamada geçen kelimeye ya da gider/gelir/kümülatif tutarına göre arayın"
+                className="h-8 w-52 pl-8 pr-7 text-xs rounded-md border border-gray-300 bg-white outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-300"
+              />
+              {filtreliMi && (
+                <button type="button" onClick={() => setArama("")} title="Aramayı temizle"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+          {filtreliMi && (
+            <span className="text-xs text-gray-500 whitespace-nowrap">
+              {gorunen.length} / {sirali.length} satır
+            </span>
+          )}
           {satirlar.length > 0 && (
             <button type="button" onClick={yazdir}
               title={seciliOzet.adet > 0 ? "Seçili satırları yazdır" : "Tüm satırları yazdır"}
@@ -333,13 +390,14 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
                 </tr>
               </thead>
               <tbody>
-                {sirali.length === 0 && (
+                {gorunen.length === 0 && (
                   <tr><td colSpan={canSil ? 6 : 5} className="text-center text-gray-400 py-8">
-                    Henüz satır yok.{canEkle ? " Aşağıdan “Satır Ekle” ile başlayın." : ""}
+                    {filtreliMi
+                      ? `“${arama.trim()}” için eşleşen satır yok.`
+                      : `Henüz satır yok.${canEkle ? " Aşağıdan “Satır Ekle” ile başlayın." : ""}`}
                   </td></tr>
                 )}
-                {sirali.map((s, i) => {
-                  const kum = kumulatifler[i] ?? 0;
+                {gorunen.map(({ s, kum }) => {
                   // Tarihi geçmiş (silinmemiş) satır = ödeme yapılıp temizlenmemiş → kırmızı uyarı.
                   const gecmis = s.tarih < bugunStr();
                   return (
