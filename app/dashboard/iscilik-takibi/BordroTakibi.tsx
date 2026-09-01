@@ -3417,6 +3417,73 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
   }
 
+  // "Ad Soyad (Teknik Personel)" hücresini yeniden çizer: isim normal siyah, ek KALIN indigo.
+  // autoTable tek renkle çizdiği için hücre dolgu rengiyle kapatılıp metin iki parça elle yazılır.
+  // Sütun genişlikleri artık SABİT olduğundan metin sığmayabilir → sığmıyorsa yazı boyutu küçültülür
+  // (yoksa isim komşu sütunun üstüne taşardı).
+  function pdfTeknikAdCiz(doc: jsPDF, data: { cell: { raw: unknown; x: number; y: number; width: number; height: number; styles: { fillColor?: unknown; cellPadding?: unknown; fontSize?: unknown } } }) {
+    const fullTxt = String(data.cell.raw ?? "");
+    const marker = " (Teknik Personel)";
+    const idx = fullTxt.lastIndexOf(marker);
+    if (idx < 0) return;
+    const namePart = fullTxt.slice(0, idx);
+    const suffixPart = fullTxt.slice(idx);
+    // Mevcut hücreyi dolgu rengiyle kapla (kenarlığı koru — 0.15mm inset)
+    let fillRgb: [number, number, number] = [255, 255, 255];
+    const fc = data.cell.styles.fillColor;
+    if (Array.isArray(fc) && fc.length >= 3) fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
+    doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
+    doc.rect(data.cell.x + 0.15, data.cell.y + 0.15, data.cell.width - 0.3, data.cell.height - 0.3, "F");
+    // Padding'i hücreden çek (cellPadding sayı veya obje olabilir)
+    const cp = data.cell.styles.cellPadding;
+    let padLeft = 1.5;
+    if (typeof cp === "number") padLeft = cp;
+    else if (cp && typeof cp === "object" && "left" in cp) padLeft = (cp as { left: number }).left;
+    const temelFont = (data.cell.styles.fontSize as number) ?? 8;
+    // Sığdır: isim + ek toplam genişliği hücreye sığmıyorsa fontu oranla küçült (en az 5pt).
+    const kullanilabilir = Math.max(1, data.cell.width - padLeft * 2);
+    doc.setFontSize(temelFont);
+    doc.setFont("helvetica", "normal");
+    const wName = doc.getTextWidth(namePart);
+    doc.setFont("helvetica", "bold");
+    const wSuffix = doc.getTextWidth(suffixPart);
+    const toplam = wName + wSuffix;
+    const fontSize = toplam > kullanilabilir ? Math.max(5, temelFont * (kullanilabilir / toplam)) : temelFont;
+    // baseline:"middle" → Y = cell.y + cell.height/2 (autoTable da aynı şekilde hizalar)
+    const textY = data.cell.y + data.cell.height / 2;
+    const nameX = data.cell.x + padLeft;
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    doc.text(namePart, nameX, textY, { baseline: "middle" });
+    const nameWidth = doc.getTextWidth(namePart);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(67, 56, 202);
+    doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(temelFont);
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // PDF KOLON GENİŞLİKLERİ — TÜM tablolarda AYNI (mm). autoTable varsayılanı içeriğe göre
+  // otomatik ölçüyordu: teknik personeli olan işte "Teknik Personel" sütunu genişliyor, olmayanda
+  // daralıyor, sütunlar iş iş kayıyordu ve işler karşılaştırılamıyordu. Sabitlendi → her tablo
+  // birebir aynı hizada. Toplam yatay A4 kullanılabilir genişliğe eşittir: 297 − 14 − 14 = 269 mm.
+  //   Sira 12 · Ad Soyad 58 · TC 26 · Gorev 34 · Ise Baslama 22 · Isten Cikis 22 · Gun 12 · Teknik 44 · Not 39
+  // Ad Soyad 58: en uzun gerçek isim + " (Teknik Personel)" eki 58,8 mm — 55 mm'lik iç alana
+  // yalnız en uzun birkaç isim sığmaz, onlarda yazı ~%6 küçülür (bkz. pdfTeknikAdCiz).
+  const PDF_KOL_SIRALI = {
+    0: { cellWidth: 12 }, 1: { cellWidth: 58 }, 2: { cellWidth: 26 }, 3: { cellWidth: 34 },
+    4: { cellWidth: 22 }, 5: { cellWidth: 22 }, 6: { cellWidth: 12 }, 7: { cellWidth: 44 },
+    8: { cellWidth: 39 },
+  } as const;
+  // Alt özet tabloları "Sira" sütunu içermez → onun 12 mm'si Ad Soyad'a eklenir (58+12=70).
+  // Böylece kalan sütunlar üstteki tablolarla AYNI x konumunda başlar.
+  const PDF_KOL_OZET = {
+    0: { cellWidth: 70 }, 1: { cellWidth: 26 }, 2: { cellWidth: 34 }, 3: { cellWidth: 22 },
+    4: { cellWidth: 22 }, 5: { cellWidth: 12 }, 6: { cellWidth: 44 }, 7: { cellWidth: 39 },
+  } as const;
+
   function exportPDF() {
     const rows = exportSantiyeBazli();
     if (rows.length === 0) { toast.error("İndirilecek kayıt yok."); return; }
@@ -3551,6 +3618,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           },
           alternateRowStyles: { fillColor: altRgb },
           margin: { left: 14, right: 14 },
+          tableWidth: 269,                 // sayfa genişliğine sabitle (içeriğe göre daralmasın)
+          columnStyles: PDF_KOL_SIRALI,    // TÜM işlerde aynı sütun genişliği
           // Çalışılmayan dönem satırları → gri + italik (gözden kaçmasın).
           didParseCell: (data) => {
             if (data.section === "body" && list[data.row.index]?.calisilmayan) {
@@ -3563,47 +3632,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // sonra metni iki parça halinde elle çiz. autoTable ile aynı baseline + padding.
           didDrawCell: (data) => {
             if (data.section !== "body" || data.column.index !== 1) return;
-            const fullTxt = String(data.cell.raw ?? "");
-            const marker = " (Teknik Personel)";
-            const idx = fullTxt.lastIndexOf(marker);
-            if (idx < 0) return;
-            const namePart = fullTxt.slice(0, idx);
-            const suffixPart = fullTxt.slice(idx);
-            // Mevcut hücreyi dolgu rengiyle kapla (kenarlığı koru — 0.15mm inset)
-            let fillRgb: [number, number, number] = [255, 255, 255];
-            const fc = data.cell.styles.fillColor;
-            if (Array.isArray(fc) && fc.length >= 3) {
-              fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
-            }
-            doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
-            doc.rect(
-              data.cell.x + 0.15,
-              data.cell.y + 0.15,
-              data.cell.width - 0.3,
-              data.cell.height - 0.3,
-              "F",
-            );
-            // Padding'i hücreden çek (cellPadding sayı veya obje olabilir)
-            const cp = data.cell.styles.cellPadding;
-            let padLeft = 1.5;
-            if (typeof cp === "number") padLeft = cp;
-            else if (cp && typeof cp === "object" && "left" in cp) {
-              padLeft = (cp as { left: number }).left;
-            }
-            const fontSize = (data.cell.styles.fontSize as number) ?? 8;
-            // baseline:"middle" → Y = cell.y + cell.height/2 (autoTable da aynı şekilde hizalar)
-            const textY = data.cell.y + data.cell.height / 2;
-            const nameX = data.cell.x + padLeft;
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(fontSize);
-            doc.setTextColor(0, 0, 0);
-            doc.text(namePart, nameX, textY, { baseline: "middle" });
-            const nameWidth = doc.getTextWidth(namePart);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(67, 56, 202);
-            doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(0, 0, 0);
+            pdfTeknikAdCiz(doc, data);
           },
         });
         // @ts-expect-error autoTable lastAutoTable typing
@@ -3650,47 +3679,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         headStyles: { fillColor: [50, 50, 50], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
+        tableWidth: 269,
+        columnStyles: PDF_KOL_OZET,
         // 30 günü aşanlar — ad sütunu index 0; autoTable ile aynı baseline + padding kullan
         didDrawCell: (data) => {
           if (data.section !== "body" || data.column.index !== 0) return;
-          const fullTxt = String(data.cell.raw ?? "");
-          const marker = " (Teknik Personel)";
-          const idx = fullTxt.lastIndexOf(marker);
-          if (idx < 0) return;
-          const namePart = fullTxt.slice(0, idx);
-          const suffixPart = fullTxt.slice(idx);
-          let fillRgb: [number, number, number] = [255, 255, 255];
-          const fc = data.cell.styles.fillColor;
-          if (Array.isArray(fc) && fc.length >= 3) {
-            fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
-          }
-          doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
-          doc.rect(
-            data.cell.x + 0.15,
-            data.cell.y + 0.15,
-            data.cell.width - 0.3,
-            data.cell.height - 0.3,
-            "F",
-          );
-          const cp = data.cell.styles.cellPadding;
-          let padLeft = 1.5;
-          if (typeof cp === "number") padLeft = cp;
-          else if (cp && typeof cp === "object" && "left" in cp) {
-            padLeft = (cp as { left: number }).left;
-          }
-          const fontSize = (data.cell.styles.fontSize as number) ?? 8;
-          const textY = data.cell.y + data.cell.height / 2;
-          const nameX = data.cell.x + padLeft;
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(fontSize);
-          doc.setTextColor(0, 0, 0);
-          doc.text(namePart, nameX, textY, { baseline: "middle" });
-          const nameWidth = doc.getTextWidth(namePart);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(67, 56, 202);
-          doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(0, 0, 0);
+          pdfTeknikAdCiz(doc, data);
         },
       });
       // @ts-expect-error autoTable lastAutoTable typing
@@ -3734,46 +3728,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         headStyles: { fillColor: [59, 92, 126], textColor: 255 },
         alternateRowStyles: { fillColor: [240, 244, 248] },
         margin: { left: 14, right: 14 },
+        tableWidth: 269,
+        columnStyles: PDF_KOL_OZET,
         didDrawCell: (data) => {
           if (data.section !== "body" || data.column.index !== 0) return;
-          const fullTxt = String(data.cell.raw ?? "");
-          const marker = " (Teknik Personel)";
-          const idx = fullTxt.lastIndexOf(marker);
-          if (idx < 0) return;
-          const namePart = fullTxt.slice(0, idx);
-          const suffixPart = fullTxt.slice(idx);
-          let fillRgb: [number, number, number] = [255, 255, 255];
-          const fc = data.cell.styles.fillColor;
-          if (Array.isArray(fc) && fc.length >= 3) {
-            fillRgb = [fc[0] as number, fc[1] as number, fc[2] as number];
-          }
-          doc.setFillColor(fillRgb[0], fillRgb[1], fillRgb[2]);
-          doc.rect(
-            data.cell.x + 0.15,
-            data.cell.y + 0.15,
-            data.cell.width - 0.3,
-            data.cell.height - 0.3,
-            "F",
-          );
-          const cp = data.cell.styles.cellPadding;
-          let padLeft = 1.5;
-          if (typeof cp === "number") padLeft = cp;
-          else if (cp && typeof cp === "object" && "left" in cp) {
-            padLeft = (cp as { left: number }).left;
-          }
-          const fontSize = (data.cell.styles.fontSize as number) ?? 8;
-          const textY = data.cell.y + data.cell.height / 2;
-          const nameX = data.cell.x + padLeft;
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(fontSize);
-          doc.setTextColor(0, 0, 0);
-          doc.text(namePart, nameX, textY, { baseline: "middle" });
-          const nameWidth = doc.getTextWidth(namePart);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(67, 56, 202);
-          doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(0, 0, 0);
+          pdfTeknikAdCiz(doc, data);
         },
       });
     }
