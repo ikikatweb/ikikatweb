@@ -56,6 +56,8 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
   const [tarihDuzen, setTarihDuzen] = useState<{ id: string; val: string } | null>(null);
   // Seçili satırlar (tik kutuları) — toplam görüntüleme + toplu silme için
   const [secili, setSecili] = useState<Set<string>>(new Set());
+  // "Tümünü Sıfırla" onay penceresi (native confirm yerine — bkz. tumunuSifirlaOnayli)
+  const [tumSilOnay, setTumSilOnay] = useState(false);
 
   useEffect(() => {
     let iptal = false;
@@ -212,8 +214,11 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
     try { await deleteOdemePlaniKasa(id); setKasa((p) => p.filter((k) => k.id !== id)); }
     catch { toast.error("Silinemedi."); }
   }
-  async function tumunuSifirla() {
-    if (typeof window !== "undefined" && !window.confirm("TÜM ödeme planı verileri (satırlar + kasa listesi) KALICI olarak silinecek. Bu işlem geri alınamaz. Emin misiniz?")) return;
+  // TÜMÜNÜ SIFIRLA — native window.confirm YETMEDİ: "Tamam" refleksle tıklanıp tüm plan silindi
+  // (01.09.2026, yedekten geri yüklendi). Yerine uygulama içi onay penceresi: kaç kaydın gideceğini
+  // yazar, varsayılan/odaklı buton "Hayır"dır, "Evet" ayrı ve kırmızıdır.
+  async function tumunuSifirlaOnayli() {
+    setTumSilOnay(false);
     try { await deleteTumOdemePlani(); setSatirlar([]); setKasa([]); toast.success("Tüm veriler silindi."); }
     catch { toast.error("Sıfırlanamadı."); }
   }
@@ -298,7 +303,7 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
             </button>
           )}
           {canSil && (satirlar.length > 0 || kasa.length > 0) && (
-            <button type="button" onClick={tumunuSifirla}
+            <button type="button" onClick={() => setTumSilOnay(true)}
               className="flex items-center gap-1.5 h-8 px-3 text-xs rounded-md border border-red-300 text-red-600 hover:bg-red-50">
               <Trash2 size={14} /> Tümünü Sıfırla
             </button>
@@ -447,6 +452,35 @@ export default function OdemePlani({ canEkle, canDuzenle, canSil }: { canEkle: b
       <p className="text-[11px] text-gray-400 mt-3">
         Kümülatif otomatik: başlangıç = “Kullanılabilir Krediler ve Kasa” toplamı, her satırda gider düşülür / gelir eklenir.
       </p>
+
+      {/* TÜMÜNÜ SIFIRLA ONAYI — kaç kaydın silineceğini açıkça yazar. "Hayır" varsayılan/odaklı ve
+          geniş; "Evet" ayrı köşede kırmızı → yanlışlıkla tıklanması zor. ESC / dışarı tıklama = vazgeç. */}
+      {tumSilOnay && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setTumSilOnay(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-red-700 flex items-center gap-2">
+              <Trash2 size={18} /> Tüm ödeme planı silinsin mi?
+            </h3>
+            <p className="text-sm text-gray-700 mt-3 leading-relaxed">
+              <strong>{satirlar.length} ödeme/tahsilat satırı</strong> ve <strong>{kasa.length} kasa/kredi kaydı</strong> kalıcı olarak silinecek.
+            </p>
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2 mt-3">
+              Bu işlem geri alınamaz. Geri getirmenin tek yolu haftalık yedektir; yedekten sonra girilen kayıtlar kaybolur.
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" autoFocus onClick={() => setTumSilOnay(false)}
+                className="h-9 px-5 rounded-md bg-[#1E3A5F] text-white text-sm font-semibold hover:bg-[#2a4f7a]">
+                Hayır, vazgeç
+              </button>
+              <button type="button" onClick={tumunuSifirlaOnayli}
+                className="h-9 px-4 rounded-md border border-red-300 text-red-600 text-sm hover:bg-red-50">
+                Evet, sil
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
