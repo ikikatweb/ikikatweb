@@ -40,3 +40,26 @@ export function parseParaInput(formatted: string): number {
   const n = parseFloat(temiz);
   return isNaN(n) ? 0 : n;
 }
+
+// Toplama/çıkarma İFADESİ olarak para değeri: "500+100" → 600, "1.500,50-250" → 1250,5
+// Kullanıcı mevcut değerin üzerine ekleme yapabilsin diye (işçilik durum raporunda fiyat farkı,
+// keşif artışı vb. hücrelerde). Düz sayı da kabul edilir. Geçersiz ifadede null döner —
+// çağıran eski değeri koruyup uyarı gösterebilir.
+//
+// TR biçimi korunur: nokta BİNLİK ayraç, virgül ONDALIK. Yani "1.500" bin beş yüzdür.
+export function paraIfadeHesapla(ham: string): number | null {
+  const s = (ham ?? "").replace(/[\s₺]/g, "");
+  if (!s) return null;
+  // Terimlere ayır: baştaki işaret dahil ("-500+100" → ["-500", "+100"])
+  const terimler = s.match(/[+-]?[^+-]+/g);
+  if (!terimler) return null;
+  let toplam = 0;
+  for (const t of terimler) {
+    const isaret = t.startsWith("-") ? -1 : 1;
+    const govde = t.replace(/^[+-]/, "");
+    const temiz = govde.replace(/\./g, "").replace(",", ".");
+    if (!/^\d+(\.\d+)?$/.test(temiz)) return null;   // rakam dışı içerik → geçersiz
+    toplam += isaret * parseFloat(temiz);
+  }
+  return Number.isFinite(toplam) ? toplam : null;
+}

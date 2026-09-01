@@ -33,6 +33,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { paraIfadeHesapla } from "@/lib/utils/para-format";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
 import type { PersonelAtamaManuelGun, PersonelAtamaGecmisi, Personel, PersonelBrutUcret } from "@/lib/supabase/types";
@@ -332,8 +333,18 @@ export default function IscilikTakibiPage() {
 
     let value: string | number | null = editValue || null;
     if (col.type === "para") {
-      const cleaned = editValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
-      value = cleaned ? parseFloat(cleaned) : null;
+      // "500+100" gibi TOPLAMA/ÇIKARMA ifadesi de kabul edilir → 600 kaydedilir.
+      // Önceden "+" karakteri süzülüp atıldığı için "500+100" sessizce 500100 oluyordu.
+      if (editValue.trim() === "") {
+        value = null;
+      } else {
+        const hesap = paraIfadeHesapla(editValue);
+        if (hesap == null) {
+          toast.error("Geçersiz tutar. Örnek: 500 veya 500+100");
+          return;   // editing açık kalsın, kullanıcı düzeltsin
+        }
+        value = hesap;
+      }
     }
 
     try {
@@ -940,6 +951,7 @@ export default function IscilikTakibiPage() {
                             onChange={(e) => setEditValue(e.target.value)}
                             onBlur={saveEdit}
                             onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }}
+                            title={col.type === "para" ? "Mevcut değerin üzerine ekleyebilirsiniz: 500+100 → 600 (çıkarma için 500-100)" : undefined}
                             className="h-6 text-xs px-1 min-w-[80px]" />
                         </TableCell>
                       );
