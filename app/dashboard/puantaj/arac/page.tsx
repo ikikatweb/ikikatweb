@@ -134,7 +134,7 @@ function tr(s: string): string {
 }
 
 export default function AracPuantajPage() {
-  const { kullanici, hasPermission, sadeceKendiKayitlari } = useAuth();
+  const { kullanici, hasPermission, isYonetici, sadeceKendiKayitlari } = useAuth();
   const yEkle = hasPermission("puantaj-arac", "ekle");
   const yDuzenle = hasPermission("puantaj-arac", "duzenle");
   const ySil = hasPermission("puantaj-arac", "sil");
@@ -190,10 +190,10 @@ export default function AracPuantajPage() {
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
   const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
   const [yakitGoster, setYakitGoster] = useOturumFiltresi("puantaj-arac:yakit", true);
-  // YAKIT YETKİSİ: yakıt litreleri yalnız YÖNETİCİ ve ŞANTİYE ADMİNİ'ne gösterilir.
-  // sadeceKendiKayitlari === true → "kısıtlı" rolü. Kısıtlıda ne değerler ne de
-  // "Yakıtı Gizle/Göster" düğmesi görünür; özet rapor ve PDF/Excel çıktılarında da sütun hiç yer almaz.
-  const yakitYetkili = !sadeceKendiKayitlari;
+  // YAKIT YETKİSİ: yakıt litreleri YALNIZ YÖNETİCİ rolüne gösterilir.
+  // Şantiye admini ve kısıtlı kullanıcı göremez: ne hücrelerdeki litre rozeti, ne
+  // "Yakıtı Gizle/Göster" düğmesi; özet rapor ile PDF/Excel çıktılarında da sütun hiç yer almaz.
+  const yakitYetkili = isYonetici;
   const yakitGorunur = yakitYetkili && yakitGoster;
   // ÇIKTI SEÇİMİ: işaretli araçlar PDF/Excel çıktısına girer; HİÇBİRİ seçili değilse TÜMÜ çıkar
   // (eski davranış). Şantiye değişince temizlenir (başka şantiyenin araç id'leri bayat kalmasın).
