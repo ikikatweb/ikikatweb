@@ -150,6 +150,10 @@ export default function PersonelPuantajPage() {
 
   const [puantajlar, setPuantajlar] = useState<PersonelPuantaj[]>([]);
   // personel_id -> gun -> { santiye_id, santiye_adi }
+  // Yüklenmiş verinin AİT OLDUĞU ay+şantiye — bkz. veriHazir. Ay değiştirilince state bir
+  // render boyunca ESKİ ayın kayıtlarını tutuyor (fetch efekti render'dan SONRA çalışır);
+  // o kayıtlar yeni ayın sütunlarında çizilip sonra kayboluyordu.
+  const [veriAnahtari, setVeriAnahtari] = useState<string>("");
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
   >(new Map());
@@ -324,6 +328,7 @@ export default function PersonelPuantajPage() {
     setPuantajlar([]);
     setDigerCakismalar(new Map());
     setDigerSantiyeRecords([]);
+    setVeriAnahtari("");
     try {
       const data = await getPersonelPuantajByAySantiye(santiyeId, yil, ay);
       setPuantajlar(data);
@@ -339,6 +344,7 @@ export default function PersonelPuantajPage() {
       setDigerCakismalar(m);
       // Ham listeyi de sakla — izin orantı hesabı (personelIzinGosterim) bunu kullanır
       setDigerSantiyeRecords(cakismalar);
+      setVeriAnahtari(`${yil}-${ay}|${santiyeId}`);   // bu veri BU ay+şantiyeye ait
     } catch {
       toast.error("Puantaj verileri yüklenirken hata oluştu.");
     }
@@ -492,15 +498,18 @@ export default function PersonelPuantajPage() {
   }
 
   // personel_id -> gun -> puantaj
+  // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez.
+  const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
   const personelGunMap = useMemo(() => {
     const m = new Map<string, Map<number, PersonelPuantaj>>();
+    if (!veriHazir) return m;
     for (const p of puantajlar) {
       const gun = parseInt(p.tarih.slice(8, 10), 10);
       if (!m.has(p.personel_id)) m.set(p.personel_id, new Map());
       m.get(p.personel_id)!.set(gun, p);
     }
     return m;
-  }, [puantajlar]);
+  }, [puantajlar, veriHazir]);
 
   // Bir personelin o ay içindeki toplam çalıştığı gün sayısı
   // Gelmedi hariç tüm durumlar çalışmış sayılır (yarım gün dahil 1 tam gün)
@@ -1366,7 +1375,7 @@ export default function PersonelPuantajPage() {
                       // kayıtlı olması bu satırın kafa karıştırıcı şekilde kilitlenmesine yol açar.
                       // Mevcut şantiyede puantaj kaydı varsa (pg) o görünür; yoksa boş hücre kalır.
                       const digerCakisma = !pg && !pasifGun && !pasif
-                        ? digerCakismalar.get(p.id)?.get(g)
+                        ? (veriHazir ? digerCakismalar.get(p.id)?.get(g) : null)
                         : null;
                       const kilitli = !!digerCakisma;
 

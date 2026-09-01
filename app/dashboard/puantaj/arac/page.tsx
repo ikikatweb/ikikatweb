@@ -200,6 +200,10 @@ export default function AracPuantajPage() {
   const [ciktiSecimi, setCiktiSecimi] = useState<Set<string>>(new Set());
   useEffect(() => { setCiktiSecimi(new Set()); }, [santiyeId]);
   // Diğer şantiye çakışmaları: arac_id -> (gün -> { santiye_id, santiye_adi })
+  // Yüklenmiş verinin AİT OLDUĞU ay+şantiye. Ay değiştirince state bir render boyunca
+  // ESKİ ayın kayıtlarını tutuyor (fetch efekti render'dan SONRA çalışır) ve o kayıtlar yeni
+  // ayın sütunlarında çizilip sonra kayboluyordu. Anahtar eşleşmeyen veri hiç kullanılmaz.
+  const [veriAnahtari, setVeriAnahtari] = useState<string>("");
   const [digerCakismalar, setDigerCakismalar] = useState<
     Map<string, Map<number, { santiye_id: string; santiye_adi: string }>>
   >(new Map());
@@ -356,6 +360,7 @@ export default function AracPuantajPage() {
     setPuantajlar([]);
     setAylikYakitlar([]);
     setDigerCakismalar(new Map());
+    setVeriAnahtari("");
     try {
       const baslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
       // Bitiş: ayın SON GÜNÜ (kapsayıcı). Önceden sonraki ayın 1'i kullanılıyordu
@@ -368,15 +373,6 @@ export default function AracPuantajPage() {
         getAracPuantajByAySantiye(santiyeId, yil, ay),
         getAracYakitlarByRange(null, baslangic, bitis).catch(() => [] as AracYakit[]),
       ]);
-      console.log("[PUANTAJ YÜKLEME]", {
-        santiyeId, yil, ay, baslangic, bitis,
-        kayitSayisi: data.length,
-        gunDagilimi: data.reduce((acc, p) => {
-          const gun = parseInt(p.tarih.slice(8, 10), 10);
-          acc[gun] = (acc[gun] ?? 0) + 1;
-          return acc;
-        }, {} as Record<number, number>),
-      });
       setPuantajlar(data);
       setAylikYakitlar(yakitData);
 
@@ -391,6 +387,7 @@ export default function AracPuantajPage() {
         m.get(c.arac_id)!.set(gun, { santiye_id: c.santiye_id, santiye_adi: c.santiye_adi });
       }
       setDigerCakismalar(m);
+      setVeriAnahtari(`${yil}-${ay}|${santiyeId}`);   // bu veri BU ay+şantiyeye ait
     } catch { toast.error("Puantaj verileri yüklenirken hata oluştu."); }
   }, [santiyeId, yil, ay]);
 
@@ -556,21 +553,26 @@ export default function AracPuantajPage() {
   }, [araclar, puantajlar, santiyeId, puantajArama]);
 
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
+  // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez —
+  // ay değiştirildiği anki ilk render'da eski ayın puantajları görünüp kayboluyordu.
+  const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
   const aracGunMap = useMemo(() => {
     const m = new Map<string, Map<number, AracPuantaj>>();
+    if (!veriHazir) return m;
     for (const p of puantajlar) {
       const gun = parseInt(p.tarih.slice(8, 10), 10);
       if (!m.has(p.arac_id)) m.set(p.arac_id, new Map());
       m.get(p.arac_id)!.set(gun, p);
     }
     return m;
-  }, [puantajlar]);
+  }, [puantajlar, veriHazir]);
 
   // Hızlı erişim: arac_id -> Map<gün, toplam yakıt lt>
   // Sadece SEÇİLİ ŞANTİYE'de alınan yakıtlar — diğer şantiyelerin yakıtları
   // bu sayfada görünmemeli (kullanıcının bulunduğu şantiyenin verileri).
   const aracGunYakitMap = useMemo(() => {
     const m = new Map<string, Map<number, number>>();
+    if (!veriHazir) return m;
     for (const y of aylikYakitlar) {
       if (santiyeId && y.santiye_id !== santiyeId) continue;
       const gun = parseInt(y.tarih.slice(8, 10), 10);
@@ -579,7 +581,7 @@ export default function AracPuantajPage() {
       gMap.set(gun, (gMap.get(gun) ?? 0) + y.miktar_lt);
     }
     return m;
-  }, [aylikYakitlar, santiyeId]);
+  }, [aylikYakitlar, santiyeId, veriHazir]);
 
   // Özet rapor — arac_id + dönem tarih aralığı -> toplam yakıt lt
   function ozetAracYakitToplam(aracId: string, donemBaslangic: string, donemBitis: string): number {
@@ -2059,7 +2061,7 @@ export default function AracPuantajPage() {
                       const haftaSonu = gunHaftaSonu(g);
                       const notVar = !!p?.aciklama;
                       // Bu gün başka şantiyede puantajlı mı? (Bu şantiyede de kayıt varsa, bu şantiye kazanır)
-                      const digerCakisma = !p ? digerCakismalar.get(a.id)?.get(g) : null;
+                      const digerCakisma = !p && veriHazir ? digerCakismalar.get(a.id)?.get(g) : null;
                       const kilitli = !!digerCakisma;
 
                       // GÖRÜNTÜLEME SINIRI dışındaki gün: veri hiç çizilmez (durum, not, yakıt — hepsi gizli).
