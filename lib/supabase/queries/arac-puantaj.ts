@@ -26,6 +26,7 @@ export async function getAracPuantajByRange(
       .eq("santiye_id", santiyeId)
       .gte("tarih", baslangic)
       .lt("tarih", bitis)
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) throw error;
     const parcaRows = (data ?? []) as AracPuantaj[];
@@ -62,6 +63,7 @@ export async function getAracPuantajByAySantiye(
       .eq("santiye_id", santiyeId)
       .gte("tarih", baslangic)
       .lt("tarih", bitis)
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) throw error;
     const parcaRows = (data ?? []) as AracPuantaj[];
@@ -113,6 +115,7 @@ export async function getAracPuantajByAyWithRelations(
       .eq("santiye_id", santiyeId)
       .gte("tarih", baslangic)
       .lt("tarih", bitis)
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) throw error;
     const parcaRows = (data ?? []) as Record<string, unknown>[];
@@ -151,6 +154,7 @@ export async function getDigerSantiyeCakismalari(
       .neq("santiye_id", haricSantiyeId)
       .gte("tarih", baslangic)
       .lt("tarih", bitis)
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (aracIds && aracIds.length > 0) {
       query = query.in("arac_id", aracIds);

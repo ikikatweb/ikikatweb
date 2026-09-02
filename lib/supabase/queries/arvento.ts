@@ -462,6 +462,7 @@ export async function getArventoOrtalamalar(): Promise<Map<string, ArventoOrtala
     const { data, error } = await supabase
       .from("arac_arvento_rapor")
       .select("plaka, mesafe_km, damper_sayisi, surucu")
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) break;
     const parca = (data ?? []) as { plaka: string; mesafe_km: number | null; damper_sayisi: number | null; surucu: string | null }[];
@@ -498,6 +499,7 @@ export async function getArventoHamKayitlar(): Promise<ArventoHamKayit[]> {
     const { data, error } = await supabase
       .from("arac_arvento_rapor")
       .select("plaka, mesafe_km, damper_sayisi, surucu")
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) break;
     const parca = (data ?? []) as ArventoHamKayit[];

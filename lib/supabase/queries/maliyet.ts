@@ -17,6 +17,9 @@ function getSupabase() {
 }
 
 // İşveren + işçi toplam SGK prim oranı (prim esas kazanç üzerinden).
+// SAYFALAMA NOTU: 1000'erlik .range() ile veri cekilen her sorguda SABIT bir .order("id")
+// zorunludur. Siralama olmadan PostgreSQL sayfalar arasinda ayni siriyi garanti etmez;
+// bazi satirlar iki kez gelir, bazilari hic gelmez → rapor toplamlari her yuklemede degisir.
 export const SGK_ORAN = 0.375;
 
 export type MaliyetSatir = {
@@ -86,7 +89,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
 
   // ── Şantiyeler ──
   const santiyeler = await tumSatirlar<{ id: string; is_adi: string }>((o, p) =>
-    supabase.from("santiyeler").select("id, is_adi").range(o, o + p - 1),
+    supabase.from("santiyeler").select("id, is_adi").order("id", { ascending: true }).range(o, o + p - 1),
   );
   const satirMap = new Map<string, MaliyetSatir>();
   for (const s of santiyeler) {
@@ -101,7 +104,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   // ── 1+2. Kasa harcamaları (nakit / kart) ──
   const kasa = await tumSatirlar<{ santiye_id: string; tip: string; odeme_yontemi: string; tutar: number }>((o, p) =>
     supabase.from("kasa_hareketi").select("santiye_id, tip, odeme_yontemi, tutar")
-      .gte("tarih", bas).lte("tarih", bit).eq("tip", "gider").range(o, o + p - 1),
+      .gte("tarih", bas).lte("tarih", bit).eq("tip", "gider").order("id", { ascending: true }).range(o, o + p - 1),
   );
   for (const h of kasa) {
     const r = sat(h.santiye_id);
@@ -115,14 +118,14 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   // ücret = brüt ücret (varsa) yoksa o yılın günlük ücreti. Manuel gün girişleri (varsa)
   // doğal hesabın yerine geçer (personel|ay bazında) — prim-hesap.ts ile aynı mantık.
   const atamalar = await tumSatirlar<PersonelAtamaGecmisi>((o, p) =>
-    supabase.from("personel_atama_gecmisi").select("*").range(o, o + p - 1),
+    supabase.from("personel_atama_gecmisi").select("*").order("id", { ascending: true }).range(o, o + p - 1),
   );
   const manuelGunler = await tumSatirlar<PersonelAtamaManuelGun>((o, p) =>
-    supabase.from("personel_atama_manuel_gun").select("*").range(o, o + p - 1),
+    supabase.from("personel_atama_manuel_gun").select("*").order("id", { ascending: true }).range(o, o + p - 1),
   );
   // Maaş kaynağı: Personeller tablosundaki "Maaş" (personel.maas; yoksa brut_ucret). Tek güncel değer.
   const personeller = await tumSatirlar<{ id: string; maas: number | null; brut_ucret: number | null }>((o, p) =>
-    supabase.from("personel").select("id, maas, brut_ucret").range(o, o + p - 1),
+    supabase.from("personel").select("id, maas, brut_ucret").order("id", { ascending: true }).range(o, o + p - 1),
   );
   const maasMap = new Map<string, number>();
   for (const x of personeller) maasMap.set(x.id, x.maas ?? x.brut_ucret ?? 0);
@@ -194,12 +197,12 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   }
   // SGK = Yüklenici Prim Esas Kazanç (İşçilik Durum Raporu "Yüklenici Veri Girişi", aralıktaki aylar) × 0,375
   const takipler = await tumSatirlar<{ id: string; santiye_id: string }>((o, p) =>
-    supabase.from("iscilik_takibi").select("id, santiye_id").range(o, o + p - 1),
+    supabase.from("iscilik_takibi").select("id, santiye_id").order("id", { ascending: true }).range(o, o + p - 1),
   );
   const takibiSantiye = new Map<string, string>();
   for (const t of takipler) takibiSantiye.set(t.id, t.santiye_id);
   const ayliklar = await tumSatirlar<{ iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar: number | null }>((o, p) =>
-    supabase.from("iscilik_aylik").select("iscilik_takibi_id, ait_oldugu_ay, yuklenici_tutar").range(o, o + p - 1),
+    supabase.from("iscilik_aylik").select("iscilik_takibi_id, ait_oldugu_ay, yuklenici_tutar").order("id", { ascending: true }).range(o, o + p - 1),
   );
   for (const a of ayliklar) {
     const n = ayYilNum(a.ait_oldugu_ay);
@@ -236,7 +239,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   };
   const yakitlar = await tumSatirlar<{ santiye_id: string; miktar_lt: number; duzeltme: boolean | null }>((o, p) =>
     supabase.from("arac_yakit").select("santiye_id, miktar_lt, duzeltme")
-      .gte("tarih", bas).lte("tarih", bit).range(o, o + p - 1),
+      .gte("tarih", bas).lte("tarih", bit).order("id", { ascending: true }).range(o, o + p - 1),
   );
   for (const y of yakitlar) {
     if (y.duzeltme === true) continue; // düzeltme kaydı = gerçek dolum değil
@@ -248,7 +251,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   // tip'e BAKILMAZ: öz mal da olsa kira bedeli girilmişse o, şantiyenin makine maliyetidir
   // (firma kendi makinesine de iç kira bedeli atayabilir). Kriter = kira bedeli kaydı VAR.
   const araclar = await tumSatirlar<{ id: string; santiye_id: string | null }>((o, p) =>
-    supabase.from("araclar").select("id, santiye_id").range(o, o + p - 1),
+    supabase.from("araclar").select("id, santiye_id").order("id", { ascending: true }).range(o, o + p - 1),
   );
   const aracSantiye = new Map<string, string | null>();
   for (const a of araclar) aracSantiye.set(a.id, a.santiye_id);
@@ -269,7 +272,7 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
     //    o gün araç dış görevde, kira oraya yazılır.) Çalışıp çalışmadığına bakılmaz; makine orada/kirada.
     const puantajlar = await tumSatirlar<{ arac_id: string; santiye_id: string; tarih: string; durum: string }>((o, p) =>
       supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih, durum").in("arac_id", kiraAracIds)
-        .gte("tarih", bas).lte("tarih", bit).neq("durum", "dis_gorev").range(o, o + p - 1),
+        .gte("tarih", bas).lte("tarih", bit).neq("durum", "dis_gorev").order("id", { ascending: true }).range(o, o + p - 1),
     );
     for (const pj of puantajlar) {
       const r = sat(pj.santiye_id);
@@ -285,13 +288,13 @@ export async function getMaliyetRaporu(bas: string, bitIstenen: string): Promise
   // tarihli puantaj; o da yoksa aracın atalı şantiyesi.
   const bakimlar = await tumSatirlar<{ arac_id: string; bakim_tarihi: string; tutar: number | null }>((o, p) =>
     supabase.from("arac_bakim").select("arac_id, bakim_tarihi, tutar")
-      .gte("bakim_tarihi", bas).lte("bakim_tarihi", bit).range(o, o + p - 1),
+      .gte("bakim_tarihi", bas).lte("bakim_tarihi", bit).order("id", { ascending: true }).range(o, o + p - 1),
   );
   if (bakimlar.length > 0) {
     const bakimAracIds = [...new Set(bakimlar.map((b) => b.arac_id))];
     const bkPuantaj = await tumSatirlar<{ arac_id: string; santiye_id: string; tarih: string }>((o, p) =>
       supabase.from("arac_puantaj").select("arac_id, santiye_id, tarih").in("arac_id", bakimAracIds)
-        .gte("tarih", bas).lte("tarih", bit).range(o, o + p - 1),
+        .gte("tarih", bas).lte("tarih", bit).order("id", { ascending: true }).range(o, o + p - 1),
     );
     const puByArac = new Map<string, { tarih: string; santiye_id: string }[]>();
     for (const pj of bkPuantaj) {

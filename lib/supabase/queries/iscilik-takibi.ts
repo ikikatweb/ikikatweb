@@ -83,6 +83,7 @@ export async function getKesifArtisMap(): Promise<Map<string, number>> {
     const { data, error } = await supabase
       .from("iscilik_takibi")
       .select("santiye_id, kesif_artisi")
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) throw error;
     const parca = (data ?? []) as { santiye_id: string; kesif_artisi: number | null }[];
@@ -300,6 +301,7 @@ export async function getTumIscilikAyliklari() {
     const { data, error } = await supabase
       .from("iscilik_aylik")
       .select("iscilik_takibi_id, ait_oldugu_ay, alt_yuklenici_tutar, yuklenici_tutar")
+      .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
       .range(offset, offset + PARCA - 1);
     if (error) throw error;
     const parca = (data ?? []) as typeof sonuc;

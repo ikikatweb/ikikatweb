@@ -80,6 +80,7 @@ export async function getKasaDevirBakiyeleri(bitisTarihi: string): Promise<Map<s
         .select("personel_id, tip, tutar")
         .eq("odeme_yontemi", "nakit")
         .lte("tarih", bitisTarihi)
+        .order("id", { ascending: true })   // sayfalama için SABİT sıra — yoksa sayfalar arası satır kayar
         .range(offset, offset + PARCA - 1);
       if (error) throw error;
       const parca = (data ?? []) as { personel_id: string; tip: string; tutar: number }[];
