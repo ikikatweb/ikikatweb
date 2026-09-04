@@ -182,6 +182,16 @@ function ManuelTetikBtn({ raporSon, onTetik, onSuresiDoldu }: { raporSon: number
   );
 }
 
+// Tam ekran panelinde gösterilen HARİTA sekmeleri (panel sırası da budur).
+type HaritaSekmeKey = "guzergah" | "genel" | "serme" | "sikistirma" | "tumu";
+const HARITA_SEKMELERI: [HaritaSekmeKey, string][] = [
+  ["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"],
+];
+// Sekme → çizim operasyonu (ArventoTumu filtresi). "tumu" seçilirse filtre uygulanmaz (hepsi çizilir).
+const SEKME_OPERASYON: Record<HaritaSekmeKey, ArventoSekme | null> = {
+  guzergah: "reglaj", genel: "stabilize", serme: "serme", sikistirma: "sikistirma", tumu: null,
+};
+
 export default function ArventoRaporPage() {
   const { hasPermission, kullanici, isYonetici, loading: authYukleniyor } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
@@ -281,6 +291,9 @@ export default function ArventoRaporPage() {
   const [aktifSekme, setAktifSekme] = useState<
     "calisma" | "ismakine" | "guzergah" | "genel" | "serme" | "sikistirma" | "tumu" | "tanimlamalar"
   >("calisma");
+  // ÇOKLU SEKME (tam ekran panelinde SAĞ TIK) — birden fazla operasyon TEK haritada üst üste çizilir.
+  // Boş/tek elemanlı = normal tek sekme görünümü. 2+ olunca birleşik harita açılır.
+  const [cokluSekmeler, setCokluSekmeler] = useState<Set<HaritaSekmeKey>>(new Set());
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
   // Ekrandaki verilerin en son tazelendiği an (haritalarda "Son güncelleme" olarak gösterilir)
@@ -1300,16 +1313,41 @@ export default function ArventoRaporPage() {
   // Sekme değişince o sekmenin bileşeni yeniden bağlanır → tarayıcı tam ekrandan çıkar; aşağıdaki
   // efekt yeni kapsayıcı için tam ekranı GERİ İSTER (tarayıcı, tıklamadan sonraki kısa süre içinde izin verir).
   // Tam ekranda haritanın SOLUNDA duran dikey sekme paneli (yalnız harita sekmeleri).
+  // TEK TIK → o sekmeye geç (birleşim varsa sıfırlanır).
+  // SAĞ TIK → sekmeyi seçime ekle/çıkar; 2+ seçiliyse hepsi TEK haritada üst üste çizilir.
+  // Seçili olan(lar) TURUNCU görünür. (Çift tık denendi ama tarayıcı çift tıkta önce iki kez onClick
+  // ürettiği için seçim boşalıyordu; sağ tık ayrı olay → tek tık anında çalışır.)
+  const cokluAcik = cokluSekmeler.size >= 2;
+  const sekmeSecimeEkle = (k: HaritaSekmeKey) => {
+    setCokluSekmeler((onceki) => {
+      const y = new Set(onceki);
+      if (y.size === 0) y.add(aktifSekme as HaritaSekmeKey);   // ilk sağ tıkta AÇIK sekme de dahil olsun
+      if (y.has(k)) y.delete(k); else y.add(k);
+      return y;
+    });
+  };
   const sekmePanel = (
     <div className="harita-sekme-panel">
-      {([["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"]] as const).map(([key, label]) => (
-        <button key={key} type="button" onClick={() => sekmeSec(key)}
-          className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors ${
-            aktifSekme === key ? "bg-[#1E3A5F] text-white" : "bg-white/90 text-gray-700 hover:bg-white"
-          }`}>
-          {label}
+      {HARITA_SEKMELERI.map(([key, label]) => {
+        const secili = cokluAcik ? cokluSekmeler.has(key) : aktifSekme === key;
+        return (
+          <button key={key} type="button"
+            onClick={() => { setCokluSekmeler(new Set()); sekmeSec(key); }}
+            onContextMenu={(e) => { e.preventDefault(); sekmeSecimeEkle(key); }}
+            title="Tek tık: bu sekmeye geç · Sağ tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
+            className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors select-none ${
+              secili ? "bg-[#F97316] text-white" : "bg-white/90 text-gray-700 hover:bg-white"
+            }`}>
+            {label}
+          </button>
+        );
+      })}
+      {cokluAcik && (
+        <button type="button" onClick={() => setCokluSekmeler(new Set())}
+          className="px-2 py-1 text-[10px] rounded-md bg-white/90 text-gray-600 hover:bg-white whitespace-nowrap">
+          birleşimi kapat
         </button>
-      ))}
+      )}
     </div>
   );
 
@@ -1418,7 +1456,12 @@ export default function ArventoRaporPage() {
       </div>
 
       {/* Tablo */}
-      {aktifSekme === "ismakine" ? (
+      {/* ÇOKLU SEKME BİRLEŞİMİ — panelde sağ tıkla 2+ sekme seçildiyse hepsi TEK haritada üst üste.
+          Çizim "Tümü" bileşenine yaptırılır; operasyonFiltre ile yalnız seçilenler çizilir. */}
+      {cokluAcik ? (
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} calismaNoktalari={ismakineNoktalar} sekmePanel={sekmePanel}
+          operasyonFiltre={cokluSekmeler.has("tumu") ? null : [...cokluSekmeler].map((k) => SEKME_OPERASYON[k]).filter((o): o is ArventoSekme => o !== null)} />
+      ) : aktifSekme === "ismakine" ? (
         // ---- SEKME: İŞ MAKİNELERİ — cinse göre, Arvento'nun tüm sütunlarıyla detaylı tablo ----
         <div className="space-y-3">
           {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
