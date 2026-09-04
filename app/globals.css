@@ -161,9 +161,10 @@ thead th {
 }
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel {
-  /* Sol üst Leaflet zoom (+/−) ve ölçek kontrolleri görünsün diye SOLDA ~52px boşluk bırakılır (panel ortalı
-     değil, soldan 52px – sağdan 8px arası tam genişlik beyaz bar). Özet yine sağda beyaz üstünde kalır. */
-  position: absolute; top: 8px; left: 52px; right: 8px; transform: none;
+  /* Sol üst Leaflet zoom (+/−) ve ölçek kontrolleri görünsün diye SOLDA ~52px boşluk bırakılır.
+     SAĞDA da ~216px boşluk bırakılır: hava durumu kutusu ile katman (🗺️) düğmesi orada duruyor ve
+     bar sağa kadar uzayınca ikisini de örtüyordu. */
+  position: absolute; top: 8px; left: 52px; right: 216px; transform: none;
   z-index: 1200; width: auto; max-width: none; max-height: none; overflow: hidden;
   margin: 0 !important; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
@@ -190,6 +191,9 @@ thead th {
    Konum: SOL KENAR, DİKEY ORTALI, butonlar alt alta. Üstteki araç kartları barı (top:8px) ve sol üstteki
    zoom/ölçüm kontrolleriyle çakışmaz — ortada oldukları için ikisinin de altında kalmaz. */
 .harita-sekme-panel { display: none; }
+/* Sağ üstteki Leaflet kontrolleri (hava durumu + katmanlar) kart barının (z-index 1200) ÜSTÜNDE kalsın. */
+.harita-tamekran-kapsayici:fullscreen .leaflet-top.leaflet-right,
+.harita-tamekran-kapsayici:-webkit-full-screen .leaflet-top.leaflet-right { z-index: 1250; }
 .harita-tamekran-kapsayici:fullscreen .harita-sekme-panel,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-sekme-panel {
   display: flex; flex-direction: column; gap: 4px;
