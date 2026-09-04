@@ -298,6 +298,21 @@ export default function ArventoRaporPage() {
     if (!katmanHaritaRefleri.current[k]) katmanHaritaRefleri.current[k] = { current: null };
     return katmanHaritaRefleri.current[k];
   };
+  // TABAN kart barının yüksekliği ölçülüp <body>'ye yazılır; üst katmanların barları buna göre
+  // hemen altına dizilir (globals.css). Her katman kendi yüksekliğini yazsaydı aralarında boşluk kalırdı.
+  useEffect(() => {
+    if (cokluSekmeler.size < 2) { document.body.style.removeProperty("--taban-bar-h"); return; }
+    let iptal = false;
+    const olc = () => {
+      if (iptal) return;
+      const bar = document.querySelector(".harita-birlesim-taban .harita-arac-panel") as HTMLElement | null;
+      if (bar) document.body.style.setProperty("--taban-bar-h", `${Math.round(bar.getBoundingClientRect().height)}px`);
+    };
+    const zamanlayici = setInterval(olc, 400);
+    olc();
+    return () => { iptal = true; clearInterval(zamanlayici); document.body.style.removeProperty("--taban-bar-h"); };
+  }, [cokluSekmeler]);
+
   // BİRLEŞİM GÖRÜNÜM SENKRONU — alttaki (etkileşimli) harita hareket ettikçe üstteki katmanlar
   // aynı merkez/zoom'a taşınır. Döngüyü önlemek için uygulama sırasında bayrak kalkar.
   const cokluAnahtar = [...cokluSekmeler].join(",");
@@ -1386,6 +1401,8 @@ export default function ArventoRaporPage() {
       );
     }
   };
+
+
 
 
 

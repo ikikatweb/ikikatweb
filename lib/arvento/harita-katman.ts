@@ -95,8 +95,11 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   };
   // ESC ile küçült (tarayıcı tam ekranındaki alışkanlık korunsun).
   const escDinle = (e: KeyboardEvent) => {
-    if (e.key !== "Escape" || !document.body.classList.contains("harita-buyuk")) return;
+    if (e.key !== "Escape") return;
+    // Bu haritanın DOM'u kalktıysa (sekme değişti) dinleyiciyi bırak — ama modu KAPATMAYI da
+    // atlama; aksi halde eski dinleyici önce çalışıp "return" ediyor ve ESC ölü kalıyordu.
     if (!document.body.contains(el)) { window.removeEventListener("keydown", escDinle); return; }
+    if (!document.body.classList.contains("harita-buyuk")) return;
     buyutmeyiDegistir(false);
   };
   window.addEventListener("keydown", escDinle);

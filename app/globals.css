@@ -227,17 +227,26 @@ body.harita-buyuk .harita-tamekran-kapsayici .harita-sekme-panel {
    pointer-events kapatılır (çizgi popup'ları taban katmanda çalışır).
    Kart barları üst üste binmesin diye her katmanınki --kat kadar aşağı kaydırılır. */
 .harita-birlesim { position: relative; }
-.harita-birlesim-kat { position: absolute; inset: 0; pointer-events: none; }
+/* ÜST katmanlar YALNIZ büyütme modunda görünür. Normal modda gizlenir → sayfa tek sekme gibi
+   davranır: harita 60vh kalır, altındaki tablolara kaydırılarak erişilir. (Büyütmeden ESC ile
+   çıkınca üst katman tüm içeriği kaplayıp sayfayı kilitliyordu.) */
+.harita-birlesim-kat { display: none; }
+body.harita-buyuk .harita-birlesim-kat { display: block; position: absolute; inset: 0; pointer-events: none; }
 .harita-birlesim-kat .leaflet-tile-pane,
 .harita-birlesim-kat .leaflet-control-container { display: none !important; }
 /* ÜST katman TAMAMEN ŞEFFAF olmalı: kapsayıcı büyütme kuralından background:#000 miras alıyordu ve
    altındaki uyduyu + taban katmanı komple örtüyordu (ekran simsiyah, yalnız üst katman görünüyordu). */
 .harita-birlesim-kat .leaflet-container,
 .harita-birlesim-kat .harita-tamekran-kapsayici { background: transparent !important; }
-/* Üst katmanın kart barı, alttakinin ALTINA dizilir (üst üste binmez). */
-.harita-birlesim-kat .harita-arac-panel { pointer-events: auto; }
+/* ÜST KATMANLARIN kart barı: yalnız ARAÇ KARTLARI kalır. Özet (toplam yol/çalışma) ve
+   KML/Canlı/tarih blokları TABAN katmanda zaten var; her katman kendi bloğunu getirince
+   ekranın yarısı bar oluyordu. Sağdaki ikinci blok gizlenir, bar sıkışır. */
+.harita-birlesim-kat .harita-arac-panel { pointer-events: auto; padding: 4px 6px !important; }
+.harita-birlesim-kat .harita-arac-panel > div > div:nth-child(2) { display: none !important; }
+/* Barlar sıkı dizilir: taban barının ÖLÇÜLEN yüksekliği (--taban-bar-h, sayfa yazar) + her üst
+   katman için sabit satır yüksekliği. Böylece aralarında boşluk kalmaz. */
 body.harita-buyuk .harita-birlesim-kat .harita-arac-panel {
-  top: calc(8px + var(--kat) * (var(--kart-bar-h, 88px) + 6px)) !important;
+  top: calc(8px + var(--taban-bar-h, 161px) + 4px + (var(--kat) - 1) * 108px) !important;
 }
 /* Sekme paneli yalnız TABAN katmanda görünsün (her katman kendi panelini çizmesin). */
 .harita-birlesim-kat .harita-sekme-panel { display: none !important; }
