@@ -186,6 +186,21 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
     }
     return tanimliSuz(rows);
   }
+  // UZUN ARALIK + BELİRLİ PLAKALAR (sezon çekimi: ocak makinesi tespiti, sezon uzunluğu...) → gün-gün
+  // 50+ istek ~9 sn sürüyordu. Service-role API'si RLS'i atladığı için TEK indexli sorgu yapabiliyor;
+  // plaka filtresiyle veri de küçük kalıyor → 1 istek. Hata/erişimsizlik olursa AŞAĞIDAKİ gün-gün yola
+  // düşer (davranış değişmez, yalnız yavaşlar). Sonuç aynı satırlar: API de tanımlı araçlara süzüp
+  // kanonik plakaya çeviriyor (tanimliSuz ile birebir).
+  if (plakalar && plakalar.length > 0 && gunFarki > 10) {
+    try {
+      const r = await fetch(`/api/arvento/guzergah-tumu?bas=${bas}&bitis=${bitis}&plakalar=${encodeURIComponent(plakalar.join(","))}`);
+      if (r.ok) {
+        const d = (await r.json()) as AracArventoGuzergah[];
+        if (Array.isArray(d)) return d;
+      }
+    } catch { /* API yoksa/hata → gün-gün yola düş */ }
+  }
+
   // GÜN GÜN çek (her sorgu hafif), 4'erli paralel grupla. plakalar verilirse her gün-sorgusu .in ile scoped
   // (küçük). KANITLANMIŞ yol: tek dev sorgu/haftalık paralel ağır sorgular tarayıcıda (RLS) TAKILIYORDU;
   // gün-gün küçük parçalar takılmaz. (Geniş aralıkta tek sorgu DB statement-timeout veriyordu.)

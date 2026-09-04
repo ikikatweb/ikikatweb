@@ -22,6 +22,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const bas = searchParams.get("bas") ?? "", bitis = searchParams.get("bitis") ?? "";
   if (!bas || !bitis) return NextResponse.json({ error: "bas ve bitis zorunlu" }, { status: 400 });
+  // plakalar (virgülle): verilirse YALNIZ o araçlar çekilir. Sezon-boyu (50+ gün) çekimlerde çağıran
+  // yalnız aday araçları (greyder/silindir vb.) ister; hepsini çekmek gereksiz megabaytlar demek.
+  const plakaParam = (searchParams.get("plakalar") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -48,9 +51,11 @@ export async function GET(req: Request) {
     const rows: Record<string, unknown>[] = [];
     const PARCA = 1000; let offset = 0;
     while (true) {
-      const { data, error } = await sb
+      let q = sb
         .from("arac_arvento_guzergah").select("*")
-        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis)
+        .gte("rapor_tarihi", bas).lte("rapor_tarihi", bitis);
+      if (plakaParam.length > 0) q = q.in("plaka", plakaParam);
+      const { data, error } = await q
         .order("rapor_tarihi").order("plaka").range(offset, offset + PARCA - 1);
       if (error) throw error;
       const d = (data ?? []) as Record<string, unknown>[];
