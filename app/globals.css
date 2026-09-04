@@ -155,13 +155,6 @@ thead th {
    kart paneli ("harita-arac-panel") üstte ortalı kayan kutuya döner. Normal modda hiçbir etki yok. */
 .harita-tamekran-kapsayici:fullscreen,
 .harita-tamekran-kapsayici:-webkit-full-screen { width: 100%; height: 100%; background: #000; }
-/* Tam ekran hedefi artık sekme içeriğinin DIŞINDAKİ kapsayıcı (sekme değişince tam ekran kapanmasın).
-   İçteki kapsayıcı (harita bileşeninin kök div'i) dış kapsayıcıyı TAMAMEN doldurmalı; yoksa yüksekliği
-   içeriğe göre kalır ve harita ekranı kaplamaz. */
-.harita-tamekran-kapsayici:fullscreen .harita-tamekran-kapsayici,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-tamekran-kapsayici {
-  position: absolute; inset: 0; margin: 0 !important;
-}
 .harita-tamekran-kapsayici:fullscreen .harita-leaflet,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-leaflet {
   position: absolute; inset: 0; height: 100% !important; width: 100% !important; border-radius: 0 !important; margin: 0 !important;
