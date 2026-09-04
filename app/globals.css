@@ -184,6 +184,23 @@ thead th {
   flex: 1 1 auto !important; min-width: 0 !important; /* kalan alanı al, gerekirse daral → özet sağda beyazda kalır */
 }
 
+/* ── Tam ekranda SEKME PANELİ (sol kenar) ──
+   Sekme çubuğu tam ekranın dışında kaldığı için tam ekrandayken sekme değiştirmek mümkün değildi.
+   Bu panel harita kapsayıcısının içindedir; NORMAL modda tamamen gizli, yalnız tam ekranda görünür.
+   Konum: SOL KENAR, DİKEY ORTALI, butonlar alt alta. Üstteki araç kartları barı (top:8px) ve sol üstteki
+   zoom/ölçüm kontrolleriyle çakışmaz — ortada oldukları için ikisinin de altında kalmaz. */
+.harita-sekme-panel { display: none; }
+.harita-tamekran-kapsayici:fullscreen .harita-sekme-panel,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-sekme-panel {
+  display: flex; flex-direction: column; gap: 4px;
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  z-index: 1300;                               /* kart barından (1200) üstte */
+  padding: 4px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+}
+
 /* KAPALI KML çizgileri (döngü/alan) — şeffaf dolgulu polygon olarak çizilir; içine de TIKLANABİLSİN
    diye görünmez dolgu alanı tıklamayı yakalar (varsayılan visiblePainted şeffaf dolguyu yakalamaz). */
 .leaflet-interactive.kml-ic-tikla { pointer-events: all !important; }
