@@ -2,8 +2,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
-import type { MutableRefObject } from "react";
-import type { Map as LeafletMap } from "leaflet";
 import { useAuth } from "@/hooks";
 import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahTumuHizli, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, updateCihazModelByNode, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
@@ -184,11 +182,6 @@ function ManuelTetikBtn({ raporSon, onTetik, onSuresiDoldu }: { raporSon: number
   );
 }
 
-// Tam ekran panelinde gösterilen HARİTA sekmeleri (panel sırası da budur).
-type HaritaSekmeKey = "guzergah" | "genel" | "serme" | "sikistirma" | "tumu";
-const HARITA_SEKMELERI: [HaritaSekmeKey, string][] = [
-  ["guzergah", "Reglaj"], ["genel", "Stabilize"], ["serme", "Serme"], ["sikistirma", "Sıkıştırma"], ["tumu", "Tümü"],
-];
 export default function ArventoRaporPage() {
   const { hasPermission, kullanici, isYonetici, loading: authYukleniyor } = useAuth();
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
@@ -288,102 +281,10 @@ export default function ArventoRaporPage() {
   const [aktifSekme, setAktifSekme] = useState<
     "calisma" | "ismakine" | "guzergah" | "genel" | "serme" | "sikistirma" | "tumu" | "tanimlamalar"
   >("calisma");
-  // ÇOKLU SEKME (tam ekran panelinde SAĞ TIK) — birden fazla operasyon TEK haritada üst üste çizilir.
-  // Boş/tek elemanlı = normal tek sekme görünümü. 2+ olunca birleşik harita açılır.
-  const [cokluSekmeler, setCokluSekmeler] = useState<Set<HaritaSekmeKey>>(new Set());
-  // Birleşimde her katmanın Leaflet haritası buraya yazılır (disHaritaRef). Katmanlar ayrı harita
-  // olduğu için görünümleri (merkez/zoom) canlı senkronlanır; yoksa üstteki çizgiler alttakiyle kaymış olur.
-  const katmanHaritaRefleri = useRef<Record<string, MutableRefObject<LeafletMap | null>>>({});
-  const katmanRefAl = (k: HaritaSekmeKey) => {
-    if (!katmanHaritaRefleri.current[k]) katmanHaritaRefleri.current[k] = { current: null };
-    return katmanHaritaRefleri.current[k];
-  };
-  // TABAN kart barının yüksekliği ölçülüp <body>'ye yazılır; üst katmanların barları buna göre
-  // hemen altına dizilir (globals.css). Her katman kendi yüksekliğini yazsaydı aralarında boşluk kalırdı.
-  useEffect(() => {
-    if (cokluSekmeler.size < 2) { document.body.style.removeProperty("--taban-bar-h"); return; }
-    let iptal = false;
-    const olc = () => {
-      if (iptal) return;
-      const bar = document.querySelector(".harita-birlesim-taban .harita-arac-panel") as HTMLElement | null;
-      if (bar) document.body.style.setProperty("--taban-bar-h", `${Math.round(bar.getBoundingClientRect().height)}px`);
-    };
-    const zamanlayici = setInterval(olc, 400);
-    olc();
-    return () => { iptal = true; clearInterval(zamanlayici); document.body.style.removeProperty("--taban-bar-h"); };
-  }, [cokluSekmeler]);
-
-  // BİRLEŞİM GÖRÜNÜM SENKRONU — alttaki (etkileşimli) harita hareket ettikçe üstteki katmanlar
-  // aynı merkez/zoom'a taşınır. Döngüyü önlemek için uygulama sırasında bayrak kalkar.
-  const cokluAnahtar = [...cokluSekmeler].join(",");
-  useEffect(() => {
-    const anahtarlar = cokluAnahtar ? cokluAnahtar.split(",") : [];
-    if (anahtarlar.length < 2) return;
-    let uygulaniyor = false;
-    const temizleyiciler: (() => void)[] = [];
-    const kur = () => {
-      const haritalar = anahtarlar.map((k) => katmanHaritaRefleri.current[k]?.current).filter(Boolean) as LeafletMap[];
-      if (haritalar.length < 2) return false;
-      const ana = haritalar[0];
-      const esitle = () => {
-        if (uygulaniyor) return;
-        uygulaniyor = true;
-        const m = ana.getCenter(), z = ana.getZoom();
-        for (const h of haritalar.slice(1)) { try { h.setView(m, z, { animate: false }); } catch { /* sessiz */ } }
-        uygulaniyor = false;
-      };
-      ana.on("move zoom moveend zoomend", esitle);
-      temizleyiciler.push(() => { try { ana.off("move zoom moveend zoomend", esitle); } catch { /* sessiz */ } });
-      esitle();
-      return true;
-    };
-    // Haritalar asenkron kurulur → hazır olana kadar kısa aralıkla dene.
-    let kalan = 40;
-    const zamanlayici = setInterval(() => { if (kur() || --kalan <= 0) clearInterval(zamanlayici); }, 100);
-    return () => { clearInterval(zamanlayici); temizleyiciler.forEach((f) => f()); };
-  }, [cokluAnahtar]);
-
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
   // Ekrandaki verilerin en son tazelendiği an (haritalarda "Son güncelleme" olarak gösterilir)
   const [veriGuncelleme, setVeriGuncelleme] = useState<Date | null>(null);
-
-  const tamEkranaDonRef = useRef(false);
-  // Birleşim açık mı? (2+ sekme seçili) — bileşen değiştiği için tam ekran bu geçişte de düşer,
-  // bu yüzden aşağıdaki "tam ekrana geri dön" efekti buna da bağlıdır.
-  const cokluAcikDeger = cokluSekmeler.size >= 2;
-  // Tam ekranı düşüren HER geçişten önce çağrılır: o an tam ekransak işaretle, efekt geri açsın.
-  const tamEkraniHatirla = () => { tamEkranaDonRef.current = !!document.fullscreenElement; };
-  const sekmeSec = (k: typeof aktifSekme) => {
-    tamEkraniHatirla();
-    setAktifSekme(k);
-  };
-  useEffect(() => {
-    if (!tamEkranaDonRef.current) return;
-    tamEkranaDonRef.current = false;
-    // "Zaten tam ekransa çık" DİYE ERKEN DÖNMÜYORUZ: bu efekt DOM değişiminden hemen sonra çalışır,
-    // tarayıcı tam ekrandan çıkışı HENÜZ işlememiştir → document.fullscreenElement hâlâ (artık DOM'da
-    // olmayan) eski ögedir. Erken dönünce tam ekran kapanıp bir daha açılmıyordu.
-    // Ayrıca: tam ekran AÇIKKEN başka bir ögeye requestFullscreen yapmak, çıkmadan DEVREDER —
-    // yeni kapsayıcıya hemen istekte bulunmak kesintiyi de en aza indirir.
-    let kalanDeneme = 30;
-    const dene = () => {
-      const hedef = document.querySelector(".harita-tamekran-kapsayici") as HTMLElement | null;
-      if (!hedef) { if (--kalanDeneme > 0) setTimeout(dene, 50); return; }
-      const fsEl = document.fullscreenElement as HTMLElement | null;
-      if (fsEl === hedef) return;                       // zaten doğru öge tam ekranda — dokunma
-      if (fsEl) {
-        // Tarayıcı ESKİ ögeden çıkışı henüz bitirmedi (öge DOM'dan kalktı ama fullscreenElement
-        // hâlâ o). Bu sırada requestFullscreen REDDEDİLİYOR → tam ekran kapanıp kalıyordu.
-        // Çıkış tamamlanınca (fullscreenchange) yeniden dene; kullanıcı etkileşimi ~5sn geçerli
-        // olduğu için istek kabul edilir.
-        document.addEventListener("fullscreenchange", () => { setTimeout(dene, 0); }, { once: true });
-        return;
-      }
-      hedef.requestFullscreen?.().catch(() => { /* izin yoksa sessiz */ });
-    };
-    dene();
-  }, [aktifSekme, cokluAcikDeger]);
 
   // Aktif sekme + tarih aralığı URL'de taşınır (?sekme=guzergah&bas=...&bitis=...) → F5 sonrası aynı
   // görünüme dönülür ve "şu haritaya bak" diye link paylaşılabilir. Mount önceliği:
@@ -1374,88 +1275,6 @@ export default function ArventoRaporPage() {
   // tam ekran harita DOM'dan kalkmaz, TAM EKRAN KAPANMAZ (her sekme kendi yüklemesini gösterir).
   if (loading && !ilkYuklendiRef.current) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
 
-  // TAM EKRANDA SEKME GEÇİŞİ — sekme çubuğu tam ekranın DIŞINDA kaldığı için (tam ekran hedefi
-  // haritayı saran ".harita-tamekran-kapsayici") kullanıcı sekme değiştirmek için tam ekrandan
-  // çıkmak zorunda kalıyordu. Bu panel harita kapsayıcısının İÇİNE render edilir; normalde
-  // gizlidir, yalnız tam ekranda görünür (globals.css .harita-sekme-panel).
-  // Sekme değişince o sekmenin bileşeni yeniden bağlanır → tarayıcı tam ekrandan çıkar; aşağıdaki
-  // efekt yeni kapsayıcı için tam ekranı GERİ İSTER (tarayıcı, tıklamadan sonraki kısa süre içinde izin verir).
-  // Bir HARİTA sekmesinin bileşenini üretir. Tek sekme görünümü de, çoklu birleşim de AYNI
-  // proplarla bunu kullanır → iki yerde ayrı prop listesi tutulmaz, görünüm birebir aynı olur.
-  const haritaKati = (k: HaritaSekmeKey, ref?: MutableRefObject<LeafletMap | null>) => {
-    switch (k) {
-      case "guzergah": return (
-        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} canliKontakByPlaka={canliKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} disHaritaRef={ref} />
-      );
-      case "genel": return (
-        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={<>{canliButton}<ManuelTetikBtn raporSon={raporSon} onTetik={setRaporSon} onSuresiDoldu={raporDurumTazele} />{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} sonGuncellemeRapor={raporSon ? new Date(raporSon) : null} disHaritaRef={ref} />
-      );
-      case "serme": return (
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={sermeGuzergahTekrar} tekrarPencereSaat={sermeTekrarPencere} silindirEsik={silindirTekrar} gridMesafe={sermeGridMesafe} transitHiz={sermeTransitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} disHaritaRef={ref} />
-      );
-      case "sikistirma": return (
-        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} disHaritaRef={ref} />
-      );
-      case "tumu": return (
-        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} calismaNoktalari={ismakineNoktalar} disHaritaRef={ref} />
-      );
-    }
-  };
-
-
-
-
-
-  // Tam ekranda haritanın SOLUNDA duran dikey sekme paneli (yalnız harita sekmeleri).
-  // TEK TIK → o sekmeye geç (birleşim varsa sıfırlanır).
-  // SAĞ TIK → sekmeyi seçime ekle/çıkar; 2+ seçiliyse hepsi TEK haritada üst üste çizilir.
-  // Seçili olan(lar) TURUNCU görünür. (Çift tık denendi ama tarayıcı çift tıkta önce iki kez onClick
-  // ürettiği için seçim boşalıyordu; sağ tık ayrı olay → tek tık anında çalışır.)
-  const cokluAcik = cokluSekmeler.size >= 2;
-  const sekmeSecimeEkle = (k: HaritaSekmeKey) => {
-    tamEkraniHatirla();   // birleşime girip çıkarken bileşen değişir → tam ekran düşer, geri açılsın
-    setCokluSekmeler((onceki) => {
-      const y = new Set(onceki);
-      if (y.size === 0) y.add(aktifSekme as HaritaSekmeKey);   // ilk sağ tıkta AÇIK sekme de dahil olsun
-      if (y.has(k)) y.delete(k); else y.add(k);
-      return y;
-    });
-  };
-  const sekmePanel = (
-    <div className="harita-sekme-panel">
-      {HARITA_SEKMELERI.map(([key, label]) => {
-        const secili = cokluAcik ? cokluSekmeler.has(key) : aktifSekme === key;
-        return (
-          <button key={key} type="button"
-            onClick={() => {
-              // ZATEN AÇIK sekmeye tıklama ETKİSİZ. Aksi halde çift tıkta ikinci tık yeniden geçiş
-              // tetikliyor, tam ekranın geri açılışını yarıda kesip tam ekranı tamamen kapatıyordu.
-              if (aktifSekme === key && !cokluAcik) return;
-              if (cokluSekmeler.size) setCokluSekmeler(new Set());
-              sekmeSec(key);
-            }}
-            // Seçim MOUSEDOWN'da yapılır: "contextmenu" olayı tarayıcıda kullanıcı etkileşimi (transient
-            // activation) saymıyor, o yüzden ardından requestFullscreen reddediliyor ve tam ekran geri
-            // açılmıyordu. mousedown sayılıyor. contextmenu yalnız tarayıcı menüsünü engeller.
-            onMouseDown={(e) => { if (e.button === 2) { e.preventDefault(); sekmeSecimeEkle(key); } }}
-            onContextMenu={(e) => e.preventDefault()}
-            title="Tek tık: bu sekmeye geç · Sağ tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
-            className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors select-none ${
-              secili ? "bg-[#F97316] text-white" : "bg-white/90 text-gray-700 hover:bg-white"
-            }`}>
-            {label}
-          </button>
-        );
-      })}
-      {cokluAcik && (
-        <button type="button" onClick={() => { tamEkraniHatirla(); setCokluSekmeler(new Set()); }}
-          className="px-2 py-1 text-[10px] rounded-md bg-white/90 text-gray-600 hover:bg-white whitespace-nowrap">
-          birleşimi kapat
-        </button>
-      )}
-    </div>
-  );
-
   // Canlı (anlık konum) butonu — sekme panelindeki KML İndir'in ALTINA yerleştirilir (canliButton prop'u).
   const canliButton = (
     <button type="button" onClick={() => setCanliAcik((v) => !v)}
@@ -1561,22 +1380,7 @@ export default function ArventoRaporPage() {
       </div>
 
       {/* Tablo */}
-      {/* ÇOKLU SEKME BİRLEŞİMİ — panelde sağ tıkla 2+ sekme seçildiyse hepsi TEK haritada üst üste.
-          Çizim "Tümü" bileşenine yaptırılır; operasyonFiltre ile yalnız seçilenler çizilir. */}
-      {cokluAcik ? (
-        // ÇOKLU SEKME BİRLEŞİMİ — seçilen sekmelerin KENDİ bileşenleri üst üste. Çizim kodlarına
-        // dokunulmaz → her sekme kendi renk/çizgi/ikonuyla görünür (Stabilize'in turuncu kesik kamyon
-        // izi, Serme'nin çift çizgisi, Sıkıştırma'nın zikzağı...). İlk katman TABAN: uydu, kontroller ve
-        // etkileşim onda. Üsttekilerin uydu katmanı/kontrolleri gizlenir, tıklama geçirmez; kart barları
-        // alt alta dizilir (globals.css .harita-birlesim-kat).
-        <div className="harita-birlesim relative">
-          {[...cokluSekmeler].map((k, i) => (
-            <div key={k} className={i === 0 ? "harita-birlesim-taban" : "harita-birlesim-kat"} style={{ ["--kat" as string]: i }}>
-              {haritaKati(k, katmanRefAl(k))}
-            </div>
-          ))}
-        </div>
-      ) : aktifSekme === "ismakine" ? (
+      {aktifSekme === "ismakine" ? (
         // ---- SEKME: İŞ MAKİNELERİ — cinse göre, Arvento'nun tüm sütunlarıyla detaylı tablo ----
         <div className="space-y-3">
           {/* Harita — iş makinelerinin gün içinde nerede çalıştığı (güzergah) — ÜSTTE */}
@@ -1587,7 +1391,7 @@ export default function ArventoRaporPage() {
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri" modelGoster modelMap={modelMap}
                 calismaNoktalari={ismakineNoktalar} canliKontakByPlaka={canliKontakMap}
                 canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef}
-                izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} sekmePanel={sekmePanel} />
+                izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} />
             </div>
           )}
           {ismakineKayitlar.length === 0 ? (
@@ -1629,19 +1433,19 @@ export default function ArventoRaporPage() {
         </div>
       ) : aktifSekme === "guzergah" ? (
         // ---- SEKME 2: REGLAJ — araç güzergahı/rotası (tarih üstteki ana seçiciden) ----
-        haritaKati("guzergah")
+        <ArventoGuzergah secimKey="reglaj" bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} tekrarPencereSaat={tekrarPencereSaat} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} canliKontakByPlaka={canliKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "genel" ? (
         // ---- SEKME 3: STABILIZE — güzergah çizgisi + üzerine damper indirme noktaları ----
-        haritaKati("genel")
+        <ArventoStabilize bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} kalinliklar={kalinliklar} renkler={renkler} kamyonIziRenk={kamyonIziRenk} kamyonIziKalinlik={kamyonIziKalinlik} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} ocakLat={ocakLat} ocakLng={ocakLng} ocakYaricap={ocakYaricap} yDuzenle={yDuzenle} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} canliButton={<>{canliButton}<ManuelTetikBtn raporSon={raporSon} onTetik={setRaporSon} onSuresiDoldu={raporDurumTazele} />{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} ocakMakineleri={ocakMakineleri} ilkSonKontakMap={ilkSonKontakMap} sonGuncellemeRapor={raporSon ? new Date(raporSon) : null} />
       ) : aktifSekme === "serme" ? (
         // ---- SEKME 4: SERME — greyder altlı üstlü çizgi (yeşil) + ortada damper ----
-        haritaKati("serme")
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="serme" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={sermeGuzergahTekrar} tekrarPencereSaat={sermeTekrarPencere} silindirEsik={silindirTekrar} gridMesafe={sermeGridMesafe} transitHiz={sermeTransitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "sikistirma" ? (
         // ---- SEKME 5: SIKIŞTIRMA — greyder altlı üstlü çizgi + ortada silindir zikzak (mor) ----
-        haritaKati("sikistirma")
+        <ArventoOperasyon bas={baslangic} bitis={bitis} operasyon="sikistirma" mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} kalinliklar={kalinliklar} renkler={renkler} kontakRolantiMap={kontakRolantiMap} ilkSonKontakMap={ilkSonKontakMap} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} modelGoster modelMap={modelMap} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} />
       ) : aktifSekme === "tumu" ? (
         // ---- SEKME 6: TÜMÜ — o günün tüm operasyonları tek haritada + lejant ----
-        haritaKati("tumu")
+        <ArventoTumu bas={baslangic} bitis={bitis} tekrarEsigi={guzergahTekrar} silindirEsik={silindirTekrar} gridMesafe={gridMesafe} transitHiz={transitHiz} mukerrerDk={mukerrerDk} mukerrerYaricap={mukerrerYaricap} ocakLat={etkinOcak?.lat ?? null} ocakLng={etkinOcak?.lng ?? null} ocakYaricap={etkinOcakR} damperSinif={damperSinifMap} kalinliklar={kalinliklar} renkler={renkler} sekmeMap={sekmeMap} canliKonumlar={canliKonumlarIzinli} canliCihazMap={canliCihazMapEfektif} gorunumRef={haritaGorunumRef} izinliPlakalar={izinliPlakalar} katmanIzinli={katmanIzinli} refreshKey={guzergahRefresh} sonGuncelleme={veriGuncelleme} canliButton={<>{canliButton}{tarihNavKompakt}</>} kmlIndir={kmlIndirYetki} calismaNoktalari={ismakineNoktalar} />
       ) : aktifSekme === "tanimlamalar" ? (
         // ---- SEKME: TANIMLAMALAR — eşik ayarları + harita katmanları (NetCAD/KML) ----
         <div className="space-y-4">

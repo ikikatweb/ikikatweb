@@ -150,31 +150,19 @@ thead th {
 /* üçgen okun rengi kutuyla uyumlu */
 .leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
 
-/* ── BÜYÜT modu: o sekmenin araç kartları haritanın ÜSTÜNE ortalı yüzer ──
-   Kapsayıcı (kart paneli + harita) ekranı kaplar; harita tüm alanı doldurur, kart paneli
-   ("harita-arac-panel") üstte kayan beyaz bara döner. Normal modda hiçbir etki yok.
-
-   NEDEN TARAYICI TAM EKRANI DEĞİL: tarayıcının Fullscreen API'si, tam ekrandaki öge DOM'dan
-   kalkınca tam ekranı BIRAKIR. Sekme değiştirmek tam olarak bunu yapıyor (o sekmenin bileşeni
-   unmount olur) → tam ekran kapanıyor, geri açma denemeleri de "çıkış tamamlanmadan istek"
-   yüzünden reddediliyordu. Bu modda ekranı kaplama bilgisi <body> üzerindeki "harita-buyuk"
-   sınıfında durur; body hiç değişmediği için sekme değiştirmek modu BOZMAZ — kesinti de olmaz.
-   Aşağıdaki kuralların TAMAMI hem :fullscreen hem de body.harita-buyuk için geçerlidir. */
-body.harita-buyuk { overflow: hidden; }   /* arka sayfa kaymasın */
-body.harita-buyuk .harita-tamekran-kapsayici {
-  position: fixed; inset: 0; z-index: 4000; margin: 0 !important;
-}
+/* ── Tam ekran: o sekmenin araç kartları haritanın ÜSTÜNE ortalı yüzer ──
+   Kapsayıcı (kart paneli + harita) tam ekrana alınır; tam ekranda harita tüm alanı kaplar,
+   kart paneli ("harita-arac-panel") üstte ortalı kayan kutuya döner. Normal modda hiçbir etki yok. */
 .harita-tamekran-kapsayici:fullscreen,
-body.harita-buyuk .harita-tamekran-kapsayici { width: 100%; height: 100%; background: #000; }
+.harita-tamekran-kapsayici:-webkit-full-screen { width: 100%; height: 100%; background: #000; }
 .harita-tamekran-kapsayici:fullscreen .harita-leaflet,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-leaflet {
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-leaflet {
   position: absolute; inset: 0; height: 100% !important; width: 100% !important; border-radius: 0 !important; margin: 0 !important;
 }
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel {
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel {
   /* Sol üst Leaflet zoom (+/−) ve ölçek kontrolleri görünsün diye SOLDA ~52px boşluk bırakılır (panel ortalı
-     değil, soldan 52px – sağdan 8px arası tam genişlik beyaz bar). Özet yine sağda beyaz üstünde kalır.
-     Sağ üstteki hava durumu + katman düğmesi barın ALTINA indirilir (aşağıdaki .leaflet-top.leaflet-right). */
+     değil, soldan 52px – sağdan 8px arası tam genişlik beyaz bar). Özet yine sağda beyaz üstünde kalır. */
   position: absolute; top: 8px; left: 52px; right: 8px; transform: none;
   z-index: 1200; width: auto; max-width: none; max-height: none; overflow: hidden;
   margin: 0 !important; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
@@ -182,74 +170,19 @@ body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel {
 /* Tam ekranda GENEL BİLGİLER (özet) kamyon isimlerinin ALTINA değil YANINA gelsin:
    panelin ana satırının sarması kapatılır → [kartlar] [özet] yan yana kalır. */
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel,
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel,
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel > div {
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div {
   flex-wrap: nowrap !important;
 }
 /* Tam ekranda panel TAM GENİŞLİK beyaz bar (yukarıda width: calc(100%-16px)). KART BLOĞU kalan alanı alır ve
    gerekirse yatay KAYDIRILIR (overflow-x: auto); özet (ikinci çocuk, shrink-0) hep sağda BEYAZ üstünde kalır →
    haritanın üstüne taşmaz, okunur. (Çok araç yoksa kaydırma çıkmaz; tümü zaten beyaz barda görünür.) */
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div > div:first-child,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel > div > div:first-child {
+.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div > div:first-child {
   flex-wrap: nowrap !important; overflow-x: auto !important; /* TEK SATIR — taşarsa kaydır (beyaz dışına taşma yok) */
   flex: 1 1 auto !important; min-width: 0 !important; /* kalan alanı al, gerekirse daral → özet sağda beyazda kalır */
 }
-
-/* ── Tam ekranda SEKME PANELİ (sol kenar) ──
-   Sekme çubuğu tam ekranın dışında kaldığı için tam ekrandayken sekme değiştirmek mümkün değildi.
-   Bu panel harita kapsayıcısının içindedir; NORMAL modda tamamen gizli, yalnız tam ekranda görünür.
-   Konum: SOL KENAR, DİKEY ORTALI, butonlar alt alta. Üstteki araç kartları barı (top:8px) ve sol üstteki
-   zoom/ölçüm kontrolleriyle çakışmaz — ortada oldukları için ikisinin de altında kalmaz. */
-.harita-sekme-panel { display: none; }
-/* Sağ üstteki Leaflet kontrolleri (hava durumu kutusu + katman düğmesi): tam ekranda kart barı
-   soldan sağa tüm genişliği kapladığı için barın ALTINA indirilir, en sağda kalır.
-   Konum SABİT DEĞİL: bar yüksekliği (--kart-bar-h) tam ekrana girince ölçülüp kapsayıcıya yazılır
-   (harita-katman.ts), kontroller barın 20px altına iner. Sabit 96px, kart+tarih navigatörü olan
-   yüksek barlarda yetmiyordu. z-index 1250 → bar (1200) üzerinde, her hâlükârda tıklanır. */
-.harita-tamekran-kapsayici:fullscreen .leaflet-top.leaflet-right,
-body.harita-buyuk .harita-tamekran-kapsayici .leaflet-top.leaflet-right { top: calc(var(--kart-bar-h, 88px) + 20px); z-index: 1250; }
-.harita-tamekran-kapsayici:fullscreen .harita-sekme-panel,
-body.harita-buyuk .harita-tamekran-kapsayici .harita-sekme-panel {
-  display: flex; flex-direction: column; gap: 4px;
-  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-  z-index: 1300;                               /* kart barından (1200) üstte */
-  padding: 4px; border-radius: 8px;
-  background: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(2px);
-}
-
-/* ── ÇOKLU SEKME BİRLEŞİMİ: sekmelerin KENDİ bileşenleri üst üste ──
-   Her katman kendi Leaflet haritasıdır; çizim kodlarına dokunulmadığı için her sekme kendi
-   renk/çizgi/ikonuyla görünür. İLK katman TABAN: uydu, kontroller ve fare etkileşimi onda.
-   Üst katmanlarda uydu döşemeleri, kontroller ve ölçek gizlenir; tıklama alta geçsin diye
-   pointer-events kapatılır (çizgi popup'ları taban katmanda çalışır).
-   Kart barları üst üste binmesin diye her katmanınki --kat kadar aşağı kaydırılır. */
-.harita-birlesim { position: relative; }
-/* ÜST katmanlar YALNIZ büyütme modunda görünür. Normal modda gizlenir → sayfa tek sekme gibi
-   davranır: harita 60vh kalır, altındaki tablolara kaydırılarak erişilir. (Büyütmeden ESC ile
-   çıkınca üst katman tüm içeriği kaplayıp sayfayı kilitliyordu.) */
-.harita-birlesim-kat { display: none; }
-body.harita-buyuk .harita-birlesim-kat { display: block; position: absolute; inset: 0; pointer-events: none; }
-.harita-birlesim-kat .leaflet-tile-pane,
-.harita-birlesim-kat .leaflet-control-container { display: none !important; }
-/* ÜST katman TAMAMEN ŞEFFAF olmalı: kapsayıcı büyütme kuralından background:#000 miras alıyordu ve
-   altındaki uyduyu + taban katmanı komple örtüyordu (ekran simsiyah, yalnız üst katman görünüyordu). */
-.harita-birlesim-kat .leaflet-container,
-.harita-birlesim-kat .harita-tamekran-kapsayici { background: transparent !important; }
-/* ÜST KATMANLARIN kart barı: yalnız ARAÇ KARTLARI kalır. Özet (toplam yol/çalışma) ve
-   KML/Canlı/tarih blokları TABAN katmanda zaten var; her katman kendi bloğunu getirince
-   ekranın yarısı bar oluyordu. Sağdaki ikinci blok gizlenir, bar sıkışır. */
-.harita-birlesim-kat .harita-arac-panel { pointer-events: auto; padding: 4px 6px !important; }
-.harita-birlesim-kat .harita-arac-panel > div > div:nth-child(2) { display: none !important; }
-/* Barlar sıkı dizilir: taban barının ÖLÇÜLEN yüksekliği (--taban-bar-h, sayfa yazar) + her üst
-   katman için sabit satır yüksekliği. Böylece aralarında boşluk kalmaz. */
-body.harita-buyuk .harita-birlesim-kat .harita-arac-panel {
-  top: calc(8px + var(--taban-bar-h, 161px) + 4px + (var(--kat) - 1) * 108px) !important;
-}
-/* Sekme paneli yalnız TABAN katmanda görünsün (her katman kendi panelini çizmesin). */
-.harita-birlesim-kat .harita-sekme-panel { display: none !important; }
 
 /* KAPALI KML çizgileri (döngü/alan) — şeffaf dolgulu polygon olarak çizilir; içine de TIKLANABİLSİN
    diye görünmez dolgu alanı tıklamayı yakalar (varsayılan visiblePainted şeffaf dolguyu yakalamaz). */

@@ -73,11 +73,9 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.on(a, "click", (e) => {
         L.DomEvent.stop(e);
-        // SAYFA İÇİ BÜYÜTME — tarayıcının Fullscreen API'si DEĞİL. Neden: tam ekrandaki öge DOM'dan
-        // kalkınca tarayıcı tam ekranı bırakıyor; sekme değiştirmek tam olarak bunu yapıyor ve tam ekran
-        // kapanıyordu. Burada bilgi <body class="harita-buyuk"> üzerinde durur, body hiç değişmediği
-        // için sekme geçişi modu bozmaz — kesintisiz.
-        buyutmeyiDegistir(!document.body.classList.contains("harita-buyuk"));
+        const h = hedef();
+        if (document.fullscreenElement === h) document.exitFullscreen?.();
+        else h.requestFullscreen?.().catch(() => { /* sessiz */ });
       });
       return div;
     },
@@ -85,50 +83,13 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   map.addControl(new Buton());
   // Tam ekran değişiminde haritayı yeniden boyutlandır + buton ikonunu güncelle. Harita DOM'dan
   // kalkınca dinleyici kendini temizler (sızıntı olmaz).
-  // Büyütme modunu aç/kapat: <body> sınıfı + ikon + harita yeniden boyutlandırma + bar ölçümü.
-  const buyutmeyiDegistir = (ac: boolean) => {
-    document.body.classList.toggle("harita-buyuk", ac);
-    if (butonA) { butonA.innerHTML = ac ? "🗕" : "⛶"; butonA.title = ac ? "Küçült" : "Tam ekran"; }
-    if (!ac) {
-      // Küçülürken artık kalmasın: kapsayıcıdaki ölçü değişkeni ve body'deki taban ölçüsü temizlenir.
-      try { hedef().style.removeProperty("--kart-bar-h"); } catch { /* sessiz */ }
-      document.body.style.removeProperty("--taban-bar-h");
-    }
-    // Harita birden çok kez yeniden ölçülür: kapanışta düzen oturana kadar birkaç kare geçebiliyor.
-    for (const ms of [0, 60, 200, 500]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
-    setTimeout(barYuksekliginiYaz, 120);
-    setTimeout(barYuksekliginiYaz, 500);
+  const handler = () => {
+    if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", handler); return; }
+    const tam = document.fullscreenElement === hedef();
+    if (butonA) { butonA.innerHTML = tam ? "🗕" : "⛶"; butonA.title = tam ? "Tam ekrandan çık" : "Tam ekran"; }
+    setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 120);
   };
-  // ESC ile küçült (tarayıcı tam ekranındaki alışkanlık korunsun).
-  const escDinle = (e: KeyboardEvent) => {
-    if (e.key !== "Escape") return;
-    // Bu haritanın DOM'u kalktıysa (sekme değişti) dinleyiciyi bırak — ama modu KAPATMAYI da
-    // atlama; aksi halde eski dinleyici önce çalışıp "return" ediyor ve ESC ölü kalıyordu.
-    if (!document.body.contains(el)) { window.removeEventListener("keydown", escDinle); return; }
-    if (!document.body.classList.contains("harita-buyuk")) return;
-    buyutmeyiDegistir(false);
-  };
-  // capture:true → olay hedefe ULAŞMADAN yakalanır. Odak haritanın içindeyken Leaflet/başka bir
-  // dinleyici olayı durdursa bile ESC çalışır (bazı ortamlarda ESC'nin ölü kalma sebebi buydu).
-  window.addEventListener("keydown", escDinle, true);
-
-  // Büyütmede araç kartları barının YÜKSEKLİĞİ ölçülüp --kart-bar-h olarak yazılır.
-  // Sağ üstteki hava durumu + katman düğmesi bu değerin altına konumlanır (globals.css). Sabit bir
-  // değer yetmiyordu: bar, kart sayısına ve tarih navigatörüne göre 44px de olabiliyor 150px de.
-  const barYuksekliginiYaz = () => {
-    const h = hedef();
-    if (!document.body.classList.contains("harita-buyuk")) { h.style.removeProperty("--kart-bar-h"); return; }
-    const bar = h.querySelector(".harita-arac-panel") as HTMLElement | null;
-    const y = bar ? Math.round(bar.getBoundingClientRect().height) : 0;
-    h.style.setProperty("--kart-bar-h", `${y}px`);
-  };
-  // Sekme değişince YENİ harita bu kodla kurulur; mod <body>'de açıksa ikon/boyut hemen ona uydurulur.
-  if (document.body.classList.contains("harita-buyuk")) {
-    const b = butonA as HTMLAnchorElement | null;   // onAdd içinde atanır; TS burada göremiyor
-    if (b) { b.innerHTML = "🗕"; b.title = "Küçült"; }
-    setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 60);
-    setTimeout(barYuksekliginiYaz, 120);
-  }
+  document.addEventListener("fullscreenchange", handler);
 }
 
 // Mesafe ölçüm kontrolü — sol üstte cetvel (📏) butonu. Tıklayınca ölçüm moduna girilir:

@@ -14,7 +14,7 @@ import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/oca
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
-import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap, type ArventoSekme } from "@/lib/arvento/operasyonlar";
+import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Layers, Download } from "lucide-react";
@@ -37,7 +37,7 @@ function formatAralik(bas: string, bitis: string): string {
 
 // Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, disHaritaRef, sekmePanel, kmlIndir = true, calismaNoktalari, operasyonFiltre = null }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; disHaritaRef?: MutableRefObject<LeafletMap | null>; sekmePanel?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; operasyonFiltre?: ArventoSekme[] | null }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -54,12 +54,6 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const [loading, setLoading] = useState(true);
   // Güzergah (hareket izi) çizgileri göster/gizle — damper + çalışma noktaları bundan etkilenmez.
   const [guzergahGoster, setGuzergahGoster] = useState(true);
-  // ÇOKLU SEKME BİRLEŞİMİ filtresi: yalnız bu operasyonlar çizilir. null = filtre yok → klasik "Tümü"
-  // görünümü BİREBİR korunur (mevcut sekme hiç etkilenmez).
-  const filtreSeti = useMemo(
-    () => (operasyonFiltre && operasyonFiltre.length ? new Set<ArventoSekme>(operasyonFiltre) : null),
-    [operasyonFiltre],
-  );
 
   // Damper noktaları — YALNIZ GERÇEK (Stabilize/Serme ile AYNI sınıflama): mükerrer + arıza ayıklanır,
   // manuel override uygulanır, gösterilen konum o saatteki DURMUŞ rota noktasına oturtulur. Tümü sekmesi
@@ -177,7 +171,6 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       map = L.map(mapRef.current, { preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 200 }) // preferCanvas: çok çizgide pan/zoom akıcı (canvas); tekerlek başına AZ zoom
         .setView(gorunumRef.current?.merkez ?? [39, 35], gorunumRef.current?.zoom ?? 6);
       mapInstanceRef.current = map;
-      if (disHaritaRef) disHaritaRef.current = map;   // çoklu sekme birleşiminde görünüm senkronu (ÇİZİME dokunmaz)
       let oto = true; // programatik (setView/fitBounds) hareketleri kullanıcı hareketinden ayır — gorunumRef'i kirletmesin
       map.on("moveend zoomend", () => {
         if (oto || !map) return;
@@ -213,7 +206,6 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       veriKatmanRef.current = null;
       havaTemizleRef.current?.(); havaTemizleRef.current = null;
       mapInstanceRef.current = null;
-      if (disHaritaRef) disHaritaRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }
     };
@@ -238,18 +230,6 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (latlngs.length === 0) return;
       const op = operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"sikistirma", k.plaka) ? "sikistirma"
         : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi,"reglaj", k.plaka) ? "reglaj" : null;
-      // ÇOKLU SEKME FİLTRESİ — yalnız seçilen operasyonlar çizilir. Sınıflama (op) DEĞİŞMEZ; filtre
-      // ayrı hesaplanır ki filtresiz "Tümü" görünümü birebir aynı kalsın.
-      if (filtreSeti) {
-        const opF: ArventoSekme | null =
-          operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "sikistirma", k.plaka) ? "sikistirma"
-          : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "serme", k.plaka) ? "serme"
-          : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "reglaj", k.plaka) ? "reglaj"
-          : operasyondaGorunur(sekmeMap, atananSekmeler, k.arac_sinifi, "stabilize", k.plaka) ? "stabilize"
-          : null;
-        // Operasyona atanmamış araç (kamyon/ekskavatör vb.) Stabilize kapsamında sayılır.
-        if (!filtreSeti.has(opF ?? "stabilize")) return;
-      }
       // TÜMÜ = o gün ÇALIŞAN her araç. op yoksa (kamyon/ekskavatör/diğer) yine ÇİZ: HAM rota, sadeleştirmesiz, ince.
       const def = op ? OPERASYONLAR[op] : null;
       const esik = op === "sikistirma" ? silindirEsik : op === "reglaj" ? tekrarEsigi : 0;
@@ -268,7 +248,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     });
     // Damper noktaları (Stabilize) — YUVARLAK NOKTA (diğer sekmelerle aynı; kamyon ikonu DEĞİL). Turuncu
     // (stabilize operasyon rengi). YALNIZ GERÇEK (mükerrer/arıza ayıklanmış).
-    if (!filtreSeti || filtreSeti.has("stabilize")) damperKoordlu.forEach((o) => {
+    damperKoordlu.forEach((o) => {
       if (o.lat == null || o.lng == null) return;
       L.circleMarker([o.lat as number, o.lng as number], { radius: 6, color: "#ffffff", weight: 1.5, fillColor: renkAl(o.plaka), fillOpacity: 0.95, renderer: yolRenderer })
         .addTo(grup).bindPopup(`<b>🔻 ${o.plaka}</b><br>Stabilize (gerçek damper)<br>${o.saat ?? ""}<br>${o.adres ?? ""}`);
@@ -278,7 +258,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     // rengi kenarlıklı, AYNI KONUMDAKİLER KÜMELİ (yerinde çalışan makine saatlerce aynı koordinata
     // kayıt atar; üst üste binince "nokta yok" sanılıyordu — marker kayıt sayısıyla büyür, popup
     // "N kayıt · ilk–son saat" gösterir). Güzergah düğmesinden BAĞIMSIZ (yerinde çalışma izi).
-    if (!filtreSeti || filtreSeti.has("ismakine")) {
+    {
       const kumeler = new Map<string, { plaka: string; lat: number; lng: number; sayi: number; ilk: string | null; son: string | null; tarih: string }>();
       for (const n of calismaNoktalari ?? []) {
         if (n.lat == null || n.lng == null) continue;
@@ -311,7 +291,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, guzergahBirlesik, damperKoordlu, calismaNoktalari, izinSet, guzergahGoster, tekrarEsigi, silindirEsik, gridMesafe, transitHiz, reglajKal, silindirKal, renkAl, sekmeMap, atananSekmeler, gorunumRef, filtreSeti]);
+  }, [haritaHazir, guzergahBirlesik, damperKoordlu, calismaNoktalari, izinSet, guzergahGoster, tekrarEsigi, silindirEsik, gridMesafe, transitHiz, reglajKal, silindirKal, renkAl, sekmeMap, atananSekmeler, gorunumRef]);
 
   // KML: greyder/silindir sadeleştirilmiş hatları + damper noktaları (haritadaki ile aynı)
   async function exportKML() {
@@ -389,8 +369,6 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
 
   return (
     <div className="space-y-3 harita-tamekran-kapsayici relative">
-      {/* Tam ekranda sekme geçişi — normalde GİZLİ, yalnız tam ekranda görünür (globals.css) */}
-      {sekmePanel}
       {/* Lejant + özet */}
       <div className="bg-white rounded-lg border p-3 flex flex-wrap items-center gap-x-5 gap-y-2 harita-arac-panel">
         <span className="text-xs font-semibold text-gray-600">{formatAralik(bas, bitis)} — Çalışan tüm araçlar (<strong>{ozet.toplamArac}</strong>)</span>
