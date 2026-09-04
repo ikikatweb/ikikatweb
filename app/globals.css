@@ -220,6 +220,25 @@ body.harita-buyuk .harita-tamekran-kapsayici .harita-sekme-panel {
   backdrop-filter: blur(2px);
 }
 
+/* ── ÇOKLU SEKME BİRLEŞİMİ: sekmelerin KENDİ bileşenleri üst üste ──
+   Her katman kendi Leaflet haritasıdır; çizim kodlarına dokunulmadığı için her sekme kendi
+   renk/çizgi/ikonuyla görünür. İLK katman TABAN: uydu, kontroller ve fare etkileşimi onda.
+   Üst katmanlarda uydu döşemeleri, kontroller ve ölçek gizlenir; tıklama alta geçsin diye
+   pointer-events kapatılır (çizgi popup'ları taban katmanda çalışır).
+   Kart barları üst üste binmesin diye her katmanınki --kat kadar aşağı kaydırılır. */
+.harita-birlesim { position: relative; }
+.harita-birlesim-kat { position: absolute; inset: 0; pointer-events: none; }
+.harita-birlesim-kat .leaflet-tile-pane,
+.harita-birlesim-kat .leaflet-control-container { display: none !important; }
+.harita-birlesim-kat .leaflet-container { background: transparent !important; }
+/* Üst katmanın kart barı, alttakinin ALTINA dizilir (üst üste binmez). */
+.harita-birlesim-kat .harita-arac-panel { pointer-events: auto; }
+body.harita-buyuk .harita-birlesim-kat .harita-arac-panel {
+  top: calc(8px + var(--kat) * (var(--kart-bar-h, 88px) + 6px)) !important;
+}
+/* Sekme paneli yalnız TABAN katmanda görünsün (her katman kendi panelini çizmesin). */
+.harita-birlesim-kat .harita-sekme-panel { display: none !important; }
+
 /* KAPALI KML çizgileri (döngü/alan) — şeffaf dolgulu polygon olarak çizilir; içine de TIKLANABİLSİN
    diye görünmez dolgu alanı tıklamayı yakalar (varsayılan visiblePainted şeffaf dolguyu yakalamaz). */
 .leaflet-interactive.kml-ic-tikla { pointer-events: all !important; }
