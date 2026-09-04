@@ -312,12 +312,17 @@ export default function ArventoRaporPage() {
   useEffect(() => {
     if (!tamEkranaDonRef.current) return;
     tamEkranaDonRef.current = false;
-    if (document.fullscreenElement) return;   // hâlâ tam ekransa dokunma
-    let kalanDeneme = 20;                      // yeni harita geç bağlanabilir → kısa süre dene
+    // "Zaten tam ekransa çık" DİYE ERKEN DÖNMÜYORUZ: bu efekt DOM değişiminden hemen sonra çalışır,
+    // tarayıcı tam ekrandan çıkışı HENÜZ işlememiştir → document.fullscreenElement hâlâ (artık DOM'da
+    // olmayan) eski ögedir. Erken dönünce tam ekran kapanıp bir daha açılmıyordu.
+    // Ayrıca: tam ekran AÇIKKEN başka bir ögeye requestFullscreen yapmak, çıkmadan DEVREDER —
+    // yeni kapsayıcıya hemen istekte bulunmak kesintiyi de en aza indirir.
+    let kalanDeneme = 30;
     const dene = () => {
       const hedef = document.querySelector(".harita-tamekran-kapsayici") as HTMLElement | null;
-      if (hedef) { hedef.requestFullscreen?.().catch(() => { /* izin yoksa sessiz */ }); return; }
-      if (--kalanDeneme > 0) setTimeout(dene, 100);
+      if (!hedef) { if (--kalanDeneme > 0) setTimeout(dene, 50); return; }
+      if (document.fullscreenElement === hedef) return;       // zaten doğru öge tam ekranda
+      hedef.requestFullscreen?.().catch(() => { /* izin yoksa sessiz */ });
     };
     dene();
   }, [aktifSekme, cokluAcikDeger]);
