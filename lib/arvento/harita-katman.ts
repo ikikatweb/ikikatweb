@@ -55,13 +55,40 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   ekleTamEkranKontrolu(L, map);
 }
 
-// Tam ekran butonu (sol üst) — Fullscreen API ile tam ekrana alır/çıkarır.
-// Tam ekran HEDEFİ: kartlar + harita'yı saran ".harita-tamekran-kapsayici" (varsa); böylece tam ekranda
-// o sekmenin araç kartları da görünür (CSS ile haritanın üstüne ortalı yüzer). Kapsayıcı yoksa harita div'i.
+// Tam ekran butonu (sol üst).
+//
+// TARAYICININ Fullscreen API'si KULLANILMAZ. Sebep: tam ekrandaki öge DOM'dan kalkınca tarayıcı tam
+// ekranı bırakır; sekme değiştirmek tam olarak bunu yapar (o sekmenin bileşeni unmount olur) →
+// harita küçülür, tam ekran kapanır. Bunun yerine mod bilgisi <body class="harita-buyuk"> üzerinde
+// tutulur ve kapsayıcı CSS ile ekranı kaplar (globals.css). Body hiç değişmediği için sekme
+// geçişinde harita KÜÇÜLMEZ, geçiş anında olur. ESC ile çıkılır.
 export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   const el = map.getContainer();
   const hedef = (): HTMLElement => (el.closest(".harita-tamekran-kapsayici") as HTMLElement | null) ?? el;
   let butonA: HTMLAnchorElement | null = null;
+
+  // Araç kartları barının yüksekliği → --kart-bar-h. Sağ üstteki hava durumu + katman düğmesi bu
+  // değerin altına konumlanır (globals.css); sabit değer, bar yüksekliği değiştiği için yetmiyor.
+  const barYuksekliginiYaz = () => {
+    const h = hedef();
+    if (!document.body.classList.contains("harita-buyuk")) { h.style.removeProperty("--kart-bar-h"); return; }
+    const bar = h.querySelector(".harita-arac-panel") as HTMLElement | null;
+    h.style.setProperty("--kart-bar-h", `${bar ? Math.round(bar.getBoundingClientRect().height) : 0}px`);
+  };
+  const ikonuYaz = (ac: boolean) => {
+    const b = butonA as HTMLAnchorElement | null;   // onAdd içinde atanır
+    if (b) { b.innerHTML = ac ? "🗕" : "⛶"; b.title = ac ? "Tam ekrandan çık (ESC)" : "Tam ekran"; }
+  };
+  const modDegistir = (ac: boolean) => {
+    document.body.classList.toggle("harita-buyuk", ac);
+    ikonuYaz(ac);
+    if (!ac) { try { hedef().style.removeProperty("--kart-bar-h"); } catch { /* sessiz */ } }
+    // Düzen oturana kadar birkaç kez ölç (kart barı içerikle birlikte geç yerleşebiliyor).
+    for (const ms of [0, 60, 200]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
+    setTimeout(barYuksekliginiYaz, 80);
+    setTimeout(barYuksekliginiYaz, 350);
+  };
+
   const Buton = L.Control.extend({
     options: { position: "topleft" as const },
     onAdd() {
@@ -73,23 +100,29 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.on(a, "click", (e) => {
         L.DomEvent.stop(e);
-        const h = hedef();
-        if (document.fullscreenElement === h) document.exitFullscreen?.();
-        else h.requestFullscreen?.().catch(() => { /* sessiz */ });
+        modDegistir(!document.body.classList.contains("harita-buyuk"));
       });
       return div;
     },
   });
   map.addControl(new Buton());
-  // Tam ekran değişiminde haritayı yeniden boyutlandır + buton ikonunu güncelle. Harita DOM'dan
-  // kalkınca dinleyici kendini temizler (sızıntı olmaz).
-  const handler = () => {
-    if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", handler); return; }
-    const tam = document.fullscreenElement === hedef();
-    if (butonA) { butonA.innerHTML = tam ? "🗕" : "⛶"; butonA.title = tam ? "Tam ekrandan çık" : "Tam ekran"; }
-    setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 120);
+
+  // ESC ile çık. capture:true → odak haritanın içindeyken olay yolda durdurulsa bile yakalanır.
+  // Bu haritanın DOM'u kalktıysa (sekme değişti) dinleyici kendini bırakır.
+  const escDinle = (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    if (!document.body.contains(el)) { window.removeEventListener("keydown", escDinle, true); return; }
+    if (!document.body.classList.contains("harita-buyuk")) return;
+    modDegistir(false);
   };
-  document.addEventListener("fullscreenchange", handler);
+  window.addEventListener("keydown", escDinle, true);
+
+  // Sekme değişince YENİ harita bu kodla kurulur; mod zaten açıksa ikon/boyut ona uydurulur.
+  if (document.body.classList.contains("harita-buyuk")) {
+    ikonuYaz(true);
+    for (const ms of [0, 60, 200]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
+    setTimeout(barYuksekliginiYaz, 80);
+  }
 }
 
 // Mesafe ölçüm kontrolü — sol üstte cetvel (📏) butonu. Tıklayınca ölçüm moduna girilir:
