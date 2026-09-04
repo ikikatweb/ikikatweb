@@ -1345,7 +1345,11 @@ export default function ArventoRaporPage() {
               if (cokluSekmeler.size) setCokluSekmeler(new Set());
               sekmeSec(key);
             }}
-            onContextMenu={(e) => { e.preventDefault(); sekmeSecimeEkle(key); }}
+            // Seçim MOUSEDOWN'da yapılır: "contextmenu" olayı tarayıcıda kullanıcı etkileşimi (transient
+            // activation) saymıyor, o yüzden ardından requestFullscreen reddediliyor ve tam ekran geri
+            // açılmıyordu. mousedown sayılıyor. contextmenu yalnız tarayıcı menüsünü engeller.
+            onMouseDown={(e) => { if (e.button === 2) { e.preventDefault(); sekmeSecimeEkle(key); } }}
+            onContextMenu={(e) => e.preventDefault()}
             title="Tek tık: bu sekmeye geç · Sağ tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
             className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors select-none ${
               secili ? "bg-[#F97316] text-white" : "bg-white/90 text-gray-700 hover:bg-white"

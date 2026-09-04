@@ -193,9 +193,11 @@ thead th {
 .harita-sekme-panel { display: none; }
 /* Sağ üstteki Leaflet kontrolleri (hava durumu kutusu + katman düğmesi): tam ekranda kart barı
    soldan sağa tüm genişliği kapladığı için barın ALTINA indirilir, en sağda kalır.
-   z-index 1250 → bar (1200) üzerinde; bar beklenenden yüksek olsa da görünür/tıklanır kalır. */
+   Konum SABİT DEĞİL: bar yüksekliği (--kart-bar-h) tam ekrana girince ölçülüp kapsayıcıya yazılır
+   (harita-katman.ts), kontroller barın 20px altına iner. Sabit 96px, kart+tarih navigatörü olan
+   yüksek barlarda yetmiyordu. z-index 1250 → bar (1200) üzerinde, her hâlükârda tıklanır. */
 .harita-tamekran-kapsayici:fullscreen .leaflet-top.leaflet-right,
-.harita-tamekran-kapsayici:-webkit-full-screen .leaflet-top.leaflet-right { top: 96px; z-index: 1250; }
+.harita-tamekran-kapsayici:-webkit-full-screen .leaflet-top.leaflet-right { top: calc(var(--kart-bar-h, 88px) + 20px); z-index: 1250; }
 .harita-tamekran-kapsayici:fullscreen .harita-sekme-panel,
 .harita-tamekran-kapsayici:-webkit-full-screen .harita-sekme-panel {
   display: flex; flex-direction: column; gap: 4px;

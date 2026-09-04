@@ -83,11 +83,24 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   map.addControl(new Buton());
   // Tam ekran değişiminde haritayı yeniden boyutlandır + buton ikonunu güncelle. Harita DOM'dan
   // kalkınca dinleyici kendini temizler (sızıntı olmaz).
+  // Tam ekranda araç kartları barının YÜKSEKLİĞİ ölçülüp kapsayıcıya --kart-bar-h olarak yazılır.
+  // Sağ üstteki hava durumu + katman düğmesi bu değerin altına konumlanır (globals.css). Sabit bir
+  // değer yetmiyordu: bar, kart sayısına ve tarih navigatörüne göre 44px de olabiliyor 150px de.
+  const barYuksekliginiYaz = () => {
+    const h = hedef();
+    if (document.fullscreenElement !== h) { h.style.removeProperty("--kart-bar-h"); return; }
+    const bar = h.querySelector(".harita-arac-panel") as HTMLElement | null;
+    const y = bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+    h.style.setProperty("--kart-bar-h", `${y}px`);
+  };
   const handler = () => {
     if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", handler); return; }
     const tam = document.fullscreenElement === hedef();
     if (butonA) { butonA.innerHTML = tam ? "🗕" : "⛶"; butonA.title = tam ? "Tam ekrandan çık" : "Tam ekran"; }
     setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 120);
+    // Bar yüksekliği tam ekran stilleri uygulandıktan SONRA ölçülür; içerik geç yerleşirse diye ikinci ölçüm.
+    setTimeout(barYuksekliginiYaz, 150);
+    setTimeout(barYuksekliginiYaz, 600);
   };
   document.addEventListener("fullscreenchange", handler);
 }
