@@ -89,7 +89,13 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   const buyutmeyiDegistir = (ac: boolean) => {
     document.body.classList.toggle("harita-buyuk", ac);
     if (butonA) { butonA.innerHTML = ac ? "🗕" : "⛶"; butonA.title = ac ? "Küçült" : "Tam ekran"; }
-    setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, 60);
+    if (!ac) {
+      // Küçülürken artık kalmasın: kapsayıcıdaki ölçü değişkeni ve body'deki taban ölçüsü temizlenir.
+      try { hedef().style.removeProperty("--kart-bar-h"); } catch { /* sessiz */ }
+      document.body.style.removeProperty("--taban-bar-h");
+    }
+    // Harita birden çok kez yeniden ölçülür: kapanışta düzen oturana kadar birkaç kare geçebiliyor.
+    for (const ms of [0, 60, 200, 500]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
     setTimeout(barYuksekliginiYaz, 120);
     setTimeout(barYuksekliginiYaz, 500);
   };
@@ -102,7 +108,9 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
     if (!document.body.classList.contains("harita-buyuk")) return;
     buyutmeyiDegistir(false);
   };
-  window.addEventListener("keydown", escDinle);
+  // capture:true → olay hedefe ULAŞMADAN yakalanır. Odak haritanın içindeyken Leaflet/başka bir
+  // dinleyici olayı durdursa bile ESC çalışır (bazı ortamlarda ESC'nin ölü kalma sebebi buydu).
+  window.addEventListener("keydown", escDinle, true);
 
   // Büyütmede araç kartları barının YÜKSEKLİĞİ ölçülüp --kart-bar-h olarak yazılır.
   // Sağ üstteki hava durumu + katman düğmesi bu değerin altına konumlanır (globals.css). Sabit bir
