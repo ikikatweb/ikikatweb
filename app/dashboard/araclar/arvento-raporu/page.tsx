@@ -321,7 +321,16 @@ export default function ArventoRaporPage() {
     const dene = () => {
       const hedef = document.querySelector(".harita-tamekran-kapsayici") as HTMLElement | null;
       if (!hedef) { if (--kalanDeneme > 0) setTimeout(dene, 50); return; }
-      if (document.fullscreenElement === hedef) return;       // zaten doğru öge tam ekranda
+      const fsEl = document.fullscreenElement as HTMLElement | null;
+      if (fsEl === hedef) return;                       // zaten doğru öge tam ekranda — dokunma
+      if (fsEl) {
+        // Tarayıcı ESKİ ögeden çıkışı henüz bitirmedi (öge DOM'dan kalktı ama fullscreenElement
+        // hâlâ o). Bu sırada requestFullscreen REDDEDİLİYOR → tam ekran kapanıp kalıyordu.
+        // Çıkış tamamlanınca (fullscreenchange) yeniden dene; kullanıcı etkileşimi ~5sn geçerli
+        // olduğu için istek kabul edilir.
+        document.addEventListener("fullscreenchange", () => { setTimeout(dene, 0); }, { once: true });
+        return;
+      }
       hedef.requestFullscreen?.().catch(() => { /* izin yoksa sessiz */ });
     };
     dene();
