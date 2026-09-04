@@ -60,7 +60,18 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
 // o sekmenin araç kartları da görünür (CSS ile haritanın üstüne ortalı yüzer). Kapsayıcı yoksa harita div'i.
 export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   const el = map.getContainer();
-  const hedef = (): HTMLElement => (el.closest(".harita-tamekran-kapsayici") as HTMLElement | null) ?? el;
+  // Tam ekran hedefi: EN DIŞTAKİ ".harita-tamekran-kapsayici". Sayfa, sekme içeriğinin DIŞINA da bir
+  // kapsayıcı koyar; en dıştakini seçince sekme değiştirmek tam ekranı KAPATMAZ (o div DOM'da kalır).
+  // İç içe kapsayıcı yoksa (dashboard widget'ı gibi) davranış eskisi gibi: en yakın kapsayıcı.
+  const hedef = (): HTMLElement => {
+    let son: HTMLElement = el;
+    let ust = el.closest(".harita-tamekran-kapsayici") as HTMLElement | null;
+    while (ust) {
+      son = ust;
+      ust = (ust.parentElement?.closest(".harita-tamekran-kapsayici") ?? null) as HTMLElement | null;
+    }
+    return son;
+  };
   let butonA: HTMLAnchorElement | null = null;
   const Buton = L.Control.extend({
     options: { position: "topleft" as const },
