@@ -150,17 +150,28 @@ thead th {
 /* üçgen okun rengi kutuyla uyumlu */
 .leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
 
-/* ── Tam ekran: o sekmenin araç kartları haritanın ÜSTÜNE ortalı yüzer ──
-   Kapsayıcı (kart paneli + harita) tam ekrana alınır; tam ekranda harita tüm alanı kaplar,
-   kart paneli ("harita-arac-panel") üstte ortalı kayan kutuya döner. Normal modda hiçbir etki yok. */
+/* ── BÜYÜT modu: o sekmenin araç kartları haritanın ÜSTÜNE ortalı yüzer ──
+   Kapsayıcı (kart paneli + harita) ekranı kaplar; harita tüm alanı doldurur, kart paneli
+   ("harita-arac-panel") üstte kayan beyaz bara döner. Normal modda hiçbir etki yok.
+
+   NEDEN TARAYICI TAM EKRANI DEĞİL: tarayıcının Fullscreen API'si, tam ekrandaki öge DOM'dan
+   kalkınca tam ekranı BIRAKIR. Sekme değiştirmek tam olarak bunu yapıyor (o sekmenin bileşeni
+   unmount olur) → tam ekran kapanıyor, geri açma denemeleri de "çıkış tamamlanmadan istek"
+   yüzünden reddediliyordu. Bu modda ekranı kaplama bilgisi <body> üzerindeki "harita-buyuk"
+   sınıfında durur; body hiç değişmediği için sekme değiştirmek modu BOZMAZ — kesinti de olmaz.
+   Aşağıdaki kuralların TAMAMI hem :fullscreen hem de body.harita-buyuk için geçerlidir. */
+body.harita-buyuk { overflow: hidden; }   /* arka sayfa kaymasın */
+body.harita-buyuk .harita-tamekran-kapsayici {
+  position: fixed; inset: 0; z-index: 4000; margin: 0 !important;
+}
 .harita-tamekran-kapsayici:fullscreen,
-.harita-tamekran-kapsayici:-webkit-full-screen { width: 100%; height: 100%; background: #000; }
+body.harita-buyuk .harita-tamekran-kapsayici { width: 100%; height: 100%; background: #000; }
 .harita-tamekran-kapsayici:fullscreen .harita-leaflet,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-leaflet {
+body.harita-buyuk .harita-tamekran-kapsayici .harita-leaflet {
   position: absolute; inset: 0; height: 100% !important; width: 100% !important; border-radius: 0 !important; margin: 0 !important;
 }
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel {
+body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel {
   /* Sol üst Leaflet zoom (+/−) ve ölçek kontrolleri görünsün diye SOLDA ~52px boşluk bırakılır (panel ortalı
      değil, soldan 52px – sağdan 8px arası tam genişlik beyaz bar). Özet yine sağda beyaz üstünde kalır.
      Sağ üstteki hava durumu + katman düğmesi barın ALTINA indirilir (aşağıdaki .leaflet-top.leaflet-right). */
@@ -171,16 +182,16 @@ thead th {
 /* Tam ekranda GENEL BİLGİLER (özet) kamyon isimlerinin ALTINA değil YANINA gelsin:
    panelin ana satırının sarması kapatılır → [kartlar] [özet] yan yana kalır. */
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel,
+body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel,
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div {
+body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel > div {
   flex-wrap: nowrap !important;
 }
 /* Tam ekranda panel TAM GENİŞLİK beyaz bar (yukarıda width: calc(100%-16px)). KART BLOĞU kalan alanı alır ve
    gerekirse yatay KAYDIRILIR (overflow-x: auto); özet (ikinci çocuk, shrink-0) hep sağda BEYAZ üstünde kalır →
    haritanın üstüne taşmaz, okunur. (Çok araç yoksa kaydırma çıkmaz; tümü zaten beyaz barda görünür.) */
 .harita-tamekran-kapsayici:fullscreen .harita-arac-panel > div > div:first-child,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-arac-panel > div > div:first-child {
+body.harita-buyuk .harita-tamekran-kapsayici .harita-arac-panel > div > div:first-child {
   flex-wrap: nowrap !important; overflow-x: auto !important; /* TEK SATIR — taşarsa kaydır (beyaz dışına taşma yok) */
   flex: 1 1 auto !important; min-width: 0 !important; /* kalan alanı al, gerekirse daral → özet sağda beyazda kalır */
 }
@@ -197,9 +208,9 @@ thead th {
    (harita-katman.ts), kontroller barın 20px altına iner. Sabit 96px, kart+tarih navigatörü olan
    yüksek barlarda yetmiyordu. z-index 1250 → bar (1200) üzerinde, her hâlükârda tıklanır. */
 .harita-tamekran-kapsayici:fullscreen .leaflet-top.leaflet-right,
-.harita-tamekran-kapsayici:-webkit-full-screen .leaflet-top.leaflet-right { top: calc(var(--kart-bar-h, 88px) + 20px); z-index: 1250; }
+body.harita-buyuk .harita-tamekran-kapsayici .leaflet-top.leaflet-right { top: calc(var(--kart-bar-h, 88px) + 20px); z-index: 1250; }
 .harita-tamekran-kapsayici:fullscreen .harita-sekme-panel,
-.harita-tamekran-kapsayici:-webkit-full-screen .harita-sekme-panel {
+body.harita-buyuk .harita-tamekran-kapsayici .harita-sekme-panel {
   display: flex; flex-direction: column; gap: 4px;
   position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
   z-index: 1300;                               /* kart barından (1200) üstte */
