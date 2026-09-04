@@ -300,8 +300,13 @@ export default function ArventoRaporPage() {
   const [veriGuncelleme, setVeriGuncelleme] = useState<Date | null>(null);
 
   const tamEkranaDonRef = useRef(false);
+  // Birleşim açık mı? (2+ sekme seçili) — bileşen değiştiği için tam ekran bu geçişte de düşer,
+  // bu yüzden aşağıdaki "tam ekrana geri dön" efekti buna da bağlıdır.
+  const cokluAcikDeger = cokluSekmeler.size >= 2;
+  // Tam ekranı düşüren HER geçişten önce çağrılır: o an tam ekransak işaretle, efekt geri açsın.
+  const tamEkraniHatirla = () => { tamEkranaDonRef.current = !!document.fullscreenElement; };
   const sekmeSec = (k: typeof aktifSekme) => {
-    tamEkranaDonRef.current = !!document.fullscreenElement;
+    tamEkraniHatirla();
     setAktifSekme(k);
   };
   useEffect(() => {
@@ -315,7 +320,7 @@ export default function ArventoRaporPage() {
       if (--kalanDeneme > 0) setTimeout(dene, 100);
     };
     dene();
-  }, [aktifSekme]);
+  }, [aktifSekme, cokluAcikDeger]);
 
   // Aktif sekme + tarih aralığı URL'de taşınır (?sekme=guzergah&bas=...&bitis=...) → F5 sonrası aynı
   // görünüme dönülür ve "şu haritaya bak" diye link paylaşılabilir. Mount önceliği:
@@ -1319,6 +1324,7 @@ export default function ArventoRaporPage() {
   // ürettiği için seçim boşalıyordu; sağ tık ayrı olay → tek tık anında çalışır.)
   const cokluAcik = cokluSekmeler.size >= 2;
   const sekmeSecimeEkle = (k: HaritaSekmeKey) => {
+    tamEkraniHatirla();   // birleşime girip çıkarken bileşen değişir → tam ekran düşer, geri açılsın
     setCokluSekmeler((onceki) => {
       const y = new Set(onceki);
       if (y.size === 0) y.add(aktifSekme as HaritaSekmeKey);   // ilk sağ tıkta AÇIK sekme de dahil olsun
@@ -1332,7 +1338,13 @@ export default function ArventoRaporPage() {
         const secili = cokluAcik ? cokluSekmeler.has(key) : aktifSekme === key;
         return (
           <button key={key} type="button"
-            onClick={() => { setCokluSekmeler(new Set()); sekmeSec(key); }}
+            onClick={() => {
+              // ZATEN AÇIK sekmeye tıklama ETKİSİZ. Aksi halde çift tıkta ikinci tık yeniden geçiş
+              // tetikliyor, tam ekranın geri açılışını yarıda kesip tam ekranı tamamen kapatıyordu.
+              if (aktifSekme === key && !cokluAcik) return;
+              if (cokluSekmeler.size) setCokluSekmeler(new Set());
+              sekmeSec(key);
+            }}
             onContextMenu={(e) => { e.preventDefault(); sekmeSecimeEkle(key); }}
             title="Tek tık: bu sekmeye geç · Sağ tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
             className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors select-none ${
@@ -1343,7 +1355,7 @@ export default function ArventoRaporPage() {
         );
       })}
       {cokluAcik && (
-        <button type="button" onClick={() => setCokluSekmeler(new Set())}
+        <button type="button" onClick={() => { tamEkraniHatirla(); setCokluSekmeler(new Set()); }}
           className="px-2 py-1 text-[10px] rounded-md bg-white/90 text-gray-600 hover:bg-white whitespace-nowrap">
           birleşimi kapat
         </button>
