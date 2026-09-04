@@ -291,7 +291,7 @@ export default function ArventoRaporPage() {
   const [aktifSekme, setAktifSekme] = useState<
     "calisma" | "ismakine" | "guzergah" | "genel" | "serme" | "sikistirma" | "tumu" | "tanimlamalar"
   >("calisma");
-  // ÇOKLU SEKME (tam ekran panelinde SAĞ TIK) — birden fazla operasyon TEK haritada üst üste çizilir.
+  // ÇOKLU SEKME (tam ekran panelinde ÇİFT TIK) — birden fazla operasyon TEK haritada üst üste çizilir.
   // Boş/tek elemanlı = normal tek sekme görünümü. 2+ olunca birleşik harita (ArventoTumu + filtre) açılır.
   const [cokluSekmeler, setCokluSekmeler] = useState<Set<HaritaSekmeKey>>(new Set());
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
@@ -1296,20 +1296,13 @@ export default function ArventoRaporPage() {
   // efekt yeni kapsayıcı için tam ekranı GERİ İSTER (tarayıcı, tıklamadan sonraki kısa süre içinde izin verir).
   // Tam ekranda haritanın SOLUNDA duran dikey sekme paneli (yalnız harita sekmeleri).
   // TEK TIK  → o sekmeye geç (çoklu seçim varsa sıfırlanır).
-  // SAĞ TIK  → sekmeyi seçime EKLE/ÇIKAR; 2+ seçiliyse hepsi TEK haritada üst üste çizilir.
+  // ÇİFT TIK → sekmeyi seçime EKLE/ÇIKAR; 2+ seçiliyse hepsi TEK haritada üst üste çizilir.
   // Seçili olan(lar) TURUNCU görünür.
   const cokluAcik = cokluSekmeler.size >= 2;
-  // Seçime ekleme SAĞ TIK ile yapılır. (Önce çift tık denendi: tarayıcı çift tıkta ÖNCE iki kez
-  // onClick ürettiği için açık sekme değişiyor ve seçim boşalıyordu; ayrımı zamanlayıcıyla yapmak da
-  // tek tıka gecikme bindiriyordu. Sağ tık ayrı bir olay → tek tık ANINDA çalışır.)
-  const sekmeTekTik = (k: HaritaSekmeKey) => {
-    setCokluSekmeler(new Set());
-    setAktifSekme(k);
-  };
-  const sekmeSecimeEkle = (k: HaritaSekmeKey) => {
+  const sekmeCiftTik = (k: HaritaSekmeKey) => {
     setCokluSekmeler((onceki) => {
       const y = new Set(onceki);
-      if (y.size === 0) y.add(aktifSekme as HaritaSekmeKey);   // ilk sağ tıkta AÇIK sekme de dahil olsun
+      if (y.size === 0) y.add(aktifSekme as HaritaSekmeKey);   // ilk çift tıkta açık sekme de dahil olsun
       if (y.has(k)) y.delete(k); else y.add(k);
       return y;
     });
@@ -1320,9 +1313,9 @@ export default function ArventoRaporPage() {
         const secili = cokluAcik ? cokluSekmeler.has(key) : aktifSekme === key;
         return (
           <button key={key} type="button"
-            onClick={() => sekmeTekTik(key)}
-            onContextMenu={(e) => { e.preventDefault(); sekmeSecimeEkle(key); }}
-            title="Tek tık: bu sekmeye geç · Sağ tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
+            onClick={() => { setCokluSekmeler(new Set()); setAktifSekme(key); }}
+            onDoubleClick={(e) => { e.preventDefault(); sekmeCiftTik(key); }}
+            title="Tek tık: bu sekmeye geç · Çift tık: seçime ekle/çıkar (birden fazlası aynı haritada üst üste çizilir)"
             className={`px-2 py-1.5 text-[11px] font-semibold rounded-md whitespace-nowrap transition-colors select-none ${
               secili ? "bg-[#F97316] text-white" : "bg-white/90 text-gray-700 hover:bg-white"
             }`}>
@@ -1450,7 +1443,7 @@ export default function ArventoRaporPage() {
       <div className="harita-tamekran-kapsayici relative">
         {/* Tam ekranda sol kenarda dikey ortalı sekme paneli — normal modda gizli (globals.css) */}
         {sekmePanel}
-      {/* ÇOKLU SEKME BİRLEŞİMİ — panelde sağ tıkla 2+ sekme seçildiyse hepsi TEK haritada üst üste.
+      {/* ÇOKLU SEKME BİRLEŞİMİ — panelde çift tıkla 2+ sekme seçildiyse hepsi TEK haritada üst üste.
           Çizim "Tümü" bileşeninindir (sadeleştirilmiş birleşik görünüm); operasyonFiltre ile yalnız
           seçilen operasyonlar çizilir. "Tümü" seçime dahilse filtre uygulanmaz (hepsi görünür). */}
       {cokluAcik ? (
