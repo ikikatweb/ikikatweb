@@ -144,6 +144,12 @@ function yaziRengi(hex: string): string {
   return parlaklik > 155 ? "#000000" : "#FFFFFF";
 }
 
+// İş Tanımları sütunu dar tutulur: soldan 15 karakter gösterilir, tamamı title'da durur.
+const IS_GRUBU_KARAKTER = 15;
+function kisaltIsGrubu(deger: string): string {
+  return deger.length > IS_GRUBU_KARAKTER ? deger.slice(0, IS_GRUBU_KARAKTER) + "…" : deger;
+}
+
 // Sütun başlıkları
 const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "sira_no", label: "Sıra No" },
@@ -906,11 +912,12 @@ export default function SantiyelerPage() {
                       const si = sorts.findIndex((s) => s.key === h.key);
                       const sc = si >= 0 ? sorts[si] : null;
                       const isIsAdi = h.key === "is_adi";
+                      const isIsGrubu = h.key === "is_grubu";
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
                           style={isIsAdi ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) } : undefined}
-                          className={`text-black font-semibold text-center text-[10px] px-1.5 cursor-pointer hover:brightness-110 select-none ${h.key === "sira_no" ? "min-w-[30px] max-w-[30px]" : isIsAdi ? "min-w-[100px] max-w-[120px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : h.twoLine ? "min-w-[70px] max-w-[78px]" : "min-w-[62px] max-w-[78px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
-                          <div className="flex items-center justify-center gap-0.5">
+                          className={`text-black font-semibold text-[10px] px-1.5 cursor-pointer hover:brightness-110 select-none ${isIsGrubu ? "text-left" : "text-center"} ${h.key === "sira_no" ? "min-w-[30px] max-w-[30px]" : isIsAdi ? "min-w-[100px] max-w-[120px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : isIsGrubu ? "min-w-[16ch] max-w-[16ch]" : h.twoLine ? "min-w-[70px] max-w-[78px]" : "min-w-[62px] max-w-[78px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          <div className={`flex items-center gap-0.5 ${isIsGrubu ? "justify-start" : "justify-center"}`}>
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">
                               {sorts.length > 1 && <span className="text-[8px] text-orange-700">{si + 1}</span>}
@@ -945,7 +952,7 @@ export default function SantiyelerPage() {
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
                     {/* İş Tanımları */}
-                    <TableCell className="text-center px-1.5 whitespace-nowrap font-semibold">{s.is_grubu ?? "—"}</TableCell>
+                    <TableCell className="text-left px-1.5 whitespace-nowrap font-semibold overflow-hidden text-ellipsis" title={s.is_grubu ?? undefined}>{s.is_grubu ? kisaltIsGrubu(s.is_grubu) : "—"}</TableCell>
                     {/* Ekap Belge No */}
                     <TableCell className="text-center px-1.5 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
                     {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim.
