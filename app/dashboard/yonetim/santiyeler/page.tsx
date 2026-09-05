@@ -157,7 +157,6 @@ const HEADER_LABELS: { key: string; label: string; twoLine?: boolean }[] = [
   { key: "gecici_kabul", label: "Geçici Kabul" },
   { key: "kesin_kabul", label: "Kesin Kabul" },
   { key: "is_deneyim", label: "İş Deneyim" },
-  { key: "durum", label: "Durum" },
   { key: "guncel_deneyim", label: "Güncel İş\nDeneyim Tutarı", twoLine: true },
   { key: "ff_yuzde", label: "Fiyat Farkı" },
 ];
@@ -931,8 +930,6 @@ export default function SantiyelerPage() {
                 const dim = isDimmed(s);
                 const editKey = `${s.id}-${satir.ortakOrani ?? "ana"}`;
                 const isEditingThis = editing?.id === editKey;
-                const durumText = getDurum(s);
-                const durumColor = s.devir_tarihi ? "bg-purple-500" : s.tasfiye_tarihi ? "bg-red-500" : s.kesin_kabul_tarihi ? "bg-gray-500" : s.gecici_kabul_tarihi ? "bg-yellow-600" : "bg-green-600";
 
                 const isGrubuRengi = isGrubuRenkMap.get(s.is_grubu ?? "");
                 // Tüm satırlar (aktif/pasif) — yazı rengi her zaman siyah
@@ -1010,10 +1007,6 @@ export default function SantiyelerPage() {
                           <a href={s.is_deneyim_url} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>
                         </div>
                       ) : <Badge variant="secondary">Yok</Badge>}
-                    </TableCell>
-                    {/* Durum */}
-                    <TableCell className="text-center px-2">
-                      <Badge className={durumColor}>{durumText}</Badge>
                     </TableCell>
                     {/* Güncel İş Deneyim - tıklayınca iş grubu dağılımı gösterilir */}
                     <TableCell className="text-right px-1.5 tabular-nums whitespace-nowrap">
