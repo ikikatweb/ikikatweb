@@ -144,10 +144,11 @@ function yaziRengi(hex: string): string {
   return parlaklik > 155 ? "#000000" : "#FFFFFF";
 }
 
-// İş Tanımları sütunu dar tutulur: soldan 15 karakter gösterilir, tamamı title'da durur.
+// Dar tutulan sütunlar: değerin soldan N karakteri gösterilir, tamamı hücrenin title'ında durur.
 const IS_GRUBU_KARAKTER = 15;
-function kisaltIsGrubu(deger: string): string {
-  return deger.length > IS_GRUBU_KARAKTER ? deger.slice(0, IS_GRUBU_KARAKTER) + "…" : deger;
+const EKAP_KARAKTER = 10;
+function kisalt(deger: string, n: number): string {
+  return deger.length > n ? deger.slice(0, n) + "…" : deger;
 }
 
 // Sütun başlıkları
@@ -913,11 +914,13 @@ export default function SantiyelerPage() {
                       const sc = si >= 0 ? sorts[si] : null;
                       const isIsAdi = h.key === "is_adi";
                       const isIsGrubu = h.key === "is_grubu";
+                      const isEkap = h.key === "ekap_belge_no";
+                      const solaYasli = isIsGrubu || isEkap;
                       return (
                         <TableHead key={h.key} onClick={() => handleSort(h.key)}
                           style={isIsAdi ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: aciklastir(grup.firmaRenk ?? "#152d4a", 0.25) } : undefined}
-                          className={`text-black font-semibold text-[10px] px-1.5 cursor-pointer hover:brightness-110 select-none ${isIsGrubu ? "text-left" : "text-center"} ${h.key === "sira_no" ? "min-w-[30px] max-w-[30px]" : isIsAdi ? "min-w-[100px] max-w-[120px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : isIsGrubu ? "min-w-[16ch] max-w-[16ch]" : h.twoLine ? "min-w-[70px] max-w-[78px]" : "min-w-[62px] max-w-[78px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
-                          <div className={`flex items-center gap-0.5 ${isIsGrubu ? "justify-start" : "justify-center"}`}>
+                          className={`text-black font-semibold text-[10px] px-1.5 cursor-pointer hover:brightness-110 select-none ${solaYasli ? "text-left" : "text-center"} ${h.key === "sira_no" ? "min-w-[30px] max-w-[30px]" : isIsAdi ? "min-w-[240px] max-w-[240px] shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : isIsGrubu ? "min-w-[16ch] max-w-[16ch]" : isEkap ? "min-w-[11ch] max-w-[11ch]" : h.twoLine ? "min-w-[70px] max-w-[78px]" : "min-w-[62px] max-w-[78px]"} ${h.twoLine ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"}`}>
+                          <div className={`flex items-center gap-0.5 ${solaYasli ? "justify-start" : "justify-center"}`}>
                             <span>{h.label}</span>
                             {sc && <span className="flex items-center">
                               {sorts.length > 1 && <span className="text-[8px] text-orange-700">{si + 1}</span>}
@@ -952,14 +955,15 @@ export default function SantiyelerPage() {
                     {/* Sıra No - firma içinde 1'den başlar */}
                     <TableCell className="text-center px-2">{siraIdx + 1}</TableCell>
                     {/* İş Tanımları */}
-                    <TableCell className="text-left px-1.5 whitespace-nowrap font-semibold overflow-hidden text-ellipsis" title={s.is_grubu ?? undefined}>{s.is_grubu ? kisaltIsGrubu(s.is_grubu) : "—"}</TableCell>
+                    <TableCell className="text-left px-1.5 whitespace-nowrap font-semibold overflow-hidden text-ellipsis" title={s.is_grubu ?? undefined}>{s.is_grubu ? kisalt(s.is_grubu, IS_GRUBU_KARAKTER) : "—"}</TableCell>
                     {/* Ekap Belge No */}
-                    <TableCell className="text-center px-1.5 whitespace-nowrap">{s.ekap_belge_no ?? "—"}</TableCell>
+                    <TableCell className="text-left px-1.5 whitespace-nowrap overflow-hidden text-ellipsis" title={s.ekap_belge_no ?? undefined}>{s.ekap_belge_no ? kisalt(s.ekap_belge_no, EKAP_KARAKTER) : "—"}</TableCell>
                     {/* İşin Adı - sticky (yatay kaydırırken sabit), hover'da tam gösterim.
-                        max-width 120 → sayfaya sığsın diye daha agresif kırpıldı. */}
+                        Genişlik 240px: Durum sütunu kalkıp İş Tanımları/Ekap daraldığı için
+                        iş adına daha çok yer ayrıldı (tablo zaten yatay kayıyor). */}
                     <TableCell
                       style={{ position: "sticky", left: 0, backgroundColor: isGrubuRengi ?? "#ffffff" }}
-                      className="px-1.5 font-medium max-w-[120px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
+                      className="px-1.5 font-medium max-w-[240px] truncate shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                       title={s.is_adi}
                     >{s.is_adi}</TableCell>
                     {/* İhale Kayıt No */}
