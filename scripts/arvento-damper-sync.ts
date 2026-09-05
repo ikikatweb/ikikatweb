@@ -33,6 +33,54 @@ for (const dosya of [".env.local", ".env"]) {
 
 const BASE = "https://web.arvento.com";
 const bekle = (p: Page, ms: number) => p.waitForTimeout(ms);
+const NL = String.fromCharCode(10);
+
+// TANI: UI akışı (Arvento arayüzü değişince kırılabilir) patlarsa ekran görüntüsü + sayfa metni yaz.
+// Görev VBS ile penceresiz koştuğu için konsol çıktısı kaybolur; dosya kalır → nerede takıldığı görülür.
+async function hataDoku(page: Page, hata: unknown): Promise<void> {
+  try {
+    const dizin = path.join(kok, "logs");
+    fs.mkdirSync(dizin, { recursive: true });
+    await page.screenshot({ path: path.join(dizin, "damper-hata.png"), fullPage: false });
+    const metin = await page.locator("body").innerText().catch(() => "(metin okunamadi)");
+    // Ustte duran modal/overlay varsa HTML'ini de yaz -> kapatma secicisini bulmak icin.
+    // Ustte duran modal/overlay: baslik/dugme metninden yukari yurunerek kapsayiciyi ve kapatma
+    // dugmesini bul (z-index sabit degil, bu yuzden metin uzerinden gidiyoruz).
+    const pencereler = await page.evaluate(() => {
+      const cikti: string[] = [];
+      const hepsi = Array.from(document.querySelectorAll("*")) as HTMLElement[];
+      const isaret = hepsi.filter((el) => (el.textContent || "").includes("Bir Daha Gosterme")
+        || (el.textContent || "").includes("Daha Goster") || (el.textContent || "").includes("Anketi"));
+      const yaprak = isaret.filter((el) => !isaret.some((o) => o !== el && el.contains(o)));
+      for (const el of yaprak.slice(0, 2)) {
+        let n: HTMLElement | null = el; const yol: string[] = [];
+        for (let i = 0; i < 10 && n; i++) {
+          const r = n.getBoundingClientRect(); const st = getComputedStyle(n);
+          yol.push(`${i}: <${n.tagName.toLowerCase()} class="${n.className}" id="${n.id}"> pos=${st.position} z=${st.zIndex} rect=${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+          n = n.parentElement;
+        }
+        cikti.push(yol.join(String.fromCharCode(10)));
+      }
+      // Buyuk kapsayicinin ic HTML basligi (kapatma dugmesi genelde basliktadir)
+      const buyuk = hepsi.find((el) => { const r = el.getBoundingClientRect(); return r.width > 700 && r.width < 1200 && r.height > 400 && getComputedStyle(el).position === "fixed"; });
+      if (buyuk) cikti.push("BUYUK KAPSAYICI HTML: " + buyuk.outerHTML.slice(0, 2500));
+      return cikti;
+    }).catch(() => [] as string[]);
+    const satirlar = [
+      new Date().toLocaleString("tr-TR"),
+      "URL: " + page.url(),
+      "HATA: " + (hata instanceof Error ? hata.message : String(hata)),
+      "",
+      "--- ONDEKI PENCERELER (" + pencereler.length + ") ---",
+      pencereler.join(NL + "======" + NL),
+      "",
+      "--- SAYFA METNI ---",
+      metin,
+    ];
+    fs.writeFileSync(path.join(dizin, "damper-hata.txt"), satirlar.join(NL), "utf8");
+    console.log("   tani dosyalari: logs/damper-hata.png + .txt");
+  } catch { /* tani yazilamazsa asil hatayi golgeleme */ }
+}
 
 // SESSION çerezi (sid) al. WAF (NetScaler) düz HTTP login'i reddettiği için gerçek tarayıcı şart.
 async function login(ctx: BrowserContext, page: Page, user: string, pass: string): Promise<string> {
@@ -49,10 +97,32 @@ async function login(ctx: BrowserContext, page: Page, user: string, pass: string
   throw new Error("Giriş başarısız — SESSION çerezi alınamadı (kullanıcı adı/şifre veya 2FA?).");
 }
 
-// Genel Rapor'u UI'dan tetikle: tüm cihazlar + Enlem/Boylam + Damper İndi + (tarih) + XLS → Çalıştır.
-// NOT: koordinatlar 1500x950 sabit viewport'a göredir; DOM tabanlı adımlar (kolon/alarm/XLS/Çalıştır) daha sağlamdır.
-// gunTarih verilirse (YYYY-MM-DD) rapor O GÜN için üretilir (Başlangıç/Bitiş dateboxları ayarlanır);
-// verilmezse Arvento varsayılanı = bugün. Geçmiş günün kaçan damperini geri çekmek için kullanılır.
+
+// Arvento, reports.aspx uzerine zaman zaman PAZARLAMA/ANKET modali aciyor ("Arvento Elektirikli Arac
+// Anketi" gibi). Modal sayfayi tamamen orttugu icin asagidaki sabit koordinatli tiklamalar modalin
+// uzerine dusuyor ve rapor hic acilmiyordu -> damper verisi gunlerce yalnizca e-posta akisindan ERTESI
+// GUN geliyordu. Burada modal SADECE KAPATILIR: ankete cevap verilmez, "Bir Daha Gosterme" isaretlenmez
+// (hesap ayari degistirmeyelim); her kosumda yeniden cikarsa yeniden kapatilir.
+async function kapatEngelPencereler(page: Page): Promise<void> {
+  for (let tur = 0; tur < 4; tur++) {
+    // DevExtreme modal: .dx-overlay-wrapper.dx-overlay-shader > .dx-overlay-content > .dx-popup-title(.dx-has-close-button)
+    const perde = page.locator(".dx-overlay-wrapper.dx-overlay-shader").filter({ has: page.locator(".dx-popup-title") }).first();
+    if (!(await perde.isVisible().catch(() => false))) return; // modal yok / kapandi
+    const kapat = perde.locator(".dx-popup-title .dx-closebutton, .dx-popup-title .dx-icon-close, .dx-popup-title [class*='close']").first();
+    if (await kapat.count().catch(() => 0)) {
+      await kapat.click({ force: true }).catch(() => {});
+    } else {
+      // Kapatma dugmesi secilemezse basligin sag ust kosesine tikla (X ikonu orada durur).
+      const kutu = await perde.locator(".dx-overlay-content").first().boundingBox().catch(() => null);
+      if (!kutu) return;
+      await page.mouse.click(kutu.x + kutu.width - 24, kutu.y + 24);
+    }
+    await bekle(page, 1200);
+    if (!(await perde.isVisible().catch(() => false))) { console.log("   engel pencere (anket/duyuru) kapatildi"); return; }
+  }
+  console.log("   UYARI: engel pencere kapatilamadi - rapor acilmayabilir");
+}
+
 async function tetikleGenelRapor(page: Page, gunTarih?: string): Promise<void> {
   // GEÇMİŞ GÜN: rapor tarihi Arvento'nun ÖZEL tarih bileşeninden geliyor (dxDateBox DEĞİL) → UI'dan
   // ayarlamak güvenilmez. Bunun yerine "Çalıştır"ın gönderdiği /reporting/execute isteğini UÇARKEN
@@ -81,6 +151,7 @@ async function tetikleGenelRapor(page: Page, gunTarih?: string): Promise<void> {
 
   await page.goto(`${BASE}/reports.aspx`, { waitUntil: "networkidle", timeout: 60000 });
   await bekle(page, 4000);
+  await kapatEngelPencereler(page); // anket/duyuru modalı sayfayı örtüyorsa kapat (aksi halde tıklamalar boşa gider)
   await page.mouse.click(519, 474); // "Genel Rapor" kartı → Raporu Aç (sol üst kart)
   await bekle(page, 6000);
 
@@ -214,7 +285,7 @@ async function main() {
 
     // Tetikten ÖNCE mevcut istekleri işaretle → sonra SADECE bu koşumun ürettiği yeni general_report'u al.
     const oncekiler = new Set((await reqList()).map(anahtar));
-    await tetikleGenelRapor(page, gecmisGun);
+    try { await tetikleGenelRapor(page, gecmisGun); } catch (e) { await hataDoku(page, e); throw e; }
     console.log(`${zaman()} → rapor tetiklendi${gecmisGun ? ` (GEÇMİŞ GÜN: ${gecmisGun})` : ""}, çıktı bekleniyor...`);
 
     // Yeni, tamamlanmış general_report çıktısını yokla (rapor genelde ~5 sn'de biter; 120 sn tavan).

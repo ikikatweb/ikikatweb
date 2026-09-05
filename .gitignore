@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Arvento rapor senkron yerel durum damgası (makineye özel)
 scripts/.rapor-son.txt
+
+# Arvento damper senkronu tani ciktilari (ekran goruntusu + sayfa dokumu) — repoya girmesin
+logs/
