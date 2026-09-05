@@ -145,10 +145,13 @@ const KULLANIM_KONTROL: Record<string, { tablo: string; sutun: string; label: st
   personel_meslek: [{ tablo: "personel", sutun: "meslek", label: "personel" }],
   personel_gorev: [{ tablo: "personel", sutun: "gorev", label: "personel" }],
   kasa_harcama_kategori: [{ tablo: "kasa_hareketi", sutun: "kategori", label: "kasa hareketi" }],
-  // İş tanımı: iş deneyim belgesi (şantiye) kaydında metin olarak durur.
-  is_tanimlari: [{ tablo: "santiyeler", sutun: "is_grubu", label: "iş deneyim belgesi" }],
-  // İhale iş grubu: ihale kaydında metin olarak durur.
-  ihale_is_grubu: [{ tablo: "ihale", sutun: "is_grubu", label: "ihale" }],
+  // İş tanımı: hem iş deneyim belgesi (şantiye) hem ihale kaydında METİN olarak durur.
+  // İhale sekmesi de bu listeyi kullanır (eski "ihale_is_grubu" kategorisi kaldırıldı) — ad
+  // değişince iki tablodaki kayıtlar birlikte güncellenir.
+  is_tanimlari: [
+    { tablo: "santiyeler", sutun: "is_grubu", label: "iş deneyim belgesi" },
+    { tablo: "ihale", sutun: "is_grubu", label: "ihale" },
+  ],
 };
 
 export async function deleteTanimlama(id: string) {

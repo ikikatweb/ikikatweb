@@ -2,7 +2,7 @@
 // Yalnız PROJE ADI + KATEGORİ (is_grubu = "İş Tanımları") + tarih sinyalleri okunur (mali veri OKUNMAZ).
 //
 // Devam/Tamamlanan: GEÇİCİ KABUL TARİHİ doluysa TAMAMLANAN, boşsa DEVAM EDEN. Tasfiye HARİÇ.
-// Kategori: santiyeler.is_grubu (tahmin YOK). Grup SIRASI: Tanımlamalar → "ihale_is_grubu" listesindeki sıra.
+// Kategori: santiyeler.is_grubu (tahmin YOK). Grup SIRASI: Tanımlamalar → "is_tanimlari" listesindeki sıra.
 // Grup İÇİ sıra: en son biten iş üstte (geçici kabul / sözleşme tarihine göre azalan).
 import { createClient } from "@supabase/supabase-js";
 

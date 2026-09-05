@@ -1,6 +1,6 @@
 // Ana sayfa "Projelerimiz" — Devam Eden / Tamamlanan AYRI SEKMELERDE; her sekme içinde projeler
 // İŞ TANIMLARINA (santiyeler.is_grubu) göre KATEGORİ BAŞLIKLARIYLA gruplanır.
-//  • Grup SIRASI: Tanımlamalar → "ihale_is_grubu" listesindeki sıra (grupSirasi prop). Listede olmayan
+//  • Grup SIRASI: Tanımlamalar → "is_tanimlari" listesindeki sıra (grupSirasi prop). Listede olmayan
 //    gruplar sona, proje sayısına göre eklenir.
 //  • Grup İÇİ sıra: en son biten iş üstte (siraTarih azalan; tarihsizler sona).
 "use client";

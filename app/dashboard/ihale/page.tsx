@@ -1027,8 +1027,11 @@ function IhalePageContent() {
         getIhaleler().catch(() => []),
       ]);
       setFirmalar(fData as Firma[]);
+      // İş grupları ARTIK "is_tanimlari" listesinden gelir — İş Deneyim Belgesi ile ORTAK liste.
+      // (Önce "ihale_is_grubu" diye ayrı bir liste vardı; iki listede aynı grup farklı adlarla
+      //  tutulunca kayıtlar eşleşmiyordu. Tek listeye indirildi.)
       const igList = (tData as { id: string; kategori: string; deger: string; kisa_ad: string | null; sira: number; aktif: boolean }[])
-        .filter((t) => t.kategori === "ihale_is_grubu")
+        .filter((t) => t.kategori === "is_tanimlari")
         .map((t) => ({ id: t.id, deger: t.deger, kisa_ad: t.kisa_ad, sira: t.sira, aktif: t.aktif }));
       setIsGruplari(igList);
       setGecmisIhaleler(iData);
@@ -1583,8 +1586,8 @@ function IhalePageContent() {
       } else {
         const maxSira = isGruplari.length > 0 ? Math.max(...isGruplari.map((g) => g.sira)) + 1 : 1;
         await createTanimlama({
-          kategori: "ihale_is_grubu",
-          sekme: "ihale",
+          kategori: "is_tanimlari",
+          sekme: null,
           deger: igAd.trim(),
           kisa_ad: nStr,
           sira: maxSira,
