@@ -1576,8 +1576,10 @@ function IhalePageContent() {
     if (!igAd.trim()) { toast.error("İş grubu adı girin."); return; }
     try {
       const nStr = igN.replace(",", ".");
+      let guncellenenIhale = 0;
       if (igEditId) {
-        await updateTanimlama(igEditId, { deger: igAd.trim(), kisa_ad: nStr });
+        // Ad değişirse bu grubu kullanan ihale kayıtları da yeni ada çevrilir.
+        guncellenenIhale = await updateTanimlama(igEditId, { deger: igAd.trim(), kisa_ad: nStr });
       } else {
         const maxSira = isGruplari.length > 0 ? Math.max(...isGruplari.map((g) => g.sira)) + 1 : 1;
         await createTanimlama({
@@ -1590,7 +1592,9 @@ function IhalePageContent() {
         });
       }
       await loadAll();
-      toast.success(igEditId ? "İş grubu güncellendi." : "İş grubu eklendi.");
+      toast.success(igEditId
+        ? (guncellenenIhale > 0 ? `İş grubu güncellendi — ${guncellenenIhale} ihale kaydı yeni ada çevrildi.` : "İş grubu güncellendi.")
+        : "İş grubu eklendi.");
       setIgDialogOpen(false);
     } catch (err) {
       toast.error(`Hata: ${err instanceof Error ? err.message : String(err)}`);

@@ -474,10 +474,12 @@ export default function TanimlamalarPage() {
     const yeni = formatTanimlamaDeger(t.kategori, ham);
     if (yeni === t.deger) { setDuzenleId(null); return; }
     try {
-      await updateTanimlama(t.id, { deger: yeni });
+      // Ad değişince bu değeri kullanan kayıtlar da yeni ada çevrilir (yoksa o kayıtlar formlarda
+      // "seçilmemiş" görünür). Kaç kayıt düzeltildiğini kullanıcıya söyle.
+      const guncellenen = await updateTanimlama(t.id, { deger: yeni });
       await loadData(); // tam yenileme
-      toast.success("Değer güncellendi.");
-    } catch { toast.error("Güncelleme hatası."); }
+      toast.success(guncellenen > 0 ? `Değer güncellendi — ${guncellenen} kayıt yeni ada çevrildi.` : "Değer güncellendi.");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Güncelleme hatası."); }
     finally { setDuzenleId(null); setDuzenleDeger(""); }
   }
 

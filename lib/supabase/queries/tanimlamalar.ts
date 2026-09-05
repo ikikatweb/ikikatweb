@@ -81,14 +81,53 @@ export async function createTanimlama(tanimlama: TanimlamaInsert) {
   return data;
 }
 
-export async function updateTanimlama(id: string, updates: Partial<TanimlamaInsert>) {
+// Tanımlamayı günceller. AD DEĞİŞİRSE (deger), o değeri METİN olarak saklayan kayıtlar da yeni ada
+// çevrilir — aksi halde kayıtlardaki eski metin listede kalmadığı için o kayıtlar formlarda "hiç
+// seçilmemiş" görünürdü (ör. iş deneyim belgesindeki iş tanımı, ihale kaydındaki iş grubu).
+// Hangi kategorinin hangi tablo/sütunda kullanıldığı KULLANIM_KONTROL'de tanımlı; silme kontrolüyle
+// aynı listeyi paylaşır ki tek yerden güncellensin.
+// Dönüş: kaç kaydın adı düzeltildiği (arayüz kullanıcıya bildirsin diye).
+export async function updateTanimlama(id: string, updates: Partial<TanimlamaInsert>): Promise<number> {
   const supabase = getSupabase();
+
+  // Ad değişiyorsa önce ESKİ değeri oku (update'ten sonra artık okunamaz).
+  let onceki: { deger: string; kategori: string } | null = null;
+  if (typeof updates.deger === "string") {
+    const { data } = await supabase
+      .from("tanimlamalar")
+      .select("deger, kategori")
+      .eq("id", id)
+      .maybeSingle();
+    onceki = (data as { deger: string; kategori: string } | null) ?? null;
+  }
+
   const { error } = await supabase
     .from("tanimlamalar")
     .update(updates)
     .eq("id", id);
 
   if (error) throw error;
+
+  const yeniDeger = typeof updates.deger === "string" ? updates.deger.trim() : null;
+  if (!onceki || !yeniDeger || yeniDeger === onceki.deger) return 0;
+
+  let guncellenen = 0;
+  for (const k of KULLANIM_KONTROL[onceki.kategori] ?? []) {
+    const { data, error: cErr } = await supabase
+      .from(k.tablo)
+      .update({ [k.sutun]: yeniDeger })
+      .eq(k.sutun, onceki.deger)
+      .select("id");
+    // Kayıtlar güncellenemezse SESSİZ KALMA: tanımlama yeni adıyla kaydedildi ama kayıtlar eski
+    // metinde kaldıysa kullanıcı bunu bilmeli (yoksa yine "seçilmemiş" görünürler).
+    if (cErr) {
+      throw new Error(
+        `Tanımlama "${yeniDeger}" olarak kaydedildi ancak ${k.label} kayıtları güncellenemedi: ${cErr.message}`
+      );
+    }
+    guncellenen += (data ?? []).length;
+  }
+  return guncellenen;
 }
 
 // Kategori → kullanıldığı tablo ve sütun eşlemesi
@@ -106,6 +145,10 @@ const KULLANIM_KONTROL: Record<string, { tablo: string; sutun: string; label: st
   personel_meslek: [{ tablo: "personel", sutun: "meslek", label: "personel" }],
   personel_gorev: [{ tablo: "personel", sutun: "gorev", label: "personel" }],
   kasa_harcama_kategori: [{ tablo: "kasa_hareketi", sutun: "kategori", label: "kasa hareketi" }],
+  // İş tanımı: iş deneyim belgesi (şantiye) kaydında metin olarak durur.
+  is_tanimlari: [{ tablo: "santiyeler", sutun: "is_grubu", label: "iş deneyim belgesi" }],
+  // İhale iş grubu: ihale kaydında metin olarak durur.
+  ihale_is_grubu: [{ tablo: "ihale", sutun: "is_grubu", label: "ihale" }],
 };
 
 export async function deleteTanimlama(id: string) {
