@@ -229,7 +229,7 @@ export default function PersonelPage() {
   }
 
   function exportExcel() {
-    const headers = ["Ad Soyad", "TC Kimlik No", "Şantiye", "Cep Telefonu", "Meslek", "Görev", "Maaş", "İzin Hakkı", "Durum"];
+    const headers = ["Ad Soyad", "TC Kimlik No", "Şantiye", "Cep Telefonu", "Meslek", "Görev", "Maaş", "Aylık İzin Hakkı", "Durum"];
     const data = filtrelenmis.map((p) => {
       const santiyeAdlari = personelSantiyeAdlari(p.id);
       return [
