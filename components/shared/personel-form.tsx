@@ -739,7 +739,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
 
             <div className="space-y-2">
               <Label htmlFor="izin_hakki">Aylık İzin Hakkı (Gün)</Label>
-              <Input id="izin_hakki" name="izin_hakki" type="text" inputMode="numeric" placeholder="14" value={formData.izin_hakki ?? ""} onChange={handleChange} disabled={loading} />
+              <Input id="izin_hakki" name="izin_hakki" type="text" inputMode="numeric" placeholder="3" value={formData.izin_hakki ?? ""} onChange={handleChange} disabled={loading} />
             </div>
 
             <div className="space-y-2">
