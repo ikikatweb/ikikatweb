@@ -244,6 +244,28 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
       return;
     }
 
+    // İşe giriş tarihi / meslek / görev / şantiye zorunlu — Maaş ile aynı kural: yalnız YENİ
+    // kayıtta (ve pasif personeli yeniden aktif ederken) aranır. Düzenlemede aranmaz, yoksa
+    // bu alanları boş kalmış eski kayıtlarda başka bir bilgi güncellenemez hale gelirdi.
+    if (!isEdit) {
+      if (!formData.ise_giris_tarihi) {
+        toast.error("İşe giriş tarihi zorunludur.");
+        return;
+      }
+      if (!formData.meslek || !formData.meslek.trim()) {
+        toast.error("Meslek seçimi zorunludur.");
+        return;
+      }
+      if (!formData.gorev || !formData.gorev.trim()) {
+        toast.error("Görev seçimi zorunludur.");
+        return;
+      }
+      if (!formData.santiye_id) {
+        toast.error("Çalıştığı şantiye seçimi zorunludur.");
+        return;
+      }
+    }
+
     // Ad soyadı, meslek ve görev için standart format uygula
     const submitData = {
       ...formData,
@@ -326,7 +348,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
         <CardContent className="pt-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="ise_giris_tarihi">İşe Giriş Tarihi</Label>
+              <Label htmlFor="ise_giris_tarihi">İşe Giriş Tarihi <span className="text-red-500">*</span></Label>
               <Input id="ise_giris_tarihi" name="ise_giris_tarihi" type="date" value={formData.ise_giris_tarihi ?? ""} onChange={handleChange} disabled={loading} />
             </div>
 
@@ -371,7 +393,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="meslek">Meslek</Label>
+              <Label htmlFor="meslek">Meslek <span className="text-red-500">*</span></Label>
               {meslekler.length > 0 ? (
                 <div className="flex gap-1">
                   <select
@@ -434,7 +456,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="gorev">Görev</Label>
+              <Label htmlFor="gorev">Görev <span className="text-red-500">*</span></Label>
               {gorevler.length > 0 ? (
                 <div className="flex gap-1">
                   <select
@@ -497,7 +519,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
             </div>
 
             <div className="space-y-2">
-              <Label>Çalıştığı Şantiye</Label>
+              <Label>Çalıştığı Şantiye <span className="text-red-500">*</span></Label>
               <SantiyeSelect santiyeler={santiyeler} value={formData.santiye_id ?? ""} onChange={(v) => setFormData((prev) => ({ ...prev, santiye_id: v || null }))} className={selectClass} />
             </div>
 
@@ -716,7 +738,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="izin_hakki">İzin Hakkı (Gün)</Label>
+              <Label htmlFor="izin_hakki">Aylık İzin Hakkı (Gün)</Label>
               <Input id="izin_hakki" name="izin_hakki" type="text" inputMode="numeric" placeholder="14" value={formData.izin_hakki ?? ""} onChange={handleChange} disabled={loading} />
             </div>
 
