@@ -346,7 +346,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
     <form onSubmit={handleSubmit}>
       <Card>
         <CardContent className="pt-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-3">
             <div className="space-y-2">
               <Label htmlFor="ise_giris_tarihi">İşe Giriş Tarihi <span className="text-red-500">*</span></Label>
               <Input id="ise_giris_tarihi" name="ise_giris_tarihi" type="date" value={formData.ise_giris_tarihi ?? ""} onChange={handleChange} disabled={loading} />
@@ -541,7 +541,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                  Geçmiş tutulur: kira bedeli mantığı — her değişiklikte yeni satır,
                  hesaplamada o tarih için geçerli olan satır kullanılır. */}
             {brutUcretYetkili && isEdit && (
-              <div className="space-y-2 md:col-span-2 lg:col-span-3 bg-amber-50 border-2 border-amber-200 rounded-lg p-3">
+              <div className="space-y-2 md:col-span-2 lg:col-span-3 xl:col-span-4 bg-amber-50 border-2 border-amber-200 rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-1">
                     Brüt Ücret (₺) Geçmişi
@@ -732,7 +732,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
               </div>
             )}
             {brutUcretYetkili && !isEdit && (
-              <div className="md:col-span-2 lg:col-span-3 bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-700">
+              <div className="md:col-span-2 lg:col-span-3 xl:col-span-4 bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-700">
                 💡 Brüt ücret bilgisi personel kaydedildikten sonra düzenleme ekranında girilebilir.
               </div>
             )}

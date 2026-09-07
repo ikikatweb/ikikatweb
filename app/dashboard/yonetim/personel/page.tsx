@@ -451,7 +451,7 @@ export default function PersonelPage() {
 
       {/* Personel düzenleme penceresi — kalem ikonuna tıklayınca açılır (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenlePersonel(null); } }}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+        <DialogContent className="!w-[95vw] md:!w-[70vw] !max-w-none max-h-[92vh] overflow-y-auto p-5">
           <DialogHeader>
             <DialogTitle className="truncate">
               {duzenlePersonel ? `Personel Düzenle — ${duzenlePersonel.ad_soyad}` : "Yeni Personel Ekle"}
