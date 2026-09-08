@@ -1101,6 +1101,10 @@ export default function DashboardPage() {
       const bitmis = !!(sant.gecici_kabul_tarihi || sant.kesin_kabul_tarihi
         || sant.tasfiye_tarihi || sant.devir_tarihi);
       if (bitmis) continue;
+      // İhaleli olmayan işler bu uyarıda görünmez (şantiye formundaki "İhaleli iş"
+      // tiki kaldırılmışsa). null/undefined = işaretli sayılır — projedeki diğer
+      // ihaleli süzgeçleriyle aynı kural (bkz. iscilik-takibi.ts).
+      if (sant.ihaleli === false) continue;
       if (izinli && !izinli.has(r.santiye_id)) continue;
 
       santiyeAdMap.set(r.santiye_id, sant.is_adi);
