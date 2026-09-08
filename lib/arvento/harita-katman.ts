@@ -57,11 +57,18 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
 
 // Tam ekran butonu (sol üst).
 //
-// TARAYICININ Fullscreen API'si KULLANILMAZ. Sebep: tam ekrandaki öge DOM'dan kalkınca tarayıcı tam
-// ekranı bırakır; sekme değiştirmek tam olarak bunu yapar (o sekmenin bileşeni unmount olur) →
-// harita küçülür, tam ekran kapanır. Bunun yerine mod bilgisi <body class="harita-buyuk"> üzerinde
-// tutulur ve kapsayıcı CSS ile ekranı kaplar (globals.css). Body hiç değişmediği için sekme
-// geçişinde harita KÜÇÜLMEZ, geçiş anında olur. ESC ile çıkılır.
+// GERÇEK Fullscreen API kullanılır — ama harita ögesi üzerinde DEĞİL, <html> (documentElement)
+// üzerinde. Sebep: tam ekrandaki öge DOM'dan kalkınca tarayıcı tam ekranı bırakır; sekme
+// değiştirmek tam olarak bunu yapar (o sekmenin haritası unmount olur) → harita küçülür, tam ekran
+// kapanır. <html> hiçbir zaman unmount olmadığı için sekme geçişinde tam ekran BOZULMAZ.
+//
+// Kapsayıcının ekranı kaplaması AYRICA <body class="harita-buyuk"> + globals.css ile sağlanır.
+// İki mekanizma birlikte çalışır: Fullscreen API tarayıcı çubuklarını ve görev çubuğunu kaldırır,
+// body sınıfı da kapsayıcıyı o alana yayar. Fullscreen API reddedilirse (izin/iframe) sayfa içi
+// büyütme yine çalışır — sadece tarayıcı çubukları görünür kalır.
+//
+// Çıkış: buton, ESC veya F11. Tarayıcı kendi başına tam ekrandan çıktığında (ESC'i sayfaya hiç
+// iletmeyebilir) fullscreenchange yakalanır ve sayfa eski haline döndürülür.
 export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   const el = map.getContainer();
   const hedef = (): HTMLElement => (el.closest(".harita-tamekran-kapsayici") as HTMLElement | null) ?? el;
@@ -79,8 +86,20 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
     const b = butonA as HTMLAnchorElement | null;   // onAdd içinde atanır
     if (b) { b.innerHTML = ac ? "🗕" : "⛶"; b.title = ac ? "Tam ekrandan çık (ESC)" : "Tam ekran"; }
   };
+  // Tarayıcı tam ekranı — <html> üzerinde. Reddedilirse sessizce sayfa içi büyütmeyle yetinilir.
+  const tarayiciTamEkran = (ac: boolean) => {
+    try {
+      if (ac) {
+        if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {});
+      } else if (document.fullscreenElement) {
+        void document.exitFullscreen?.().catch(() => {});
+      }
+    } catch { /* API yoksa sayfa içi büyütme yeter */ }
+  };
+
   const modDegistir = (ac: boolean) => {
     document.body.classList.toggle("harita-buyuk", ac);
+    tarayiciTamEkran(ac);
     ikonuYaz(ac);
     if (!ac) { try { hedef().style.removeProperty("--kart-bar-h"); } catch { /* sessiz */ } }
     // Düzen oturana kadar birkaç kez ölç (kart barı içerikle birlikte geç yerleşebiliyor).
@@ -116,6 +135,16 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
     modDegistir(false);
   };
   window.addEventListener("keydown", escDinle, true);
+
+  // Tarayıcı tam ekrandan ÇIKTIĞINDA (ESC / F11 / sekme değişimi) sayfayı eski haline döndür.
+  // ESC'i tarayıcı sıklıkla sayfaya iletmeden kendisi tüketir; asıl güvenilir sinyal budur.
+  const tamEkranDegisti = () => {
+    if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", tamEkranDegisti); return; }
+    if (document.fullscreenElement) return;                                   // tam ekrana GİRİLDİ
+    if (!document.body.classList.contains("harita-buyuk")) return;            // zaten kapalı
+    modDegistir(false);
+  };
+  document.addEventListener("fullscreenchange", tamEkranDegisti);
 
   // Sekme değişince YENİ harita bu kodla kurulur; mod zaten açıksa ikon/boyut ona uydurulur.
   if (document.body.classList.contains("harita-buyuk")) {
