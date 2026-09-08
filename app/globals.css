@@ -205,6 +205,17 @@ body.harita-buyuk .harita-tamekran-kapsayici .leaflet-top.leaflet-right {
   top: calc(var(--kart-bar-h, 88px) + 16px); z-index: 1250;
 }
 
+/* Tam ekranda kapsayıcının DİĞER bölümleri (damper olay listesi, tablolar, özetler…) haritanın
+   ÜSTÜNE BİNMESİN. Sebep: kapsayıcı position:fixed olur, harita (.harita-leaflet) ve kart barı
+   (.harita-arac-panel) position:absolute ile akıştan çıkar → geriye kalan kardeş bloklar
+   kapsayıcının TEPESİNDEN başlayıp haritanın üzerine yazılıyordu (sağ üstte görünen soluk
+   "Gerçek / Mük. / Arıza" rozetleri buydu). Tam ekranda yalnız harita + kart barı + sekme paneli
+   görünür; çıkışta kural düşer ve tüm bölümler geri gelir. */
+body.harita-buyuk .harita-tamekran-kapsayici > * { display: none !important; }
+body.harita-buyuk .harita-tamekran-kapsayici > .harita-leaflet,
+body.harita-buyuk .harita-tamekran-kapsayici > .harita-arac-panel { display: block !important; }
+body.harita-buyuk .harita-tamekran-kapsayici > .harita-sekme-panel { display: flex !important; }
+
 /* ── Tam ekranda SEKME PANELİ (sol kenar, dikey ortalı) ──
    Sayfanın sekme çubuğu tam ekranda görünmüyor; bu panel harita kapsayıcısının İÇİNDEDİR.
    Normal modda tamamen gizli, yalnız tam ekranda görünür. */

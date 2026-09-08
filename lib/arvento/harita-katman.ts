@@ -55,6 +55,44 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   ekleTamEkranKontrolu(L, map);
 }
 
+// ── Tam ekran modu — MODÜL DÜZEYİ DURUM ──
+// Sınıfın gövdede TAKILI KALMASI en can yakıcı hataydı (çıkışta sayfa eski hâline dönmüyordu),
+// bu yüzden durum tek yerde tutulur ve kapatma tek fonksiyondan geçer.
+//   tamEkranApiAcik : gerçek tam ekranı BİZ açtık (çıkışta sayfayı geri almalıyız)
+//   sayfaIciYedek   : requestFullscreen reddedildi, yalnız sayfa içi büyütme çalışıyor
+let tamEkranApiAcik = false;
+let sayfaIciYedek = false;
+let globalTamEkranDinleyiciKuruldu = false;
+
+const buyukMu = (): boolean => document.body.classList.contains("harita-buyuk");
+
+// Modu kapat: sınıfı kaldır, ölçüm değişkenini TÜM kapsayıcılardan sil ve haritaları yeni
+// boyutlarına oturt. resize olayı Leaflet'in kendi dinleyicisini tetikler → hangi sekme açık olursa
+// olsun o haritanın invalidateSize'ı çalışır (harita kayıt defteri tutmaya gerek kalmaz).
+function buyukModuKapat(): void {
+  document.body.classList.remove("harita-buyuk");
+  document.querySelectorAll<HTMLElement>(".harita-tamekran-kapsayici")
+    .forEach((k) => k.style.removeProperty("--kart-bar-h"));
+  // Buton ikonu da geri alınır — ESC ile çıkışta modDegistir çalışmadığı için burada yapılır.
+  document.querySelectorAll<HTMLAnchorElement>(".harita-tamekran-btn a")
+    .forEach((a) => { a.innerHTML = "⛶"; a.title = "Tam ekran"; });
+  for (const ms of [0, 60, 200]) setTimeout(() => window.dispatchEvent(new Event("resize")), ms);
+}
+
+// Tarayıcı tam ekrandan çıkınca (ESC / F11 / adres çubuğu) sayfayı geri al. TEK dinleyici — harita
+// başına değil: sekme değiştikçe kurulan dinleyicilerden biri "benim haritam DOM'da değil" deyip
+// erken dönerse mod açık kalıyordu.
+function kurGlobalTamEkranDinleyici(): void {
+  if (globalTamEkranDinleyiciKuruldu || typeof document === "undefined") return;
+  globalTamEkranDinleyiciKuruldu = true;
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) return;   // tam ekrana GİRİLDİ
+    if (!tamEkranApiAcik) return;             // sayfa içi yedek mod — dokunma
+    tamEkranApiAcik = false;
+    buyukModuKapat();
+  });
+}
+
 // Tam ekran butonu (sol üst).
 //
 // GERÇEK Fullscreen API kullanılır — ama harita ögesi üzerinde DEĞİL, <html> (documentElement)
@@ -70,6 +108,8 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
 // Çıkış: buton, ESC veya F11. Tarayıcı kendi başına tam ekrandan çıktığında (ESC'i sayfaya hiç
 // iletmeyebilir) fullscreenchange yakalanır ve sayfa eski haline döndürülür.
 export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
+  kurGlobalTamEkranDinleyici();
+
   const el = map.getContainer();
   const hedef = (): HTMLElement => (el.closest(".harita-tamekran-kapsayici") as HTMLElement | null) ?? el;
   let butonA: HTMLAnchorElement | null = null;
@@ -78,7 +118,7 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   // değerin altına konumlanır (globals.css); sabit değer, bar yüksekliği değiştiği için yetmiyor.
   const barYuksekliginiYaz = () => {
     const h = hedef();
-    if (!document.body.classList.contains("harita-buyuk")) { h.style.removeProperty("--kart-bar-h"); return; }
+    if (!buyukMu()) { h.style.removeProperty("--kart-bar-h"); return; }
     const bar = h.querySelector(".harita-arac-panel") as HTMLElement | null;
     h.style.setProperty("--kart-bar-h", `${bar ? Math.round(bar.getBoundingClientRect().height) : 0}px`);
   };
@@ -86,32 +126,42 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
     const b = butonA as HTMLAnchorElement | null;   // onAdd içinde atanır
     if (b) { b.innerHTML = ac ? "🗕" : "⛶"; b.title = ac ? "Tam ekrandan çık (ESC)" : "Tam ekran"; }
   };
-  // Tarayıcı tam ekranı — <html> üzerinde. Reddedilirse sessizce sayfa içi büyütmeyle yetinilir.
-  const tarayiciTamEkran = (ac: boolean) => {
-    try {
-      if (ac) {
-        if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => {});
-      } else if (document.fullscreenElement) {
-        void document.exitFullscreen?.().catch(() => {});
-      }
-    } catch { /* API yoksa sayfa içi büyütme yeter */ }
-  };
-
-  const modDegistir = (ac: boolean) => {
-    document.body.classList.toggle("harita-buyuk", ac);
-    tarayiciTamEkran(ac);
-    ikonuYaz(ac);
-    if (!ac) { try { hedef().style.removeProperty("--kart-bar-h"); } catch { /* sessiz */ } }
-    // Düzen oturana kadar birkaç kez ölç (kart barı içerikle birlikte geç yerleşebiliyor).
+  // Düzen oturana kadar birkaç kez ölç (kart barı içerikle birlikte geç yerleşebiliyor).
+  const olcVeOturt = () => {
     for (const ms of [0, 60, 200]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
     setTimeout(barYuksekliginiYaz, 80);
     setTimeout(barYuksekliginiYaz, 350);
   };
 
+  const modDegistir = (ac: boolean) => {
+    if (ac) {
+      document.body.classList.add("harita-buyuk");
+      ikonuYaz(true);
+      olcVeOturt();
+      // Gerçek tam ekran <html> üzerinde. Başarılıysa tarayıcı çubukları + görev çubuğu kalkar;
+      // reddedilirse sayfa içi büyütmeyle devam ederiz (yedek mod).
+      let istek: Promise<void> | undefined;
+      try { istek = document.documentElement.requestFullscreen?.(); } catch { istek = undefined; }
+      if (istek) {
+        istek.then(() => { tamEkranApiAcik = true; sayfaIciYedek = false; olcVeOturt(); })
+             .catch(() => { tamEkranApiAcik = false; sayfaIciYedek = true; });
+      } else {
+        sayfaIciYedek = true;
+      }
+    } else {
+      // ÖNCE sayfayı geri al, SONRA tam ekrandan çık: exitFullscreen takılsa bile sayfa düzeli kalır.
+      tamEkranApiAcik = false; sayfaIciYedek = false;
+      buyukModuKapat();
+      ikonuYaz(false);
+      try { if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {}); } catch { /* sessiz */ }
+      olcVeOturt();
+    }
+  };
+
   const Buton = L.Control.extend({
     options: { position: "topleft" as const },
     onAdd() {
-      const div = L.DomUtil.create("div", "leaflet-bar");
+      const div = L.DomUtil.create("div", "leaflet-bar harita-tamekran-btn");
       const a = L.DomUtil.create("a", "", div) as HTMLAnchorElement;
       a.href = "#"; a.title = "Tam ekran"; a.innerHTML = "⛶";
       a.style.cssText = "font-size:18px;line-height:30px;text-align:center;cursor:pointer";
@@ -119,7 +169,7 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
       L.DomEvent.disableClickPropagation(div);
       L.DomEvent.on(a, "click", (e) => {
         L.DomEvent.stop(e);
-        modDegistir(!document.body.classList.contains("harita-buyuk"));
+        modDegistir(!buyukMu());
       });
       return div;
     },
@@ -127,32 +177,29 @@ export function ekleTamEkranKontrolu(L: LeafletStatic, map: LeafletMap): void {
   map.addControl(new Buton());
 
   // ESC ile çık. capture:true → odak haritanın içindeyken olay yolda durdurulsa bile yakalanır.
+  // (Gerçek tam ekranda ESC'i tarayıcı kendisi tüketebilir; asıl güvence fullscreenchange.)
   // Bu haritanın DOM'u kalktıysa (sekme değişti) dinleyici kendini bırakır.
   const escDinle = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     if (!document.body.contains(el)) { window.removeEventListener("keydown", escDinle, true); return; }
-    if (!document.body.classList.contains("harita-buyuk")) return;
+    if (!buyukMu()) return;
     modDegistir(false);
   };
   window.addEventListener("keydown", escDinle, true);
 
-  // Tarayıcı tam ekrandan ÇIKTIĞINDA (ESC / F11 / sekme değişimi) sayfayı eski haline döndür.
-  // ESC'i tarayıcı sıklıkla sayfaya iletmeden kendisi tüketir; asıl güvenilir sinyal budur.
-  const tamEkranDegisti = () => {
-    if (!document.body.contains(el)) { document.removeEventListener("fullscreenchange", tamEkranDegisti); return; }
-    if (document.fullscreenElement) return;                                   // tam ekrana GİRİLDİ
-    if (!document.body.classList.contains("harita-buyuk")) return;            // zaten kapalı
-    modDegistir(false);
-  };
-  document.addEventListener("fullscreenchange", tamEkranDegisti);
+  // KENDİNİ ONARMA: harita kurulurken mod açık görünüyor ama gerçek tam ekran yoksa ve yedek moda da
+  // geçilmemişse, bu TAKILI KALMIŞ bir sınıftır (çıkışta temizlenememiş) → sayfayı normale döndür.
+  if (buyukMu() && !document.fullscreenElement && !sayfaIciYedek) {
+    buyukModuKapat();
+    ikonuYaz(false);
+    olcVeOturt();
+    return;
+  }
 
   // Sekme değişince YENİ harita bu kodla kurulur; mod zaten açıksa ikon/boyut ona uydurulur.
-  if (document.body.classList.contains("harita-buyuk")) {
-    ikonuYaz(true);
-    for (const ms of [0, 60, 200]) setTimeout(() => { try { map.invalidateSize(); } catch { /* sessiz */ } }, ms);
-    setTimeout(barYuksekliginiYaz, 80);
-  }
+  if (buyukMu()) { ikonuYaz(true); olcVeOturt(); }
 }
+
 
 // Mesafe ölçüm kontrolü — sol üstte cetvel (📏) butonu. Tıklayınca ölçüm moduna girilir:
 // haritaya tıklayarak nokta eklenir, çizgi ve canlı toplam (m/km) gösterilir; çift tıkla bitirilir.
