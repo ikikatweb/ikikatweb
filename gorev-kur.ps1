@@ -32,6 +32,7 @@ $vbsMap = [ordered]@{
   'arvento-sync-gizli.vbs'      = 'arvento-speed-sync.bat'
   'personel-bildirge-gizli.vbs' = 'personel-bildirge-sync.bat'
   '_yedek_hidden.vbs'           = 'yedek-al.bat'
+  'netsim-sync-gizli.vbs'       = 'netsim-sync.bat'
 }
 foreach ($vbs in $vbsMap.Keys) {
   $bat = $vbsMap[$vbs]
@@ -85,13 +86,17 @@ Kur 'Arvento Gercek Rapor'  (Act '_rapor_hidden.vbs') (Rep 1) $prinS4U $setStd
 Kur 'ArventoDamperSync'   (Act 'arvento-damper-gizli.vbs') (Rep 1)  $prinS4U $setStd
 Kur 'ArventoGuzergahSync' (Act 'arvento-sync-gizli.vbs')   (Rep 15) $prinS4U $setStd
 Kur 'Personel Bildirge Sync' (Act 'personel-bildirge-gizli.vbs') (Rep 30) $prinS4U $setPers
+# --- Netsim senkronu: sirket agindaki Firebird'den (192.168.3.62) hakedis tutarlarini ceker.
+#     Sadece SELECT yapar; Netsim'e tek satir yazmaz. Sunucu/ag kapaliysa sessizce hata verip
+#     bir sonraki turda tekrar dener -> IgnoreNew ile ust uste binmez.
+Kur 'Netsim Senkron' (Act 'netsim-sync-gizli.vbs') (Rep 15) $prinS4U $setStd
 # --- Haftalik TAM yedek: Cumartesi 12:00 (dashboard'daki Cumartesi hatirlatmasiyla ayni gun) ---
 #     Veritabani JSON + Storage dosya aynasi -> C:\ikikatweb-yedek
 Kur 'ikikatweb Haftalik Yedek' (Act '_yedek_hidden.vbs') `
     (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Saturday -At '12:00') $prinS4U $setYedek
 
 Write-Host "`n=== Kurulan gorevler ==="
-$adlar = 'Arvento Anlik Senkron','Arvento Gercek Rapor','ArventoDamperSync','ArventoGuzergahSync','Personel Bildirge Sync','ikikatweb Haftalik Yedek'
+$adlar = 'Arvento Anlik Senkron','Arvento Gercek Rapor','ArventoDamperSync','ArventoGuzergahSync','Personel Bildirge Sync','Netsim Senkron','ikikatweb Haftalik Yedek'
 Get-ScheduledTask | Where-Object { $_.TaskName -in $adlar } | Select-Object TaskName,State | Format-Table -AutoSize
 Write-Host "Tamam. Gorevler ETKIN; tetikleyicilerine gore calismaya baslayacaklar."
 Write-Host "SONRAKI: eski dizustundeki gorevleri KAPATMADAN once burada birkac dakika calistigini dogrula."
