@@ -1708,6 +1708,12 @@ function IhalePageContent() {
             data.cell.styles.fillColor = [243, 244, 246];
             data.cell.styles.textColor = [156, 163, 175];
           }
+          // Vergi/SGK borcu uyarisi Durum sutununda KIRMIZI (ekranla ayni vurgu).
+          // Durum sutunu index 4: No | Firma | Teklif | Tenzilat | Durum
+          if (k.uyarilar.length > 0 && data.column.index === 4) {
+            data.cell.styles.textColor = [220, 38, 38];
+            data.cell.styles.fontStyle = "bold";
+          }
         }
       },
     });
@@ -2173,8 +2179,9 @@ function IhalePageContent() {
                                 <span className="text-gray-400 text-[10px]">—</span>
                               ) : null}
                               {k.uyarilar.map((uyari) => (
+                                // Vergi/SGK borcu KIRMIZI — hesabi etkilemese de gozden kacmasin.
                                 <span key={uyari}
-                                  className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-amber-200 bg-amber-50 px-1 py-px text-[9px] leading-tight text-amber-700">
+                                  className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-red-300 bg-red-50 px-1 py-px text-[9px] font-semibold leading-tight text-red-600">
                                   <AlertTriangle size={8} /> {uyari}
                                 </span>
                               ))}
