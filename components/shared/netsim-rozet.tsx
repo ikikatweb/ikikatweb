@@ -13,13 +13,16 @@ export function netsimKaynakli(deger: number | null | undefined, netsimDeger: nu
   return Math.abs(Number(deger) - Number(netsimDeger)) < 0.005;
 }
 
+// Dar tablolarda yer kaplamasin diye tek harf: rakamin yanina sigan kucuk bir "N".
+// Anlami tooltip'te yazili; uzerine gelince tam aciklama cikar.
 export function NetsimRozet({ className = "" }: { className?: string }) {
   return (
     <span
       title="Bu tutar Netsim'den otomatik geldi. Elle değiştirirseniz rozet kalkar; senkron 15 dakika içinde Netsim'deki değeri geri yazar."
-      className={`inline-flex items-center rounded-sm bg-sky-100 px-1 py-px text-[8px] font-semibold uppercase leading-none tracking-wide text-sky-700 ${className}`}
+      aria-label="Netsim'den geldi"
+      className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[2px] bg-sky-100 text-[8px] font-bold leading-none text-sky-700 ${className}`}
     >
-      Netsim
+      N
     </span>
   );
 }

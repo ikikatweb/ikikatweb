@@ -996,17 +996,17 @@ export default function IscilikTakibiPage() {
                       );
                     }
 
-                    // Fiyat Farkı: Netsim'den geldiyse rakamın altına küçük rozet.
-                    // (Kolon dar olduğu için rozet yan yana değil, altta duruyor.)
+                    // Fiyat Farkı: Netsim'den geldiyse rakamın YANINA küçük rozet.
+                    // (Alt satıra koymak tüm tablonun satır yüksekliğini artırıyordu.)
                     if (col.key === "fiyat_farki" && !isEditing
                         && netsimKaynakli(row.fiyat_farki, row.netsim_fiyat_farki)) {
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={cellClass}
                           onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
-                          <div className="flex flex-col items-end leading-tight">
-                            <span>{hucreDegeri(row, col)}</span>
-                            <NetsimRozet className="mt-0.5" />
-                          </div>
+                          <span className="inline-flex items-center justify-end gap-1">
+                            {hucreDegeri(row, col)}
+                            <NetsimRozet />
+                          </span>
                         </TableCell>
                       );
                     }
