@@ -1725,14 +1725,17 @@ function IhalePageContent() {
     const headers = ["Sıra", "Firma Adı", "Teklif Tutarı", "Tenzilat (%)", "Durum"];
     const data = siraliKatilimcilar.map((k, i) => {
       const isMK = muhtemelKazanan?.firmaAdi === k.firmaAdi && muhtemelKazanan?.teklif === k.teklif;
+      let durumText = k.durum === "gecerli" ? (isMK ? "Muhtemel Kazanan" : "Geçerli")
+        : k.durum === "sinir_alti" ? "Sınır Altı"
+        : k.gecersizNedeni ?? "Geçersiz";
+      // Vergi/SGK borcu uyarıları — ekran ve PDF ile aynı bilgi Excel'de de olsun
+      if (k.uyarilar.length > 0) durumText += " | " + k.uyarilar.join(", ");
       return [
         i + 1,
         k.firmaAdi,
         k.teklif,
         tenzilat(k.teklif),
-        k.durum === "gecerli" ? (isMK ? "Muhtemel Kazanan" : "Geçerli")
-          : k.durum === "sinir_alti" ? "Sınır Altı"
-          : k.gecersizNedeni ?? "Geçersiz",
+        durumText,
       ];
     });
     // Üst bilgiler
@@ -1749,7 +1752,7 @@ function IhalePageContent() {
       headers,
       ...data,
     ]);
-    ws["!cols"] = [{ wch: 6 }, { wch: 40 }, { wch: 18 }, { wch: 12 }, { wch: 20 }];
+    ws["!cols"] = [{ wch: 6 }, { wch: 40 }, { wch: 18 }, { wch: 12 }, { wch: 38 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sınır Değer");
     XLSX.writeFile(wb, `sinir-deger-${ihaleKayitNo || "rapor"}.xlsx`);
@@ -2118,7 +2121,7 @@ function IhalePageContent() {
                               </span>
                               {tarihSaat && <span className="text-gray-500 ml-1">· {tarihSaat}</span>}
                             </div>
-                            {(k.gecersizNedeni || k.uyarilar.length > 0 || k.isEdited) && (
+                            {(k.gecersizNedeni || k.isEdited) && (
                               <div className="mt-0.5 flex flex-wrap gap-1">
                                 {k.isEdited && (
                                   <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
@@ -2128,11 +2131,6 @@ function IhalePageContent() {
                                 {k.gecersizNedeni && k.gecersizNedeni.split(", ").map((neden) => (
                                   <span key={neden} className="inline-flex items-center gap-0.5 text-[10px] text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
                                     <AlertTriangle size={9} /> {neden}
-                                  </span>
-                                ))}
-                                {k.uyarilar.map((uyari) => (
-                                  <span key={uyari} className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
-                                    <AlertTriangle size={9} /> {uyari}
                                   </span>
                                 ))}
                               </div>
@@ -2160,17 +2158,27 @@ function IhalePageContent() {
                             </span>
                           </TableCell>
                           <TableCell className="px-2 text-center">
-                            {isMK ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold border border-orange-300">
-                                <AlertTriangle size={10} /> İlk Makul Teklif
-                              </span>
-                            ) : k.durum === "gecerli" ? (
-                              <span className="text-gray-400 text-[10px]">—</span>
-                            ) : k.durum === "sinir_alti" ? (
-                              <span className="text-amber-600 text-[10px]">Sınır Altı</span>
-                            ) : (
-                              <span className="text-red-500 text-[10px]">Geçersiz</span>
-                            )}
+                            {/* Durum + vergi/SGK borcu uyarıları. Borç hesabı etkilemez
+                                (sınır değere girer), sadece isteklinin durumunu bildirir. */}
+                            <div className="flex flex-col items-center gap-0.5">
+                              {isMK ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold border border-orange-300">
+                                  <AlertTriangle size={10} /> İlk Makul Teklif
+                                </span>
+                              ) : k.durum === "sinir_alti" ? (
+                                <span className="text-amber-600 text-[10px]">Sınır Altı</span>
+                              ) : k.durum === "gecersiz" ? (
+                                <span className="text-red-500 text-[10px]">Geçersiz</span>
+                              ) : k.uyarilar.length === 0 ? (
+                                <span className="text-gray-400 text-[10px]">—</span>
+                              ) : null}
+                              {k.uyarilar.map((uyari) => (
+                                <span key={uyari}
+                                  className="inline-flex items-center gap-0.5 whitespace-nowrap rounded border border-amber-200 bg-amber-50 px-1 py-px text-[9px] leading-tight text-amber-700">
+                                  <AlertTriangle size={8} /> {uyari}
+                                </span>
+                              ))}
+                            </div>
                           </TableCell>
                           <TableCell className="px-2 text-center">
                             <button type="button" onClick={() => katilimciSil(i)} className="p-1 text-red-300 hover:text-red-600">
