@@ -1000,7 +1000,9 @@ export default function IscilikTakibiPage() {
                     if (col.key === "tahmini_bordro") {
                       const sonAy = iscilikSonAyMap.get(row.id) ?? null;
                       return (
-                        <TableCell key={col.key} style={stickyStyle} className={cellClass}
+                        // Kesinleşmiş tutar değil, tahmin → satırın geri kalanından bir punto
+                        // küçük ve silik gri (eski Yatan Prim altındaki gri rakamın devamı).
+                        <TableCell key={col.key} style={stickyStyle} className={cellClass + " text-[11px] text-gray-400"}
                           title={`${sonAy ? `${sonAy} sonrası ` : ""}bordro tahmini (manuel + otomatik atama gün × günlük ücret)`}>
                           {hucreDegeri(row, col)}
                         </TableCell>
