@@ -98,6 +98,14 @@ const COLUMNS: ColDef[] = [
     }, getRaw: () => null },
   { key: "yatan_prim", label: "Yatan\nPrim", computed: true,
     getValue: (r) => formatPara(r.yatan_prim), getRaw: () => null },
+  // Son veri girisi yapilan aydan SONRAKI aylarin tahmini bordro tutari.
+  // Deger component state'ine (atamalar / manuel gun / ucretler) bagli oldugu icin
+  // burada hesaplanamaz; gercek degeri hucreDegeri() uretir.
+  { key: "tahmini_bordro", label: "Tahmini\nBordro", computed: true,
+    getValue: () => "—", getRaw: () => null },
+  // Kalan Prim = Yatmasi Gereken - Yatan Prim - Tahmini Bordro.
+  // Tahmini bordro component state'inden geldigi icin gercek degeri hucreDegeri() uretir;
+  // buradaki formul sadece tahmini bordronun olmadigi durumdaki tabandir.
   { key: "kalan_prim", label: "Kalan\nPrim", computed: true,
     getValue: (r) => {
       const bedel = r.santiyeler?.sozlesme_bedeli ?? 0;
@@ -538,6 +546,33 @@ export default function IscilikTakibiPage() {
     return bordroToplam;
   }
 
+  // Kalan Prim = Yatması Gereken − Yatan Prim − Tahmini Bordro.
+  // Yatması gereken 0 ise (işçilik oranı/sözleşme bedeli tanımsız) hesap anlamsız → null.
+  function kalanPrimHesapla(row: IscilikTakibiWithSantiye): number | null {
+    const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+    const kesif = row.kesif_artisi ?? 0;
+    const ff = row.fiyat_farki ?? 0;
+    const oran = row.iscilik_orani ?? 0;
+    const yatacak = (bedel + kesif + ff) * oran / 100;
+    if (yatacak === 0) return null;
+    return yatacak - (row.yatan_prim ?? 0) - bordroToplamHesapla(row);
+  }
+
+  // Tabloda, PDF'te ve Excel'de AYNI değerin çıkması için tek kapı.
+  // tahmini_bordro ve kalan_prim component state'ine (atama/manuel gün/ücret) bağlı
+  // olduğundan module-level COLUMNS.getValue ile hesaplanamaz; diğerleri getValue'ya düşer.
+  function hucreDegeri(row: IscilikTakibiWithSantiye, col: ColDef): string {
+    if (col.key === "tahmini_bordro") {
+      const b = bordroToplamHesapla(row);
+      return b > 0 ? formatPara(b) : "—";
+    }
+    if (col.key === "kalan_prim") {
+      const k = kalanPrimHesapla(row);
+      return k === null ? "—" : formatPara(k);
+    }
+    return col.getValue(row);
+  }
+
   function exportPDF() {
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     doc.setFont("helvetica", "bold");
@@ -552,37 +587,28 @@ export default function IscilikTakibiPage() {
     const pdfColumns = COLUMNS.filter((c) => !gizle.has(c.key));
 
     const headers = pdfColumns.map((c) => tr(c.label.replace(/\n/g, " ")));
-    // Body: yatan_prim hücresinde, altta yeni satır olarak bordro tahmini de yazsın
-    // (UI'daki silik gri rakamın PDF karşılığı).
-    const body = filtrelenmis.map((r) => pdfColumns.map((c) => {
-      if (c.key === "yatan_prim") {
-        const bordro = bordroToplamHesapla(r);
-        const main = tr(c.getValue(r));
-        if (bordro > 0) {
-          return `${main}\n${bordro.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL`;
-        }
-        return main;
-      }
-      return tr(c.getValue(r));
-    }));
+    // Body: tahmini bordro ve kalan prim tablodakiyle aynı olsun diye hucreDegeri'nden geçer.
+    const body = filtrelenmis.map((r) => pdfColumns.map((c) => tr(hucreDegeri(r, c))));
 
     // Kalan prim ve iş bitim tarihi sütun index'leri
     const kalanPrimIdx = pdfColumns.findIndex((c) => c.key === "kalan_prim");
     const bitimTarihiIdx = pdfColumns.findIndex((c) => c.key === "is_bitim_tarihi");
 
     // Toplam satırı için veri hesapla
-    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
     for (const row of filtrelenmis) {
       const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = row.kesif_artisi ?? 0;
       const ff = row.fiyat_farki ?? 0;
       const oran = row.iscilik_orani ?? 0;
       const yatacak = (bedel + kesif + ff) * oran / 100;
+      const tahminiBordro = bordroToplamHesapla(row);
       kesifT += kesif;
       fiyatFarkiT += ff;
       yatmasiGerekenT += yatacak;
       yatanT += (row.yatan_prim ?? 0);
-      kalanT += (yatacak - (row.yatan_prim ?? 0));
+      tahminiBordroT += tahminiBordro;
+      kalanT += (yatacak - (row.yatan_prim ?? 0) - tahminiBordro);
       toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
     }
     // PDF'te toplam satırı için her sütunun değerini bul
@@ -591,6 +617,7 @@ export default function IscilikTakibiPage() {
       fiyat_farki: formatPara(fiyatFarkiT),
       yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
       yatan_prim: formatPara(yatanT),
+      tahmini_bordro: formatPara(tahminiBordroT),
       kalan_prim: formatPara(kalanT),
       toplam_son_veri_tutari: formatPara(toplamSonVeriT),
     };
@@ -647,14 +674,9 @@ export default function IscilikTakibiPage() {
 
         // Kalan prim renklendirmesi
         if (colIdx === kalanPrimIdx) {
-          const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
-          const kesif = row.kesif_artisi ?? 0;
-          const ff = row.fiyat_farki ?? 0;
-          const oran = row.iscilik_orani ?? 0;
-          const yatacak = (bedel + kesif + ff) * oran / 100;
-          const kalan = yatacak - (row.yatan_prim ?? 0);
-          if (kalan < 0) data.cell.styles.textColor = [220, 38, 38];
-          else if (kalan > 0) { data.cell.styles.textColor = [22, 163, 74]; data.cell.styles.fontStyle = "bold"; }
+          const kalan = kalanPrimHesapla(row);
+          if (kalan !== null && kalan < 0) data.cell.styles.textColor = [220, 38, 38];
+          else if (kalan !== null && kalan > 0) { data.cell.styles.textColor = [22, 163, 74]; data.cell.styles.fontStyle = "bold"; }
         }
 
         // İş bitim tarihi renklendirmesi
@@ -689,21 +711,23 @@ export default function IscilikTakibiPage() {
     const gizle = GIZLI_SUTUNLAR;
     const excelColumns = COLUMNS.filter((c) => !gizle.has(c.key));
     const headers = ["No", ...excelColumns.map((c) => c.label.replace(/\n/g, " "))];
-    const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => c.getValue(r))]);
+    const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => hucreDegeri(r, c))]);
 
     // Toplam satırı
-    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
     for (const row of filtrelenmis) {
       const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = row.kesif_artisi ?? 0;
       const ff = row.fiyat_farki ?? 0;
       const oran = row.iscilik_orani ?? 0;
       const yatacak = (bedel + kesif + ff) * oran / 100;
+      const tahminiBordro = bordroToplamHesapla(row);
       kesifT += kesif;
       fiyatFarkiT += ff;
       yatmasiGerekenT += yatacak;
       yatanT += (row.yatan_prim ?? 0);
-      kalanT += (yatacak - (row.yatan_prim ?? 0));
+      tahminiBordroT += tahminiBordro;
+      kalanT += (yatacak - (row.yatan_prim ?? 0) - tahminiBordro);
       toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
     }
     const toplamMap: Record<string, string> = {
@@ -711,6 +735,7 @@ export default function IscilikTakibiPage() {
       fiyat_farki: formatPara(fiyatFarkiT),
       yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
       yatan_prim: formatPara(yatanT),
+      tahmini_bordro: formatPara(tahminiBordroT),
       kalan_prim: formatPara(kalanT),
       toplam_son_veri_tutari: formatPara(toplamSonVeriT),
     };
@@ -849,8 +874,12 @@ export default function IscilikTakibiPage() {
                   const sayisal = (col.type === "para" || col.computed) && !tarihSutunu;
                   const basliHizalama = col.key === "is_adi" ? "text-left" : sayisal ? "text-right" : "text-center";
                   const isIsAdi = col.key === "is_adi";
+                  const baslikAciklama =
+                    col.key === "tahmini_bordro" ? "Son veri girişi yapılan aydan sonraki ayların bordro tahmini (manuel + otomatik atama gün × günlük ücret)"
+                    : col.key === "kalan_prim" ? "Yatması Gereken Prim − Yatan Prim − Tahmini Bordro"
+                    : undefined;
                   return (
-                    <TableHead key={col.key}
+                    <TableHead key={col.key} title={baslikAciklama}
                       style={isIsAdi && isAdiSabit ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" } : undefined}
                       className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${isIsAdi ? `min-w-[180px] max-w-[220px]${isAdiSabit ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : ""}` : "min-w-[52px]"}`}>
                       {col.label}
@@ -883,15 +912,10 @@ export default function IscilikTakibiPage() {
                     // Kalan prim renklendirmesi
                     let kalanPrimClass = "";
                     if (col.key === "kalan_prim") {
-                      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
-                      const kesif = row.kesif_artisi ?? 0;
-                      const ff = row.fiyat_farki ?? 0;
-                      const oran = row.iscilik_orani ?? 0;
-                      const yatacak = (bedel + kesif + ff) * oran / 100;
-                      const kalan = yatacak - (row.yatan_prim ?? 0);
+                      const kalan = kalanPrimHesapla(row);
                       // Kalan prim > 0 → yeşil (yatacak var), < 0 → kırmızı (fazla yatmış).
-                      if (kalan < 0) kalanPrimClass = " text-red-600 font-bold";
-                      else if (kalan > 0) kalanPrimClass = " text-green-600 font-bold";
+                      if (kalan !== null && kalan < 0) kalanPrimClass = " text-red-600 font-bold";
+                      else if (kalan !== null && kalan > 0) kalanPrimClass = " text-green-600 font-bold";
                     }
 
                     // İş bitim tarihi renklendirmesi — GÖSTERİLEN tarihe göre (süre uzatımlı tarih öncelikli).
@@ -971,22 +995,14 @@ export default function IscilikTakibiPage() {
                       );
                     }
 
-                    // yatan_prim altında bordro toplamı: helper ile hesaplanıyor (PDF ile aynı değer)
-                    if (col.key === "yatan_prim") {
+                    // Tahmini Bordro: son veri girişinden sonraki ayların bordro tahmini.
+                    // (Önceden Yatan Prim hücresinin altında silik gri yazıyordu — artık kendi sütunu.)
+                    if (col.key === "tahmini_bordro") {
                       const sonAy = iscilikSonAyMap.get(row.id) ?? null;
-                      const bordroToplam = bordroToplamHesapla(row);
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={cellClass}
-                          onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
-                          <div className="flex flex-col items-end leading-tight">
-                            <span>{col.getValue(row)}</span>
-                            {bordroToplam > 0 && (
-                              <span className="text-[10px] text-gray-400 font-mono"
-                                title={`${sonAy ? `${sonAy} sonrası ` : ""}bordro tahmini (manuel + otomatik atama gün × günlük ücret)`}>
-                                {bordroToplam.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
-                              </span>
-                            )}
-                          </div>
+                          title={`${sonAy ? `${sonAy} sonrası ` : ""}bordro tahmini (manuel + otomatik atama gün × günlük ücret)`}>
+                          {hucreDegeri(row, col)}
                         </TableCell>
                       );
                     }
@@ -994,7 +1010,7 @@ export default function IscilikTakibiPage() {
                     return (
                       <TableCell key={col.key} style={stickyStyle} className={cellClass}
                         onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
-                        {col.getValue(row)}
+                        {hucreDegeri(row, col)}
                       </TableCell>
                     );
                   })}
@@ -1027,18 +1043,20 @@ export default function IscilikTakibiPage() {
               })}
               {/* Toplam satırı — Sözleşme Bedeli hariç tüm tutarların toplamı */}
               {(() => {
-                let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, kalanT = 0, toplamSonVeriT = 0;
+                let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
                 for (const row of filtrelenmis) {
                   const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
                   const kesif = row.kesif_artisi ?? 0;
                   const ff = row.fiyat_farki ?? 0;
                   const oran = row.iscilik_orani ?? 0;
                   const yatacak = (bedel + kesif + ff) * oran / 100;
+                  const tahminiBordro = bordroToplamHesapla(row);
                   kesifT += kesif;
                   fiyatFarkiT += ff;
                   yatmasiGerekenT += yatacak;
                   yatanT += (row.yatan_prim ?? 0);
-                  kalanT += (yatacak - (row.yatan_prim ?? 0));
+                  tahminiBordroT += tahminiBordro;
+                  kalanT += (yatacak - (row.yatan_prim ?? 0) - tahminiBordro);
                   toplamSonVeriT += (row.toplam_son_veri_tutari ?? 0);
                 }
                 // Her VISIBLE_COLUMN için TOPLAM satırı değeri
@@ -1049,6 +1067,7 @@ export default function IscilikTakibiPage() {
                   fiyat_farki: { deger: formatPara(fiyatFarkiT), hizalama: "right" },
                   yatmasi_gereken_prim: { deger: formatPara(yatmasiGerekenT), hizalama: "right" },
                   yatan_prim: { deger: formatPara(yatanT), hizalama: "right" },
+                  tahmini_bordro: { deger: formatPara(tahminiBordroT), hizalama: "right" },
                   kalan_prim: { deger: formatPara(kalanT), hizalama: "right" },
                   is_bitim_tarihi: { deger: "", hizalama: "center" },
                   taseron_veri_isleme_tarihi: { deger: "", hizalama: "center" },
