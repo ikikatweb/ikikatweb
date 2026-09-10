@@ -33,6 +33,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 import { paraIfadeHesapla } from "@/lib/utils/para-format";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, getBordroPersoneller, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
@@ -991,6 +992,21 @@ export default function IscilikTakibiPage() {
                             {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: firmaRengi }} />}
                             <span>{col.getValue(row)}</span>
                           </span>
+                        </TableCell>
+                      );
+                    }
+
+                    // Fiyat Farkı: Netsim'den geldiyse rakamın altına küçük rozet.
+                    // (Kolon dar olduğu için rozet yan yana değil, altta duruyor.)
+                    if (col.key === "fiyat_farki" && !isEditing
+                        && netsimKaynakli(row.fiyat_farki, row.netsim_fiyat_farki)) {
+                      return (
+                        <TableCell key={col.key} style={stickyStyle} className={cellClass}
+                          onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
+                          <div className="flex flex-col items-end leading-tight">
+                            <span>{hucreDegeri(row, col)}</span>
+                            <NetsimRozet className="mt-0.5" />
+                          </div>
                         </TableCell>
                       );
                     }

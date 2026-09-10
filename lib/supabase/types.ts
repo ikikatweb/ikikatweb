@@ -78,6 +78,12 @@ export type Santiye = {
   sure_uzatimli_tarih: string | null;
   ff_dahil_kalan_tutar: number | null;
   sozlesme_fiyatlariyla_gerceklesen: number | null;
+  // Netsim entegrasyonu (scripts/netsim-sync.ts) — bkz. sql/netsim_eslestirme.sql
+  netsim_nokta_no?: number | null;        // Netsim ISLMNOKT.ISLEM_NOKTASI_NO
+  netsim_son_senkron?: string | null;     // en son ne zaman yazıldı
+  // Senkronun en son yazdığı değer. sozlesme_fiyatlariyla_gerceklesen bununla
+  // aynıysa değer Netsim kaynaklıdır → ekranda "Netsim" rozeti gösterilir.
+  netsim_gerceklesen?: number | null;
   tasfiye_tarihi: string | null;
   devir_tarihi: string | null;
   gecici_kabul_itibar_tarihi: string | null; // geçici kabul İTİBAR tarihi (kabulün geçerli sayıldığı tarih)
@@ -330,6 +336,8 @@ export type IscilikTakibi = {
   sicil_no: string | null;
   kesif_artisi: number | null;
   fiyat_farki: number | null;
+  // Netsim'in en son yazdığı fiyat farkı — fiyat_farki bununla aynıysa rozet gösterilir.
+  netsim_fiyat_farki?: number | null;
   iscilik_orani: number | null;
   yatmasi_gereken_prim: number | null;
   yatan_prim: number | null;

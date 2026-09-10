@@ -76,6 +76,7 @@ type SantiyeRow = {
   is_adi: string;
   netsim_nokta_no: number | null;
   sozlesme_fiyatlariyla_gerceklesen: number | null;
+  netsim_gerceklesen: number | null;   // rozet için: senkronun en son yazdığı değer
   gecici_kabul_tarihi: string | null;
 };
 
@@ -87,7 +88,7 @@ async function main() {
 
   const { data, error } = await sb
     .from("santiyeler")
-    .select("id, is_adi, netsim_nokta_no, sozlesme_fiyatlariyla_gerceklesen, gecici_kabul_tarihi")
+    .select("id, is_adi, netsim_nokta_no, sozlesme_fiyatlariyla_gerceklesen, netsim_gerceklesen, gecici_kabul_tarihi")
     .not("netsim_nokta_no", "is", null);
   if (error) throw new Error(error.message);
   const santiyeler = (data ?? []) as SantiyeRow[];
@@ -100,12 +101,12 @@ async function main() {
   // İşçilik takibi satırları (fiyat farkı buraya yazılıyor)
   const { data: itData, error: itErr } = await sb
     .from("iscilik_takibi")
-    .select("id, santiye_id, fiyat_farki")
+    .select("id, santiye_id, fiyat_farki, netsim_fiyat_farki")
     .eq("silindi", false);
   if (itErr) throw new Error(itErr.message);
-  const iscilikMap = new Map<string, { id: string; fiyat_farki: number | null }>();
-  for (const r of (itData ?? []) as { id: string; santiye_id: string; fiyat_farki: number | null }[]) {
-    iscilikMap.set(r.santiye_id, { id: r.id, fiyat_farki: r.fiyat_farki });
+  const iscilikMap = new Map<string, { id: string; fiyat_farki: number | null; netsim_fiyat_farki: number | null }>();
+  for (const r of (itData ?? []) as { id: string; santiye_id: string; fiyat_farki: number | null; netsim_fiyat_farki: number | null }[]) {
+    iscilikMap.set(r.santiye_id, { id: r.id, fiyat_farki: r.fiyat_farki, netsim_fiyat_farki: r.netsim_fiyat_farki });
   }
 
   // Netsim'den tüm hakediş toplamlarını TEK sorguda al
@@ -144,6 +145,13 @@ async function main() {
     if (!t) continue;                       // Netsim'de hakedişi yok — dokunma
 
     // 1) Tamamlanan keşif → sozlesme_fiyatlariyla_gerceklesen
+    //
+    // netsim_gerceklesen (gölge alan) "Netsim şu an ne diyor"u tutar ve asıl değer
+    // değişmese bile güncellenir — rozet bu ikisinin eşitliğine bakıyor. Yoksa zaten
+    // güncel olan satırlarda rozet hiç çıkmazdı.
+    const yama: Record<string, unknown> = {};
+    if (!ayni(s.netsim_gerceklesen, t.kesif)) yama.netsim_gerceklesen = t.kesif;
+
     if (s.gecici_kabul_tarihi) {
       if (!ayni(s.sozlesme_fiyatlariyla_gerceklesen, t.kesif)) {
         console.log(`  KİLİTLİ  ${s.is_adi}`);
@@ -155,26 +163,34 @@ async function main() {
     } else {
       console.log(`  KEŞİF    ${s.is_adi}`);
       console.log(`           ${fmt(s.sozlesme_fiyatlariyla_gerceklesen ?? 0)} → ${fmt(t.kesif)}`);
-      if (!KURU) {
-        const { error: e } = await sb.from("santiyeler")
-          .update({ sozlesme_fiyatlariyla_gerceklesen: t.kesif, netsim_son_senkron: simdi })
-          .eq("id", s.id);
-        if (e) console.error(`           HATA: ${e.message}`);
-        else kesifYazilan++;
-      } else kesifYazilan++;
+      yama.sozlesme_fiyatlariyla_gerceklesen = t.kesif;
+      yama.netsim_son_senkron = simdi;
+      kesifYazilan++;
+    }
+
+    if (!KURU && Object.keys(yama).length > 0) {
+      const { error: e } = await sb.from("santiyeler").update(yama).eq("id", s.id);
+      if (e) { console.error(`           HATA: ${e.message}`); if (yama.sozlesme_fiyatlariyla_gerceklesen != null) kesifYazilan--; }
     }
 
     // 2) Fiyat farkı → iscilik_takibi.fiyat_farki
     const it = iscilikMap.get(s.id);
     if (!it) continue;                      // işçilik takibi kaydı yoksa atla
-    if (ayni(it.fiyat_farki, t.fark)) continue;
-    console.log(`  FARK     ${s.is_adi}`);
-    console.log(`           ${fmt(it.fiyat_farki ?? 0)} → ${fmt(t.fark)}`);
-    if (!KURU) {
-      const { error: e } = await sb.from("iscilik_takibi").update({ fiyat_farki: t.fark }).eq("id", it.id);
-      if (e) console.error(`           HATA: ${e.message}`);
-      else farkYazilan++;
-    } else farkYazilan++;
+
+    const itYama: Record<string, unknown> = {};
+    if (!ayni(it.netsim_fiyat_farki, t.fark)) itYama.netsim_fiyat_farki = t.fark;
+
+    if (!ayni(it.fiyat_farki, t.fark)) {
+      console.log(`  FARK     ${s.is_adi}`);
+      console.log(`           ${fmt(it.fiyat_farki ?? 0)} → ${fmt(t.fark)}`);
+      itYama.fiyat_farki = t.fark;
+      farkYazilan++;
+    }
+
+    if (!KURU && Object.keys(itYama).length > 0) {
+      const { error: e } = await sb.from("iscilik_takibi").update(itYama).eq("id", it.id);
+      if (e) { console.error(`           HATA: ${e.message}`); if (itYama.fiyat_farki != null) farkYazilan--; }
+    }
   }
 
   console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı.`);

@@ -26,6 +26,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import SantiyeForm from "@/components/shared/santiye-form";
+import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 import { Plus, HardHat, Pencil, ArrowUp, ArrowDown, Download, Search, FileDown, FileSpreadsheet } from "lucide-react";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import jsPDF from "jspdf";
@@ -988,7 +989,13 @@ export default function SantiyelerPage() {
                           // Tailwind text-xs (12px) iOS'ta input focus'unda zoom tetikler ve geri dönmez
                           style={{ fontSize: "16px" }}
                           className="h-7 px-1 min-w-[100px] text-right" />
-                      ) : formatParaIle(s.sozlesme_fiyatlariyla_gerceklesen, s.para_birimi)}
+                      ) : (
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {formatParaIle(s.sozlesme_fiyatlariyla_gerceklesen, s.para_birimi)}
+                          {/* Tutar Netsim'den geldiyse rozet; elle değiştirilince kalkar */}
+                          {netsimKaynakli(s.sozlesme_fiyatlariyla_gerceklesen, s.netsim_gerceklesen) && <NetsimRozet />}
+                        </span>
+                      )}
                     </TableCell>
                     {/* Geçici Kabul */}
                     <TableCell className="text-center px-1.5 whitespace-nowrap">

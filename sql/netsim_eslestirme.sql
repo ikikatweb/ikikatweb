@@ -24,3 +24,22 @@ ALTER TABLE santiyeler
 
 COMMENT ON COLUMN santiyeler.netsim_son_senkron IS
   'netsim-sync bu şantiyeye en son ne zaman değer yazdı.';
+
+-- ---------------------------------------------------------------------------
+-- Netsim rozeti: senkronun yazdığı DEĞERİ de saklarız. Ekrandaki değer bununla
+-- birebir aynıysa "Netsim" rozeti gösterilir; kullanıcı elle değiştirince
+-- tutmaz ve rozet kendiliğinden kalkar. (netsim_son_senkron tek başına yetmez:
+-- şantiyenin başka bir alanını düzenlemek de updated_at'i değiştiriyor.)
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE santiyeler
+  ADD COLUMN IF NOT EXISTS netsim_gerceklesen NUMERIC;
+
+COMMENT ON COLUMN santiyeler.netsim_gerceklesen IS
+  'netsim-sync bu şantiyeye en son yazdığı "tamamlanan keşif" değeri. sozlesme_fiyatlariyla_gerceklesen bununla aynıysa değer Netsim kaynaklıdır (rozet gösterilir).';
+
+ALTER TABLE iscilik_takibi
+  ADD COLUMN IF NOT EXISTS netsim_fiyat_farki NUMERIC;
+
+COMMENT ON COLUMN iscilik_takibi.netsim_fiyat_farki IS
+  'netsim-sync bu satıra en son yazdığı fiyat farkı. fiyat_farki bununla aynıysa değer Netsim kaynaklıdır (rozet gösterilir).';
