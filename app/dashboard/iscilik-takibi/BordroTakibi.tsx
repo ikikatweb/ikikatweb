@@ -1494,6 +1494,29 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return s?.yuklenici_firma_id ?? undefined;
   }
 
+  // Bordroda ELLE gün girilmiş bir personel için çıkış/transfer yapıldığında,
+  // muhasebeye gidecek maile otomatik hatırlatma notu üretir ("Puantajda 4 gün görünecek").
+  // Sadece ÖNERİDİR: mail önizlemesinde kullanıcı notu değiştirebilir, devamına yazabilir
+  // ya da kutuyu boşaltarak tamamen kaldırabilir (satirNotlari'ndaki değer önceliklidir).
+  function otomatikPuantajNotu(c: PendingChange): string {
+    if (c.tip !== "cikis" && c.tip !== "transfer") return "";
+    // Manuel gün, personelin AYRILDIĞI şantiyede girilmiştir.
+    const santiye = c.onceSantiyeAd ? santiyeler.find((x) => x.is_adi === c.onceSantiyeAd) : undefined;
+    if (!santiye) return "";
+    const personel = c.personelTc
+      ? personeller.find((pp) => pp.tc_kimlik_no === c.personelTc)
+      : personeller.find((pp) => pp.ad_soyad === c.personelAd);
+    if (!personel) return "";
+    // Çıkışın düştüğü ay önceliklidir; o ayda manuel kayıt yoksa ekranda seçili aya bakılır.
+    const cikisAy = (c.cikisTarih ?? c.tarih).slice(0, 7);
+    const manuelBul = (ay: string) => manuelGunler.find(
+      (m) => m.personel_id === personel.id && m.santiye_id === santiye.id && m.ay === ay,
+    );
+    const kayit = manuelBul(cikisAy) ?? (cikisAy !== seciliAy ? manuelBul(seciliAy) : undefined);
+    if (!kayit) return "";
+    return `Puantajda ${kayit.gun} gün görünecek`;
+  }
+
   // Bekleyen değişiklik kuyruğa ekle (mail göndermez — preview + send butonu kullanır).
   // ÖNEMLİ: Farklı firmalar arası transferde 2 ayrı mail kuyruğa eklenir:
   //   - Eski firmaya: "çıkış" maili (eski firmanın SMTP'sinden gidecek)
@@ -1633,7 +1656,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const grup = new Map<string, (PendingChange & { teknik?: boolean; teknikIsim?: string | null })[]>();
     for (const p of pending) {
       // Her satıra varsa kullanıcının yazdığı notu iliştir (mailde kırmızı çıkacak)
-      const notu = (satirNotlari[p.id] ?? "").trim();
+      const notu = (satirNotlari[p.id] ?? otomatikPuantajNotu(p)).trim();
       // Personelin ilgili şantiyede teknik mi? (giriş/transfer için hedef şantiye, çıkış için eski şantiye)
       const ilgiliSantiyeAd = p.tip === "cikis" ? p.onceSantiyeAd : p.santiyeAd;
       const ilgiliSantiye = ilgiliSantiyeAd
@@ -5960,7 +5983,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     <div className="font-bold text-sm mb-2">{baslik} ({liste.length})</div>
                     <ul className="space-y-1.5">
                       {liste.map((c) => {
-                        const not = satirNotlari[c.id] ?? "";
+                        const not = satirNotlari[c.id] ?? otomatikPuantajNotu(c);
+                        // Kullanıcı henüz dokunmadıysa ve dolu ise: otomatik üretilmiş öneri
+                        const otomatik = satirNotlari[c.id] === undefined && not !== "";
                         return (
                         <li key={c.id} className="text-xs bg-white/70 rounded px-2 py-1.5 min-w-0">
                           <div className="flex items-start gap-2">
@@ -6004,14 +6029,22 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                               <Trash2 size={12} />
                             </button>
                           </div>
-                          {/* Personel bazlı not — mailde kırmızı renkle satırın altında çıkar */}
+                          {/* Personel bazlı not — mailde kırmızı renkle satırın altında çıkar.
+                              Elle gün girilmiş çıkış/transferlerde otomatik doldurulur; kullanıcı
+                              değiştirebilir, devamına yazabilir ya da boşaltıp kaldırabilir. */}
                           <input
                             type="text"
                             value={not}
                             onChange={(e) => setSatirNotlari((prev) => ({ ...prev, [c.id]: e.target.value }))}
                             placeholder="Bu personel için not (mailde kırmızı renkle gözükür)"
+                            title={otomatik ? "Otomatik öneri — değiştirebilir, devamına yazabilir veya silebilirsiniz." : undefined}
                             className="mt-1 w-full text-[11px] border border-red-200 bg-red-50/40 rounded px-1.5 py-1 outline-none placeholder:text-red-300 text-red-700 focus:border-red-500 focus:bg-white"
                           />
+                          {otomatik && (
+                            <div className="text-[9px] text-red-400 mt-0.5 leading-tight">
+                              Otomatik öneri — düzenleyebilir veya silebilirsiniz.
+                            </div>
+                          )}
                         </li>
                         );
                       })}
