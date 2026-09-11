@@ -17,6 +17,7 @@ import {
 import type { Tanimlama, PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, formatBaslik } from "@/lib/utils/isim";
 import { useAuth } from "@/hooks";
+import { tcGecerliMi, tcHataMetni } from "@/lib/utils/tc-kimlik";
 import { Trash2, Plus } from "lucide-react";
 import { OGRENIM_DURUMLARI, type Personel, type PersonelInsert } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -222,6 +223,14 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
       return;
     }
 
+    // Kontrol hanesi doğrulaması: tek hanelik yazım hatası buradan geçmesin.
+    // Yanlış TC yalnız kartı bozmuyor; bildirge eşleşmesini ve ana sayfadaki
+    // sicil gösterimini de düşürüyor (bkz. lib/utils/tc-kimlik).
+    if (!tcGecerliMi(formData.tc_kimlik_no)) {
+      toast.error("Girilen TC kimlik numarası geçersiz. Lütfen haneleri kontrol edin.");
+      return;
+    }
+
     if (!formData.ad_soyad?.trim()) {
       toast.error("Ad Soyad zorunludur.");
       return;
@@ -366,8 +375,11 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
                 maxLength={11}
                 disabled={loading}
               />
-              {formData.tc_kimlik_no && formData.tc_kimlik_no.length !== 11 && (
-                <p className="text-xs text-red-500">{formData.tc_kimlik_no.length}/11 hane</p>
+              {tcHataMetni(formData.tc_kimlik_no) && (
+                <p className="text-xs text-red-500">{tcHataMetni(formData.tc_kimlik_no)}</p>
+              )}
+              {formData.tc_kimlik_no?.length === 11 && tcGecerliMi(formData.tc_kimlik_no) && (
+                <p className="text-xs text-emerald-600">TC kimlik numarası geçerli</p>
               )}
               {!isEdit && pasifBulunanId && (
                 <div className="bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 text-xs text-amber-800">
