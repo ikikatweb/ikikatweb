@@ -224,12 +224,44 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
             // olmalı. Aksi halde aynı kişinin ESKİ bildirgesi (ör. 12.08'de gelen çıkış bildirgesi)
             // bugün açılan talebe eşleşip "tarih uyuşmuyor" uyarısı üretiyordu — cevap gelmeden
             // uyuşmazlık çıkıyordu. Mail tarihi okunamazsa kapı uygulanmaz (eski davranış).
-            const adaylar = bekleyen.filter((r) => {
-              if (r.tip !== tip || tcNorm(r.personel_tc) !== tcFn) return false;
-              if (!mailGunu || !r.gonderim_tarihi) return true;
-              return mailGunu >= String(r.gonderim_tarihi).slice(0, 10);
-            });
-            if (adaylar.length === 0) continue;
+            const zamanUygun = (r: { gonderim_tarihi: string | null }) =>
+              !mailGunu || !r.gonderim_tarihi || mailGunu >= String(r.gonderim_tarihi).slice(0, 10);
+
+            const adaylar = bekleyen.filter(
+              (r) => r.tip === tip && tcNorm(r.personel_tc) === tcFn && zamanUygun(r),
+            );
+
+            if (adaylar.length === 0) {
+              // TC TUTMADI. Eskiden burada sessizce atlanıyordu; talebindeki TC hatalı girilmişse
+              // bildirge asla eşleşmiyor ve kimse fark etmiyordu (11.09.2026, Fatih SOYLU).
+              //
+              // Kişiyi bildirgedeki TC ile personel kartından buluruz; aynı İSİMDE bekleyen bir
+              // talep varsa ve TC'si farklıysa, talepteki TC yanlış demektir → kullanıcıya sor.
+              // İsim PDF'ten okunmaya ÇALIŞILMAZ: personel kartı zaten doğru TC'yi taşıyor.
+              const { data: kisi } = await supabase
+                .from("personel").select("ad_soyad").eq("tc_kimlik_no", tcFn).maybeSingle();
+              const kisiAd = (kisi as { ad_soyad?: string } | null)?.ad_soyad ?? null;
+              if (!kisiAd) continue;
+
+              const adEsit = (a: string | null, b: string | null) =>
+                !!a && !!b && trUpper(a).replace(/\s+/g, " ").trim() === trUpper(b).replace(/\s+/g, " ").trim();
+              const tcAdaylar = bekleyen.filter(
+                (r) => r.tip === tip && adEsit(r.personel_ad, kisiAd)
+                  && tcNorm(r.personel_tc) !== tcFn && zamanUygun(r),
+              );
+              // Birden fazlaysa hangisinin kastedildiği belirsiz — dokunma, yanlış kaydı bozmayalım.
+              if (tcAdaylar.length !== 1) continue;
+
+              const hedef = tcAdaylar[0];
+              const not = `Bildirgedeki TC (${tcFn}) kayıttaki TC (${hedef.personel_tc ?? "—"}) ile uyuşmuyor. `
+                + `Personel kartında ${tcFn} yazıyor; kayıttaki TC hatalı girilmiş olabilir. Düzelteyim mi?`;
+              await supabase.from("personel_islem_takip").update({
+                uyusmazlik: not, uyusmazlik_tip: "tc", bildirge_tc: tcFn,
+                cevap_pdf_ad: ek.filename ?? null, cevap_kutu: kutu.etiket, cevap_gonderen: gonderen || null,
+              }).eq("id", hedef.id).eq("durum", "bekliyor");
+              uyari.push(`${hedef.personel_ad}: ${not}`);
+              continue;
+            }
 
             taranan++;
             if (!metin) { // içerik-fallback yolunda zaten okunduysa tekrar okuma

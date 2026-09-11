@@ -9,7 +9,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, bildirgeSiciliniOnayla, bildirgeyiIptalEt, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
+import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, bildirgeSiciliniOnayla, bildirgeTcsiniDuzelt, bildirgeyiIptalEt, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 // TR bugünün YYYY-MM-DD değeri
@@ -65,6 +65,20 @@ export default function BildirgeHatirlatma() {
       toast.success(`${k.personel_ad}: tarih ${ymdToTr(k.bildirge_tarihi)} olarak düzeltildi${bordroNot}.`, { duration: toastSuresi() });
     } else {
       toast.error("Düzeltilemedi.", { duration: toastSuresi() });
+    }
+  };
+
+  // "TC'yi düzelt ve kapat" — bildirgedeki doğru TC'yi kayda yaz ve kapat.
+  const tcDuzelt = async (k: PersonelIslemTakip) => {
+    if (!k.bildirge_tc) return;
+    setDozeltiliyor(k.id);
+    const res = await bildirgeTcsiniDuzelt(k.id);
+    setDozeltiliyor(null);
+    if (res.ok) {
+      setKayitlar((prev) => prev.filter((x) => x.id !== k.id));
+      toast.success(`${k.personel_ad}: TC ${res.yeniTc} olarak düzeltildi, bildirge kapatıldı.`, { duration: toastSuresi() });
+    } else {
+      toast.error("TC düzeltilemedi.", { duration: toastSuresi() });
     }
   };
 
@@ -200,6 +214,18 @@ export default function BildirgeHatirlatma() {
                       className="shrink-0 inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
                     >
                       <Check size={12} /> {ymdToTr(k.bildirge_tarihi)} olarak düzelt
+                    </button>
+                  )}
+                  {/* TC UYUŞMAZLIĞI → bildirgedeki TC'yi kayda yaz ve kapat. */}
+                  {k.uyusmazlik_tip === "tc" && k.bildirge_tc && (
+                    <button
+                      type="button"
+                      onClick={() => tcDuzelt(k)}
+                      disabled={dozeltiliyor === k.id}
+                      title={`Kayıttaki TC ${k.personel_tc ?? "—"} → ${k.bildirge_tc} olarak düzeltilip kapatılır`}
+                      className="shrink-0 inline-flex items-center gap-1 rounded bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      <Check size={12} /> TC&apos;yi {k.bildirge_tc} olarak düzelt
                     </button>
                   )}
                   {/* SİCİL FARKLI → tek onay: yine de kapat. */}

@@ -12,8 +12,9 @@ export type PersonelIslemTakip = {
   gonderim_tarihi: string; // YYYY-MM-DD
   durum: "bekliyor" | "tamamlandi" | "iptal";
   uyusmazlik: string | null;      // gelen bildirge kayıtla tutmuyorsa açıklama (ör. tarih farkı / sicil)
-  uyusmazlik_tip: "tarih" | "sicil_yok" | "sicil_farkli" | null; // uyarı türü → hangi buton gösterilecek
+  uyusmazlik_tip: "tarih" | "sicil_yok" | "sicil_farkli" | "tc" | null; // uyarı türü → hangi buton gösterilecek
   bildirge_tarihi: string | null; // tarih uyuşmazlığında: bildirgedeki resmi giriş/çıkış tarihi (YYYY-MM-DD)
+  bildirge_tc: string | null;     // TC uyuşmazlığında: bildirgedeki (doğru) TC — onaylanınca kayda yazılır
   cevap_sicil: string | null;     // bildirgeden okunan işyeri sicil no ("sicili gir ve kapat" için)
   sicil_santiye_id: string | null; // boş sicilin yazılacağı şantiye (iscilik_takibi hedefi)
   created_by_ad: string | null;
@@ -32,7 +33,7 @@ export async function getBekleyenBildirgeler(): Promise<PersonelIslemTakip[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("personel_islem_takip")
-    .select("id, personel_ad, personel_tc, tip, islem_tarihi, gonderim_tarihi, durum, uyusmazlik, uyusmazlik_tip, bildirge_tarihi, cevap_sicil, sicil_santiye_id, created_by_ad, created_at")
+    .select("id, personel_ad, personel_tc, tip, islem_tarihi, gonderim_tarihi, durum, uyusmazlik, uyusmazlik_tip, bildirge_tarihi, bildirge_tc, cevap_sicil, sicil_santiye_id, created_by_ad, created_at")
     .eq("durum", "bekliyor")
     .order("gonderim_tarihi", { ascending: true });
   if (error) return []; // tablo yoksa / RLS → sessiz (dashboard kartı gizlenir)
@@ -146,6 +147,22 @@ export async function bildirgeyiIptalEt(id: string): Promise<boolean> {
 // Sicil uyarısını "yine de kapat" ile onayla. yazSicil=true ise (yalnız sicil_yok durumunda anlamlı)
 // bildirgedeki sicil, kaydın şantiyesinin iscilik_takibi.sicil_no'suna yazılır. Route service-role ile
 // hem işçilik takibini doldurur hem takip kaydını tamamlandı yapar.
+// TC uyuşmazlığında "TC'yi düzelt ve kapat" — talebin TC'sini bildirgedeki doğru TC ile
+// değiştirip kaydı kapatır. Personel kartına dokunulmaz (kart zaten doğru TC'yi taşıyor).
+export async function bildirgeTcsiniDuzelt(id: string): Promise<{ ok: boolean; yeniTc: string | null }> {
+  try {
+    const r = await fetch("/api/personel-bildirge/tc-duzelt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok && j?.ok === true, yeniTc: j?.yeniTc ?? null };
+  } catch {
+    return { ok: false, yeniTc: null };
+  }
+}
+
 export async function bildirgeSiciliniOnayla(id: string, yazSicil: boolean): Promise<{ ok: boolean; sicilYazildi: boolean; kardesKapatildi: number }> {
   try {
     const r = await fetch("/api/personel-bildirge/onayla", {
