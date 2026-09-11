@@ -40,6 +40,10 @@ for (const dosya of [".env.local", ".env"]) {
 }
 
 const KURU = process.argv.includes("--kuru");
+// --kisa: zamanlanmış görevde çalışırken log şişmesin diye kilitli işlerin dökümünü
+// yazmaz, sadece sayar. Bu satırlar her turda aynı olduğu için 15 dakikada bir
+// tekrarlanması log'u gereksiz büyütüyordu.
+const KISA = process.argv.includes("--kisa");
 
 type FbDb = {
   query: (sql: string, p: unknown[], cb: (e: Error | null, r: Record<string, unknown>[]) => void) => void;
@@ -154,8 +158,10 @@ async function main() {
 
     if (s.gecici_kabul_tarihi) {
       if (!ayni(s.sozlesme_fiyatlariyla_gerceklesen, t.kesif)) {
-        console.log(`  KİLİTLİ  ${s.is_adi}`);
-        console.log(`           geçici kabul yapılmış → dokunulmadı (site: ${fmt(s.sozlesme_fiyatlariyla_gerceklesen ?? 0)} / Netsim: ${fmt(t.kesif)})`);
+        if (!KISA) {
+          console.log(`  KİLİTLİ  ${s.is_adi}`);
+          console.log(`           geçici kabul yapılmış → dokunulmadı (site: ${fmt(s.sozlesme_fiyatlariyla_gerceklesen ?? 0)} / Netsim: ${fmt(t.kesif)})`);
+        }
         kilitli++;
       }
     } else if (ayni(s.sozlesme_fiyatlariyla_gerceklesen, t.kesif)) {

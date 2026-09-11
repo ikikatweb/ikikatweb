@@ -108,6 +108,9 @@ type Santiye = { id: string; is_adi: string; netsim_nokta_no: number | null };
 
 async function main() {
   const uygula = process.argv.includes("--uygula");
+  // --kisa: zamanlanmış görevde çalışırken log şişmesin diye sadece bağlananları yazar.
+  // (Şüpheli/bulunamayan listeleri her turda 200+ satır ekliyordu.)
+  const kisa = process.argv.includes("--kisa");
   const baglaIdx = process.argv.indexOf("--bagla");
   const sb = supabase();
 
@@ -153,7 +156,7 @@ async function main() {
     db.detach();
   }
 
-  console.log(`Netsim'de hakedişi olan ${netsimler.length} iş, Supabase'de ${santiyeler.length} şantiye var.\n`);
+  if (!kisa) console.log(`Netsim'de hakedişi olan ${netsimler.length} iş, Supabase'de ${santiyeler.length} şantiye var.\n`);
 
   const bagliNoktalar = new Set(santiyeler.map((s) => s.netsim_nokta_no).filter((x): x is number => x != null));
   const kesin: { santiye: Santiye; no: number; ad: string; skor: number }[] = [];
@@ -190,16 +193,18 @@ async function main() {
   }
 
   const zatenBagli = santiyeler.filter((s) => s.netsim_nokta_no != null);
-  if (zatenBagli.length) {
+  if (zatenBagli.length && !kisa) {
     console.log(`=== Zaten bağlı (${zatenBagli.length}) ===`);
     for (const s of zatenBagli) console.log(`  [${s.netsim_nokta_no}] ${s.is_adi}`);
     console.log("");
   }
 
-  console.log(`=== KESİN eşleşmeler (${kesin.length}) ===`);
-  for (const k of kesin) console.log(`  [${k.no}] ${k.ad}\n      → ${k.santiye.is_adi}`);
+  if (kesin.length > 0 || !kisa) {
+    console.log(`=== KESİN eşleşmeler (${kesin.length}) ===`);
+    for (const k of kesin) console.log(`  [${k.no}] ${k.ad}\n      → ${k.santiye.is_adi}`);
+  }
 
-  if (belirsiz.length) {
+  if (belirsiz.length && !kisa) {
     console.log(`\n=== ŞÜPHELİ — elle bağlayın (${belirsiz.length}) ===`);
     for (const b of belirsiz) {
       console.log(`  ${b.santiye.is_adi}`);
@@ -210,13 +215,19 @@ async function main() {
     }
   }
 
-  if (bulunamadi.length) {
+  if (bulunamadi.length && !kisa) {
     console.log(`\n=== Netsim'de karşılığı bulunamadı (${bulunamadi.length}) ===`);
     for (const s of bulunamadi) console.log(`  ${s.is_adi}`);
   }
 
   if (!uygula) {
     console.log(`\nHiçbir şey yazılmadı. Kesin eşleşmeleri kaydetmek için: --uygula`);
+    return;
+  }
+  // Bağlanacak bir şey yoksa sessizce çık — zamanlanmış görev her 15 dakikada
+  // "0 eşleşme kaydedildi" satırı yazmasın.
+  if (kesin.length === 0) {
+    if (!kisa) console.log("\nBağlanacak kesin eşleşme yok.");
     return;
   }
 
