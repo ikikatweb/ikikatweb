@@ -113,26 +113,45 @@ async function main() {
     iscilikMap.set(r.santiye_id, { id: r.id, fiyat_farki: r.fiyat_farki, netsim_fiyat_farki: r.netsim_fiyat_farki });
   }
 
-  // Netsim'den hakedişi olan TÜM işleri tek sorguda al.
-  // (Sadece bağlı olanları değil: bağlanmamışlar da netsim_isler aynasına yazılacak,
-  //  şantiye formu "Netsim'deki karşılığını seç" önerisini oradan yapıyor.)
+  // Netsim'deki TÜM işler (hakedişi olsun olmasın) — tutarları LEFT JOIN ile.
+  //
+  // Hakedişi olmayan işler de alınır: iş kartı Netsim'de açıldığı anda şantiyeye
+  // bağlanabilsin, ilk hakediş kesildiğinde tutar kendiliğinden aksın. (Önceden
+  // yalnız hakedişi olanlar alınıyordu; Tıp Fakültesi Beceri Laboratuvarı gibi
+  // yeni işler bu yüzden ne önerilere ne otomatik eşleştirmeye giriyordu.)
+  // Kategori düğümleri (başka noktaların ANA'sı olanlar: İNŞAAT, HARİTA) hariç.
   const db = await fbBagla();
   const toplam = new Map<number, { kesif: number; fark: number }>();
   const tumIsler: { no: number; ad: string; kesif: number; fark: number }[] = [];
   try {
     const rows = await fbSorgu(db, `
-      SELECT A.ISLEM_NOKTASI_NO AS NOKTA, MAX(I.ISLEM_NOKTASI_ADI) AS AD,
-             SUM(CASE WHEN D.STOK_NO = 39  THEN D.HAM_TUTAR ELSE 0 END) AS TAMAMLANAN_KESIF,
-             SUM(CASE WHEN D.STOK_NO = 356 THEN D.HAM_TUTAR ELSE 0 END) AS FIYAT_FARKI
-      FROM ALSADETA D
-      JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
-      JOIN ISLMNOKT I ON I.ISLEM_NOKTASI_NO = A.ISLEM_NOKTASI_NO
-      WHERE D.STOK_NO IN (39, 356)
-        AND A.ISLEM_KODU = 'HAKFAT'
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
+             COALESCE((
+               SELECT SUM(CASE WHEN D.STOK_NO = 39 THEN D.HAM_TUTAR ELSE 0 END)
+               FROM ALSADETA D JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT'
+             ), 0) AS TAMAMLANAN_KESIF,
+             COALESCE((
+               SELECT SUM(CASE WHEN D.STOK_NO = 356 THEN D.HAM_TUTAR ELSE 0 END)
+               FROM ALSADETA D JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT'
+             ), 0) AS FIYAT_FARKI
+      FROM ISLMNOKT I
+      WHERE I.ISLEM_NOKTASI_NO > 0
         AND NOT EXISTS (
           SELECT 1 FROM ISLMNOKT C WHERE C.ANA_ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO
         )
-      GROUP BY A.ISLEM_NOKTASI_NO
+        -- Gerçek bir İŞ olma şartı: ya sözleşme bedeli girilmiş ya da hakedişi var.
+        -- İkisi de yoksa bu bir muhasebe kalemi/gider merkezidir (ör. "TARIM VE
+        -- HAYVANCILIK İŞLETMESİ"), şantiyeye bağlanmamalı.
+        AND (
+          COALESCE(I.K_SOZLESME_BEDELI, 0) > 0
+          OR EXISTS (
+            SELECT 1 FROM ALSAASIL A2
+            WHERE A2.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A2.ISLEM_KODU = 'HAKFAT'
+          )
+        )
+      ORDER BY I.ISLEM_NOKTASI_NO
     `);
     for (const r of rows) {
       const no = Number(r.NOKTA);

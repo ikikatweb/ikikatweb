@@ -136,19 +136,28 @@ async function main() {
   let netsimler: { no: number; ad: string }[];
   try {
     // Hakedişi olan işlem noktaları — senkronun ilgilendiği tek küme
-    // Hakedişi olan İŞLER. Başka noktaların ANA'sı olanlar (İNŞAAT, HARİTA gibi
-    // kategori düğümleri) hariç — onlar proje değil, altındaki işlerin üst grubu.
+    // Netsim'deki TÜM işler — hakediş şartı YOK. İş kartı açıldığı anda bağlanabilsin,
+    // ilk hakediş kesildiğinde tutar kendiliğinden aksın.
+    // Başka noktaların ANA'sı olanlar (İNŞAAT, HARİTA gibi kategori düğümleri) hariç —
+    // onlar proje değil, altındaki işlerin üst grubu.
     const rows = await fbSorgu(db, `
       SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD
       FROM ISLMNOKT I
-      WHERE EXISTS (
-        SELECT 1 FROM ALSAASIL A
-        WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT'
-      )
+      WHERE I.ISLEM_NOKTASI_NO > 0
       AND NOT EXISTS (
         SELECT 1 FROM ISLMNOKT C
         WHERE C.ANA_ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO
       )
+        -- Gerçek bir İŞ olma şartı: ya sözleşme bedeli girilmiş ya da hakedişi var.
+        -- İkisi de yoksa bu bir muhasebe kalemi/gider merkezidir (ör. "TARIM VE
+        -- HAYVANCILIK İŞLETMESİ"), şantiyeye bağlanmamalı.
+        AND (
+          COALESCE(I.K_SOZLESME_BEDELI, 0) > 0
+          OR EXISTS (
+            SELECT 1 FROM ALSAASIL A2
+            WHERE A2.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A2.ISLEM_KODU = 'HAKFAT'
+          )
+        )
       ORDER BY I.ISLEM_NOKTASI_ADI
     `);
     netsimler = rows.map((r) => ({ no: Number(r.NOKTA), ad: String(r.AD ?? "").trim() }));
