@@ -84,6 +84,9 @@ export type Santiye = {
   // Senkronun en son yazdığı değer. sozlesme_fiyatlariyla_gerceklesen bununla
   // aynıysa değer Netsim kaynaklıdır → ekranda "Netsim" rozeti gösterilir.
   netsim_gerceklesen?: number | null;
+  // Site-Netsim farkı kontrol edildi, site doğru kabul edildi. Değer: kabul
+  // anındaki Netsim tutarı — Netsim değişirse rapor yeniden uyarsın diye.
+  netsim_fark_kabul?: number | null;
   tasfiye_tarihi: string | null;
   devir_tarihi: string | null;
   gecici_kabul_itibar_tarihi: string | null; // geçici kabul İTİBAR tarihi (kabulün geçerli sayıldığı tarih)

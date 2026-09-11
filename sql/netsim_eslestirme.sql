@@ -43,3 +43,17 @@ ALTER TABLE iscilik_takibi
 
 COMMENT ON COLUMN iscilik_takibi.netsim_fiyat_farki IS
   'netsim-sync bu satıra en son yazdığı fiyat farkı. fiyat_farki bununla aynıysa değer Netsim kaynaklıdır (rozet gösterilir).';
+
+-- ---------------------------------------------------------------------------
+-- "Beklenen fark" işareti: geçici kabullü işlerde site ile Netsim arasındaki
+-- tamamlanan keşif farkı incelenip sitedeki tutar doğru kabul edildiğinde
+-- buraya KABUL ANINDAKİ NETSİM TUTARI yazılır. Karşılaştırma raporu bu işleri
+-- "kontrol edildi" başlığına alır, her seferinde tekrar uyarmaz.
+-- Netsim'deki tutar sonradan değişirse (yeni hakediş) kayıtlı değerle tutmaz
+-- ve iş yeniden incelenecekler listesine düşer — kasıtlı.
+-- ---------------------------------------------------------------------------
+alter table santiyeler
+  add column if not exists netsim_fark_kabul numeric;
+
+comment on column santiyeler.netsim_fark_kabul is
+  'Site-Netsim tamamlanan keşif farkı kontrol edildi, site doğru kabul edildi. Değer kabul anındaki Netsim tutarı; Netsim değişirse rapor yeniden uyarır.';
