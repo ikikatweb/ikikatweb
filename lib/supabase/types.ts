@@ -370,6 +370,9 @@ export type IscilikTakibiWithSantiye = IscilikTakibi & {
     is_grubu: string | null;
     ihaleli: boolean | null;
     sozlesme_bedeli: number | null;
+    // Tamamlanan keşif — İşçilik Takibi'nde sözleşme bedelinin altında gri gösterilir.
+    // Netsim senkronu doldurur (scripts/netsim-sync.ts).
+    sozlesme_fiyatlariyla_gerceklesen: number | null;
     sure_uzatimi: number | null;
     sure_uzatimli_tarih: string | null;
     is_suresi: number | null;

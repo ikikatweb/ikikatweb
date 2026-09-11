@@ -1011,6 +1011,25 @@ export default function IscilikTakibiPage() {
                       );
                     }
 
+                    // Sözleşme Bedeli'nin altında küçük gri TAMAMLANAN KEŞİF.
+                    // Kesinleşmiş sözleşme tutarıyla karışmasın diye silik ve bir punto küçük.
+                    if (col.key === "sozlesme_bedeli") {
+                      const gerceklesen = row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? null;
+                      return (
+                        <TableCell key={col.key} style={stickyStyle} className={cellClass}>
+                          <div className="flex flex-col items-end leading-tight">
+                            <span>{hucreDegeri(row, col)}</span>
+                            {gerceklesen != null && gerceklesen > 0 && (
+                              <span className="text-[11px] text-gray-400"
+                                title="Tamamlanan keşif (sözleşme fiyatlarıyla gerçekleşen)">
+                                {formatPara(gerceklesen)}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      );
+                    }
+
                     // Tahmini Bordro: son veri girişinden sonraki ayların bordro tahmini.
                     // (Önceden Yatan Prim hücresinin altında silik gri yazıyordu — artık kendi sütunu.)
                     if (col.key === "tahmini_bordro") {
