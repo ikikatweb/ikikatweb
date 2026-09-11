@@ -4,7 +4,11 @@
 //
 //   Tamamlanan Keşif      = SUM(ALSADETA.HAM_TUTAR)  STOK_NO = 39   ("Hakediş Bedeli")
 //   Alınan Fiyat Farkı    = SUM(ALSADETA.HAM_TUTAR)  STOK_NO = 356  ("Hakediş Fiyat Farkı Bedeli")
-//   ... her ikisi de SADECE  ALSAASIL.ISLEM_KODU = 'HAKFAT'  olan belgelerden.
+//   ... her ikisi de SADECE  ALSAASIL.ISLEM_KODU = 'HAKFAT'  olan belgelerden,
+//   ve KENDİ GRUP FİRMALARINA kesilenler HARİÇ (CARIKART.CARI_KOD 'YON-' ile başlayanlar:
+//   KAD-TEM, İKİKAT, Kenan Tugay İkikat, adi ortaklıklar). Zile 1. Kısım'da 10 belge
+//   kendi firmaya kesilmiş ve tutarı iki katına çıkarıyordu (20.303.798,56 yerine
+//   doğrusu 10.152.078,19). Bu süzgeç yalnız o işi etkiliyor, diğer 99 iş aynı kalıyor.
 //
 // ISLEM_KODU filtresi KRİTİK: aynı stok kartlarıyla girilmiş alış faturaları (ALIFAT) da var,
 // onlar hakediş değil. Samsun Vezirköprü'de bu filtre olmadan rakam 971.821,30 TL şişiyordu.
@@ -128,13 +132,19 @@ async function main() {
       SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
              COALESCE((
                SELECT SUM(CASE WHEN D.STOK_NO = 39 THEN D.HAM_TUTAR ELSE 0 END)
-               FROM ALSADETA D JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               FROM ALSADETA D
+               JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               LEFT JOIN CARIKART C ON C.CARI_NO = A.CARI_NO
                WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT'
+                 AND COALESCE(C.CARI_KOD, '') NOT STARTING WITH 'YON'
              ), 0) AS TAMAMLANAN_KESIF,
              COALESCE((
                SELECT SUM(CASE WHEN D.STOK_NO = 356 THEN D.HAM_TUTAR ELSE 0 END)
-               FROM ALSADETA D JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               FROM ALSADETA D
+               JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+               LEFT JOIN CARIKART C ON C.CARI_NO = A.CARI_NO
                WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT'
+                 AND COALESCE(C.CARI_KOD, '') NOT STARTING WITH 'YON'
              ), 0) AS FIYAT_FARKI
       FROM ISLMNOKT I
       WHERE I.ISLEM_NOKTASI_NO > 0
