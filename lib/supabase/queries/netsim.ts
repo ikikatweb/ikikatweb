@@ -38,6 +38,19 @@ export async function getBagsizNetsimIsleri(): Promise<NetsimIs[]> {
   return isler.filter((i) => !dolu.has(i.nokta_no));
 }
 
+// Tek bir Netsim işi — bağlı olsun olmasın. Form, seçili işin ADINI göstermek için
+// kullanır (öneri listesi yalnız bağsızları taşıdığından bağlandıktan sonra orada bulunmaz).
+export async function getNetsimIs(noktaNo: number): Promise<NetsimIs | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("netsim_isler")
+    .select("nokta_no, ad, kesif, fark, bagli, guncellendi")
+    .eq("nokta_no", noktaNo)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as NetsimIs;
+}
+
 // Türkçe-duyarlı normalize. Sunucudaki otomatik eşleştiriciden farklı olarak
 // rakamları ve kısa parçaları ATMAZ — "2/B", "3. Grup" gibi ekler öneriyi
 // doğru yöne çekiyor, kararı zaten kullanıcı veriyor.

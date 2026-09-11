@@ -19,7 +19,7 @@ import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { getKullanicilar, updateKullanici } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyePrimHesabi } from "@/lib/supabase/queries/prim-hesap";
 import { getTeknikPersonelKayitlari } from "@/lib/supabase/queries/personel-teknik";
-import { getBagsizNetsimIsleri, netsimOnerileri, type NetsimIs } from "@/lib/supabase/queries/netsim";
+import { getBagsizNetsimIsleri, getNetsimIs, netsimOnerileri, type NetsimIs } from "@/lib/supabase/queries/netsim";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
@@ -183,6 +183,9 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   // sunucusuna erişemez; ayna 15 dakikada bir netsim-sync ile tazelenir).
   const [netsimIsler, setNetsimIsler] = useState<NetsimIs[]>([]);
   const [netsimSorulsun, setNetsimSorulsun] = useState(false);
+  // Seçili Netsim işinin adı ayrı tutulur: öneri listesi yalnız BAĞSIZ işleri taşır,
+  // iş bağlandıktan sonra orada bulunmaz ve şeritte yalnız nokta numarası kalırdı.
+  const [netsimSeciliAd, setNetsimSeciliAd] = useState<string | null>(null);
   // "Netsim'de yok" denirse form açık kaldığı sürece bir daha sormaz.
   const [netsimAtlandi, setNetsimAtlandi] = useState(false);
 
@@ -191,8 +194,14 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
     getBagsizNetsimIsleri()
       .then((l) => { if (!iptal) setNetsimIsler(l); })
       .catch(() => { /* öneri gelmezse form normal çalışır */ });
+    // Düzenlemede: zaten bağlı olan işin adını getir
+    if (santiye?.netsim_nokta_no) {
+      getNetsimIs(santiye.netsim_nokta_no)
+        .then((i) => { if (!iptal && i) setNetsimSeciliAd(i.ad); })
+        .catch(() => { /* ad gelmezse nokta numarası gösterilir */ });
+    }
     return () => { iptal = true; };
-  }, []);
+  }, [santiye?.netsim_nokta_no]);
 
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
@@ -837,21 +846,25 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                       geçmeden önce. Seçilirse tutarlar (tamamlanan keşif, fiyat farkı)
                       senkronla otomatik gelir. */}
                   {(() => {
-                    const secili = formData.netsim_nokta_no
-                      ? netsimIsler.find((i) => i.nokta_no === formData.netsim_nokta_no)
-                      : null;
-
                     if (formData.netsim_nokta_no) {
+                      const ad = netsimSeciliAd
+                        ?? netsimIsler.find((i) => i.nokta_no === formData.netsim_nokta_no)?.ad
+                        ?? null;
                       return (
                         <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-800">
-                          <span className="font-semibold">Netsim:</span>
-                          <span className="truncate" title={secili?.ad ?? ""}>
-                            {secili?.ad ?? `nokta ${formData.netsim_nokta_no}`}
+                          <span className="shrink-0 font-semibold">Netsim:</span>
+                          <span className="min-w-0 flex-1 truncate" title={ad ?? undefined}>
+                            {ad ?? "yükleniyor…"}
                           </span>
+                          <span className="shrink-0 font-mono text-[10px] text-sky-600">nokta {formData.netsim_nokta_no}</span>
                           <button
                             type="button"
-                            onClick={() => { setFormData((p) => ({ ...p, netsim_nokta_no: null })); setNetsimSorulsun(true); }}
-                            className="ml-auto shrink-0 underline hover:no-underline"
+                            onClick={() => {
+                              setFormData((p) => ({ ...p, netsim_nokta_no: null }));
+                              setNetsimSeciliAd(null);
+                              setNetsimSorulsun(true);
+                            }}
+                            className="shrink-0 underline hover:no-underline"
                             disabled={loading}
                           >
                             değiştir
@@ -873,7 +886,11 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                           <button
                             key={o.nokta_no}
                             type="button"
-                            onClick={() => { setFormData((p) => ({ ...p, netsim_nokta_no: o.nokta_no })); setNetsimSorulsun(false); }}
+                            onClick={() => {
+                              setFormData((p) => ({ ...p, netsim_nokta_no: o.nokta_no }));
+                              setNetsimSeciliAd(o.ad);
+                              setNetsimSorulsun(false);
+                            }}
                             disabled={loading}
                             className="flex w-full items-center gap-2 rounded border border-sky-200 bg-white px-2 py-1.5 text-left text-[11px] hover:border-sky-400 hover:bg-sky-50"
                           >
