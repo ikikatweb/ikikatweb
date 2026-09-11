@@ -19,6 +19,7 @@ import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { getKullanicilar, updateKullanici } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyePrimHesabi } from "@/lib/supabase/queries/prim-hesap";
 import { getTeknikPersonelKayitlari } from "@/lib/supabase/queries/personel-teknik";
+import { getBagsizNetsimIsleri, netsimOnerileri, type NetsimIs } from "@/lib/supabase/queries/netsim";
 import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
@@ -177,9 +178,26 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
   // yesilIndexler). Düzenleme modunda çekilir.
   const [atananTeknikList, setAtananTeknikList] = useState<string[]>([]);
 
+  // Netsim önerisi — iş adı yazılıp alandan çıkılınca "bu işin Netsim'deki karşılığı
+  // şu mu?" diye sorar. Liste Supabase'deki aynadan gelir (tarayıcı Netsim'in Firebird
+  // sunucusuna erişemez; ayna 15 dakikada bir netsim-sync ile tazelenir).
+  const [netsimIsler, setNetsimIsler] = useState<NetsimIs[]>([]);
+  const [netsimSorulsun, setNetsimSorulsun] = useState(false);
+  // "Netsim'de yok" denirse form açık kaldığı sürece bir daha sormaz.
+  const [netsimAtlandi, setNetsimAtlandi] = useState(false);
+
+  useEffect(() => {
+    let iptal = false;
+    getBagsizNetsimIsleri()
+      .then((l) => { if (!iptal) setNetsimIsler(l); })
+      .catch(() => { /* öneri gelmezse form normal çalışır */ });
+    return () => { iptal = true; };
+  }, []);
+
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
     is_adi: santiye?.is_adi ?? "",
+    netsim_nokta_no: santiye?.netsim_nokta_no ?? null,
     il: santiye?.il ?? null,
     is_grubu: santiye?.is_grubu ?? null,
     ihaleli: santiye?.ihaleli ?? true, // varsayılan: ihaleli (ana sayfa + bordro özetinde görünür)
@@ -806,9 +824,79 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                     className={`text-ellipsis${hataCls("is_adi")}`}
                     value={formData.is_adi}
                     onChange={handleChange}
-                    onBlur={(e) => setFormData((p) => ({ ...p, is_adi: formatBaslik(e.target.value) }))}
+                    onBlur={(e) => {
+                      setFormData((p) => ({ ...p, is_adi: formatBaslik(e.target.value) }));
+                      // İş adından çıkınca Netsim karşılığını sor — henüz seçilmemişse
+                      // ve kullanıcı bu formda "yok" dememişse.
+                      if (!formData.netsim_nokta_no && !netsimAtlandi) setNetsimSorulsun(true);
+                    }}
                     disabled={loading}
                   />
+
+                  {/* Netsim eşleştirme — iş adının hemen altında, sözleşme bilgilerine
+                      geçmeden önce. Seçilirse tutarlar (tamamlanan keşif, fiyat farkı)
+                      senkronla otomatik gelir. */}
+                  {(() => {
+                    const secili = formData.netsim_nokta_no
+                      ? netsimIsler.find((i) => i.nokta_no === formData.netsim_nokta_no)
+                      : null;
+
+                    if (formData.netsim_nokta_no) {
+                      return (
+                        <div className="flex items-center gap-2 rounded border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] text-sky-800">
+                          <span className="font-semibold">Netsim:</span>
+                          <span className="truncate" title={secili?.ad ?? ""}>
+                            {secili?.ad ?? `nokta ${formData.netsim_nokta_no}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => { setFormData((p) => ({ ...p, netsim_nokta_no: null })); setNetsimSorulsun(true); }}
+                            className="ml-auto shrink-0 underline hover:no-underline"
+                            disabled={loading}
+                          >
+                            değiştir
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    if (!netsimSorulsun || netsimIsler.length === 0) return null;
+                    const oneriler = netsimOnerileri(formData.is_adi ?? "", netsimIsler);
+                    if (oneriler.length === 0) return null;
+
+                    return (
+                      <div className="rounded border border-sky-200 bg-sky-50/60 p-2 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-sky-900">
+                          Bu işin Netsim&apos;deki karşılığı hangisi?
+                        </p>
+                        {oneriler.map((o) => (
+                          <button
+                            key={o.nokta_no}
+                            type="button"
+                            onClick={() => { setFormData((p) => ({ ...p, netsim_nokta_no: o.nokta_no })); setNetsimSorulsun(false); }}
+                            disabled={loading}
+                            className="flex w-full items-center gap-2 rounded border border-sky-200 bg-white px-2 py-1.5 text-left text-[11px] hover:border-sky-400 hover:bg-sky-50"
+                          >
+                            <span className="min-w-0 flex-1 truncate" title={o.ad}>{o.ad}</span>
+                            <span className="shrink-0 font-mono text-[10px] text-gray-500">
+                              {(o.kesif ?? 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 })} TL
+                            </span>
+                            <span className="shrink-0 rounded bg-sky-100 px-1 py-px font-mono text-[10px] font-semibold text-sky-700">
+                              %{Math.round(o.skor * 100)}
+                            </span>
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => { setNetsimSorulsun(false); setNetsimAtlandi(true); }}
+                          disabled={loading}
+                          className="text-[11px] text-gray-500 underline hover:text-gray-700"
+                        >
+                          Netsim&apos;de yok / sonra bağlarım
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="il">İl <span className="text-red-500">*</span></Label>

@@ -113,31 +113,48 @@ async function main() {
     iscilikMap.set(r.santiye_id, { id: r.id, fiyat_farki: r.fiyat_farki, netsim_fiyat_farki: r.netsim_fiyat_farki });
   }
 
-  // Netsim'den tüm hakediş toplamlarını TEK sorguda al
-  const noktalar = santiyeler.map((s) => s.netsim_nokta_no!).filter((n) => Number.isFinite(n));
+  // Netsim'den hakedişi olan TÜM işleri tek sorguda al.
+  // (Sadece bağlı olanları değil: bağlanmamışlar da netsim_isler aynasına yazılacak,
+  //  şantiye formu "Netsim'deki karşılığını seç" önerisini oradan yapıyor.)
   const db = await fbBagla();
   const toplam = new Map<number, { kesif: number; fark: number }>();
+  const tumIsler: { no: number; ad: string; kesif: number; fark: number }[] = [];
   try {
     const rows = await fbSorgu(db, `
-      SELECT A.ISLEM_NOKTASI_NO AS NOKTA,
+      SELECT A.ISLEM_NOKTASI_NO AS NOKTA, MAX(I.ISLEM_NOKTASI_ADI) AS AD,
              SUM(CASE WHEN D.STOK_NO = 39  THEN D.HAM_TUTAR ELSE 0 END) AS TAMAMLANAN_KESIF,
              SUM(CASE WHEN D.STOK_NO = 356 THEN D.HAM_TUTAR ELSE 0 END) AS FIYAT_FARKI
       FROM ALSADETA D
       JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
+      JOIN ISLMNOKT I ON I.ISLEM_NOKTASI_NO = A.ISLEM_NOKTASI_NO
       WHERE D.STOK_NO IN (39, 356)
         AND A.ISLEM_KODU = 'HAKFAT'
-        AND A.ISLEM_NOKTASI_NO IN (${noktalar.join(",")})
+        AND NOT EXISTS (
+          SELECT 1 FROM ISLMNOKT C WHERE C.ANA_ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO
+        )
       GROUP BY A.ISLEM_NOKTASI_NO
     `);
     for (const r of rows) {
-      toplam.set(Number(r.NOKTA), {
-        kesif: Number(r.TAMAMLANAN_KESIF ?? 0),
-        fark: Number(r.FIYAT_FARKI ?? 0),
-      });
+      const no = Number(r.NOKTA);
+      const kesif = Number(r.TAMAMLANAN_KESIF ?? 0);
+      const fark = Number(r.FIYAT_FARKI ?? 0);
+      toplam.set(no, { kesif, fark });
+      tumIsler.push({ no, ad: String(r.AD ?? "").trim(), kesif, fark });
     }
   } finally {
     db.detach();
   }
+
+  // Ayna tablosunu tazele — form önerisi bunu okuyor. Hata olursa senkron yine de sürer.
+  const bagliNoktalar = new Set(santiyeler.map((s) => s.netsim_nokta_no).filter((n): n is number => n != null));
+  const { error: aynaHata } = await sb.from("netsim_isler").upsert(
+    tumIsler.map((i) => ({
+      nokta_no: i.no, ad: i.ad, kesif: i.kesif, fark: i.fark,
+      bagli: bagliNoktalar.has(i.no), guncellendi: new Date().toISOString(),
+    })),
+    { onConflict: "nokta_no" },
+  );
+  if (aynaHata) console.error(`netsim_isler aynası güncellenemedi: ${aynaHata.message}`);
 
   console.log(`${santiyeler.length} bağlı şantiye, Netsim'de ${toplam.size} tanesinin hakedişi var.${KURU ? "  [KURU ÇALIŞMA — yazma yok]" : ""}\n`);
 
