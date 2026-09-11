@@ -86,7 +86,11 @@ export async function getPersonelByTc(tcKimlikNo: string): Promise<Personel | nu
   return (data && data.length > 0) ? data[0] : null;
 }
 
-export async function createPersonel(personel: PersonelInsert) {
+// Kaydı açan/güncelleyen kullanıcı. Form useAuth()'tan gelen kullanıcıyı geçer;
+// verilmezse alanlar boş kalır (kayıt yine oluşur — izleme zorunlu değil).
+export type IslemYapan = { id?: string | null; ad_soyad?: string | null } | null | undefined;
+
+export async function createPersonel(personel: PersonelInsert, yapan?: IslemYapan) {
   const supabase = getSupabase();
   await checkPersonelTekillik({
     tc_kimlik_no: personel.tc_kimlik_no,
@@ -94,7 +98,11 @@ export async function createPersonel(personel: PersonelInsert) {
   });
   const { data, error } = await supabase
     .from("personel")
-    .insert(personel)
+    .insert({
+      ...personel,
+      created_by: yapan?.id ?? null,
+      created_by_ad: yapan?.ad_soyad ?? null,
+    })
     .select()
     .single();
 
@@ -115,7 +123,7 @@ export async function createPersonel(personel: PersonelInsert) {
   return data;
 }
 
-export async function updatePersonel(id: string, personel: PersonelUpdate) {
+export async function updatePersonel(id: string, personel: PersonelUpdate, yapan?: IslemYapan) {
   const supabase = getSupabase();
   await checkPersonelTekillik(
     {
@@ -124,14 +132,41 @@ export async function updatePersonel(id: string, personel: PersonelUpdate) {
     },
     id
   );
+
+  // TC düzeltiliyorsa, bekleyen bildirge kayıtlarındaki TC de güncellenmeli.
+  // Bildirge eşleştirmesi TC ile yapılıyor (lib/personel/bildirge-fetch): kart düzeltilip
+  // kuyruktaki kayıt eski TC ile kalırsa gelen bildirge ASLA eşleşmez — 11.09.2026'da
+  // Fatih SOYLU'da tam olarak bu oldu (kart 10:13'te düzeltildi, talep eski TC ile kaldı).
+  let eskiTc: string | null = null;
+  if (personel.tc_kimlik_no) {
+    const { data: mevcut } = await supabase
+      .from("personel").select("tc_kimlik_no").eq("id", id).maybeSingle();
+    const onceki = (mevcut as { tc_kimlik_no?: string } | null)?.tc_kimlik_no ?? null;
+    if (onceki && onceki !== personel.tc_kimlik_no) eskiTc = onceki;
+  }
+
   const { data, error } = await supabase
     .from("personel")
-    .update({ ...personel, updated_at: new Date().toISOString() })
+    .update({
+      ...personel,
+      updated_at: new Date().toISOString(),
+      updated_by: yapan?.id ?? null,
+      updated_by_ad: yapan?.ad_soyad ?? null,
+    })
     .eq("id", id)
     .select()
     .single();
 
   if (error) throw error;
+
+  if (eskiTc && personel.tc_kimlik_no) {
+    // Sadece AÇIK talepler: kapanmış kayıtlar geçmişin fotoğrafıdır, dokunulmaz.
+    await supabase
+      .from("personel_islem_takip")
+      .update({ personel_tc: personel.tc_kimlik_no })
+      .eq("personel_tc", eskiTc)
+      .eq("durum", "bekliyor");
+  }
 
   // Personel GÜNCELLEME için bildirim gönderilmez (istenmedi). Yeni/pasif/aktif bildirimleri korunur.
 

@@ -279,7 +279,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
 
     try {
       if (isEdit) {
-        await updatePersonel(personel.id, submitData);
+        await updatePersonel(personel.id, submitData, kullanici);
         basarili = true;
       } else if (pasifBulunanId) {
         // Pasif personel yeniden işe alım: aktif yap + güncelle (maaş, giriş tarihi vb.)
@@ -287,7 +287,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           ...submitData,
           durum: "aktif",
           pasif_tarihi: null,
-        });
+        }, kullanici);
         basarili = true;
         // Şantiye seçildiyse otomatik atama ekle (varsa zaten silently başarısız olur)
         if (submitData.santiye_id) {
@@ -298,7 +298,7 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           }
         }
       } else {
-        const yeni = await createPersonel(submitData);
+        const yeni = await createPersonel(submitData, kullanici);
         basarili = true;
         // Şantiye seçildiyse personel_santiye junction'a otomatik atama ekle
         // (puantaj sayfasında listede görünmesi için gerekli)
@@ -828,6 +828,16 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
               </div>
             )}
           </div>}
+
+          {/* Kaydı kim açtı / kim güncelledi — 11.09.2026'dan itibaren tutuluyor,
+              daha eski kayıtlarda boş kalır (o bilgi hiç kaydedilmemişti). */}
+          {isEdit && (personel?.created_by_ad || personel?.updated_by_ad) && (
+            <p className="pt-2 text-[10px] text-gray-400 border-t">
+              {personel?.created_by_ad && <>Kaydı açan: <span className="text-gray-500">{personel.created_by_ad}</span></>}
+              {personel?.created_by_ad && personel?.updated_by_ad && " · "}
+              {personel?.updated_by_ad && <>Son güncelleyen: <span className="text-gray-500">{personel.updated_by_ad}</span></>}
+            </p>
+          )}
         </CardContent>
       </Card>
 

@@ -147,6 +147,12 @@ export type Personel = {
   id: string;
   tc_kimlik_no: string;
   ad_soyad: string;
+  // Kaydı açan / en son güncelleyen kullanıcı (sql/personel_kim_acti.sql).
+  // Eski kayıtlarda boştur — bu bilgi 11.09.2026'dan önce tutulmuyordu.
+  created_by?: string | null;
+  created_by_ad?: string | null;
+  updated_by?: string | null;
+  updated_by_ad?: string | null;
   meslek: string | null;
   gorev: string | null;
   santiye_id: string | null;
@@ -193,7 +199,12 @@ export const OGRENIM_DURUMLARI = [
   "Doktora",
 ] as const;
 
-export type PersonelInsert = Omit<Personel, "id" | "created_at" | "updated_at">;
+// Kaydı kim açtı / kim güncelledi — bkz. sql/personel_kim_acti.sql.
+// Insert/Update tipinden çıkarılır: bu alanları form değil, createPersonel/updatePersonel doldurur.
+export type PersonelInsert = Omit<
+  Personel,
+  "id" | "created_at" | "updated_at" | "created_by" | "created_by_ad" | "updated_by" | "updated_by_ad"
+>;
 export type PersonelUpdate = Partial<PersonelInsert>;
 
 export type PersonelWithRelations = Personel & {
