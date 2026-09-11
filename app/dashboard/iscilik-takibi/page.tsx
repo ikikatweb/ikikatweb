@@ -1020,9 +1020,10 @@ export default function IscilikTakibiPage() {
                           <div className="flex flex-col items-end leading-tight">
                             <span>{hucreDegeri(row, col)}</span>
                             {gerceklesen != null && gerceklesen > 0 && (
-                              <span className="text-[11px] text-gray-400"
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-400"
                                 title="Tamamlanan keşif (sözleşme fiyatlarıyla gerçekleşen)">
                                 {formatPara(gerceklesen)}
+                                {netsimKaynakli(gerceklesen, row.santiyeler?.netsim_gerceklesen) && <NetsimRozet />}
                               </span>
                             )}
                           </div>
