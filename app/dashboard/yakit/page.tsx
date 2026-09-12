@@ -6,7 +6,7 @@
 "use client";
 
 import AracForm from "@/components/shared/arac-form";
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
@@ -237,6 +237,8 @@ function YakitPageContent() {
   const [verDialogDepoFull, setVerDialogDepoFull] = useState(false);
   const [verDialogDisYakit, setVerDialogDisYakit] = useState<boolean | null>(null);
   const [verDialogLoading, setVerDialogLoading] = useState(false);
+  // Çift tıklama kilidi — state'ten farklı olarak SENKRON, aynı tick'te etkili.
+  const kaydediliyorRef = useRef(false);
   const [menzilSoru, setMenzilSoru] = useState<{ fark: number; menzil: number; birim: string } | null>(null); // 1 depo menzili aşımı Evet/Hayır sorusu
 
   // Dialog: Yakıt Düzeltme (SADECE yönetici) — eksik/fazla mazotu araçlara hisse oranında dağıt
@@ -944,6 +946,19 @@ function YakitPageContent() {
   // ============ KAYDETME FONKSİYONLARI ============
 
   async function verKaydet() {
+    // ANINDA kilit: butonun disabled olması bir sonraki render'da etkili oluyor, arada
+    // ikinci tıklama geçebiliyor (10.09.2026'da 60 BP 164'te iki özdeş kayıt oluştu).
+    // Ref senkron çalıştığı için o pencereyi kapatır.
+    if (kaydediliyorRef.current) return;
+    kaydediliyorRef.current = true;
+    try {
+      await verKaydetIc();
+    } finally {
+      kaydediliyorRef.current = false;
+    }
+  }
+
+  async function verKaydetIc() {
     if (verEditId ? !yDuzenle : !yEkle) { toast.error(verEditId ? "Düzenleme yetkiniz yok." : "Ekleme yetkiniz yok."); return; }
     if (!verDialogSantiyeId) { toast.error("Şantiye seçin."); return; }
     if (!verDialogAracId) { toast.error("Araç seçin."); return; }

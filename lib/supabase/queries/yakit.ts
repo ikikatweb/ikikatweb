@@ -97,6 +97,28 @@ export async function insertAracYakit(data: {
   created_by: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
+
+  // MÜKERRER KORUMASI — Kaydet'e iki kez basılması (özellikle telefonda çift dokunuş)
+  // aynı yakıt kaydını iki kez düşürebiliyor. Butonun disabled olması yetmiyor: React
+  // state'i bir sonraki render'da etkili olduğu için arada bir pencere kalıyor.
+  // 10.09.2026'da 60 BP 164'te tam olarak bu oldu — 2,3 saniye arayla iki özdeş kayıt.
+  // Burada aynı araç/tarih/saat/km/miktar ile SON 2 DAKİKA içinde kayıt varsa sessizce
+  // çıkılır: kullanıcı için işlem başarılı görünür, veri ikinci kez yazılmaz.
+  {
+    const esik = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: ayni } = await supabase
+      .from("arac_yakit")
+      .select("id")
+      .eq("arac_id", data.arac_id)
+      .eq("tarih", data.tarih)
+      .eq("saat", data.saat)
+      .eq("km_saat", data.km_saat)
+      .eq("miktar_lt", data.miktar_lt)
+      .gte("created_at", esik)
+      .limit(1);
+    if (ayni && ayni.length > 0) return;
+  }
+
   // INSERT + SELECT — bildirimde kaynak_id için id gerekli
   let { data: inserted, error } = await supabase
     .from("arac_yakit")
