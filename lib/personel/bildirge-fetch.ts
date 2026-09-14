@@ -174,10 +174,52 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
       await client.connect();
       const lock = await client.getMailboxLock("INBOX");
       try {
-        const seqs = await client.search({ since });
-        const secili = (Array.isArray(seqs) ? seqs : []).slice(-250); // son mailler (üst sınır)
-        if (secili.length === 0) continue;
-        for await (const msg of client.fetch(secili, { source: true })) {
+        // ── ARTIMLI OKUMA ────────────────────────────────────────────────────────────
+        // Her tur aynı pencereyi baştan indirmek yerine, kutu başına en son işlenen
+        // UID'den sonrasını okuruz. 30 dk'da bir dönerken günde ~9.600 mail indiriliyordu;
+        // 5 dakikaya çekilince ~57.600 olacaktı ve posta sunucusunu zorlayacaktı.
+        //
+        // Güvenlik ağı: saatte bir TAM pencere taranır. Bildirge, talep oluşturulmadan
+        // ÖNCE gelmiş olsa bile (muhasebe erken yollarsa) o turda yakalanır.
+        // UIDVALIDITY değişmişse sunucu kutuyu yeniden numaralandırmıştır → durum sıfırlanır.
+        const { data: durumRow } = await supabase
+          .from("bildirge_imap_durum").select("uid_validity, son_uid, son_tam_tarama")
+          .eq("kutu", kutu.user.toLowerCase()).maybeSingle();
+        const durum = durumRow as { uid_validity: number | null; son_uid: number | null; son_tam_tarama: string | null } | null;
+
+        // imapflow uidValidity'yi bigint olarak tiplemiş — karşılaştırma için number'a çeviriyoruz.
+        const kutuBilgi = client.mailbox as unknown as { uidValidity?: bigint | number } | false;
+        const uidValidity = kutuBilgi && typeof kutuBilgi === "object" ? Number(kutuBilgi.uidValidity ?? 0) : 0;
+        const tamTaramaYasi = durum?.son_tam_tarama
+          ? Date.now() - new Date(durum.son_tam_tarama).getTime()
+          : Infinity;
+        const tamTara =
+          !durum?.son_uid ||
+          (uidValidity > 0 && Number(durum.uid_validity) !== uidValidity) ||
+          tamTaramaYasi > 60 * 60 * 1000;
+
+        let secili: number[] | string;
+        let uidModu = false;
+        if (tamTara) {
+          const seqs = await client.search({ since });
+          secili = (Array.isArray(seqs) ? seqs : []).slice(-250); // son mailler (üst sınır)
+          if ((secili as number[]).length === 0) {
+            // Taranacak mail yok ama tam tarama yapıldı sayılır — saat sıfırlansın.
+            await supabase.from("bildirge_imap_durum").upsert({
+              kutu: kutu.user.toLowerCase(), uid_validity: uidValidity,
+              son_uid: durum?.son_uid ?? null, son_tam_tarama: new Date().toISOString(),
+              guncellendi: new Date().toISOString(),
+            }, { onConflict: "kutu" });
+            continue;
+          }
+        } else {
+          secili = `${Number(durum!.son_uid) + 1}:*`; // yalnız yeni gelenler
+          uidModu = true;
+        }
+
+        let enBuyukUid = Number(durum?.son_uid ?? 0);
+        for await (const msg of client.fetch(secili, { source: true, uid: true }, uidModu ? { uid: true } : undefined)) {
+          if (typeof msg.uid === "number" && msg.uid > enBuyukUid) enBuyukUid = msg.uid;
           if (!msg.source) continue;
           let parsed;
           try { parsed = await simpleParser(msg.source as Buffer); } catch { continue; }
@@ -348,6 +390,14 @@ export async function tarayVeKapat(gun = 7): Promise<BildirgeSonuc> {
             }
           }
         }
+        // Bu kutu için ilerlemeyi kaydet
+        await supabase.from("bildirge_imap_durum").upsert({
+          kutu: kutu.user.toLowerCase(),
+          uid_validity: uidValidity,
+          son_uid: enBuyukUid > 0 ? enBuyukUid : (durum?.son_uid ?? null),
+          son_tam_tarama: tamTara ? new Date().toISOString() : (durum?.son_tam_tarama ?? null),
+          guncellendi: new Date().toISOString(),
+        }, { onConflict: "kutu" });
       } finally { lock.release(); }
       await client.logout();
     } catch (e) {

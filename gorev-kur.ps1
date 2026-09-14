@@ -85,7 +85,9 @@ Kur 'Arvento Gercek Rapor'  (Act '_rapor_hidden.vbs') (Rep 1) $prinS4U $setStd
 #     senkronu Playwright'i HEADLESS aciyor, digerleri sadece ag istegi yapiyor.
 Kur 'ArventoDamperSync'   (Act 'arvento-damper-gizli.vbs') (Rep 1)  $prinS4U $setStd
 Kur 'ArventoGuzergahSync' (Act 'arvento-sync-gizli.vbs')   (Rep 15) $prinS4U $setStd
-Kur 'Personel Bildirge Sync' (Act 'personel-bildirge-gizli.vbs') (Rep 30) $prinS4U $setPers
+# Bildirge senkronu 5 DAKIKADA bir: artimli okuma sayesinde (bkz. bildirge_imap_durum)
+# her tur yalnizca yeni gelen mailleri indiriyor, posta sunucusuna yuk binmiyor.
+Kur 'Personel Bildirge Sync' (Act 'personel-bildirge-gizli.vbs') (Rep 5) $prinS4U $setPers
 # --- Netsim senkronu: sirket agindaki Firebird'den (192.168.3.62) hakedis tutarlarini ceker.
 #     Sadece SELECT yapar; Netsim'e tek satir yazmaz. Sunucu/ag kapaliysa sessizce hata verip
 #     bir sonraki turda tekrar dener -> IgnoreNew ile ust uste binmez.
