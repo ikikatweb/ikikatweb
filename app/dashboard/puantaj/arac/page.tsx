@@ -1942,7 +1942,7 @@ export default function AracPuantajPage() {
                   type="text"
                   value={puantajArama}
                   onChange={(e) => setPuantajArama(e.target.value)}
-                  placeholder="Plaka, marka, model, cinsi, firma..."
+                  placeholder="Plaka, marka, model, cinsi, sahibi..."
                   className={selectClass + " w-full pl-8"}
                 />
                 {puantajArama && (
@@ -2052,6 +2052,20 @@ export default function AracPuantajPage() {
                           <div className="text-[9px] text-gray-500 leading-tight truncate max-w-[95px]">
                             {[a.marka, a.model].filter(Boolean).join(" ") || "—"}
                           </div>
+                          {/* Aracın sahibi — özmalda firma, kiralıkta kiralama firması/kişi.
+                              Arama zaten bu alanı da tarıyor; burada görünmesi aramanın
+                              sonucunu doğrulamayı kolaylaştırıyor. */}
+                          {(() => {
+                            const sahibi = a.tip === "ozmal"
+                              ? (a.firmalar?.firma_adi ?? "")
+                              : (a.kiralama_firmasi ?? "");
+                            if (!sahibi.trim()) return null;
+                            return (
+                              <div className="text-[9px] leading-tight truncate max-w-[95px] text-sky-700" title={sahibi}>
+                                {sahibi}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     </TableCell>
