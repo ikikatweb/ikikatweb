@@ -147,6 +147,37 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
       return;
     }
 
+    // ZORUNLU ALANLAR — eksik araç kartı sonradan aramada/raporda boşluk yaratıyor
+    // (ör. sahibi girilmemiş araç, sahibine göre aramada bulunamıyordu).
+    // Kiralama bilgileri yalnız KİRALIK araçlarda sorulur; özmal araçta bu alanlar yok.
+    if (formTip === "kiralik") {
+      if (!formData.kiralama_firmasi?.trim()) {
+        toast.error("Kiralama firması zorunludur.");
+        return;
+      }
+      if (!formData.kiralik_iletisim?.trim()) {
+        toast.error("İletişim numarası zorunludur.");
+        return;
+      }
+    }
+    if (!formData.marka?.trim()) { toast.error("Marka zorunludur."); return; }
+    if (!formData.model?.trim()) { toast.error("Model zorunludur."); return; }
+    if (!formData.cinsi?.trim()) { toast.error("Cinsi zorunludur."); return; }
+    if (formData.yili == null || String(formData.yili).trim() === "") {
+      toast.error("Model yılı zorunludur.");
+      return;
+    }
+    // Gösterge ve depo menzili SAYIDIR: 0 geçerli bir değer, o yüzden boşluk kontrolü
+    // null/boş üzerinden yapılır — "0 girilmiş" ile "hiç girilmemiş" karıştırılmamalı.
+    if (formData.guncel_gosterge == null) {
+      toast.error("Güncel gösterge zorunludur (bilinmiyorsa 0 yazın).");
+      return;
+    }
+    if (formData.depo_menzil == null) {
+      toast.error("1 depo ile gidebileceği KM zorunludur.");
+      return;
+    }
+
     setLoading(true);
 
     let basarili = false;
@@ -240,7 +271,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             {formTip === "kiralik" && (
               <>
                 <div className="space-y-2 relative">
-                  <Label htmlFor="kiralama_firmasi">Kiralama Firması</Label>
+                  <Label htmlFor="kiralama_firmasi">Kiralama Firması <span className="text-red-500">*</span></Label>
                   <Input
                     id="kiralama_firmasi"
                     name="kiralama_firmasi"
@@ -335,7 +366,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                   })()}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="kiralik_iletisim">İletişim Numarası</Label>
+                  <Label htmlFor="kiralik_iletisim">İletişim Numarası <span className="text-red-500">*</span></Label>
                   <Input
                     id="kiralik_iletisim"
                     name="kiralik_iletisim"
@@ -376,7 +407,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="marka">Marka</Label>
+              <Label htmlFor="marka">Marka <span className="text-red-500">*</span></Label>
               <Input
                 id="marka"
                 name="marka"
@@ -389,7 +420,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="model">Model</Label>
+              <Label htmlFor="model">Model <span className="text-red-500">*</span></Label>
               <Input
                 id="model"
                 name="model"
@@ -402,7 +433,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cinsi">Cinsi</Label>
+              <Label htmlFor="cinsi">Cinsi <span className="text-red-500">*</span></Label>
               <select
                 id="cinsi"
                 name="cinsi"
@@ -423,7 +454,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="yili">Model Yılı</Label>
+              <Label htmlFor="yili">Model Yılı <span className="text-red-500">*</span></Label>
               <select
                 id="yili"
                 name="yili"
@@ -444,7 +475,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
             <input type="hidden" name="sayac_tipi" value={formData.sayac_tipi ?? "km"} />
 
             <div className="space-y-2">
-              <Label htmlFor="guncel_gosterge">Güncel Gösterge</Label>
+              <Label htmlFor="guncel_gosterge">Güncel Gösterge <span className="text-red-500">*</span></Label>
               <Input
                 id="guncel_gosterge"
                 name="guncel_gosterge"
@@ -460,7 +491,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
               <Label htmlFor="depo_menzil">
                 {formData.sayac_tipi === "saat"
                   ? "1 Depo ile Çalışabileceği Saat"
-                  : "1 Depo ile Gidebileceği KM"}
+                  : "1 Depo ile Gidebileceği KM"} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="depo_menzil"
