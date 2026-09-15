@@ -2252,7 +2252,9 @@ export default function AracPuantajPage() {
                               dBilgi
                                 ? `${dBilgi.bgClass} text-white hover:opacity-90`
                                 : "hover:bg-gray-200 text-gray-300"
-                            }`}
+                            }${dBilgi && yakitsizGunMu(a.id, g)
+                              ? " shadow-[inset_0_0_0_2px_#DC2626] ring-1 ring-inset ring-white/70"
+                              : ""}`}
                             title={
                               !dBilgi
                                 ? `${g}.${ay} - Tıklayarak puantajla`
@@ -2269,9 +2271,11 @@ export default function AracPuantajPage() {
                                 aralığının içinde. Sol üst köşe: sağ üst köşeyi "not var" kullanıyor. */}
                             {dBilgi && yakitsizGunMu(a.id, g) && (
                               <span
-                                className="absolute top-0 left-0 w-0 h-0 border-t-[9px] border-t-red-600 border-r-[9px] border-r-transparent pointer-events-none"
+                                className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-red-600 text-white shadow-sm pointer-events-none"
                                 aria-label="Yakıtsız çalışma"
-                              />
+                              >
+                                <Fuel size={10} strokeWidth={2.75} />
+                              </span>
                             )}
                             {notVar && (
                               <span
