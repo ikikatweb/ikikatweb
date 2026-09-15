@@ -2,6 +2,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 import type { OzetDamper, OzetGiris } from "@/lib/arvento/stabilize-ozet";
+import { kapsamAnahtari, guzergahGunleri, guzergahOnbellektenOku, guzergahOnbellegeYaz, guzergahOnbellekTemizle } from "@/lib/arvento/guzergah-onbellek";
 
 function getSupabase() {
   return createClient();
@@ -155,7 +156,59 @@ export async function getMakineCalismaNoktalari(bas: string, bitis: string, plak
   return tanimliSuz((data ?? []) as MakineNokta[]);
 }
 
+/**
+ * Aralıktaki güzergah satırları — GEÇMİŞ günler tarayıcı önbelleğinden (IndexedDB), yalnız
+ * eksik günler + BUGÜN ağdan.
+ *
+ * Geçmiş günün rotası bir daha değişmez; ama eskiden her sayfa açılışında baştan iniyordu.
+ * Satır başına ~37 KB olduğu için bir aylık aralık ~24 MB, sezon ~69 MB demekti — Supabase
+ * çıkış kotasının asıl tüketicisi buydu. Artık aynı aralık ikinci açılışta ~1 MB (yalnız bugün).
+ *
+ * Önbellek yoksa/bozuksa her şey aşağıdaki guzergahCek'e (eski davranış) düşer.
+ */
 export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: string[] | null, opts?: { tekSorgu?: boolean }): Promise<AracArventoGuzergah[]> {
+  if (!bas || !bitis) return [];
+  if (plakalar && plakalar.length === 0) return [];
+  // Sunucu tarafında (SSR/API) IndexedDB yok → doğrudan ağ.
+  if (typeof window === "undefined") return guzergahCek(bas, bitis, plakalar, opts);
+
+  const bugun = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10); // TR günü
+  const kapsam = kapsamAnahtari(plakalar);
+  const tumGunler = guzergahGunleri(bas, bitis);
+  // Bugün ve sonrası ASLA önbellekten okunmaz/yazılmaz — dakikada bir yeni nokta ekleniyor.
+  const gecmisGunler = tumGunler.filter((g) => g < bugun);
+  const canliGunler = tumGunler.filter((g) => g >= bugun);
+
+  void guzergahOnbellekTemizle(); // oturumda bir kez: eski kayıtları at (arka planda)
+  const { bulunan, eksik } = await guzergahOnbellektenOku(gecmisGunler, kapsam);
+  const sonuc: AracArventoGuzergah[] = [];
+  for (const g of gecmisGunler) { const s = bulunan.get(g); if (s) sonuc.push(...s); }
+
+  // Eksik geçmiş günler: tek aralık olarak çek (min–max). Önbellek geçmişten doğru dolduğu için
+  // eksikler tipik olarak SON günlerdir → aralık zaten dar olur; parça parça istek atmaktan ucuz.
+  if (eksik.length > 0) {
+    const eBas = eksik[0], eBitis = eksik[eksik.length - 1];
+    const taze = await guzergahCek(eBas, eBitis, plakalar, opts);
+    const eksikKume = new Set(eksik);
+    // Yalnız GERÇEKTEN eksik günleri sonuca kat: aradaki günler zaten önbellekten geldi,
+    // iki kez eklenirse satırlar çiftlenirdi.
+    for (const s of taze) if (eksikKume.has(s.rapor_tarihi)) sonuc.push(s);
+    void guzergahOnbellegeYaz(eksik, kapsam, taze);
+  }
+
+  if (canliGunler.length > 0) {
+    sonuc.push(...await guzergahCek(canliGunler[0], canliGunler[canliGunler.length - 1], plakalar, opts));
+  }
+  // Önbellek ve ağ parçaları karışık sırada birikir; çağıranlar eskiden PostgREST'in
+  // .order(rapor_tarihi).order(plaka) sırasını görüyordu. Aynı sıraya getir: çizim kodu ve
+  // guzergahVeriImza (referans koruma) satır sırasına duyarlı.
+  sonuc.sort((a, b) => (a.rapor_tarihi === b.rapor_tarihi
+    ? String(a.plaka).localeCompare(String(b.plaka))
+    : a.rapor_tarihi < b.rapor_tarihi ? -1 : 1));
+  return sonuc;
+}
+
+async function guzergahCek(bas: string, bitis: string, plakalar?: string[] | null, opts?: { tekSorgu?: boolean }): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
   if (plakalar && plakalar.length === 0) return []; // bu sekmeye ait araç yok → çekme
   const supabase = getSupabase();
@@ -229,11 +282,47 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
 // → RLS'li client yoluna (getGuzergahByRange) düş → çalışmaya devam eder.
 export async function getGuzergahTumuHizli(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
+  if (typeof window === "undefined") return guzergahTumuAgdan(bas, bitis);
+
+  // getGuzergahByRange ile AYNI önbellek mantığı: geçmiş günler IndexedDB'den, yalnız eksikler
+  // ve bugün ağdan. Bu yol "Tümü" sekmesinin plaka süzgeçsiz çekimi — aralık bir aya çıkınca
+  // ~24 MB'lık en pahalı istek buydu.
+  const bugun = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+  const tumGunler = guzergahGunleri(bas, bitis);
+  const gecmisGunler = tumGunler.filter((g) => g < bugun);
+  const canliGunler = tumGunler.filter((g) => g >= bugun);
+
+  void guzergahOnbellekTemizle();
+
+  const { bulunan, eksik } = await guzergahOnbellektenOku(gecmisGunler, "*");
+  const sonuc: AracArventoGuzergah[] = [];
+  for (const g of gecmisGunler) { const s = bulunan.get(g); if (s) sonuc.push(...s); }
+
+  if (eksik.length > 0) {
+    const taze = await guzergahTumuAgdan(eksik[0], eksik[eksik.length - 1]);
+    const eksikKume = new Set(eksik);
+    for (const s of taze) if (eksikKume.has(s.rapor_tarihi)) sonuc.push(s);
+    void guzergahOnbellegeYaz(eksik, "*", taze);
+  }
+
+  if (canliGunler.length > 0) {
+    sonuc.push(...await guzergahTumuAgdan(canliGunler[0], canliGunler[canliGunler.length - 1]));
+  }
+  // Önbellek ve ağ parçaları karışık sırada birikir; çağıranlar eskiden PostgREST'in
+  // .order(rapor_tarihi).order(plaka) sırasını görüyordu. Aynı sıraya getir: çizim kodu ve
+  // guzergahVeriImza (referans koruma) satır sırasına duyarlı.
+  sonuc.sort((a, b) => (a.rapor_tarihi === b.rapor_tarihi
+    ? String(a.plaka).localeCompare(String(b.plaka))
+    : a.rapor_tarihi < b.rapor_tarihi ? -1 : 1));
+  return sonuc;
+}
+
+async function guzergahTumuAgdan(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
   try {
     const res = await fetch(`/api/arvento/guzergah-tumu?bas=${bas}&bitis=${bitis}`, { cache: "no-store" });
     if (res.ok) return (await res.json()) as AracArventoGuzergah[];
   } catch { /* ağ/oturum hatası → fallback */ }
-  return getGuzergahByRange(bas, bitis); // API başarısız → RLS'li gün-gün yol (yavaş ama çalışır)
+  return guzergahCek(bas, bitis); // API başarısız → RLS'li gün-gün yol (yavaş ama çalışır)
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için
