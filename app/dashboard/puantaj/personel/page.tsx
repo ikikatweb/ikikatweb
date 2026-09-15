@@ -1323,18 +1323,22 @@ export default function PersonelPuantajPage() {
           <p className="text-gray-500">Bu şantiyeye atanmış personel yok.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
+        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[calc(100vh-220px)]">
+          {/* Kaydırma kabı ARAÇ PUANTAJ ile aynı: iki eksen de bu div'de kayar.
+              overflow-x-auto iken dikey kaydırma sayfada kalıyordu; sabit başlık sayfaya,
+              sabit sütun kaba tutunuyor ve telefonda isimler kaybolup renkler üzerlerine
+              biniyordu. Başlık/sütun z değerleri de araç puantajdakiyle aynı: 60/50/40. */}
           <Table noWrapper className="text-xs border-separate border-spacing-0">
-            <thead>
+            <thead className="!z-[50]">
               <tr className="bg-[#64748B]">
                 <th
-                  style={{ position: "sticky", top: 0, left: 0, zIndex: 40 }}
+                  style={{ position: "sticky", top: 0, left: 0, zIndex: 60 }}
                   className="text-white text-[11px] px-2 h-10 text-left align-middle font-medium whitespace-nowrap bg-[#64748B] min-w-[120px] max-w-[140px] border-b border-gray-200"
                 >Personel</th>
                 {gunler.map((g) => (
                   <th
                     key={g}
-                    style={{ position: "sticky", top: 0, zIndex: 30 }}
+                    style={{ position: "sticky", top: 0, zIndex: 50 }}
                     className={`text-white text-[10px] text-center px-0 h-10 align-middle font-medium whitespace-nowrap min-w-[35px] w-[35px] border-b border-gray-200 ${gunHaftaSonu(g) ? "bg-[#2c5278]" : "bg-[#64748B]"} ${gunGorunur(g) ? "" : "opacity-40"}`}
                     title={gunGorunur(g) ? gunAdi(g) : `${gunAdi(g)} — görüntüleme izniniz dışında`}
                   >
@@ -1342,9 +1346,9 @@ export default function PersonelPuantajPage() {
                     <div className="text-[8px] opacity-75">{gunAdi(g).slice(0, 1)}</div>
                   </th>
                 ))}
-                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[70px] bg-[#0f2540] border-b border-gray-200">Mesai</th>
-                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">İzin</th>
-                <th style={{ position: "sticky", top: 0, zIndex: 30 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">Toplam</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 50 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[70px] bg-[#0f2540] border-b border-gray-200">Mesai</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 50 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">İzin</th>
+                <th style={{ position: "sticky", top: 0, zIndex: 50 }} className="text-white text-[11px] text-center px-2 h-10 align-middle font-medium whitespace-nowrap min-w-[60px] bg-[#0f2540] border-b border-gray-200">Toplam</th>
               </tr>
             </thead>
             <TableBody>
@@ -1356,7 +1360,7 @@ export default function PersonelPuantajPage() {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-100" : ""}`}>
-                    <TableCell className={`px-2 sticky left-0 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
+                    <TableCell className={`px-2 sticky left-0 z-[40] border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)] ${pasif ? "bg-gray-100" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
