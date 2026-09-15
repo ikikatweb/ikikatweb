@@ -1333,7 +1333,11 @@ export default function PersonelPuantajPage() {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-100" : ""}`}>
-                    <TableCell className={`px-2 sticky left-0 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
+                    {/* z-20 ŞART: sticky hücre z-index'siz bırakılınca, DOM'da SONRA gelen gün
+                        hücreleri (içlerindeki konumlandırılmış butonlar) onun üstüne biniyordu —
+                        yatay kaydırınca isimlerin üzerinden geçiyorlardı. Başlık satırı 30/40'ta,
+                        bu yüzden gövde 20: gün hücrelerinin üstünde, başlığın altında. */}
+                    <TableCell className={`px-2 sticky left-0 z-20 border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)] ${pasif ? "bg-gray-100" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
