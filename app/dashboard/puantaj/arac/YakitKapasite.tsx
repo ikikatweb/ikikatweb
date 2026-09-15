@@ -198,7 +198,8 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
                                 <Kutu
                                   etiket="Depo Kapasitesi"
                                   deger={s.depoKapasite == null ? "—" : `${tamsayi(s.depoKapasite)} lt`}
-                                  ipucu="Aracın tüm zamanlarda tek seferde aldığı en yüksek yakıt"
+                                  ipucu="Aracın TÜM ŞANTİYELERDEKİ dolumları içinde tek seferde aldığı en yüksek yakıt — sadece bu şantiye değil"
+                                  altNot="tüm şantiyeler"
                                 />
                                 <Kutu
                                   etiket={`Yakıtsız Çalışma Kapasitesi`}
@@ -209,7 +210,12 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
                                   altNot={s.kapasiteKaynak === "menzil" ? "araç formundan" : s.kapasiteKaynak === "hesap" ? "hesaplandı" : undefined}
                                   vurgu
                                 />
-                                <Kutu etiket="Toplam Dolum" deger={`${tamsayi(s.dolumAdet)} kayıt`} />
+                                <Kutu
+                                  etiket="Toplam Dolum"
+                                  deger={`${tamsayi(s.dolumAdet)} kayıt`}
+                                  ipucu="Aracın tüm şantiyelerdeki toplam yakıt kaydı sayısı"
+                                  altNot="tüm şantiyeler"
+                                />
                               </div>
 
                               {s.isaretliAsim > 0 && (
