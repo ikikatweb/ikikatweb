@@ -1055,9 +1055,9 @@ export default function IscilikTakibiPage() {
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={cellClass}
                           onClick={() => col.editable ? handleCellClick(row, col) : undefined}>
-                          <span className="inline-flex items-center justify-end gap-1">
+                          <span className="relative inline-flex items-center justify-end">
                             {hucreDegeri(row, col)}
-                            <NetsimRozet />
+                            <NetsimRozet className="absolute -right-3.5" />
                           </span>
                         </TableCell>
                       );
@@ -1069,14 +1069,19 @@ export default function IscilikTakibiPage() {
                       const gerceklesen = row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? null;
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={cellClass}>
-                          <div className="flex flex-col items-end leading-tight">
+                          {/* Rozet AKIŞIN DIŞINDA (absolute): akış içinde olsaydı alttaki gri
+                              rakamı sola itip üstteki sözleşme bedeliyle hizasını bozardı.
+                              Hücrenin px-2 dolgusunun dışına birkaç piksel taşar. */}
+                          <div className="relative flex flex-col items-end leading-tight">
                             <span>{hucreDegeri(row, col)}</span>
                             {gerceklesen != null && gerceklesen > 0 && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-400"
+                              <span className="text-[11px] text-gray-400"
                                 title="Tamamlanan keşif (sözleşme fiyatlarıyla gerçekleşen)">
                                 {formatPara(gerceklesen)}
-                                {netsimKaynakli(gerceklesen, row.santiyeler?.netsim_gerceklesen) && <NetsimRozet />}
                               </span>
+                            )}
+                            {gerceklesen != null && gerceklesen > 0 && netsimKaynakli(gerceklesen, row.santiyeler?.netsim_gerceklesen) && (
+                              <NetsimRozet className="absolute -right-3.5 bottom-0.5" />
                             )}
                           </div>
                         </TableCell>
