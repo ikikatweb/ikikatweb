@@ -61,6 +61,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* localStorage yoksa sessiz */ }
   }, []);
 
+  // OTURUM GEÇERLİLİK KONTROLÜ
+  //
+  // Supabase'de oturum düşünce sorgular HATA FIRLATMIYOR, satır güvenliği devreye girip
+  // 0 satır döndürüyor. Uygulama kullanıcıyı hâlâ girişli gösterdiği için ekran normal
+  // açılıyor ama her yer boş kalıyor — kullanıcı "site bozuldu" sanıyor, sebebi anlamanın
+  // hiçbir yolu olmuyor. 15.09.2026'da bu yüzden saatler kaybedildi.
+  //
+  // Burada jeton SUNUCUYA doğrulatılıyor (getUser ağ üzerinden kontrol eder, yereldeki
+  // kopyaya bakmaz). Geçersizse kullanıcı sessizce boş ekranda bırakılmak yerine giriş
+  // sayfasına alınıyor.
+  //
+  // DİKKAT: ağ hatasında çıkış YAPILMAZ. Yalnız 401/403 (jeton geçersiz) ya da "oturum
+  // yok" cevabı çıkışa yol açar; yoksa tüneldeyken herkes atılırdı.
+  useEffect(() => {
+    let sürüyor = false;
+    const kontrolEt = async () => {
+      if (sürüyor || !girisYapildiRef.current) return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      sürüyor = true;
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        const { data, error } = await supabase.auth.getUser();
+        const jetonGecersiz = error
+          ? (error.status === 401 || error.status === 403)
+          : !data?.user;
+        if (jetonGecersiz) {
+          girisYapildiRef.current = false;
+          setKullanici(null);
+          try { await supabase.auth.signOut(); } catch { /* zaten geçersiz */ }
+          window.location.href = "/login?oturum=bitti";
+        }
+      } catch { /* ağ hatası → oturum sorunu sayma */ }
+      finally { sürüyor = false; }
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") void kontrolEt(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", kontrolEt);
+    const zamanlayici = setInterval(() => { void kontrolEt(); }, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", kontrolEt);
+      clearInterval(zamanlayici);
+    };
+  }, []);
+
   // Uygulama öne geldiğinde (PWA resume / sekme aktif olunca) son girişi kaydet.
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === "visible") girisKaydet(); };

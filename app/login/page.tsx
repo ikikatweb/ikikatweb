@@ -1,7 +1,7 @@
 // Login sayfası - Kullanıcı adı ve şifre ile giriş
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  // URL'de ?oturum=bitti varsa uyarı göster. useSearchParams yerine doğrudan location
+  // okunuyor: bu sayfa Suspense sınırı istemesin diye.
+  const [oturumBitti, setOturumBitti] = useState(false);
+  useEffect(() => {
+    try { setOturumBitti(new URLSearchParams(window.location.search).get("oturum") === "bitti"); }
+    catch { /* önemsiz */ }
+  }, []);
   const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
@@ -89,6 +96,14 @@ export default function LoginPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
+            {/* Oturumu düşen kullanıcı buraya "?oturum=bitti" ile gelir (bkz. auth-context).
+                Neden çıkarıldığı yazmazsa kullanıcı kendini rastgele atılmış sanıyor. */}
+            {oturumBitti && (
+              <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 leading-relaxed">
+                <strong>Oturumunuz sona erdi.</strong> Güvenlik için bir süre sonra çıkış yapılıyor.
+                Lütfen tekrar giriş yapın — verileriniz yerinde.
+              </div>
+            )}
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="username">Kullanıcı Adı</Label>
