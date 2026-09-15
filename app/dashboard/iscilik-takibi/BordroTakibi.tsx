@@ -4215,8 +4215,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     })();
     return (
       <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden shadow-md">
+        {/* lg:min-h — kartların hepsi aynı yükseklikte dursun diye. Sağdaki rakam bloğu
+            işe göre 2 ile 4 satır arasında değişiyordu (fiyat farkı ve tahmini FF yalnız
+            doluysa yazılıyor) ve kart boyu onunla birlikte oynuyordu. 4 satırlık yükseklik
+            (4 × 12px + py-2.5) taban olarak sabitlendi; rakamı hiç olmayan kartlar da
+            aynı boyda kalıyor. Dar ekranda rakamlar gizli olduğundan taban da uygulanmaz. */}
         <div
-          className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
+          className="flex items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
           style={{ borderLeftColor: renk }}
           onClick={onToggle}
         >
