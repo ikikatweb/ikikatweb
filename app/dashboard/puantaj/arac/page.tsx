@@ -549,15 +549,22 @@ export default function AracPuantajPage() {
         return text.includes(q);
       });
     }
-    // Önce CİNSE, sonra plakaya göre sırala — tablo cins cins gruplanıyor.
-    // Cinsi girilmemiş araçlar en sona. PDF/Excel çıktısı da bu listeden türüyor,
-    // dolayısıyla onlar da aynı sırada çıkar.
+    // Önce CİNSE, cins içinde ARAÇ SAHİBİNE, en son plakaya göre sırala — tablo bu iki
+    // kırılımla gruplanıyor. Boş cins/sahip kendi seviyesinde en sona düşer. PDF/Excel
+    // çıktısı da bu listeden türüyor, dolayısıyla onlar da aynı sırada çıkar.
+    const sahipAdi = (x: typeof liste[number]) =>
+      (x.tip === "ozmal" ? (x.firmalar?.firma_adi ?? "") : (x.kiralama_firmasi ?? "")).trim();
     return liste.sort((a, b) => {
       const ac = (a.cinsi ?? "").trim();
       const bc = (b.cinsi ?? "").trim();
       if (!ac !== !bc) return ac ? -1 : 1;
       const c = ac.localeCompare(bc, "tr");
       if (c !== 0) return c;
+      const as = sahipAdi(a);
+      const bs = sahipAdi(b);
+      if (!as !== !bs) return as ? -1 : 1;
+      const sf = as.localeCompare(bs, "tr");
+      if (sf !== 0) return sf;
       return a.plaka.localeCompare(b.plaka, "tr");
     });
   }, [araclar, puantajlar, santiyeId, puantajArama]);
@@ -565,16 +572,24 @@ export default function AracPuantajPage() {
   // Araç cinsi — puantaj tablosunda gruplama anahtarı. Boş/eksik olanlar tek grupta,
   // listenin en sonunda toplanır.
   const CINS_BOS = "Cinsi girilmemiş";
+  const SAHIP_BOS = "Sahibi girilmemiş";
   const aracCinsi = (a: { cinsi?: string | null }) => (a.cinsi ?? "").trim() || CINS_BOS;
+  // Aracın sahibi: özmalda firma, kiralıkta kiralama firması/kişi (araç kolonundaki
+  // mavi satırla aynı kaynak).
+  const aracSahibi = (a: { tip?: string | null; firmalar?: { firma_adi?: string } | null; kiralama_firmasi?: string | null }) =>
+    ((a.tip === "ozmal" ? (a.firmalar?.firma_adi ?? "") : (a.kiralama_firmasi ?? "")).trim() || SAHIP_BOS);
 
-  // cins → o cinsteki araç sayısı (grup başlığında gösterilir)
-  const cinsAdetMap = useMemo(() => {
-    const m = new Map<string, number>();
+  // cins → araç sayısı, "cins|sahip" → araç sayısı (grup başlıklarında gösterilir)
+  const { cinsAdetMap, cinsSahipAdetMap } = useMemo(() => {
+    const cm = new Map<string, number>();
+    const sm = new Map<string, number>();
     for (const a of goruntulenenAraclar) {
       const c = aracCinsi(a);
-      m.set(c, (m.get(c) ?? 0) + 1);
+      cm.set(c, (cm.get(c) ?? 0) + 1);
+      const k = `${c}|${aracSahibi(a)}`;
+      sm.set(k, (sm.get(k) ?? 0) + 1);
     }
-    return m;
+    return { cinsAdetMap: cm, cinsSahipAdetMap: sm };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goruntulenenAraclar]);
 
@@ -2055,21 +2070,36 @@ export default function AracPuantajPage() {
               {goruntulenenAraclar.map((a, i) => {
                 const gunMap = aracGunMap.get(a.id);
                 const toplam = aracToplamGun(a.id);
-                // Liste cinse göre sıralı; cins değiştiği yerde grup başlığı satırı açılır.
+                // Liste cins → sahip → plaka sırasında; her ikisinin değiştiği yerde
+                // başlık satırı açılır (cins koyu, sahip bir kademe açık ve girintili).
                 const cins = aracCinsi(a);
-                const yeniGrup = i === 0 || aracCinsi(goruntulenenAraclar[i - 1]) !== cins;
+                const sahip = aracSahibi(a);
+                const onceki = i > 0 ? goruntulenenAraclar[i - 1] : null;
+                const yeniCins = !onceki || aracCinsi(onceki) !== cins;
+                const yeniSahip = yeniCins || aracSahibi(onceki!) !== sahip;
                 return (
                   <Fragment key={a.id}>
-                  {yeniGrup && (
-                    <TableRow className="bg-slate-100">
-                      {/* Başlık hücresi de sola sabit — yatay kaydırınca cins adı kaybolmasın. */}
-                      <TableCell className="px-2 py-1 sticky left-0 bg-slate-100 z-[40] border-r border-b border-gray-200 shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                  {yeniCins && (
+                    <TableRow className="bg-slate-200">
+                      {/* Başlık hücreleri de sola sabit — yatay kaydırınca grup adı kaybolmasın. */}
+                      <TableCell className="px-2 py-1 sticky left-0 bg-slate-200 z-[40] border-r border-b border-gray-300 shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                         <span className="text-[11px] font-bold text-[#1E3A5F] whitespace-nowrap">
                           {cins}
                           <span className="ml-1.5 font-normal text-gray-500">({cinsAdetMap.get(cins) ?? 0})</span>
                         </span>
                       </TableCell>
-                      <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-100 border-b border-gray-200" />
+                      <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-200 border-b border-gray-300" />
+                    </TableRow>
+                  )}
+                  {yeniSahip && (
+                    <TableRow className="bg-slate-50">
+                      <TableCell className="px-2 py-0.5 pl-4 sticky left-0 bg-slate-50 z-[40] border-r border-b border-gray-200 shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                        <span className="text-[10px] font-semibold text-sky-700 whitespace-nowrap">
+                          {sahip}
+                          <span className="ml-1.5 font-normal text-gray-400">({cinsSahipAdetMap.get(`${cins}|${sahip}`) ?? 0})</span>
+                        </span>
+                      </TableCell>
+                      <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-50 border-b border-gray-200" />
                     </TableRow>
                   )}
                   <TableRow className="hover:bg-gray-50">
