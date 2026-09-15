@@ -6357,11 +6357,35 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     {tahminiFFKapali ? "Tahmini fiyat farkını hesaba kat" : "Tahmini fiyat farkını hesaba katma"}
                   </button>
                 )}
-                <div className="mt-3 pt-2 border-t text-[11px] text-gray-500 leading-relaxed">
-                  Yatması Gereken Prim = (sözleşme + ek sözleşme + fiyat farkı
-                  {tahminiFFKapali ? "" : " + tahmini fiyat farkı"}) × %{prim.oran} ={" "}
-                  <span className="font-semibold text-[#1E3A5F] tabular-nums">{paraFmt(yatmasiGerekenFor(prim))} ₺</span>
-                </div>
+                {/* Kartın altındaki prim satırının aynısı. Tahmini FF anahtarı yukarıda olduğu
+                    için değişim hemen altında görünür. */}
+                {(() => {
+                  const yatmasi = yatmasiGerekenFor(prim);
+                  const yatan = prim.yatan;
+                  const bordro = bordroToplamForSantiye(bilgiSantiyeId!);
+                  const sonuc = yatmasi - yatan - bordro;
+                  const sonucRenk = sonuc < 0 ? "text-red-600" : sonuc > 0 ? "text-emerald-700" : "text-gray-600";
+                  return (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="text-[11px] text-gray-500 leading-relaxed">
+                        Yatması Gereken = (sözleşme + ek sözleşme + fiyat farkı
+                        {tahminiFFKapali ? "" : " + tahmini FF"}) × %{prim.oran}
+                      </div>
+                      <div className="mt-1.5 font-mono text-[13px] tabular-nums flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span className="font-semibold text-[#1E3A5F]">{paraFmt(yatmasi)}</span>
+                        <span className="text-gray-300">−</span>
+                        <span className="font-semibold text-emerald-700">{paraFmt(yatan)}</span>
+                        <span className="text-gray-300">−</span>
+                        <span className="text-gray-400">{paraFmt(bordro)}</span>
+                        <span className="text-gray-300">=</span>
+                        <span className={`font-bold ${sonucRenk}`}>{paraFmt(sonuc)}</span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-gray-400">
+                        Yatması Gereken − Yatan Prim − Tahmini Bordro = <span className="font-semibold text-gray-500">Kalan Prim</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
