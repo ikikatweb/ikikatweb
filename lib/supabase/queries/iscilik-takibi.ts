@@ -72,6 +72,28 @@ export async function getEksikIscilikBilgileri(): Promise<EksikIscilikBilgi[]> {
   return sonuc.sort((a, b) => a.is_adi.localeCompare(b.is_adi, "tr"));
 }
 
+// Netsim'in yazdığı SON HAKEDİŞ tutarları — santiye_id → { kesif, fark, tarih }.
+// "Tahmini fiyat farkı" hesabının oranı buradan çıkar: fark / kesif.
+//
+// AYRI sorgu olmasının sebebi: bu sütunlar sql/netsim_son_hakedis.sql çalıştırılmadan
+// yoksa, ana sorgunun select'ine eklenseydi tüm sayfa çökerdi. Burada hata sessizce
+// yutulur, ekran sadece tahmini FF satırını göstermez.
+export async function getSonHakedisMap(): Promise<Map<string, { kesif: number; fark: number; tarih: string | null }>> {
+  const supabase = getSupabase();
+  const map = new Map<string, { kesif: number; fark: number; tarih: string | null }>();
+  const { data, error } = await supabase
+    .from("santiyeler")
+    .select("id, netsim_son_hakedis_kesif, netsim_son_hakedis_fark, netsim_son_hakedis_tarih")
+    .not("netsim_son_hakedis_kesif", "is", null);
+  if (error) return map;
+  for (const r of (data ?? []) as { id: string; netsim_son_hakedis_kesif: number | null; netsim_son_hakedis_fark: number | null; netsim_son_hakedis_tarih: string | null }[]) {
+    const kesif = r.netsim_son_hakedis_kesif ?? 0;
+    if (kesif <= 0) continue;
+    map.set(r.id, { kesif, fark: r.netsim_son_hakedis_fark ?? 0, tarih: r.netsim_son_hakedis_tarih ?? null });
+  }
+  return map;
+}
+
 // Tüm şantiyelerin keşif artışı değerlerini Map olarak getir (santiyeler listesi için)
 // Pagination ile 1000+ kayıt destekle, silindi filtresi yok (her satırı oku)
 export async function getKesifArtisMap(): Promise<Map<string, number>> {

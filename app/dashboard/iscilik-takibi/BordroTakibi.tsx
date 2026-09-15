@@ -14,7 +14,7 @@ import XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
-import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
+import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import {
@@ -547,6 +547,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
   // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
   const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>>(new Map());
+  // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
+  // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir. sql/netsim_son_hakedis.sql
+  // çalıştırılmadıysa boş kalır ve tahmini FF satırı hiç görünmez.
+  const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
   // İş bitim tarihi haritası — santiye_id → { baslangic_tarihi, sure_text, is_bitim_tarihi, isyeri_teslim_tarihi, is_suresi }
   // iscilik_takibi VE santiyeler verilerinden birleşik
   const [iscilikBitimMap, setIscilikBitimMap] = useState<Map<string, {
@@ -917,7 +921,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setLoading(true);
     }
     try {
-      const [s, p, a, m, f, iscilik, gorevler, meslekler, mGunler, notlar, ucretler, brutGecmis, ayliklar, teknikRows] = await Promise.all([
+      const [s, p, a, m, f, iscilik, gorevler, meslekler, mGunler, notlar, ucretler, brutGecmis, ayliklar, teknikRows, sonHakedisler] = await Promise.all([
         getSantiyelerAll().catch(() => []),
         getBordroPersoneller().catch(() => []),
         getAtamaGecmisiTumu().catch(() => []),
@@ -932,6 +936,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
         getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string }[]),
         getTeknikPersonelKayitlari().catch(() => [] as PersonelTeknikRow[]),
+        getSonHakedisMap().catch(() => new Map<string, { kesif: number; fark: number; tarih: string | null }>()),
       ]);
       setGorevSecenekleri(gorevler ?? []);
       setMeslekSecenekleri(meslekler ?? []);
@@ -939,6 +944,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setBilgiNotlari(notlar);
       setGunlukUcretler(ucretler);
       setTeknikKayitlari(teknikRows);
+      setSonHakedisMap(sonHakedisler);
       setBrutUcretGecmisi(brutGecmis);
       // İşçilik Durum Raporu'ndaki filtreyle BİREBİR AYNI + firma_id mapleme.
       const iscilikRaporSantiyeIds = new Set<string>();
@@ -4362,6 +4368,32 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       : `Fiyat Farkı: ${fmt(prim.ff)} ₺ — elle girildi`,
                     prim.ffNetsim ? <NetsimRozet /> : null,
                   )}
+                  {/* TAHMİNİ FİYAT FARKI — kalan keşfin alacağı fiyat farkı.
+                      Oran, işin ortalaması DEĞİL, Netsim'deki EN SON hakedişin oranıdır:
+                      fiyat farkı Yi-ÜFE ile hakediş hakediş yükseldiği için (Kampüs Altyapı'da
+                      %0 → %18,82) ortalama kalan işi ciddi biçimde eksik tahmin ediyor.
+                        kalan keşif = (sözleşme + ek sözleşme) − tamamlanan keşif
+                        tahmini FF  = kalan keşif × (son hakediş FF ÷ son hakediş bedeli)  */}
+                  {(() => {
+                    const sh = sonHakedisMap.get(santiyeId);
+                    if (!sh || sh.kesif <= 0 || sh.fark <= 0) return null;
+                    const kalanKesif = prim.bedel + prim.kesif - prim.gerceklesen;
+                    if (kalanKesif <= 0) return null;   // keşif tamamlanmış → tahmin edilecek bir şey yok
+                    const ffOran = sh.fark / sh.kesif;
+                    const tahmin = kalanKesif * ffOran;
+                    const tarih = sh.tarih ? new Date(sh.tarih + "T00:00:00").toLocaleDateString("tr-TR") : "—";
+                    const ipucu =
+                      `Kalan keşfin alacağı tahmini fiyat farkı\n` +
+                      `Kalan keşif: ${fmt(kalanKesif)} ₺  (sözleşme + ek sözleşme − tamamlanan keşif)\n` +
+                      `Oran: ${yuzde(ffOran * 100)}  (${tarih} tarihli son hakediş: ${fmt(sh.fark)} ÷ ${fmt(sh.kesif)})\n` +
+                      `Tahmini FF: ${fmt(tahmin)} ₺\n` +
+                      `Toplam FF (alınan + tahmini): ${fmt(prim.ff + tahmin)} ₺`;
+                    return satir("Tahmini FF", tahmin, "text-purple-400", ipucu, (
+                      <span className="text-gray-400" title={ipucu}>
+                        {yuzde(ffOran * 100)} · kalan {fmt(kalanKesif)}
+                      </span>
+                    ));
+                  })()}
                 </div>
               </div>
             );

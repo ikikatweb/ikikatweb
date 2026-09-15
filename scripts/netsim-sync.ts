@@ -17,6 +17,11 @@
 // Yazdığı yerler:
 //   santiyeler.sozlesme_fiyatlariyla_gerceklesen  ← Tamamlanan Keşif (iş deneyim belgesi tutarı)
 //   iscilik_takibi.fiyat_farki                    ← Alınan Fiyat Farkı
+//   santiyeler.netsim_son_hakedis_{kesif,fark,tarih} ← EN SON hakediş belgesinin tutarları
+//
+// Son hakediş neden ayrıca saklanıyor: fiyat farkı oranı iş boyunca sabit değil, Yi-ÜFE ile
+// hakediş hakediş yükseliyor. Kalan keşfin alacağı FF tahmin edilirken işin ortalaması değil
+// en son hakedişin oranı kullanılır (bkz. sql/netsim_son_hakedis.sql).
 //
 // Geçici kabulü yapılmış işlerde "gerçekleşen" tutar formda KİLİTLİ (belge kesinleşmiş sayılır),
 // bu yüzden senkron da onlara DOKUNMAZ — sadece raporlar.
@@ -86,6 +91,9 @@ type SantiyeRow = {
   sozlesme_fiyatlariyla_gerceklesen: number | null;
   netsim_gerceklesen: number | null;   // rozet için: senkronun en son yazdığı değer
   gecici_kabul_tarihi: string | null;
+  netsim_son_hakedis_kesif: number | null;
+  netsim_son_hakedis_fark: number | null;
+  netsim_son_hakedis_tarih: string | null;
 };
 
 async function main() {
@@ -96,7 +104,7 @@ async function main() {
 
   const { data, error } = await sb
     .from("santiyeler")
-    .select("id, is_adi, netsim_nokta_no, sozlesme_fiyatlariyla_gerceklesen, netsim_gerceklesen, gecici_kabul_tarihi")
+    .select("id, is_adi, netsim_nokta_no, sozlesme_fiyatlariyla_gerceklesen, netsim_gerceklesen, gecici_kabul_tarihi, netsim_son_hakedis_kesif, netsim_son_hakedis_fark, netsim_son_hakedis_tarih")
     .not("netsim_nokta_no", "is", null);
   if (error) throw new Error(error.message);
   const santiyeler = (data ?? []) as SantiyeRow[];
@@ -126,6 +134,8 @@ async function main() {
   // Kategori düğümleri (başka noktaların ANA'sı olanlar: İNŞAAT, HARİTA) hariç.
   const db = await fbBagla();
   const toplam = new Map<number, { kesif: number; fark: number }>();
+  // nokta → en son hakediş belgesinin tutarları (sorgu tarihe göre sıralı, son yazan kazanır)
+  const sonHakedis = new Map<number, { kesif: number; fark: number; tarih: string | null }>();
   const tumIsler: { no: number; ad: string; kesif: number; fark: number }[] = [];
   try {
     const rows = await fbSorgu(db, `
@@ -170,6 +180,28 @@ async function main() {
       toplam.set(no, { kesif, fark });
       tumIsler.push({ no, ad: String(r.AD ?? "").trim(), kesif, fark });
     }
+    // EN SON hakediş belgesi (nokta başına). Belge bazında gruplanır, JS tarafında
+    // tarih sırasının SONUNCUSU alınır — böylece Firebird sürümünden bağımsız çalışır.
+    // Yalnız keşif tutarı olan belgeler sayılır: sadece fiyat farkı içeren bir belge
+    // orana payda olamaz (0'a bölme).
+    const belgeler = await fbSorgu(db, `
+      SELECT A.ISLEM_NOKTASI_NO AS NOKTA, A.BELGE_TARIHI AS TARIH,
+             SUM(CASE WHEN D.STOK_NO = 39  THEN D.HAM_TUTAR ELSE 0 END) AS KESIF,
+             SUM(CASE WHEN D.STOK_NO = 356 THEN D.HAM_TUTAR ELSE 0 END) AS FARK
+      FROM ALSAASIL A
+      JOIN ALSADETA D ON D.ALISSATIS_NO = A.ALISSATIS_NO
+      LEFT JOIN CARIKART C ON C.CARI_NO = A.CARI_NO
+      WHERE A.ISLEM_KODU = 'HAKFAT'
+        AND COALESCE(C.CARI_KOD, '') NOT STARTING WITH 'YON'
+      GROUP BY A.ISLEM_NOKTASI_NO, A.ALISSATIS_NO, A.BELGE_TARIHI
+      ORDER BY A.ISLEM_NOKTASI_NO, A.BELGE_TARIHI, A.ALISSATIS_NO
+    `);
+    for (const r of belgeler) {
+      const kesif = Number(r.KESIF ?? 0);
+      if (kesif <= 0) continue;
+      const tarih = r.TARIH ? new Date(String(r.TARIH)).toISOString().slice(0, 10) : null;
+      sonHakedis.set(Number(r.NOKTA), { kesif, fark: Number(r.FARK ?? 0), tarih });
+    }
   } finally {
     db.detach();
   }
@@ -188,7 +220,7 @@ async function main() {
   console.log(`${santiyeler.length} bağlı şantiye, Netsim'de ${toplam.size} tanesinin hakedişi var.${KURU ? "  [KURU ÇALIŞMA — yazma yok]" : ""}\n`);
 
   const simdi = new Date().toISOString();
-  let kesifYazilan = 0, farkYazilan = 0, kilitli = 0, degismeyen = 0;
+  let kesifYazilan = 0, farkYazilan = 0, kilitli = 0, degismeyen = 0, sonHakYazilan = 0;
 
   for (const s of santiyeler) {
     const t = toplam.get(s.netsim_nokta_no!);
@@ -201,6 +233,23 @@ async function main() {
     // güncel olan satırlarda rozet hiç çıkmazdı.
     const yama: Record<string, unknown> = {};
     if (!ayni(s.netsim_gerceklesen, t.kesif)) yama.netsim_gerceklesen = t.kesif;
+
+    // Son hakediş tutarları: Netsim'in salt aynası, kullanıcı elle düzenlemez →
+    // geçici kabullü (kilitli) işlerde de tazelenir.
+    const sh = sonHakedis.get(s.netsim_nokta_no!);
+    if (sh) {
+      if (!ayni(s.netsim_son_hakedis_kesif, sh.kesif)) yama.netsim_son_hakedis_kesif = sh.kesif;
+      if (!ayni(s.netsim_son_hakedis_fark, sh.fark)) yama.netsim_son_hakedis_fark = sh.fark;
+      if (s.netsim_son_hakedis_tarih !== sh.tarih) yama.netsim_son_hakedis_tarih = sh.tarih;
+      if ("netsim_son_hakedis_kesif" in yama || "netsim_son_hakedis_fark" in yama || "netsim_son_hakedis_tarih" in yama) {
+        sonHakYazilan++;
+        if (!KISA) {
+          const oran = sh.kesif > 0 ? ((sh.fark / sh.kesif) * 100).toFixed(2).replace(".", ",") : "—";
+          console.log(`  SON HAK. ${s.is_adi}`);
+          console.log(`           ${sh.tarih ?? "—"}: ${fmt(sh.kesif)} bedel / ${fmt(sh.fark)} fark → %${oran}`);
+        }
+      }
+    }
 
     if (s.gecici_kabul_tarihi) {
       if (!ayni(s.sozlesme_fiyatlariyla_gerceklesen, t.kesif)) {
@@ -245,7 +294,7 @@ async function main() {
     }
   }
 
-  console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı.`);
+  console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı, ${sonHakYazilan} son hakediş.`);
   if (degismeyen) console.log(`Zaten güncel: ${degismeyen}`);
   if (kilitli) console.log(`Geçici kabul nedeniyle atlanan: ${kilitli} (elle güncellemek gerekirse şantiye formundan)`);
 }
