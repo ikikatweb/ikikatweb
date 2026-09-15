@@ -2,7 +2,7 @@
 // Bir araç bir günde sadece 1 şantiyede puantajlanabilir, 6 farklı durum desteklenir
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
 import { createClient } from "@/lib/supabase/client";
@@ -549,8 +549,34 @@ export default function AracPuantajPage() {
         return text.includes(q);
       });
     }
-    return liste.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
+    // Önce CİNSE, sonra plakaya göre sırala — tablo cins cins gruplanıyor.
+    // Cinsi girilmemiş araçlar en sona. PDF/Excel çıktısı da bu listeden türüyor,
+    // dolayısıyla onlar da aynı sırada çıkar.
+    return liste.sort((a, b) => {
+      const ac = (a.cinsi ?? "").trim();
+      const bc = (b.cinsi ?? "").trim();
+      if (!ac !== !bc) return ac ? -1 : 1;
+      const c = ac.localeCompare(bc, "tr");
+      if (c !== 0) return c;
+      return a.plaka.localeCompare(b.plaka, "tr");
+    });
   }, [araclar, puantajlar, santiyeId, puantajArama]);
+
+  // Araç cinsi — puantaj tablosunda gruplama anahtarı. Boş/eksik olanlar tek grupta,
+  // listenin en sonunda toplanır.
+  const CINS_BOS = "Cinsi girilmemiş";
+  const aracCinsi = (a: { cinsi?: string | null }) => (a.cinsi ?? "").trim() || CINS_BOS;
+
+  // cins → o cinsteki araç sayısı (grup başlığında gösterilir)
+  const cinsAdetMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of goruntulenenAraclar) {
+      const c = aracCinsi(a);
+      m.set(c, (m.get(c) ?? 0) + 1);
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goruntulenenAraclar]);
 
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
   // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez —
@@ -2026,11 +2052,27 @@ export default function AracPuantajPage() {
               </tr>
             </thead>
             <TableBody>
-              {goruntulenenAraclar.map((a) => {
+              {goruntulenenAraclar.map((a, i) => {
                 const gunMap = aracGunMap.get(a.id);
                 const toplam = aracToplamGun(a.id);
+                // Liste cinse göre sıralı; cins değiştiği yerde grup başlığı satırı açılır.
+                const cins = aracCinsi(a);
+                const yeniGrup = i === 0 || aracCinsi(goruntulenenAraclar[i - 1]) !== cins;
                 return (
-                  <TableRow key={a.id} className="hover:bg-gray-50">
+                  <Fragment key={a.id}>
+                  {yeniGrup && (
+                    <TableRow className="bg-slate-100">
+                      {/* Başlık hücresi de sola sabit — yatay kaydırınca cins adı kaybolmasın. */}
+                      <TableCell className="px-2 py-1 sticky left-0 bg-slate-100 z-[40] border-r border-b border-gray-200 shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                        <span className="text-[11px] font-bold text-[#1E3A5F] whitespace-nowrap">
+                          {cins}
+                          <span className="ml-1.5 font-normal text-gray-500">({cinsAdetMap.get(cins) ?? 0})</span>
+                        </span>
+                      </TableCell>
+                      <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-100 border-b border-gray-200" />
+                    </TableRow>
+                  )}
+                  <TableRow className="hover:bg-gray-50">
                     {/* Araç kolonu - çıktı seçim kutusu + plaka üstte, marka/model altta küçük punto */}
                     <TableCell className="px-2 sticky left-0 bg-white z-[40] border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                       <div className="flex items-center gap-1.5">
@@ -2186,6 +2228,7 @@ export default function AracPuantajPage() {
                       {toplam % 1 === 0 ? toplam : toplam.toFixed(1)}
                     </TableCell>
                   </TableRow>
+                  </Fragment>
                 );
               })}
             </TableBody>
