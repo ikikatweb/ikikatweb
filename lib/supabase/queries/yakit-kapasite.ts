@@ -26,8 +26,12 @@ function getSupabase() {
   return createClient();
 }
 
-// Puantajda aracın fiilen çalıştığı sayılan durumlar (aralıktaki çalışma günü için)
-const CALISMA: AracPuantajDurum[] = ["calisti", "yarim_gun"];
+// Puantaj durumunun kaç günlük çalışma saydığı. Yarım gün 0,5 — tam gün gibi saymak
+// aralıktaki çalışmayı olduğundan fazla gösteriyordu.
+const CALISMA_AGIRLIK: Partial<Record<AracPuantajDurum, number>> = {
+  calisti: 1,
+  yarim_gun: 0.5,
+};
 
 export type KapasiteAsimi = {
   basTarih: string;      // önceki dolum
@@ -38,7 +42,7 @@ export type KapasiteAsimi = {
   mesafe: number;        // bitSayac − basSayac
   asim: number;          // mesafe − kapasite
   kat: number;           // mesafe ÷ kapasite (kaç depoluk yol)
-  calismaGun: number;    // bu aralıkta puantajda çalıştı/yarım gün sayısı
+  calismaGun: number;    // bu aralıkta çalışma günü — yarım günler 0,5 sayılır
   santiyeGun: number;    // bu aralıkta seçili şantiyede puantaj kaydı olan gün sayısı
   litre: number;         // bu dolumda alınan litre
 };
@@ -249,7 +253,7 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
             const d = gunler.get(t);
             if (!d) continue;
             santiyede++;
-            if (CALISMA.includes(d)) calisma++;
+            calisma += CALISMA_AGIRLIK[d] ?? 0;
           }
         }
         x.calismaGun = calisma;

@@ -22,6 +22,9 @@ const sayi = (n: number | null | undefined, hane = 2) =>
   n == null ? "—" : n.toLocaleString("tr-TR", { minimumFractionDigits: hane, maximumFractionDigits: hane });
 const tamsayi = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("tr-TR"));
 const trTarih = (d: string) => d.split("-").reverse().join(".");
+// Çalışma günü yarım günlerle kesirli olabilir: 15 → "15", 15,5 → "15,5"
+const gunSayisi = (n: number) =>
+  n % 1 === 0 ? n.toLocaleString("tr-TR") : n.toLocaleString("tr-TR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 type SantiyeItem = { id: string; is_adi: string; durum?: string };
 
@@ -302,7 +305,7 @@ export default function YakitKapasite({
                                               <span className="ml-1 text-[9px] font-semibold text-red-400">{sayi(x.kat, 1)}× depo</span>
                                             </td>
                                             <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
-                                              {x.calismaGun} gün çalıştı
+                                              {gunSayisi(x.calismaGun)} gün çalıştı
                                               {santiyeId && x.santiyeGun > x.calismaGun && (
                                                 <span className="text-gray-400"> / {x.santiyeGun} gün şantiyede</span>
                                               )}
