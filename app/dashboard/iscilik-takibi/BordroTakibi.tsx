@@ -6374,7 +6374,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         Yatması Gereken = (sözleşme + ek sözleşme + fiyat farkı
                         {tahminiFFKapali ? "" : " + tahmini FF"}) × %{prim.oran}
                       </div>
-                      <div className="mt-1.5 font-mono text-[13px] tabular-nums flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <div className="mt-1.5 font-mono text-[11px] tabular-nums flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <span className="font-semibold text-[#1E3A5F]">{paraFmt(yatmasi)}</span>
                         <span className="text-gray-300">−</span>
                         <span className="font-semibold text-emerald-700">{paraFmt(yatan)}</span>
