@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getIscilikTakibi, upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
+import { getIscilikTakibi, upsertIscilikTakibi, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { updateSantiye } from "@/lib/supabase/queries/santiyeler";
 import { getAylikVeriler, createAylikVeri, updateAylikVeri, deleteAylikVeri } from "@/lib/supabase/queries/iscilik-aylik";
 import { getManuelGunler, getGunlukUcretler, getAtamaGecmisiTumu, gunHesaplaAyBazli, type GunlukUcret } from "@/lib/supabase/queries/bordro";
@@ -56,22 +56,26 @@ export default function IscilikDetayPage() {
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [atamalar, setAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
+  // Netsim son hakediş tutarları — tahmini fiyat farkı oranı (fark / kesif) buradan gelir.
+  const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [allTakip, aylikData, mGunler, ucretler, atamaData, brutData] = await Promise.all([
+      const [allTakip, aylikData, mGunler, ucretler, atamaData, brutData, sonHakedisler] = await Promise.all([
         getIscilikTakibi(),
         getAylikVeriler(takipId),
         getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
         getGunlukUcretler().catch(() => [] as GunlukUcret[]),
         getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
         getTumPersonelBrutUcretler().catch(() => [] as PersonelBrutUcret[]),
+        getSonHakedisMap().catch(() => new Map<string, { kesif: number; fark: number; tarih: string | null }>()),
       ]);
       setManuelGunler(mGunler);
       setGunlukUcretler(ucretler);
       setAtamalar(atamaData);
       setBrutUcretGecmisi(brutData);
+      setSonHakedisMap(sonHakedisler);
       const found = (allTakip as IscilikTakibiWithSantiye[])?.find((t) => t.id === takipId);
       const aylik = aylikData ?? [];
       setTakip(found ?? null);
@@ -184,8 +188,15 @@ export default function IscilikDetayPage() {
   const kesifArtisi = takip.kesif_artisi ?? 0;
   const fiyatFarki = takip.fiyat_farki ?? 0;
   const iscilikOrani = takip.iscilik_orani ?? 0;
-  // Yatacak Toplam Prim = (Sözleşme Bedeli + Keşif Artışı + Fiyat Farkı) × İşçilik Oranı / 100
-  const yatacakToplamPrim = (sozlesmeBedeli + kesifArtisi + fiyatFarki) * iscilikOrani / 100;
+  // Kalan keşfin alacağı tahmini fiyat farkı — İşçilik Durum Raporu, Bordro kartı ve
+  // geçici kabul kontrolüyle AYNI formül, dört ekran aynı rakamı göstersin diye.
+  const sonHakedis = takip.santiye_id ? sonHakedisMap.get(takip.santiye_id) : undefined;
+  const kalanKesif = sozlesmeBedeli + kesifArtisi - (takip.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0);
+  const tahminiFiyatFarki = sonHakedis && sonHakedis.kesif > 0 && sonHakedis.fark > 0 && kalanKesif > 0
+    ? kalanKesif * (sonHakedis.fark / sonHakedis.kesif)
+    : 0;
+  // Yatacak Toplam Prim = (Sözleşme Bedeli + Ek Sözleşme Bedeli + Fiyat Farkı + Tahmini Fiyat Farkı) × İşçilik Oranı / 100
+  const yatacakToplamPrim = (sozlesmeBedeli + kesifArtisi + fiyatFarki + tahminiFiyatFarki) * iscilikOrani / 100;
   // Yatan = Yüklenici toplamı + Alt Yüklenici toplamı
   const toplamYuklenici = ayliklar.reduce((t, a) => t + (a.yuklenici_tutar ?? 0), 0);
   const toplamAltYuklenici = ayliklar.reduce((t, a) => t + (a.alt_yuklenici_tutar ?? 0), 0);
@@ -426,8 +437,15 @@ export default function IscilikDetayPage() {
                 <span className="text-xs text-gray-500 font-medium">Sözleşme Bedeli</span>
                 <span className="text-xs font-semibold">{formatPara(sozlesmeBedeli)}</span>
               </div>
-              {headerField("Keşif Artışı", "kesif_artisi", takip.kesif_artisi, true)}
+              {headerField("Ek Sözleşme Bedeli", "kesif_artisi", takip.kesif_artisi, true)}
               {headerField("Fiyat Farkı", "fiyat_farki", takip.fiyat_farki, true)}
+              {tahminiFiyatFarki > 0 && (
+                <div className="flex items-center justify-between py-1 border-b border-gray-100"
+                  title={`Kalan keşif: ${formatPara(kalanKesif)}\nOran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki son hakediş)`}>
+                  <span className="text-xs text-gray-400 font-medium">Tahmini Fiyat Farkı</span>
+                  <span className="text-xs font-semibold text-gray-400">{formatPara(tahminiFiyatFarki)}</span>
+                </div>
+              )}
               {headerField("İşçilik Oranı %", "iscilik_orani", takip.iscilik_orani, true)}
               <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-[#F1F5F9] px-1 rounded">
                 <span className="text-xs text-gray-500 font-medium">Yatacak Toplam Prim</span>
