@@ -1356,14 +1356,7 @@ export default function PersonelPuantajPage() {
                 const pasif = p.durum === "pasif";
                 return (
                   <TableRow key={p.id} className={`hover:bg-gray-50 ${pasif ? "bg-gray-100" : ""}`}>
-                    {/* z-20: gün hücresindeki buton "relative" olduğu için konumlandırılmış sayılır ve
-                        DOM'da bu hücreden SONRA geldiğinden, z-index'siz bırakılınca isimlerin
-                        üzerine çiziliyordu (telefonda yatay kaydırınca tablo okunmaz oluyordu).
-                        components/ui/table.tsx'teki "gövdeye z-index vermeyin" uyarısı, thead'in
-                        KENDİ z-20'si olan tablolar içindir; bu sayfada <thead> z-index'siz ve
-                        başlık hücreleri tek tek z-30/z-40 taşıyor — z-20 onların altında kalır,
-                        yani dikey kaydırmada başlık yine üstte. */}
-                    <TableCell className={`px-2 sticky left-0 z-20 border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)] ${pasif ? "bg-gray-100" : "bg-white"}`}>
+                    <TableCell className={`px-2 sticky left-0 border-r ${pasif ? "bg-gray-100" : "bg-white"}`}>
                       <div className={`font-bold text-xs leading-tight ${pasif ? "text-gray-400" : ""}`}>
                         {p.ad_soyad}
                       </div>
