@@ -12,7 +12,7 @@ import {
   Shield, Headphones, BarChart3, Wrench, Satellite,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock, Gavel, CreditCard,
   ChevronDown, ChevronUp,
-  FileBarChart2, Database, Briefcase, ListChecks,
+  FileBarChart2, Database, Briefcase, ListChecks, Info,
 } from "lucide-react";
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
@@ -125,6 +125,7 @@ const menuGroups: MenuGroup[] = [
       { label: "Yi-ÜFE", href: "/dashboard/yonetim/yi-ufe", icon: <TrendingUp size={16} /> },
       { label: "Tanımlamalar", href: "/dashboard/yonetim/tanimlamalar", icon: <Settings size={16} /> },
       { label: "Veri Yedeği", href: "/dashboard/yedek", icon: <Database size={16} /> },
+      { label: "Hakkında", href: "/dashboard/yonetim/hakkinda", icon: <Info size={16} /> },
     ],
   },
 ];
@@ -150,6 +151,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [pathname]);
 
   function canView(item: MenuItem): boolean {
+    // "Hakkında" HERKESE açık: sistemin ne olduğunu anlatan bilgi sayfası, veri içermiyor.
+    if (item.href === "/dashboard/yonetim/hakkinda") return true;
     // "Veri Yedeği" ve "Maliyet Raporu" SADECE yöneticiye açık — izin matrisinde tanımlı değil.
     if (item.href === "/dashboard/yedek") return isYonetici;
     if (item.href === "/dashboard/maliyet-raporu") return isYonetici;
