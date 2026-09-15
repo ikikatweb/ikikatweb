@@ -339,8 +339,8 @@ export default function YakitKapasite({
                                         <tr className="bg-gray-100 text-gray-600">
                                           <th className="text-left px-2 py-1 font-semibold whitespace-nowrap">Dolumlar arası</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Sayaç</th>
-                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Yapılan</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Kapasite (+tolerans)</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Yapılan</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Aşım</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Puantaj</th>
                                         </tr>
@@ -355,12 +355,12 @@ export default function YakitKapasite({
                                             <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
                                               {tamsayi(x.basSayac)} → {tamsayi(x.bitSayac)}
                                             </td>
-                                            <td className="px-2 py-1 text-right font-mono font-semibold whitespace-nowrap">
-                                              {tamsayi(x.mesafe)} {birim}
-                                            </td>
                                             <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
                                               {tamsayi(s.kapasite)} {birim}
                                               <span className="text-gray-400"> → {tamsayi(s.esik)}</span>
+                                            </td>
+                                            <td className="px-2 py-1 text-right font-mono font-semibold whitespace-nowrap">
+                                              {tamsayi(x.mesafe)} {birim}
                                             </td>
                                             <td className="px-2 py-1 text-right font-mono font-bold text-red-600 whitespace-nowrap">
                                               +{tamsayi(x.asim)}
