@@ -1,4 +1,4 @@
-// ARAÇ PUANTAJ → YAKIT KAPASİTESİ SEKMESİ
+// ARAÇ PUANTAJ → YAKIT DENETLEME SEKMESİ
 //
 // "Bu mesafeyi tek depoyla gidemez" tespiti: iki dolum arasındaki sayaç farkı aracın
 // 1 depo kapasitesini aşıyorsa arada ya kayda geçmemiş bir dolum vardır ya da sayaç

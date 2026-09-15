@@ -201,7 +201,7 @@ export default function AracPuantajPage() {
   // (eski davranış). Şantiye değişince temizlenir (başka şantiyenin araç id'leri bayat kalmasın).
   const [ciktiSecimi, setCiktiSecimi] = useState<Set<string>>(new Set());
   useEffect(() => { setCiktiSecimi(new Set()); }, [santiyeId]);
-  // YAKITSIZ ÇALIŞMA ARALIKLARI — Yakıt Kapasitesi sekmesindeki tespitin ızgaraya yansıması:
+  // YAKITSIZ ÇALIŞMA ARALIKLARI — Yakıt Denetleme sekmesindeki tespitin ızgaraya yansıması:
   // arac_id → tek depoyla gidilemeyecek dolum aralıkları. Bir gün bu aralıkların içindeyse
   // hücreye rozet konur. Puantajı bekletmesin diye ayrı ve sessiz yüklenir; gelmezse ızgara
   // eskisi gibi çizilir.
@@ -1934,7 +1934,7 @@ export default function AracPuantajPage() {
         </div>
       </div>
 
-      {/* Tab yapısı: Puantaj / Araç Atama / Özet Rapor */}
+      {/* Tab yapısı: Puantaj / Araç Atama / Özet Rapor / Yakıt Denetleme */}
       <Tabs value={aktifTab} onValueChange={(v) => setAktifTab(v as "puantaj" | "atama" | "ozet" | "kapasite")} className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="puantaj">
@@ -1949,11 +1949,11 @@ export default function AracPuantajPage() {
               <FileBarChart size={14} className="mr-1" /> Özet Rapor
             </TabsTrigger>
           )}
-          {/* Yakıt Kapasitesi — "1 depoyla bu kadar gün çalışamaz" tespiti.
+          {/* Yakıt Denetleme — "bu mesafeyi tek depoyla gidemez" tespiti.
               Özet Rapor gibi kısıtlı kullanıcıdan gizli. */}
           {!sadeceKendiKayitlari && (
             <TabsTrigger value="kapasite">
-              <Fuel size={14} className="mr-1" /> Yakıt Kapasitesi
+              <Fuel size={14} className="mr-1" /> Yakıt Denetleme
             </TabsTrigger>
           )}
         </TabsList>
@@ -2448,7 +2448,7 @@ export default function AracPuantajPage() {
         </TabsContent>
 
         {/* === ÖZET RAPOR TAB === */}
-        {/* === YAKIT KAPASİTESİ TAB === */}
+        {/* === YAKIT DENETLEME TAB === */}
         <TabsContent value="kapasite">
           <YakitKapasite santiyeId={santiyeId} santiyeler={santiyelerAtamalı} />
         </TabsContent>
@@ -3237,7 +3237,7 @@ export default function AracPuantajPage() {
                   <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
                     <span className="font-bold">Yakıtsız çalışma.</span> Bu gün, aracın tek depoyla
                     gidemeyeceği bir dolum aralığının içinde kalıyor. Ayrıntı için
-                    <strong> Yakıt Kapasitesi</strong> sekmesine bakın.
+                    <strong> Yakıt Denetleme</strong> sekmesine bakın.
                   </div>
                 )}
                 {tooltip.aciklama && (
