@@ -48,11 +48,16 @@ export default function YakitKapasite({
   const [acikFirma, setAcikFirma] = useState<Set<string>>(new Set());
   const [acikArac, setAcikArac] = useState<string | null>(null);
   const [sadeceAsim, setSadeceAsim] = useState(true);
-  // Cins süzgeci — çoklu seçim. Sekme değişse de oturum boyunca korunur.
-  // Varsayılan olarak BİNEK kapalı: çoğu akaryakıt kartıyla besleniyor, depo kaydı
-  // eksik olduğu için hesap anlamsız çıkıyor. Kullanıcı isterse açabilir.
+  // Cins süzgeci — çoklu seçim, oturum boyunca korunur.
+  // VARSAYILAN KAPALI CİNSLER: bu dört cinste depo yakıtı kaydı ya hiç yok ya çok eksik,
+  // dolayısıyla kapasite/aşım hesabı anlamsız sonuç veriyor:
+  //   Binek, Kamyonet  → çoğu akaryakıt kartıyla dışarıdan besleniyor
+  //   Çekici / Tır     → yolda istasyondan dolduruyor, depo kaydına girmiyor
+  //   Treyler (Dorse)  → motoru yok, hiç yakıt almıyor
+  // Çipe tıklayıp hepsi geri açılabilir.
+  const VARSAYILAN_KAPALI = ["Binek", "Kamyonet", "Çekici / Tır", "Treyler ( Dorse )"];
   const [kapaliCinsler, setKapaliCinsler] = useOturumFiltresi<string[]>(
-    "puantaj-arac:kapasite-kapali-cins", ["Binek"],
+    "puantaj-arac:kapasite-kapali-cins", VARSAYILAN_KAPALI,
   );
 
   const yukle = useCallback(async () => {
@@ -405,9 +410,10 @@ export default function YakitKapasite({
         kalan normal aralıklar uyarıya girmesin diye pay bırakılıyor. Tablodaki &quot;Aşım&quot; sütunu tolerans
         eklenmemiş gerçek fazlalığı gösterir. Yakıt kayıtları
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
-        seçili şantiyeden. Cins süzgeci varsayılan olarak <strong>Binek</strong> kapalı gelir — çoğu akaryakıt
-        kartıyla besleniyor, depo kayıtları eksik olduğu için hesap anlamsız çıkıyor; çipe tıklayıp geri
-        açabilirsiniz. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede fiilen çalıştığı</strong> aralıklar
+        seçili şantiyeden. Cins süzgeci varsayılan olarak <strong>Binek, Kamyonet, Çekici / Tır</strong> ve
+        <strong> Treyler</strong> kapalı gelir — ilk üçü ağırlıkla akaryakıt kartıyla veya yolda istasyondan
+        besleniyor, treylerin ise motoru yok; depo kayıtları eksik olduğu için hesap anlamsız çıkıyor.
+        Çipe tıklayıp geri açabilirsiniz. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede fiilen çalıştığı</strong> aralıklar
         denetlenir; çalışma günü olmayan aralık ya araç başka işte olduğu ya da o döneme puantaj girilmediği
         için elenir, aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
         seçilirse pasif olmayan bütün araçların tüm aralıkları incelenir. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
