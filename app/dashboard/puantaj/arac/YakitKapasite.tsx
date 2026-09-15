@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Fuel, AlertTriangle, Check, Info } from "lucide-react";
 import SantiyeSelect from "@/components/shared/santiye-select";
+import { useOturumFiltresi } from "@/hooks";
 import {
   getYakitKapasiteAnalizi,
   type KapasiteSatiri,
@@ -44,6 +45,12 @@ export default function YakitKapasite({
   const [acikFirma, setAcikFirma] = useState<Set<string>>(new Set());
   const [acikArac, setAcikArac] = useState<string | null>(null);
   const [sadeceAsim, setSadeceAsim] = useState(true);
+  // Cins süzgeci — çoklu seçim. Sekme değişse de oturum boyunca korunur.
+  // Varsayılan olarak BİNEK kapalı: çoğu akaryakıt kartıyla besleniyor, depo kaydı
+  // eksik olduğu için hesap anlamsız çıkıyor. Kullanıcı isterse açabilir.
+  const [kapaliCinsler, setKapaliCinsler] = useOturumFiltresi<string[]>(
+    "puantaj-arac:kapasite-kapali-cins", ["Binek"],
+  );
 
   const yukle = useCallback(async () => {
     if (!santiyeId) { setSatirlar([]); return; }
@@ -98,10 +105,20 @@ export default function YakitKapasite({
     );
   }
 
-  const asimliAraclar = satirlar.filter((s) => s.asimlar.length > 0);
-  const gosterilecek = sadeceAsim ? asimliAraclar : satirlar;
-  const hesaplanamayan = satirlar.filter((s) => s.kapasite == null).length;
-  const toplamAsim = satirlar.reduce((t, s) => t + s.asimlar.length, 0);
+  // Cins listesi süzgeçten ÖNCEKİ tam listeden çıkar — kapatılan cins de çipte kalsın.
+  const cinsAdet = new Map<string, number>();
+  for (const s of satirlar) cinsAdet.set(s.cinsi, (cinsAdet.get(s.cinsi) ?? 0) + 1);
+  const cinsler = [...cinsAdet.keys()].sort((a, b) => a.localeCompare(b, "tr"));
+  const kapali = new Set(kapaliCinsler);
+
+  const secili = satirlar.filter((s) => !kapali.has(s.cinsi));
+  const asimliAraclar = secili.filter((s) => s.asimlar.length > 0);
+  const gosterilecek = sadeceAsim ? asimliAraclar : secili;
+  const hesaplanamayan = secili.filter((s) => s.kapasite == null).length;
+  const toplamAsim = secili.reduce((t, s) => t + s.asimlar.length, 0);
+
+  const cinsToggle = (c: string) =>
+    setKapaliCinsler((onceki) => (onceki.includes(c) ? onceki.filter((x) => x !== c) : [...onceki, c]));
 
   const firmalar = new Map<string, KapasiteSatiri[]>();
   for (const s of gosterilecek) {
@@ -117,6 +134,45 @@ export default function YakitKapasite({
   return (
     <div className="space-y-3">
       {secici}
+
+      {/* Cins süzgeci — çoklu seçim. Kapalı cinsler listeye hiç girmez. */}
+      {cinsler.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] text-gray-400 mr-0.5">Cins:</span>
+          {cinsler.map((c) => {
+            const acik = !kapali.has(c);
+            return (
+              <button
+                key={c}
+                type="button"
+                aria-pressed={acik}
+                onClick={() => cinsToggle(c)}
+                className={`text-[11px] px-2 py-0.5 rounded-full border font-medium transition-colors ${
+                  acik
+                    ? "bg-[#1E3A5F] border-[#1E3A5F] text-white"
+                    : "bg-white border-gray-300 text-gray-400 line-through hover:border-[#1E3A5F]"
+                }`}
+                title={acik ? "Listeden çıkar" : "Listeye ekle"}
+              >
+                {c}
+                <span className={`ml-1 font-normal ${acik ? "text-white/60" : "text-gray-300"}`}>
+                  {cinsAdet.get(c)}
+                </span>
+              </button>
+            );
+          })}
+          {kapaliCinsler.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setKapaliCinsler([])}
+              className="text-[11px] px-2 py-0.5 rounded-full border border-gray-300 bg-white text-gray-600 hover:border-[#1E3A5F] font-medium"
+            >
+              Tümünü göster
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Özet + süzgeç */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -339,8 +395,9 @@ export default function YakitKapasite({
       <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
         Uyarı ölçütü: iki dolum arasındaki sayaç farkı, aracın 1 depo kapasitesini aşıyorsa. Yakıt kayıtları
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
-        seçili şantiyeden. <strong>Binek araçlar listeye girmez</strong> — çoğu akaryakıt kartıyla dışarıdan
-        besleniyor, depo kayıtları eksik olduğu için hesap anlamsız sonuç veriyor. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
+        seçili şantiyeden. Cins süzgeci varsayılan olarak <strong>Binek</strong> kapalı gelir — çoğu akaryakıt
+        kartıyla besleniyor, depo kayıtları eksik olduğu için hesap anlamsız çıkıyor; çipe tıklayıp geri
+        açabilirsiniz. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
         aralıklar denetlenir; başka işteyken oluşan aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
         seçilirse pasif olmayan bütün araçların tüm aralıkları incelenir. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
         &quot;dışarıdan yakıt alındı&quot; işaretli aralıklar açıklanmış sayılır.
