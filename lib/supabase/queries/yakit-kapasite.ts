@@ -26,6 +26,10 @@ function getSupabase() {
   return createClient();
 }
 
+// BİNEK ARAÇLAR HARİÇ: neredeyse tamamı akaryakıt kartıyla dışarıdan besleniyor,
+// depo kayıtları eksik olduğu için kapasite/aşım hesabı anlamsız sonuç veriyordu.
+const HARIC_CINSLER = ["binek"];
+
 // Puantaj durumunun kaç günlük çalışma saydığı. Yarım gün 0,5 — tam gün gibi saymak
 // aralıktaki çalışmayı olduğundan fazla gösteriyordu.
 const CALISMA_AGIRLIK: Partial<Record<AracPuantajDurum, number>> = {
@@ -161,6 +165,7 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
 
   const sonuc: KapasiteSatiri[] = [];
   for (const a of araclar) {
+    if (HARIC_CINSLER.includes((a.cinsi ?? "").trim().toLocaleLowerCase("tr"))) continue;
     const sayacTipi: "km" | "saat" = a.sayac_tipi === "saat" ? "saat" : "km";
     const carpan = sayacTipi === "saat" ? 1 : 100;
     const tumDolumlar = yakitByArac.get(a.id) ?? [];

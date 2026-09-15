@@ -339,7 +339,8 @@ export default function YakitKapasite({
       <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
         Uyarı ölçütü: iki dolum arasındaki sayaç farkı, aracın 1 depo kapasitesini aşıyorsa. Yakıt kayıtları
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
-        seçili şantiyeden. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
+        seçili şantiyeden. <strong>Binek araçlar listeye girmez</strong> — çoğu akaryakıt kartıyla dışarıdan
+        besleniyor, depo kayıtları eksik olduğu için hesap anlamsız sonuç veriyor. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
         aralıklar denetlenir; başka işteyken oluşan aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
         seçilirse pasif olmayan bütün araçların tüm aralıkları incelenir. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
         &quot;dışarıdan yakıt alındı&quot; işaretli aralıklar açıklanmış sayılır.
