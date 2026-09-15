@@ -1215,11 +1215,34 @@ export default function PersonelPuantajPage() {
             <input type="checkbox" checked={kapanmisGoster} onChange={(e) => setKapanmisGoster(e.target.checked)} className="accent-[#1E3A5F]" />
             Kapanmış işleri de göster (eski işlerin geçmiş puantajı)
           </label>
-          {personelliSantiyeler.length === 0 && !loading && (
-            <p className="text-[10px] text-gray-400">
-              Henüz personel ataması yapılmış şantiye yok.
-            </p>
-          )}
+          {/* BOŞ LİSTE ÜÇ AYRI SEBEPTEN OLABİLİR ve eskiden hepsi aynı cümleyi gösteriyordu;
+              kullanıcı neyi düzelteceğini anlayamıyordu. Artık ayrıştırılıyor:
+                1) hiç personel/atama verisi yok     → gerçekten atama yapılmamış
+                2) atama var ama seçili AYDA yok     → ay değiştir ya da kapanmışları aç
+                3) veri var ama yetki süzgeci eledi  → kullanıcıya şantiye atanmamış */}
+          {personelliSantiyeler.length === 0 && !loading && (() => {
+            const ayAdi = `${AY_ADLARI[ay - 1]} ${yil}`;
+            if (personelSantiyeMap.size === 0) {
+              return (
+                <p className="text-[10px] text-gray-400">
+                  Henüz personel ataması yapılmış şantiye yok.
+                </p>
+              );
+            }
+            if (kullanici && kullanici.rol !== "yonetici" && (kullanici.santiye_ids?.length ?? 0) === 0) {
+              return (
+                <p className="text-[10px] text-amber-700">
+                  Hesabınıza şantiye atanmamış. Yöneticinizin size şantiye tanımlaması gerekiyor.
+                </p>
+              );
+            }
+            return (
+              <p className="text-[10px] text-amber-700 leading-relaxed">
+                <strong>{ayAdi}</strong> ayında personel ataması olan şantiye yok. Ay&apos;ı değiştirin
+                ya da aşağıdaki <strong>&quot;Kapanmış işleri de göster&quot;</strong> kutusunu işaretleyin.
+              </p>
+            );
+          })()}
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-400">Dönem</Label>
