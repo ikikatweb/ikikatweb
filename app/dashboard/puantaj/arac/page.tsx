@@ -572,24 +572,16 @@ export default function AracPuantajPage() {
   // Araç cinsi — puantaj tablosunda gruplama anahtarı. Boş/eksik olanlar tek grupta,
   // listenin en sonunda toplanır.
   const CINS_BOS = "Cinsi girilmemiş";
-  const SAHIP_BOS = "Sahibi girilmemiş";
   const aracCinsi = (a: { cinsi?: string | null }) => (a.cinsi ?? "").trim() || CINS_BOS;
-  // Aracın sahibi: özmalda firma, kiralıkta kiralama firması/kişi (araç kolonundaki
-  // mavi satırla aynı kaynak).
-  const aracSahibi = (a: { tip?: string | null; firmalar?: { firma_adi?: string } | null; kiralama_firmasi?: string | null }) =>
-    ((a.tip === "ozmal" ? (a.firmalar?.firma_adi ?? "") : (a.kiralama_firmasi ?? "")).trim() || SAHIP_BOS);
 
-  // cins → araç sayısı, "cins|sahip" → araç sayısı (grup başlıklarında gösterilir)
-  const { cinsAdetMap, cinsSahipAdetMap } = useMemo(() => {
-    const cm = new Map<string, number>();
-    const sm = new Map<string, number>();
+  // cins → o cinsteki araç sayısı (grup başlığında gösterilir)
+  const cinsAdetMap = useMemo(() => {
+    const m = new Map<string, number>();
     for (const a of goruntulenenAraclar) {
       const c = aracCinsi(a);
-      cm.set(c, (cm.get(c) ?? 0) + 1);
-      const k = `${c}|${aracSahibi(a)}`;
-      sm.set(k, (sm.get(k) ?? 0) + 1);
+      m.set(c, (m.get(c) ?? 0) + 1);
     }
-    return { cinsAdetMap: cm, cinsSahipAdetMap: sm };
+    return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goruntulenenAraclar]);
 
@@ -2070,13 +2062,11 @@ export default function AracPuantajPage() {
               {goruntulenenAraclar.map((a, i) => {
                 const gunMap = aracGunMap.get(a.id);
                 const toplam = aracToplamGun(a.id);
-                // Liste cins → sahip → plaka sırasında; her ikisinin değiştiği yerde
-                // başlık satırı açılır (cins koyu, sahip bir kademe açık ve girintili).
+                // Gruplama YALNIZ cinse göre; araç sahibi sadece grup içindeki sıralama
+                // anahtarı (aynı sahibin araçları yan yana düşsün diye), ayrı başlık açmaz.
                 const cins = aracCinsi(a);
-                const sahip = aracSahibi(a);
                 const onceki = i > 0 ? goruntulenenAraclar[i - 1] : null;
                 const yeniCins = !onceki || aracCinsi(onceki) !== cins;
-                const yeniSahip = yeniCins || aracSahibi(onceki!) !== sahip;
                 return (
                   <Fragment key={a.id}>
                   {yeniCins && (
@@ -2089,17 +2079,6 @@ export default function AracPuantajPage() {
                         </span>
                       </TableCell>
                       <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-200 border-b border-gray-300" />
-                    </TableRow>
-                  )}
-                  {yeniSahip && (
-                    <TableRow className="bg-slate-50">
-                      <TableCell className="px-2 py-0.5 pl-4 sticky left-0 bg-slate-50 z-[40] border-r border-b border-gray-200 shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
-                        <span className="text-[10px] font-semibold text-sky-700 whitespace-nowrap">
-                          {sahip}
-                          <span className="ml-1.5 font-normal text-gray-400">({cinsSahipAdetMap.get(`${cins}|${sahip}`) ?? 0})</span>
-                        </span>
-                      </TableCell>
-                      <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-50 border-b border-gray-200" />
                     </TableRow>
                   )}
                   <TableRow className="hover:bg-gray-50">
