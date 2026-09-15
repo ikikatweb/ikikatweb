@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
+import YakitKapasite from "./YakitKapasite";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
 import { createClient } from "@/lib/supabase/client";
@@ -182,7 +183,7 @@ export default function AracPuantajPage() {
   });
 
   // Aktif tab - PDF/Excel butonları ve çıkış bu değere göre değişir
-  const [aktifTab, setAktifTab] = useOturumFiltresi<"puantaj" | "atama" | "ozet">("puantaj-arac:tab", "puantaj");
+  const [aktifTab, setAktifTab] = useOturumFiltresi<"puantaj" | "atama" | "ozet" | "kapasite">("puantaj-arac:tab", "puantaj");
 
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -582,7 +583,6 @@ export default function AracPuantajPage() {
       m.set(c, (m.get(c) ?? 0) + 1);
     }
     return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [goruntulenenAraclar]);
 
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
@@ -1898,7 +1898,7 @@ export default function AracPuantajPage() {
       </div>
 
       {/* Tab yapısı: Puantaj / Araç Atama / Özet Rapor */}
-      <Tabs value={aktifTab} onValueChange={(v) => setAktifTab(v as "puantaj" | "atama" | "ozet")} className="w-full">
+      <Tabs value={aktifTab} onValueChange={(v) => setAktifTab(v as "puantaj" | "atama" | "ozet" | "kapasite")} className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="puantaj">
             <ClipboardList size={14} className="mr-1" /> Puantaj
@@ -1910,6 +1910,13 @@ export default function AracPuantajPage() {
           {!sadeceKendiKayitlari && (
             <TabsTrigger value="ozet">
               <FileBarChart size={14} className="mr-1" /> Özet Rapor
+            </TabsTrigger>
+          )}
+          {/* Yakıt Kapasitesi — "1 depoyla bu kadar gün çalışamaz" tespiti.
+              Özet Rapor gibi kısıtlı kullanıcıdan gizli. */}
+          {!sadeceKendiKayitlari && (
+            <TabsTrigger value="kapasite">
+              <Fuel size={14} className="mr-1" /> Yakıt Kapasitesi
             </TabsTrigger>
           )}
         </TabsList>
@@ -2390,6 +2397,11 @@ export default function AracPuantajPage() {
         </TabsContent>
 
         {/* === ÖZET RAPOR TAB === */}
+        {/* === YAKIT KAPASİTESİ TAB === */}
+        <TabsContent value="kapasite">
+          <YakitKapasite santiyeId={santiyeId} />
+        </TabsContent>
+
         <TabsContent value="ozet">
           {/* Üst: Şantiye + Tarih Aralığı + Firma */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
