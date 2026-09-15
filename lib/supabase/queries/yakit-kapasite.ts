@@ -259,10 +259,12 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
         x.calismaGun = calisma;
         x.santiyeGun = santiyede;
       }
-      // Şantiye seçiliyse: aracın o şantiyede HİÇ bulunmadığı aralıklar bu şantiyenin
-      // denetimine girmez — o aşım başka işte oluşmuştur.
+      // Şantiye seçiliyse: aracın o şantiyede FİİLEN ÇALIŞMADIĞI aralıklar bu şantiyenin
+      // denetimine girmez. Sadece "kaydı var" yetmiyor — çalışma günü 0 olan aralık ya
+      // aracın başka işte olduğu ya da o döneme puantaj girilmediği anlamına geliyor;
+      // ikisinde de aşımı bu şantiyenin hanesine yazmak yanlış olur.
       if (santiyeId) {
-        r.asimlar = r.asimlar.filter((x) => x.santiyeGun > 0);
+        r.asimlar = r.asimlar.filter((x) => x.calismaGun > 0);
         r.enBuyukAsim = r.asimlar[0]?.asim ?? null;
       }
     }

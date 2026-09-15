@@ -397,8 +397,9 @@ export default function YakitKapasite({
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
         seçili şantiyeden. Cins süzgeci varsayılan olarak <strong>Binek</strong> kapalı gelir — çoğu akaryakıt
         kartıyla besleniyor, depo kayıtları eksik olduğu için hesap anlamsız çıkıyor; çipe tıklayıp geri
-        açabilirsiniz. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
-        aralıklar denetlenir; başka işteyken oluşan aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
+        açabilirsiniz. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede fiilen çalıştığı</strong> aralıklar
+        denetlenir; çalışma günü olmayan aralık ya araç başka işte olduğu ya da o döneme puantaj girilmediği
+        için elenir, aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
         seçilirse pasif olmayan bütün araçların tüm aralıkları incelenir. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
         &quot;dışarıdan yakıt alındı&quot; işaretli aralıklar açıklanmış sayılır.
       </p>
