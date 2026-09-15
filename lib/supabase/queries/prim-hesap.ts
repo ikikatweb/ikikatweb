@@ -1,5 +1,9 @@
 // Tek bir şantiye için prim hesabı (geçici kabul kontrolü için kullanılır):
 //   yatması gereken − yatan − bordro tahmini = sonuç
+//
+// Yatması gereken, İşçilik Durum Raporu'ndaki yatacakPrimHesapla() ve Bordro kartındaki
+// hesapla AYNI formülü kullanır — üç ekran aynı rakamı göstersin diye:
+//   (sözleşme bedeli + keşif artışı + fiyat farkı + TAHMİNİ fiyat farkı) × işçilik oranı / 100
 // Sonuç POZİTİF ise eksik prim var → geçici kabul tarihi atanmamalı.
 import { createClient } from "@/lib/supabase/client";
 import { gunHesaplaAyBazli } from "./bordro";
@@ -42,6 +46,19 @@ export async function getSantiyePrimHesabi(santiyeId: string): Promise<SantiyePr
     .single();
   const bedel = santiye?.sozlesme_bedeli ?? 0;
 
+  // 1b) Tahmini fiyat farkı girdileri — AYRI ve hataya toleranslı sorgu.
+  // Bu sütunlar sql/netsim_son_hakedis.sql çalıştırılmadan yoksa yukarıdaki select'e
+  // eklenseydi santiye null döner, bedel 0 olur ve "eksik prim yok" sanılıp geçici kabul
+  // yanlışlıkla serbest kalırdı. Burada hata sessizce yutulur, tahmin 0 kabul edilir.
+  const { data: netsimRow } = await supabase
+    .from("santiyeler")
+    .select("sozlesme_fiyatlariyla_gerceklesen, netsim_son_hakedis_kesif, netsim_son_hakedis_fark")
+    .eq("id", santiyeId)
+    .maybeSingle();
+  const gerceklesen = netsimRow?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
+  const sonHakKesif = netsimRow?.netsim_son_hakedis_kesif ?? 0;
+  const sonHakFark = netsimRow?.netsim_son_hakedis_fark ?? 0;
+
   // 2) İşçilik takibi kayıtları (aynı şantiyenin birden fazla kaydı olabilir)
   const { data: iscilik } = await supabase
     .from("iscilik_takibi")
@@ -56,7 +73,12 @@ export async function getSantiyePrimHesabi(santiyeId: string): Promise<SantiyePr
     const kesif = r.kesif_artisi ?? 0;
     const ff = r.fiyat_farki ?? 0;
     const oran = r.iscilik_orani ?? 0;
-    const yatacak = (bedel + kesif + ff) * oran / 100;
+    // Kalan keşfin alacağı tahmini fiyat farkı (kalan keşif × son hakedişin FF oranı).
+    const kalanKesif = bedel + kesif - gerceklesen;
+    const tahminiFF = sonHakKesif > 0 && sonHakFark > 0 && kalanKesif > 0
+      ? kalanKesif * (sonHakFark / sonHakKesif)
+      : 0;
+    const yatacak = (bedel + kesif + ff + tahminiFF) * oran / 100;
     yatmasiGereken += yatacak;
     yatan += r.yatan_prim ?? 0;
     takibiIds.push(r.id);

@@ -12,6 +12,7 @@ import {
   restoreIscilikTakibi,
   permanentDeleteIscilikTakibi,
   getTumIscilikAyliklari,
+  getSonHakedisMap,
 } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
@@ -88,6 +89,13 @@ const COLUMNS: ColDef[] = [
     getValue: (r) => formatPara(r.kesif_artisi), getRaw: (r) => r.kesif_artisi },
   { key: "fiyat_farki", label: "Fiyat\nFarkı", editable: true, type: "para",
     getValue: (r) => formatPara(r.fiyat_farki), getRaw: (r) => r.fiyat_farki },
+  // Kalan keşfin alacağı TAHMİNİ fiyat farkı. Oran Netsim'deki EN SON hakedişten gelir
+  // (component state'i) → module seviyesinde hesaplanamaz, gerçek değeri hucreDegeri() üretir.
+  // Yatması gereken prime DAHİLDİR: (sözleşme + keşif + fiyat farkı + tahmini FF) × oran / 100.
+  { key: "tahmini_fiyat_farki", label: "Tahmini\nFiyat Farkı", computed: true,
+    getValue: () => "—", getRaw: () => null },
+  // NOT: aşağıdaki üç sütunun buradaki formülü tahmini fiyat farkını İÇERMEZ (o component
+  // state'ine bağlı). Tabloda/PDF/Excel'de görünen gerçek değeri hucreDegeri() üretir.
   { key: "yatmasi_gereken_prim", label: "Yatması\nGereken Prim", computed: true,
     getValue: (r) => {
       const bedel = r.santiyeler?.sozlesme_bedeli ?? 0;
@@ -185,6 +193,9 @@ export default function IscilikTakibiPage() {
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
   const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
+  // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
+  // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir.
+  const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -270,6 +281,8 @@ export default function IscilikTakibiPage() {
       const sonAyMap = new Map<string, string>();
       for (const [id, son] of enSonAyliklar) sonAyMap.set(id, son.ay);
       setIscilikSonAyMap(sonAyMap);
+      // Tahmini fiyat farkı oranı için son hakediş tutarları (sütunlar yoksa boş döner)
+      getSonHakedisMap().then(setSonHakedisMap).catch(() => {});
 
       // Kısıtlı / Şantiye admini: sadece atandığı şantiyeler görünür.
       // santiyesiz_veri_gor=true → santiye_id NULL kayıtlar da görünür.
@@ -547,14 +560,37 @@ export default function IscilikTakibiPage() {
     return bordroToplam;
   }
 
-  // Kalan Prim = Yatması Gereken − Yatan Prim − Tahmini Bordro.
-  // Yatması gereken 0 ise (işçilik oranı/sözleşme bedeli tanımsız) hesap anlamsız → null.
-  function kalanPrimHesapla(row: IscilikTakibiWithSantiye): number | null {
+  // Kalan keşfin alacağı TAHMİNİ fiyat farkı.
+  //   kalan keşif = (sözleşme bedeli + keşif artışı) − tamamlanan keşif
+  //   tahmini FF  = kalan keşif × (son hakediş fiyat farkı ÷ son hakediş bedeli)
+  // Oran işin ORTALAMASI değil EN SON hakedişin oranıdır: fiyat farkı Yi-ÜFE ile hakediş
+  // hakediş yükseldiğinden ortalama, kalan işi ciddi biçimde eksik tahmin ediyor.
+  // Netsim verisi yoksa, son hakedişte fiyat farkı alınmamışsa veya keşif bittiyse → 0.
+  function tahminiFiyatFarkiHesapla(row: IscilikTakibiWithSantiye): number {
+    const sh = row.santiye_id ? sonHakedisMap.get(row.santiye_id) : undefined;
+    if (!sh || sh.kesif <= 0 || sh.fark <= 0) return 0;
+    const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+    const kesif = row.kesif_artisi ?? 0;
+    const gerceklesen = row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
+    const kalanKesif = bedel + kesif - gerceklesen;
+    if (kalanKesif <= 0) return 0;
+    return kalanKesif * (sh.fark / sh.kesif);
+  }
+
+  // Yatması Gereken Prim = (sözleşme bedeli + keşif artışı + fiyat farkı + TAHMİNİ fiyat farkı)
+  // × işçilik oranı / 100. Tabloda, PDF'te, Excel'de ve toplam satırında tek kaynak burasıdır.
+  function yatacakPrimHesapla(row: IscilikTakibiWithSantiye): number {
     const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
     const kesif = row.kesif_artisi ?? 0;
     const ff = row.fiyat_farki ?? 0;
     const oran = row.iscilik_orani ?? 0;
-    const yatacak = (bedel + kesif + ff) * oran / 100;
+    return (bedel + kesif + ff + tahminiFiyatFarkiHesapla(row)) * oran / 100;
+  }
+
+  // Kalan Prim = Yatması Gereken − Yatan Prim − Tahmini Bordro.
+  // Yatması gereken 0 ise (işçilik oranı/sözleşme bedeli tanımsız) hesap anlamsız → null.
+  function kalanPrimHesapla(row: IscilikTakibiWithSantiye): number | null {
+    const yatacak = yatacakPrimHesapla(row);
     if (yatacak === 0) return null;
     return yatacak - (row.yatan_prim ?? 0) - bordroToplamHesapla(row);
   }
@@ -570,6 +606,20 @@ export default function IscilikTakibiPage() {
     if (col.key === "kalan_prim") {
       const k = kalanPrimHesapla(row);
       return k === null ? "—" : formatPara(k);
+    }
+    if (col.key === "tahmini_fiyat_farki") {
+      const t = tahminiFiyatFarkiHesapla(row);
+      return t > 0 ? formatPara(t) : "—";
+    }
+    // Aşağıdaki ikisi tahmini fiyat farkını içerdiği için module-level formüle bırakılamaz.
+    if (col.key === "yatmasi_gereken_prim") {
+      const y = yatacakPrimHesapla(row);
+      return y > 0 ? formatPara(y) : "—";
+    }
+    if (col.key === "yatan_prim_yuzde") {
+      const y = yatacakPrimHesapla(row);
+      if (y === 0) return "—";
+      return `%${(((row.yatan_prim ?? 0) / y) * 100).toFixed(2)}`;
     }
     return col.getValue(row);
   }
@@ -596,16 +646,15 @@ export default function IscilikTakibiPage() {
     const bitimTarihiIdx = pdfColumns.findIndex((c) => c.key === "is_bitim_tarihi");
 
     // Toplam satırı için veri hesapla
-    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
+    let kesifT = 0, fiyatFarkiT = 0, tahminiFFT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
     for (const row of filtrelenmis) {
-      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = row.kesif_artisi ?? 0;
       const ff = row.fiyat_farki ?? 0;
-      const oran = row.iscilik_orani ?? 0;
-      const yatacak = (bedel + kesif + ff) * oran / 100;
+      const yatacak = yatacakPrimHesapla(row);
       const tahminiBordro = bordroToplamHesapla(row);
       kesifT += kesif;
       fiyatFarkiT += ff;
+      tahminiFFT += tahminiFiyatFarkiHesapla(row);
       yatmasiGerekenT += yatacak;
       yatanT += (row.yatan_prim ?? 0);
       tahminiBordroT += tahminiBordro;
@@ -616,6 +665,7 @@ export default function IscilikTakibiPage() {
     const toplamMap: Record<string, string> = {
       kesif_artisi: formatPara(kesifT),
       fiyat_farki: formatPara(fiyatFarkiT),
+      tahmini_fiyat_farki: formatPara(tahminiFFT),
       yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
       yatan_prim: formatPara(yatanT),
       tahmini_bordro: formatPara(tahminiBordroT),
@@ -715,16 +765,15 @@ export default function IscilikTakibiPage() {
     const data = filtrelenmis.map((r, i) => [i + 1, ...excelColumns.map((c) => hucreDegeri(r, c))]);
 
     // Toplam satırı
-    let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
+    let kesifT = 0, fiyatFarkiT = 0, tahminiFFT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
     for (const row of filtrelenmis) {
-      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
       const kesif = row.kesif_artisi ?? 0;
       const ff = row.fiyat_farki ?? 0;
-      const oran = row.iscilik_orani ?? 0;
-      const yatacak = (bedel + kesif + ff) * oran / 100;
+      const yatacak = yatacakPrimHesapla(row);
       const tahminiBordro = bordroToplamHesapla(row);
       kesifT += kesif;
       fiyatFarkiT += ff;
+      tahminiFFT += tahminiFiyatFarkiHesapla(row);
       yatmasiGerekenT += yatacak;
       yatanT += (row.yatan_prim ?? 0);
       tahminiBordroT += tahminiBordro;
@@ -734,6 +783,7 @@ export default function IscilikTakibiPage() {
     const toplamMap: Record<string, string> = {
       kesif_artisi: formatPara(kesifT),
       fiyat_farki: formatPara(fiyatFarkiT),
+      tahmini_fiyat_farki: formatPara(tahminiFFT),
       yatmasi_gereken_prim: formatPara(yatmasiGerekenT),
       yatan_prim: formatPara(yatanT),
       tahmini_bordro: formatPara(tahminiBordroT),
@@ -877,6 +927,8 @@ export default function IscilikTakibiPage() {
                   const isIsAdi = col.key === "is_adi";
                   const baslikAciklama =
                     col.key === "tahmini_bordro" ? "Son veri girişi yapılan aydan sonraki ayların bordro tahmini (manuel + otomatik atama gün × günlük ücret)"
+                    : col.key === "tahmini_fiyat_farki" ? "Kalan keşfin alacağı tahmini fiyat farkı: kalan keşif × (Netsim'deki son hakedişin fiyat farkı ÷ hakediş bedeli). Yatması Gereken Prim'e dahildir."
+                    : col.key === "yatmasi_gereken_prim" ? "(Sözleşme Bedeli + Keşif Artışı + Fiyat Farkı + Tahmini Fiyat Farkı) × İşçilik Oranı / 100"
                     : col.key === "kalan_prim" ? "Yatması Gereken Prim − Yatan Prim − Tahmini Bordro"
                     : undefined;
                   return (
@@ -1033,6 +1085,24 @@ export default function IscilikTakibiPage() {
 
                     // Tahmini Bordro: son veri girişinden sonraki ayların bordro tahmini.
                     // (Önceden Yatan Prim hücresinin altında silik gri yazıyordu — artık kendi sütunu.)
+                    // Tahmini fiyat farkı: kesinleşmiş tutar değil → tahmini bordro gibi bir punto
+                    // küçük ve silik. Tooltip'te oranın hangi hakedişten geldiği yazar.
+                    if (col.key === "tahmini_fiyat_farki") {
+                      const sh = row.santiye_id ? sonHakedisMap.get(row.santiye_id) : undefined;
+                      const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
+                      const kesifArt = row.kesif_artisi ?? 0;
+                      const kalanKesif = bedel + kesifArt - (row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0);
+                      const ipucu = sh && sh.kesif > 0 && sh.fark > 0 && kalanKesif > 0
+                        ? `Kalan keşif: ${formatPara(kalanKesif)}\n`
+                          + `Oran: %${((sh.fark / sh.kesif) * 100).toFixed(2)} (${sh.tarih ? formatTarih(sh.tarih) : "—"} tarihli son hakediş)\n`
+                          + `Tahmini FF: ${formatPara(tahminiFiyatFarkiHesapla(row))}`
+                        : "Netsim'de hakediş/fiyat farkı verisi yok ya da keşif tamamlanmış";
+                      return (
+                        <TableCell key={col.key} style={stickyStyle} className={cellClass + " text-[11px] text-gray-400"} title={ipucu}>
+                          {hucreDegeri(row, col)}
+                        </TableCell>
+                      );
+                    }
                     if (col.key === "tahmini_bordro") {
                       const sonAy = iscilikSonAyMap.get(row.id) ?? null;
                       return (
@@ -1081,16 +1151,15 @@ export default function IscilikTakibiPage() {
               })}
               {/* Toplam satırı — Sözleşme Bedeli hariç tüm tutarların toplamı */}
               {(() => {
-                let kesifT = 0, fiyatFarkiT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
+                let kesifT = 0, fiyatFarkiT = 0, tahminiFFT = 0, yatmasiGerekenT = 0, yatanT = 0, tahminiBordroT = 0, kalanT = 0, toplamSonVeriT = 0;
                 for (const row of filtrelenmis) {
-                  const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
                   const kesif = row.kesif_artisi ?? 0;
                   const ff = row.fiyat_farki ?? 0;
-                  const oran = row.iscilik_orani ?? 0;
-                  const yatacak = (bedel + kesif + ff) * oran / 100;
+                  const yatacak = yatacakPrimHesapla(row);
                   const tahminiBordro = bordroToplamHesapla(row);
                   kesifT += kesif;
                   fiyatFarkiT += ff;
+                  tahminiFFT += tahminiFiyatFarkiHesapla(row);
                   yatmasiGerekenT += yatacak;
                   yatanT += (row.yatan_prim ?? 0);
                   tahminiBordroT += tahminiBordro;
@@ -1103,6 +1172,7 @@ export default function IscilikTakibiPage() {
                   sozlesme_bedeli: { deger: "—", hizalama: "center" },
                   kesif_artisi: { deger: formatPara(kesifT), hizalama: "right" },
                   fiyat_farki: { deger: formatPara(fiyatFarkiT), hizalama: "right" },
+                  tahmini_fiyat_farki: { deger: formatPara(tahminiFFT), hizalama: "right" },
                   yatmasi_gereken_prim: { deger: formatPara(yatmasiGerekenT), hizalama: "right" },
                   yatan_prim: { deger: formatPara(yatanT), hizalama: "right" },
                   tahmini_bordro: { deger: formatPara(tahminiBordroT), hizalama: "right" },

@@ -546,7 +546,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
   // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
-  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>>(new Map());
+  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>>(new Map());
   // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir. sql/netsim_son_hakedis.sql
   // çalıştırılmadıysa boş kalır ve tahmini FF satırı hiç görünmez.
@@ -951,7 +951,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const firmaIdMap = new Map<string, string>(); // santiye_id → firma_id
       // Prim hesabı için santiye_id → { yatmasiGereken, yatan, sonAy } map'i
       // Aynı şantiyenin birden fazla iscilik_takibi kaydı olabilir → toplam alınır.
-      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>();
+      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>();
       // ait_oldugu_ay "MM.YYYY" → numerik karşılaştırma için YYYYMM
       const ayYilNum = (s: string): number => {
         if (!s) return 0;
@@ -1002,7 +1002,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           const gerceklesen = sant?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
           const gerceklesenNetsim = netsimKaynakli(gerceklesen, sant?.netsim_gerceklesen);
           const oran = r.iscilik_orani ?? 0;
-          const yatacak = (bedel + kesif + ff) * oran / 100;
+          // Kalan keşfin alacağı tahmini fiyat farkı — İşçilik Durum Raporu'ndaki
+          // yatacakPrimHesapla() ile AYNI formül, iki ekran aynı rakamı göstersin diye.
+          //   kalan keşif = (sözleşme + keşif artışı) − tamamlanan keşif
+          //   tahmini FF  = kalan keşif × (son hakediş fiyat farkı ÷ son hakediş bedeli)
+          const sh = sonHakedisler.get(r.santiye_id);
+          const kalanKesif = bedel + kesif - gerceklesen;
+          const tahminiFF = sh && sh.kesif > 0 && sh.fark > 0 && kalanKesif > 0
+            ? kalanKesif * (sh.fark / sh.kesif)
+            : 0;
+          const yatacak = (bedel + kesif + ff + tahminiFF) * oran / 100;
           const yatan = r.yatan_prim ?? 0;
           const sonAy = sonAyByTakibi.get(r.id) ?? null;
           const sonAyN = sonAy ? ayYilNum(sonAy) : 0;
@@ -1016,6 +1025,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             if (gerceklesen > mevcut.gerceklesen) { mevcut.gerceklesen = gerceklesen; mevcut.gerceklesenNetsim = gerceklesenNetsim; }
             mevcut.kesif += kesif;
             mevcut.ff += ff;
+            mevcut.tahminiFF += tahminiFF;
             // Birden fazla takibi varsa: hepsi Netsim'den gelmedikçe rozet çıkmaz.
             mevcut.ffNetsim = mevcut.ffNetsim && ffNetsim;
             if (oran > mevcut.oran) mevcut.oran = oran;
@@ -1025,14 +1035,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               mevcut.sonAy = sonAy;
             }
           } else {
-            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy, bedel, kesif, ff, ffNetsim, oran, gerceklesen, gerceklesenNetsim });
+            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy, bedel, kesif, ff, ffNetsim, oran, gerceklesen, gerceklesenNetsim, tahminiFF });
           }
         }
       }
       // Final map: sonAyNum'u dışarı taşımadan sadece görünen alanları sakla
-      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>();
+      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>();
       for (const [k, v] of primInfo) {
-        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy, bedel: v.bedel, kesif: v.kesif, ff: v.ff, ffNetsim: v.ffNetsim, oran: v.oran, gerceklesen: v.gerceklesen, gerceklesenNetsim: v.gerceklesenNetsim });
+        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy, bedel: v.bedel, kesif: v.kesif, ff: v.ff, ffNetsim: v.ffNetsim, oran: v.oran, gerceklesen: v.gerceklesen, gerceklesenNetsim: v.gerceklesenNetsim, tahminiFF: v.tahminiFF });
       }
       setPrimMap(finalPrimMap);
       setIscilikBitimMap(bitimInfo);
@@ -4249,9 +4259,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺\n` +
                 `Ek Sözleşme Bedeli: ${fmt(prim.kesif)} ₺\n` +
                 `Fiyat Farkı: ${fmt(prim.ff)} ₺${prim.ffNetsim ? " (Netsim)" : ""}\n` +
+                `Tahmini Fiyat Farkı: ${fmt(prim.tahminiFF)} ₺\n` +
                 `İşçilik Oranı: %${prim.oran}\n` +
                 `──────────\n` +
-                `Yatması Gereken: ${fmt(yatmasi)} ₺   = (${fmt(prim.bedel)} + ${fmt(prim.kesif)} + ${fmt(prim.ff)}) × %${prim.oran}\n` +
+                `Yatması Gereken: ${fmt(yatmasi)} ₺   = (${fmt(prim.bedel)} + ${fmt(prim.kesif)} + ${fmt(prim.ff)} + ${fmt(prim.tahminiFF)}) × %${prim.oran}\n` +
                 `Yatan: ${fmt(yatan)} ₺\n` +
                 `Bordro Tahmini: ${fmt(bordro)} ₺\n` +
                 `Sonuç: ${fmt(sonuc)} ₺`;

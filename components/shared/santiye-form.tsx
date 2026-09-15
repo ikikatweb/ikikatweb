@@ -1710,7 +1710,7 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
                   </p>
                 </div>
                 <div className="text-[11px] text-gray-500 leading-relaxed border-l-2 border-blue-300 pl-2">
-                  <strong>Yatması Gereken</strong>: (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100<br />
+                  <strong>Yatması Gereken</strong>: (sözleşme bedeli + keşif artışı + fiyat farkı + tahmini fiyat farkı) × işçilik oranı / 100<br />
                   <strong>Yatan</strong>: işçilik takibinde girilen yatan prim<br />
                   <strong>Bordro Tahmini</strong>: en son veri girilen aydan sonra ki ayların manuel + atama günleri × günlük ücret
                 </div>
