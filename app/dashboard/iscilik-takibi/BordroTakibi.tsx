@@ -6325,14 +6325,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             );
             return (
               <div className="-mt-1">
-                <Kalem etiket="Sözleşme Bedeli" tutar={prim.bedel} renk="text-[#1E3A5F]"
+                <Kalem etiket="Sözleşme Bedeli" tutar={prim.bedel} renk="text-[#1E3A5F]" />
+                <Kalem etiket="Tamamlanan Keşif" tutar={prim.gerceklesen} renk="text-sky-700"
                   alt={prim.gerceklesen > 0 ? (
                     <span className="inline-flex items-center gap-1.5 flex-wrap">
-                      <span>Tamamlanan keşif: <span className="tabular-nums">{paraFmt(prim.gerceklesen)}</span></span>
-                      {prim.gerceklesenNetsim && <NetsimRozet />}
                       <span className="font-semibold text-emerald-700">{yuzdeFmt(b.gerceklesmeOrani)}</span>
+                      <span>sözleşme bedelinin</span>
+                      {prim.gerceklesenNetsim && <NetsimRozet />}
                     </span>
                   ) : null} />
+                <Kalem etiket="Kalan Keşif" tutar={b.kalanKesif} renk="text-amber-600"
+                  alt="(sözleşme + ek sözleşme) − tamamlanan keşif" />
                 <Kalem etiket="Ek Sözleşme Bedeli" tutar={prim.kesif} renk="text-orange-600" />
                 <Kalem etiket="Fiyat Farkı" tutar={prim.ff} renk="text-purple-700"
                   alt={prim.ff !== 0 ? (
@@ -6343,8 +6346,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {b.tahmin > 0 && (
                   <Kalem etiket="Tahmini Fiyat Farkı" tutar={b.tahmin} renk="text-purple-500" ustu={tahminiFFKapali}
                     alt={<>
-                      Kalan keşif <span className="tabular-nums">{paraFmt(b.kalanKesif)}</span> × {yuzdeFmt(b.ffOran * 100)}
-                      {b.sonHakTarih && <> · {new Date(b.sonHakTarih + "T00:00:00").toLocaleDateString("tr-TR")} tarihli son hakediş</>}
+                      Kalan keşif × {yuzdeFmt(b.ffOran * 100)}
+                      {b.sonHakTarih && <> · {new Date(b.sonHakTarih + "T00:00:00").toLocaleDateString("tr-TR")} tarihli son hakediş oranı</>}
                     </>} />
                 )}
                 {b.tahmin > 0 && (
