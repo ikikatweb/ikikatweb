@@ -193,10 +193,10 @@ export default function IscilikTakibiPage() {
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
   const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
-  // Tahmini fiyat farkı HESAP DIŞI bırakılan satırlar (iscilik_takibi.id kümesi).
-  // Bilerek SADECE bu sekmede yaşar, veritabanına yazılmaz: "bu tahmin tutmazsa prim ne olur"
-  // sorusuna bakmak için. Sayfa yenilenince hepsi geri hesaba girer.
-  const [tahminiFFHaric, setTahminiFFHaric] = useState<Set<string>>(new Set());
+  // Tahmini fiyat farkı sütunu KAPALI mı? Sütun başlığına tıklanarak topluca açılıp kapanır.
+  // Bilerek SADECE bu sekmede yaşar, veritabanına yazılmaz: "bu tahminler tutmazsa prim ne olur"
+  // sorusuna bakmak için. Sayfa yenilenince sütun yeniden hesaba girer.
+  const [tahminiFFKapali, setTahminiFFKapali] = useState(false);
   // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir.
   const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
@@ -583,19 +583,10 @@ export default function IscilikTakibiPage() {
     return kalanKesif * (sh.fark / sh.kesif);
   }
 
-  // Prime GİREN tahmini fiyat farkı. Kullanıcı hücreye tıklayıp hesap dışı bıraktıysa 0.
+  // Prime GİREN tahmini fiyat farkı. Sütun başlıktan kapatıldıysa 0.
   function tahminiFiyatFarkiHesapla(row: IscilikTakibiWithSantiye): number {
-    if (tahminiFFHaric.has(row.id)) return 0;
+    if (tahminiFFKapali) return 0;
     return tahminiFiyatFarkiHam(row);
-  }
-
-  function tahminiFFHaricToggle(row: IscilikTakibiWithSantiye) {
-    if (tahminiFiyatFarkiHam(row) <= 0) return; // gösterilecek tahmin yoksa tıklamanın anlamı yok
-    setTahminiFFHaric((onceki) => {
-      const yeni = new Set(onceki);
-      if (yeni.has(row.id)) yeni.delete(row.id); else yeni.add(row.id);
-      return yeni;
-    });
   }
 
   // Yatması Gereken Prim = (sözleşme bedeli + keşif artışı + fiyat farkı + TAHMİNİ fiyat farkı)
@@ -631,8 +622,8 @@ export default function IscilikTakibiPage() {
     if (col.key === "tahmini_fiyat_farki") {
       const ham = tahminiFiyatFarkiHam(row);
       if (ham <= 0) return "—";
-      // Hesap dışıysa rakam yine yazılır ama başına çarpı konur (PDF/Excel'de de görünsün).
-      return tahminiFFHaric.has(row.id) ? `✕ ${formatPara(ham)}` : formatPara(ham);
+      // Sütun kapalıysa rakam yine yazılır ama başına çarpı konur (PDF/Excel'de de görünsün).
+      return tahminiFFKapali ? `✕ ${formatPara(ham)}` : formatPara(ham);
     }
     // Aşağıdaki ikisi tahmini fiyat farkını içerdiği için module-level formüle bırakılamaz.
     if (col.key === "yatmasi_gereken_prim") {
@@ -950,14 +941,21 @@ export default function IscilikTakibiPage() {
                   const isIsAdi = col.key === "is_adi";
                   const baslikAciklama =
                     col.key === "tahmini_bordro" ? "Son veri girişi yapılan aydan sonraki ayların bordro tahmini (manuel + otomatik atama gün × günlük ücret)"
-                    : col.key === "tahmini_fiyat_farki" ? "Kalan keşfin alacağı tahmini fiyat farkı: kalan keşif × (Netsim'deki son hakedişin fiyat farkı ÷ hakediş bedeli). Yatması Gereken Prim'e dahildir."
+                    : col.key === "tahmini_fiyat_farki" ? (tahminiFFKapali
+                        ? "Tahmini fiyat farkı KAPALI — hiçbir satırda Yatması Gereken Prim'e katılmıyor. Açmak için tıklayın."
+                        : "Kalan keşfin alacağı tahmini fiyat farkı: kalan keşif × (Netsim'deki son hakedişin fiyat farkı ÷ hakediş bedeli). Yatması Gereken Prim'e dahildir. Tümünü hesap dışı bırakmak için tıklayın.")
                     : col.key === "yatmasi_gereken_prim" ? "(Sözleşme Bedeli + Keşif Artışı + Fiyat Farkı + Tahmini Fiyat Farkı) × İşçilik Oranı / 100"
                     : col.key === "kalan_prim" ? "Yatması Gereken Prim − Yatan Prim − Tahmini Bordro"
                     : undefined;
                   return (
                     <TableHead key={col.key} title={baslikAciklama}
                       style={isIsAdi && isAdiSabit ? { position: "sticky", left: 0, zIndex: 20, backgroundColor: "#64748B" } : undefined}
-                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${isIsAdi ? `min-w-[180px] max-w-[220px]${isAdiSabit ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : ""}` : "min-w-[52px]"}`}>
+                      onClick={col.key === "tahmini_fiyat_farki" ? () => setTahminiFFKapali((v) => !v) : undefined}
+                      className={`text-white font-semibold ${basliHizalama} text-[10px] px-1.5 ${hasTwoLines ? "whitespace-pre-line leading-tight" : "whitespace-nowrap"} ${isIsAdi ? `min-w-[180px] max-w-[220px]${isAdiSabit ? " shadow-[2px_0_3px_rgba(0,0,0,0.15)]" : ""}` : "min-w-[52px]"}${
+                        // Tahmini FF sütunu başlıktan topluca kapatılır; kapalıyken başlığın
+                        // üzeri kırmızı çizili olur, sütunun hesaba girmediği bir bakışta belli olsun.
+                        col.key === "tahmini_fiyat_farki" ? ` cursor-pointer select-none hover:bg-[#54627a]${tahminiFFKapali ? " line-through decoration-red-500 decoration-2 text-white/60" : ""}` : ""
+                      }`}>
                       {col.label}
                     </TableHead>
                   );
@@ -1121,20 +1119,18 @@ export default function IscilikTakibiPage() {
                       const kesifArt = row.kesif_artisi ?? 0;
                       const kalanKesif = bedel + kesifArt - (row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0);
                       const ham = tahminiFiyatFarkiHam(row);
-                      const haric = tahminiFFHaric.has(row.id);
                       const ipucu = ham > 0 && sh
                         ? `Kalan keşif: ${formatPara(kalanKesif)}\n`
                           + `Oran: %${((sh.fark / sh.kesif) * 100).toFixed(2)} (${sh.tarih ? formatTarih(sh.tarih) : "—"} tarihli son hakediş)\n`
                           + `Tahmini FF: ${formatPara(ham)}\n`
-                          + (haric
-                            ? "HESAP DIŞI — yatması gereken prime katılmıyor. Geri almak için tıklayın."
-                            : "Hesaba dahil. Tıklayınca hesap dışı bırakılır (yalnız bu sekmede, sayfa yenilenince geri döner).")
+                          + (tahminiFFKapali
+                            ? "SÜTUN KAPALI — yatması gereken prime katılmıyor. Açmak için sütun başlığına tıklayın."
+                            : "Hesaba dahil. Sütun başlığına tıklayarak tümünü hesap dışı bırakabilirsiniz.")
                         : "Netsim'de hakediş/fiyat farkı verisi yok ya da keşif tamamlanmış";
                       return (
                         <TableCell key={col.key} style={stickyStyle} title={ipucu}
-                          onClick={() => tahminiFFHaricToggle(row)}
-                          className={cellClass + " text-[11px] " + (ham > 0 ? "cursor-pointer hover:bg-blue-50 " : "")
-                            + (haric ? "text-gray-300 line-through decoration-red-400" : "text-gray-400")}>
+                          className={cellClass + " text-[11px] "
+                            + (tahminiFFKapali ? "text-gray-300 line-through decoration-red-400" : "text-gray-400")}>
                           {hucreDegeri(row, col)}
                         </TableCell>
                       );
