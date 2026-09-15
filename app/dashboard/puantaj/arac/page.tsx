@@ -612,9 +612,13 @@ export default function AracPuantajPage() {
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
   // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez —
   // ay değiştirildiği anki ilk render'da eski ayın puantajları görünüp kayboluyordu.
-  // Bu gün, aracın "tek depoyla gidilemez" aralıklarından birinin içinde mi?
-  // Aralığın uç günleri dolum günleridir (o gün yakıt alınmış) → dışarıda bırakılır.
-  const yakitsizGunMu = (aracId: string, gun: number): boolean => {
+  // Bu gün rozet alır mı? İki şart birlikte:
+  //  1) Gün, aracın "tek depoyla gidilemez" aralıklarından birinin içinde
+  //     (aralığın uç günleri dolum günleridir, onlar hariç).
+  //  2) O gün FİİLEN ÇALIŞILMIŞ. Aralık 57 gün sürse de sorunlu olan, içindeki
+  //     çalışılan günlerdir; tatil ve çalışılmayan günler depoyu boşaltmaz.
+  const yakitsizGunMu = (aracId: string, gun: number, durum?: AracPuantajDurum): boolean => {
+    if (durum !== "calisti" && durum !== "yarim_gun") return false;
     const araliklar = yakitsizAralik.get(aracId);
     if (!araliklar) return false;
     const tarih = `${yil}-${String(ay).padStart(2, "0")}-${String(gun).padStart(2, "0")}`;
@@ -2223,7 +2227,7 @@ export default function AracPuantajPage() {
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
-                                  yakitsiz: yakitsizGunMu(a.id, g),
+                                  yakitsiz: yakitsizGunMu(a.id, g, p.durum),
                                 });
                               }
                             }}
@@ -2243,7 +2247,7 @@ export default function AracPuantajPage() {
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
-                                  yakitsiz: yakitsizGunMu(a.id, g),
+                                  yakitsiz: yakitsizGunMu(a.id, g, p.durum),
                                 });
                               }
                             }}
@@ -2252,7 +2256,7 @@ export default function AracPuantajPage() {
                               dBilgi
                                 ? `${dBilgi.bgClass} text-white hover:opacity-90`
                                 : "hover:bg-gray-200 text-gray-300"
-                            }${dBilgi && yakitsizGunMu(a.id, g)
+                            }${dBilgi && yakitsizGunMu(a.id, g, p?.durum)
                               ? " shadow-[inset_0_0_0_2px_#DC2626] ring-1 ring-inset ring-white/70"
                               : ""}`}
                             title={
@@ -2269,7 +2273,7 @@ export default function AracPuantajPage() {
                             })()}
                             {/* YAKITSIZ ÇALIŞMA — bu gün, tek depoyla gidilemeyecek bir dolum
                                 aralığının içinde. Sol üst köşe: sağ üst köşeyi "not var" kullanıyor. */}
-                            {dBilgi && yakitsizGunMu(a.id, g) && (
+                            {dBilgi && yakitsizGunMu(a.id, g, p?.durum) && (
                               <span
                                 className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-red-600 text-white shadow-sm pointer-events-none"
                                 aria-label="Yakıtsız çalışma"
