@@ -546,7 +546,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
   // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
-  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>>(new Map());
+  // Tahmini fiyat farkı hesaba katılmasın mı? "Tahmini FF" etiketine tıklanarak açılıp kapanır.
+  // İşçilik Durum Raporu'ndaki sütun başlığı anahtarının buradaki karşılığı; aynı şekilde
+  // bilerek SADECE bu sekmede yaşar, veritabanına yazılmaz.
+  const [tahminiFFKapali, setTahminiFFKapali] = useState(false);
+  // Prime giren "yatması gereken": tahmini FF kapalıysa tahminsiz karşılığı kullanılır.
+  const yatmasiGerekenFor = (prim: { yatmasiGereken: number; yatmasiGerekenTahminsiz: number }) =>
+    tahminiFFKapali ? prim.yatmasiGerekenTahminsiz : prim.yatmasiGereken;
+  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number; yatmasiGerekenTahminsiz: number }>>(new Map());
   // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir. sql/netsim_son_hakedis.sql
   // çalıştırılmadıysa boş kalır ve tahmini FF satırı hiç görünmez.
@@ -951,7 +958,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const firmaIdMap = new Map<string, string>(); // santiye_id → firma_id
       // Prim hesabı için santiye_id → { yatmasiGereken, yatan, sonAy } map'i
       // Aynı şantiyenin birden fazla iscilik_takibi kaydı olabilir → toplam alınır.
-      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>();
+      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number; yatmasiGerekenTahminsiz: number }>();
       // ait_oldugu_ay "MM.YYYY" → numerik karşılaştırma için YYYYMM
       const ayYilNum = (s: string): number => {
         if (!s) return 0;
@@ -1012,12 +1019,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             ? kalanKesif * (sh.fark / sh.kesif)
             : 0;
           const yatacak = (bedel + kesif + ff + tahminiFF) * oran / 100;
+          // Tahmini FF kapatıldığında yeniden çekmeden gösterebilmek için tahminsiz karşılığı
+          // da AYNI döngüde hesaplanır. Aggregate'lerden geri hesaplamak, aynı şantiyenin
+          // birden fazla takibi kaydı (farklı oranlarla) olduğunda birebir tutmazdı.
+          const yatacakTahminsiz = (bedel + kesif + ff) * oran / 100;
           const yatan = r.yatan_prim ?? 0;
           const sonAy = sonAyByTakibi.get(r.id) ?? null;
           const sonAyN = sonAy ? ayYilNum(sonAy) : 0;
           const mevcut = primInfo.get(r.santiye_id);
           if (mevcut) {
             mevcut.yatmasiGereken += yatacak;
+            mevcut.yatmasiGerekenTahminsiz += yatacakTahminsiz;
             mevcut.yatan += yatan;
             // Sözleşme bedeli şantiyenin kendi alanı — takibi başına tekrar etmesin, en büyüğü tutulur.
             // Keşif artışı ve fiyat farkı takibi bazlı → toplanır. Oran farklıysa en büyüğü gösterilir.
@@ -1035,14 +1047,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               mevcut.sonAy = sonAy;
             }
           } else {
-            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy, bedel, kesif, ff, ffNetsim, oran, gerceklesen, gerceklesenNetsim, tahminiFF });
+            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatmasiGerekenTahminsiz: yatacakTahminsiz, yatan, sonAyNum: sonAyN, sonAy, bedel, kesif, ff, ffNetsim, oran, gerceklesen, gerceklesenNetsim, tahminiFF });
           }
         }
       }
       // Final map: sonAyNum'u dışarı taşımadan sadece görünen alanları sakla
-      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number }>();
+      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number; yatmasiGerekenTahminsiz: number }>();
       for (const [k, v] of primInfo) {
-        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy, bedel: v.bedel, kesif: v.kesif, ff: v.ff, ffNetsim: v.ffNetsim, oran: v.oran, gerceklesen: v.gerceklesen, gerceklesenNetsim: v.gerceklesenNetsim, tahminiFF: v.tahminiFF });
+        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatmasiGerekenTahminsiz: v.yatmasiGerekenTahminsiz, yatan: v.yatan, sonAy: v.sonAy, bedel: v.bedel, kesif: v.kesif, ff: v.ff, ffNetsim: v.ffNetsim, oran: v.oran, gerceklesen: v.gerceklesen, gerceklesenNetsim: v.gerceklesenNetsim, tahminiFF: v.tahminiFF });
       }
       setPrimMap(finalPrimMap);
       setIscilikBitimMap(bitimInfo);
@@ -4251,7 +4263,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
               const prim = primMap.get(santiyeId);
               if (!prim) return null;
-              const yatmasi = prim.yatmasiGereken;
+              const yatmasi = yatmasiGerekenFor(prim);
               const yatan = prim.yatan;
               const bordro = bordroToplamForSantiye(santiyeId);
               if (yatmasi === 0 && yatan === 0 && bordro === 0) return null;
@@ -4264,10 +4276,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺\n` +
                 `Ek Sözleşme Bedeli: ${fmt(prim.kesif)} ₺\n` +
                 `Fiyat Farkı: ${fmt(prim.ff)} ₺${prim.ffNetsim ? " (Netsim)" : ""}\n` +
-                `Tahmini Fiyat Farkı: ${fmt(prim.tahminiFF)} ₺\n` +
+                `Tahmini Fiyat Farkı: ${fmt(prim.tahminiFF)} ₺${tahminiFFKapali ? " — HESAP DIŞI" : ""}\n` +
                 `İşçilik Oranı: %${prim.oran}\n` +
                 `──────────\n` +
-                `Yatması Gereken: ${fmt(yatmasi)} ₺   = (${fmt(prim.bedel)} + ${fmt(prim.kesif)} + ${fmt(prim.ff)} + ${fmt(prim.tahminiFF)}) × %${prim.oran}\n` +
+                `Yatması Gereken: ${fmt(yatmasi)} ₺   = (${fmt(prim.bedel)} + ${fmt(prim.kesif)} + ${fmt(prim.ff)}${tahminiFFKapali ? "" : ` + ${fmt(prim.tahminiFF)}`}) × %${prim.oran}\n` +
                 `Yatan: ${fmt(yatan)} ₺\n` +
                 `Bordro Tahmini: ${fmt(bordro)} ₺\n` +
                 `Sonuç: ${fmt(sonuc)} ₺`;
@@ -4339,10 +4351,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             // Yüzde biçimi: "%82,23"
             const yuzde = (n: number) => `%${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-            const satir = (etiket: string, deger: number, renk: string, ipucu: string, ek?: React.ReactNode) => (
+            // opt.tiklama verilirse satır anahtar gibi davranır (tahmini FF açma/kapama);
+            // opt.kapali ise etiket ve tutar kırmızı çizgiyle üzeri çizili gösterilir.
+            const satir = (etiket: string, deger: number, renk: string, ipucu: string, ek?: React.ReactNode,
+                           opt?: { tiklama?: () => void; kapali?: boolean }) => (
               <>
-                <span className="text-gray-400 whitespace-nowrap" title={ipucu}>{etiket}</span>
-                <span className={`text-right tabular-nums font-semibold whitespace-nowrap ${deger === 0 ? "text-gray-300" : renk}`} title={ipucu}>
+                <span
+                  className={`whitespace-nowrap ${opt?.kapali ? "text-gray-300 line-through decoration-red-500 decoration-2" : "text-gray-400"}${opt?.tiklama ? " cursor-pointer select-none hover:text-[#1E3A5F]" : ""}`}
+                  title={ipucu}
+                  onClick={opt?.tiklama ? (e) => { e.stopPropagation(); opt.tiklama!(); } : undefined}
+                >{etiket}</span>
+                <span className={`text-right tabular-nums font-semibold whitespace-nowrap ${opt?.kapali ? "text-gray-300 line-through decoration-red-400" : deger === 0 ? "text-gray-300" : renk}`} title={ipucu}>
                   {fmt(deger)}
                 </span>
                 {/* Üçüncü sütun = ekler (Netsim rozeti, gerçekleşen tutar/oran). Bunlar tutar
@@ -4403,12 +4422,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       `Kalan keşif: ${fmt(kalanKesif)} ₺  (sözleşme + ek sözleşme − tamamlanan keşif)\n` +
                       `Oran: ${yuzde(ffOran * 100)}  (${tarih} tarihli son hakediş: ${fmt(sh.fark)} ÷ ${fmt(sh.kesif)})\n` +
                       `Tahmini FF: ${fmt(tahmin)} ₺\n` +
-                      `Toplam FF (alınan + tahmini): ${fmt(prim.ff + tahmin)} ₺`;
+                      `Toplam FF (alınan + tahmini): ${fmt(prim.ff + tahmin)} ₺\n` +
+                      (tahminiFFKapali
+                        ? "HESAP DIŞI — prime katılmıyor. Açmak için \"Tahmini FF\" yazısına tıklayın."
+                        : "Prime dahil. Tüm işlerde hesap dışı bırakmak için \"Tahmini FF\" yazısına tıklayın.");
                     return satir("Tahmini FF", tahmin, "text-purple-400", ipucu, (
-                      <span className="text-gray-400" title={ipucu}>
+                      <span className={tahminiFFKapali ? "text-gray-300 line-through decoration-red-400" : "text-gray-400"} title={ipucu}>
                         {yuzde(ffOran * 100)} · kalan {fmt(kalanKesif)}
                       </span>
-                    ));
+                    ), { tiklama: () => setTahminiFFKapali((v) => !v), kapali: tahminiFFKapali });
                   })()}
                 </div>
               </div>
@@ -4945,7 +4967,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               for (const p of liste) firmaToplamGun += gunMap.get(p.id)?.get(s.id) ?? 0;
               const prim = primMap.get(s.id);
               if (prim) {
-                firmaYatmasiGereken += prim.yatmasiGereken;
+                firmaYatmasiGereken += yatmasiGerekenFor(prim);
                 firmaYatan += prim.yatan;
               }
               firmaBordro += bordroToplamForSantiye(s.id);
