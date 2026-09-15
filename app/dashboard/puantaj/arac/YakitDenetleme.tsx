@@ -2,7 +2,7 @@
 //
 // "Bu mesafeyi tek depoyla gidemez" tespiti: iki dolum arasındaki sayaç farkı aracın
 // 1 depo kapasitesini aşıyorsa arada ya kayda geçmemiş bir dolum vardır ya da sayaç
-// yanlış girilmiştir. Hesabın tamamı lib/supabase/queries/yakit-kapasite.ts başındadır.
+// yanlış girilmiştir. Hesabın tamamı lib/supabase/queries/yakit-denetleme.ts başındadır.
 //
 // Düzen: firma → araç iki kademeli akordiyon. Araç satırına tıklanınca altında o aracın
 // rakamları ve kapasiteyi aşan dolum aralıkları açılır.
@@ -13,10 +13,10 @@ import { ChevronDown, ChevronRight, Fuel, AlertTriangle, Check, Info } from "luc
 import SantiyeSelect from "@/components/shared/santiye-select";
 import { useOturumFiltresi } from "@/hooks";
 import {
-  getYakitKapasiteAnalizi,
+  getYakitDenetimi,
   TOLERANS_ORAN,
-  type KapasiteSatiri,
-} from "@/lib/supabase/queries/yakit-kapasite";
+  type DenetimSatiri,
+} from "@/lib/supabase/queries/yakit-denetleme";
 
 const TOLERANS_YUZDE = Math.round(TOLERANS_ORAN * 100);
 
@@ -32,7 +32,7 @@ const gunSayisi = (n: number) =>
 
 type SantiyeItem = { id: string; is_adi: string; durum?: string };
 
-export default function YakitKapasite({
+export default function YakitDenetleme({
   santiyeId: varsayilanSantiye,
   santiyeler,
 }: {
@@ -42,7 +42,7 @@ export default function YakitKapasite({
   // Sekmenin KENDİ şantiye seçimi — puantaj sekmesindeki seçimle başlar, sonra bağımsız.
   // Boş = tüm şantiyeler.
   const [santiyeId, setSantiyeId] = useState(varsayilanSantiye);
-  const [satirlar, setSatirlar] = useState<KapasiteSatiri[]>([]);
+  const [satirlar, setSatirlar] = useState<DenetimSatiri[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
   const [acikFirma, setAcikFirma] = useState<Set<string>>(new Set());
@@ -65,7 +65,7 @@ export default function YakitKapasite({
     setYukleniyor(true);
     setHata(null);
     try {
-      setSatirlar(await getYakitKapasiteAnalizi(santiyeId));
+      setSatirlar(await getYakitDenetimi(santiyeId));
     } catch (e) {
       setHata(e instanceof Error ? e.message : "Veriler alınamadı.");
     } finally {
@@ -128,7 +128,7 @@ export default function YakitKapasite({
   const cinsToggle = (c: string) =>
     setKapaliCinsler((onceki) => (onceki.includes(c) ? onceki.filter((x) => x !== c) : [...onceki, c]));
 
-  const firmalar = new Map<string, KapasiteSatiri[]>();
+  const firmalar = new Map<string, DenetimSatiri[]>();
   for (const s of gosterilecek) {
     if (!firmalar.has(s.firmaAdi)) firmalar.set(s.firmaAdi, []);
     firmalar.get(s.firmaAdi)!.push(s);

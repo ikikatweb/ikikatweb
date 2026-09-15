@@ -1,4 +1,4 @@
-// YAKIT KAPASİTESİ ANALİZİ — "bu mesafeyi tek depoyla gidemez" tespiti.
+// YAKIT DENETLEME ANALİZİ — "bu mesafeyi tek depoyla gidemez" tespiti.
 //
 // KURAL: araç 120.000 km'de yakıt almış, 25 gün sonra 130.000 km'de tekrar almış.
 // Aradaki 10.000 km'yi tek depoyla gitmesi mümkün değilse (kapasite 1.000 km) arada ya
@@ -41,7 +41,7 @@ const CALISMA_AGIRLIK: Partial<Record<AracPuantajDurum, number>> = {
   yarim_gun: 0.5,
 };
 
-export type KapasiteAsimi = {
+export type DenetimAsimi = {
   basTarih: string;      // önceki dolum
   bitTarih: string;      // bu dolum
   gun: number;           // aradaki takvim günü
@@ -55,7 +55,7 @@ export type KapasiteAsimi = {
   litre: number;         // bu dolumda alınan litre
 };
 
-export type KapasiteSatiri = {
+export type DenetimSatiri = {
   aracId: string;
   plaka: string;
   ad: string;
@@ -68,7 +68,7 @@ export type KapasiteSatiri = {
   esik: number | null;            // kapasite × (1 + pay) — uyarı bu sınırın üstünde verilir
   kapasiteKaynak: "menzil" | "hesap" | "yok";
   dolumAdet: number;
-  asimlar: KapasiteAsimi[];       // büyükten küçüğe
+  asimlar: DenetimAsimi[];       // büyükten küçüğe
   enBuyukAsim: number | null;
   isaretliAsim: number;           // "dışarıdan yakıt alındı" işaretli olduğu için uyarıya girmeyen aralık sayısı
 };
@@ -126,7 +126,7 @@ async function sayfali<T>(tablo: string, sec: string, filtre: (q: never) => neve
  * Puantaj (aralıkta kaç gün çalıştığı) ikinci aşamada ve SADECE aşımı olan araçlar için
  * çekilir: "tüm şantiyeler" seçildiğinde bütün puantajı indirmek yüz binlerce satır eder.
  */
-export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise<KapasiteSatiri[]> {
+export async function getYakitDenetimi(santiyeId: string | null): Promise<DenetimSatiri[]> {
   const supabase = getSupabase();
 
   let aracIds: string[];
@@ -168,7 +168,7 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
     yakitByArac.get(y.arac_id)!.push(y);
   }
 
-  const sonuc: KapasiteSatiri[] = [];
+  const sonuc: DenetimSatiri[] = [];
   for (const a of araclar) {
     const sayacTipi: "km" | "saat" = a.sayac_tipi === "saat" ? "saat" : "km";
     const carpan = sayacTipi === "saat" ? 1 : 100;
@@ -198,11 +198,11 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
     const hesapKapasite = depoKapasite && genelOrt && genelOrt > 0 ? (depoKapasite / genelOrt) * carpan : null;
     // Araç formundaki "1 depo menzili" doluysa o esas alınır.
     const kapasite = menzil > 0 ? menzil : hesapKapasite;
-    const kapasiteKaynak: KapasiteSatiri["kapasiteKaynak"] =
+    const kapasiteKaynak: DenetimSatiri["kapasiteKaynak"] =
       menzil > 0 ? "menzil" : hesapKapasite ? "hesap" : "yok";
 
     // --- aşımlar: ardışık iki dolum arası sayaç farkı kapasiteyi aşıyor mu? ---
-    const asimlar: KapasiteAsimi[] = [];
+    const asimlar: DenetimAsimi[] = [];
     let isaretliAsim = 0;
     const esik = kapasite && kapasite > 0 ? kapasite * (1 + TOLERANS_ORAN) : null;
     if (kapasite && kapasite > 0 && esik) {

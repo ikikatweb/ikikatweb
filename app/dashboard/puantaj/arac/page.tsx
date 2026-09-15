@@ -3,8 +3,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
-import YakitKapasite from "./YakitKapasite";
-import { getYakitKapasiteAnalizi } from "@/lib/supabase/queries/yakit-kapasite";
+import YakitDenetleme from "./YakitDenetleme";
+import { getYakitDenetimi } from "@/lib/supabase/queries/yakit-denetleme";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
 import { createClient } from "@/lib/supabase/client";
@@ -210,7 +210,7 @@ export default function AracPuantajPage() {
     let iptal = false;
     setYakitsizAralik(new Map());
     if (!santiyeId) return;
-    getYakitKapasiteAnalizi(santiyeId)
+    getYakitDenetimi(santiyeId)
       .then((satirlar) => {
         if (iptal) return;
         const m = new Map<string, { bas: string; bit: string }[]>();
@@ -2450,7 +2450,7 @@ export default function AracPuantajPage() {
         {/* === ÖZET RAPOR TAB === */}
         {/* === YAKIT DENETLEME TAB === */}
         <TabsContent value="kapasite">
-          <YakitKapasite santiyeId={santiyeId} santiyeler={santiyelerAtamalı} />
+          <YakitDenetleme santiyeId={santiyeId} santiyeler={santiyelerAtamalı} />
         </TabsContent>
 
         <TabsContent value="ozet">
