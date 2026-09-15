@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Fuel, AlertTriangle, Check, Info } from "lucide-react";
+import SantiyeSelect from "@/components/shared/santiye-select";
 import {
   getYakitKapasiteAnalizi,
   type KapasiteSatiri,
@@ -22,7 +23,18 @@ const sayi = (n: number | null | undefined, hane = 2) =>
 const tamsayi = (n: number | null | undefined) => (n == null ? "—" : Math.round(n).toLocaleString("tr-TR"));
 const trTarih = (d: string) => d.split("-").reverse().join(".");
 
-export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
+type SantiyeItem = { id: string; is_adi: string; durum?: string };
+
+export default function YakitKapasite({
+  santiyeId: varsayilanSantiye,
+  santiyeler,
+}: {
+  santiyeId: string;
+  santiyeler: SantiyeItem[];
+}) {
+  // Sekmenin KENDİ şantiye seçimi — puantaj sekmesindeki seçimle başlar, sonra bağımsız.
+  // Boş = tüm şantiyeler.
+  const [santiyeId, setSantiyeId] = useState(varsayilanSantiye);
   const [satirlar, setSatirlar] = useState<KapasiteSatiri[]>([]);
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
@@ -45,18 +57,42 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
 
   useEffect(() => { void yukle(); }, [yukle]);
 
-  if (!santiyeId) {
-    return <p className="text-sm text-gray-500 py-8 text-center">Önce yukarıdan bir şantiye seçin.</p>;
-  }
+  // Şantiye seçimi her durumda görünür — "tüm şantiyeler" de geçerli bir seçim.
+  const secici = (
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="space-y-1 min-w-[240px] flex-1 max-w-md">
+        <label className="block text-[10px] text-gray-400">
+          Şantiye <span className="text-gray-300">(aracın orada çalıştığı dönem denetlenir)</span>
+        </label>
+        <SantiyeSelect
+          santiyeler={santiyeler}
+          value={santiyeId}
+          onChange={setSantiyeId}
+          showAll
+          placeholder="Tüm şantiyeler"
+          className="w-full border border-gray-300 rounded-md h-9 text-sm px-2"
+        />
+      </div>
+    </div>
+  );
+
   if (yukleniyor) {
     return (
-      <div className="space-y-2 py-2">
-        {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}
+      <div className="space-y-3">
+        {secici}
+        <div className="space-y-2 py-2">
+          {[...Array(5)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}
+        </div>
       </div>
     );
   }
   if (hata) {
-    return <div className="border border-red-200 bg-red-50 rounded-lg p-4 text-sm text-red-700">{hata}</div>;
+    return (
+      <div className="space-y-3">
+        {secici}
+        <div className="border border-red-200 bg-red-50 rounded-lg p-4 text-sm text-red-700">{hata}</div>
+      </div>
+    );
   }
 
   const asimliAraclar = satirlar.filter((s) => s.asimlar.length > 0);
@@ -77,6 +113,7 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
 
   return (
     <div className="space-y-3">
+      {secici}
       {/* Özet + süzgeç */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -115,7 +152,9 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
 
       {firmaListe.length === 0 ? (
         <p className="text-sm text-gray-500 py-8 text-center">
-          {sadeceAsim ? "Kapasitesini aşan araç yok." : "Bu şantiyede puantajı olan araç yok."}
+          {sadeceAsim
+            ? "Kapasitesini aşan araç yok."
+            : santiyeId ? "Bu şantiyede puantajı olan araç yok." : "İncelenecek araç bulunamadı."}
         </p>
       ) : (
         <div className="space-y-2">
@@ -264,6 +303,9 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
                                             </td>
                                             <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
                                               {x.calismaGun} gün çalıştı
+                                              {santiyeId && x.santiyeGun > x.calismaGun && (
+                                                <span className="text-gray-400"> / {x.santiyeGun} gün şantiyede</span>
+                                              )}
                                             </td>
                                           </tr>
                                         ))}
@@ -294,7 +336,9 @@ export default function YakitKapasite({ santiyeId }: { santiyeId: string }) {
       <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
         Uyarı ölçütü: iki dolum arasındaki sayaç farkı, aracın 1 depo kapasitesini aşıyorsa. Yakıt kayıtları
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
-        seçili şantiyeden. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
+        seçili şantiyeden. Bir şantiye seçiliyse yalnız aracın <strong>o şantiyede bulunduğu döneme denk gelen</strong>
+        aralıklar denetlenir; başka işteyken oluşan aşım bu şantiyenin hanesine yazılmaz. &quot;Tüm şantiyeler&quot;
+        seçilirse pasif olmayan bütün araçların tüm aralıkları incelenir. Sayaç değeri girilmemiş dolumlar ve düzeltme kayıtları hesaba katılmaz;
         &quot;dışarıdan yakıt alındı&quot; işaretli aralıklar açıklanmış sayılır.
       </p>
     </div>

@@ -2399,7 +2399,7 @@ export default function AracPuantajPage() {
         {/* === ÖZET RAPOR TAB === */}
         {/* === YAKIT KAPASİTESİ TAB === */}
         <TabsContent value="kapasite">
-          <YakitKapasite santiyeId={santiyeId} />
+          <YakitKapasite santiyeId={santiyeId} santiyeler={santiyelerAtamalı} />
         </TabsContent>
 
         <TabsContent value="ozet">

@@ -39,6 +39,7 @@ export type KapasiteAsimi = {
   asim: number;          // mesafe − kapasite
   kat: number;           // mesafe ÷ kapasite (kaç depoluk yol)
   calismaGun: number;    // bu aralıkta puantajda çalıştı/yarım gün sayısı
+  santiyeGun: number;    // bu aralıkta seçili şantiyede puantaj kaydı olan gün sayısı
   litre: number;         // bu dolumda alınan litre
 };
 
@@ -97,20 +98,38 @@ async function sayfali<T>(tablo: string, sec: string, filtre: (q: never) => neve
 }
 
 /**
- * Bir şantiyedeki araçların yakıt kapasitesi analizi.
- * Puantaj SADECE bu şantiyeden (aralıktaki çalışma günü için), yakıt ise HER
- * ŞANTİYEDEN alınır: sayaç farkı aracın gerçek yoluna göre değerlendirilmeli.
+ * Yakıt kapasitesi analizi.
+ *
+ * santiyeId verilirse: araç listesi O ŞANTİYEDE puantajı olanlardan çıkar.
+ * Boş verilirse (tüm şantiyeler): pasif olmayan TÜM araçlar incelenir.
+ *
+ * Yakıt kayıtları her iki durumda da HER ŞANTİYEDEN alınır — sayaç farkı aracın
+ * gerçek yoluna göre değerlendirilmeli, başka işte doldurduysa aralık orada kırılmalı.
+ *
+ * ŞANTİYE SEÇİLİYSE aralıklar da süzülür: yalnız aracın O ŞANTİYEDE bulunduğu döneme
+ * denk gelen dolum aralıkları denetlenir. Araç başka işteyken oluşan bir aşımı bu
+ * şantiyenin hanesine yazmak yanlış olurdu.
+ *
+ * Puantaj (aralıkta kaç gün çalıştığı) ikinci aşamada ve SADECE aşımı olan araçlar için
+ * çekilir: "tüm şantiyeler" seçildiğinde bütün puantajı indirmek yüz binlerce satır eder.
  */
-export async function getYakitKapasiteAnalizi(santiyeId: string): Promise<KapasiteSatiri[]> {
-  if (!santiyeId) return [];
+export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise<KapasiteSatiri[]> {
   const supabase = getSupabase();
 
-  const puantaj = await sayfali<PuantajRow>(
-    "arac_puantaj", "arac_id, tarih, durum",
-    ((q: { eq: (a: string, b: string) => { order: (c: string) => unknown } }) =>
-      q.eq("santiye_id", santiyeId).order("tarih")) as never,
-  );
-  const aracIds = [...new Set(puantaj.map((p) => p.arac_id))];
+  let aracIds: string[];
+  let puantaj: PuantajRow[] = [];
+  if (santiyeId) {
+    puantaj = await sayfali<PuantajRow>(
+      "arac_puantaj", "arac_id, tarih, durum",
+      ((q: { eq: (a: string, b: string) => { order: (c: string) => unknown } }) =>
+        q.eq("santiye_id", santiyeId).order("tarih")) as never,
+    );
+    aracIds = [...new Set(puantaj.map((p) => p.arac_id))];
+  } else {
+    const { data, error } = await supabase.from("araclar").select("id").neq("durum", "pasif");
+    if (error) throw new Error(error.message);
+    aracIds = ((data ?? []) as { id: string }[]).map((x) => x.id);
+  }
   if (aracIds.length === 0) return [];
 
   const [yakitHam, aracRes] = await Promise.all([
@@ -135,11 +154,6 @@ export async function getYakitKapasiteAnalizi(santiyeId: string): Promise<Kapasi
     if (!yakitByArac.has(y.arac_id)) yakitByArac.set(y.arac_id, []);
     yakitByArac.get(y.arac_id)!.push(y);
   }
-  const puantajByArac = new Map<string, Map<string, AracPuantajDurum>>();
-  for (const p of puantaj) {
-    if (!puantajByArac.has(p.arac_id)) puantajByArac.set(p.arac_id, new Map());
-    puantajByArac.get(p.arac_id)!.set(p.tarih, p.durum);
-  }
 
   const sonuc: KapasiteSatiri[] = [];
   for (const a of araclar) {
@@ -150,7 +164,6 @@ export async function getYakitKapasiteAnalizi(santiyeId: string): Promise<Kapasi
     const sirali = tumDolumlar
       .filter((y) => (y.km_saat ?? 0) > 0)
       .sort((x, y) => `${x.tarih}T${x.saat}`.localeCompare(`${y.tarih}T${y.saat}`));
-    const gunler = puantajByArac.get(a.id) ?? new Map<string, AracPuantajDurum>();
 
     // --- genel ortalama (Yakıt sayfasıyla aynı mantık) ---
     const menzil = a.depo_menzil ?? 0;
@@ -185,16 +198,11 @@ export async function getYakitKapasiteAnalizi(santiyeId: string): Promise<Kapasi
         if (mesafe <= kapasite) continue;
         // Kullanıcı "dışarıdan yakıt alındı" demişse aralık açıklanmış sayılır.
         if (bu.dis_yakit_oncesi === true) { isaretliAsim++; continue; }
-        let calismaGun = 0;
-        for (let t = ertesiGun(onceki.tarih); t <= bu.tarih; t = ertesiGun(t)) {
-          const d = gunler.get(t);
-          if (d && CALISMA.includes(d)) calismaGun++;
-        }
         asimlar.push({
           basTarih: onceki.tarih, bitTarih: bu.tarih, gun: gunFarki(onceki.tarih, bu.tarih),
           basSayac: onceki.km_saat ?? 0, bitSayac: bu.km_saat ?? 0,
           mesafe, asim: mesafe - kapasite, kat: mesafe / kapasite,
-          calismaGun, litre: bu.miktar_lt ?? 0,
+          calismaGun: 0, santiyeGun: 0, litre: bu.miktar_lt ?? 0,   // 2. aşamada doldurulur
         });
       }
     }
@@ -216,6 +224,44 @@ export async function getYakitKapasiteAnalizi(santiyeId: string): Promise<Kapasi
       enBuyukAsim: asimlar[0]?.asim ?? null,
       isaretliAsim,
     });
+  }
+
+  // --- 2. aşama: aşımı olan araçların aralıklarında kaç gün çalışmış? ---
+  const asimliIds = sonuc.filter((r) => r.asimlar.length > 0).map((r) => r.aracId);
+  if (asimliIds.length > 0) {
+    // Şantiye seçiliyse o şantiyenin puantajı zaten elimizde; değilse sadece bu araçlar için çek.
+    const kayitlar = santiyeId ? puantaj : await sayfali<PuantajRow>(
+      "arac_puantaj", "arac_id, tarih, durum",
+      ((q: { in: (a: string, b: string[]) => { order: (c: string) => unknown } }) =>
+        q.in("arac_id", asimliIds).order("tarih")) as never,
+    );
+    const gunlerByArac = new Map<string, Map<string, AracPuantajDurum>>();
+    for (const p of kayitlar) {
+      if (!gunlerByArac.has(p.arac_id)) gunlerByArac.set(p.arac_id, new Map());
+      gunlerByArac.get(p.arac_id)!.set(p.tarih, p.durum);
+    }
+    for (const r of sonuc) {
+      const gunler = gunlerByArac.get(r.aracId);
+      for (const x of r.asimlar) {
+        let calisma = 0, santiyede = 0;
+        if (gunler) {
+          for (let t = ertesiGun(x.basTarih); t <= x.bitTarih; t = ertesiGun(t)) {
+            const d = gunler.get(t);
+            if (!d) continue;
+            santiyede++;
+            if (CALISMA.includes(d)) calisma++;
+          }
+        }
+        x.calismaGun = calisma;
+        x.santiyeGun = santiyede;
+      }
+      // Şantiye seçiliyse: aracın o şantiyede HİÇ bulunmadığı aralıklar bu şantiyenin
+      // denetimine girmez — o aşım başka işte oluşmuştur.
+      if (santiyeId) {
+        r.asimlar = r.asimlar.filter((x) => x.santiyeGun > 0);
+        r.enBuyukAsim = r.asimlar[0]?.asim ?? null;
+      }
+    }
   }
 
   sonuc.sort((x, y) => (y.enBuyukAsim ?? -1) - (x.enBuyukAsim ?? -1) || x.plaka.localeCompare(y.plaka, "tr"));
