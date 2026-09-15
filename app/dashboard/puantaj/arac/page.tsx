@@ -4,6 +4,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import YakitKapasite from "./YakitKapasite";
+import { getYakitKapasiteAnalizi } from "@/lib/supabase/queries/yakit-kapasite";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { getAracYakitlarByRange } from "@/lib/supabase/queries/yakit";
 import { createClient } from "@/lib/supabase/client";
@@ -200,6 +201,28 @@ export default function AracPuantajPage() {
   // (eski davranış). Şantiye değişince temizlenir (başka şantiyenin araç id'leri bayat kalmasın).
   const [ciktiSecimi, setCiktiSecimi] = useState<Set<string>>(new Set());
   useEffect(() => { setCiktiSecimi(new Set()); }, [santiyeId]);
+  // YAKITSIZ ÇALIŞMA ARALIKLARI — Yakıt Kapasitesi sekmesindeki tespitin ızgaraya yansıması:
+  // arac_id → tek depoyla gidilemeyecek dolum aralıkları. Bir gün bu aralıkların içindeyse
+  // hücreye rozet konur. Puantajı bekletmesin diye ayrı ve sessiz yüklenir; gelmezse ızgara
+  // eskisi gibi çizilir.
+  const [yakitsizAralik, setYakitsizAralik] = useState<Map<string, { bas: string; bit: string }[]>>(new Map());
+  useEffect(() => {
+    let iptal = false;
+    setYakitsizAralik(new Map());
+    if (!santiyeId) return;
+    getYakitKapasiteAnalizi(santiyeId)
+      .then((satirlar) => {
+        if (iptal) return;
+        const m = new Map<string, { bas: string; bit: string }[]>();
+        for (const r of satirlar) {
+          if (r.asimlar.length === 0) continue;
+          m.set(r.aracId, r.asimlar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
+        }
+        setYakitsizAralik(m);
+      })
+      .catch(() => { /* rozet olmasın, puantaj çalışmaya devam etsin */ });
+    return () => { iptal = true; };
+  }, [santiyeId]);
   // Diğer şantiye çakışmaları: arac_id -> (gün -> { santiye_id, santiye_adi })
   // Yüklenmiş verinin AİT OLDUĞU ay+şantiye. Ay değiştirince state bir render boyunca
   // ESKİ ayın kayıtlarını tutuyor (fetch efekti render'dan SONRA çalışır) ve o kayıtlar yeni
@@ -225,6 +248,7 @@ export default function AracPuantajPage() {
     x: number;
     y: number;
     yukari: boolean; // true ise hücrenin üstünde gösterilir (alt satırda taşma olmasın diye)
+    yakitsiz?: boolean; // gün, tek depoyla gidilemeyecek bir dolum aralığının içinde
     plaka: string;
     isleyenAd: string;
     durum: AracPuantajDurum;
@@ -588,6 +612,15 @@ export default function AracPuantajPage() {
   // Hızlı erişim için: arac_id -> Map<gün, puantaj>
   // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez —
   // ay değiştirildiği anki ilk render'da eski ayın puantajları görünüp kayboluyordu.
+  // Bu gün, aracın "tek depoyla gidilemez" aralıklarından birinin içinde mi?
+  // Aralığın uç günleri dolum günleridir (o gün yakıt alınmış) → dışarıda bırakılır.
+  const yakitsizGunMu = (aracId: string, gun: number): boolean => {
+    const araliklar = yakitsizAralik.get(aracId);
+    if (!araliklar) return false;
+    const tarih = `${yil}-${String(ay).padStart(2, "0")}-${String(gun).padStart(2, "0")}`;
+    return araliklar.some((x) => tarih > x.bas && tarih < x.bit);
+  };
+
   const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
   const aracGunMap = useMemo(() => {
     const m = new Map<string, Map<number, AracPuantaj>>();
@@ -2190,6 +2223,7 @@ export default function AracPuantajPage() {
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
+                                  yakitsiz: yakitsizGunMu(a.id, g),
                                 });
                               }
                             }}
@@ -2209,6 +2243,7 @@ export default function AracPuantajPage() {
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
+                                  yakitsiz: yakitsizGunMu(a.id, g),
                                 });
                               }
                             }}
@@ -2230,6 +2265,14 @@ export default function AracPuantajPage() {
                               if (!yakitLt) return null;
                               return <span className="absolute bottom-0 right-0.5 text-[10px] font-bold text-blue-700 leading-none bg-white/90 rounded px-0.5 py-px">{Math.round(yakitLt)}</span>;
                             })()}
+                            {/* YAKITSIZ ÇALIŞMA — bu gün, tek depoyla gidilemeyecek bir dolum
+                                aralığının içinde. Sol üst köşe: sağ üst köşeyi "not var" kullanıyor. */}
+                            {dBilgi && yakitsizGunMu(a.id, g) && (
+                              <span
+                                className="absolute top-0 left-0 w-0 h-0 border-t-[9px] border-t-red-600 border-r-[9px] border-r-transparent pointer-events-none"
+                                aria-label="Yakıtsız çalışma"
+                              />
+                            )}
                             {notVar && (
                               <span
                                 className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-yellow-300 border-l-[8px] border-l-transparent shadow-sm pointer-events-none"
@@ -3182,6 +3225,13 @@ export default function AracPuantajPage() {
                   <span className="font-semibold">İşleyen:</span>
                   <span className="text-gray-700">{tooltip.isleyenAd}</span>
                 </div>
+                {tooltip.yakitsiz && (
+                  <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
+                    <span className="font-bold">Yakıtsız çalışma.</span> Bu gün, aracın tek depoyla
+                    gidemeyeceği bir dolum aralığının içinde kalıyor. Ayrıntı için
+                    <strong> Yakıt Kapasitesi</strong> sekmesine bakın.
+                  </div>
+                )}
                 {tooltip.aciklama && (
                   <div>
                     <div className="text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Not</div>
