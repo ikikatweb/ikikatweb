@@ -8,7 +8,12 @@
 //   genel ortalama   = (dış-yakıt aralıkları hariç toplam lt) / (toplam km|saat)   [km'de ×100]
 //   depo kapasitesi  = aracın TÜM ZAMANDAKİ en yüksek tek dolumu (lt)
 //   kapasite         = depo kapasitesi ÷ genel ortalama                            → km veya saat
-//   AŞIM             = iki dolum arası sayaç farkı > kapasite
+//   AŞIM             = iki dolum arası sayaç farkı > kapasite × 1,10
+//
+// %10 PAY: kapasite kesin bir sayı değil — depo kapasitesi "en yüksek tek dolum"dan,
+// ortalama da geçmiş tüketimden tahmin ediliyor. Yükte/boşta, yazın/kışın, şehir içi
+// ve şantiye içi tüketim farkı bu kadar oynayabilir. Sınırı birebir kapasiteye
+// koymak sınırda kalan normal aralıkları uyarıya sokardı; %10 pay bırakılıyor.
 //
 // Genel ortalama, Yakıt sayfasındaki hesapla BİREBİR aynıdır (dış-yakıt aralıkları
 // dışlanır, sayaç girilmemiş kayıtlar atlanır) — iki ekran farklı rakam göstermesin diye.
@@ -26,6 +31,9 @@ function getSupabase() {
   return createClient();
 }
 
+// Kapasitenin üstüne bırakılan pay. Uyarı ancak bu payın da dışına çıkınca verilir.
+export const TOLERANS_ORAN = 0.10;
+
 // Puantaj durumunun kaç günlük çalışma saydığı. Yarım gün 0,5 — tam gün gibi saymak
 // aralıktaki çalışmayı olduğundan fazla gösteriyordu.
 const CALISMA_AGIRLIK: Partial<Record<AracPuantajDurum, number>> = {
@@ -40,7 +48,7 @@ export type KapasiteAsimi = {
   basSayac: number;      // km veya saat
   bitSayac: number;
   mesafe: number;        // bitSayac − basSayac
-  asim: number;          // mesafe − kapasite
+  asim: number;          // mesafe − kapasite (pay dahil edilmeden, gerçek fazlalık)
   kat: number;           // mesafe ÷ kapasite (kaç depoluk yol)
   calismaGun: number;    // bu aralıkta çalışma günü — yarım günler 0,5 sayılır
   santiyeGun: number;    // bu aralıkta seçili şantiyede puantaj kaydı olan gün sayısı
@@ -57,6 +65,7 @@ export type KapasiteSatiri = {
   genelOrt: number | null;        // L/100km veya L/saat
   depoKapasite: number | null;    // en yüksek tek dolum (lt)
   kapasite: number | null;        // km veya saat
+  esik: number | null;            // kapasite × (1 + pay) — uyarı bu sınırın üstünde verilir
   kapasiteKaynak: "menzil" | "hesap" | "yok";
   dolumAdet: number;
   asimlar: KapasiteAsimi[];       // büyükten küçüğe
@@ -195,11 +204,12 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
     // --- aşımlar: ardışık iki dolum arası sayaç farkı kapasiteyi aşıyor mu? ---
     const asimlar: KapasiteAsimi[] = [];
     let isaretliAsim = 0;
-    if (kapasite && kapasite > 0) {
+    const esik = kapasite && kapasite > 0 ? kapasite * (1 + TOLERANS_ORAN) : null;
+    if (kapasite && kapasite > 0 && esik) {
       for (let i = 1; i < sirali.length; i++) {
         const onceki = sirali[i - 1], bu = sirali[i];
         const mesafe = (bu.km_saat ?? 0) - (onceki.km_saat ?? 0);
-        if (mesafe <= kapasite) continue;
+        if (mesafe <= esik) continue;
         // Kullanıcı "dışarıdan yakıt alındı" demişse aralık açıklanmış sayılır.
         if (bu.dis_yakit_oncesi === true) { isaretliAsim++; continue; }
         asimlar.push({
@@ -222,6 +232,7 @@ export async function getYakitKapasiteAnalizi(santiyeId: string | null): Promise
       genelOrt,
       depoKapasite,
       kapasite,
+      esik,
       kapasiteKaynak,
       dolumAdet: tumDolumlar.length,
       asimlar,

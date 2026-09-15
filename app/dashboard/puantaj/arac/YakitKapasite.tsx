@@ -14,8 +14,11 @@ import SantiyeSelect from "@/components/shared/santiye-select";
 import { useOturumFiltresi } from "@/hooks";
 import {
   getYakitKapasiteAnalizi,
+  TOLERANS_ORAN,
   type KapasiteSatiri,
 } from "@/lib/supabase/queries/yakit-kapasite";
+
+const TOLERANS_YUZDE = Math.round(TOLERANS_ORAN * 100);
 
 const FIRMA_RENK = ["#1E3A5F", "#7C3AED", "#DC2626", "#059669", "#EA580C", "#0891B2", "#BE185D", "#65A30D"];
 
@@ -302,10 +305,12 @@ export default function YakitKapasite({
                                 <Kutu
                                   etiket={`Yakıtsız Çalışma Kapasitesi`}
                                   deger={s.kapasite == null ? "—" : `${tamsayi(s.kapasite)} ${birim}`}
-                                  ipucu={s.kapasiteKaynak === "menzil"
+                                  ipucu={(s.kapasiteKaynak === "menzil"
                                     ? "Araç formundaki '1 depo menzili' alanından geliyor"
-                                    : "Depo kapasitesi ÷ genel ortalama"}
-                                  altNot={s.kapasiteKaynak === "menzil" ? "araç formundan" : s.kapasiteKaynak === "hesap" ? "hesaplandı" : undefined}
+                                    : "Depo kapasitesi ÷ genel ortalama")
+                                    + `. Uyarı eşiği %${TOLERANS_YUZDE} tolerans eklenmiş hâli: ${tamsayi(s.esik)} ${birim}`}
+                                  altNot={s.esik == null ? undefined
+                                    : `%${TOLERANS_YUZDE} tolerans → ${tamsayi(s.esik)} ${birim}`}
                                   vurgu
                                 />
                                 <Kutu
@@ -335,7 +340,7 @@ export default function YakitKapasite({
                                           <th className="text-left px-2 py-1 font-semibold whitespace-nowrap">Dolumlar arası</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Sayaç</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Yapılan</th>
-                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Kapasite</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Kapasite (+tolerans)</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Aşım</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Puantaj</th>
                                         </tr>
@@ -355,6 +360,7 @@ export default function YakitKapasite({
                                             </td>
                                             <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
                                               {tamsayi(s.kapasite)} {birim}
+                                              <span className="text-gray-400"> → {tamsayi(s.esik)}</span>
                                             </td>
                                             <td className="px-2 py-1 text-right font-mono font-bold text-red-600 whitespace-nowrap">
                                               +{tamsayi(x.asim)}
@@ -393,7 +399,11 @@ export default function YakitKapasite({
       )}
 
       <p className="text-[10px] text-gray-400 leading-relaxed pt-1">
-        Uyarı ölçütü: iki dolum arasındaki sayaç farkı, aracın 1 depo kapasitesini aşıyorsa. Yakıt kayıtları
+        Uyarı ölçütü: iki dolum arasındaki sayaç farkı, aracın 1 depo kapasitesini <strong>%{TOLERANS_YUZDE} toleransla</strong>
+        aşıyorsa. Kapasite kesin bir sayı değil — depo kapasitesi en yüksek tek dolumdan, ortalama geçmiş
+        tüketimden tahmin ediliyor; yükte/boşta ve mevsime göre tüketim bu kadar oynayabildiği için sınırda
+        kalan normal aralıklar uyarıya girmesin diye pay bırakılıyor. Tablodaki &quot;Aşım&quot; sütunu tolerans
+        eklenmemiş gerçek fazlalığı gösterir. Yakıt kayıtları
         <strong> tüm şantiyelerden</strong> alınır (araç başka işte doldurduysa aralık kırılır), puantaj yalnız
         seçili şantiyeden. Cins süzgeci varsayılan olarak <strong>Binek</strong> kapalı gelir — çoğu akaryakıt
         kartıyla besleniyor, depo kayıtları eksik olduğu için hesap anlamsız çıkıyor; çipe tıklayıp geri
