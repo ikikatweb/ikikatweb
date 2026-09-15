@@ -57,6 +57,7 @@ import {
 import { bordroDonemIsaretle } from "@/lib/supabase/queries/bordro-gonderim";
 import { OGRENIM_DURUMLARI, type Personel, type PersonelAtamaGecmisi, type PersonelAtamaManuelGun, type PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
+import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -545,7 +546,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
   // Accordion başlığında "yatması gereken - yatan - bordro tahmini = sonuç" göstermek için.
-  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null }>>(new Map());
+  const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>>(new Map());
   // İş bitim tarihi haritası — santiye_id → { baslangic_tarihi, sure_text, is_bitim_tarihi, isyeri_teslim_tarihi, is_suresi }
   // iscilik_takibi VE santiyeler verilerinden birleşik
   const [iscilikBitimMap, setIscilikBitimMap] = useState<Map<string, {
@@ -944,7 +945,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const firmaIdMap = new Map<string, string>(); // santiye_id → firma_id
       // Prim hesabı için santiye_id → { yatmasiGereken, yatan, sonAy } map'i
       // Aynı şantiyenin birden fazla iscilik_takibi kaydı olabilir → toplam alınır.
-      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null }>();
+      const primInfo = new Map<string, { yatmasiGereken: number; yatan: number; sonAyNum: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>();
       // ait_oldugu_ay "MM.YYYY" → numerik karşılaştırma için YYYYMM
       const ayYilNum = (s: string): number => {
         if (!s) return 0;
@@ -970,7 +971,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         isyeri_teslim_tarihi: string | null;
         is_suresi: number | null;
       }>();
-      for (const r of (iscilik as { id: string; santiye_id: string; baslangic_tarihi?: string | null; sure_text?: string | null; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null }) | null }[]) ?? []) {
+      for (const r of (iscilik as { id: string; santiye_id: string; baslangic_tarihi?: string | null; sure_text?: string | null; kesif_artisi: number | null; fiyat_farki: number | null; netsim_fiyat_farki?: number | null; iscilik_orani: number | null; yatan_prim: number | null; santiyeler?: (SantiyeBasic & { sozlesme_bedeli?: number | null; sozlesme_fiyatlariyla_gerceklesen?: number | null; netsim_gerceklesen?: number | null }) | null }[]) ?? []) {
         const sant = r.santiyeler ?? null;
         // BÜTÜN iscilik_takibi'ye girmiş işleri al — sekme filtresi (Bordro / Geçici Kabulü)
         // sonradan ayıracak. Burada "bitmiş" diye filtreleme yapmıyoruz.
@@ -989,6 +990,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           const bedel = sant?.sozlesme_bedeli ?? 0;
           const kesif = r.kesif_artisi ?? 0;
           const ff = r.fiyat_farki ?? 0;
+          // Rozet: fiyat farkı, senkronun en son yazdığı değerle birebir aynıysa Netsim kaynaklıdır.
+          const ffNetsim = netsimKaynakli(r.fiyat_farki, r.netsim_fiyat_farki);
+          // Tamamlanan keşif (sözleşme fiyatlarıyla gerçekleşen) — şantiyenin kendi alanı.
+          const gerceklesen = sant?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
+          const gerceklesenNetsim = netsimKaynakli(gerceklesen, sant?.netsim_gerceklesen);
           const oran = r.iscilik_orani ?? 0;
           const yatacak = (bedel + kesif + ff) * oran / 100;
           const yatan = r.yatan_prim ?? 0;
@@ -998,20 +1004,29 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           if (mevcut) {
             mevcut.yatmasiGereken += yatacak;
             mevcut.yatan += yatan;
+            // Sözleşme bedeli şantiyenin kendi alanı — takibi başına tekrar etmesin, en büyüğü tutulur.
+            // Keşif artışı ve fiyat farkı takibi bazlı → toplanır. Oran farklıysa en büyüğü gösterilir.
+            if (bedel > mevcut.bedel) mevcut.bedel = bedel;
+            if (gerceklesen > mevcut.gerceklesen) { mevcut.gerceklesen = gerceklesen; mevcut.gerceklesenNetsim = gerceklesenNetsim; }
+            mevcut.kesif += kesif;
+            mevcut.ff += ff;
+            // Birden fazla takibi varsa: hepsi Netsim'den gelmedikçe rozet çıkmaz.
+            mevcut.ffNetsim = mevcut.ffNetsim && ffNetsim;
+            if (oran > mevcut.oran) mevcut.oran = oran;
             // Birden fazla takibi varsa max sonAyNum'u tut
             if (sonAyN > mevcut.sonAyNum) {
               mevcut.sonAyNum = sonAyN;
               mevcut.sonAy = sonAy;
             }
           } else {
-            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy });
+            primInfo.set(r.santiye_id, { yatmasiGereken: yatacak, yatan, sonAyNum: sonAyN, sonAy, bedel, kesif, ff, ffNetsim, oran, gerceklesen, gerceklesenNetsim });
           }
         }
       }
       // Final map: sonAyNum'u dışarı taşımadan sadece görünen alanları sakla
-      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null }>();
+      const finalPrimMap = new Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean }>();
       for (const [k, v] of primInfo) {
-        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy });
+        finalPrimMap.set(k, { yatmasiGereken: v.yatmasiGereken, yatan: v.yatan, sonAy: v.sonAy, bedel: v.bedel, kesif: v.kesif, ff: v.ff, ffNetsim: v.ffNetsim, oran: v.oran, gerceklesen: v.gerceklesen, gerceklesenNetsim: v.gerceklesenNetsim });
       }
       setPrimMap(finalPrimMap);
       setIscilikBitimMap(bitimInfo);
@@ -4190,7 +4205,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           onClick={onToggle}
         >
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
-          <div className="flex-1 min-w-0">
+          {/* SOL SÜTUN: iş adı + prim/bitim satırları. lg'de sabit genişlik → uzun adlar hep aynı
+              noktada kesilir, gri ayırıcı çizgi ve sağdaki sözleşme rakamları her kartta aynı hizadan
+              başlar. Yüzde KULLANILMAZ: yüzde kalan genişliğe göre ölçülür, sağdaki rozetler
+              (ör. "41 gün") karttan karta değişince çizgi kayardı. */}
+          <div className="flex-1 min-w-0 lg:flex-none lg:w-[28rem] 2xl:w-[34rem] lg:border-r lg:border-gray-300 lg:pr-3">
             <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
               {calDonemEtiket && (
@@ -4221,7 +4240,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               // Title: mobilde TruncateTooltip bunu toast olarak gösterir — formülün adı yerine
               // gerçek rakamları (etiketli olarak) göster ki kullanıcı hesabı görebilsin.
               const titleMetni =
-                `Yatması Gereken: ${fmt(yatmasi)} ₺\n` +
+                `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺\n` +
+                `Ek Sözleşme Bedeli: ${fmt(prim.kesif)} ₺\n` +
+                `Fiyat Farkı: ${fmt(prim.ff)} ₺${prim.ffNetsim ? " (Netsim)" : ""}\n` +
+                `İşçilik Oranı: %${prim.oran}\n` +
+                `──────────\n` +
+                `Yatması Gereken: ${fmt(yatmasi)} ₺   = (${fmt(prim.bedel)} + ${fmt(prim.kesif)} + ${fmt(prim.ff)}) × %${prim.oran}\n` +
                 `Yatan: ${fmt(yatan)} ₺\n` +
                 `Bordro Tahmini: ${fmt(bordro)} ₺\n` +
                 `Sonuç: ${fmt(sonuc)} ₺`;
@@ -4273,6 +4297,75 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               );
             })()}
           </div>
+          {/* SAĞ SÜTUN: sözleşme bedeli / ek sözleşme bedeli (= keşif artışı) / fiyat farkı.
+              Etiket solda, tutar sağda; 2 sütunlu grid + tabular-nums ile rakamlar hem kendi
+              içinde hem kartlar arasında hizalı. Sol sütunun YANINDA durur → kart yüksekliği
+              artmaz. Bu üç rakam alttaki SGK prim satırının "yatması gereken" ayağını besler:
+              (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100.
+              Fiyat farkı sadece doluysa satır açar. lg altında tümü gizlenir — aynı rakamlar
+              prim satırının tooltip'inde (mobilde toast) yine var. */}
+          {(() => {
+            // Rakamı olmayan işte (ör. ihalesiz "İkikat Merkez") bile aynı genişlikte BOŞ sütun
+            // bırakılır — yoksa kişi sayısı / "Tümünü Seç" rozetleri sola kayıp diğer kartlarla
+            // hizasız durur.
+            const bosSutun = <div className="hidden lg:block flex-1" aria-hidden="true" />;
+            if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return bosSutun;
+            const prim = primMap.get(santiyeId);
+            if (!prim) return bosSutun;
+            if (prim.bedel === 0 && prim.kesif === 0 && prim.ff === 0) return bosSutun;
+            // Para formatı: binlik ayraç + her zaman 2 ondalık.
+            const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            // Yüzde biçimi: "%82,23"
+            const yuzde = (n: number) => `%${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const satir = (etiket: string, deger: number, renk: string, ipucu: string, ek?: React.ReactNode) => (
+              <>
+                <span className="text-gray-400 whitespace-nowrap" title={ipucu}>{etiket}</span>
+                <span className={`text-right tabular-nums font-semibold whitespace-nowrap ${deger === 0 ? "text-gray-300" : renk}`} title={ipucu}>
+                  {fmt(deger)}
+                </span>
+                {/* Üçüncü sütun = ekler (Netsim rozeti, gerçekleşen tutar/oran). Bunlar tutar
+                    hücresinin İÇİNDE olsaydı o satırın rakamını sola itip diğer satırlarla
+                    hizasız bırakırdı. */}
+                <span className="flex items-center gap-1.5 whitespace-nowrap">{ek}</span>
+              </>
+            );
+            return (
+              <div className="hidden lg:block flex-1 min-w-0 overflow-hidden">
+                {/* w-fit ŞART: grid kabı genişliğe yayılırsa "auto" sütunlar boş alanı yutar ve
+                    etiket sütunu genişleyip tutarları sağa iter. w-fit ile izler içeriğe göre
+                    daralır, blok sola yaslı kalır. Etiket sütunu auto ama en geniş etiket
+                    ("Ek Sözleşme Bedeli") her kartta yazıldığından genişlik tüm kartlarda aynı;
+                    tutar sütunu sabit 6rem olduğu için rakamlar alt alta ve kartlar arası hizalı. */}
+                <div className="grid w-fit grid-cols-[auto_6rem_auto] items-center gap-x-1.5 text-[10px] font-mono leading-[1.2]">
+                  {satir("Sözleşme Bedeli", prim.bedel, "text-[#1E3A5F]", `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺`,
+                    prim.gerceklesen > 0 ? (
+                      <>
+                        <span className="text-gray-300">−</span>
+                        <span className="tabular-nums text-gray-400" title="Tamamlanan keşif (sözleşme fiyatlarıyla gerçekleşen)">
+                          {fmt(prim.gerceklesen)}
+                        </span>
+                        {prim.gerceklesenNetsim && <NetsimRozet />}
+                        {prim.bedel > 0 && (
+                          <span className="font-semibold text-emerald-700" title="Gerçekleşme oranı (tamamlanan keşif / sözleşme bedeli)">
+                            {yuzde((prim.gerceklesen / prim.bedel) * 100)}
+                          </span>
+                        )}
+                      </>
+                    ) : null)}
+                  {satir("Ek Sözleşme Bedeli", prim.kesif, "text-orange-600", `Ek Sözleşme Bedeli (İşçilik Durum Raporu'ndaki Keşif Artışı): ${fmt(prim.kesif)} ₺`)}
+                  {prim.ff !== 0 && satir(
+                    "Fiyat Farkı",
+                    prim.ff,
+                    "text-purple-700",
+                    prim.ffNetsim
+                      ? `Fiyat Farkı: ${fmt(prim.ff)} ₺ — Netsim'den otomatik geldi`
+                      : `Fiyat Farkı: ${fmt(prim.ff)} ₺ — elle girildi`,
+                    prim.ffNetsim ? <NetsimRozet /> : null,
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {tumGun > 0 && (
             <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
               {tumGun} gün
