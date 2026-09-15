@@ -131,7 +131,9 @@ export default function PushBildirimMenu() {
     if (durum !== "acik" && durum !== "kapali") return;
     const cek = async () => {
       try {
-        const res = await fetch(`/api/bildirim-gecmisi?tarih=${seciliTarih}`);
+        // sadeceSayi=1: rozet YALNIZ sayıyı kullanıyor — o günün bildirim listesi (başlık+gövde
+        // metinleriyle ~16 KB) 30 sn'de bir boşuna inmesin. Liste, menü açılınca ayrıca çekiliyor.
+        const res = await fetch(`/api/bildirim-gecmisi?tarih=${seciliTarih}&sadeceSayi=1`);
         if (res.ok) {
           const data = await res.json() as { okunmamisSayisi: number };
           setOkunmamisSayisi(data.okunmamisSayisi ?? 0);

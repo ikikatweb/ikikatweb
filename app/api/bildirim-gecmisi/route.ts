@@ -71,27 +71,34 @@ export async function GET(request: Request) {
     tarih = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   }
 
+  // sadeceSayi=1 → YALNIZ rozet sayısı istenir, o günün bildirim listesi hiç çekilmez.
+  // Zil rozeti 30 sn'de bir yokluyor ve listeyi kullanmıyordu; boşuna inen ~16 KB/yoklama
+  // kullanıcı başına günde ~15 MB çıkış trafiği demekti.
+  const sadeceSayi = url.searchParams.get("sadeceSayi") === "1";
+
   const supabase = getServiceClient();
 
   // Seçili tarih aralığında bildirimler. santiye_id kolonu yoksa fallback uygula.
   let gecmisRaw: Array<{ id: string; baslik: string; govde: string; url: string; tag: string | null; tarih: string; saat: string; okundu: boolean; created_at: string; santiye_id?: string | null }> = [];
-  const q1 = await supabase
-    .from("bildirim_gecmisi")
-    .select("id, baslik, govde, url, tag, tarih, saat, okundu, created_at, santiye_id")
-    .eq("kullanici_id", kullaniciId)
-    .eq("tarih", tarih)
-    .order("created_at", { ascending: false });
-  if (q1.error && /column .*santiye_id/i.test(q1.error.message)) {
-    // Kolon yoksa eski şema
-    const q2 = await supabase
+  if (!sadeceSayi) {
+    const q1 = await supabase
       .from("bildirim_gecmisi")
-      .select("id, baslik, govde, url, tag, tarih, saat, okundu, created_at")
+      .select("id, baslik, govde, url, tag, tarih, saat, okundu, created_at, santiye_id")
       .eq("kullanici_id", kullaniciId)
       .eq("tarih", tarih)
       .order("created_at", { ascending: false });
-    gecmisRaw = q2.data ?? [];
-  } else {
-    gecmisRaw = q1.data ?? [];
+    if (q1.error && /column .*santiye_id/i.test(q1.error.message)) {
+      // Kolon yoksa eski şema
+      const q2 = await supabase
+        .from("bildirim_gecmisi")
+        .select("id, baslik, govde, url, tag, tarih, saat, okundu, created_at")
+        .eq("kullanici_id", kullaniciId)
+        .eq("tarih", tarih)
+        .order("created_at", { ascending: false });
+      gecmisRaw = q2.data ?? [];
+    } else {
+      gecmisRaw = q1.data ?? [];
+    }
   }
 
   // İzin filtresi: kullanıcının yetkili olmadığı modülün geçmiş bildirimlerini gizle.
@@ -120,24 +127,36 @@ export async function GET(request: Request) {
   }
   const gecmis = (gecmisRaw ?? []).filter((b) => izinli(b.tag, b.santiye_id));
 
-  // Okunmamış sayısı (santiye_id varsa onu da çek)
-  let okunmamisListe: Array<{ tag: string | null; santiye_id?: string | null }> = [];
-  const ok1 = await supabase
-    .from("bildirim_gecmisi")
-    .select("tag, santiye_id")
-    .eq("kullanici_id", kullaniciId)
-    .eq("okundu", false);
-  if (ok1.error && /column .*santiye_id/i.test(ok1.error.message)) {
-    const ok2 = await supabase
+  // Okunmamış sayısı — GRUPLANMIŞ say (bildirim_okunmamis_ozet RPC, bkz. sql/bildirim_egress.sql).
+  // İzin süzgeci (tag + şantiye) için satırların kendisi değil, (tag, santiye_id) kırılımındaki
+  // SAYILAR yeter. 2.000+ okunmamışı olan kullanıcıda ~65 KB yerine ~2 KB iner; sonuç birebir aynı.
+  // RPC henüz kurulmadıysa (SQL çalıştırılmamış) eski yola düşülür → davranış bozulmaz.
+  let okunmamisSayisi: number | null = null;
+  const ozet = await supabase.rpc("bildirim_okunmamis_ozet", { p_kullanici_id: kullaniciId });
+  if (!ozet.error && Array.isArray(ozet.data)) {
+    const satirlar = ozet.data as Array<{ tag: string | null; santiye_id: string | null; adet: number }>;
+    okunmamisSayisi = satirlar.reduce((t, r) => t + (izinli(r.tag, r.santiye_id) ? Number(r.adet) : 0), 0);
+  }
+  if (okunmamisSayisi === null) {
+    // ESKİ YOL (RPC yok): tüm okunmamış satırları çekip say. Pahalı — SQL çalıştırılınca devre dışı kalır.
+    let okunmamisListe: Array<{ tag: string | null; santiye_id?: string | null }> = [];
+    const ok1 = await supabase
       .from("bildirim_gecmisi")
-      .select("tag")
+      .select("tag, santiye_id")
       .eq("kullanici_id", kullaniciId)
       .eq("okundu", false);
-    okunmamisListe = ok2.data ?? [];
-  } else {
-    okunmamisListe = ok1.data ?? [];
+    if (ok1.error && /column .*santiye_id/i.test(ok1.error.message)) {
+      const ok2 = await supabase
+        .from("bildirim_gecmisi")
+        .select("tag")
+        .eq("kullanici_id", kullaniciId)
+        .eq("okundu", false);
+      okunmamisListe = ok2.data ?? [];
+    } else {
+      okunmamisListe = ok1.data ?? [];
+    }
+    okunmamisSayisi = okunmamisListe.filter((b) => izinli(b.tag, b.santiye_id)).length;
   }
-  const okunmamisSayisi = okunmamisListe.filter((b) => izinli(b.tag, b.santiye_id)).length;
 
   return NextResponse.json({
     tarih,
