@@ -4233,7 +4233,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             (4 × 12px + py-2.5) taban olarak sabitlendi; rakamı hiç olmayan kartlar da
             aynı boyda kalıyor. Dar ekranda rakamlar gizli olduğundan taban da uygulanmaz. */}
         <div
-          className="flex items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
+          className="flex flex-wrap items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
           style={{ borderLeftColor: renk }}
           onClick={onToggle}
         >
@@ -4336,8 +4336,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               içinde hem kartlar arasında hizalı. Sol sütunun YANINDA durur → kart yüksekliği
               artmaz. Bu üç rakam alttaki SGK prim satırının "yatması gereken" ayağını besler:
               (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100.
-              Fiyat farkı sadece doluysa satır açar. lg altında tümü gizlenir — aynı rakamlar
-              prim satırının tooltip'inde (mobilde toast) yine var. */}
+              Fiyat farkı sadece doluysa satır açar. TELEFONDA gizlenmez: order-last + basis-full
+              ile başlığın altına tam genişlikte iner (yan yana sığmaz), bir punto büyük yazılır ve
+              satır sonu bilgileri sarabilir. */}
           {(() => {
             // Rakamı olmayan işte (ör. ihalesiz "İkikat Merkez") bile aynı genişlikte BOŞ sütun
             // bırakılır — yoksa kişi sayısı / "Tümünü Seç" rozetleri sola kayıp diğer kartlarla
@@ -4367,17 +4368,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {/* Üçüncü sütun = ekler (Netsim rozeti, gerçekleşen tutar/oran). Bunlar tutar
                     hücresinin İÇİNDE olsaydı o satırın rakamını sola itip diğer satırlarla
                     hizasız bırakırdı. */}
-                <span className="flex items-center gap-1.5 whitespace-nowrap">{ek}</span>
+                <span className="flex flex-wrap items-center gap-x-1.5 lg:flex-nowrap lg:whitespace-nowrap">{ek}</span>
               </>
             );
             return (
-              <div className="hidden lg:block flex-1 min-w-0 overflow-hidden">
+              <div className="order-last basis-full mt-1.5 pt-1.5 border-t border-gray-100 lg:order-none lg:basis-auto lg:mt-0 lg:pt-0 lg:border-t-0 lg:flex-1 min-w-0">
                 {/* w-fit ŞART: grid kabı genişliğe yayılırsa "auto" sütunlar boş alanı yutar ve
                     etiket sütunu genişleyip tutarları sağa iter. w-fit ile izler içeriğe göre
                     daralır, blok sola yaslı kalır. Etiket sütunu auto ama en geniş etiket
                     ("Ek Sözleşme Bedeli") her kartta yazıldığından genişlik tüm kartlarda aynı;
-                    tutar sütunu sabit 6rem olduğu için rakamlar alt alta ve kartlar arası hizalı. */}
-                <div className="grid w-fit grid-cols-[auto_6rem_auto] items-center gap-x-1.5 text-[10px] font-mono leading-[1.2]">
+                    tutar sütunu sabit genişlikte olduğu için rakamlar alt alta ve kartlar arası hizalı. */}
+                <div className="grid w-fit grid-cols-[auto_6.5rem_auto] lg:grid-cols-[auto_6rem_auto] items-center gap-x-1.5 gap-y-0.5 lg:gap-y-0 text-[11px] lg:text-[10px] font-mono leading-[1.35] lg:leading-[1.2]">
                   {satir("Sözleşme Bedeli", prim.bedel, "text-[#1E3A5F]", `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺`,
                     prim.gerceklesen > 0 ? (
                       <>
