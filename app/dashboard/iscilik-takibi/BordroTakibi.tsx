@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus, AlertTriangle } from "lucide-react";
+import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus, AlertTriangle, Banknote } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import XLSX from "xlsx-js-style";
@@ -553,6 +553,28 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Prime giren "yatması gereken": tahmini FF kapalıysa tahminsiz karşılığı kullanılır.
   const yatmasiGerekenFor = (prim: { yatmasiGereken: number; yatmasiGerekenTahminsiz: number }) =>
     tahminiFFKapali ? prim.yatmasiGerekenTahminsiz : prim.yatmasiGereken;
+  // Telefonda sözleşme rakamlarını gösteren pencere — kart başlığındaki ₺ tuşu açar.
+  // Masaüstünde aynı bilgiler zaten satır satır kartın sağında duruyor; dar ekranda
+  // yan yana sığmadığı ve alt alta yazınca kart okunmaz hâle geldiği için pencereye alındı.
+  const [bilgiSantiyeId, setBilgiSantiyeId] = useState<string | null>(null);
+  const paraFmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const yuzdeFmt = (n: number) => `%${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Kart ile pencere AYNI rakamı göstersin diye tek kaynak.
+  function sozlesmeBilgisi(santiyeId: string) {
+    const prim = primMap.get(santiyeId);
+    if (!prim) return null;
+    const sh = sonHakedisMap.get(santiyeId);
+    const kalanKesif = prim.bedel + prim.kesif - prim.gerceklesen;
+    const ffOran = sh && sh.kesif > 0 && sh.fark > 0 ? sh.fark / sh.kesif : 0;
+    const tahmin = ffOran > 0 && kalanKesif > 0 ? kalanKesif * ffOran : 0;
+    return {
+      prim, kalanKesif, ffOran, tahmin,
+      gerceklesmeOrani: prim.bedel > 0 ? (prim.gerceklesen / prim.bedel) * 100 : 0,
+      sonHakTarih: sh?.tarih ?? null,
+      sonHakKesif: sh?.kesif ?? 0,
+      sonHakFark: sh?.fark ?? 0,
+    };
+  }
   const [primMap, setPrimMap] = useState<Map<string, { yatmasiGereken: number; yatan: number; sonAy: string | null; bedel: number; kesif: number; ff: number; ffNetsim: boolean; oran: number; gerceklesen: number; gerceklesenNetsim: boolean; tahminiFF: number; yatmasiGerekenTahminsiz: number }>>(new Map());
   // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir. sql/netsim_son_hakedis.sql
@@ -4233,7 +4255,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             (4 × 12px + py-2.5) taban olarak sabitlendi; rakamı hiç olmayan kartlar da
             aynı boyda kalıyor. Dar ekranda rakamlar gizli olduğundan taban da uygulanmaz. */}
         <div
-          className="flex flex-wrap items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
+          className="flex items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
           style={{ borderLeftColor: renk }}
           onClick={onToggle}
         >
@@ -4336,9 +4358,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               içinde hem kartlar arasında hizalı. Sol sütunun YANINDA durur → kart yüksekliği
               artmaz. Bu üç rakam alttaki SGK prim satırının "yatması gereken" ayağını besler:
               (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100.
-              Fiyat farkı sadece doluysa satır açar. TELEFONDA gizlenmez: order-last + basis-full
-              ile başlığın altına tam genişlikte iner (yan yana sığmaz), bir punto büyük yazılır ve
-              satır sonu bilgileri sarabilir. */}
+              Fiyat farkı sadece doluysa satır açar. lg altında yan yana sığmadığı için gizlenir;
+              telefonda aynı bilgiler başlıktaki ₺ tuşuyla açılan pencerede gösterilir. */}
           {(() => {
             // Rakamı olmayan işte (ör. ihalesiz "İkikat Merkez") bile aynı genişlikte BOŞ sütun
             // bırakılır — yoksa kişi sayısı / "Tümünü Seç" rozetleri sola kayıp diğer kartlarla
@@ -4368,17 +4389,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {/* Üçüncü sütun = ekler (Netsim rozeti, gerçekleşen tutar/oran). Bunlar tutar
                     hücresinin İÇİNDE olsaydı o satırın rakamını sola itip diğer satırlarla
                     hizasız bırakırdı. */}
-                <span className="flex flex-wrap items-center gap-x-1.5 lg:flex-nowrap lg:whitespace-nowrap">{ek}</span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">{ek}</span>
               </>
             );
             return (
-              <div className="order-last basis-full mt-1.5 pt-1.5 border-t border-gray-100 lg:order-none lg:basis-auto lg:mt-0 lg:pt-0 lg:border-t-0 lg:flex-1 min-w-0">
+              <div className="hidden lg:block flex-1 min-w-0 overflow-hidden">
                 {/* w-fit ŞART: grid kabı genişliğe yayılırsa "auto" sütunlar boş alanı yutar ve
                     etiket sütunu genişleyip tutarları sağa iter. w-fit ile izler içeriğe göre
                     daralır, blok sola yaslı kalır. Etiket sütunu auto ama en geniş etiket
                     ("Ek Sözleşme Bedeli") her kartta yazıldığından genişlik tüm kartlarda aynı;
                     tutar sütunu sabit genişlikte olduğu için rakamlar alt alta ve kartlar arası hizalı. */}
-                <div className="grid w-fit grid-cols-[auto_6.5rem_auto] lg:grid-cols-[auto_6rem_auto] items-center gap-x-1.5 gap-y-0.5 lg:gap-y-0 text-[11px] lg:text-[10px] font-mono leading-[1.35] lg:leading-[1.2]">
+                <div className="grid w-fit grid-cols-[auto_6rem_auto] items-center gap-x-1.5 text-[10px] font-mono leading-[1.2]">
                   {satir("Sözleşme Bedeli", prim.bedel, "text-[#1E3A5F]", `Sözleşme Bedeli: ${fmt(prim.bedel)} ₺`,
                     prim.gerceklesen > 0 ? (
                       <>
@@ -4437,6 +4458,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               </div>
             );
           })()}
+          {/* TELEFON: sözleşme rakamları yan sütuna sığmıyor → tek tuş, pencerede gösterilir. */}
+          {santiyeId !== PASIF_KEY && santiyeId !== ATANMAMIS_KEY && primMap.has(santiyeId) && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setBilgiSantiyeId(santiyeId); }}
+              title="Sözleşme bilgileri"
+              aria-label="Sözleşme bilgileri"
+              className="lg:hidden h-6 w-6 flex items-center justify-center rounded-full border border-[#1E3A5F]/25 text-[#1E3A5F] bg-[#1E3A5F]/5 active:bg-[#1E3A5F]/15 flex-shrink-0"
+            >
+              <Banknote size={13} />
+            </button>
+          )}
           {tumGun > 0 && (
             <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
               {tumGun} gün
@@ -6262,6 +6295,76 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={geriAlYap} disabled={!geriAlSantiye}>Geri Al + Mail</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* TELEFON: sözleşme bilgileri penceresi. Masaüstünde aynı rakamlar kartın sağında
+          satır satır duruyor; dar ekranda yan yana sığmadığı için buraya alındı. */}
+      <Dialog open={!!bilgiSantiyeId} onOpenChange={(o) => !o && setBilgiSantiyeId(null)}>
+        <DialogContent className="max-w-[92vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm leading-snug pr-6">
+              {santiyeler.find((x) => x.id === bilgiSantiyeId)?.is_adi ?? "Sözleşme Bilgileri"}
+            </DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const b = bilgiSantiyeId ? sozlesmeBilgisi(bilgiSantiyeId) : null;
+            if (!b) return <p className="text-sm text-gray-500">Bu iş için sözleşme bilgisi yok.</p>;
+            const { prim } = b;
+            // Etiket üstte küçük gri, tutar altta büyük — dar ekranda iki sütun sıkışmasın diye.
+            const Kalem = ({ etiket, tutar, renk, alt, ustu }: {
+              etiket: string; tutar: number; renk: string; alt?: React.ReactNode; ustu?: boolean;
+            }) => (
+              <div className="py-2 border-b border-gray-100 last:border-b-0">
+                <div className={`text-[11px] ${ustu ? "text-gray-400 line-through decoration-red-500 decoration-2" : "text-gray-500"}`}>{etiket}</div>
+                <div className={`text-base font-semibold tabular-nums ${ustu ? "text-gray-300 line-through decoration-red-400" : renk}`}>
+                  {paraFmt(tutar)} ₺
+                </div>
+                {alt && <div className="text-[11px] text-gray-500 mt-0.5">{alt}</div>}
+              </div>
+            );
+            return (
+              <div className="-mt-1">
+                <Kalem etiket="Sözleşme Bedeli" tutar={prim.bedel} renk="text-[#1E3A5F]"
+                  alt={prim.gerceklesen > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 flex-wrap">
+                      <span>Tamamlanan keşif: <span className="tabular-nums">{paraFmt(prim.gerceklesen)}</span></span>
+                      {prim.gerceklesenNetsim && <NetsimRozet />}
+                      <span className="font-semibold text-emerald-700">{yuzdeFmt(b.gerceklesmeOrani)}</span>
+                    </span>
+                  ) : null} />
+                <Kalem etiket="Ek Sözleşme Bedeli" tutar={prim.kesif} renk="text-orange-600" />
+                <Kalem etiket="Fiyat Farkı" tutar={prim.ff} renk="text-purple-700"
+                  alt={prim.ff !== 0 ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {prim.ffNetsim ? <>{"Netsim'den geldi"} <NetsimRozet /></> : "Elle girildi"}
+                    </span>
+                  ) : null} />
+                {b.tahmin > 0 && (
+                  <Kalem etiket="Tahmini Fiyat Farkı" tutar={b.tahmin} renk="text-purple-500" ustu={tahminiFFKapali}
+                    alt={<>
+                      Kalan keşif <span className="tabular-nums">{paraFmt(b.kalanKesif)}</span> × {yuzdeFmt(b.ffOran * 100)}
+                      {b.sonHakTarih && <> · {new Date(b.sonHakTarih + "T00:00:00").toLocaleDateString("tr-TR")} tarihli son hakediş</>}
+                    </>} />
+                )}
+                {b.tahmin > 0 && (
+                  <button type="button" onClick={() => setTahminiFFKapali((v) => !v)}
+                    className={`mt-3 w-full h-9 rounded-md border text-xs font-semibold ${
+                      tahminiFFKapali
+                        ? "border-emerald-300 text-emerald-700 bg-emerald-50"
+                        : "border-red-300 text-red-700 bg-red-50"
+                    }`}>
+                    {tahminiFFKapali ? "Tahmini fiyat farkını hesaba kat" : "Tahmini fiyat farkını hesaba katma"}
+                  </button>
+                )}
+                <div className="mt-3 pt-2 border-t text-[11px] text-gray-500 leading-relaxed">
+                  Yatması Gereken Prim = (sözleşme + ek sözleşme + fiyat farkı
+                  {tahminiFFKapali ? "" : " + tahmini fiyat farkı"}) × %{prim.oran} ={" "}
+                  <span className="font-semibold text-[#1E3A5F] tabular-nums">{paraFmt(yatmasiGerekenFor(prim))} ₺</span>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
