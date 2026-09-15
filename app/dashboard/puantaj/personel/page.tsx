@@ -1408,7 +1408,7 @@ export default function PersonelPuantajPage() {
                         return (
                           <TableCell
                             key={g}
-                            className={`p-0 isolate text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-50 ${haftaSonu ? "bg-gray-100" : ""}`}
+                            className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-50 ${haftaSonu ? "bg-gray-100" : ""}`}
                           >
                             <div
                               className="w-full h-[35px] flex items-center justify-center text-gray-300 select-none"
@@ -1428,7 +1428,7 @@ export default function PersonelPuantajPage() {
                         return (
                           <TableCell
                             key={g}
-                            className={`p-0 isolate text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-100/70 ${haftaSonu ? "bg-gray-200/70" : ""}`}
+                            className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 bg-gray-100/70 ${haftaSonu ? "bg-gray-200/70" : ""}`}
                           >
                             <div
                               className="w-full h-[35px] flex items-center justify-center text-gray-300"
@@ -1440,14 +1440,9 @@ export default function PersonelPuantajPage() {
                         );
                       }
 
-                      // isolate (aşağıdaki gün hücrelerinde): hücre kendi yığın bağlamını kurar ama
-                      // KONUMLANDIRILMAZ. İçindeki "relative" buton böylece dışarı taşıp sabit isim
-                      // sütununun üstüne çıkamıyor, konumsuz eleman olarak onun altında boyanıyor.
-                      // Sabit sütuna z-index VERİLMİYOR — bkz. components/ui/table.tsx uyarısı:
-                      // z-index başlığı örtüyor, mobilde de isimlerin kaybolmasına yol açıyordu.
                       if (kilitli) {
                         return (
-                          <TableCell key={g} className={`p-0 isolate text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                          <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                             <button
                               type="button"
                               onClick={() => hucreTikla(p, g)}
@@ -1461,7 +1456,7 @@ export default function PersonelPuantajPage() {
                       }
 
                       return (
-                        <TableCell key={g} className={`p-0 isolate text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
+                        <TableCell key={g} className={`p-0 text-center min-w-[35px] w-[35px] border-l border-gray-100 ${haftaSonu ? "bg-gray-50" : ""}`}>
                           <button
                             type="button"
                             onClick={(e) => {
