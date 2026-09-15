@@ -193,6 +193,10 @@ export default function IscilikTakibiPage() {
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Her iscilik_takibi_id için aylık tabloda en son girilen ay (ait_oldugu_ay)
   const [iscilikSonAyMap, setIscilikSonAyMap] = useState<Map<string, string>>(new Map());
+  // Tahmini fiyat farkı HESAP DIŞI bırakılan satırlar (iscilik_takibi.id kümesi).
+  // Bilerek SADECE bu sekmede yaşar, veritabanına yazılmaz: "bu tahmin tutmazsa prim ne olur"
+  // sorusuna bakmak için. Sayfa yenilenince hepsi geri hesaba girer.
+  const [tahminiFFHaric, setTahminiFFHaric] = useState<Set<string>>(new Set());
   // Netsim'in yazdığı son hakediş tutarları — santiye_id → { kesif, fark, tarih }.
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir.
   const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
@@ -481,7 +485,7 @@ export default function IscilikTakibiPage() {
   function tr(s: string): string {
     return s.replace(/ğ/g,"g").replace(/Ğ/g,"G").replace(/ü/g,"u").replace(/Ü/g,"U")
       .replace(/ş/g,"s").replace(/Ş/g,"S").replace(/ö/g,"o").replace(/Ö/g,"O")
-      .replace(/ç/g,"c").replace(/Ç/g,"C").replace(/ı/g,"i").replace(/İ/g,"I").replace(/—/g,"-");
+      .replace(/ç/g,"c").replace(/Ç/g,"C").replace(/ı/g,"i").replace(/İ/g,"I").replace(/—/g,"-").replace(/✕/g,"x");
   }
 
   // yatan_prim altındaki silik gri rakam — tabloda ve PDF'te aynı değer çıkması için tek helper
@@ -566,7 +570,9 @@ export default function IscilikTakibiPage() {
   // Oran işin ORTALAMASI değil EN SON hakedişin oranıdır: fiyat farkı Yi-ÜFE ile hakediş
   // hakediş yükseldiğinden ortalama, kalan işi ciddi biçimde eksik tahmin ediyor.
   // Netsim verisi yoksa, son hakedişte fiyat farkı alınmamışsa veya keşif bittiyse → 0.
-  function tahminiFiyatFarkiHesapla(row: IscilikTakibiWithSantiye): number {
+  // HAM tahmin: hesap dışı bırakılmış olsa bile hesaplanır — hücrede üzeri çizili olarak
+  // gösterilebilsin diye. Prime giren değer için tahminiFiyatFarkiHesapla() kullanılır.
+  function tahminiFiyatFarkiHam(row: IscilikTakibiWithSantiye): number {
     const sh = row.santiye_id ? sonHakedisMap.get(row.santiye_id) : undefined;
     if (!sh || sh.kesif <= 0 || sh.fark <= 0) return 0;
     const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
@@ -575,6 +581,21 @@ export default function IscilikTakibiPage() {
     const kalanKesif = bedel + kesif - gerceklesen;
     if (kalanKesif <= 0) return 0;
     return kalanKesif * (sh.fark / sh.kesif);
+  }
+
+  // Prime GİREN tahmini fiyat farkı. Kullanıcı hücreye tıklayıp hesap dışı bıraktıysa 0.
+  function tahminiFiyatFarkiHesapla(row: IscilikTakibiWithSantiye): number {
+    if (tahminiFFHaric.has(row.id)) return 0;
+    return tahminiFiyatFarkiHam(row);
+  }
+
+  function tahminiFFHaricToggle(row: IscilikTakibiWithSantiye) {
+    if (tahminiFiyatFarkiHam(row) <= 0) return; // gösterilecek tahmin yoksa tıklamanın anlamı yok
+    setTahminiFFHaric((onceki) => {
+      const yeni = new Set(onceki);
+      if (yeni.has(row.id)) yeni.delete(row.id); else yeni.add(row.id);
+      return yeni;
+    });
   }
 
   // Yatması Gereken Prim = (sözleşme bedeli + keşif artışı + fiyat farkı + TAHMİNİ fiyat farkı)
@@ -608,8 +629,10 @@ export default function IscilikTakibiPage() {
       return k === null ? "—" : formatPara(k);
     }
     if (col.key === "tahmini_fiyat_farki") {
-      const t = tahminiFiyatFarkiHesapla(row);
-      return t > 0 ? formatPara(t) : "—";
+      const ham = tahminiFiyatFarkiHam(row);
+      if (ham <= 0) return "—";
+      // Hesap dışıysa rakam yine yazılır ama başına çarpı konur (PDF/Excel'de de görünsün).
+      return tahminiFFHaric.has(row.id) ? `✕ ${formatPara(ham)}` : formatPara(ham);
     }
     // Aşağıdaki ikisi tahmini fiyat farkını içerdiği için module-level formüle bırakılamaz.
     if (col.key === "yatmasi_gereken_prim") {
@@ -1097,13 +1120,21 @@ export default function IscilikTakibiPage() {
                       const bedel = row.santiyeler?.sozlesme_bedeli ?? 0;
                       const kesifArt = row.kesif_artisi ?? 0;
                       const kalanKesif = bedel + kesifArt - (row.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0);
-                      const ipucu = sh && sh.kesif > 0 && sh.fark > 0 && kalanKesif > 0
+                      const ham = tahminiFiyatFarkiHam(row);
+                      const haric = tahminiFFHaric.has(row.id);
+                      const ipucu = ham > 0 && sh
                         ? `Kalan keşif: ${formatPara(kalanKesif)}\n`
                           + `Oran: %${((sh.fark / sh.kesif) * 100).toFixed(2)} (${sh.tarih ? formatTarih(sh.tarih) : "—"} tarihli son hakediş)\n`
-                          + `Tahmini FF: ${formatPara(tahminiFiyatFarkiHesapla(row))}`
+                          + `Tahmini FF: ${formatPara(ham)}\n`
+                          + (haric
+                            ? "HESAP DIŞI — yatması gereken prime katılmıyor. Geri almak için tıklayın."
+                            : "Hesaba dahil. Tıklayınca hesap dışı bırakılır (yalnız bu sekmede, sayfa yenilenince geri döner).")
                         : "Netsim'de hakediş/fiyat farkı verisi yok ya da keşif tamamlanmış";
                       return (
-                        <TableCell key={col.key} style={stickyStyle} className={cellClass + " text-[11px] text-gray-400"} title={ipucu}>
+                        <TableCell key={col.key} style={stickyStyle} title={ipucu}
+                          onClick={() => tahminiFFHaricToggle(row)}
+                          className={cellClass + " text-[11px] " + (ham > 0 ? "cursor-pointer hover:bg-blue-50 " : "")
+                            + (haric ? "text-gray-300 line-through decoration-red-400" : "text-gray-400")}>
                           {hucreDegeri(row, col)}
                         </TableCell>
                       );
