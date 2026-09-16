@@ -2921,7 +2921,10 @@ export default function AracPuantajPage() {
                       <div className="bg-[#64748B] text-white px-4 py-2 text-sm font-semibold">
                         Firma Bazlı Toplam Kira Bedeli
                       </div>
-                      <Table className="text-sm">
+                      {/* containerClassName: Table'ın varsayılan kabı max-h-[75vh] ile sınırlı ve
+                          dikey kaydırma çubuğu çıkarıyordu. Firma sayısı az olduğu için sınır
+                          kaldırıldı; liste içeriği kadar uzuyor, sayfayla birlikte kayıyor. */}
+                      <Table className="text-sm" containerClassName="max-h-none overflow-x-auto">
                         <TableHeader>
                           <TableRow className="bg-gray-100">
                             <TableHead className="px-4 py-2 text-[#1E3A5F] text-xs font-semibold">Firma</TableHead>
