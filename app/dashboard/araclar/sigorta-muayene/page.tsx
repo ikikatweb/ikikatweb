@@ -4,12 +4,13 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   getAraclar, updateArac,
-  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice, linkSigortaTekliflerToPolice, removeSigortaVazgec, insertTeklifGonderim,
+  getTumPoliceler, insertAracPolice, deleteAracPolice, uploadPolice, linkSigortaTekliflerToPolice, removeSigortaVazgec, insertTeklifGonderim, getTeklifGonderimler,
 } from "@/lib/supabase/queries/araclar";
 import { getDegerler, getTanimlamalar, getTumTanimlamalar, unpackAcenteKisaAd } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { useAuth, useOturumFiltresi } from "@/hooks";
-import type { AracWithRelations, AracPolice } from "@/lib/supabase/types";
+import type { AracWithRelations, AracPolice, TeklifGonderim } from "@/lib/supabase/types";
+import { sonGonderimHaritasi, acenteKilidi as acenteKilidiOrtak, gonderimZamani } from "@/lib/utils/teklif-kilit";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -115,6 +116,8 @@ export default function SigortaMuayenePage() {
   const [teklifTip, setTeklifTip] = useState<"kasko" | "trafik">("trafik");
   const [acenteListesi, setAcenteListesi] = useState<{ id: string; ad: string; eposta: string }[]>([]);
   const [seciliAcenteler, setSeciliAcenteler] = useState<Set<string>>(new Set());
+  // Teklif gönderim geçmişi — aynı acenteye tekrar teklif isteme kilidi için.
+  const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
   const [teklifEkBilgi, setTeklifEkBilgi] = useState("");
   const [teklifGonderiliyor, setTeklifGonderiliyor] = useState(false);
 
@@ -166,6 +169,8 @@ export default function SigortaMuayenePage() {
       setPoliceler(policelerData);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
+      // Teklif gönderim geçmişi — acente kilidi için. Gelmezse kilit çalışmaz, akış bozulmaz.
+      setTeklifGonderimler(await getTeklifGonderimler().catch(() => []) as TeklifGonderim[]);
       const trafikGunVal = yakGun.length > 0 ? (parseInt(yakGun[0]) || 30) : 30;
       setYaklasirGun(trafikGunVal);
       // Kasko boş bırakıldıysa trafik değerine düş (geriye uyumlu: tek eşik girenler için davranış aynı kalır).
@@ -273,7 +278,21 @@ export default function SigortaMuayenePage() {
     } catch { setAcenteListesi([]); }
     setTeklifDialogOpen(true);
   }
+  // Aynı acenteye tekrar teklif isteme kilidi — kural lib/utils/teklif-kilit.ts'te,
+  // ana sayfadaki teklif akışıyla ortak.
+  const acenteSonGonderim = useMemo(
+    () => sonGonderimHaritasi(teklifGonderimler, teklifArac?.aracId, teklifTip),
+    [teklifGonderimler, teklifArac, teklifTip],
+  );
+  const acenteKilidi = (ad: string) => acenteKilidiOrtak(acenteSonGonderim, ad);
+
   function acenteToggle(id: string) {
+    const ad = acenteListesi.find((a) => a.id === id)?.ad ?? "";
+    const kilit = acenteKilidi(ad);
+    if (kilit) {
+      toast.error(`${ad} için ${gonderimZamani(kilit.gonderim)} tarihinde teklif istenmiş.`, { duration: toastSuresi() });
+      return;
+    }
     setSeciliAcenteler((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
   async function teklifGonder() {
@@ -281,7 +300,16 @@ export default function SigortaMuayenePage() {
     if (!teklifArac.firmaId) { toast.error("Aracın firma kaydı yok. Araç düzenleme sayfasından firma atayın."); return; }
     setTeklifGonderiliyor(true);
     try {
-      const emails = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.eposta);
+      // Güvenlik ağı: ekrandaki durum bayatlamış olabilir, gönderim anında tekrar bakılır.
+      const secililer = acenteListesi.filter((a) => seciliAcenteler.has(a.id));
+      const kilitliler = secililer.filter((a) => acenteKilidi(a.ad));
+      if (kilitliler.length > 0) {
+        toast.error(`${kilitliler.map((a) => a.ad).join(", ")} için yakın zamanda teklif istenmiş. Seçimden çıkarın.`,
+          { duration: toastSuresi() });
+        setTeklifGonderiliyor(false);
+        return;
+      }
+      const emails = secililer.map((a) => a.eposta);
       const res = await fetch("/api/teklif-mail", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -304,6 +332,8 @@ export default function SigortaMuayenePage() {
             arac_id: teklifArac.aracId, police_tipi: teklifTip,
             acente_adlari: seciliAdlar.join(", "), acente_emailleri: emails.join(", "),
           });
+          // Kilit hemen görünsün diye geçmişi tazele (yoksa sayfa yenilenene kadar açık kalırdı).
+          setTeklifGonderimler(await getTeklifGonderimler().catch(() => []) as TeklifGonderim[]);
         } catch { /* sessiz */ }
         setTeklifDialogOpen(false);
       } else {
@@ -641,13 +671,30 @@ export default function SigortaMuayenePage() {
                 <p className="text-sm text-gray-400">E-posta adresi olan acente bulunamadı. Tanımlamalardan acente ekleyin.</p>
               ) : (
                 <div className="space-y-1 max-h-[200px] overflow-y-auto border rounded-lg p-2">
-                  {acenteListesi.map((a) => (
-                    <label key={a.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
-                      <input type="checkbox" checked={seciliAcenteler.has(a.id)} onChange={() => acenteToggle(a.id)} className="rounded border-gray-300" />
-                      <div className="flex-1"><div className="text-xs font-semibold">{a.ad}</div></div>
-                      <span className="text-[10px] text-gray-400">{a.eposta}</span>
-                    </label>
-                  ))}
+                  {acenteListesi.map((a) => {
+                    const kilit = acenteKilidi(a.ad);
+                    const sonIso = acenteSonGonderim.get(a.ad);
+                    return (
+                      <label key={a.id}
+                        title={kilit ? `${gonderimZamani(kilit.gonderim)} tarihinde teklif istendi` : undefined}
+                        className={`flex items-center gap-3 px-2 py-1.5 rounded ${
+                          kilit ? "bg-gray-50 opacity-60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"
+                        }`}>
+                        <input type="checkbox" checked={seciliAcenteler.has(a.id)} disabled={!!kilit}
+                          onChange={() => acenteToggle(a.id)}
+                          className="rounded border-gray-300 disabled:cursor-not-allowed" />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-xs font-semibold ${kilit ? "text-gray-400" : ""}`}>{a.ad}</div>
+                          {sonIso && (
+                            <div className={`text-[9px] leading-tight ${kilit ? "text-red-500" : "text-gray-400"}`}>
+                              {gonderimZamani(new Date(sonIso))} tarihinde istendi
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{a.eposta}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

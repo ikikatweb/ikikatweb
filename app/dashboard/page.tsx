@@ -48,6 +48,7 @@ import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { sonGonderimHaritasi, acenteKilidi as acenteKilidiOrtak, gonderimZamani } from "@/lib/utils/teklif-kilit";
 import ArventoWidget from "@/components/shared/arvento-widget";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null; ihaleli?: boolean | null };
@@ -1434,41 +1435,17 @@ export default function DashboardPage() {
     setTeklifDialogOpen(true);
   }
 
-  // AYNI ACENTEYE TEKRAR TEKLİF İSTEME KİLİDİ
-  // Bir araç + poliçe tipi için teklif istenen acente, bu süre boyunca yeniden seçilemez.
-  // Acente aynı işi iki kez fiyatlamak zorunda kalmasın, biz de üst üste mail atmayalım.
-  const TEKLIF_BEKLEME_GUN = 20;
-
-  // Açık olan araç+tip için: acente adı → EN SON gönderim zamanı (ISO).
-  // Kayıtlar acente ADIYLA tutuluyor (acente_adlari virgülle birleşik), eşleştirme ada göre.
-  const acenteSonGonderim = useMemo(() => {
-    const m = new Map<string, string>();
-    if (!teklifArac?.aracId) return m;
-    const tip = teklifArac.tip === "Kasko" ? "kasko" : "trafik";
-    for (const g of teklifGonderimler) {
-      if (g.arac_id !== teklifArac.aracId || g.police_tipi !== tip) continue;
-      for (const ham of (g.acente_adlari ?? "").split(",")) {
-        const ad = ham.trim();
-        if (!ad) continue;
-        const mevcut = m.get(ad);
-        if (!mevcut || g.created_at > mevcut) m.set(ad, g.created_at);
-      }
-    }
-    return m;
-  }, [teklifGonderimler, teklifArac]);
-
-  // Acente hâlâ bekleme süresinde mi? Değilse null; öyleyse kalan gün + gönderim zamanı.
-  function acenteKilidi(ad: string): { kalanGun: number; gonderim: Date } | null {
-    const iso = acenteSonGonderim.get(ad);
-    if (!iso) return null;
-    const gonderim = new Date(iso);
-    const gecen = (Date.now() - gonderim.getTime()) / 86400000;
-    if (gecen >= TEKLIF_BEKLEME_GUN) return null;
-    return { kalanGun: Math.max(1, Math.ceil(TEKLIF_BEKLEME_GUN - gecen)), gonderim };
-  }
-
-  const gonderimZamani = (d: Date) =>
-    d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  // Aynı acenteye tekrar teklif isteme kilidi — kural lib/utils/teklif-kilit.ts'te,
+  // Araç Listesi ekranındaki teklif akışıyla ortak.
+  const acenteSonGonderim = useMemo(
+    () => sonGonderimHaritasi(
+      teklifGonderimler,
+      teklifArac?.aracId,
+      teklifArac?.tip === "Kasko" ? "kasko" : "trafik",
+    ),
+    [teklifGonderimler, teklifArac],
+  );
+  const acenteKilidi = (ad: string) => acenteKilidiOrtak(acenteSonGonderim, ad);
 
   function acenteToggle(id: string) {
     const ad = acenteListesi.find((a) => a.id === id)?.ad ?? "";
@@ -2919,7 +2896,6 @@ export default function DashboardPage() {
                           {sonIso && (
                             <div className={`text-[9px] leading-tight ${kilit ? "text-red-500" : "text-gray-400"}`}>
                               {gonderimZamani(new Date(sonIso))} tarihinde istendi
-                              {kilit && ` · ${kilit.kalanGun} gün sonra tekrar`}
                             </div>
                           )}
                         </div>
