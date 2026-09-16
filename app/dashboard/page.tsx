@@ -1448,12 +1448,13 @@ export default function DashboardPage() {
   const acenteKilidi = (ad: string) => acenteKilidiOrtak(acenteSonGonderim, ad);
 
   function acenteToggle(id: string) {
+    // Yakın zamanda teklif istenmiş acente UYARIR ama ENGELLEMEZ — ilerde tekrar
+    // göndermek gerekebilir. Uyarı yalnız seçerken çıkar, seçim kaldırılırken değil.
     const ad = acenteListesi.find((a) => a.id === id)?.ad ?? "";
     const kilit = acenteKilidi(ad);
-    if (kilit) {
-      toast.error(`${ad} için ${gonderimZamani(kilit.gonderim)} tarihinde teklif istenmiş. ${kilit.kalanGun} gün sonra tekrar istenebilir.`,
-        { duration: toastSuresi() });
-      return;
+    if (kilit && !seciliAcenteler.has(id)) {
+      toast(`${ad} için ${gonderimZamani(kilit.gonderim)} tarihinde zaten teklif istenmişti.`,
+        { icon: "⚠️", duration: toastSuresi() });
     }
     setSeciliAcenteler((prev) => {
       const next = new Set(prev);
@@ -1467,16 +1468,7 @@ export default function DashboardPage() {
     if (!teklifArac.firmaId) { toast.error("Aracın firma kaydı yok. Araç düzenleme sayfasından firma atayın."); return; }
     setTeklifGonderiliyor(true);
     try {
-      // Güvenlik ağı: ekrandaki durum bayatlamış olabilir, gönderim anında tekrar bakılır.
-      const secililer = acenteListesi.filter((a) => seciliAcenteler.has(a.id));
-      const kilitliler = secililer.filter((a) => acenteKilidi(a.ad));
-      if (kilitliler.length > 0) {
-        toast.error(`${kilitliler.map((a) => a.ad).join(", ")} için yakın zamanda teklif istenmiş. Seçimden çıkarın.`,
-          { duration: toastSuresi() });
-        setTeklifGonderiliyor(false);
-        return;
-      }
-      const emails = secililer.map((a) => a.eposta);
+      const emails = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.eposta);
       const policeTipi = teklifArac.tip === "Kasko" ? "kasko" : "trafik";
       const res = await fetch("/api/teklif-mail", {
         method: "POST",
@@ -2883,13 +2875,12 @@ export default function DashboardPage() {
                     return (
                       <label key={a.id}
                         title={kilit ? `${gonderimZamani(kilit.gonderim)} tarihinde teklif istendi — ${kilit.kalanGun} gün sonra tekrar istenebilir` : undefined}
-                        className={`flex items-center gap-3 px-2 py-1.5 rounded ${
-                          kilit ? "bg-gray-50 opacity-60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"
+                        className={`flex items-center gap-3 px-2 py-1.5 rounded cursor-pointer ${
+                          kilit ? "bg-gray-50 opacity-60 hover:opacity-100" : "hover:bg-gray-50"
                         }`}>
                         <input type="checkbox" checked={seciliAcenteler.has(a.id)}
-                          disabled={!!kilit}
                           onChange={() => acenteToggle(a.id)}
-                          className="rounded border-gray-300 disabled:cursor-not-allowed" />
+                          className="rounded border-gray-300" />
                         <div className="flex-1 min-w-0">
                           <div className={`text-xs font-semibold ${kilit ? "text-gray-400" : ""}`}>{a.ad}</div>
                           {/* Gönderim zamanı her zaman yazılır; kilitliyse kalan gün de eklenir. */}
