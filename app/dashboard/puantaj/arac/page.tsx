@@ -721,7 +721,22 @@ export default function AracPuantajPage() {
         if (aramaRegex) return aramaRegex.test(text);
         return text.includes(aramaQ);
       })
-      .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
+      // Puantaj sekmesiyle aynı düzen: önce CİNS, cins içinde ARAÇ SAHİBİ, en son plaka.
+      // Cinsi/sahibi girilmemiş olanlar kendi seviyesinde en sona düşer.
+      // PDF ve Excel çıktıları da bu listeden türediği için aynı sırayı alır.
+      .sort((a, b) => {
+        const ac = (a.cinsi ?? "").trim();
+        const bc = (b.cinsi ?? "").trim();
+        if (!ac !== !bc) return ac ? -1 : 1;
+        const c = ac.localeCompare(bc, "tr");
+        if (c !== 0) return c;
+        const as = (a.tip === "ozmal" ? (a.firmalar?.firma_adi ?? "") : (a.kiralama_firmasi ?? "")).trim();
+        const bs = (b.tip === "ozmal" ? (b.firmalar?.firma_adi ?? "") : (b.kiralama_firmasi ?? "")).trim();
+        if (!as !== !bs) return as ? -1 : 1;
+        const sf = as.localeCompare(bs, "tr");
+        if (sf !== 0) return sf;
+        return a.plaka.localeCompare(b.plaka, "tr");
+      });
   }, [araclar, santiyeId, ozetRangePuantajlar, ozetRangeYakitlar, ozetFiltreFirma, ozetArama]);
 
 
@@ -2698,17 +2713,39 @@ export default function AracPuantajPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ozetSatirlariSecili.map((s) => {
+                    {ozetSatirlariSecili.map((s, i) => {
                       const a = s.arac;
                       const sahibi = a.tip === "ozmal"
                         ? (a.firmalar?.firma_adi ?? "Firma Belirtilmemiş")
                         : (a.kiralama_firmasi ?? "Firma Belirtilmemiş");
                       const cokDonem = s.donemSayisi > 1;
                       const donemLabel = `${new Date(s.donemBaslangic).toLocaleDateString("tr-TR")} - ${new Date(s.donemBitis).toLocaleDateString("tr-TR")}`;
+                      // Liste cins → sahip → plaka sıralı; cins değiştiği yerde grup başlığı açılır.
+                      // Aynı aracın birden fazla dönem satırı olabildiği için cins ARAÇTAN okunur.
+                      const cins = (a.cinsi ?? "").trim() || "Cinsi girilmemiş";
+                      const oncekiArac = i > 0 ? ozetSatirlariSecili[i - 1].arac : null;
+                      const yeniCins = !oncekiArac || ((oncekiArac.cinsi ?? "").trim() || "Cinsi girilmemiş") !== cins;
+                      const cinsAracSayisi = yeniCins
+                        ? new Set(
+                            ozetSatirlariSecili
+                              .filter((x) => (((x.arac.cinsi ?? "").trim() || "Cinsi girilmemiş") === cins))
+                              .map((x) => x.arac.id),
+                          ).size
+                        : 0;
 
                       return (
+                        <Fragment key={s.key}>
+                        {yeniCins && (
+                          <TableRow className="bg-slate-200 hover:bg-slate-200">
+                            <TableCell colSpan={99} className="px-2 py-1 border-b border-gray-300">
+                              <span className="text-[11px] font-bold text-[#1E3A5F] whitespace-nowrap">
+                                {cins}
+                                <span className="ml-1.5 font-normal text-gray-500">({cinsAracSayisi})</span>
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        )}
                         <TableRow
-                          key={s.key}
                           className={`hover:bg-gray-50 align-top ${cokDonem && s.donemIndex > 0 ? "border-t-0" : ""}`}
                         >
                           <TableCell className="px-2 text-gray-700 truncate max-w-[120px]" title={sahibi}>
@@ -2786,6 +2823,7 @@ export default function AracPuantajPage() {
                             {formatTL(s.toplamKira)}
                           </TableCell>
                         </TableRow>
+                        </Fragment>
                       );
                     })}
                     {/* GENEL TOPLAM satırı — toplam yakıt, toplam gün ve toplam kira */}
