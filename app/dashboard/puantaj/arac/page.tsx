@@ -1731,21 +1731,25 @@ export default function AracPuantajPage() {
     doc.setTextColor(0, 0, 0);
 
     // Firma bazlı toplam kira + yakıt özeti
-    type FirmaOzet = { kira: number; yakit: number };
+    type FirmaOzet = { kira: number; yakit: number; gun: number };
     const firmaToplamlari = new Map<string, FirmaOzet>();
     for (const s of ozetSatirlariSecili) {
       const a = s.arac;
       const sahibi = a.tip === "ozmal"
         ? (a.firmalar?.firma_adi ?? "Bilinmiyor")
         : (a.kiralama_firmasi ?? "Bilinmiyor");
-      const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0 };
+      const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0, gun: 0 };
       mevcut.kira += s.toplamKira;
       mevcut.yakit += ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
+      // Satırdaki "Toplam Gün" ile aynı değer (çalıştı + yarım gün × 0,5, override uygulanmış).
+      mevcut.gun += s.toplamGun;
       firmaToplamlari.set(sahibi, mevcut);
     }
     const firmaList = Array.from(firmaToplamlari.entries()).sort((x, y) => y[1].kira - x[1].kira);
     const firmaYakitGenel = firmaList.reduce((a, [, b]) => a + b.yakit, 0);
     const firmaKiraGenel = firmaList.reduce((a, [, b]) => a + b.kira, 0);
+    const firmaGunGenel = firmaList.reduce((a, [, b]) => a + b.gun, 0);
+    const gunYaz = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1).replace(".", ","));
     const firmaYStart = lastY + 12;
     // Firma tablosu sola yaslanır (web ile tutarlı)
     const firmaFirmaW = 100;
@@ -1758,14 +1762,16 @@ export default function AracPuantajPage() {
     autoTable(doc, {
       startY: firmaYStart + 2,
       margin: { left: firmaLeftMargin, right: 14 },
-      head: [["Firma", ...(yakitYetkili ? ["Toplam Yakit"] : []), "Toplam Kira"]],
+      head: [["Firma", "Toplam Gun", ...(yakitYetkili ? ["Toplam Yakit"] : []), "Toplam Kira"]],
       body: firmaList.map(([f, t]) => [
         tr(f),
+        t.gun > 0 ? gunYaz(t.gun) : "-",
         ...(yakitYetkili ? [t.yakit > 0 ? `${t.yakit.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt` : "-"] : []),
         formatTL(t.kira),
       ]),
       foot: [[
         { content: "GENEL TOPLAM", styles: { halign: "left" as const } },
+        { content: firmaGunGenel > 0 ? gunYaz(firmaGunGenel) : "-", styles: { halign: "right" as const } },
         ...(yakitYetkili ? [{ content: firmaYakitGenel > 0 ? `${firmaYakitGenel.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} lt` : "-", styles: { halign: "right" as const } }] : []),
         { content: formatTL(firmaKiraGenel), styles: { halign: "right" as const } },
       ]],
@@ -1775,12 +1781,14 @@ export default function AracPuantajPage() {
       columnStyles: yakitYetkili
         ? {
           0: { cellWidth: firmaFirmaW },
-          1: { cellWidth: firmaYakitW, halign: "right" as const },
-          2: { cellWidth: firmaTutarW, halign: "right" as const },
+          1: { cellWidth: 22, halign: "right" as const },
+          2: { cellWidth: firmaYakitW, halign: "right" as const },
+          3: { cellWidth: firmaTutarW, halign: "right" as const },
         }
         : {
           0: { cellWidth: firmaFirmaW },
-          1: { cellWidth: firmaTutarW, halign: "right" as const },
+          1: { cellWidth: 22, halign: "right" as const },
+          2: { cellWidth: firmaTutarW, halign: "right" as const },
         },
       didParseCell: (data) => {
         if (data.section === "head" && data.column.index >= 1) {
@@ -1852,16 +1860,18 @@ export default function AracPuantajPage() {
     ws["!cols"] = headers.map((h) => ({ wch: Math.max(h.length + 2, 12) }));
 
     // Firma bazlı özet sayfası — Toplam Yakıt + Toplam Kira
-    type FirmaOzet = { kira: number; yakit: number };
+    type FirmaOzet = { kira: number; yakit: number; gun: number };
     const firmaToplamlari = new Map<string, FirmaOzet>();
     for (const s of ozetSatirlariSecili) {
       const a = s.arac;
       const sahibi = a.tip === "ozmal"
         ? (a.firmalar?.firma_adi ?? "Bilinmiyor")
         : (a.kiralama_firmasi ?? "Bilinmiyor");
-      const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0 };
+      const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0, gun: 0 };
       mevcut.kira += s.toplamKira;
       mevcut.yakit += ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
+      // Satırdaki "Toplam Gün" ile aynı değer (çalıştı + yarım gün × 0,5, override uygulanmış).
+      mevcut.gun += s.toplamGun;
       firmaToplamlari.set(sahibi, mevcut);
     }
     const firmaList = Array.from(firmaToplamlari.entries()).sort((x, y) => y[1].kira - x[1].kira);
@@ -1869,10 +1879,11 @@ export default function AracPuantajPage() {
       ["Firma Bazlı Toplam Kira Bedeli"],
       [`${formatDateTR(ozetBaslangic)} - ${formatDateTR(ozetBitis)}`],
       [],
-      ["Firma", ...(yakitYetkili ? ["Toplam Yakıt (lt)"] : []), "Toplam Kira (TL)"],
-      ...firmaList.map(([f, t]) => [f, ...(yakitYetkili ? [t.yakit] : []), t.kira]),
+      ["Firma", "Toplam Gün", ...(yakitYetkili ? ["Toplam Yakıt (lt)"] : []), "Toplam Kira (TL)"],
+      ...firmaList.map(([f, t]) => [f, t.gun, ...(yakitYetkili ? [t.yakit] : []), t.kira]),
       [
         "GENEL TOPLAM",
+        firmaList.reduce((a, [, b]) => a + b.gun, 0),
         ...(yakitYetkili ? [firmaList.reduce((a, [, b]) => a + b.yakit, 0)] : []),
         firmaList.reduce((a, [, b]) => a + b.kira, 0),
       ],
@@ -2881,21 +2892,26 @@ export default function AracPuantajPage() {
 
               {/* Firma bazlı toplam kira özeti */}
               {(() => {
-                type FirmaOzet = { kira: number; yakit: number };
+                type FirmaOzet = { kira: number; yakit: number; gun: number };
                 const firmaToplamlari = new Map<string, FirmaOzet>();
                 for (const s of ozetSatirlariSecili) {
                   const a = s.arac;
                   const sahibi = a.tip === "ozmal"
                     ? (a.firmalar?.firma_adi ?? "Bilinmiyor")
                     : (a.kiralama_firmasi ?? "Bilinmiyor");
-                  const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0 };
+                  const mevcut = firmaToplamlari.get(sahibi) ?? { kira: 0, yakit: 0, gun: 0 };
                   mevcut.kira += s.toplamKira;
                   mevcut.yakit += ozetAracYakitToplam(a.id, s.donemBaslangic, s.donemBitis);
+                  // Satırdaki "Toplam Gün" ile aynı değer (çalıştı + yarım gün × 0,5).
+                  mevcut.gun += s.toplamGun;
                   firmaToplamlari.set(sahibi, mevcut);
                 }
                 const firmaList = Array.from(firmaToplamlari.entries()).sort((x, y) => y[1].kira - x[1].kira);
                 const genelKira = firmaList.reduce((acc, [, t]) => acc + t.kira, 0);
                 const genelYakit = firmaList.reduce((acc, [, t]) => acc + t.yakit, 0);
+                const genelGun = firmaList.reduce((acc, [, t]) => acc + t.gun, 0);
+                // Yarım günler 0,5 geldiği için tam sayı değilse virgüllü yazılır.
+                const gunYaz = (n: number) => (n % 1 === 0 ? n.toLocaleString("tr-TR") : n.toFixed(1).replace(".", ","));
                 if (firmaList.length === 0) return null;
                 return (
                   <div className="mt-4">
@@ -2907,6 +2923,7 @@ export default function AracPuantajPage() {
                         <TableHeader>
                           <TableRow className="bg-gray-100">
                             <TableHead className="px-4 py-2 text-[#1E3A5F] text-xs font-semibold">Firma</TableHead>
+                            <TableHead className="px-4 py-2 text-[#1E3A5F] text-xs font-semibold text-right">Toplam Gün</TableHead>
                             {yakitYetkili && <TableHead className="px-4 py-2 text-[#1E3A5F] text-xs font-semibold text-right">Toplam Yakıt</TableHead>}
                             <TableHead className="px-4 py-2 text-[#1E3A5F] text-xs font-semibold text-right">Toplam Kira</TableHead>
                           </TableRow>
@@ -2915,6 +2932,9 @@ export default function AracPuantajPage() {
                           {firmaList.map(([firma, t]) => (
                             <TableRow key={firma} className="hover:bg-gray-50">
                               <TableCell className="px-4 py-2 font-medium text-gray-700">{firma}</TableCell>
+                              <TableCell className="px-4 py-2 text-right font-semibold text-[#1E3A5F]">
+                                {t.gun > 0 ? gunYaz(t.gun) : <span className="text-gray-300">—</span>}
+                              </TableCell>
                               {yakitYetkili && (
                                 <TableCell className="px-4 py-2 text-right font-semibold text-blue-700">
                                   {t.yakit > 0
@@ -2929,6 +2949,9 @@ export default function AracPuantajPage() {
                           ))}
                           <TableRow className="bg-[#64748B]/5 border-t-2 border-[#1E3A5F]">
                             <TableCell className="px-4 py-2 font-bold text-[#1E3A5F]">GENEL TOPLAM</TableCell>
+                            <TableCell className="px-4 py-2 text-right font-bold text-[#1E3A5F]">
+                              {genelGun > 0 ? gunYaz(genelGun) : "—"}
+                            </TableCell>
                             {yakitYetkili && (
                               <TableCell className="px-4 py-2 text-right font-bold text-blue-700">
                                 {genelYakit > 0
