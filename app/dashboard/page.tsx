@@ -1434,7 +1434,50 @@ export default function DashboardPage() {
     setTeklifDialogOpen(true);
   }
 
+  // AYNI ACENTEYE TEKRAR TEKLİF İSTEME KİLİDİ
+  // Bir araç + poliçe tipi için teklif istenen acente, bu süre boyunca yeniden seçilemez.
+  // Acente aynı işi iki kez fiyatlamak zorunda kalmasın, biz de üst üste mail atmayalım.
+  const TEKLIF_BEKLEME_GUN = 20;
+
+  // Açık olan araç+tip için: acente adı → EN SON gönderim zamanı (ISO).
+  // Kayıtlar acente ADIYLA tutuluyor (acente_adlari virgülle birleşik), eşleştirme ada göre.
+  const acenteSonGonderim = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!teklifArac?.aracId) return m;
+    const tip = teklifArac.tip === "Kasko" ? "kasko" : "trafik";
+    for (const g of teklifGonderimler) {
+      if (g.arac_id !== teklifArac.aracId || g.police_tipi !== tip) continue;
+      for (const ham of (g.acente_adlari ?? "").split(",")) {
+        const ad = ham.trim();
+        if (!ad) continue;
+        const mevcut = m.get(ad);
+        if (!mevcut || g.created_at > mevcut) m.set(ad, g.created_at);
+      }
+    }
+    return m;
+  }, [teklifGonderimler, teklifArac]);
+
+  // Acente hâlâ bekleme süresinde mi? Değilse null; öyleyse kalan gün + gönderim zamanı.
+  function acenteKilidi(ad: string): { kalanGun: number; gonderim: Date } | null {
+    const iso = acenteSonGonderim.get(ad);
+    if (!iso) return null;
+    const gonderim = new Date(iso);
+    const gecen = (Date.now() - gonderim.getTime()) / 86400000;
+    if (gecen >= TEKLIF_BEKLEME_GUN) return null;
+    return { kalanGun: Math.max(1, Math.ceil(TEKLIF_BEKLEME_GUN - gecen)), gonderim };
+  }
+
+  const gonderimZamani = (d: Date) =>
+    d.toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
   function acenteToggle(id: string) {
+    const ad = acenteListesi.find((a) => a.id === id)?.ad ?? "";
+    const kilit = acenteKilidi(ad);
+    if (kilit) {
+      toast.error(`${ad} için ${gonderimZamani(kilit.gonderim)} tarihinde teklif istenmiş. ${kilit.kalanGun} gün sonra tekrar istenebilir.`,
+        { duration: toastSuresi() });
+      return;
+    }
     setSeciliAcenteler((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -1447,7 +1490,16 @@ export default function DashboardPage() {
     if (!teklifArac.firmaId) { toast.error("Aracın firma kaydı yok. Araç düzenleme sayfasından firma atayın."); return; }
     setTeklifGonderiliyor(true);
     try {
-      const emails = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.eposta);
+      // Güvenlik ağı: ekrandaki durum bayatlamış olabilir, gönderim anında tekrar bakılır.
+      const secililer = acenteListesi.filter((a) => seciliAcenteler.has(a.id));
+      const kilitliler = secililer.filter((a) => acenteKilidi(a.ad));
+      if (kilitliler.length > 0) {
+        toast.error(`${kilitliler.map((a) => a.ad).join(", ")} için yakın zamanda teklif istenmiş. Seçimden çıkarın.`,
+          { duration: toastSuresi() });
+        setTeklifGonderiliyor(false);
+        return;
+      }
+      const emails = secililer.map((a) => a.eposta);
       const policeTipi = teklifArac.tip === "Kasko" ? "kasko" : "trafik";
       const res = await fetch("/api/teklif-mail", {
         method: "POST",
@@ -2847,17 +2899,34 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-400">E-posta adresi olan acente bulunamadı. Tanımlamalardan acente ekleyin.</p>
               ) : (
                 <div className="space-y-1 max-h-[200px] overflow-y-auto border rounded-lg p-2">
-                  {acenteListesi.map((a) => (
-                    <label key={a.id} className="flex items-center gap-3 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
-                      <input type="checkbox" checked={seciliAcenteler.has(a.id)}
-                        onChange={() => acenteToggle(a.id)}
-                        className="rounded border-gray-300" />
-                      <div className="flex-1">
-                        <div className="text-xs font-semibold">{a.ad}</div>
-                      </div>
-                      <span className="text-[10px] text-gray-400">{a.eposta}</span>
-                    </label>
-                  ))}
+                  {acenteListesi.map((a) => {
+                    // Bu acenteye bu araç+tip için yakın zamanda teklif istendiyse pasif.
+                    const kilit = acenteKilidi(a.ad);
+                    const sonIso = acenteSonGonderim.get(a.ad);
+                    return (
+                      <label key={a.id}
+                        title={kilit ? `${gonderimZamani(kilit.gonderim)} tarihinde teklif istendi — ${kilit.kalanGun} gün sonra tekrar istenebilir` : undefined}
+                        className={`flex items-center gap-3 px-2 py-1.5 rounded ${
+                          kilit ? "bg-gray-50 opacity-60 cursor-not-allowed" : "hover:bg-gray-50 cursor-pointer"
+                        }`}>
+                        <input type="checkbox" checked={seciliAcenteler.has(a.id)}
+                          disabled={!!kilit}
+                          onChange={() => acenteToggle(a.id)}
+                          className="rounded border-gray-300 disabled:cursor-not-allowed" />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-xs font-semibold ${kilit ? "text-gray-400" : ""}`}>{a.ad}</div>
+                          {/* Gönderim zamanı her zaman yazılır; kilitliyse kalan gün de eklenir. */}
+                          {sonIso && (
+                            <div className={`text-[9px] leading-tight ${kilit ? "text-red-500" : "text-gray-400"}`}>
+                              {gonderimZamani(new Date(sonIso))} tarihinde istendi
+                              {kilit && ` · ${kilit.kalanGun} gün sonra tekrar`}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{a.eposta}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>
