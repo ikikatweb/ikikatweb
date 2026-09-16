@@ -2915,7 +2915,9 @@ export default function AracPuantajPage() {
                 if (firmaList.length === 0) return null;
                 return (
                   <div className="mt-4">
-                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full md:w-2/3 lg:w-3/5">
+                    {/* Tam genişlik: gün sütunu eklenince dar kapta yatay kaydırma çubuğu çıkıyordu.
+                        Uzun firma adları da (adi ortaklık unvanları) burada sığıyor. */}
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden w-full">
                       <div className="bg-[#64748B] text-white px-4 py-2 text-sm font-semibold">
                         Firma Bazlı Toplam Kira Bedeli
                       </div>
