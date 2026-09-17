@@ -414,11 +414,11 @@ function tarihPencereleri(bas: string, bitis: string, adim: number): [string, st
   return p;
 }
 
-// Pencereler 3'erli paralel: her istek AYRI sunucu örneğinde çalıştığı için paralellik tek bir
-// sürecin belleğini şişirmiyor; sıralı gitmek ise 2 aylık aralıkta ~50 sn ediyordu (ölçüldü:
-// pencere başına ~5 sn × 9 pencere). 3'erli grup hem süreyi ~3'te bire indiriyor hem de
-// tarayıcıyı aynı anda onlarca istekle doldurmuyor.
-const API_PARALEL = 3;
+// Pencereler SIRAYLA gider. 3'erli paralel denendi ve TARAYICIDA ÖLÇÜLEREK ELENDİ:
+// sıralıyken pencere başına ~5 sn olan süre, 3 paralelde 19–60 sn'ye çıktı ve bazı pencereler
+// başarısız olup gün-gün yedek yola düştü (16 ek istek). Darboğaz round-trip değil sunucu/DB
+// verimi; paralellik süreyi kısaltmıyor, sadece tıkanma ve hata üretiyor.
+const API_PARALEL = 1;
 
 async function guzergahTumuAgdan(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
   const pencereler = tarihPencereleri(bas, bitis, API_PENCERE_GUN);
