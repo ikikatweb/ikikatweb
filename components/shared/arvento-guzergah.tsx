@@ -58,7 +58,7 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0 }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0, transitRenk = "#dc2626", transitKalinlik = 2 }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string; transitRenk?: string; transitKalinlik?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   // Reglaj = greyder rotası EKSİ serme → serme noktalarını çıkarmak için damper verisi (aralık içi + öncesi).
@@ -445,11 +445,48 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const latlngs: [number, number][] = noktalar.map((p) => [p.lat, p.lng]);
         if (latlngs.length === 0) continue;
         const renk = renkAl(kayit.plaka);
+
+        // ── ÇALIŞMA / TAŞINMA AYRIMI ──
+        // İş makinesi transitHiz'in (varsayılan 20 km/s) üstünde gidiyorsa o hızla iş yapıyor
+        // olamaz; tırla taşınıyordur. Taşınma parçaları KESİK ve İNCE çizilir (kamyon izi
+        // ayarlarıyla aynı renk/kalınlık), çalışma parçaları kendi renginde ve kalın kalır.
+        // Böylece haritada "burada çalıştı" ile "buradan geçirildi" gözle ayrılır.
+        // Parçalar sınır noktasını PAYLAŞIR → çizgide kopukluk olmaz.
+        type Parca = { pts: [number, number][]; transit: boolean };
+        const parcalar: Parca[] = [];
+        if (transitHiz > 0 && noktalar.length >= 2) {
+          let aktif: Parca | null = null;
+          for (let i = 0; i < noktalar.length; i++) {
+            const nk = noktalar[i];
+            const tr = (nk.hiz ?? 0) > transitHiz;
+            if (!aktif || aktif.transit !== tr) {
+              const oncekiNokta: [number, number] | null = aktif ? aktif.pts[aktif.pts.length - 1] : null;
+              aktif = { pts: oncekiNokta ? [oncekiNokta] : [], transit: tr };
+              parcalar.push(aktif);
+            }
+            aktif.pts.push([nk.lat, nk.lng]);
+          }
+        } else {
+          parcalar.push({ pts: latlngs, transit: false });
+        }
+
         // Popup: tıklanan konuma en yakın ham nokta → plaka·model / hız / tarih saat (km & nokta gösterilmez).
-        const cizgi = L.polyline(latlngs, { color: renk, weight: reglajKal, opacity: 0.85, smoothFactor: 2, renderer: yolRenderer }).addTo(grup);
-        tiklaBagla(cizgi, [plakaNorm(kayit.plaka)]);
-        cizgi.on("popupopen", () => cizgi.setStyle({ weight: reglajKal + 3, opacity: 1 }));
-        cizgi.on("popupclose", () => cizgi.setStyle({ weight: reglajKal, opacity: 0.85 }));
+        for (const pr of parcalar) {
+          if (pr.pts.length < 2) continue;
+          const kal = pr.transit ? transitKalinlik : reglajKal;
+          const op = pr.transit ? 0.75 : 0.85;
+          const cizgi = L.polyline(pr.pts, {
+            color: pr.transit ? transitRenk : renk,
+            weight: kal,
+            opacity: op,
+            smoothFactor: 2,
+            renderer: yolRenderer,
+            ...(pr.transit ? { dashArray: "6 4" } : {}),
+          }).addTo(grup);
+          tiklaBagla(cizgi, [plakaNorm(kayit.plaka)]);
+          cizgi.on("popupopen", () => cizgi.setStyle({ weight: kal + 3, opacity: 1 }));
+          cizgi.on("popupclose", () => cizgi.setStyle({ weight: kal, opacity: op }));
+        }
         if (tekMi) {
           for (const p of noktalar) {
             L.circleMarker([p.lat, p.lng], { radius: 3, color: renk, fillColor: renk, fillOpacity: 0.6, weight: 1 })

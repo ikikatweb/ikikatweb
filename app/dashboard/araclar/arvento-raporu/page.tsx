@@ -1405,6 +1405,7 @@ export default function ArventoRaporPage() {
           {ismakineKayitlar.length > 0 && (
             <div className="space-y-1">
               <ArventoGuzergah secimKey="ismakine" bas={baslangic} bitis={bitis} tekrarEsigi={0} gridMesafe={gridMesafe} transitHiz={transitHiz}
+                transitRenk={kamyonIziRenk} transitKalinlik={kamyonIziKalinlik}
                 kalinliklar={kalinliklar} renkler={renkler} plakaFiltre={ismakinePlakalari} ekstraAraclar={ismakineEkstra}
                 calismaSnMap={ismakineCalismaMap} ilkSonKontakMap={ilkSonKontakMap} baslik="İş Makineleri" modelGoster modelMap={modelMap}
                 calismaNoktalari={ismakineNoktalar} canliKontakByPlaka={canliKontakMap}
@@ -1869,8 +1870,8 @@ export default function ArventoRaporPage() {
                 </div>
                 <div className="flex items-end gap-2 border-l pl-5">
                   <input type="color" value={kamyonIziRenk} onChange={(e) => setKamyonIziRenk(e.target.value)}
-                    className="h-8 w-9 rounded border cursor-pointer" title="Kamyon izi rengi" />
-                  <label className="flex flex-col gap-1 text-[11px] text-gray-600">Kamyon İzi (px)
+                    className="h-8 w-9 rounded border cursor-pointer" title="Kamyon izi / iş makinesi taşınma rengi" />
+                  <label className="flex flex-col gap-1 text-[11px] text-gray-600" title="Stabilize kamyon izleri ve iş makinelerinin tırla taşındığı kesik çizgiler">Kamyon İzi (px)
                     <input type="number" min={1} max={12} value={kamyonIziKalinlik || ""}
                       onChange={(e) => setKamyonIziKalinlik(Math.min(12, Math.max(1, parseInt(e.target.value) || 1)))}
                       className={selectClass + " w-20"} />
@@ -1878,7 +1879,7 @@ export default function ArventoRaporPage() {
                 </div>
               </div>
               <p className="text-[10px] text-gray-400 mt-2">
-                <strong>Kamyon İzi</strong> = Stabilize&apos;de kamyonun kendi güzergahı (reglaj çizgisinden farklı, kesik çizgi).
+                <strong>Kamyon İzi</strong> = Stabilize&apos;de kamyonun kendi güzergahı (reglaj çizgisinden farklı, kesik çizgi). Aynı renk/kalınlık İş Makineleri&apos;nde makinenin tırla taşındığı ({transitHiz} km/s üstü) kesik çizgiler için de kullanılır.
               </p>
             </div>
           </div>
