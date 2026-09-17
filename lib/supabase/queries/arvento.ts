@@ -400,8 +400,11 @@ async function tumSetiCek(bas: string, bitis: string): Promise<AracArventoGuzerg
 // kopyası). Node süreci o sırada tıkanıyor; AYNI süreçteki middleware'in getUser'ı zaman aşımına
 // uğrayıp oturumu düşürüyordu. Aralığı pencerelere bölünce tepe bellek ~5 MB'ta kalıyor: veri aynı,
 // istek sayısı birkaç tane artıyor, sunucu nefes alıyor.
-// 7 gün ≈ 9 MB ham / ~6,5 MB (API odo alanını attıktan sonra) — ölçülerek seçildi.
-const API_PENCERE_GUN = 7;
+// 4 gün ≈ 4 MB. Önce 7 gündü (≈6,5 MB) ve sağlıklı Supabase'de sorunsuz çalışıyordu (canlıda
+// ölçüldü: pencere başına 1,4–6,2 sn, 9 pencerenin tamamı 200). Ama veritabanı yoğunken aynı
+// pencereler 504 veriyordu; o durumda kod gün-gün yedek yola düşüyor — veri geliyor ama yavaşlıyor.
+// Pencereyi 4 güne indirmek her isteği hafifletip o zaman aşımı payını büyütüyor.
+const API_PENCERE_GUN = 4;
 
 function tarihPencereleri(bas: string, bitis: string, adim: number): [string, string][] {
   const gunler = guzergahGunleri(bas, bitis);
