@@ -323,11 +323,12 @@ export async function getGuzergahTumuHizli(bas: string, bitis: string): Promise<
 }
 
 // Güzergah satırı ~25 KB. Bir aralığı TEK API isteğiyle çekmek sunucuyu bütün aralığı belleğe
-// alıp tek JSON'a çevirmeye zorluyor: 2 aylık aralık ≈ 1.300 satır ≈ 33 MB (üstüne serileştirme
+// alıp tek JSON'a çevirmeye zorluyor: 2 aylık aralık ≈ 1.300 satır ≈ 70 MB (üstüne serileştirme
 // kopyası). Node süreci o sırada tıkanıyor; AYNI süreçteki middleware'in getUser'ı zaman aşımına
 // uğrayıp oturumu düşürüyordu. Aralığı pencerelere bölünce tepe bellek ~5 MB'ta kalıyor: veri aynı,
 // istek sayısı birkaç tane artıyor, sunucu nefes alıyor.
-const API_PENCERE_GUN = 10;
+// 7 gün ≈ 9 MB ham / ~6,5 MB (API odo alanını attıktan sonra) — ölçülerek seçildi.
+const API_PENCERE_GUN = 7;
 
 function tarihPencereleri(bas: string, bitis: string, adim: number): [string, string][] {
   const gunler = guzergahGunleri(bas, bitis);

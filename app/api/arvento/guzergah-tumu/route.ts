@@ -18,6 +18,19 @@ function plakaNorm(s: unknown): string {
   return String(s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+// NOKTA YALINLAŞTIRMA
+// Her GPS noktası {saat, lat, lng, hiz, odo} olarak saklanıyor; "odo" (odometre) alanı uygulamanın
+// HİÇBİR yerinde okunmuyor — ama nokta başına ~20 baytın (~%28) tamamını taşıyor. 2 aylık aralıkta
+// bu tek başına ~20 MB: ağda, JSON ayrıştırmasında ve tarayıcı belleğinde. Sunucuda at.
+// (Seyreltme denendi ve ELENDİ: noktalar zaten ortalama ~100 m aralıklı, 10 m kuralı tek nokta bile
+//  atmıyor; 20 m'ye çıkınca %8 kazanç için %5 grid hücresi kayboluyor → km hesapları bozulurdu.)
+type HamNokta = { saat?: unknown; lat?: unknown; lng?: unknown; hiz?: unknown };
+function noktalariYalinlastir(r: Record<string, unknown>): Record<string, unknown> {
+  const n = r.noktalar;
+  if (!Array.isArray(n)) return r;
+  return { ...r, noktalar: (n as HamNokta[]).map((p) => ({ saat: p.saat ?? null, lat: p.lat, lng: p.lng, hiz: p.hiz ?? null })) };
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const bas = searchParams.get("bas") ?? "", bitis = searchParams.get("bitis") ?? "";
@@ -64,10 +77,11 @@ export async function GET(req: Request) {
       offset += PARCA; if (offset > 100000) break;
     }
     // Tanımlı araç süzgeci + kanonik plaka (araclar boş/erişilemezse süzme — sayfa boşalmasın).
-    const cikti = kanonik.size === 0 ? rows : rows.filter((r) => kanonik.has(plakaNorm(r.plaka))).map((r) => {
+    const suzulmus = kanonik.size === 0 ? rows : rows.filter((r) => kanonik.has(plakaNorm(r.plaka))).map((r) => {
       const k = kanonik.get(plakaNorm(r.plaka));
       return k && k !== r.plaka ? { ...r, plaka: k } : r;
     });
+    const cikti = suzulmus.map(noktalariYalinlastir);
     return NextResponse.json(cikti);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "guzergah çekilemedi" }, { status: 500 });
