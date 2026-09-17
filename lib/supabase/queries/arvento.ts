@@ -297,18 +297,16 @@ async function guzergahCek(bas: string, bitis: string, plakalar?: string[] | nul
   // plaka filtresiyle veri de küçük kalıyor → 1 istek. Hata/erişimsizlik olursa AŞAĞIDAKİ gün-gün yola
   // düşer (davranış değişmez, yalnız yavaşlar). Sonuç aynı satırlar: API de tanımlı araçlara süzüp
   // kanonik plakaya çeviriyor (tanimliSuz ile birebir).
+  // PENCERELEME YOK: burada plaka süzgeci var, veri zaten küçük (ör. serme sezon çekimi = 4 plaka).
+  // Pencerelemek 9 aylık sezonu 37 SIRALI isteğe bölüyordu (tarayıcıda ölçüldü) — tek istek daha hızlı.
+  // Pencereleme yalnız süzgeçsiz TÜM-ARAÇ çekiminde gerekli (guzergahTumuAgdan).
   if (plakalar && plakalar.length > 0 && gunFarki > 10) {
     try {
-      const toplam: AracArventoGuzergah[] = [];
-      let tamam = true;
-      for (const [pBas, pBitis] of tarihPencereleri(bas, bitis, API_PENCERE_GUN)) { // sunucu belleği için pencereli
-        const r = await fetch(`/api/arvento/guzergah-tumu?bas=${pBas}&bitis=${pBitis}&plakalar=${encodeURIComponent(plakalar.join(","))}`);
-        if (!r.ok) { tamam = false; break; }
+      const r = await fetch(`/api/arvento/guzergah-tumu?bas=${bas}&bitis=${bitis}&plakalar=${encodeURIComponent(plakalar.join(","))}`);
+      if (r.ok) {
         const d = (await r.json()) as AracArventoGuzergah[];
-        if (!Array.isArray(d)) { tamam = false; break; }
-        toplam.push(...d);
+        if (Array.isArray(d)) return d;
       }
-      if (tamam) return toplam;
     } catch { /* API yoksa/hata → gün-gün yola düş */ }
   }
 
