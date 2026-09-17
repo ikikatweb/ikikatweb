@@ -84,8 +84,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         const { data, error } = await supabase.auth.getUser();
+        // Jeton yenileme yarışı ("Already Used": başka bir istek/sekme jetonu az önce yeniledi)
+        // oturum ölmüş demek DEĞİL — bunu çıkış sebebi sayma, bir sonraki kontrolde düzelir.
+        const yarisma = /already used/i.test(error?.message ?? "");
+        // 401/403 dışında, jetonun gerçekten öldüğünü söyleyen cevaplar da çıkışa yol açar
+        // (middleware artık emin olmadığı durumda isteği geçirdiği için burası son durak).
+        const olmusJeton = !yarisma && /invalid refresh token|refresh token not found|session missing/i.test(error?.message ?? "");
         const jetonGecersiz = error
-          ? (error.status === 401 || error.status === 403)
+          ? (error.status === 401 || error.status === 403 || olmusJeton)
           : !data?.user;
         if (jetonGecersiz) {
           girisYapildiRef.current = false;

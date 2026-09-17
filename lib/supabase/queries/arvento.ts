@@ -246,11 +246,16 @@ async function guzergahCek(bas: string, bitis: string, plakalar?: string[] | nul
   // kanonik plakaya çeviriyor (tanimliSuz ile birebir).
   if (plakalar && plakalar.length > 0 && gunFarki > 10) {
     try {
-      const r = await fetch(`/api/arvento/guzergah-tumu?bas=${bas}&bitis=${bitis}&plakalar=${encodeURIComponent(plakalar.join(","))}`);
-      if (r.ok) {
+      const toplam: AracArventoGuzergah[] = [];
+      let tamam = true;
+      for (const [pBas, pBitis] of tarihPencereleri(bas, bitis, API_PENCERE_GUN)) { // sunucu belleği için pencereli
+        const r = await fetch(`/api/arvento/guzergah-tumu?bas=${pBas}&bitis=${pBitis}&plakalar=${encodeURIComponent(plakalar.join(","))}`);
+        if (!r.ok) { tamam = false; break; }
         const d = (await r.json()) as AracArventoGuzergah[];
-        if (Array.isArray(d)) return d;
+        if (!Array.isArray(d)) { tamam = false; break; }
+        toplam.push(...d);
       }
+      if (tamam) return toplam;
     } catch { /* API yoksa/hata → gün-gün yola düş */ }
   }
 
@@ -317,12 +322,36 @@ export async function getGuzergahTumuHizli(bas: string, bitis: string): Promise<
   return sonuc;
 }
 
+// Güzergah satırı ~25 KB. Bir aralığı TEK API isteğiyle çekmek sunucuyu bütün aralığı belleğe
+// alıp tek JSON'a çevirmeye zorluyor: 2 aylık aralık ≈ 1.300 satır ≈ 33 MB (üstüne serileştirme
+// kopyası). Node süreci o sırada tıkanıyor; AYNI süreçteki middleware'in getUser'ı zaman aşımına
+// uğrayıp oturumu düşürüyordu. Aralığı pencerelere bölünce tepe bellek ~5 MB'ta kalıyor: veri aynı,
+// istek sayısı birkaç tane artıyor, sunucu nefes alıyor.
+const API_PENCERE_GUN = 10;
+
+function tarihPencereleri(bas: string, bitis: string, adim: number): [string, string][] {
+  const gunler = guzergahGunleri(bas, bitis);
+  if (gunler.length === 0) return [[bas, bitis]];
+  const p: [string, string][] = [];
+  for (let i = 0; i < gunler.length; i += adim) {
+    const dilim = gunler.slice(i, i + adim);
+    p.push([dilim[0], dilim[dilim.length - 1]]);
+  }
+  return p;
+}
+
 async function guzergahTumuAgdan(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
-  try {
-    const res = await fetch(`/api/arvento/guzergah-tumu?bas=${bas}&bitis=${bitis}`, { cache: "no-store" });
-    if (res.ok) return (await res.json()) as AracArventoGuzergah[];
-  } catch { /* ağ/oturum hatası → fallback */ }
-  return guzergahCek(bas, bitis); // API başarısız → RLS'li gün-gün yol (yavaş ama çalışır)
+  const hepsi: AracArventoGuzergah[] = [];
+  // Sırayla: paralel gitmek tepe belleği yeniden yukarı çeker, kazanılan süre de kayıp olur.
+  for (const [pBas, pBitis] of tarihPencereleri(bas, bitis, API_PENCERE_GUN)) {
+    let alindi = false;
+    try {
+      const res = await fetch(`/api/arvento/guzergah-tumu?bas=${pBas}&bitis=${pBitis}`, { cache: "no-store" });
+      if (res.ok) { hepsi.push(...((await res.json()) as AracArventoGuzergah[])); alindi = true; }
+    } catch { /* ağ/oturum hatası → fallback */ }
+    if (!alindi) hepsi.push(...await guzergahCek(pBas, pBitis)); // API başarısız → RLS'li gün-gün yol
+  }
+  return hepsi;
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için

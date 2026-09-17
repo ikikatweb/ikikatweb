@@ -37,14 +37,38 @@ export async function middleware(request: NextRequest) {
   const zamanAsimi = <T,>(p: PromiseLike<T>, ms = 6000): Promise<T> =>
     Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error("supabase-timeout")), ms))]);
 
-  // getUser auth hatası verebilir (Invalid Refresh Token, Auth session missing) ya da takılabilir.
-  // Sessiz şekilde user=null kabul et — sonsuz redirect döngüsünü ve 504'ü önle.
+  // getUser CEVAP VEREMEZSE bu "oturum yok" DEMEK DEĞİLDİR.
+  //
+  // Eskiden öyle sayılıyordu: timeout olunca user=null kalıyor, kullanıcı /login'e atılıyor ve
+  // sb-* çerezleri SİLİNİYORDU. Arvento raporunda geniş tarih aralığı (2 ay ≈ 33 MB güzergah)
+  // seçilince sunucu o isteği işlerken getUser 6 sn'yi aşıyor → ÇALIŞAN oturum siliniyordu.
+  // Kullanıcının gördüğü: "yoğun veri isteyince bazen oturum kapanıyor".
+  //
+  // Artık üç durum ayrılıyor:
+  //   user var            → normal devam.
+  //   kesin geçersiz      → 401/403 ya da jeton gerçekten ölmüş (çerez yok / refresh token yok) → çıkış.
+  //   DOĞRULANAMADI       → timeout, ağ hatası, 5xx, ya da jeton yenileme yarışı ("Already Used":
+  //                         başka bir istek jetonu az önce yeniledi) → ÇEREZLERE DOKUNMA, isteği geçir.
+  //                         Sayfa/istemci tarafı kontrolü devralır; oturum gerçekten ölüyse zaten o atar.
   let user = null;
+  let dogrulanamadi = false;
   try {
-    const { data } = await zamanAsimi(supabase.auth.getUser());
+    const { data, error } = await zamanAsimi(supabase.auth.getUser());
     user = data.user;
+    if (!user && error) {
+      const st = (error as { status?: number }).status;
+      const yarisma = /already used/i.test(error.message ?? ""); // jeton yenileme yarışı — oturum sağ
+      // status yoksa cevabın kendisi gelmemiş demektir (ağ/edge) → emin değiliz.
+      dogrulanamadi = yarisma || st === undefined || (st !== 401 && st !== 403 && st !== 400);
+    }
   } catch {
-    // Sessizce devam et — user null kalacak (timeout ya da auth hatası)
+    dogrulanamadi = true; // timeout / ağ
+  }
+
+  // Elde hâlâ auth çerezi varken doğrulayamadıysak oturumu ÖLDÜRME — geçir.
+  // (Çerez yoksa zaten oturum yok; aşağıdaki normal yönlendirme çalışsın.)
+  if (!user && dogrulanamadi && request.cookies.getAll().some((c) => c.name.startsWith("sb-"))) {
+    return supabaseResponse;
   }
 
   // Oturum yoksa dashboard'a erişimi engelle
