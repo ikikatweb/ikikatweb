@@ -58,7 +58,12 @@ type GuzergahArac = {
   noktalar?: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
 };
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0, transitRenk = "#dc2626", transitKalinlik = 2 }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string; transitRenk?: string; transitKalinlik?: number }) {
+// İş makinesi bu hızın üstündeyse çalışmıyor, tırla taşınıyor demektir.
+// transitHiz ayarından AYRI: o ayar reglaj/serme omurga km hesabını da etkiliyor,
+// burada eşiği düşürmek için onu oynatmak istemiyoruz.
+const TASINMA_HIZ = 5; // km/s
+
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0, transitRenk = "#dc2626", transitKalinlik = 2, tasinmaHiz = TASINMA_HIZ }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string; transitRenk?: string; transitKalinlik?: number; tasinmaHiz?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   // Reglaj = greyder rotası EKSİ serme → serme noktalarını çıkarmak için damper verisi (aralık içi + öncesi).
@@ -447,18 +452,18 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const renk = renkAl(kayit.plaka);
 
         // ── ÇALIŞMA / TAŞINMA AYRIMI ──
-        // İş makinesi transitHiz'in (varsayılan 20 km/s) üstünde gidiyorsa o hızla iş yapıyor
+        // İş makinesi tasinmaHiz'in (5 km/s) üstünde gidiyorsa o hızla iş yapıyor
         // olamaz; tırla taşınıyordur. Taşınma parçaları KESİK ve İNCE çizilir (kamyon izi
         // ayarlarıyla aynı renk/kalınlık), çalışma parçaları kendi renginde ve kalın kalır.
         // Böylece haritada "burada çalıştı" ile "buradan geçirildi" gözle ayrılır.
         // Parçalar sınır noktasını PAYLAŞIR → çizgide kopukluk olmaz.
         type Parca = { pts: [number, number][]; transit: boolean };
         const parcalar: Parca[] = [];
-        if (transitHiz > 0 && noktalar.length >= 2) {
+        if (tasinmaHiz > 0 && noktalar.length >= 2) {
           let aktif: Parca | null = null;
           for (let i = 0; i < noktalar.length; i++) {
             const nk = noktalar[i];
-            const tr = (nk.hiz ?? 0) > transitHiz;
+            const tr = (nk.hiz ?? 0) > tasinmaHiz;
             if (!aktif || aktif.transit !== tr) {
               const oncekiNokta: [number, number] | null = aktif ? aktif.pts[aktif.pts.length - 1] : null;
               aktif = { pts: oncekiNokta ? [oncekiNokta] : [], transit: tr };
@@ -539,7 +544,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       const c = map.getCenter();
       gorunumRef.current = { merkez: [c.lat, c.lng], zoom: map.getZoom() };
     }
-  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, transitHiz, tekrarPencereSaat, reglajKal, renkAl, hamNoktaByPlaka, modelMap, gorunumRef, calismaNoktalari]);
+  }, [haritaHazir, secilenler, etkinTekrar, gridMesafe, transitHiz, tasinmaHiz, transitRenk, transitKalinlik, tekrarPencereSaat, reglajKal, renkAl, hamNoktaByPlaka, modelMap, gorunumRef, calismaNoktalari]);
 
   // KML export — Google Earth için: (1) seçili her ARAÇ/MAKİNE'nin rotası KENDİ RENGİNDE, (2) ekskavatör
   // ÇALIŞMA NOKTALARI (makine rengi, nokta), (3) haritaya YÜKLÜ KML katmanları (referans NetCAD/KML) kendi

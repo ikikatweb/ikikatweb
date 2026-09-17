@@ -1879,7 +1879,7 @@ export default function ArventoRaporPage() {
                 </div>
               </div>
               <p className="text-[10px] text-gray-400 mt-2">
-                <strong>Kamyon İzi</strong> = Stabilize&apos;de kamyonun kendi güzergahı (reglaj çizgisinden farklı, kesik çizgi). Aynı renk/kalınlık İş Makineleri&apos;nde makinenin tırla taşındığı ({transitHiz} km/s üstü) kesik çizgiler için de kullanılır.
+                <strong>Kamyon İzi</strong> = Stabilize&apos;de kamyonun kendi güzergahı (reglaj çizgisinden farklı, kesik çizgi). Aynı renk/kalınlık İş Makineleri&apos;nde makinenin tırla taşındığı (5 km/s üstü) kesik çizgiler için de kullanılır.
               </p>
             </div>
           </div>
