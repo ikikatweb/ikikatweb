@@ -416,18 +416,27 @@ function tarihPencereleri(bas: string, bitis: string, adim: number): [string, st
   return p;
 }
 
+// Pencereler 3'erli paralel: her istek AYRI sunucu örneğinde çalıştığı için paralellik tek bir
+// sürecin belleğini şişirmiyor; sıralı gitmek ise 2 aylık aralıkta ~50 sn ediyordu (ölçüldü:
+// pencere başına ~5 sn × 9 pencere). 3'erli grup hem süreyi ~3'te bire indiriyor hem de
+// tarayıcıyı aynı anda onlarca istekle doldurmuyor.
+const API_PARALEL = 3;
+
 async function guzergahTumuAgdan(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
-  const hepsi: AracArventoGuzergah[] = [];
-  // Sırayla: paralel gitmek tepe belleği yeniden yukarı çeker, kazanılan süre de kayıp olur.
-  for (const [pBas, pBitis] of tarihPencereleri(bas, bitis, API_PENCERE_GUN)) {
-    let alindi = false;
-    try {
-      const res = await fetch(`/api/arvento/guzergah-tumu?bas=${pBas}&bitis=${pBitis}`, { cache: "no-store" });
-      if (res.ok) { hepsi.push(...((await res.json()) as AracArventoGuzergah[])); alindi = true; }
-    } catch { /* ağ/oturum hatası → fallback */ }
-    if (!alindi) hepsi.push(...await guzergahCek(pBas, pBitis)); // API başarısız → RLS'li gün-gün yol
+  const pencereler = tarihPencereleri(bas, bitis, API_PENCERE_GUN);
+  const parcalar: AracArventoGuzergah[][] = [];
+  for (let i = 0; i < pencereler.length; i += API_PARALEL) {
+    const grup = pencereler.slice(i, i + API_PARALEL);
+    const sonuclar = await Promise.all(grup.map(async ([pBas, pBitis]) => {
+      try {
+        const res = await fetch(`/api/arvento/guzergah-tumu?bas=${pBas}&bitis=${pBitis}`, { cache: "no-store" });
+        if (res.ok) return (await res.json()) as AracArventoGuzergah[];
+      } catch { /* ağ/oturum hatası → fallback */ }
+      return guzergahCek(pBas, pBitis); // API başarısız → RLS'li gün-gün yol (yavaş ama çalışır)
+    }));
+    parcalar.push(...sonuclar);
   }
-  return hepsi;
+  return parcalar.flat();
 }
 
 // Mevcut rapor tarihleri (yeni → eski), tarih seçici için

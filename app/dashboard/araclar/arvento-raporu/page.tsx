@@ -841,6 +841,21 @@ export default function ArventoRaporPage() {
   // Kullanıcının şantiyeleri → o şantiyelerin İLLERİ → kullanıcı O İLLERİN sınırı içindeki her şeyi
   // görür: CANLI araç (anlık konum), GEÇMİŞ araç (rota), KML, damper. Yönetici hepsini görür.
   const guzYapiRef = useRef(""); // tarih değişiminde eski rotayı temizle (refresh'te flaş olmasın diye değil)
+
+  // TAM SETİ RENDER SIRASINDA BAŞLAT — efektte değil.
+  // React, çocuk bileşenlerin (sekme haritaları) efektlerini EBEVEYNDEN ÖNCE çalıştırıyor.
+  // Çekim aşağıdaki efektte başlayınca "Tümü" sekmesi paylaşılan seti bulamıyor ve kendi
+  // çekimini başlatıyordu: plaka süzgeci olmadığı için gün-gün, 2 aylık aralıkta 62 AYRI
+  // istek (tarayıcıda ölçüldü). Hem aynı veri ikinci kez iniyor hem de Supabase o kadar
+  // paralel istekle meşgulken oturum doğrulaması zaman aşımına uğruyordu.
+  // Render sırasında başlatınca çocuklar hazır/devam eden seti buluyor → o 62 istek gitti.
+  const onyukRef = useRef("");
+  const onyukAnahtar = `${baslangic}|${bitis}|${guzergahRefresh}`;
+  if (typeof window !== "undefined" && baslangic && bitis && onyukRef.current !== onyukAnahtar) {
+    onyukRef.current = onyukAnahtar;
+    void getGuzergahTumuHizli(baslangic, bitis).catch(() => { /* aşağıdaki efekt hatayı zaten ele alıyor */ });
+  }
+
   useEffect(() => {
     if (!baslangic || !bitis) { guzYapiRef.current = ""; setGuzergahlar([]); return; }
     const yapi = `${baslangic}|${bitis}`;
