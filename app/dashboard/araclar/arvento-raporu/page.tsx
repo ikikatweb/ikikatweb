@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useAuth } from "@/hooks";
-import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahTumuHizli, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, updateCihazModelByNode, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
+import { getArventoRaporByRange, getArventoRaporSonGuncelleme, getGuzergahSonYazim, guzergahVeriImza, getArventoHamKayitlar, hesaplaOrtalamalar, getPlakaSantiyeMap, getAraclarAtama, getGuzergahTumuHizli, guzergahTumuCacheTemizle, getMakineCalismaNoktalari, getAnlikKonumlarDirect, getCihazlarDirect, updateCihazModelByNode, getSurucuOverrideMap, surucuOverrideCacheTemizle, arventoRaporCacheTemizle, plakaNorm, type ArventoOrtalama, type ArventoHamKayit, type PlakaSantiye, type AracAtama, type MakineNokta } from "@/lib/supabase/queries/arvento";
 import { illeriYukle, noktaIzinli, herhangiIzinli, adtanIl, type IlPoligon } from "@/lib/arvento/il-sinir";
 import type { KatmanIzin } from "@/lib/arvento/harita-katman";
 import { updateArac } from "@/lib/supabase/queries/araclar";
@@ -283,6 +283,9 @@ export default function ArventoRaporPage() {
   >("calisma");
   // Güzergah (Reglaj) yüklemeden sonra yeniden yüklensin diye tetikleyici
   const [guzergahRefresh, setGuzergahRefresh] = useState(0);
+  // Tazeleme TEK kapıdan: paylaşılan TÜM-ARAÇ güzergah seti de düşürülür, yoksa haritalar
+  // yeni veriyi beklerken bayat seti paylaşabilirdi.
+  const guzergahTazele = useCallback(() => { guzergahTumuCacheTemizle(); setGuzergahRefresh((v) => v + 1); }, []);
   // Ekrandaki verilerin en son tazelendiği an (haritalarda "Son güncelleme" olarak gösterilir)
   const [veriGuncelleme, setVeriGuncelleme] = useState<Date | null>(null);
 
@@ -625,7 +628,7 @@ export default function ArventoRaporPage() {
       surucuOverrideCacheTemizle(); // yeni şoför adı bir sonraki veri çekiminde hemen görünsün
       arventoRaporCacheTemizle();   // rapor cache'i düş → yeni şoför adı cache'lenmiş rapordan gelmesin
       getSurucuOverrideMap().then(setSurucuOverride).catch(() => { /* sessiz */ });
-      setGuzergahRefresh((v) => v + 1); // kartlar/haritalar F5 beklemeden yeni isimle tazelensin
+      guzergahTazele(); // kartlar/haritalar F5 beklemeden yeni isimle tazelensin
       if (araclarModelDegisti) getPlakaSantiyeMap(bitis).then(setPlakaSantiye).catch(() => { /* sessiz */ }); // araclar.model → modelMap/etiket tazele
       setCihazModelDuzen(new Map()); // düzenleme tamponunu temizle
       if (uygulanan.length) setCanliCihazMap((prev) => { // haritadaki etiketi anında güncelle (yeniden çekmeden)
@@ -721,7 +724,7 @@ export default function ArventoRaporPage() {
         setVeriGuncelleme((prev) => ((prev?.getTime() ?? null) === (raporT?.getTime() ?? null) ? prev : raporT));
         const imza = `${raporT?.getTime() ?? ""}|${guzT ?? ""}`;
         const ilk = sonImza === null;
-        if (!ilk && imza !== sonImza) { arventoRaporCacheTemizle(); setGuzergahRefresh((v) => v + 1); } // server'da yeni veri → rapor cache'i düş
+        if (!ilk && imza !== sonImza) { arventoRaporCacheTemizle(); guzergahTazele(); } // server'da yeni veri → rapor cache'i düş
         sonImza = imza;
       } catch { /* sessiz — imza alınamazsa bir sonraki tick yeniden dener */ }
     };
@@ -807,7 +810,7 @@ export default function ArventoRaporPage() {
       else await loadKayitlar();
       // Güzergah (Mesafe Bilgisi) yüklendiyse Reglaj'a geç + yenile
       if (data.guzergahGunler && data.guzergahGunler.length > 0) {
-        setGuzergahRefresh((x) => x + 1);
+        guzergahTazele();
         setAktifSekme("guzergah");
       }
     } catch (err) {
@@ -945,7 +948,7 @@ export default function ArventoRaporPage() {
       const sayilar = geometriler.reduce((a, g) => { a[g.tip] = (a[g.tip] ?? 0) + 1; return a; }, {} as Record<string, number>);
       toast.success(`"${ad}" eklendi — ${sayilar.cizgi ?? 0} çizgi, ${sayilar.alan ?? 0} alan, ${sayilar.nokta ?? 0} nokta.`, { duration: toastSuresi() });
       await loadKatmanlar();
-      setGuzergahRefresh((x) => x + 1); // açık haritalar yenilensin
+      guzergahTazele(); // açık haritalar yenilensin
     } catch (err) {
       toast.error(`Katman eklenemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
     } finally {
@@ -960,7 +963,7 @@ export default function ArventoRaporPage() {
     try {
       await silHaritaKatman(id);
       await loadKatmanlar();
-      setGuzergahRefresh((x) => x + 1);
+      guzergahTazele();
       toast.success("Katman silindi.", { duration: toastSuresi() });
     } catch (err) {
       toast.error(`Silinemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
@@ -973,7 +976,7 @@ export default function ArventoRaporPage() {
     setHaritaKatmanlari((list) => list.map((k) => (k.id === id ? { ...k, ...alanlar } : k)));
     try {
       await guncelleHaritaKatman(id, alanlar);
-      setGuzergahRefresh((x) => x + 1);
+      guzergahTazele();
     } catch (err) {
       toast.error(`Güncellenemedi: ${hataMetni(err)}`, { duration: toastSuresi() });
       await loadKatmanlar();

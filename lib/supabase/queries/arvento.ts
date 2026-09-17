@@ -156,6 +156,46 @@ export async function getMakineCalismaNoktalari(bas: string, bitis: string, plak
   return tanimliSuz((data ?? []) as MakineNokta[]);
 }
 
+// ── TÜM-ARAÇ GÜZERGAH PAYLAŞIMI ────────────────────────────────────────────────────────────────
+// Sayfa aynı aralığı iki kez indiriyordu: bir kez kendi türetmeleri için TÜM araçlarla
+// (getGuzergahTumuHizli), bir kez de açık sekmenin haritası kendi plakalarıyla
+// (getGuzergahByRange). Aynı satırlar ağdan iki kez iniyor ve bellekte iki kopya duruyordu;
+// 2 aylık aralıkta bu 65 MB'ın üstüne bir de sekmenin payı demek.
+//
+// Artık aralık başına TEK çekim yapılıyor ve plaka süzgeçli çağrılar bu setin İÇİNDEN süzülüyor.
+// Süzme AYNI satır nesnelerini döndürür (kopya değil) → ikinci bir bellek kopyası oluşmaz.
+//
+// NEDEN GÜVENLİ (ölçülerek doğrulandı): plaka süzgeçli sorgu `.in("plaka", ...)` ile HAM yazıma
+// bakıyor; paylaşılan set ise kanonik yazıma çevrilmiş oluyor. 01.06–17.09 aralığındaki 2.051
+// satır / 33 farklı yazımın TAMAMINDA ham yazım kanonik yazımla birebir aynı, araclar'da
+// tanımsız plakalar da iki yolda da eleniyor → iki yol aynı satırları veriyor.
+//
+// Bayatlama koruması: çözülmüş sonuç yalnız KISA bir süre paylaşılır (aynı açılıştaki istekler
+// birbirine yetişsin diye); veri tazelendiğinde (Mailden Çek / yeni rapor) depo açıkça boşaltılır.
+const TUM_PAYLASIM_MS = 20000;
+type TumKayit = { t: number; sonuc?: AracArventoGuzergah[]; inflight?: Promise<AracArventoGuzergah[]> };
+const guzergahTumuPaylasim = new Map<string, TumKayit>();
+
+/** Veri tazelendi → paylaşılan set bayat kalmasın. */
+export function guzergahTumuCacheTemizle(): void { guzergahTumuPaylasim.clear(); }
+
+/**
+ * Aralık için paylaşılabilir TÜM-ARAÇ seti var mı?
+ *
+ * bekle=true  → devam eden çekim de kabul (zaten tümünü isteyen çağıran; beklemek kayıp değil).
+ * bekle=false → YALNIZ hazır sonuç. Plaka süzgeçli çağıranlar bugün küçük ve hızlı bir sorgu
+ *               atıyor (ör. iş makineleri ~0,6 MB); onları 65 MB'lık tam setin bitmesini
+ *               beklemeye zorlamak haritayı GECİKTİRİRDİ. Set hazırsa bedava, değilse kendi
+ *               küçük sorgusuna devam etsin.
+ */
+function paylasilanTumSet(bas: string, bitis: string, bekle: boolean): Promise<AracArventoGuzergah[]> | null {
+  const k = guzergahTumuPaylasim.get(`${bas}|${bitis}`);
+  if (!k) return null;
+  if (k.sonuc && Date.now() - k.t < TUM_PAYLASIM_MS) return Promise.resolve(k.sonuc);
+  if (bekle && k.inflight) return k.inflight;
+  return null;
+}
+
 /**
  * Aralıktaki güzergah satırları — GEÇMİŞ günler tarayıcı önbelleğinden (IndexedDB), yalnız
  * eksik günler + BUGÜN ağdan.
@@ -171,6 +211,19 @@ export async function getGuzergahByRange(bas: string, bitis: string, plakalar?: 
   if (plakalar && plakalar.length === 0) return [];
   // Sunucu tarafında (SSR/API) IndexedDB yok → doğrudan ağ.
   if (typeof window === "undefined") return guzergahCek(bas, bitis, plakalar, opts);
+
+  // Aynı aralığın TÜM-ARAÇ seti zaten iniyorsa/indiyse: yeniden çekme, onun içinden süz.
+  // Sıra korunur (iki yol da rapor_tarihi→plaka sıralı) — çizim kodu ve guzergahVeriImza sıraya duyarlı.
+  // Herhangi bir aksilikte aşağıdaki normal yola düşer; davranış değişmez, yalnız paylaşım kaçar.
+  const paylasilan = paylasilanTumSet(bas, bitis, !plakalar);
+  if (paylasilan) {
+    try {
+      const tum = await paylasilan;
+      if (!plakalar) return tum;
+      const istenen = new Set(plakalar.map(plakaNorm));
+      return tum.filter((r) => istenen.has(plakaNorm(r.plaka)));
+    } catch { /* paylaşılan çekim hata verdi → kendi yoluna devam et */ }
+  }
 
   const bugun = new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10); // TR günü
   const kapsam = kapsamAnahtari(plakalar);
@@ -288,6 +341,28 @@ async function guzergahCek(bas: string, bitis: string, plakalar?: string[] | nul
 export async function getGuzergahTumuHizli(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
   if (!bas || !bitis) return [];
   if (typeof window === "undefined") return guzergahTumuAgdan(bas, bitis);
+
+  // Aynı aralık için devam eden/taze bir çekim varsa onu paylaş (ikinci indirme yok).
+  const hazir = paylasilanTumSet(bas, bitis, true);
+  if (hazir) return hazir;
+
+  const anahtar = `${bas}|${bitis}`;
+  const is = tumSetiCek(bas, bitis);
+  // TEK aralık tutulur: eski aralığın satır dizisi (2 ayda ~65 MB) depoda asılı kalmasın.
+  guzergahTumuPaylasim.clear();
+  guzergahTumuPaylasim.set(anahtar, { t: Date.now(), inflight: is });
+  try {
+    const sonuc = await is;
+    // Bu arada başka bir aralık istendiyse depoyu geri çevirme — yalnız kendi girdimizi güncelle.
+    if (guzergahTumuPaylasim.has(anahtar)) guzergahTumuPaylasim.set(anahtar, { t: Date.now(), sonuc });
+    return sonuc;
+  } catch (e) {
+    if (guzergahTumuPaylasim.get(anahtar)?.inflight === is) guzergahTumuPaylasim.delete(anahtar); // hata paylaşılmaz
+    throw e;
+  }
+}
+
+async function tumSetiCek(bas: string, bitis: string): Promise<AracArventoGuzergah[]> {
 
   // getGuzergahByRange ile AYNI önbellek mantığı: geçmiş günler IndexedDB'den, yalnız eksikler
   // ve bugün ağdan. Bu yol "Tümü" sekmesinin plaka süzgeçsiz çekimi — aralık bir aya çıkınca
