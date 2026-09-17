@@ -971,6 +971,9 @@ export type Kullanici = {
   // - false → sadece atanmış şantiyelerin kayıtları görünür (mevcut davranış)
   // Yönetici için her zaman geçerli (form'da göstermesek bile DB'de true tutulur).
   santiyesiz_veri_gor?: boolean | null;
+  // Arvento Raporu'nda geniş tarih aralığı hakkının EN SON kullanıldığı an (yönetici hariç
+  // haftada bir gün). Boş = hiç kullanılmamış. sql/arvento_genis_aralik.sql
+  arvento_genis_son?: string | null;
   created_at: string;
   updated_at: string;
   // DB kolonu DEĞİL — API listelemede Supabase Auth'tan (last_sign_in_at) eklenir.

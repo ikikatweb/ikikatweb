@@ -184,6 +184,8 @@ function ManuelTetikBtn({ raporSon, onTetik, onSuresiDoldu }: { raporSon: number
 
 export default function ArventoRaporPage() {
   const { hasPermission, kullanici, isYonetici, loading: authYukleniyor } = useAuth();
+  // Bu gün sayısına KADAR aralık serbest; üstü yönetici dışında haftalık hak harcar.
+  const GENIS_ARALIK_GUN = 7;
   const yGor = hasPermission("araclar-arvento-raporu", "goruntule");
   const yEkle = hasPermission("araclar-arvento-raporu", "ekle");
   const yDuzenle = hasPermission("araclar-arvento-raporu", "duzenle");
@@ -211,16 +213,40 @@ export default function ArventoRaporPage() {
     const dt = new Date(y, m - 1, d);
     return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
   };
+  // GENİŞ ARALIK HAKKI: yönetici dışındaki kullanıcılar 7 günden uzun aralığı haftada bir GÜN
+  // açabilir (hakkı kullandığı gün boyunca serbest; gün bitince 7 gün bekler). Sebebi maliyet:
+  // rota tablosu satır başına ~34 KB, 2 aylık aralık ≈ 65 MB indiriyor — Supabase çıkış kotasının
+  // asıl tüketicisi bu. Karar SUNUCUDA veriliyor (api/arvento/genis-aralik), burada sadece kapı var.
+  const uygulananRef = useRef({ bas: trBugun(), bitis: trBugun() }); // son UYGULANAN aralık (reddedilince buraya dönülür)
+  const izinSorulanRef = useRef(""); // aynı aralık için sunucuya tekrar tekrar sorma
   useEffect(() => {
-    const id = setTimeout(() => {
+    const id = setTimeout(async () => {
       // Yalnız GEÇERLİ ve tutarlı (bas ≤ bitis) aralığı uygula. Geçersiz/boş/ters girişte SON GEÇERLİ aralık
       // korunur → "tarih seçin" boş-durumu tetiklenmez, harita/navigatör kaybolmaz.
-      if (gecerliTarih(baslangicInput) && gecerliTarih(bitisInput) && baslangicInput <= bitisInput) {
-        setBaslangic(baslangicInput); setBitis(bitisInput);
+      if (!(gecerliTarih(baslangicInput) && gecerliTarih(bitisInput) && baslangicInput <= bitisInput)) return;
+      const gunSayisi = Math.round((Date.parse(`${bitisInput}T00:00:00Z`) - Date.parse(`${baslangicInput}T00:00:00Z`)) / 86400000) + 1;
+      if (gunSayisi > GENIS_ARALIK_GUN && !isYonetici) {
+        const anahtar = `${baslangicInput}|${bitisInput}`;
+        if (izinSorulanRef.current !== anahtar) {
+          izinSorulanRef.current = anahtar;
+          try {
+            const r = await fetch("/api/arvento/genis-aralik", { method: "POST" });
+            const c = await r.json();
+            if (!c.izinVar) {
+              const ne = c.sonraki ? new Date(`${c.sonraki}T00:00:00`).toLocaleDateString("tr-TR") : "";
+              toast.error(`Geniş tarih aralığı haftada bir gün açılabilir. Yeniden açabileceğiniz tarih: ${ne}`, { duration: toastSuresi() });
+              setBaslangicInput(uygulananRef.current.bas); setBitisInput(uygulananRef.current.bitis); // geri al
+              return;
+            }
+            if (c.kullanildi) toast.success("Geniş tarih aralığı açıldı — bugün boyunca serbestçe kullanabilirsiniz.", { duration: toastSuresi() });
+          } catch { /* sunucuya ulaşılamadı → engelleme (sınır maliyet içindir, kilit için değil) */ }
+        }
       }
+      uygulananRef.current = { bas: baslangicInput, bitis: bitisInput };
+      setBaslangic(baslangicInput); setBitis(bitisInput);
     }, 500);
     return () => clearTimeout(id);
-  }, [baslangicInput, bitisInput]);
+  }, [baslangicInput, bitisInput, isYonetici]);
   const [kayitlar, setKayitlar] = useState<AracArventoRapor[]>([]);
   const [kayitlarHam, setKayitlarHam] = useState<AracArventoRapor[]>([]); // aralıktaki HAM günlük satırlar (aralikTopla ÖNCESİ) — gün-gün çalışma toplamı için
   const [guzergahlar, setGuzergahlar] = useState<AracArventoGuzergah[]>([]); // YAKINLIK izin filtresi için rota noktaları
