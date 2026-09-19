@@ -262,6 +262,9 @@ export type Arac = {
   // 1 depo (tam dolum) ile gidilebilecek km veya çalışabilecek saat. Yakıt verirken
   // iki dolum arası fark bu değeri AŞARSA "dışarıdan yakıt alındı" otomatik işaretlenir.
   depo_menzil: number | null;
+  // Puantaja "tam gün" yazılabilmesi için gereken asgari günlük iş (km ya da saat).
+  // Boşsa varsayılan: km sayaçta 10 km, saat sayaçta 8 saat. sql/arac_gunluk_min_calisma.sql
+  gunluk_min_calisma?: number | null;
   santiye_id: string | null;
   firma_id: string | null;
   hgs_saglayici: string | null;

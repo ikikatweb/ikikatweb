@@ -51,6 +51,20 @@ export const CALISMA_ESIK: Record<"km" | "saat", { tam: number; yarim: number }>
   km: { tam: 10, yarim: 5 },
 };
 
+// Yarım günün tam güne oranı. Araç kartındaki "günlük asgari çalışma" TAM GÜN içindir;
+// yarım gün bu oranla türetilir. İş makinesinde yarım gün = öğleye kadarki vardiya
+// (8 saatin 3'ü), kilometre sayaçlı araçta yarısı. Varsayılanlarla birebir tutar.
+const YARIM_ORAN: Record<"km" | "saat", number> = {
+  saat: CALISMA_ESIK.saat.yarim / CALISMA_ESIK.saat.tam,
+  km: CALISMA_ESIK.km.yarim / CALISMA_ESIK.km.tam,
+};
+
+/** Aracın tam/yarım gün asgari çalışması. Araçta değer girilmişse o, yoksa varsayılan. */
+export function calismaEsigi(sayacTipi: "km" | "saat", gunlukMin?: number | null): { tam: number; yarim: number } {
+  const tam = gunlukMin && gunlukMin > 0 ? gunlukMin : CALISMA_ESIK[sayacTipi].tam;
+  return { tam, yarim: tam * YARIM_ORAN[sayacTipi] };
+}
+
 // Aralıkta puantaja yazılan çalışmanın KARŞILIĞI var mı?
 //
 // İki bağımsız kanıt vardır ve BÜYÜĞÜ esas alınır:
@@ -109,6 +123,8 @@ export type DenetimSatiri = {
   ad: string;
   cinsi: string;
   sayacTipi: "km" | "saat";
+  gunlukMin: number;              // kullanılan tam gün eşiği (araçtan ya da varsayılan)
+  gunlukMinOzel: boolean;         // araç kartında elle girilmiş mi?
   firmaAdi: string;
   genelOrt: number | null;        // L/100km veya L/saat
   depoKapasite: number | null;    // en yüksek tek dolum (lt)
@@ -127,7 +143,7 @@ type YakitRow = { arac_id: string; tarih: string; saat: string; km_saat: number 
 type PuantajRow = { arac_id: string; tarih: string; durum: AracPuantajDurum };
 type AracRow = {
   id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null;
-  sayac_tipi: "km" | "saat" | null; tip: string | null; depo_menzil: number | null;
+  sayac_tipi: "km" | "saat" | null; tip: string | null; depo_menzil: number | null; gunluk_min_calisma: number | null;
   kiralama_firmasi: string | null; firmalar?: { firma_adi: string } | null;
 };
 
@@ -203,7 +219,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
     ),
     supabase
       .from("araclar")
-      .select("id, plaka, marka, model, cinsi, sayac_tipi, tip, depo_menzil, kiralama_firmasi, firmalar(firma_adi)")
+      .select("id, plaka, marka, model, cinsi, sayac_tipi, tip, depo_menzil, gunluk_min_calisma, kiralama_firmasi, firmalar(firma_adi)")
       .in("id", aracIds),
   ]);
   if (aracRes.error) throw new Error(aracRes.error.message);
@@ -282,6 +298,8 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       ad: [a.marka, a.model].filter(Boolean).join(" "),
       cinsi: (a.cinsi ?? "").trim() || "Cinsi girilmemiş",
       sayacTipi,
+      gunlukMin: calismaEsigi(sayacTipi, a.gunluk_min_calisma).tam,
+      gunlukMinOzel: !!(a.gunluk_min_calisma && a.gunluk_min_calisma > 0),
       firmaAdi: (a.tip === "kiralik" ? (a.kiralama_firmasi ?? "") : (a.firmalar?.firma_adi ?? "")).trim() || "Firma girilmemiş",
       genelOrt,
       depoKapasite,
@@ -346,7 +364,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       // Örnek: makine 1'inde 1390 saatte, 15'inde 1400 saatte; arada 15 gün "çalıştı" yazılmış.
       // Beklenen 15×8 = 120 saat, gerçek 10 saat → 110 saat açık; sayaç ancak 1,25 günü karşılıyor.
       // Pay bırakılmaz (kullanıcı kararı): beklenenin altına düşen her aralık uyarıya girer.
-      const esikler = CALISMA_ESIK[r.sayacTipi];
+      const esikler = calismaEsigi(r.sayacTipi, r.gunlukMinOzel ? r.gunlukMin : null);
       const okumalar = siraliByArac.get(r.aracId) ?? [];
       // Tüketim oranı (birim başına litre): menzil girilmişse ondan, değilse geçmiş ortalamadan.
       // Menzil önce gelir; sayacı yanlış girilen araçlarda hesaplanan ortalama da bozuk çıkıyor.

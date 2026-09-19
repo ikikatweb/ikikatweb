@@ -113,6 +113,9 @@ export default function AraclarPage() {
   const [editBedelValue, setEditBedelValue] = useState<string>("");
   // 1 depo menzili inline düzenleme
   const [editMenzilId, setEditMenzilId] = useState<string | null>(null);
+  // Günlük asgari çalışma (km/saat) — Yakıt Denetleme'deki "çalışma açığı" hesabının eşiği.
+  const [editMinId, setEditMinId] = useState<string | null>(null);
+  const [editMinValue, setEditMinValue] = useState<string>("");
   const [editMenzilValue, setEditMenzilValue] = useState<string>("");
   // Araç düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
   const [duzenleArac, setDuzenleArac] = useState<AracWithRelations | null>(null);
@@ -179,6 +182,28 @@ export default function AraclarPage() {
   }
 
   // 1 depo menzili inline kaydet (km veya saat — tam sayı)
+  // Günlük asgari çalışmayı kaydet. Boş bırakılırsa null → varsayılana (10 km / 8 saat) döner.
+  async function minKaydet(aracId: string, raw: string) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
+    const temiz = raw.replace(/[^0-9]/g, "");
+    const sayisal = temiz === "" ? null : parseInt(temiz, 10);
+    if (sayisal !== null && (isNaN(sayisal) || sayisal < 0)) { toast.error("Geçersiz değer."); return; }
+    const mevcut = araclar.find((a) => a.id === aracId)?.gunluk_min_calisma ?? null;
+    if (sayisal === mevcut) { setEditMinId(null); setEditMinValue(""); return; }
+    try {
+      const { updateArac } = await import("@/lib/supabase/queries/araclar");
+      await updateArac(aracId, { gunluk_min_calisma: sayisal });
+      setAraclar((p) => p.map((a) => (a.id === aracId ? { ...a, gunluk_min_calisma: sayisal } : a)));
+      toast.success(sayisal == null ? "Varsayılana döndü." : "Günlük asgari çalışma kaydedildi.");
+    } catch (e) {
+      toast.error(e instanceof Error && /gunluk_min_calisma/.test(e.message)
+        ? "Kolon yok: sql/arac_gunluk_min_calisma.sql çalıştırılmalı."
+        : "Kaydedilemedi.");
+    }
+    setEditMinId(null);
+    setEditMinValue("");
+  }
+
   async function menzilKaydet(aracId: string, raw: string) {
     if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); return; }
     const temizlenmis = raw.replace(/[^\d]/g, "");
@@ -560,6 +585,7 @@ export default function AraclarPage() {
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead>Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="1 depo (tam dolum) ile gidilebilecek km / çalışabilecek saat">1 Depo</TableHead>
+                <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Puantaja &quot;tam gün çalıştı&quot; yazılabilmesi için gereken asgari günlük iş. Boşsa varsayılan: 10 km / 8 saat.">Günlük Min.</TableHead>
                 <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Genel yakıt tüketim ortalaması (km'siz ve dış-yakıt aralıkları hariç)">Genel Ort.</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
                 <TableHead className="hidden md:table-cell text-center">Ruhsat</TableHead>
@@ -687,6 +713,41 @@ export default function AraclarPage() {
                         {arac.depo_menzil != null && arac.depo_menzil > 0
                           ? `${arac.depo_menzil.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
                           : "—"}
+                      </span>
+                    )}
+                  </TableCell>
+                  {/* Günlük asgari çalışma — inline editable, menzille aynı desen. */}
+                  <TableCell
+                    className={`hidden md:table-cell text-right tabular-nums whitespace-nowrap ${yDuzenle ? "cursor-pointer hover:bg-blue-50" : ""}`}
+                    onClick={() => {
+                      if (!yDuzenle || editMinId === arac.id) return;
+                      setEditMinId(arac.id);
+                      setEditMinValue(arac.gunluk_min_calisma != null ? String(arac.gunluk_min_calisma) : "");
+                    }}
+                    title={yDuzenle ? "Tıklayarak günlük asgari çalışmayı gir/güncelle" : undefined}
+                  >
+                    {editMinId === arac.id ? (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoFocus
+                        value={editMinValue}
+                        onChange={(e) => setEditMinValue(e.target.value.replace(/[^0-9]/g, ""))}
+                        onBlur={() => minKaydet(arac.id, editMinValue)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") minKaydet(arac.id, editMinValue);
+                          if (e.key === "Escape") { setEditMinId(null); setEditMinValue(""); }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-16 h-7 text-right text-xs px-2 rounded border border-blue-300 outline-none focus:border-blue-500"
+                        placeholder={arac.sayac_tipi === "saat" ? "saat" : "km"}
+                        style={{ fontSize: "16px" }}
+                      />
+                    ) : (
+                      <span className={arac.gunluk_min_calisma != null && arac.gunluk_min_calisma > 0 ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
+                        {arac.gunluk_min_calisma != null && arac.gunluk_min_calisma > 0
+                          ? `${arac.gunluk_min_calisma.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
+                          : (arac.sayac_tipi === "saat" ? "8 sa" : "10 km")}
                       </span>
                     )}
                   </TableCell>

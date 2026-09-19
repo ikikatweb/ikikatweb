@@ -1,0 +1,14 @@
+-- GÜNLÜK ASGARİ ÇALIŞMA — araç bazında.
+--
+-- Puantaja "tam gün çalıştı" yazılabilmesi için aracın o gün yapması gereken en az iş:
+-- kilometre sayaçlı araçlarda km, saat sayaçlı iş makinelerinde saat.
+--
+-- Nerede kullanılıyor: Araç Puantaj → Yakıt Denetleme sekmesindeki "çalışma açığı" tespiti.
+-- İki dolum arasındaki "çalıştı" günleri bu değerle çarpılıp, aracın o aralıkta gerçekten
+-- yapabildiği işle (sayaç farkı ya da alınan yakıtın götürdüğü mesafe) karşılaştırılıyor.
+--
+-- Örnek: 1 depo menzili 600 km, günlük asgari 10 km olan bir araç, tek depoyla en fazla
+-- 60 gün "çalıştı" yazılabilir; daha fazlası yakıt almadan mümkün değildir.
+--
+-- Boş bırakılırsa varsayılan kullanılır: km sayaçlı araçta 10 km, saat sayaçlı makinede 8 saat.
+alter table araclar add column if not exists gunluk_min_calisma numeric;

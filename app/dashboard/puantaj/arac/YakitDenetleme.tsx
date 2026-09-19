@@ -15,7 +15,7 @@ import { useOturumFiltresi } from "@/hooks";
 import {
   getYakitDenetimi,
   TOLERANS_ORAN,
-  CALISMA_ESIK,
+  calismaEsigi,
   type DenetimSatiri,
 } from "@/lib/supabase/queries/yakit-denetleme";
 
@@ -127,7 +127,7 @@ export default function YakitDenetleme({
   const secili = satirlar.filter((s) => !kapali.has(s.cinsi)).map((s) => {
     if (!kucukGizle) return s;
     // Depo sınırını aşan aralık küçük olsa da kalır: o zaten "fiilen imkânsız" demek.
-    const tamEsik = CALISMA_ESIK[s.sayacTipi].tam;
+    const tamEsik = s.gunlukMin;
     const aciklar = s.aciklar.filter((x) => x.acik > tamEsik);
     return aciklar.length === s.aciklar.length ? s : { ...s, aciklar, enBuyukAcik: aciklar[0]?.acik ?? null };
   });
@@ -295,7 +295,7 @@ export default function YakitDenetleme({
                     {araclar.map((s) => {
                       const aracAcik = acikArac === s.aracId;
                       const birim = s.sayacTipi === "saat" ? "saat" : "km";
-                      const esik = CALISMA_ESIK[s.sayacTipi]; // tam/yarım gün asgari çalışma
+                      const esik = calismaEsigi(s.sayacTipi, s.gunlukMinOzel ? s.gunlukMin : null); // araç kartındaki değer, yoksa varsayılan
                       return (
                         <div key={s.aracId}>
                           {/* ARAÇ SATIRI — tıklayınca aşağı açılır */}
@@ -439,7 +439,7 @@ export default function YakitDenetleme({
                                   <div className="text-[11px] font-semibold text-orange-700 mb-1">
                                     Puantajla tutmayan {s.aciklar.length} aralık
                                     <span className="ml-1 font-normal text-gray-500">
-                                      (tam gün {esik.tam} {birim}, yarım gün {esik.yarim} {birim} sayılır.
+                                      (tam gün {sayi(esik.tam, 0)} {birim}{s.gunlukMinOzel ? " — araç kartından" : ""}, yarım gün {sayi(esik.yarim, 1)} {birim} sayılır.
                                       Kanıt = sayaç farkı ile alınan yakıtın götürdüğü mesafeden BÜYÜĞÜ)
                                     </span>
                                   </div>
