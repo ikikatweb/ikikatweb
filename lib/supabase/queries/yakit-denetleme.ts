@@ -51,25 +51,41 @@ export const CALISMA_ESIK: Record<"km" | "saat", { tam: number; yarim: number }>
   km: { tam: 10, yarim: 5 },
 };
 
-// Aralıkta puantaja yazılan çalışmanın sayaçta karşılığı var mı?
-// Yakıt aşımından BAĞIMSIZ bir tespit: yakıtla değil, yalnız sayaç farkıyla ilgilenir.
+// Aralıkta puantaja yazılan çalışmanın KARŞILIĞI var mı?
+//
+// İki bağımsız kanıt vardır ve BÜYÜĞÜ esas alınır:
+//   • sayaç farkı  — doğrudan ölçüm, ama sahada çoğu zaman yanlış/eksik giriliyor.
+//   • alınan yakıt — 55 litre alan bir kamyonet 60 km yapmamıştır; litre, çalışmanın
+//     bağımsız kanıtıdır. Litre ÷ tüketim oranı = o yakıtın götürdüğü km/saat.
+//
+// Uyarı ancak İKİ kanıt da puantajın altında kalırsa verilir. Aksi halde sayacı
+// yazılmayan (ör. her dolumda 1 km artırılan) araçlar haksız yere işaretleniyordu.
+//
+// Tüketim oranı: araçta "1 depo menzili" doluysa depo kapasitesi ÷ menzil; değilse
+// geçmişten hesaplanan genel ortalama. İkisi de yoksa yakıt kanıtı üretilemez.
 export type CalismaAcigi = {
   basTarih: string;      // önceki sayaç okuması (yakıt kaydı)
   bitTarih: string;      // bu sayaç okuması
   gun: number;           // aradaki takvim günü
   basSayac: number;
   bitSayac: number;
-  gercek: number;        // bitSayac − basSayac (saat veya km)
+  gercek: number;        // bitSayac − basSayac (saat veya km) — sayaç kanıtı
+  litre: number;         // aralığı kapatan dolum
+  yakitKarsiligi: number;// litre ÷ tüketim oranı → yakıt kanıtı (oran yoksa 0)
+  kanit: number;         // max(gercek, yakitKarsiligi) — iki kanıttan büyüğü
+  veriYok: boolean;      // ne sayaç ne yakıt kanıtı üretilebildi → "denetlenemiyor"
   tamGun: number;        // aralıkta "çalıştı" işaretli gün
   yarimGun: number;      // aralıkta "yarım gün" işaretli gün
   beklenen: number;      // tamGun×tam + yarimGun×yarim
-  acik: number;          // beklenen − gercek (pozitif = eksik çalışma); depo yetmezliğinde 0 olabilir
-  karsilikGun: number;   // gercek ÷ tam → "sayaç ancak bu kadar tam günü karşılıyor"
+  acik: number;          // beklenen − kanit
+  karsilikGun: number;   // kanit ÷ tam → "eldeki kanıt ancak bu kadar tam günü karşılıyor"
   // DEPO SINIRI: aralık tek dolumla geçildiğine göre, puantaja yazılan çalışma bir deponun
   // yetebileceğinden fazlaysa o çalışma fiilen mümkün değildir — sayaç hiç okunmasa bile.
   // (Aracın 1 depo menzili: depo kapasitesi ÷ ortalama tüketim.)
+  // Bilgi amaçlı: puantaja yazılan iş bir deponun yetebileceğinden fazla mı?
+  // Artık tek başına uyarı sebebi DEĞİL (yakıt kanıtı zaten litreyle sınırlı), yalnız etiket.
   kapasite: number | null;   // bir deponun yettiği saat/km
-  depoAsiyor: boolean;       // beklenen > kapasite × (1 + pay)
+  depoAsiyor: boolean;
   depoGun: number | null;    // kapasite ÷ tam → "bir depo en fazla bu kadar tam gün eder"
 };
 
@@ -204,6 +220,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
 
   const sonuc: DenetimSatiri[] = [];
   const siraliByArac = new Map<string, YakitRow[]>(); // 2. aşama (çalışma denetimi) aynı okumaları kullanır
+  const menzilByArac = new Map<string, number>();     // "1 depo menzili" — yakıt kanıtının oranı buradan
   for (const a of araclar) {
     const sayacTipi: "km" | "saat" = a.sayac_tipi === "saat" ? "saat" : "km";
     const carpan = sayacTipi === "saat" ? 1 : 100;
@@ -216,6 +233,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
 
     // --- genel ortalama (Yakıt sayfasıyla aynı mantık) ---
     const menzil = a.depo_menzil ?? 0;
+    menzilByArac.set(a.id, menzil);
     let toplamLt = 0, toplamMesafe = 0;
     for (let i = 1; i < sirali.length; i++) {
       const mesafe = (sirali[i].km_saat ?? 0) - (sirali[i - 1].km_saat ?? 0);
@@ -330,6 +348,12 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       // Pay bırakılmaz (kullanıcı kararı): beklenenin altına düşen her aralık uyarıya girer.
       const esikler = CALISMA_ESIK[r.sayacTipi];
       const okumalar = siraliByArac.get(r.aracId) ?? [];
+      // Tüketim oranı (birim başına litre): menzil girilmişse ondan, değilse geçmiş ortalamadan.
+      // Menzil önce gelir; sayacı yanlış girilen araçlarda hesaplanan ortalama da bozuk çıkıyor.
+      const carpanR = r.sayacTipi === "saat" ? 1 : 100;
+      const tuketimOran = (menzilByArac.get(r.aracId) ?? 0) > 0 && r.depoKapasite
+        ? r.depoKapasite / (menzilByArac.get(r.aracId) as number)
+        : (r.genelOrt && r.genelOrt > 0 ? r.genelOrt / carpanR : null);
       const aciklar: CalismaAcigi[] = [];
       if (gunler) {
         for (let i = 1; i < okumalar.length; i++) {
@@ -344,24 +368,28 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
           }
           const beklenen = tamGun * esikler.tam + yarimGun * esikler.yarim;
           if (beklenen <= 0) continue;      // aralıkta çalışma işaretlenmemiş → denetlenecek şey yok
-          // İki bağımsız gerekçe; biri bile yeterli:
-          //   (1) sayaç puantajı karşılamıyor  → gercek < beklenen
-          //   (2) tek depo puantajı kaldırmaz  → beklenen, bir deponun yettiğinden fazla
-          //       (aralık tanımı gereği arada tek dolum var; %10 pay kapasite tahmini içindir)
-          const depoAsiyor = !!(r.esik && beklenen > r.esik);
-          if (gercek >= beklenen && !depoAsiyor) continue;
+          // İKİ KANIT, BÜYÜĞÜ GEÇERLİ. Sayaç yazılmamışsa yakıt konuşur, yakıt bilinmiyorsa sayaç.
+          const litre = bu.miktar_lt ?? 0;
+          const yakitKarsiligi = tuketimOran && tuketimOran > 0 ? litre / tuketimOran : 0;
+          const kanit = Math.max(gercek, yakitKarsiligi);
+          if (kanit >= beklenen) continue;  // kanıtlardan biri puantajı karşılıyor → sorun yok
           aciklar.push({
             basTarih: onceki.tarih, bitTarih: bu.tarih, gun: gunFarki(onceki.tarih, bu.tarih),
             basSayac: onceki.km_saat ?? 0, bitSayac: bu.km_saat ?? 0,
-            gercek, tamGun, yarimGun, beklenen, acik: Math.max(0, beklenen - gercek),
-            karsilikGun: gercek / esikler.tam,
-            kapasite: r.kapasite, depoAsiyor,
+            gercek, litre, yakitKarsiligi, kanit,
+            // Hiçbir kanıt üretilemedi: sayaç hiç artmamış VE tüketim oranı bilinmiyor.
+            // Bu "çalışmamış" demek değil, "denetlenemiyor" demek.
+            veriYok: tuketimOran == null && gercek <= 0,
+            tamGun, yarimGun, beklenen, acik: beklenen - kanit,
+            karsilikGun: kanit / esikler.tam,
+            kapasite: r.kapasite,
+            depoAsiyor: !!(r.esik && beklenen > r.esik),
             depoGun: r.kapasite != null ? r.kapasite / esikler.tam : null,
           });
         }
       }
-      // Önce depo sınırını aşanlar (fiilen imkânsız olan), sonra açığı büyük olanlar.
-      aciklar.sort((x, y) => Number(y.depoAsiyor) - Number(x.depoAsiyor) || y.acik - x.acik);
+      // Açığı büyük olan üstte; denetlenemeyenler (kanıtsız) en sona.
+      aciklar.sort((x, y) => Number(x.veriYok) - Number(y.veriYok) || y.acik - x.acik);
       r.aciklar = aciklar;
       r.enBuyukAcik = aciklar[0]?.acik ?? null;
     }

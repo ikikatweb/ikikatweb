@@ -128,7 +128,7 @@ export default function YakitDenetleme({
     if (!kucukGizle) return s;
     // Depo sınırını aşan aralık küçük olsa da kalır: o zaten "fiilen imkânsız" demek.
     const tamEsik = CALISMA_ESIK[s.sayacTipi].tam;
-    const aciklar = s.aciklar.filter((x) => x.depoAsiyor || x.acik > tamEsik);
+    const aciklar = s.aciklar.filter((x) => x.acik > tamEsik);
     return aciklar.length === s.aciklar.length ? s : { ...s, aciklar, enBuyukAcik: aciklar[0]?.acik ?? null };
   });
   const asimliAraclar = secili.filter((s) => s.asimlar.length > 0);
@@ -439,8 +439,8 @@ export default function YakitDenetleme({
                                   <div className="text-[11px] font-semibold text-orange-700 mb-1">
                                     Puantajla tutmayan {s.aciklar.length} aralık
                                     <span className="ml-1 font-normal text-gray-500">
-                                      (tam gün {esik.tam} {birim}, yarım gün {esik.yarim} {birim} sayılır;
-                                      kırmızı &quot;Beklenen&quot; = tek depoyla yapılamayacak kadar çok iş)
+                                      (tam gün {esik.tam} {birim}, yarım gün {esik.yarim} {birim} sayılır.
+                                      Kanıt = sayaç farkı ile alınan yakıtın götürdüğü mesafeden BÜYÜĞÜ)
                                     </span>
                                   </div>
                                   <div className="overflow-x-auto">
@@ -451,7 +451,7 @@ export default function YakitDenetleme({
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Sayaç</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Puantaj</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Beklenen</th>
-                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Gerçekleşen</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Kanıt</th>
                                           <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Açık</th>
                                         </tr>
                                       </thead>
@@ -479,15 +479,29 @@ export default function YakitDenetleme({
                                                 </span>
                                               )}
                                             </td>
-                                            <td className="px-2 py-1 text-right font-mono font-semibold whitespace-nowrap">
-                                              {tamsayi(x.gercek)} {birim}
+                                            <td className="px-2 py-1 text-right font-mono whitespace-nowrap">
+                                              {x.veriYok ? (
+                                                <span className="text-gray-400">kanıt yok</span>
+                                              ) : (
+                                                <>
+                                                  <span className="font-semibold">{tamsayi(x.kanit)} {birim}</span>
+                                                  <span className="block text-[9px] text-gray-400">
+                                                    sayaç {tamsayi(x.gercek)}
+                                                    {x.yakitKarsiligi > 0 && <> · {tamsayi(x.litre)} lt ≈ {tamsayi(x.yakitKarsiligi)}</>}
+                                                  </span>
+                                                </>
+                                              )}
                                             </td>
-                                            <td className="px-2 py-1 text-right font-mono font-bold text-orange-600 whitespace-nowrap">
-                                              {x.acik > 0 ? <>−{tamsayi(x.acik)}</> : <span className="text-red-600">depo yetmez</span>}
-                                              {x.acik > 0 && (
-                                                <span className="ml-1 text-[9px] font-semibold text-orange-400">
-                                                  sayaç {sayi(x.karsilikGun, 1)} gün eder
-                                                </span>
+                                            <td className="px-2 py-1 text-right font-mono font-bold whitespace-nowrap">
+                                              {x.veriYok ? (
+                                                <span className="text-gray-500 font-semibold">denetlenemiyor</span>
+                                              ) : (
+                                                <>
+                                                  <span className="text-orange-600">−{tamsayi(x.acik)}</span>
+                                                  <span className="block text-[9px] font-semibold text-orange-400">
+                                                    ancak {sayi(x.karsilikGun, 1)} gün eder
+                                                  </span>
+                                                </>
                                               )}
                                             </td>
                                           </tr>
