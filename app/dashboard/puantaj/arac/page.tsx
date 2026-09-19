@@ -206,19 +206,26 @@ export default function AracPuantajPage() {
   // hücreye rozet konur. Puantajı bekletmesin diye ayrı ve sessiz yüklenir; gelmezse ızgara
   // eskisi gibi çizilir.
   const [yakitsizAralik, setYakitsizAralik] = useState<Map<string, { bas: string; bit: string }[]>>(new Map());
+  // ÇALIŞMA AÇIĞI ARALIKLARI — aynı sekmedeki ikinci tespitin ızgaraya yansıması: puantaja
+  // yazılan çalışmanın sayaçta karşılığı olmayan aralıklar. Aynı hücrede ikisi de varsa
+  // yakıt (kırmızı) rozeti öncelikli; o daha kesin bir bulgu.
+  const [acikAralik, setAcikAralik] = useState<Map<string, { bas: string; bit: string }[]>>(new Map());
   useEffect(() => {
     let iptal = false;
     setYakitsizAralik(new Map());
+    setAcikAralik(new Map());
     if (!santiyeId) return;
     getYakitDenetimi(santiyeId)
       .then((satirlar) => {
         if (iptal) return;
         const m = new Map<string, { bas: string; bit: string }[]>();
+        const ma = new Map<string, { bas: string; bit: string }[]>();
         for (const r of satirlar) {
-          if (r.asimlar.length === 0) continue;
-          m.set(r.aracId, r.asimlar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
+          if (r.asimlar.length > 0) m.set(r.aracId, r.asimlar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
+          if (r.aciklar.length > 0) ma.set(r.aracId, r.aciklar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
         }
         setYakitsizAralik(m);
+        setAcikAralik(ma);
       })
       .catch(() => { /* rozet olmasın, puantaj çalışmaya devam etsin */ });
     return () => { iptal = true; };
@@ -249,6 +256,7 @@ export default function AracPuantajPage() {
     y: number;
     yukari: boolean; // true ise hücrenin üstünde gösterilir (alt satırda taşma olmasın diye)
     yakitsiz?: boolean; // gün, tek depoyla gidilemeyecek bir dolum aralığının içinde
+    calismaAcik?: boolean; // gün, puantajın sayaçta karşılığı olmayan bir aralığın içinde
     plaka: string;
     isleyenAd: string;
     durum: AracPuantajDurum;
@@ -620,6 +628,16 @@ export default function AracPuantajPage() {
   const yakitsizGunMu = (aracId: string, gun: number, durum?: AracPuantajDurum): boolean => {
     if (durum !== "calisti" && durum !== "yarim_gun") return false;
     const araliklar = yakitsizAralik.get(aracId);
+    if (!araliklar) return false;
+    const tarih = `${yil}-${String(ay).padStart(2, "0")}-${String(gun).padStart(2, "0")}`;
+    return araliklar.some((x) => tarih > x.bas && tarih < x.bit);
+  };
+
+  // Bu gün ÇALIŞMA AÇIĞI rozeti alır mı? Kural yakıt rozetiyle aynı: gün, açığı olan bir
+  // sayaç aralığının İÇİNDE olmalı (uç günler okuma günleridir) ve o gün fiilen çalışılmış olmalı.
+  const calismaAcikGunMu = (aracId: string, gun: number, durum?: AracPuantajDurum): boolean => {
+    if (durum !== "calisti" && durum !== "yarim_gun") return false;
+    const araliklar = acikAralik.get(aracId);
     if (!araliklar) return false;
     const tarih = `${yil}-${String(ay).padStart(2, "0")}-${String(gun).padStart(2, "0")}`;
     return araliklar.some((x) => tarih > x.bas && tarih < x.bit);
@@ -2254,6 +2272,7 @@ export default function AracPuantajPage() {
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: yakitsizGunMu(a.id, g, p.durum),
+                                  calismaAcik: calismaAcikGunMu(a.id, g, p.durum),
                                 });
                               }
                             }}
@@ -2274,6 +2293,7 @@ export default function AracPuantajPage() {
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: yakitsizGunMu(a.id, g, p.durum),
+                                  calismaAcik: calismaAcikGunMu(a.id, g, p.durum),
                                 });
                               }
                             }}
@@ -2284,6 +2304,8 @@ export default function AracPuantajPage() {
                                 : "hover:bg-gray-200 text-gray-300"
                             }${dBilgi && yakitsizGunMu(a.id, g, p?.durum)
                               ? " shadow-[inset_0_0_0_2px_#DC2626] ring-1 ring-inset ring-white/70"
+                              : dBilgi && calismaAcikGunMu(a.id, g, p?.durum)
+                              ? " shadow-[inset_0_0_0_2px_#EA580C] ring-1 ring-inset ring-white/70"
                               : ""}`}
                             title={
                               !dBilgi
@@ -2299,14 +2321,22 @@ export default function AracPuantajPage() {
                             })()}
                             {/* YAKITSIZ ÇALIŞMA — bu gün, tek depoyla gidilemeyecek bir dolum
                                 aralığının içinde. Sol üst köşe: sağ üst köşeyi "not var" kullanıyor. */}
-                            {dBilgi && yakitsizGunMu(a.id, g, p?.durum) && (
+                            {dBilgi && yakitsizGunMu(a.id, g, p?.durum) ? (
                               <span
                                 className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-red-600 text-white shadow-sm pointer-events-none"
                                 aria-label="Yakıtsız çalışma"
                               >
                                 <Fuel size={10} strokeWidth={2.75} />
                               </span>
-                            )}
+                            ) : dBilgi && calismaAcikGunMu(a.id, g, p?.durum) ? (
+                              /* ÇALIŞMA AÇIĞI — aynı simge, turuncu: puantaj sayaçla tutmuyor. */
+                              <span
+                                className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-orange-500 text-white shadow-sm pointer-events-none"
+                                aria-label="Çalışma açığı"
+                              >
+                                <Fuel size={10} strokeWidth={2.75} />
+                              </span>
+                            ) : null}
                             {notVar && (
                               <span
                                 className="absolute top-0 right-0 w-0 h-0 border-t-[8px] border-t-yellow-300 border-l-[8px] border-l-transparent shadow-sm pointer-events-none"
@@ -3299,6 +3329,13 @@ export default function AracPuantajPage() {
                   <span className="font-semibold">İşleyen:</span>
                   <span className="text-gray-700">{tooltip.isleyenAd}</span>
                 </div>
+                {!tooltip.yakitsiz && tooltip.calismaAcik && (
+                  <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5 leading-snug">
+                    <span className="font-bold">Çalışma açığı.</span> Bu gün, puantaja yazılan
+                    çalışmanın sayaçta karşılığı olmayan bir aralığın içinde kalıyor. Ayrıntı için
+                    <strong> Yakıt Denetleme</strong> sekmesine bakın.
+                  </div>
+                )}
                 {tooltip.yakitsiz && (
                   <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
                     <span className="font-bold">Yakıtsız çalışma.</span> Bu gün, aracın tek depoyla
