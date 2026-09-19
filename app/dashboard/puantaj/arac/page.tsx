@@ -3528,7 +3528,7 @@ export default function AracPuantajPage() {
                   inputMode="decimal"
                   value={seciliGosterge}
                   onChange={(e) => setSeciliGosterge(e.target.value)}
-                  placeholder={seciliArac.guncel_gosterge != null ? `Bu gün okunmadı — aracın son bilinen sayacı: ${seciliArac.guncel_gosterge.toLocaleString("tr-TR")}` : "Bu günün sayaç değeri"}
+                  placeholder={seciliArac.guncel_gosterge != null ? `Son sayaç: ${seciliArac.guncel_gosterge.toLocaleString("tr-TR")}` : "Bu günün sayaç değeri"}
                   className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
                 />
               </div>
