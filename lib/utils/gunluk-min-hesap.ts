@@ -1,13 +1,16 @@
 // GÜNLÜK ASGARİ ÇALIŞMANIN VERİDEN HESABI
 //
 // Araç kartındaki "günlük asgari çalışma" elle girilmezse bu hesap devreye girer:
-// aracın geçmişteki günlük işlerinin ALT %20'lik dilimi.
+// aracın geçmişte bir çalışma gününde yaptığı EN DÜŞÜK işin %90'ı (kullanıcı kararı).
+// Payın amacı: eşiğin altına ancak daha önce hiç görülmemiş kadar düşük bir gün düşsün.
 //
-// NEDEN MUTLAK MİNİMUM DEĞİL: minimum, verinin en bozuk noktasından gelir. Denendi ve
-// elendi — bir ekskavatörün eşiği, tam da "7 gün çalıştı yazılmış ama sayaç 6 saat artmış"
-// diye uyarı verdiğimiz aralıktan geldi; yakalanması gereken sapma ölçüt oldu ve uyarı
-// sayısı 224'ten 8'e düştü. Alt %20'lik dilim, tek bir bozuk noktanın eşiği belirlemesini
-// engeller ama yine araca özeldir.
+// DİKKAT — ÖLÇÜLMÜŞ SONUÇ: minimum, verinin en bozuk noktasından gelir, %90'ı almak onu
+// daha da aşağı çeker. Gerçek veride bu eşikle çalışma açığı uyarısı 60 aralıktan 4'e
+// düşüyor; yani tespit pratikte susuyor. Örnek: 60 BP 842'nin eşiği tek bir 1 günlük
+// 4 km'lik aralık yüzünden 4 km, 20-00-23-0202'nin eşiği ise tam da uyarı verdiğimiz
+// aralıktan gelip 1 saat oluyor. Alt %20'lik dilim denendi (60 aralık / 24 araç) ve
+// kullanıcı isteğiyle bu kurala dönüldü. Değiştirmek için MIN_CARPAN'ı ya da
+// asagiDilim() çağrısını değiştirmek yeterli.
 //
 // Ölçüm birimi araca göre km ya da saat; kaynak, iki yakıt dolumu arasındaki sayaç farkı.
 // (Sayaç yalnız yakıt alınırken okunuyor, daha ince kırılım yok.)
@@ -43,15 +46,15 @@ export type GunlukMinSonuc = {
   aralikSayisi: number; // değerlendirmeye giren aralık sayısı
 };
 
-/** Alt dilim oranı: 0,20 = günlük işlerin en düşük beşte biri. */
-export const DILIM_ORAN = 0.20;
+/** En düşük günün kaçta kaçı eşik olur. 0,90 = en düşük günün %90'ı. */
+export const MIN_CARPAN = 0.90;
 /** Bu sayıdan az aralık varsa hesap yapılmaz — tek iki nokta ölçüt olamaz. */
 export const EN_AZ_ARALIK = 3;
 /** Fiziksel üst sınır: bir makine günde bundan fazla çalışamaz (bozuk okumaları eler). */
 export const SAAT_UST_SINIR = 12;
 
 /**
- * Aracın geçmiş günlük işlerinin ALT %20'lik dilimi. Yeterli aralık yoksa null.
+ * Aracın geçmişteki en düşük günlük işinin %90'ı. Yeterli aralık yoksa null.
  * okumalar: sayaç girilmiş yakıt kayıtları (sıra önemli değil, burada sıralanır).
  */
 export function hesaplaGunlukMin(okumalar: Okuma[], gunler: GunDurum, sayacTipi: "km" | "saat" = "km"): GunlukMinSonuc | null {
@@ -80,11 +83,8 @@ export function hesaplaGunlukMin(okumalar: Okuma[], gunler: GunDurum, sayacTipi:
   }
   if (adaylar.length < EN_AZ_ARALIK) return null;   // ölçüt kuracak kadar veri yok
   adaylar.sort((a, b) => a.deger - b.deger);
-  // Alt %20'lik dilim: sıralı listede bu sıradaki aralık. En az 1. sıra (en düşük) olur.
-  const sira = Math.max(0, Math.ceil(adaylar.length * DILIM_ORAN) - 1);
-  const secilen = adaylar[sira];
-  secilen.aralikSayisi = adaylar.length;
-  return secilen;
+  const enDusuk = adaylar[0];
+  return { ...enDusuk, deger: enDusuk.deger * MIN_CARPAN, aralikSayisi: adaylar.length };
 }
 
 /** Ekranda/eşikte kullanılacak yuvarlanmış değer: saat 0,5'e, km 1'e yuvarlanır; en az 1. */
