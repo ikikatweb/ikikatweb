@@ -74,6 +74,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
     sayac_tipi: arac?.sayac_tipi ?? "km",
     guncel_gosterge: arac?.guncel_gosterge ?? null,
     depo_menzil: arac?.depo_menzil ?? null,
+    gunluk_min_calisma: arac?.gunluk_min_calisma ?? null,
     santiye_id: arac?.santiye_id ?? null,
     firma_id: arac?.firma_id ?? null,
     hgs_saglayici: arac?.hgs_saglayici ?? null,
@@ -129,7 +130,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
     setFormData((prev) => ({
       ...prev,
       [name]:
-        name === "yili" || name === "guncel_gosterge" || name === "depo_menzil"
+        name === "yili" || name === "guncel_gosterge" || name === "depo_menzil" || name === "gunluk_min_calisma"
           ? value ? parseInt(value) : null
           : value || null,
     }));
@@ -504,6 +505,30 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
               />
               <p className="text-[10px] text-gray-400 leading-snug">
                 Yakıt verirken iki dolum arası fark bu değeri aşarsa &quot;dışarıdan yakıt alındı&quot; otomatik işaretlenir. Boş bırakılırsa otomatik kontrol yapılmaz.
+              </p>
+            </div>
+
+            {/* Günlük asgari çalışma — puantaj denetiminin eşiği (Yakıt Denetleme sekmesi). */}
+            <div className="space-y-2">
+              <Label htmlFor="gunluk_min_calisma">
+                {formData.sayac_tipi === "saat"
+                  ? "Tam Gün Sayılması İçin Asgari Saat"
+                  : "Tam Gün Sayılması İçin Asgari KM"}
+              </Label>
+              <Input
+                id="gunluk_min_calisma"
+                name="gunluk_min_calisma"
+                type="text" inputMode="numeric"
+                placeholder={formData.sayac_tipi === "saat" ? "Varsayılan: 8" : "Varsayılan: 10"}
+                value={formData.gunluk_min_calisma ?? ""}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              <p className="text-[10px] text-gray-400 leading-snug">
+                Puantaja &quot;tam gün çalıştı&quot; yazılabilmesi için aracın o gün yapması gereken en az iş.
+                Yakıt Denetleme sekmesindeki çalışma açığı hesabı bunu kullanır; yarım gün bunun
+                {formData.sayac_tipi === "saat" ? " öğleye kadarki vardiya" : " yarısı"} oranında sayılır.
+                Boş bırakılırsa varsayılan ({formData.sayac_tipi === "saat" ? "8 saat" : "10 km"}) geçerlidir.
               </p>
             </div>
 
