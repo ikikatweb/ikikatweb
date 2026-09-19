@@ -22,7 +22,7 @@ import {
   upsertPersonelPuantaj,
   deletePersonelPuantaj,
 } from "@/lib/supabase/queries/personel-puantaj";
-import { useAuth, useOturumFiltresi } from "@/hooks";
+import { useAuth, useOturumFiltresi, useKaydirmaHafizasi } from "@/hooks";
 import type {
   PersonelWithRelations, PersonelPuantaj, PersonelPuantajDurum,
 } from "@/lib/supabase/types";
@@ -510,6 +510,8 @@ export default function PersonelPuantajPage() {
   // personel_id -> gun -> puantaj
   // Ekrandaki ay+şantiye ile YÜKLÜ verinin ayı aynı mı? Değilse hiçbir kayıt çizilmez.
   const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
+  // Izgaranın kaydırma konumu F5'te korunur — veri geldikten sonra geri yüklenir.
+  const izgaraRef = useKaydirmaHafizasi<HTMLDivElement>("puantaj-personel:izgara", veriHazir);
   const personelGunMap = useMemo(() => {
     const m = new Map<string, Map<number, PersonelPuantaj>>();
     if (!veriHazir) return m;
@@ -1333,7 +1335,7 @@ export default function PersonelPuantajPage() {
           <p className="text-gray-500">Bu şantiyeye atanmış personel yok.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[calc(100vh-220px)]">
+        <div ref={izgaraRef} className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[calc(100vh-220px)]">
           {/* Kaydırma kabı ARAÇ PUANTAJ ile aynı: iki eksen de bu div'de kayar.
               overflow-x-auto iken dikey kaydırma sayfada kalıyordu; sabit başlık sayfaya,
               sabit sütun kaba tutunuyor ve telefonda isimler kaybolup renkler üzerlerine

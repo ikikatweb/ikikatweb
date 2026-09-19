@@ -29,7 +29,7 @@ import {
   getAracOzetOverridesByRange,
   upsertAracOzetOverride,
 } from "@/lib/supabase/queries/arac-ozet";
-import { useAuth, useOturumFiltresi } from "@/hooks";
+import { useAuth, useOturumFiltresi, useKaydirmaHafizasi } from "@/hooks";
 import type {
   AracWithRelations, AracPuantaj, AracPuantajDurum,
   AracKiraBedeli, AracPuantajOverride,
@@ -684,6 +684,8 @@ export default function AracPuantajPage() {
     calismaAcikAralik(aracId, gun, durum) != null;
 
   const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
+  // Izgaranın kaydırma konumu F5'te korunur — veri geldikten sonra geri yüklenir.
+  const izgaraRef = useKaydirmaHafizasi<HTMLDivElement>("puantaj-arac:izgara", veriHazir);
   const aracGunMap = useMemo(() => {
     const m = new Map<string, Map<number, AracPuantaj>>();
     if (!veriHazir) return m;
@@ -2159,7 +2161,7 @@ export default function AracPuantajPage() {
           <p className="text-xs text-gray-400 mt-1">Aracın bu şantiyeye atanmış olması veya bu ay içinde puantajının olması gerekir.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[calc(100vh-220px)]">
+        <div ref={izgaraRef} className="bg-white rounded-lg border border-gray-200 overflow-auto max-h-[calc(100vh-220px)]">
           <Table noWrapper className="text-xs border-separate border-spacing-0">
             <thead className="!z-[50]">
               <tr className="bg-[#64748B]">
