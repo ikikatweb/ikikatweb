@@ -209,7 +209,14 @@ export default function AracPuantajPage() {
   // ÇALIŞMA AÇIĞI ARALIKLARI — aynı sekmedeki ikinci tespitin ızgaraya yansıması: puantaja
   // yazılan çalışmanın sayaçta karşılığı olmayan aralıklar. Aynı hücrede ikisi de varsa
   // yakıt (kırmızı) rozeti öncelikli; o daha kesin bir bulgu.
-  const [acikAralik, setAcikAralik] = useState<Map<string, { bas: string; bit: string }[]>>(new Map());
+  type AcikAralikBilgi = {
+    bas: string; bit: string;
+    tamGun: number; yarimGun: number;
+    kanit: number;      // sayaç/yakıttan büyüğü — fiilen yapılan iş
+    beklenen: number;
+    birim: "km" | "saat";
+  };
+  const [acikAralik, setAcikAralik] = useState<Map<string, AcikAralikBilgi[]>>(new Map());
   useEffect(() => {
     let iptal = false;
     setYakitsizAralik(new Map());
@@ -219,10 +226,13 @@ export default function AracPuantajPage() {
       .then((satirlar) => {
         if (iptal) return;
         const m = new Map<string, { bas: string; bit: string }[]>();
-        const ma = new Map<string, { bas: string; bit: string }[]>();
+        const ma = new Map<string, AcikAralikBilgi[]>();
         for (const r of satirlar) {
           if (r.asimlar.length > 0) m.set(r.aracId, r.asimlar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
-          if (r.aciklar.length > 0) ma.set(r.aracId, r.aciklar.map((x) => ({ bas: x.basTarih, bit: x.bitTarih })));
+          if (r.aciklar.length > 0) ma.set(r.aracId, r.aciklar.map((x) => ({
+            bas: x.basTarih, bit: x.bitTarih, tamGun: x.tamGun, yarimGun: x.yarimGun,
+            kanit: x.kanit, beklenen: x.beklenen, birim: r.sayacTipi,
+          })));
         }
         setYakitsizAralik(m);
         setAcikAralik(ma);
@@ -256,7 +266,8 @@ export default function AracPuantajPage() {
     y: number;
     yukari: boolean; // true ise hücrenin üstünde gösterilir (alt satırda taşma olmasın diye)
     yakitsiz?: boolean; // gün, tek depoyla gidilemeyecek bir dolum aralığının içinde
-    calismaAcik?: boolean; // gün, puantajın sayaçta karşılığı olmayan bir aralığın içinde
+    // Gün, puantajın sayaçta karşılığı olmayan bir aralığın içinde — balonda ayrıntısı gösterilir.
+    calismaAcik?: { gun: number; kanit: number; ortalama: number; beklenen: number; birim: "km" | "saat"; bas: string; bit: string } | null;
     plaka: string;
     isleyenAd: string;
     durum: AracPuantajDurum;
@@ -635,13 +646,15 @@ export default function AracPuantajPage() {
 
   // Bu gün ÇALIŞMA AÇIĞI rozeti alır mı? Kural yakıt rozetiyle aynı: gün, açığı olan bir
   // sayaç aralığının İÇİNDE olmalı (uç günler okuma günleridir) ve o gün fiilen çalışılmış olmalı.
-  const calismaAcikGunMu = (aracId: string, gun: number, durum?: AracPuantajDurum): boolean => {
-    if (durum !== "calisti" && durum !== "yarim_gun") return false;
+  const calismaAcikAralik = (aracId: string, gun: number, durum?: AracPuantajDurum): AcikAralikBilgi | null => {
+    if (durum !== "calisti" && durum !== "yarim_gun") return null;
     const araliklar = acikAralik.get(aracId);
-    if (!araliklar) return false;
+    if (!araliklar) return null;
     const tarih = `${yil}-${String(ay).padStart(2, "0")}-${String(gun).padStart(2, "0")}`;
-    return araliklar.some((x) => tarih > x.bas && tarih < x.bit);
+    return araliklar.find((x) => tarih > x.bas && tarih < x.bit) ?? null;
   };
+  const calismaAcikGunMu = (aracId: string, gun: number, durum?: AracPuantajDurum): boolean =>
+    calismaAcikAralik(aracId, gun, durum) != null;
 
   const veriHazir = veriAnahtari === `${yil}-${ay}|${santiyeId}`;
   const aracGunMap = useMemo(() => {
@@ -2272,7 +2285,13 @@ export default function AracPuantajPage() {
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: yakitsizGunMu(a.id, g, p.durum),
-                                  calismaAcik: calismaAcikGunMu(a.id, g, p.durum),
+                                  calismaAcik: (() => {
+                                    const x = calismaAcikAralik(a.id, g, p.durum);
+                                    if (!x) return null;
+                                    const gunSay = x.tamGun + x.yarimGun * 0.5;
+                                    return { gun: gunSay, kanit: x.kanit, ortalama: gunSay > 0 ? x.kanit / gunSay : 0,
+                                      beklenen: x.beklenen, birim: x.birim, bas: x.bas, bit: x.bit };
+                                  })(),
                                 });
                               }
                             }}
@@ -2293,7 +2312,13 @@ export default function AracPuantajPage() {
                                   durum: p.durum,
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: yakitsizGunMu(a.id, g, p.durum),
-                                  calismaAcik: calismaAcikGunMu(a.id, g, p.durum),
+                                  calismaAcik: (() => {
+                                    const x = calismaAcikAralik(a.id, g, p.durum);
+                                    if (!x) return null;
+                                    const gunSay = x.tamGun + x.yarimGun * 0.5;
+                                    return { gun: gunSay, kanit: x.kanit, ortalama: gunSay > 0 ? x.kanit / gunSay : 0,
+                                      beklenen: x.beklenen, birim: x.birim, bas: x.bas, bit: x.bit };
+                                  })(),
                                 });
                               }
                             }}
@@ -3331,13 +3356,20 @@ export default function AracPuantajPage() {
                   <span className="font-semibold">İşleyen:</span>
                   <span className="text-gray-700">{tooltip.isleyenAd}</span>
                 </div>
-                {!tooltip.yakitsiz && tooltip.calismaAcik && (
-                  <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5 leading-snug">
-                    <span className="font-bold">Çalışma açığı.</span> Bu gün, puantaja yazılan
-                    çalışmanın sayaçta karşılığı olmayan bir aralığın içinde kalıyor. Ayrıntı için
-                    <strong> Yakıt Denetleme</strong> sekmesine bakın.
-                  </div>
-                )}
+                {!tooltip.yakitsiz && tooltip.calismaAcik && (() => {
+                  const c = tooltip.calismaAcik!;
+                  const b = c.birim === "saat" ? "saat" : "km";
+                  const n = (v: number, h = 1) => v.toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: h });
+                  const t = (d: string) => d.split("-").reverse().join(".");
+                  return (
+                    <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5 leading-snug">
+                      <span className="font-bold">Çalışma açığı.</span>{" "}
+                      {t(c.bas)} – {t(c.bit)} arasında <b>{n(c.gun)} gün</b> çalıştı yazılmış,
+                      sayaç ve yakıt <b>{n(c.kanit)} {b}</b> gösteriyor — günlük ortalama{" "}
+                      <b>{n(c.ortalama)} {b}</b>, beklenen {n(c.beklenen)} {b}.
+                    </div>
+                  );
+                })()}
                 {tooltip.yakitsiz && (
                   <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
                     <span className="font-bold">Yakıtsız çalışma.</span> Bu gün, aracın tek depoyla
