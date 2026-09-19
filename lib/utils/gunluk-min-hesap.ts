@@ -1,8 +1,13 @@
 // GÜNLÜK ASGARİ ÇALIŞMANIN VERİDEN HESABI
 //
 // Araç kartındaki "günlük asgari çalışma" elle girilmezse bu hesap devreye girer:
-// aracın GEÇMİŞTE bir çalışma gününde yaptığı EN DÜŞÜK iş. Mantığı şu — araç daha önce
-// bir günde en az bu kadarını yapabildiyse, bunun altına düşen bir gün "çalıştı" sayılmamalı.
+// aracın geçmişteki günlük işlerinin ALT %20'lik dilimi.
+//
+// NEDEN MUTLAK MİNİMUM DEĞİL: minimum, verinin en bozuk noktasından gelir. Denendi ve
+// elendi — bir ekskavatörün eşiği, tam da "7 gün çalıştı yazılmış ama sayaç 6 saat artmış"
+// diye uyarı verdiğimiz aralıktan geldi; yakalanması gereken sapma ölçüt oldu ve uyarı
+// sayısı 224'ten 8'e düştü. Alt %20'lik dilim, tek bir bozuk noktanın eşiği belirlemesini
+// engeller ama yine araca özeldir.
 //
 // Ölçüm birimi araca göre km ya da saat; kaynak, iki yakıt dolumu arasındaki sayaç farkı.
 // (Sayaç yalnız yakıt alınırken okunuyor, daha ince kırılım yok.)
@@ -30,7 +35,7 @@ const ertesiGun = (t: string) => new Date(Date.parse(`${t}T00:00:00Z`) + 8640000
 const gunFarki = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 
 export type GunlukMinSonuc = {
-  deger: number;        // en düşük günlük iş (km ya da saat)
+  deger: number;        // alt %20'lik dilimdeki günlük iş (km ya da saat)
   basTarih: string;     // bu değerin geldiği aralık
   bitTarih: string;
   gun: number;          // aralıktaki çalışma günü
@@ -38,16 +43,22 @@ export type GunlukMinSonuc = {
   aralikSayisi: number; // değerlendirmeye giren aralık sayısı
 };
 
+/** Alt dilim oranı: 0,20 = günlük işlerin en düşük beşte biri. */
+export const DILIM_ORAN = 0.20;
+/** Bu sayıdan az aralık varsa hesap yapılmaz — tek iki nokta ölçüt olamaz. */
+export const EN_AZ_ARALIK = 3;
+/** Fiziksel üst sınır: bir makine günde bundan fazla çalışamaz (bozuk okumaları eler). */
+export const SAAT_UST_SINIR = 12;
+
 /**
- * Aracın geçmişteki EN DÜŞÜK günlük işi. Değerlendirilecek aralık yoksa null.
+ * Aracın geçmiş günlük işlerinin ALT %20'lik dilimi. Yeterli aralık yoksa null.
  * okumalar: sayaç girilmiş yakıt kayıtları (sıra önemli değil, burada sıralanır).
  */
-export function hesaplaGunlukMin(okumalar: Okuma[], gunler: GunDurum): GunlukMinSonuc | null {
+export function hesaplaGunlukMin(okumalar: Okuma[], gunler: GunDurum, sayacTipi: "km" | "saat" = "km"): GunlukMinSonuc | null {
   const sirali = okumalar
     .filter((o) => (o.km_saat ?? 0) > 0)
     .sort((a, b) => `${a.tarih}T${a.saat ?? ""}`.localeCompare(`${b.tarih}T${b.saat ?? ""}`));
-  let en: GunlukMinSonuc | null = null;
-  let sayi = 0;
+  const adaylar: GunlukMinSonuc[] = [];
   for (let i = 1; i < sirali.length; i++) {
     const onceki = sirali[i - 1], bu = sirali[i];
     const fark = (bu.km_saat ?? 0) - (onceki.km_saat ?? 0);
@@ -63,11 +74,17 @@ export function hesaplaGunlukMin(okumalar: Okuma[], gunler: GunDurum): GunlukMin
     if (calisma <= 0) continue;                               // bölecek çalışma günü yok
     const is = dis > 0 ? fark * (calisma / (calisma + dis)) : fark;
     const gunluk = is / calisma;
-    sayi++;
-    if (!en || gunluk < en.deger) en = { deger: gunluk, basTarih: onceki.tarih, bitTarih: bu.tarih, gun: calisma, is, aralikSayisi: 0 };
+    // Fiziksel olarak imkânsız okuma (ör. 0,5 günde 31 saat) ölçüte girmesin.
+    if (sayacTipi === "saat" && gunluk > SAAT_UST_SINIR) continue;
+    adaylar.push({ deger: gunluk, basTarih: onceki.tarih, bitTarih: bu.tarih, gun: calisma, is, aralikSayisi: 0 });
   }
-  if (en) en.aralikSayisi = sayi;
-  return en;
+  if (adaylar.length < EN_AZ_ARALIK) return null;   // ölçüt kuracak kadar veri yok
+  adaylar.sort((a, b) => a.deger - b.deger);
+  // Alt %20'lik dilim: sıralı listede bu sıradaki aralık. En az 1. sıra (en düşük) olur.
+  const sira = Math.max(0, Math.ceil(adaylar.length * DILIM_ORAN) - 1);
+  const secilen = adaylar[sira];
+  secilen.aralikSayisi = adaylar.length;
+  return secilen;
 }
 
 /** Ekranda/eşikte kullanılacak yuvarlanmış değer: saat 0,5'e, km 1'e yuvarlanır; en az 1. */

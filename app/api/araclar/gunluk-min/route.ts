@@ -74,7 +74,7 @@ export async function GET() {
     for (const a of araclar) {
       const okumalar = yByA.get(a.id); const gunler = pByA.get(a.id);
       if (!okumalar || !gunler) continue;
-      const s = hesaplaGunlukMin(okumalar, gunler);
+      const s = hesaplaGunlukMin(okumalar, gunler, a.sayac_tipi === "saat" ? "saat" : "km");
       if (!s) continue;
       cikti[a.id] = {
         deger: yuvarlaGunlukMin(s.deger, a.sayac_tipi === "saat" ? "saat" : "km"),
