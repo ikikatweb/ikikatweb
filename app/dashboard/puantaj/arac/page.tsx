@@ -220,7 +220,8 @@ export default function AracPuantajPage() {
     bas: string; bit: string;
     tamGun: number; yarimGun: number;
     kanit: number;      // sayaç/yakıttan büyüğü — fiilen yapılan iş
-    beklenen: number;
+    beklenen: number;   // gün × günlük asgari
+    gunlukMin: number;  // aracın tam gün eşiği (araç kartından ya da veriden)
     birim: "km" | "saat";
   };
   const [acikAralik, setAcikAralik] = useState<Map<string, AcikAralikBilgi[]>>(new Map());
@@ -241,7 +242,7 @@ export default function AracPuantajPage() {
           })));
           if (r.aciklar.length > 0) ma.set(r.aracId, r.aciklar.map((x) => ({
             bas: x.basTarih, bit: x.bitTarih, tamGun: x.tamGun, yarimGun: x.yarimGun,
-            kanit: x.kanit, beklenen: x.beklenen, birim: r.sayacTipi,
+            kanit: x.kanit, beklenen: x.beklenen, gunlukMin: r.gunlukMin, birim: r.sayacTipi,
           })));
         }
         setYakitsizAralik(m);
@@ -278,7 +279,7 @@ export default function AracPuantajPage() {
     // Gün, tek depoyla gidilemeyecek bir dolum aralığının içinde — balonda ayrıntısı gösterilir.
     yakitsiz?: { mesafe: number; kapasite: number | null; kat: number; birim: "km" | "saat"; bas: string; bit: string } | null;
     // Gün, puantajın sayaçta karşılığı olmayan bir aralığın içinde — balonda ayrıntısı gösterilir.
-    calismaAcik?: { gun: number; kanit: number; ortalama: number; beklenen: number; birim: "km" | "saat"; bas: string; bit: string } | null;
+    calismaAcik?: { gun: number; kanit: number; ortalama: number; beklenen: number; gunlukMin: number; birim: "km" | "saat"; bas: string; bit: string } | null;
     plaka: string;
     isleyenAd: string;
     durum: AracPuantajDurum;
@@ -2317,7 +2318,7 @@ export default function AracPuantajPage() {
                                     if (!x) return null;
                                     const gunSay = x.tamGun + x.yarimGun * 0.5;
                                     return { gun: gunSay, kanit: x.kanit, ortalama: gunSay > 0 ? x.kanit / gunSay : 0,
-                                      beklenen: x.beklenen, birim: x.birim, bas: x.bas, bit: x.bit };
+                                      beklenen: x.beklenen, gunlukMin: x.gunlukMin, birim: x.birim, bas: x.bas, bit: x.bit };
                                   })(),
                                 });
                               }
@@ -2347,7 +2348,7 @@ export default function AracPuantajPage() {
                                     if (!x) return null;
                                     const gunSay = x.tamGun + x.yarimGun * 0.5;
                                     return { gun: gunSay, kanit: x.kanit, ortalama: gunSay > 0 ? x.kanit / gunSay : 0,
-                                      beklenen: x.beklenen, birim: x.birim, bas: x.bas, bit: x.bit };
+                                      beklenen: x.beklenen, gunlukMin: x.gunlukMin, birim: x.birim, bas: x.bas, bit: x.bit };
                                   })(),
                                 });
                               }
@@ -3394,9 +3395,11 @@ export default function AracPuantajPage() {
                   return (
                     <div className="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5 leading-snug">
                       <span className="font-bold">Çalışma açığı.</span>{" "}
-                      {t(c.bas)} – {t(c.bit)} arasında <b>{n(c.gun)} gün</b> çalıştı yazılmış,
-                      sayaç ve yakıt <b>{n(c.kanit)} {b}</b> gösteriyor — günlük ortalama{" "}
-                      <b>{n(c.ortalama)} {b}</b>, beklenen {n(c.beklenen)} {b}.
+                      {t(c.bas)} – {t(c.bit)} arasında <b>{n(c.gun)} gün</b> çalıştı yazılmış.
+                      Günlük asgari <b>{n(c.gunlukMin)} {b}</b> olduğuna göre{" "}
+                      {n(c.gun)} × {n(c.gunlukMin)} = <b>{n(c.beklenen)} {b}</b> beklenir;
+                      sayaç ve yakıt <b>{n(c.kanit)} {b}</b> gösteriyor
+                      (günlük ortalama <b>{n(c.ortalama)} {b}</b>).
                     </div>
                   );
                 })()}
