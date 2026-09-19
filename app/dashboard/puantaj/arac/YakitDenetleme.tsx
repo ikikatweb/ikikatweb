@@ -487,6 +487,7 @@ export default function YakitDenetleme({
                                                   <span className="font-semibold">{tamsayi(x.kanit)} {birim}</span>
                                                   <span className="block text-[9px] text-gray-400">
                                                     sayaç {tamsayi(x.gercek)}
+                                                    {x.disGun > 0 && <> → {tamsayi(x.gercekIs)} ({x.disGun} gün dış görev düşüldü)</>}
                                                     {x.yakitKarsiligi > 0 && <> · {tamsayi(x.litre)} lt ≈ {tamsayi(x.yakitKarsiligi)}</>}
                                                   </span>
                                                 </>

@@ -77,13 +77,22 @@ export function calismaEsigi(sayacTipi: "km" | "saat", gunlukMin?: number | null
 //
 // Tüketim oranı: araçta "1 depo menzili" doluysa depo kapasitesi ÷ menzil; değilse
 // geçmişten hesaplanan genel ortalama. İkisi de yoksa yakıt kanıtı üretilemez.
+//
+// DIŞ GÖREV: araç şantiyeden ayrılıp iş dışı bir yere gittiğinde de sayaç ilerliyor, ama o
+// kilometre bu işin kilometresi değil. Aralıkta dış görev günü varsa sayaç farkının o günlere
+// düşen payı kanıttan ÇIKARILIR — yoksa dışarıda yapılan yol, şantiyede çalışılmış gibi
+// sayılıp puantajı haksız yere doğrular. (Gerçek veride tüm kilometrenin %11'i bu günlere
+// düşüyor; bir çekicide oran %68.) Yakıt kanıtına dokunulmaz: dış görevde araç kendi yakıtını
+// alıyor, bizim verdiğimiz yakıt şantiyedeki iş için harcanmış sayılır.
 export type CalismaAcigi = {
   basTarih: string;      // önceki sayaç okuması (yakıt kaydı)
   bitTarih: string;      // bu sayaç okuması
   gun: number;           // aradaki takvim günü
   basSayac: number;
   bitSayac: number;
-  gercek: number;        // bitSayac − basSayac (saat veya km) — sayaç kanıtı
+  gercek: number;        // bitSayac − basSayac (saat veya km) — HAM sayaç farkı
+  disGun: number;        // aralıktaki "dış görev" günü
+  gercekIs: number;      // sayaç farkının bu şantiyedeki işe düşen payı (dış görev çıkarılmış)
   litre: number;         // aralığı kapatan dolum
   yakitKarsiligi: number;// litre ÷ tüketim oranı → yakıt kanıtı (oran yoksa 0)
   kanit: number;         // max(gercek, yakitKarsiligi) — iki kanıttan büyüğü
@@ -378,26 +387,30 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
           const onceki = okumalar[i - 1], bu = okumalar[i];
           const gercek = (bu.km_saat ?? 0) - (onceki.km_saat ?? 0);
           if (gercek < 0) continue;   // sayaç değişmiş/sıfırlanmış → kıyaslanamaz
-          let tamGun = 0, yarimGun = 0;
+          let tamGun = 0, yarimGun = 0, disGun = 0;
           for (let t = ertesiGun(onceki.tarih); t <= bu.tarih; t = ertesiGun(t)) {
             const d = gunler.get(t);
             if (d === "calisti") tamGun++;
             else if (d === "yarim_gun") yarimGun++;
+            else if (d === "dis_gorev") disGun++;
           }
           const beklenen = tamGun * esikler.tam + yarimGun * esikler.yarim;
           if (beklenen <= 0) continue;      // aralıkta çalışma işaretlenmemiş → denetlenecek şey yok
           // İKİ KANIT, BÜYÜĞÜ GEÇERLİ. Sayaç yazılmamışsa yakıt konuşur, yakıt bilinmiyorsa sayaç.
           const litre = bu.miktar_lt ?? 0;
           const yakitKarsiligi = tuketimOran && tuketimOran > 0 ? litre / tuketimOran : 0;
-          const kanit = Math.max(gercek, yakitKarsiligi);
+          // Sayaç farkını çalışma ve dış görev günleri arasında paylaştır; yalnız çalışma payı kanıttır.
+          const isGun = tamGun + yarimGun * 0.5;
+          const gercekIs = disGun > 0 && isGun + disGun > 0 ? gercek * (isGun / (isGun + disGun)) : gercek;
+          const kanit = Math.max(gercekIs, yakitKarsiligi);
           if (kanit >= beklenen) continue;  // kanıtlardan biri puantajı karşılıyor → sorun yok
           aciklar.push({
             basTarih: onceki.tarih, bitTarih: bu.tarih, gun: gunFarki(onceki.tarih, bu.tarih),
             basSayac: onceki.km_saat ?? 0, bitSayac: bu.km_saat ?? 0,
-            gercek, litre, yakitKarsiligi, kanit,
+            gercek, disGun, gercekIs, litre, yakitKarsiligi, kanit,
             // Hiçbir kanıt üretilemedi: sayaç hiç artmamış VE tüketim oranı bilinmiyor.
             // Bu "çalışmamış" demek değil, "denetlenemiyor" demek.
-            veriYok: tuketimOran == null && gercek <= 0,
+            veriYok: tuketimOran == null && gercekIs <= 0,
             tamGun, yarimGun, beklenen, acik: beklenen - kanit,
             karsilikGun: kanit / esikler.tam,
             kapasite: r.kapasite,
