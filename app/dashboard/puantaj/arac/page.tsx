@@ -276,6 +276,9 @@ export default function AracPuantajPage() {
     x: number;
     y: number;
     yukari: boolean; // true ise hücrenin üstünde gösterilir (alt satırda taşma olmasın diye)
+    gosterge?: number | null;          // o günün sayaç okuması (puantajdan ya da o gün alınan yakıttan)
+    gostergeBirim?: "km" | "saat";
+    gostergeKaynak?: "puantaj" | "yakit";
     // Gün, tek depoyla gidilemeyecek bir dolum aralığının içinde — balonda ayrıntısı gösterilir.
     yakitsiz?: { mesafe: number; kapasite: number | null; kat: number; birim: "km" | "saat"; bas: string; bit: string } | null;
     // Gün, puantajın sayaçta karşılığı olmayan bir aralığın içinde — balonda ayrıntısı gösterilir.
@@ -2308,6 +2311,18 @@ export default function AracPuantajPage() {
                                   plaka: a.plaka,
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
+                                  ...(() => {
+                                    // O GÜNÜN sayacı: önce puantaja yazılmış değer, yoksa o tarihte
+                                    // alınan yakıtın okuması. İkisi de yoksa satır hiç gösterilmez.
+                                    const gt = tarihStr(yil, ay, g);
+                                    const yk = aylikYakitlar.find((y) => y.arac_id === a.id && y.tarih === gt && (y.km_saat ?? 0) > 0);
+                                    const deger = p.gosterge ?? yk?.km_saat ?? null;
+                                    return deger == null ? {} : {
+                                      gosterge: deger,
+                                      gostergeBirim: (a.sayac_tipi === "saat" ? "saat" : "km") as "km" | "saat",
+                                      gostergeKaynak: (p.gosterge != null ? "puantaj" : "yakit") as "puantaj" | "yakit",
+                                    };
+                                  })(),
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: (() => {
                                     const x = yakitsizGunAralik(a.id, g, p.durum);
@@ -2338,6 +2353,18 @@ export default function AracPuantajPage() {
                                   plaka: a.plaka,
                                   isleyenAd: p.created_by_ad || (p.created_by ? "Bilinmiyor" : "—"),
                                   durum: p.durum,
+                                  ...(() => {
+                                    // O GÜNÜN sayacı: önce puantaja yazılmış değer, yoksa o tarihte
+                                    // alınan yakıtın okuması. İkisi de yoksa satır hiç gösterilmez.
+                                    const gt = tarihStr(yil, ay, g);
+                                    const yk = aylikYakitlar.find((y) => y.arac_id === a.id && y.tarih === gt && (y.km_saat ?? 0) > 0);
+                                    const deger = p.gosterge ?? yk?.km_saat ?? null;
+                                    return deger == null ? {} : {
+                                      gosterge: deger,
+                                      gostergeBirim: (a.sayac_tipi === "saat" ? "saat" : "km") as "km" | "saat",
+                                      gostergeKaynak: (p.gosterge != null ? "puantaj" : "yakit") as "puantaj" | "yakit",
+                                    };
+                                  })(),
                                   aciklama: p.aciklama ?? null,
                                   yakitsiz: (() => {
                                     const x = yakitsizGunAralik(a.id, g, p.durum);
@@ -3387,6 +3414,17 @@ export default function AracPuantajPage() {
                   <span className="font-semibold">İşleyen:</span>
                   <span className="text-gray-700">{tooltip.isleyenAd}</span>
                 </div>
+                {tooltip.gosterge != null && (
+                  <div className="text-[11px] text-gray-500 flex items-center gap-1">
+                    <span className="font-semibold">Gösterge:</span>
+                    <span className="text-gray-700 font-mono">
+                      {tooltip.gosterge.toLocaleString("tr-TR")} {tooltip.gostergeBirim === "saat" ? "saat" : "km"}
+                    </span>
+                    {tooltip.gostergeKaynak === "yakit" && (
+                      <span className="text-[9px] text-gray-400">(yakıt kaydından)</span>
+                    )}
+                  </div>
+                )}
                 {!tooltip.yakitsiz && tooltip.calismaAcik && (() => {
                   const c = tooltip.calismaAcik!;
                   const b = c.birim === "saat" ? "saat" : "km";
