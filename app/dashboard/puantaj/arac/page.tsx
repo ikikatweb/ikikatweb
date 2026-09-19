@@ -49,7 +49,7 @@ import {
   ChevronUp, ChevronDown,
   Check, Wrench, UserX, Sun, X as XIcon, Trash2, Plus, Clock3, Plane,
   ArrowRight, ArrowLeft as ArrowLeftIcon, Link2, Link2Off, Lock,
-  FileBarChart, Pencil, Fuel, Search,
+  FileBarChart, Pencil, Fuel, Search, Clock,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -2305,7 +2305,7 @@ export default function AracPuantajPage() {
                             }${dBilgi && yakitsizGunMu(a.id, g, p?.durum)
                               ? " shadow-[inset_0_0_0_2px_#DC2626] ring-1 ring-inset ring-white/70"
                               : dBilgi && calismaAcikGunMu(a.id, g, p?.durum)
-                              ? " shadow-[inset_0_0_0_2px_#EA580C] ring-1 ring-inset ring-white/70"
+                              ? " shadow-[inset_0_0_0_2px_#DC2626] ring-1 ring-inset ring-white/70"
                               : ""}`}
                             title={
                               !dBilgi
@@ -2329,12 +2329,14 @@ export default function AracPuantajPage() {
                                 <Fuel size={10} strokeWidth={2.75} />
                               </span>
                             ) : dBilgi && calismaAcikGunMu(a.id, g, p?.durum) ? (
-                              /* ÇALIŞMA AÇIĞI — aynı simge, turuncu: puantaj sayaçla tutmuyor. */
+                              /* ÇALIŞMA AÇIĞI — SAAT simgesi: bu bulgu yakıtla ilgili değil, "beklenenin
+                                 altında çalışma" demek. Yakıt rozeti (depo simgesi) ile aynı renkte ama
+                                 simgesi farklı; ikisi bir arada olduğunda yakıt rozeti öncelikli. */
                               <span
-                                className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-orange-500 text-white shadow-sm pointer-events-none"
-                                aria-label="Çalışma açığı"
+                                className="absolute -top-px -left-px h-4 w-4 flex items-center justify-center rounded-br-[6px] bg-red-600 text-white shadow-sm pointer-events-none"
+                                aria-label="Beklenenin altında çalışma"
                               >
-                                <Fuel size={10} strokeWidth={2.75} />
+                                <Clock size={10} strokeWidth={3} />
                               </span>
                             ) : null}
                             {notVar && (
