@@ -59,7 +59,11 @@ const YARIM_ORAN: Record<"km" | "saat", number> = {
   km: CALISMA_ESIK.km.yarim / CALISMA_ESIK.km.tam,
 };
 
-/** Aracın tam/yarım gün asgari çalışması. Araçta değer girilmişse o, yoksa varsayılan. */
+/**
+ * Aracın tam/yarım gün asgari çalışması.
+ * Öncelik: araç kartında ELLE girilen → veriden HESAPLANAN (geçmişteki en düşük günlük iş)
+ * → VARSAYILAN. Elle girilen silinince kendiliğinden hesaplanana döner.
+ */
 export function calismaEsigi(sayacTipi: "km" | "saat", gunlukMin?: number | null): { tam: number; yarim: number } {
   const tam = gunlukMin && gunlukMin > 0 ? gunlukMin : CALISMA_ESIK[sayacTipi].tam;
   return { tam, yarim: tam * YARIM_ORAN[sayacTipi] };
@@ -132,8 +136,9 @@ export type DenetimSatiri = {
   ad: string;
   cinsi: string;
   sayacTipi: "km" | "saat";
-  gunlukMin: number;              // kullanılan tam gün eşiği (araçtan ya da varsayılan)
-  gunlukMinOzel: boolean;         // araç kartında elle girilmiş mi?
+  gunlukMin: number;              // kullanılan tam gün eşiği
+  gunlukMinOzel: boolean;         // araç kartında elle girilmiş mi? (uyumluluk için korunuyor)
+  gunlukMinKaynak: "elle" | "hesap" | "varsayilan";
   firmaAdi: string;
   genelOrt: number | null;        // L/100km veya L/saat
   depoKapasite: number | null;    // en yüksek tek dolum (lt)
@@ -201,8 +206,21 @@ async function sayfali<T>(tablo: string, sec: string, filtre: (q: never) => neve
  * Puantaj (aralıkta kaç gün çalıştığı) ikinci aşamada ve SADECE aşımı olan araçlar için
  * çekilir: "tüm şantiyeler" seçildiğinde bütün puantajı indirmek yüz binlerce satır eder.
  */
+/** Veriden hesaplanan günlük asgari iş (araç → değer). Ulaşılamazsa boş döner. */
+async function hesaplananMinler(): Promise<Map<string, number>> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    const r = await fetch("/api/araclar/gunluk-min");
+    if (!r.ok) return new Map();
+    const d = (await r.json()) as Record<string, { deger: number }>;
+    if (!d || (d as { error?: string }).error) return new Map();
+    return new Map(Object.entries(d).map(([k, v]) => [k, v.deger]));
+  } catch { return new Map(); }
+}
+
 export async function getYakitDenetimi(santiyeId: string | null): Promise<DenetimSatiri[]> {
   const supabase = getSupabase();
+  const minHesapP = hesaplananMinler(); // eşikle birlikte kullanılacak, paralel gitsin
 
   let aracIds: string[];
   let puantaj: PuantajRow[] = [];
@@ -233,6 +251,8 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
   ]);
   if (aracRes.error) throw new Error(aracRes.error.message);
   const araclar = (aracRes.data ?? []) as unknown as AracRow[];
+
+  const minHesap = await minHesapP;
 
   // Düzeltme kayıtları gerçek dolum değil — ne ortalamaya ne kapasiteye girer.
   const yakit = yakitHam.filter((y) => y.duzeltme !== true);
@@ -307,8 +327,13 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       ad: [a.marka, a.model].filter(Boolean).join(" "),
       cinsi: (a.cinsi ?? "").trim() || "Cinsi girilmemiş",
       sayacTipi,
-      gunlukMin: calismaEsigi(sayacTipi, a.gunluk_min_calisma).tam,
+      // Elle girilen > veriden hesaplanan > varsayılan
+      gunlukMin: calismaEsigi(sayacTipi, (a.gunluk_min_calisma && a.gunluk_min_calisma > 0)
+        ? a.gunluk_min_calisma
+        : (minHesap.get(a.id) ?? null)).tam,
       gunlukMinOzel: !!(a.gunluk_min_calisma && a.gunluk_min_calisma > 0),
+      gunlukMinKaynak: (a.gunluk_min_calisma && a.gunluk_min_calisma > 0) ? "elle"
+        : minHesap.has(a.id) ? "hesap" : "varsayilan",
       firmaAdi: (a.tip === "kiralik" ? (a.kiralama_firmasi ?? "") : (a.firmalar?.firma_adi ?? "")).trim() || "Firma girilmemiş",
       genelOrt,
       depoKapasite,
@@ -373,7 +398,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       // Örnek: makine 1'inde 1390 saatte, 15'inde 1400 saatte; arada 15 gün "çalıştı" yazılmış.
       // Beklenen 15×8 = 120 saat, gerçek 10 saat → 110 saat açık; sayaç ancak 1,25 günü karşılıyor.
       // Pay bırakılmaz (kullanıcı kararı): beklenenin altına düşen her aralık uyarıya girer.
-      const esikler = calismaEsigi(r.sayacTipi, r.gunlukMinOzel ? r.gunlukMin : null);
+      const esikler = calismaEsigi(r.sayacTipi, r.gunlukMinKaynak === "varsayilan" ? null : r.gunlukMin);
       const okumalar = siraliByArac.get(r.aracId) ?? [];
       // Tüketim oranı (birim başına litre): menzil girilmişse ondan, değilse geçmiş ortalamadan.
       // Menzil önce gelir; sayacı yanlış girilen araçlarda hesaplanan ortalama da bozuk çıkıyor.

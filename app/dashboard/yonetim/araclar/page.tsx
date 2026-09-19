@@ -116,6 +116,18 @@ export default function AraclarPage() {
   // Günlük asgari çalışma (km/saat) — Yakıt Denetleme'deki "çalışma açığı" hesabının eşiği.
   const [editMinId, setEditMinId] = useState<string | null>(null);
   const [editMinValue, setEditMinValue] = useState<string>("");
+  // Elle değer girilmemiş araçta eşik VERİDEN gelir: aracın geçmişte bir çalışma gününde
+  // yaptığı en düşük iş. Sunucuda her çağrıda yeniden hesaplanır (saklanmaz) → kendiliğinden
+  // güncel kalır. Gelmezse hücre boş kalmaz, varsayılan gösterilir.
+  const [minHesap, setMinHesap] = useState<Map<string, { deger: number; basTarih: string; bitTarih: string; gun: number }>>(new Map());
+  useEffect(() => {
+    let iptal = false;
+    fetch("/api/araclar/gunluk-min")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!iptal && d && !d.error) setMinHesap(new Map(Object.entries(d))); })
+      .catch(() => { /* hesap gelmezse varsayılan gösterilir */ });
+    return () => { iptal = true; };
+  }, []);
   const [editMenzilValue, setEditMenzilValue] = useState<string>("");
   // Araç düzenleme — kalem ikonuna tıklayınca dialog (pencere) olarak açılır
   const [duzenleArac, setDuzenleArac] = useState<AracWithRelations | null>(null);
@@ -194,7 +206,7 @@ export default function AraclarPage() {
       const { updateArac } = await import("@/lib/supabase/queries/araclar");
       await updateArac(aracId, { gunluk_min_calisma: sayisal });
       setAraclar((p) => p.map((a) => (a.id === aracId ? { ...a, gunluk_min_calisma: sayisal } : a)));
-      toast.success(sayisal == null ? "Varsayılana döndü." : "Günlük asgari çalışma kaydedildi.");
+      toast.success(sayisal == null ? "Otomatik hesaba döndü." : "Günlük asgari çalışma kaydedildi.");
     } catch (e) {
       toast.error(e instanceof Error && /gunluk_min_calisma/.test(e.message)
         ? "Kolon yok: sql/arac_gunluk_min_calisma.sql çalıştırılmalı."
@@ -585,7 +597,7 @@ export default function AraclarPage() {
                 <TableHead className="hidden md:table-cell cursor-pointer select-none hover:text-blue-600" onClick={() => handleSort("santiye")}>Şantiye{sortIcon("santiye")}</TableHead>
                 <TableHead>Gösterge</TableHead>
                 <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="1 depo (tam dolum) ile gidilebilecek km / çalışabilecek saat">1 Depo</TableHead>
-                <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Puantaja &quot;tam gün çalıştı&quot; yazılabilmesi için gereken asgari günlük iş. Boşsa varsayılan: 10 km / 8 saat.">Günlük Min.</TableHead>
+                <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Puantaja &quot;tam gün çalıştı&quot; yazılabilmesi için gereken asgari günlük iş. SİYAH = elle girildi, MAVİ = veriden hesaplandı (aracın geçmişte bir günde yaptığı en düşük iş). Değeri silerseniz otomatik hesaba döner.">Günlük Min.</TableHead>
                 <TableHead className="hidden md:table-cell text-right whitespace-nowrap" title="Genel yakıt tüketim ortalaması (km'siz ve dış-yakıt aralıkları hariç)">Genel Ort.</TableHead>
                 <TableHead className="hidden md:table-cell text-center">HGS</TableHead>
                 <TableHead className="hidden md:table-cell text-center">Ruhsat</TableHead>
@@ -722,6 +734,7 @@ export default function AraclarPage() {
                     onClick={() => {
                       if (!yDuzenle || editMinId === arac.id) return;
                       setEditMinId(arac.id);
+                      // Kutu BOŞ açılır: boş bırakıp kaydetmek "otomatiğe dön" demektir.
                       setEditMinValue(arac.gunluk_min_calisma != null ? String(arac.gunluk_min_calisma) : "");
                     }}
                     title={yDuzenle ? "Tıklayarak günlük asgari çalışmayı gir/güncelle" : undefined}
@@ -743,13 +756,36 @@ export default function AraclarPage() {
                         placeholder={arac.sayac_tipi === "saat" ? "saat" : "km"}
                         style={{ fontSize: "16px" }}
                       />
-                    ) : (
-                      <span className={arac.gunluk_min_calisma != null && arac.gunluk_min_calisma > 0 ? "text-[#1E3A5F] font-semibold" : "text-gray-300"}>
-                        {arac.gunluk_min_calisma != null && arac.gunluk_min_calisma > 0
-                          ? `${arac.gunluk_min_calisma.toLocaleString("tr-TR")} ${arac.sayac_tipi === "saat" ? "sa" : "km"}`
-                          : (arac.sayac_tipi === "saat" ? "8 sa" : "10 km")}
-                      </span>
-                    )}
+                    ) : (() => {
+                      const birim = arac.sayac_tipi === "saat" ? "sa" : "km";
+                      const elle = arac.gunluk_min_calisma != null && arac.gunluk_min_calisma > 0;
+                      if (elle) {
+                        // ELLE GİRİLEN → siyah. Silinince aşağıdaki hesaplanan değere döner.
+                        return (
+                          <span className="text-gray-900 font-semibold" title="Elle girildi. Silerseniz veriden hesaplanan değere döner.">
+                            {arac.gunluk_min_calisma!.toLocaleString("tr-TR")} {birim}
+                          </span>
+                        );
+                      }
+                      const h = minHesap.get(arac.id);
+                      if (h) {
+                        // VERİDEN HESAPLANAN → mavi, altı kesik çizgili.
+                        return (
+                          <span
+                            className="text-blue-600 font-medium decoration-dotted underline underline-offset-2"
+                            title={`Veriden hesaplandı: ${h.basTarih.split("-").reverse().join(".")} – ${h.bitTarih.split("-").reverse().join(".")} arası ${h.gun} çalışma gününde yapılan en düşük günlük iş. Elle değer yazarsanız onu kullanır.`}
+                          >
+                            {h.deger.toLocaleString("tr-TR")} {birim}
+                          </span>
+                        );
+                      }
+                      // Ne elle girilmiş ne hesaplanabilmiş → varsayılan.
+                      return (
+                        <span className="text-gray-300" title="Veri yetersiz — varsayılan kullanılıyor.">
+                          {arac.sayac_tipi === "saat" ? "8 sa" : "10 km"}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-right tabular-nums whitespace-nowrap">
                     {(() => {

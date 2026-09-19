@@ -295,7 +295,7 @@ export default function YakitDenetleme({
                     {araclar.map((s) => {
                       const aracAcik = acikArac === s.aracId;
                       const birim = s.sayacTipi === "saat" ? "saat" : "km";
-                      const esik = calismaEsigi(s.sayacTipi, s.gunlukMinOzel ? s.gunlukMin : null); // araç kartındaki değer, yoksa varsayılan
+                      const esik = calismaEsigi(s.sayacTipi, s.gunlukMinKaynak === "varsayilan" ? null : s.gunlukMin);
                       return (
                         <div key={s.aracId}>
                           {/* ARAÇ SATIRI — tıklayınca aşağı açılır */}
@@ -439,7 +439,9 @@ export default function YakitDenetleme({
                                   <div className="text-[11px] font-semibold text-orange-700 mb-1">
                                     Puantajla tutmayan {s.aciklar.length} aralık
                                     <span className="ml-1 font-normal text-gray-500">
-                                      (tam gün {sayi(esik.tam, 0)} {birim}{s.gunlukMinOzel ? " — araç kartından" : ""}, yarım gün {sayi(esik.yarim, 1)} {birim} sayılır.
+                                      (tam gün {sayi(esik.tam, 1)} {birim}
+                                      {s.gunlukMinKaynak === "elle" ? " — araç kartından" : s.gunlukMinKaynak === "hesap" ? " — geçmiş veriden" : ""},
+                                      yarım gün {sayi(esik.yarim, 1)} {birim} sayılır.
                                       Kanıt = sayaç farkı ile alınan yakıtın götürdüğü mesafeden BÜYÜĞÜ)
                                     </span>
                                   </div>
