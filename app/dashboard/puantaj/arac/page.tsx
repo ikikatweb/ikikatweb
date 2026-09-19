@@ -188,7 +188,16 @@ export default function AracPuantajPage() {
 
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
-  const [santiyeId, setSantiyeId] = useState(urlSantiye);
+  // Şantiye seçimi F5'te KORUNUR (sessionStorage). Sayfadan ayrılıp geri gelince varsayılana
+  // döner — diğer filtrelerle aynı davranış. URL'de ?santiye= varsa o kazanır (derin bağlantı).
+  const [santiyeId, setSantiyeId] = useOturumFiltresi<string>("puantaj-arac:santiye", urlSantiye);
+  const urlSantiyeUygulandi = useRef(false);
+  useEffect(() => {
+    if (!urlSantiyeUygulandi.current && urlSantiye) {
+      urlSantiyeUygulandi.current = true;
+      setSantiyeId(urlSantiye);
+    }
+  }, [urlSantiye, setSantiyeId]);
   const [puantajlar, setPuantajlar] = useState<AracPuantaj[]>([]);
   const [aylikYakitlar, setAylikYakitlar] = useState<AracYakit[]>([]);
   const [yakitGoster, setYakitGoster] = useOturumFiltresi("puantaj-arac:yakit", true);
@@ -398,7 +407,8 @@ export default function AracPuantajPage() {
         setSantiyeler(sList);
         // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç
         const otoId = otomatikSantiyeId(sList, kullanici);
-        if (otoId) setSantiyeId(otoId);
+        // Saklanan/URL seçimi varsa ona dokunma; yalnız boşsa otomatik seç.
+        if (otoId) setSantiyeId((onceki) => onceki || otoId);
       } catch { toast.error("Veriler yüklenirken hata oluştu."); }
       finally { setLoading(false); }
     }

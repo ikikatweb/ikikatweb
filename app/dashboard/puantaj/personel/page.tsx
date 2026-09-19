@@ -135,7 +135,16 @@ export default function PersonelPuantajPage() {
     return () => mql.removeEventListener("change", h);
   }, []);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
-  const [santiyeId, setSantiyeId] = useState<string>(urlSantiye);
+  // Şantiye seçimi F5'te KORUNUR (sessionStorage). Sayfadan ayrılıp geri gelince varsayılana
+  // döner — diğer filtrelerle aynı davranış. URL'de ?santiye= varsa o kazanır (derin bağlantı).
+  const [santiyeId, setSantiyeId] = useOturumFiltresi<string>("puantaj-personel:santiye", urlSantiye);
+  const urlSantiyeUygulandi = useRef(false);
+  useEffect(() => {
+    if (!urlSantiyeUygulandi.current && urlSantiye) {
+      urlSantiyeUygulandi.current = true;
+      setSantiyeId(urlSantiye);
+    }
+  }, [urlSantiye, setSantiyeId]);
   // Çoklu atama: personel_id -> Set<santiye_id>
   const [personelSantiyeMap, setPersonelSantiyeMap] = useState<Map<string, Set<string>>>(new Map());
   // Atama geçmişi — pasif aralık tespiti için backup kaynak (DB'deki pasif_tarihi/
@@ -262,7 +271,8 @@ export default function PersonelPuantajPage() {
       setPersonelSantiyeMap(buildPersonelSantiyeMap(psData));
       // Kısıtlı kullanıcı tek şantiye atandıysa otomatik seç (aktif olanlar arasından)
       const otoId = otomatikSantiyeId((sData ?? []).filter((s) => s.durum === "aktif"), kullanici);
-      if (otoId) setSantiyeId(otoId);
+      // Saklanan/URL seçimi varsa ona dokunma; yalnız boşsa otomatik seç.
+      if (otoId) setSantiyeId((onceki) => onceki || otoId);
 
       setLoading(false);
     }
