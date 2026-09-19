@@ -1230,7 +1230,13 @@ export default function AracPuantajPage() {
     setSeciliGun(gun);
     setSeciliDurum(mevcut?.durum ?? null);
     setSeciliAciklama(mevcut?.aciklama ?? "");
-    setSeciliGosterge(arac.guncel_gosterge != null ? String(arac.guncel_gosterge) : "");
+    // O GÜNÜN göstergesi: önce puantaj kaydına yazılmış değer, yoksa o tarihte alınan yakıtın
+    // sayaç okuması. İkisi de yoksa kutu BOŞ açılır — aracın güncel sayacını yazmak yanıltıyordu
+    // (hangi güne tıklansa aynı sayı çıkıyor, 8 Eylül'e de 16 Eylül'e de "3603" yazıyordu).
+    const gunTarih = tarihStr(yil, ay, gun);
+    const yakitOkuma = aylikYakitlar.find((y) => y.arac_id === arac.id && y.tarih === gunTarih && (y.km_saat ?? 0) > 0);
+    const gunlukGosterge = mevcut?.gosterge ?? yakitOkuma?.km_saat ?? null;
+    setSeciliGosterge(gunlukGosterge != null ? String(gunlukGosterge) : "");
     setHucreDialogOpen(true);
   }
 
@@ -1276,7 +1282,11 @@ export default function AracPuantajPage() {
       // Açıklama: kullanıcı yazdıysa kaydet, yoksa null
       const aciklamaToSave = seciliAciklama.trim() || null;
       console.log("[PUANTAJ KAYDET]", { tarih, arac: seciliArac.plaka, santiye: santiyeId, durum });
-      await upsertAracPuantaj(seciliArac.id, santiyeId, tarih, durum, aciklamaToSave, kullanici?.id ?? null);
+      const gostergeSayi = (() => {
+        const v = parseFloat(seciliGosterge.replace(",", "."));
+        return seciliGosterge.trim() === "" ? null : (isNaN(v) || v <= 0 ? null : v);
+      })();
+      await upsertAracPuantaj(seciliArac.id, santiyeId, tarih, durum, aciklamaToSave, kullanici?.id ?? null, gostergeSayi);
 
       // DOĞRULAMA — kaydın DB'ye gerçekten yazıldığını kontrol et
       // (RLS veya başka bir nedenle sessizce kaybolma kontrolü)
@@ -1292,11 +1302,11 @@ export default function AracPuantajPage() {
         return;
       }
       console.log("[PUANTAJ KAYDET OK]", { tarih, id: savedRec.id });
-      // Gösterge (km/saat) güncelle
-      const gostergeVal = parseFloat(seciliGosterge.replace(",", "."));
-      if (!isNaN(gostergeVal) && gostergeVal > 0 && gostergeVal !== (seciliArac.guncel_gosterge ?? 0)) {
-        await updateArac(seciliArac.id, { guncel_gosterge: gostergeVal });
-        setAraclar((prev) => prev.map((a) => a.id === seciliArac.id ? { ...a, guncel_gosterge: gostergeVal } : a));
+      // Aracın GÜNCEL sayacı yalnız İLERİ gider. Geçmiş bir güne okuma girildiğinde güncel
+      // sayacı geri çekmek yanlış olurdu — o değer artık günün kendi satırında duruyor.
+      if (gostergeSayi != null && gostergeSayi > (seciliArac.guncel_gosterge ?? 0)) {
+        await updateArac(seciliArac.id, { guncel_gosterge: gostergeSayi });
+        setAraclar((prev) => prev.map((a) => a.id === seciliArac.id ? { ...a, guncel_gosterge: gostergeSayi } : a));
       }
       // Lokal state güncelle
       setPuantajlar((prev) => {
@@ -1310,6 +1320,7 @@ export default function AracPuantajPage() {
             tarih,
             durum,
             aciklama: aciklamaToSave,
+            gosterge: gostergeSayi,
             created_at: new Date().toISOString(),
             created_by: kullanici?.id ?? null,
             created_by_ad: kullanici?.ad_soyad ?? null,
@@ -3469,14 +3480,14 @@ export default function AracPuantajPage() {
               <div className="space-y-1.5 pt-3 border-t">
                 <Label className="text-xs flex items-center gap-1">
                   Gösterge ({seciliArac.sayac_tipi === "saat" ? "Saat" : "Km"})
-                  <span className="text-[10px] text-gray-400 font-normal">(opsiyonel)</span>
+                  <span className="text-[10px] text-gray-400 font-normal">— bu güne ait (opsiyonel)</span>
                 </Label>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={seciliGosterge}
                   onChange={(e) => setSeciliGosterge(e.target.value)}
-                  placeholder={seciliArac.guncel_gosterge != null ? `Mevcut: ${seciliArac.guncel_gosterge.toLocaleString("tr-TR")}` : "Gösterge değeri"}
+                  placeholder={seciliArac.guncel_gosterge != null ? `Bu gün okunmadı — aracın son bilinen sayacı: ${seciliArac.guncel_gosterge.toLocaleString("tr-TR")}` : "Bu günün sayaç değeri"}
                   className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
                 />
               </div>

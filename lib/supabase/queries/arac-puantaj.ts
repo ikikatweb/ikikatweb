@@ -230,7 +230,8 @@ export async function upsertAracPuantaj(
   tarih: string,
   durum: AracPuantajDurum,
   aciklama?: string | null,
-  kullaniciId?: string | null
+  kullaniciId?: string | null,
+  gosterge?: number | null,   // o günün sayaç okuması; undefined = dokunma
 ) {
   const supabase = getSupabase();
 
@@ -254,6 +255,7 @@ export async function upsertAracPuantaj(
       .update({
         durum,
         aciklama: aciklama ?? null,
+        ...(gosterge !== undefined ? { gosterge } : {}),
         created_by: kullaniciId ?? null,
       })
       .eq("id", buSantiyedeki.id);
@@ -270,6 +272,7 @@ export async function upsertAracPuantaj(
       tarih,
       durum,
       aciklama: aciklama ?? null,
+      ...(gosterge !== undefined ? { gosterge } : {}),
       created_by: kullaniciId ?? null,
     });
   if (error) throw error;

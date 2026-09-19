@@ -1,0 +1,13 @@
+-- PUANTAJDA GÜN BAZLI GÖSTERGE (km / saat)
+--
+-- Puantaj penceresindeki "Gösterge" alanı şimdiye kadar hiçbir yere gün bazında yazılmıyordu:
+-- girilen değer doğrudan araclar.guncel_gosterge'yi (aracın O ANKİ sayacı) güncelliyordu.
+-- Sonuç: hangi güne tıklarsanız tıklayın kutuda aynı sayı çıkıyordu — 8 Eylül'e de 16 Eylül'e de
+-- "3603" yazıyordu, oysa 8 Eylül'deki gerçek okuma 3577'ydi.
+--
+-- Bu kolon o günün okumasını kendi satırında tutar. Kazancı yalnız ekran değil: sayaç şimdiye
+-- kadar SADECE yakıt alınırken okunuyordu (Yakıt Denetleme'deki bütün hesaplar iki dolum arasına
+-- sıkışmıştı). Puantajla birlikte günlük okuma girilirse denetim gün bazına iner.
+--
+-- Boş bırakılabilir — o gün okuma girilmemiş demektir, eski davranış korunur.
+alter table arac_puantaj add column if not exists gosterge numeric;

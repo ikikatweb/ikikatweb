@@ -572,6 +572,9 @@ export type AracPuantaj = {
   tarih: string;
   durum: AracPuantajDurum;
   aciklama: string | null;
+  // O GÜNÜN sayaç okuması (km ya da saat). Boş = o gün okuma girilmemiş.
+  // araclar.guncel_gosterge aracın EN SON okumasıdır; bu ise güne aittir.
+  gosterge?: number | null;
   created_at: string;
   created_by: string | null;
   // Resolve edilen kullanıcı adı (opsiyonel - listeleme sorgularında doldurulur)
@@ -584,6 +587,7 @@ export type AracPuantajInsert = {
   tarih: string;
   durum: AracPuantajDurum;
   aciklama?: string | null;
+  gosterge?: number | null;
   created_by?: string | null;
 };
 
