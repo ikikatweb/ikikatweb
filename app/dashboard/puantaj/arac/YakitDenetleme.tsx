@@ -15,6 +15,7 @@ import { useOturumFiltresi } from "@/hooks";
 import {
   getYakitDenetimi,
   TOLERANS_ORAN,
+  CALISMA_ESIK,
   type DenetimSatiri,
 } from "@/lib/supabase/queries/yakit-denetleme";
 
@@ -48,6 +49,10 @@ export default function YakitDenetleme({
   const [acikFirma, setAcikFirma] = useState<Set<string>>(new Set());
   const [acikArac, setAcikArac] = useState<string | null>(null);
   const [sadeceAsim, setSadeceAsim] = useState(true);
+  // Çalışma açığı listesi: varsayılan HER eksik gösterilir. Gerçek veride bu 1.230 aralığın
+  // ~390'ını işaretliyor ve çoğu küçük sapma ("2 gün için 16 saat beklenen, 14 gerçekleşen").
+  // Bu düğme, açığı bir tam günden küçük olanları gizleyerek listeyi ciddi bulgulara indirir.
+  const [kucukGizle, setKucukGizle] = useState(false);
   // Cins süzgeci — çoklu seçim, oturum boyunca korunur.
   // VARSAYILAN KAPALI CİNSLER: bu dört cinste depo yakıtı kaydı ya hiç yok ya çok eksik,
   // dolayısıyla kapasite/aşım hesabı anlamsız sonuç veriyor:
@@ -119,11 +124,22 @@ export default function YakitDenetleme({
   const cinsler = [...cinsAdet.keys()].sort((a, b) => a.localeCompare(b, "tr"));
   const kapali = new Set(kapaliCinsler);
 
-  const secili = satirlar.filter((s) => !kapali.has(s.cinsi));
+  const secili = satirlar.filter((s) => !kapali.has(s.cinsi)).map((s) => {
+    if (!kucukGizle) return s;
+    // Depo sınırını aşan aralık küçük olsa da kalır: o zaten "fiilen imkânsız" demek.
+    const tamEsik = CALISMA_ESIK[s.sayacTipi].tam;
+    const aciklar = s.aciklar.filter((x) => x.depoAsiyor || x.acik > tamEsik);
+    return aciklar.length === s.aciklar.length ? s : { ...s, aciklar, enBuyukAcik: aciklar[0]?.acik ?? null };
+  });
   const asimliAraclar = secili.filter((s) => s.asimlar.length > 0);
-  const gosterilecek = sadeceAsim ? asimliAraclar : secili;
+  // "Sadece uyarı verenler" her iki tespiti de kapsar: yalnız çalışma açığı olan araç da uyarıdır.
+  const bulgulular = secili.filter((s) => s.asimlar.length > 0 || s.aciklar.length > 0);
+  const gosterilecek = sadeceAsim ? bulgulular : secili;
   const hesaplanamayan = secili.filter((s) => s.kapasite == null).length;
   const toplamAsim = secili.reduce((t, s) => t + s.asimlar.length, 0);
+  // Çalışma açığı: puantaja yazılan çalışmanın sayaçta karşılığı olmayan aralıklar.
+  const acikliAraclar = secili.filter((s) => s.aciklar.length > 0);
+  const toplamAcik = secili.reduce((t, s) => t + s.aciklar.length, 0);
 
   const cinsToggle = (c: string) =>
     setKapaliCinsler((onceki) => (onceki.includes(c) ? onceki.filter((x) => x !== c) : [...onceki, c]));
@@ -134,8 +150,8 @@ export default function YakitDenetleme({
     firmalar.get(s.firmaAdi)!.push(s);
   }
   const firmaListe = [...firmalar.entries()].sort((a, b) => {
-    const aA = a[1].filter((x) => x.asimlar.length > 0).length;
-    const bA = b[1].filter((x) => x.asimlar.length > 0).length;
+    const aA = a[1].filter((x) => x.asimlar.length > 0 || x.aciklar.length > 0).length;
+    const bA = b[1].filter((x) => x.asimlar.length > 0 || x.aciklar.length > 0).length;
     return bA - aA || a[0].localeCompare(b[0], "tr");
   });
 
@@ -195,16 +211,35 @@ export default function YakitDenetleme({
               <Check size={12} /> Kapasiteyi aşan aralık yok
             </span>
           )}
+          {acikliAraclar.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5 text-xs font-semibold">
+              <AlertTriangle size={12} /> {acikliAraclar.length} araçta {toplamAcik} aralıkta çalışma açığı
+            </span>
+          )}
         </div>
+        <div className="ml-auto flex items-center gap-2">
+        {(acikliAraclar.length > 0 || kucukGizle) && (
+          <button
+            type="button"
+            onClick={() => setKucukGizle((v) => !v)}
+            title="Açığı bir tam günlük çalışmadan küçük olan aralıkları gizler (depo sınırını aşanlar yine görünür)"
+            className={`text-xs px-2.5 py-1 rounded border font-medium ${
+              kucukGizle ? "bg-orange-600 border-orange-600 text-white" : "bg-white border-gray-300 text-gray-600 hover:border-orange-400"
+            }`}
+          >
+            {kucukGizle ? "Küçük sapmalar gizli" : "Küçük sapmalar dahil"}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setSadeceAsim((v) => !v)}
-          className={`ml-auto text-xs px-2.5 py-1 rounded border font-medium ${
+          className={`text-xs px-2.5 py-1 rounded border font-medium ${
             sadeceAsim ? "bg-red-600 border-red-600 text-white" : "bg-white border-gray-300 text-gray-600 hover:border-red-400"
           }`}
         >
           {sadeceAsim ? "Sadece uyarı verenler" : "Tüm araçlar"}
         </button>
+        </div>
       </div>
 
       {hesaplanamayan > 0 && (
@@ -260,6 +295,7 @@ export default function YakitDenetleme({
                     {araclar.map((s) => {
                       const aracAcik = acikArac === s.aracId;
                       const birim = s.sayacTipi === "saat" ? "saat" : "km";
+                      const esik = CALISMA_ESIK[s.sayacTipi]; // tam/yarım gün asgari çalışma
                       return (
                         <div key={s.aracId}>
                           {/* ARAÇ SATIRI — tıklayınca aşağı açılır */}
@@ -277,6 +313,11 @@ export default function YakitDenetleme({
                               <span className="block">{sayi(s.genelOrt)} {birim === "saat" ? "L/saat" : "L/100km"}</span>
                               <span className="block">1 depo ≈ {s.kapasite == null ? "—" : `${tamsayi(s.kapasite)} ${birim}`}</span>
                             </span>
+                            {s.aciklar.length > 0 && (
+                              <span className="text-[10px] bg-orange-100 text-orange-700 border border-orange-200 px-2 py-0.5 rounded font-bold flex-shrink-0 whitespace-nowrap">
+                                {s.aciklar.length} çalışma açığı
+                              </span>
+                            )}
                             {s.asimlar.length > 0 ? (
                               <span className="text-[10px] bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded font-bold flex-shrink-0 whitespace-nowrap">
                                 {s.asimlar.length} uyarı · en büyüğü +{tamsayi(s.enBuyukAsim)} {birim}
@@ -388,6 +429,72 @@ export default function YakitDenetleme({
                                   {s.kapasite == null
                                     ? "Kapasite hesaplanamadığı için karşılaştırma yapılamadı."
                                     : "Dolumlar arası mesafelerin hepsi kapasitenin altında."}
+                                </div>
+                              )}
+
+                              {/* ÇALIŞMA AÇIĞI — puantaja yazılan çalışmanın sayaçta karşılığı var mı?
+                                  Yakıt aşımından bağımsız: yalnız sayaç farkı ile puantaj karşılaştırılır. */}
+                              {s.aciklar.length > 0 && (
+                                <div className="pt-1 border-t border-gray-100">
+                                  <div className="text-[11px] font-semibold text-orange-700 mb-1">
+                                    Puantajla tutmayan {s.aciklar.length} aralık
+                                    <span className="ml-1 font-normal text-gray-500">
+                                      (tam gün {esik.tam} {birim}, yarım gün {esik.yarim} {birim} sayılır;
+                                      kırmızı &quot;Beklenen&quot; = tek depoyla yapılamayacak kadar çok iş)
+                                    </span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-[11px] border-collapse">
+                                      <thead>
+                                        <tr className="bg-gray-100 text-gray-600">
+                                          <th className="text-left px-2 py-1 font-semibold whitespace-nowrap">Sayaç okumaları arası</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Sayaç</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Puantaj</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Beklenen</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Gerçekleşen</th>
+                                          <th className="text-right px-2 py-1 font-semibold whitespace-nowrap">Açık</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {s.aciklar.map((x) => (
+                                          <tr key={`a${x.basTarih}${x.bitTarih}`} className="border-b border-gray-100">
+                                            <td className="px-2 py-1 font-mono whitespace-nowrap">
+                                              {trTarih(x.basTarih)} → {trTarih(x.bitTarih)}
+                                              <span className="text-gray-400"> · {x.gun} gün</span>
+                                            </td>
+                                            <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
+                                              {tamsayi(x.basSayac)} → {tamsayi(x.bitSayac)}
+                                            </td>
+                                            <td className="px-2 py-1 text-right font-mono text-gray-500 whitespace-nowrap">
+                                              {x.tamGun > 0 && <>{x.tamGun} tam</>}
+                                              {x.tamGun > 0 && x.yarimGun > 0 && " · "}
+                                              {x.yarimGun > 0 && <>{x.yarimGun} yarım</>}
+                                            </td>
+                                            <td className={`px-2 py-1 text-right font-mono whitespace-nowrap ${x.depoAsiyor ? "text-red-600 font-bold" : "text-gray-500"}`}>
+                                              {tamsayi(x.beklenen)} {birim}
+                                              {x.depoAsiyor && (
+                                                <span className="block text-[9px] font-semibold text-red-400">
+                                                  1 depo ≈ {tamsayi(x.kapasite)} {birim}
+                                                  {x.depoGun != null && <> ({sayi(x.depoGun, 1)} gün)</>}
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="px-2 py-1 text-right font-mono font-semibold whitespace-nowrap">
+                                              {tamsayi(x.gercek)} {birim}
+                                            </td>
+                                            <td className="px-2 py-1 text-right font-mono font-bold text-orange-600 whitespace-nowrap">
+                                              {x.acik > 0 ? <>−{tamsayi(x.acik)}</> : <span className="text-red-600">depo yetmez</span>}
+                                              {x.acik > 0 && (
+                                                <span className="ml-1 text-[9px] font-semibold text-orange-400">
+                                                  sayaç {sayi(x.karsilikGun, 1)} gün eder
+                                                </span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
                                 </div>
                               )}
                             </div>

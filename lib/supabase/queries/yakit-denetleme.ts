@@ -41,6 +41,38 @@ const CALISMA_AGIRLIK: Partial<Record<AracPuantajDurum, number>> = {
   yarim_gun: 0.5,
 };
 
+// ── ÇALIŞMA DENETİMİ EŞİKLERİ ──
+// Puantaja "tam gün" yazılabilmesi için işin gerektirdiği asgari çalışma:
+// iş makinesi öğleye kadar 3, öğleden sonra 5 = günde 8 saat. Yarım gün için en az 3 saat.
+// Araçta ölçü kilometre: tam gün için en az 10 km, yarım gün için yarısı.
+// Bunlar ASGARİ değerler — altına düşen aralık, puantajın sayaçla tutmadığını gösterir.
+export const CALISMA_ESIK: Record<"km" | "saat", { tam: number; yarim: number }> = {
+  saat: { tam: 8, yarim: 3 },
+  km: { tam: 10, yarim: 5 },
+};
+
+// Aralıkta puantaja yazılan çalışmanın sayaçta karşılığı var mı?
+// Yakıt aşımından BAĞIMSIZ bir tespit: yakıtla değil, yalnız sayaç farkıyla ilgilenir.
+export type CalismaAcigi = {
+  basTarih: string;      // önceki sayaç okuması (yakıt kaydı)
+  bitTarih: string;      // bu sayaç okuması
+  gun: number;           // aradaki takvim günü
+  basSayac: number;
+  bitSayac: number;
+  gercek: number;        // bitSayac − basSayac (saat veya km)
+  tamGun: number;        // aralıkta "çalıştı" işaretli gün
+  yarimGun: number;      // aralıkta "yarım gün" işaretli gün
+  beklenen: number;      // tamGun×tam + yarimGun×yarim
+  acik: number;          // beklenen − gercek (pozitif = eksik çalışma); depo yetmezliğinde 0 olabilir
+  karsilikGun: number;   // gercek ÷ tam → "sayaç ancak bu kadar tam günü karşılıyor"
+  // DEPO SINIRI: aralık tek dolumla geçildiğine göre, puantaja yazılan çalışma bir deponun
+  // yetebileceğinden fazlaysa o çalışma fiilen mümkün değildir — sayaç hiç okunmasa bile.
+  // (Aracın 1 depo menzili: depo kapasitesi ÷ ortalama tüketim.)
+  kapasite: number | null;   // bir deponun yettiği saat/km
+  depoAsiyor: boolean;       // beklenen > kapasite × (1 + pay)
+  depoGun: number | null;    // kapasite ÷ tam → "bir depo en fazla bu kadar tam gün eder"
+};
+
 export type DenetimAsimi = {
   basTarih: string;      // önceki dolum
   bitTarih: string;      // bu dolum
@@ -71,6 +103,8 @@ export type DenetimSatiri = {
   asimlar: DenetimAsimi[];       // büyükten küçüğe
   enBuyukAsim: number | null;
   isaretliAsim: number;           // "dışarıdan yakıt alındı" işaretli olduğu için uyarıya girmeyen aralık sayısı
+  aciklar: CalismaAcigi[];       // çalışma açığı olan aralıklar — açığı büyükten küçüğe
+  enBuyukAcik: number | null;
 };
 
 type YakitRow = { arac_id: string; tarih: string; saat: string; km_saat: number | null; miktar_lt: number | null; dis_yakit_oncesi: boolean | null; duzeltme: boolean | null };
@@ -169,6 +203,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
   }
 
   const sonuc: DenetimSatiri[] = [];
+  const siraliByArac = new Map<string, YakitRow[]>(); // 2. aşama (çalışma denetimi) aynı okumaları kullanır
   for (const a of araclar) {
     const sayacTipi: "km" | "saat" = a.sayac_tipi === "saat" ? "saat" : "km";
     const carpan = sayacTipi === "saat" ? 1 : 100;
@@ -177,6 +212,7 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
     const sirali = tumDolumlar
       .filter((y) => (y.km_saat ?? 0) > 0)
       .sort((x, y) => `${x.tarih}T${x.saat}`.localeCompare(`${y.tarih}T${y.saat}`));
+    siraliByArac.set(a.id, sirali);
 
     // --- genel ortalama (Yakıt sayfasıyla aynı mantık) ---
     const menzil = a.depo_menzil ?? 0;
@@ -238,17 +274,25 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
       asimlar,
       enBuyukAsim: asimlar[0]?.asim ?? null,
       isaretliAsim,
+      aciklar: [],            // 2. aşamada doldurulur
+      enBuyukAcik: null,
     });
   }
 
-  // --- 2. aşama: aşımı olan araçların aralıklarında kaç gün çalışmış? ---
-  const asimliIds = sonuc.filter((r) => r.asimlar.length > 0).map((r) => r.aracId);
-  if (asimliIds.length > 0) {
+  // --- 2. aşama: puantajla karşılaştırma ---
+  // İki şey birden hesaplanır, ikisi de aynı puantaj verisini kullanır:
+  //   (a) aşımı olan aralıklarda kaç gün çalışılmış (yakıt denetimi için bilgi),
+  //   (b) ÇALIŞMA AÇIĞI: puantaja yazılan çalışmanın sayaçta karşılığı var mı.
+  // (b) için en az iki sayaç okuması olan HER araç incelenir — aşımı olmasa da.
+  const puantajGerekenIds = sonuc
+    .filter((r) => r.asimlar.length > 0 || (siraliByArac.get(r.aracId)?.length ?? 0) >= 2)
+    .map((r) => r.aracId);
+  if (puantajGerekenIds.length > 0) {
     // Şantiye seçiliyse o şantiyenin puantajı zaten elimizde; değilse sadece bu araçlar için çek.
     const kayitlar = santiyeId ? puantaj : await sayfali<PuantajRow>(
       "arac_puantaj", "arac_id, tarih, durum",
       ((q: { in: (a: string, b: string[]) => { order: (c: string) => unknown } }) =>
-        q.in("arac_id", asimliIds).order("tarih")) as never,
+        q.in("arac_id", puantajGerekenIds).order("tarih")) as never,
     );
     const gunlerByArac = new Map<string, Map<string, AracPuantajDurum>>();
     for (const p of kayitlar) {
@@ -278,9 +322,57 @@ export async function getYakitDenetimi(santiyeId: string | null): Promise<Deneti
         r.asimlar = r.asimlar.filter((x) => x.calismaGun > 0);
         r.enBuyukAsim = r.asimlar[0]?.asim ?? null;
       }
+
+      // --- ÇALIŞMA AÇIĞI ---
+      // Ardışık iki sayaç okuması arasında puantaja yazılan çalışmanın karşılığı sayaçta var mı?
+      // Örnek: makine 1'inde 1390 saatte, 15'inde 1400 saatte; arada 15 gün "çalıştı" yazılmış.
+      // Beklenen 15×8 = 120 saat, gerçek 10 saat → 110 saat açık; sayaç ancak 1,25 günü karşılıyor.
+      // Pay bırakılmaz (kullanıcı kararı): beklenenin altına düşen her aralık uyarıya girer.
+      const esikler = CALISMA_ESIK[r.sayacTipi];
+      const okumalar = siraliByArac.get(r.aracId) ?? [];
+      const aciklar: CalismaAcigi[] = [];
+      if (gunler) {
+        for (let i = 1; i < okumalar.length; i++) {
+          const onceki = okumalar[i - 1], bu = okumalar[i];
+          const gercek = (bu.km_saat ?? 0) - (onceki.km_saat ?? 0);
+          if (gercek < 0) continue;   // sayaç değişmiş/sıfırlanmış → kıyaslanamaz
+          let tamGun = 0, yarimGun = 0;
+          for (let t = ertesiGun(onceki.tarih); t <= bu.tarih; t = ertesiGun(t)) {
+            const d = gunler.get(t);
+            if (d === "calisti") tamGun++;
+            else if (d === "yarim_gun") yarimGun++;
+          }
+          const beklenen = tamGun * esikler.tam + yarimGun * esikler.yarim;
+          if (beklenen <= 0) continue;      // aralıkta çalışma işaretlenmemiş → denetlenecek şey yok
+          // İki bağımsız gerekçe; biri bile yeterli:
+          //   (1) sayaç puantajı karşılamıyor  → gercek < beklenen
+          //   (2) tek depo puantajı kaldırmaz  → beklenen, bir deponun yettiğinden fazla
+          //       (aralık tanımı gereği arada tek dolum var; %10 pay kapasite tahmini içindir)
+          const depoAsiyor = !!(r.esik && beklenen > r.esik);
+          if (gercek >= beklenen && !depoAsiyor) continue;
+          aciklar.push({
+            basTarih: onceki.tarih, bitTarih: bu.tarih, gun: gunFarki(onceki.tarih, bu.tarih),
+            basSayac: onceki.km_saat ?? 0, bitSayac: bu.km_saat ?? 0,
+            gercek, tamGun, yarimGun, beklenen, acik: Math.max(0, beklenen - gercek),
+            karsilikGun: gercek / esikler.tam,
+            kapasite: r.kapasite, depoAsiyor,
+            depoGun: r.kapasite != null ? r.kapasite / esikler.tam : null,
+          });
+        }
+      }
+      // Önce depo sınırını aşanlar (fiilen imkânsız olan), sonra açığı büyük olanlar.
+      aciklar.sort((x, y) => Number(y.depoAsiyor) - Number(x.depoAsiyor) || y.acik - x.acik);
+      r.aciklar = aciklar;
+      r.enBuyukAcik = aciklar[0]?.acik ?? null;
     }
   }
 
-  sonuc.sort((x, y) => (y.enBuyukAsim ?? -1) - (x.enBuyukAsim ?? -1) || x.plaka.localeCompare(y.plaka, "tr"));
+  // Sıralama: önce bulgusu olanlar (aşım ya da çalışma açığı), aşımı büyük olan üstte.
+  const bulguVar = (r: DenetimSatiri) => (r.asimlar.length > 0 || r.aciklar.length > 0 ? 1 : 0);
+  sonuc.sort((x, y) =>
+    bulguVar(y) - bulguVar(x) ||
+    (y.enBuyukAsim ?? -1) - (x.enBuyukAsim ?? -1) ||
+    (y.enBuyukAcik ?? -1) - (x.enBuyukAcik ?? -1) ||
+    x.plaka.localeCompare(y.plaka, "tr"));
   return sonuc;
 }
