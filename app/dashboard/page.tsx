@@ -3102,20 +3102,11 @@ export default function DashboardPage() {
                                 {aciklama && (
                                   <div className="text-[12.5px] text-gray-700 mt-1 break-words leading-snug">{aciklama}</div>
                                 )}
-                                <div className="mt-1 flex items-center gap-2">
-                                  {mailVar && (
-                                    <button type="button"
-                                      onClick={(e) => { e.stopPropagation(); setAcikTeklifMail(t); }}
-                                      className="text-[12px] text-blue-700 underline decoration-dotted">
-                                      maili oku
-                                    </button>
-                                  )}
-                                  {t.police_talep_tarihi && (
-                                    <span className="text-[11px] text-emerald-700 font-medium">
-                                      poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
-                                    </span>
-                                  )}
-                                </div>
+                                {t.police_talep_tarihi && (
+                                  <div className="mt-1 text-[11px] text-emerald-700 font-medium">
+                                    poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                                  </div>
+                                )}
                               </div>
                               <div className="text-right shrink-0">
                                 {tutarli ? (
@@ -3124,13 +3115,6 @@ export default function DashboardPage() {
                                   </div>
                                 ) : (
                                   <div className="text-[12px] text-amber-700 font-medium">tutar okunamadı</div>
-                                )}
-                                {t.ek_url && (
-                                  <button type="button"
-                                    onClick={(e) => { e.stopPropagation(); setAcikTeklifEk(t.ek_url ?? null); }}
-                                    className="mt-1 text-[12px] text-blue-700 underline decoration-dotted">
-                                    resmi aç
-                                  </button>
                                 )}
                               </div>
                             </div>
