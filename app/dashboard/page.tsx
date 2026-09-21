@@ -2831,13 +2831,26 @@ export default function DashboardPage() {
               const vb = typeof tb === "number" && tb > 0 ? tb : Infinity;
               return va !== vb ? va - vb : a.localeCompare(b, "tr");
             });
-            // GELEN teklifler: mailden okunanlar + elle girilenler. Firma/tutar MAİLDEN GELDİĞİ
-            // GİBİ gösterilir — bu bir veri, düzeltilecek bir form değil. Ucuzdan pahalıya sıralı.
-            const gelenler = [...gecerli].sort((a, b) => a.teklif_tutari - b.teklif_tutari);
-            // Teklif istenen ama henüz cevap vermemiş acenteler (telefonla bildirilen için elle giriş).
             const cevapsizlar = siraliAcenteler.filter((a) => !teklifByAcente.get(a));
+            // KARŞILAŞTIRMA MATRİSİ — satırlar sigorta firması, sütunlar acente, hücreler tutar.
+            // Böyle bakınca iki soru birden cevaplanıyor: "aynı firmayı hangi acente daha ucuza
+            // veriyor" ve "bu acente hangi firmaları teklif etmiş". Tek sütunlu liste bunu
+            // gösteremiyordu. Hücre tıklanınca o teklif seçilir.
+            const gelenler = [...gecerli].sort((a, b) => a.teklif_tutari - b.teklif_tutari);
+            const matrisFirmalar = Array.from(new Set(gelenler.map((t) => t.sigorta_firmasi ?? "Firma belirtilmemiş")));
+            const hucreler = new Map<string, SigortaTeklif>();
+            for (const t of gelenler) hucreler.set(`${t.sigorta_firmasi ?? "Firma belirtilmemiş"}|${t.acente_adi}`, t);
+            // Satır sırası: o firmanın en ucuz teklifi neyse ona göre (ucuz üstte).
+            const firmaEnUcuz = (f: string) => {
+              const v = istenenAcenteler.map((a) => hucreler.get(`${f}|${a}`)?.teklif_tutari).filter((x): x is number => typeof x === "number" && x > 0);
+              return v.length ? Math.min(...v) : Infinity;
+            };
+            const siraliFirmalar = [...matrisFirmalar].sort((a, b) => firmaEnUcuz(a) - firmaEnUcuz(b) || a.localeCompare(b, "tr"));
+            const enUcuzTeklif = gelenler.find((t) => t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0) ?? null;
+            const secilenTeklif = gelenler.find((t) => t.secildi) ?? null;
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF" : k === "mail" ? "mail" : k === "resim" ? "resim" : "elle";
+            const acenteKisa = (a: string) => a.length > 18 ? a.slice(0, 17) + "…" : a;
             return (
               <div className="space-y-3 py-1">
                 {istenenAcenteler.length === 0 ? (
@@ -2846,62 +2859,85 @@ export default function DashboardPage() {
                   </p>
                 ) : (
                   <>
-                    {/* ── GELEN TEKLİFLER TABLOSU ── */}
+                    {/* ── ÖZET ŞERİDİ ── */}
+                    {gelenler.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-gray-500">{gelenler.length} teklif · {siraliFirmalar.length} firma · {new Set(gelenler.map((t) => t.acente_adi)).size} acente</span>
+                        {enUcuzTeklif && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-300 px-2 py-0.5 font-semibold text-emerald-800">
+                            En ucuz: {enUcuzTeklif.sigorta_firmasi} · {para(enUcuzTeklif.teklif_tutari)} ₺ · {enUcuzTeklif.acente_adi}
+                          </span>
+                        )}
+                        {secilenTeklif && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-300 px-2 py-0.5 font-semibold text-blue-800">
+                            Seçilen: {secilenTeklif.sigorta_firmasi} · {para(secilenTeklif.teklif_tutari)} ₺
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── MATRİS ── firmalar satır, acenteler sütun */}
                     {gelenler.length > 0 ? (
                       <div className="overflow-x-auto rounded-lg border border-gray-200">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm border-separate border-spacing-0">
                           <thead>
-                            <tr className="bg-[#64748B] text-white text-[11px]">
-                              <th className="text-left px-2 py-1.5 font-medium">Sigorta Firması</th>
-                              <th className="text-right px-2 py-1.5 font-medium whitespace-nowrap">Tutar ₺</th>
-                              <th className="text-left px-2 py-1.5 font-medium hidden sm:table-cell">Acente</th>
-                              <th className="px-2 py-1.5"></th>
+                            <tr>
+                              <th className="sticky left-0 z-20 bg-[#1E3A5F] text-white text-[11px] font-medium text-left px-2 py-2 min-w-[150px] border-b border-[#1E3A5F]">
+                                Sigorta Firması
+                              </th>
+                              {istenenAcenteler.map((a) => (
+                                <th key={a} title={a} className="bg-[#1E3A5F] text-white text-[11px] font-medium px-2 py-2 min-w-[110px] border-b border-l border-white/20 whitespace-nowrap">
+                                  {acenteKisa(a)}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {gelenler.map((t) => {
-                              const enUcuz = t.teklif_tutari === enUcuzTutar;
+                            {siraliFirmalar.map((firma, i) => {
+                              const satirEnUcuz = firmaEnUcuz(firma);
                               return (
-                                <tr key={t.id} className={`border-t border-gray-100 ${t.secildi ? "bg-blue-50" : enUcuz ? "bg-emerald-50" : "bg-white"}`}>
-                                  <td className="px-2 py-2 align-top">
-                                    <div className="flex flex-wrap items-center gap-1">
-                                      <span className="font-semibold text-[#1E3A5F]">{t.sigorta_firmasi ?? "Firma belirtilmemiş"}</span>
-                                      {enUcuz && <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded-full font-semibold">en ucuz</span>}
-                                      {t.secildi && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full font-semibold">seçildi</span>}
-                                      <span className="text-[10px] text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded-full" title={t.mail_konu ?? ""}>{kaynakAd(t.kaynak)}</span>
-                                      {t.ek_url && (
-                                        <button type="button" onClick={() => setAcikTeklifEk(acikTeklifEk === t.ek_url ? null : t.ek_url ?? null)}
-                                          className="text-[10px] bg-white text-blue-700 border border-blue-300 px-1.5 py-0.5 rounded-full font-medium hover:bg-blue-50">
-                                          {acikTeklifEk === t.ek_url ? "resmi gizle" : "resmi göster"}
+                                <tr key={firma}>
+                                  <th scope="row" className={`sticky left-0 z-10 text-left px-2 py-2 text-xs font-semibold text-[#1E3A5F] border-b border-gray-100 ${i % 2 ? "bg-gray-50" : "bg-white"}`}>
+                                    {firma}
+                                  </th>
+                                  {istenenAcenteler.map((acente) => {
+                                    const t = hucreler.get(`${firma}|${acente}`);
+                                    if (!t) {
+                                      return <td key={acente} className={`border-b border-l border-gray-100 px-2 py-2 text-center text-gray-300 ${i % 2 ? "bg-gray-50" : "bg-white"}`}>—</td>;
+                                    }
+                                    const enUcuzHucre = t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0;
+                                    const satirinEnUcuzu = t.teklif_tutari === satirEnUcuz && t.teklif_tutari > 0;
+                                    return (
+                                      <td key={acente}
+                                        className={`border-b border-l border-gray-100 px-1.5 py-1.5 text-right align-top ${t.secildi ? "bg-blue-50" : enUcuzHucre ? "bg-emerald-50" : i % 2 ? "bg-gray-50" : "bg-white"}`}>
+                                        <button type="button"
+                                          title={`${firma} · ${acente}${t.mail_konu ? ` · ${t.mail_konu}` : ""}${t.notlar ? `\n${t.notlar}` : ""}`}
+                                          onClick={async () => {
+                                            try { await secSigortaTeklif(t.id, t.arac_id, tipKey); await teklifleriYenile(); }
+                                            catch { toast.error("Seçilemedi."); }
+                                          }}
+                                          className="w-full text-right group">
+                                          {t.elle_bekliyor ? (
+                                            <span className="text-[11px] text-amber-700">resimden okunmalı</span>
+                                          ) : (
+                                            <span className={`block tabular-nums font-semibold ${enUcuzHucre ? "text-emerald-700" : satirinEnUcuzu ? "text-emerald-600" : "text-gray-800"} group-hover:underline`}>
+                                              {para(t.teklif_tutari)}
+                                            </span>
+                                          )}
+                                          <span className="block text-[9px] text-gray-400">
+                                            {t.secildi ? "✓ seçildi" : kaynakAd(t.kaynak)}
+                                          </span>
                                         </button>
-                                      )}
-                                    </div>
-                                    <div className="sm:hidden text-[11px] text-gray-500 mt-0.5">{t.acente_adi}</div>
-                                    {t.notlar && <div className="text-[11px] text-gray-500 mt-0.5 break-words">{t.notlar}</div>}
-                                    {t.ek_url && acikTeklifEk === t.ek_url && (
-                                      <a href={t.ek_url} target="_blank" rel="noreferrer" className="block mt-1.5">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={t.ek_url} alt="Teklif görseli" className="w-full rounded border border-gray-200 bg-white" />
-                                        <span className="block text-center text-[10px] text-gray-400 mt-0.5">Tam boyut için dokunun</span>
-                                      </a>
-                                    )}
-                                  </td>
-                                  <td className="px-2 py-2 text-right align-top font-semibold tabular-nums whitespace-nowrap">
-                                    {t.elle_bekliyor ? <span className="text-[11px] font-normal text-amber-700">resimden okunmalı</span> : para(t.teklif_tutari)}
-                                  </td>
-                                  <td className="px-2 py-2 align-top text-xs text-gray-600 hidden sm:table-cell">{t.acente_adi}</td>
-                                  <td className="px-2 py-2 align-top text-right whitespace-nowrap">
-                                    <button type="button"
-                                      onClick={async () => {
-                                        try {
-                                          await secSigortaTeklif(t.id, t.arac_id, tipKey);
-                                          await teklifleriYenile();
-                                        } catch { toast.error("Seçilemedi."); }
-                                      }}
-                                      className={`text-[11px] px-2 py-1 rounded border font-medium ${t.secildi ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-gray-300 text-gray-700 hover:border-blue-400"}`}>
-                                      {t.secildi ? "Seçili" : "Seç"}
-                                    </button>
-                                  </td>
+                                        {t.ek_url && (
+                                          <button type="button"
+                                            onClick={() => setAcikTeklifEk(acikTeklifEk === t.ek_url ? null : t.ek_url ?? null)}
+                                            className="mt-0.5 w-full text-[9px] text-blue-700 underline decoration-dotted">
+                                            {acikTeklifEk === t.ek_url ? "resmi gizle" : "resmi gör"}
+                                          </button>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
                                 </tr>
                               );
                             })}
@@ -2910,6 +2946,20 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 text-center py-4">Henüz teklif gelmedi.</p>
+                    )}
+
+                    <p className="text-[11px] text-gray-400 px-0.5">
+                      Rakama dokunarak o teklifi seçebilirsiniz. Yeşil = en ucuz, mavi = seçtiğiniz. Rakamın altındaki
+                      küçük yazı teklifin nereden okunduğunu gösterir (PDF / mail / resim / elle).
+                    </p>
+
+                    {/* Resim olarak gelen teklif — matrisin altında tam genişlikte açılır */}
+                    {acikTeklifEk && (
+                      <a href={acikTeklifEk} target="_blank" rel="noreferrer" className="block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={acikTeklifEk} alt="Teklif görseli" className="w-full rounded-lg border border-gray-200 bg-white" />
+                        <span className="block text-center text-[10px] text-gray-400 mt-0.5">Tam boyut için dokunun</span>
+                      </a>
                     )}
 
                     {/* ── CEVAP VERMEYENLER — telefonla gelen teklifi elle gir ── */}
