@@ -586,13 +586,23 @@ export default function DashboardPage() {
     return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
   }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, sigortaVazgecler, isYonetici, kullanici]);
 
-  // SÜRESİ GEÇMİŞ sigorta/muayene/kasko — sayfanın en üstünde kırmızı şeritte uyarılır.
-  // yaklasanlar zaten hesaplandı; kalanGun < 0 olanlar süresi geçmiş demektir.
-  // Not: yaklasanlar 15 kayıtla sınırlı ama kalanGun'a göre sıralı olduğundan süresi
-  // geçmişler her zaman listenin başında yer alır.
+  // KIRMIZI ŞERİT — sayfanın en üstü. İki grup birden:
+  //   • SON GÜN: bugün ya da yarın bitecek olanlar (kalanGun 0 veya 1) — hâlâ önlem alınabilir.
+  //   • SÜRESİ GEÇMİŞ: kalanGun < 0 — araç trafiğe çıkamaz.
+  // Eskiden yalnız süresi geçmişler vardı; uyarı ancak iş işten geçtikten sonra çıkıyordu.
+  // yaklasanlar 15 kayıtla sınırlı ama kalanGun'a göre sıralı olduğundan bu iki grup her
+  // zaman listenin başında yer alır.
   const suresiGecmisler = useMemo(
     () => yaklasanlar.filter((y) => y.kalanGun < 0),
     [yaklasanlar],
+  );
+  const sonGunKalanlar = useMemo(
+    () => yaklasanlar.filter((y) => y.kalanGun >= 0 && y.kalanGun <= 1),
+    [yaklasanlar],
+  );
+  const seritKayitlari = useMemo(
+    () => [...sonGunKalanlar, ...suresiGecmisler],   // önce "bitmek üzere", sonra "bitmiş"
+    [sonGunKalanlar, suresiGecmisler],
   );
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
@@ -1584,29 +1594,45 @@ export default function DashboardPage() {
 
       {/* SÜRESİ GEÇMİŞ sigorta / muayene / kasko — en üstte, kırmızı.
           Sigorta widget'ını görme yetkisi olmayana gösterilmez. */}
-      {wg("sigorta_muayene") && suresiGecmisler.length > 0 && (
+      {wg("sigorta_muayene") && seritKayitlari.length > 0 && (
         <div className="mb-4 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-red-900 shadow-sm">
           <div className="flex items-center gap-3">
             <AlertTriangle size={22} className="shrink-0 text-red-600" />
             <div className="flex-1">
               <div className="font-semibold">
-                ⚠️ {suresiGecmisler.length} araçta sigorta / muayene süresi geçmiş
+                ⚠️{" "}
+                {sonGunKalanlar.length > 0 && (
+                  <>{sonGunKalanlar.length} kayıtta sigorta / muayene <b>bitmek üzere</b></>
+                )}
+                {sonGunKalanlar.length > 0 && suresiGecmisler.length > 0 && " · "}
+                {suresiGecmisler.length > 0 && (
+                  <>{suresiGecmisler.length} kayıtta <b>süre geçmiş</b></>
+                )}
               </div>
               <div className="text-xs text-red-700">
-                Bu araçlar trafiğe çıkamaz. Aşağıdaki &quot;Yaklaşan Sigorta &amp; Muayene&quot; bölümünden poliçe girebilir veya teklif isteyebilirsiniz.
+                {suresiGecmisler.length > 0
+                  ? "Süresi geçmiş araçlar trafiğe çıkamaz. "
+                  : "Son gün — bugün işlem yapılmazsa araç trafiğe çıkamaz. "}
+                Aşağıdaki &quot;Yaklaşan Sigorta &amp; Muayene&quot; bölümünden poliçe girebilir veya teklif isteyebilirsiniz.
               </div>
             </div>
           </div>
           <ul className="mt-2 space-y-1 pl-9 text-sm">
-            {suresiGecmisler.map((y) => (
+            {seritKayitlari.map((y) => (
               <li key={`${y.aracId}-${y.field}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="font-semibold">{y.plaka}</span>
                 <span className="text-red-800">{y.tip}</span>
                 <span className="text-red-700">·</span>
                 <span className="text-red-800">{formatTarih(y.bitis)}</span>
-                <span className="rounded bg-red-200 px-1.5 py-0.5 text-[11px] font-semibold text-red-800">
-                  {Math.abs(y.kalanGun)} gün geçti
-                </span>
+                {y.kalanGun < 0 ? (
+                  <span className="rounded bg-red-200 px-1.5 py-0.5 text-[11px] font-semibold text-red-800">
+                    {Math.abs(y.kalanGun)} gün geçti
+                  </span>
+                ) : (
+                  <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[11px] font-semibold text-amber-900">
+                    {y.kalanGun === 0 ? "bugün son gün" : "yarın bitiyor"}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
