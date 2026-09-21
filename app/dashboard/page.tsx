@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
@@ -164,6 +164,8 @@ export default function DashboardPage() {
   // Gelen sigorta teklifleri (firma+tutar karşılaştırma)
   const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
   const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string } | null>(null);
+  // Resim olarak gelen teklifin ekini satırın altında açar (yeni sekmeye gitmeden, telefonda da rahat).
+  const [acikTeklifEk, setAcikTeklifEk] = useState<string | null>(null);
   // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
@@ -2802,7 +2804,7 @@ export default function DashboardPage() {
 
       {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
       <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Teklifler — {teklifKarsilastirArac?.plaka} {teklifKarsilastirArac?.tip}</DialogTitle>
           </DialogHeader>
@@ -2829,56 +2831,115 @@ export default function DashboardPage() {
               const vb = typeof tb === "number" && tb > 0 ? tb : Infinity;
               return va !== vb ? va - vb : a.localeCompare(b, "tr");
             });
-            const selCls = "h-8 text-xs w-full rounded-md border border-input bg-white px-1.5 outline-none focus:border-ring";
+            // GELEN teklifler: mailden okunanlar + elle girilenler. Firma/tutar MAİLDEN GELDİĞİ
+            // GİBİ gösterilir — bu bir veri, düzeltilecek bir form değil. Ucuzdan pahalıya sıralı.
+            const gelenler = [...gecerli].sort((a, b) => a.teklif_tutari - b.teklif_tutari);
+            // Teklif istenen ama henüz cevap vermemiş acenteler (telefonla bildirilen için elle giriş).
+            const cevapsizlar = siraliAcenteler.filter((a) => !teklifByAcente.get(a));
+            const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF" : k === "mail" ? "mail" : k === "resim" ? "resim" : "elle";
             return (
-              <div className="space-y-2 py-1">
+              <div className="space-y-3 py-1">
                 {istenenAcenteler.length === 0 ? (
                   <p className="text-xs text-gray-400 text-center py-6">
-                    Bu araç için henüz <b>“Teklif İste”</b> yapılmamış.<br />Önce teklif isteyin; mail gönderilen acenteler burada otomatik listelenir.
+                    Bu araç için henüz <b>&ldquo;Teklif İste&rdquo;</b> yapılmamış.<br />Önce teklif isteyin; mail gönderilen acenteler burada otomatik listelenir.
                   </p>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[1fr_1fr_84px_1.1fr] gap-1.5 px-1 text-[10px] text-gray-400 font-medium">
-                      <span>Acente</span><span>Sigorta Firması</span><span className="text-right">Tutar ₺</span><span>Açıklama</span>
-                    </div>
-                    <div className="space-y-1">
-                      {siraliAcenteler.map((acente) => {
-                        const mevcut = teklifByAcente.get(acente);
-                        const buEnUcuz = mevcut != null && mevcut.teklif_tutari === enUcuzTutar;
-                        return (
-                          <div key={acente} className={`grid grid-cols-[1fr_1fr_84px_1.1fr] gap-1.5 items-center px-1.5 py-1 rounded border ${buEnUcuz ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-100"}`}>
-                            <div className="min-w-0 flex items-center gap-1">
-                              <span className="text-xs font-medium truncate" title={acente}>{acente}</span>
-                              {buEnUcuz && <span className="text-[8px] bg-emerald-600 text-white px-1 py-0.5 rounded-full shrink-0">uygun</span>}
-                            </div>
-                            <select value={teklifFirma[acente] ?? ""} className={selCls}
-                              onChange={(e) => { const v = e.target.value; setTeklifFirma((p) => ({ ...p, [acente]: v })); teklifSatirKaydet(acente, v); }}>
-                              <option value="">Firma seçin…</option>
-                              {sigortaFirmalari.map((f) => <option key={f} value={f}>{f}</option>)}
-                            </select>
-                            {(() => {
-                              const firmaSecili = !!(teklifFirma[acente] ?? "").trim();
+                    {/* ── GELEN TEKLİFLER TABLOSU ── */}
+                    {gelenler.length > 0 ? (
+                      <div className="overflow-x-auto rounded-lg border border-gray-200">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-[#64748B] text-white text-[11px]">
+                              <th className="text-left px-2 py-1.5 font-medium">Sigorta Firması</th>
+                              <th className="text-right px-2 py-1.5 font-medium whitespace-nowrap">Tutar ₺</th>
+                              <th className="text-left px-2 py-1.5 font-medium hidden sm:table-cell">Acente</th>
+                              <th className="px-2 py-1.5"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {gelenler.map((t) => {
+                              const enUcuz = t.teklif_tutari === enUcuzTutar;
                               return (
-                                <>
-                                  <input inputMode="decimal" value={teklifTutar[acente] ?? ""} disabled={!firmaSecili}
-                                    onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
-                                    onBlur={() => teklifSatirKaydet(acente)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                                    placeholder={firmaSecili ? "tutar" : "önce firma"} title={firmaSecili ? "" : "Önce sigorta firması seçin"}
-                                    className={`h-8 text-xs w-full text-right rounded-md border ${buEnUcuz ? "border-emerald-300" : "border-input"} bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:placeholder:text-gray-300`} />
-                                  <input type="text" value={teklifNot[acente] ?? ""} disabled={!firmaSecili}
-                                    onChange={(e) => setTeklifNot((p) => ({ ...p, [acente]: e.target.value }))}
-                                    onBlur={() => teklifSatirKaydet(acente)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                                    placeholder={firmaSecili ? "açıklama (ops.)" : ""} title="Bu teklif için not (ör. teminat farkı, muafiyet)"
-                                    className="h-8 text-xs w-full rounded-md border border-input bg-transparent px-1.5 outline-none focus:border-ring disabled:bg-gray-50 disabled:cursor-not-allowed" />
-                                </>
+                                <tr key={t.id} className={`border-t border-gray-100 ${t.secildi ? "bg-blue-50" : enUcuz ? "bg-emerald-50" : "bg-white"}`}>
+                                  <td className="px-2 py-2 align-top">
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      <span className="font-semibold text-[#1E3A5F]">{t.sigorta_firmasi ?? "Firma belirtilmemiş"}</span>
+                                      {enUcuz && <span className="text-[10px] bg-emerald-600 text-white px-1.5 py-0.5 rounded-full font-semibold">en ucuz</span>}
+                                      {t.secildi && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full font-semibold">seçildi</span>}
+                                      <span className="text-[10px] text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded-full" title={t.mail_konu ?? ""}>{kaynakAd(t.kaynak)}</span>
+                                      {t.ek_url && (
+                                        <button type="button" onClick={() => setAcikTeklifEk(acikTeklifEk === t.ek_url ? null : t.ek_url ?? null)}
+                                          className="text-[10px] bg-white text-blue-700 border border-blue-300 px-1.5 py-0.5 rounded-full font-medium hover:bg-blue-50">
+                                          {acikTeklifEk === t.ek_url ? "resmi gizle" : "resmi göster"}
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="sm:hidden text-[11px] text-gray-500 mt-0.5">{t.acente_adi}</div>
+                                    {t.notlar && <div className="text-[11px] text-gray-500 mt-0.5 break-words">{t.notlar}</div>}
+                                    {t.ek_url && acikTeklifEk === t.ek_url && (
+                                      <a href={t.ek_url} target="_blank" rel="noreferrer" className="block mt-1.5">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={t.ek_url} alt="Teklif görseli" className="w-full rounded border border-gray-200 bg-white" />
+                                        <span className="block text-center text-[10px] text-gray-400 mt-0.5">Tam boyut için dokunun</span>
+                                      </a>
+                                    )}
+                                  </td>
+                                  <td className="px-2 py-2 text-right align-top font-semibold tabular-nums whitespace-nowrap">
+                                    {t.elle_bekliyor ? <span className="text-[11px] font-normal text-amber-700">resimden okunmalı</span> : para(t.teklif_tutari)}
+                                  </td>
+                                  <td className="px-2 py-2 align-top text-xs text-gray-600 hidden sm:table-cell">{t.acente_adi}</td>
+                                  <td className="px-2 py-2 align-top text-right whitespace-nowrap">
+                                    <button type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await secSigortaTeklif(t.id, t.arac_id, tipKey);
+                                          await teklifleriYenile();
+                                        } catch { toast.error("Seçilemedi."); }
+                                      }}
+                                      className={`text-[11px] px-2 py-1 rounded border font-medium ${t.secildi ? "bg-blue-600 border-blue-600 text-white" : "bg-white border-gray-300 text-gray-700 hover:border-blue-400"}`}>
+                                      {t.secildi ? "Seçili" : "Seç"}
+                                    </button>
+                                  </td>
+                                </tr>
                               );
-                            })()}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-4">Henüz teklif gelmedi.</p>
+                    )}
+
+                    {/* ── CEVAP VERMEYENLER — telefonla gelen teklifi elle gir ── */}
+                    {cevapsizlar.length > 0 && (
+                      <div className="rounded-lg border border-dashed border-gray-300 p-2.5 space-y-2">
+                        <div className="text-[11px] text-gray-500">
+                          Cevap gelmeyen {cevapsizlar.length} acente — telefonla bildirdiyse buradan girebilirsiniz.
+                        </div>
+                        {cevapsizlar.map((acente) => {
+                          const firmaSecili = !!(teklifFirma[acente] ?? "").trim();
+                          return (
+                            <div key={acente} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_130px] gap-2 items-end">
+                              <span className="text-xs font-medium text-gray-700 sm:pb-2">{acente}</span>
+                              <select value={teklifFirma[acente] ?? ""} style={{ fontSize: "16px" }}
+                                className="h-10 sm:h-9 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
+                                onChange={(e) => { const v = e.target.value; setTeklifFirma((p) => ({ ...p, [acente]: v })); teklifSatirKaydet(acente, v); }}>
+                                <option value="">Firma seçin…</option>
+                                {sigortaFirmalari.map((f) => <option key={f} value={f}>{f}</option>)}
+                              </select>
+                              <input inputMode="decimal" value={teklifTutar[acente] ?? ""} disabled={!firmaSecili}
+                                onChange={(e) => setTeklifTutar((p) => ({ ...p, [acente]: formatParaInput(e.target.value) }))}
+                                onBlur={() => teklifSatirKaydet(acente)}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                placeholder={firmaSecili ? "tutar" : "önce firma"} style={{ fontSize: "16px" }}
+                                className="h-10 sm:h-9 w-full text-right rounded-md border border-input bg-transparent px-2 text-sm tabular-nums outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

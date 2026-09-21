@@ -337,6 +337,12 @@ export type SigortaTeklif = {
   teklif_tarihi: string | null;
   secildi: boolean; // kullanıcının seçtiği teklif (en ucuz OTOMATİK "en uygun" vurgulanır; bu ayrıca elle seçim)
   notlar: string | null;
+  // Mailden otomatik okunanlar için (scripts/sigorta-teklif-mail.mjs):
+  kaynak?: "elle" | "pdf" | "mail" | "resim" | null;
+  mail_konu?: string | null;
+  mail_tarih?: string | null;
+  ek_url?: string | null;
+  elle_bekliyor?: boolean | null;   // resim geldi, tutar elle girilmeli
   created_at: string;
 };
 export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi" | "police_id"> & { secildi?: boolean; police_id?: string | null };
