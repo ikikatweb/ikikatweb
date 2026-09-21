@@ -166,6 +166,15 @@ export default function DashboardPage() {
   const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string } | null>(null);
   // Resim olarak gelen teklifin ekini satırın altında açar (yeni sekmeye gitmeden, telefonda da rahat).
   const [acikTeklifEk, setAcikTeklifEk] = useState<string | null>(null);
+  // Teklif hücresinin AYRINTI balonu: bilgisayarda fareyle üzerine gelince, telefonda TEK
+  // dokunuşta açılır. Seçim bilgisayarda tek tık, telefonda ÇİFT dokunuş — böylece rakamın
+  // neden o olduğu (hangi mail, hangi not) önce okunur, seçim kazara yapılmaz.
+  const [teklifDetay, setTeklifDetay] = useState<{ t: SigortaTeklif; x: number; y: number } | null>(null);
+  const [dokunmatikCihaz, setDokunmatikCihaz] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    setDokunmatikCihaz(window.matchMedia("(hover: none)").matches);
+  }, []);
   // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
@@ -2804,7 +2813,9 @@ export default function DashboardPage() {
 
       {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
       <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
-        <DialogContent className="max-w-5xl w-[96vw] max-h-[88vh] overflow-y-auto">
+        {/* DialogContent'in kendi sınıfında sm:max-w-sm var ve düz max-w-* sınıfını eziyor;
+            bu yüzden genişlik BREAKPOINT'li verilmeli, yoksa bilgisayarda dar kalıyor. */}
+        <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-3xl lg:max-w-5xl xl:max-w-6xl max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Teklifler — {teklifKarsilastirArac?.plaka} {teklifKarsilastirArac?.tip}</DialogTitle>
           </DialogHeader>
@@ -2846,6 +2857,13 @@ export default function DashboardPage() {
               return v.length ? Math.min(...v) : Infinity;
             };
             const siraliFirmalar = [...matrisFirmalar].sort((a, b) => firmaEnUcuz(a) - firmaEnUcuz(b) || a.localeCompare(b, "tr"));
+            // Her ACENTENIN kendi en ucuz teklifi (sutun bazinda isaret icin).
+            const acenteEnUcuz = new Map<string, number>();
+            for (const t of gelenler) {
+              if (!(t.teklif_tutari > 0)) continue;
+              const o = acenteEnUcuz.get(t.acente_adi);
+              if (o == null || t.teklif_tutari < o) acenteEnUcuz.set(t.acente_adi, t.teklif_tutari);
+            }
             const enUcuzTeklif = gelenler.find((t) => t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0) ?? null;
             const secilenTeklif = gelenler.find((t) => t.secildi) ?? null;
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -2909,13 +2927,32 @@ export default function DashboardPage() {
                                     }
                                     const enUcuzHucre = t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0;
                                     const satirinEnUcuzu = t.teklif_tutari === satirEnUcuz && t.teklif_tutari > 0;
+                                    // O ACENTENİN kendi en ucuz teklifi — sütun bazında işaret.
+                                    // "Her acentenin gönderdiği tüm firmalar görünsün, en uygunu işaretlensin."
+                                    const acenteEnUcuzu = t.teklif_tutari > 0 && t.teklif_tutari === acenteEnUcuz.get(acente);
                                     return (
                                       <td key={acente}
                                         className={`border-b border-l border-gray-100 px-1.5 py-0.5 text-right align-middle ${t.secildi ? "bg-blue-50" : enUcuzHucre ? "bg-emerald-50" : i % 2 ? "bg-gray-50" : "bg-white"}`}>
                                         <button type="button"
-                                          title={`${firma} · ${acente}${t.mail_konu ? ` · ${t.mail_konu}` : ""}${t.notlar ? `\n${t.notlar}` : ""}`}
-                                          onClick={async () => {
+                                          onMouseEnter={(e) => {
+                                            if (dokunmatikCihaz) return;
+                                            const r = e.currentTarget.getBoundingClientRect();
+                                            setTeklifDetay({ t, x: r.left + r.width / 2, y: r.bottom + 6 });
+                                          }}
+                                          onMouseLeave={() => { if (!dokunmatikCihaz) setTeklifDetay(null); }}
+                                          onClick={async (e) => {
+                                            if (dokunmatikCihaz) {
+                                              // Telefon: TEK dokunuş ayrıntıyı açar, seçmez (kazara seçim olmasın).
+                                              const r = e.currentTarget.getBoundingClientRect();
+                                              setTeklifDetay({ t, x: r.left + r.width / 2, y: r.bottom + 6 });
+                                              return;
+                                            }
                                             try { await secSigortaTeklif(t.id, t.arac_id, tipKey); await teklifleriYenile(); }
+                                            catch { toast.error("Seçilemedi."); }
+                                          }}
+                                          onDoubleClick={async () => {
+                                            // Telefonda ÇİFT dokunuş = seç.
+                                            try { await secSigortaTeklif(t.id, t.arac_id, tipKey); await teklifleriYenile(); setTeklifDetay(null); }
                                             catch { toast.error("Seçilemedi."); }
                                           }}
                                           className="w-full text-right group">
@@ -2925,6 +2962,9 @@ export default function DashboardPage() {
                                             <span className={`tabular-nums text-xs font-semibold ${enUcuzHucre ? "text-emerald-700" : satirinEnUcuzu ? "text-emerald-600" : "text-gray-800"} group-hover:underline`}>
                                               {para(t.teklif_tutari)}
                                             </span>
+                                          )}
+                                          {acenteEnUcuzu && !enUcuzHucre && (
+                                            <span className="ml-1 text-[9px] text-emerald-600 font-bold" title="Bu acentenin en uygun teklifi">▾</span>
                                           )}
                                           <span className="ml-1 text-[9px] text-gray-400">{t.secildi ? "✓" : kaynakHarf(t.kaynak)}</span>
                                           {t.ek_url && (
@@ -2948,8 +2988,59 @@ export default function DashboardPage() {
                     )}
 
                     <p className="text-[10px] text-gray-400 px-0.5">
-                      Rakama dokun = seç · yeşil en ucuz, mavi seçilen · P: PDF, M: mail, R: resim, E: elle
+                      Bilgisayarda: fareyle üzerine gel = ayrıntı, tek tık = seç · Telefonda: tek dokunuş = ayrıntı, çift dokunuş = seç
+                      <br />Yeşil zemin: genel en ucuz · ▾: o acentenin en uygunu · mavi: seçilen · P: PDF, M: mail, R: resim, E: elle
                     </p>
+                    {/* AYRINTI BALONU — rakamın arkasındaki mail/not burada okunur. */}
+                    {teklifDetay && (
+                      <>
+                        {dokunmatikCihaz && (
+                          <div className="fixed inset-0 z-[70]" onClick={() => setTeklifDetay(null)} />
+                        )}
+                        <div
+                          className="fixed z-[75] w-[280px] max-w-[92vw] rounded-lg border border-gray-200 bg-white p-2.5 shadow-xl text-left"
+                          style={{
+                            left: Math.min(Math.max(teklifDetay.x - 140, 8), (typeof window !== "undefined" ? window.innerWidth : 400) - 288),
+                            top: Math.min(teklifDetay.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 200),
+                          }}
+                        >
+                          <div className="text-sm font-semibold text-[#1E3A5F]">{teklifDetay.t.sigorta_firmasi ?? "Firma belirtilmemiş"}</div>
+                          <div className="text-[11px] text-gray-500">{teklifDetay.t.acente_adi} · {kaynakAd(teklifDetay.t.kaynak)}</div>
+                          {!teklifDetay.t.elle_bekliyor && (
+                            <div className="mt-1 text-lg font-bold tabular-nums text-[#1E3A5F]">{para(teklifDetay.t.teklif_tutari)} ₺</div>
+                          )}
+                          {teklifDetay.t.mail_konu && (
+                            <div className="mt-1 text-[11px] text-gray-600"><b>Mail:</b> {teklifDetay.t.mail_konu}</div>
+                          )}
+                          {teklifDetay.t.mail_tarih && (
+                            <div className="text-[11px] text-gray-400">{new Date(teklifDetay.t.mail_tarih).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+                          )}
+                          {teklifDetay.t.notlar && (
+                            <div className="mt-1 rounded bg-gray-50 border border-gray-100 p-1.5 text-[11px] text-gray-700 break-words max-h-28 overflow-y-auto">
+                              {teklifDetay.t.notlar}
+                            </div>
+                          )}
+                          {dokunmatikCihaz && (
+                            <div className="mt-2 flex gap-1.5">
+                              <button type="button"
+                                onClick={async () => {
+                                  try { await secSigortaTeklif(teklifDetay.t.id, teklifDetay.t.arac_id, tipKey); await teklifleriYenile(); setTeklifDetay(null); }
+                                  catch { toast.error("Seçilemedi."); }
+                                }}
+                                className="flex-1 text-xs bg-blue-600 text-white rounded px-2 py-1.5 font-medium">
+                                {teklifDetay.t.secildi ? "Seçili" : "Bu teklifi seç"}
+                              </button>
+                              {teklifDetay.t.ek_url && (
+                                <button type="button" onClick={() => { setAcikTeklifEk(teklifDetay.t.ek_url ?? null); setTeklifDetay(null); }}
+                                  className="text-xs border border-gray-300 rounded px-2 py-1.5">Resim</button>
+                              )}
+                              <button type="button" onClick={() => setTeklifDetay(null)}
+                                className="text-xs border border-gray-300 rounded px-2 py-1.5">Kapat</button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
 
                     {/* Resim olarak gelen teklif — matrisin altında tam genişlikte açılır */}
                     {acikTeklifEk && (
