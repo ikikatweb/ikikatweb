@@ -2979,7 +2979,8 @@ export default function DashboardPage() {
               const o = acenteEnUcuz.get(t.acente_adi);
               if (o == null || t.teklif_tutari < o) acenteEnUcuz.set(t.acente_adi, t.teklif_tutari);
             }
-            const secilenTeklif = hepsi.find((t) => t.secildi) ?? null;
+            // Poliçeleştirme talebi gönderilmiş teklif — mavi vurgu ve üst şerit bunu gösterir.
+            const talepGonderilen = tumu.find((t) => t.police_talep_tarihi) ?? tumu.find((t) => t.secildi) ?? null;
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF ekinden" : k === "mail" ? "mail metninden" : k === "resim" ? "tablo resminden" : "elle girildi";
             const tarihKisa = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) : null;
@@ -2989,10 +2990,9 @@ export default function DashboardPage() {
               : d === "uyari" ? { im: "!", yazi: "yapılamaz", sinif: "bg-red-100 text-red-700 border-red-300", ipucu: "Acentenin tablosunda kırmızı ünlem — bu şirkete poliçe kestirilemiyor" }
               : d === "bilgi" ? { im: "i", yazi: "şartlı", sinif: "bg-blue-100 text-blue-700 border-blue-300", ipucu: "Acentenin tablosunda mavi bilgi işareti — şartlı, acenteye sorun" }
               : null;
-            const sec = async (t: SigortaTeklif) => {
-              try { await secSigortaTeklif(t.id, t.arac_id, tipKey); await teklifleriYenile(); }
-              catch { toast.error("Seçilemedi."); }
-            };
+            // Satıra dokunmak MENÜYÜ açar. Eskiden teklifi "seçiyordu" ama seçmenin bir
+            // karşılığı yoktu; asıl iş (poliçeleştirme talebi) menüden yapılıyor.
+            const menuAc = (t: SigortaTeklif, x: number, y: number) => setTeklifMenu({ t, x, y });
             return (
               <div className="space-y-3 py-1">
                 {istenenAcenteler.length === 0 && hepsi.length === 0 ? (
@@ -3011,9 +3011,9 @@ export default function DashboardPage() {
                           En uygun {para(enUcuzTeklif.teklif_tutari)} ₺ — {enUcuzTeklif.sigorta_firmasi} · {enUcuzTeklif.acente_adi}
                         </span>
                       )}
-                      {secilenTeklif && (
+                      {talepGonderilen && (
                         <span className="rounded-full bg-blue-50 border border-blue-300 px-2.5 py-0.5 font-semibold text-blue-800">
-                          Seçilen: {secilenTeklif.sigorta_firmasi} · {para(secilenTeklif.teklif_tutari)} ₺
+                          Poliçeleştirme istendi: {talepGonderilen.sigorta_firmasi} · {para(talepGonderilen.teklif_tutari)} ₺
                         </span>
                       )}
                     </div>
@@ -3066,10 +3066,14 @@ export default function DashboardPage() {
                           const onay = onayBilgi(t.onay_durumu);
                           return (
                             <div key={t.id}
-                              onClick={() => sec(t)}
+                              onClick={(e) => menuAc(t, e.clientX, e.clientY)}
                               role="button" tabIndex={0}
-                              onKeyDown={(e) => { if (e.key === "Enter") sec(t); }}
-                              onContextMenu={(e) => { e.preventDefault(); setTeklifMenu({ t, x: e.clientX, y: e.clientY }); }}
+                              onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                menuAc(t, r.left + 40, r.bottom - 8);
+                              }}
+                              onContextMenu={(e) => { e.preventDefault(); menuAc(t, e.clientX, e.clientY); }}
                               className={`cursor-pointer rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
                                 t.secildi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
@@ -3088,7 +3092,6 @@ export default function DashboardPage() {
                                   )}
                                   {enUcuz && <span className="rounded bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5">EN UYGUN</span>}
                                   {!enUcuz && acentenin && <span className="rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
-                                  {t.secildi && <span className="rounded bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5">SEÇİLİ</span>}
                                 </div>
                                 <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                                   <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>
@@ -3107,10 +3110,6 @@ export default function DashboardPage() {
                                       maili oku
                                     </button>
                                   )}
-                                  {/* Telefonda sağ tık yok — aynı menü bu düğmeden açılır. */}
-                                  <button type="button"
-                                    onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setTeklifMenu({ t, x: r.left, y: r.bottom + 4 }); }}
-                                    className="text-[12px] text-gray-500 border border-gray-300 rounded px-2 leading-5">⋯</button>
                                   {t.police_talep_tarihi && (
                                     <span className="text-[11px] text-emerald-700 font-medium">
                                       poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
@@ -3140,8 +3139,8 @@ export default function DashboardPage() {
                       </div>
                     )}
                     <p className="text-[11px] text-gray-400 px-0.5">
-                      Satıra dokunmak o teklifi seçer · sağ tık (telefonda ⋯) → Poliçeleştir
-                      <br />Yeşil en uygun, mavi seçilen
+                      Satıra dokunun (ya da sağ tıklayın) → Poliçeleştir / Maili oku / Resmi aç
+                      <br />Yeşil en uygun, mavi poliçeleştirme istenen
                       <br />Onay işareti acentenin tablosundan gelir: <b className="text-emerald-700">✓ yapılabilir</b> · <b className="text-blue-700">i şartlı</b> · <b className="text-red-700">! yaptırılamaz</b>
                     </p>
 
@@ -3252,11 +3251,6 @@ export default function DashboardPage() {
                               onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); setPoliceTalep(t); }}
                               className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white">
                               Poliçeleştir
-                            </button>
-                            <button type="button"
-                              onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); sec(t); }}
-                              className="rounded-md border border-gray-300 px-3 py-2 text-xs">
-                              {acikTeklifMail.secildi ? "Seçili" : "Seç"}
                             </button>
                             {acikTeklifMail.ek_url && (
                               <button type="button" onClick={() => { setAcikTeklifEk(acikTeklifMail.ek_url ?? null); setAcikTeklifMail(null); }}
