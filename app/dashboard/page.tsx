@@ -2946,7 +2946,7 @@ export default function DashboardPage() {
             // AYNI TEKLİF İKİ KEZ GÖRÜNMESİN: aynı acente + aynı firma + aynı tutar tek satır.
             // Elle girilen bir teklif sonradan mailden de okunabiliyor; ikisi aynı şey.
             // Seçili olan, yoksa kaynağı belli olan (mail/PDF/resim) kayıt kalır.
-            const teklifPuan = (t: SigortaTeklif) => (t.secildi ? 4 : 0) + (t.ek_url ? 2 : 0) + (t.kaynak ? 1 : 0);
+            const teklifPuan = (t: SigortaTeklif) => (t.police_talep_tarihi ? 4 : 0) + (t.ek_url ? 2 : 0) + (t.kaynak ? 1 : 0);
             const benzersiz = new Map<string, SigortaTeklif>();
             for (const t of ham) {
               const k = `${t.acente_adi}|${t.sigorta_firmasi ?? ""}|${Math.round(t.teklif_tutari)}`;
@@ -2980,7 +2980,7 @@ export default function DashboardPage() {
               if (o == null || t.teklif_tutari < o) acenteEnUcuz.set(t.acente_adi, t.teklif_tutari);
             }
             // Poliçeleştirme talebi gönderilmiş teklif — mavi vurgu ve üst şerit bunu gösterir.
-            const talepGonderilen = tumu.find((t) => t.police_talep_tarihi) ?? tumu.find((t) => t.secildi) ?? null;
+            const talepGonderilen = tumu.find((t) => t.police_talep_tarihi) ?? null;
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF ekinden" : k === "mail" ? "mail metninden" : k === "resim" ? "tablo resminden" : "elle girildi";
             const tarihKisa = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) : null;
@@ -3068,7 +3068,7 @@ export default function DashboardPage() {
                             <div key={t.id}
                               onContextMenu={(e) => { e.preventDefault(); menuAc(t, e.clientX, e.clientY); }}
                               className={`rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
-                                t.secildi ? "border-blue-400 bg-blue-50"
+                                t.police_talep_tarihi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
                                 : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
                                 : "border-gray-200 bg-white hover:border-gray-400 hover:bg-gray-50"}`}>
