@@ -66,6 +66,11 @@ export const YEDEK_TABLOLARI = [
   // Şantiye defteri
   "santiye_defteri",
   "santiye_defteri_kayit",
+  // Otomatik senkron durumları — nerede kalındığı bilgisi; kaybolursa mailler baştan taranır
+  "sigorta_mail_durum",
+  "bildirge_imap_durum",
+  // Netsim
+  "netsim_isler",
   // Tanımlamalar / içerik
   "tanimlamalar",
   "yi_ufe",
@@ -102,9 +107,30 @@ export const YEDEK_DISI: Record<string, string> = {
   yedek_kaydi: "yedek alındı damgası (meta) — geri yüklenmesi anlamsız",
 };
 
+/**
+ * GÜN AYNASI — ağır tabloların büyük sütunu haftalık JSON'a KONMAZ, ayrı gün dosyalarına
+ * bir kez indirilir.
+ *
+ * arac_arvento_guzergah satır başına ~39 KB GPS noktası taşıyor; tablo 79 MB ve her hafta
+ * baştan indiriliyordu (ayda ~315 MB egress). Oysa bir günün güzergahı bir kez yazılıyor,
+ * sonra hiç değişmiyor. Gün gün aynalayınca yalnız YENİ günler iniyor: haftada ~6 MB.
+ *
+ * Haftalık JSON'da satırın geri kalanı (plaka, tarih, mesafe, nokta sayısı) duruyor —
+ * özet bilgi tek dosyada kalsın, ağır kısım gün dosyasından gelsin.
+ *
+ * TAZE_GUN: son N gün her çalışmada yeniden indirilir; senkron o günü sonradan
+ * tamamlıyor olabilir, "dosya var" diye atlarsak eksik gün donup kalır.
+ */
+export const GUN_AYNASI: Record<string, { gunSutunu: string; agirSutun: string }> = {
+  arac_arvento_guzergah: { gunSutunu: "rapor_tarihi", agirSutun: "noktalar" },
+};
+export const TAZE_GUN = 3;
+
 // Varsayılan sayfa boyutu. Satırları çok ağır olan tablolarda Supabase 1000 satırlık
 // istekte HTTP 500 döndürüyor (ör. arac_arvento_guzergah: satır başına GPS nokta dizisi
 // → 50 satır ≈ 1,7 MB), bu yüzden bu tablolar küçük parçalarla çekilir.
+// (Gün aynası olan tablolarda ağır sütun zaten çekilmiyor; küçük parça yalnız gün
+//  dosyalarını indirirken devrede.)
 export const PARCA_BOYUTU = 1000;
 export const OZEL_PARCA: Record<string, number> = {
   arac_arvento_guzergah: 50,

@@ -1928,13 +1928,19 @@ export default function DashboardPage() {
                             {(() => {
                               const tipKey = y.tip === "Kasko" ? "kasko" : "trafik";
                               const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tipKey && !t.police_id);
+                              // Rakam TEKLİF sayısı değil, CEVAP VEREN ACENTE sayısı: bir acente tek
+                              // mailde 14 firma gönderebiliyor, "(15)" yazınca "15 yerden teklif geldi"
+                              // sanılıyordu. Asıl merak edilen kaç acentenin cevap verdiği.
+                              const acenteSayisi = new Set(grup.map((t) => t.acente_adi)).size;
                               const enUcuz = grup.length ? Math.min(...grup.map((t) => t.teklif_tutari)) : null;
                               return (
                                 <button type="button"
                                   onClick={() => teklifKarsilastirAc(y)}
-                                  title={enUcuz != null ? `En uygun: ${enUcuz.toLocaleString("tr-TR")} ₺` : "Gelen teklifleri gir/karşılaştır"}
+                                  title={acenteSayisi
+                                    ? `${acenteSayisi} acente cevap verdi · ${grup.length} teklif${enUcuz != null ? ` · en uygun ${enUcuz.toLocaleString("tr-TR")} ₺` : ""}`
+                                    : "Gelen teklifleri gir/karşılaştır"}
                                   className="inline-flex items-center gap-0.5 text-[9px] text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 hover:bg-purple-100">
-                                  Teklifler{grup.length ? ` (${grup.length})` : ""}
+                                  Teklifler{acenteSayisi ? ` (${acenteSayisi})` : ""}
                                 </button>
                               );
                             })()}

@@ -11,14 +11,18 @@
 //
 // Çıktı (varsayılan C:\ikikatweb-yedek, YEDEK_KLASOR ile değiştirilebilir):
 //   db\ikikatweb-yedek-YYYY-MM-DD_HH-mm.json   → haftalık anlık görüntü (son 8 tanesi saklanır)
+//   gunluk\<tablo>\YYYY-MM-DD.json             → GÜN AYNASI; ağır GPS sütunu burada, bir kez iner
 //   dosyalar\<bucket>\<yol>                    → Storage AYNASI; sadece yeni/değişen dosyalar iner
 //   yedek.log                                  → her çalışmanın özeti
+//
+// GERİ YÜKLERKEN: haftalık JSON satırın özetini taşır (plaka, tarih, mesafe, nokta sayısı),
+// GPS noktaları gunluk\ klasöründeki gün dosyalarındadır — ikisi birlikte tam veridir.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
   YEDEK_TABLOLARI, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA,
-  BUCKET_DISI, YEDEK_BUCKET_LISTESI,
+  BUCKET_DISI, YEDEK_BUCKET_LISTESI, GUN_AYNASI, TAZE_GUN,
 } from "@/lib/yedek/kapsam";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -98,9 +102,13 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
     let sayi = 0;
     let offset = 0;
     let parcaBoyutu = OZEL_PARCA[tablo] ?? PARCA_BOYUTU;
+    // Gün aynası olan tablolarda ağır sütun ATLANIR (ayrı gün dosyalarında duruyor).
+    const ayna = GUN_AYNASI[tablo];
+    const secim = ayna ? await hafifSecim(tablo, ayna.agirSutun) : "*";
+    if (ayna) parcaBoyutu = PARCA_BOYUTU;   // ağır sütun yokken büyük parça sorun değil
     try {
       while (true) {
-        const r = await fetch(`${URL_}/rest/v1/${tablo}?select=*&offset=${offset}&limit=${parcaBoyutu}`, { headers: BASLIK });
+        const r = await fetch(`${URL_}/rest/v1/${tablo}?select=${secim}&offset=${offset}&limit=${parcaBoyutu}`, { headers: BASLIK });
         if (!r.ok) {
           // Ağır tablolarda 500 gelebiliyor → parçayı küçültüp yeniden dene.
           if (r.status >= 500 && parcaBoyutu > 10) { parcaBoyutu = Math.max(10, Math.floor(parcaBoyutu / 4)); continue; }
@@ -145,6 +153,75 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   for (const d of eskiler) { fs.unlinkSync(path.join(klasor, d)); log(`  eski yedek silindi: ${d}`); }
 
   return { dosya: cikti, boyut, hata: hatalar.length };
+}
+
+/** Bir tablonun sütun adlarını okuyup ağır olanı çıkarır → PostgREST select listesi. */
+async function hafifSecim(tablo: string, agirSutun: string): Promise<string> {
+  const r = await fetch(`${URL_}/rest/v1/${tablo}?select=*&limit=1`, { headers: BASLIK });
+  if (!r.ok) return "*";
+  const [ornek] = (await r.json()) as Record<string, unknown>[];
+  const sutunlar = Object.keys(ornek ?? {}).filter((k) => k !== agirSutun);
+  return sutunlar.length ? sutunlar.join(",") : "*";
+}
+
+// ── 1b) Gün aynası: ağır tabloların GPS noktaları gün gün, bir kez indirilir ────
+async function gunAynasi(): Promise<{ yeniGun: number; atlanan: number; bayt: number; hata: number }> {
+  let yeniGun = 0, atlanan = 0, bayt = 0, hata = 0;
+  const bugun = new Date();
+  const tazeSinir = new Date(bugun.getTime() - TAZE_GUN * 86400000).toISOString().slice(0, 10);
+
+  for (const [tablo, { gunSutunu, agirSutun }] of Object.entries(GUN_AYNASI)) {
+    const klasor = path.join(HEDEF, "gunluk", tablo);
+    fs.mkdirSync(klasor, { recursive: true });
+
+    // Hangi günler var? Yalnız gün sütunu çekilir — bu liste birkaç on KB.
+    const gunler = new Set<string>();
+    let offset = 0;
+    try {
+      while (true) {
+        const r = await fetch(`${URL_}/rest/v1/${tablo}?select=${gunSutunu}&offset=${offset}&limit=1000`, { headers: BASLIK });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const parca = (await r.json()) as Record<string, string>[];
+        for (const x of parca) if (x[gunSutunu]) gunler.add(String(x[gunSutunu]).slice(0, 10));
+        if (parca.length === 0) break;
+        offset += parca.length;          // sunucu 1000'den fazla döndürmüyor; GELEN kadar ilerle
+        if (offset > 1_000_000) break;
+      }
+    } catch (e) {
+      hata++; log(`  HATA ${tablo} gün listesi: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+
+    for (const gun of [...gunler].sort()) {
+      const dosya = path.join(klasor, `${gun}.json`);
+      // Zaten inmiş ve TAZE aralıkta değilse atla — o günün verisi bir daha değişmiyor.
+      if (fs.existsSync(dosya) && gun < tazeSinir) { atlanan++; continue; }
+      try {
+        // O günün TÜM satırları — 50'şer çekilir (satır başına ~39 KB GPS noktası var).
+        const satirlar: unknown[] = [];
+        let ofs = 0;
+        while (true) {
+          const r = await fetch(
+            `${URL_}/rest/v1/${tablo}?select=*&${gunSutunu}=eq.${gun}&offset=${ofs}&limit=50`, { headers: BASLIK });
+          if (!r.ok) throw new Error(`HTTP ${r.status} — ${(await r.text()).slice(0, 150)}`);
+          const parca = (await r.json()) as unknown[];
+          satirlar.push(...parca);
+          if (parca.length === 0) break;
+          ofs += parca.length;
+          if (ofs > 100_000) break;
+        }
+        const metin = JSON.stringify(satirlar);
+        const gecici = `${dosya}.iniyor`;
+        fs.writeFileSync(gecici, metin, "utf8");
+        fs.renameSync(gecici, dosya);        // yarım dosya nihai adı almasın
+        yeniGun++; bayt += metin.length;
+      } catch (e) {
+        hata++; log(`  HATA ${tablo} ${gun}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    log(`Gün aynası ${tablo}: ${gunler.size} gün (${yeniGun} indirildi, ${atlanan} değişmemiş atlandı) — ${agirSutun} burada`);
+  }
+  return { yeniGun, atlanan, bayt, hata };
 }
 
 // ── 2) Storage → yerel ayna (sadece yeni/değişen dosyalar iner) ─────────────────
@@ -215,6 +292,9 @@ async function main() {
   if (!sadeceDosya) {
     const db = await veritabaniYedegi();
     hataSayisi += db.hata;
+    const a = await gunAynasi();
+    hataSayisi += a.hata;
+    log(`Gün aynası toplam: ${a.yeniGun} gün indirildi (${mb(a.bayt)}), ${a.atlanan} atlandı, ${a.hata} hata`);
   }
   if (!sadeceDb) {
     const d = await dosyaYedegi();
