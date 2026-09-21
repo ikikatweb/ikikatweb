@@ -239,6 +239,10 @@ async function main() {
   const { data: aracRows } = await sb.from("araclar").select("id, plaka");
   const plakalar = (aracRows ?? []).map((a) => ({ id: a.id, plaka: a.plaka, norm: plakaNorm(a.plaka) }));
 
+  // Kesilmiş poliçeler: teklif o döneme aitse yeni poliçeye değil, O poliçeye bağlanır.
+  const { data: policeRows } = await sb.from("arac_police").select("id, arac_id, police_tipi, islem_tarihi, bitis_tarihi");
+  const policeler = policeRows ?? [];
+
   const { data: firmaRows } = await sb.from("firmalar").select("smtp_user, smtp_password").not("smtp_user", "is", null);
   const hesaplar = new Map();
   for (const f of firmaRows ?? []) if (f.smtp_user && f.smtp_password) hesaplar.set(f.smtp_user, f.smtp_password);
@@ -325,6 +329,16 @@ async function main() {
           continue;
         }
 
+        // Bu teklif hangi döneme ait? Mail geldikten SONRA o araç+tip için poliçe kesildiyse
+        // teklif o poliçenin dönemine aittir; police_id verilerek geçmişe yazılır. Yoksa null
+        // kalır ve "güncel dönem" teklifi olarak karşılaştırma ekranında görünür.
+        // (Elle girilmiş aynı teklifler zaten poliçeye bağlı; bu olmadan aynı teklif bir de
+        //  güncel dönemde çıkıp poliçesi çoktan kesilmiş aracı bekliyormuş gibi gösteriyordu.)
+        const mailGun = (p.date ?? new Date()).toISOString().slice(0, 10);
+        const donemPolice = policeler
+          .filter((x) => x.arac_id === arac.id && x.police_tipi === tip && (x.islem_tarihi ?? "") >= mailGun)
+          .sort((a, b) => String(a.islem_tarihi).localeCompare(String(b.islem_tarihi)))[0] ?? null;
+
         let sira = 0;
         for (const b of bulunanlar) {
           sira++;
@@ -333,6 +347,7 @@ async function main() {
             sigorta_firmasi: b.firma, teklif_tutari: b.tutar,
             teklif_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
             notlar: b.kanit, kaynak: b.kaynak, mail_kimlik: `${kimlikKok}#${sira}`,
+            police_id: donemPolice?.id ?? null,
             mail_konu: konu.slice(0, 200), mail_tarih: (p.date ?? new Date()).toISOString(),
           };
           if (DENEME) { log(`  [deneme] ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); continue; }
@@ -361,7 +376,7 @@ async function main() {
             sigorta_firmasi: null, teklif_tutari: 0,
             teklif_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
             notlar: "Teklif resim olarak geldi — tutar elle girilmeli.",
-            kaynak: "resim", elle_bekliyor: true, ek_url: ekUrl,
+            kaynak: "resim", elle_bekliyor: true, ek_url: ekUrl, police_id: donemPolice?.id ?? null,
             mail_kimlik: `${kimlikKok}#resim`, mail_konu: konu.slice(0, 200),
             mail_tarih: (p.date ?? new Date()).toISOString(),
           };
