@@ -10,6 +10,7 @@ import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTe
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
+import { createPortal } from "react-dom";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
@@ -90,6 +91,19 @@ function CardHeader({ icon: Icon, title, color = "text-[#1E3A5F]" }: { icon: typ
       <h3 className={`font-bold text-sm ${color}`}>{title}</h3>
     </div>
   );
+}
+
+/**
+ * Tam ekran katmanları (sağ tık menüsü, onay penceresi, resim) doğrudan body'ye çizer.
+ *
+ * NEDEN: Diyalog kutusunda ortalamak için `-translate-x-1/2 -translate-y-1/2` var.
+ * Dönüşüm uygulanmış bir öğe, içindeki `position: fixed` çocuklar için yeni bir referans
+ * oluşturuyor — katmanlar ekrana değil KUTUYA göre konumlanıyor, ekran koordinatıyla
+ * açılan menü görünmeyen bir yere düşüyordu. Portal ile bu bağ kopuyor.
+ */
+function Katman({ children }: { children: React.ReactNode }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(children, document.body);
 }
 
 export default function DashboardPage() {
@@ -3074,7 +3088,7 @@ export default function DashboardPage() {
 
                     {/* SAĞ TIK MENÜSÜ */}
                     {teklifMenu && (
-                      <>
+                      <Katman>
                         <div className="fixed inset-0 z-[85]" onClick={() => setTeklifMenu(null)} onContextMenu={(e) => { e.preventDefault(); setTeklifMenu(null); }} />
                         <div className="fixed z-[90] w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
                           style={{
@@ -3104,12 +3118,12 @@ export default function DashboardPage() {
                             </button>
                           )}
                         </div>
-                      </>
+                      </Katman>
                     )}
 
                     {/* POLİÇELEŞTİRME ONAYI — giden mailin TAMAMI burada okunur, sonra gönderilir */}
                     {policeTalep && (
-                      <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-3" onClick={() => !policeTalepGonderiliyor && setPoliceTalep(null)}>
+                      <Katman><div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-3" onClick={() => !policeTalepGonderiliyor && setPoliceTalep(null)}>
                         <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                           <div className="text-base font-semibold text-[#1E3A5F]">Poliçeleştirme talebi gönderilsin mi?</div>
                           <p className="mt-1 text-xs text-gray-600">
@@ -3149,12 +3163,12 @@ export default function DashboardPage() {
                             </button>
                           </div>
                         </div>
-                      </div>
+                      </div></Katman>
                     )}
 
                     {/* MAİLİ OKU — acentenin yazdığı şartlar (taksit, vade, kapsam) burada okunur */}
                     {acikTeklifMail && (
-                      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3" onClick={() => setAcikTeklifMail(null)}>
+                      <Katman><div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3" onClick={() => setAcikTeklifMail(null)}>
                         <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                           <div className="text-sm font-semibold text-[#1E3A5F]">
                             {acikTeklifMail.sigorta_firmasi ?? "Firma belirtilmemiş"}
@@ -3189,19 +3203,19 @@ export default function DashboardPage() {
                               className="rounded-md border border-gray-300 px-3 py-2 text-xs">Kapat</button>
                           </div>
                         </div>
-                      </div>
+                      </div></Katman>
                     )}
 
                     {/* Resim olarak gelen teklif — tam ekran katmanda açılır, listeyi aşağı itmez */}
                     {acikTeklifEk && (
-                      <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-3" onClick={() => setAcikTeklifEk(null)}>
+                      <Katman><div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-3" onClick={() => setAcikTeklifEk(null)}>
                         <div className="max-h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={acikTeklifEk} alt="Teklif görseli" className="max-w-full rounded-lg bg-white" />
                           <button type="button" onClick={() => setAcikTeklifEk(null)}
                             className="mt-2 mx-auto block text-xs bg-white/90 px-3 py-1 rounded">Kapat</button>
                         </div>
-                      </div>
+                      </div></Katman>
                     )}
 
                     {/* ── CEVAP VERMEYENLER — telefonla gelen teklifi elle gir ── */}
