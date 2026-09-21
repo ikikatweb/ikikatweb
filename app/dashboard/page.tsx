@@ -3066,15 +3066,8 @@ export default function DashboardPage() {
                           const onay = onayBilgi(t.onay_durumu);
                           return (
                             <div key={t.id}
-                              onClick={(e) => menuAc(t, e.clientX, e.clientY)}
-                              role="button" tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key !== "Enter") return;
-                                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                menuAc(t, r.left + 40, r.bottom - 8);
-                              }}
                               onContextMenu={(e) => { e.preventDefault(); menuAc(t, e.clientX, e.clientY); }}
-                              className={`cursor-pointer rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
+                              className={`rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
                                 t.secildi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
                                 : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
@@ -3123,7 +3116,7 @@ export default function DashboardPage() {
                       </div>
                     )}
                     <p className="text-[11px] text-gray-400 px-0.5">
-                      Satıra dokunun (ya da sağ tıklayın) → Poliçeleştir / Maili oku / Resmi aç
+                      Sağ tık (telefonda basılı tutun) → Poliçeleştir / Maili oku / Resmi aç
                       <br />Yeşil en uygun, mavi poliçeleştirme istenen
                       <br />Onay işareti acentenin tablosundan gelir: <b className="text-emerald-700">✓ yapılabilir</b> · <b className="text-blue-700">i şartlı</b> · <b className="text-red-700">! yaptırılamaz</b>
                     </p>
@@ -3169,7 +3162,7 @@ export default function DashboardPage() {
                         <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                           <div className="text-base font-semibold text-[#1E3A5F]">Poliçeleştirme talebi gönderilsin mi?</div>
                           <p className="mt-1 text-xs text-gray-600">
-                            <b>{policeTalep.acente_adi}</b> acentesine aşağıdaki mail gidecek ve bu teklif seçilmiş olarak işaretlenecek.
+                            <b>{policeTalep.acente_adi}</b> acentesine aşağıdaki mail gidecek ve bu teklif &ldquo;poliçeleştirme istendi&rdquo; olarak işaretlenecek.
                           </p>
                           {policeTalep.onay_durumu === "uyari" && (
                             <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
@@ -3195,7 +3188,7 @@ export default function DashboardPage() {
                           <div className="mt-3 flex gap-2">
                             <button type="button" disabled={policeTalepGonderiliyor}
                               onClick={() => setPoliceTalep(null)}
-                              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
+                              className="flex-1 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
                               Vazgeç
                             </button>
                             <button type="button" disabled={policeTalepGonderiliyor}
