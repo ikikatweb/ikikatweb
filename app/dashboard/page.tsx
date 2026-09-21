@@ -42,6 +42,7 @@ import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
+import PoliceUyariHatirlatma from "@/components/shared/police-uyari-hatirlatma";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
@@ -1774,6 +1775,7 @@ export default function DashboardPage() {
       <BordroHatirlatma />
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
+      <PoliceUyariHatirlatma />
       <TeknikAtamaHatirlatma />
       <SozlesmeTarihiHatirlatma />
 

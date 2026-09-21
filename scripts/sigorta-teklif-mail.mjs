@@ -9,6 +9,10 @@
 // Okunanlar sigorta_teklif tablosuna yazılır → ana sayfadaki "Teklif Karşılaştır" ekranında
 // elle girilenlerle yan yana görünür, en ucuz zaten orada vurgulanıyor.
 //
+// KESİLMİŞ POLİÇE gelirse (teklif değil, poliçenin kendisi) arac_police kaydı AÇILIR:
+// PDF depoya yüklenir, aracın sigorta bitiş tarihi güncellenir, o dönemin teklifleri
+// poliçeye bağlanır. Böylece "Poliçe Ekle" ekranını elle doldurmaya gerek kalmaz.
+//
 // NEREDE ÇALIŞIR: Vercel paylaşımlı hosting'in IMAP'ına bağlanamıyor (Arvento mail senkronunda
 // da aynı sorun var) → bu script ŞİRKET MAKİNESİNDE zamanlanmış görevle çalışır.
 //
@@ -24,6 +28,7 @@ import { simpleParser } from "mailparser";
 import { createClient } from "@supabase/supabase-js";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { teklifResminiOku } from "./teklif-resim-oku.mjs";
+import { policePdfOku } from "./police-pdf-oku.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.join(__dirname, "..");
@@ -169,6 +174,116 @@ function mailGovdesi(govde) {
   return temiz ? temiz.slice(0, 4000) : null;
 }
 
+/**
+ * Kesilmiş poliçeyi sisteme kaydet: arac_police satırı + PDF + araç bitiş tarihi.
+ *
+ * ACENTE POLİÇEDE YAZMAZ — poliçede yalnız acente NUMARASI var, adı yok. Bu yüzden acente
+ * maili GÖNDERENDEN alınır; tekliflerde de aynı kaynak kullanılıyor.
+ *
+ * EKSİK ALANLA KAYIT AÇILMAZ: poliçe no, bitiş tarihi ve plaka şart. Yarım bir poliçe
+ * kaydı, hiç kayıt olmamasından kötüdür — elle girilmesi için log'a yazılır.
+ */
+async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }) {
+  const dosyaAdi = ek.filename ?? "police.pdf";
+  if (!env.ANTHROPIC_API_KEY) { log(`  [poliçe] ${dosyaAdi} — okuma anahtarı yok, elle girilmeli`); return false; }
+
+  let v;
+  try {
+    v = await policePdfOku(metin, env.ANTHROPIC_API_KEY);
+  } catch (e) { log(`  [poliçe] ${dosyaAdi} — okunamadı: ${e.message}`); return false; }
+
+  // Plaka: poliçeden okunan öncelikli, tutmazsa mailden bulunan araç kullanılır.
+  const pdfArac = v.plaka ? plakaBul(v.plaka, plakalar) : null;
+  const hedefArac = pdfArac ?? arac;
+  const tip = v.tip ?? tipBul(`${p.subject ?? ""} ${metin.slice(0, 300)}`);
+
+  const eksik = [];
+  if (!hedefArac) eksik.push("plaka");
+  if (!v.policeNo) eksik.push("poliçe no");
+  if (!v.bitisTarihi) eksik.push("bitiş tarihi");
+  if (eksik.length) { log(`  [poliçe] ${dosyaAdi} — ${eksik.join(", ")} okunamadı, elle girilmeli`); return false; }
+
+  // Aynı poliçe ikinci kez gelirse (acente maili yineler) tekrar kaydedilmesin.
+  const { data: mevcut } = await sb.from("arac_police").select("id")
+    .eq("arac_id", hedefArac.id).eq("police_tipi", tip).eq("police_no", v.policeNo).limit(1);
+  if (mevcut?.length) { log(`  [poliçe] ${hedefArac.plaka} ${tip} ${v.policeNo} — zaten kayıtlı`); return false; }
+
+  const firma = v.sigortaFirmasi ? (firmaBul(v.sigortaFirmasi, firmalar) ?? v.sigortaFirmasi) : null;
+
+  // POLİÇELEŞTİRME İSTEDİĞİMİZ TEKLİFTEN Mİ KESİLMİŞ?
+  // Teklifler ekranından "Poliçeleştir" denince o teklife police_talep_tarihi yazılıyor.
+  // Gelen poliçe başka firmadan ya da başka rakama kesilmişse kayıt YİNE açılır (poliçe
+  // gerçek, kayda girmemesi daha kötü) ama sebebi yazılır ve ekranda kırmızı görünür.
+  let uyari = null;
+  const { data: istenenler } = await sb.from("sigorta_teklif")
+    .select("sigorta_firmasi, teklif_tutari, police_talep_tarihi")
+    .eq("arac_id", hedefArac.id).eq("police_tipi", tip)
+    .not("police_talep_tarihi", "is", null)
+    .order("police_talep_tarihi", { ascending: false }).limit(1);
+  const istenen = istenenler?.[0];
+  if (istenen) {
+    const farklar = [];
+    const sadeles = (x) => String(x ?? "").toLocaleLowerCase("tr").replace(/\s+/g, " ").trim();
+    if (firma && istenen.sigorta_firmasi && sadeles(firma) !== sadeles(istenen.sigorta_firmasi)) {
+      farklar.push(`firma: ${istenen.sigorta_firmasi} istenmişti, ${firma} kesilmiş`);
+    }
+    // 1 TL'nin altındaki fark yuvarlamadır, uyarı sayılmaz.
+    if (v.brutPrim != null && istenen.teklif_tutari > 0 && Math.abs(v.brutPrim - istenen.teklif_tutari) >= 1) {
+      const yaz = (n) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      farklar.push(`tutar: ${yaz(istenen.teklif_tutari)} TL istenmişti, ${yaz(v.brutPrim)} TL kesilmiş`);
+    }
+    if (farklar.length) uyari = farklar.join(" · ");
+  }
+
+  const kayit = {
+    arac_id: hedefArac.id,
+    police_tipi: tip,
+    tutar: v.brutPrim,
+    sigorta_firmasi: firma,
+    acente: acente.ad,                                   // poliçede yok → maili gönderen acente
+    islem_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
+    baslangic_tarihi: v.baslangicTarihi,
+    bitis_tarihi: v.bitisTarihi,
+    police_no: v.policeNo,
+    police_url: null,
+    created_by: null,                                    // insan değil, mail okuyucu açtı
+    otomatik_uyari: uyari,
+  };
+  if (DENEME) {
+    log(`  [deneme/poliçe] ${hedefArac.plaka} ${tip} ${firma} ${v.brutPrim} TL · ${v.baslangicTarihi}→${v.bitisTarihi} · ${v.policeNo} · ${acente.ad}`);
+    if (uyari) log(`     UYUŞMUYOR → ${uyari}`);
+    return false;
+  }
+
+  const { data: yeni, error } = await sb.from("arac_police").insert(kayit).select("id").single();
+  if (error) { log(`  [poliçe] ${hedefArac.plaka} YAZILAMADI: ${error.message}`); return false; }
+
+  // PDF depoya: ekrandaki "Poliçe PDF" alanının indirdiği yolun aynısı (police/<id>/police.pdf).
+  const yol = `police/${yeni.id}/police.pdf`;
+  const { error: yErr } = await sb.storage.from("araclar").upload(yol, ek.content, {
+    contentType: ek.contentType ?? "application/pdf", upsert: true,
+  });
+  if (yErr) log(`  [poliçe] PDF yüklenemedi: ${yErr.message}`);
+  else {
+    const url = sb.storage.from("araclar").getPublicUrl(yol).data.publicUrl;
+    await sb.from("arac_police").update({ police_url: url }).eq("id", yeni.id);
+  }
+
+  // Ekrandan kaydedilince ne oluyorsa aynısı: araç bitiş tarihi, teklif isteği temizliği,
+  // tekliflerin poliçeye bağlanması, "vazgeçildi" işaretinin kalkması.
+  await sb.from("araclar")
+    .update({ [tip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis"]: v.bitisTarihi })
+    .eq("id", hedefArac.id);
+  await sb.from("teklif_gonderim").delete().eq("arac_id", hedefArac.id).eq("police_tipi", tip);
+  await sb.from("sigorta_teklif").update({ police_id: yeni.id })
+    .eq("arac_id", hedefArac.id).eq("police_tipi", tip).is("police_id", null);
+  await sb.from("sigorta_vazgec").delete().eq("arac_id", hedefArac.id).eq("police_tipi", tip);
+
+  log(`  ★ POLİÇE ${hedefArac.plaka} ${tip} · ${firma ?? "?"} · ${(v.brutPrim ?? 0).toLocaleString("tr-TR")} TL · ${v.baslangicTarihi}→${v.bitisTarihi} · ${acente.ad}`);
+  if (uyari) log(`     ! UYUŞMUYOR → ${uyari}`);
+  return true;
+}
+
 /** Teklif resmini depoya yükle, herkese açık adresini döndür (yüklenemezse null). */
 async function resmiYukle(ek, aracId, uid) {
   if (DENEME) return null;
@@ -277,6 +392,7 @@ async function main() {
   const durumMap = new Map((durumlar ?? []).map((d) => [d.hesap, d]));
 
   let toplamYeni = 0, toplamBekleyen = 0;
+  let toplamPolice = 0;   // mailden otomatik açılan poliçe kaydı
 
   for (const [user, pass] of hesaplar) {
    // Bir hesapta çıkan hata diğerini engellemesin; tek tek yalıtılır.
@@ -342,7 +458,10 @@ async function main() {
             // Başlıkta "TEKLİF" yoksa bu KESİLMİŞ POLİÇEdir, teklif değil. Karşılaştırma
             // ekranını kirletmesin diye teklif olarak yazılmaz (poliçe akışı ayrı yürüyor).
             const policeMi = !/TEKLİF/i.test(metin.slice(0, 200));
-            if (policeMi) { log(`  [poliçe] ${ek.filename ?? "ek.pdf"} — teklif değil, atlandı`); continue; }
+            if (policeMi) {
+              if (await policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar })) toplamPolice++;
+              continue;
+            }
             if (tutar > 0) bulunanlar.push({ firma, tutar, kaynak: "pdf", kanit: ek.filename ?? "ek.pdf" });
           } catch (e) { log(`  PDF okunamadı (${ek.filename}): ${e.message}`); }
         }
@@ -468,7 +587,7 @@ async function main() {
    }
   }
 
-  log(`BİTTİ — ${toplamYeni} teklif yazıldı, ${toplamBekleyen} mail elle girilmeyi bekliyor${DENEME ? " (deneme modu, hiçbir şey yazılmadı)" : ""}`);
+  log(`BİTTİ — ${toplamYeni} teklif, ${toplamPolice} poliçe yazıldı, ${toplamBekleyen} mail elle girilmeyi bekliyor${DENEME ? " (deneme modu, hiçbir şey yazılmadı)" : ""}`);
 }
 
 main().catch((e) => { console.error("HATA:", e); process.exit(1); });

@@ -310,6 +310,8 @@ export type AracPolice = {
   baslangic_tarihi: string | null;
   bitis_tarihi: string | null;
   police_no: string | null;
+  // Mailden otomatik açılan poliçe, poliçeleştirilmesi istenen teklifle uyuşmuyorsa sebebi.
+  otomatik_uyari?: string | null;
   police_url: string | null;
   created_by: string | null;
   created_at: string;

@@ -374,7 +374,13 @@ export default function AcenteTakipPage() {
                     <TableCell
                       style={{ position: "sticky", left: 0, backgroundColor: "white" }}
                       className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
-                    >{arac?.plaka ?? "—"}</TableCell>
+                    >
+                      {arac?.plaka ?? "—"}
+                      {p.otomatik_uyari && (
+                        <span title={`Mailden otomatik kaydedildi — ${p.otomatik_uyari}`}
+                          className="ml-1 inline-block rounded bg-red-600 px-1 text-[9px] font-bold text-white align-middle">!</span>
+                      )}
+                    </TableCell>
                     <TableCell className="px-2 truncate max-w-[150px]" title={arac?.firmalar?.firma_adi ?? ""}>
                       {arac?.firmalar?.firma_adi ?? "—"}
                     </TableCell>
@@ -383,9 +389,13 @@ export default function AcenteTakipPage() {
                         {p.police_tipi === "kasko" ? "Kasko" : "Trafik"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="px-2">{p.sigorta_firmasi ?? "—"}</TableCell>
+                    <TableCell className={`px-2 ${p.otomatik_uyari?.includes("firma:") ? "text-red-700 font-semibold" : ""}`}>
+                      {p.sigorta_firmasi ?? "—"}
+                    </TableCell>
                     <TableCell className="px-2">{p.acente ?? "—"}</TableCell>
-                    <TableCell className="px-2 text-right whitespace-nowrap">{formatPara(p.tutar)}</TableCell>
+                    <TableCell className={`px-2 text-right whitespace-nowrap ${p.otomatik_uyari?.includes("tutar:") ? "text-red-700 font-semibold" : ""}`}>
+                      {formatPara(p.tutar)}
+                    </TableCell>
                     <TableCell className="px-2 text-center whitespace-nowrap">{formatTarih(p.baslangic_tarihi)}</TableCell>
                     <TableCell className="px-2 text-center whitespace-nowrap">{formatTarih(p.bitis_tarihi)}</TableCell>
                     <TableCell className="px-2 text-center font-mono text-[10px]">{p.police_no ?? "—"}</TableCell>
