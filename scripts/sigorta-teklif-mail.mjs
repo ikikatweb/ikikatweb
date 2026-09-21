@@ -160,6 +160,28 @@ function pdfTutar(metin) {
 }
 
 /**
+ * Mailin okunabilir metni: imza/altıntı kuyruğu atılır, boş satırlar sadeleştirilir.
+ * Teklif ekranında "maili oku" ile gösterilecek; çok uzun olmasının anlamı yok.
+ */
+function mailGovdesi(govde) {
+  const kesik = String(govde ?? "").split(/\n-{2,}\s*\n|\n_{4,}\s*\n|\nOn .* wrote:|\n\d{1,2}[.\/]\d{1,2}[.\/]\d{4}.*yazdı:/)[0];
+  const temiz = kesik.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return temiz ? temiz.slice(0, 4000) : null;
+}
+
+/** Teklif resmini depoya yükle, herkese açık adresini döndür (yüklenemezse null). */
+async function resmiYukle(ek, aracId, uid) {
+  if (DENEME) return null;
+  const uzanti = (ek.filename?.split(".").pop() ?? "png").replace(/[^\w]/g, "");
+  const yol = `sigorta-teklif/${aracId}/${uid}.${uzanti}`;
+  const { error } = await sb.storage.from("araclar").upload(yol, ek.content, {
+    contentType: ek.contentType ?? "image/png", upsert: true,
+  });
+  if (error) { log(`  resim yüklenemedi: ${error.message}`); return null; }
+  return sb.storage.from("araclar").getPublicUrl(yol).data.publicUrl;
+}
+
+/**
  * Ek gerçekten TEKLİF RESMİ mi, yoksa mail imzasındaki logo mu?
  *
  * Anadolu Sigorta'nın mailinde 8 adet resim eki var: şirket logosu, sosyal medya ikonları,
@@ -307,7 +329,7 @@ async function main() {
 
         if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); continue; }
 
-        const bulunanlar = [];   // {firma, tutar, kaynak, kanit, ek}
+        const bulunanlar = [];   // {firma, tutar, kaynak, kanit, onay, ek}
 
         // 1) PDF ekleri
         for (const ek of p.attachments ?? []) {
@@ -344,12 +366,15 @@ async function main() {
             try {
               const sonuc = await teklifResminiOku(ek.content, ek.contentType ?? "image/png", env.ANTHROPIC_API_KEY);
               if (sonuc.satirlar.length > 0) {
+                // Tablo okunsa da ASLI saklanır: teklif satırındaki "resmi aç" bağlantısı buna gider,
+                // okunan rakamdan şüphe edilirse kaynağa bakılabilsin.
+                const ekUrl = await resmiYukle(ek, arac.id, m.uid);
                 bulunanlar.length = 0;
                 for (const r of sonuc.satirlar) {
                   bulunanlar.push({
                     firma: firmaBul(r.firma, firmalar) ?? r.firma,   // tanımlı yazıma eşle, yoksa olduğu gibi
-                    tutar: r.tutar, kaynak: "resim",
-                    kanit: `Karşılaştırma tablosundan okundu${r.onay ? ` (${r.onay})` : ""}`,
+                    tutar: r.tutar, kaynak: "resim", onay: r.onay ?? null, ek: ekUrl,
+                    kanit: "Acentenin karşılaştırma tablosundan okundu",
                   });
                 }
                 log(`  resim okundu: ${sonuc.satirlar.length} firma (${ek.filename ?? "resim"})`);
@@ -385,13 +410,25 @@ async function main() {
             sigorta_firmasi: b.firma, teklif_tutari: b.tutar,
             teklif_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
             notlar: b.kanit, kaynak: b.kaynak, mail_kimlik: `${kimlikKok}#${sira}`,
+            onay_durumu: b.onay ?? null, ek_url: b.ek ?? null,
             police_id: donemPolice?.id ?? null,
             mail_konu: konu.slice(0, 200), mail_tarih: (p.date ?? new Date()).toISOString(),
+            // Acente şartı metinde yazıyor ("2 taksit vade farksız tanzim edilebilir" gibi);
+            // rakam kadar önemli olduğu için mailin kendisi de saklanır.
+            mail_govde: mailGovdesi(govde),
           };
           if (DENEME) { log(`  [deneme] ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); continue; }
           const { error } = await sb.from("sigorta_teklif").insert(kayit);
           if (error) {
-            if (/duplicate|unique/i.test(error.message)) continue;   // daha önce işlenmiş
+            if (/duplicate|unique/i.test(error.message)) {
+              // Kayıt zaten var ama sonradan eklenen alanlar (onay işareti, mailin metni,
+              // resmin adresi) boş olabilir — rakama dokunmadan bunları tamamla.
+              await sb.from("sigorta_teklif").update({
+                onay_durumu: kayit.onay_durumu, mail_govde: kayit.mail_govde,
+                ...(kayit.ek_url ? { ek_url: kayit.ek_url } : {}),
+              }).eq("mail_kimlik", kayit.mail_kimlik);
+              continue;
+            }
             log(`  YAZILAMADI: ${error.message}`);
           } else { toplamYeni++; log(`  + ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); }
         }
@@ -399,16 +436,7 @@ async function main() {
         // Resim okunamadıysa (anahtar yok ya da hata): "elle bakılmalı" kaydı aç, eki sakla.
         if (resimler.length > 0 && bulunanlar.length === 0) {
           const ek = resimler[0];
-          let ekUrl = null;
-          if (!DENEME) {
-            const uzanti = (ek.filename?.split(".").pop() ?? "png").replace(/[^\w]/g, "");
-            const yol = `sigorta-teklif/${arac.id}/${m.uid}.${uzanti}`;
-            const { error: yErr } = await sb.storage.from("araclar").upload(yol, ek.content, {
-              contentType: ek.contentType ?? "image/png", upsert: true,
-            });
-            if (yErr) log(`  resim yüklenemedi: ${yErr.message}`);
-            else ekUrl = sb.storage.from("araclar").getPublicUrl(yol).data.publicUrl;
-          }
+          const ekUrl = await resmiYukle(ek, arac.id, m.uid);
           const kayit = {
             arac_id: arac.id, police_tipi: tip, acente_adi: acente.ad,
             sigorta_firmasi: null, teklif_tutari: 0,

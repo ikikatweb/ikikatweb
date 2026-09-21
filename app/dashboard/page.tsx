@@ -169,6 +169,9 @@ export default function DashboardPage() {
   // Teklif listesinde ACENTE SÜZGECİ: "hangi acente hangi firmaları göndermiş" sorusu
   // tek tıkla cevaplanır. null = hepsi görünür.
   const [teklifAcenteSuz, setTeklifAcenteSuz] = useState<string | null>(null);
+  // Teklifin geldiği mailin tam metni. Acente rakamın yanına şart yazıyor
+  // ("2 taksit vade farksız tanzim edilebilir" gibi); seçim yapmadan önce okunmalı.
+  const [acikTeklifMail, setAcikTeklifMail] = useState<SigortaTeklif | null>(null);
   // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
@@ -2845,10 +2848,16 @@ export default function DashboardPage() {
             const sirali = [...hepsi].sort((a, b) => deger(a) - deger(b) || a.acente_adi.localeCompare(b.acente_adi, "tr"));
             const gosterilen = teklifAcenteSuz ? sirali.filter((t) => t.acente_adi === teklifAcenteSuz) : sirali;
             const gecerliler = sirali.filter((t) => deger(t) !== Infinity);
-            const enUcuzTutar = gecerliler.length ? gecerliler[0].teklif_tutari : null;
+            // ONAY İŞARETİ: acentenin tablosunda her firmanın yanında bir işaret var —
+            // kırmızı ünlemli firmaya poliçe KESTİRİLEMİYOR. O yüzden "en ucuz" vurgusu,
+            // gerçekten yaptırılabilecek teklifler arasından seçilir; ucuz ama yapılamayan
+            // teklifi yeşille işaretlemek yanıltıcı olurdu.
+            const yapilabilir = gecerliler.filter((t) => t.onay_durumu !== "uyari");
+            const enUcuzTutar = (yapilabilir[0] ?? gecerliler[0])?.teklif_tutari ?? null;
+            const enUcuzTeklif = yapilabilir[0] ?? gecerliler[0] ?? null;
             // Her acentenin kendi en ucuzu — "bu acente en iyi ne verdi" tek bakışta görünsün.
             const acenteEnUcuz = new Map<string, number>();
-            for (const t of gecerliler) {
+            for (const t of yapilabilir) {
               const o = acenteEnUcuz.get(t.acente_adi);
               if (o == null || t.teklif_tutari < o) acenteEnUcuz.set(t.acente_adi, t.teklif_tutari);
             }
@@ -2856,6 +2865,12 @@ export default function DashboardPage() {
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF ekinden" : k === "mail" ? "mail metninden" : k === "resim" ? "tablo resminden" : "elle girildi";
             const tarihKisa = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) : null;
+            // Acente tablosundaki onay sütununun karşılığı — hangisine yaptırabiliriz?
+            const onayBilgi = (d?: string | null) =>
+              d === "onayli" ? { im: "✓", yazi: "yapılabilir", sinif: "bg-emerald-100 text-emerald-800 border-emerald-300", ipucu: "Acentenin tablosunda yeşil tik — bu şirkete poliçe kestirilebilir" }
+              : d === "uyari" ? { im: "!", yazi: "yapılamaz", sinif: "bg-red-100 text-red-700 border-red-300", ipucu: "Acentenin tablosunda kırmızı ünlem — bu şirkete poliçe kestirilemiyor" }
+              : d === "bilgi" ? { im: "i", yazi: "şartlı", sinif: "bg-blue-100 text-blue-700 border-blue-300", ipucu: "Acentenin tablosunda mavi bilgi işareti — şartlı, acenteye sorun" }
+              : null;
             const sec = async (t: SigortaTeklif) => {
               try { await secSigortaTeklif(t.id, t.arac_id, tipKey); await teklifleriYenile(); }
               catch { toast.error("Seçilemedi."); }
@@ -2873,9 +2888,9 @@ export default function DashboardPage() {
                       <span className="text-gray-500">
                         {hepsi.length} teklif · {new Set(hepsi.map((t) => t.sigorta_firmasi)).size} firma · {cevapVerenler.length} acente
                       </span>
-                      {enUcuzTutar != null && (
+                      {enUcuzTeklif && (
                         <span className="rounded-full bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 font-semibold text-emerald-800">
-                          En ucuz {para(enUcuzTutar)} ₺ — {gecerliler[0].sigorta_firmasi} · {gecerliler[0].acente_adi}
+                          En uygun {para(enUcuzTeklif.teklif_tutari)} ₺ — {enUcuzTeklif.sigorta_firmasi} · {enUcuzTeklif.acente_adi}
                         </span>
                       )}
                       {secilenTeklif && (
@@ -2915,7 +2930,13 @@ export default function DashboardPage() {
                           const tutarli = deger(t) !== Infinity;
                           const enUcuz = tutarli && t.teklif_tutari === enUcuzTutar;
                           const acentenin = tutarli && t.teklif_tutari === acenteEnUcuz.get(t.acente_adi);
-                          const aciklama = t.notlar ?? t.mail_konu ?? null;
+                          // Satırda mailin ilk cümleleri görünür; tamamı "maili oku" ile açılır.
+                          const mailVar = !!(t.mail_govde ?? "").trim();
+                          const onizleme = mailVar
+                            ? (t.mail_govde ?? "").replace(/\s+/g, " ").trim()
+                            : (t.notlar ?? t.mail_konu ?? "");
+                          const aciklama = onizleme.length > 150 ? onizleme.slice(0, 150) + "…" : onizleme;
+                          const onay = onayBilgi(t.onay_durumu);
                           return (
                             <div key={t.id}
                               onClick={() => sec(t)}
@@ -2924,6 +2945,7 @@ export default function DashboardPage() {
                               className={`cursor-pointer rounded-lg border px-3 py-2.5 flex items-start gap-3 transition ${
                                 t.secildi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
+                                : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
                                 : "border-gray-200 bg-white hover:border-gray-400 hover:bg-gray-50"}`}>
                               <span className="w-5 pt-0.5 text-center text-[11px] font-bold text-gray-400 tabular-nums shrink-0">{i + 1}</span>
                               <div className="flex-1 min-w-0">
@@ -2931,7 +2953,12 @@ export default function DashboardPage() {
                                   <span className="text-[15px] font-semibold text-[#1E3A5F] leading-tight">
                                     {t.sigorta_firmasi ?? "Firma belirtilmemiş"}
                                   </span>
-                                  {enUcuz && <span className="rounded bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5">EN UCUZ</span>}
+                                  {onay && (
+                                    <span title={onay.ipucu} className={`rounded border text-[9px] font-bold px-1.5 py-0.5 ${onay.sinif}`}>
+                                      {onay.im} {onay.yazi}
+                                    </span>
+                                  )}
+                                  {enUcuz && <span className="rounded bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5">EN UYGUN</span>}
                                   {!enUcuz && acentenin && <span className="rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
                                   {t.secildi && <span className="rounded bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5">SEÇİLİ</span>}
                                 </div>
@@ -2941,6 +2968,13 @@ export default function DashboardPage() {
                                 </div>
                                 {aciklama && (
                                   <div className="text-[11px] text-gray-600 mt-1 break-words">{aciklama}</div>
+                                )}
+                                {mailVar && (
+                                  <button type="button"
+                                    onClick={(e) => { e.stopPropagation(); setAcikTeklifMail(t); }}
+                                    className="mt-1 text-[11px] text-blue-700 underline decoration-dotted">
+                                    maili oku
+                                  </button>
                                 )}
                               </div>
                               <div className="text-right shrink-0">
@@ -2964,7 +2998,45 @@ export default function DashboardPage() {
                         })}
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400 px-0.5">Satıra dokunmak o teklifi seçer · yeşil en ucuz, mavi seçilen</p>
+                    <p className="text-[10px] text-gray-400 px-0.5">
+                      Satıra dokunmak o teklifi seçer · yeşil en uygun, mavi seçilen
+                      <br />Onay işareti acentenin tablosundan gelir: <b className="text-emerald-700">✓ yapılabilir</b> · <b className="text-blue-700">i şartlı</b> · <b className="text-red-700">! yaptırılamaz</b>
+                    </p>
+
+                    {/* MAİLİ OKU — acentenin yazdığı şartlar (taksit, vade, kapsam) burada okunur */}
+                    {acikTeklifMail && (
+                      <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3" onClick={() => setAcikTeklifMail(null)}>
+                        <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                          <div className="text-sm font-semibold text-[#1E3A5F]">
+                            {acikTeklifMail.sigorta_firmasi ?? "Firma belirtilmemiş"}
+                            {acikTeklifMail.teklif_tutari > 0 && ` — ${para(acikTeklifMail.teklif_tutari)} ₺`}
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">
+                            {acikTeklifMail.acente_adi}
+                            {acikTeklifMail.mail_tarih ? ` · ${new Date(acikTeklifMail.mail_tarih).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+                          </div>
+                          {acikTeklifMail.mail_konu && (
+                            <div className="text-xs font-medium text-gray-700 mt-2">{acikTeklifMail.mail_konu}</div>
+                          )}
+                          <div className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-800 border-t border-gray-100 pt-2">
+                            {acikTeklifMail.mail_govde}
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button type="button"
+                              onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); sec(t); }}
+                              className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white">
+                              {acikTeklifMail.secildi ? "Seçili" : "Bu teklifi seç"}
+                            </button>
+                            {acikTeklifMail.ek_url && (
+                              <button type="button" onClick={() => { setAcikTeklifEk(acikTeklifMail.ek_url ?? null); setAcikTeklifMail(null); }}
+                                className="rounded-md border border-gray-300 px-3 py-2 text-xs">Resim</button>
+                            )}
+                            <button type="button" onClick={() => setAcikTeklifMail(null)}
+                              className="rounded-md border border-gray-300 px-3 py-2 text-xs">Kapat</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Resim olarak gelen teklif — tam ekran katmanda açılır, listeyi aşağı itmez */}
                     {acikTeklifEk && (

@@ -340,9 +340,13 @@ export type SigortaTeklif = {
   // Mailden otomatik okunanlar için (scripts/sigorta-teklif-mail.mjs):
   kaynak?: "elle" | "pdf" | "mail" | "resim" | null;
   mail_konu?: string | null;
+  mail_govde?: string | null;   // mailin metni — şart/taksit notları burada yazıyor
   mail_tarih?: string | null;
   ek_url?: string | null;
   elle_bekliyor?: boolean | null;   // resim geldi, tutar elle girilmeli
+  // Acente tablosundaki onay işareti: yapılabilir mi, yapılamaz mı?
+  // 'onayli' yeşil tik · 'uyari' kırmızı ünlem (kestirilemez) · 'bilgi' mavi i (şartlı)
+  onay_durumu?: "onayli" | "uyari" | "bilgi" | null;
   created_at: string;
 };
 export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi" | "police_id"> & { secildi?: boolean; police_id?: string | null };
