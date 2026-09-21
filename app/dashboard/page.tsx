@@ -2804,7 +2804,7 @@ export default function DashboardPage() {
 
       {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
       <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[96vw] max-h-[88vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Teklifler — {teklifKarsilastirArac?.plaka} {teklifKarsilastirArac?.tip}</DialogTitle>
           </DialogHeader>
@@ -2849,7 +2849,9 @@ export default function DashboardPage() {
             const enUcuzTeklif = gelenler.find((t) => t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0) ?? null;
             const secilenTeklif = gelenler.find((t) => t.secildi) ?? null;
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF" : k === "mail" ? "mail" : k === "resim" ? "resim" : "elle";
+            // Tek ekrana sigsin diye kaynak tek harfle gosterilir; tam adi ipucunda.
+            const kaynakHarf = (k?: string | null) => k === "pdf" ? "P" : k === "mail" ? "M" : k === "resim" ? "R" : "E";
+            const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF ekinden" : k === "mail" ? "mail metninden" : k === "resim" ? "resim olarak geldi" : "elle girildi";
             const acenteKisa = (a: string) => a.length > 18 ? a.slice(0, 17) + "…" : a;
             return (
               <div className="space-y-3 py-1">
@@ -2882,11 +2884,11 @@ export default function DashboardPage() {
                         <table className="w-full text-sm border-separate border-spacing-0">
                           <thead>
                             <tr>
-                              <th className="sticky left-0 z-20 bg-[#1E3A5F] text-white text-[11px] font-medium text-left px-2 py-2 min-w-[150px] border-b border-[#1E3A5F]">
+                              <th className="sticky left-0 z-20 bg-[#1E3A5F] text-white text-[11px] font-medium text-left px-2 py-1 min-w-[140px] border-b border-[#1E3A5F]">
                                 Sigorta Firması
                               </th>
                               {istenenAcenteler.map((a) => (
-                                <th key={a} title={a} className="bg-[#1E3A5F] text-white text-[11px] font-medium px-2 py-2 min-w-[110px] border-b border-l border-white/20 whitespace-nowrap">
+                                <th key={a} title={a} className="bg-[#1E3A5F] text-white text-[11px] font-medium px-2 py-1 min-w-[104px] border-b border-l border-white/20 whitespace-nowrap">
                                   {acenteKisa(a)}
                                 </th>
                               ))}
@@ -2897,19 +2899,19 @@ export default function DashboardPage() {
                               const satirEnUcuz = firmaEnUcuz(firma);
                               return (
                                 <tr key={firma}>
-                                  <th scope="row" className={`sticky left-0 z-10 text-left px-2 py-2 text-xs font-semibold text-[#1E3A5F] border-b border-gray-100 ${i % 2 ? "bg-gray-50" : "bg-white"}`}>
+                                  <th scope="row" className={`sticky left-0 z-10 text-left px-2 py-0.5 text-xs font-semibold text-[#1E3A5F] border-b border-gray-100 whitespace-nowrap ${i % 2 ? "bg-gray-50" : "bg-white"}`}>
                                     {firma}
                                   </th>
                                   {istenenAcenteler.map((acente) => {
                                     const t = hucreler.get(`${firma}|${acente}`);
                                     if (!t) {
-                                      return <td key={acente} className={`border-b border-l border-gray-100 px-2 py-2 text-center text-gray-300 ${i % 2 ? "bg-gray-50" : "bg-white"}`}>—</td>;
+                                      return <td key={acente} className={`border-b border-l border-gray-100 px-2 py-0.5 text-center text-gray-300 ${i % 2 ? "bg-gray-50" : "bg-white"}`}>·</td>;
                                     }
                                     const enUcuzHucre = t.teklif_tutari === enUcuzTutar && t.teklif_tutari > 0;
                                     const satirinEnUcuzu = t.teklif_tutari === satirEnUcuz && t.teklif_tutari > 0;
                                     return (
                                       <td key={acente}
-                                        className={`border-b border-l border-gray-100 px-1.5 py-1.5 text-right align-top ${t.secildi ? "bg-blue-50" : enUcuzHucre ? "bg-emerald-50" : i % 2 ? "bg-gray-50" : "bg-white"}`}>
+                                        className={`border-b border-l border-gray-100 px-1.5 py-0.5 text-right align-middle ${t.secildi ? "bg-blue-50" : enUcuzHucre ? "bg-emerald-50" : i % 2 ? "bg-gray-50" : "bg-white"}`}>
                                         <button type="button"
                                           title={`${firma} · ${acente}${t.mail_konu ? ` · ${t.mail_konu}` : ""}${t.notlar ? `\n${t.notlar}` : ""}`}
                                           onClick={async () => {
@@ -2918,23 +2920,20 @@ export default function DashboardPage() {
                                           }}
                                           className="w-full text-right group">
                                           {t.elle_bekliyor ? (
-                                            <span className="text-[11px] text-amber-700">resimden okunmalı</span>
+                                            <span className="text-[10px] text-amber-700">resimden</span>
                                           ) : (
-                                            <span className={`block tabular-nums font-semibold ${enUcuzHucre ? "text-emerald-700" : satirinEnUcuzu ? "text-emerald-600" : "text-gray-800"} group-hover:underline`}>
+                                            <span className={`tabular-nums text-xs font-semibold ${enUcuzHucre ? "text-emerald-700" : satirinEnUcuzu ? "text-emerald-600" : "text-gray-800"} group-hover:underline`}>
                                               {para(t.teklif_tutari)}
                                             </span>
                                           )}
-                                          <span className="block text-[9px] text-gray-400">
-                                            {t.secildi ? "✓ seçildi" : kaynakAd(t.kaynak)}
-                                          </span>
+                                          <span className="ml-1 text-[9px] text-gray-400">{t.secildi ? "✓" : kaynakHarf(t.kaynak)}</span>
+                                          {t.ek_url && (
+                                            <span role="button" tabIndex={0}
+                                              onClick={(e) => { e.stopPropagation(); setAcikTeklifEk(acikTeklifEk === t.ek_url ? null : t.ek_url ?? null); }}
+                                              onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setAcikTeklifEk(t.ek_url ?? null); } }}
+                                              className="ml-1 text-[9px] text-blue-700 underline decoration-dotted cursor-pointer">resim</span>
+                                          )}
                                         </button>
-                                        {t.ek_url && (
-                                          <button type="button"
-                                            onClick={() => setAcikTeklifEk(acikTeklifEk === t.ek_url ? null : t.ek_url ?? null)}
-                                            className="mt-0.5 w-full text-[9px] text-blue-700 underline decoration-dotted">
-                                            {acikTeklifEk === t.ek_url ? "resmi gizle" : "resmi gör"}
-                                          </button>
-                                        )}
                                       </td>
                                     );
                                   })}
@@ -2948,26 +2947,30 @@ export default function DashboardPage() {
                       <p className="text-xs text-gray-400 text-center py-4">Henüz teklif gelmedi.</p>
                     )}
 
-                    <p className="text-[11px] text-gray-400 px-0.5">
-                      Rakama dokunarak o teklifi seçebilirsiniz. Yeşil = en ucuz, mavi = seçtiğiniz. Rakamın altındaki
-                      küçük yazı teklifin nereden okunduğunu gösterir (PDF / mail / resim / elle).
+                    <p className="text-[10px] text-gray-400 px-0.5">
+                      Rakama dokun = seç · yeşil en ucuz, mavi seçilen · P: PDF, M: mail, R: resim, E: elle
                     </p>
 
                     {/* Resim olarak gelen teklif — matrisin altında tam genişlikte açılır */}
                     {acikTeklifEk && (
-                      <a href={acikTeklifEk} target="_blank" rel="noreferrer" className="block">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={acikTeklifEk} alt="Teklif görseli" className="w-full rounded-lg border border-gray-200 bg-white" />
-                        <span className="block text-center text-[10px] text-gray-400 mt-0.5">Tam boyut için dokunun</span>
-                      </a>
+                      /* Matrisi aşağı itmesin diye tam ekran katmanda açılır; boşluğa dokunmak kapatır. */
+                      <div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-3" onClick={() => setAcikTeklifEk(null)}>
+                        <div className="max-h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={acikTeklifEk} alt="Teklif görseli" className="max-w-full rounded-lg bg-white" />
+                          <button type="button" onClick={() => setAcikTeklifEk(null)}
+                            className="mt-2 mx-auto block text-xs bg-white/90 px-3 py-1 rounded">Kapat</button>
+                        </div>
+                      </div>
                     )}
 
                     {/* ── CEVAP VERMEYENLER — telefonla gelen teklifi elle gir ── */}
                     {cevapsizlar.length > 0 && (
-                      <div className="rounded-lg border border-dashed border-gray-300 p-2.5 space-y-2">
-                        <div className="text-[11px] text-gray-500">
-                          Cevap gelmeyen {cevapsizlar.length} acente — telefonla bildirdiyse buradan girebilirsiniz.
-                        </div>
+                      <details className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1.5">
+                        <summary className="text-[11px] text-gray-500 cursor-pointer select-none">
+                          Cevap gelmeyen {cevapsizlar.length} acente — telefonla bildirdiyse buradan girin
+                        </summary>
+                        <div className="space-y-2 pt-2">
                         {cevapsizlar.map((acente) => {
                           const firmaSecili = !!(teklifFirma[acente] ?? "").trim();
                           return (
@@ -2988,7 +2991,8 @@ export default function DashboardPage() {
                             </div>
                           );
                         })}
-                      </div>
+                        </div>
+                      </details>
                     )}
                   </>
                 )}
