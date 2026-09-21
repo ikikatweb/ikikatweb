@@ -9,6 +9,7 @@ import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabas
 import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
+import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
@@ -163,7 +164,7 @@ export default function DashboardPage() {
 
   // Gelen sigorta teklifleri (firma+tutar karşılaştırma)
   const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
-  const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string } | null>(null);
+  const [teklifKarsilastirArac, setTeklifKarsilastirArac] = useState<{ aracId: string; plaka: string; tip: string; firmaId: string | null } | null>(null);
   // Resim olarak gelen teklifin ekini satırın altında açar (yeni sekmeye gitmeden, telefonda da rahat).
   const [acikTeklifEk, setAcikTeklifEk] = useState<string | null>(null);
   // Teklif listesinde ACENTE SÜZGECİ: "hangi acente hangi firmaları göndermiş" sorusu
@@ -172,6 +173,16 @@ export default function DashboardPage() {
   // Teklifin geldiği mailin tam metni. Acente rakamın yanına şart yazıyor
   // ("2 taksit vade farksız tanzim edilebilir" gibi); seçim yapmadan önce okunmalı.
   const [acikTeklifMail, setAcikTeklifMail] = useState<SigortaTeklif | null>(null);
+  // POLİÇELEŞTİRME: teklife sağ tıklanınca çıkan menü, sonra onay penceresi.
+  // İki adım bilerek ayrı: menü yanlışlıkla açılabilir, mail ancak metin okunup
+  // "Eminim" denince gidiyor.
+  const [teklifMenu, setTeklifMenu] = useState<{ t: SigortaTeklif; x: number; y: number } | null>(null);
+  const [policeTalep, setPoliceTalep] = useState<SigortaTeklif | null>(null);
+  const [policeTalepGonderiliyor, setPoliceTalepGonderiliyor] = useState(false);
+  // Acentenin tablosunda kırmızı ünlemli (yapılamaz) ve mavi i (şartlı) teklifler
+  // listede GÖRÜNMEZ — bunlara poliçe kestirilemiyor, yer kaplıyorlardı. Üstteki
+  // "Tümünü göster" ile geri gelirler.
+  const [gizliTeklifleriGoster, setGizliTeklifleriGoster] = useState(false);
   // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
@@ -1396,7 +1407,8 @@ export default function DashboardPage() {
   async function teklifleriYenile() {
     try { setSigortaTeklifler(await getSigortaTeklifler()); } catch { /* sessiz */ }
   }
-  function teklifKarsilastirAc(y: { aracId: string; plaka: string; tip: string }) {
+  // firmaId: poliçeleştirme maili aracın firmasının SMTP hesabından gidiyor.
+  function teklifKarsilastirAc(y: { aracId: string; plaka: string; tip: string; firmaId?: string | null }) {
     // Açılışta mevcut teklifleri acente bazlı input'lara doldur (firma + tutar).
     const tip = y.tip === "Kasko" ? "kasko" : "trafik";
     const grup = sigortaTeklifler.filter((t) => t.arac_id === y.aracId && t.police_tipi === tip && !t.police_id);
@@ -1407,8 +1419,38 @@ export default function DashboardPage() {
       nMap[t.acente_adi] = t.notlar ?? "";
     }
     setTeklifFirma(fMap); setTeklifTutar(tMap); setTeklifNot(nMap);
-    setTeklifKarsilastirArac({ aracId: y.aracId, plaka: y.plaka, tip: y.tip });
+    setTeklifKarsilastirArac({ aracId: y.aracId, plaka: y.plaka, tip: y.tip, firmaId: y.firmaId ?? null });
   }
+  // Poliçeleştirme talebini gönder: acenteye mail + teklifi seçili işaretle.
+  // Mailin metni lib/police-talep-metin.ts'te; onay penceresinde gösterilen metinle
+  // sunucunun gönderdiği metin aynı yerden geliyor ki onaylanan şey ile giden şey ayrışmasın.
+  async function policeTalebiGonder(t: SigortaTeklif) {
+    if (!teklifKarsilastirArac) return;
+    setPoliceTalepGonderiliyor(true);
+    try {
+      const res = await fetch("/api/police-talep-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teklifId: t.id,
+          firmaId: teklifKarsilastirArac.firmaId,
+          gonderenKullanici: kullanici?.ad_soyad ?? null,
+        }),
+      });
+      const veri = await res.json();
+      if (!res.ok) { toast.error(veri.error ?? "Mail gönderilemedi."); return; }
+      // Mail gittiyse teklif seçilmiş sayılır — ayrıca seçmeye gerek kalmasın.
+      try { await secSigortaTeklif(t.id, t.arac_id, teklifKarsilastirArac.tip === "Kasko" ? "kasko" : "trafik"); } catch { /* seçim yazılamazsa mail yine de gitti */ }
+      await teklifleriYenile();
+      toast.success(veri.mesaj ?? "Poliçeleştirme talebi gönderildi.");
+      setPoliceTalep(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Mail gönderilemedi.");
+    } finally {
+      setPoliceTalepGonderiliyor(false);
+    }
+  }
+
   // Bir acente satırını kaydet: firma + tutar. Tutar boşsa varsa siler; firma seçilmemişse bekler (kaydetmez).
   // firmaVal/tutarVal verilirse onları kullanır (onChange'de state henüz güncellenmemiş olabilir → stale okumayı önler).
   async function teklifSatirKaydet(acente: string, firmaVal?: string, tutarVal?: string) {
@@ -2840,9 +2882,14 @@ export default function DashboardPage() {
               const o = benzersiz.get(k);
               if (!o || teklifPuan(t) > teklifPuan(o)) benzersiz.set(k, t);
             }
-            const hepsi = [...benzersiz.values()];
+            const tumu = [...benzersiz.values()];
+            // Yapılamaz/şartlı olanlar ayrılır; ekranda yalnız gerçekten yaptırılabilecekler durur.
+            const gizlenen = tumu.filter((t) => t.onay_durumu === "uyari" || t.onay_durumu === "bilgi");
+            const hepsi = gizliTeklifleriGoster ? tumu : tumu.filter((t) => !gizlenen.includes(t));
             const cevapVerenler = Array.from(new Set(hepsi.map((t) => t.acente_adi)));
-            const cevapsizlar = istenenAcenteler.filter((a) => !cevapVerenler.includes(a));
+            // "Cevap gelmeyen" listesi GİZLENENLER dahil hesaplanır: teklifi sadece yapılamaz
+            // çıktı diye acenteyi hiç cevap vermemiş gibi göstermek yanlış olurdu.
+            const cevapsizlar = istenenAcenteler.filter((a) => !tumu.some((t) => t.acente_adi === a));
             // Sıra: rakamı olanlar ucuzdan pahalıya, tutarı okunamayanlar (resim) en altta.
             const deger = (t: SigortaTeklif) => (!t.elle_bekliyor && t.teklif_tutari > 0 ? t.teklif_tutari : Infinity);
             const sirali = [...hepsi].sort((a, b) => deger(a) - deger(b) || a.acente_adi.localeCompare(b.acente_adi, "tr"));
@@ -2901,13 +2948,22 @@ export default function DashboardPage() {
                     </div>
 
                     {/* ── ACENTE SÜZGECİ ── hangi acente kaç teklif göndermiş; tek tıkla yalnız onunkiler */}
-                    {cevapVerenler.length > 1 && (
+                    {(cevapVerenler.length > 1 || gizlenen.length > 0) && (
                       <div className="flex flex-wrap gap-1.5">
+                        {/* Gizlenen yapılamaz/şartlı teklifler buradan geri gelir. */}
+                        {gizlenen.length > 0 && (
+                          <button type="button" onClick={() => setGizliTeklifleriGoster((v) => !v)}
+                            className={`rounded-full border px-3 py-1 text-xs font-medium ${gizliTeklifleriGoster ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-700 border-amber-400 hover:bg-amber-50"}`}>
+                            {gizliTeklifleriGoster ? "Yalnız yapılabilenler" : `Tümünü göster (+${gizlenen.length})`}
+                          </button>
+                        )}
+                        {cevapVerenler.length > 1 && (
                         <button type="button" onClick={() => setTeklifAcenteSuz(null)}
                           className={`rounded-full border px-3 py-1 text-xs font-medium ${!teklifAcenteSuz ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}>
                           Tümü ({sirali.length})
                         </button>
-                        {cevapVerenler.map((a) => {
+                        )}
+                        {cevapVerenler.length > 1 && cevapVerenler.map((a) => {
                           const adet = sirali.filter((t) => t.acente_adi === a).length;
                           const ucuz = acenteEnUcuz.get(a);
                           return (
@@ -2942,6 +2998,7 @@ export default function DashboardPage() {
                               onClick={() => sec(t)}
                               role="button" tabIndex={0}
                               onKeyDown={(e) => { if (e.key === "Enter") sec(t); }}
+                              onContextMenu={(e) => { e.preventDefault(); setTeklifMenu({ t, x: e.clientX, y: e.clientY }); }}
                               className={`cursor-pointer rounded-lg border px-3 py-2.5 flex items-start gap-3 transition ${
                                 t.secildi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
@@ -2969,13 +3026,24 @@ export default function DashboardPage() {
                                 {aciklama && (
                                   <div className="text-[11px] text-gray-600 mt-1 break-words">{aciklama}</div>
                                 )}
-                                {mailVar && (
+                                <div className="mt-1 flex items-center gap-2">
+                                  {mailVar && (
+                                    <button type="button"
+                                      onClick={(e) => { e.stopPropagation(); setAcikTeklifMail(t); }}
+                                      className="text-[11px] text-blue-700 underline decoration-dotted">
+                                      maili oku
+                                    </button>
+                                  )}
+                                  {/* Telefonda sağ tık yok — aynı menü bu düğmeden açılır. */}
                                   <button type="button"
-                                    onClick={(e) => { e.stopPropagation(); setAcikTeklifMail(t); }}
-                                    className="mt-1 text-[11px] text-blue-700 underline decoration-dotted">
-                                    maili oku
-                                  </button>
-                                )}
+                                    onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setTeklifMenu({ t, x: r.left, y: r.bottom + 4 }); }}
+                                    className="text-[11px] text-gray-500 border border-gray-300 rounded px-1.5 leading-4">⋯</button>
+                                  {t.police_talep_tarihi && (
+                                    <span className="text-[10px] text-emerald-700 font-medium">
+                                      poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <div className="text-right shrink-0">
                                 {tutarli ? (
@@ -2999,9 +3067,90 @@ export default function DashboardPage() {
                       </div>
                     )}
                     <p className="text-[10px] text-gray-400 px-0.5">
-                      Satıra dokunmak o teklifi seçer · yeşil en uygun, mavi seçilen
+                      Satıra dokunmak o teklifi seçer · sağ tık (telefonda ⋯) → Poliçeleştir
+                      <br />Yeşil en uygun, mavi seçilen
                       <br />Onay işareti acentenin tablosundan gelir: <b className="text-emerald-700">✓ yapılabilir</b> · <b className="text-blue-700">i şartlı</b> · <b className="text-red-700">! yaptırılamaz</b>
                     </p>
+
+                    {/* SAĞ TIK MENÜSÜ */}
+                    {teklifMenu && (
+                      <>
+                        <div className="fixed inset-0 z-[85]" onClick={() => setTeklifMenu(null)} onContextMenu={(e) => { e.preventDefault(); setTeklifMenu(null); }} />
+                        <div className="fixed z-[90] w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
+                          style={{
+                            left: Math.min(teklifMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 232),
+                            top: Math.min(teklifMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 130),
+                          }}>
+                          <div className="px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+                            {teklifMenu.t.sigorta_firmasi} · {para(teklifMenu.t.teklif_tutari)} ₺
+                          </div>
+                          <button type="button"
+                            onClick={() => { setPoliceTalep(teklifMenu.t); setTeklifMenu(null); }}
+                            className="w-full text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50">
+                            Poliçeleştir
+                          </button>
+                          {(teklifMenu.t.mail_govde ?? "").trim() && (
+                            <button type="button"
+                              onClick={() => { setAcikTeklifMail(teklifMenu.t); setTeklifMenu(null); }}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              Maili oku
+                            </button>
+                          )}
+                          {teklifMenu.t.ek_url && (
+                            <button type="button"
+                              onClick={() => { setAcikTeklifEk(teklifMenu.t.ek_url ?? null); setTeklifMenu(null); }}
+                              className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                              Resmi aç
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* POLİÇELEŞTİRME ONAYI — giden mailin TAMAMI burada okunur, sonra gönderilir */}
+                    {policeTalep && (
+                      <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-3" onClick={() => !policeTalepGonderiliyor && setPoliceTalep(null)}>
+                        <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                          <div className="text-base font-semibold text-[#1E3A5F]">Poliçeleştirme talebi gönderilsin mi?</div>
+                          <p className="mt-1 text-xs text-gray-600">
+                            <b>{policeTalep.acente_adi}</b> acentesine aşağıdaki mail gidecek ve bu teklif seçilmiş olarak işaretlenecek.
+                          </p>
+                          {policeTalep.onay_durumu === "uyari" && (
+                            <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                              Dikkat: acentenin tablosunda bu firma <b>kırmızı ünlemli</b> — poliçe kestirilemeyebilir.
+                            </p>
+                          )}
+                          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="text-[11px] text-gray-500">Konu</div>
+                            <div className="text-xs font-medium text-gray-800">
+                              {policeTalepKonu(teklifKarsilastirArac.plaka, tipKey)}
+                            </div>
+                            <div className="mt-2 text-[11px] text-gray-500">Mail metni</div>
+                            <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">
+                              {policeTalepMetin({
+                                plaka: teklifKarsilastirArac.plaka,
+                                acenteAdi: policeTalep.acente_adi,
+                                sigortaFirmasi: policeTalep.sigorta_firmasi ?? "",
+                                tutar: policeTalep.teklif_tutari,
+                                gonderen: kullanici?.ad_soyad ?? null,
+                              })}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button type="button" disabled={policeTalepGonderiliyor}
+                              onClick={() => setPoliceTalep(null)}
+                              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
+                              Vazgeç
+                            </button>
+                            <button type="button" disabled={policeTalepGonderiliyor}
+                              onClick={() => policeTalebiGonder(policeTalep)}
+                              className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+                              {policeTalepGonderiliyor ? "Gönderiliyor…" : "Eminim, gönder"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* MAİLİ OKU — acentenin yazdığı şartlar (taksit, vade, kapsam) burada okunur */}
                     {acikTeklifMail && (
@@ -3023,9 +3172,14 @@ export default function DashboardPage() {
                           </div>
                           <div className="mt-3 flex gap-2">
                             <button type="button"
+                              onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); setPoliceTalep(t); }}
+                              className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white">
+                              Poliçeleştir
+                            </button>
+                            <button type="button"
                               onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); sec(t); }}
-                              className="flex-1 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white">
-                              {acikTeklifMail.secildi ? "Seçili" : "Bu teklifi seç"}
+                              className="rounded-md border border-gray-300 px-3 py-2 text-xs">
+                              {acikTeklifMail.secildi ? "Seçili" : "Seç"}
                             </button>
                             {acikTeklifMail.ek_url && (
                               <button type="button" onClick={() => { setAcikTeklifEk(acikTeklifMail.ek_url ?? null); setAcikTeklifMail(null); }}

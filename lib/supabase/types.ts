@@ -347,6 +347,7 @@ export type SigortaTeklif = {
   // Acente tablosundaki onay işareti: yapılabilir mi, yapılamaz mı?
   // 'onayli' yeşil tik · 'uyari' kırmızı ünlem (kestirilemez) · 'bilgi' mavi i (şartlı)
   onay_durumu?: "onayli" | "uyari" | "bilgi" | null;
+  police_talep_tarihi?: string | null;  // acenteye "poliçeleştirin" maili gönderildi
   created_at: string;
 };
 export type SigortaTeklifInsert = Omit<SigortaTeklif, "id" | "created_at" | "secildi" | "police_id"> & { secildi?: boolean; police_id?: string | null };
