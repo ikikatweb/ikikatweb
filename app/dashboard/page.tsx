@@ -1633,6 +1633,18 @@ export default function DashboardPage() {
                     {y.kalanGun === 0 ? "bugün son gün" : "yarın bitiyor"}
                   </span>
                 )}
+                {/* Şeritten doğrudan işlem — aşağıdaki listeye inmeye gerek kalmasın.
+                    Poliçe yalnız kasko/trafik için girilir; muayene ve taşıt kartı araç
+                    kartından güncellenir, onlarda buton çıkmaz. */}
+                {(y.tip === "Trafik Sigorta" || y.tip === "Kasko") && (
+                  <button
+                    type="button"
+                    onClick={() => policeDialogAc(y.aracId, y.tip)}
+                    className="inline-flex items-center gap-0.5 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                  >
+                    Poliçe Gir
+                  </button>
+                )}
               </li>
             ))}
           </ul>
