@@ -197,6 +197,27 @@ export default function DashboardPage() {
   // listede GÖRÜNMEZ — bunlara poliçe kestirilemiyor, yer kaplıyorlardı. Üstteki
   // "Tümünü göster" ile geri gelirler.
   const [gizliTeklifleriGoster, setGizliTeklifleriGoster] = useState(false);
+  // Teklif tabloları uzun (1600x3300 gibi); varsayılan ekrana sığdırılmış hâli, tıklayınca
+  // gerçek boyutuna açılıp kaydırılabiliyor.
+  const [resimTamBoy, setResimTamBoy] = useState(false);
+
+  // ESC: yalnız EN ÜSTTEKİ katmanı kapatır.
+  // Katmanlar body'ye çizildiği için tuş olayı diyaloğa ulaşıyor ve Esc bütün teklif
+  // penceresini kapatıyordu. Yakalama evresinde durdurulup sıra bize geliyor.
+  useEffect(() => {
+    if (!acikTeklifEk && !policeTalep && !acikTeklifMail && !teklifMenu) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (acikTeklifEk) { setAcikTeklifEk(null); setResimTamBoy(false); }
+      else if (policeTalep) { if (!policeTalepGonderiliyor) setPoliceTalep(null); }
+      else if (acikTeklifMail) setAcikTeklifMail(null);
+      else setTeklifMenu(null);
+    };
+    document.addEventListener("keydown", esc, true);
+    return () => document.removeEventListener("keydown", esc, true);
+  }, [acikTeklifEk, policeTalep, acikTeklifMail, teklifMenu, policeTalepGonderiliyor]);
   // Acente bazlı giriş: her mail gönderilen acente bir satır → firma seçimi + tutar + açıklama (acente → değer).
   const [teklifFirma, setTeklifFirma] = useState<Record<string, string>>({});
   const [teklifTutar, setTeklifTutar] = useState<Record<string, string>>({});
@@ -3208,12 +3229,21 @@ export default function DashboardPage() {
 
                     {/* Resim olarak gelen teklif — tam ekran katmanda açılır, listeyi aşağı itmez */}
                     {acikTeklifEk && (
-                      <Katman><div className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-3" onClick={() => setAcikTeklifEk(null)}>
-                        <div className="max-h-full overflow-auto" onClick={(e) => e.stopPropagation()}>
+                      <Katman><div className="fixed inset-0 z-[80] bg-black/80 flex flex-col items-center justify-center p-3"
+                        onClick={() => { setAcikTeklifEk(null); setResimTamBoy(false); }}>
+                        <div className={`${resimTamBoy ? "max-h-[85vh] max-w-full overflow-auto" : ""}`} onClick={(e) => e.stopPropagation()}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={acikTeklifEk} alt="Teklif görseli" className="max-w-full rounded-lg bg-white" />
-                          <button type="button" onClick={() => setAcikTeklifEk(null)}
-                            className="mt-2 mx-auto block text-xs bg-white/90 px-3 py-1 rounded">Kapat</button>
+                          <img src={acikTeklifEk} alt="Teklif görseli"
+                            onClick={() => setResimTamBoy((v) => !v)}
+                            title={resimTamBoy ? "Küçültmek için tıklayın" : "Büyütmek için tıklayın"}
+                            className={`rounded-lg bg-white ${
+                              resimTamBoy ? "cursor-zoom-out max-w-none" : "cursor-zoom-in max-h-[82vh] max-w-[92vw] object-contain"}`} />
+                        </div>
+                        <div className="mt-2 flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" onClick={() => setResimTamBoy((v) => !v)}
+                            className="text-xs bg-white/90 px-3 py-1 rounded">{resimTamBoy ? "Ekrana sığdır" : "Gerçek boyut"}</button>
+                          <button type="button" onClick={() => { setAcikTeklifEk(null); setResimTamBoy(false); }}
+                            className="text-xs bg-white/90 px-3 py-1 rounded">Kapat</button>
                         </div>
                       </div></Katman>
                     )}
