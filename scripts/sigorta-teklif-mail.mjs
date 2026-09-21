@@ -23,6 +23,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { createClient } from "@supabase/supabase-js";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { teklifResminiOku } from "./teklif-resim-oku.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.join(__dirname, "..");
@@ -316,9 +317,31 @@ async function main() {
           bulunanlar.push({ firma: g.firma, tutar: g.tutar, kaynak: "mail", kanit: g.kanit });
         }
 
-        // 3) Resim ekleri — makine okuyamaz, elle bakılmak üzere işaretle.
+        // 3) Resim ekleri — acentenin karşılaştırma tablosunun ekran görüntüsü.
         //    İmza logoları elenir (bkz. teklifResmiMi).
         const resimler = (p.attachments ?? []).filter(teklifResmiMi);
+
+        // Resimdeki TABLONUN TAMAMINI oku. Bir resimde 13-14 şirketin fiyatı olabiliyor;
+        // mail metninde ise acente yalnız kendi önerdiğini yazıyor. Okuma başarılıysa metinden
+        // çıkan tek satırın YERİNE tablo kullanılır — aynı teklif iki kez yazılmasın.
+        if (resimler.length > 0 && env.ANTHROPIC_API_KEY) {
+          for (const ek of resimler) {
+            try {
+              const sonuc = await teklifResminiOku(ek.content, ek.contentType ?? "image/png", env.ANTHROPIC_API_KEY);
+              if (sonuc.satirlar.length > 0) {
+                bulunanlar.length = 0;
+                for (const r of sonuc.satirlar) {
+                  bulunanlar.push({
+                    firma: firmaBul(r.firma, firmalar) ?? r.firma,   // tanımlı yazıma eşle, yoksa olduğu gibi
+                    tutar: r.tutar, kaynak: "resim",
+                    kanit: `Karşılaştırma tablosundan okundu${r.onay ? ` (${r.onay})` : ""}`,
+                  });
+                }
+                log(`  resim okundu: ${sonuc.satirlar.length} firma (${ek.filename ?? "resim"})`);
+              }
+            } catch (e) { log(`  resim okunamadı (${ek.filename}): ${e.message}`); }
+          }
+        }
 
         // Firması belirlenemeyen tutarları gönderenin şirketiyle tamamla.
         const gonderenFirma = gonderendenFirma(gonderen, govde, firmalar);
@@ -358,7 +381,7 @@ async function main() {
           } else { toplamYeni++; log(`  + ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); }
         }
 
-        // Resimli mail: rakam yoksa "elle bakılmalı" kaydı aç, eki sakla
+        // Resim okunamadıysa (anahtar yok ya da hata): "elle bakılmalı" kaydı aç, eki sakla.
         if (resimler.length > 0 && bulunanlar.length === 0) {
           const ek = resimler[0];
           let ekUrl = null;
