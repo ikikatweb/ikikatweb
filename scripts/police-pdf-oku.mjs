@@ -7,7 +7,9 @@
 // NEDEN YAPAY ZEKÂ: her sigorta şirketinin poliçe düzeni farklı. Sompo "Toplam Brüt Prim"
 // yazarken bir başkası "Ödenecek Tutar" yazıyor, tarih sütunları tek satıra sıkışıyor.
 // Desen yazmak her yeni şirkette kırılıyordu; metni anlayan bir model bu farkları kaldırıyor.
-// Görsel değil METİN gönderiliyor (PDF'ten çıkarılmış), bu yüzden çok ucuz: ~2.000 jeton.
+// Görsel değil METİN gönderiliyor (PDF'ten çıkarılmış), bu yüzden ucuz: ~2.000 jeton.
+// Model: Haiku 4.5 — teklif resimlerinde üç model de aynı doğrulukta çıktı, düz metinden
+// alan çıkarmak daha da kolay bir iş.
 //
 // GÜVENLİK: model yalnız OKUR. Eksik alan varsa kayıt açılmaz, insan eliyle girilir —
 // yarım poliçe kaydı hiç kayıt olmamasından kötüdür.
@@ -45,7 +47,7 @@ export async function policePdfOku(metin, apiAnahtari = null) {
   // İlk 6000 karakter yeter: künye, risk bilgileri ve prim tablosu poliçenin başındadır,
   // sonrası genel şartlar metnidir (sayfalarca) ve okunacak bir alan içermez.
   const yanit = await client.messages.create({
-    model: "claude-opus-5",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 1000,
     system: SISTEM,
     messages: [{ role: "user", content: `Bu poliçe metninden alanları çıkar:\n\n${metin.slice(0, 6000)}` }],

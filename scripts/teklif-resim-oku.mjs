@@ -9,8 +9,10 @@
 // HANGİ RAKAMIN HANGİ SATIRA ait olduğunu bilmek; satır kayması yanlış firmaya yanlış fiyat
 // yazar ve bu, hiç veri olmamasından kötüdür. Görsel anlayan bir model bu eşleştirmeyi yapıyor.
 //
-// Maliyet: tablo başına yaklaşık 1.600 giriş + 500 çıkış jetonu → ~0,02 $ (bugünkü kurla
-// kabaca 1 TL). Ayda 50 teklif resmi ≈ 40-50 TL.
+// MODEL SEÇİMİ ÖLÇÜLDÜ: aynı tablo üç modele okutuldu, üçü de 14 firmanın 14'ünü
+// (tutar + onay işareti dahil) doğru çıkardı. Haiku hem en az jetonu harcadı (1.897 giriş)
+// hem en ucuz olanı, o yüzden o kullanılıyor. Tablo okumak basit bir iş; pahalı modelin
+// buradaki katkısı ölçülemedi.
 import Anthropic from "@anthropic-ai/sdk";
 
 /** Resimden okunan bir satır. */
@@ -41,7 +43,7 @@ export async function teklifResminiOku(icerik, mimeTipi, apiAnahtari = null) {
   const client = new Anthropic({ apiKey: anahtar });
 
   const yanit = await client.messages.create({
-    model: "claude-opus-5",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 4000,
     system: SISTEM,
     messages: [{

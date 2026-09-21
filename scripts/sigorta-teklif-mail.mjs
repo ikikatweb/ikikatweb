@@ -284,6 +284,19 @@ async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }
   return true;
 }
 
+/**
+ * Bu maili bir daha işleme — okuma masrafı boşa gitmesin.
+ *
+ * İLK işaret kalır: bir mailde hem poliçe eki hem rakamsız gövde olabiliyor; poliçe
+ * işlendikten sonra gövde "rakam yok" deyip ilk kaydın üstüne yazıyordu ve kayıtta
+ * mailin ne olduğu yanlış görünüyordu.
+ */
+async function mailiIsaretle(kimlik, sonuc) {
+  if (DENEME) return;
+  await sb.from("sigorta_mail_islenen")
+    .upsert({ kimlik, sonuc }, { onConflict: "kimlik", ignoreDuplicates: true });
+}
+
 /** Teklif resmini depoya yükle, herkese açık adresini döndür (yüklenemezse null). */
 async function resmiYukle(ek, aracId, uid) {
   if (DENEME) return null;
@@ -391,6 +404,13 @@ async function main() {
   const { data: durumlar } = await sb.from("sigorta_mail_durum").select("*");
   const durumMap = new Map((durumlar ?? []).map((d) => [d.hesap, d]));
 
+  // İŞLENMİŞ MAİLLER — bunlara bir daha dokunulmaz.
+  // Script her çalışmada 1 gün geriye bakıyor (sınırdaki mailler kaçmasın diye) ve
+  // 15 dakikada bir çalışıyor. Bu kayıt olmadan, resim eki olan bir mail o pencerede
+  // kaldığı sürece ~96 kez yapay zekâya okutuluyordu; okuma ücretli, sonuç hep aynı.
+  const { data: islenenler } = await sb.from("sigorta_mail_islenen").select("kimlik");
+  const islenmis = new Set((islenenler ?? []).map((x) => x.kimlik));
+
   let toplamYeni = 0, toplamBekleyen = 0;
   let toplamPolice = 0;   // mailden otomatik açılan poliçe kaydı
 
@@ -443,7 +463,10 @@ async function main() {
         const tip = tipBul(`${konu} ${govde}`);
         const kimlikKok = `${user}/INBOX/${m.uid}`;
 
-        if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); continue; }
+        // Daha önce işlendiyse hiç açma — asıl masraf ekleri okumakta.
+        if (islenmis.has(kimlikKok)) continue;
+
+        if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); await mailiIsaretle(kimlikKok, "plaka yok"); continue; }
 
         const bulunanlar = [];   // {firma, tutar, kaynak, kanit, onay, ek}
 
@@ -460,6 +483,7 @@ async function main() {
             const policeMi = !/TEKLİF/i.test(metin.slice(0, 200));
             if (policeMi) {
               if (await policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar })) toplamPolice++;
+              await mailiIsaretle(kimlikKok, "poliçe");
               continue;
             }
             if (tutar > 0) bulunanlar.push({ firma, tutar, kaynak: "pdf", kanit: ek.filename ?? "ek.pdf" });
@@ -508,6 +532,7 @@ async function main() {
 
         if (bulunanlar.length === 0 && resimler.length === 0) {
           log(`  [boş] ${konu.slice(0, 50)} — rakam bulunamadı`);
+          await mailiIsaretle(kimlikKok, "rakam yok");
           continue;
         }
 
@@ -551,6 +576,8 @@ async function main() {
             log(`  YAZILAMADI: ${error.message}`);
           } else { toplamYeni++; log(`  + ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); }
         }
+
+        await mailiIsaretle(kimlikKok, `${bulunanlar.length} teklif`);
 
         // Resim okunamadıysa (anahtar yok ya da hata): "elle bakılmalı" kaydı aç, eki sakla.
         if (resimler.length > 0 && bulunanlar.length === 0) {
