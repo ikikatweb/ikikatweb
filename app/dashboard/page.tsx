@@ -604,6 +604,16 @@ export default function DashboardPage() {
     () => [...sonGunKalanlar, ...suresiGecmisler],   // önce "bitmek üzere", sonra "bitmiş"
     [sonGunKalanlar, suresiGecmisler],
   );
+  // Şerit başlığı NE bittiğini yazsın: "sigorta / muayene" gibi genel ifade yerine
+  // "1 Kasko, 2 Trafik Sigorta". Çok olan tür başta.
+  const tipOzeti = (liste: { tip: string }[]) => {
+    const m = new Map<string, number>();
+    for (const y of liste) m.set(y.tip, (m.get(y.tip) ?? 0) + 1);
+    return [...m.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "tr"))
+      .map(([tip, adet]) => `${adet} ${tip}`)
+      .join(", ");
+  };
 
   // Widget: Yaklaşan araç bakımları (her araç için en son bakım — tamirat hariç)
   const yaklasanBakimlar = useMemo(() => {
@@ -1602,11 +1612,11 @@ export default function DashboardPage() {
               <div className="font-semibold">
                 ⚠️{" "}
                 {sonGunKalanlar.length > 0 && (
-                  <>{sonGunKalanlar.length} kayıtta sigorta / muayene <b>bitmek üzere</b></>
+                  <>{tipOzeti(sonGunKalanlar)} <b>bitmek üzere</b></>
                 )}
                 {sonGunKalanlar.length > 0 && suresiGecmisler.length > 0 && " · "}
                 {suresiGecmisler.length > 0 && (
-                  <>{suresiGecmisler.length} kayıtta <b>süre geçmiş</b></>
+                  <>{tipOzeti(suresiGecmisler)} <b>süresi geçmiş</b></>
                 )}
               </div>
               <div className="text-xs text-red-700">
