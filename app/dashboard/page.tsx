@@ -101,6 +101,42 @@ function CardHeader({ icon: Icon, title, color = "text-[#1E3A5F]" }: { icon: typ
  * oluşturuyor — katmanlar ekrana değil KUTUYA göre konumlanıyor, ekran koordinatıyla
  * açılan menü görünmeyen bir yere düşüyordu. Portal ile bu bağ kopuyor.
  */
+/**
+ * Acente adına göre SABİT renk. Listede çoğu satır aynı acenteden geliyor; ad düz gri
+ * yazıldığında hangisinin kimden olduğu ancak okunarak anlaşılıyordu. Renk ada göre
+ * hesaplanır (kayıt tutulmaz), aynı acente her ekranda aynı rengi alır.
+ */
+const ACENTE_RENKLERI = [
+  "bg-indigo-100 text-indigo-800 border-indigo-300",
+  "bg-rose-100 text-rose-800 border-rose-300",
+  "bg-amber-100 text-amber-800 border-amber-300",
+  "bg-teal-100 text-teal-800 border-teal-300",
+  "bg-violet-100 text-violet-800 border-violet-300",
+  "bg-sky-100 text-sky-800 border-sky-300",
+  "bg-lime-100 text-lime-800 border-lime-300",
+  "bg-orange-100 text-orange-800 border-orange-300",
+  "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300",
+  "bg-cyan-100 text-cyan-800 border-cyan-300",
+];
+/**
+ * Mail metnindeki gömülü resim işaretlerini at: imzadaki logolar metne
+ * "[cid:3bea32eb-...]" olarak düşüyor ve okunacak yazının arasını dolduruyor.
+ */
+function mailTemiz(govde: string | null | undefined): string {
+  return String(govde ?? "")
+    .replace(/\[cid:[^\]]*\]/gi, "")
+    .replace(/<image\d+\.(png|jpe?g|gif)>/gi, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function acenteRengi(ad: string): string {
+  let h = 0;
+  for (let i = 0; i < ad.length; i++) h = (h * 31 + ad.charCodeAt(i)) >>> 0;
+  return ACENTE_RENKLERI[h % ACENTE_RENKLERI.length];
+}
+
 function Katman({ children }: { children: React.ReactNode }) {
   if (typeof document === "undefined") return null;
   return createPortal(children, document.body);
@@ -2966,7 +3002,7 @@ export default function DashboardPage() {
                 ) : (
                   <>
                     {/* ── ÖZET ── */}
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 text-[13px]">
                       <span className="text-gray-500">
                         {hepsi.length} teklif · {new Set(hepsi.map((t) => t.sigorta_firmasi)).size} firma · {cevapVerenler.length} acente
                       </span>
@@ -2988,13 +3024,13 @@ export default function DashboardPage() {
                         {/* Gizlenen yapılamaz/şartlı teklifler buradan geri gelir. */}
                         {gizlenen.length > 0 && (
                           <button type="button" onClick={() => setGizliTeklifleriGoster((v) => !v)}
-                            className={`rounded-full border px-3 py-1 text-xs font-medium ${gizliTeklifleriGoster ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-700 border-amber-400 hover:bg-amber-50"}`}>
+                            className={`rounded-full border px-3 py-1 text-[13px] font-medium ${gizliTeklifleriGoster ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-700 border-amber-400 hover:bg-amber-50"}`}>
                             {gizliTeklifleriGoster ? "Yalnız yapılabilenler" : `Tümünü göster (+${gizlenen.length})`}
                           </button>
                         )}
                         {cevapVerenler.length > 1 && (
                         <button type="button" onClick={() => setTeklifAcenteSuz(null)}
-                          className={`rounded-full border px-3 py-1 text-xs font-medium ${!teklifAcenteSuz ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}>
+                          className={`rounded-full border px-3 py-1 text-[13px] font-medium ${!teklifAcenteSuz ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}>
                           Tümü ({sirali.length})
                         </button>
                         )}
@@ -3004,7 +3040,7 @@ export default function DashboardPage() {
                           return (
                             <button key={a} type="button" onClick={() => setTeklifAcenteSuz(teklifAcenteSuz === a ? null : a)}
                               title={ucuz != null ? `En uygun teklifi: ${para(ucuz)} ₺` : undefined}
-                              className={`rounded-full border px-3 py-1 text-xs font-medium ${teklifAcenteSuz === a ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}>
+                              className={`rounded-full border px-3 py-1 text-[13px] font-semibold ${teklifAcenteSuz === a ? "ring-2 ring-offset-1 ring-[#1E3A5F] " + acenteRengi(a) : acenteRengi(a)}`}>
                               {a} ({adet})
                             </button>
                           );
@@ -3024,7 +3060,7 @@ export default function DashboardPage() {
                           // Satırda mailin ilk cümleleri görünür; tamamı "maili oku" ile açılır.
                           const mailVar = !!(t.mail_govde ?? "").trim();
                           const onizleme = mailVar
-                            ? (t.mail_govde ?? "").replace(/\s+/g, " ").trim()
+                            ? mailTemiz(t.mail_govde).replace(/\s+/g, " ").trim()
                             : (t.notlar ?? t.mail_konu ?? "");
                           const aciklama = onizleme.length > 150 ? onizleme.slice(0, 150) + "…" : onizleme;
                           const onay = onayBilgi(t.onay_durumu);
@@ -3034,47 +3070,49 @@ export default function DashboardPage() {
                               role="button" tabIndex={0}
                               onKeyDown={(e) => { if (e.key === "Enter") sec(t); }}
                               onContextMenu={(e) => { e.preventDefault(); setTeklifMenu({ t, x: e.clientX, y: e.clientY }); }}
-                              className={`cursor-pointer rounded-lg border px-3 py-2.5 flex items-start gap-3 transition ${
+                              className={`cursor-pointer rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
                                 t.secildi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
                                 : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
                                 : "border-gray-200 bg-white hover:border-gray-400 hover:bg-gray-50"}`}>
-                              <span className="w-5 pt-0.5 text-center text-[11px] font-bold text-gray-400 tabular-nums shrink-0">{i + 1}</span>
+                              <span className="w-5 pt-1 text-center text-[12px] font-bold text-gray-400 tabular-nums shrink-0">{i + 1}</span>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-[15px] font-semibold text-[#1E3A5F] leading-tight">
+                                  <span className="text-[17px] font-semibold text-[#1E3A5F] leading-tight">
                                     {t.sigorta_firmasi ?? "Firma belirtilmemiş"}
                                   </span>
                                   {onay && (
-                                    <span title={onay.ipucu} className={`rounded border text-[9px] font-bold px-1.5 py-0.5 ${onay.sinif}`}>
+                                    <span title={onay.ipucu} className={`rounded border text-[10px] font-bold px-1.5 py-0.5 ${onay.sinif}`}>
                                       {onay.im} {onay.yazi}
                                     </span>
                                   )}
-                                  {enUcuz && <span className="rounded bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5">EN UYGUN</span>}
-                                  {!enUcuz && acentenin && <span className="rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
-                                  {t.secildi && <span className="rounded bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5">SEÇİLİ</span>}
+                                  {enUcuz && <span className="rounded bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5">EN UYGUN</span>}
+                                  {!enUcuz && acentenin && <span className="rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
+                                  {t.secildi && <span className="rounded bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5">SEÇİLİ</span>}
                                 </div>
-                                <div className="text-[11px] text-gray-500 mt-0.5">
-                                  {t.acente_adi} · {kaynakAd(t.kaynak)}
-                                  {tarihKisa(t.mail_tarih) ? ` · ${tarihKisa(t.mail_tarih)}` : ""}
+                                <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>
+                                    {t.acente_adi}
+                                  </span>
+                                  <span>{kaynakAd(t.kaynak)}{tarihKisa(t.mail_tarih) ? ` · ${tarihKisa(t.mail_tarih)}` : ""}</span>
                                 </div>
                                 {aciklama && (
-                                  <div className="text-[11px] text-gray-600 mt-1 break-words">{aciklama}</div>
+                                  <div className="text-[12.5px] text-gray-700 mt-1 break-words leading-snug">{aciklama}</div>
                                 )}
                                 <div className="mt-1 flex items-center gap-2">
                                   {mailVar && (
                                     <button type="button"
                                       onClick={(e) => { e.stopPropagation(); setAcikTeklifMail(t); }}
-                                      className="text-[11px] text-blue-700 underline decoration-dotted">
+                                      className="text-[12px] text-blue-700 underline decoration-dotted">
                                       maili oku
                                     </button>
                                   )}
                                   {/* Telefonda sağ tık yok — aynı menü bu düğmeden açılır. */}
                                   <button type="button"
                                     onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setTeklifMenu({ t, x: r.left, y: r.bottom + 4 }); }}
-                                    className="text-[11px] text-gray-500 border border-gray-300 rounded px-1.5 leading-4">⋯</button>
+                                    className="text-[12px] text-gray-500 border border-gray-300 rounded px-2 leading-5">⋯</button>
                                   {t.police_talep_tarihi && (
-                                    <span className="text-[10px] text-emerald-700 font-medium">
+                                    <span className="text-[11px] text-emerald-700 font-medium">
                                       poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
                                     </span>
                                   )}
@@ -3082,16 +3120,16 @@ export default function DashboardPage() {
                               </div>
                               <div className="text-right shrink-0">
                                 {tutarli ? (
-                                  <div className={`text-[17px] font-bold tabular-nums leading-tight ${enUcuz ? "text-emerald-700" : "text-gray-800"}`}>
+                                  <div className={`text-[19px] font-bold tabular-nums leading-tight ${enUcuz ? "text-emerald-700" : "text-gray-800"}`}>
                                     {para(t.teklif_tutari)} <span className="text-xs font-semibold">₺</span>
                                   </div>
                                 ) : (
-                                  <div className="text-[11px] text-amber-700 font-medium">tutar okunamadı</div>
+                                  <div className="text-[12px] text-amber-700 font-medium">tutar okunamadı</div>
                                 )}
                                 {t.ek_url && (
                                   <button type="button"
                                     onClick={(e) => { e.stopPropagation(); setAcikTeklifEk(t.ek_url ?? null); }}
-                                    className="mt-1 text-[11px] text-blue-700 underline decoration-dotted">
+                                    className="mt-1 text-[12px] text-blue-700 underline decoration-dotted">
                                     resmi aç
                                   </button>
                                 )}
@@ -3101,7 +3139,7 @@ export default function DashboardPage() {
                         })}
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400 px-0.5">
+                    <p className="text-[11px] text-gray-400 px-0.5">
                       Satıra dokunmak o teklifi seçer · sağ tık (telefonda ⋯) → Poliçeleştir
                       <br />Yeşil en uygun, mavi seçilen
                       <br />Onay işareti acentenin tablosundan gelir: <b className="text-emerald-700">✓ yapılabilir</b> · <b className="text-blue-700">i şartlı</b> · <b className="text-red-700">! yaptırılamaz</b>
@@ -3195,15 +3233,19 @@ export default function DashboardPage() {
                             {acikTeklifMail.sigorta_firmasi ?? "Firma belirtilmemiş"}
                             {acikTeklifMail.teklif_tutari > 0 && ` — ${para(acikTeklifMail.teklif_tutari)} ₺`}
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">
-                            {acikTeklifMail.acente_adi}
-                            {acikTeklifMail.mail_tarih ? ` · ${new Date(acikTeklifMail.mail_tarih).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+                          <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className={`rounded border px-1.5 py-0.5 font-semibold ${acenteRengi(acikTeklifMail.acente_adi)}`}>
+                              {acikTeklifMail.acente_adi}
+                            </span>
+                            {acikTeklifMail.mail_tarih && (
+                              <span>{new Date(acikTeklifMail.mail_tarih).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                            )}
                           </div>
                           {acikTeklifMail.mail_konu && (
                             <div className="text-xs font-medium text-gray-700 mt-2">{acikTeklifMail.mail_konu}</div>
                           )}
                           <div className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-800 border-t border-gray-100 pt-2">
-                            {acikTeklifMail.mail_govde}
+                            {mailTemiz(acikTeklifMail.mail_govde)}
                           </div>
                           <div className="mt-3 flex gap-2">
                             <button type="button"
