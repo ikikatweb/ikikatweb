@@ -257,6 +257,8 @@ async function main() {
   let toplamYeni = 0, toplamBekleyen = 0;
 
   for (const [user, pass] of hesaplar) {
+   // Bir hesapta çıkan hata diğerini engellemesin; tek tek yalıtılır.
+   try {
     const oncekiTarih = durumMap.get(user)?.son_tarih;
     const since = GUN ? new Date(Date.now() - GUN * 86400000)
       : oncekiTarih ? new Date(Date.parse(oncekiTarih) - 86400000)   // 1 gün geri: sınırdakiler kaçmasın
@@ -267,6 +269,9 @@ async function main() {
       host: `mail.${user.split("@")[1]}`, port: 993, secure: true,
       auth: { user, pass }, logger: false, tls: { rejectUnauthorized: false },
     });
+    // ImapFlow bağlantı hatalarını OLAY olarak yayıyor; dinlenmezse Node süreci çökertiyor.
+    // (Zamanlanmış görev ile elle çalıştırma çakışınca ECONNRESET alındı ve script öldü.)
+    c.on("error", (e) => log(`${user}: bağlantı hatası — ${e.message}`));
     try {
       await c.connect();
     } catch (e) { log(`${user}: bağlanılamadı — ${e.message}`); continue; }
@@ -277,7 +282,17 @@ async function main() {
       log(`${user}: ${since.toISOString().slice(0, 10)} sonrası ${uidler?.length ?? 0} mesaj`);
       if (!uidler?.length) continue;
 
+      // Mesajlar ÖNCE baştan sona indirilir, işleme SONRA yapılır.
+      // Sebep: resim okuma (yapay zekâ çağrısı) ~15 saniye sürüyor; o sürede IMAP
+      // bağlantısı boşta kalınca sunucu bağlantıyı düşürüyor (ECONNRESET) ve kalan
+      // mailler hiç okunmuyordu. İndirme hızlı, arada bekleme olmuyor.
+      const mesajlar = [];
       for await (const m of c.fetch(uidler.join(","), { uid: true, source: true }, { uid: true })) {
+        mesajlar.push({ uid: m.uid, source: m.source });
+      }
+      try { await c.logout(); } catch { /* işimiz bitti, kapanmaması önemli değil */ }
+
+      for (const m of mesajlar) {
         const p = await simpleParser(m.source);
         const gonderen = (p.from?.value?.[0]?.address ?? "").toLowerCase();
         const acente = acenteler.find((a) => a.email === gonderen);
@@ -420,6 +435,9 @@ async function main() {
         son_sonuc: `${toplamYeni} teklif, ${toplamBekleyen} elle bekleyen`,
       }, { onConflict: "hesap" });
     }
+   } catch (e) {
+     log(`${user}: bu hesap atlandı — ${e.message}`);
+   }
   }
 
   log(`BİTTİ — ${toplamYeni} teklif yazıldı, ${toplamBekleyen} mail elle girilmeyi bekliyor${DENEME ? " (deneme modu, hiçbir şey yazılmadı)" : ""}`);
