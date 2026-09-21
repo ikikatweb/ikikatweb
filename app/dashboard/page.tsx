@@ -3104,8 +3104,12 @@ export default function DashboardPage() {
                                   <div className="text-[12.5px] text-gray-700 mt-1 break-words leading-snug">{aciklama}</div>
                                 )}
                                 {t.police_talep_tarihi && (
-                                  <div className="mt-1 text-[11px] text-emerald-700 font-medium">
-                                    poliçeleştirme istendi · {new Date(t.police_talep_tarihi).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "2-digit" })}
+                                  <div className="mt-1.5 text-[12.5px] text-emerald-800 font-semibold">
+                                    {t.police_talep_eden ? `${t.police_talep_eden} tarafından ` : ""}Poliçeleştirme İstendi
+                                    {" · "}
+                                    {new Date(t.police_talep_tarihi).toLocaleString("tr-TR", {
+                                      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+                                    })}
                                   </div>
                                 )}
                               </div>

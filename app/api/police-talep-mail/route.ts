@@ -88,7 +88,10 @@ export async function POST(request: Request) {
     // Gönderildiği ekranda görünsün; aynı teklif için ikinci kez talep gönderilmesin diye tarih saklanır.
     // Teklifin seçimi ayrıca yapılır (secSigortaTeklif) — burada yalnız talep tarihi işlenir.
     await supabase.from("sigorta_teklif")
-      .update({ police_talep_tarihi: new Date().toISOString() })
+      .update({
+        police_talep_tarihi: new Date().toISOString(),
+        police_talep_eden: gonderenKullanici?.trim() || null,
+      })
       .eq("id", teklifId);
 
     return NextResponse.json({ mesaj: `${teklif.acente_adi} (${eposta}) adresine gönderildi`, eposta });
