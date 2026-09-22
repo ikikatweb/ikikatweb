@@ -550,6 +550,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // ATAMA DIŞI TEKNİK ATAMA penceresi: kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
   // Firma sahibi sigortalanamadığı için şantiyeye atama açılamıyor; rolü yine de o dolduruyor.
   const [disAtamaDialog, setDisAtamaDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
+  // Uyarı yazısı SOL TIKLA açılıyordu ve listede gezerken kazara açılıyordu. Artık sağ tık
+  // (telefonda basılı tutma) küçük bir menü açıyor; pencere ancak menüden seçilince geliyor.
+  const [teknikMenu, setTeknikMenu] = useState<{ santiyeId: string; santiyeAd: string; x: number; y: number } | null>(null);
+  const teknikBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, string>>({});
   const [disAtamaKaydediliyor, setDisAtamaKaydediliyor] = useState(false);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
@@ -4268,7 +4272,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Accordion satırı: işin adı + sayım + chevron, tıklayınca açılıp altta personel listesi
   function SantiyeAccordion({
     santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamalar,
-    onToggle, onTumunuSecToggle, onPlus, onTeknikAta, children,
+    onToggle, onTumunuSecToggle, onPlus, onTeknikAta, onTeknikBasiliBasla, onTeknikBasiliBitir, children,
   }: {
     santiyeId: string;
     baslik: string;
@@ -4279,7 +4283,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     tumSecili: boolean;
     teknikPersoneller?: string[] | null;
     disAtamalar?: Record<string, string> | null;
-    onTeknikAta?: () => void;
+    onTeknikAta?: (x: number, y: number) => void;
+    onTeknikBasiliBasla?: (x: number, y: number) => void;
+    onTeknikBasiliBitir?: () => void;
     onToggle: () => void;
     onTumunuSecToggle: () => void;
     onPlus?: () => void;
@@ -4375,12 +4381,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 PDF/Excel çıktısı ile tutarlı: sadece kimseye verilmemiş roller görünür. */}
             {teknikPersoneller && teknikPersoneller.length > 0 && (
               <div
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); onTeknikAta?.(); }}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTeknikAta?.(); } }}
-                className="text-[10px] text-red-600 mt-0.5 truncate cursor-pointer hover:underline"
-                title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa tıklayın.`}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
+                onTouchStart={(e) => { const d = e.touches[0]; onTeknikBasiliBasla?.(d.clientX, d.clientY); }}
+                onTouchEnd={() => onTeknikBasiliBitir?.()}
+                onTouchMove={() => onTeknikBasiliBitir?.()}
+                className="text-[10px] text-red-600 mt-0.5 truncate select-none"
+                title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa SAĞ TIKLAYIN.`}
               >
                 <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.join(", ")}
               </div>
@@ -4389,12 +4395,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 Uyarı kalktıktan sonra bu kaydı değiştirecek başka bir yer kalmıyordu. */}
             {disAtamalar && Object.keys(disAtamalar).length > 0 && (
               <div
-                role="button"
-                tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); onTeknikAta?.(); }}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTeknikAta?.(); } }}
-                className="text-[10px] text-indigo-700 mt-0.5 truncate cursor-pointer hover:underline"
-                title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için tıklayın"
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
+                onTouchStart={(e) => { const d = e.touches[0]; onTeknikBasiliBasla?.(d.clientX, d.clientY); }}
+                onTouchEnd={() => onTeknikBasiliBitir?.()}
+                onTouchMove={() => onTeknikBasiliBitir?.()}
+                className="text-[10px] text-indigo-700 mt-0.5 truncate select-none"
+                title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için SAĞ TIKLAYIN"
               >
                 <span className="font-semibold">Teknik (atamasız):</span>{" "}
                 {Object.entries(disAtamalar).map(([rol, kisi]) => `${rol} — ${kisi}`).join(" · ")}
@@ -5218,10 +5224,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             tumSecili={tumSecili}
                             teknikPersoneller={atanmamisTeknikPersoneller(s.id, s.teknik_personeller)}
                             disAtamalar={s.teknik_dis_atama ?? null}
-                            onTeknikAta={yDuzenle ? () => {
-                              setDisAtamaSecim({ ...(s.teknik_dis_atama ?? {}) });
-                              setDisAtamaDialog({ santiyeId: s.id, santiyeAd: s.is_adi });
+                            onTeknikAta={yDuzenle ? (x, y) => setTeknikMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y }) : undefined}
+                            onTeknikBasiliBasla={yDuzenle ? (x, y) => {
+                              // Telefonda sağ tık yok — yarım saniye basılı tutmak aynı menüyü açar.
+                              if (teknikBasiliRef.current) clearTimeout(teknikBasiliRef.current);
+                              teknikBasiliRef.current = setTimeout(() => {
+                                teknikBasiliRef.current = null;
+                                setTeknikMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y });
+                              }, 500);
                             } : undefined}
+                            onTeknikBasiliBitir={() => {
+                              if (teknikBasiliRef.current) { clearTimeout(teknikBasiliRef.current); teknikBasiliRef.current = null; }
+                            }}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
                                 const next = new Set(prev);
@@ -6526,7 +6540,31 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         </DialogContent>
       </Dialog>
 
-      {/* ATAMA DIŞI TEKNİK PERSONEL — kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
+      {/* Sağ tık menüsü — tek seçenek, ama kazara açılmayı önlüyor. */}
+      {teknikMenu && (
+        <>
+          <div className="fixed inset-0 z-[85]" onClick={() => setTeknikMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setTeknikMenu(null); }} />
+          <div className="fixed z-[90] w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
+            style={{
+              left: Math.min(teknikMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 232),
+              top: Math.min(teknikMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 90),
+            }}>
+            <button type="button"
+              onClick={() => {
+                const sant = santiyeler.find((x) => x.id === teknikMenu.santiyeId);
+                setDisAtamaSecim({ ...(sant?.teknik_dis_atama ?? {}) });
+                setDisAtamaDialog({ santiyeId: teknikMenu.santiyeId, santiyeAd: teknikMenu.santiyeAd });
+                setTeknikMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50">
+              Yetkili ataması yap
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ATAMA DIŞI TEKNİK PERSONEL — uyarıya sağ tıklayıp menüden seçilince açılır.
           Firma sahibi gibi sigortalanamayan kişiler burada role bağlanır; personel ataması
           açılmadığı için puantaj/bordro/SGK akışları etkilenmez. */}
       <Dialog open={!!disAtamaDialog} onOpenChange={(o) => { if (!o) setDisAtamaDialog(null); }}>
