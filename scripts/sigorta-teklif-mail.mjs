@@ -377,7 +377,11 @@ function govdedenTeklifler(metin, firmalar) {
 
 async function main() {
   // Tanımlar
-  const { data: tanimlar } = await sb.from("tanimlamalar").select("kategori, deger, kisa_ad, aktif");
+  // Yalnız gereken iki kategori: tablonun tamamı 38 KB, bu ikisi 1 KB'nin altında.
+  // Script sık çalıştığı için (dakikalar) fark doğrudan aylık egress'e yansıyor.
+  const { data: tanimlar } = await sb.from("tanimlamalar")
+    .select("kategori, deger, kisa_ad, aktif")
+    .in("kategori", ["sigorta_acente", "sigorta_firmasi"]);
   const acenteler = [];
   for (const t of tanimlar ?? []) {
     if (t.kategori !== "sigorta_acente" || !t.kisa_ad) continue;
@@ -387,18 +391,25 @@ async function main() {
     } catch { /* kisa_ad JSON değil → atla */ }
   }
   const firmalar = (tanimlar ?? []).filter((t) => t.kategori === "sigorta_firmasi").map((t) => t.deger);
-  const { data: aracRows } = await sb.from("araclar").select("id, plaka");
-  const plakalar = (aracRows ?? []).map((a) => ({ id: a.id, plaka: a.plaka, norm: plakaNorm(a.plaka) }));
 
-  // Kesilmiş poliçeler: teklif o döneme aitse yeni poliçeye değil, O poliçeye bağlanır.
-  const { data: policeRows } = await sb.from("arac_police").select("id, arac_id, police_tipi, islem_tarihi, bitis_tarihi");
-  const policeler = policeRows ?? [];
+  // ARAÇ ve POLİÇE listeleri TEMBEL yüklenir: yeni mail yoksa hiç okunmaz.
+  // Script 15 dakikada bir (daha sık da olabilir) çalışıyor ve çoğu çalışmada yeni mail
+  // olmuyor. 119 araç + 300 poliçe satırını her seferinde indirmek boşuna egress.
+  let plakalar = null, policeler = null;
+  async function referansYukle() {
+    if (plakalar) return;
+    const { data: aracRows } = await sb.from("araclar").select("id, plaka");
+    plakalar = (aracRows ?? []).map((a) => ({ id: a.id, plaka: a.plaka, norm: plakaNorm(a.plaka) }));
+    // Kesilmiş poliçeler: teklif o döneme aitse yeni poliçeye değil, O poliçeye bağlanır.
+    const { data: policeRows } = await sb.from("arac_police").select("id, arac_id, police_tipi, islem_tarihi, bitis_tarihi");
+    policeler = policeRows ?? [];
+  }
 
   const { data: firmaRows } = await sb.from("firmalar").select("smtp_user, smtp_password").not("smtp_user", "is", null);
   const hesaplar = new Map();
   for (const f of firmaRows ?? []) if (f.smtp_user && f.smtp_password) hesaplar.set(f.smtp_user, f.smtp_password);
 
-  log(`${acenteler.length} acente, ${firmalar.length} sigorta firması, ${plakalar.length} araç, ${hesaplar.size} posta kutusu`);
+  log(`${acenteler.length} acente, ${firmalar.length} sigorta firması, ${hesaplar.size} posta kutusu`);
   if (acenteler.length === 0) { log("Acente e-postası tanımlı değil — çıkılıyor."); return; }
 
   const { data: durumlar } = await sb.from("sigorta_mail_durum").select("*");
@@ -408,8 +419,18 @@ async function main() {
   // Script her çalışmada 1 gün geriye bakıyor (sınırdaki mailler kaçmasın diye) ve
   // 15 dakikada bir çalışıyor. Bu kayıt olmadan, resim eki olan bir mail o pencerede
   // kaldığı sürece ~96 kez yapay zekâya okutuluyordu; okuma ücretli, sonuç hep aynı.
-  const { data: islenenler } = await sb.from("sigorta_mail_islenen").select("kimlik");
-  const islenmis = new Set((islenenler ?? []).map((x) => x.kimlik));
+  // Tabloyu tümüyle okumak zamanla büyür; yalnız bu çalışmada karşılaşılan kimlikler
+  // sorulur (aşağıda, uid listesi elde edildikten sonra).
+  async function islenmisleriGetir(kimlikler) {
+    if (!kimlikler.length) return new Set();
+    const bulunan = new Set();
+    for (let i = 0; i < kimlikler.length; i += 200) {
+      const { data } = await sb.from("sigorta_mail_islenen")
+        .select("kimlik").in("kimlik", kimlikler.slice(i, i + 200));
+      for (const x of data ?? []) bulunan.add(x.kimlik);
+    }
+    return bulunan;
+  }
 
   let toplamYeni = 0, toplamBekleyen = 0;
   let toplamPolice = 0;   // mailden otomatik açılan poliçe kaydı
@@ -437,15 +458,31 @@ async function main() {
     try {
       await c.mailboxOpen("INBOX");
       const uidler = await c.search({ since }, { uid: true });
-      log(`${user}: ${since.toISOString().slice(0, 10)} sonrası ${uidler?.length ?? 0} mesaj`);
-      if (!uidler?.length) continue;
+      if (!uidler?.length) { log(`${user}: yeni mesaj yok`); continue; }
+
+      // İNDİRMEDEN ÖNCE İKİ ELEME. Pencerede 29 mail varken hepsinin GÖVDESİ indiriliyordu;
+      // oysa çoğu banka bildirimi, acente maili bile değil. Asıl yük buydu.
+      //   1) ZARF (gönderen/tarih) çekilir — gövdeye göre çok küçük bir istek.
+      //   2) Acente olmayanlar ve daha önce işlenmiş olanlar elenir.
+      // Geriye kalan avuç dolusu mailin gövdesi indirilir.
+      const zarflar = new Map();
+      for await (const m of c.fetch(uidler.join(","), { uid: true, envelope: true }, { uid: true })) {
+        const adres = (m.envelope?.from?.[0]?.address ?? "").toLowerCase();
+        zarflar.set(m.uid, adres);
+      }
+      const acenteUid = uidler.filter((u) => acenteler.some((a) => a.email === zarflar.get(u)));
+      const islenmis = await islenmisleriGetir(acenteUid.map((u) => `${user}/INBOX/${u}`));
+      const yeniUid = acenteUid.filter((u) => !islenmis.has(`${user}/INBOX/${u}`));
+      log(`${user}: ${uidler.length} mesaj · ${acenteUid.length} acenteden · ${yeniUid.length} yeni`);
+      if (!yeniUid.length) continue;
+      await referansYukle();
 
       // Mesajlar ÖNCE baştan sona indirilir, işleme SONRA yapılır.
       // Sebep: resim okuma (yapay zekâ çağrısı) ~15 saniye sürüyor; o sürede IMAP
       // bağlantısı boşta kalınca sunucu bağlantıyı düşürüyor (ECONNRESET) ve kalan
       // mailler hiç okunmuyordu. İndirme hızlı, arada bekleme olmuyor.
       const mesajlar = [];
-      for await (const m of c.fetch(uidler.join(","), { uid: true, source: true }, { uid: true })) {
+      for await (const m of c.fetch(yeniUid.join(","), { uid: true, source: true }, { uid: true })) {
         mesajlar.push({ uid: m.uid, source: m.source });
       }
       try { await c.logout(); } catch { /* işimiz bitti, kapanmaması önemli değil */ }
@@ -462,9 +499,6 @@ async function main() {
         const arac = plakaBul(`${konu} ${govde}`, plakalar);
         const tip = tipBul(`${konu} ${govde}`);
         const kimlikKok = `${user}/INBOX/${m.uid}`;
-
-        // Daha önce işlendiyse hiç açma — asıl masraf ekleri okumakta.
-        if (islenmis.has(kimlikKok)) continue;
 
         if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); await mailiIsaretle(kimlikKok, "plaka yok"); continue; }
 
