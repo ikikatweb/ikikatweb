@@ -535,6 +535,11 @@ async function main() {
         if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); await mailiIsaretle(kimlikKok, "plaka yok"); continue; }
 
         const bulunanlar = [];   // {firma, tutar, kaynak, kanit, onay, ek}
+        // POLİÇE MAİLİ TEKLİF DEĞİLDİR. Acente poliçeyi gönderirken gövdeye tutarı da
+        // yazıyor ("...39.500 TL..."); bu rakam teklif sanılıp poliçenin YANINA ikinci bir
+        // kayıt olarak yazılıyordu. O kayıt hiçbir poliçeye bağlı olmadığı için ana sayfada
+        // "teklif süreci sürüyor" gibi görünüyor ve poliçe kesilmiş araç listede kalıyordu.
+        let policeYazildi = false;
 
         // 1) PDF ekleri
         for (const ek of p.attachments ?? []) {
@@ -548,6 +553,7 @@ async function main() {
             // ekranını kirletmesin diye teklif olarak yazılmaz (poliçe akışı ayrı yürüyor).
             const policeMi = !/TEKLİF/i.test(metin.slice(0, 200));
             if (policeMi) {
+              policeYazildi = true;
               if (await policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar })) toplamPolice++;
               await mailiIsaretle(kimlikKok, "poliçe");
               continue;
@@ -595,6 +601,9 @@ async function main() {
         // Firması belirlenemeyen tutarları gönderenin şirketiyle tamamla.
         const gonderenFirma = gonderendenFirma(gonderen, govde, firmalar);
         for (const b of bulunanlar) if (!b.firma) b.firma = gonderenFirma;
+
+        // Poliçe geldiyse gövdedeki rakamlar teklif değil, poliçenin kendi tutarıdır.
+        if (policeYazildi) { bulunanlar.length = 0; }
 
         if (bulunanlar.length === 0 && resimler.length === 0) {
           log(`  [boş] ${konu.slice(0, 50)} — rakam bulunamadı`);
