@@ -3204,7 +3204,7 @@ export default function DashboardPage() {
                         <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                           <div className="text-base font-semibold text-[#1E3A5F]">Poliçeleştirme talebi gönderilsin mi?</div>
                           <p className="mt-1 text-xs text-gray-600">
-                            <b>{policeTalep.acente_adi}</b> acentesine aşağıdaki mail gidecek ve bu teklif &ldquo;poliçeleştirme istendi&rdquo; olarak işaretlenecek.
+                            <b>{policeTalep.acente_adi}</b>{" "}acentesine aşağıdaki mail gidecek ve bu teklif &ldquo;poliçeleştirme istendi&rdquo; olarak işaretlenecek.
                           </p>
                           {policeTalep.onay_durumu === "uyari" && (
                             <p className="mt-2 rounded-md border border-red-300 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
@@ -3216,16 +3216,15 @@ export default function DashboardPage() {
                             <div className="text-xs font-medium text-gray-800">
                               {policeTalepKonu(teklifKarsilastirArac.plaka, tipKey)}
                             </div>
-                            <div className="mt-2 text-[11px] text-gray-500">
-                              Mail metni
+
+                            <div className="mt-3 border-t border-gray-300 pt-2">
+                              <div className="text-[11px] text-gray-500">Mail metni</div>
                               {/* Antet, aracın firmasının SMTP hesabından gittiği için o firmanın anteti olur. */}
-                              <span className="text-gray-400">
-                                {" · üstte "}
-                                {firmalar.find((f) => f.id === teklifKarsilastirArac.firmaId)?.firma_adi ?? "firmanın"}
-                                {" anteti yer alır"}
-                              </span>
+                              <div className="text-[11px] text-gray-400">
+                                Üstte {firmalar.find((f) => f.id === teklifKarsilastirArac.firmaId)?.firma_adi ?? "firmanın"} anteti yer alır
+                              </div>
                             </div>
-                            <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">
+                            <div className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">
                               {policeTalepMetin({
                                 plaka: teklifKarsilastirArac.plaka,
                                 acenteAdi: policeTalep.acente_adi,
