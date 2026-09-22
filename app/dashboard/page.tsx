@@ -625,7 +625,7 @@ export default function DashboardPage() {
 
   // Widget 3: Yaklaşan sigorta/muayene + acente bilgisi
   const yaklasanlar = useMemo(() => {
-    const result: { aracId: string; plaka: string; tip: string; field: string; bitis: string; kalanGun: number; acente: string; firmaId: string | null; ruhsatUrl: string | null }[] = [];
+    const result: { aracId: string; plaka: string; tip: string; field: string; bitis: string; kalanGun: number; acente: string; firmaId: string | null; ruhsatUrl: string | null; teklifIstendi: boolean; teklifGeldi: number }[] = [];
     const bugunMs = new Date().setHours(0,0,0,0);
     // Araç bazlı en güncel poliçe (bitiş tarihi en ileri olan) — acente + tarih
     const policeMap = new Map<string, { kasko: { bitis: string; acente: string } | null; trafik: { bitis: string; acente: string } | null }>();
@@ -673,19 +673,54 @@ export default function DashboardPage() {
         ["Taşıt Kartı", "tasit_karti_bitis", a.tasit_karti_bitis, ""],
       ];
       for (const [tip, field, tarih, acente] of fields) {
-        if (!tarih) continue;
+        if (!tarih) {
+          // POLİÇESİ HİÇ OLMAYAN ARAÇ (yeni alınmış): satır bitiş tarihinden doğduğu için
+          // listede hiç görünmüyordu. Teklif istenmişse ya da teklif geldiyse yine göster —
+          // yoksa süreç başlatılmış ama kimse göremiyor.
+          const vt = field === "kasko_bitis" ? "kasko" : field === "trafik_sigorta_bitis" ? "trafik" : null;
+          if (!vt || vazgecSet.has(`${a.id}|${vt}`)) continue;
+          const istendi = teklifGonderimler.some((g) => g.arac_id === a.id && g.police_tipi === vt);
+          const geldi = new Set(
+            sigortaTeklifler
+              .filter((t) => t.arac_id === a.id && t.police_tipi === vt && !t.police_id)
+              .map((t) => t.acente_adi),
+          ).size;
+          if (!istendi && geldi === 0) continue;
+          result.push({
+            aracId: a.id, plaka: a.plaka, tip, field, bitis: "", kalanGun: 9999,
+            acente, firmaId: a.firma_id, ruhsatUrl: a.ruhsat_url,
+            teklifIstendi: istendi, teklifGeldi: geldi,
+          });
+          continue;
+        }
         // Kasko/trafik takibinden vazgeçildiyse o satırı dashboard'da gösterme.
         const vazgecTip = field === "kasko_bitis" ? "kasko" : field === "trafik_sigorta_bitis" ? "trafik" : null;
         if (vazgecTip && vazgecSet.has(`${a.id}|${vazgecTip}`)) continue;
         const kalan = Math.ceil((new Date(tarih + "T00:00:00").getTime() - bugunMs) / 86400000);
         const esik = field === "kasko_bitis" ? kaskoYaklasirGun : yaklasirGun; // kasko ayrı eşik
-        if (kalan <= esik) {
-          result.push({ aracId: a.id, plaka: a.plaka, tip, field, bitis: tarih, kalanGun: kalan, acente, firmaId: a.firma_id, ruhsatUrl: a.ruhsat_url });
+        // TEKLİF SÜRECİ OLAN ARAÇ, bitişine çok olsa da burada görünür.
+        // Araç Listesi'nden teklif istendiğinde ve cevaplar mailden geldiğinde, araç henüz
+        // "yaklaşan" sayılmıyorsa gelen teklifler hiçbir yerde görünmüyordu — ana sayfaya
+        // bakan kişi teklif geldiğinden habersiz kalıyordu.
+        const teklifIstendi = vazgecTip != null
+          && teklifGonderimler.some((g) => g.arac_id === a.id && g.police_tipi === vazgecTip);
+        const teklifGeldi = vazgecTip == null ? 0 : new Set(
+          sigortaTeklifler
+            .filter((t) => t.arac_id === a.id && t.police_tipi === vazgecTip && !t.police_id)
+            .map((t) => t.acente_adi),
+        ).size;
+        if (kalan <= esik || teklifIstendi || teklifGeldi > 0) {
+          result.push({ aracId: a.id, plaka: a.plaka, tip, field, bitis: tarih, kalanGun: kalan, acente, firmaId: a.firma_id, ruhsatUrl: a.ruhsat_url, teklifIstendi, teklifGeldi });
         }
       }
     }
-    return result.sort((a, b) => a.kalanGun - b.kalanGun).slice(0, 15);
-  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, sigortaVazgecler, isYonetici, kullanici]);
+    // Sıra aciliyete göre; ama teklif süreci olan satırlar 15'lik kesmeye takılıp
+    // düşmesin — onlar zaten bakılması gereken kayıtlar.
+    const sirali = result.sort((a, b) => a.kalanGun - b.kalanGun);
+    const ilk = sirali.slice(0, 15);
+    const teklifliler = sirali.slice(15).filter((r) => r.teklifIstendi || r.teklifGeldi > 0);
+    return [...ilk, ...teklifliler];
+  }, [araclar, policeler, yaklasirGun, kaskoYaklasirGun, sigortaVazgecler, isYonetici, kullanici, teklifGonderimler, sigortaTeklifler]);
 
   // KIRMIZI ŞERİT — sayfanın en üstü. İki grup birden:
   //   • SON GÜN: bugün ya da yarın bitecek olanlar (kalanGun 0 veya 1) — hâlâ önlem alınabilir.
@@ -1886,7 +1921,7 @@ export default function DashboardPage() {
                           const isPolice = y.tip === "Kasko" || y.tip === "Trafik Sigorta";
                           // Kasko ve Trafik Sigorta: sadece Poliçe Gir ile girilir, tıklanarak düzenlenmez
                           if (isPolice) {
-                            return <span className="text-xs">{formatTarih(y.bitis)}</span>;
+                            return <span className="text-xs">{y.bitis ? formatTarih(y.bitis) : "—"}</span>;
                           }
                           // Muayene ve Taşıt Kartı: elle tarih girişi
                           if (editSigortaKey === key) {
@@ -1916,13 +1951,25 @@ export default function DashboardPage() {
                         })()}
                       </TableCell>
                       <TableCell className="px-2 text-center">
-                        {y.kalanGun < 0 ? (
-                          <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Süresi Geçmiş</span>
-                        ) : y.kalanGun <= azKaldiGun ? (
-                          <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Az Kaldı ({y.kalanGun}g)</span>
-                        ) : (
-                          <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Yaklaşıyor ({y.kalanGun}g)</span>
-                        )}
+                        <div className="flex flex-col items-center gap-0.5">
+                          {!y.bitis ? (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">Poliçe yok</span>
+                          ) : y.kalanGun < 0 ? (
+                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Süresi Geçmiş</span>
+                          ) : y.kalanGun <= azKaldiGun ? (
+                            <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Az Kaldı ({y.kalanGun}g)</span>
+                          ) : (
+                            <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Yaklaşıyor ({y.kalanGun}g)</span>
+                          )}
+                          {/* Teklif süreci: cevap geldiyse yeşil, hâlâ bekleniyorsa gri. */}
+                          {y.teklifGeldi > 0 ? (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.5 rounded">
+                              {y.teklifGeldi} acente cevap verdi
+                            </span>
+                          ) : y.teklifIstendi ? (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">Teklif bekleniyor</span>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="px-2 text-center">
                         {(y.tip === "Trafik Sigorta" || y.tip === "Kasko") && (
