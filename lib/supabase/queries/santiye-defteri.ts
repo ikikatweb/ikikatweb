@@ -132,6 +132,33 @@ export async function getKayitlar(defterId: string): Promise<SantiyeDefterKayit[
   return (data ?? []) as SantiyeDefterKayit[];
 }
 
+/**
+ * Birden çok defterin kayıtlarını TEK sorguda getir → defter_id'ye göre gruplu.
+ *
+ * Liste ekranı her defter için ayrı getKayitlar çağırıyordu; tek ay bakarken sorun
+ * değildi ama "Tümü" seçilince 300'e yakın ayrı sorgu demek oluyor ve sayfa kilitleniyor.
+ */
+export async function getKayitlarToplu(defterIdler: string[]): Promise<Map<string, SantiyeDefterKayit[]>> {
+  const sonuc = new Map<string, SantiyeDefterKayit[]>();
+  if (defterIdler.length === 0) return sonuc;
+  const supabase = getSupabase();
+  // PostgREST'in URL uzunluğu sınırlı — kimlikler parça parça sorulur.
+  for (let i = 0; i < defterIdler.length; i += 100) {
+    const { data, error } = await supabase
+      .from("santiye_defteri_kayit")
+      .select("*")
+      .in("defter_id", defterIdler.slice(i, i + 100))
+      .order("sira", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    for (const k of (data ?? []) as SantiyeDefterKayit[]) {
+      if (!sonuc.has(k.defter_id)) sonuc.set(k.defter_id, []);
+      sonuc.get(k.defter_id)!.push(k);
+    }
+  }
+  return sonuc;
+}
+
 // Kayıt ekle
 export async function insertKayit(kayit: {
   defter_id: string;

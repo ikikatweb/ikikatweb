@@ -13,6 +13,7 @@ import {
   insertDefter,
   updateDefter,
   getKayitlar,
+  getKayitlarToplu,
   insertKayit,
   updateKayit,
   deleteKayit,
@@ -122,6 +123,8 @@ function SantiyeDefContent() {
 
   // Filtreler — ay bazlı liste. Ay filtresi kalıcı DEĞİL (her açılışta içinde bulunulan ay gelsin);
   // şantiye ve arama filtreleri KALICI (F5'te korunur).
+  // Kaç aylık aralık gösterilecek (1 = yalnız seçili ay). "Tümü"de filtreAy boş kalır.
+  const [filtreAySayisi, setFiltreAySayisi] = useState(1);
   const [filtreAy, setFiltreAy] = useState(() => {
     const b = new Date(); return `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, "0")}`;
   });
@@ -255,24 +258,25 @@ function SantiyeDefContent() {
 
   // Ay bazlı defter listesini yükle
   const loadDefterListesi = useCallback(async () => {
-    if (!filtreSantiye || !filtreAy) { setDefterListesi([]); return; }
+    if (!filtreSantiye) { setDefterListesi([]); return; }
     try {
-      const [y, m] = filtreAy.split("-").map(Number);
-      const baslangic = `${y}-${String(m).padStart(2, "0")}-01`;
-      const son = new Date(y, m, 0).getDate();
-      const bitis = `${y}-${String(m).padStart(2, "0")}-${String(son).padStart(2, "0")}`;
+      // ARALIK: ay kutusu tek ay seçer, hızlı düğmeler son N ayı, "Tümü" sınır koymaz.
+      // Eskiden yalnız tek ay vardı; "Tümü" ayı boşaltınca sorgu hiç çalışmıyor ve
+      // liste boş kalıyordu ("3 Ay/6 Ay/1 Yıl" de aralık değil, tek bir geçmiş ay seçiyordu).
+      const iki = (n: number) => String(n).padStart(2, "0");
+      let baslangic = "2000-01-01", bitis = "2099-12-31";
+      if (filtreAy) {
+        const [y, m] = filtreAy.split("-").map(Number);
+        bitis = `${y}-${iki(m)}-${iki(new Date(y, m, 0).getDate())}`;
+        const b = new Date(y, m - filtreAySayisi, 1);
+        baslangic = `${b.getFullYear()}-${iki(b.getMonth() + 1)}-01`;
+      }
       const defterler = await getDefterler(filtreSantiye, baslangic, bitis);
-      // Her defter için kayıtları da yükle
-      // Kısıtlı kullanıcı: sadece kendi yazdığı kayıtlar görünür
-      const listWithKayitlar = await Promise.all(
-        defterler.map(async (d) => {
-          const k = await getKayitlar(d.id).catch(() => []);
-          return { ...d, kayitlar: k };
-        })
-      );
-      setDefterListesi(listWithKayitlar);
+      // Kayıtlar TEK sorguda — defter başına ayrı sorgu "Tümü"de sayfayı kilitliyordu.
+      const kayitMap = await getKayitlarToplu(defterler.map((d) => d.id)).catch(() => new Map());
+      setDefterListesi(defterler.map((d) => ({ ...d, kayitlar: kayitMap.get(d.id) ?? [] })));
     } catch { /* sessiz */ }
-  }, [filtreSantiye, filtreAy]);
+  }, [filtreSantiye, filtreAy, filtreAySayisi]);
 
   useEffect(() => { loadDefterListesi(); }, [loadDefterListesi]);
 
@@ -662,10 +666,12 @@ function SantiyeDefContent() {
 
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
 
-  function hizliAy(ayOnce: number) {
+  // Son N ay: bitiş her zaman İÇİNDE BULUNDUĞUMUZ ay, başlangıç N-1 ay geriye.
+  // Eskiden tek bir geçmiş aya atlıyordu — "1 Yıl" deyince yalnız 10 ay önceki ay görünüyordu.
+  function hizliAy(aySayisi: number) {
     const d = new Date();
-    d.setMonth(d.getMonth() - ayOnce + 1);
     setFiltreAy(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    setFiltreAySayisi(aySayisi);
   }
 
   const filtrelenmisDefterler = defterArama.trim()
@@ -695,7 +701,9 @@ function SantiyeDefContent() {
     ws["!cols"] = [{ wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 60 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Santiye Defteri");
-    XLSX.writeFile(wb, `santiye-defteri-${filtreAy}.xlsx`);
+    // "Tümü" seçiliyken filtreAy boş — dosya adı "santiye-defteri-.xlsx" çıkmasın.
+    const ad = filtreAy ? (filtreAySayisi > 1 ? `${filtreAy}-son${filtreAySayisi}ay` : filtreAy) : "tumu";
+    XLSX.writeFile(wb, `santiye-defteri-${ad}.xlsx`);
   }
 
   return (
@@ -737,17 +745,22 @@ function SantiyeDefContent() {
         </div>
         <div className="space-y-1">
           <Label className="text-[10px] text-gray-500">Ay</Label>
-          <input type="month" value={filtreAy} onChange={(e) => setFiltreAy(e.target.value)} className={selectClass} />
+          <input type="month" value={filtreAy}
+            onChange={(e) => { setFiltreAy(e.target.value); setFiltreAySayisi(1); }}
+            className={selectClass} />
         </div>
         <div className="flex gap-1 items-end flex-wrap">
-          {[{ l: "Bu Ay", a: 0 }, { l: "3 Ay", a: 2 }, { l: "6 Ay", a: 5 }, { l: "1 Yıl", a: 11 }].map((b) => (
-            <button key={b.l} type="button" onClick={() => hizliAy(b.a)}
-              className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
-              {b.l}
-            </button>
-          ))}
-          <button type="button" onClick={() => setFiltreAy("")}
-            className="h-9 px-2.5 text-[10px] rounded-lg border bg-gray-50 hover:bg-[#64748B] hover:text-white transition-colors">
+          {[{ l: "Bu Ay", a: 1 }, { l: "3 Ay", a: 3 }, { l: "6 Ay", a: 6 }, { l: "1 Yıl", a: 12 }].map((b) => {
+            const secili = !!filtreAy && filtreAySayisi === b.a;
+            return (
+              <button key={b.l} type="button" onClick={() => hizliAy(b.a)}
+                className={`h-9 px-2.5 text-[10px] rounded-lg border transition-colors ${secili ? "bg-[#64748B] text-white" : "bg-gray-50 hover:bg-[#64748B] hover:text-white"}`}>
+                {b.l}
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => { setFiltreAy(""); setFiltreAySayisi(1); }}
+            className={`h-9 px-2.5 text-[10px] rounded-lg border transition-colors ${!filtreAy ? "bg-[#64748B] text-white" : "bg-gray-50 hover:bg-[#64748B] hover:text-white"}`}>
             Tümü
           </button>
         </div>
