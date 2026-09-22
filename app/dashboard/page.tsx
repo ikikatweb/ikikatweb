@@ -2046,7 +2046,7 @@ export default function DashboardPage() {
           <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
           {yaklasanBakimlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bakım yok</p> : (
             <div className="max-h-[220px] overflow-y-auto">
-              <Table className="text-xs">
+              <Table noWrapper className="text-xs">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="px-2 text-[10px]">Plaka</TableHead>
@@ -2138,7 +2138,7 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="max-h-[200px] overflow-y-auto">
-              <Table className="text-xs">
+              <Table noWrapper className="text-xs">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="px-2 text-[10px] text-gray-700">İş Adı</TableHead>
@@ -2368,7 +2368,7 @@ export default function DashboardPage() {
             </div>
             <div className="max-h-[200px] overflow-y-auto">
               {/* Firma sütunu kaldırıldı — Tarih sütununun solunda renk şeridi şeklinde gösterilir. */}
-              <Table className="text-xs">
+              <Table noWrapper className="text-xs">
                 <TableHeader><TableRow>
                   <TableHead className="px-2 text-[10px]">Tarih</TableHead>
                   <TableHead className="px-2 text-[10px]">Konu / Muhatap</TableHead>

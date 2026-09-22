@@ -69,7 +69,7 @@ export default function IcraDashboard() {
         <p className="text-sm text-gray-400">Cevap bekleyen icra dosyası yok</p>
       ) : (
         <div className="max-h-[220px] overflow-y-auto">
-          <Table className="text-xs text-gray-900">
+          <Table noWrapper className="text-xs text-gray-900">
             <TableHeader><TableRow>
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
