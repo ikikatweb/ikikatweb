@@ -34,6 +34,8 @@ export type SantiyeAllRow = {
   gecici_kabul_tarihi: string | null; kesin_kabul_tarihi: string | null; tasfiye_tarihi: string | null; devir_tarihi: string | null;
   depo_kapasitesi: number | null; yuklenici_firma_id: string | null; isyeri_teslim_tarihi: string | null;
   is_suresi: number | null; is_bitim_tarihi: string | null; teknik_personel_sayisi: number | null; teknik_personeller: string[] | null;
+  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller: {"rol": "ad soyad"}
+  teknik_dis_atama?: Record<string, string> | null;
   calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
   sure_uzatimli_tarih: string | null; // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim_tarihi kullanılır)
 };
@@ -41,9 +43,11 @@ export type SantiyeAllRow = {
 export async function getSantiyelerAll(): Promise<SantiyeAllRow[]> {
   const supabase = getSupabase();
   const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, sure_uzatimli_tarih, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit";
-  // ihaleli kolonu henüz eklenmemiş olabilir (tipli client tanımaz) → varsa al, yoksa fallback.
-  const r1 = await supabase.from("santiyeler").select(base + ", ihaleli").order("is_adi", { ascending: true });
-  const r = r1.error ? await supabase.from("santiyeler").select(base).order("is_adi", { ascending: true }) : r1;
+  // ihaleli ve teknik_dis_atama kolonları henüz eklenmemiş olabilir (tipli client tanımaz)
+  // → varsa al, yoksa sırayla geri düş. Kolon eksikken ekran çalışmaya devam etsin.
+  const r1 = await supabase.from("santiyeler").select(base + ", ihaleli, teknik_dis_atama").order("is_adi", { ascending: true });
+  const r2 = r1.error ? await supabase.from("santiyeler").select(base + ", ihaleli").order("is_adi", { ascending: true }) : r1;
+  const r = r2.error ? await supabase.from("santiyeler").select(base).order("is_adi", { ascending: true }) : r2;
   if (r.error) throw r.error;
   return (r.data ?? []) as unknown as SantiyeAllRow[];
 }

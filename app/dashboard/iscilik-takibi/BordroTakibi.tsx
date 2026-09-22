@@ -81,6 +81,8 @@ type SantiyeBasic = {
   sure_uzatimli_tarih?: string | null;  // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim kullanılır)
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
+  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller: {"rol": "ad soyad"}
+  teknik_dis_atama?: Record<string, string> | null;
   calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
   calisilmayan_bit?: string | null; // çalışılmayan dönem bitişi
 };
@@ -542,6 +544,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
   // Personel × Şantiye bazlı teknik personel kayıtları (sadece bilgi amaçlı rozet için)
   const [teknikKayitlari, setTeknikKayitlari] = useState<PersonelTeknikRow[]>([]);
+  // ATAMA DIŞI TEKNİK ATAMA penceresi: kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
+  // Firma sahibi sigortalanamadığı için şantiyeye atama açılamıyor; rolü yine de o dolduruyor.
+  const [disAtamaDialog, setDisAtamaDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
+  const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, string>>({});
+  const [disAtamaKaydediliyor, setDisAtamaKaydediliyor] = useState(false);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
   // Şantiye bazlı prim bilgisi: santiye_id → { yatmasiGereken, yatan, sonAy }
@@ -1337,9 +1344,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const atanmamisTeknikPersoneller = useMemo(() => {
     const cache = new Map<string, string[]>();
     // Rol, atanan kişi GÖRÜNTÜLENEN AYDA çalışıyorsa dolu sayılır (bkz. ayindaTeknikMi).
+    // Ayrıca DIŞ ATAMA: firma sahibi gibi sigortalanamayan kişiler rolü doldurabiliyor
+    // (santiyeler.teknik_dis_atama). Bunlar için personel ataması yok, o yüzden ay kuralına
+    // girmezler — kayıt durduğu sürece rol doludur.
     function hesapla(santiyeId: string, teknikIsimler: string[] | null | undefined): string[] {
       if (!teknikIsimler || teknikIsimler.length === 0) return [];
       if (cache.has(santiyeId)) return cache.get(santiyeId)!;
+      const disAtama = santiyeler.find((x) => x.id === santiyeId)?.teknik_dis_atama ?? {};
       const atanmisKeyler = new Set<string>();
       for (const r of teknikKayitlari) {
         if (r.santiye_id !== santiyeId || !r.is_teknik || !r.teknik_isim) continue;
@@ -1355,13 +1366,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       }
       const result: string[] = [];
       teknikIsimler.forEach((isim, idx) => {
-        if (!atanmisKeyler.has(`${isim}#${idx}`)) result.push(isim);
+        if (atanmisKeyler.has(`${isim}#${idx}`)) return;
+        if (disAtama[isim]) return;            // atama dışı biri dolduruyor
+        result.push(isim);
       });
       cache.set(santiyeId, result);
       return result;
     }
     return hesapla;
-  }, [teknikKayitlari, ayindaTeknikMi]);
+  }, [teknikKayitlari, ayindaTeknikMi, santiyeler]);
 
   /**
    * Çıkış verilen kişi o şantiyede TEKNİK PERSONEL ise hangi rolün boşta kaldığını söyler.
@@ -1378,6 +1391,36 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // teknik_isim "isim#index" biçiminde saklanıyor; gösterirken indeksi at.
     return r.teknik_isim.split(",").map((x) => x.trim().replace(/#\d+$/, "")).filter(Boolean).join(", ") || null;
   }, [teknikKayitlari]);
+
+  /**
+   * Atama dışı teknik atamayı kaydet (santiyeler.teknik_dis_atama).
+   *
+   * Personel ataması AÇILMAZ: firma sahibi sigortalanamıyor, atama açmak puantaja,
+   * bordroya ve SGK bildirgesine düşmesi demek olurdu. Burada yalnız "bu rolü şu kişi
+   * dolduruyor" bilgisi saklanır; sözleşme şartı bakımından rol dolu sayılır.
+   */
+  async function disAtamaKaydet() {
+    if (!disAtamaDialog) return;
+    setDisAtamaKaydediliyor(true);
+    try {
+      // Boş bırakılan roller kaydedilmez — silinmiş sayılır.
+      const temiz: Record<string, string> = {};
+      for (const [rol, kisi] of Object.entries(disAtamaSecim)) {
+        if (kisi && kisi.trim()) temiz[rol] = kisi.trim();
+      }
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { error } = await supabase.from("santiyeler")
+        .update({ teknik_dis_atama: temiz }).eq("id", disAtamaDialog.santiyeId);
+      if (error) throw error;
+      toast.success("Teknik personel ataması kaydedildi.");
+      setDisAtamaDialog(null);
+      await loadData();
+    } catch (err) {
+      toast.error(`Kaydedilemedi: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDisAtamaKaydediliyor(false);
+    }
+  }
 
   // Bir şantiyede şu anda kaç AKTİF teknik personel var?
   // = teknik_personel_sayisi alanına göre "kapasite" dolu mu kontrolü için.
@@ -4221,8 +4264,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Accordion satırı: işin adı + sayım + chevron, tıklayınca açılıp altta personel listesi
   function SantiyeAccordion({
-    santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller,
-    onToggle, onTumunuSecToggle, onPlus, children,
+    santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamalar,
+    onToggle, onTumunuSecToggle, onPlus, onTeknikAta, children,
   }: {
     santiyeId: string;
     baslik: string;
@@ -4232,6 +4275,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     acik: boolean;
     tumSecili: boolean;
     teknikPersoneller?: string[] | null;
+    disAtamalar?: Record<string, string> | null;
+    onTeknikAta?: () => void;
     onToggle: () => void;
     onTumunuSecToggle: () => void;
     onPlus?: () => void;
@@ -4326,8 +4371,30 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             {/* ATANMAMIŞ teknik personel listesi — başlık altında uyarı satırı.
                 PDF/Excel çıktısı ile tutarlı: sadece kimseye verilmemiş roller görünür. */}
             {teknikPersoneller && teknikPersoneller.length > 0 && (
-              <div className="text-[10px] text-red-600 mt-0.5 truncate" title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}`}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); onTeknikAta?.(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTeknikAta?.(); } }}
+                className="text-[10px] text-red-600 mt-0.5 truncate cursor-pointer hover:underline"
+                title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa tıklayın.`}
+              >
                 <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.join(", ")}
+              </div>
+            )}
+            {/* Atama dışı doldurulan roller — hem bilgi hem düzeltme girişi.
+                Uyarı kalktıktan sonra bu kaydı değiştirecek başka bir yer kalmıyordu. */}
+            {disAtamalar && Object.keys(disAtamalar).length > 0 && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); onTeknikAta?.(); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTeknikAta?.(); } }}
+                className="text-[10px] text-indigo-700 mt-0.5 truncate cursor-pointer hover:underline"
+                title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için tıklayın"
+              >
+                <span className="font-semibold">Teknik (atamasız):</span>{" "}
+                {Object.entries(disAtamalar).map(([rol, kisi]) => `${rol} — ${kisi}`).join(" · ")}
               </div>
             )}
             {(() => {
@@ -5147,6 +5214,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             acik={acik}
                             tumSecili={tumSecili}
                             teknikPersoneller={atanmamisTeknikPersoneller(s.id, s.teknik_personeller)}
+                            disAtamalar={s.teknik_dis_atama ?? null}
+                            onTeknikAta={yDuzenle ? () => {
+                              setDisAtamaSecim({ ...(s.teknik_dis_atama ?? {}) });
+                              setDisAtamaDialog({ santiyeId: s.id, santiyeAd: s.is_adi });
+                            } : undefined}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
                                 const next = new Set(prev);
@@ -6445,6 +6517,69 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     </div>
                   );
                 })()}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* ATAMA DIŞI TEKNİK PERSONEL — kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
+          Firma sahibi gibi sigortalanamayan kişiler burada role bağlanır; personel ataması
+          açılmadığı için puantaj/bordro/SGK akışları etkilenmez. */}
+      <Dialog open={!!disAtamaDialog} onOpenChange={(o) => { if (!o) setDisAtamaDialog(null); }}>
+        <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Teknik Personel Ataması</DialogTitle>
+          </DialogHeader>
+          {disAtamaDialog && (() => {
+            const sant = santiyeler.find((x) => x.id === disAtamaDialog.santiyeId);
+            const roller = sant?.teknik_personeller ?? [];
+            // Personelden atanmış roller burada değiştirilmez — yalnız BOŞ roller listelenir.
+            const bosRoller = atanmamisTeknikPersoneller(disAtamaDialog.santiyeId, roller);
+            const secilebilir = [...personeller]
+              .filter((x) => x.ad_soyad)
+              .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
+            return (
+              <div className="space-y-3 py-1">
+                <p className="text-xs text-gray-600">
+                  <b>{disAtamaDialog.santiyeAd}</b> — sigortalanamayan bir kişi (firma sahibi gibi)
+                  bu rolü dolduruyorsa buradan bağlayın. <b>Personel ataması açılmaz</b>; puantaj,
+                  bordro ve SGK bildirgesi etkilenmez.
+                </p>
+                {bosRoller.length === 0 && Object.keys(disAtamaSecim).length === 0 ? (
+                  <p className="text-xs text-gray-400 py-4 text-center">Boş teknik personel rolü yok.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {Array.from(new Set([...bosRoller, ...Object.keys(disAtamaSecim)])).map((rol) => (
+                      <div key={rol} className="rounded-lg border border-gray-200 p-2.5">
+                        <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rol}</div>
+                        <select
+                          value={disAtamaSecim[rol] ?? ""}
+                          onChange={(e) => setDisAtamaSecim((prev) => ({ ...prev, [rol]: e.target.value }))}
+                          style={{ fontSize: "16px" }}
+                          className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
+                        >
+                          <option value="">Kimse atanmadı</option>
+                          {secilebilir.map((x) => (
+                            <option key={x.id} value={x.ad_soyad}>{x.ad_soyad}{x.meslek ? ` — ${x.meslek}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button type="button" disabled={disAtamaKaydediliyor}
+                    onClick={() => setDisAtamaDialog(null)}
+                    className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
+                    Vazgeç
+                  </button>
+                  <button type="button" disabled={disAtamaKaydediliyor}
+                    onClick={disAtamaKaydet}
+                    className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+                    {disAtamaKaydediliyor ? "Kaydediliyor…" : "Kaydet"}
+                  </button>
+                </div>
               </div>
             );
           })()}
