@@ -72,7 +72,7 @@ export default function IcraDashboard() {
           <Table className="text-xs text-gray-900">
             <TableHeader><TableRow>
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
-              <TableHead className="px-2 text-[10px] text-center">Gelen Tarih</TableHead>
+              <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Cevap Tarihi</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
             </TableRow></TableHeader>
@@ -91,7 +91,7 @@ export default function IcraDashboard() {
                     </>}
                     {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre {gecen >= CEVAP_SURESI_GUN ? "doldu" : "doluyor"}</div>}
                   </TableCell>
-                  <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.gelen_yazi_tarihi)}</TableCell>
+                  <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
                     {canDuzenle ? (
                       <button type="button" onClick={() => { window.location.href = `/dashboard/icra?duzenle=${s.id}&kilit=1`; }}
