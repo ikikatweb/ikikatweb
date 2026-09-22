@@ -324,6 +324,8 @@ export default function SigortaMuayenePage() {
           await insertTeklifGonderim({
             arac_id: teklifArac.aracId, police_tipi: teklifTip,
             acente_adlari: seciliAdlar.join(", "), acente_emailleri: emails.join(", "),
+            // Cevap mailden gelince bildirim isteyen kişiye de gitsin (yöneticilere zaten gidiyor).
+            isteyen_id: kullanici?.id ?? null,
           });
           // Kilit hemen görünsün diye geçmişi tazele (yoksa sayfa yenilenene kadar açık kalırdı).
           setTeklifGonderimler(await getTeklifGonderimler().catch(() => []) as TeklifGonderim[]);

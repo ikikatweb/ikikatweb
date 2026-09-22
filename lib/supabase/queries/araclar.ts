@@ -413,6 +413,8 @@ export async function insertTeklifGonderim(gonderim: {
   police_tipi: "kasko" | "trafik";
   acente_adlari: string;
   acente_emailleri: string;
+  // Cevap mailden geldiğinde bildirim bu kullanıcıya gider (yöneticilere zaten gidiyor).
+  isteyen_id?: string | null;
 }) {
   const supabase = getSupabase();
   const { error } = await supabase.from("teklif_gonderim").insert(gonderim);

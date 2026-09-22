@@ -29,6 +29,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { teklifResminiOku } from "./teklif-resim-oku.mjs";
 import { policePdfOku } from "./police-pdf-oku.mjs";
+import { pushGonder } from "./push-gonder.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.join(__dirname, "..");
@@ -281,7 +282,38 @@ async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }
 
   log(`  ★ POLİÇE ${hedefArac.plaka} ${tip} · ${firma ?? "?"} · ${(v.brutPrim ?? 0).toLocaleString("tr-TR")} TL · ${v.baslangicTarihi}→${v.bitisTarihi} · ${acente.ad}`);
   if (uyari) log(`     ! UYUŞMUYOR → ${uyari}`);
+
+  await bildirimGonder(hedefArac, tip, {
+    baslik: uyari
+      ? `${hedefArac.plaka} — poliçe geldi, DİKKAT`
+      : `${hedefArac.plaka} ${tip === "kasko" ? "Kasko" : "Trafik"} poliçesi kaydedildi`,
+    govde: uyari
+      ? uyari
+      : `${firma ?? "?"} · ${(v.brutPrim ?? 0).toLocaleString("tr-TR")} ₺ · ${v.bitisTarihi} tarihine kadar`,
+    etiket: `police-${hedefArac.id}-${tip}`,
+  });
   return true;
+}
+
+/**
+ * Bildirimi gönder: TEKLİFİ İSTEYEN kullanıcı + yöneticiler.
+ *
+ * İsteyen kişi teklif_gonderim.isteyen_id'de duruyor (teklif istenirken yazılıyor).
+ * Eski kayıtlarda boş olabilir — o zaman yalnız yöneticilere gider, bildirim hiç
+ * gitmemesindense eksik gitmesi yeğdir.
+ */
+async function bildirimGonder(arac, tip, icerik) {
+  try {
+    const { data: g } = await sb.from("teklif_gonderim")
+      .select("isteyen_id").eq("arac_id", arac.id).eq("police_tipi", tip)
+      .not("isteyen_id", "is", null)
+      .order("created_at", { ascending: false }).limit(1);
+    const isteyen = g?.[0]?.isteyen_id ? [g[0].isteyen_id] : [];
+    const n = await pushGonder(sb, env, { ...icerik, url: "/dashboard" }, isteyen);
+    if (n > 0) log(`     bildirim → ${n} cihaz`);
+  } catch (e) {
+    log(`     bildirim gönderilemedi: ${e.message}`);   // bildirim hatası veriyi etkilemesin
+  }
 }
 
 /**
@@ -581,6 +613,7 @@ async function main() {
           .sort((a, b) => String(a.islem_tarihi).localeCompare(String(b.islem_tarihi)))[0] ?? null;
 
         let sira = 0;
+        let yeniSayi = 0;      // bu mailden KAÇ teklif gerçekten yazıldı (mükerrerler hariç)
         for (const b of bulunanlar) {
           sira++;
           const kayit = {
@@ -608,10 +641,23 @@ async function main() {
               continue;
             }
             log(`  YAZILAMADI: ${error.message}`);
-          } else { toplamYeni++; log(`  + ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); }
+          } else { toplamYeni++; yeniSayi++; log(`  + ${arac.plaka} ${tip} ${acente.ad} → ${b.firma ?? "?"} ${b.tutar.toLocaleString("tr-TR")} TL (${b.kaynak})`); }
         }
 
         await mailiIsaretle(kimlikKok, `${bulunanlar.length} teklif`);
+
+        // BİLDİRİM — mail başına TEK tane. Bir acente 14 firmalık tablo gönderdiğinde
+        // 14 ayrı bildirim telefonu kilitlerdi; özet yeterli, ayrıntı ekranda.
+        if (yeniSayi > 0 && !DENEME) {
+          const tutarlar = bulunanlar.map((b) => b.tutar).filter((t) => t > 0);
+          const enUcuz = tutarlar.length ? Math.min(...tutarlar) : null;
+          await bildirimGonder(hedefArac ?? arac, tip, {
+            baslik: `${(hedefArac ?? arac).plaka} — ${yeniSayi} yeni teklif`,
+            govde: `${acente.ad} ${yeniSayi} firma teklifi gönderdi`
+              + (enUcuz ? ` · en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
+            etiket: `teklif-${(hedefArac ?? arac).id}-${tip}`,
+          });
+        }
 
         // Resim okunamadıysa (anahtar yok ya da hata): "elle bakılmalı" kaydı aç, eki sakla.
         if (resimler.length > 0 && bulunanlar.length === 0) {

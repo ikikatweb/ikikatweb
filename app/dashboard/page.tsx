@@ -1705,6 +1705,8 @@ export default function DashboardPage() {
             police_tipi: policeTipi as "kasko" | "trafik",
             acente_adlari: seciliAdlar.join(", "),
             acente_emailleri: emails.join(", "),
+            // Cevap mailden gelince bildirim isteyen kişiye de gitsin (yöneticilere zaten gidiyor).
+            isteyen_id: kullanici?.id ?? null,
           });
           const fresh = await getTeklifGonderimler().catch(() => []);
           setTeklifGonderimler(fresh as TeklifGonderim[]);
