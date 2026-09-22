@@ -1270,6 +1270,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Veri kaynağı: personel_teknik tablosunda HEM is_teknik=true HEM teknik_isim DOLU olan
   // satırlar. Sadece bir koşul sağlanıyorsa "atama yapılmamış / silinmiş" sayılır ve
   // teknik kabul edilmez — screen ile PDF/Excel arasında tutarlılık sağlar.
+  // GÖRÜNTÜLENEN AYDA teknik personel sayılır mı?
+  //
+  // personel_teknik kaydı işten çıkışta silinmiyor. Yalnız o kayda bakılınca çıkmış kişi
+  // rolü sonsuza kadar dolu tutuyordu: Vezirköprü'de Emre Bozkurt'a 13.09'da çıkış verildi,
+  // "Harita Mühendisi" rolü boşta kaldı ama ne rozet kalktı ne uyarı çıktı.
+  //
+  // Kural AYA BAĞLI: kişi o ayın sonunda hâlâ çalışıyorsa rol o ay doludur.
+  //   • Ağustos'a bakarken (çıkış 13.09 > 31.08) → rozet durur, rol dolu, uyarı yok.
+  //   • Eylül'e bakarken (çıkış 13.09 ≤ 30.09)   → rozet kalkar, rol boşalır, uyarı çıkar.
+  // Böylece geçmiş aylar olduğu gibi kalır, çıkış ayından itibaren eksik görünür.
+  const ayindaTeknikMi = useCallback((personelId: string, santiyeId: string): boolean => {
+    const [yil, ay] = seciliAy.split("-").map(Number);
+    const aySonu = `${yil}-${String(ay).padStart(2, "0")}-${String(new Date(yil, ay, 0).getDate()).padStart(2, "0")}`;
+    // O şantiyedeki atamalardan biri ay sonunda hâlâ açıksa (ya da o tarihten sonra bitmişse) çalışıyordur.
+    return atamalar.some((a) =>
+      a.personel_id === personelId && a.santiye_id === santiyeId
+      && (!a.bitis_tarihi || a.bitis_tarihi > aySonu));
+  }, [atamalar, seciliAy]);
+
   const teknikPersonelMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     const ekle = (pId: string, sId: string) => {
@@ -1277,12 +1296,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       map.get(pId)!.add(sId);
     };
     for (const r of teknikKayitlari) {
-      if (r.is_teknik && r.teknik_isim && r.teknik_isim.trim().length > 0) {
+      if (r.is_teknik && r.teknik_isim && r.teknik_isim.trim().length > 0 && ayindaTeknikMi(r.personel_id, r.santiye_id)) {
         ekle(r.personel_id, r.santiye_id);
       }
     }
     return map;
-  }, [teknikKayitlari]);
+  }, [teknikKayitlari, ayindaTeknikMi]);
 
   // Personel'in HERHANGİ bir şantiyede teknik olup olmadığı (arama/filtre için)
   const teknikPersonelIds = useMemo(() => {
@@ -1317,12 +1336,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // regex ile "(.+?)#(\d+)" pattern'i yakalanır (ham split yanıltıcı olur).
   const atanmamisTeknikPersoneller = useMemo(() => {
     const cache = new Map<string, string[]>();
+    // Rol, atanan kişi GÖRÜNTÜLENEN AYDA çalışıyorsa dolu sayılır (bkz. ayindaTeknikMi).
     function hesapla(santiyeId: string, teknikIsimler: string[] | null | undefined): string[] {
       if (!teknikIsimler || teknikIsimler.length === 0) return [];
       if (cache.has(santiyeId)) return cache.get(santiyeId)!;
       const atanmisKeyler = new Set<string>();
       for (const r of teknikKayitlari) {
         if (r.santiye_id !== santiyeId || !r.is_teknik || !r.teknik_isim) continue;
+        if (!ayindaTeknikMi(r.personel_id, r.santiye_id)) continue;   // o ay çalışmıyor → rol boş
         const matches = Array.from(r.teknik_isim.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
         if (matches.length > 0) {
           for (const m of matches) atanmisKeyler.add(`${m[1].trim()}#${m[2]}`);
@@ -1340,6 +1361,22 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       return result;
     }
     return hesapla;
+  }, [teknikKayitlari, ayindaTeknikMi]);
+
+  /**
+   * Çıkış verilen kişi o şantiyede TEKNİK PERSONEL ise hangi rolün boşta kaldığını söyler.
+   *
+   * Çıkış anında uyarı gerekiyor: teknik personel şartı sözleşme gereği, boş kalması
+   * fark edilmezse sorun büyüyor. Rozet listede görünüyordu ama çıkış verince kimse
+   * uyarmıyordu — kayıt silinmediği için rol dolu sanılıyordu.
+   */
+  const teknikRolAdi = useCallback((personelId: string, santiyeId: string): string | null => {
+    const r = teknikKayitlari.find(
+      (x) => x.personel_id === personelId && x.santiye_id === santiyeId && x.is_teknik && x.teknik_isim,
+    );
+    if (!r?.teknik_isim) return null;
+    // teknik_isim "isim#index" biçiminde saklanıyor; gösterirken indeksi at.
+    return r.teknik_isim.split(",").map((x) => x.trim().replace(/#\d+$/, "")).filter(Boolean).join(", ") || null;
   }, [teknikKayitlari]);
 
   // Bir şantiyede şu anda kaç AKTİF teknik personel var?
@@ -3336,6 +3373,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         } catch (e) { console.error(e); }
       }
       toast.success(`${basari} personel işten çıkarıldı (${cikisTarih}, mail kuyruğuna eklendi)`);
+      // Çıkarılanlar arasında teknik personel varsa her biri için ayrı uyarı.
+      for (const it of aktifOlanlar) {
+        const rol = teknikRolAdi(it.personel.id, it.sutunKey);
+        if (!rol) continue;
+        const sAd = santiyeler.find((x) => x.id === it.sutunKey)?.is_adi ?? "şantiye";
+        toast.error(`TEKNİK PERSONEL BOŞTA: ${sAd} — "${rol}" rolü boş kaldı (${it.personel.ad_soyad} çıktı).`,
+          { duration: 12000 });
+      }
       setSelectedKeys(new Set());
       setTopluCikisOnay(false);
       // Tarihi bugüne sıfırla
@@ -3923,6 +3968,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         .is("bitis_tarihi", null);
       if (error) throw error;
       toast.success(`${personel.ad_soyad} ${oldSantiyeAd ?? ""} şantiyesinden çıkarıldı (${cikisTarih}, mail kuyruğa)`);
+      const bosalanRol = teknikRolAdi(personel.id, santiyeId);
+      if (bosalanRol) {
+        toast.error(`TEKNİK PERSONEL BOŞTA: ${oldSantiyeAd ?? "şantiye"} — "${bosalanRol}" rolü boş kaldı, yerine atama yapın.`,
+          { duration: 12000 });
+      }
       // ÖNEMLİ: DB'ye yazılan ASIL tarihi (cikisTarih) kuyruğa ilet — revert için gerekli.
       await kuyrugaEkle({ tip: "cikis", personel, onceSantiyeAd: oldSantiyeAd, onceSantiyeId: santiyeId, tarih: cikisTarih });
       setCikisOnay(null);
