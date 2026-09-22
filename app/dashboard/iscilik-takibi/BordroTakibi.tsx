@@ -6545,9 +6545,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         <>
           <div className="fixed inset-0 z-[85]" onClick={() => setTeknikMenu(null)}
             onContextMenu={(e) => { e.preventDefault(); setTeknikMenu(null); }} />
-          <div className="fixed z-[90] w-56 rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
+          <div className="fixed z-[90] w-[280px] max-w-[92vw] rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
             style={{
-              left: Math.min(teknikMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 232),
+              left: Math.min(teknikMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 292),
               top: Math.min(teknikMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 90),
             }}>
             <button type="button"
@@ -6558,7 +6558,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 setTeknikMenu(null);
               }}
               className="w-full text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50">
-              Yetkili ataması yap
+              Firma Yetkilisini Teknik Personel Olarak Ata
             </button>
           </div>
         </>
