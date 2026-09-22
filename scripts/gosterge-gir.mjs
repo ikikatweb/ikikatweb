@@ -50,12 +50,29 @@ if (onceki != null && deger < Number(onceki)) {
   process.exit(1);
 }
 
-await sb.from("araclar").update({ guncel_gosterge: deger, updated_at: new Date().toISOString() }).eq("id", arac.id);
+// araclar.guncel_gosterge TAM SAYI: "1552,8" gönderilince veritabanı reddediyor.
+// (Saat sayaçları ondalıklı okunuyor.) Yuvarlanır ve bu açıkça söylenir.
+const kartDeger = Math.round(deger);
+const yuvarlandi = kartDeger !== deger;
 
+const { error } = await sb.from("araclar")
+  .update({ guncel_gosterge: kartDeger, updated_at: new Date().toISOString() })
+  .eq("id", arac.id);
+// Hata YUTULMAZ: ilk sürüm hatayı görmezden gelip "yazıldı" diyordu, değer aslında
+// kaydedilmiyordu. Sessizce kaybolan okuma, hiç girilmemiş okumadan kötüdür.
+if (error) { console.log(`YAZILAMADI ${arac.plaka}: ${error.message}`); process.exit(1); }
+
+// Gün bazlı okuma (arac_puantaj.gosterge) ondalık kabul ediyor, olduğu gibi yazılır.
 const { data: pu } = await sb.from("arac_puantaj").select("id").eq("arac_id", arac.id).eq("tarih", tarih);
 const gunYazildi = !!pu?.length;
-if (gunYazildi) await sb.from("arac_puantaj").update({ gosterge: deger }).eq("id", pu[0].id);
+if (gunYazildi) {
+  const { error: pErr } = await sb.from("arac_puantaj").update({ gosterge: deger }).eq("id", pu[0].id);
+  if (pErr) console.log(`  puantaja yazılamadı: ${pErr.message}`);
+}
 
+// Yazdıktan sonra OKUYUP doğrula — ekrana basılan sayı gerçekten kayıtta olan sayı olsun.
+const { data: son } = await sb.from("araclar").select("guncel_gosterge").eq("id", arac.id);
 console.log(`${arac.plaka}: ${onceki == null ? "boş" : Number(onceki).toLocaleString("tr-TR")}`
-  + ` → ${deger.toLocaleString("tr-TR")} ${birim}`
-  + (gunYazildi ? ` (${tarih} puantajına da yazıldı)` : ` (${tarih} için puantaj satırı yok)`));
+  + ` → ${Number(son[0].guncel_gosterge).toLocaleString("tr-TR")} ${birim}`
+  + (yuvarlandi ? ` (${deger.toLocaleString("tr-TR")} yuvarlandı — kart sayacı tam sayı tutuyor)` : "")
+  + (gunYazildi ? ` · ${tarih} puantajına ${deger.toLocaleString("tr-TR")} yazıldı` : ` · ${tarih} için puantaj satırı yok`));
