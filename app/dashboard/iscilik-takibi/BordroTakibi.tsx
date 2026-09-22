@@ -81,8 +81,9 @@ type SantiyeBasic = {
   sure_uzatimli_tarih?: string | null;  // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim kullanılır)
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
-  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller: {"rol": "ad soyad"}
-  teknik_dis_atama?: Record<string, string> | null;
+  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller.
+  // Biçim: {"rol": {"ad": "...", "tarih": "2026-09-22"}}; eski kayıtlar düz metin olabilir.
+  teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null }> | null;
   calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
   calisilmayan_bit?: string | null; // çalışılmayan dönem bitişi
 };
@@ -547,6 +548,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
   // Personel × Şantiye bazlı teknik personel kayıtları (sadece bilgi amaçlı rozet için)
   const [teknikKayitlari, setTeknikKayitlari] = useState<PersonelTeknikRow[]>([]);
+  /** teknik_dis_atama değeri iki biçimde olabilir (eski: düz ad, yeni: {ad, tarih}). */
+  const disAtamaCoz = (v: string | { ad: string; tarih?: string | null } | undefined) =>
+    typeof v === "string" ? { ad: v, tarih: null } : v ? { ad: v.ad, tarih: v.tarih ?? null } : null;
+
   // ATAMA DIŞI TEKNİK ATAMA penceresi: kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
   // Firma sahibi sigortalanamadığı için şantiyeye atama açılamıyor; rolü yine de o dolduruyor.
   const [disAtamaDialog, setDisAtamaDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
@@ -554,7 +559,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // (telefonda basılı tutma) küçük bir menü açıyor; pencere ancak menüden seçilince geliyor.
   const [teknikMenu, setTeknikMenu] = useState<{ santiyeId: string; santiyeAd: string; x: number; y: number } | null>(null);
   const teknikBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, string>>({});
+  const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, { ad: string; tarih: string }>>({});
   const [disAtamaKaydediliyor, setDisAtamaKaydediliyor] = useState(false);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
@@ -1374,7 +1379,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const result: string[] = [];
       teknikIsimler.forEach((isim, idx) => {
         if (atanmisKeyler.has(`${isim}#${idx}`)) return;
-        if (disAtama[isim]) return;            // atama dışı biri dolduruyor
+        if (disAtamaCoz(disAtama[isim])?.ad) return;   // atama dışı biri dolduruyor
         result.push(isim);
       });
       cache.set(santiyeId, result);
@@ -1411,9 +1416,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     setDisAtamaKaydediliyor(true);
     try {
       // Boş bırakılan roller kaydedilmez — silinmiş sayılır.
-      const temiz: Record<string, string> = {};
-      for (const [rol, kisi] of Object.entries(disAtamaSecim)) {
-        if (kisi && kisi.trim()) temiz[rol] = kisi.trim();
+      const temiz: Record<string, { ad: string; tarih: string | null }> = {};
+      for (const [rol, v] of Object.entries(disAtamaSecim)) {
+        if (v?.ad?.trim()) temiz[rol] = { ad: v.ad.trim(), tarih: v.tarih?.trim() || null };
       }
       const supabase = (await import("@/lib/supabase/client")).createClient();
       const { error } = await supabase.from("santiyeler")
@@ -4282,7 +4287,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     acik: boolean;
     tumSecili: boolean;
     teknikPersoneller?: string[] | null;
-    disAtamalar?: Record<string, string> | null;
+    disAtamalar?: Record<string, string | { ad: string; tarih?: string | null }> | null;
     onTeknikAta?: (x: number, y: number) => void;
     onTeknikBasiliBasla?: (x: number, y: number) => void;
     onTeknikBasiliBitir?: () => void;
@@ -4403,7 +4408,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için SAĞ TIKLAYIN"
               >
                 <span className="font-semibold">Teknik (atamasız):</span>{" "}
-                {Object.entries(disAtamalar).map(([rol, kisi]) => `${rol} — ${kisi}`).join(" · ")}
+                {Object.entries(disAtamalar).map(([rol, v]) => {
+                  const ad = typeof v === "string" ? v : v?.ad;
+                  const tarih = typeof v === "string" ? null : v?.tarih;
+                  const gun = tarih ? new Date(tarih + "T00:00:00").toLocaleDateString("tr-TR") : null;
+                  return `${rol} — ${ad}${gun ? ` (${gun})` : ""}`;
+                }).join(" · ")}
               </div>
             )}
             {(() => {
@@ -6553,7 +6563,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             <button type="button"
               onClick={() => {
                 const sant = santiyeler.find((x) => x.id === teknikMenu.santiyeId);
-                setDisAtamaSecim({ ...(sant?.teknik_dis_atama ?? {}) });
+                const mevcut: Record<string, { ad: string; tarih: string }> = {};
+                for (const [rol, v] of Object.entries(sant?.teknik_dis_atama ?? {})) {
+                  const c = disAtamaCoz(v);
+                  if (c) mevcut[rol] = { ad: c.ad, tarih: c.tarih ?? "" };
+                }
+                setDisAtamaSecim(mevcut);
                 setDisAtamaDialog({ santiyeId: teknikMenu.santiyeId, santiyeAd: teknikMenu.santiyeAd });
                 setTeknikMenu(null);
               }}
@@ -6601,17 +6616,32 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     {Array.from(new Set([...bosRoller, ...Object.keys(disAtamaSecim)])).map((rol) => (
                       <div key={rol} className="rounded-lg border border-gray-200 p-2.5">
                         <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rol}</div>
-                        <select
-                          value={disAtamaSecim[rol] ?? ""}
-                          onChange={(e) => setDisAtamaSecim((prev) => ({ ...prev, [rol]: e.target.value }))}
-                          style={{ fontSize: "16px" }}
-                          className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
-                        >
-                          <option value="">Kimse atanmadı</option>
-                          {yetkililer.map((y) => (
-                            <option key={`y-${y.ad}`} value={y.ad}>{y.ad}{y.gorev ? ` — ${y.gorev}` : ""}</option>
-                          ))}
-                        </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-2">
+                          <select
+                            value={disAtamaSecim[rol]?.ad ?? ""}
+                            onChange={(e) => setDisAtamaSecim((prev) => ({
+                              ...prev,
+                              // Kişi seçilince tarih boşsa bugünle doldur — çoğu zaman aynı gün giriliyor.
+                              [rol]: { ad: e.target.value, tarih: prev[rol]?.tarih || yerelBugun() },
+                            }))}
+                            style={{ fontSize: "16px" }}
+                            className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
+                          >
+                            <option value="">Kimse atanmadı</option>
+                            {yetkililer.map((y) => (
+                              <option key={`y-${y.ad}`} value={y.ad}>{y.ad}{y.gorev ? ` — ${y.gorev}` : ""}</option>
+                            ))}
+                          </select>
+                          <input type="date"
+                            value={disAtamaSecim[rol]?.tarih ?? ""}
+                            disabled={!disAtamaSecim[rol]?.ad}
+                            onChange={(e) => setDisAtamaSecim((prev) => ({
+                              ...prev, [rol]: { ad: prev[rol]?.ad ?? "", tarih: e.target.value },
+                            }))}
+                            title="Atandığı tarih"
+                            style={{ fontSize: "16px" }}
+                            className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300" />
+                        </div>
                       </div>
                     ))}
                   </div>
