@@ -221,6 +221,44 @@ async function cekAnlik() {
   return out;
 }
 
+/**
+ * CANLI GÖSTERGE: gerçek sayaç = Arvento odometresi + araca özel FARK.
+ *
+ * Arvento cihazın kendi saydığı değeri veriyor, aracın gösterge sayacını bilmiyor; aradaki
+ * sabit fark araç kartında duruyor (arvento_fark, scripts/arvento-gosterge-kalibre.ts ile
+ * araçlar STOP hâldeyken ölçülüp yazılıyor). Fark yazılıyordu ama OKUYAN kod yoktu:
+ * gösterge yalnız elle girilince değişiyordu, araç çalıştıkça güncellenmiyordu.
+ *
+ * Kalibre edilmemiş araca (fark null) dokunulmaz — tahmini değer yazmaktansa boş kalsın.
+ *
+ * SAYAÇ GERİYE GİTMEZ: Arvento tek bir turda düşük değer verirse (kopuk okuma) gösterge
+ * geri çekilmez; yalnız ileri gider. Böylece bakım/yakıt hesapları sıçramaz.
+ */
+async function gostergeGuncelle(sb, satirlar) {
+  const odoMap = new Map();
+  for (const x of satirlar) if (x.odo != null) odoMap.set(String(x.node), Number(x.odo));
+  if (odoMap.size === 0) return;
+
+  const { data: araclar } = await sb.from("araclar")
+    .select("id, plaka, arvento_node, arvento_fark, guncel_gosterge")
+    .not("arvento_node", "is", null)
+    .not("arvento_fark", "is", null);
+
+  let n = 0;
+  for (const a of araclar ?? []) {
+    const odo = odoMap.get(String(a.arvento_node));
+    if (odo == null) continue;
+    const yeni = Math.round(odo + Number(a.arvento_fark));
+    if (!Number.isFinite(yeni) || yeni <= 0) continue;
+    if (a.guncel_gosterge != null && yeni <= Number(a.guncel_gosterge)) continue;   // geriye gitmez
+    const { error } = await sb.from("araclar")
+      .update({ guncel_gosterge: yeni, arvento_gosterge: yeni, updated_at: new Date().toISOString() })
+      .eq("id", a.id);
+    if (!error) n++;
+  }
+  if (n > 0) console.log(`  gösterge güncellendi: ${n} araç`);
+}
+
 async function birKez() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Supabase bilgileri eksik (.env.local: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
@@ -231,6 +269,9 @@ async function birKez() {
   const anlikSatir = satirlar.map(({ odo, ...rest }) => rest); // eslint-disable-line no-unused-vars
   const { error } = await sb.from("arvento_anlik").upsert(anlikSatir, { onConflict: "node" });
   if (error) throw new Error(`Supabase yazma hatası: ${error.message}`);
+  // Araç göstergesini canlı tut — hata olsa da senkronu bozmasın.
+  try { await gostergeGuncelle(sb, satirlar); } catch (e) { console.error("  gösterge:", e.message); }
+
   // Ekskavatör çalışma noktaları (kontak açıkken, ayar sıklığında) — hata olsa da canlı senkronu bozmasın.
   let ekskN = 0;
   try { ekskN = await ekskNoktaBirik(sb, satirlar); } catch (e) { console.error("  ekskavatör nokta:", e.message); }
