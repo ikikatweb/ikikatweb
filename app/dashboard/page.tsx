@@ -1974,12 +1974,10 @@ export default function DashboardPage() {
                           ) : (
                             <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Yaklaşıyor ({y.kalanGun}g)</span>
                           )}
-                          {/* Teklif süreci: cevap geldiyse yeşil, hâlâ bekleniyorsa gri. */}
-                          {y.teklifGeldi > 0 ? (
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.5 rounded">
-                              {y.teklifGeldi} acente cevap verdi
-                            </span>
-                          ) : y.teklifIstendi ? (
+                          {/* Cevap gelmişse ayrı rozet YOK: sağdaki "Teklifler (3)" düğmesi
+                              zaten sayıyı gösteriyor, ikisi aynı bilgiyi tekrarlıyordu.
+                              Yalnız henüz cevap yokken bilgi verilir. */}
+                          {y.teklifGeldi === 0 && y.teklifIstendi ? (
                             <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">Teklif bekleniyor</span>
                           ) : null}
                         </div>
