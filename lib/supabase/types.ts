@@ -19,6 +19,9 @@ export type Firma = {
   // İhale katılımcı listesinde "bizim firma" olarak işaretlemek için
   // Sadece bu flag'i true olan firmalar isOwnCompany kontrolünden geçer
   bizim_firma: boolean | null;
+  // Firma yetkilileri — sigortalanamayan (personel kaydı olmayan) kişiler de burada.
+  // Teknik personel rolü atanırken bu listeden seçilir.
+  yetkililer?: { ad: string; gorev?: string | null }[] | null;
   smtp_sender_email: string | null;
   created_at: string;
   updated_at: string;

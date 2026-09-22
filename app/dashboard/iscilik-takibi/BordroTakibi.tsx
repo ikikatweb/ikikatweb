@@ -89,6 +89,9 @@ type SantiyeBasic = {
 type Firma = {
   id: string;
   firma_adi: string;
+  kisa_adi?: string | null;
+  // Sigortalanamayan yetkililer (firma sahibi vb.) — teknik rol atamasında seçilir.
+  yetkililer?: { ad: string; gorev?: string | null }[] | null;
   renk?: string | null;  // örn. "#3b82f6"
   smtp_host?: string | null;
   smtp_user?: string | null;
@@ -6536,7 +6539,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const roller = sant?.teknik_personeller ?? [];
             // Personelden atanmış roller burada değiştirilmez — yalnız BOŞ roller listelenir.
             const bosRoller = atanmamisTeknikPersoneller(disAtamaDialog.santiyeId, roller);
-            const secilebilir = [...personeller]
+            // ÖNCE ŞANTİYENİN YÜKLENİCİ FİRMASININ YETKİLİLERİ: bu rolü dolduran kişi
+            // genellikle firma sahibi ve personel kaydı olmayabiliyor (sigortalanamıyor).
+            // Ardından personel listesi — listede olan biri de seçilebilsin.
+            const firma = firmalar.find((f) => f.id === sant?.yuklenici_firma_id);
+            const yetkililer = (firma?.yetkililer ?? []).filter((y) => y.ad?.trim());
+            const personelSecenek = [...personeller]
               .filter((x) => x.ad_soyad)
               .sort((a, b) => a.ad_soyad.localeCompare(b.ad_soyad, "tr"));
             return (
@@ -6546,6 +6554,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   bu rolü dolduruyorsa buradan bağlayın. <b>Personel ataması açılmaz</b>; puantaj,
                   bordro ve SGK bildirgesi etkilenmez.
                 </p>
+                {yetkililer.length === 0 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                    Bu şantiyenin yüklenici firmasında tanımlı yetkili yok. Yönetim → Firmalar
+                    ekranından <b>Firma Yetkilileri</b> alanına ekleyebilirsiniz.
+                  </p>
+                )}
                 {bosRoller.length === 0 && Object.keys(disAtamaSecim).length === 0 ? (
                   <p className="text-xs text-gray-400 py-4 text-center">Boş teknik personel rolü yok.</p>
                 ) : (
@@ -6560,9 +6574,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
                         >
                           <option value="">Kimse atanmadı</option>
-                          {secilebilir.map((x) => (
-                            <option key={x.id} value={x.ad_soyad}>{x.ad_soyad}{x.meslek ? ` — ${x.meslek}` : ""}</option>
-                          ))}
+                          {yetkililer.length > 0 && (
+                            <optgroup label={`${firma?.kisa_adi || firma?.firma_adi || "Firma"} yetkilileri`}>
+                              {yetkililer.map((y) => (
+                                <option key={`y-${y.ad}`} value={y.ad}>{y.ad}{y.gorev ? ` — ${y.gorev}` : ""}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="Personel">
+                            {personelSecenek.map((x) => (
+                              <option key={x.id} value={x.ad_soyad}>{x.ad_soyad}{x.meslek ? ` — ${x.meslek}` : ""}</option>
+                            ))}
+                          </optgroup>
                         </select>
                       </div>
                     ))}

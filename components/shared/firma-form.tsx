@@ -97,6 +97,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
     kisa_adi: firma?.kisa_adi ?? "",
     vergi_no: firma?.vergi_no ?? "",
     adres: firma?.adres ?? "",
+    yetkililer: firma?.yetkililer ?? [],
     renk: firma?.renk ?? "#1E3A5F",
     kase_url: firma?.kase_url ?? null,
     antet_url: firma?.antet_url ?? null,
@@ -130,6 +131,10 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
     // Firma adı title case, kısa adı BÜYÜK harf
     const submitData = {
       ...formData,
+      // Adı boş bırakılmış satırlar kaydedilmez.
+      yetkililer: (formData.yetkililer ?? []).filter((y) => y.ad?.trim()).map((y) => ({
+        ad: y.ad.trim(), gorev: y.gorev?.trim() || null,
+      })),
       firma_adi: formatBaslik(formData.firma_adi),
       kisa_adi: formData.kisa_adi ? formatBuyukHarf(formData.kisa_adi) : formData.kisa_adi,
     };
@@ -243,6 +248,60 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
                   disabled={loading}
                   rows={3}
                 />
+              </div>
+
+              {/* FİRMA YETKİLİLERİ — sigortalanamayan kişiler (firma sahibi vb.) burada tutulur.
+                  Şantiyenin teknik personel rolü atanırken bu listeden seçilir; personel
+                  kaydı ve ataması gerekmez. */}
+              <div className="space-y-2">
+                <Label>Firma Yetkilileri</Label>
+                <div className="space-y-2">
+                  {(formData.yetkililer ?? []).map((y, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input
+                        placeholder="Ad Soyad"
+                        value={y.ad}
+                        disabled={loading}
+                        onChange={(e) => setFormData((p) => {
+                          const liste = [...(p.yetkililer ?? [])];
+                          liste[i] = { ...liste[i], ad: e.target.value };
+                          return { ...p, yetkililer: liste };
+                        })}
+                        onBlur={(e) => setFormData((p) => {
+                          const liste = [...(p.yetkililer ?? [])];
+                          liste[i] = { ...liste[i], ad: formatBaslik(e.target.value) };
+                          return { ...p, yetkililer: liste };
+                        })}
+                      />
+                      <Input
+                        placeholder="Görevi (isteğe bağlı)"
+                        value={y.gorev ?? ""}
+                        disabled={loading}
+                        onChange={(e) => setFormData((p) => {
+                          const liste = [...(p.yetkililer ?? [])];
+                          liste[i] = { ...liste[i], gorev: e.target.value };
+                          return { ...p, yetkililer: liste };
+                        })}
+                      />
+                      <button type="button" disabled={loading}
+                        onClick={() => setFormData((p) => ({
+                          ...p, yetkililer: (p.yetkililer ?? []).filter((_, j) => j !== i),
+                        }))}
+                        className="h-9 w-9 flex-shrink-0 rounded-md border border-red-200 text-red-600 hover:bg-red-50">
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" disabled={loading}
+                    onClick={() => setFormData((p) => ({ ...p, yetkililer: [...(p.yetkililer ?? []), { ad: "", gorev: "" }] }))}
+                    className="h-9 px-3 rounded-md border border-dashed border-gray-300 text-xs text-gray-600 hover:bg-gray-50">
+                    + Yetkili ekle
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400">
+                  Sigortalanamayan yetkililer (firma sahibi vb.) buraya eklenir. Şantiyenin teknik
+                  personel rolü atanırken bu listeden seçilebilir; personel kaydı gerekmez.
+                </p>
               </div>
 
               <div className="space-y-2">
