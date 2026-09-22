@@ -6699,7 +6699,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
                           <div className="space-y-1.5">
                             {liste.map((k, i) => (
-                              <div key={i} className="rounded-md border border-gray-100 bg-gray-50 p-2">
+                              // Çıkışı verilmiş kayıt GEÇMİŞTİR: soluk görünür ve "çıktı" etiketi taşır.
+                              // Aynı satırda iki tarih dolu olunca "hâlâ görevde mi" karışıyordu.
+                              <div key={i} className={`rounded-md border p-2 ${
+                                k.cikis ? "border-gray-200 bg-gray-100 opacity-75" : "border-emerald-200 bg-emerald-50"}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                    k.cikis ? "bg-gray-300 text-gray-700" : "bg-emerald-600 text-white"}`}>
+                                    {k.cikis ? "ÇIKTI" : "GÖREVDE"}
+                                  </span>
+                                </div>
                                 <div className="flex gap-2 items-center">
                                   <select
                                     value={k.ad}
@@ -6751,6 +6760,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           </div>
 
                           {/* Görevde biri varken yeni satır açılmaz: önce ona çıkış verilmeli. */}
+                          {/* Görevde kimse yokken yeni atama asıl yapılacak iş — düğme öne çıkar.
+                              Kapanmış kaydın üzerine yazmaya çalışmak yerine yeni satır açılsın. */}
                           <button type="button"
                             disabled={gorevdeVar}
                             onClick={() => setDisAtamaSecim((prev) => ({
@@ -6758,8 +6769,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                               [rol]: [{ ad: "", giris: yerelBugun(), cikis: null }, ...(prev[rol] ?? [])],
                             }))}
                             title={gorevdeVar ? "Önce görevdeki kişiye çıkış verin" : undefined}
-                            className="mt-2 h-8 px-2.5 rounded-md border border-dashed border-gray-300 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                            + Yetkili ata
+                            className={`mt-2 h-9 px-3 rounded-md border text-[12px] font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                              gorevdeVar
+                                ? "border-dashed border-gray-300 text-gray-600"
+                                : "border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"}`}>
+                            {liste.length > 0 && !gorevdeVar ? "+ Yeni yetkili ata" : "+ Yetkili ata"}
                           </button>
                         </div>
                       );
