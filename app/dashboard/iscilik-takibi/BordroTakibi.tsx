@@ -81,12 +81,15 @@ type SantiyeBasic = {
   sure_uzatimli_tarih?: string | null;  // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim kullanılır)
   teknik_personel_sayisi?: number | null;
   teknik_personeller?: string[] | null;
-  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller.
-  // Biçim: {"rol": {"ad": "...", "tarih": "2026-09-22"}}; eski kayıtlar düz metin olabilir.
-  teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null }> | null;
+  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller — GEÇMİŞİYLE.
+  // Biçim: {"rol": [{"ad","giris","cikis"}]}; önceki iki biçim de okunur.
+  teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null } | DisAtamaKayit[]> | null;
   calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
   calisilmayan_bit?: string | null; // çalışılmayan dönem bitişi
 };
+/** Atama açılamayan kişinin (firma sahibi vb.) bir teknik rolü doldurduğu dönem. */
+type DisAtamaKayit = { ad: string; giris: string; cikis?: string | null };
+
 type Firma = {
   id: string;
   firma_adi: string;
@@ -548,9 +551,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [bilgiNotlari, setBilgiNotlari] = useState<BilgiNotu[]>([]);
   // Personel × Şantiye bazlı teknik personel kayıtları (sadece bilgi amaçlı rozet için)
   const [teknikKayitlari, setTeknikKayitlari] = useState<PersonelTeknikRow[]>([]);
-  /** teknik_dis_atama değeri iki biçimde olabilir (eski: düz ad, yeni: {ad, tarih}). */
-  const disAtamaCoz = (v: string | { ad: string; tarih?: string | null } | undefined) =>
-    typeof v === "string" ? { ad: v, tarih: null } : v ? { ad: v.ad, tarih: v.tarih ?? null } : null;
+  /**
+   * teknik_dis_atama üç biçimde olabilir; hepsi TEK bir geçmiş listesine çevrilir:
+   *   "Ad Soyad"                        → ilk sürüm, tarihsiz
+   *   { ad, tarih }                     → tek kayıt, giriş tarihli
+   *   [{ ad, giris, cikis }]            → güncel biçim, geçmişiyle
+   * Böylece eski kayıtlar ekranı bozmadan okunmaya devam ediyor.
+   */
+  const disAtamaGecmis = (v: string | { ad: string; tarih?: string | null } | DisAtamaKayit[] | undefined): DisAtamaKayit[] => {
+    if (!v) return [];
+    if (typeof v === "string") return v.trim() ? [{ ad: v.trim(), giris: "", cikis: null }] : [];
+    if (Array.isArray(v)) return v.filter((x) => x?.ad?.trim());
+    return v.ad?.trim() ? [{ ad: v.ad.trim(), giris: v.tarih ?? "", cikis: null }] : [];
+  };
+
+  /**
+   * Rol, VERİLEN GÜNDE bu kayıtlardan biriyle dolu mu?
+   * Giriş o günden önce başlamış ve çıkış verilmemiş ya da o günden sonraysa doludur.
+   * Giriş tarihi boş olan eski kayıtlar "hep vardı" sayılır — geçmişi bozmamak için.
+   */
+  const disAtamaDoluMu = (kayitlar: DisAtamaKayit[], gun: string): DisAtamaKayit | null =>
+    kayitlar.find((k) => (!k.giris || k.giris <= gun) && (!k.cikis || k.cikis > gun)) ?? null;
 
   // ATAMA DIŞI TEKNİK ATAMA penceresi: kırmızı "Atanmamış Teknik" yazısına tıklayınca açılır.
   // Firma sahibi sigortalanamadığı için şantiyeye atama açılamıyor; rolü yine de o dolduruyor.
@@ -559,7 +580,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // (telefonda basılı tutma) küçük bir menü açıyor; pencere ancak menüden seçilince geliyor.
   const [teknikMenu, setTeknikMenu] = useState<{ santiyeId: string; santiyeAd: string; x: number; y: number } | null>(null);
   const teknikBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, { ad: string; tarih: string }>>({});
+  const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, DisAtamaKayit[]>>({});
   const [disAtamaKaydediliyor, setDisAtamaKaydediliyor] = useState(false);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [brutUcretGecmisi, setBrutUcretGecmisi] = useState<PersonelBrutUcret[]>([]);
@@ -1363,6 +1384,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (!teknikIsimler || teknikIsimler.length === 0) return [];
       if (cache.has(santiyeId)) return cache.get(santiyeId)!;
       const disAtama = santiyeler.find((x) => x.id === santiyeId)?.teknik_dis_atama ?? {};
+      const [ay_y, ay_m] = seciliAy.split("-").map(Number);
+      const aySonuTarihi = `${ay_y}-${String(ay_m).padStart(2, "0")}-${String(new Date(ay_y, ay_m, 0).getDate()).padStart(2, "0")}`;
       const atanmisKeyler = new Set<string>();
       for (const r of teknikKayitlari) {
         if (r.santiye_id !== santiyeId || !r.is_teknik || !r.teknik_isim) continue;
@@ -1379,14 +1402,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const result: string[] = [];
       teknikIsimler.forEach((isim, idx) => {
         if (atanmisKeyler.has(`${isim}#${idx}`)) return;
-        if (disAtamaCoz(disAtama[isim])?.ad) return;   // atama dışı biri dolduruyor
+        // Atama dışı doldurulmuşsa: o ayın SONUNDA hâlâ görevde olan bir kayıt var mı?
+        if (disAtamaDoluMu(disAtamaGecmis(disAtama[isim]), aySonuTarihi)) return;
         result.push(isim);
       });
       cache.set(santiyeId, result);
       return result;
     }
     return hesapla;
-  }, [teknikKayitlari, ayindaTeknikMi, santiyeler]);
+  }, [teknikKayitlari, ayindaTeknikMi, santiyeler, seciliAy]);
 
   /**
    * Çıkış verilen kişi o şantiyede TEKNİK PERSONEL ise hangi rolün boşta kaldığını söyler.
@@ -1415,10 +1439,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (!disAtamaDialog) return;
     setDisAtamaKaydediliyor(true);
     try {
-      // Boş bırakılan roller kaydedilmez — silinmiş sayılır.
-      const temiz: Record<string, { ad: string; tarih: string | null }> = {};
-      for (const [rol, v] of Object.entries(disAtamaSecim)) {
-        if (v?.ad?.trim()) temiz[rol] = { ad: v.ad.trim(), tarih: v.tarih?.trim() || null };
+      // Tarihler ZORUNLU: geçmişi tarihsiz tutmak "ne zaman girdi, ne zaman çıktı"
+      // sorusunu cevapsız bırakır — bu kaydın tek amacı da o.
+      const temiz: Record<string, DisAtamaKayit[]> = {};
+      for (const [rol, liste] of Object.entries(disAtamaSecim)) {
+        const satirlar = (liste ?? []).filter((k) => k.ad?.trim());
+        for (const k of satirlar) {
+          if (!k.giris) { toast.error(`${rol}: ${k.ad} için giriş tarihi girin.`); return; }
+          if (k.cikis && k.cikis < k.giris) { toast.error(`${rol}: ${k.ad} çıkışı girişten önce olamaz.`); return; }
+        }
+        // Aynı rolde birden çok "devam eden" kayıt olamaz — biri çıkmadan diğeri giremez.
+        if (satirlar.filter((k) => !k.cikis).length > 1) {
+          toast.error(`${rol}: aynı anda birden fazla kişi görevde olamaz, öncekine çıkış verin.`);
+          return;
+        }
+        if (satirlar.length) {
+          temiz[rol] = satirlar
+            .map((k) => ({ ad: k.ad.trim(), giris: k.giris, cikis: k.cikis?.trim() || null }))
+            .sort((a, b) => b.giris.localeCompare(a.giris));   // en yeni üstte
+        }
       }
       const supabase = (await import("@/lib/supabase/client")).createClient();
       const { error } = await supabase.from("santiyeler")
@@ -1433,6 +1472,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       setDisAtamaKaydediliyor(false);
     }
   }
+
+  /**
+   * Başlıkta gösterilecek özet: görüntülenen ayda görevde olan atama dışı kişiler.
+   * Çıkmış olanlar özette yer almaz — geçmişleri pencerede duruyor.
+   */
+  const disAtamaOzeti = useCallback((santiyeId: string): string | null => {
+    const kayit = santiyeler.find((x) => x.id === santiyeId)?.teknik_dis_atama;
+    if (!kayit) return null;
+    const [y, m] = seciliAy.split("-").map(Number);
+    const aySonu = `${y}-${String(m).padStart(2, "0")}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+    const parcalar: string[] = [];
+    for (const [rol, v] of Object.entries(kayit)) {
+      const aktif = disAtamaDoluMu(disAtamaGecmis(v), aySonu);
+      if (!aktif) continue;
+      const gun = aktif.giris ? new Date(aktif.giris + "T00:00:00").toLocaleDateString("tr-TR") : null;
+      parcalar.push(`${rol} — ${aktif.ad}${gun ? ` (${gun})` : ""}`);
+    }
+    return parcalar.length ? parcalar.join(" · ") : null;
+  }, [santiyeler, seciliAy]);
 
   // Bir şantiyede şu anda kaç AKTİF teknik personel var?
   // = teknik_personel_sayisi alanına göre "kapasite" dolu mu kontrolü için.
@@ -4276,7 +4334,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // Accordion satırı: işin adı + sayım + chevron, tıklayınca açılıp altta personel listesi
   function SantiyeAccordion({
-    santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamalar,
+    santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamaOzet,
     onToggle, onTumunuSecToggle, onPlus, onTeknikAta, onTeknikBasiliBasla, onTeknikBasiliBitir, children,
   }: {
     santiyeId: string;
@@ -4287,7 +4345,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     acik: boolean;
     tumSecili: boolean;
     teknikPersoneller?: string[] | null;
-    disAtamalar?: Record<string, string | { ad: string; tarih?: string | null }> | null;
+    disAtamaOzet?: string | null;
     onTeknikAta?: (x: number, y: number) => void;
     onTeknikBasiliBasla?: (x: number, y: number) => void;
     onTeknikBasiliBitir?: () => void;
@@ -4398,7 +4456,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             )}
             {/* Atama dışı doldurulan roller — hem bilgi hem düzeltme girişi.
                 Uyarı kalktıktan sonra bu kaydı değiştirecek başka bir yer kalmıyordu. */}
-            {disAtamalar && Object.keys(disAtamalar).length > 0 && (
+            {disAtamaOzet && (
               <div
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
                 onTouchStart={(e) => { const d = e.touches[0]; onTeknikBasiliBasla?.(d.clientX, d.clientY); }}
@@ -4408,12 +4466,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için SAĞ TIKLAYIN"
               >
                 <span className="font-semibold">Teknik (atamasız):</span>{" "}
-                {Object.entries(disAtamalar).map(([rol, v]) => {
-                  const ad = typeof v === "string" ? v : v?.ad;
-                  const tarih = typeof v === "string" ? null : v?.tarih;
-                  const gun = tarih ? new Date(tarih + "T00:00:00").toLocaleDateString("tr-TR") : null;
-                  return `${rol} — ${ad}${gun ? ` (${gun})` : ""}`;
-                }).join(" · ")}
+                {disAtamaOzet}
               </div>
             )}
             {(() => {
@@ -5233,7 +5286,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             acik={acik}
                             tumSecili={tumSecili}
                             teknikPersoneller={atanmamisTeknikPersoneller(s.id, s.teknik_personeller)}
-                            disAtamalar={s.teknik_dis_atama ?? null}
+                            disAtamaOzet={disAtamaOzeti(s.id)}
                             onTeknikAta={yDuzenle ? (x, y) => setTeknikMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y }) : undefined}
                             onTeknikBasiliBasla={yDuzenle ? (x, y) => {
                               // Telefonda sağ tık yok — yarım saniye basılı tutmak aynı menüyü açar.
@@ -6563,10 +6616,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             <button type="button"
               onClick={() => {
                 const sant = santiyeler.find((x) => x.id === teknikMenu.santiyeId);
-                const mevcut: Record<string, { ad: string; tarih: string }> = {};
+                const mevcut: Record<string, DisAtamaKayit[]> = {};
                 for (const [rol, v] of Object.entries(sant?.teknik_dis_atama ?? {})) {
-                  const c = disAtamaCoz(v);
-                  if (c) mevcut[rol] = { ad: c.ad, tarih: c.tarih ?? "" };
+                  const g = disAtamaGecmis(v);
+                  if (g.length) mevcut[rol] = g;
                 }
                 setDisAtamaSecim(mevcut);
                 setDisAtamaDialog({ santiyeId: teknikMenu.santiyeId, santiyeAd: teknikMenu.santiyeAd });
@@ -6613,37 +6666,89 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                   <p className="text-xs text-gray-400 py-4 text-center">Boş teknik personel rolü yok.</p>
                 ) : (
                   <div className="space-y-2">
-                    {Array.from(new Set([...bosRoller, ...Object.keys(disAtamaSecim)])).map((rol) => (
-                      <div key={rol} className="rounded-lg border border-gray-200 p-2.5">
-                        <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rol}</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px] gap-2">
-                          <select
-                            value={disAtamaSecim[rol]?.ad ?? ""}
-                            onChange={(e) => setDisAtamaSecim((prev) => ({
-                              ...prev,
-                              // Kişi seçilince tarih boşsa bugünle doldur — çoğu zaman aynı gün giriliyor.
-                              [rol]: { ad: e.target.value, tarih: prev[rol]?.tarih || yerelBugun() },
-                            }))}
-                            style={{ fontSize: "16px" }}
-                            className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
-                          >
-                            <option value="">Kimse atanmadı</option>
-                            {yetkililer.map((y) => (
-                              <option key={`y-${y.ad}`} value={y.ad}>{y.ad}{y.gorev ? ` — ${y.gorev}` : ""}</option>
+                    {Array.from(new Set([...bosRoller, ...Object.keys(disAtamaSecim)])).map((rol) => {
+                      const liste = disAtamaSecim[rol] ?? [];
+                      const guncelle = (i: number, yama: Partial<DisAtamaKayit>) =>
+                        setDisAtamaSecim((prev) => {
+                          const l = [...(prev[rol] ?? [])];
+                          l[i] = { ...l[i], ...yama };
+                          return { ...prev, [rol]: l };
+                        });
+                      const sil = (i: number) =>
+                        setDisAtamaSecim((prev) => ({ ...prev, [rol]: (prev[rol] ?? []).filter((_, j) => j !== i) }));
+                      const gorevdeVar = liste.some((k) => !k.cikis && k.ad);
+                      return (
+                        <div key={rol} className="rounded-lg border border-gray-200 p-2.5">
+                          <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rol}</div>
+
+                          {liste.length === 0 && (
+                            <p className="text-[11px] text-gray-400 mb-1.5">Bu rolü dolduran kimse yok.</p>
+                          )}
+
+                          <div className="space-y-1.5">
+                            {liste.map((k, i) => (
+                              <div key={i} className="rounded-md border border-gray-100 bg-gray-50 p-2">
+                                <div className="flex gap-2 items-center">
+                                  <select
+                                    value={k.ad}
+                                    onChange={(e) => guncelle(i, { ad: e.target.value })}
+                                    style={{ fontSize: "16px" }}
+                                    className="h-9 flex-1 min-w-0 rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring"
+                                  >
+                                    <option value="">Kişi seçin…</option>
+                                    {/* Eski kayıttaki kişi listede yoksa yine görünsün, seçim kaybolmasın. */}
+                                    {k.ad && !yetkililer.some((y) => y.ad === k.ad) && (
+                                      <option value={k.ad}>{k.ad}</option>
+                                    )}
+                                    {yetkililer.map((y) => (
+                                      <option key={`y-${y.ad}`} value={y.ad}>{y.ad}{y.gorev ? ` — ${y.gorev}` : ""}</option>
+                                    ))}
+                                  </select>
+                                  <button type="button" onClick={() => sil(i)}
+                                    title="Bu kaydı sil"
+                                    className="h-9 w-9 flex-shrink-0 rounded-md border border-red-200 text-red-600 hover:bg-red-50">×</button>
+                                </div>
+                                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                                  <label className="block">
+                                    <span className="text-[10px] text-gray-500">Giriş tarihi *</span>
+                                    <input type="date" value={k.giris ?? ""}
+                                      onChange={(e) => guncelle(i, { giris: e.target.value })}
+                                      style={{ fontSize: "16px" }}
+                                      className="h-9 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring" />
+                                  </label>
+                                  <label className="block">
+                                    <span className="text-[10px] text-gray-500">Çıkış tarihi</span>
+                                    <input type="date" value={k.cikis ?? ""}
+                                      onChange={(e) => guncelle(i, { cikis: e.target.value })}
+                                      style={{ fontSize: "16px" }}
+                                      className="h-9 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring" />
+                                  </label>
+                                </div>
+                                {!k.cikis && k.ad && (
+                                  <button type="button"
+                                    onClick={() => guncelle(i, { cikis: yerelBugun() })}
+                                    className="mt-1.5 text-[11px] text-red-700 underline decoration-dotted">
+                                    Bugün çıkış ver
+                                  </button>
+                                )}
+                              </div>
                             ))}
-                          </select>
-                          <input type="date"
-                            value={disAtamaSecim[rol]?.tarih ?? ""}
-                            disabled={!disAtamaSecim[rol]?.ad}
-                            onChange={(e) => setDisAtamaSecim((prev) => ({
-                              ...prev, [rol]: { ad: prev[rol]?.ad ?? "", tarih: e.target.value },
+                          </div>
+
+                          {/* Görevde biri varken yeni satır açılmaz: önce ona çıkış verilmeli. */}
+                          <button type="button"
+                            disabled={gorevdeVar}
+                            onClick={() => setDisAtamaSecim((prev) => ({
+                              ...prev,
+                              [rol]: [{ ad: "", giris: yerelBugun(), cikis: null }, ...(prev[rol] ?? [])],
                             }))}
-                            title="Atandığı tarih"
-                            style={{ fontSize: "16px" }}
-                            className="h-10 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring disabled:bg-gray-50 disabled:text-gray-300" />
+                            title={gorevdeVar ? "Önce görevdeki kişiye çıkış verin" : undefined}
+                            className="mt-2 h-8 px-2.5 rounded-md border border-dashed border-gray-300 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                            + Yetkili ata
+                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 <div className="flex gap-2 pt-1">

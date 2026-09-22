@@ -34,10 +34,10 @@ export type SantiyeAllRow = {
   gecici_kabul_tarihi: string | null; kesin_kabul_tarihi: string | null; tasfiye_tarihi: string | null; devir_tarihi: string | null;
   depo_kapasitesi: number | null; yuklenici_firma_id: string | null; isyeri_teslim_tarihi: string | null;
   is_suresi: number | null; is_bitim_tarihi: string | null; teknik_personel_sayisi: number | null; teknik_personeller: string[] | null;
-  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller.
-  // Biçim: {"rol": {"ad": "...", "tarih": "2026-09-22"}} — ilk sürümde düz metindi ("ad soyad"),
-  // eski kayıtlar okunabilsin diye iki biçim de kabul edilir.
-  teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null }> | null;
+  // Atama açılamayan kişilerin (firma sahibi vb.) doldurduğu roller — GEÇMİŞİYLE birlikte.
+  // Biçim: {"rol": [{"ad":"...","giris":"2026-09-22","cikis":null}]}
+  // Önceki iki biçim de okunur: düz metin ("ad soyad") ve tek kayıt {"ad","tarih"}.
+  teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null } | { ad: string; giris: string; cikis?: string | null }[]> | null;
   calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
   sure_uzatimli_tarih: string | null; // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim_tarihi kullanılır)
 };
