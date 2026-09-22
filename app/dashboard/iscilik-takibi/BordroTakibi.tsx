@@ -5630,6 +5630,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     if (r.santiye_id !== gunEdit.santiyeId) continue;
                     if (r.personel_id === gunEdit.personel.id) continue;
                     if (!r.is_teknik || !r.teknik_isim) continue;
+                    // ÇIKMIŞ KİŞİ ROLÜ KİLİTLEMEZ. Kayıt işten ayrılınca silinmediği için
+                    // rol sonsuza kadar "başkasında" görünüyor ve boşalan role yeni kimse
+                    // atanamıyordu — oysa uyarı da "bu rol boş" diyor. Kişi o ayda hâlâ
+                    // çalışıyorsa kilit sürer, çıkmışsa rol serbest kalır.
+                    if (!ayindaTeknikMi(r.personel_id, r.santiye_id)) continue;
                     const rawKeyler = r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
                     const baskaPersonel = personeller.find((p) => p.id === r.personel_id);
                     const ad = baskaPersonel?.ad_soyad ?? "—";
@@ -5705,6 +5710,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       <div className="text-[10px] text-gray-500 mt-1.5">
                         İşin teknik personel listesi. Bu personele uygulanan rolü seçin (tek seçim).
                         Yeni bir rol seçerseniz öncekinin seçimi kalkar. Soluk olanlar başka personellere atanmış (kilitli).
+                        İşten çıkan personelin rolü kilitli kalmaz, yeniden atanabilir.
                       </div>
                     </div>
                   );
