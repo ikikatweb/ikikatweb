@@ -1,7 +1,7 @@
 // Dashboard — 8 Widget ana sayfa
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
@@ -230,6 +230,16 @@ export default function DashboardPage() {
   const [teklifMenu, setTeklifMenu] = useState<{ t: SigortaTeklif; x: number; y: number } | null>(null);
   const [policeTalep, setPoliceTalep] = useState<SigortaTeklif | null>(null);
   const [policeTalepGonderiliyor, setPoliceTalepGonderiliyor] = useState(false);
+  // TELEFONDA MENÜ: sağ tık yok, çift dokunuş da güvenilir değil (tarayıcı yakınlaştırma
+  // sayıyor). Parmağı basılı tutmak menüyü açar — telefonda alışılmış davranış budur.
+  // Tarayıcının kendi "contextmenu" olayı mobilde her yerde çıkmıyor, o yüzden süre
+  // kendimiz ölçülüyor. Kaydırırken açılmasın diye parmak kayarsa iptal edilir.
+  const basiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const basiliNoktaRef = useRef<{ x: number; y: number } | null>(null);
+  const basiliIptal = () => {
+    if (basiliRef.current) { clearTimeout(basiliRef.current); basiliRef.current = null; }
+    basiliNoktaRef.current = null;
+  };
   // Acentenin tablosunda kırmızı ünlemli (yapılamaz) ve mavi i (şartlı) teklifler
   // listede GÖRÜNMEZ — bunlara poliçe kestirilemiyor, yer kaplıyorlardı. Üstteki
   // "Tümünü göster" ile geri gelirler.
@@ -3075,7 +3085,27 @@ export default function DashboardPage() {
                           return (
                             <div key={t.id}
                               onContextMenu={(e) => { e.preventDefault(); menuAc(t, e.clientX, e.clientY); }}
-                              className={`rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
+                              onTouchStart={(e) => {
+                                const d = e.touches[0];
+                                basiliNoktaRef.current = { x: d.clientX, y: d.clientY };
+                                basiliIptal();
+                                basiliRef.current = setTimeout(() => {
+                                  basiliRef.current = null;
+                                  menuAc(t, d.clientX, d.clientY);
+                                }, 450);
+                              }}
+                              onTouchMove={(e) => {
+                                // Liste kaydırılıyorsa menü açılmasın: 10 pikselden fazla kayma yeter.
+                                const b = basiliNoktaRef.current;
+                                if (!b) return;
+                                const d = e.touches[0];
+                                if (Math.abs(d.clientX - b.x) > 10 || Math.abs(d.clientY - b.y) > 10) basiliIptal();
+                              }}
+                              onTouchEnd={basiliIptal}
+                              onTouchCancel={basiliIptal}
+                              // iOS parmak basılı tutunca kendi metin seçme balonunu açıyordu.
+                              style={{ WebkitTouchCallout: "none" }}
+                              className={`select-none rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
                                 t.police_talep_tarihi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
                                 : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
