@@ -1460,9 +1460,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         }
       }
       const supabase = (await import("@/lib/supabase/client")).createClient();
-      const { error } = await supabase.from("santiyeler")
-        .update({ teknik_dis_atama: temiz }).eq("id", disAtamaDialog.santiyeId);
+      // .select() ŞART: update tek başına satır yazılmadığında da hata döndürmüyor.
+      // Yetki (RLS) engellerse sessizce 0 satır etkileniyor ve ekran "kaydedildi" diyordu.
+      const { data: yazilan, error } = await supabase.from("santiyeler")
+        .update({ teknik_dis_atama: temiz }).eq("id", disAtamaDialog.santiyeId).select("id");
       if (error) throw error;
+      if (!yazilan || yazilan.length === 0) {
+        toast.error("Kaydedilemedi: bu şantiyeyi düzenleme yetkiniz yok görünüyor.");
+        return;
+      }
       toast.success("Teknik personel ataması kaydedildi.");
       setDisAtamaDialog(null);
       await loadData();
@@ -6684,6 +6690,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                           {liste.length === 0 && (
                             <p className="text-[11px] text-gray-400 mb-1.5">Bu rolü dolduran kimse yok.</p>
                           )}
+                          {liste.some((k) => k.ad && !k.giris) && (
+                            <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 mb-1.5">
+                              Bu kayıt giriş tarihi tutulmadan önce oluşturulmuş. Kaydedebilmek için
+                              kırmızı işaretli giriş tarihini doldurun.
+                            </p>
+                          )}
 
                           <div className="space-y-1.5">
                             {liste.map((k, i) => (
@@ -6710,11 +6722,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                 </div>
                                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                                   <label className="block">
-                                    <span className="text-[10px] text-gray-500">Giriş tarihi *</span>
+                                    <span className={`text-[10px] ${k.ad && !k.giris ? "text-red-600 font-semibold" : "text-gray-500"}`}>
+                                      Giriş tarihi *{k.ad && !k.giris ? " — zorunlu" : ""}
+                                    </span>
                                     <input type="date" value={k.giris ?? ""}
                                       onChange={(e) => guncelle(i, { giris: e.target.value })}
                                       style={{ fontSize: "16px" }}
-                                      className="h-9 w-full rounded-md border border-input bg-white px-2 text-sm outline-none focus:border-ring" />
+                                      className={`h-9 w-full rounded-md border bg-white px-2 text-sm outline-none focus:border-ring ${
+                                        k.ad && !k.giris ? "border-red-400 bg-red-50" : "border-input"}`} />
                                   </label>
                                   <label className="block">
                                     <span className="text-[10px] text-gray-500">Çıkış tarihi</span>
