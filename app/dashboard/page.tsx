@@ -2048,7 +2048,7 @@ export default function DashboardPage() {
             <div className="max-h-[220px] overflow-y-auto">
               <Table noWrapper className="text-xs">
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-white">
                     <TableHead className="px-2 text-[10px]">Plaka</TableHead>
                     <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
                     <TableHead className="px-2 text-[10px] text-right">Güncel Km/Sa</TableHead>
@@ -2140,7 +2140,7 @@ export default function DashboardPage() {
             <div className="max-h-[200px] overflow-y-auto">
               <Table noWrapper className="text-xs">
                 <TableHeader>
-                  <TableRow>
+                  <TableRow className="bg-white">
                     <TableHead className="px-2 text-[10px] text-gray-700">İş Adı</TableHead>
                     <TableHead className="px-1 text-[10px] text-gray-700 text-center w-[80px]">
                       Son Veri
@@ -2369,7 +2369,7 @@ export default function DashboardPage() {
             <div className="max-h-[200px] overflow-y-auto">
               {/* Firma sütunu kaldırıldı — Tarih sütununun solunda renk şeridi şeklinde gösterilir. */}
               <Table noWrapper className="text-xs">
-                <TableHeader><TableRow>
+                <TableHeader><TableRow className="bg-white">
                   <TableHead className="px-2 text-[10px]">Tarih</TableHead>
                   <TableHead className="px-2 text-[10px]">Konu / Muhatap</TableHead>
                   <TableHead className="px-2 text-[10px] text-center">Kayıt No</TableHead>

@@ -70,7 +70,7 @@ export default function IcraDashboard() {
       ) : (
         <div className="max-h-[220px] overflow-y-auto">
           <Table noWrapper className="text-xs text-gray-900">
-            <TableHeader><TableRow>
+            <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Cevap Tarihi</TableHead>
