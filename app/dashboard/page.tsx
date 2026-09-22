@@ -301,6 +301,16 @@ export default function DashboardPage() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   })();
 
+  // WIDGET GÖRÜNÜR MÜ — hem çizimde hem VERİ ÇEKMEDE kullanılır.
+  // Eskiden yalnız çizimde bakılıyordu: kapalı widget'ın verisi yine de indiriliyordu.
+  // Ana sayfa açılışta ~2 MB / 19 sorgu çekiyordu; telefonda asıl gecikme buydu.
+  const widgetGorunur = useCallback((key: string) => {
+    const liste = kullanici?.dashboard_widgets;
+    if (isYonetici) return !liste || liste.length === 0 || liste.includes(key);
+    if (!liste || liste.length === 0) return false;   // kısıtlı/şantiye admini: liste boşsa hiçbiri
+    return liste.includes(key);
+  }, [kullanici, isYonetici]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setKasaLoading(true);
@@ -310,22 +320,28 @@ export default function DashboardPage() {
     // Diğer widget'lar verisi gelene kadar boş/yükleniyor durumunda kalır.
 
     // KRİTİK BATCH (kasa widget) — sayfa açılışı bunu bekler
+    const kasaVar = widgetGorunur("kasa_ozet");
+
+    // Kullanıcı adları hem kasa hem şantiye defteri bölümünde lazım — bir kez istenir.
+    // (State'e yazılıyor ama bu fonksiyonun kapanışı eski state'i gördüğü için
+    //  değeri doğrudan bu sözden okumak gerekiyor.)
+    const adlarPromise: Promise<Map<string, string>> = fetch("/api/kullanicilar/adlar")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((liste: { id: string; ad_soyad: string }[]) => new Map(liste.map((k) => [k.id, k.ad_soyad])))
+      .catch(() => new Map<string, string>());
+
     const kritikPromise = (async () => {
       try {
-        const [kasaErken, devirErken, kAdlarRes, sant] = await Promise.all([
-          getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []),
-          getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
-          fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
+        // Kasa widget'ı kapalıysa hareketleri hiç çekme — 440 KB'lık en ağır sorgu odur.
+        const [kasaErken, devirErken, kAdlar, sant] = await Promise.all([
+          kasaVar ? getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []) : Promise.resolve([]),
+          kasaVar ? getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()) : Promise.resolve(new Map<string, number>()),
+          adlarPromise,
           getSantiyelerAll().catch(() => []),
         ]);
         setKasaData(kasaErken as KasaHareketi[]);
         setDevirBakiye(devirErken);
-        const kAdlar = kAdlarRes as { id: string; ad_soyad: string }[];
-        setKullaniciAdlari((prev) => {
-          const m = new Map(prev);
-          for (const k of kAdlar) m.set(k.id, k.ad_soyad);
-          return m;
-        });
+        setKullaniciAdlari(kAdlar);
         setSantiyeler(sant as SantiyeBasic[]);
         setKasaLoading(false);
         return sant as SantiyeBasic[];
@@ -338,17 +354,21 @@ export default function DashboardPage() {
     // BACKGROUND BATCH 1: Sigorta widget verileri (araclar, polisler, tanımlar, bakım)
     (async () => {
       try {
+        // Sigorta ve bakım verileri yalnız ilgili widget açıkken çekilir.
+        const sigortaVar = widgetGorunur("sigorta_muayene");
+        const bakimVar = widgetGorunur("yaklasan_bakim");
+        const bos = <T,>(): Promise<T[]> => Promise.resolve([] as T[]);
         const [arac, pol, tekGon, sfData, acData, bakimData, yakGun, kaskoGun, sigTek, sigVaz] = await Promise.all([
-          getAraclar().catch(() => []),
-          getTumPoliceler().catch(() => []),
-          getTeklifGonderimler().catch(() => []),
-          getDegerler("sigorta_firmasi").catch(() => []),
-          getDegerler("sigorta_acente").catch(() => []),
-          getAracBakimlar().catch(() => []),
-          getDegerler("sigorta_yaklasir_gun").catch(() => []),
-          getDegerler("kasko_yaklasir_gun").catch(() => []),
-          getSigortaTeklifler().catch(() => []),
-          getSigortaVazgecler().catch(() => []),
+          getAraclar().catch(() => []),                       // araç adları başka widget'larda da lazım
+          sigortaVar ? getTumPoliceler().catch(() => []) : bos(),
+          sigortaVar ? getTeklifGonderimler().catch(() => []) : bos(),
+          sigortaVar ? getDegerler("sigorta_firmasi").catch(() => []) : bos(),
+          sigortaVar ? getDegerler("sigorta_acente").catch(() => []) : bos(),
+          bakimVar ? getAracBakimlar().catch(() => []) : bos(),
+          sigortaVar ? getDegerler("sigorta_yaklasir_gun").catch(() => []) : bos(),
+          sigortaVar ? getDegerler("kasko_yaklasir_gun").catch(() => []) : bos(),
+          sigortaVar ? getSigortaTeklifler().catch(() => []) : bos(),
+          sigortaVar ? getSigortaVazgecler().catch(() => []) : bos(),
         ]);
         setAraclar(arac as AracWithRelations[]);
         setPoliceler(pol as AracPolice[]);
@@ -358,21 +378,23 @@ export default function DashboardPage() {
         setAracBakimlar(bakimData as AracBakimWithArac[]);
         setSigortaTeklifler(sigTek as SigortaTeklif[]);
         setSigortaVazgecler(sigVaz as { arac_id: string; police_tipi: "kasko" | "trafik" }[]);
-        const trafikGunVal = yakGun.length > 0 ? (parseInt(yakGun[0]) || 30) : 30;
+        const trafikGunVal = yakGun.length > 0 ? (parseInt(String(yakGun[0])) || 30) : 30;
         setYaklasirGun(trafikGunVal);
-        setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(kaskoGun[0]) || trafikGunVal) : trafikGunVal);
+        setKaskoYaklasirGun(kaskoGun.length > 0 ? (parseInt(String(kaskoGun[0])) || trafikGunVal) : trafikGunVal);
       } catch { /* sessiz */ }
     })();
 
     // BACKGROUND BATCH 2: Yakıt + Evrak + Personel + Yi-ÜFE
     (async () => {
       try {
+        const evrakVar = widgetGorunur("eksik_evrak");
+        const yiufeVar = widgetGorunur("yiufe");
         const [alim, dagitim, evrak, pers, yi] = await Promise.all([
           getYakitAlimlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
           getAracYakitlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
-          getGidenEvraklar().catch(() => []),
+          evrakVar ? getGidenEvraklar().catch(() => []) : Promise.resolve([]),
           getPersoneller().catch(() => []),
-          getYiUfeVerileri().catch(() => []),
+          yiufeVar ? getYiUfeVerileri().catch(() => []) : Promise.resolve([]),
         ]);
         setYakitAlimlar(alim as YakitAlim[]);
         setYakitDagitimlar(dagitim as AracYakit[]);
@@ -384,6 +406,8 @@ export default function DashboardPage() {
 
     // BACKGROUND BATCH 3: Bordro takibi widget verileri + firma renkleri
     (async () => {
+      // Bordro widget'ı kapalıysa sekiz sorgunun hiçbiri gerekmiyor.
+      if (!widgetGorunur("bordro_ozet")) { setBordroLoading(false); return; }
       setBordroLoading(true);
       try {
         const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData] = await Promise.all([
@@ -421,6 +445,7 @@ export default function DashboardPage() {
       // Arka planda: depo stok hesabı için TÜM ZAMAN yakıt verilerini çek
       // (son 30 gün yeterli değil — kümülatif stok hesabı için)
       (async () => {
+        if (!widgetGorunur("depo_yakit")) return;   // stok widget'ı kapalıysa gereksiz
         try {
           const [alimTum, dagitimTum, virmanTum] = await Promise.all([
             getYakitAlimlarByRange(null, "2000-01-01", "2099-12-31").catch(() => []),
@@ -434,18 +459,13 @@ export default function DashboardPage() {
       })();
 
       // Şantiye defteri özetleri + son 5 gün detay (arka planda)
+      // Widget kapalıysa iki ağır sorgu (defter + kayıtlar) hiç yapılmaz.
+      if (!widgetGorunur("santiye_defteri")) return;
       try {
         const supabase = createClient();
         const santMapLocal = new Map<string, string>();
         for (const s of sant as SantiyeBasic[]) santMapLocal.set(s.id, s.is_adi);
-
-        // Kullanıcı adları
-        const kulMap = new Map<string, string>();
-        try {
-          const res = await fetch("/api/kullanicilar/adlar");
-          if (res.ok) for (const k of (await res.json()) as { id: string; ad_soyad: string }[]) kulMap.set(k.id, k.ad_soyad);
-        } catch { /* sessiz */ }
-        setKullaniciAdlari(kulMap);
+        const kulMap = await adlarPromise;   // aynı sözden, ikinci istek yok
 
         // Kısıtlı kullanıcı sadece kendi atandığı şantiyelerin defterlerini görsün
         let defterQuery = supabase
@@ -536,7 +556,7 @@ export default function DashboardPage() {
       setLoading(false);
       setDefterLoading(false);
     }
-  }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici]);
+  }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici, widgetGorunur, ayBaslangic, oncekiAySonGun]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -1772,13 +1792,7 @@ export default function DashboardPage() {
   // - Yönetici: null/boş → tüm widget'lar görünür (yetkilidir, kısıtlama yok)
   // - Kısıtlı / Şantiye yöneticisi: null veya boş → HİÇBİR widget görünmez
   //   (yönetici hangi widget'ları açtıysa sadece onları görür)
-  const wl = kullanici?.dashboard_widgets;
-  const wg = (key: string) => {
-    if (isYonetici) return !wl || wl.length === 0 || wl.includes(key);
-    // Kısıtlı/santiye_admin: liste boş veya null → hiçbiri görünmez
-    if (!wl || wl.length === 0) return false;
-    return wl.includes(key);
-  };
+  const wg = widgetGorunur;   // çizim ile veri çekme aynı kuralı kullansın
 
   return (
     <div>
