@@ -51,7 +51,7 @@ import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
-import { sonGonderimHaritasi, acenteKilidi as acenteKilidiOrtak, gonderimZamani } from "@/lib/utils/teklif-kilit";
+import { sonGonderimHaritasi, acenteKilidi as acenteKilidiOrtak, gonderimZamani, TEKLIF_BEKLEME_GUN } from "@/lib/utils/teklif-kilit";
 import ArventoWidget from "@/components/shared/arvento-widget";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi?: number | null; yuklenici_firma_id?: string | null; is_grubu?: string | null; created_at?: string | null; ihaleli?: boolean | null };
@@ -651,6 +651,28 @@ export default function DashboardPage() {
     const santiyesizDahil = !!kullanici?.santiyesiz_veri_gor;
     // Sigorta takibinden vazgeçilen araç+tip'ler (dashboard'dan gizle) — "aracId|kasko"/"aracId|trafik"
     const vazgecSet = new Set(sigortaVazgecler.map((v) => `${v.arac_id}|${v.police_tipi}`));
+
+    // TEKLİF İSTEĞİ ESKİRSE BEKLEYEN SAYILMAZ.
+    // teklif_gonderim kayıtları poliçe girilene kadar duruyor; poliçe başka yoldan
+    // girildiyse hiç silinmiyor. Nisan'da istenmiş bir teklif Eylül'de hâlâ "bekliyor"
+    // görünüyordu ve ana sayfaya ilgisiz araçlar doluyordu. Acenteye tekrar sorulabilir
+    // hâle gelen bir istek (TEKLIF_BEKLEME_GUN dolmuş) artık bekleyen değildir.
+    const istekGecerli = (aracId: string, tipKey: "kasko" | "trafik") => {
+      const sonIso = teklifGonderimler
+        .filter((g) => g.arac_id === aracId && g.police_tipi === tipKey)
+        .map((g) => g.created_at)
+        .sort()
+        .pop();
+      if (!sonIso) return false;
+      const gun = (bugunMs - new Date(sonIso).getTime()) / 86400000;
+      return gun <= TEKLIF_BEKLEME_GUN;
+    };
+    // Poliçeye bağlanmamış teklif = güncel dönemin cevabı. Kaç acente cevap vermiş?
+    const cevapSayisi = (aracId: string, tipKey: "kasko" | "trafik") => new Set(
+      sigortaTeklifler
+        .filter((t) => t.arac_id === aracId && t.police_tipi === tipKey && !t.police_id)
+        .map((t) => t.acente_adi),
+    ).size;
     for (const a of araclar) {
       if (a.tip !== "ozmal") continue;
       if (a.durum === "trafikten_cekildi") continue;
@@ -679,12 +701,8 @@ export default function DashboardPage() {
           // yoksa süreç başlatılmış ama kimse göremiyor.
           const vt = field === "kasko_bitis" ? "kasko" : field === "trafik_sigorta_bitis" ? "trafik" : null;
           if (!vt || vazgecSet.has(`${a.id}|${vt}`)) continue;
-          const istendi = teklifGonderimler.some((g) => g.arac_id === a.id && g.police_tipi === vt);
-          const geldi = new Set(
-            sigortaTeklifler
-              .filter((t) => t.arac_id === a.id && t.police_tipi === vt && !t.police_id)
-              .map((t) => t.acente_adi),
-          ).size;
+          const istendi = istekGecerli(a.id, vt);
+          const geldi = cevapSayisi(a.id, vt);
           if (!istendi && geldi === 0) continue;
           result.push({
             aracId: a.id, plaka: a.plaka, tip, field, bitis: "", kalanGun: 9999,
@@ -702,13 +720,8 @@ export default function DashboardPage() {
         // Araç Listesi'nden teklif istendiğinde ve cevaplar mailden geldiğinde, araç henüz
         // "yaklaşan" sayılmıyorsa gelen teklifler hiçbir yerde görünmüyordu — ana sayfaya
         // bakan kişi teklif geldiğinden habersiz kalıyordu.
-        const teklifIstendi = vazgecTip != null
-          && teklifGonderimler.some((g) => g.arac_id === a.id && g.police_tipi === vazgecTip);
-        const teklifGeldi = vazgecTip == null ? 0 : new Set(
-          sigortaTeklifler
-            .filter((t) => t.arac_id === a.id && t.police_tipi === vazgecTip && !t.police_id)
-            .map((t) => t.acente_adi),
-        ).size;
+        const teklifIstendi = vazgecTip != null && istekGecerli(a.id, vazgecTip);
+        const teklifGeldi = vazgecTip == null ? 0 : cevapSayisi(a.id, vazgecTip);
         if (kalan <= esik || teklifIstendi || teklifGeldi > 0) {
           result.push({ aracId: a.id, plaka: a.plaka, tip, field, bitis: tarih, kalanGun: kalan, acente, firmaId: a.firma_id, ruhsatUrl: a.ruhsat_url, teklifIstendi, teklifGeldi });
         }
