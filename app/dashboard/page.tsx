@@ -3216,7 +3216,7 @@ export default function DashboardPage() {
                             <div className="text-xs font-medium text-gray-800">
                               {policeTalepKonu(teklifKarsilastirArac.plaka, tipKey)}
                             </div>
-                            <div className="mt-2 text-[11px] text-gray-500">Mail metni</div>
+                            <div className="mt-2 text-[11px] text-gray-500">Mail metni <span className="text-gray-400">(üstte firmanın anteti yer alır)</span></div>
                             <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">
                               {policeTalepMetin({
                                 plaka: teklifKarsilastirArac.plaka,

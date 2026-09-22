@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `${teklif.acente_adi} için e-posta adresi tanımlı değil` }, { status: 400 });
     }
 
+    // Antet de buradan gelir: mail hangi firmanın hesabından gidiyorsa onun anteti kullanılır.
     const { data: firma } = await supabase.from("firmalar").select("*").eq("id", firmaId).single();
     if (!firma?.smtp_host || !firma.smtp_user || !firma.smtp_password) {
       return NextResponse.json({ error: "Firma SMTP ayarları eksik" }, { status: 400 });
@@ -75,7 +76,24 @@ export async function POST(request: Request) {
     });
 
     const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const html = `<p>${htmlEscape(metin).replace(/\n/g, "<br>")}</p>`;
+
+    // ANTET: firmanın antet görseli mailin başına konur. Bağlantı olarak değil, mailin
+    // İÇİNE gömülür (cid) — uzaktaki resimleri çoğu mail programı kendiliğinden
+    // göstermiyor, antet görünmeyince mail antetsiz gitmiş gibi oluyordu.
+    const ekler: { filename: string; content: Buffer; cid: string }[] = [];
+    let antetHtml = "";
+    if (firma.antet_url) {
+      try {
+        const r = await fetch(firma.antet_url);
+        if (r.ok) {
+          const uzanti = (firma.antet_url.split(".").pop() ?? "png").split("?")[0].slice(0, 5);
+          ekler.push({ filename: `antet.${uzanti}`, content: Buffer.from(await r.arrayBuffer()), cid: "antet" });
+          antetHtml = `<p style="margin:0 0 16px;"><img src="cid:antet" alt="" style="max-width:100%;height:auto;" /></p>`;
+        }
+      } catch { /* antet indirilemezse mail antetsiz gider, gönderim durmasın */ }
+    }
+
+    const html = `${antetHtml}<p>${htmlEscape(metin).replace(/\n/g, "<br>")}</p>`;
 
     await transporter.sendMail({
       from: `"${firma.smtp_sender_name || firma.firma_adi}" <${firma.smtp_sender_email || firma.smtp_user}>`,
@@ -83,6 +101,7 @@ export async function POST(request: Request) {
       subject: konu,
       text: metin,
       html,
+      attachments: ekler,
     });
 
     // Gönderildiği ekranda görünsün; aynı teklif için ikinci kez talep gönderilmesin diye tarih saklanır.

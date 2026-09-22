@@ -22,9 +22,9 @@ export function policeTalepMetin(p: {
   const imza = p.gonderen?.trim() ? `\n${p.gonderen.trim()}` : "";
   return (
     `Sayın ${p.acenteAdi},\n\n` +
-    `${p.plaka} plakalı aracımıza ilişkin göndermiş olduğunuz teklifte ` +
-    `${p.sigortaFirmasi} ${paraYaz(p.tutar)} TL teklif uygun görülmüştür, ` +
-    `poliçeleştirmeniz hususunda gereğini rica ederiz.\n\n` +
+    `${p.plaka} plakalı aracımıza ilişkin göndermiş olduğunuz teklifler arasında ` +
+    `${p.sigortaFirmasi} ${paraYaz(p.tutar)} TL tutarındaki teklif uygun bulunmuştur. ` +
+    `Poliçeyi oluşturup mail yolu ile bize iletmeniz hususunda gereğini rica ederiz.\n\n` +
     `İyi çalışmalar.${imza}`
   );
 }
