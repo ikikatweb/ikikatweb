@@ -28,6 +28,23 @@ function gunFarki(fromYmd: string, todayYmd: string): number {
   return Math.round((b - a) / 86400000);
 }
 
+/**
+ * Gecikme hangi günden itibaren sayılır?
+ *
+ * Eskiden yalnız MAİLİN GÖNDERİLDİĞİ güne bakılıyordu. Ama çıkış ertesi güne tarihlenip
+ * bir gün önceden bildirilebiliyor: dün gönderilip bugüne tarihlenmiş bir çıkış, olay
+ * daha yeni gerçekleştiği hâlde "1 gün gecikti" görünüyordu. Tersi de var — bugün
+ * gönderilip düne tarihlenen çıkış.
+ *
+ * Doğrusu: bildirge, İŞLEM GERÇEKLEŞMEDEN gecikmiş olamaz. Sayım, gönderim ile işlem
+ * tarihinin GEÇ olanından başlar.
+ */
+function gecikmeBaslangici(k: { gonderim_tarihi: string; islem_tarihi: string | null }): string {
+  const i = k.islem_tarihi;
+  if (!i || !/^\d{4}-\d{2}-\d{2}$/.test(i)) return k.gonderim_tarihi;
+  return i > k.gonderim_tarihi ? i : k.gonderim_tarihi;
+}
+
 export default function BildirgeHatirlatma() {
   const { hasPermission, isYonetici, kullanici } = useAuth();
   const yetkili = hasPermission("bordro-takibi", "ekle") || hasPermission("bordro-takibi", "duzenle");
@@ -146,7 +163,7 @@ export default function BildirgeHatirlatma() {
   if (!yetkili || kayitlar.length === 0) return null;
 
   const bugun = trBugun();
-  const gecikmis = kayitlar.filter((k) => gunFarki(k.gonderim_tarihi, bugun) >= 1).length;
+  const gecikmis = kayitlar.filter((k) => gunFarki(gecikmeBaslangici(k), bugun) >= 1).length;
   const uyusmazlikSayi = kayitlar.filter((k) => k.uyusmazlik).length;
 
   return (
@@ -166,7 +183,7 @@ export default function BildirgeHatirlatma() {
       </div>
       <ul className="mt-2 space-y-1.5 pl-9 text-sm">
         {(acik ? kayitlar : kayitlar.slice(0, 2)).map((k) => {
-          const fark = gunFarki(k.gonderim_tarihi, bugun);
+          const fark = gunFarki(gecikmeBaslangici(k), bugun);
           const gecikme = fark >= 1 ? ` — ${fark} gün gecikti` : " — bugün bekliyor";
           return (
             <li key={k.id}>
