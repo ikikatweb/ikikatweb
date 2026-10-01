@@ -15,8 +15,17 @@
 // yarım poliçe kaydı hiç kayıt olmamasından kötüdür.
 import Anthropic from "@anthropic-ai/sdk";
 
-const SISTEM = `Sen kesilmiş bir araç sigorta poliçesinin PDF metnini okuyorsun.
-Poliçe kaydı için gereken alanları çıkar.
+const SISTEM = `Sen bir araç sigorta belgesinin PDF metnini okuyorsun.
+
+ÖNCE BELGE TİPİNİ BELİRLE — bu en önemli karar:
+- "police": KESİLMİŞ poliçe. Poliçe numarası vardır, tanzim edilmiştir, prim ödenecektir.
+- "teklif": henüz kesilmemiş FİYAT TEKLİFİ. "Teklif No", "Teklif Bilgileri", "teklifin
+  geçerlilik süresi" gibi ifadeler geçer; belge "şu fiyata yapabiliriz" der.
+Emin değilsen "teklif" yaz. Teklifi poliçe sanmak, aracı sigortalı göstermek demektir.
+DİKKAT: teklif belgelerinde ÖNCEKİ poliçenin numarası ("Önceki Poliçe No") yazabilir;
+bu, belgeyi poliçe yapmaz. Genel şartlar metninde "poliçe" kelimesi geçmesi de yapmaz.
+
+Sonra kayıt için gereken alanları çıkar.
 
 Kurallar:
 - tip: "trafik" (Zorunlu Mali Sorumluluk / Trafik) ya da "kasko" (Kara Araçları / Kasko).
@@ -31,7 +40,7 @@ Kurallar:
 - Bir alanı metinde bulamazsan null yaz. UYDURMA.
 
 YALNIZCA şu biçimde JSON döndür, başka hiçbir şey yazma:
-{"tip":"trafik","sigortaFirmasi":"Sompo Japan Sigorta","policeNo":"311000637641213","baslangicTarihi":"2026-09-22","bitisTarihi":"2027-09-22","brutPrim":12522.00,"plaka":"60 AES023"}`;
+{"belgeTipi":"police","tip":"trafik","sigortaFirmasi":"Sompo Japan Sigorta","policeNo":"311000637641213","baslangicTarihi":"2026-09-22","bitisTarihi":"2027-09-22","brutPrim":12522.00,"plaka":"60 AES023"}`;
 
 /**
  * @param {string} metin PDF'ten çıkarılmış düz metin
@@ -61,6 +70,8 @@ export async function policePdfOku(metin, apiAnahtari = null) {
 
   const tarih = (t) => (typeof t === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : null);
   return {
+    // Emin değilse teklif say — sahte poliçe aracı sigortalı gösterip teklif akışını durduruyor.
+    belgeTipi: v.belgeTipi === "police" ? "police" : "teklif",
     tip: v.tip === "kasko" || v.tip === "trafik" ? v.tip : null,
     sigortaFirmasi: v.sigortaFirmasi ? String(v.sigortaFirmasi).trim() : null,
     policeNo: v.policeNo ? String(v.policeNo).trim() : null,

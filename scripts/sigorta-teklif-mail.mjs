@@ -176,6 +176,42 @@ function mailGovdesi(govde) {
 }
 
 /**
+ * Türkçe duyarsız arama için normalize.
+ *
+ * JavaScript'te "İ".toLowerCase() = "i" + birleşen nokta (U+0307); düz "i" ile EŞİT DEĞİL.
+ * Bu yüzden /TEKLİF/i deseni "Teklif" yazısını HİÇ yakalamıyordu. Harfler önce elle
+ * eşlenir, sonra küçültülür.
+ */
+function trNorm(s) {
+  return String(s ?? "")
+    .replace(/İ/g, "i").replace(/I/g, "ı")
+    .toLocaleLowerCase("tr")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Gelen PDF KESİLMİŞ POLİÇE mi, yoksa teklif mi?
+ *
+ * Eski kural "ilk 200 karakterde TEKLİF geçmiyorsa poliçedir" idi ve iki yerden kırıldı:
+ *   • /TEKLİF/i Türkçe büyük İ yüzünden "Teklif" ile eşleşmiyordu (yukarıya bakın).
+ *   • HDI teklifinde "Teklif Bilgileri" 250. karakterde başlıyor, pencere dışında kalıyordu.
+ * Sonuç: bir TEKLİF poliçe olarak kaydedildi, araç sigortalı göründü ve o araca gelen
+ * bütün teklifler o sahte poliçeye bağlanıp ekrandan kayboldu.
+ *
+ * Bu YALNIZCA ÖN ELEMEDİR. Desenle kesin ayrım yapılamıyor: Sompo teklifi "işbu poliçede
+ * belirtilen" diye genel şart metni taşıyor, HDI teklifinde "Önceki Poliçe No" yazıyor.
+ * Son kararı belgeyi zaten okuyan model veriyor (police-pdf-oku.mjs → belgeTipi).
+ * Buradaki eleme sadece "hiç ilgisiz PDF'i modele göndermemek" içindir.
+ */
+function kesilmisPoliceMi(metin) {
+  const n = trNorm(metin.slice(0, 4000))
+    .replace(/önceki poliçe[^.]{0,40}/g, " ");      // "Önceki Poliçe No ..." poliçe kanıtı sayılmaz
+  const teklifIzi = /teklif no|teklif bilgileri|teklif formu|fiyat teklifi|sigortası teklifi|teklifidir/.test(n);
+  if (teklifIzi) return false;
+  return /poliçe no|poliçesi|poliçesidir|police no/.test(n);
+}
+
+/**
  * Kesilmiş poliçeyi sisteme kaydet: arac_police satırı + PDF + araç bitiş tarihi.
  *
  * ACENTE POLİÇEDE YAZMAZ — poliçede yalnız acente NUMARASI var, adı yok. Bu yüzden acente
@@ -193,6 +229,14 @@ async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }
     v = await policePdfOku(metin, env.ANTHROPIC_API_KEY);
   } catch (e) { log(`  [poliçe] ${dosyaAdi} — okunamadı: ${e.message}`); return false; }
 
+  // BELGE GERÇEKTEN POLİÇE Mİ? Desen eleme yanılabiliyor (teklif belgeleri de "poliçe"
+  // kelimesi taşıyor); son söz belgeyi okuyan modelde. Teklifse buradan çıkılır, mailin
+  // normal teklif akışı devam eder.
+  if (v.belgeTipi !== "police") {
+    log(`  [teklif] ${dosyaAdi} — bu bir teklif belgesi, poliçe açılmadı`);
+    return "teklif";
+  }
+
   // Plaka: poliçeden okunan öncelikli, tutmazsa mailden bulunan araç kullanılır.
   const pdfArac = v.plaka ? plakaBul(v.plaka, plakalar) : null;
   const hedefArac = pdfArac ?? arac;
@@ -204,10 +248,18 @@ async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }
   if (!v.bitisTarihi) eksik.push("bitiş tarihi");
   if (eksik.length) { log(`  [poliçe] ${dosyaAdi} — ${eksik.join(", ")} okunamadı, elle girilmeli`); return false; }
 
-  // Aynı poliçe ikinci kez gelirse (acente maili yineler) tekrar kaydedilmesin.
-  const { data: mevcut } = await sb.from("arac_police").select("id")
-    .eq("arac_id", hedefArac.id).eq("police_tipi", tip).eq("police_no", v.policeNo).limit(1);
-  if (mevcut?.length) { log(`  [poliçe] ${hedefArac.plaka} ${tip} ${v.policeNo} — zaten kayıtlı`); return false; }
+  // AYNI POLİÇE İKİNCİ KEZ YAZILMASIN. Numara birebir karşılaştırılamıyor: aynı belge
+  // bir kez "140065714", bir kez "140065714/0" (zeyil no ekli) okunabiliyor. Rakamlar
+  // sadeleştirilerek ve ayrıca aynı dönem+tutar kaydı aranarak bakılır.
+  const sadeNo = (x) => String(x ?? "").replace(/\D/g, "").replace(/0+$/, "");
+  const { data: mevcutlar } = await sb.from("arac_police")
+    .select("id, police_no, baslangic_tarihi, tutar")
+    .eq("arac_id", hedefArac.id).eq("police_tipi", tip);
+  const ayni = (mevcutlar ?? []).find((m) =>
+    (m.police_no && sadeNo(m.police_no) === sadeNo(v.policeNo))
+    || (m.baslangic_tarihi && m.baslangic_tarihi === v.baslangicTarihi
+        && Math.abs(Number(m.tutar ?? 0) - Number(v.brutPrim ?? 0)) < 1));
+  if (ayni) { log(`  [poliçe] ${hedefArac.plaka} ${tip} ${v.policeNo} — zaten kayıtlı`); return false; }
 
   const firma = v.sigortaFirmasi ? (firmaBul(v.sigortaFirmasi, firmalar) ?? v.sigortaFirmasi) : null;
 
@@ -548,13 +600,16 @@ async function main() {
             const metin = await pdfMetin(ek.content);
             const tutar = pdfTutar(metin);
             const firma = firmaBul(metin.slice(0, 400), firmalar) ?? firmaBul(metin, firmalar);
-            // Başlıkta "TEKLİFİ" yoksa bu kesilmiş poliçedir, teklif değil — not düşülür.
-            // Başlıkta "TEKLİF" yoksa bu KESİLMİŞ POLİÇEdir, teklif değil. Karşılaştırma
-            // ekranını kirletmesin diye teklif olarak yazılmaz (poliçe akışı ayrı yürüyor).
-            const policeMi = !/TEKLİF/i.test(metin.slice(0, 200));
+            const policeMi = kesilmisPoliceMi(metin);
             if (policeMi) {
+              const sonuc = await policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar });
+              if (sonuc === "teklif") {
+                // Model "bu teklif" dedi → normal teklif akışına düş, rakamı al.
+                if (tutar > 0) bulunanlar.push({ firma, tutar, kaynak: "pdf", kanit: ek.filename ?? "ek.pdf" });
+                continue;
+              }
               policeYazildi = true;
-              if (await policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar })) toplamPolice++;
+              if (sonuc) toplamPolice++;
               await mailiIsaretle(kimlikKok, "poliçe");
               continue;
             }
