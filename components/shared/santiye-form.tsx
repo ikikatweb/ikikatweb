@@ -43,7 +43,15 @@ const SON_KULLANICI_KEY = "santiye-yeni-is-son-kullanicilar";
 
 // onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
 // (dialog/pencere içinde kullanım için). Verilmezse eski davranış: santiyeler sayfasına gider.
-type SantiyeFormProps = { santiye?: Santiye; onSuccess?: () => void; onCancel?: () => void };
+type SantiyeFormProps = {
+  santiye?: Santiye;
+  /** Netsim uyarısından gelindiğinde iş adı önceden dolu açılır. */
+  baslangicIsAdi?: string;
+  /** Netsim işlem noktası — ilk kayıtta bağ kurulsun diye taşınır. */
+  baslangicNetsimNo?: number;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+};
 
 type OrtakRow = { firma_id: string; oran: number; is_pilot: boolean };
 
@@ -79,7 +87,9 @@ function formatTarihTR(iso: string | null | undefined): string {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : String(iso);
 }
 
-export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFormProps) {
+export default function SantiyeForm({
+  santiye, baslangicIsAdi, baslangicNetsimNo, onSuccess, onCancel,
+}: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
   const { hasPermission, isYonetici, kullanici } = useAuth();
@@ -205,8 +215,10 @@ export default function SantiyeForm({ santiye, onSuccess, onCancel }: SantiyeFor
 
   const [formData, setFormData] = useState<SantiyeInsert>({
     durum: santiye?.durum ?? "aktif",
-    is_adi: santiye?.is_adi ?? "",
-    netsim_nokta_no: santiye?.netsim_nokta_no ?? null,
+    // Netsim'den gelen ad BÜYÜK HARF ve 40 karaktere kırpık olabiliyor; başlık biçimine
+    // çevrilir, kullanıcı tamamlar.
+    is_adi: santiye?.is_adi ?? (baslangicIsAdi ? formatBaslik(baslangicIsAdi.toLocaleLowerCase("tr")) : ""),
+    netsim_nokta_no: santiye?.netsim_nokta_no ?? baslangicNetsimNo ?? null,
     il: santiye?.il ?? null,
     is_grubu: santiye?.is_grubu ?? null,
     ihaleli: santiye?.ihaleli ?? true, // varsayılan: ihaleli (ana sayfa + bordro özetinde görünür)

@@ -32,7 +32,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.resolve(__dirname, "..");
@@ -95,6 +95,50 @@ type SantiyeRow = {
   netsim_son_hakedis_fark: number | null;
   netsim_son_hakedis_tarih: string | null;
 };
+
+/**
+ * Netsim'de görülen işlem noktalarını kaydet; kayıtta olmayanı "yeni" diye işaretle.
+ *
+ * Tablo yoksa (SQL henüz çalıştırılmadı) sessizce geçilir — senkronun asıl işi bozulmasın.
+ */
+async function yeniNoktalariIsaretle(
+  sb: SupabaseClient,
+  netsimler: { no: number; ad: string }[],
+  santiyeler: { netsim_nokta_no: number | null }[],
+) {
+  const { data: kayitlar, error } = await sb.from("netsim_yeni_nokta").select("nokta_no");
+  if (error) {
+    if (!/netsim_yeni_nokta/.test(error.message)) console.error("  yeni nokta kaydı:", error.message);
+    return;
+  }
+  const gorulenler = new Set((kayitlar ?? []).map((k) => Number((k as { nokta_no: number }).nokta_no)));
+  const ilkKurulum = gorulenler.size === 0;
+  const bagliNoktalar = new Set(
+    santiyeler.map((x) => x.netsim_nokta_no).filter((n): n is number => n != null),
+  );
+
+  const eklenecek = netsimler
+    .filter((n) => !gorulenler.has(n.no))
+    .map((n) => ({
+      nokta_no: n.no,
+      ad: n.ad,
+      // İlk kurulumda ve zaten bir şantiyeye bağlı olanlarda soru sorulmaz.
+      durum: (ilkKurulum || bagliNoktalar.has(n.no)) ? "yoksayildi" : "bekliyor",
+      santiye_id: null,
+    }));
+  if (eklenecek.length === 0) return;
+
+  const { error: yazHata } = await sb.from("netsim_yeni_nokta").insert(eklenecek);
+  if (yazHata) { console.error("  yeni nokta yazılamadı:", yazHata.message); return; }
+
+  const soruluacak = eklenecek.filter((x) => x.durum === "bekliyor");
+  if (ilkKurulum) {
+    console.log(`\nNetsim nokta kaydı kuruldu: ${eklenecek.length} mevcut nokta işaretlendi (soru sorulmayacak).`);
+  } else if (soruluacak.length > 0) {
+    console.log(`\nNETSİM'DE YENİ İŞ: ${soruluacak.length} nokta — ana ekranda sorulacak`);
+    for (const x of soruluacak) console.log(`   [${x.nokta_no}] ${x.ad}`);
+  }
+}
 
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -293,6 +337,16 @@ async function main() {
       if (e) { console.error(`           HATA: ${e.message}`); if (itYama.fiyat_farki != null) farkYazilan--; }
     }
   }
+
+  // ── YENİ AÇILAN İŞLEM NOKTALARINI YAKALA ─────────────────────────────────────
+  // Netsim'de yeni iş açıldığında sitede karşılığı yoksa fark edilmiyordu: hakedişler
+  // Netsim'de işleniyor ama iş sitede hiç görünmüyor. Gördüğümüz her nokta bir kez
+  // kaydedilir; kayıtta OLMAYAN bir nokta çıkarsa "yeni açılmış" sayılır ve ana ekranda
+  // sorulur (components/shared/netsim-yeni-is-hatirlatma.tsx).
+  //
+  // İLK ÇALIŞMADA hepsi "yoksayildi" yazılır — bugüne kadarki 64 bağsız nokta ana ekranı
+  // doldurmasın. Kullanıcı isteği: "bugünden sonra yeni eklenen her nokta".
+  if (!KURU) await yeniNoktalariIsaretle(sb, tumIsler, santiyeler);
 
   console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı, ${sonHakYazilan} son hakediş.`);
   if (degismeyen) console.log(`Zaten güncel: ${degismeyen}`);
