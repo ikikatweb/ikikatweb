@@ -103,7 +103,7 @@ type SantiyeRow = {
  */
 async function yeniNoktalariIsaretle(
   sb: SupabaseClient,
-  netsimler: { no: number; ad: string }[],
+  netsimler: { no: number; ad: string; olusturma: string | null }[],
   santiyeler: { netsim_nokta_no: number | null }[],
 ) {
   const { data: kayitlar, error } = await sb.from("netsim_yeni_nokta").select("nokta_no");
@@ -117,15 +117,22 @@ async function yeniNoktalariIsaretle(
     santiyeler.map((x) => x.netsim_nokta_no).filter((n): n is number => n != null),
   );
 
+  // YENİ SAYILMA EŞİĞİ: nokta son 7 gün içinde oluşturulmuşsa sorulur. Kayıt tablosunda
+  // olmaması tek başına yetmiyor — tabloya sonradan kapsam genişleyince eski noktalar da
+  // giriyor ve hepsi "yeni" sanılıyor. Oluşturma zamanı (CTIMESTAMP) kesin ölçüdür.
+  const esik = Date.now() - 7 * 86400000;
   const eklenecek = netsimler
     .filter((n) => !gorulenler.has(n.no))
-    .map((n) => ({
-      nokta_no: n.no,
-      ad: n.ad,
-      // İlk kurulumda ve zaten bir şantiyeye bağlı olanlarda soru sorulmaz.
-      durum: (ilkKurulum || bagliNoktalar.has(n.no)) ? "yoksayildi" : "bekliyor",
-      santiye_id: null,
-    }));
+    .map((n) => {
+      const yeniMi = n.olusturma != null && new Date(n.olusturma).getTime() >= esik;
+      return {
+        nokta_no: n.no,
+        ad: n.ad,
+        // İlk kurulumda, zaten bağlı olanlarda ve eski noktalarda soru sorulmaz.
+        durum: (ilkKurulum || bagliNoktalar.has(n.no) || !yeniMi) ? "yoksayildi" : "bekliyor",
+        santiye_id: null,
+      };
+    });
   if (eklenecek.length === 0) return;
 
   const { error: yazHata } = await sb.from("netsim_yeni_nokta").insert(eklenecek);
@@ -181,6 +188,11 @@ async function main() {
   // nokta → en son hakediş belgesinin tutarları (sorgu tarihe göre sıralı, son yazan kazanır)
   const sonHakedis = new Map<number, { kesif: number; fark: number; tarih: string | null }>();
   const tumIsler: { no: number; ad: string; kesif: number; fark: number }[] = [];
+  // BİLDİRİM İÇİN AYRI LİSTE. tumIsler'de "gerçek iş olma şartı" var (sözleşme bedeli ya da
+  // hakediş); tutar senkronu için doğru ama yeni nokta HABERİ için yanlış: nokta açıldığı
+  // anda ikisi de boş oluyor ve haber hiç gelmiyordu. Burada yalnız kategori düğümleri
+  // (altında başka nokta olanlar) elenir; gerisini kullanıcı "Hayır" diyerek eler.
+  const tumNoktalar: { no: number; ad: string; olusturma: string | null }[] = [];
   try {
     const rows = await fbSorgu(db, `
       SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
@@ -245,6 +257,24 @@ async function main() {
       if (kesif <= 0) continue;
       const tarih = r.TARIH ? new Date(String(r.TARIH)).toISOString().slice(0, 10) : null;
       sonHakedis.set(Number(r.NOKTA), { kesif, fark: Number(r.FARK ?? 0), tarih });
+    }
+    // CTIMESTAMP = noktanın Netsim'de oluşturulma anı. "Yeni mi?" kararı buna dayanır;
+    // yoksa kayıt tablosuna sonradan giren ESKİ noktalar da yeni sanılıp ana ekranı
+    // dolduruyor (32 nokta birden sorulmuştu).
+    const noktaRows = await fbSorgu(db, `
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD, I.CTIMESTAMP AS OLUSTURMA
+      FROM ISLMNOKT I
+      WHERE I.ISLEM_NOKTASI_NO > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM ISLMNOKT C WHERE C.ANA_ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO
+        )
+    `);
+    for (const r of noktaRows) {
+      tumNoktalar.push({
+        no: Number(r.NOKTA),
+        ad: String(r.AD ?? "").trim(),
+        olusturma: r.OLUSTURMA ? new Date(String(r.OLUSTURMA)).toISOString() : null,
+      });
     }
   } finally {
     db.detach();
@@ -346,7 +376,7 @@ async function main() {
   //
   // İLK ÇALIŞMADA hepsi "yoksayildi" yazılır — bugüne kadarki 64 bağsız nokta ana ekranı
   // doldurmasın. Kullanıcı isteği: "bugünden sonra yeni eklenen her nokta".
-  if (!KURU) await yeniNoktalariIsaretle(sb, tumIsler, santiyeler);
+  if (!KURU) await yeniNoktalariIsaretle(sb, tumNoktalar, santiyeler);
 
   console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı, ${sonHakYazilan} son hakediş.`);
   if (degismeyen) console.log(`Zaten güncel: ${degismeyen}`);
