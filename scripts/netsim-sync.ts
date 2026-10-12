@@ -101,26 +101,39 @@ type SantiyeRow = {
  *
  * Tablo yoksa (SQL henüz çalıştırılmadı) sessizce geçilir — senkronun asıl işi bozulmasın.
  */
+/**
+ * Bir işlem noktası açıldıktan kaç gün boyunca "yeni" sayılır. Kullanıcı isteği: iş
+ * deneyim belgesi sorusu 15 gün geriden başlasın — nokta Netsim'de açıldıktan günler
+ * sonra fark edilse de soru hâlâ gelsin.
+ */
+const GUN_PENCERE = 15;
+
 async function yeniNoktalariIsaretle(
   sb: SupabaseClient,
   netsimler: { no: number; ad: string; olusturma: string | null }[],
   santiyeler: { netsim_nokta_no: number | null }[],
 ) {
-  const { data: kayitlar, error } = await sb.from("netsim_yeni_nokta").select("nokta_no");
+  const { data: kayitlar, error } = await sb
+    .from("netsim_yeni_nokta")
+    .select("nokta_no, durum, karar_veren");
   if (error) {
     if (!/netsim_yeni_nokta/.test(error.message)) console.error("  yeni nokta kaydı:", error.message);
     return;
   }
-  const gorulenler = new Set((kayitlar ?? []).map((k) => Number((k as { nokta_no: number }).nokta_no)));
+  type Kayit = { nokta_no: number; durum: string; karar_veren: string | null };
+  const mevcut = new Map(
+    ((kayitlar ?? []) as Kayit[]).map((k) => [Number(k.nokta_no), k]),
+  );
+  const gorulenler = new Set(mevcut.keys());
   const ilkKurulum = gorulenler.size === 0;
   const bagliNoktalar = new Set(
     santiyeler.map((x) => x.netsim_nokta_no).filter((n): n is number => n != null),
   );
 
-  // YENİ SAYILMA EŞİĞİ: nokta son 7 gün içinde oluşturulmuşsa sorulur. Kayıt tablosunda
-  // olmaması tek başına yetmiyor — tabloya sonradan kapsam genişleyince eski noktalar da
-  // giriyor ve hepsi "yeni" sanılıyor. Oluşturma zamanı (CTIMESTAMP) kesin ölçüdür.
-  const esik = Date.now() - 7 * 86400000;
+  // YENİ SAYILMA EŞİĞİ: nokta son GUN_PENCERE gün içinde oluşturulmuşsa sorulur. Kayıt
+  // tablosunda olmaması tek başına yetmiyor — tabloya sonradan kapsam genişleyince eski
+  // noktalar da yeni sanılıyor. Oluşturma zamanı (CTIMESTAMP) kesin ölçüdür.
+  const esik = Date.now() - GUN_PENCERE * 86400000;
   const eklenecek = netsimler
     .filter((n) => !gorulenler.has(n.no))
     .map((n) => {
@@ -133,6 +146,26 @@ async function yeniNoktalariIsaretle(
         santiye_id: null,
       };
     });
+  // PENCEREYE SONRADAN GİRENLER. Eşiği büyütmek tek başına yetmiyor: pencereye giren
+  // nokta tabloda zaten "yoksayildi" duruyorsa bir daha hiç sorulmaz. Burada geri
+  // getirilir — ama yalnız OTOMATİK yoksayılanlar. Kullanıcı "Hayır" dediğinde
+  // karar_veren dolar; o kayıtlara dokunulmaz, yoksa reddedilen nokta her senkronda
+  // yeniden sorulurdu.
+  const geriGetirilecek = ilkKurulum ? [] : netsimler.filter((n) => {
+    const k = mevcut.get(n.no);
+    if (!k || k.durum !== "yoksayildi" || k.karar_veren != null) return false;
+    if (bagliNoktalar.has(n.no)) return false;
+    return n.olusturma != null && new Date(n.olusturma).getTime() >= esik;
+  });
+  for (const n of geriGetirilecek) {
+    const { data, error: e } = await sb.from("netsim_yeni_nokta")
+      .update({ durum: "bekliyor" }).eq("nokta_no", n.no).select("nokta_no");
+    // .select() ŞART: satır yazılmasa da hata gelmiyor.
+    if (e || !data?.length) { console.error(`  [${n.no}] geri getirilemedi: ${e?.message ?? "satır yazılmadı"}`); continue; }
+    console.log(`
+NETSİM'DE YENİ İŞ (${GUN_PENCERE} günlük pencere): [${n.no}] ${n.ad}`);
+  }
+
   if (eklenecek.length === 0) return;
 
   const { error: yazHata } = await sb.from("netsim_yeni_nokta").insert(eklenecek);
@@ -375,7 +408,7 @@ async function main() {
   // sorulur (components/shared/netsim-yeni-is-hatirlatma.tsx).
   //
   // İLK ÇALIŞMADA hepsi "yoksayildi" yazılır — bugüne kadarki 64 bağsız nokta ana ekranı
-  // doldurmasın. Kullanıcı isteği: "bugünden sonra yeni eklenen her nokta".
+  // doldurmasın. Soru yalnız son GUN_PENCERE gün içinde AÇILMIŞ noktalar için gelir.
   if (!KURU) await yeniNoktalariIsaretle(sb, tumNoktalar, santiyeler);
 
   console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı, ${sonHakYazilan} son hakediş.`);
