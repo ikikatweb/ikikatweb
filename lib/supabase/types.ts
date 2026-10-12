@@ -968,6 +968,9 @@ export type Kullanici = {
   // antetlerini vb. görebilir. Yönetici rolü bu alanı yok sayar (her firmaya erişir).
   // Şantiye seçildiğinde santiye.yuklenici_firma_id otomatik bu listeye eklenir.
   firma_ids?: string[] | null;
+  // YETKİ KAYNAĞI: doluysa bu kullanıcı başka bir kullanıcının yetkilerini izler.
+  // Kaynakta yapılan her yetki değişikliği buraya da yazılır (ad/şifre hariç).
+  yetki_kaynak_id?: string | null;
   // Kısıtlı kullanıcı: legacy — kullanılmıyor (geriye uyumluluk için bırakıldı)
   geriye_donus_gun: number | null;
   // Modül bazlı geriye dönük sınırlar — her modül için 2 sınır:

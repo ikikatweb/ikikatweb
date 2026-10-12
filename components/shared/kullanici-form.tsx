@@ -19,13 +19,25 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, X, BookmarkPlus, Trash2, Eye, EyeOff, ChevronDown } from "lucide-react";
+import { Save, X, BookmarkPlus, Trash2, Eye, EyeOff, ChevronDown, Copy } from "lucide-react";
 import toast from "react-hot-toast";
 
 type KullaniciFormProps = {
   kullanici?: Kullanici;
+  /**
+   * ÇOĞALTMA: verilen kullanıcının yetkileriyle YENİ kullanıcı açılır.
+   * Ad, kullanıcı adı ve şifre boş gelir; yeni kullanıcı kaynağın yetkilerini İZLER —
+   * kaynakta sonradan yapılan yetki değişiklikleri ona da yansır.
+   */
+  cogaltilacak?: Kullanici;
   onSuccess: () => void;
   onCancel: () => void;
+  /** Düzenleme ekranındaki "Kullanıcıyı Çoğalt" düğmesi — sayfa çoğaltma kipini açar. */
+  onCogalt?: (k: Kullanici) => void;
+  /** Bu kullanıcının yetkilerini izleyenler (bilgi şeridi için). */
+  izleyenler?: Kullanici[];
+  /** Bu kullanıcı birini izliyorsa onun adı (bilgi şeridi için). */
+  kaynakAdi?: string | null;
 };
 
 const selectClass =
@@ -48,8 +60,13 @@ const DASHBOARD_WIDGETS = [
   { key: "arvento", label: "Arvento Araç Çalışma" },
 ];
 
-export default function KullaniciForm({ kullanici, onSuccess, onCancel }: KullaniciFormProps) {
+export default function KullaniciForm({
+  kullanici, cogaltilacak, onSuccess, onCancel, onCogalt, izleyenler = [], kaynakAdi = null,
+}: KullaniciFormProps) {
   const isEdit = !!kullanici;
+  // Alanların başlangıç değeri: düzenlemede kullanıcının kendisi, çoğaltmada kaynak.
+  // Çoğaltmada kimlik alanları (ad/kullanıcı adı/şifre) bilinçli olarak BOŞ kalır.
+  const kaynak = kullanici ?? cogaltilacak;
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // Açılır-kapanır bölümler (ok ile aç/kapa) — varsayılan kapalı
@@ -60,9 +77,9 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   const [adSoyad, setAdSoyad] = useState(kullanici?.ad_soyad ?? "");
   const [kullaniciAdi, setKullaniciAdi] = useState(kullanici?.kullanici_adi ?? "");
   const [sifre, setSifre] = useState(isEdit ? (kullanici?.sifre_gorunur ?? "") : "");
-  const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kullanici?.rol ?? "kisitli");
-  const [izinler, setIzinler] = useState<Izinler>(kullanici?.izinler ?? {});
-  const [seciliSantiyeler, setSeciliSantiyeler] = useState<string[]>(kullanici?.santiye_ids ?? []);
+  const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kaynak?.rol ?? "kisitli");
+  const [izinler, setIzinler] = useState<Izinler>(kaynak?.izinler ?? {});
+  const [seciliSantiyeler, setSeciliSantiyeler] = useState<string[]>(kaynak?.santiye_ids ?? []);
   // Firma kapsamı: kullanıcı sadece bu firmaların yazışmalarını ve antetlerini görür.
   // Yönetici rolü için bu alan görmezden gelinir (her firmaya erişir).
   //
@@ -73,26 +90,26 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
   //
   // Bu sayede şantiye eklenince → o firma görünür, şantiye kaldırılınca → otomatik kalkar
   // (kullanıcı manuel tıklamadıysa). Manuel tıklama korunur.
-  const [manuelFirmalar, setManuelFirmalar] = useState<string[]>(kullanici?.firma_ids ?? []);
+  const [manuelFirmalar, setManuelFirmalar] = useState<string[]>(kaynak?.firma_ids ?? []);
   const [geriyeDonusGun, setGeriyeDonusGun] = useState<string>(
-    kullanici?.geriye_donus_gun != null ? String(kullanici.geriye_donus_gun) : "",
+    kaynak?.geriye_donus_gun != null ? String(kaynak.geriye_donus_gun) : "",
   );
   // Modül bazlı 2 sınır (işlem + görüntüleme). Default 2.
   const initGun = (v: number | null | undefined) => v != null ? String(v) : "2";
-  const [puantajIslemGun, setPuantajIslemGun] = useState<string>(initGun(kullanici?.puantaj_islem_gun));
-  const [puantajGoruntulemeGun, setPuantajGoruntulemeGun] = useState<string>(initGun(kullanici?.puantaj_goruntuleme_gun));
-  const [yakitIslemGun, setYakitIslemGun] = useState<string>(initGun(kullanici?.yakit_islem_gun));
-  const [yakitGoruntulemeGun, setYakitGoruntulemeGun] = useState<string>(initGun(kullanici?.yakit_goruntuleme_gun));
-  const [kasaIslemGun, setKasaIslemGun] = useState<string>(initGun(kullanici?.kasa_islem_gun));
-  const [kasaGoruntulemeGun, setKasaGoruntulemeGun] = useState<string>(initGun(kullanici?.kasa_goruntuleme_gun));
-  const [santiyeIslemGun, setSantiyeIslemGun] = useState<string>(initGun(kullanici?.santiye_defteri_islem_gun));
-  const [santiyeGoruntulemeGun, setSantiyeGoruntulemeGun] = useState<string>(initGun(kullanici?.santiye_defteri_goruntuleme_gun));
-  const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kullanici?.dashboard_widgets ?? []);
+  const [puantajIslemGun, setPuantajIslemGun] = useState<string>(initGun(kaynak?.puantaj_islem_gun));
+  const [puantajGoruntulemeGun, setPuantajGoruntulemeGun] = useState<string>(initGun(kaynak?.puantaj_goruntuleme_gun));
+  const [yakitIslemGun, setYakitIslemGun] = useState<string>(initGun(kaynak?.yakit_islem_gun));
+  const [yakitGoruntulemeGun, setYakitGoruntulemeGun] = useState<string>(initGun(kaynak?.yakit_goruntuleme_gun));
+  const [kasaIslemGun, setKasaIslemGun] = useState<string>(initGun(kaynak?.kasa_islem_gun));
+  const [kasaGoruntulemeGun, setKasaGoruntulemeGun] = useState<string>(initGun(kaynak?.kasa_goruntuleme_gun));
+  const [santiyeIslemGun, setSantiyeIslemGun] = useState<string>(initGun(kaynak?.santiye_defteri_islem_gun));
+  const [santiyeGoruntulemeGun, setSantiyeGoruntulemeGun] = useState<string>(initGun(kaynak?.santiye_defteri_goruntuleme_gun));
+  const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kaynak?.dashboard_widgets ?? []);
   // Mesajlaşmada tüm konuşmaları görme yetkisi (sadece santiye_admin için ayarlanır)
-  const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kullanici?.tum_mesajlari_gor ?? false);
+  const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kaynak?.tum_mesajlari_gor ?? false);
   // Şantiye atanmamış (genel) verileri görme yetkisi — TÜM modüllerde geçerli (yazışmalar,
   // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.). Kısıtlı + santiye_admin için.
-  const [santiyesizVeriGor, setSantiyesizVeriGor] = useState<boolean>(kullanici?.santiyesiz_veri_gor ?? false);
+  const [santiyesizVeriGor, setSantiyesizVeriGor] = useState<boolean>(kaynak?.santiyesiz_veri_gor ?? false);
 
   // Şantiye, firma ve şablon listeleri
   const [santiyeler, setSantiyeler] = useState<SantiyeWithRelations[]>([]);
@@ -185,6 +202,21 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
     );
   }
 
+  /** Yetki bağını kopar: kullanıcı o anki yetkileriyle bağımsız kalır. */
+  async function bagiKopar() {
+    if (!kullanici) return;
+    setLoading(true);
+    try {
+      await updateKullanici(kullanici.id, { yetki_kaynak_id: null });
+      toast.success("Yetki bağı koparıldı — bu kullanıcı artık bağımsız.");
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Bağ koparılamadı");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!adSoyad.trim()) { toast.error("Ad Soyad zorunludur."); return; }
@@ -254,7 +286,9 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
           ...(sifre.trim() ? { sifre } : {}),
         });
-        toast.success("Kullanıcı güncellendi.");
+        toast.success(izleyenler.length > 0
+          ? `Kullanıcı güncellendi — yetkiler ${izleyenler.length} izleyen kullanıcıya da yansıdı.`
+          : "Kullanıcı güncellendi.");
       } else {
         await createKullanici({
           ad_soyad: formatliAdSoyad,
@@ -269,8 +303,12 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           tum_mesajlari_gor: tumMesajlariGorFinal,
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
+          // Çoğaltılarak açıldıysa kaynağın yetkilerini izlesin.
+          yetki_kaynak_id: cogaltilacak?.id ?? null,
         });
-        toast.success("Kullanıcı oluşturuldu.");
+        toast.success(cogaltilacak
+          ? `Kullanıcı oluşturuldu — yetkileri ${cogaltilacak.ad_soyad} ile bağlı.`
+          : "Kullanıcı oluşturuldu.");
       }
       onSuccess();
     } catch (err) {
@@ -286,6 +324,39 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* ÇOĞALTMA KİPİ — yetkiler kaynaktan geldi, kimlik alanları boş */}
+      {cogaltilacak && (
+        <div className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+          <b>{cogaltilacak.ad_soyad}</b> kullanıcısının yetkileriyle yeni kullanıcı açılıyor.
+          Ad, kullanıcı adı ve şifreyi siz doldurun.
+          <div className="text-[11px] text-indigo-700 mt-0.5">
+            Yeni kullanıcı kaynağın yetkilerini <b>izlemeye devam eder</b>: {cogaltilacak.ad_soyad} üzerinde
+            sonradan yapılan yetki değişiklikleri buraya da yansır.
+          </div>
+        </div>
+      )}
+
+      {/* İZLEYEN KULLANICI — yetkileri başkasından geliyor */}
+      {isEdit && kullanici?.yetki_kaynak_id && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Bu kullanıcının yetkileri <b>{kaynakAdi ?? "başka bir kullanıcıdan"}</b> izleniyor.
+          Burada yapacağınız yetki değişikliği, kaynak kullanıcı bir daha kaydedildiğinde geri alınır.
+          <button type="button" onClick={bagiKopar} disabled={loading}
+            className="ml-2 underline decoration-dotted font-semibold">
+            Bağı kopar
+          </button>
+        </div>
+      )}
+
+      {/* KAYNAK KULLANICI — yetkilerini izleyenler var */}
+      {isEdit && izleyenler.length > 0 && (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          Bu kullanıcının yetkilerini <b>{izleyenler.length} kullanıcı</b> izliyor
+          ({izleyenler.map((x) => x.ad_soyad).join(", ")}).
+          Kaydettiğinizde aynı yetkiler onlara da yazılır.
+        </div>
+      )}
+
       {/* Temel bilgiler */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="space-y-2">
@@ -644,6 +715,16 @@ export default function KullaniciForm({ kullanici, onSuccess, onCancel }: Kullan
       )}
 
       <div className="flex items-center justify-end gap-3 pt-2">
+        {/* ÇOĞALT — yalnız düzenlemede. Aynı yetkilerle ikinci bir kullanıcı açmak için;
+            kaydetmeden önce ad/kullanıcı adı/şifre sorulur. */}
+        {isEdit && kullanici && onCogalt && (
+          <Button type="button" variant="outline" disabled={loading}
+            onClick={() => onCogalt(kullanici)}
+            className="mr-auto border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+            title="Bu kullanıcının tüm yetkileriyle yeni bir kullanıcı aç">
+            <Copy size={16} className="mr-1" /> Kullanıcıyı Çoğalt
+          </Button>
+        )}
         <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
           <X size={16} className="mr-1" /> İptal
         </Button>

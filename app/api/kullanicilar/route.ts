@@ -83,6 +83,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const {
     ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, firma_ids,
+    yetki_kaynak_id,
     geriye_donus_gun, dashboard_widgets, tum_mesajlari_gor, santiyesiz_veri_gor,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
@@ -146,6 +147,8 @@ export async function POST(request: Request) {
       dashboard_widgets: dashboard_widgets ?? null,
       tum_mesajlari_gor: tum_mesajlari_gor ?? false,
       santiyesiz_veri_gor: santiyesiz_veri_gor ?? false,
+      // Çoğaltılarak açıldıysa kaynağın yetkilerini izler (bkz. sql/kullanici_yetki_kaynak.sql)
+      yetki_kaynak_id: yetki_kaynak_id ?? null,
     })
     .select()
     .single();

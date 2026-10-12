@@ -43,6 +43,9 @@ export default function KullanicilarPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editKullanici, setEditKullanici] = useState<Kullanici | undefined>();
+  // ÇOĞALTMA: kaynak kullanıcının yetkileriyle YENİ kullanıcı açma kipi.
+  // editKullanici ile aynı anda dolu olmaz — biri düzenleme, biri yeni kayıt.
+  const [cogaltilacak, setCogaltilacak] = useState<Kullanici | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [arama, setArama] = useOturumFiltresi("yonetim-kullanicilar:arama", "");
   // Aktif / Pasif sekmesi — aktif ve pasif kullanıcılar ayrı tablolarda gösterilir
@@ -77,11 +80,13 @@ export default function KullanicilarPage() {
 
   function handleAdd() {
     setEditKullanici(undefined);
+    setCogaltilacak(undefined);
     setDialogOpen(true);
   }
 
   function handleEdit(k: Kullanici) {
     setEditKullanici(k);
+    setCogaltilacak(undefined);
     setDialogOpen(true);
   }
 
@@ -311,12 +316,22 @@ export default function KullanicilarPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
           <DialogHeader>
-            <DialogTitle>{editKullanici ? "Kullanıcı Düzenle" : "Yeni Kullanıcı Ekle"}</DialogTitle>
+            <DialogTitle>
+              {cogaltilacak ? `Kullanıcı Çoğalt — ${cogaltilacak.ad_soyad}`
+                : editKullanici ? "Kullanıcı Düzenle" : "Yeni Kullanıcı Ekle"}
+            </DialogTitle>
           </DialogHeader>
           <KullaniciForm
+            key={cogaltilacak ? `cogalt-${cogaltilacak.id}` : (editKullanici?.id ?? "yeni")}
             kullanici={editKullanici}
-            onSuccess={() => { setDialogOpen(false); loadKullanicilar(); }}
-            onCancel={() => setDialogOpen(false)}
+            cogaltilacak={cogaltilacak}
+            izleyenler={editKullanici ? kullanicilar.filter((k) => k.yetki_kaynak_id === editKullanici.id) : []}
+            kaynakAdi={editKullanici?.yetki_kaynak_id
+              ? (kullanicilar.find((k) => k.id === editKullanici.yetki_kaynak_id)?.ad_soyad ?? null)
+              : null}
+            onCogalt={(k) => { setEditKullanici(undefined); setCogaltilacak(k); }}
+            onSuccess={() => { setDialogOpen(false); setCogaltilacak(undefined); loadKullanicilar(); }}
+            onCancel={() => { setDialogOpen(false); setCogaltilacak(undefined); }}
           />
         </DialogContent>
       </Dialog>

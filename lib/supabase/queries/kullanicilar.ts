@@ -5,6 +5,9 @@ export type KullaniciCreatePayload = {
   ad_soyad: string;
   kullanici_adi: string;
   sifre: string;
+  // Yetki kaynağı: doluysa bu kullanıcı o kullanıcının yetkilerini izler;
+  // kaynakta yapılan değişiklikler buraya da yansır (ad/şifre hariç).
+  yetki_kaynak_id?: string | null;
   rol: "yonetici" | "santiye_admin" | "kisitli";
   izinler?: Izinler;
   santiye_ids?: string[];
@@ -27,6 +30,9 @@ export type KullaniciCreatePayload = {
 
 export type KullaniciUpdatePayload = {
   ad_soyad?: string;
+  // Yetki kaynağı: doluysa bu kullanıcı o kullanıcının yetkilerini izler;
+  // kaynakta yapılan değişiklikler buraya da yansır (ad/şifre hariç).
+  yetki_kaynak_id?: string | null;
   rol?: "yonetici" | "santiye_admin" | "kisitli";
   aktif?: boolean;
   sifre?: string;

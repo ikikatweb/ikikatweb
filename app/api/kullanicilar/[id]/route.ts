@@ -46,7 +46,7 @@ export async function PUT(
 
   const body = await request.json();
   const {
-    ad_soyad, rol, aktif, sifre, izinler, santiye_ids, firma_ids,
+    ad_soyad, rol, aktif, sifre, izinler, santiye_ids, firma_ids, yetki_kaynak_id,
     geriye_donus_gun, dashboard_widgets, tum_mesajlari_gor, santiyesiz_veri_gor,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
@@ -112,6 +112,7 @@ export async function PUT(
   if (tum_mesajlari_gor !== undefined) updateData.tum_mesajlari_gor = tum_mesajlari_gor;
   if (santiyesiz_veri_gor !== undefined) updateData.santiyesiz_veri_gor = santiyesiz_veri_gor;
   if (sifre && sifre.trim()) updateData.sifre_gorunur = sifre;
+  if (yetki_kaynak_id !== undefined) updateData.yetki_kaynak_id = yetki_kaynak_id;
 
   const { data, error } = await supabase
     .from("kullanicilar")
@@ -128,7 +129,42 @@ export async function PUT(
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data);
+
+  // ── YETKİLERİ İZLEYENLERE YAY ────────────────────────────────────────────────
+  // Bu kullanıcı çoğaltılmışsa (başkaları onun yetkilerini izliyorsa) aynı değişiklik
+  // onlara da yazılır. Amaç: aynı görevdeki kişilerin yetkileri sessizce ayrışmasın.
+  // AD, KULLANICI ADI ve ŞİFRE yayılmaz — onlar kişiye özeldir.
+  // "aktif" de yayılmaz: birini pasife almak diğerini kapatmamalı.
+  const yayilacak: Record<string, unknown> = {};
+  for (const alan of [
+    "rol", "izinler", "santiye_ids", "firma_ids", "geriye_donus_gun",
+    "puantaj_islem_gun", "puantaj_goruntuleme_gun",
+    "yakit_islem_gun", "yakit_goruntuleme_gun",
+    "kasa_islem_gun", "kasa_goruntuleme_gun",
+    "santiye_defteri_islem_gun", "santiye_defteri_goruntuleme_gun",
+    "dashboard_widgets", "tum_mesajlari_gor", "santiyesiz_veri_gor",
+  ]) {
+    if (alan in updateData) yayilacak[alan] = updateData[alan];
+  }
+  let yansiyan = 0;
+  if (Object.keys(yayilacak).length > 0) {
+    yayilacak.updated_at = new Date().toISOString();
+    // .select() ŞART: kaç satır yazıldığını bilmeden "yansıdı" demek yanıltıcı olur.
+    const { data: izleyenler, error: yayHata } = await supabase
+      .from("kullanicilar")
+      .update(yayilacak)
+      .eq("yetki_kaynak_id", id)
+      .select("id");
+    if (yayHata) {
+      // Kolon yoksa (SQL henüz çalıştırılmadı) sessiz geç — asıl güncelleme başarılı.
+      if (!/yetki_kaynak_id/.test(yayHata.message)) {
+        console.error("Yetki yayma hatası:", yayHata.message);
+      }
+    } else {
+      yansiyan = izleyenler?.length ?? 0;
+    }
+  }
+  return NextResponse.json({ ...data, yansiyan });
 }
 
 // DELETE - Kullanıcı sil
