@@ -25,3 +25,13 @@ comment on table netsim_yeni_nokta is
   'Netsim işlem noktalarının görülme kaydı — yeni açılanlar ana ekranda sorulur';
 
 create index if not exists netsim_yeni_nokta_durum_idx on netsim_yeni_nokta (durum);
+
+-- ── RLS ──
+-- Bu satırlar ilk sürümde eksik kalmıştı: tabloda RLS açıktı ama hiç politika yoktu,
+-- bu yüzden oturum açmış kullanıcı sorguyu HATASIZ 0 satır olarak alıyordu. Senkron
+-- service-role ile yazdığı için 277 tabloda duruyordu, ana ekran ise boş görüyordu.
+alter table public.netsim_yeni_nokta enable row level security;
+
+drop policy if exists "netsim_yeni_nokta_authenticated_all" on public.netsim_yeni_nokta;
+create policy "netsim_yeni_nokta_authenticated_all"
+  on public.netsim_yeni_nokta for all to authenticated using (true) with check (true);
