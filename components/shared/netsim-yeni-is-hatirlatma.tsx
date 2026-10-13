@@ -87,7 +87,18 @@ export default function NetsimYeniIsHatirlatma() {
     if (error) ({ data, error } = await oku("nokta_no, ad, ilk_gorulme"));
     // Tablo hiç yoksa sessiz geç — uyarı görünmez, sayfa bozulmaz.
     if (error) { setKayitlar([]); return; }
-    setKayitlar((data ?? []) as unknown as YeniNokta[]);
+    const bekleyen = (data ?? []) as unknown as YeniNokta[];
+    if (bekleyen.length === 0) { setKayitlar([]); return; }
+
+    // ARTIK BİR ŞANTİYEYE BAĞLANMIŞ OLANLARI ELE. İş kaydedilince kayıt 'eklendi' olarak
+    // işaretleniyor; ama işaretleme atlanırsa uyarı ekranda kalıyordu — 275'te böyle oldu,
+    // şantiye açılmıştı ve uyarı duruyordu. Nokta bağlıysa sorulacak bir şey yok.
+    const { data: bagli } = await sb
+      .from("santiyeler")
+      .select("netsim_nokta_no")
+      .in("netsim_nokta_no", bekleyen.map((b) => b.nokta_no));
+    const bagliNo = new Set((bagli ?? []).map((b) => Number(b.netsim_nokta_no)));
+    setKayitlar(bekleyen.filter((b) => !bagliNo.has(b.nokta_no)));
   }, []);
 
   useEffect(() => {
@@ -100,6 +111,10 @@ export default function NetsimYeniIsHatirlatma() {
 
   /** Hayır — bir daha sorma. Kayıt silinmez, "yoksayildi" olarak kalır (iz sürülebilsin). */
   const yoksay = async (n: YeniNokta) => {
+    // Onay ŞART: "Hayır" geri alınamaz, o nokta bir daha sorulmaz.
+    if (!confirm(`"${n.ad}" işi iş deneyim belgelerine EKLENMEYECEK ve bir daha sorulmayacak.
+
+Emin misiniz?`)) return;
     setIslemde(n.nokta_no);
     try {
       const sb = createClient();
@@ -160,7 +175,7 @@ export default function NetsimYeniIsHatirlatma() {
               </button>
               <button type="button" disabled={islemde === n.nokta_no}
                 onClick={() => yoksay(n)}
-                className="inline-flex items-center gap-1 rounded border border-sky-300 px-2.5 py-1 text-xs text-sky-800 hover:bg-sky-100 disabled:opacity-60">
+                className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-100 px-2.5 py-1 text-xs text-red-800 hover:bg-red-200 disabled:opacity-60">
                 <X size={13} /> Hayır
               </button>
             </div>

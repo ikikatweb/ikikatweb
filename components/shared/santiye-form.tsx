@@ -989,6 +989,19 @@ export default function SantiyeForm({
       // Dosya yüklemeleri
       // Depo yolu URL'den çıkarılır (".../object/public/santiyeler/<yol>") — vazgeçilirse
       // dosyanın silinebilmesi için gerekli.
+      // Netsim uyarısı kapatılır: bu nokta için iş açıldı, ana ekranda bir daha sorulmasın.
+      // Önceden bu adım yoktu; "Evet, ekle" yalnız formu açıyordu, iş kaydedilse bile uyarı
+      // ana ekranda duruyordu. Hata olursa kaydı bozmaz — uyarı bileşeni bağlı noktaları
+      // ayrıca eliyor.
+      if (submitData.netsim_nokta_no) {
+        try {
+          await createClient()
+            .from("netsim_yeni_nokta")
+            .update({ durum: "eklendi", santiye_id: sId })
+            .eq("nokta_no", submitData.netsim_nokta_no);
+        } catch { /* sessiz */ }
+      }
+
       // Belge karşılaştırması burada DEĞİL, dosya seçilir seçilmez yapılıyor; buraya
       // gelindiğinde kullanıcı kararını çoktan vermiş oluyor.
       if (geciciKabulFile) {
