@@ -173,6 +173,16 @@ export default function SantiyeForm({
   // eski/ihalesiz boş-tarihli işler yanlışlıkla uyarıya düşmesin diye null tarihten ÇIKARIM yapılmaz.
   const [sozlesmeImzalanmadi, setSozlesmeImzalanmadi] = useState<boolean>(isEdit ? !!santiye?.sozlesme_imzalanmadi : false);
 
+  // Çalışılmayan dönem artık zorunlu; dönemi olmayan işler için tik var. Tik kalıcı
+  // alanda (calisilmayan_donem_yok) tutuluyor — iki alan da boşken "dönem yok" ile
+  // "henüz girilmedi" ayırt edilemiyor. Eski kayıtlarda alan yoksa, dönemi girilmemiş
+  // olanlar tik işaretli açılır ki yeni zorunluluk onları kilitlemesin.
+  const [calisilmayanYok, setCalisilmayanYok] = useState<boolean>(
+    isEdit
+      ? (santiye?.calisilmayan_donem_yok ?? (!santiye?.calisilmayan_bas && !santiye?.calisilmayan_bit))
+      : false,
+  );
+
   // Kaydette eksik zorunlu alan → o alanın kutusu kırmızıya boyanır ve o alanın sekmesine geçilir.
   const [aktifSekme, setAktifSekme] = useState<string>("genel");
   const [hataliAlan, setHataliAlan] = useState<string | null>(null);
@@ -729,6 +739,11 @@ export default function SantiyeForm({
     if (!isEdit && !formData.il) { alanHatasi("genel", "il", "İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
     if (!formData.is_grubu) { alanHatasi("genel", "is_grubu", "İş tanımı seçimi zorunludur."); return; }
     if (!formData.yuklenici_firma_id) { alanHatasi("genel", "yuklenici_firma_id", "Yüklenici firma seçimi zorunludur."); return; }
+    if (!calisilmayanYok && (!formData.calisilmayan_bas || !formData.calisilmayan_bit)) {
+      alanHatasi("genel", "calisilmayan_donem",
+        "Çalışılmayan dönem başlangıç ve bitişi zorunludur (yoksa 'Çalışılmayan dönem yok' işaretleyin).");
+      return;
+    }
     // Kutudaki sınırı aşmanın başka yolları da var (yapıştırma, Netsim'den ön dolgu) —
     // kayıtta bir kez daha bakılır.
     if ((formData.ortaklik_orani ?? 0) > ORAN_UST_SINIR) {
@@ -874,6 +889,10 @@ export default function SantiyeForm({
         // "Onay tarihi yok" işaretliyse geçici kabul onay tarihi boş kaydedilir.
         gecici_kabul_tarihi: onayTarihiYok ? null : formData.gecici_kabul_tarihi,
         onay_tarihi_yok: onayTarihiYok,
+        // "Çalışılmayan dönem yok" işaretliyse iki alan da boş kaydedilir.
+        calisilmayan_bas: calisilmayanYok ? null : formData.calisilmayan_bas,
+        calisilmayan_bit: calisilmayanYok ? null : formData.calisilmayan_bit,
+        calisilmayan_donem_yok: calisilmayanYok,
       };
 
       if (isEdit) {
@@ -1272,35 +1291,55 @@ export default function SantiyeForm({
                 // flex-1 min-w-0 → mobilde iki select yan yana KÜÇÜLEREK sığar (yoksa form yatay taşıp
                 // "Ay" ile Kaydet/İptal ekran dışına kayıyordu).
                 const gunSelect = (val: string, onCh: (v: string) => void) => (
-                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading || calisilmayanYok} value={val} onChange={(e) => onCh(e.target.value)}>
                     <option value="">Gün</option>
                     {gunOpts.map((g) => <option key={g} value={g}>{Number(g)}</option>)}
                   </select>
                 );
                 const aySelect = (val: string, onCh: (v: string) => void) => (
-                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading} value={val} onChange={(e) => onCh(e.target.value)}>
+                  <select className={`${selectClass} flex-1 min-w-0`} disabled={loading || calisilmayanYok} value={val} onChange={(e) => onCh(e.target.value)}>
                     <option value="">Ay</option>
                     {AYLAR.map((a, i) => <option key={a} value={String(i + 1).padStart(2, "0")}>{a}</option>)}
                   </select>
                 );
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 rounded-md${hataCls("calisilmayan_donem")}`}>
                     <div className="space-y-2">
-                      <Label>Çalışılmayan Dönem — Başlangıç (gün · ay)</Label>
+                      <Label>
+                        Çalışılmayan Dönem — Başlangıç (gün · ay)
+                        {!calisilmayanYok && <span className="text-red-500"> *</span>}
+                      </Label>
                       <div className="flex gap-2">
                         {gunSelect(bas.gun, (v) => setGunAy("calisilmayan_bas", bas.ay, v))}
                         {aySelect(bas.ay, (v) => setGunAy("calisilmayan_bas", v, bas.gun))}
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Çalışılmayan Dönem — Bitiş (gün · ay)</Label>
+                      <Label>
+                        Çalışılmayan Dönem — Bitiş (gün · ay)
+                        {!calisilmayanYok && <span className="text-red-500"> *</span>}
+                      </Label>
                       <div className="flex gap-2">
                         {gunSelect(bit.gun, (v) => setGunAy("calisilmayan_bit", bit.ay, v))}
                         {aySelect(bit.ay, (v) => setGunAy("calisilmayan_bit", v, bit.gun))}
                       </div>
                     </div>
-                    <div className="space-y-2 flex items-end">
-                      <p className="text-xs text-gray-500">Opsiyonel · <strong>yıl yok, her yıl tekrar eder</strong>. Bu aralıkta bu şantiyedeki personeller Bordro&apos;da <span className="italic text-gray-400">gri + italik</span> gösterilir.</p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={calisilmayanYok}
+                          onChange={(e) => {
+                            setCalisilmayanYok(e.target.checked);
+                            // İşaretlenince girilmiş dönem temizlenir — yarım veri kalmasın.
+                            if (e.target.checked) setFormData((p) => ({ ...p, calisilmayan_bas: null, calisilmayan_bit: null }));
+                            if (hataliAlan) setHataliAlan(null);
+                          }}
+                          disabled={loading}
+                        />
+                        Çalışılmayan dönem yok
+                      </label>
+                      <p className="text-xs text-gray-500"><strong>Yıl yok, her yıl tekrar eder</strong>. Bu aralıkta bu şantiyedeki personeller Bordro&apos;da <span className="italic text-gray-400">gri + italik</span> gösterilir.</p>
                     </div>
                   </div>
                 );

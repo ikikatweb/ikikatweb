@@ -94,6 +94,7 @@ export type Santiye = {
   devir_tarihi: string | null;
   gecici_kabul_itibar_tarihi: string | null; // geçici kabul İTİBAR tarihi (kabulün geçerli sayıldığı tarih)
   onay_tarihi_yok?: boolean | null; // belgede tasdik tarihi yok — "Onay tarihi yok" tiki kalıcı tutulur
+  calisilmayan_donem_yok?: boolean | null; // bu işte çalışılmayan dönem yok — tik kalıcı tutulur
   gecici_kabul_tarihi: string | null;         // geçici kabul ONAY tarihi (belge/onay tarihi)
   gecici_kabul_url: string | null;
   kesin_kabul_tarihi: string | null;
