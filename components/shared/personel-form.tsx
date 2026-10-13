@@ -29,6 +29,7 @@ import { Save, X } from "lucide-react";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -852,6 +853,13 @@ export default function PersonelForm({ personel, onSuccess, onCancel }: Personel
           )}
         </CardContent>
       </Card>
+
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="personel" kayitId={personel?.id} olusturma={personel?.created_at} />
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3 mt-6">
         <Button

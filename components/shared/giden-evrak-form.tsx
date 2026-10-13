@@ -31,6 +31,7 @@ import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
 import { uploadDosyaImzali } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
 // "/" veya "." ayırıcılarını destekler (TarihInput artık "/" kullanıyor)
@@ -602,6 +603,13 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       {/* Evrak Taraması (PDF) bölümü kaldırıldı — artık her ek için ayrı PDF
           yüklendiğinden bu tek seferlik tarama gereksiz. Mevcut kayıtlardaki
           pdf_url alanı veritabanında dokunulmadan kalır; yeni evraklarda null'dur. */}
+
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="giden_evrak" kayitId={evrak?.id} olusturma={evrak?.created_at} />
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" onClick={onCancel} disabled={loading}>İptal</Button>

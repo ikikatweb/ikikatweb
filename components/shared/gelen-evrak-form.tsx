@@ -27,6 +27,7 @@ import { formatBaslik } from "@/lib/utils/isim";
 import { parseEk, buildEk } from "@/lib/utils/ek";
 import { uploadDosya } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 type Props = {
   evrak?: GelenEvrakWithRelations;
@@ -417,6 +418,13 @@ export default function GelenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       </div>
 
       {/* Butonlar */}
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="gelen_evrak" kayitId={evrak?.id} olusturma={evrak?.created_at} />
+        </div>
+      )}
+
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" onClick={onCancel} disabled={loading}>İptal</Button>
         <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleSubmit} disabled={loading}>

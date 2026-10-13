@@ -714,6 +714,13 @@ export default function KullaniciForm({
         </>
       )}
 
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="kullanicilar" kayitId={kullanici?.id} olusturma={kullanici?.created_at} />
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-3 pt-2">
         {/* ÇOĞALT — yalnız düzenlemede. Aynı yetkilerle ikinci bir kullanıcı açmak için;
             kaydetmeden önce ad/kullanıcı adı/şifre sorulur. */}
@@ -738,3 +745,4 @@ export default function KullaniciForm({
 
 // Fragment import
 import { Fragment } from "react";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";

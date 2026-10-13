@@ -22,6 +22,7 @@ import type { Tanimlama } from "@/lib/supabase/types";
 import { formatBaslik, formatPlaka, trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 type AracFormProps = {
   arac?: Arac;
@@ -679,6 +680,13 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
           )}
         </CardContent>
       </Card>
+
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="araclar" kayitId={arac?.id} olusturma={arac?.created_at} />
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3 mt-6">
         <Button

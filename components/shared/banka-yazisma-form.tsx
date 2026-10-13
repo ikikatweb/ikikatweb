@@ -27,6 +27,7 @@ import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
 import { uploadDosya } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 type Props = {
   yazisma?: BankaYazismaWithRelations;
@@ -571,6 +572,13 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
           )}
         </div>
       </div>
+
+      {/* Kaydı kim girdi, kim neyini değiştirdi (sql/kayit_gecmisi.sql). */}
+      {isEdit && (
+        <div className="mt-6">
+          <KayitGecmisi tablo="banka_yazismalari" kayitId={yazisma?.id} olusturma={yazisma?.created_at} />
+        </div>
+      )}
 
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" onClick={onCancel} disabled={loading}>İptal</Button>

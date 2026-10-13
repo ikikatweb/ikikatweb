@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks";
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import type { Firma, FirmaInsert } from "@/lib/supabase/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -189,6 +190,8 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         <TabsList className="mb-4">
           <TabsTrigger value="bilgiler">Firma Bilgileri</TabsTrigger>
           <TabsTrigger value="smtp">SMTP Mail Ayarları</TabsTrigger>
+          {/* Yeni firma eklerken geçmiş olmaz — kayıt henüz yok. */}
+          {isEdit && <TabsTrigger value="gecmis">Geçmiş</TabsTrigger>}
         </TabsList>
 
         {/* Sekme 1: Firma Bilgileri */}
@@ -509,6 +512,16 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isEdit && (
+          <TabsContent value="gecmis">
+            <Card>
+              <CardContent className="pt-6">
+                <KayitGecmisi tablo="firmalar" kayitId={firma?.id} olusturma={firma?.created_at} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Alt butonlar — sticky: uzun firma adı/içerikte pencere kaydırılırken Kaydet/İptal her zaman görünür.
