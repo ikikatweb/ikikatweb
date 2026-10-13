@@ -63,6 +63,13 @@ declare
   -- Gürültü alanları: her yazmada değişir, bilgi taşımaz.
   v_atla  text[] := array['updated_at','created_at','netsim_son_senkron'];
 begin
+  -- MAKİNENİN SÜREKLİ YAZDIĞI SÜTUNLAR tablo bazında elenir. Arvento senkronu araçların
+  -- göstergesini yarım dakikada bir yazıyor; ilk kurulumda günlüğe 30 saniyede 4 satır
+  -- düştü, bu hızla günde ~11.500 satır eder ve kullanıcı değişiklikleri içinde kaybolur.
+  -- Gösterge değerinin kendi geçmişi zaten arac_puantaj ve arvento tablolarında duruyor.
+  if TG_TABLE_NAME = 'araclar' then
+    v_atla := v_atla || array['guncel_gosterge','arvento_gosterge'];
+  end if;
   select k.id, k.ad_soyad into v_kid, v_ad
   from public.kullanicilar k
   where k.auth_id = auth.uid();
