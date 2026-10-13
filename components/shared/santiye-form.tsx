@@ -28,6 +28,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -878,6 +879,8 @@ export default function SantiyeForm({
           <TabsTrigger value="sozlesme">Sözleşme ve Mali Veri</TabsTrigger>
           <TabsTrigger value="kabul">Kabul</TabsTrigger>
           <TabsTrigger value="depo">Depo</TabsTrigger>
+          {/* Yeni iş eklerken geçmiş olmaz — kayıt henüz yok. */}
+          {isEdit && <TabsTrigger value="gecmis">Geçmiş</TabsTrigger>}
         </TabsList>
 
         {/* Sekme 1: Genel Bilgiler */}
@@ -1721,6 +1724,16 @@ export default function SantiyeForm({
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isEdit && (
+          <TabsContent value="gecmis">
+            <Card>
+              <CardContent className="pt-6">
+                <KayitGecmisi tablo="santiyeler" kayitId={santiye?.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Buton çubuğu ALTA YAPIŞIK (sticky) → uzun formda kaydırırken Kaydet/İptal ekranın altında görünür kalır,
