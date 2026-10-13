@@ -79,6 +79,11 @@ type SantiyeFormProps = {
 
 type OrtakRow = { firma_id: string; oran: number; is_pilot: boolean };
 
+// Ortaklık oranı yüzdedir, 100'ü aşamaz. Elle girilirken hata oluyor: iki işte %200
+// kaydedilmişti (Kargı Orman Çömlektepe, Tokat İŞKUR Çatı) ve kimse fark etmedi —
+// kaydı kimin girdiğini gösteren bir alan da yok. Kutu baştan kabul etmiyor.
+const ORAN_UST_SINIR = 100;
+
 // IS_GRUPLARI artık tanımlamalardan çekilecek
 
 const selectClass =
@@ -429,11 +434,14 @@ export default function SantiyeForm({
     const { name, value } = e.target;
     if (hataliAlan) setHataliAlan(null); // kullanıcı düzeltmeye başladı → kırmızıyı kaldır
     const numericFields = ["ortaklik_orani", "depo_kapasitesi", "is_suresi", "sure_uzatimi"];
+    let sayisal = value ? parseFloat(value) : null;
+    if (name === "ortaklik_orani" && sayisal != null && sayisal > ORAN_UST_SINIR) {
+      sayisal = ORAN_UST_SINIR;
+      toast.error(`Ortaklık oranı %${ORAN_UST_SINIR}'den büyük olamaz.`);
+    }
     setFormData((prev) => ({
       ...prev,
-      [name]: numericFields.includes(name)
-        ? value ? parseFloat(value) : null
-        : value || null,
+      [name]: numericFields.includes(name) ? sayisal : value || null,
     }));
   }
 
@@ -458,7 +466,13 @@ export default function SantiyeForm({
     setOrtaklar((prev) => prev.filter((_, i) => i !== index));
   }
   function updateOrtak(index: number, field: keyof OrtakRow, value: string | number | boolean) {
-    setOrtaklar((prev) => prev.map((o, i) => i === index ? { ...o, [field]: value } : o));
+    // Ortak oranı da yüzde — aynı sınır burada da geçerli.
+    let v = value;
+    if (field === "oran" && typeof v === "number" && v > ORAN_UST_SINIR) {
+      v = ORAN_UST_SINIR;
+      toast.error(`Ortak oranı %${ORAN_UST_SINIR}'den büyük olamaz.`);
+    }
+    setOrtaklar((prev) => prev.map((o, i) => i === index ? { ...o, [field]: v } : o));
   }
 
   // Yüklenmiş PDF'i sil — sadece url alanını NULL yap (storage'da dosya kalır ama bağlı değil).
@@ -559,6 +573,15 @@ export default function SantiyeForm({
     if (!isEdit && !formData.il) { alanHatasi("genel", "il", "İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
     if (!formData.is_grubu) { alanHatasi("genel", "is_grubu", "İş tanımı seçimi zorunludur."); return; }
     if (!formData.yuklenici_firma_id) { alanHatasi("genel", "yuklenici_firma_id", "Yüklenici firma seçimi zorunludur."); return; }
+    // Kutudaki sınırı aşmanın başka yolları da var (yapıştırma, Netsim'den ön dolgu) —
+    // kayıtta bir kez daha bakılır.
+    if ((formData.ortaklik_orani ?? 0) > ORAN_UST_SINIR) {
+      alanHatasi("genel", "ortaklik_orani", `Ortaklık oranı %${ORAN_UST_SINIR}'den büyük olamaz.`); return;
+    }
+    const asanOrtak = ortaklar.findIndex((o) => o.oran > ORAN_UST_SINIR);
+    if (asanOrtak >= 0) {
+      alanHatasi("genel", "ortaklik_orani", `${asanOrtak + 1}. ortağın oranı %${ORAN_UST_SINIR}'den büyük olamaz.`); return;
+    }
     // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no + sözleşme bedeli zorunlu; ihaleli tiki kaldırıldıysa değil.
     if (formData.ihaleli !== false) {
       if (!formData.ilan_tarihi) { alanHatasi("genel", "ilan_tarihi", "İlan tarihi zorunludur."); return; }
