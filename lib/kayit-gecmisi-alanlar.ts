@@ -32,6 +32,7 @@ export const ALAN_ADLARI: Record<string, Record<string, string>> = {
     ff_dahil_kalan_tutar: "FF dâhil kalan tutar",
     sozlesme_fiyatlariyla_gerceklesen: "Tamamlanan keşif",
     gecici_kabul_tarihi: "Geçici kabul tarihi",
+    onay_tarihi_yok: "Onay tarihi yok",
     gecici_kabul_itibar_tarihi: "Geçici kabul itibar tarihi",
     kesin_kabul_tarihi: "Kesin kabul tarihi",
     tasfiye_tarihi: "Tasfiye tarihi",

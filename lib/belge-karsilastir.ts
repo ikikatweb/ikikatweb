@@ -3,7 +3,7 @@
 // Yalnız FARK ÜRETİR, hiçbir şey yazmaz; yazma kararı kullanıcıda
 // (components/shared/belge-fark-dialog.tsx).
 
-import type { BelgeFark } from "@/components/shared/belge-fark-dialog";
+import type { BelgeFark, BelgeUyusan } from "@/components/shared/belge-fark-dialog";
 import { alanAdi, degerGoster } from "@/lib/kayit-gecmisi-alanlar";
 
 type Kayit = Record<string, unknown>;
@@ -45,13 +45,25 @@ export function belgeFarklari(
   okunan: Okunan,
   alinti: Record<string, string> = {},
   tablo = "santiyeler",
-): BelgeFark[] {
+): { farklar: BelgeFark[]; uyusanlar: BelgeUyusan[] } {
   const farklar: BelgeFark[] = [];
+  // UYUŞANLAR da döner: kullanıcı yalnız farkları değil, belgenin kaydı DOĞRULADIĞI
+  // alanları da görmek istiyor — "geçici kabul tarihi sitede de belgede de aynı" bilgisi,
+  // belgenin gerçekten o işe ait olduğunun da teyidi.
+  const uyusanlar: BelgeUyusan[] = [];
   for (const { alan, tip } of ALANLAR) {
     const yeni = okunan[alan];
     if (bos(yeni)) continue;
     const mevcut = kayit[alan];
-    if (!bos(mevcut) && ayni(mevcut, yeni, tip)) continue;
+    if (!bos(mevcut) && ayni(mevcut, yeni, tip)) {
+      uyusanlar.push({
+        alan,
+        etiket: alanAdi(tablo, alan),
+        deger: degerGoster(alan, String(mevcut)),
+        alinti: alinti[alan],
+      });
+      continue;
+    }
 
     farklar.push({
       alan,
@@ -63,5 +75,28 @@ export function belgeFarklari(
       bosDoldurma: bos(mevcut),
     });
   }
-  return farklar;
+
+  // "ONAY TARİHİ YOK" ÖNERİSİ. Belge bir kabul belgesi (itibar tarihi okunabildi) ama
+  // tasdik bölümünde tam bir tarih yok — kutu da işaretli değilse sorulur. Yoksa kayıt
+  // "onay tarihi henüz girilmedi" ile "belgede onay tarihi yok" arasında askıda kalıyor;
+  // Konya Beyşehir'de tam bu oldu.
+  //
+  // Yalnız sitedeki onay tarihi BOŞKEN önerilir: belgede okunamaması, mevcut bir tarihi
+  // silmek için gerekçe değil.
+  if (!bos(okunan.gecici_kabul_itibar_tarihi)
+      && bos(okunan.gecici_kabul_tarihi)
+      && bos(kayit.gecici_kabul_tarihi)
+      && kayit.onay_tarihi_yok !== true) {
+    farklar.push({
+      alan: "onay_tarihi_yok",
+      etiket: alanAdi(tablo, "onay_tarihi_yok"),
+      site: "işaretli değil",
+      belge: "işaretle",
+      deger: true,
+      alinti: "Belgenin tasdik/onay bölümünde tam bir tarih bulunamadı",
+      bosDoldurma: true,
+    });
+  }
+
+  return { farklar, uyusanlar };
 }

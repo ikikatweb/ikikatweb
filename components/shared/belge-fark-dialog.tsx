@@ -10,11 +10,19 @@
 // Varsayılan seçim: sitede BOŞ olan alanlar işaretli gelir (kaybedilecek bilgi yok),
 // DEĞER ÇAKIŞAN alanlar işaretsiz gelir (mevcut veri bilerek girilmiş olabilir).
 import { useEffect, useState } from "react";
-import { FileText, AlertTriangle } from "lucide-react";
+import { FileText, AlertTriangle, Check } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+
+/** Belgeyle kayıt arasında ZATEN AYNI olan alan — bilgi olarak gösterilir, dokunulmaz. */
+export type BelgeUyusan = {
+  alan: string;
+  etiket: string;
+  deger: string;
+  alinti?: string;
+};
 
 export type BelgeFark = {
   alan: string;
@@ -24,7 +32,7 @@ export type BelgeFark = {
   /** Belgeden okunan değerin gösterimi */
   belge: string;
   /** Yazılacak ham değer */
-  deger: string | number | null;
+  deger: string | number | boolean | null;
   /** Belgedeki kaynak satır — kullanıcı neye dayandığını görsün */
   alinti?: string;
   /** Sitede karşılığı boş mu (true) yoksa farklı bir değer mi var (false) */
@@ -34,12 +42,14 @@ export type BelgeFark = {
 export default function BelgeFarkDialog({
   acik,
   farklar,
+  uyusanlar = [],
   belgeAdi,
   onUygula,
   onKapat,
 }: {
   acik: boolean;
   farklar: BelgeFark[];
+  uyusanlar?: BelgeUyusan[];
   belgeAdi: string;
   onUygula: (secilen: BelgeFark[]) => Promise<void> | void;
   onKapat: () => void;
@@ -85,6 +95,7 @@ export default function BelgeFarkDialog({
             <span className="font-medium">{belgeAdi}</span> okundu.
             {bosSayisi > 0 && ` Sitede boş olan ${bosSayisi} alan doldurulabilir.`}
             {cakisan > 0 && ` ${cakisan} alanda farklı değer var.`}
+            {uyusanlar.length > 0 && ` ${uyusanlar.length} alan belgeyle aynı.`}
             {" "}İşaretlediklerinizi uygularım, diğerlerine dokunmam.
           </DialogDescription>
         </DialogHeader>
@@ -130,6 +141,23 @@ export default function BelgeFarkDialog({
               </span>
             </label>
           ))}
+
+          {uyusanlar.length > 0 && (
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                <Check size={13} /> Belgeyle aynı olanlar ({uyusanlar.length}) — değişiklik yok
+              </div>
+              <ul className="space-y-1 text-[12px] text-emerald-900">
+                {uyusanlar.map((u) => (
+                  <li key={u.alan} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-emerald-700">{u.etiket}</span>
+                    <span className="font-medium">{u.deger}</span>
+                    <span className="text-emerald-600">— sitede ve belgede aynı</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2">
