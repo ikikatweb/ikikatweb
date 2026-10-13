@@ -510,7 +510,17 @@ async function main() {
       }
     }
 
-    if (s.gecici_kabul_tarihi) {
+    if (s.gecici_kabul_tarihi && Number(s.sozlesme_fiyatlariyla_gerceklesen ?? 0) === 0 && t.kesif > 0) {
+      // KİLİTLİ AMA BOŞ. Kilit, geçici kabulde donmuş tutarı Netsim'in sonraki
+      // hareketlerinden korumak için var; ortada tutar yokken koruyacak bir şey de yok.
+      // Elle girmek için geçici kabul tarihini silip tutarı yazıp tarihi geri koymak
+      // gerekiyordu — tek iş için (Tokat Huzurevi) üç adımlık zahmet.
+      console.log(`  BOŞTU    ${s.is_adi}`);
+      console.log(`           geçici kabullü ama tutar boştu → Netsim'den yazıldı: ${fmt(t.kesif)}`);
+      yama.sozlesme_fiyatlariyla_gerceklesen = t.kesif;
+      yama.netsim_son_senkron = simdi;
+      kesifYazilan++;
+    } else if (s.gecici_kabul_tarihi) {
       if (!ayni(s.sozlesme_fiyatlariyla_gerceklesen, t.kesif)) {
         if (!KISA) {
           console.log(`  KİLİTLİ  ${s.is_adi}`);
