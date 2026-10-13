@@ -29,13 +29,13 @@ export type BelgeSatir = {
 
 /** Karşılaştırılacak alanlar ve karşılaştırma biçimi. */
 const ALANLAR: { alan: string; tip: "tarih" | "sayi" | "metin" }[] = [
+  { alan: "ekap_belge_no", tip: "metin" },
   { alan: "ihale_kayit_no", tip: "metin" },
   { alan: "sozlesme_tarihi", tip: "tarih" },
   { alan: "sozlesme_bedeli", tip: "sayi" },
   { alan: "sozlesme_fiyatlariyla_gerceklesen", tip: "sayi" },
   { alan: "ortaklik_orani", tip: "sayi" },
   { alan: "isyeri_teslim_tarihi", tip: "tarih" },
-  { alan: "is_suresi", tip: "sayi" },
   { alan: "is_bitim_tarihi", tip: "tarih" },
   { alan: "gecici_kabul_itibar_tarihi", tip: "tarih" },
   { alan: "gecici_kabul_tarihi", tip: "tarih" },
@@ -43,6 +43,8 @@ const ALANLAR: { alan: string; tip: "tarih" | "sayi" | "metin" }[] = [
 ];
 // is_adi bilerek YOK: resmî belgeler adı BÜYÜK HARF yazıyor, sitede başlık biçiminde
 // duruyor — her belgede "fark" çıkar, gerçek bir fark olmadığı hâlde.
+// is_suresi de YOK: kullanıcı kararı — belgelerde güvenilir biçimde yer almıyor. Zaten
+// bir tutanakta "7. Süre Uzatımı: 153 Gün" satırı iş süresi sanılmıştı.
 
 const bos = (v: unknown) => v == null || v === "" || (typeof v === "number" && Number.isNaN(v));
 

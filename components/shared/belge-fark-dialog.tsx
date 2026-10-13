@@ -30,12 +30,16 @@ export default function BelgeFarkDialog({
   belgeAdi,
   onUygula,
   onKapat,
+  onVazgec,
 }: {
   acik: boolean;
   satirlar: BelgeSatir[];
   belgeAdi: string;
   onUygula: (secilen: BelgeSatir[]) => Promise<void> | void;
+  /** Pencereyi kapatır, belge KALIR (çarpı / dışarı tıklama). */
   onKapat: () => void;
+  /** Vazgeç: yüklenen belge geri alınır, mail gitmez. */
+  onVazgec?: () => Promise<void> | void;
 }) {
   const [secili, setSecili] = useState<Set<string>>(new Set());
   const [isleniyor, setIsleniyor] = useState(false);
@@ -85,6 +89,7 @@ export default function BelgeFarkDialog({
             {eklenecek > 0 && ` ${eklenecek} alan sitede boş.`}
             {ayniSayi > 0 && ` ${ayniSayi} alan belgeyle aynı.`}
             {" "}İşaretlediklerinizi yazarım, diğerlerine dokunmam.
+            {onVazgec && " Vazgeçerseniz belge hiç yüklenmemiş sayılır."}
           </DialogDescription>
         </DialogHeader>
 
@@ -157,8 +162,18 @@ export default function BelgeFarkDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button type="button" variant="outline" onClick={onKapat} disabled={isleniyor}>
-            Vazgeç
+          <Button
+            type="button"
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-50"
+            onClick={async () => {
+              if (!onVazgec) { onKapat(); return; }
+              setIsleniyor(true);
+              try { await onVazgec(); } finally { setIsleniyor(false); }
+            }}
+            disabled={isleniyor}
+          >
+            Vazgeç — belgeyi yükleme
           </Button>
           <Button
             type="button"

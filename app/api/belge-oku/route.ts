@@ -18,13 +18,13 @@ export const maxDuration = 60;
 /** Belgeden okunan alanlar — hepsi santiyeler tablosundaki karşılığıyla aynı adda. */
 export type BelgeAlanlari = {
   is_adi: string | null;
+  ekap_belge_no: string | null;
   ihale_kayit_no: string | null;
   sozlesme_tarihi: string | null;
   sozlesme_bedeli: number | null;
   sozlesme_fiyatlariyla_gerceklesen: number | null;
   ortaklik_orani: number | null;
   isyeri_teslim_tarihi: string | null;
-  is_suresi: number | null;
   is_bitim_tarihi: string | null;
   gecici_kabul_itibar_tarihi: string | null;
   gecici_kabul_tarihi: string | null;
@@ -47,13 +47,13 @@ function istem(firmaAdi: string | null): string {
 {
  "alanlar": {
    "is_adi": string|null,
+   "ekap_belge_no": string|null,
    "ihale_kayit_no": string|null,
    "sozlesme_tarihi": "YYYY-MM-DD"|null,
    "sozlesme_bedeli": number|null,
    "sozlesme_fiyatlariyla_gerceklesen": number|null,
    "ortaklik_orani": number|null,
    "isyeri_teslim_tarihi": "YYYY-MM-DD"|null,
-   "is_suresi": number|null,
    "is_bitim_tarihi": "YYYY-MM-DD"|null,
    "gecici_kabul_itibar_tarihi": "YYYY-MM-DD"|null,
    "gecici_kabul_tarihi": "YYYY-MM-DD"|null,
@@ -63,6 +63,8 @@ function istem(firmaAdi: string | null): string {
 }
 
 Alanların karşılıkları:
+- ekap_belge_no: belgenin ÜSTÜNDEKİ "Sayı" satırı — belgenin kendi numarası
+  (ör. "2013/181799-855823-1-4" ya da "25501-Y-KK-34-1"). İhale kayıt numarası DEĞİL.
 - sozlesme_bedeli: "İlk sözleşme bedeli".
 - sozlesme_fiyatlariyla_gerceklesen: "Gerçekleştirilen iş tutarı" (ya da "Belge tutarı").
 - ortaklik_orani: iş ortaklığıysa ${firmaAdi ? `"${firmaAdi}" firmasının` : "BİZİM firmamızın"} payı.
@@ -71,8 +73,7 @@ Alanların karşılıkları:
 - gecici_kabul_itibar_tarihi: "İşin geçici kabul/tasfiye veya iskan tarihi" ya da "İşin kabul tarihi".
 - gecici_kabul_tarihi: YALNIZ tasdik/onay bölümünde ("TASDİK OLUNUR" gibi) elle veya
   basılı YAZILMIŞ tam tarih. Gün veya ay boş bırakılmışsa null. Belgenin üstündeki
-  evrak tarihini BURAYA YAZMA.
-- is_suresi: "Sözleşmeye göre işin süresi" (gün sayısı). Süre uzatımını buraya yazma.`;
+  evrak tarihini BURAYA YAZMA.`;
 }
 
 /**
@@ -86,13 +87,13 @@ const SATIR_IZI: Record<keyof BelgeAlanlari, { olmali: RegExp; olmamali?: RegExp
   // Türkçe büyük İ (U+0130) /i/i ile EŞLEŞMEZ — belgelerde başlıklar "İşin Adı",
   // "İhale Kayıt No" diye geçiyor, bu yüzden sınıflara İ ayrıca yazılıyor.
   is_adi:                            { olmali: /[iİ][şs]in ad/i },
+  ekap_belge_no:                     { olmali: /say[ıi]|belge no/i, olmamali: /ihale kay|tutar/i },
   ihale_kayit_no:                    { olmali: /[iİ]hale kay[ıi]t|[iİ]KN/i },
   sozlesme_tarihi:                   { olmali: /s[öo]zle[şs]me\s*tarih/i },
   sozlesme_bedeli:                   { olmali: /s[öo]zle[şs]me bedel/i, olmamali: /toplam/i },
   sozlesme_fiyatlariyla_gerceklesen: { olmali: /ger[çc]ekle[şs]|belge tutar/i },
   ortaklik_orani:                    { olmali: /ortak/i },
   isyeri_teslim_tarihi:              { olmali: /teslim/i },
-  is_suresi:                         { olmali: /s[üu]re/i, olmamali: /uzat/i },
   // "Süre Uzatımlı İş Bitim Tarihi" ayrı bir alan (sure_uzatimli_tarih); sözleşmeye
   // göre bitim tarihinin yerine yazılmamalı.
   is_bitim_tarihi:                   { olmali: /bitim/i, olmamali: /uzat/i },

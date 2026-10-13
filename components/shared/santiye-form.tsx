@@ -196,6 +196,14 @@ export default function SantiyeForm({
   const [farkAcik, setFarkAcik] = useState(false);
   const [farkBelgeAdi, setFarkBelgeAdi] = useState("");
   const [farkSantiyeId, setFarkSantiyeId] = useState<string | null>(null);
+  // Vazgeçilirse yüklenen belge geri alınır: hangi alan, hangi dosya, önceki değer ne idi.
+  // Muhasebe maili yalnız belge KALIRSA gider — kullanıcı vazgeçerse geri alınamaz bir
+  // mail atılmış olmasın. Bu yüzden yükleme anında değil, pencere kapanınca gönderilir.
+  //
+  // İkisi de REF, state değil: aynı kaydetme akışı içinde yazılıp okunuyorlar, state
+  // olsalardı okuma eski değeri görürdü.
+  const farkBelge = useRef<{ alan: string; yol: string; oncekiUrl: string | null } | null>(null);
+  const bekleyenMail = useRef<{ sId: string; url: string; ad: string } | null>(null);
   // Pencere kapanana kadar yönlendirmeyi bekletmek için; kullanıcı kararını vermeden
   // sayfa değişirse soru boşa gider.
   const farkCozucu = useRef<(() => void) | null>(null);
@@ -581,7 +589,10 @@ export default function SantiyeForm({
    * Hiçbir şey kendiliğinden yazılmaz — onay penceresinden geçer.
    * Okuma başarısız olursa sessiz geçilir: belge zaten yüklendi, kayıt da kaydedildi.
    */
-  async function belgeyiKarsilastir(sId: string, url: string, belgeAdi: string, kayit: Record<string, unknown>) {
+  async function belgeyiKarsilastir(
+    sId: string, url: string, belgeAdi: string, kayit: Record<string, unknown>,
+    belge: { alan: string; yol: string; oncekiUrl: string | null },
+  ) {
     try {
       const firma = firmalar.find((f) => f.id === kayit.yuklenici_firma_id);
       const r = await fetch("/api/belge-oku", {
@@ -602,6 +613,7 @@ export default function SantiyeForm({
       setFarkListesi(satirlar);
       setFarkBelgeAdi(belgeAdi);
       setFarkSantiyeId(sId);
+      farkBelge.current = belge;
       setFarkAcik(true);
       await new Promise<void>((cozul) => { farkCozucu.current = cozul; });
     } catch {
@@ -609,15 +621,47 @@ export default function SantiyeForm({
     }
   }
 
-  function farkPenceresiniKapat() {
+  /** Pencereyi kapatır; belge KALIR. Bekleyen muhasebe maili burada gönderilir. */
+  async function farkPenceresiniKapat() {
     setFarkAcik(false);
     setFarkListesi([]);
+    farkBelge.current = null;
+    if (bekleyenMail.current) {
+      const m = bekleyenMail.current;
+      bekleyenMail.current = null;
+      await geciciKabulMailGonder(m.sId, m.url, m.ad);
+    }
+    farkCozucu.current?.();
+    farkCozucu.current = null;
+  }
+
+  /** Vazgeç: yüklenen belgeyi geri alır — bağ sökülür, dosya depodan silinir, mail gitmez. */
+  async function belgedenVazgec() {
+    const b = farkBelge.current;
+    setFarkAcik(false);
+    setFarkListesi([]);
+    farkBelge.current = null;
+    bekleyenMail.current = null;
+    if (b && farkSantiyeId) {
+      try {
+        await updateSantiye(farkSantiyeId, { [b.alan]: b.oncekiUrl } as Partial<SantiyeInsert>);
+        await fetch("/api/upload", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bucket: "santiyeler", path: b.yol }),
+        });
+        setFormData((p) => ({ ...p, [b.alan]: b.oncekiUrl }));
+        toast.success("Belge yüklenmedi, kayıt eski hâlinde kaldı.");
+      } catch {
+        toast.error("Belge geri alınamadı — iş deneyim belgesi ekranından kontrol edin.");
+      }
+    }
     farkCozucu.current?.();
     farkCozucu.current = null;
   }
 
   async function farklariUygula(secilen: BelgeSatir[]) {
-    if (!farkSantiyeId || secilen.length === 0) { farkPenceresiniKapat(); return; }
+    if (!farkSantiyeId || secilen.length === 0) { await farkPenceresiniKapat(); return; }
     try {
       const yama: Record<string, unknown> = {};
       for (const f of secilen) yama[f.alan] = f.deger;
@@ -626,7 +670,7 @@ export default function SantiyeForm({
     } catch {
       toast.error("Belgedeki bilgiler yazılamadı.");
     }
-    farkPenceresiniKapat();
+    await farkPenceresiniKapat();
   }
 
   // Zorunlu alan eksikse: ilgili sekmeye geç, kutuyu kırmızıya boya, uyarı ver.
@@ -849,30 +893,45 @@ export default function SantiyeForm({
       }
 
       // Dosya yüklemeleri
-      const yuklenenler: { url: string; ad: string }[] = [];
+      // Depo yolu URL'den çıkarılır (".../object/public/santiyeler/<yol>") — vazgeçilirse
+      // dosyanın silinebilmesi için gerekli.
+      const depoYolu = (u: string) => u.split("/santiyeler/").pop() ?? "";
+      const yuklenenler: {
+        url: string; ad: string; alan: string; yol: string; oncekiUrl: string | null;
+      }[] = [];
+
       if (geciciKabulFile) {
         const url = await uploadSantiyeFile(geciciKabulFile, sId, "gecici_kabul");
         await updateSantiye(sId, { gecici_kabul_url: url });
-        // Her geçici kabul eklenişinde belge MUHASEBEYE mail atılır. await: kayıt sonrası yönlendirme
-        // isteği yarıda kesmesin ve sonuç toast'ı görünsün. Mail hatası kaydı BOZMAZ (fonksiyon kendi
-        // içinde yakalar) — iş zaten kaydedilmiştir, kullanıcı belgeyi elle iletebilir.
-        await geciciKabulMailGonder(sId, url, geciciKabulFile.name);
-        yuklenenler.push({ url, ad: geciciKabulFile.name });
+        // Muhasebe maili ARTIK BURADA GİTMİYOR. Kullanıcı karşılaştırma penceresinde
+        // vazgeçerse belge hiç yüklenmemiş sayılıyor; o durumda geri alınamaz bir mail
+        // atılmış olmamalı. Mail, pencere kapanınca gönderilir.
+        bekleyenMail.current = { sId, url, ad: geciciKabulFile.name };
+        yuklenenler.push({ url, ad: geciciKabulFile.name, alan: "gecici_kabul_url", yol: depoYolu(url), oncekiUrl: santiye?.gecici_kabul_url ?? null });
       }
       if (kesinKabulFile) {
         const url = await uploadSantiyeFile(kesinKabulFile, sId, "kesin_kabul");
         await updateSantiye(sId, { kesin_kabul_url: url });
-        yuklenenler.push({ url, ad: kesinKabulFile.name });
+        yuklenenler.push({ url, ad: kesinKabulFile.name, alan: "kesin_kabul_url", yol: depoYolu(url), oncekiUrl: santiye?.kesin_kabul_url ?? null });
       }
       if (isDeneyimFile) {
         const url = await uploadSantiyeFile(isDeneyimFile, sId, "is_deneyim");
         await updateSantiye(sId, { is_deneyim_url: url });
-        yuklenenler.push({ url, ad: isDeneyimFile.name });
+        yuklenenler.push({ url, ad: isDeneyimFile.name, alan: "is_deneyim_url", yol: depoYolu(url), oncekiUrl: santiye?.is_deneyim_url ?? null });
       }
 
       // Yüklenen belgeleri oku ve farkları sor. Kayıt zaten yazıldı; bu adım
       // başarısız olsa bile kaydı etkilemez.
-      for (const b of yuklenenler) await belgeyiKarsilastir(sId, b.url, b.ad, submitData as Record<string, unknown>);
+      for (const b of yuklenenler) {
+        await belgeyiKarsilastir(sId, b.url, b.ad, submitData as Record<string, unknown>,
+          { alan: b.alan, yol: b.yol, oncekiUrl: b.oncekiUrl });
+      }
+      // Pencere hiç açılmadıysa (fark yok) bekleyen mail burada gider.
+      if (bekleyenMail.current) {
+        const m = bekleyenMail.current;
+        bekleyenMail.current = null;
+        await geciciKabulMailGonder(m.sId, m.url, m.ad);
+      }
 
       basarili = true;
     } catch {
@@ -1849,6 +1908,7 @@ export default function SantiyeForm({
         belgeAdi={farkBelgeAdi}
         onUygula={farklariUygula}
         onKapat={farkPenceresiniKapat}
+        onVazgec={belgedenVazgec}
       />
 
       <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
