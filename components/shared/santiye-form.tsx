@@ -29,8 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
-import BelgeFarkDialog, { type BelgeFark, type BelgeUyusan } from "@/components/shared/belge-fark-dialog";
-import { belgeFarklari } from "@/lib/belge-karsilastir";
+import BelgeFarkDialog from "@/components/shared/belge-fark-dialog";
+import { belgeKarsilastir, uygulanabilir, type BelgeSatir } from "@/lib/belge-karsilastir";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -192,8 +192,7 @@ export default function SantiyeForm({
   const [kesifArtisiStr, setKesifArtisiStr] = useState("");
 
   // Yüklenen PDF ile kayıt arasındaki farklar — kaydetmeden SONRA sorulur.
-  const [farkListesi, setFarkListesi] = useState<BelgeFark[]>([]);
-  const [farkUyusanlar, setFarkUyusanlar] = useState<BelgeUyusan[]>([]);
+  const [farkListesi, setFarkListesi] = useState<BelgeSatir[]>([]);
   const [farkAcik, setFarkAcik] = useState(false);
   const [farkBelgeAdi, setFarkBelgeAdi] = useState("");
   const [farkSantiyeId, setFarkSantiyeId] = useState<string | null>(null);
@@ -592,15 +591,15 @@ export default function SantiyeForm({
       });
       if (!r.ok) return;
       const { alanlar, alinti } = await r.json();
-      const { farklar, uyusanlar } = belgeFarklari(kayit, alanlar ?? {}, alinti ?? {});
-      if (farklar.length === 0) {
-        // Fark yoksa pencere açılmaz; ama belgenin okunduğu ve kaydı doğruladığı
-        // söylenmeli — yoksa kullanıcı "okudu mu okumadı mı" bilemiyor.
-        if (uyusanlar.length > 0) toast.success(`Belge kayıtla uyuşuyor — ${uyusanlar.length} alan doğrulandı.`);
+      const satirlar = belgeKarsilastir(kayit, alanlar ?? {}, alinti ?? {});
+      // Uygulanacak bir şey yoksa pencere açılmaz; ama belgenin okunduğu ve kaydı
+      // doğruladığı söylenmeli — yoksa kullanıcı "okudu mu okumadı mı" bilemiyor.
+      if (!satirlar.some(uygulanabilir)) {
+        const ayniSayi = satirlar.filter((x) => x.durum === "ayni").length;
+        if (ayniSayi > 0) toast.success(`Belge kayıtla uyuşuyor — ${ayniSayi} alan doğrulandı.`);
         return;
       }
-      setFarkListesi(farklar);
-      setFarkUyusanlar(uyusanlar);
+      setFarkListesi(satirlar);
       setFarkBelgeAdi(belgeAdi);
       setFarkSantiyeId(sId);
       setFarkAcik(true);
@@ -613,12 +612,11 @@ export default function SantiyeForm({
   function farkPenceresiniKapat() {
     setFarkAcik(false);
     setFarkListesi([]);
-    setFarkUyusanlar([]);
     farkCozucu.current?.();
     farkCozucu.current = null;
   }
 
-  async function farklariUygula(secilen: BelgeFark[]) {
+  async function farklariUygula(secilen: BelgeSatir[]) {
     if (!farkSantiyeId || secilen.length === 0) { farkPenceresiniKapat(); return; }
     try {
       const yama: Record<string, unknown> = {};
@@ -1847,8 +1845,7 @@ export default function SantiyeForm({
           form yatay taşısa bile butonlar sola dayalı ve GÖRÜNÜR kalır. Masaüstünde yan yana, sağa dayalı. */}
       <BelgeFarkDialog
         acik={farkAcik}
-        farklar={farkListesi}
-        uyusanlar={farkUyusanlar}
+        satirlar={farkListesi}
         belgeAdi={farkBelgeAdi}
         onUygula={farklariUygula}
         onKapat={farkPenceresiniKapat}

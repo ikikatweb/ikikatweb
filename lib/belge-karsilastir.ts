@@ -1,13 +1,31 @@
-// Belgeden okunan alanlarla sitedeki kaydı karşılaştırır.
+// Belgeden okunan alanlarla sitedeki kaydı karşılaştırır ve TEK bir tablo üretir.
 //
-// Yalnız FARK ÜRETİR, hiçbir şey yazmaz; yazma kararı kullanıcıda
-// (components/shared/belge-fark-dialog.tsx).
+// Tablo yalnız farkları değil, uyuşanları ve belgede bulunamayanları da içerir: kullanıcı
+// belgenin gerçekten o işe ait olduğunu da görmek istiyor. Yazma kararı kullanıcıda
+// (components/shared/belge-fark-dialog.tsx); bu dosya hiçbir şey yazmaz.
 
-import type { BelgeFark, BelgeUyusan } from "@/components/shared/belge-fark-dialog";
 import { alanAdi, degerGoster } from "@/lib/kayit-gecmisi-alanlar";
 
 type Kayit = Record<string, unknown>;
 type Okunan = Record<string, string | number | null | undefined>;
+
+export type SatirDurumu =
+  | "ekleme"   // sitede boş, belgede var        → uygulanabilir, varsayılan işaretli
+  | "fark"     // ikisi de dolu ama farklı       → uygulanabilir, varsayılan işaretsiz
+  | "ayni"     // ikisi de dolu ve aynı          → bilgi
+  | "yok";     // sitede dolu, belgede okunmadı  → bilgi
+
+export type BelgeSatir = {
+  alan: string;
+  etiket: string;
+  site: string;
+  belge: string;
+  durum: SatirDurumu;
+  /** Uygulanacak ham değer — yalnız "ekleme" ve "fark" satırlarında. */
+  deger?: string | number | boolean | null;
+  /** Belgedeki kaynak satır */
+  alinti?: string;
+};
 
 /** Karşılaştırılacak alanlar ve karşılaştırma biçimi. */
 const ALANLAR: { alan: string; tip: "tarih" | "sayi" | "metin" }[] = [
@@ -23,8 +41,8 @@ const ALANLAR: { alan: string; tip: "tarih" | "sayi" | "metin" }[] = [
   { alan: "gecici_kabul_tarihi", tip: "tarih" },
   { alan: "kesin_kabul_tarihi", tip: "tarih" },
 ];
-// is_adi bilerek YOK: Netsim ve resmî belgeler adı BÜYÜK HARF yazıyor, sitede başlık
-// biçiminde duruyor — her belgede "fark" çıkar, gerçek bir fark olmadığı hâlde.
+// is_adi bilerek YOK: resmî belgeler adı BÜYÜK HARF yazıyor, sitede başlık biçiminde
+// duruyor — her belgede "fark" çıkar, gerçek bir fark olmadığı hâlde.
 
 const bos = (v: unknown) => v == null || v === "" || (typeof v === "number" && Number.isNaN(v));
 
@@ -35,51 +53,57 @@ function ayni(a: unknown, b: unknown, tip: string): boolean {
       === String(b).replace(/\s+/g, "").toLocaleUpperCase("tr");
 }
 
-/**
- * Belgedeki değer sitedekinden farklıysa bir fark satırı üretir.
- * Belgede okunamayan (null) alan hiç önerilmez — "boşalt" diye bir öneri çıkmaz,
- * belgeyi okuyamamak kaydı silmek için gerekçe değil.
- */
-export function belgeFarklari(
+/** Satır uygulanabilir mi (kutucuk çıkar mı)? */
+export const uygulanabilir = (s: BelgeSatir) => s.durum === "ekleme" || s.durum === "fark";
+
+export function belgeKarsilastir(
   kayit: Kayit,
   okunan: Okunan,
   alinti: Record<string, string> = {},
   tablo = "santiyeler",
-): { farklar: BelgeFark[]; uyusanlar: BelgeUyusan[] } {
-  const farklar: BelgeFark[] = [];
-  // UYUŞANLAR da döner: kullanıcı yalnız farkları değil, belgenin kaydı DOĞRULADIĞI
-  // alanları da görmek istiyor — "geçici kabul tarihi sitede de belgede de aynı" bilgisi,
-  // belgenin gerçekten o işe ait olduğunun da teyidi.
-  const uyusanlar: BelgeUyusan[] = [];
+): BelgeSatir[] {
+  const satirlar: BelgeSatir[] = [];
+
   for (const { alan, tip } of ALANLAR) {
     const yeni = okunan[alan];
-    if (bos(yeni)) continue;
     const mevcut = kayit[alan];
-    if (!bos(mevcut) && ayni(mevcut, yeni, tip)) {
-      uyusanlar.push({
-        alan,
-        etiket: alanAdi(tablo, alan),
-        deger: degerGoster(alan, String(mevcut)),
-        alinti: alinti[alan],
+    const etiket = alanAdi(tablo, alan);
+
+    if (bos(yeni)) {
+      // Belgede okunamadı. Sitede değer varsa bilgi olarak gösterilir; ikisi de boşsa
+      // satır hiç çıkmaz — boş satırlarla tabloyu şişirmenin anlamı yok.
+      if (!bos(mevcut)) {
+        satirlar.push({ alan, etiket, site: degerGoster(alan, String(mevcut)), belge: "belgede yok", durum: "yok" });
+      }
+      continue;
+    }
+
+    if (bos(mevcut)) {
+      satirlar.push({
+        alan, etiket, site: "boş", belge: degerGoster(alan, String(yeni)), durum: "ekleme",
+        deger: tip === "sayi" ? Number(yeni) : String(yeni), alinti: alinti[alan],
       });
       continue;
     }
 
-    farklar.push({
-      alan,
-      etiket: alanAdi(tablo, alan),
-      site: bos(mevcut) ? "boş" : degerGoster(alan, String(mevcut)),
-      belge: degerGoster(alan, String(yeni)),
-      deger: tip === "sayi" ? Number(yeni) : String(yeni),
-      alinti: alinti[alan],
-      bosDoldurma: bos(mevcut),
+    if (ayni(mevcut, yeni, tip)) {
+      satirlar.push({
+        alan, etiket, site: degerGoster(alan, String(mevcut)),
+        belge: degerGoster(alan, String(yeni)), durum: "ayni", alinti: alinti[alan],
+      });
+      continue;
+    }
+
+    satirlar.push({
+      alan, etiket, site: degerGoster(alan, String(mevcut)),
+      belge: degerGoster(alan, String(yeni)), durum: "fark",
+      deger: tip === "sayi" ? Number(yeni) : String(yeni), alinti: alinti[alan],
     });
   }
 
   // "ONAY TARİHİ YOK" ÖNERİSİ. Belge bir kabul belgesi (itibar tarihi okunabildi) ama
   // tasdik bölümünde tam bir tarih yok — kutu da işaretli değilse sorulur. Yoksa kayıt
-  // "onay tarihi henüz girilmedi" ile "belgede onay tarihi yok" arasında askıda kalıyor;
-  // Konya Beyşehir'de tam bu oldu.
+  // "onay tarihi henüz girilmedi" ile "belgede onay tarihi yok" arasında askıda kalıyor.
   //
   // Yalnız sitedeki onay tarihi BOŞKEN önerilir: belgede okunamaması, mevcut bir tarihi
   // silmek için gerekçe değil.
@@ -87,16 +111,16 @@ export function belgeFarklari(
       && bos(okunan.gecici_kabul_tarihi)
       && bos(kayit.gecici_kabul_tarihi)
       && kayit.onay_tarihi_yok !== true) {
-    farklar.push({
+    satirlar.push({
       alan: "onay_tarihi_yok",
       etiket: alanAdi(tablo, "onay_tarihi_yok"),
       site: "işaretli değil",
       belge: "işaretle",
+      durum: "ekleme",
       deger: true,
       alinti: "Belgenin tasdik/onay bölümünde tam bir tarih bulunamadı",
-      bosDoldurma: true,
     });
   }
 
-  return { farklar, uyusanlar };
+  return satirlar;
 }

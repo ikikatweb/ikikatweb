@@ -1,68 +1,52 @@
 "use client";
 
-// BELGE FARKLARI — yüklenen PDF ile sitedeki kayıt arasındaki farkları seçmeli uygular.
+// BELGE KARŞILAŞTIRMA — yüklenen PDF ile sitedeki kaydı yan yana gösterir, seçilenleri yazar.
 //
 // Hiçbir şey kendiliğinden yazılmaz. Sebebi somut: taranmış belgelerde model tablo
-// satırlarını karıştırabiliyor; bir geçici kabul tutanağında sözleşme bedelini
-// 2.841.065,90 yerine ,99 okumuştu ve iş süresiyle süre uzatımını yer değiştirmişti.
-// Bu yüzden her satırda belgedeki KAYNAK SATIR da gösteriliyor ve onay kullanıcıda.
+// satırlarını karıştırabiliyor; bir geçici kabul tutanağında "7. Süre Uzatımı" satırını
+// iş süresi sanmıştı. Bu yüzden her satırda belgedeki KAYNAK SATIR da gösteriliyor ve
+// onay kullanıcıda.
 //
-// Varsayılan seçim: sitede BOŞ olan alanlar işaretli gelir (kaybedilecek bilgi yok),
-// DEĞER ÇAKIŞAN alanlar işaretsiz gelir (mevcut veri bilerek girilmiş olabilir).
+// Tabloda yalnız farklar değil, uyuşan ve belgede bulunamayan alanlar da var — belgenin
+// gerçekten o işe ait olduğu da görünsün diye.
 import { useEffect, useState } from "react";
-import { FileText, AlertTriangle, Check } from "lucide-react";
+import { FileText, Check, Plus, AlertTriangle, Minus } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { uygulanabilir, type BelgeSatir } from "@/lib/belge-karsilastir";
 
-/** Belgeyle kayıt arasında ZATEN AYNI olan alan — bilgi olarak gösterilir, dokunulmaz. */
-export type BelgeUyusan = {
-  alan: string;
-  etiket: string;
-  deger: string;
-  alinti?: string;
-};
-
-export type BelgeFark = {
-  alan: string;
-  etiket: string;
-  /** Sitedeki değerin gösterimi ("boş" olabilir) */
-  site: string;
-  /** Belgeden okunan değerin gösterimi */
-  belge: string;
-  /** Yazılacak ham değer */
-  deger: string | number | boolean | null;
-  /** Belgedeki kaynak satır — kullanıcı neye dayandığını görsün */
-  alinti?: string;
-  /** Sitede karşılığı boş mu (true) yoksa farklı bir değer mi var (false) */
-  bosDoldurma: boolean;
-};
+const DURUM = {
+  fark:   { im: AlertTriangle, renk: "text-red-600",     etiket: "farklı" },
+  ekleme: { im: Plus,          renk: "text-indigo-600",  etiket: "eklenecek" },
+  ayni:   { im: Check,         renk: "text-emerald-600", etiket: "aynı" },
+  yok:    { im: Minus,         renk: "text-gray-400",    etiket: "belgede yok" },
+} as const;
 
 export default function BelgeFarkDialog({
   acik,
-  farklar,
-  uyusanlar = [],
+  satirlar,
   belgeAdi,
   onUygula,
   onKapat,
 }: {
   acik: boolean;
-  farklar: BelgeFark[];
-  uyusanlar?: BelgeUyusan[];
+  satirlar: BelgeSatir[];
   belgeAdi: string;
-  onUygula: (secilen: BelgeFark[]) => Promise<void> | void;
+  onUygula: (secilen: BelgeSatir[]) => Promise<void> | void;
   onKapat: () => void;
 }) {
   const [secili, setSecili] = useState<Set<string>>(new Set());
   const [isleniyor, setIsleniyor] = useState(false);
 
   useEffect(() => {
-    // Boş alanlar işaretli, çakışanlar işaretsiz başlar.
-    setSecili(new Set(farklar.filter((f) => f.bosDoldurma).map((f) => f.alan)));
-  }, [farklar]);
+    // Sitede BOŞ olan alanlar işaretli başlar (kaybedilecek bilgi yok); DEĞER ÇAKIŞANLAR
+    // işaretsiz (mevcut veri bilerek girilmiş olabilir).
+    setSecili(new Set(satirlar.filter((s) => s.durum === "ekleme").map((s) => s.alan)));
+  }, [satirlar]);
 
-  if (!acik || farklar.length === 0) return null;
+  if (!acik || satirlar.length === 0) return null;
 
   const degistir = (alan: string) =>
     setSecili((s) => {
@@ -74,95 +58,107 @@ export default function BelgeFarkDialog({
   const uygula = async () => {
     setIsleniyor(true);
     try {
-      await onUygula(farklar.filter((f) => secili.has(f.alan)));
+      await onUygula(satirlar.filter((s) => secili.has(s.alan)));
     } finally {
       setIsleniyor(false);
     }
   };
 
-  const bosSayisi = farklar.filter((f) => f.bosDoldurma).length;
-  const cakisan = farklar.length - bosSayisi;
+  const eklenecek = satirlar.filter((s) => s.durum === "ekleme").length;
+  const farkli = satirlar.filter((s) => s.durum === "fark").length;
+  const ayniSayi = satirlar.filter((s) => s.durum === "ayni").length;
 
   return (
     <Dialog open={acik} onOpenChange={(a) => { if (!a && !isleniyor) onKapat(); }}>
-      <DialogContent className="max-w-3xl">
+      {/* sm:max-w-4xl ŞART: DialogContent varsayılanında sm:max-w-sm var ve yalnız
+          max-w-4xl yazmak onu geçmiyor — pencere 384px'te kalıp tablo sütunları
+          ortadan bölünüyordu. */}
+      <DialogContent className="max-w-4xl sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText size={18} className="text-[#1E3A5F]" />
-            Belgedeki bilgiler kayıttan farklı
+            Belge ile kayıt karşılaştırması
           </DialogTitle>
           <DialogDescription>
             <span className="font-medium">{belgeAdi}</span> okundu.
-            {bosSayisi > 0 && ` Sitede boş olan ${bosSayisi} alan doldurulabilir.`}
-            {cakisan > 0 && ` ${cakisan} alanda farklı değer var.`}
-            {uyusanlar.length > 0 && ` ${uyusanlar.length} alan belgeyle aynı.`}
-            {" "}İşaretlediklerinizi uygularım, diğerlerine dokunmam.
+            {farkli > 0 && ` ${farkli} alan farklı.`}
+            {eklenecek > 0 && ` ${eklenecek} alan sitede boş.`}
+            {ayniSayi > 0 && ` ${ayniSayi} alan belgeyle aynı.`}
+            {" "}İşaretlediklerinizi yazarım, diğerlerine dokunmam.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[55vh] space-y-2 overflow-y-auto">
-          {farklar.map((f) => (
-            <label
-              key={f.alan}
-              className={`flex cursor-pointer gap-3 rounded-lg border p-3 text-sm ${
-                secili.has(f.alan) ? "border-sky-300 bg-sky-50" : "border-gray-200 bg-white"
-              }`}
-            >
-              <input
-                type="checkbox"
-                className="mt-0.5 shrink-0"
-                checked={secili.has(f.alan)}
-                onChange={() => degistir(f.alan)}
-                disabled={isleniyor}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-baseline gap-2">
-                  <span className="font-semibold text-[#1E3A5F]">{f.etiket}</span>
-                  {!f.bosDoldurma && (
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                      <AlertTriangle size={10} /> mevcut değer değişecek
-                    </span>
-                  )}
-                </span>
-                <span className="mt-1 flex flex-wrap items-baseline gap-2">
-                  <span className="rounded bg-red-50 px-1.5 text-red-700 line-through decoration-red-300">
-                    {f.site}
-                  </span>
-                  <span className="text-gray-400">→</span>
-                  <span className="rounded bg-emerald-50 px-1.5 font-medium text-emerald-800">
-                    {f.belge}
-                  </span>
-                </span>
-                {f.alinti && (
-                  <span className="mt-1 block text-[11px] italic text-gray-500">
-                    Belgede: “{f.alinti}”
-                  </span>
-                )}
-              </span>
-            </label>
-          ))}
-
-          {uyusanlar.length > 0 && (
-            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-              <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-                <Check size={13} /> Belgeyle aynı olanlar ({uyusanlar.length}) — değişiklik yok
-              </div>
-              <ul className="space-y-1 text-[12px] text-emerald-900">
-                {uyusanlar.map((u) => (
-                  <li key={u.alan} className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-emerald-700">{u.etiket}</span>
-                    <span className="font-medium">{u.deger}</span>
-                    <span className="text-emerald-600">— sitede ve belgede aynı</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        <div className="max-h-[55vh] overflow-y-auto rounded-lg border">
+          {/* table-fixed + colgroup: alıntı metni uzun olduğunda tablo yanlara taşıyor ve
+              "Alan" sütunu ekrandan kayıyordu. Sabit genişlikte metin satır atlıyor. */}
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col className="w-[34%]" />
+              <col className="w-[22%]" />
+              <col className="w-[22%]" />
+              <col className="w-[22%]" />
+            </colgroup>
+            <thead className="sticky top-0 bg-gray-50 text-left text-xs text-gray-600">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Alan</th>
+                <th className="px-3 py-2 font-semibold">Sitedeki form</th>
+                <th className="px-3 py-2 font-semibold">Belgede</th>
+                <th className="px-3 py-2 text-right font-semibold">Düzelt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {satirlar.map((s) => {
+                const d = DURUM[s.durum];
+                const Im = d.im;
+                const secilebilir = uygulanabilir(s);
+                const isaretli = secili.has(s.alan);
+                return (
+                  <tr
+                    key={s.alan}
+                    className={`border-t align-top ${isaretli ? "bg-sky-50" : "bg-white"} ${secilebilir ? "cursor-pointer" : ""}`}
+                    onClick={() => { if (secilebilir && !isleniyor) degistir(s.alan); }}
+                  >
+                    <td className="break-words px-3 py-2 font-medium text-[#1E3A5F]">
+                      {s.etiket}
+                      {s.alinti && (
+                        <div className="mt-0.5 line-clamp-2 text-[10px] font-normal italic leading-tight text-gray-500">
+                          Belgede: “{s.alinti}”
+                        </div>
+                      )}
+                    </td>
+                    <td className={`break-words px-3 py-2 ${s.durum === "fark" ? "text-red-700" : "text-gray-700"}`}>
+                      {s.site}
+                    </td>
+                    <td className={`break-words px-3 py-2 ${s.durum === "ayni" || s.durum === "yok" ? "text-gray-700" : "font-semibold text-emerald-800"}`}>
+                      {s.belge}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <span className={`mr-2 inline-flex items-center gap-1 whitespace-nowrap text-[11px] ${d.renk}`}>
+                        <Im size={13} /> {d.etiket}
+                      </span>
+                      {secilebilir ? (
+                        <input
+                          type="checkbox"
+                          className="align-middle"
+                          checked={isaretli}
+                          onChange={() => degistir(s.alan)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={isleniyor}
+                        />
+                      ) : (
+                        <span className="inline-block w-[13px]" />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={onKapat} disabled={isleniyor}>
-            Hiçbirini uygulama
+            Vazgeç
           </Button>
           <Button
             type="button"
@@ -170,7 +166,7 @@ export default function BelgeFarkDialog({
             onClick={uygula}
             disabled={isleniyor || secili.size === 0}
           >
-            {isleniyor ? "Uygulanıyor…" : `Seçilenleri uygula (${secili.size})`}
+            {isleniyor ? "Kaydediliyor…" : `Düzelt ve Kaydet (${secili.size})`}
           </Button>
         </DialogFooter>
       </DialogContent>
