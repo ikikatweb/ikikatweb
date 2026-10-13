@@ -195,18 +195,10 @@ export default function SantiyeForm({
   const [farkListesi, setFarkListesi] = useState<BelgeSatir[]>([]);
   const [farkAcik, setFarkAcik] = useState(false);
   const [farkBelgeAdi, setFarkBelgeAdi] = useState("");
-  const [farkSantiyeId, setFarkSantiyeId] = useState<string | null>(null);
-  // Vazgeçilirse yüklenen belge geri alınır: hangi alan, hangi dosya, önceki değer ne idi.
-  // Muhasebe maili yalnız belge KALIRSA gider — kullanıcı vazgeçerse geri alınamaz bir
-  // mail atılmış olmasın. Bu yüzden yükleme anında değil, pencere kapanınca gönderilir.
-  //
-  // İkisi de REF, state değil: aynı kaydetme akışı içinde yazılıp okunuyorlar, state
-  // olsalardı okuma eski değeri görürdü.
+  // Pencere hangi belge alanı için açıldı — vazgeçilince o seçim kaldırılır.
   const farkBelge = useRef<{ alan: string; yol: string; oncekiUrl: string | null } | null>(null);
-  const bekleyenMail = useRef<{ sId: string; url: string; ad: string } | null>(null);
-  // Pencere kapanana kadar yönlendirmeyi bekletmek için; kullanıcı kararını vermeden
-  // sayfa değişirse soru boşa gider.
-  const farkCozucu = useRef<(() => void) | null>(null);
+  // "Düzelt ve Kaydet" formu kendisi kaydeder.
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Belge SEÇİLİR SEÇİLMEZ okunur; Kaydet'e basınca beklemek gerekmesin. Sonuç ref'te
   // birikir, kaydetme akışı oradan okur.
@@ -625,100 +617,77 @@ export default function SantiyeForm({
       const { alanlar, alinti } = await r.json();
       belgeSonuc.current[alan] = { alanlar: alanlar ?? {}, alinti: alinti ?? {} };
       setBelgeOkuma((d) => ({ ...d, [alan]: "bitti" }));
-    } catch {
-      setBelgeOkuma((d) => ({ ...d, [alan]: "hata" }));
-    }
-  }
 
-  async function belgeyiKarsilastir(
-    sId: string, url: string, belgeAdi: string, kayit: Record<string, unknown>,
-    belge: { alan: string; yol: string; oncekiUrl: string | null },
-  ) {
-    try {
-      // Dosya seçilirken zaten okunmuşsa tekrar okutulmaz — hem bekleme olmaz hem
-      // ikinci kez jeton harcanmaz.
-      let okunan = belgeSonuc.current[belge.alan];
-      if (!okunan) {
-        const firma = firmalar.find((f) => f.id === kayit.yuklenici_firma_id);
-        const r = await fetch("/api/belge-oku", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, firma_adi: firma?.firma_adi ?? null }),
-        });
-        if (!r.ok) return;
-        okunan = await r.json();
-      }
-      const { alanlar, alinti } = okunan;
-      const satirlar = belgeKarsilastir(kayit, alanlar ?? {}, alinti ?? {});
-      // Uygulanacak bir şey yoksa pencere açılmaz; ama belgenin okunduğu ve kaydı
-      // doğruladığı söylenmeli — yoksa kullanıcı "okudu mu okumadı mı" bilemiyor.
+      // Karşılaştırma HEMEN gösterilir; kaydetmeye kadar beklenmez. Henüz hiçbir şey
+      // yüklenmediği ve yazılmadığı için seçilenler FORMA işlenir, veritabanına değil —
+      // vazgeçmek de dosya silmeyi gerektirmez, seçim kaldırılır yeter.
+      const satirlar = belgeKarsilastir(
+        { ...formData, sozlesme_bedeli: parseParaInput(sozlesmeBedeliStr), onay_tarihi_yok: onayTarihiYok },
+        alanlar ?? {}, alinti ?? {},
+      );
       if (!satirlar.some(uygulanabilir)) {
         const ayniSayi = satirlar.filter((x) => x.durum === "ayni").length;
         if (ayniSayi > 0) toast.success(`Belge kayıtla uyuşuyor — ${ayniSayi} alan doğrulandı.`);
         return;
       }
       setFarkListesi(satirlar);
-      setFarkBelgeAdi(belgeAdi);
-      setFarkSantiyeId(sId);
-      farkBelge.current = belge;
+      setFarkBelgeAdi(dosya.name);
+      farkBelge.current = { alan, yol: "", oncekiUrl: null };
       setFarkAcik(true);
-      await new Promise<void>((cozul) => { farkCozucu.current = cozul; });
     } catch {
-      // Belge okunamadı — kayıt etkilenmez.
+      setBelgeOkuma((d) => ({ ...d, [alan]: "hata" }));
     }
   }
 
-  /** Pencereyi kapatır; belge KALIR. Bekleyen muhasebe maili burada gönderilir. */
-  async function farkPenceresiniKapat() {
+  /** Pencereyi kapatır; belge seçili KALIR, yalnız alanlar yazılmaz. */
+  function farkPenceresiniKapat() {
     setFarkAcik(false);
     setFarkListesi([]);
     farkBelge.current = null;
-    if (bekleyenMail.current) {
-      const m = bekleyenMail.current;
-      bekleyenMail.current = null;
-      await geciciKabulMailGonder(m.sId, m.url, m.ad);
-    }
-    farkCozucu.current?.();
-    farkCozucu.current = null;
   }
 
-  /** Vazgeç: yüklenen belgeyi geri alır — bağ sökülür, dosya depodan silinir, mail gitmez. */
-  async function belgedenVazgec() {
+  /** Vazgeç: belge seçimi kaldırılır. Henüz yüklenmediği için silinecek dosya yok. */
+  function belgedenVazgec() {
     const b = farkBelge.current;
     setFarkAcik(false);
     setFarkListesi([]);
     farkBelge.current = null;
-    bekleyenMail.current = null;
-    if (b && farkSantiyeId) {
-      try {
-        await updateSantiye(farkSantiyeId, { [b.alan]: b.oncekiUrl } as Partial<SantiyeInsert>);
-        await fetch("/api/upload", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bucket: "santiyeler", path: b.yol }),
-        });
-        setFormData((p) => ({ ...p, [b.alan]: b.oncekiUrl }));
-        toast.success("Belge yüklenmedi, kayıt eski hâlinde kaldı.");
-      } catch {
-        toast.error("Belge geri alınamadı — iş deneyim belgesi ekranından kontrol edin.");
-      }
+    if (b) {
+      delete belgeSonuc.current[b.alan];
+      setBelgeOkuma((d) => { const y = { ...d }; delete y[b.alan]; return y; });
+      if (b.alan === "gecici_kabul_url") setGeciciKabulFile(null);
+      if (b.alan === "kesin_kabul_url") setKesinKabulFile(null);
+      if (b.alan === "is_deneyim_url") setIsDeneyimFile(null);
+      toast.success("Belge seçimi kaldırıldı.");
     }
-    farkCozucu.current?.();
-    farkCozucu.current = null;
   }
 
+  /** Seçilenleri FORMA işler, sonra formu kaydeder. Veritabanına ayrıca yazılmaz —
+   *  belge zaten bu kayıtla birlikte yüklenecek. */
   async function farklariUygula(secilen: BelgeSatir[]) {
-    if (!farkSantiyeId || secilen.length === 0) { await farkPenceresiniKapat(); return; }
-    try {
-      const yama: Record<string, unknown> = {};
-      for (const f of secilen) yama[f.alan] = f.deger;
-      await updateSantiye(farkSantiyeId, yama as Partial<SantiyeInsert>);
-      toast.success(`${secilen.length} alan belgeden güncellendi.`);
-    } catch {
-      toast.error("Belgedeki bilgiler yazılamadı.");
+    if (secilen.length === 0) { farkPenceresiniKapat(); return; }
+    const yama: Record<string, unknown> = {};
+    for (const f of secilen) {
+      if (f.alan === "onay_tarihi_yok") {
+        // Tik ayrı durumda tutuluyor; onu işaretlemek onay tarihini de boşaltır.
+        setOnayTarihiYok(true);
+        yama.gecici_kabul_tarihi = null;
+        continue;
+      }
+      if (f.alan === "sozlesme_bedeli") {
+        // Bu kutu formData'dan değil kendi metin durumundan besleniyor.
+        setSozlesmeBedeliStr(formatParaInput(Number(f.deger)));
+      }
+      yama[f.alan] = f.deger;
     }
-    await farkPenceresiniKapat();
+    setFormData((p) => ({ ...p, ...yama }));
+    farkPenceresiniKapat();
+    toast.success(`${secilen.length} alan belgeden dolduruldu, kaydediliyor…`);
+    // Form state'inin işlenmesini bekle, sonra kaydet.
+    setTimeout(() => formRef.current?.requestSubmit(), 50);
   }
+
+  const belgeOkunuyor = Object.values(belgeOkuma).some((d) => d === "okunuyor");
 
   /** Seçilen belgenin okunma durumu — kullanıcı sessiz beklemesin diye. */
   function BelgeDurumu({ alan }: { alan: string }) {
@@ -735,7 +704,7 @@ export default function SantiyeForm({
     if (d === "bitti") {
       return (
         <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
-          <Check size={13} /> Belge okundu — kaydettiğinizde karşılaştırma gelecek
+          <Check size={13} /> Belge okundu
         </span>
       );
     }
@@ -968,42 +937,23 @@ export default function SantiyeForm({
       // Dosya yüklemeleri
       // Depo yolu URL'den çıkarılır (".../object/public/santiyeler/<yol>") — vazgeçilirse
       // dosyanın silinebilmesi için gerekli.
-      const depoYolu = (u: string) => u.split("/santiyeler/").pop() ?? "";
-      const yuklenenler: {
-        url: string; ad: string; alan: string; yol: string; oncekiUrl: string | null;
-      }[] = [];
-
+      // Belge karşılaştırması burada DEĞİL, dosya seçilir seçilmez yapılıyor; buraya
+      // gelindiğinde kullanıcı kararını çoktan vermiş oluyor.
       if (geciciKabulFile) {
         const url = await uploadSantiyeFile(geciciKabulFile, sId, "gecici_kabul");
         await updateSantiye(sId, { gecici_kabul_url: url });
-        // Muhasebe maili ARTIK BURADA GİTMİYOR. Kullanıcı karşılaştırma penceresinde
-        // vazgeçerse belge hiç yüklenmemiş sayılıyor; o durumda geri alınamaz bir mail
-        // atılmış olmamalı. Mail, pencere kapanınca gönderilir.
-        bekleyenMail.current = { sId, url, ad: geciciKabulFile.name };
-        yuklenenler.push({ url, ad: geciciKabulFile.name, alan: "gecici_kabul_url", yol: depoYolu(url), oncekiUrl: santiye?.gecici_kabul_url ?? null });
+        // Her geçici kabul eklenişinde belge MUHASEBEYE mail atılır. Vazgeçen kullanıcıda
+        // dosya hiç yüklenmediği için buraya da gelinmiyor; mail yalnız gerçekten
+        // kaydedilen belge için gidiyor.
+        await geciciKabulMailGonder(sId, url, geciciKabulFile.name);
       }
       if (kesinKabulFile) {
         const url = await uploadSantiyeFile(kesinKabulFile, sId, "kesin_kabul");
         await updateSantiye(sId, { kesin_kabul_url: url });
-        yuklenenler.push({ url, ad: kesinKabulFile.name, alan: "kesin_kabul_url", yol: depoYolu(url), oncekiUrl: santiye?.kesin_kabul_url ?? null });
       }
       if (isDeneyimFile) {
         const url = await uploadSantiyeFile(isDeneyimFile, sId, "is_deneyim");
         await updateSantiye(sId, { is_deneyim_url: url });
-        yuklenenler.push({ url, ad: isDeneyimFile.name, alan: "is_deneyim_url", yol: depoYolu(url), oncekiUrl: santiye?.is_deneyim_url ?? null });
-      }
-
-      // Yüklenen belgeleri oku ve farkları sor. Kayıt zaten yazıldı; bu adım
-      // başarısız olsa bile kaydı etkilemez.
-      for (const b of yuklenenler) {
-        await belgeyiKarsilastir(sId, b.url, b.ad, submitData as Record<string, unknown>,
-          { alan: b.alan, yol: b.yol, oncekiUrl: b.oncekiUrl });
-      }
-      // Pencere hiç açılmadıysa (fark yok) bekleyen mail burada gider.
-      if (bekleyenMail.current) {
-        const m = bekleyenMail.current;
-        bekleyenMail.current = null;
-        await geciciKabulMailGonder(m.sId, m.url, m.ad);
       }
 
       basarili = true;
@@ -1107,7 +1057,7 @@ export default function SantiyeForm({
     !!formData.kesin_kabul_tarihi && formData.kesin_kabul_tarihi !== (santiye?.kesin_kabul_tarihi ?? null);
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
+    <form ref={formRef} onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
       <Tabs value={aktifSekme} onValueChange={setAktifSekme} className="w-full min-w-0">
         <TabsList className="mb-4 w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="genel">Genel Bilgiler</TabsTrigger>
@@ -2001,11 +1951,15 @@ export default function SantiyeForm({
             <Trash2 size={16} className="mr-1" /> Sil
           </Button>
         )}
-        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading}>
+        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onCancel ? onCancel() : router.push("/dashboard/yonetim/santiyeler")} disabled={loading || belgeOkunuyor}>
           <X size={16} className="mr-1" /> İptal
         </Button>
-        <Button type="submit" className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading}>
-          <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
+        {/* Belge okunurken kaydetmek yasak: karşılaştırma gelmeden kaydedilirse kullanıcı
+            soruyu hiç görmeden belgeyi yüklemiş oluyor. */}
+        <Button type="submit" className="w-full sm:w-auto bg-[#F97316] hover:bg-[#ea580c] text-white" disabled={loading || belgeOkunuyor}>
+          {belgeOkunuyor
+            ? <><Loader2 size={16} className="mr-1 animate-spin" /> Belge okunuyor…</>
+            : <><Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}</>}
         </Button>
       </div>
 
