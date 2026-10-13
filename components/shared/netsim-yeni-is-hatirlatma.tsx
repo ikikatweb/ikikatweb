@@ -31,6 +31,9 @@ type YeniNokta = {
 
 const SECIM = "nokta_no, ad, ilk_gorulme, kod, sorumlu, is_grubu, sozlesme_bedeli, ek_sozlesme_bedeli, yaklasik_maliyet, ihale_tarihi, ilan_tarihi, ihale_kayit_no, sozlesme_tarihi, isyeri_teslim_tarihi, ortaklik_orani, pilot_firma, asgari_iscilik_orani";
 
+/** Ana ekranda iş adı 50 karakterde kesilir — uzun adlar satırı bozuyordu. */
+const kisalt = (ad: string, sinir = 50) => (ad.length > sinir ? ad.slice(0, sinir).trimEnd() + "…" : ad);
+
 const tl = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
 const tarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
 const oran = (n: number) => "%" + n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
@@ -140,7 +143,9 @@ export default function NetsimYeniIsHatirlatma() {
           <li key={n.nokta_no} className="rounded-lg border border-sky-200 bg-white/70 px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-mono text-sky-600">[{n.nokta_no}]</span>
-              <span className="font-medium text-sky-900">{n.ad}</span>
+              {/* Uzun iş adı satırı kırıp rozetleri aşağı itiyordu; 50 karakterde kesilir,
+                  tamamı üzerine gelince görünür. Forma TAM ad gider, kısaltma yalnız burada. */}
+              <span className="font-medium text-sky-900" title={n.ad}>{kisalt(n.ad)}</span>
               {n.kod && (
                 <span className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[10px] text-sky-700">{n.kod}</span>
               )}
