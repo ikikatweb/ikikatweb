@@ -128,7 +128,52 @@ type NoktaBilgi = {
   ortaklik_orani: number | null;
   pilot_firma: string | null;
   asgari_iscilik_orani: number | null;
+  yuklenici_firma_id: string | null;
+  ortak_girisim: boolean | null;
+  firma_adlari: string | null;
 };
+
+/**
+ * FİRMA EŞLEŞTİRME. Netsim adı kısa yazıyor ("İKİKAT LTD. ŞTİ."), site uzun ("İkikat
+ * İnş. Taah. Hayv. San. Ve Tic. Ltd. Şti."); düz metin karşılaştırması tutmaz. Her ad,
+ * içinde geçen TANINAN FİRMALARIN kümesine indirgenir ve kümeler birebir karşılaştırılır.
+ *
+ * Kümeyle çalışmak şart: "İkikat … Tokat Yılmaz …" adi ortaklığı da "İkikat" içeriyor,
+ * tek firmalı bir iş onunla eşleşmemeli. Aynı sebeple "Kenan Tugay Ikıkat" bir kişi adı
+ * olduğu hâlde "Ikıkat" geçiyor — o yüzden önce o tüketilir.
+ *
+ * Kullanıcı kararı: küme birebir tutmazsa (ör. Netsim "İKİKAT + KAD-TEM" diyor ama sitede
+ * böyle bir ortaklık kaydı yok) pilot firmaya DÜŞÜLMEZ, boş bırakılır — yanlış firmayla
+ * kaydedilmesindense kullanıcı elle seçsin.
+ */
+const FIRMA_ANAHTARLARI: { anahtar: string; kalip: RegExp }[] = [
+  // Sıra önemli: "KENANTUGAYIKIKAT" tek parça tüketilir, yoksa IKIKAT de eşleşirdi.
+  { anahtar: "kenan_tugay", kalip: /KENANTUGAY(IKIKAT)?/g },
+  { anahtar: "kadtem", kalip: /KADTEM/g },
+  { anahtar: "atilim", kalip: /ATILIM/g },
+  { anahtar: "yilmaz", kalip: /YILMAZ/g },
+  { anahtar: "ikikat", kalip: /IKIKAT/g },
+];
+
+/** Türkçe harfleri sadeleştirip yalnız harf/rakam bırakır. toLowerCase kullanılmaz. */
+function firmaNorm(ad: string): string {
+  return ad.toLocaleUpperCase("tr")
+    .replace(/[İI]/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C")
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function firmaKumesi(adlar: string[]): string {
+  const bulunan = new Set<string>();
+  for (const ad of adlar) {
+    let n = firmaNorm(ad);
+    for (const { anahtar, kalip } of FIRMA_ANAHTARLARI) {
+      if (kalip.test(n)) { bulunan.add(anahtar); n = n.replace(kalip, ""); }
+      kalip.lastIndex = 0;
+    }
+  }
+  return [...bulunan].sort().join("+");
+}
 
 /** Firebird boş alanları "" ya da 0 olarak veriyor; ikisi de "bilgi yok" demek. */
 function metin(v: unknown): string | null {
@@ -150,9 +195,28 @@ function gun(v: unknown): string | null {
   return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
 
+/** Site firmalarını "firma kümesi → id" olarak hazırlar. Aynı kümeye birden çok kayıt
+ *  düşerse hiçbiri seçilmez — hangisi olduğu belirsizken tahmin edilmez. */
+async function firmaHaritasi(sb: SupabaseClient): Promise<Map<string, string>> {
+  const { data, error } = await sb.from("firmalar").select("id, firma_adi");
+  if (error) { console.error("  firmalar okunamadı:", error.message); return new Map(); }
+  const sayac = new Map<string, string[]>();
+  for (const f of (data ?? []) as { id: string; firma_adi: string }[]) {
+    const k = firmaKumesi([f.firma_adi ?? ""]);
+    if (!k) continue;
+    sayac.set(k, [...(sayac.get(k) ?? []), f.id]);
+  }
+  const harita = new Map<string, string>();
+  for (const [k, idler] of sayac) {
+    if (idler.length === 1) harita.set(k, idler[0]);
+    else console.error(`  firma kümesi "${k}" ${idler.length} kayda uyuyor — eşleştirilmedi`);
+  }
+  return harita;
+}
+
 async function yeniNoktalariIsaretle(
   sb: SupabaseClient,
-  netsimler: { no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi }[],
+  netsimler: { no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi }[],  // ham alanı burada kullanılmaz
   santiyeler: { netsim_nokta_no: number | null }[],
 ) {
   const { data: kayitlar, error } = await sb
@@ -280,7 +344,11 @@ async function main() {
   // hakediş); tutar senkronu için doğru ama yeni nokta HABERİ için yanlış: nokta açıldığı
   // anda ikisi de boş oluyor ve haber hiç gelmiyordu. Burada yalnız kategori düğümleri
   // (altında başka nokta olanlar) elenir; gerisini kullanıcı "Hayır" diyerek eler.
-  const tumNoktalar: { no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi }[] = [];
+  const tumNoktalar: {
+    no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi;
+    /** Netsim'den ham gelen ortak firma adları — eşleştirme sırasında kullanılır. */
+    ham: { ortak1: string | null; ortak2: string | null };
+  }[] = [];
   try {
     const rows = await fbSorgu(db, `
       SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
@@ -357,7 +425,8 @@ async function main() {
              I.K_IHALE_TARIHI AS IHALE_T, I.K_IHALE_ILAN_TARIHI AS ILAN_T,
              I.K_IHALE_KAYIT_NUMARASI AS IKN, I.K_SOZLESME_TARIHI AS SOZ_T,
              I.K_ISYERI_TESLIM_TARIHI AS TESLIM_T, I.K_ORTAKLIK_ORANI AS ORTAKLIK,
-             I.K_PILOT_FIRMA_ADI AS PILOT, I.K_ASGARI_ISCILIK_ORANI AS ASGARI
+             I.K_PILOT_FIRMA_ADI AS PILOT, I.K_ASGARI_ISCILIK_ORANI AS ASGARI,
+             I.K_FIRMA_ADI_1 AS ORTAK1, I.K_FIRMA_ADI_2 AS ORTAK2
       FROM ISLMNOKT I
       WHERE I.ISLEM_NOKTASI_NO > 0
         AND NOT EXISTS (
@@ -384,7 +453,12 @@ async function main() {
           ortaklik_orani: sayi(r.ORTAKLIK),
           pilot_firma: metin(r.PILOT),
           asgari_iscilik_orani: sayi(r.ASGARI),
+          // Firma eşleştirmesi aşağıda, site firmaları okunduktan sonra doldurulur.
+          yuklenici_firma_id: null,
+          ortak_girisim: null,
+          firma_adlari: null,
         },
+        ham: { ortak1: metin(r.ORTAK1), ortak2: metin(r.ORTAK2) },
       });
     }
   } finally {
@@ -487,7 +561,17 @@ async function main() {
   //
   // İLK ÇALIŞMADA hepsi "yoksayildi" yazılır — bugüne kadarki 64 bağsız nokta ana ekranı
   // doldurmasın. Soru yalnız son GUN_PENCERE gün içinde AÇILMIŞ noktalar için gelir.
-  if (!KURU) await yeniNoktalariIsaretle(sb, tumNoktalar, santiyeler);
+  if (!KURU) {
+    const harita = await firmaHaritasi(sb);
+    for (const n of tumNoktalar) {
+      const adlar = [n.bilgi.pilot_firma, n.ham.ortak1, n.ham.ortak2].filter((x): x is string => !!x);
+      if (adlar.length === 0) continue;
+      n.bilgi.firma_adlari = adlar.join(" + ");
+      n.bilgi.ortak_girisim = adlar.length > 1;
+      n.bilgi.yuklenici_firma_id = harita.get(firmaKumesi(adlar)) ?? null;
+    }
+    await yeniNoktalariIsaretle(sb, tumNoktalar, santiyeler);
+  }
 
   console.log(`\n${KURU ? "Yazılacaktı" : "Yazıldı"}: ${kesifYazilan} tamamlanan keşif, ${farkYazilan} fiyat farkı, ${sonHakYazilan} son hakediş.`);
   if (degismeyen) console.log(`Zaten güncel: ${degismeyen}`);

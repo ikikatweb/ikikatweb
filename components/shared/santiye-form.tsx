@@ -44,10 +44,12 @@ const SON_KULLANICI_KEY = "santiye-yeni-is-son-kullanicilar";
 // onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
 // (dialog/pencere içinde kullanım için). Verilmezse eski davranış: santiyeler sayfasına gider.
 /**
- * Netsim'deki iş kartından gelen, formla BİREBİR eşleşen alanlar. Eşleşmeyenler bilerek
- * taşınmıyor: pilot firma adı Netsim'de "İKİKAT LTD. ŞTİ.", sitede "İkikat İnş. Taah.
- * Hayv. San. Ve Tic. Ltd. Şti." — isimden tahmin yanlış firmayı seçebilir. Netsim'in iş
- * grubu da EKAP kodu ("A9"), sitedeki liste ise kategori ("Bina İnşaatı & Onarım").
+ * Netsim'deki iş kartından gelen, formla BİREBİR eşleşen alanlar. İş grubu bilerek
+ * taşınmıyor: Netsim EKAP kodu veriyor ("A9"), sitedeki liste kategori ("Bina İnşaatı &
+ * Onarım") — karşılığı yok.
+ *
+ * Yüklenici firma senkronda eşleştirilir (ad kümesi birebir tutarsa), tutmazsa null
+ * gelir ve kutu boş açılır.
  */
 export type NetsimBaslangic = {
   sozlesme_bedeli: number | null;
@@ -57,6 +59,10 @@ export type NetsimBaslangic = {
   sozlesme_tarihi: string | null;
   isyeri_teslim_tarihi: string | null;
   ortaklik_orani: number | null;
+  yuklenici_firma_id: string | null;
+  ortak_girisim: boolean | null;
+  /** Netsim'deki firma adı/adları — eşleşme tutmazsa kullanıcıya gösterilir. */
+  firma_adlari: string | null;
 };
 
 type SantiyeFormProps = {
@@ -247,8 +253,8 @@ export default function SantiyeForm({
     ihale_kayit_no: santiye?.ihale_kayit_no ?? baslangicNetsim?.ihale_kayit_no ?? "",
     ilan_tarihi: santiye?.ilan_tarihi ?? baslangicNetsim?.ilan_tarihi ?? null,
     ihale_tarihi: santiye?.ihale_tarihi ?? baslangicNetsim?.ihale_tarihi ?? null,
-    yuklenici_firma_id: santiye?.yuklenici_firma_id ?? null,
-    is_ortak_girisim: santiye?.is_ortak_girisim ?? false,
+    yuklenici_firma_id: santiye?.yuklenici_firma_id ?? baslangicNetsim?.yuklenici_firma_id ?? null,
+    is_ortak_girisim: santiye?.is_ortak_girisim ?? baslangicNetsim?.ortak_girisim ?? false,
     ortaklik_orani: santiye?.ortaklik_orani ?? baslangicNetsim?.ortaklik_orani ?? null,
     sozlesme_bedeli: santiye?.sozlesme_bedeli ?? baslangicNetsim?.sozlesme_bedeli ?? null,
     para_birimi: santiye?.para_birimi ?? "TRY",

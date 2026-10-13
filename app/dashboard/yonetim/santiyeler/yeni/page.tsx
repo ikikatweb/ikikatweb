@@ -8,7 +8,7 @@ import SantiyeForm, { type NetsimBaslangic } from "@/components/shared/santiye-f
 import { createClient } from "@/lib/supabase/client";
 
 const NETSIM_ALANLAR =
-  "sozlesme_bedeli, ihale_tarihi, ilan_tarihi, ihale_kayit_no, sozlesme_tarihi, isyeri_teslim_tarihi, ortaklik_orani";
+  "sozlesme_bedeli, ihale_tarihi, ilan_tarihi, ihale_kayit_no, sozlesme_tarihi, isyeri_teslim_tarihi, ortaklik_orani, yuklenici_firma_id, ortak_girisim, firma_adlari";
 
 const tl = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
 const trh = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
@@ -23,6 +23,7 @@ function dolanlar(b: NetsimBaslangic): string[] {
   if (b.sozlesme_tarihi) x.push(`sözleşme ${trh(b.sozlesme_tarihi)}`);
   if (b.isyeri_teslim_tarihi) x.push(`işyeri teslim ${trh(b.isyeri_teslim_tarihi)}`);
   if (b.ortaklik_orani != null) x.push(`ortaklık oranı %${b.ortaklik_orani}`);
+  if (b.yuklenici_firma_id) x.push("yüklenici firma");
   return x;
 }
 
@@ -74,6 +75,13 @@ function YeniSantiyeIcerik() {
           {hazir.length > 0 && (
             <div className="mt-1 text-sky-700">
               Netsim&apos;den dolu geldi: {hazir.join(" · ")}. Kaydetmeden önce kontrol edin.
+            </div>
+          )}
+          {/* Firma eşleşmediyse kullanıcı neyi aradığını görsün — Netsim'deki ad yazılır. */}
+          {bilgi && !bilgi.yuklenici_firma_id && bilgi.firma_adlari && (
+            <div className="mt-1 text-amber-700">
+              Netsim&apos;de firma <b>{bilgi.firma_adlari}</b> yazıyor; sitede buna birebir
+              uyan kayıt yok, yüklenici firmayı siz seçin.
             </div>
           )}
         </div>

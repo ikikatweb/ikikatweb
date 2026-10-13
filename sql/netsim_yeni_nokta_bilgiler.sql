@@ -28,3 +28,23 @@ alter table public.netsim_yeni_nokta
 
 comment on column public.netsim_yeni_nokta.sorumlu is
   'ISLMNOKT.OZEL_KOD — işten sorumlu kişi (Netsim bu alanı isim olarak kullanıyor)';
+
+-- ── YÜKLENİCİ FİRMA ──
+-- Netsim firma adını KISA yazıyor ("İKİKAT LTD. ŞTİ."), site UZUN ("İkikat İnş. Taah.
+-- Hayv. San. Ve Tic. Ltd. Şti."). Eşleştirme senkronda yapılır ve sonucu buraya yazılır;
+-- form o kaydı okur. Kural: Netsim'in firma KÜMESİ sitedeki kaydın firma kümesine birebir
+-- eşitse o kayıt seçilir.
+--   İKİKAT                 → İkikat İnş. Taah. ...
+--   KAD-TEM                → Kad-Tem Müh. Müt. ...
+--   KENAN TUGAY IKIKAT     → Kenan Tugay Ikıkat
+--   KAD-TEM + ATILIM       → Kad-Tem – Atılım Adi Ortaklığı
+--   İKİKAT + KAD-TEM       → sitede böyle bir ortaklık kaydı YOK → boş bırakılır
+-- Kullanıcı kararı: Netsim'de ortaklık var ama sitede aynı ortaklık yoksa pilot firmaya
+-- düşülmez, kutu boş bırakılır — yanlış firmayla kaydedilmesindense elle seçilsin.
+alter table public.netsim_yeni_nokta
+  add column if not exists yuklenici_firma_id uuid references public.firmalar(id) on delete set null,
+  add column if not exists ortak_girisim      boolean,
+  add column if not exists firma_adlari       text;
+
+comment on column public.netsim_yeni_nokta.firma_adlari is
+  'Netsim''deki firma adları (pilot + ortaklar), olduğu gibi — eşleşme tutmazsa kullanıcı neyi aradığını görsün';
