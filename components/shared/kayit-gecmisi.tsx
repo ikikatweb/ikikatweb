@@ -31,10 +31,13 @@ const ISLEM_ETIKET: Record<string, string> = {
 export default function KayitGecmisi({
   tablo,
   kayitId,
+  olusturma,
   limit = 300,
 }: {
   tablo: string;
   kayitId: string | number | null | undefined;
+  /** Kaydın created_at değeri — günlükten ÖNCE açılmış kayıtlarda tarih yine gösterilsin. */
+  olusturma?: string | null;
   limit?: number;
 }) {
   const [satirlar, setSatirlar] = useState<Satir[]>([]);
@@ -64,15 +67,46 @@ export default function KayitGecmisi({
 
   // Sistem satırları (senkron, mail okuyucu) varsayılan olarak gizli: kullanıcı
   // değişikliği aranırken onların arasında kaybolmasın.
-  const kullaniciSatirlari = satirlar.filter((s) => s.kaynak !== "sistem");
-  const gorunen = sistemDe ? satirlar : kullaniciSatirlari;
-  const sistemSayisi = satirlar.length - kullaniciSatirlari.length;
+  // 'ekleme' satırı yukarıda ayrıca gösteriliyor, listede tekrar edilmez.
+  const degisiklikler = satirlar.filter((s) => s.islem !== "ekleme");
+  const kullaniciSatirlari = degisiklikler.filter((s) => s.kaynak !== "sistem");
+  const gorunen = sistemDe ? degisiklikler : kullaniciSatirlari;
+  const sistemSayisi = degisiklikler.length - kullaniciSatirlari.length;
+
+  // KAYDI İLK GİREN. Tetikleyici INSERT'te 'ekleme' satırı yazıyor, yani günlük
+  // kurulduktan SONRA açılan kayıtlarda bu bilgi var. Daha eski kayıtlarda yok — o bilgi
+  // hiçbir yerde tutulmamıştı, sonradan üretilemez; tarih bari created_at'ten gösterilir.
+  const acilis = satirlar.find((s) => s.islem === "ekleme");
 
   return (
     <div className="space-y-3">
+      <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+        {acilis ? (
+          <>
+            <span className="text-sky-700">Kaydı giren:</span>{" "}
+            <span className="font-semibold">
+              {acilis.kaynak === "sistem" ? "Sistem" : acilis.kullanici_ad ?? "Bilinmiyor"}
+            </span>
+            <span className="text-sky-700">
+              {" "}· {new Date(acilis.tarih).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" })}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="text-sky-700">Kaydı giren:</span>{" "}
+            <span className="font-medium">bilinmiyor</span>
+            <span className="text-sky-700">
+              {olusturma
+                ? ` — kayıt ${new Date(olusturma).toLocaleDateString("tr-TR")} tarihinde, geçmiş tutulmaya başlamadan önce açılmış.`
+                : " — kayıt, geçmiş tutulmaya başlamadan önce açılmış."}
+            </span>
+          </>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-[#1E3A5F]">
-          <History size={16} /> Kayıt Geçmişi
+          <History size={16} /> Değişiklikler
         </div>
         {sistemSayisi > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-gray-600">
@@ -84,8 +118,8 @@ export default function KayitGecmisi({
 
       {gorunen.length === 0 ? (
         <p className="text-sm text-gray-400">
-          {satirlar.length === 0
-            ? "Bu kayıt için henüz değişiklik kaydı yok."
+          {degisiklikler.length === 0
+            ? "Bu kayıt açıldığından beri değiştirilmemiş."
             : "Kullanıcı değişikliği yok — yalnız otomatik güncellemeler var."}
         </p>
       ) : (

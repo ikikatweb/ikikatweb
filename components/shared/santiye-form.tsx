@@ -1729,7 +1729,7 @@ export default function SantiyeForm({
           <TabsContent value="gecmis">
             <Card>
               <CardContent className="pt-6">
-                <KayitGecmisi tablo="santiyeler" kayitId={santiye?.id} />
+                <KayitGecmisi tablo="santiyeler" kayitId={santiye?.id} olusturma={santiye?.created_at} />
               </CardContent>
             </Card>
           </TabsContent>
