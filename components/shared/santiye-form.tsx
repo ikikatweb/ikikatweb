@@ -610,6 +610,31 @@ export default function SantiyeForm({
       alanHatasi("kabul", "gecici_kabul_tarihi", "Geçici Kabul İtibar Tarihi girildiyse Onay Tarihi de zorunludur (veya 'Onay tarihi yok' işaretleyin).");
       return;
     }
+    // Onay, itibar tarihinden ÖNCE olamaz: idare işin bittiği günden önce kabulü onaylamaz.
+    // Gümüşhane Aşağıalıçlı işinde onay 03.12.2002 yazılmıştı (doğrusu 2012) ve yıl hatası
+    // yıllarca fark edilmedi — tarihler ayrı ayrı bakıldığında makul görünüyor, ancak
+    // birbirine göre bakılınca hata ortaya çıkıyor.
+    if (formData.gecici_kabul_itibar_tarihi && formData.gecici_kabul_tarihi
+        && formData.gecici_kabul_tarihi < formData.gecici_kabul_itibar_tarihi) {
+      alanHatasi("kabul", "gecici_kabul_tarihi",
+        `Geçici Kabul Onay Tarihi (${formatTarihTR(formData.gecici_kabul_tarihi)}), İtibar Tarihinden (${formatTarihTR(formData.gecici_kabul_itibar_tarihi)}) önce olamaz.`);
+      return;
+    }
+    // Kesin kabul geçici kabulden sonra gelir.
+    if (formData.gecici_kabul_tarihi && formData.kesin_kabul_tarihi
+        && formData.kesin_kabul_tarihi < formData.gecici_kabul_tarihi) {
+      alanHatasi("kabul", "kesin_kabul_tarihi",
+        `Kesin Kabul Tarihi (${formatTarihTR(formData.kesin_kabul_tarihi)}), Geçici Kabul Tarihinden (${formatTarihTR(formData.gecici_kabul_tarihi)}) önce olamaz.`);
+      return;
+    }
+    // Kabul, sözleşmeden önce olamaz. Sitede onay tarihi 01.01.1990 yazan 12 kayıt var —
+    // "tarih bilinmiyor" yerine konmuş bir yer tutucu; yeni kayıtlarda tekrarlanmasın.
+    if (formData.sozlesme_tarihi && formData.gecici_kabul_itibar_tarihi
+        && formData.gecici_kabul_itibar_tarihi < formData.sozlesme_tarihi) {
+      alanHatasi("kabul", "gecici_kabul_itibar_tarihi",
+        `Geçici Kabul İtibar Tarihi (${formatTarihTR(formData.gecici_kabul_itibar_tarihi)}), Sözleşme Tarihinden (${formatTarihTR(formData.sozlesme_tarihi)}) önce olamaz.`);
+      return;
+    }
     // Kabul tarihi GİRİLDİĞİNDE/DEĞİŞTİĞİNDE belge de zorunlu — tarihi olup belgesi olmayan kabul kalmasın.
     // Yeni seçilen dosya (…File) veya daha önce yüklenmiş URL yeterlidir. Zorunluluk yalnız tarih bu
     // düzenlemede değiştiyse işler: eskiden beri tarihi olup belgesi olmayan işlerde (49 kayıt) alakasız
