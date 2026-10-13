@@ -18,7 +18,48 @@ import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { createClient } from "@/lib/supabase/client";
 
-type YeniNokta = { nokta_no: number; ad: string; ilk_gorulme: string };
+type YeniNokta = {
+  nokta_no: number; ad: string; ilk_gorulme: string;
+  // Netsim'de aynı işe ait diğer alanlar. Ad BÜYÜK HARF ve 40 karaktere kırpık geldiği
+  // için tek başına hangi iş olduğunu anlatmaya yetmiyordu; bunlar onu tanıtıyor.
+  kod: string | null; sorumlu: string | null; is_grubu: string | null;
+  sozlesme_bedeli: number | null; ek_sozlesme_bedeli: number | null; yaklasik_maliyet: number | null;
+  ihale_tarihi: string | null; ilan_tarihi: string | null; ihale_kayit_no: string | null;
+  sozlesme_tarihi: string | null; isyeri_teslim_tarihi: string | null;
+  ortaklik_orani: number | null; pilot_firma: string | null; asgari_iscilik_orani: number | null;
+};
+
+const SECIM = "nokta_no, ad, ilk_gorulme, kod, sorumlu, is_grubu, sozlesme_bedeli, ek_sozlesme_bedeli, yaklasik_maliyet, ihale_tarihi, ilan_tarihi, ihale_kayit_no, sozlesme_tarihi, isyeri_teslim_tarihi, ortaklik_orani, pilot_firma, asgari_iscilik_orani";
+
+const tl = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
+const tarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
+const oran = (n: number) => "%" + n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+
+/**
+ * Netsim'de DOLU olan alanları etiketli rozetlere çevirir. Boş alan hiç yazılmaz:
+ * 106 iş noktasının ölçümünde sözleşme bedeli 93'ünde, İKN 39'unda, iş grubu 25'inde
+ * doluydu — hepsini basmak uyarıyı "— / —" satırlarıyla doldururdu.
+ */
+function bilgiler(n: YeniNokta): { etiket: string; deger: string }[] {
+  const x: { etiket: string; deger: string }[] = [];
+  if (n.sozlesme_bedeli != null) x.push({ etiket: "Sözleşme bedeli", deger: tl(n.sozlesme_bedeli) });
+  if (n.ek_sozlesme_bedeli != null) x.push({ etiket: "Ek sözleşme", deger: tl(n.ek_sozlesme_bedeli) });
+  if (n.yaklasik_maliyet != null) x.push({ etiket: "Yaklaşık maliyet", deger: tl(n.yaklasik_maliyet) });
+  if (n.ihale_kayit_no) x.push({ etiket: "İKN", deger: n.ihale_kayit_no });
+  if (n.ihale_tarihi) x.push({ etiket: "İhale", deger: tarih(n.ihale_tarihi) });
+  if (n.ilan_tarihi) x.push({ etiket: "İlan", deger: tarih(n.ilan_tarihi) });
+  if (n.sozlesme_tarihi) x.push({ etiket: "Sözleşme", deger: tarih(n.sozlesme_tarihi) });
+  if (n.isyeri_teslim_tarihi) x.push({ etiket: "İşyeri teslim", deger: tarih(n.isyeri_teslim_tarihi) });
+  if (n.is_grubu) x.push({ etiket: "İş grubu", deger: n.is_grubu });
+  if (n.asgari_iscilik_orani != null) x.push({ etiket: "Asgari işçilik", deger: oran(n.asgari_iscilik_orani) });
+  if (n.pilot_firma) {
+    x.push({ etiket: "Pilot", deger: n.pilot_firma + (n.ortaklik_orani != null ? ` ${oran(n.ortaklik_orani)}` : "") });
+  } else if (n.ortaklik_orani != null) {
+    x.push({ etiket: "Ortaklık oranı", deger: oran(n.ortaklik_orani) });
+  }
+  if (n.sorumlu) x.push({ etiket: "Sorumlu", deger: n.sorumlu });
+  return x;
+}
 
 export default function NetsimYeniIsHatirlatma() {
   const router = useRouter();
@@ -30,14 +71,20 @@ export default function NetsimYeniIsHatirlatma() {
 
   const kontrol = useCallback(async () => {
     const sb = createClient();
-    const { data, error } = await sb
+    const oku = (secim: string) => sb
       .from("netsim_yeni_nokta")
-      .select("nokta_no, ad, ilk_gorulme")
+      .select(secim)
       .eq("durum", "bekliyor")
       .order("nokta_no", { ascending: false });
-    // Tablo henüz yoksa sessiz geç — uyarı görünmez, sayfa bozulmaz.
+
+    let { data, error } = await oku(SECIM);
+    // Ek bilgi sütunları henüz açılmamışsa (sql/netsim_yeni_nokta_bilgiler.sql) sorgu
+    // tümden hata verir ve uyarı hiç görünmezdi. Sade sütunlarla yeniden denenir:
+    // iş adı yine çıkar, ek bilgiler o kadar boş kalır.
+    if (error) ({ data, error } = await oku("nokta_no, ad, ilk_gorulme"));
+    // Tablo hiç yoksa sessiz geç — uyarı görünmez, sayfa bozulmaz.
     if (error) { setKayitlar([]); return; }
-    setKayitlar((data ?? []) as YeniNokta[]);
+    setKayitlar((data ?? []) as unknown as YeniNokta[]);
   }, []);
 
   useEffect(() => {
@@ -90,22 +137,38 @@ export default function NetsimYeniIsHatirlatma() {
       </div>
       <ul className="mt-2 space-y-2 pl-9 text-sm">
         {kayitlar.map((n) => (
-          <li key={n.nokta_no} className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-mono text-sky-600">[{n.nokta_no}]</span>
-            <span className="font-medium text-sky-900">{n.ad}</span>
-            <span className="text-[10px] text-sky-600">
-              {new Date(n.ilk_gorulme).toLocaleDateString("tr-TR")}
-            </span>
-            <button type="button" disabled={islemde === n.nokta_no}
-              onClick={() => ekle(n)}
-              className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
-              <Check size={13} /> Evet, ekle
-            </button>
-            <button type="button" disabled={islemde === n.nokta_no}
-              onClick={() => yoksay(n)}
-              className="inline-flex items-center gap-1 rounded border border-sky-300 px-2.5 py-1 text-xs text-sky-800 hover:bg-sky-100 disabled:opacity-60">
-              <X size={13} /> Hayır
-            </button>
+          <li key={n.nokta_no} className="rounded-lg border border-sky-200 bg-white/70 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-mono text-sky-600">[{n.nokta_no}]</span>
+              <span className="font-medium text-sky-900">{n.ad}</span>
+              {n.kod && (
+                <span className="rounded bg-sky-100 px-1.5 py-0.5 font-mono text-[10px] text-sky-700">{n.kod}</span>
+              )}
+              <span className="text-[10px] text-sky-600">
+                {new Date(n.ilk_gorulme).toLocaleDateString("tr-TR")}
+              </span>
+              <span className="flex-1" />
+              <button type="button" disabled={islemde === n.nokta_no}
+                onClick={() => ekle(n)}
+                className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
+                <Check size={13} /> Evet, ekle
+              </button>
+              <button type="button" disabled={islemde === n.nokta_no}
+                onClick={() => yoksay(n)}
+                className="inline-flex items-center gap-1 rounded border border-sky-300 px-2.5 py-1 text-xs text-sky-800 hover:bg-sky-100 disabled:opacity-60">
+                <X size={13} /> Hayır
+              </button>
+            </div>
+            {bilgiler(n).length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                {bilgiler(n).map((b) => (
+                  <span key={b.etiket} className="whitespace-nowrap">
+                    <span className="text-sky-600">{b.etiket}</span>{" "}
+                    <span className="font-medium text-sky-900">{b.deger}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </li>
         ))}
       </ul>

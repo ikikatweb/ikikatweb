@@ -108,9 +108,46 @@ type SantiyeRow = {
  */
 const GUN_PENCERE = 15;
 
+/**
+ * Netsim'de aynı işe ait, uyarıda göstermeye değer alanlar. Hangilerinin alındığı
+ * ölçülerek seçildi — 106 gerçek iş noktasında hepsi boş olan alanlar (EKAP belge no,
+ * belge tutarı, diğer bilgi) alınmıyor. Ayrıntı: sql/netsim_yeni_nokta_bilgiler.sql
+ */
+type NoktaBilgi = {
+  kod: string | null;
+  sorumlu: string | null;
+  is_grubu: string | null;
+  sozlesme_bedeli: number | null;
+  ek_sozlesme_bedeli: number | null;
+  yaklasik_maliyet: number | null;
+  ihale_tarihi: string | null;
+  ilan_tarihi: string | null;
+  ihale_kayit_no: string | null;
+  sozlesme_tarihi: string | null;
+  isyeri_teslim_tarihi: string | null;
+  ortaklik_orani: number | null;
+  pilot_firma: string | null;
+  asgari_iscilik_orani: number | null;
+};
+
+/** Firebird boş alanları "" ya da 0 olarak veriyor; ikisi de "bilgi yok" demek. */
+function metin(v: unknown): string | null {
+  const t = v == null ? "" : String(v).trim();
+  return t === "" ? null : t;
+}
+function sayi(v: unknown): number | null {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) && n !== 0 ? n : null;
+}
+function gun(v: unknown): string | null {
+  if (!v) return null;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
+
 async function yeniNoktalariIsaretle(
   sb: SupabaseClient,
-  netsimler: { no: number; ad: string; olusturma: string | null }[],
+  netsimler: { no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi }[],
   santiyeler: { netsim_nokta_no: number | null }[],
 ) {
   const { data: kayitlar, error } = await sb
@@ -144,6 +181,7 @@ async function yeniNoktalariIsaretle(
         // İlk kurulumda, zaten bağlı olanlarda ve eski noktalarda soru sorulmaz.
         durum: (ilkKurulum || bagliNoktalar.has(n.no) || !yeniMi) ? "yoksayildi" : "bekliyor",
         santiye_id: null,
+        ...n.bilgi,
       };
     });
   // PENCEREYE SONRADAN GİRENLER. Eşiği büyütmek tek başına yetmiyor: pencereye giren
@@ -164,6 +202,18 @@ async function yeniNoktalariIsaretle(
     if (e || !data?.length) { console.error(`  [${n.no}] geri getirilemedi: ${e?.message ?? "satır yazılmadı"}`); continue; }
     console.log(`
 NETSİM'DE YENİ İŞ (${GUN_PENCERE} günlük pencere): [${n.no}] ${n.ad}`);
+  }
+
+  // BİLGİLERİ TAZELE. Nokta Netsim'de açıldığı anda sözleşme bedeli, İKN, ihale tarihi
+  // henüz girilmemiş oluyor; günler içinde doldurulur. Soru hâlâ ekrandaysa uyarı en son
+  // hâli göstersin diye her çalışmada yeniden yazılır.
+  const bekleyenler = netsimler.filter((n) => {
+    const k = mevcut.get(n.no);
+    return k?.durum === "bekliyor" || geriGetirilecek.some((g) => g.no === n.no);
+  });
+  for (const n of bekleyenler) {
+    const { error: e } = await sb.from("netsim_yeni_nokta").update(n.bilgi).eq("nokta_no", n.no);
+    if (e) console.error(`  [${n.no}] bilgiler yazılamadı: ${e.message}`);
   }
 
   if (eklenecek.length === 0) return;
@@ -225,7 +275,7 @@ async function main() {
   // hakediş); tutar senkronu için doğru ama yeni nokta HABERİ için yanlış: nokta açıldığı
   // anda ikisi de boş oluyor ve haber hiç gelmiyordu. Burada yalnız kategori düğümleri
   // (altında başka nokta olanlar) elenir; gerisini kullanıcı "Hayır" diyerek eler.
-  const tumNoktalar: { no: number; ad: string; olusturma: string | null }[] = [];
+  const tumNoktalar: { no: number; ad: string; olusturma: string | null; bilgi: NoktaBilgi }[] = [];
   try {
     const rows = await fbSorgu(db, `
       SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
@@ -295,7 +345,14 @@ async function main() {
     // yoksa kayıt tablosuna sonradan giren ESKİ noktalar da yeni sanılıp ana ekranı
     // dolduruyor (32 nokta birden sorulmuştu).
     const noktaRows = await fbSorgu(db, `
-      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD, I.CTIMESTAMP AS OLUSTURMA
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD, I.CTIMESTAMP AS OLUSTURMA,
+             I.ISLEM_NOKTASI_KODU AS KOD, I.OZEL_KOD AS SORUMLU, I.K_IS_GRUBU AS IS_GRUBU,
+             I.K_SOZLESME_BEDELI AS SOZ_BEDEL, I.K_EKSOZLESME_BEDELI AS EK_BEDEL,
+             I.K_YAKLASIK_MALIYET AS YAK_MALIYET,
+             I.K_IHALE_TARIHI AS IHALE_T, I.K_IHALE_ILAN_TARIHI AS ILAN_T,
+             I.K_IHALE_KAYIT_NUMARASI AS IKN, I.K_SOZLESME_TARIHI AS SOZ_T,
+             I.K_ISYERI_TESLIM_TARIHI AS TESLIM_T, I.K_ORTAKLIK_ORANI AS ORTAKLIK,
+             I.K_PILOT_FIRMA_ADI AS PILOT, I.K_ASGARI_ISCILIK_ORANI AS ASGARI
       FROM ISLMNOKT I
       WHERE I.ISLEM_NOKTASI_NO > 0
         AND NOT EXISTS (
@@ -307,6 +364,22 @@ async function main() {
         no: Number(r.NOKTA),
         ad: String(r.AD ?? "").trim(),
         olusturma: r.OLUSTURMA ? new Date(String(r.OLUSTURMA)).toISOString() : null,
+        bilgi: {
+          kod: metin(r.KOD),
+          sorumlu: metin(r.SORUMLU),
+          is_grubu: metin(r.IS_GRUBU),
+          sozlesme_bedeli: sayi(r.SOZ_BEDEL),
+          ek_sozlesme_bedeli: sayi(r.EK_BEDEL),
+          yaklasik_maliyet: sayi(r.YAK_MALIYET),
+          ihale_tarihi: gun(r.IHALE_T),
+          ilan_tarihi: gun(r.ILAN_T),
+          ihale_kayit_no: metin(r.IKN),
+          sozlesme_tarihi: gun(r.SOZ_T),
+          isyeri_teslim_tarihi: gun(r.TESLIM_T),
+          ortaklik_orani: sayi(r.ORTAKLIK),
+          pilot_firma: metin(r.PILOT),
+          asgari_iscilik_orani: sayi(r.ASGARI),
+        },
       });
     }
   } finally {
