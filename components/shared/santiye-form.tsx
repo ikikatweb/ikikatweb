@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
+import { NetsimRozet } from "@/components/shared/netsim-rozet";
 import BelgeFarkDialog from "@/components/shared/belge-fark-dialog";
 import { belgeKarsilastir, uygulanabilir, type BelgeSatir } from "@/lib/belge-karsilastir";
 import { Card, CardContent } from "@/components/ui/card";
@@ -699,6 +700,31 @@ export default function SantiyeForm({
 
   const belgeOkunuyor = Object.values(belgeOkuma).some((d) => d === "okunuyor");
 
+  /**
+   * Netsim'den ön doldurulan alanın yanındaki rozet. İş adı ve nokta numarasında zaten
+   * vardı; diğer alanlarda yoktu, kullanıcı değerin nereden geldiğini bilemiyordu.
+   * Kullanıcı değeri DEĞİŞTİRİRSE rozet kalkar — yoksa yanlış bilgi vermiş olur.
+   *
+   * Görünüm sitenin geri kalanıyla ortak (components/shared/netsim-rozet.tsx): tek harf "N".
+   */
+  function NetsimAlanRozeti({ alan }: { alan: keyof NetsimBaslangic }) {
+    const gelen = baslangicNetsim?.[alan];
+    if (gelen == null || gelen === "") return null;
+    const simdiki = alan === "sozlesme_bedeli"
+      ? parseParaInput(sozlesmeBedeliStr)
+      : (formData as Record<string, unknown>)[alan];
+    const ayni = alan === "sozlesme_bedeli" || alan === "ortaklik_orani"
+      ? Math.abs(Number(simdiki ?? NaN) - Number(gelen)) < 0.01
+      : String(simdiki ?? "") === String(gelen);
+    if (!ayni) return null;
+    return (
+      <NetsimRozet
+        className="ml-1 align-middle"
+        title="Bu değer Netsim'deki iş kartından geldi. Değiştirirseniz rozet kalkar."
+      />
+    );
+  }
+
   /** Seçilen belgenin okunma durumu — kullanıcı sessiz beklemesin diye. */
   function BelgeDurumu({ alan }: { alan: string }) {
     const d = belgeOkuma[alan];
@@ -1215,14 +1241,14 @@ export default function SantiyeForm({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Yüklenici Firma <span className="text-red-500">*</span></Label>
+                  <Label>Yüklenici Firma <span className="text-red-500">*</span><NetsimAlanRozeti alan="yuklenici_firma_id" /></Label>
                   <select name="yuklenici_firma_id" value={formData.yuklenici_firma_id ?? ""} onChange={(e) => handleSelectChange("yuklenici_firma_id", e.target.value)} disabled={loading} className={`${selectClass}${hataCls("yuklenici_firma_id")}`}>
                     <option value="">Seçiniz</option>
                     {firmalar.map((f) => (<option key={f.id} value={f.id}>{f.firma_adi}</option>))}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ortaklik_orani">Ortaklık Oranı (%)</Label>
+                  <Label htmlFor="ortaklik_orani">Ortaklık Oranı (%)<NetsimAlanRozeti alan="ortaklik_orani" /></Label>
                   <Input id="ortaklik_orani" name="ortaklik_orani" type="text" inputMode="decimal" placeholder="100" value={formData.ortaklik_orani ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
               </div>
@@ -1267,15 +1293,15 @@ export default function SantiyeForm({
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="ilan_tarihi">İlan Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
+                  <Label htmlFor="ilan_tarihi">İlan Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}<NetsimAlanRozeti alan="ilan_tarihi" /></Label>
                   <Input id="ilan_tarihi" name="ilan_tarihi" type="date" value={formData.ilan_tarihi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ilan_tarihi")} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ihale_tarihi">İhale Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
+                  <Label htmlFor="ihale_tarihi">İhale Tarihi {formData.ihaleli !== false && <span className="text-red-500">*</span>}<NetsimAlanRozeti alan="ihale_tarihi" /></Label>
                   <Input id="ihale_tarihi" name="ihale_tarihi" type="date" value={formData.ihale_tarihi ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ihale_tarihi")} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ihale_kayit_no">İhale Kayıt Numarası {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
+                  <Label htmlFor="ihale_kayit_no">İhale Kayıt Numarası {formData.ihaleli !== false && <span className="text-red-500">*</span>}<NetsimAlanRozeti alan="ihale_kayit_no" /></Label>
                   <Input id="ihale_kayit_no" name="ihale_kayit_no" placeholder="İhale kayıt no" value={formData.ihale_kayit_no ?? ""} onChange={handleChange} disabled={loading} className={hataCls("ihale_kayit_no")} />
                 </div>
               </div>
@@ -1360,6 +1386,7 @@ export default function SantiyeForm({
                 <div className="space-y-2">
                   <Label htmlFor="sozlesme_tarihi">
                     Sözleşme Tarihi {formData.ihaleli !== false && !sozlesmeImzalanmadi && <span className="text-red-500">*</span>}
+                    <NetsimAlanRozeti alan="sozlesme_tarihi" />
                   </Label>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
@@ -1398,7 +1425,7 @@ export default function SantiyeForm({
 
                 {/* Sözleşme Bedeli */}
                 <div className="space-y-2">
-                  <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç) {formData.ihaleli !== false && <span className="text-red-500">*</span>}</Label>
+                  <Label htmlFor="sozlesme_bedeli">Sözleşme Bedeli (KDV ve FF Hariç) {formData.ihaleli !== false && <span className="text-red-500">*</span>}<NetsimAlanRozeti alan="sozlesme_bedeli" /></Label>
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <Input
@@ -1474,7 +1501,7 @@ export default function SantiyeForm({
 
                 {/* İş Yeri Teslim Tarihi */}
                 <div className="space-y-2">
-                  <Label htmlFor="isyeri_teslim_tarihi">İş Yeri Teslim Tarihi</Label>
+                  <Label htmlFor="isyeri_teslim_tarihi">İş Yeri Teslim Tarihi<NetsimAlanRozeti alan="isyeri_teslim_tarihi" /></Label>
                   <Input
                     id="isyeri_teslim_tarihi"
                     name="isyeri_teslim_tarihi"

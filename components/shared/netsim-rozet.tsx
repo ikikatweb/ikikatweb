@@ -15,10 +15,12 @@ export function netsimKaynakli(deger: number | null | undefined, netsimDeger: nu
 
 // Dar tablolarda yer kaplamasin diye tek harf: rakamin yanina sigan kucuk bir "N".
 // Anlami tooltip'te yazili; uzerine gelince tam aciklama cikar.
-export function NetsimRozet({ className = "" }: { className?: string }) {
+export function NetsimRozet({ className = "", title }: { className?: string; title?: string }) {
   return (
     <span
-      title="Bu tutar Netsim'den otomatik geldi. Elle değiştirirseniz rozet kalkar; senkron 15 dakika içinde Netsim'deki değeri geri yazar."
+      // Varsayılan açıklama SENKRONLA yazılan tutarlar için. Form ön doldurmasında
+      // senkron geri yazmaz, o yüzden oradan farklı bir açıklama veriliyor.
+      title={title ?? "Bu tutar Netsim'den otomatik geldi. Elle değiştirirseniz rozet kalkar; senkron 15 dakika içinde Netsim'deki değeri geri yazar."}
       aria-label="Netsim'den geldi"
       className={`inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-[2px] bg-sky-100 text-[8px] font-bold leading-none text-sky-700 ${className}`}
     >
