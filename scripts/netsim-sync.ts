@@ -142,7 +142,12 @@ function sayi(v: unknown): number | null {
 function gun(v: unknown): string | null {
   if (!v) return null;
   const d = new Date(String(v));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return null;
+  // YEREL alanlardan kur. toISOString() kullanılmaz: Firebird tarihi yerel gece yarısı
+  // olarak veriyor, UTC'ye çevrilince 3 saat geri gidip ÖNCEKİ güne düşüyordu —
+  // 15.09.2026 ihale tarihi 2026-09-14 olarak yazılmıştı.
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
 }
 
 async function yeniNoktalariIsaretle(
