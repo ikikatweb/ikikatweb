@@ -43,12 +43,30 @@ const SON_KULLANICI_KEY = "santiye-yeni-is-son-kullanicilar";
 
 // onSuccess/onCancel verilirse: kayıt/iptal sonrası yönlendirme YAPILMAZ, callback çağrılır
 // (dialog/pencere içinde kullanım için). Verilmezse eski davranış: santiyeler sayfasına gider.
+/**
+ * Netsim'deki iş kartından gelen, formla BİREBİR eşleşen alanlar. Eşleşmeyenler bilerek
+ * taşınmıyor: pilot firma adı Netsim'de "İKİKAT LTD. ŞTİ.", sitede "İkikat İnş. Taah.
+ * Hayv. San. Ve Tic. Ltd. Şti." — isimden tahmin yanlış firmayı seçebilir. Netsim'in iş
+ * grubu da EKAP kodu ("A9"), sitedeki liste ise kategori ("Bina İnşaatı & Onarım").
+ */
+export type NetsimBaslangic = {
+  sozlesme_bedeli: number | null;
+  ihale_tarihi: string | null;
+  ilan_tarihi: string | null;
+  ihale_kayit_no: string | null;
+  sozlesme_tarihi: string | null;
+  isyeri_teslim_tarihi: string | null;
+  ortaklik_orani: number | null;
+};
+
 type SantiyeFormProps = {
   santiye?: Santiye;
   /** Netsim uyarısından gelindiğinde iş adı önceden dolu açılır. */
   baslangicIsAdi?: string;
   /** Netsim işlem noktası — ilk kayıtta bağ kurulsun diye taşınır. */
   baslangicNetsimNo?: number;
+  /** Netsim iş kartındaki diğer alanlar — form dolu açılsın diye. */
+  baslangicNetsim?: NetsimBaslangic;
   onSuccess?: () => void;
   onCancel?: () => void;
 };
@@ -88,7 +106,7 @@ function formatTarihTR(iso: string | null | undefined): string {
 }
 
 export default function SantiyeForm({
-  santiye, baslangicIsAdi, baslangicNetsimNo, onSuccess, onCancel,
+  santiye, baslangicIsAdi, baslangicNetsimNo, baslangicNetsim, onSuccess, onCancel,
 }: SantiyeFormProps) {
   const isEdit = !!santiye;
   const router = useRouter();
@@ -224,19 +242,19 @@ export default function SantiyeForm({
     ihaleli: santiye?.ihaleli ?? true, // varsayılan: ihaleli (ana sayfa + bordro özetinde görünür)
     benzer_is_grubu: santiye?.benzer_is_grubu ?? null,
     ekap_belge_no: santiye?.ekap_belge_no ?? "",
-    ihale_kayit_no: santiye?.ihale_kayit_no ?? "",
-    ilan_tarihi: santiye?.ilan_tarihi ?? null,
-    ihale_tarihi: santiye?.ihale_tarihi ?? null,
+    ihale_kayit_no: santiye?.ihale_kayit_no ?? baslangicNetsim?.ihale_kayit_no ?? "",
+    ilan_tarihi: santiye?.ilan_tarihi ?? baslangicNetsim?.ilan_tarihi ?? null,
+    ihale_tarihi: santiye?.ihale_tarihi ?? baslangicNetsim?.ihale_tarihi ?? null,
     yuklenici_firma_id: santiye?.yuklenici_firma_id ?? null,
     is_ortak_girisim: santiye?.is_ortak_girisim ?? false,
-    ortaklik_orani: santiye?.ortaklik_orani ?? null,
-    sozlesme_bedeli: santiye?.sozlesme_bedeli ?? null,
+    ortaklik_orani: santiye?.ortaklik_orani ?? baslangicNetsim?.ortaklik_orani ?? null,
+    sozlesme_bedeli: santiye?.sozlesme_bedeli ?? baslangicNetsim?.sozlesme_bedeli ?? null,
     para_birimi: santiye?.para_birimi ?? "TRY",
     ff_hesaplanacak: santiye?.ff_hesaplanacak ?? true,
     teknik_personel_sayisi: santiye?.teknik_personel_sayisi ?? null,
     teknik_personeller: santiye?.teknik_personeller ?? null,
-    sozlesme_tarihi: santiye?.sozlesme_tarihi ?? null,
-    isyeri_teslim_tarihi: santiye?.isyeri_teslim_tarihi ?? null,
+    sozlesme_tarihi: santiye?.sozlesme_tarihi ?? baslangicNetsim?.sozlesme_tarihi ?? null,
+    isyeri_teslim_tarihi: santiye?.isyeri_teslim_tarihi ?? baslangicNetsim?.isyeri_teslim_tarihi ?? null,
     is_suresi: santiye?.is_suresi ?? null,
     is_bitim_tarihi: santiye?.is_bitim_tarihi ?? null,
     sure_uzatimlari: santiye?.sure_uzatimlari ?? [],
