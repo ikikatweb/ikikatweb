@@ -147,9 +147,11 @@ export default function SantiyeForm({
   // (Geçici kabul tarihi/PDF, kesin kabul vb. kabul-sonrası alanlar düzenlenebilir kalır.)
   const tutarKilitli = !!santiye?.gecici_kabul_tarihi;
 
-  // Sözleşme bedeli ayrı tutulur (formatlı gösterim)
+  // Sözleşme bedeli ayrı tutulur (formatlı gösterim). Kaydederken formData değil BU
+  // okunuyor (parseParaInput), onun için Netsim'den gelen değer buraya da konur —
+  // yalnız formData'ya yazmak kutuyu boş bırakıyordu.
   const [sozlesmeBedeliStr, setSozlesmeBedeliStr] = useState(
-    formatParaInput(santiye?.sozlesme_bedeli ?? null)
+    formatParaInput(santiye?.sozlesme_bedeli ?? baslangicNetsim?.sozlesme_bedeli ?? null)
   );
 
   // "Henüz Sözleşme imzalanmadı": işaretliyse sözleşme tarihi zorunlu değil (boş kaydedilir) ve
