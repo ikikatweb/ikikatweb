@@ -186,7 +186,10 @@ export default function SantiyeForm({
 
   // Kaydette eksik zorunlu alan → o alanın kutusu kırmızıya boyanır ve o alanın sekmesine geçilir.
   const [aktifSekme, setAktifSekme] = useState<string>("genel");
-  const [hataliAlan, setHataliAlan] = useState<string | null>(null);
+  // Eksik alanların HEPSİ birden işaretlenir. Önce tek alan tutuluyordu ve doğrulama ilk
+  // eksikte duruyordu: kullanıcı bir alanı doldurup kaydediyor, bir sonraki eksiği
+  // görüyor, böyle tek tek ilerliyordu.
+  const [hataliAlanlar, setHataliAlanlar] = useState<string[]>([]);
 
   // Geçici kabul: "Onay tarihi yok" — bazı kurumlar onay tarihi vermez. İşaretliyse onay tarihi zorunlu değil, boş kaydedilir.
   // Düzenlemede itibar VAR + onay YOK ise → onay bilinçli boş bırakılmış sayılır (tik işaretli gelir).
@@ -468,7 +471,7 @@ export default function SantiyeForm({
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
-    if (hataliAlan) setHataliAlan(null); // kullanıcı düzeltmeye başladı → kırmızıyı kaldır
+    hatayiTemizle(name); // kullanıcı o alanı düzeltti → yalnız onun kırmızısı kalkar
     const numericFields = ["ortaklik_orani", "depo_kapasitesi", "is_suresi", "sure_uzatimi"];
     let sayisal = value ? parseFloat(value) : null;
     if (name === "ortaklik_orani" && sayisal != null && sayisal > ORAN_UST_SINIR) {
@@ -482,7 +485,7 @@ export default function SantiyeForm({
   }
 
   function handleSelectChange(name: string, value: string) {
-    if (hataliAlan) setHataliAlan(null);
+    hatayiTemizle(name);
     setFormData((prev) => ({ ...prev, [name]: value === "" ? null : value }));
   }
 
@@ -751,60 +754,67 @@ export default function SantiyeForm({
     );
   }
 
-  // Zorunlu alan eksikse: ilgili sekmeye geç, kutuyu kırmızıya boya, uyarı ver.
-  function alanHatasi(sekme: string, alan: string, mesaj: string) {
-    setAktifSekme(sekme);
-    setHataliAlan(alan);
-    toast.error(mesaj);
+  // Doğrulama artık ilk eksikte durmuyor; hepsi toplanıp birlikte gösteriliyor.
+  type FormHatasi = { sekme: string; alan: string; mesaj: string };
+
+  /** Toplanan hataları ekrana basar: ilk hatanın sekmesine geçer, alanları kırmızıya boyar. */
+  function hatalariGoster(hatalar: FormHatasi[]) {
+    setAktifSekme(hatalar[0].sekme);
+    setHataliAlanlar(hatalar.map((h) => h.alan));
+    if (hatalar.length === 1) {
+      toast.error(hatalar[0].mesaj);
+    } else {
+      const liste = hatalar.map((h) => "• " + h.mesaj).join("\n");
+      toast.error(hatalar.length + " alan eksik ya da hatalı:\n" + liste,
+        { duration: 8000, style: { maxWidth: "32rem", whiteSpace: "pre-line" } });
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setHataliAlan(null); // her denemede sıfırla; aşağıdaki ilk eksik alan yeniden işaretlenir
-    if (!formData.is_adi?.trim()) { alanHatasi("genel", "is_adi", "İşin adı zorunludur."); return; }
-    if (!isEdit && !formData.il) { alanHatasi("genel", "il", "İl seçimi zorunludur."); return; } // yeni iş deneyim belgesinde il zorunlu
-    if (!formData.is_grubu) { alanHatasi("genel", "is_grubu", "İş tanımı seçimi zorunludur."); return; }
-    if (!formData.yuklenici_firma_id) { alanHatasi("genel", "yuklenici_firma_id", "Yüklenici firma seçimi zorunludur."); return; }
+    setHataliAlanlar([]); // her denemede sıfırla
+    const hatalar: FormHatasi[] = [];
+    const hataEkle = (sekme: string, alan: string, mesaj: string) => hatalar.push({ sekme, alan, mesaj });
+    if (!formData.is_adi?.trim()) { hataEkle("genel", "is_adi", "İşin adı zorunludur."); }
+    if (!isEdit && !formData.il) { hataEkle("genel", "il", "İl seçimi zorunludur."); } // yeni iş deneyim belgesinde il zorunlu
+    if (!formData.is_grubu) { hataEkle("genel", "is_grubu", "İş tanımı seçimi zorunludur."); }
+    if (!formData.yuklenici_firma_id) { hataEkle("genel", "yuklenici_firma_id", "Yüklenici firma seçimi zorunludur."); }
     if (!calisilmayanYok && (!formData.calisilmayan_bas || !formData.calisilmayan_bit)) {
-      alanHatasi("genel", "calisilmayan_donem",
+      hataEkle("genel", "calisilmayan_donem",
         "Çalışılmayan dönem başlangıç ve bitişi zorunludur (yoksa 'Çalışılmayan dönem yok' işaretleyin).");
-      return;
     }
     // Kutudaki sınırı aşmanın başka yolları da var (yapıştırma, Netsim'den ön dolgu) —
     // kayıtta bir kez daha bakılır.
     if ((formData.ortaklik_orani ?? 0) > ORAN_UST_SINIR) {
-      alanHatasi("genel", "ortaklik_orani", `Ortaklık oranı %${ORAN_UST_SINIR}'den büyük olamaz.`); return;
+      hataEkle("genel", "ortaklik_orani", `Ortaklık oranı %${ORAN_UST_SINIR}'den büyük olamaz.`);
     }
     const asanOrtak = ortaklar.findIndex((o) => o.oran > ORAN_UST_SINIR);
     if (asanOrtak >= 0) {
-      alanHatasi("genel", "ortaklik_orani", `${asanOrtak + 1}. ortağın oranı %${ORAN_UST_SINIR}'den büyük olamaz.`); return;
+      hataEkle("genel", "ortaklik_orani", `${asanOrtak + 1}. ortağın oranı %${ORAN_UST_SINIR}'den büyük olamaz.`);
     }
     // İhaleli işlerde ilan/ihale tarihi + ihale kayıt no + sözleşme bedeli zorunlu; ihaleli tiki kaldırıldıysa değil.
     if (formData.ihaleli !== false) {
-      if (!formData.ilan_tarihi) { alanHatasi("genel", "ilan_tarihi", "İlan tarihi zorunludur."); return; }
-      if (!formData.ihale_tarihi) { alanHatasi("genel", "ihale_tarihi", "İhale tarihi zorunludur."); return; }
-      if (!formData.ihale_kayit_no?.trim()) { alanHatasi("genel", "ihale_kayit_no", "İhale kayıt numarası zorunludur."); return; }
+      if (!formData.ilan_tarihi) { hataEkle("genel", "ilan_tarihi", "İlan tarihi zorunludur."); }
+      if (!formData.ihale_tarihi) { hataEkle("genel", "ihale_tarihi", "İhale tarihi zorunludur."); }
+      if (!formData.ihale_kayit_no?.trim()) { hataEkle("genel", "ihale_kayit_no", "İhale kayıt numarası zorunludur."); }
       const bedel = parseParaInput(sozlesmeBedeliStr);
-      if (!bedel || bedel <= 0) { alanHatasi("sozlesme", "sozlesme_bedeli", "Sözleşme bedeli zorunludur."); return; }
+      if (!bedel || bedel <= 0) { hataEkle("sozlesme", "sozlesme_bedeli", "Sözleşme bedeli zorunludur."); }
     }
-    if (formData.ihaleli !== false && !sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { alanHatasi("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); return; }
-    if (formData.ihaleli !== false && (!formData.is_suresi || formData.is_suresi <= 0)) { alanHatasi("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); return; }
+    if (formData.ihaleli !== false && !sozlesmeImzalanmadi && !formData.sozlesme_tarihi) { hataEkle("sozlesme", "sozlesme_tarihi", "Sözleşme tarihi zorunludur (veya 'Henüz Sözleşme imzalanmadı' işaretleyin)."); }
+    if (formData.ihaleli !== false && (!formData.is_suresi || formData.is_suresi <= 0)) { hataEkle("sozlesme", "is_suresi", "İş süresi (gün) zorunludur."); }
     // Teknik personel listesi — eğer "gerekli değil" tikli ise atlanır, aksi halde en az 1 dolu kayıt zorunlu
     const teknikPersonellerTemiz = teknikPersonelGerekliDegil
       ? []
       : teknikPersonelList.map((s) => s.trim()).filter((s) => s.length > 0);
     if (!teknikPersonelGerekliDegil && teknikPersonellerTemiz.length === 0) {
-      alanHatasi("sozlesme", "teknik", "En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
-      return;
+      hataEkle("sozlesme", "teknik", "En az 1 teknik personel girilmelidir veya 'Teknik personel gerekli değil' işaretlenmelidir.");
     }
     // Geçici kabul: itibar ↔ onay birlikte girilmeli. Onay "yok" işaretliyse onay muaf.
     if (formData.gecici_kabul_tarihi && !formData.gecici_kabul_itibar_tarihi) {
-      alanHatasi("kabul", "gecici_kabul_itibar_tarihi", "Geçici Kabul Onay Tarihi girildiyse İtibar Tarihi de zorunludur.");
-      return;
+      hataEkle("kabul", "gecici_kabul_itibar_tarihi", "Geçici Kabul Onay Tarihi girildiyse İtibar Tarihi de zorunludur.");
     }
     if (formData.gecici_kabul_itibar_tarihi && !formData.gecici_kabul_tarihi && !onayTarihiYok) {
-      alanHatasi("kabul", "gecici_kabul_tarihi", "Geçici Kabul İtibar Tarihi girildiyse Onay Tarihi de zorunludur (veya 'Onay tarihi yok' işaretleyin).");
-      return;
+      hataEkle("kabul", "gecici_kabul_tarihi", "Geçici Kabul İtibar Tarihi girildiyse Onay Tarihi de zorunludur (veya 'Onay tarihi yok' işaretleyin).");
     }
     // Onay, itibar tarihinden ÖNCE olamaz: idare işin bittiği günden önce kabulü onaylamaz.
     // Gümüşhane Aşağıalıçlı işinde onay 03.12.2002 yazılmıştı (doğrusu 2012) ve yıl hatası
@@ -812,37 +822,34 @@ export default function SantiyeForm({
     // birbirine göre bakılınca hata ortaya çıkıyor.
     if (formData.gecici_kabul_itibar_tarihi && formData.gecici_kabul_tarihi
         && formData.gecici_kabul_tarihi < formData.gecici_kabul_itibar_tarihi) {
-      alanHatasi("kabul", "gecici_kabul_tarihi",
+      hataEkle("kabul", "gecici_kabul_tarihi",
         `Geçici Kabul Onay Tarihi (${formatTarihTR(formData.gecici_kabul_tarihi)}), İtibar Tarihinden (${formatTarihTR(formData.gecici_kabul_itibar_tarihi)}) önce olamaz.`);
-      return;
     }
     // Kesin kabul geçici kabulden sonra gelir.
     if (formData.gecici_kabul_tarihi && formData.kesin_kabul_tarihi
         && formData.kesin_kabul_tarihi < formData.gecici_kabul_tarihi) {
-      alanHatasi("kabul", "kesin_kabul_tarihi",
+      hataEkle("kabul", "kesin_kabul_tarihi",
         `Kesin Kabul Tarihi (${formatTarihTR(formData.kesin_kabul_tarihi)}), Geçici Kabul Tarihinden (${formatTarihTR(formData.gecici_kabul_tarihi)}) önce olamaz.`);
-      return;
     }
     // Kabul, sözleşmeden önce olamaz. Sitede onay tarihi 01.01.1990 yazan 12 kayıt var —
     // "tarih bilinmiyor" yerine konmuş bir yer tutucu; yeni kayıtlarda tekrarlanmasın.
     if (formData.sozlesme_tarihi && formData.gecici_kabul_itibar_tarihi
         && formData.gecici_kabul_itibar_tarihi < formData.sozlesme_tarihi) {
-      alanHatasi("kabul", "gecici_kabul_itibar_tarihi",
+      hataEkle("kabul", "gecici_kabul_itibar_tarihi",
         `Geçici Kabul İtibar Tarihi (${formatTarihTR(formData.gecici_kabul_itibar_tarihi)}), Sözleşme Tarihinden (${formatTarihTR(formData.sozlesme_tarihi)}) önce olamaz.`);
-      return;
     }
     // Kabul tarihi GİRİLDİĞİNDE/DEĞİŞTİĞİNDE belge de zorunlu — tarihi olup belgesi olmayan kabul kalmasın.
     // Yeni seçilen dosya (…File) veya daha önce yüklenmiş URL yeterlidir. Zorunluluk yalnız tarih bu
     // düzenlemede değiştiyse işler: eskiden beri tarihi olup belgesi olmayan işlerde (49 kayıt) alakasız
     // bir alanı düzenlemek kilitlenmesin — belge, tarihe dokunulduğu anda istenir.
     if (geciciKabulTarihDegisti && !geciciKabulFile && !formData.gecici_kabul_url) {
-      alanHatasi("kabul", "gecici_kabul_pdf", "Geçici kabul tarihi girildiğinde Geçici Kabul Belgesi (PDF) zorunludur.");
-      return;
+      hataEkle("kabul", "gecici_kabul_pdf", "Geçici kabul tarihi girildiğinde Geçici Kabul Belgesi (PDF) zorunludur.");
     }
     if (kesinKabulTarihDegisti && !kesinKabulFile && !formData.kesin_kabul_url) {
-      alanHatasi("kabul", "kesin_kabul_pdf", "Kesin kabul tarihi girildiğinde Kesin Kabul Belgesi (PDF) zorunludur.");
-      return;
+      hataEkle("kabul", "kesin_kabul_pdf", "Kesin kabul tarihi girildiğinde Kesin Kabul Belgesi (PDF) zorunludur.");
     }
+    if (hatalar.length > 0) { hatalariGoster(hatalar); return; }
+
     // Atama süresi zorunlu: teknik personel gerekliyse ve süre boş/geçersizse, 10 gün varsayılacağını onaylat.
     if (!teknikPersonelGerekliDegil) {
       const atamaGunSayi = parseInt(teknikAtamaGun, 10);
@@ -1093,7 +1100,15 @@ export default function SantiyeForm({
   }
 
   // Eksik zorunlu alanın kutusunu açık kırmızı (kırmızı ring + açık kırmızı zemin) yapar.
-  const hataCls = (alan: string) => (hataliAlan === alan ? " ring-2 ring-red-400 bg-red-50" : "");
+  // Dış çerçeve değil, yumuşak kırmızı dolgu: kutu kalabalık formda göze çarpsın ama
+  // ekranı alarma çevirmesin.
+  //
+  // "bg-red-100!" — ünlem ŞART: Input ve select'in kendi sınıfında bg-transparent var ve
+  // onu geçmezse açılır kutular (İl, İş Tanımları, Yüklenici Firma) beyaz kalıyordu.
+  // Tailwind 4'te önemli işareti sonda.
+  const hataCls = (alan: string) => (hataliAlanlar.includes(alan) ? " bg-red-100!" : "");
+  /** Kullanıcı o alanı düzeltti → yalnız onun kırmızısı kalkar, diğerleri durur. */
+  const hatayiTemizle = (alan: string) => setHataliAlanlar((h) => (h.includes(alan) ? h.filter((x) => x !== alan) : h));
   // Kabul tarihi BU DÜZENLEMEDE girildi/değişti mi? (yeni işte: doldurulduysa) → belge zorunluluğu buna bağlı.
   const geciciKabulTarihDegisti =
     (!!formData.gecici_kabul_itibar_tarihi && formData.gecici_kabul_itibar_tarihi !== (santiye?.gecici_kabul_itibar_tarihi ?? null))
@@ -1211,7 +1226,7 @@ export default function SantiyeForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="il">İl <span className="text-red-500">*</span></Label>
-                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => { if (hataliAlan) setHataliAlan(null); setFormData((p) => ({ ...p, il: e.target.value || null })); }} disabled={loading} className={`${selectClass}${hataCls("il")}`}>
+                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => { hatayiTemizle("il"); setFormData((p) => ({ ...p, il: e.target.value || null })); }} disabled={loading} className={`${selectClass}${hataCls("il")}`}>
                     <option value="">Seçiniz</option>
                     {TR_ILLER.map((il) => (<option key={il} value={il}>{il}</option>))}
                   </select>
@@ -1359,7 +1374,7 @@ export default function SantiyeForm({
                             setCalisilmayanYok(e.target.checked);
                             // İşaretlenince girilmiş dönem temizlenir — yarım veri kalmasın.
                             if (e.target.checked) setFormData((p) => ({ ...p, calisilmayan_bas: null, calisilmayan_bit: null }));
-                            if (hataliAlan) setHataliAlan(null);
+                            setHataliAlanlar([]);
                           }}
                           disabled={loading}
                         />
@@ -1432,7 +1447,7 @@ export default function SantiyeForm({
                         id="sozlesme_bedeli"
                         placeholder="0,00"
                         value={sozlesmeBedeliStr}
-                        onChange={(e) => { if (hataliAlan) setHataliAlan(null); setSozlesmeBedeliStr(e.target.value); }}
+                        onChange={(e) => { hatayiTemizle("sozlesme_bedeli"); setSozlesmeBedeliStr(e.target.value); }}
                         onBlur={() => {
                           const val = parseParaInput(sozlesmeBedeliStr);
                           setSozlesmeBedeliStr(val != null ? formatParaInput(val) : "");
@@ -1580,7 +1595,7 @@ export default function SantiyeForm({
                                 placeholder="Örn: Harita Mühendisi 3 Yıl Deneyimli"
                                 value={deger}
                                 onChange={(e) => {
-                                  if (hataliAlan) setHataliAlan(null);
+                                  setHataliAlanlar([]);
                                   const yeni = [...teknikPersonelList];
                                   yeni[i] = e.target.value;
                                   setTeknikPersonelList(yeni);
@@ -1741,7 +1756,7 @@ export default function SantiyeForm({
                           onChange={(e) => {
                             setOnayTarihiYok(e.target.checked);
                             if (e.target.checked) setFormData((p) => ({ ...p, gecici_kabul_tarihi: null }));
-                            if (hataliAlan) setHataliAlan(null);
+                            setHataliAlanlar([]);
                           }}
                           disabled={loading}
                         />
