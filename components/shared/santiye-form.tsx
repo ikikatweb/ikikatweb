@@ -1,7 +1,7 @@
 // Şantiye formu bileşeni - 4 sekmeli: Genel, Sözleşme, Kabul, Depo
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   createSantiye,
@@ -29,6 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
+import BelgeFarkDialog, { type BelgeFark } from "@/components/shared/belge-fark-dialog";
+import { belgeFarklari } from "@/lib/belge-karsilastir";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -188,6 +190,15 @@ export default function SantiyeForm({
 
   // Keşif Artışı — iscilik_takibi tablosunda tutulur, işçilik takibi sayfasıyla ortak veri
   const [kesifArtisiStr, setKesifArtisiStr] = useState("");
+
+  // Yüklenen PDF ile kayıt arasındaki farklar — kaydetmeden SONRA sorulur.
+  const [farkListesi, setFarkListesi] = useState<BelgeFark[]>([]);
+  const [farkAcik, setFarkAcik] = useState(false);
+  const [farkBelgeAdi, setFarkBelgeAdi] = useState("");
+  const [farkSantiyeId, setFarkSantiyeId] = useState<string | null>(null);
+  // Pencere kapanana kadar yönlendirmeyi bekletmek için; kullanıcı kararını vermeden
+  // sayfa değişirse soru boşa gider.
+  const farkCozucu = useRef<(() => void) | null>(null);
 
   const [geciciKabulFile, setGeciciKabulFile] = useState<File | null>(null);
   const [kesinKabulFile, setKesinKabulFile] = useState<File | null>(null);
@@ -565,6 +576,53 @@ export default function SantiyeForm({
     }
   }
 
+  /**
+   * Yüklenen belgeyi okutur, kayıttan farklı alanları bulur ve kullanıcıya sorar.
+   * Hiçbir şey kendiliğinden yazılmaz — onay penceresinden geçer.
+   * Okuma başarısız olursa sessiz geçilir: belge zaten yüklendi, kayıt da kaydedildi.
+   */
+  async function belgeyiKarsilastir(sId: string, url: string, belgeAdi: string, kayit: Record<string, unknown>) {
+    try {
+      const firma = firmalar.find((f) => f.id === kayit.yuklenici_firma_id);
+      const r = await fetch("/api/belge-oku", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, firma_adi: firma?.firma_adi ?? null }),
+      });
+      if (!r.ok) return;
+      const { alanlar, alinti } = await r.json();
+      const farklar = belgeFarklari(kayit, alanlar ?? {}, alinti ?? {});
+      if (farklar.length === 0) return;
+      setFarkListesi(farklar);
+      setFarkBelgeAdi(belgeAdi);
+      setFarkSantiyeId(sId);
+      setFarkAcik(true);
+      await new Promise<void>((cozul) => { farkCozucu.current = cozul; });
+    } catch {
+      // Belge okunamadı — kayıt etkilenmez.
+    }
+  }
+
+  function farkPenceresiniKapat() {
+    setFarkAcik(false);
+    setFarkListesi([]);
+    farkCozucu.current?.();
+    farkCozucu.current = null;
+  }
+
+  async function farklariUygula(secilen: BelgeFark[]) {
+    if (!farkSantiyeId || secilen.length === 0) { farkPenceresiniKapat(); return; }
+    try {
+      const yama: Record<string, unknown> = {};
+      for (const f of secilen) yama[f.alan] = f.deger;
+      await updateSantiye(farkSantiyeId, yama as Partial<SantiyeInsert>);
+      toast.success(`${secilen.length} alan belgeden güncellendi.`);
+    } catch {
+      toast.error("Belgedeki bilgiler yazılamadı.");
+    }
+    farkPenceresiniKapat();
+  }
+
   // Zorunlu alan eksikse: ilgili sekmeye geç, kutuyu kırmızıya boya, uyarı ver.
   function alanHatasi(sekme: string, alan: string, mesaj: string) {
     setAktifSekme(sekme);
@@ -785,6 +843,7 @@ export default function SantiyeForm({
       }
 
       // Dosya yüklemeleri
+      const yuklenenler: { url: string; ad: string }[] = [];
       if (geciciKabulFile) {
         const url = await uploadSantiyeFile(geciciKabulFile, sId, "gecici_kabul");
         await updateSantiye(sId, { gecici_kabul_url: url });
@@ -792,15 +851,22 @@ export default function SantiyeForm({
         // isteği yarıda kesmesin ve sonuç toast'ı görünsün. Mail hatası kaydı BOZMAZ (fonksiyon kendi
         // içinde yakalar) — iş zaten kaydedilmiştir, kullanıcı belgeyi elle iletebilir.
         await geciciKabulMailGonder(sId, url, geciciKabulFile.name);
+        yuklenenler.push({ url, ad: geciciKabulFile.name });
       }
       if (kesinKabulFile) {
         const url = await uploadSantiyeFile(kesinKabulFile, sId, "kesin_kabul");
         await updateSantiye(sId, { kesin_kabul_url: url });
+        yuklenenler.push({ url, ad: kesinKabulFile.name });
       }
       if (isDeneyimFile) {
         const url = await uploadSantiyeFile(isDeneyimFile, sId, "is_deneyim");
         await updateSantiye(sId, { is_deneyim_url: url });
+        yuklenenler.push({ url, ad: isDeneyimFile.name });
       }
+
+      // Yüklenen belgeleri oku ve farkları sor. Kayıt zaten yazıldı; bu adım
+      // başarısız olsa bile kaydı etkilemez.
+      for (const b of yuklenenler) await belgeyiKarsilastir(sId, b.url, b.ad, submitData as Record<string, unknown>);
 
       basarili = true;
     } catch {
@@ -1771,6 +1837,14 @@ export default function SantiyeForm({
           içeriği örtmez (akışta son öğe). Yatay taşma select düzeltmesiyle giderildiği için sağ kenardan da kaçmaz. */}
       {/* Butonlar mobilde ALT ALTA (flex-col-reverse → Kaydet üstte, İptal altta), her biri tam genişlik → uzun
           form yatay taşısa bile butonlar sola dayalı ve GÖRÜNÜR kalır. Masaüstünde yan yana, sağa dayalı. */}
+      <BelgeFarkDialog
+        acik={farkAcik}
+        farklar={farkListesi}
+        belgeAdi={farkBelgeAdi}
+        onUygula={farklariUygula}
+        onKapat={farkPenceresiniKapat}
+      />
+
       <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
         {isEdit && ySil && (
           <Button type="button" variant="outline"
