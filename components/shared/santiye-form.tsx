@@ -177,8 +177,13 @@ export default function SantiyeForm({
 
   // Geçici kabul: "Onay tarihi yok" — bazı kurumlar onay tarihi vermez. İşaretliyse onay tarihi zorunlu değil, boş kaydedilir.
   // Düzenlemede itibar VAR + onay YOK ise → onay bilinçli boş bırakılmış sayılır (tik işaretli gelir).
+  // Tik artık KALICI bir alanda (onay_tarihi_yok). Önceden "itibar dolu + onay boş"
+  // çıkarımıyla bulunuyordu; ikisi de boş olan kayıtlarda "onay tarihi yok" ile "henüz
+  // girilmedi" ayırt edilemiyordu. Eski kayıtlar için çıkarım yedek olarak duruyor.
   const [onayTarihiYok, setOnayTarihiYok] = useState<boolean>(
-    isEdit ? (!!santiye?.gecici_kabul_itibar_tarihi && !santiye?.gecici_kabul_tarihi) : false,
+    isEdit
+      ? (santiye?.onay_tarihi_yok ?? (!!santiye?.gecici_kabul_itibar_tarihi && !santiye?.gecici_kabul_tarihi))
+      : false,
   );
 
   // Keşif Artışı — iscilik_takibi tablosunda tutulur, işçilik takibi sayfasıyla ortak veri
@@ -718,6 +723,7 @@ export default function SantiyeForm({
         sozlesme_imzalanmadi: sozlesmeImzalanmadi,
         // "Onay tarihi yok" işaretliyse geçici kabul onay tarihi boş kaydedilir.
         gecici_kabul_tarihi: onayTarihiYok ? null : formData.gecici_kabul_tarihi,
+        onay_tarihi_yok: onayTarihiYok,
       };
 
       if (isEdit) {
