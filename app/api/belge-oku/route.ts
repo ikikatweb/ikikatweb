@@ -163,18 +163,27 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const url = typeof body.url === "string" ? body.url : null;
+  // Dosya henüz YÜKLENMEDEN de okunabilir: kullanıcı belgeyi seçer seçmez okumaya
+  // başlıyoruz, böylece Kaydet'e basınca beklemiyor. O durumda içerik doğrudan gelir.
+  const icerik = typeof body.icerik === "string" ? body.icerik : null;
   const firmaAdi = typeof body.firma_adi === "string" ? body.firma_adi : null;
-  if (!url) return NextResponse.json({ error: "url gerekli" }, { status: 400 });
+  if (!url && !icerik) return NextResponse.json({ error: "url ya da icerik gerekli" }, { status: 400 });
 
-  // Yalnız kendi depomuzdaki belgeler okunur — dışarıdan verilen adresle istek yaptırılmasın.
-  if (!url.startsWith(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/`)) {
+  // Adres verildiyse yalnız kendi depomuzdaki belgeler okunur — dışarıdan verilen
+  // adresle sunucuya istek yaptırılmasın.
+  if (url && !url.startsWith(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/`)) {
     return NextResponse.json({ error: "Geçersiz belge adresi" }, { status: 400 });
   }
 
   try {
-    const r = await fetch(url);
-    if (!r.ok) return NextResponse.json({ error: `Belge indirilemedi (${r.status})` }, { status: 502 });
-    const buf = Buffer.from(await r.arrayBuffer());
+    let buf: Buffer;
+    if (icerik) {
+      buf = Buffer.from(icerik, "base64");
+    } else {
+      const r = await fetch(url!);
+      if (!r.ok) return NextResponse.json({ error: `Belge indirilemedi (${r.status})` }, { status: 502 });
+      buf = Buffer.from(await r.arrayBuffer());
+    }
     // 30 MB üstü belgeyi modele göndermeyiz; tarama çok yüksek çözünürlükte olabiliyor.
     if (buf.length > 30 * 1024 * 1024) {
       return NextResponse.json({ error: "Belge çok büyük (30 MB üstü)" }, { status: 413 });

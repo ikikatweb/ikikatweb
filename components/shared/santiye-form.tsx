@@ -36,7 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Save, X, Upload, Plus, Trash2 } from "lucide-react";
+import { Save, X, Upload, Plus, Trash2, Loader2, Check, AlertTriangle } from "lucide-react";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import toast from "react-hot-toast";
 
@@ -207,6 +207,14 @@ export default function SantiyeForm({
   // Pencere kapanana kadar yönlendirmeyi bekletmek için; kullanıcı kararını vermeden
   // sayfa değişirse soru boşa gider.
   const farkCozucu = useRef<(() => void) | null>(null);
+
+  // Belge SEÇİLİR SEÇİLMEZ okunur; Kaydet'e basınca beklemek gerekmesin. Sonuç ref'te
+  // birikir, kaydetme akışı oradan okur.
+  const [belgeOkuma, setBelgeOkuma] = useState<Record<string, "okunuyor" | "bitti" | "hata">>({});
+  const belgeSonuc = useRef<Record<string, {
+    alanlar: Record<string, string | number | null | undefined>;
+    alinti: Record<string, string>;
+  }>>({});
 
   const [geciciKabulFile, setGeciciKabulFile] = useState<File | null>(null);
   const [kesinKabulFile, setKesinKabulFile] = useState<File | null>(null);
@@ -589,19 +597,58 @@ export default function SantiyeForm({
    * Hiçbir şey kendiliğinden yazılmaz — onay penceresinden geçer.
    * Okuma başarısız olursa sessiz geçilir: belge zaten yüklendi, kayıt da kaydedildi.
    */
+  /**
+   * Seçilen PDF'i yüklemeden önce okutur. Sonuç ref'te saklanır; kaydetmede yeniden
+   * okunmaz. Hata olursa sessiz: kaydetme sırasında yüklenen adresten tekrar denenir.
+   */
+  async function secileniOku(alan: string, dosya: File | null) {
+    if (!dosya) {
+      delete belgeSonuc.current[alan];
+      setBelgeOkuma((d) => { const y = { ...d }; delete y[alan]; return y; });
+      return;
+    }
+    setBelgeOkuma((d) => ({ ...d, [alan]: "okunuyor" }));
+    try {
+      const b64 = await new Promise<string>((coz, red) => {
+        const fr = new FileReader();
+        fr.onerror = () => red(new Error("okunamadı"));
+        fr.onload = () => coz(String(fr.result).split(",")[1] ?? "");
+        fr.readAsDataURL(dosya);
+      });
+      const firma = firmalar.find((f) => f.id === formData.yuklenici_firma_id);
+      const r = await fetch("/api/belge-oku", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icerik: b64, firma_adi: firma?.firma_adi ?? null }),
+      });
+      if (!r.ok) throw new Error("okunamadı");
+      const { alanlar, alinti } = await r.json();
+      belgeSonuc.current[alan] = { alanlar: alanlar ?? {}, alinti: alinti ?? {} };
+      setBelgeOkuma((d) => ({ ...d, [alan]: "bitti" }));
+    } catch {
+      setBelgeOkuma((d) => ({ ...d, [alan]: "hata" }));
+    }
+  }
+
   async function belgeyiKarsilastir(
     sId: string, url: string, belgeAdi: string, kayit: Record<string, unknown>,
     belge: { alan: string; yol: string; oncekiUrl: string | null },
   ) {
     try {
-      const firma = firmalar.find((f) => f.id === kayit.yuklenici_firma_id);
-      const r = await fetch("/api/belge-oku", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, firma_adi: firma?.firma_adi ?? null }),
-      });
-      if (!r.ok) return;
-      const { alanlar, alinti } = await r.json();
+      // Dosya seçilirken zaten okunmuşsa tekrar okutulmaz — hem bekleme olmaz hem
+      // ikinci kez jeton harcanmaz.
+      let okunan = belgeSonuc.current[belge.alan];
+      if (!okunan) {
+        const firma = firmalar.find((f) => f.id === kayit.yuklenici_firma_id);
+        const r = await fetch("/api/belge-oku", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url, firma_adi: firma?.firma_adi ?? null }),
+        });
+        if (!r.ok) return;
+        okunan = await r.json();
+      }
+      const { alanlar, alinti } = okunan;
       const satirlar = belgeKarsilastir(kayit, alanlar ?? {}, alinti ?? {});
       // Uygulanacak bir şey yoksa pencere açılmaz; ama belgenin okunduğu ve kaydı
       // doğruladığı söylenmeli — yoksa kullanıcı "okudu mu okumadı mı" bilemiyor.
@@ -671,6 +718,32 @@ export default function SantiyeForm({
       toast.error("Belgedeki bilgiler yazılamadı.");
     }
     await farkPenceresiniKapat();
+  }
+
+  /** Seçilen belgenin okunma durumu — kullanıcı sessiz beklemesin diye. */
+  function BelgeDurumu({ alan }: { alan: string }) {
+    const d = belgeOkuma[alan];
+    if (!d) return null;
+    if (d === "okunuyor") {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-sky-700">
+          <Loader2 size={13} className="animate-spin" />
+          Belge okunuyor, veriler doğrulanıyor…
+        </span>
+      );
+    }
+    if (d === "bitti") {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700">
+          <Check size={13} /> Belge okundu — kaydettiğinizde karşılaştırma gelecek
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-amber-700">
+        <AlertTriangle size={13} /> Belge okunamadı — kaydederken yeniden denenecek
+      </span>
+    );
   }
 
   // Zorunlu alan eksikse: ilgili sekmeye geç, kutuyu kırmızıya boya, uyarı ver.
@@ -1662,12 +1735,15 @@ export default function SantiyeForm({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Geçici Kabul Belgesi (PDF) {geciciKabulTarihDegisti && <span className="text-red-500">*</span>}</Label>
+                  <Label className="flex flex-wrap items-center gap-2">
+                    Geçici Kabul Belgesi (PDF) {geciciKabulTarihDegisti && <span className="text-red-500">*</span>}
+                    <BelgeDurumu alan="gecici_kabul_url" />
+                  </Label>
                   <div className={`flex items-center gap-2 flex-wrap rounded-md${hataCls("gecici_kabul_pdf")}`}>
                     <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
                       <Upload size={16} />
                       {geciciKabulFile ? geciciKabulFile.name : "PDF Yükle"}
-                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => setGeciciKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0] ?? null; setGeciciKabulFile(f); void secileniOku("gecici_kabul_url", f); }} disabled={loading} />
                     </label>
                     {formData.gecici_kabul_url && !geciciKabulFile && (
                       <>
@@ -1693,12 +1769,15 @@ export default function SantiyeForm({
                   <Input id="kesin_kabul_tarihi" name="kesin_kabul_tarihi" type="date" value={formData.kesin_kabul_tarihi ?? ""} onChange={handleChange} disabled={loading} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Kesin Kabul Belgesi (PDF) {kesinKabulTarihDegisti && <span className="text-red-500">*</span>}</Label>
+                  <Label className="flex flex-wrap items-center gap-2">
+                    Kesin Kabul Belgesi (PDF) {kesinKabulTarihDegisti && <span className="text-red-500">*</span>}
+                    <BelgeDurumu alan="kesin_kabul_url" />
+                  </Label>
                   <div className={`flex items-center gap-2 flex-wrap rounded-md${hataCls("kesin_kabul_pdf")}`}>
                     <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
                       <Upload size={16} />
                       {kesinKabulFile ? kesinKabulFile.name : "PDF Yükle"}
-                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => setKesinKabulFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                      <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0] ?? null; setKesinKabulFile(f); void secileniOku("kesin_kabul_url", f); }} disabled={loading} />
                     </label>
                     {formData.kesin_kabul_url && !kesinKabulFile && (
                       <>
@@ -1719,12 +1798,15 @@ export default function SantiyeForm({
               </div>
 
               <div className="space-y-2">
-                <Label>İş Deneyim Belgesi (PDF)</Label>
+                <Label className="flex flex-wrap items-center gap-2">
+                  İş Deneyim Belgesi (PDF)
+                  <BelgeDurumu alan="is_deneyim_url" />
+                </Label>
                 <div className="flex items-center gap-2 flex-wrap">
                   <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm w-fit">
                     <Upload size={16} />
                     {isDeneyimFile ? isDeneyimFile.name : "PDF Yükle"}
-                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => setIsDeneyimFile(e.target.files?.[0] ?? null)} disabled={loading} />
+                    <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0] ?? null; setIsDeneyimFile(f); void secileniOku("is_deneyim_url", f); }} disabled={loading} />
                   </label>
                   {formData.is_deneyim_url && !isDeneyimFile && (
                     <>
