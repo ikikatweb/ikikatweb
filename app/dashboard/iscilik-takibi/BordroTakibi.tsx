@@ -3810,8 +3810,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           cursorY = 15;
         }
         // İŞ ADI başlığı — açık gri bant → her iş grubu net bir bölüm başlığıyla başlar.
+        // Bandın ALT kenarı tablonun başlangıcı olur: ikisi arasında boşluk kalırsa iş adı
+        // ayrı bir öğe gibi duruyor, tabloyla aynı gruba ait olduğu anlaşılmıyordu.
         doc.setFillColor(226, 232, 240);
         doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "F");
+        const bantAlt = cursorY + 2;
         doc.setFont("helvetica", "bold"); doc.setFontSize(9);
         doc.setTextColor(30, 58, 95);
         doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY + 1);
@@ -3850,7 +3853,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           cursorY += 5;
         }
         autoTable(doc, {
-          startY: cursorY + 1,
+          // Atanmamış teknik personel satırı varsa araya o giriyor, bitişiklik bozulur;
+          // yoksa tablo doğrudan bandın alt kenarından başlar.
+          startY: bostaRollerPdf.length > 0 ? cursorY + 1 : bantAlt,
           head: [["Sira", "Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
           body: list.map((r, i) => [
             String(i + 1),
@@ -3916,7 +3921,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         17, cursorY + 5,
       );
       doc.setTextColor(0, 0, 0);
-      cursorY += 9;
+      // Bant 7 mm; tablo tam alt kenarından başlasın (önce 2 mm boşluk kalıyordu).
+      cursorY += 7;
       autoTable(doc, {
         startY: cursorY,
         head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
@@ -3965,7 +3971,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         17, cursorY + 5,
       );
       doc.setTextColor(0, 0, 0);
-      cursorY += 9;
+      // Bant 7 mm; tablo tam alt kenarından başlasın (önce 2 mm boşluk kalıyordu).
+      cursorY += 7;
       autoTable(doc, {
         startY: cursorY,
         head: [["Ad Soyad", "TC", "Gorev", "Ise Baslama", "Isten Cikis", "Gun", "Teknik Personel", "Not"]],
