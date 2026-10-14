@@ -3673,7 +3673,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // autoTable tek renkle çizdiği için hücre dolgu rengiyle kapatılıp metin iki parça elle yazılır.
   // Sütun genişlikleri artık SABİT olduğundan metin sığmayabilir → sığmıyorsa yazı boyutu küçültülür
   // (yoksa isim komşu sütunun üstüne taşardı).
-  function pdfTeknikAdCiz(doc: jsPDF, data: { cell: { raw: unknown; x: number; y: number; width: number; height: number; styles: { fillColor?: unknown; cellPadding?: unknown; fontSize?: unknown } } }) {
+  function pdfTeknikAdCiz(
+    doc: jsPDF,
+    data: { cell: { raw: unknown; x: number; y: number; width: number; height: number; styles: { fillColor?: unknown; cellPadding?: unknown; fontSize?: unknown } } },
+    // Satır o ay giriş/çıkış yaptıysa ad hücresi de o renkte yazılır. Verilmezse eski
+    // davranış: isim siyah, "(Teknik Personel)" eki indigo.
+    satirRengi?: [number, number, number],
+  ) {
     const fullTxt = String(data.cell.raw ?? "");
     const marker = " (Teknik Personel)";
     const idx = fullTxt.lastIndexOf(marker);
@@ -3705,17 +3711,42 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const textY = data.cell.y + data.cell.height / 2;
     const nameX = data.cell.x + padLeft;
     doc.setFontSize(fontSize);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", satirRengi ? "bold" : "normal");
+    doc.setTextColor(...(satirRengi ?? [0, 0, 0] as [number, number, number]));
     doc.text(namePart, nameX, textY, { baseline: "middle" });
     const nameWidth = doc.getTextWidth(namePart);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(67, 56, 202);
+    doc.setTextColor(...(satirRengi ?? [67, 56, 202] as [number, number, number]));
     doc.text(suffixPart, nameX + nameWidth, textY, { baseline: "middle" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(temelFont);
     doc.setTextColor(0, 0, 0);
   }
+
+  /**
+   * PDF'te gösterilen "gg.aa.yyyy" tarihi SEÇİLİ AYA mı düşüyor?
+   * Bordroyu hangi ay için aldığını aramak zorunda kalmamak için, o ay içinde işe giren
+   * ve işten çıkan personelin tarihi renklendirilir.
+   * "Halen" gibi tarih olmayan değerler false döner.
+   */
+  const pdfSeciliAydaMi = (gosterilen: string) => {
+    const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(gosterilen.trim());
+    return !!m && `${m[3]}-${m[2]}` === seciliAy;
+  };
+
+  /**
+   * Satır seçili ayda işe GİRDİYSE yeşil, ÇIKTIYSA kırmızı. İkisi de aynı aydaysa
+   * kırmızı: çıkış sonraki olay, satırın son durumunu o anlatıyor.
+   * Renk satırın tamamına uygulanır (ad, TC, görev, tarihler, gün) — bordronun hangi ay
+   * için alındığı aranmadan görünsün diye.
+   */
+  const pdfSatirRengi = (r: { iseBaslama?: string; isenCikis?: string } | undefined):
+    [number, number, number] | undefined => {
+    if (!r) return undefined;
+    if (pdfSeciliAydaMi(r.isenCikis ?? "")) return [220, 38, 38];
+    if (pdfSeciliAydaMi(r.iseBaslama ?? "")) return [22, 163, 74];
+    return undefined;
+  };
 
   // PDF KOLON GENİŞLİKLERİ — TÜM tablolarda AYNI (mm). autoTable varsayılanı içeriğe göre
   // otomatik ölçüyordu: teknik personeli olan işte "Teknik Personel" sütunu genişliyor, olmayanda
@@ -3894,11 +3925,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           margin: { left: 14, right: 14 },
           tableWidth: 269,                 // sayfa genişliğine sabitle (içeriğe göre daralmasın)
           columnStyles: PDF_KOL_SIRALI,    // TÜM işlerde aynı sütun genişliği
-          // Çalışılmayan dönem satırları → gri + italik (gözden kaçmasın).
           didParseCell: (data) => {
-            if (data.section === "body" && list[data.row.index]?.calisilmayan) {
+            if (data.section !== "body") return;
+            // Çalışılmayan dönem satırları → gri + italik (gözden kaçmasın).
+            if (list[data.row.index]?.calisilmayan) {
               data.cell.styles.textColor = [148, 163, 184];
               data.cell.styles.fontStyle = "italic";
+            }
+            // SEÇİLİ AYDA giriş/çıkış → satırın kimlik sütunları renklenir:
+            // 1 Ad Soyad · 2 TC · 3 Görev · 4 İşe Başlama · 5 İşten Çıkış · 6 Gün.
+            // Sıra, Teknik Personel ve Not sütunları dışarıda. Çalışılmayan dönem
+            // grisinden SONRA uygulanır ki onu ezebilsin.
+            const satirRenk = pdfSatirRengi(list[data.row.index]);
+            if (satirRenk && data.column.index >= 1 && data.column.index <= 6) {
+              data.cell.styles.textColor = satirRenk;
+              data.cell.styles.fontStyle = "bold";
             }
           },
           // "(Teknik Personel)" suffix'ini SADECE kalın + indigo yap (isim normal kalır).
@@ -3906,7 +3947,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // sonra metni iki parça halinde elle çiz. autoTable ile aynı baseline + padding.
           didDrawCell: (data) => {
             if (data.section !== "body" || data.column.index !== 1) return;
-            pdfTeknikAdCiz(doc, data);
+            // Ad hücresi üzerine elle çiziliyor; satır renkliyse o renkle yazılmalı,
+            // yoksa renk yalnız ad sütununda kaybolurdu.
+            pdfTeknikAdCiz(doc, data, pdfSatirRengi(list[data.row.index]));
           },
         });
         // @ts-expect-error autoTable lastAutoTable typing
@@ -4825,6 +4868,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("tr-TR");
     };
 
+    // SEÇİLİ AYDA giriş/çıkış → satırın kimlik hücreleri renklenir (PDF'teki kuralın aynısı):
+    // o ay işe GİRDİYSE yeşil, ÇIKTIYSA kırmızı. İkisi de aynı aydaysa kırmızı — çıkış
+    // sonraki olay, satırın son durumunu o anlatıyor. Bordronun hangi ay için alındığını
+    // aramadan görünsün diye.
+    const ayCikis = isenCikis?.slice(0, 7) === seciliAy;
+    const ayGiris = iseBaslama?.slice(0, 7) === seciliAy;
+    const ayVurgu = ayCikis ? "text-red-600 font-bold" : ayGiris ? "text-emerald-700 font-bold" : null;
+
     const isAktifKolon = sutunKey !== PASIF_KEY && sutunKey !== ATANMAMIS_KEY;
     return (
       <tr
@@ -4847,7 +4898,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             title={gecmisKayit ? "Bu personel bu şantiyeden çıkış yapmış — işlem yapılamaz" : ""}
           />
         </td>
-        <td className="px-2 py-1.5 font-semibold text-[#1E3A5F]">
+        <td className={`px-2 py-1.5 ${ayVurgu ?? "font-semibold text-[#1E3A5F]"}`}>
           <div className="flex items-center gap-1 flex-wrap">
             <span className="truncate">{p.ad_soyad}</span>
             {(personelEfektifToplamMap.get(p.id) ?? 0) > 30 && (
@@ -4880,17 +4931,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             })()}
           </div>
         </td>
-        <td className="px-2 py-1.5 text-gray-600 text-[11px]">{p.meslek ?? "—"}</td>
-        <td className="px-2 py-1.5 text-gray-500 font-mono text-[11px] hidden md:table-cell">{p.tc_kimlik_no ?? "—"}</td>
+        <td className={`px-2 py-1.5 text-[11px] ${ayVurgu ?? "text-gray-600"}`}>{p.meslek ?? "—"}</td>
+        <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}>{p.tc_kimlik_no ?? "—"}</td>
         {isAktifKolon && (
           <>
-            <td className="px-2 py-1.5 whitespace-nowrap text-emerald-700 font-semibold text-[11px]">
+            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-emerald-700 font-semibold"}`}>
               {iseBaslama ? formatTr(iseBaslama) : "—"}
             </td>
-            <td className="px-2 py-1.5 whitespace-nowrap text-red-600 font-semibold text-[11px]">
+            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-red-600 font-semibold"}`}>
               {donemselCikis ? formatTr(donemselCikis) : "—"}
             </td>
-            <td className="px-2 py-1.5 text-right whitespace-nowrap">
+            <td className={`px-2 py-1.5 text-right whitespace-nowrap ${ayVurgu ?? ""}`}>
               {/* hasManuel (ozelGun > 0 DEĞİL): manuel girilen 0 da gerçek bir değerdir — yeşil "0"
                   gösterilir. Yoksa "0 gün kaydedildi" ile "hiç girilmedi" ayırt edilemiyordu. */}
               {hasManuel ? (
