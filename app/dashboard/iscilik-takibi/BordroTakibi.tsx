@@ -3918,10 +3918,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             trAscii(r.teknikIsim ?? ""),
             trAscii(r.not),
           ]),
+          // textColor siyah: autoTable'ın "striped" teması gövdeyi gri (80,80,80) yazıyor,
+          // bordro çıktısında soluk duruyordu. Çalışılmayan dönem grisi, o ay giriş/çıkış
+          // yeşil/kırmızısı bunu hücre bazında ezmeye devam ediyor.
           // valign "middle": autoTable varsayılanı "top". Ad sütunu ortalı görünüyordu
           // çünkü o hücre "(Teknik Personel)" rozeti için elle, ortalanmış biçimde yeniden
           // çiziliyor (pdfTeknikAdCiz); diğer sütunlar üstte kalınca satır kayık duruyordu.
-          styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
+          styles: { fontSize: 8, cellPadding: 1.5, valign: "middle", textColor: [0, 0, 0] },
           // Tablonun dış çerçevesi bandınkiyle aynı — ikisi tek kutu olur.
           tableLineWidth: 0.05,
           tableLineColor: firmaRgb,
@@ -4001,7 +4004,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           trAscii(r.teknikIsim ?? ""),
           trAscii(r.not),
         ]),
-        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
+        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle", textColor: [0, 0, 0] },
         headStyles: { fillColor: [50, 50, 50], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
@@ -4051,7 +4054,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           trAscii(r.teknikIsim ?? ""),
           trAscii(r.not),
         ]),
-        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
+        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle", textColor: [0, 0, 0] },
         headStyles: { fillColor: [59, 92, 126], textColor: 255 },
         alternateRowStyles: { fillColor: [240, 244, 248] },
         margin: { left: 14, right: 14 },
