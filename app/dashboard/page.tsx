@@ -13,7 +13,7 @@ import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
-import { getIscilikTakibi, getTumIscilikAyliklari } from "@/lib/supabase/queries/iscilik-takibi";
+import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
 import type { PersonelAtamaGecmisi, PersonelAtamaManuelGun, Personel, IscilikTakibiWithSantiye, PersonelBrutUcret } from "@/lib/supabase/types";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
@@ -186,6 +186,10 @@ export default function DashboardPage() {
   const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
   const [bordroGunlukUcretler, setBordroGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [bordroIscilikTakibi, setBordroIscilikTakibi] = useState<IscilikTakibiWithSantiye[]>([]);
+  // Tahmini fiyat farkı için son hakediş oranı (İşçilik Takibi ile aynı kaynak).
+  const [bordroSonHakedis, setBordroSonHakedis] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
+  // Tahmini FF'yi hesaba katmayı aç/kapat — başlıktaki satıra tıklanarak değişir.
+  const [tahminiFFKapali, setTahminiFFKapali] = useState(false);
   const [bordroAyliklar, setBordroAyliklar] = useState<{ iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]>([]);
   const [bordroBrutUcretler, setBordroBrutUcretler] = useState<PersonelBrutUcret[]>([]);
   const [bordroLoading, setBordroLoading] = useState(true);
@@ -411,7 +415,7 @@ export default function DashboardPage() {
       if (!widgetGorunur("bordro_ozet")) { setBordroLoading(false); return; }
       setBordroLoading(true);
       try {
-        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData] = await Promise.all([
+        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData, sonHakData] = await Promise.all([
           getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
           getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
           getBordroPersoneller().catch(() => [] as Personel[]),
@@ -422,6 +426,8 @@ export default function DashboardPage() {
           // Firmalar bordro widget'ında renk + sıralama için.
           // getFirmalar() varsayılan olarak sira_no ASC döner.
           getFirmalar().catch(() => [] as FirmaBasic[]),
+          // Tahmini fiyat farkı için son hakediş oranı.
+          getSonHakedisMap().catch(() => new Map<string, { kesif: number; fark: number; tarih: string | null }>()),
         ]);
         setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
         setBordroManuelGunler(manuelData as PersonelAtamaManuelGun[]);
@@ -431,6 +437,7 @@ export default function DashboardPage() {
         setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]);
         setBordroBrutUcretler(brutData as PersonelBrutUcret[]);
         setFirmalar(firmaData as FirmaBasic[]);
+        setBordroSonHakedis(sonHakData as Map<string, { kesif: number; fark: number; tarih: string | null }>);
       } catch { /* sessiz */ }
       finally {
         setBordroLoading(false);
@@ -971,7 +978,9 @@ export default function DashboardPage() {
 
     // primInfo: aynı şantiyenin birden fazla iscilik_takibi kaydı toplanır
     type PrimInfo = {
-      yatmasiGereken: number;
+      yatmasiGereken: number;        // tahmini fiyat farkı DÂHİL
+      yatmasiGerekenTahminsiz: number;
+      tahminiFF: number;
       yatan: number;
       sonAyNum: number;
       sonAy: string | null;
@@ -994,7 +1003,20 @@ export default function DashboardPage() {
       const kesif = r.kesif_artisi ?? 0;
       const ff = r.fiyat_farki ?? 0;
       const oran = r.iscilik_orani ?? 0;
-      const yatacak = (bedel + kesif + ff) * oran / 100;
+      // Kalan keşfin alacağı TAHMİNİ fiyat farkı — İşçilik Takibi'ndeki formülün aynısı,
+      // iki ekran aynı rakamı göstersin diye:
+      //   kalan keşif = (sözleşme + keşif artışı) − tamamlanan keşif
+      //   tahmini FF  = kalan keşif × (son hakediş fiyat farkı ÷ son hakediş bedeli)
+      const gerceklesen = sant?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
+      const sh = bordroSonHakedis.get(r.santiye_id);
+      const kalanKesif = bedel + kesif - gerceklesen;
+      const tahminiFF = sh && sh.kesif > 0 && sh.fark > 0 && kalanKesif > 0
+        ? kalanKesif * (sh.fark / sh.kesif)
+        : 0;
+      const yatacak = (bedel + kesif + ff + tahminiFF) * oran / 100;
+      // Tahminsiz karşılığı AYNI döngüde hesaplanır: aynı şantiyenin farklı oranlı birden
+      // fazla takibi kaydı olabiliyor, toplamdan geri hesaplamak birebir tutmazdı.
+      const yatacakTahminsiz = (bedel + kesif + ff) * oran / 100;
       const yatan = r.yatan_prim ?? 0;
       const sonAy = sonAyByTakibi.get(r.id) ?? null;
       const sonAyN = sonAy ? ayYilNum(sonAy) : 0;
@@ -1002,6 +1024,8 @@ export default function DashboardPage() {
       const mevcut = primInfo.get(r.santiye_id);
       if (mevcut) {
         mevcut.yatmasiGereken += yatacak;
+        mevcut.yatmasiGerekenTahminsiz += yatacakTahminsiz;
+        mevcut.tahminiFF += tahminiFF;
         mevcut.yatan += yatan;
         mevcut.kesifVeFiyatFarki += kesif + ff;
         if (sonAyN > mevcut.sonAyNum) {
@@ -1011,6 +1035,8 @@ export default function DashboardPage() {
       } else {
         primInfo.set(r.santiye_id, {
           yatmasiGereken: yatacak,
+          yatmasiGerekenTahminsiz: yatacakTahminsiz,
+          tahminiFF,
           yatan,
           sonAyNum: sonAyN,
           sonAy,
@@ -1161,6 +1187,8 @@ export default function DashboardPage() {
       tahminiBuAy: number;    // tahmininin bu ayki kısmı (tooltip)
       tahminiOnceki: number;  // önceki ay(lar)dan kalan kısım (tooltip)
       yatmasiGereken: number;
+      yatmasiGerekenTahminsiz: number;
+      tahminiFF: number;
       yatanPrim: number;
       iscilikOrani: number;
       sozlesmeBedeli: number;
@@ -1192,6 +1220,8 @@ export default function DashboardPage() {
         tahminiBuAy: tb.buAy,
         tahminiOnceki: tb.onceki,
         yatmasiGereken: info.yatmasiGereken,
+        yatmasiGerekenTahminsiz: info.yatmasiGerekenTahminsiz,
+        tahminiFF: info.tahminiFF,
         yatanPrim: info.yatan,
         iscilikOrani: info.iscilikOrani,
         sozlesmeBedeli: info.sozlesmeBedeli,
@@ -1223,6 +1253,8 @@ export default function DashboardPage() {
     const toplamKisi = toplamKisiSet.size;
     const toplamBordro = satirlar.reduce((s, r) => s + r.tahminiBordro, 0);
     const toplamYatmasiGereken = satirlar.reduce((s, r) => s + r.yatmasiGereken, 0);
+    const toplamYatmasiGerekenTahminsiz = satirlar.reduce((s, r) => s + r.yatmasiGerekenTahminsiz, 0);
+    const toplamTahminiFF = satirlar.reduce((s, r) => s + r.tahminiFF, 0);
     const toplamYatan = satirlar.reduce((s, r) => s + r.yatanPrim, 0);
     // Default yıllık günlük ücret (alt nota gösteriyoruz)
     const defaultGunlukUcret = bordroGunlukUcretler.find((u) => u.yil === buYil)?.ucret ?? 0;
@@ -1232,11 +1264,19 @@ export default function DashboardPage() {
       toplamKisi,
       toplamBordro,
       toplamYatmasiGereken,
+      toplamYatmasiGerekenTahminsiz,
+      toplamTahminiFF,
       toplamYatan,
       gunlukUcret: defaultGunlukUcret,
       ayLabel: `${AY_ADLARI[bugun.getMonth()]} ${bugun.getFullYear()}`,
     };
-  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroAyliklar, bordroBrutUcretler, santiyeler, firmalar, bugun, isYonetici, kullanici]);
+  }, [bordroLoading, bordroAtamalar, bordroManuelGunler, bordroGunlukUcretler, bordroIscilikTakibi, bordroSonHakedis, bordroAyliklar, bordroBrutUcretler, santiyeler, firmalar, bugun, isYonetici, kullanici]);
+
+  // Prime giren "yatması gereken": tahmini FF kapalıysa tahminsiz karşılığı kullanılır.
+  // Toplamlar ve satırlar hep bu fonksiyondan okunur, yoksa başlıktaki anahtar bazı
+  // sütunlara işler bazılarına işlemez.
+  const yatmasiGerekenFor = (r: { yatmasiGereken: number; yatmasiGerekenTahminsiz: number }) =>
+    tahminiFFKapali ? r.yatmasiGerekenTahminsiz : r.yatmasiGereken;
 
   // ============================================================
   // EKSİK YÜKLENİCİ VERİ GİRİŞİ (widget: "eksik_veri_girisi")
@@ -2493,7 +2533,31 @@ export default function DashboardPage() {
                     <TableHead className="px-2 text-[10px] text-gray-600 sticky left-0 z-10 bg-gray-50">Şantiye</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Kişi</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-center">Bu Ay Gün</TableHead>
-                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatması Gereken<br/><span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span></TableHead>
+                    <TableHead className="px-2 text-[10px] text-gray-600 text-right">
+                      Yatması Gereken<br/>
+                      {/* "(işçilik primi)" alt yazısının yerine tahmini FF anahtarı kondu.
+                          Tutar YAZILMIYOR: tüm şantiyelerin tahmini farkının toplamı tek
+                          başına anlamsız bir rakam (yüz milyonlar) ve başlıkta kafa
+                          karıştırıyordu. Tıklanınca üstü çizilir, hesap onsuz yapılır. */}
+                      {bordroOzet.toplamTahminiFF > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setTahminiFFKapali((v) => !v)}
+                          title={tahminiFFKapali
+                            ? "Tahmini fiyat farkı hesap DIŞI. Dâhil etmek için tıklayın."
+                            : "Tahmini fiyat farkı hesaba DÂHİL. Çıkarmak için tıklayın."}
+                          className={`block w-full text-right text-[8px] font-normal ${
+                            tahminiFFKapali
+                              ? "text-gray-300 line-through decoration-red-400"
+                              : "text-purple-500 hover:text-purple-700"
+                          }`}
+                        >
+                          tahmini fiyat farkı
+                        </button>
+                      ) : (
+                        <span className="text-[8px] text-gray-400 font-normal">(işçilik primi)</span>
+                      )}
+                    </TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Yatan Prim</TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Tahmini Bordro<br/><span className="text-[8px] text-gray-300 font-normal">(bu ay ödenecek)</span></TableHead>
                     <TableHead className="px-2 text-[10px] text-gray-600 text-right">Kalan<br/><span className="text-[8px] text-gray-400 font-normal">(gereken − yatan − tahmin)</span></TableHead>
@@ -2503,12 +2567,14 @@ export default function DashboardPage() {
                 <TableBody>
                   {bordroOzet.satirlar.map((row) => {
                     // Kalan: Yatması gereken'den hem yatan'ı hem tahmini bordro'yu düş
-                    const kalan = row.yatmasiGereken - row.yatanPrim - row.tahminiBordro;
+                    // Tahmini FF anahtarı TÜM sütunları etkiler: kalan, oran, durum, gösterim.
+                    const gereken = yatmasiGerekenFor(row);
+                    const kalan = gereken - row.yatanPrim - row.tahminiBordro;
                     // Durum oranı: KALAN'a göre hesaplanır (tahmini bordro dahil).
                     //   Tamamlanma = (Yatması Gereken − Kalan) / Yatması Gereken × 100
                     //              = (Yatan + Tahmini Bordro) / Yatması Gereken × 100
-                    const odenmisOran = row.yatmasiGereken > 0
-                      ? Math.max(0, ((row.yatmasiGereken - kalan) / row.yatmasiGereken) * 100)
+                    const odenmisOran = gereken > 0
+                      ? Math.max(0, ((gereken - kalan) / gereken) * 100)
                       : 0;
                     const oranKap = Math.min(odenmisOran, 100);
                     // Renk eşikleri:
@@ -2518,11 +2584,11 @@ export default function DashboardPage() {
                     //   %1-39   "Başlangıç"           → yeşil
                     //   %0      "Hiç yatmamış"        → yeşil
                     const barRenk =
-                      row.yatmasiGereken === 0 ? "bg-gray-300" :
+                      gereken === 0 ? "bg-gray-300" :
                       odenmisOran >= 80 ? "bg-red-500" :
                       odenmisOran >= 40 ? "bg-amber-500" : "bg-emerald-500";
                     const etiket =
-                      row.yatmasiGereken === 0 ? "Tanımsız" :
+                      gereken === 0 ? "Tanımsız" :
                       odenmisOran >= 100 ? "Tamamlandı" :
                       odenmisOran >= 80 ? "Tamamlanmak üzere" :
                       odenmisOran >= 40 ? "Yarı yolda" :
@@ -2574,8 +2640,8 @@ export default function DashboardPage() {
                           {formatSayi(row.gun, 0)}
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-right tabular-nums">
-                          {row.yatmasiGereken > 0 ? (
-                            <span className="text-[#1E3A5F] font-semibold">{formatSayi(row.yatmasiGereken, 0)} ₺</span>
+                          {gereken > 0 ? (
+                            <span className="text-[#1E3A5F] font-semibold">{formatSayi(gereken, 0)} ₺</span>
                           ) : (
                             <span className="text-gray-300 italic text-[10px]">tanımsız</span>
                           )}
@@ -2599,11 +2665,11 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell
                           className="px-2 py-1.5 text-right tabular-nums font-semibold"
-                          title={row.yatmasiGereken > 0
-                            ? `${formatSayi(row.yatmasiGereken, 0)} − ${formatSayi(row.yatanPrim, 0)} − ${formatSayi(row.tahminiBordro, 0)} = ${formatSayi(kalan, 0)} ₺`
+                          title={gereken > 0
+                            ? `${formatSayi(gereken, 0)} − ${formatSayi(row.yatanPrim, 0)} − ${formatSayi(row.tahminiBordro, 0)} = ${formatSayi(kalan, 0)} ₺`
                             : undefined}
                         >
-                          {row.yatmasiGereken > 0 ? (
+                          {gereken > 0 ? (
                             // Renkler tersine: eksik (kalan>0) → YEŞİL, fazla yatım (kalan<0) → KIRMIZI
                             <span className={kalan > 0 ? "text-emerald-700" : "text-red-600"}>
                               {kalan > 0 ? formatSayi(kalan, 0) : `-${formatSayi(-kalan, 0)}`} ₺
@@ -2613,7 +2679,7 @@ export default function DashboardPage() {
                           )}
                         </TableCell>
                         <TableCell className="px-2 py-1.5">
-                          {row.yatmasiGereken === 0 ? (
+                          {gereken === 0 ? (
                             <div className="text-[9px] text-gray-400 italic text-center">tanımsız</div>
                           ) : (
                             <div className="min-w-[110px]">
@@ -2651,7 +2717,7 @@ export default function DashboardPage() {
                       {formatSayi(bordroOzet.satirlar.reduce((s, r) => s + r.gun, 0), 0)}
                     </td>
                     <td className="px-2 py-2 text-right text-[11px] text-[#1E3A5F] tabular-nums">
-                      {formatSayi(bordroOzet.toplamYatmasiGereken, 0)} ₺
+                      {formatSayi(yatmasiGerekenFor({ yatmasiGereken: bordroOzet.toplamYatmasiGereken, yatmasiGerekenTahminsiz: bordroOzet.toplamYatmasiGerekenTahminsiz }), 0)} ₺
                     </td>
                     <td className="px-2 py-2 text-right text-[11px] text-emerald-700 tabular-nums">
                       {formatSayi(bordroOzet.toplamYatan, 0)} ₺
@@ -2666,7 +2732,7 @@ export default function DashboardPage() {
                     <td className="px-2 py-2 text-right text-[11px] tabular-nums">
                       {(() => {
                         // Kalan = Yatması gereken - Yatan - Tahmini bordro
-                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
+                        const tk = yatmasiGerekenFor({ yatmasiGereken: bordroOzet.toplamYatmasiGereken, yatmasiGerekenTahminsiz: bordroOzet.toplamYatmasiGerekenTahminsiz }) - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
                         return (
                           // Renkler tersine: eksik (tk>0) → yeşil, fazla yatım (tk<0) → kırmızı
                           <span className={tk > 0 ? "text-emerald-700" : "text-red-600"}>
@@ -2678,8 +2744,9 @@ export default function DashboardPage() {
                     <td className="px-2 py-2">
                       {bordroOzet.toplamYatmasiGereken > 0 && (() => {
                         // Kalan = gereken - yatan - tahmini bordro → tamamlanma = (yatan + tahmin) / gereken
-                        const tk = bordroOzet.toplamYatmasiGereken - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
-                        const oran = Math.max(0, ((bordroOzet.toplamYatmasiGereken - tk) / bordroOzet.toplamYatmasiGereken) * 100);
+                        const tg = yatmasiGerekenFor({ yatmasiGereken: bordroOzet.toplamYatmasiGereken, yatmasiGerekenTahminsiz: bordroOzet.toplamYatmasiGerekenTahminsiz });
+                        const tk = tg - bordroOzet.toplamYatan - bordroOzet.toplamBordro;
+                        const oran = Math.max(0, ((tg - tk) / tg) * 100);
                         const oranKap = Math.min(oran, 100);
                         const barRenk =
                           oran >= 80 ? "bg-red-500" :
