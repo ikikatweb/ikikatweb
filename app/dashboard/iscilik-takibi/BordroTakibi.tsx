@@ -3803,7 +3803,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
       for (const [santiyeAd, list] of santiyeMap) {
         const sToplam = list.reduce((s, r) => s + r.gun, 0);
-        cursorY += 4; // iş grupları arası belirgin boşluk (alt alta karışmasın)
+        cursorY += 7; // iş grupları arası boşluk — çerçeveyle birlikte grupları ayırır
         // Sayfa kontrolü
         if (cursorY > pageHeight - 30) {
           doc.addPage();
@@ -3812,12 +3812,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // İŞ ADI başlığı — açık gri bant → her iş grubu net bir bölüm başlığıyla başlar.
         // Bandın ALT kenarı tablonun başlangıcı olur: ikisi arasında boşluk kalırsa iş adı
         // ayrı bir öğe gibi duruyor, tabloyla aynı gruba ait olduğu anlaşılmıyordu.
+        // Bant ve tablo AYNI renkte çerçeveyle çevrilir: iki öğe tek blok gibi okunur ve
+        // alt alta gelen işler birbirine karışmaz. Çerçeve rengi firmanın rengi, böylece
+        // hangi işin hangi firmaya ait olduğu da bir bakışta belli olur.
         doc.setFillColor(226, 232, 240);
-        doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "F");
+        doc.setDrawColor(firmaRgb[0], firmaRgb[1], firmaRgb[2]);
+        doc.setLineWidth(0.4);
+        doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "FD");
         const bantAlt = cursorY + 2;
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-        doc.setTextColor(30, 58, 95);
-        doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY + 1);
+        // İş adı bir punto büyük ve koyu: grup başlığı, altındaki tablo metninden ayrışsın.
+        doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+        doc.setTextColor(12, 28, 52);
+        doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY + 1.2);
         doc.setTextColor(0, 0, 0);
         cursorY += 3;
         // ATANMAMIŞ teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır.
@@ -3872,6 +3878,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // çünkü o hücre "(Teknik Personel)" rozeti için elle, ortalanmış biçimde yeniden
           // çiziliyor (pdfTeknikAdCiz); diğer sütunlar üstte kalınca satır kayık duruyordu.
           styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
+          // Tablonun dış çerçevesi bandınkiyle aynı — ikisi tek kutu olur.
+          tableLineWidth: 0.4,
+          tableLineColor: firmaRgb,
           headStyles: {
             fillColor: firmaRgb,
             textColor: firmaYazi,
