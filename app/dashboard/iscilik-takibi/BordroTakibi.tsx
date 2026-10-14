@@ -3817,13 +3817,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // hangi işin hangi firmaya ait olduğu da bir bakışta belli olur.
         doc.setFillColor(226, 232, 240);
         doc.setDrawColor(firmaRgb[0], firmaRgb[1], firmaRgb[2]);
-        doc.setLineWidth(0.1); // belli belirsiz: grubu çevreler ama göze batmaz
+        doc.setLineWidth(0.05); // belli belirsiz: grubu çevreler ama göze batmaz
         doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "FD");
         const bantAlt = cursorY + 2;
         // İş adı bir punto büyük ve koyu: grup başlığı, altındaki tablo metninden ayrışsın.
+        //
+        // Dikey ORTALAMA: bant cursorY−4'ten 6 mm yüksekliğinde, yani ortası cursorY−1.
+        // 10 pt yazının büyük harf yüksekliği ~2,5 mm; taban çizgisi ortanın 1,25 mm
+        // altına konur ki harf gövdesi bandın tam ortasına otursun. Önce cursorY+1,2'ydi
+        // ve yazı alt kenara yapışıyordu.
         doc.setFont("helvetica", "bold"); doc.setFontSize(10);
         doc.setTextColor(12, 28, 52);
-        doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY + 1.2);
+        doc.text(trAscii(`${santiyeAd}  (${list.length} kisi, ${sToplam} gun)`), 17, cursorY - 1 + 1.25);
         doc.setTextColor(0, 0, 0);
         cursorY += 3;
         // ATANMAMIŞ teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır.
@@ -3879,7 +3884,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // çiziliyor (pdfTeknikAdCiz); diğer sütunlar üstte kalınca satır kayık duruyordu.
           styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
           // Tablonun dış çerçevesi bandınkiyle aynı — ikisi tek kutu olur.
-          tableLineWidth: 0.1,
+          tableLineWidth: 0.05,
           tableLineColor: firmaRgb,
           headStyles: {
             fillColor: firmaRgb,
