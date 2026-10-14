@@ -3675,7 +3675,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // (yoksa isim komşu sütunun üstüne taşardı).
   function pdfTeknikAdCiz(
     doc: jsPDF,
-    data: { cell: { raw: unknown; x: number; y: number; width: number; height: number; styles: { fillColor?: unknown; cellPadding?: unknown; fontSize?: unknown } } },
+    data: { cell: { raw: unknown; x: number; y: number; width: number; height: number; styles: { fillColor?: unknown; cellPadding?: unknown; fontSize?: unknown; textColor?: unknown } } },
     // Satır o ay giriş/çıkış yaptıysa ad hücresi de o renkte yazılır. Verilmezse eski
     // davranış: isim siyah, "(Teknik Personel)" eki indigo.
     satirRengi?: [number, number, number],
@@ -3711,8 +3711,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const textY = data.cell.y + data.cell.height / 2;
     const nameX = data.cell.x + padLeft;
     doc.setFontSize(fontSize);
+    // İSİM RENGİ hücrenin kendi rengidir, saf siyah DEĞİL. Önce 0,0,0 yazılıyordu ve
+    // teknik personel adları tablonun geri kalanından koyu görünüyordu: autoTable'ın
+    // "striped" temasında gövde yazısı gri (80,80,80), bu hücre ise elle çizildiği için
+    // siyah kalıyordu. Bilerek yapılmış bir ayrım değildi, elle çizimin yan etkisiydi.
+    const tc = data.cell.styles.textColor;
+    const hucreRengi: [number, number, number] = Array.isArray(tc) && tc.length >= 3
+      ? [tc[0] as number, tc[1] as number, tc[2] as number]
+      : typeof tc === "number" ? [tc, tc, tc] : [80, 80, 80];
     doc.setFont("helvetica", satirRengi ? "bold" : "normal");
-    doc.setTextColor(...(satirRengi ?? [0, 0, 0] as [number, number, number]));
+    doc.setTextColor(...(satirRengi ?? hucreRengi));
     doc.text(namePart, nameX, textY, { baseline: "middle" });
     const nameWidth = doc.getTextWidth(namePart);
     doc.setFont("helvetica", "bold");
