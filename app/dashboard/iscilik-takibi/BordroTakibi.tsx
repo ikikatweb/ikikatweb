@@ -3863,7 +3863,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             trAscii(r.teknikIsim ?? ""),
             trAscii(r.not),
           ]),
-          styles: { fontSize: 8, cellPadding: 1.5 },
+          // valign "middle": autoTable varsayılanı "top". Ad sütunu ortalı görünüyordu
+          // çünkü o hücre "(Teknik Personel)" rozeti için elle, ortalanmış biçimde yeniden
+          // çiziliyor (pdfTeknikAdCiz); diğer sütunlar üstte kalınca satır kayık duruyordu.
+          styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
           headStyles: {
             fillColor: firmaRgb,
             textColor: firmaYazi,
@@ -3927,7 +3930,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           trAscii(r.teknikIsim ?? ""),
           trAscii(r.not),
         ]),
-        styles: { fontSize: 8, cellPadding: 1.5 },
+        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
         headStyles: { fillColor: [50, 50, 50], textColor: 255 },
         alternateRowStyles: { fillColor: [245, 245, 245] },
         margin: { left: 14, right: 14 },
@@ -3976,7 +3979,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           trAscii(r.teknikIsim ?? ""),
           trAscii(r.not),
         ]),
-        styles: { fontSize: 8, cellPadding: 1.5 },
+        styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
         headStyles: { fillColor: [59, 92, 126], textColor: 255 },
         alternateRowStyles: { fillColor: [240, 244, 248] },
         margin: { left: 14, right: 14 },
