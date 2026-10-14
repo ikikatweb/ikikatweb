@@ -3817,7 +3817,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // hangi işin hangi firmaya ait olduğu da bir bakışta belli olur.
         doc.setFillColor(226, 232, 240);
         doc.setDrawColor(firmaRgb[0], firmaRgb[1], firmaRgb[2]);
-        doc.setLineWidth(0.4);
+        doc.setLineWidth(0.1); // belli belirsiz: grubu çevreler ama göze batmaz
         doc.rect(14, cursorY - 4, doc.internal.pageSize.getWidth() - 28, 6, "FD");
         const bantAlt = cursorY + 2;
         // İş adı bir punto büyük ve koyu: grup başlığı, altındaki tablo metninden ayrışsın.
@@ -3879,7 +3879,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           // çiziliyor (pdfTeknikAdCiz); diğer sütunlar üstte kalınca satır kayık duruyordu.
           styles: { fontSize: 8, cellPadding: 1.5, valign: "middle" },
           // Tablonun dış çerçevesi bandınkiyle aynı — ikisi tek kutu olur.
-          tableLineWidth: 0.4,
+          tableLineWidth: 0.1,
           tableLineColor: firmaRgb,
           headStyles: {
             fillColor: firmaRgb,
