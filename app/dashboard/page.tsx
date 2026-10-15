@@ -44,6 +44,7 @@ import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import PoliceUyariHatirlatma from "@/components/shared/police-uyari-hatirlatma";
 import NetsimYeniIsHatirlatma from "@/components/shared/netsim-yeni-is-hatirlatma";
+import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hatirlatma";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
 import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
@@ -1890,6 +1891,7 @@ export default function DashboardPage() {
       <BordroHatirlatma />
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
+      <GeciciKabulPrimHatirlatma />
       <PoliceUyariHatirlatma />
       <NetsimYeniIsHatirlatma />
       <TeknikAtamaHatirlatma />

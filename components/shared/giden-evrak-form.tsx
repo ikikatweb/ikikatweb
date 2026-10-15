@@ -1,7 +1,7 @@
 // Giden evrak form - Otomatik sayı no, çoklu ilgi/ek, kaşe toggle, ön izleme
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import RichTextEditor from "@/components/shared/rich-text-editor";
 import {
   createGidenEvrak,
@@ -14,6 +14,8 @@ import SantiyeSelect from "@/components/shared/santiye-select";
 import { useAuth } from "@/hooks";
 import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import TarihInput from "@/components/shared/tarih-input";
+import { geciciKabulKonusuMu } from "@/lib/gecici-kabul-dilekce";
+import { getSantiyePrimDurumu } from "@/lib/supabase/queries/gecici-kabul-prim";
 import { getMuhataplarFull, createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -62,6 +64,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [loading, setLoading] = useState(false);
   const [onIzleme, setOnIzleme] = useState(false);
   const [kapatOnay, setKapatOnay] = useState(false); // düzenlemede ESC → "kaydedeyim mi?" onay dialog'u
+  // Geçici kabul dilekçesi kaydedilmeden ÖNCE: o işin SGK primi tamamlanmadıysa yazan
+  // kişiye sorulur. Kabul süreci başladıktan sonra eksik prim fark edilirse geç olur.
+  const [primOnay, setPrimOnay] = useState<{ gereken: number; yatan: number; eksik: number } | null>(null);
+  const primOnaylandi = useRef(false);
 
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -221,6 +227,13 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     if (!evrakTarihi && !tarihGosterim) { toast.error("Evrak tarihi zorunludur."); return; }
     if (!firmaId) { toast.error("Firma seçimi zorunludur."); return; }
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
+    if (!santiyeId) { toast.error("Şantiye seçimi zorunludur."); return; }
+
+    // GEÇİCİ KABUL DİLEKÇESİ + EKSİK PRİM → önce onay al.
+    if (geciciKabulKonusuMu(konu) && !primOnaylandi.current) {
+      const durum = await getSantiyePrimDurumu(santiyeId);
+      if (durum && durum.eksik >= 1) { setPrimOnay(durum); return; }
+    }
     if (!isEdit && !muhatap.trim()) { toast.error("Muhatap seçimi zorunludur."); return; }
 
     setLoading(true);
@@ -239,7 +252,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         evrak_tarihi: tarihIso,
         tarih_gosterim: tarihGosterim,
         firma_id: firmaId,
-        santiye_id: santiyeId || null,
+        santiye_id: santiyeId,
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
         konu: formatBaslik(konu),
@@ -266,6 +279,9 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         });
         toast.success("Evrak kaydedildi.");
       }
+      // Konusunda "geçici kabul" geçen evrak, işin geçici kabul BAŞVURUSUDUR. Tarihi
+      // şantiyeye işlenir; ana ekran bu tarih itibarıyla primi tamamlanmamış işleri uyarır.
+      primOnaylandi.current = false;
       onSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
@@ -347,14 +363,14 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </select>
         </div>
         <div className="space-y-2">
-          <Label>Şantiye</Label>
+          <Label>Şantiye <span className="text-red-500">*</span></Label>
           {/* Tüm aktif şantiyeler firma adı altında <optgroup> ile gruplanmış halde gösterilir.
               Firma seçimi şantiye listesini filtrelemez — kullanıcı istediği şantiyeyi seçebilir. */}
           <SantiyeSelect
             santiyeler={santiyeler}
             value={santiyeId}
             onChange={setSantiyeId}
-            placeholder="Opsiyonel"
+            placeholder="Şantiye seçin"
             className={selectClass}
             firmalar={firmalar}
           />
@@ -620,6 +636,41 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>
+
+      {/* Geçici kabul dilekçesi + eksik SGK primi uyarısı */}
+      <Dialog open={!!primOnay} onOpenChange={(a) => { if (!a) setPrimOnay(null); }}>
+        <DialogContent className="w-[95vw] max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-amber-700">SGK primi henüz tamamlanmadı</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-1 text-sm text-gray-700">
+            <p>
+              Bu evrakın konusu <b>geçici kabul</b> ve seçilen işin SGK primi eksik görünüyor.
+            </p>
+            {primOnay && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[13px]">
+                <div className="flex justify-between"><span>Yatması gereken</span><span className="font-semibold tabular-nums">{primOnay.gereken.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span></div>
+                <div className="flex justify-between"><span>Yatan</span><span className="font-semibold tabular-nums">{primOnay.yatan.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span></div>
+                <div className="mt-1 flex justify-between border-t border-amber-300 pt-1 text-amber-900">
+                  <span className="font-semibold">Eksik</span>
+                  <span className="font-bold tabular-nums">{primOnay.eksik.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span>
+                </div>
+              </div>
+            )}
+            <p className="text-gray-600">Dilekçeyi yine de kaydetmek istiyor musunuz?</p>
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setPrimOnay(null)} disabled={loading}>Vazgeç</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => { primOnaylandi.current = true; setPrimOnay(null); handleSubmit(); }}
+              disabled={loading}
+            >
+              Eminim, kaydet
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ESC ile kapatmadan önce "kaydedeyim mi?" onayı */}
       <Dialog open={kapatOnay} onOpenChange={setKapatOnay}>
