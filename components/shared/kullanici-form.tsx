@@ -106,7 +106,6 @@ export default function KullaniciForm({
   const [santiyeGoruntulemeGun, setSantiyeGoruntulemeGun] = useState<string>(initGun(kaynak?.santiye_defteri_goruntuleme_gun));
   const [dashboardWidgets, setDashboardWidgets] = useState<string[]>(kaynak?.dashboard_widgets ?? []);
   // Mesajlaşmada tüm konuşmaları görme yetkisi (sadece santiye_admin için ayarlanır)
-  const [tumMesajlariGor, setTumMesajlariGor] = useState<boolean>(kaynak?.tum_mesajlari_gor ?? false);
   // Şantiye atanmamış (genel) verileri görme yetkisi — TÜM modüllerde geçerli (yazışmalar,
   // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.). Kısıtlı + santiye_admin için.
   const [santiyesizVeriGor, setSantiyesizVeriGor] = useState<boolean>(kaynak?.santiyesiz_veri_gor ?? false);
@@ -265,7 +264,6 @@ export default function KullaniciForm({
       // - yönetici: her zaman true (form'da göstermesek de DB'de net olsun)
       // - şantiye yöneticisi: form'daki seçim
       // - kısıtlı: her zaman false
-      const tumMesajlariGorFinal = rol === "yonetici" ? true : (rol === "santiye_admin" ? tumMesajlariGor : false);
       // Şantiyesiz veri görme: yönetici her zaman görür, kısıtlı/santiye_admin için form seçimi
       const santiyesizVeriGorFinal = rol === "yonetici" ? true : santiyesizVeriGor;
 
@@ -282,7 +280,6 @@ export default function KullaniciForm({
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null, // legacy
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
-          tum_mesajlari_gor: tumMesajlariGorFinal,
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
           ...(sifre.trim() ? { sifre } : {}),
         });
@@ -301,7 +298,6 @@ export default function KullaniciForm({
           geriye_donus_gun: izinKullanir ? limitler.puantaj_islem_gun : null,
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
-          tum_mesajlari_gor: tumMesajlariGorFinal,
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
           // Çoğaltılarak açıldıysa kaynağın yetkilerini izlesin.
           yetki_kaynak_id: cogaltilacak?.id ?? null,
@@ -415,21 +411,11 @@ export default function KullaniciForm({
             <strong>sadece kendi kayıtlarını</strong> görür/yazar.
           </p>
         )}
-        {/* Tüm mesajlar + şantiyesiz veri görme YAN YANA (alt alta değil). */}
+        {/* Şantiyesiz veri görme. (Mesajlaşma kaldırıldı — "tüm mesajlaşmaları görsün"
+            seçeneği de birlikte kalktı; kullanicilar.tum_mesajlari_gor kolonu veritabanında
+            duruyor ama artık yazılmıyor.) */}
         {(rol === "kisitli" || rol === "santiye_admin") && (
           <div className="mt-2 flex flex-col sm:flex-row gap-3">
-            {/* Mesajlaşma — sadece şantiye yöneticisi için */}
-            {rol === "santiye_admin" && (
-              <label className="flex-1 flex items-center gap-2 p-2.5 border rounded-md bg-blue-50/40 cursor-pointer hover:bg-blue-50 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={tumMesajlariGor}
-                  onChange={(e) => setTumMesajlariGor(e.target.checked)}
-                  className="w-4 h-4 accent-[#F97316]"
-                />
-                <span className="text-sm font-semibold text-[#1E3A5F]">💬 Tüm mesajlaşmaları görsün</span>
-              </label>
-            )}
             {/* Şantiyesiz veri görme — hem kısıtlı hem santiye_admin için */}
             <label className="flex-1 flex items-center gap-2 p-2.5 border rounded-md bg-amber-50/40 cursor-pointer hover:bg-amber-50 transition-colors">
               <input
