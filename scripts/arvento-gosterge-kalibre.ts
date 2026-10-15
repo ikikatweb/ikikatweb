@@ -103,12 +103,16 @@ async function main() {
   }
 
   // 3) Araç kartları
-  const { data: kartlar } = await sb.from("araclar").select("id, plaka, cinsi, sayac_tipi, guncel_gosterge");
-  type K = { id: string; plaka: string; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null };
+  const { data: kartlar } = await sb.from("araclar").select("id, plaka, cinsi, sayac_tipi, guncel_gosterge, arvento_fark, arvento_fark_tarihi");
+  type K = { id: string; plaka: string; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null; arvento_fark: number | null; arvento_fark_tarihi: string | null };
   const kartByPlaka = new Map(((kartlar ?? []) as K[]).map((k) => [plakaAnahtar(k.plaka), k]));
 
   // 4) Hesapla
-  const yazilacak: { id: string; plaka: string; birim: string; okuma: number; arv: number; fark: number; eski: number | null }[] = [];
+  // kayitliFark/kalibreTarih: daha önce kalibre edilmiş araçlarda SAPMAYI gösterebilmek için.
+  // Sapma = yeni hesaplanan fark − kayıtlı fark. Sıfırdan uzaklaştıkça sayaç kaymış demektir
+  // (saatli iş makinelerinde Arvento kontak sayıyor, makine çalışma saati tutuyor → kayma beklenir).
+  const yazilacak: { id: string; plaka: string; birim: string; okuma: number; arv: number; fark: number;
+    eski: number | null; kayitliFark: number | null; kalibreTarih: string | null }[] = [];
   const atlanan: string[] = [];
 
   for (const [anahtar, o] of okumalar) {
@@ -120,20 +124,32 @@ async function main() {
       id: kart.id, plaka: kart.plaka,
       birim: kart.sayac_tipi === "saat" ? "saat" : "km",
       okuma: o.deger, arv: arv.deger, fark: o.deger - arv.deger, eski: kart.guncel_gosterge,
+      kayitliFark: kart.arvento_fark, kalibreTarih: kart.arvento_fark_tarihi,
     });
   }
   yazilacak.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
 
-  console.log(`PLAKA           BİRİM   OKUMANIZ      ARVENTO       FARK          KARTTAKİ ESKİ`);
-  console.log("-".repeat(86));
+  const isaretli = (v: number) => (v > 0 ? "+" : "") + Math.round(v).toLocaleString("tr-TR");
+  console.log(`PLAKA           BİRİM   OKUMANIZ      ARVENTO      YENİ FARK   KAYITLI FARK      SAPMA  SON KALİBRASYON`);
+  console.log("-".repeat(108));
   for (const y of yazilacak) {
+    const sapma = y.kayitliFark == null ? null : y.fark - y.kayitliFark;
     console.log(
       `${y.plaka.padEnd(15)} ${y.birim.padEnd(6)} ${n(y.okuma).padStart(11)}  ${n(y.arv).padStart(11)}  ` +
-      `${((y.fark > 0 ? "+" : "") + Math.round(y.fark).toLocaleString("tr-TR")).padStart(11)}   ${n(y.eski).padStart(11)}`,
+      `${isaretli(y.fark).padStart(11)}  ${(y.kayitliFark == null ? "—" : isaretli(y.kayitliFark)).padStart(12)}  ` +
+      `${(sapma == null ? "yeni" : isaretli(sapma)).padStart(9)}  ${(y.kalibreTarih ?? "—").slice(0, 10)}`,
     );
   }
-  console.log("-".repeat(86));
-  console.log(`${yazilacak.length} araç kalibre edilecek.`);
+  console.log("-".repeat(108));
+  const yeniler = yazilacak.filter((y) => y.kayitliFark == null).length;
+  const sapanlar = yazilacak.filter((y) => y.kayitliFark != null && Math.abs(y.fark - y.kayitliFark) >= 1);
+  console.log(`${yazilacak.length} araç — ${yeniler} ilk kalibrasyon, ${sapanlar.length} araçta sapma var.`);
+  if (sapanlar.length) {
+    console.log(`En çok sapanlar:`);
+    for (const y of [...sapanlar].sort((a, b) => Math.abs(b.fark - b.kayitliFark!) - Math.abs(a.fark - a.kayitliFark!)).slice(0, 8)) {
+      console.log(`   ${y.plaka.padEnd(16)} ${isaretli(y.fark - y.kayitliFark!)} ${y.birim}`);
+    }
+  }
   if (atlanan.length) {
     console.log(`\nAtlananlar (${atlanan.length}):`);
     for (const a of atlanan) console.log("   " + a);
