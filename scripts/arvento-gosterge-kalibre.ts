@@ -110,8 +110,8 @@ async function main() {
   }
 
   // 3) Araç kartları
-  const { data: kartlar } = await sb.from("araclar").select("id, plaka, cinsi, sayac_tipi, guncel_gosterge, arvento_fark, arvento_fark_tarihi, son_okuma_deger, son_okuma_tarihi, saat_katsayi");
-  type K = { id: string; plaka: string; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null; arvento_fark: number | null; arvento_fark_tarihi: string | null; son_okuma_deger: number | null; son_okuma_tarihi: string | null; saat_katsayi: number | null };
+  const { data: kartlar } = await sb.from("araclar").select("id, plaka, marka, model, cinsi, sayac_tipi, guncel_gosterge, arvento_fark, arvento_fark_tarihi, son_okuma_deger, son_okuma_tarihi, saat_katsayi");
+  type K = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null; arvento_fark: number | null; arvento_fark_tarihi: string | null; son_okuma_deger: number | null; son_okuma_tarihi: string | null; saat_katsayi: number | null };
   const kartByPlaka = new Map(((kartlar ?? []) as K[]).map((k) => [plakaAnahtar(k.plaka), k]));
 
   // 4) Hesapla — KAMYON ve İŞ MAKİNESİ farklı modellerle
@@ -128,23 +128,42 @@ async function main() {
     oncekiTarih: string | null; kontak: number; gun: number;
     eskiKatsayi: number | null; yeniKatsayi: number | null };
   const kamyonlar: Kamyon[] = [];
+  const arventosuz: { id: string; plaka: string; okuma: number; eski: number | null }[] = [];
   const makineler: Makine[] = [];
   const atlanan: string[] = [];
 
-  // Kısa yazım: kullanıcı iş makinesini son hanesiyle verebiliyor ("5563" → 34-00-24-5563).
-  // Yalnız TEK eşleşme varsa kabul edilir; birden fazlaysa hangisi olduğu belirsiz, atlanır.
-  function kartBul(anahtar: string): { kart: K | undefined; hata?: string } {
+  // Aracı adlandırma biçimi serbest. Üç aşamalı çözüm:
+  //   1) plaka birebir
+  //   2) plaka sonu  ("5563" → 34-00-24-5563)
+  //   3) marka/model/cinsi  ("amman asc 110 silindir" → 34-00-11-6911,
+  //                          "140g greyder" → 06-00-10-1096)
+  // Her aşamada YALNIZ tek aday kabul edilir; birden fazlaysa yanlış araca yazmamak için atlanır.
+  const kartMetni = (k: K) =>
+    plakaAnahtar([k.plaka, k.marka, k.model, k.cinsi].filter(Boolean).join(" "));
+  function kartBul(anahtar: string, ham: string): { kart: K | undefined; hata?: string } {
     const tam = kartByPlaka.get(anahtar);
     if (tam) return { kart: tam };
-    if (anahtar.length < 3) return { kart: undefined };
-    const adaylar = [...kartByPlaka.entries()].filter(([k]) => k.endsWith(anahtar));
-    if (adaylar.length === 1) return { kart: adaylar[0][1] };
-    if (adaylar.length > 1) return { kart: undefined, hata: `birden fazla araca uyuyor (${adaylar.map(([, k]) => k.plaka).join(", ")})` };
+
+    if (anahtar.length >= 3) {
+      const sonEk = [...kartByPlaka.entries()].filter(([k]) => k.endsWith(anahtar));
+      if (sonEk.length === 1) return { kart: sonEk[0][1] };
+      if (sonEk.length > 1) return { kart: undefined, hata: `birden fazla araca uyuyor (${sonEk.map(([, k]) => k.plaka).join(", ")})` };
+    }
+
+    // Marka/model: girilen her kelime aracın metninde geçmeli.
+    const kelimeler = ham.split(/\s+/).map((x) => plakaAnahtar(x)).filter((x) => x.length >= 2);
+    if (kelimeler.length === 0) return { kart: undefined };
+    const adaylar = [...kartByPlaka.values()].filter((k) => {
+      const metin = kartMetni(k);
+      return kelimeler.every((w) => metin.includes(w));
+    });
+    if (adaylar.length === 1) return { kart: adaylar[0] };
+    if (adaylar.length > 1) return { kart: undefined, hata: `birden fazla araca uyuyor (${adaylar.map((k) => k.plaka).join(", ")})` };
     return { kart: undefined };
   }
 
   for (const [anahtar, o] of okumalar) {
-    const bulgu = kartBul(anahtar);
+    const bulgu = kartBul(anahtar, o.plaka);
     const kart = bulgu.kart;
     if (!kart) { atlanan.push(`${o.plaka}: ${bulgu.hata ?? "araç kartı bulunamadı"}`); continue; }
 
@@ -169,7 +188,12 @@ async function main() {
     }
 
     const arv = arvento.get(plakaAnahtar(kart.plaka));
-    if (!arv) { atlanan.push(`${o.plaka}: Arvento'da bu araç yok / odometre boş`); continue; }
+    if (!arv) {
+      // Arvento cihazı olmayan araç: fark hesaplanamaz ama OKUMA yine de kaydedilmeli,
+      // yoksa sayaç bilgisi hiç güncellenmiyor.
+      arventosuz.push({ id: kart.id, plaka: kart.plaka, okuma: o.deger, eski: kart.guncel_gosterge });
+      continue;
+    }
     kamyonlar.push({
       id: kart.id, plaka: kart.plaka, okuma: o.deger, arv: arv.deger,
       fark: o.deger - arv.deger, eski: kart.guncel_gosterge,
@@ -208,14 +232,23 @@ async function main() {
       console.log(
         `${m.plaka.padEnd(15)} ${n(m.okuma).padStart(10)}  ${(m.oncekiOkuma == null ? "—" : n(m.oncekiOkuma)).padStart(12)}  ` +
         `${(ilerleme == null ? "—" : isaretli(ilerleme)).padStart(8)}  ${m.kontak.toFixed(1).padStart(10)}  ${String(m.gun).padStart(3)}  ` +
-        `${(m.eskiKatsayi == null ? "—" : m.eskiKatsayi.toFixed(3)).padStart(9)}  ${(m.yeniKatsayi == null ? "değişmez" : m.yeniKatsayi.toFixed(3)).padStart(9)}`,
+        `${(m.eskiKatsayi == null ? "—" : m.eskiKatsayi.toFixed(3)).padStart(9)}  ${(m.yeniKatsayi != null ? m.yeniKatsayi.toFixed(3) : m.oncekiOkuma == null ? "ilk okuma" : "değişmez").padStart(9)}`,
       );
     }
     console.log("-".repeat(97));
     const k = makineler.filter((m) => m.yeniKatsayi != null).length;
     console.log(`${makineler.length} makine — ${k} tanesinde katsayı güncellenecek.`);
-    console.log(`"değişmez": dönem çok kısa / çalışma az / oran makul aralık dışı → eski katsayı korunur.
+    console.log(`"ilk okuma": daha önce kalibre edilmemiş → ölçülecek dönem yok, katsayı BİR SONRAKİ okumada çıkar.`);
+    console.log(`"değişmez":  dönem çok kısa / çalışma az / oran makul aralık dışı → eski katsayı korunur.
 `);
+  }
+
+  if (arventosuz.length) {
+    console.log(`ARVENTO CİHAZI YOK — yalnız okuma kaydedilir (${arventosuz.length})`);
+    for (const a of arventosuz.sort((x, y) => x.plaka.localeCompare(y.plaka, "tr"))) {
+      console.log(`  ${a.plaka.padEnd(15)} ${n(a.okuma).padStart(11)}   (önceki: ${a.eski == null ? "—" : n(a.eski)})`);
+    }
+    console.log("");
   }
 
   if (atlanan.length) {
@@ -255,6 +288,13 @@ Hiçbir şey yazılmadı. Kaydetmek için komutun sonuna --uygula ekleyin.`);
     if (m.yeniKatsayi != null) yama.saat_katsayi = m.yeniKatsayi;
     const { error } = await sb.from("araclar").update(yama).eq("id", m.id);
     if (error) console.error(`  HATA ${m.plaka}: ${error.message}`);
+    else ok++;
+  }
+  for (const a of arventosuz) {
+    const { error } = await sb.from("araclar").update({
+      guncel_gosterge: a.okuma, son_okuma_deger: a.okuma, son_okuma_tarihi: simdi, updated_at: simdi,
+    }).eq("id", a.id);
+    if (error) console.error(`  HATA ${a.plaka}: ${error.message}`);
     else ok++;
   }
   console.log(`
