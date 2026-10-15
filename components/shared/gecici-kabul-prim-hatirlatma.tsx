@@ -37,7 +37,12 @@ export default function GeciciKabulPrimHatirlatma({
   tahminiFFKapali?: boolean;
 }) {
   const { hasPermission, kullanici } = useAuth();
-  const yetkili = hasPermission("iscilik-takibi", "goruntule") || hasPermission("yazismalar", "goruntule");
+  // "yazismalar" diye bir yetki anahtarı YOK — gerçek anahtar yazismalar-giden-evrak.
+  // Yanlış anahtar hasPermission'da hep false döner ve uyarı yalnız işçilik takibi
+  // yetkisi olanlara görünürdü.
+  const yetkili = hasPermission("iscilik-takibi", "goruntule")
+    || hasPermission("bordro-takibi", "goruntule")
+    || hasPermission("yazismalar-giden-evrak", "goruntule");
   const [dilekceler, setDilekceler] = useState<GeciciKabulDilekce[]>([]);
   // Dilekçe önizlemesi — sayfa DEĞİŞMEZ, metin pencerede okunur.
   const [onizleme, setOnizleme] = useState<{ konu: string; metin: string | null; tarih: string } | null>(null);
@@ -70,6 +75,10 @@ export default function GeciciKabulPrimHatirlatma({
   // KALAN = (yatması gereken) − yatan − tahmini bordro. Ana ekrandaki "Kalan" sütununun
   // ta kendisi; tahmini fiyat farkı anahtarı da oradan devralınıyor ki iki yer aynı
   // rakamı göstersin.
+  // NOT: satırlar ana ekrandaki Bordro Özeti widget'ından geliyor. O widget kullanıcı
+  // ayarlarından KAPATILMIŞSA satırlar boş gelir ve uyarı hesaplanamaz. Rakamın tabloyla
+  // birebir tutması için bilinçli bir bağımlılık; aynı hesabı burada tekrar yazmaktansa
+  // widget'a bağlı kalmak yeğleniyor.
   const satirMap = new Map(satirlar.map((s) => [s.santiyeId, s]));
   const kayitlar = dilekceler
     .map((d) => {
