@@ -10,7 +10,6 @@ import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { getEksikIscilikBilgileri, upsertIscilikTakibi, type EksikIscilikBilgi } from "@/lib/supabase/queries/iscilik-takibi";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
-import { sgkBicimle, sgkHata, SGK_ORNEK } from "@/lib/sgk-sicil";
 
 export default function IscilikBilgiHatirlatma() {
   const { hasPermission, kullanici } = useAuth();
@@ -36,13 +35,10 @@ export default function IscilikBilgiHatirlatma() {
 
   const kaydet = async (k: EksikIscilikBilgi) => {
     const updates: Record<string, unknown> = {};
-    if (k.sicilEksik || k.sicilBozuk) {
+    if (k.sicilEksik) {
       const v = (sicilInput[k.santiye_id] ?? "").trim();
       if (!v) { toast.error("Sicil numarası girin.", { duration: toastSuresi() }); return; }
-      // 26 haneye tamamlanmadan kaydedilmesin; doğruysa standart biçimde yazılsın.
-      const hata = sgkHata(v);
-      if (hata) { toast.error(hata, { duration: 7000 }); return; }
-      updates.sicil_no = sgkBicimle(v);
+      updates.sicil_no = v;
     }
     if (k.oranEksik) {
       const ham = (oranInput[k.santiye_id] ?? "").trim().replace(",", ".");
@@ -65,10 +61,6 @@ export default function IscilikBilgiHatirlatma() {
   if (!yetkili || kayitlar.length === 0) return null;
 
   const mesaj = (k: EksikIscilikBilgi): string => {
-    if (k.sicilBozuk) {
-      const rakam = String(k.sicil_no ?? "").replace(/\D/g, "").length;
-      return `${k.is_adi}: SGK sicil numarası eksik haneli — "${k.sicil_no}" (${rakam} hane, 26 olmalı).`;
-    }
     const parca = k.sicilEksik && k.oranEksik
       ? "sicil numarası ve Asgari işçilik oranı bilgileri"
       : k.sicilEksik ? "sicil numarası" : "Asgari işçilik oranı";
@@ -81,7 +73,7 @@ export default function IscilikBilgiHatirlatma() {
         <AlertTriangle size={22} className="shrink-0 text-amber-600" />
         <div className="flex-1">
           <div className="font-semibold">
-            ⚠️ {kayitlar.length} iş için sicil / işçilik oranı eksik ya da hatalı
+            ⚠️ {kayitlar.length} iş için sicil / işçilik oranı eksik
           </div>
           <div className="text-xs text-amber-700">
             İhaleli işlerin İşçilik Takibi bilgileri (sicil numarası ve Asgari işçilik oranı) henüz girilmemiş. Aşağıdan girebilirsiniz.
@@ -93,16 +85,13 @@ export default function IscilikBilgiHatirlatma() {
           <li key={k.santiye_id}>
             <div className="text-amber-900">{mesaj(k)}</div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              {(k.sicilEksik || k.sicilBozuk) && (
+              {k.sicilEksik && (
                 <input
                   type="text"
-                  // Bozuk kayıtta mevcut değer kutuya gelir — kullanıcı sıfırdan yazmasın,
-                  // eksik haneyi tamamlasın.
-                  value={sicilInput[k.santiye_id] ?? (k.sicilBozuk ? (k.sicil_no ?? "") : "")}
+                  value={sicilInput[k.santiye_id] ?? ""}
                   onChange={(e) => setSicilInput((s) => ({ ...s, [k.santiye_id]: e.target.value }))}
-                  placeholder={SGK_ORNEK}
-                  title={`26 hane: ${SGK_ORNEK}`}
-                  className="w-80 max-w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-gray-800 focus:border-amber-500 focus:outline-none"
+                  placeholder="Sicil numarası (ör. 4 4100 01 …)"
+                  className="w-64 max-w-full rounded border border-amber-300 bg-white px-2 py-1 text-xs text-gray-800 focus:border-amber-500 focus:outline-none"
                 />
               )}
               {k.oranEksik && (

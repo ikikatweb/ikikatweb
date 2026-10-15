@@ -34,8 +34,6 @@ export type EksikIscilikBilgi = {
   sicil_no: string | null;
   iscilik_orani: number | null;
   sicilEksik: boolean;
-  /** Sicil girilmiş ama 26 hane değil — biçim hatası. */
-  sicilBozuk: boolean;
   oranEksik: boolean;
 };
 export async function getEksikIscilikBilgileri(): Promise<EksikIscilikBilgi[]> {
@@ -57,21 +55,6 @@ export async function getEksikIscilikBilgileri(): Promise<EksikIscilikBilgi[]> {
   const birGunOnce = Date.now() - 86400000;        // eklendikten 1 günden yeniyse henüz uyarma (girmeye süre tanı)
   const bosMetin = (s: string | null) => s == null || String(s).trim() === "";
   const sonuc: EksikIscilikBilgi[] = [];
-  // BİÇİM HATASI olan siciller eşikten BAĞIMSIZ bildirilir: bu "henüz girilmedi" değil,
-  // girilmiş ama yanlış girilmiş demektir — eski işlerde de düzeltilmesi gerekir.
-  // (21 kayıttan 4'ü eksik haneyle girilmişti.)
-  for (const s of isler) {
-    const sicil = itMap.get(s.id)?.sicil_no ?? null;
-    const rakam = String(sicil ?? "").replace(/\D/g, "");
-    if (rakam.length > 0 && rakam.length !== 26) {
-      sonuc.push({
-        santiye_id: s.id, is_adi: s.is_adi, created_at: s.created_at ?? "",
-        sicil_no: sicil, iscilik_orani: itMap.get(s.id)?.iscilik_orani ?? null,
-        sicilEksik: false, oranEksik: false, sicilBozuk: true,
-      });
-    }
-  }
-
   for (const s of isler) {
     // Eşik (01.07.2026) SONRASI eklenmiş + en az 1 gün geçmiş işler. Eşik öncesi eski birikim → hariç.
     if (!s.created_at) continue;
@@ -83,7 +66,7 @@ export async function getEksikIscilikBilgileri(): Promise<EksikIscilikBilgi[]> {
     const sicilEksik = bosMetin(sicil);
     const oranEksik = oran == null || oran === 0; // asgari işçilik oranı 0 olamaz → 0/null = girilmemiş
     if (sicilEksik || oranEksik) {
-      sonuc.push({ santiye_id: s.id, is_adi: s.is_adi, created_at: s.created_at, sicil_no: sicil, iscilik_orani: oran, sicilEksik, oranEksik, sicilBozuk: false });
+      sonuc.push({ santiye_id: s.id, is_adi: s.is_adi, created_at: s.created_at, sicil_no: sicil, iscilik_orani: oran, sicilEksik, oranEksik });
     }
   }
   return sonuc.sort((a, b) => a.is_adi.localeCompare(b.is_adi, "tr"));
