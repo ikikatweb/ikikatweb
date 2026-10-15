@@ -5,12 +5,14 @@
 //
 // Kullanım: araçlar STOP hâldeyken gösterge değerlerini okuyun (o sırada Arvento da
 // ilerlemediği için fark birebir tutar), bir metin dosyasına yazın ve bu script'i
-// çalıştırın. Her satır "plaka = değer" biçiminde; boş satır ve # ile başlayan satır
-// yok sayılır. Ondalık/binlik ayraçları serbest (452.146 · 452146 · 452.146,0 hepsi olur).
+// çalıştırın. Her satırda önce plaka, sonra değer gelir; aradaki "=" ya da "-" şart değil,
+// sondaki birim (km/sa/saat) yazılabilir. Boş satır ve # ile başlayan satır yok sayılır.
+// Ondalık/binlik ayraçları serbest (452.146 · 452146 · 452.146,0 hepsi olur).
 //
 //   60 ACE 788 = 452146
-//   60-00-10-0011 = 20818        # ekskavatör: motor saati
-//   34 GF 3763 = 486795
+//   60 bp 842 177700 km
+//   60-00-10-0011 - 21055 sa     # ekskavatör: motor saati
+//   34-00-15-13879 15192,6 sa
 //
 // Çalıştırma:
 //   npx tsx scripts/arvento-gosterge-kalibre.ts okumalar.txt          → ne yapılacağını göster
@@ -68,12 +70,16 @@ async function main() {
   const okumalar = new Map<string, { plaka: string; deger: number }>();
   const hatali: string[] = [];
   for (const satir of fs.readFileSync(dosya, "utf8").split(/\r?\n/)) {
-    const s = satir.split("#")[0].trim();
+    let s = satir.split("#")[0].trim();
     if (!s) continue;
-    const i = s.lastIndexOf("=");
-    if (i < 0) { hatali.push(satir); continue; }
-    const plaka = s.slice(0, i).trim();
-    const deger = sayiCoz(s.slice(i + 1));
+    // Sondaki birim yazısı atılır: "177700 km", "21055 sa", "15192,6 saat"
+    s = s.replace(/\s*(km|sa|saat|h)\s*$/i, "").trim();
+    // Son SAYI değerdir, öncesi plakadır. Böylece hem "60 ACE 788 = 452146" hem de
+    // kullanıcının doğal yazımı ("60 bp 842 177700", "60-00-10-0011 - 21055") okunur.
+    const parcalar = s.split(/[\s=]+/).filter((x) => x && x !== "-");
+    if (parcalar.length < 2) { hatali.push(satir); continue; }
+    const deger = sayiCoz(parcalar[parcalar.length - 1]);
+    const plaka = parcalar.slice(0, -1).join(" ").trim();
     if (!plaka || deger == null) { hatali.push(satir); continue; }
     okumalar.set(plakaAnahtar(plaka), { plaka, deger });
   }
