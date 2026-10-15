@@ -52,7 +52,26 @@ export function geciciKabulKonusuMu(konu: string | null | undefined): boolean {
   return kabulGecer(trNorm(String(konu ?? "")));
 }
 
-/** Sadeleştirilmiş metinde "GECICI KABUL" kalıbı var mı? */
+// "GEÇİCİ KABUL" geçmesi dilekçe olduğunu GÖSTERMEZ. Gerçek yazışmalardan ölçüldü:
+//   "geçici kabul eksiklikleri tamamlanmıştır"            → kabul zaten olmuş
+//   "geçici kabulü yapılan ... teminat mektubu iadesi"    → kabul zaten olmuş
+//   "geçici kabulü yapılmış olup iş bitirme belgesi..."   → kabul zaten olmuş
+//   "Geçici Kabul Noksanlıkları Kesintisi İadesi"         → kabul sonrası işlem
+// Uyarı KABULÜN YAPILMASINI isteyen dilekçe içindir; yukarıdakiler yanlış alarm veriyordu.
+
+/** KABUL'den hemen sonra gelirse yazı kabul TALEBİ değildir. */
+const RED_SONRASI = ["EKSIKLIK", "NOKSANLIK", "TUTANAK", "KESINTI", "BEDEL"];
+/** Yakınında geçerse kabul ZATEN YAPILMIŞ demektir. */
+// Bitmişlik kipleri TAM yazılır, kök olarak değil: "YAPIL" kökü talep kipi olan
+// "YAPILMASI"yı da elerdi; "ONAYLAN" kökü "ONAYLANMASI" talebini elerdi.
+const RED_OLMUS = [
+  "YAPILAN", "YAPILMIS", "YAPILDI",
+  "TAMAMLANAN", "TAMAMLANMIS", "TAMAMLANDI",
+  "ONAYLANAN", "ONAYLANMIS", "ONAYLANARAK", "ONAYLANDI",
+];
+/** "yapılması/yapılmasını" talep kipidir — RED_OLMUS'taki "YAPILMIS" ile karışmaz. */
+
+/** Sadeleştirilmiş metinde "GECICI KABUL ... yapılması" talebi var mı? */
 function kabulGecer(n: string): boolean {
   if (!n) return false;
   const kelimeler = n.split(/[^A-Z0-9]+/).filter(Boolean);
@@ -62,7 +81,15 @@ function kabulGecer(n: string): boolean {
     const onceki = kelimeler[i - 1];
     // Çok kısa kelimeyle (ör. "IL") yanlış eşleşme olmasın.
     if (onceki.length < 4) continue;
-    if (uzaklik(onceki, HEDEF) <= TOLERANS) return true;
+    if (uzaklik(onceki, HEDEF) > TOLERANS) continue;
+
+    const sonraki = kelimeler[i + 1] ?? "";
+    if (RED_SONRASI.some((r) => sonraki.startsWith(r))) continue;
+    // Kabulün olup bittiğini söyleyen kelime hemen ardından gelirse talep değildir.
+    // 3 kelimelik pencere: "kabulü yapılmış olup", "kabul eksiklikleri tamamlanmıştır".
+    const pencere = kelimeler.slice(i + 1, i + 4);
+    if (pencere.some((k) => RED_OLMUS.some((r) => k.startsWith(r)))) continue;
+    return true;
   }
   return false;
 }

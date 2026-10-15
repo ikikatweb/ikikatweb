@@ -293,6 +293,9 @@ export default function GidenEvrakPage() {
     try {
       await softDeleteGidenEvrak(silDialog.id, silmeNedeni, kullanici?.id ?? null);
       setEvraklar((p) => p.filter((e) => e.id !== silDialog.id));
+      // Ana ekrandaki "geçici kabul / prim eksik" uyarısı bu evraktan besleniyor olabilir;
+      // silinir silinmez kalksın diye haber verilir (sayfa değişmeden).
+      window.dispatchEvent(new Event("yazisma-degisti"));
       toast.success("Evrak silindi.");
     } catch { toast.error("Silme hatası."); }
     finally { setSilDialog(null); setSilmeNedeni(""); }

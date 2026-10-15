@@ -61,9 +61,20 @@ export default function GeciciKabulPrimHatirlatma({
 
   useEffect(() => {
     void kontrol();
-    const onFocus = () => void kontrol();   // prim yatırılıp dönülünce uyarı kalksın
+    // Yazışma silinince uyarı DERHÂL kalksın. Banner ana ekranda asılı kaldığı için
+    // tek başına mount yetmiyor: sekme değiştirip dönüldüğünde de tazelenir.
+    // ("focus" sekme geçişinde her tarayıcıda tetiklenmiyor, visibilitychange tetikleniyor.)
+    const onFocus = () => void kontrol();
+    const onGorunur = () => { if (document.visibilityState === "visible") void kontrol(); };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onGorunur);
+    // Aynı sekmede silme yapıldığında sayfa değişmeden haber verilir.
+    window.addEventListener("yazisma-degisti", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onGorunur);
+      window.removeEventListener("yazisma-degisti", onFocus);
+    };
   }, [kontrol]);
 
   // Zoom + pan — kasa defterindeki "Slip Görüntüle" penceresiyle aynı davranış.
