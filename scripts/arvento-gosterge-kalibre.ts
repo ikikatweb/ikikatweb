@@ -23,6 +23,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
+import { kontakSaati, katsayiHesapla } from "@/lib/arvento/makine-saat";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.resolve(__dirname, "..");
@@ -109,78 +110,142 @@ async function main() {
   }
 
   // 3) Araç kartları
-  const { data: kartlar } = await sb.from("araclar").select("id, plaka, cinsi, sayac_tipi, guncel_gosterge, arvento_fark, arvento_fark_tarihi");
-  type K = { id: string; plaka: string; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null; arvento_fark: number | null; arvento_fark_tarihi: string | null };
+  const { data: kartlar } = await sb.from("araclar").select("id, plaka, cinsi, sayac_tipi, guncel_gosterge, arvento_fark, arvento_fark_tarihi, son_okuma_deger, son_okuma_tarihi, saat_katsayi");
+  type K = { id: string; plaka: string; cinsi: string | null; sayac_tipi: string | null; guncel_gosterge: number | null; arvento_fark: number | null; arvento_fark_tarihi: string | null; son_okuma_deger: number | null; son_okuma_tarihi: string | null; saat_katsayi: number | null };
   const kartByPlaka = new Map(((kartlar ?? []) as K[]).map((k) => [plakaAnahtar(k.plaka), k]));
 
-  // 4) Hesapla
-  // kayitliFark/kalibreTarih: daha önce kalibre edilmiş araçlarda SAPMAYI gösterebilmek için.
-  // Sapma = yeni hesaplanan fark − kayıtlı fark. Sıfırdan uzaklaştıkça sayaç kaymış demektir
-  // (saatli iş makinelerinde Arvento kontak sayıyor, makine çalışma saati tutuyor → kayma beklenir).
-  const yazilacak: { id: string; plaka: string; birim: string; okuma: number; arv: number; fark: number;
-    eski: number | null; kayitliFark: number | null; kalibreTarih: string | null }[] = [];
+  // 4) Hesapla — KAMYON ve İŞ MAKİNESİ farklı modellerle
+  //
+  // Kamyon (sayac_tipi='km'):  gerçek = Arvento + sabit fark.  Ölçüldü, sapma 23 günde 12–50 km.
+  // İş makinesi (='saat'):     Arvento SAAT VERMİYOR — anlık `odometre` alanı kilometre.
+  //   (34-00-15-13879: cihazın tüm ömründe odometre 123,6 iken yalnız son 24 günün günlük
+  //    raporlarında 143,5 saat kontak var; saat olsaydı imkânsız.)
+  //   Bu yüzden makinede sabit fark anlamsız; model:
+  //     gösterge = son okuma + (okumadan beri kontak saati) × katsayı
+  type Kamyon = { id: string; plaka: string; okuma: number; arv: number; fark: number;
+    eski: number | null; kayitliFark: number | null; kalibreTarih: string | null };
+  type Makine = { id: string; plaka: string; okuma: number; oncekiOkuma: number | null;
+    oncekiTarih: string | null; kontak: number; gun: number;
+    eskiKatsayi: number | null; yeniKatsayi: number | null };
+  const kamyonlar: Kamyon[] = [];
+  const makineler: Makine[] = [];
   const atlanan: string[] = [];
 
   for (const [anahtar, o] of okumalar) {
     const kart = kartByPlaka.get(anahtar);
     if (!kart) { atlanan.push(`${o.plaka}: araç kartı bulunamadı`); continue; }
+
+    if (kart.sayac_tipi === "saat") {
+      // Önceki okuma: yeni alan yoksa (ilk geçiş) eski kalibrasyondaki gösterge/tarih kullanılır.
+      const oncekiOkuma = kart.son_okuma_deger ?? kart.guncel_gosterge;
+      const oncekiTarih = kart.son_okuma_tarihi ?? kart.arvento_fark_tarihi;
+      let kontak = 0, gun = 0;
+      if (oncekiTarih) {
+        const r = await kontakSaati(sb, kart.plaka, oncekiTarih.slice(0, 10));
+        kontak = r.saat; gun = r.gun;
+      }
+      makineler.push({
+        id: kart.id, plaka: kart.plaka, okuma: o.deger,
+        oncekiOkuma, oncekiTarih, kontak, gun,
+        eskiKatsayi: kart.saat_katsayi,
+        yeniKatsayi: katsayiHesapla(oncekiOkuma, o.deger, kontak),
+      });
+      continue;
+    }
+
     const arv = arvento.get(anahtar);
     if (!arv) { atlanan.push(`${o.plaka}: Arvento'da bu araç yok / odometre boş`); continue; }
-    yazilacak.push({
-      id: kart.id, plaka: kart.plaka,
-      birim: kart.sayac_tipi === "saat" ? "saat" : "km",
-      okuma: o.deger, arv: arv.deger, fark: o.deger - arv.deger, eski: kart.guncel_gosterge,
+    kamyonlar.push({
+      id: kart.id, plaka: kart.plaka, okuma: o.deger, arv: arv.deger,
+      fark: o.deger - arv.deger, eski: kart.guncel_gosterge,
       kayitliFark: kart.arvento_fark, kalibreTarih: kart.arvento_fark_tarihi,
     });
   }
-  yazilacak.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
+  kamyonlar.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
+  makineler.sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"));
 
   const isaretli = (v: number) => (v > 0 ? "+" : "") + Math.round(v).toLocaleString("tr-TR");
-  console.log(`PLAKA           BİRİM   OKUMANIZ      ARVENTO      YENİ FARK   KAYITLI FARK      SAPMA  SON KALİBRASYON`);
-  console.log("-".repeat(108));
-  for (const y of yazilacak) {
-    const sapma = y.kayitliFark == null ? null : y.fark - y.kayitliFark;
-    console.log(
-      `${y.plaka.padEnd(15)} ${y.birim.padEnd(6)} ${n(y.okuma).padStart(11)}  ${n(y.arv).padStart(11)}  ` +
-      `${isaretli(y.fark).padStart(11)}  ${(y.kayitliFark == null ? "—" : isaretli(y.kayitliFark)).padStart(12)}  ` +
-      `${(sapma == null ? "yeni" : isaretli(sapma)).padStart(9)}  ${(y.kalibreTarih ?? "—").slice(0, 10)}`,
-    );
-  }
-  console.log("-".repeat(108));
-  const yeniler = yazilacak.filter((y) => y.kayitliFark == null).length;
-  const sapanlar = yazilacak.filter((y) => y.kayitliFark != null && Math.abs(y.fark - y.kayitliFark) >= 1);
-  console.log(`${yazilacak.length} araç — ${yeniler} ilk kalibrasyon, ${sapanlar.length} araçta sapma var.`);
-  if (sapanlar.length) {
-    console.log(`En çok sapanlar:`);
-    for (const y of [...sapanlar].sort((a, b) => Math.abs(b.fark - b.kayitliFark!) - Math.abs(a.fark - a.kayitliFark!)).slice(0, 8)) {
-      console.log(`   ${y.plaka.padEnd(16)} ${isaretli(y.fark - y.kayitliFark!)} ${y.birim}`);
+
+  if (kamyonlar.length) {
+    console.log(`KAMYON / ARAÇ (km) — gerçek = Arvento + fark`);
+    console.log(`PLAKA             OKUMANIZ      ARVENTO      YENİ FARK   KAYITLI FARK      SAPMA  SON KALİBRASYON`);
+    console.log("-".repeat(101));
+    for (const y of kamyonlar) {
+      const sapma = y.kayitliFark == null ? null : y.fark - y.kayitliFark;
+      console.log(
+        `${y.plaka.padEnd(15)} ${n(y.okuma).padStart(11)}  ${n(y.arv).padStart(11)}  ` +
+        `${isaretli(y.fark).padStart(11)}  ${(y.kayitliFark == null ? "—" : isaretli(y.kayitliFark)).padStart(12)}  ` +
+        `${(sapma == null ? "yeni" : isaretli(sapma)).padStart(9)}  ${(y.kalibreTarih ?? "—").slice(0, 10)}`,
+      );
     }
+    console.log("-".repeat(101));
+    const sapanlar = kamyonlar.filter((y) => y.kayitliFark != null && Math.abs(y.fark - y.kayitliFark) >= 1);
+    console.log(`${kamyonlar.length} araç — ${kamyonlar.filter((y) => y.kayitliFark == null).length} ilk kalibrasyon, ${sapanlar.length} araçta sapma var.
+`);
   }
+
+  if (makineler.length) {
+    console.log(`İŞ MAKİNESİ (saat) — gösterge = son okuma + kontak saati × katsayı`);
+    console.log(`PLAKA             OKUMANIZ  ÖNCEKİ OKUMA  İLERLEME   KONTAK sa  GÜN  ESKİ KAT.  YENİ KAT.`);
+    console.log("-".repeat(97));
+    for (const m of makineler) {
+      const ilerleme = m.oncekiOkuma == null ? null : m.okuma - m.oncekiOkuma;
+      console.log(
+        `${m.plaka.padEnd(15)} ${n(m.okuma).padStart(10)}  ${(m.oncekiOkuma == null ? "—" : n(m.oncekiOkuma)).padStart(12)}  ` +
+        `${(ilerleme == null ? "—" : isaretli(ilerleme)).padStart(8)}  ${m.kontak.toFixed(1).padStart(10)}  ${String(m.gun).padStart(3)}  ` +
+        `${(m.eskiKatsayi == null ? "—" : m.eskiKatsayi.toFixed(3)).padStart(9)}  ${(m.yeniKatsayi == null ? "değişmez" : m.yeniKatsayi.toFixed(3)).padStart(9)}`,
+      );
+    }
+    console.log("-".repeat(97));
+    const k = makineler.filter((m) => m.yeniKatsayi != null).length;
+    console.log(`${makineler.length} makine — ${k} tanesinde katsayı güncellenecek.`);
+    console.log(`"değişmez": dönem çok kısa / çalışma az / oran makul aralık dışı → eski katsayı korunur.
+`);
+  }
+
   if (atlanan.length) {
-    console.log(`\nAtlananlar (${atlanan.length}):`);
+    console.log(`Atlananlar (${atlanan.length}):`);
     for (const a of atlanan) console.log("   " + a);
   }
 
   if (!uygula) {
-    console.log(`\nHiçbir şey yazılmadı. Kaydetmek için komutun sonuna --uygula ekleyin.`);
+    console.log(`
+Hiçbir şey yazılmadı. Kaydetmek için komutun sonuna --uygula ekleyin.`);
     return;
   }
 
   const simdi = new Date().toISOString();
   let ok = 0;
-  for (const y of yazilacak) {
+  for (const y of kamyonlar) {
     const { error } = await sb.from("araclar").update({
       arvento_fark: y.fark,
       arvento_fark_tarihi: simdi,
       guncel_gosterge: y.okuma,
       arvento_gosterge: y.okuma,
+      son_okuma_deger: y.okuma,
+      son_okuma_tarihi: simdi,
       updated_at: simdi,
     }).eq("id", y.id);
     if (error) console.error(`  HATA ${y.plaka}: ${error.message}`);
     else ok++;
   }
-  console.log(`\n${ok} aracın farkı kaydedildi ve göstergesi okumanızla güncellendi.`);
-  console.log(`Bundan sonra senkron her turda: gösterge = Arvento + fark.`);
+  for (const m of makineler) {
+    // Katsayı yalnız güvenilir hesaplandıysa yazılır; aksi hâlde eskisi korunur.
+    const yama: Record<string, unknown> = {
+      guncel_gosterge: m.okuma,
+      son_okuma_deger: m.okuma,
+      son_okuma_tarihi: simdi,
+      updated_at: simdi,
+    };
+    if (m.yeniKatsayi != null) yama.saat_katsayi = m.yeniKatsayi;
+    const { error } = await sb.from("araclar").update(yama).eq("id", m.id);
+    if (error) console.error(`  HATA ${m.plaka}: ${error.message}`);
+    else ok++;
+  }
+  console.log(`
+${ok} aracın okuması kaydedildi.`);
+  if (kamyonlar.length) console.log(`Kamyonlarda: gösterge = Arvento + fark.`);
+  if (makineler.length) console.log(`Makinelerde: gösterge her gece (cron) son okuma + kontak saati × katsayı ile yürütülür.`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

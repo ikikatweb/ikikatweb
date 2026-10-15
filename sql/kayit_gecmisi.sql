@@ -91,8 +91,11 @@ begin
   end if;
 
   if TG_OP = 'DELETE' then
-    insert into public.kayit_gecmisi (tablo, kayit_id, islem, kullanici_id, kullanici_ad, kaynak)
-    values (TG_TABLE_NAME, v_kayit, 'silme', v_kid, v_ad, v_kaynak);
+    -- Satirin TAMAMI eski_deger'e yazilir -> kayit birebir geri getirilebilir.
+    -- Degisiklik satirlarindaki left(...,500) kirpmasi BURADA UYGULANMAZ: orada amac
+    -- "ne degisti"yi gostermek, burada amac silineni geri yazabilmek.
+    insert into public.kayit_gecmisi (tablo, kayit_id, islem, eski_deger, kullanici_id, kullanici_ad, kaynak)
+    values (TG_TABLE_NAME, v_kayit, 'silme', to_jsonb(OLD)::text, v_kid, v_ad, v_kaynak);
     return OLD;
   end if;
 
