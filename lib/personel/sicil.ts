@@ -17,11 +17,27 @@ export function isyeriSicili(norm: string): string | null {
 // Karşılaştırma: yalnız rakamlar
 export const sicilDuz = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
+// Numarayı bölümlerine ayırır. Kullanıcı sicili BİTİŞİK yazarsa (ör.
+// "44221010110673790370887000") tek grup oluşur ve çekirdek ayrıştırılamaz; o durumda
+// bildirge eşleşmesi false döner ve her giriş bildirgesinde boşuna "devam edeyim mi?"
+// sorulur. Ölçüldü: bitişik yazımda sicilEslesir() false, boşlukluda true.
+// 26 haneli tek grup, Gelir İdaresi'nin MUHSGK kılavuzundaki yerleşime göre bölünür:
+// mahiyet(1) işkolu(4) yeni ünite(2) eski ünite(2) sıra(7) il(3) ilçe(2) kontrol(2) aracı(3).
+function sicilGruplari(s: string | null): string[] {
+  const g = (s ?? "").match(/\d+/g) ?? [];
+  if (g.length === 1 && g[0].length === 26) {
+    const r = g[0];
+    return [r.slice(0, 1), r.slice(1, 5), r.slice(5, 7), r.slice(7, 9), r.slice(9, 16),
+            r.slice(16, 19), r.slice(19, 21), r.slice(21, 23), r.slice(23, 26)];
+  }
+  return g;
+}
+
 // Sicil AYIRT EDİCİ ÇEKİRDEĞİ: işkolu(4) + sıra(7) + il(3) + ilçe(2) + aracı(2). Kullanıcı işçilik takibine
 // PDF'ten farklı biçim girebiliyor (fazladan "01" grubu / tire) + giriş formu kontrolü düşürür → bu 5 alan
 // işyerini benzersiz belirler; ünite/kontrol/biçim farkı yok sayılır, gerçek fark (sıra/il typo) yakalanır.
 export function sicilCekirdek(s: string | null): string | null {
-  const g = (s ?? "").match(/\d+/g) ?? [];
+  const g = sicilGruplari(s);
   const i7 = g.findIndex((x) => x.length === 7);          // işyeri sıra no = tek 7 haneli grup
   if (i7 < 1) return null;                                // önünde en az işkolu olmalı
   const isKolu = [...g.slice(0, i7)].reverse().find((x) => x.length === 4); // sıra öncesi son 4-haneli

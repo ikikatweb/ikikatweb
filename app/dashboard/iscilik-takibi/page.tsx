@@ -32,6 +32,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { sgkBicimle } from "@/lib/sgk-sicil";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
@@ -895,7 +896,7 @@ export default function IscilikTakibiPage() {
                 {silinenler.map((s) => (
                   <TableRow key={s.id} className="text-xs">
                     <TableCell className="px-2 font-medium">{s.santiyeler?.is_adi ?? "—"}</TableCell>
-                    <TableCell className="px-2">{s.sicil_no ?? "—"}</TableCell>
+                    <TableCell className="px-2">{sgkBicimle(s.sicil_no) || "—"}</TableCell>
                     <TableCell className="px-2 text-center">
                       <div className="flex items-center justify-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleRestore(s.id)} className="text-green-600 border-green-600 hover:bg-green-50">

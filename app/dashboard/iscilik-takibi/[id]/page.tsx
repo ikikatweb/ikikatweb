@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Plus, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
+import { sgkBicimle } from "@/lib/sgk-sicil";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth } from "@/hooks";
 
@@ -429,7 +430,9 @@ export default function IscilikDetayPage() {
                       setEditingHeader("sicil_no");
                       setHeaderEditValue(takip.sicil_no ?? "");
                     }}>
-                    {takip.sicil_no ?? "—"}
+                    {/* Bitişik girilmiş numara mevzuattaki bölümlere ayrılarak gösterilir;
+                        kayıttaki değere dokunulmaz. */}
+                    {sgkBicimle(takip.sicil_no) || "—"}
                   </span>
                 )}
               </div>
