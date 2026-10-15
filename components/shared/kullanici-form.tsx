@@ -411,9 +411,8 @@ export default function KullaniciForm({
             <strong>sadece kendi kayıtlarını</strong> görür/yazar.
           </p>
         )}
-        {/* Şantiyesiz veri görme. (Mesajlaşma kaldırıldı — "tüm mesajlaşmaları görsün"
-            seçeneği de birlikte kalktı; kullanicilar.tum_mesajlari_gor kolonu veritabanında
-            duruyor ama artık yazılmıyor.) */}
+        {/* Şantiyesiz veri görme. (Mesajlaşma kaldırıldı; "tüm mesajlaşmaları görsün"
+            seçeneği ve kolonu da gitti.) */}
         {(rol === "kisitli" || rol === "santiye_admin") && (
           <div className="mt-2 flex flex-col sm:flex-row gap-3">
             {/* Şantiyesiz veri görme — hem kısıtlı hem santiye_admin için */}

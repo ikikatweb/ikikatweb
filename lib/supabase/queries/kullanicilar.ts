@@ -24,7 +24,6 @@ export type KullaniciCreatePayload = {
   santiye_defteri_islem_gun?: number | null;
   santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
-  tum_mesajlari_gor?: boolean | null;
   santiyesiz_veri_gor?: boolean | null;
 };
 
@@ -50,7 +49,6 @@ export type KullaniciUpdatePayload = {
   santiye_defteri_islem_gun?: number | null;
   santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
-  tum_mesajlari_gor?: boolean | null;
   santiyesiz_veri_gor?: boolean | null;
 };
 

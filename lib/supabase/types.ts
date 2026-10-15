@@ -991,9 +991,6 @@ export type Kullanici = {
   dashboard_widgets: string[] | null;
   // Push bildirim kategori ayarları: { "kasa": false, ... } — varsayılan hepsi true/open
   bildirim_ayarlari?: Record<string, boolean> | null;
-  // Mesajlaşmada tüm konuşmaları görme yetkisi (admin için her zaman true,
-  // şantiye yöneticisi için form'dan seçilir, kısıtlı için hiç verilmez)
-  tum_mesajlari_gor?: boolean | null;
   // Şantiye atanmamış (genel) kayıtları görme yetkisi — TÜM modüller için (yazışmalar,
   // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.).
   // - true  → atanmış şantiyeler + santiye_id NULL olan kayıtlar/araçlar görünür
