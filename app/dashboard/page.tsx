@@ -1891,7 +1891,16 @@ export default function DashboardPage() {
       <BordroHatirlatma />
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
-      <GeciciKabulPrimHatirlatma />
+      {/* Uyarı, Bordro Özeti'nin hesapladığı satırları kullanır — "Kalan" rakamı
+          tablodakiyle birebir aynı olsun diye ikinci bir hesap yazılmadı. */}
+      <GeciciKabulPrimHatirlatma
+        satirlar={(bordroOzet?.satirlar ?? []).map((r) => ({
+          santiyeId: r.santiyeId, santiyeAd: r.santiyeAd,
+          yatmasiGereken: r.yatmasiGereken, yatmasiGerekenTahminsiz: r.yatmasiGerekenTahminsiz,
+          yatanPrim: r.yatanPrim, tahminiBordro: r.tahminiBordro,
+        }))}
+        tahminiFFKapali={tahminiFFKapali}
+      />
       <PoliceUyariHatirlatma />
       <NetsimYeniIsHatirlatma />
       <TeknikAtamaHatirlatma />

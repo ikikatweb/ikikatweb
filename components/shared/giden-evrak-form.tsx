@@ -657,6 +657,13 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
                 </div>
               </div>
             )}
+            {/* Bu pencere tahmini bordroyu DÜŞMEZ: o hesap ana ekranın Bordro Özeti'nde
+                yapılıyor ve buradan erişilemiyor. Rakamın neyi gösterdiği açıkça yazılır ki
+                ana ekrandaki "Kalan" ile farklı çıktığında kafa karıştırmasın. */}
+            <p className="text-[12px] text-gray-500">
+              Bu tutar tahmini bordro düşülmeden hesaplandı; ana ekrandaki “Kalan” sütunu
+              bu ay ödenecek bordroyu da düşer.
+            </p>
             <p className="text-gray-600">Dilekçeyi yine de kaydetmek istiyor musunuz?</p>
           </div>
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">

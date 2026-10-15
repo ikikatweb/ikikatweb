@@ -12,25 +12,42 @@ import { AlertTriangle, FileText, X } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import {
-  getGeciciKabulPrimEksikleri, getDilekceMetni, type GeciciKabulPrimEksik,
+  getGeciciKabulDilekceleri, getDilekceMetni, type GeciciKabulDilekce,
 } from "@/lib/supabase/queries/gecici-kabul-prim";
+
+/** Ana ekranın Bordro Özeti'nden gelen satır — "Kalan" burada hesaplanmış hâliyle gelir. */
+export type PrimSatiri = {
+  santiyeId: string;
+  santiyeAd: string;
+  yatmasiGereken: number;         // tahmini fiyat farkı DÂHİL
+  yatmasiGerekenTahminsiz: number;
+  yatanPrim: number;
+  tahminiBordro: number;
+};
 
 const tl = (n: number) => n.toLocaleString("tr-TR", { maximumFractionDigits: 0 }) + " ₺";
 const tarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
 
-export default function GeciciKabulPrimHatirlatma() {
+export default function GeciciKabulPrimHatirlatma({
+  satirlar = [],
+  tahminiFFKapali = false,
+}: {
+  /** Bordro Özeti'nin hesapladığı satırlar — aynı hesap ikinci kez YAZILMAZ. */
+  satirlar?: PrimSatiri[];
+  tahminiFFKapali?: boolean;
+}) {
   const { hasPermission, kullanici } = useAuth();
   const yetkili = hasPermission("iscilik-takibi", "goruntule") || hasPermission("yazismalar", "goruntule");
-  const [kayitlar, setKayitlar] = useState<GeciciKabulPrimEksik[]>([]);
+  const [dilekceler, setDilekceler] = useState<GeciciKabulDilekce[]>([]);
   // Dilekçe önizlemesi — sayfa DEĞİŞMEZ, metin pencerede okunur.
   const [onizleme, setOnizleme] = useState<{ konu: string; metin: string | null; tarih: string } | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
 
   const kontrol = useCallback(async () => {
-    if (!yetkili) { setKayitlar([]); return; }
-    const veri = await getGeciciKabulPrimEksikleri();
+    if (!yetkili) { setDilekceler([]); return; }
+    const veri = await getGeciciKabulDilekceleri();
     // Kısıtlı/şantiye admini: yalnız yetkili olduğu şantiyeler.
-    setKayitlar(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
+    setDilekceler(veri.filter((k) => kayitGorunur(k.santiye_id, kullanici)));
   }, [yetkili, kullanici]);
 
   useEffect(() => {
@@ -49,6 +66,21 @@ export default function GeciciKabulPrimHatirlatma() {
       setYukleniyor(false);
     }
   };
+
+  // KALAN = (yatması gereken) − yatan − tahmini bordro. Ana ekrandaki "Kalan" sütununun
+  // ta kendisi; tahmini fiyat farkı anahtarı da oradan devralınıyor ki iki yer aynı
+  // rakamı göstersin.
+  const satirMap = new Map(satirlar.map((s) => [s.santiyeId, s]));
+  const kayitlar = dilekceler
+    .map((d) => {
+      const s = satirMap.get(d.santiye_id);
+      if (!s) return null;
+      const gereken = tahminiFFKapali ? s.yatmasiGerekenTahminsiz : s.yatmasiGereken;
+      const kalan = gereken - s.yatanPrim - s.tahminiBordro;
+      return { ...d, is_adi: s.santiyeAd, gereken, kalan };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x && x.kalan >= 1)   // 1 TL altı yuvarlama
+    .sort((a, b) => b.kalan - a.kalan);
 
   if (!yetkili || kayitlar.length === 0) return null;
 
@@ -82,7 +114,7 @@ export default function GeciciKabulPrimHatirlatma() {
               <FileText size={12} /> geçici kabul
             </button>
             <span>dilekçesi verdi ({tarih(k.dilekceTarihi)}) ancak hâlâ</span>
-            <span className="font-bold text-red-700">{tl(k.eksik)}</span>
+            <span className="font-bold text-red-700">{tl(k.kalan)}</span>
             <span>yatması gereken prim var!</span>
           </li>
         ))}
