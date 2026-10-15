@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Plus, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
+import { sgkBicimle, sgkEksik, sgkHata, SGK_ORNEK } from "@/lib/sgk-sicil";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth } from "@/hooks";
 
@@ -244,6 +245,12 @@ export default function IscilikDetayPage() {
     let value: string | number | null;
     if (metinAlanlari.has(editingHeader)) {
       value = headerEditValue.trim() || null;
+      if (editingHeader === "sicil_no" && value) {
+        // 26 haneye tamamlanmadan kaydedilmesin; doğruysa standart biçimde yazılsın.
+        const hata = sgkHata(value);
+        if (hata) { toast.error(hata, { duration: 7000 }); return; }
+        value = sgkBicimle(value);
+      }
     } else {
       const cleaned = headerEditValue.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
       value = cleaned ? parseFloat(cleaned) : null;
@@ -421,7 +428,9 @@ export default function IscilikDetayPage() {
                     onChange={(e) => setHeaderEditValue(e.target.value)}
                     onBlur={saveHeaderEdit}
                     onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
-                    className="h-6 text-xs w-32 text-right" />
+                    placeholder={SGK_ORNEK}
+                    title={`26 hane: ${SGK_ORNEK}`}
+                    className="h-6 text-xs w-56 text-right" />
                 ) : (
                   <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
                     onClick={() => {
@@ -430,6 +439,14 @@ export default function IscilikDetayPage() {
                       setHeaderEditValue(takip.sicil_no ?? "");
                     }}>
                     {takip.sicil_no ?? "—"}
+                  </span>
+                )}
+                {sgkEksik(takip.sicil_no) && (
+                  <span
+                    className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700"
+                    title={sgkHata(takip.sicil_no) ?? ""}
+                  >
+                    eksik hane
                   </span>
                 )}
               </div>
