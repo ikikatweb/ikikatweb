@@ -133,15 +133,30 @@ export async function bildirgeTarihiniKabulEt(id: string): Promise<{ ok: boolean
   }
 }
 
-// ADMIN — bekleyen bir işlemi "kaldır" (iptal): aynı gün giriş+çıkış gibi durumlarda muhasebe işlem yapmaz,
-// bildirge hiç gelmez → kayıt durum='iptal' yapılır (silinmez, denetim için kalır). Sync bir daha dokunmaz.
-export async function bildirgeyiIptalEt(id: string): Promise<boolean> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from("personel_islem_takip")
-    .update({ durum: "iptal", cevap_tarihi: new Date().toISOString(), uyusmazlik: null, uyusmazlik_tip: null })
-    .eq("id", id).eq("durum", "bekliyor");
-  return !error;
+// ADMIN — bekleyen bir işlemi "Kaldır": muhasebeye hiç gönderilmemiş gibi GERİ ALIR.
+// Yalnız takip kaydını kapatmak yetmiyordu; bordrodaki karşılığı da geri alınır:
+//   çıkış → bitiş tarihi boşaltılır (kişi halen çalışıyor)
+//   giriş → o gün açılan atama satırı silinir (hiç başlamamış sayılır)
+// Sunucu route'u TC→personel eşlemesini service-role ile yapar.
+export async function bildirgeyiGeriAl(
+  id: string,
+): Promise<{ ok: boolean; tip: "giris" | "cikis" | null; atamaGeriAlindi: number; uyari: string | null }> {
+  try {
+    const r = await fetch("/api/personel-bildirge/geri-al", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return {
+      ok: r.ok && j?.ok === true,
+      tip: j?.tip ?? null,
+      atamaGeriAlindi: j?.atamaGeriAlindi ?? 0,
+      uyari: j?.uyari ?? null,
+    };
+  } catch {
+    return { ok: false, tip: null, atamaGeriAlindi: 0, uyari: null };
+  }
 }
 
 // Sicil uyarısını "yine de kapat" ile onayla. yazSicil=true ise (yalnız sicil_yok durumunda anlamlı)

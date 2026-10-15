@@ -4,12 +4,12 @@
 // (cevap PDF'i) henüz gelmedi → "bugün gönderilip cevabı gelmeyen" talepleri gösterir.
 // Kayıtlar app/api/bordro-mail-bulk açar; scripts/personel-bildirge-sync cevabı yakalayınca kapatır
 // → uyarı otomatik kalkar. Sekmeye dönünce (focus) yeniden kontrol edilir.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, bildirgeSiciliniOnayla, bildirgeTcsiniDuzelt, bildirgeyiIptalEt, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
+import { getBekleyenBildirgeler, bildirgeTarihiniKabulEt, bildirgeSiciliniOnayla, bildirgeTcsiniDuzelt, bildirgeyiGeriAl, type PersonelIslemTakip } from "@/lib/supabase/queries/personel-islem-takip";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 
 // TR bugünün YYYY-MM-DD değeri
@@ -121,42 +121,22 @@ export default function BildirgeHatirlatma() {
     }
   };
 
-  // "Kaldır" butonu YALNIZ aynı gün hem giriş HEM çıkış yapılmış kişilerde çıkar (Abdurrahman gibi: aynı gün
-  // içinde giriş yapılıp geri çıkılmış → muhasebe işlem yapmaz, bildirge gelmez). Eşleştirme: aynı kişi
-  // (TC; yoksa ad) + aynı islem_tarihi + hem giriş hem çıkış kaydı bekliyorsa, o kişinin İKİ kaydı da uygun.
-  const kaldirUygun = useMemo(() => {
-    const tcNorm = (s: string | null) => (s ?? "").replace(/\D/g, "");
-    const kisiGunKey = (r: PersonelIslemTakip) => {
-      const t = tcNorm(r.personel_tc);
-      const kisi = t.length === 11 ? `tc:${t}` : `ad:${(r.personel_ad ?? "").trim().toLocaleLowerCase("tr")}`;
-      return `${kisi}|${r.islem_tarihi ?? ""}`;
-    };
-    const grup = new Map<string, PersonelIslemTakip[]>();
-    for (const k of kayitlar) {
-      if (!k.islem_tarihi) continue;
-      const g = kisiGunKey(k);
-      const arr = grup.get(g) ?? []; arr.push(k); grup.set(g, arr);
-    }
-    const set = new Set<string>();
-    for (const arr of grup.values()) {
-      if (arr.some((x) => x.tip === "giris") && arr.some((x) => x.tip === "cikis")) {
-        for (const x of arr) set.add(x.id);
-      }
-    }
-    return set;
-  }, [kayitlar]);
-
-  // ADMIN — "Kaldır": muhasebe işlem yapmayacak/bildirge gelmeyecek işlemi beklemeden çıkar (durum='iptal').
+  // ADMIN — "Kaldır": işlemi muhasebeye hiç gönderilmemiş gibi GERİ ALIR.
+  // Takip kaydını kapatmak yetmiyor; bordrodaki karşılığı da geri alınır, yoksa kişi
+  // çıkmış/girmiş görünmeye devam eder (muhasebe işlemi yapamamış olsa bile).
   const iptalEt = async (k: PersonelIslemTakip) => {
     setKaldiriliyor(k.id);
-    const ok = await bildirgeyiIptalEt(k.id);
+    const s = await bildirgeyiGeriAl(k.id);
     setKaldiriliyor(null);
     setKaldirOnay(null);
-    if (ok) {
-      setKayitlar((prev) => prev.filter((x) => x.id !== k.id));
-      toast.success(`${k.personel_ad} (${k.tip === "giris" ? "giriş" : "çıkış"}): beklemeden kaldırıldı.`, { duration: toastSuresi() });
+    if (!s.ok) { toast.error("Kaldırılamadı.", { duration: toastSuresi() }); return; }
+    setKayitlar((prev) => prev.filter((x) => x.id !== k.id));
+    const ne = k.tip === "giris" ? "girişi" : "çıkışı";
+    if (s.uyari) {
+      // Bordro tarafı geri alınamadıysa bunu SAKLAMA — kullanıcı geri alındığını sanmasın.
+      toast(`${k.personel_ad}: istek kaldırıldı ama ${ne} geri alınamadı. ${s.uyari}`, { duration: toastSuresi() * 2, icon: "⚠️" });
     } else {
-      toast.error("Kaldırılamadı.", { duration: toastSuresi() });
+      toast.success(`${k.personel_ad}: ${ne} geri alındı, işlem hiç yapılmamış gibi.`, { duration: toastSuresi() });
     }
   };
 
@@ -199,18 +179,20 @@ export default function BildirgeHatirlatma() {
                 </span>
                 <span className="text-red-900">{k.personel_ad}</span>
                 <span className={fark >= 1 ? "text-red-600 text-xs font-semibold" : "text-red-500 text-xs"}>{gecikme}</span>
-                {/* ADMIN + aynı gün giriş-çıkış → "Kaldır": muhasebe işlem yapmayacak/bildirge gelmeyecek işlemi çıkar (2 adımlı onay). */}
-                {isYonetici && kaldirUygun.has(k.id) && (
+                {/* ADMIN → "Kaldır": muhasebe işlemi yapamadıysa (ör. personel raporlu) işlemi geri al.
+                    Eskiden yalnız aynı gün giriş+çıkış yapılanlarda çıkıyordu; muhasebenin işlemi
+                    yapamaması her satırda olabiliyor, bu yüzden hepsinde gösteriliyor (2 adımlı onay). */}
+                {isYonetici && (
                   kaldirOnay === k.id ? (
                     <span className="inline-flex items-center gap-1 ml-1">
-                      <span className="text-[11px] text-gray-600">Kaldırılsın mı?</span>
+                      <span className="text-[11px] text-gray-600">{k.tip === "giris" ? "Giriş iptal edilsin mi?" : "Çıkış iptal edilsin mi?"}</span>
                       <button type="button" onClick={() => iptalEt(k)} disabled={kaldiriliyor === k.id}
                         className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">Evet</button>
                       <button type="button" onClick={() => setKaldirOnay(null)} disabled={kaldiriliyor === k.id}
                         className="rounded border border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-600 hover:bg-gray-100">Vazgeç</button>
                     </span>
                   ) : (
-                    <button type="button" onClick={() => setKaldirOnay(k.id)} title="Bu işlemi beklemeden kaldır (muhasebe işlem yapmayacak / bildirge gelmeyecek)"
+                    <button type="button" onClick={() => setKaldirOnay(k.id)} title={k.tip === "giris" ? "Girişi geri al — atama silinir, hiç başlamamış sayılır" : "Çıkışı geri al — bitiş tarihi boşaltılır, kişi halen çalışıyor sayılır"}
                       className="ml-1 inline-flex items-center gap-0.5 rounded border border-gray-300 px-1.5 py-0.5 text-[11px] text-gray-500 hover:bg-gray-100 hover:text-gray-700">
                       <X size={11} /> Kaldır
                     </button>
