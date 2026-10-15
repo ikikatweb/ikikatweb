@@ -131,9 +131,22 @@ async function main() {
   const makineler: Makine[] = [];
   const atlanan: string[] = [];
 
+  // Kısa yazım: kullanıcı iş makinesini son hanesiyle verebiliyor ("5563" → 34-00-24-5563).
+  // Yalnız TEK eşleşme varsa kabul edilir; birden fazlaysa hangisi olduğu belirsiz, atlanır.
+  function kartBul(anahtar: string): { kart: K | undefined; hata?: string } {
+    const tam = kartByPlaka.get(anahtar);
+    if (tam) return { kart: tam };
+    if (anahtar.length < 3) return { kart: undefined };
+    const adaylar = [...kartByPlaka.entries()].filter(([k]) => k.endsWith(anahtar));
+    if (adaylar.length === 1) return { kart: adaylar[0][1] };
+    if (adaylar.length > 1) return { kart: undefined, hata: `birden fazla araca uyuyor (${adaylar.map(([, k]) => k.plaka).join(", ")})` };
+    return { kart: undefined };
+  }
+
   for (const [anahtar, o] of okumalar) {
-    const kart = kartByPlaka.get(anahtar);
-    if (!kart) { atlanan.push(`${o.plaka}: araç kartı bulunamadı`); continue; }
+    const bulgu = kartBul(anahtar);
+    const kart = bulgu.kart;
+    if (!kart) { atlanan.push(`${o.plaka}: ${bulgu.hata ?? "araç kartı bulunamadı"}`); continue; }
 
     if (kart.sayac_tipi === "saat") {
       const oncekiTarih = kart.son_okuma_tarihi ?? kart.arvento_fark_tarihi;
@@ -145,7 +158,7 @@ async function main() {
       // Önceki okuma: yeni modelde doğrudan saklı. İlk geçişte eski km-tabanlı kayıttan
       // geri hesaplanır — guncel_gosterge KULLANILMAZ, arada elle güncellenmiş olabiliyor.
       const oncekiOkuma = kart.son_okuma_deger
-        ?? eskiModeldenOncekiOkuma(kart.arvento_fark, arvento.get(anahtar)?.deger ?? null, mesafe);
+        ?? eskiModeldenOncekiOkuma(kart.arvento_fark, arvento.get(plakaAnahtar(kart.plaka))?.deger ?? null, mesafe);
       makineler.push({
         id: kart.id, plaka: kart.plaka, okuma: o.deger,
         oncekiOkuma, oncekiTarih, kontak, gun,
@@ -155,7 +168,7 @@ async function main() {
       continue;
     }
 
-    const arv = arvento.get(anahtar);
+    const arv = arvento.get(plakaAnahtar(kart.plaka));
     if (!arv) { atlanan.push(`${o.plaka}: Arvento'da bu araç yok / odometre boş`); continue; }
     kamyonlar.push({
       id: kart.id, plaka: kart.plaka, okuma: o.deger, arv: arv.deger,
