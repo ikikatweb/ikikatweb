@@ -7,13 +7,15 @@
 // ama prim hâlâ eksik" durumunu açıkta tutar.
 //
 // Veri evrakın kendisinden türetiliyor — şantiyeye kopyalanan ayrı bir alan yok.
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, FileText, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, FileText, Minus, Plus, X } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import {
-  getGeciciKabulDilekceleri, getDilekceMetni, type GeciciKabulDilekce,
+  getGeciciKabulDilekceleri, getDilekceOnizleme,
+  type GeciciKabulDilekce, type DilekceOnizleme,
 } from "@/lib/supabase/queries/gecici-kabul-prim";
+import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 
 /** Ana ekranın Bordro Özeti'nden gelen satır — "Kalan" burada hesaplanmış hâliyle gelir. */
 export type PrimSatiri = {
@@ -44,8 +46,10 @@ export default function GeciciKabulPrimHatirlatma({
     || hasPermission("bordro-takibi", "goruntule")
     || hasPermission("yazismalar-giden-evrak", "goruntule");
   const [dilekceler, setDilekceler] = useState<GeciciKabulDilekce[]>([]);
-  // Dilekçe önizlemesi — sayfa DEĞİŞMEZ, metin pencerede okunur.
-  const [onizleme, setOnizleme] = useState<{ konu: string; metin: string | null; tarih: string } | null>(null);
+  // Dilekçe önizlemesi — sayfa DEĞİŞMEZ, evrak pencerede AÇILIR.
+  // Düz metin değil, yazdırma önizlemesinin aynısı: gövde HTML olduğu için düz metinde
+  // "Geç<i>c</i> kabul" gibi ham etiketler görünüyordu.
+  const [onizleme, setOnizleme] = useState<DilekceOnizleme | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
 
   const kontrol = useCallback(async () => {
@@ -62,11 +66,34 @@ export default function GeciciKabulPrimHatirlatma({
     return () => window.removeEventListener("focus", onFocus);
   }, [kontrol]);
 
+  // Zoom + pan — kasa defterindeki "Slip Görüntüle" penceresiyle aynı davranış.
+  // Başlangıç %70: %60'ta yazı okunmayacak kadar küçük kalıyordu.
+  const BASLANGIC = 0.7;
+  const [zoom, setZoom] = useState(BASLANGIC);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [suruklenen, setSuruklenen] = useState(false);
+  const surukleRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  // Callback ref: wheel dinleyicisi node tam bağlanınca kurulur ({passive:false} şart,
+  // yoksa preventDefault çalışmaz ve tekerlek sayfayı kaydırır).
+  const wheelTemizle = useRef<(() => void) | null>(null);
+  const setViewport = useCallback((node: HTMLDivElement | null) => {
+    if (wheelTemizle.current) { wheelTemizle.current(); wheelTemizle.current = null; }
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const adim = e.deltaY < 0 ? 0.15 : -0.15;
+      setZoom((z) => Math.max(0.3, Math.min(3, Math.round((z + adim) * 100) / 100)));
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    wheelTemizle.current = () => node.removeEventListener("wheel", onWheel);
+  }, []);
+  const sifirla = () => { setZoom(BASLANGIC); setPan({ x: 0, y: 0 }); };
+
   const dilekceyiAc = async (evrakId: string) => {
     setYukleniyor(true);
     try {
-      const d = await getDilekceMetni(evrakId);
-      if (d) setOnizleme(d);
+      const d = await getDilekceOnizleme(evrakId);
+      if (d) { sifirla(); setOnizleme(d); }
     } finally {
       setYukleniyor(false);
     }
@@ -123,39 +150,95 @@ export default function GeciciKabulPrimHatirlatma({
               <FileText size={12} /> geçici kabul
             </button>
             <span>dilekçesi verdi ({tarih(k.dilekceTarihi)}) ancak hâlâ</span>
-            <span className="font-bold text-red-700">{tl(k.kalan)}</span>
+            <span className="font-bold text-emerald-700">{tl(k.kalan)}</span>
             <span>yatması gereken prim var!</span>
           </li>
         ))}
       </ul>
 
       {onizleme && (
-        // Basit katman: sayfa değişmeden metni okumak için yeterli.
+        // Basit katman: sayfa değişmeden evrağı okumak için yeterli.
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={() => setOnizleme(null)}
+          onMouseUp={() => { surukleRef.current = null; setSuruklenen(false); }}
         >
           <div
-            className="max-h-[80vh] w-full max-w-2xl overflow-auto rounded-xl bg-white p-5 shadow-xl"
+            className="flex max-h-[92vh] w-full max-w-[640px] flex-col rounded-xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xs text-gray-500">{tarih(onizleme.tarih)}</div>
-                <h3 className="font-bold text-[#1E3A5F]">{onizleme.konu}</h3>
-              </div>
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <h3 className="font-bold text-[#1E3A5F]">Evrak Önizleme — {onizleme.evrak_sayi_no}</h3>
               <button type="button" onClick={() => setOnizleme(null)} className="rounded p-1 text-gray-500 hover:bg-gray-100">
                 <X size={18} />
               </button>
             </div>
-            {onizleme.metin ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{onizleme.metin}</p>
-            ) : (
-              <p className="text-sm text-gray-400">Bu dilekçenin metni kaydedilmemiş (yalnız PDF olarak yüklenmiş olabilir).</p>
-            )}
+
+            {/* Zoom kontrolleri */}
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button" title="Küçült"
+                onClick={() => setZoom((z) => Math.max(0.3, Math.round((z - 0.1) * 100) / 100))}
+                className="flex h-7 w-7 items-center justify-center rounded border text-gray-700 hover:bg-gray-100"
+              ><Minus size={14} /></button>
+              <span className="min-w-[56px] rounded bg-gray-100 px-2 py-1 text-center text-sm font-medium tabular-nums">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button" title="Büyüt"
+                onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.1) * 100) / 100))}
+                className="flex h-7 w-7 items-center justify-center rounded border text-gray-700 hover:bg-gray-100"
+              ><Plus size={14} /></button>
+              <button
+                type="button" onClick={sifirla}
+                className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+              >Sıfırla</button>
+              <span className="ml-1 hidden text-xs text-gray-500 sm:inline">Tekerlek: zoom · Sürükle: kaydır</span>
+            </div>
+
+            {/* Görüntü viewport'u — sayfa transform ile ölçeklenir, sürüklenerek kaydırılır */}
+            <div
+              ref={setViewport}
+              className="relative flex-1 select-none overflow-hidden rounded-lg bg-gray-100"
+              style={{ minHeight: "60vh", cursor: suruklenen ? "grabbing" : "grab", touchAction: "none" }}
+              onMouseDown={(e) => {
+                surukleRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+                setSuruklenen(true);
+              }}
+              onMouseMove={(e) => {
+                const d = surukleRef.current;
+                if (!d) return;
+                setPan({ x: d.panX + (e.clientX - d.x), y: d.panY + (e.clientY - d.y) });
+              }}
+              onMouseUp={() => { surukleRef.current = null; setSuruklenen(false); }}
+              onMouseLeave={() => { surukleRef.current = null; setSuruklenen(false); }}
+            >
+              <div
+                className="absolute left-1/2 top-0 origin-top bg-white shadow-sm"
+                style={{
+                  width: "210mm",
+                  transform: `translateX(-50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transition: suruklenen ? "none" : "transform 120ms",
+                }}
+              >
+                <GidenEvrakOnIzleme
+                  firma={onizleme.firmalar}
+                  evrakTarihi={onizleme.evrak_tarihi}
+                  tarihGosterim={onizleme.tarih_gosterim}
+                  evrakSayiNo={onizleme.evrak_sayi_no}
+                  konu={onizleme.konu}
+                  muhatap={onizleme.muhatap}
+                  ilgiListesi={onizleme.ilgi_listesi}
+                  metin={onizleme.metin}
+                  ekler={onizleme.ekler}
+                  kaseDahil={onizleme.kase_dahil}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

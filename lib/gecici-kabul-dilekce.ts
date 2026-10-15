@@ -49,7 +49,11 @@ const TOLERANS = 2;
  * "KESİN KABUL" bilerek eşleşmez: uzaklığı 4, toleransın dışında.
  */
 export function geciciKabulKonusuMu(konu: string | null | undefined): boolean {
-  const n = trNorm(String(konu ?? ""));
+  return kabulGecer(trNorm(String(konu ?? "")));
+}
+
+/** Sadeleştirilmiş metinde "GECICI KABUL" kalıbı var mı? */
+function kabulGecer(n: string): boolean {
   if (!n) return false;
   const kelimeler = n.split(/[^A-Z0-9]+/).filter(Boolean);
   for (let i = 1; i < kelimeler.length; i++) {
@@ -61,4 +65,32 @@ export function geciciKabulKonusuMu(konu: string | null | undefined): boolean {
     if (uzaklik(onceki, HEDEF) <= TOLERANS) return true;
   }
   return false;
+}
+
+/** HTML etiketlerini atar. Dilekçe metni editörden HTML olarak geliyor ve etiket kelimeyi
+ *  ORTADAN bölebiliyor ("Geç<i>c</i> kabul"); etiket yerine boşluk koyarsak "Geç c kabul"
+ *  olur ve eşleşme kaçar. Bu yüzden etiket SİLİNİR, kelime yeniden birleşir. */
+function htmlSiz(x: string): string {
+  return x
+    .replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6])>/gi, " ")   // satır sonu = kelime sınırı
+    .replace(/<[^>]*>/g, "")                                   // kalan etiketler: iz bırakmadan
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&#\d+;/g, " ");
+}
+
+/** Metinde "geçici kabul" geçiyor mu? Konu alanıyla aynı tolerans.
+ *
+ *  Kullanıcı konuya yazmayı unutup yalnız gövdede "geçici kabulün yapılması" diyebiliyor;
+ *  dilekçe yine geçici kabul dilekçesidir. Metin HTML olduğu için önce etiketler atılır. */
+export function geciciKabulMetniMi(metin: string | null | undefined): boolean {
+  return kabulGecer(trNorm(htmlSiz(String(metin ?? ""))));
+}
+
+/** Konu ya da metin — ikisinden biri yeterli. */
+export function geciciKabulDilekcesiMi(
+  konu: string | null | undefined,
+  metin?: string | null,
+): boolean {
+  return geciciKabulKonusuMu(konu) || geciciKabulMetniMi(metin);
 }

@@ -6,13 +6,11 @@
 // Veri evrakın KENDİSİNDEN türetilir — şantiyeye ayrıca kopyalanmaz. Tarih, yazan kişi ve
 // dilekçe metni zaten giden_evrak'ta duruyor.
 //
-// Prim hesabı Bordro Takibi'ndeki TAHMİNSİZ karşılığıyla aynı:
-//   yatması gereken = (sözleşme bedeli + keşif artışı + fiyat farkı) × işçilik oranı / 100
-// Tahmini fiyat farkı BİLEREK dışarıda: o bir öngörü, yatırılması gereken bir yükümlülük
-// değil — eksik prim uyarısı öngörüye dayanmamalı.
+// Prim hesabı BURADA YAPILMAZ: lib/bordro/prim-durumu.ts ana ekrandaki "Kalan" sütununun
+// birebir aynısını üretiyor ve hem bu uyarı hem giden evrak formu oradan besleniyor.
 
 import { createClient } from "@/lib/supabase/client";
-import { geciciKabulKonusuMu } from "@/lib/gecici-kabul-dilekce";
+import { geciciKabulDilekcesiMi } from "@/lib/gecici-kabul-dilekce";
 
 export type GeciciKabulDilekce = {
   evrakId: string;
@@ -21,40 +19,6 @@ export type GeciciKabulDilekce = {
   yazan: string | null;
   santiye_id: string;
 };
-
-type ItRow = {
-  santiye_id: string;
-  kesif_artisi: number | null;
-  fiyat_farki: number | null;
-  iscilik_orani: number | null;
-  yatan_prim: number | null;
-};
-
-/** Tek şantiyenin prim durumu — dilekçe kaydedilmeden önceki uyarı için. */
-export async function getSantiyePrimDurumu(
-  santiyeId: string,
-): Promise<{ gereken: number; yatan: number; eksik: number } | null> {
-  if (!santiyeId) return null;
-  try {
-    const sb = createClient();
-    const { data: s } = await sb
-      .from("santiyeler").select("sozlesme_bedeli").eq("id", santiyeId).maybeSingle();
-    const bedel = (s as { sozlesme_bedeli?: number | null } | null)?.sozlesme_bedeli ?? 0;
-    const { data: itData } = await sb
-      .from("iscilik_takibi")
-      .select("kesif_artisi, fiyat_farki, iscilik_orani, yatan_prim")
-      .eq("santiye_id", santiyeId).eq("silindi", false);
-    let gereken = 0, yatan = 0;
-    for (const r of (itData ?? []) as Omit<ItRow, "santiye_id">[]) {
-      gereken += (bedel + (r.kesif_artisi ?? 0) + (r.fiyat_farki ?? 0)) * (r.iscilik_orani ?? 0) / 100;
-      yatan += r.yatan_prim ?? 0;
-    }
-    if (gereken <= 0) return null;   // oran/bedel girilmemiş → hesaplanamaz, uyarma
-    return { gereken, yatan, eksik: gereken - yatan };
-  } catch {
-    return null;                     // hesaplanamadıysa kaydı engelleme
-  }
-}
 
 /**
  * Konusunda "geçici kabul" geçen giden evraklar — iş başına EN ERKEN olanı.
@@ -69,13 +33,15 @@ export async function getGeciciKabulDilekceleri(): Promise<GeciciKabulDilekce[]>
     // veritabanı ilike'ında güvenilir değil. Giden evrak sayısı birkaç yüz, süzmek ucuz.
     const { data: evraklar } = await sb
       .from("giden_evrak")
-      .select("id, konu, evrak_tarihi, santiye_id, olusturan_id")
+      .select("id, konu, metin, evrak_tarihi, santiye_id, olusturan_id")
       .not("santiye_id", "is", null)
       .eq("silindi", false)
       .order("evrak_tarihi", { ascending: true });
 
-    type E = { id: string; konu: string | null; evrak_tarihi: string; santiye_id: string; olusturan_id: string | null };
-    const dilekceler = ((evraklar ?? []) as E[]).filter((e) => geciciKabulKonusuMu(e.konu));
+    type E = { id: string; konu: string | null; metin: string | null; evrak_tarihi: string; santiye_id: string; olusturan_id: string | null };
+    // Konuda yazmıyorsa METNE de bakılır — kullanıcı konuya "Hakediş" yazıp gövdede
+    // "geçici kabulün yapılması"nı isteyebiliyor.
+    const dilekceler = ((evraklar ?? []) as E[]).filter((e) => geciciKabulDilekcesiMi(e.konu, e.metin));
     if (dilekceler.length === 0) return [];
 
     // Aynı iş için birden fazla yazışma olabilir → EN ERKEN olanı başvuru sayılır.
@@ -100,15 +66,44 @@ export async function getGeciciKabulDilekceleri(): Promise<GeciciKabulDilekce[]>
   }
 }
 
-/** Uyarıdan tıklanınca dilekçe metnini getirir — sayfa değişmeden pencerede okunur. */
-export async function getDilekceMetni(evrakId: string): Promise<{ konu: string; metin: string | null; tarih: string } | null> {
+/** Uyarıdan tıklanınca dilekçenin KENDİSİ açılır — yazdırma önizlemesinin aynısı.
+ *  Düz metin dönmek yetmiyordu: gövde HTML olduğu için pencerede "Geç<i>c</i> kabul" gibi
+ *  ham etiketler görünüyordu. Antetli sayfayı basan bileşenin beklediği alanların hepsi
+ *  (firma, sayı no, muhatap, ilgi, ekler, kaşe) burada getirilir. */
+export type DilekceOnizleme = {
+  id: string;
+  evrak_sayi_no: string;
+  konu: string;
+  metin: string | null;
+  muhatap: string | null;
+  evrak_tarihi: string;
+  tarih_gosterim: string | null;
+  ilgi_listesi: string[];
+  ekler: string[];
+  kase_dahil: boolean;
+  firmalar: { firma_adi: string; kisa_adi: string | null; adres: string | null; antet_url: string | null; kase_url: string | null } | null;
+};
+
+export async function getDilekceOnizleme(evrakId: string): Promise<DilekceOnizleme | null> {
   try {
     const sb = createClient();
     const { data } = await sb
-      .from("giden_evrak").select("konu, metin, evrak_tarihi").eq("id", evrakId).maybeSingle();
+      .from("giden_evrak")
+      .select("id, evrak_sayi_no, konu, metin, muhatap, evrak_tarihi, tarih_gosterim, ilgi_listesi, ekler, kase_dahil, firmalar!left(firma_adi, kisa_adi, adres, antet_url, kase_url)")
+      .eq("id", evrakId)
+      .maybeSingle();
     if (!data) return null;
-    const d = data as { konu: string | null; metin: string | null; evrak_tarihi: string };
-    return { konu: d.konu ?? "", metin: d.metin, tarih: d.evrak_tarihi };
+    const d = data as unknown as DilekceOnizleme & { firmalar: DilekceOnizleme["firmalar"] | DilekceOnizleme["firmalar"][] };
+    return {
+      ...d,
+      konu: d.konu ?? "",
+      evrak_sayi_no: d.evrak_sayi_no ?? "",
+      ilgi_listesi: d.ilgi_listesi ?? [],
+      ekler: d.ekler ?? [],
+      kase_dahil: d.kase_dahil ?? false,
+      // PostgREST !left birleşimi tek kayıtta bile dizi dönebiliyor.
+      firmalar: Array.isArray(d.firmalar) ? (d.firmalar[0] ?? null) : d.firmalar,
+    };
   } catch {
     return null;
   }

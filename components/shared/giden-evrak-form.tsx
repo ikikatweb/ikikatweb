@@ -14,8 +14,8 @@ import SantiyeSelect from "@/components/shared/santiye-select";
 import { useAuth } from "@/hooks";
 import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import TarihInput from "@/components/shared/tarih-input";
-import { geciciKabulKonusuMu } from "@/lib/gecici-kabul-dilekce";
-import { getSantiyePrimDurumu } from "@/lib/supabase/queries/gecici-kabul-prim";
+import { geciciKabulDilekcesiMi, geciciKabulKonusuMu } from "@/lib/gecici-kabul-dilekce";
+import { getSantiyePrimDurumu, type PrimDurumu } from "@/lib/bordro/prim-durumu";
 import { getMuhataplarFull, createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
 import { Input } from "@/components/ui/input";
@@ -66,7 +66,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [kapatOnay, setKapatOnay] = useState(false); // düzenlemede ESC → "kaydedeyim mi?" onay dialog'u
   // Geçici kabul dilekçesi kaydedilmeden ÖNCE: o işin SGK primi tamamlanmadıysa yazan
   // kişiye sorulur. Kabul süreci başladıktan sonra eksik prim fark edilirse geç olur.
-  const [primOnay, setPrimOnay] = useState<{ gereken: number; yatan: number; eksik: number } | null>(null);
+  const [primOnay, setPrimOnay] = useState<PrimDurumu | null>(null);
+  const [primKontrol, setPrimKontrol] = useState(false);   // prim sorgusu sürerken kaydet pasif
   const primOnaylandi = useRef(false);
 
   const [firmalar, setFirmalar] = useState<Firma[]>([]);
@@ -230,8 +231,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     if (!santiyeId) { toast.error("Şantiye seçimi zorunludur."); return; }
 
     // GEÇİCİ KABUL DİLEKÇESİ + EKSİK PRİM → önce onay al.
-    if (geciciKabulKonusuMu(konu) && !primOnaylandi.current) {
+    // Konuda yazmıyorsa METNE de bakılır: kullanıcı konuya "Hakediş" yazıp gövdede
+    // "geçici kabulün yapılması"nı isteyebiliyor — dilekçe yine geçici kabul dilekçesi.
+    if (geciciKabulDilekcesiMi(konu, metin) && !primOnaylandi.current) {
+      setPrimKontrol(true);
       const durum = await getSantiyePrimDurumu(santiyeId);
+      setPrimKontrol(false);
       if (durum && durum.eksik >= 1) { setPrimOnay(durum); return; }
     }
     if (!isEdit && !muhatap.trim()) { toast.error("Muhatap seçimi zorunludur."); return; }
@@ -632,8 +637,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         <Button variant="outline" onClick={() => setOnIzleme(true)} disabled={loading || !firmaId}>
           <Eye size={16} className="mr-1" /> Ön İzleme
         </Button>
-        <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleSubmit} disabled={loading}>
-          <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
+        {/* Prim sorgusu birkaç saniye sürebiliyor; buton pasif olmazsa kullanıcı ikinci kez basıp
+            uyarı açılmadan kaydı başlatabiliyordu. */}
+        <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleSubmit} disabled={loading || primKontrol}>
+          <Save size={16} className="mr-1" /> {primKontrol ? "Prim kontrol ediliyor..." : loading ? "Kaydediliyor..." : "Kaydet"}
         </Button>
       </div>
 
@@ -645,24 +652,24 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </DialogHeader>
           <div className="space-y-2 py-1 text-sm text-gray-700">
             <p>
-              Bu evrakın konusu <b>geçici kabul</b> ve seçilen işin SGK primi eksik görünüyor.
+              Bu evrak <b>geçici kabul</b> {geciciKabulKonusuMu(konu) ? "konulu" : "talebi içeriyor"} ve
+              seçilen işin SGK primi eksik görünüyor.
             </p>
             {primOnay && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[13px]">
                 <div className="flex justify-between"><span>Yatması gereken</span><span className="font-semibold tabular-nums">{primOnay.gereken.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span></div>
                 <div className="flex justify-between"><span>Yatan</span><span className="font-semibold tabular-nums">{primOnay.yatan.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span></div>
+                <div className="flex justify-between"><span>Tahmini bordro</span><span className="font-semibold tabular-nums">{primOnay.tahminiBordro.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span></div>
                 <div className="mt-1 flex justify-between border-t border-amber-300 pt-1 text-amber-900">
                   <span className="font-semibold">Eksik</span>
                   <span className="font-bold tabular-nums">{primOnay.eksik.toLocaleString("tr-TR", { maximumFractionDigits: 0 })} ₺</span>
                 </div>
               </div>
             )}
-            {/* Bu pencere tahmini bordroyu DÜŞMEZ: o hesap ana ekranın Bordro Özeti'nde
-                yapılıyor ve buradan erişilemiyor. Rakamın neyi gösterdiği açıkça yazılır ki
-                ana ekrandaki "Kalan" ile farklı çıktığında kafa karıştırmasın. */}
+            {/* Hesap ana ekrandaki "Kalan" sütununun BİREBİR aynısı: yatması gereken (tahmini
+                fiyat farkı dâhil) − yatan − tahmini bordro. Tek tanım: lib/bordro/prim-durumu.ts */}
             <p className="text-[12px] text-gray-500">
-              Bu tutar tahmini bordro düşülmeden hesaplandı; ana ekrandaki “Kalan” sütunu
-              bu ay ödenecek bordroyu da düşer.
+              Bu rakam ana ekrandaki Bordro Özeti’nin “Kalan” sütunuyla aynı şekilde hesaplandı.
             </p>
             <p className="text-gray-600">Dilekçeyi yine de kaydetmek istiyor musunuz?</p>
           </div>

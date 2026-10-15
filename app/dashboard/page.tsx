@@ -15,6 +15,7 @@ import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRang
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
+import { ayYilNum, yerelBugun, tahminiBordroHesapla } from "@/lib/bordro/tahmini-bordro";
 import type { PersonelAtamaGecmisi, PersonelAtamaManuelGun, Personel, IscilikTakibiWithSantiye, PersonelBrutUcret } from "@/lib/supabase/types";
 import { getGidenEvraklar, updateGidenEvrak } from "@/lib/supabase/queries/giden-evrak";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -949,19 +950,6 @@ export default function DashboardPage() {
     const buAy = bugun.getMonth() + 1;
     const buYilAyNum = buYil * 100 + buAy;
 
-    // ait_oldugu_ay "MM.YYYY" veya "YYYY-MM-..." → YYYYMM numerik
-    const ayYilNum = (s: string): number => {
-      if (!s) return 0;
-      const mm = s.match(/^(\d{1,2})\.(\d{4})$/);
-      if (mm) return parseInt(mm[2]) * 100 + parseInt(mm[1]);
-      const iso = s.match(/^(\d{4})-(\d{2})/);
-      if (iso) return parseInt(iso[1]) * 100 + parseInt(iso[2]);
-      return 0;
-    };
-    const yerelBugun = () => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    };
     const personelUcret = (personelId: string, ayStr: string, yil: number): number => {
       const brut = brutUcretForAy(bordroBrutUcretler, personelId, ayStr);
       if (brut > 0) return brut;
@@ -1048,79 +1036,18 @@ export default function DashboardPage() {
       }
     }
 
-    // Şantiye bazlı bordro tahmini — BordroTakibi.bordroToplamForSantiye birebir
+    // Şantiye bazlı bordro tahmini — hesap lib/bordro/tahmini-bordro.ts'de TEK tanım.
+    // Giden evrak kaydedilirken çıkan "prim eksik" uyarısı da aynı fonksiyonu çağırıyor;
+    // iki ekranın farklı rakam göstermesi böyle imkânsız.
     function bordroTahmini(santiyeId: string): { toplam: number; buAy: number; onceki: number } {
-      const info = primInfo.get(santiyeId);
-      const sonAyNum = info?.sonAyNum ?? 0;
-      const dahilEdilen = new Set<string>();
-      let toplam = 0;
-      let buAyToplam = 0; // içinde bulunulan ay (buYilAyNum) kısmı — tooltip dökümü için
-
-      // 1) Manuel girişler — sonAy sonrası
-      for (const m of bordroManuelGunler) {
-        if (m.santiye_id !== santiyeId) continue;
-        const mAyNum = ayYilNum(m.ay);
-        if (sonAyNum > 0 && mAyNum <= sonAyNum) continue;
-        const yil = parseInt(m.ay.split("-")[0], 10);
-        const ucret = personelUcret(m.personel_id, m.ay, yil);
-        if (ucret > 0) {
-          const tutar = m.gun * ucret;
-          toplam += tutar;
-          if (mAyNum === buYilAyNum) buAyToplam += tutar;
-          dahilEdilen.add(`${m.personel_id}|${m.ay}`);
-        }
-      }
-
-      // 2) Doğal hesap — sonAy sonrası, manuel girilmemiş aylar
-      const santiyeAtamalari = bordroAtamalar.filter((a) => a.santiye_id === santiyeId);
-      if (santiyeAtamalari.length === 0) return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
-      if (buYilAyNum <= sonAyNum) return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
-      const baslangic = sonAyNum > 0 ? sonAyNum + 1 : (() => {
-        let enErken = Infinity;
-        for (const a of santiyeAtamalari) {
-          const aNum = ayYilNum(a.baslangic_tarihi.slice(0, 7));
-          if (aNum < enErken) enErken = aNum;
-        }
-        return enErken === Infinity ? buYilAyNum : enErken;
-      })();
-      let yil = Math.floor(baslangic / 100);
-      let ay = baslangic % 100;
-      if (ay === 0) { yil -= 1; ay = 12; }
-      while (yil * 100 + ay <= buYilAyNum) {
-        const ayStr = `${yil}-${String(ay).padStart(2, "0")}`;
-        const ayNum = yil * 100 + ay;
-        const ayBaslangic = `${yil}-${String(ay).padStart(2, "0")}-01`;
-        const sonGun = new Date(yil, ay, 0).getDate();
-        const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-        const today = yerelBugun();
-        const aktifSanal = today >= ayBaslangic && today <= ayBitis ? today : ayBitis;
-
-        const ayHesap = new Map<string, number>();
-        for (const at of santiyeAtamalari) {
-          const bH = at.bitis_tarihi ?? aktifSanal;
-          if (at.baslangic_tarihi > ayBitis) continue;
-          if (bH < ayBaslangic) continue;
-          const cb = at.baslangic_tarihi > ayBaslangic ? at.baslangic_tarihi : ayBaslangic;
-          const cbt = bH < ayBitis ? bH : ayBitis;
-          const ta = new Date(cb + "T00:00:00").getTime();
-          const tb = new Date(cbt + "T00:00:00").getTime();
-          const gun = Math.max(0, Math.round((tb - ta) / 86400000) + 1);
-          ayHesap.set(at.personel_id, (ayHesap.get(at.personel_id) ?? 0) + gun);
-        }
-        for (const [pId, gun] of ayHesap) {
-          if (gun <= 0) continue;
-          if (dahilEdilen.has(`${pId}|${ayStr}`)) continue;
-          const ucret = personelUcret(pId, ayStr, yil);
-          if (ucret > 0) {
-            const tutar = gun * ucret;
-            toplam += tutar;
-            if (ayNum === buYilAyNum) buAyToplam += tutar;
-          }
-        }
-        ay += 1;
-        if (ay > 12) { ay = 1; yil += 1; }
-      }
-      return { toplam, buAy: buAyToplam, onceki: toplam - buAyToplam };
+      return tahminiBordroHesapla({
+        santiyeId,
+        sonAyNum: primInfo.get(santiyeId)?.sonAyNum ?? 0,
+        buYilAyNum,
+        manuelGunler: bordroManuelGunler,
+        atamalar: bordroAtamalar,
+        ucret: personelUcret,
+      });
     }
 
     // Bu ay aktif kişi sayısı + atama günleri (sadece bilgi sütunu için)
