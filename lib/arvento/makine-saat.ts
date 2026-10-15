@@ -29,20 +29,42 @@ export function raporCalismaSn(r: {
   return c;
 }
 
-/** Bir plakanın verilen tarihten BUGÜNE kadar biriken kontak saati. */
+/** Bir plakanın verilen tarihten BUGÜNE kadar biriken kontak saati ve cihaz km'si.
+ *  mesafeKm, eski km-tabanlı kayıttan önceki okumayı geri hesaplamak için gerekiyor. */
 export async function kontakSaati(
   sb: SupabaseClient,
   plaka: string,
   baslangicTarihi: string,   // "YYYY-MM-DD"
-): Promise<{ saat: number; gun: number }> {
+): Promise<{ saat: number; gun: number; mesafeKm: number }> {
   const { data } = await sb
     .from("arac_arvento_rapor")
-    .select("kontak_sn, rolanti_sn, ilk_kontak, son_kontak")
+    .select("kontak_sn, rolanti_sn, ilk_kontak, son_kontak, mesafe_km")
     .eq("plaka", plaka)
     .gte("rapor_tarihi", baslangicTarihi);
-  const satirlar = (data ?? []) as Parameters<typeof raporCalismaSn>[0][];
+  const satirlar = (data ?? []) as (Parameters<typeof raporCalismaSn>[0] & { mesafe_km: number | null })[];
   const sn = satirlar.reduce((t, r) => t + raporCalismaSn(r), 0);
-  return { saat: sn / 3600, gun: satirlar.length };
+  const km = satirlar.reduce((t, r) => t + (r.mesafe_km ?? 0), 0);
+  return { saat: sn / 3600, gun: satirlar.length, mesafeKm: km };
+}
+
+/**
+ * ESKİ MODELDEN KÖPRÜ — ilk geçişte "önceki okuma"yı geri hesaplar.
+ *
+ * Eski kayıtta yalnız `arvento_fark` = (o günkü sayaç − o günkü cihaz km) duruyor.
+ * Cihazın O GÜNKÜ km'si = bugünkü km − aradaki mesafe. Buradan:
+ *     önceki okuma = arvento_fark + (bugünkü cihaz km − aradaki mesafe)
+ *
+ * guncel_gosterge KULLANILAMAZ: yakıt/puantaj girişleriyle arada güncellenmiş olabiliyor,
+ * kalibrasyon anındaki değeri taşımıyor (34-00-15-13879'da 15.189 yazıyordu, oysa 22.09'daki
+ * gerçek sayaç 15.050,9'du — aradaki 138 saati kaybedip katsayıyı 0,03 gösteriyordu).
+ */
+export function eskiModeldenOncekiOkuma(
+  arventoFark: number | null,
+  arventoSimdikiKm: number | null,
+  donemMesafeKm: number,
+): number | null {
+  if (arventoFark == null || arventoSimdikiKm == null) return null;
+  return arventoFark + (arventoSimdikiKm - donemMesafeKm);
 }
 
 /**

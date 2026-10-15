@@ -23,7 +23,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { kontakSaati, katsayiHesapla } from "@/lib/arvento/makine-saat";
+import { kontakSaati, katsayiHesapla, eskiModeldenOncekiOkuma } from "@/lib/arvento/makine-saat";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.resolve(__dirname, "..");
@@ -136,14 +136,16 @@ async function main() {
     if (!kart) { atlanan.push(`${o.plaka}: araç kartı bulunamadı`); continue; }
 
     if (kart.sayac_tipi === "saat") {
-      // Önceki okuma: yeni alan yoksa (ilk geçiş) eski kalibrasyondaki gösterge/tarih kullanılır.
-      const oncekiOkuma = kart.son_okuma_deger ?? kart.guncel_gosterge;
       const oncekiTarih = kart.son_okuma_tarihi ?? kart.arvento_fark_tarihi;
-      let kontak = 0, gun = 0;
+      let kontak = 0, gun = 0, mesafe = 0;
       if (oncekiTarih) {
         const r = await kontakSaati(sb, kart.plaka, oncekiTarih.slice(0, 10));
-        kontak = r.saat; gun = r.gun;
+        kontak = r.saat; gun = r.gun; mesafe = r.mesafeKm;
       }
+      // Önceki okuma: yeni modelde doğrudan saklı. İlk geçişte eski km-tabanlı kayıttan
+      // geri hesaplanır — guncel_gosterge KULLANILMAZ, arada elle güncellenmiş olabiliyor.
+      const oncekiOkuma = kart.son_okuma_deger
+        ?? eskiModeldenOncekiOkuma(kart.arvento_fark, arvento.get(anahtar)?.deger ?? null, mesafe);
       makineler.push({
         id: kart.id, plaka: kart.plaka, okuma: o.deger,
         oncekiOkuma, oncekiTarih, kontak, gun,
