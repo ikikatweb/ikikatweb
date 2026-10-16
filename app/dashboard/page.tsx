@@ -783,6 +783,17 @@ export default function DashboardPage() {
     () => [...sonGunKalanlar, ...suresiGecmisler],   // önce "bitmek üzere", sonra "bitmiş"
     [sonGunKalanlar, suresiGecmisler],
   );
+  // Ne yapılacağı TÜRE göre değişir. Eskiden hepsine "poliçe girebilir veya teklif
+  // isteyebilirsiniz" yazıyordu; muayenede poliçe de teklif de yok, araç muayene
+  // istasyonuna götürülür. Yanlış yönlendirme oluyordu.
+  const seritSigortaVar = useMemo(
+    () => seritKayitlari.some((y) => y.tip === "Trafik Sigorta" || y.tip === "Kasko"),
+    [seritKayitlari],
+  );
+  const seritMuayeneVar = useMemo(
+    () => seritKayitlari.some((y) => y.tip === "Muayene"),
+    [seritKayitlari],
+  );
   // Şerit başlığı NE bittiğini yazsın: "sigorta / muayene" gibi genel ifade yerine
   // "1 Kasko, 2 Trafik Sigorta". Çok olan tür başta.
   const tipOzeti = (liste: { tip: string }[]) => {
@@ -1788,7 +1799,18 @@ export default function DashboardPage() {
                 {suresiGecmisler.length > 0
                   ? "Süresi geçmiş araçlar trafiğe çıkamaz. "
                   : "Son gün — bugün işlem yapılmazsa araç trafiğe çıkamaz. "}
-                Aşağıdaki &quot;Yaklaşan Sigorta &amp; Muayene&quot; bölümünden poliçe girebilir veya teklif isteyebilirsiniz.
+                {seritSigortaVar && (
+                  <>
+                    {seritMuayeneVar && <b>Sigorta/kasko için: </b>}
+                    Aşağıdaki &quot;Yaklaşan Sigorta &amp; Muayene&quot; bölümünden poliçe girebilir veya teklif isteyebilirsiniz.{" "}
+                  </>
+                )}
+                {seritMuayeneVar && (
+                  <>
+                    {seritSigortaVar && <b>Muayene için: </b>}
+                    Aracın yetkili muayene istasyonuna götürülmesi gerekir; işlem bitince yeni muayene tarihini araç kartına işleyin.
+                  </>
+                )}
               </div>
             </div>
           </div>
