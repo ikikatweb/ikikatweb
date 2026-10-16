@@ -130,8 +130,12 @@ export async function PUT(
   }
 
   // ── YETKİLERİ İZLEYENLERE YAY ────────────────────────────────────────────────
-  // Bu kullanıcı çoğaltılmışsa (başkaları onun yetkilerini izliyorsa) aynı değişiklik
-  // onlara da yazılır. Amaç: aynı görevdeki kişilerin yetkileri sessizce ayrışmasın.
+  // ASIL GARANTİ ARTIK VERİTABANINDA: sql/kullanici_yetki_yay_trigger.sql, kullanicilar
+  // tablosundaki her güncellemede izleyenlere yazıyor. Burası yalnız arayüze "kaç kişiye
+  // yansıdı" sayısını döndürebilmek için duruyor; aynı değerleri yazdığı için zararsız.
+  // (Yayma yalnız burada olduğunda, Özge yeni şantiyeyi kendisi açınca yetki
+  //  /api/santiyeler/kendime-ata üzerinden yazılıyor ve Dilanur'a hiç geçmiyordu.)
+  // AD, KULLANICI ADI ve ŞİFRE yayılmaz — onlar kişiye özeldir.
   // AD, KULLANICI ADI ve ŞİFRE yayılmaz — onlar kişiye özeldir.
   // "aktif" de yayılmaz: birini pasife almak diğerini kapatmamalı.
   const yayilacak: Record<string, unknown> = {};
