@@ -780,7 +780,7 @@ export default function DashboardPage() {
     [yaklasanlar],
   );
   const seritKayitlari = useMemo(
-    () => [...sonGunKalanlar, ...suresiGecmisler],   // önce "bitmek üzere", sonra "bitmiş"
+    () => [...sonGunKalanlar, ...suresiGecmisler],   // önce "süresi dolmak üzere", sonra "süresi geçmiş"
     [sonGunKalanlar, suresiGecmisler],
   );
   // Ne yapılacağı TÜRE göre değişir. Eskiden hepsine "poliçe girebilir veya teklif
@@ -1788,7 +1788,7 @@ export default function DashboardPage() {
               <div className="font-semibold">
                 ⚠️{" "}
                 {sonGunKalanlar.length > 0 && (
-                  <>{tipOzeti(sonGunKalanlar)} <b>bitmek üzere</b></>
+                  <>{tipOzeti(sonGunKalanlar)} <b>süresi dolmak üzere</b></>
                 )}
                 {sonGunKalanlar.length > 0 && suresiGecmisler.length > 0 && " · "}
                 {suresiGecmisler.length > 0 && (
