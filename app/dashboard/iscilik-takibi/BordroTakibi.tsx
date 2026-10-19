@@ -541,6 +541,19 @@ type BordroTakibiProps = {
  *  "ad#sıra" ile anahtarlıyor; ekranda sıra gösterilmez. */
 const rolAdi = (k: string) => k.replace(/#\d+$/, "");
 
+/** personel_teknik.teknik_isim → anahtar listesi ("ad#sıra").
+ *  DÜZ split(",") KULLANILAMAZ: rol adının İÇİNDE virgül olabiliyor —
+ *  "Saha Elemanı - Harita Mühendisi, Harita Teknikeri veya Topoğraf 3 Yıl Deneyimli".
+ *  Virgülden bölününce anahtar ikiye parçalanıyor, hiçbir kutucuk eşleşmiyor ve
+ *  rol seçili görünmüyordu (başlık "1 seçili" derken tik basmıyordu). */
+function teknikAnahtarlari(ham: string | null | undefined): string[] {
+  const t = (ham ?? "").trim();
+  if (!t) return [];
+  const m = Array.from(t.matchAll(/(.+?)#(\d+)(?:,\s*|$)/g));
+  if (m.length > 0) return m.map((x) => `${x[1].trim()}#${x[2]}`);
+  return [t];   // eski format: indekssiz tek ad
+}
+
 export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTakibiProps = {}) {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   // Modül yetkileri (bordro-takibi modülü): ekle / duzenle / sil
@@ -1398,12 +1411,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const m = new Map<string, string>();
     for (const r of teknikKayitlari) {
       if (r.is_teknik && r.teknik_isim) {
-        // İndex suffix'i kaldır: "Şantiye Şefi#0" → "Şantiye Şefi"
-        const isimler = r.teknik_isim
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-          .map((s) => s.includes("#") ? s.split("#")[0] : s);
+        // İndex suffix'i kaldır: "Şantiye Şefi#0" → "Şantiye Şefi".
+        // Ayrıştırma teknikAnahtarlari ile: rol adında virgül olabiliyor.
+        const isimler = teknikAnahtarlari(r.teknik_isim).map(rolAdi);
         m.set(`${r.personel_id}|${r.santiye_id}`, isimler.join(", "));
       }
     }
@@ -1467,7 +1477,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     );
     if (!r?.teknik_isim) return null;
     // teknik_isim "isim#index" biçiminde saklanıyor; gösterirken indeksi at.
-    return r.teknik_isim.split(",").map((x) => x.trim().replace(/#\d+$/, "")).filter(Boolean).join(", ") || null;
+    return teknikAnahtarlari(r.teknik_isim).map(rolAdi).filter(Boolean).join(", ") || null;
   }, [teknikKayitlari]);
 
   /**
@@ -4592,9 +4602,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 onTouchEnd={() => onTeknikBasiliBitir?.()}
                 onTouchMove={() => onTeknikBasiliBitir?.()}
                 className="text-[10px] text-red-600 mt-0.5 truncate select-none"
-                title={`Atanmamış Teknik Personel: ${teknikPersoneller.join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa SAĞ TIKLAYIN.`}
+                title={`Atanmamış Teknik Personel: ${teknikPersoneller.map(rolAdi).join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa SAĞ TIKLAYIN.`}
               >
-                <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.join(", ")}
+                <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.map(rolAdi).join(", ")}
               </div>
             )}
             {/* Bordro dışından doldurulan roller — hem bilgi hem düzeltme girişi.
@@ -5894,7 +5904,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const mevcutKeyStr = teknikKayitlari.find(
               (r) => r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId,
             )?.teknik_isim ?? "";
-            const mevcutKeyListesi = mevcutKeyStr.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+            const mevcutKeyListesi = teknikAnahtarlari(mevcutKeyStr);
             // Geriye uyumluluk: eski kayıt key formatı olmayan "Şantiye Şefi" gibi ise,
             // listedeki İLK eşleşen indeksi ile yorumla.
             const mevcutKeySet = new Set<string>();
@@ -5979,7 +5989,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     // atanamıyordu — oysa uyarı da "bu rol boş" diyor. Kişi o ayda hâlâ
                     // çalışıyorsa kilit sürer, çıkmışsa rol serbest kalır.
                     if (!ayindaTeknikMi(r.personel_id, r.santiye_id)) continue;
-                    const rawKeyler = r.teknik_isim.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+                    const rawKeyler = teknikAnahtarlari(r.teknik_isim);
                     const baskaPersonel = personeller.find((p) => p.id === r.personel_id);
                     const ad = baskaPersonel?.ad_soyad ?? "—";
                     for (const raw of rawKeyler) {
