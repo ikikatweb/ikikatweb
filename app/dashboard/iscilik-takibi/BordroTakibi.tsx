@@ -5377,8 +5377,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       <div className="text-center py-3 text-gray-400 text-xs italic">Bu firmada iş yok</div>
                     ) : (
                       firmaSantiyeler.map((s, i) => {
-                        const isRenkler = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316"];
-                        const renk = isRenkler[i % isRenkler.length];
+                        // İş kartının sol şeridi FİRMANIN rengi. Eskiden 8 renklik bir palet
+                        // sıraya göre dağıtılıyordu (isRenkler[i % 8]): renk işin kendisine değil
+                        // LİSTEDEKİ SIRASINA bağlıydı — filtre değişince ya da üste bir iş
+                        // eklenince aynı iş renk değiştiriyordu, 8'den fazla işte renkler de
+                        // tekrarlıyordu. Bilgi taşımayan ama taşıyormuş gibi duran renk göz
+                        // yoruyordu. Firmanın rengi hem sabit hem de gruplamayı pekiştiriyor:
+                        // kart firma başlığıyla aynı rengi taşıyor.
+                        const renk = firmaRenk;
                         const liste = kanbanMap.get(s.id) ?? [];
                         // Şantiye accordion'u kullanıcı kontrollü — arama/filtre auto-expand yok.
                         const acik = expandedSantiyeler.has(s.id);
