@@ -4552,8 +4552,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ETİKET: eskiden "Teknik (atamasız)" yazıyordu ve rol DOLU olduğu hâlde
                 boşmuş gibi okunuyordu — firma yetkilisi atandığı hâlde "atamasız" görünmesi
                 kafa karıştırdı. Bu kişiler sigortalanamadığı için bordroda atamaları yok;
-                rol onlarla dolu. "Atanmamış Teknik" (kırmızı, üstteki satır) gerçekten
-                BOŞ rolleri gösterir — ikisi ayrı şey. */}
+                rol onlarla dolu. Bunu MOR renk zaten anlatıyor, ayrıca yazmaya gerek yok;
+                ayrıntı ipucunda duruyor. "Atanmamış Teknik" (kırmızı, üstteki satır)
+                gerçekten BOŞ rolleri gösterir — ikisi ayrı şey. */}
             {disAtamaOzet && (
               <div
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
@@ -4563,7 +4564,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 className="text-[10px] text-indigo-700 mt-0.5 truncate select-none"
                 title="Rol DOLU — bordroda ataması olmayan biri (firma yetkilisi vb.) tarafından dolduruldu. Değiştirmek için SAĞ TIKLAYIN."
               >
-                <span className="font-semibold">Teknik personel (bordro dışı):</span>{" "}
+                <span className="font-semibold">Teknik personel:</span>{" "}
                 {disAtamaOzet}
               </div>
             )}
