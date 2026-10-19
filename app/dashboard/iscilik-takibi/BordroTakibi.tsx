@@ -537,6 +537,10 @@ type BordroTakibiProps = {
   gosterilecekDurum?: GosterilecekDurum;
 };
 
+/** "Saha Elemanı …#3" → "Saha Elemanı …". Dış atama ve personel ataması rolleri
+ *  "ad#sıra" ile anahtarlıyor; ekranda sıra gösterilmez. */
+const rolAdi = (k: string) => k.replace(/#\d+$/, "");
+
 export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTakibiProps = {}) {
   const { kullanici, isYonetici, hasPermission } = useAuth();
   // Modül yetkileri (bordro-takibi modülü): ekle / duzenle / sil
@@ -570,6 +574,30 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
    * Giriş o günden önce başlamış ve çıkış verilmemiş ya da o günden sonraysa doludur.
    * Giriş tarihi boş olan eski kayıtlar "hep vardı" sayılır — geçmişi bozmamak için.
    */
+  /** Rol listesinde AYNI AD birden çok kez geçebiliyor (ör. "Saha Elemanı …" x2).
+   *  Bu yüzden dış atama kaydı rol ADIYLA değil "ad#sıra" ile anahtarlanır — personel
+   *  ataması (personel_teknik.teknik_isim) zaten bu biçimi kullanıyor.
+   *  Ad ile anahtarlanınca tek bir dış atama aynı adlı TÜM rolleri dolu gösteriyordu:
+   *  Eskişehir'de bir "Saha Elemanı" firma yetkilisindeyken diğerine kimse atanamıyordu. */
+  const disAtamaAnahtar = (isim: string, idx: number) => `${isim}#${idx}`;
+
+  /** (isim, idx) rolünün dış atama geçmişi. Eski kayıtlar yalnız rol adıyla anahtarlı;
+   *  o kayıt, adın listedeki İLK sırasına ait sayılır — aksi hâlde yine iki rolü birden
+   *  doldururdu. Böylece veri taşımaya gerek kalmıyor. */
+  const disAtamaGecmisFor = (
+    disAtama: Record<string, unknown>,
+    roller: string[],
+    isim: string,
+    idx: number,
+  ): DisAtamaKayit[] => {
+    const indeksli = disAtama[disAtamaAnahtar(isim, idx)];
+    if (indeksli !== undefined) return disAtamaGecmis(indeksli as never);
+    if (idx === roller.indexOf(isim) && disAtama[isim] !== undefined) {
+      return disAtamaGecmis(disAtama[isim] as never);
+    }
+    return [];
+  };
+
   const disAtamaDoluMu = (kayitlar: DisAtamaKayit[], gun: string): DisAtamaKayit | null =>
     kayitlar.find((k) => (!k.giris || k.giris <= gun) && (!k.cikis || k.cikis > gun)) ?? null;
 
@@ -1415,8 +1443,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       teknikIsimler.forEach((isim, idx) => {
         if (atanmisKeyler.has(`${isim}#${idx}`)) return;
         // Atama dışı doldurulmuşsa: o ayın SONUNDA hâlâ görevde olan bir kayıt var mı?
-        if (disAtamaDoluMu(disAtamaGecmis(disAtama[isim]), aySonuTarihi)) return;
-        result.push(isim);
+        // Arama İNDEKSLİ: aynı adlı ikinci rol, birincinin dış ataması yüzünden dolu sayılmasın.
+        if (disAtamaDoluMu(disAtamaGecmisFor(disAtama, teknikIsimler, isim, idx), aySonuTarihi)) return;
+        // Dönen değer "ad#sıra" — aynı adlı roller birbirinden ayırt edilebilsin diye.
+        result.push(disAtamaAnahtar(isim, idx));
       });
       cache.set(santiyeId, result);
       return result;
@@ -1457,12 +1487,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       for (const [rol, liste] of Object.entries(disAtamaSecim)) {
         const satirlar = (liste ?? []).filter((k) => k.ad?.trim());
         for (const k of satirlar) {
-          if (!k.giris) { toast.error(`${rol}: ${k.ad} için giriş tarihi girin.`); return; }
-          if (k.cikis && k.cikis < k.giris) { toast.error(`${rol}: ${k.ad} çıkışı girişten önce olamaz.`); return; }
+          if (!k.giris) { toast.error(`${rolAdi(rol)}: ${k.ad} için giriş tarihi girin.`); return; }
+          if (k.cikis && k.cikis < k.giris) { toast.error(`${rolAdi(rol)}: ${k.ad} çıkışı girişten önce olamaz.`); return; }
         }
         // Aynı rolde birden çok "devam eden" kayıt olamaz — biri çıkmadan diğeri giremez.
         if (satirlar.filter((k) => !k.cikis).length > 1) {
-          toast.error(`${rol}: aynı anda birden fazla kişi görevde olamaz, öncekine çıkış verin.`);
+          toast.error(`${rolAdi(rol)}: aynı anda birden fazla kişi görevde olamaz, öncekine çıkış verin.`);
           return;
         }
         if (satirlar.length) {
@@ -1496,13 +1526,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
    * Çıkmış olanlar özette yer almaz — geçmişleri pencerede duruyor.
    */
   const disAtamaOzeti = useCallback((santiyeId: string): string | null => {
-    const kayit = santiyeler.find((x) => x.id === santiyeId)?.teknik_dis_atama;
+    const sant = santiyeler.find((x) => x.id === santiyeId);
+    const kayit = sant?.teknik_dis_atama;
     if (!kayit) return null;
+    const roller = sant?.teknik_personeller ?? [];
     const [y, m] = seciliAy.split("-").map(Number);
     const aySonu = `${y}-${String(m).padStart(2, "0")}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
     const parcalar: string[] = [];
-    for (const [rol, v] of Object.entries(kayit)) {
-      const aktif = disAtamaDoluMu(disAtamaGecmis(v), aySonu);
+    // Kayıt anahtarları üzerinden DEĞİL, rol listesi üzerinden gezilir: aynı adlı iki rol
+    // tek anahtara sığmıyordu, biri görünmüyordu.
+    for (let i = 0; i < roller.length; i++) {
+      const rol = roller[i];
+      const aktif = disAtamaDoluMu(disAtamaGecmisFor(kayit, roller, rol, i), aySonu);
       if (!aktif) continue;
       const gun = aktif.giris ? new Date(aktif.giris + "T00:00:00").toLocaleDateString("tr-TR") : null;
       parcalar.push(`${rol} — ${aktif.ad}${gun ? ` (${gun})` : ""}`);
@@ -6762,11 +6797,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             <button type="button"
               onClick={() => {
                 const sant = santiyeler.find((x) => x.id === teknikMenu.santiyeId);
+                // Mevcut kayıtlar İNDEKSLİ anahtara çevrilerek yüklenir; eski (yalnız ad)
+                // anahtarlar da disAtamaGecmisFor ile doğru sıraya düşer.
+                const roller = sant?.teknik_personeller ?? [];
                 const mevcut: Record<string, DisAtamaKayit[]> = {};
-                for (const [rol, v] of Object.entries(sant?.teknik_dis_atama ?? {})) {
-                  const g = disAtamaGecmis(v);
-                  if (g.length) mevcut[rol] = g;
-                }
+                roller.forEach((rol, i) => {
+                  const g = disAtamaGecmisFor(sant?.teknik_dis_atama ?? {}, roller, rol, i);
+                  if (g.length) mevcut[disAtamaAnahtar(rol, i)] = g;
+                });
                 setDisAtamaSecim(mevcut);
                 setDisAtamaDialog({ santiyeId: teknikMenu.santiyeId, santiyeAd: teknikMenu.santiyeAd });
                 setTeknikMenu(null);
@@ -6813,6 +6851,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ) : (
                   <div className="space-y-2">
                     {Array.from(new Set([...bosRoller, ...Object.keys(disAtamaSecim)])).map((rol) => {
+                      // rol = "ad#sıra" — aynı adlı iki rol ayrı satır olarak görünür.
                       const liste = disAtamaSecim[rol] ?? [];
                       const guncelle = (i: number, yama: Partial<DisAtamaKayit>) =>
                         setDisAtamaSecim((prev) => {
@@ -6825,7 +6864,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                       const gorevdeVar = liste.some((k) => !k.cikis && k.ad);
                       return (
                         <div key={rol} className="rounded-lg border border-gray-200 p-2.5">
-                          <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rol}</div>
+                          <div className="text-xs font-semibold text-[#1E3A5F] mb-1.5">{rolAdi(rol)}</div>
 
                           {liste.length === 0 && (
                             <p className="text-[11px] text-gray-400 mb-1.5">Bu rolü dolduran kimse yok.</p>
