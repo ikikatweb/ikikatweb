@@ -16,6 +16,7 @@
 // bir isim seçer ve burada saklanır. Eski model (is_teknik=true/false) hâlâ
 // çalışır; teknik_isim null kalır.
 import { createClient } from "@/lib/supabase/client";
+import { disAtamaDoluRolSayisi } from "@/lib/personel/dis-atama";
 
 export type PersonelTeknikRow = {
   personel_id: string;
@@ -115,10 +116,10 @@ export async function getTeknikAtamaEksikleri(): Promise<TeknikAtamaEksik[]> {
   const supabase = getSupabase();
   const { data: santiyeler, error } = await supabase
     .from("santiyeler")
-    .select("id, is_adi, durum, ihaleli, isyeri_teslim_tarihi, sozlesme_tarihi, teknik_atama_gun, teknik_personeller")
+    .select("id, is_adi, durum, ihaleli, isyeri_teslim_tarihi, sozlesme_tarihi, teknik_atama_gun, teknik_personeller, teknik_dis_atama")
     .eq("durum", "aktif");
   if (error) return [];
-  type S = { id: string; is_adi: string; ihaleli?: boolean | null; isyeri_teslim_tarihi: string | null; sozlesme_tarihi: string | null; teknik_atama_gun: number | null; teknik_personeller: string[] | null };
+  type S = { id: string; is_adi: string; ihaleli?: boolean | null; isyeri_teslim_tarihi: string | null; sozlesme_tarihi: string | null; teknik_atama_gun: number | null; teknik_personeller: string[] | null; teknik_dis_atama?: Record<string, unknown> | null };
   // İhaleli + aktif + teknik gerekli (liste dolu). Teslim/süre YOKSA fallback uygulanır (aşağıda).
   const isler = (santiyeler ?? []).filter((s: S) =>
     s.ihaleli !== false && Array.isArray(s.teknik_personeller) && s.teknik_personeller.length > 0) as S[];
@@ -143,7 +144,11 @@ export async function getTeknikAtamaEksikleri(): Promise<TeknikAtamaEksik[]> {
   const sonuc: TeknikAtamaEksik[] = [];
   for (const s of isler) {
     const gereken = (s.teknik_personeller as string[]).length;
-    const atanan = atananMap.get(s.id) ?? 0;
+    // DIŞ ATAMA DA SAYILIR: firma sahibi/yetkilisi sigortalanamadığı için personel ataması
+    // açılmıyor, rolü yine de o dolduruyor. Eskiden yalnız personel_teknik sayılıyordu;
+    // Bordro Takibi kartı rolü dolu gösterirken bu uyarı "gereken 4, atanan 3" diyordu.
+    const disAtanan = disAtamaDoluRolSayisi(s.teknik_dis_atama, s.teknik_personeller, bugun);
+    const atanan = (atananMap.get(s.id) ?? 0) + disAtanan;
     if (atanan >= gereken) continue;                       // yeterli teknik atanmış → uyarma
     // BAZ TARİH: teslim varsa teslim; yoksa GEÇİCİ olarak sözleşme tarihi (teslim girilince ona göre güncellenir).
     const bazTarih = s.isyeri_teslim_tarihi ?? s.sozlesme_tarihi;
