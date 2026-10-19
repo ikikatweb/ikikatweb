@@ -4963,7 +4963,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}>{p.tc_kimlik_no ?? "—"}</td>
         {isAktifKolon && (
           <>
-            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-emerald-700 font-semibold"}`}>
+            {/* İşe başlama SİYAH; yalnız SEÇİLİ AYDA işe girenler yeşil (ayVurgu).
+                Eskiden yedek renk de yeşildi, yani tüm tarihler yeşil çıkıyordu ve
+                "bu ay giren" vurgusu kaybolup gidiyordu. */}
+            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-gray-900"}`}>
               {iseBaslama ? formatTr(iseBaslama) : "—"}
             </td>
             <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-red-600 font-semibold"}`}>
