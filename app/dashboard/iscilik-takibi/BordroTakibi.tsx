@@ -4975,7 +4975,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-gray-900"}`}>
               {iseBaslama ? formatTr(iseBaslama) : "—"}
             </td>
-            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-red-600 font-semibold"}`}>
+            {/* Çıkış da SİYAH; yalnız SEÇİLİ AYDA çıkanlar kırmızı (ayVurgu).
+                İşe Başlama'daki ile aynı sorun: yedek renk kırmızı olduğu için tarihi
+                olan her çıkış kırmızı çıkıyor, "bu ay çıktı" vurgusu kayboluyordu. */}
+            <td className={`px-2 py-1.5 whitespace-nowrap text-[11px] ${ayVurgu ?? "text-gray-900"}`}>
               {donemselCikis ? formatTr(donemselCikis) : "—"}
             </td>
             <td className={`px-2 py-1.5 text-right whitespace-nowrap ${ayVurgu ?? ""}`}>
