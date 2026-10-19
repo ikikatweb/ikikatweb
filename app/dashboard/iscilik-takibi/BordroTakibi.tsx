@@ -5875,10 +5875,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               && santiyeKayit!.teknik_personeller!.length === 0;
             // INDEX-BAZLI KEY: "Şantiye Şefi#0" gibi. Aynı isim 2 kez varsa farklı index → farklı key.
             // DB'ye yazılırken bu format ile yazılır, görsel olarak sadece isim gösterilir.
-            const teknikSecenekleri = santiyeTeknikIsimleri.map((isim, idx) => ({
-              isim,
-              key: `${isim}#${idx}`,
-            }));
+            // AYNI ADLI ROLLER NUMARALANIR. Eskişehir'de "Saha Elemanı …" iki kez geçiyor;
+            // iki satırın yazısı birebir aynı olduğu için hangisini tiklediğiniz görünmüyordu
+            // ("seçildi" diyor ama tik ikizine düşüyor sanılıyordu). Ad tek geçiyorsa numara yok.
+            const adSayisi = new Map<string, number>();
+            for (const i of santiyeTeknikIsimleri) adSayisi.set(i, (adSayisi.get(i) ?? 0) + 1);
+            const adSira = new Map<string, number>();
+            const teknikSecenekleri = santiyeTeknikIsimleri.map((isim, idx) => {
+              const n = (adSira.get(isim) ?? 0) + 1;
+              adSira.set(isim, n);
+              return {
+                isim,
+                etiket: (adSayisi.get(isim) ?? 0) > 1 ? `${isim}  (${n}. kişi)` : isim,
+                key: `${isim}#${idx}`,
+              };
+            });
             // Şu an bu personele atanmış keys (DB'de "Şantiye Şefi#0" gibi virgülle ayrılmış)
             const mevcutKeyStr = teknikKayitlari.find(
               (r) => r.personel_id === gunEdit.personel.id && r.santiye_id === gunEdit.santiyeId,
@@ -5996,7 +6007,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         )}
                       </div>
                       <div className="space-y-1">
-                        {teknikSecenekleri.map(({ isim, key }) => {
+                        {teknikSecenekleri.map(({ etiket, key }) => {
                           const seciliMi = mevcutKeySet.has(key);
                           const baskasinda = baskaPersonelinKeyi.get(key);
                           // Bu key başka birine atanmışsa → pasif (tikli + disabled)
@@ -6014,7 +6025,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                   className="h-4 w-4 accent-gray-400 cursor-not-allowed"
                                 />
                                 <span className="text-sm text-gray-600 flex-1 min-w-0">
-                                  <span className="line-through">{isim}</span>
+                                  <span className="line-through">{etiket}</span>
                                   <span className="ml-2 text-[10px] text-red-600 font-semibold">
                                     {baskasinda}'da
                                   </span>
@@ -6035,7 +6046,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                                 checked={seciliMi}
                                 onChange={() => toggleTeknikIsim(key)}
                               />
-                              <span className="text-sm text-[#1E3A5F]">{isim}</span>
+                              <span className="text-sm text-[#1E3A5F]">{etiket}</span>
                             </label>
                           );
                         })}
