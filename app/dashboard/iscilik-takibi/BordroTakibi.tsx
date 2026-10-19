@@ -1242,28 +1242,40 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return map;
   }, [naturalGunMap, manuelGunler, seciliAy]);
 
-  // Kişi başına DOĞAL (atama bazlı, manuel öncesi) toplam gün — cari ayda bugüne kadar
-  // her kişinin GİRİŞ tarihine göre beklenen gün sayısıdır (ay içinde işe girenler için
-  // daha az olması NORMALDİR). naturalGunMap zaten giriş/çıkış + bugünü dikkate alır.
-  const personelDogalToplamMap = useMemo(() => {
+  // AY SONU PROJEKSİYONU — açık atamalar bugüne değil AY SONUNA kadar sayılır.
+  // "Eksik" kararı bununla verilir: eksik demek "ayı 30 güne tamamlayamayacak" demek,
+  // bu da ancak ayın tamamına bakılarak söylenebilir. Bugüne kadarki günle bakılırsa
+  // ayın ortasında herkes eksik görünür (19 Ekim'de 25 günü olan kişi gibi).
+  // NOT: ekranda GÖSTERİLEN gün sayısı değişmez; bu yalnız eksik KARARI içindir.
+  const aySonuNaturalGunMap = useMemo(
+    () => gunHesaplaAyBazliOverride(atamalar, seciliAy, new Map(), true),
+    [atamalar, seciliAy],
+  );
+  const personelAySonuToplamMap = useMemo(() => {
+    const manuelLookup = new Map<string, number>();
+    for (const m of manuelGunler) {
+      if (m.ay !== seciliAy) continue;
+      manuelLookup.set(`${m.personel_id}|${m.santiye_id}`, m.gun);
+    }
     const map = new Map<string, number>();
-    for (const [pid, sMap] of naturalGunMap) {
+    for (const [pid, sMap] of aySonuNaturalGunMap) {
       let toplam = 0;
-      for (const dogal of sMap.values()) toplam += dogal;
+      for (const [sid, dogal] of sMap) {
+        const k = `${pid}|${sid}`;
+        toplam += manuelLookup.has(k) ? manuelLookup.get(k)! : dogal;
+      }
       map.set(pid, toplam);
     }
     return map;
-  }, [naturalGunMap]);
+  }, [aySonuNaturalGunMap, manuelGunler, seciliAy]);
 
-  // "Eksik gün" eşiği — KİŞİYE ÖZEL (ay içinde işe gireni cezalandırmamak için):
-  //  - Geçmiş ay → tam ay beklenir (30).
-  //  - Cari ay → kişinin KENDİ atamasına göre bugüne kadarki doğal günü (giriş tarihi dahil).
-  //  - Gelecek ay → 0 (beklenti yok).
-  const beklenenGunFor = useCallback((personelId: string): number => {
-    if (seciliAy < buAy) return 30;
-    if (seciliAy > buAy) return 0;
-    return personelDogalToplamMap.get(personelId) ?? 0;
-  }, [seciliAy, buAy, personelDogalToplamMap]);
+  /** Kişi ayı 30 güne tamamlayamıyor mu? Ölçü ATAMALARDAN BEKLENEN değil, 30 GÜNDÜR:
+   *  bir kişi aynı anda birden çok şantiyede sigortalı olabilir, günler toplanır;
+   *  önemli olan toplamın 30'u bulup bulmadığıdır. */
+  const otuzuDolduramiyorMu = useCallback((personelId: string): boolean => {
+    const t = personelAySonuToplamMap.get(personelId) ?? 0;
+    return t > 0 && t < 30;
+  }, [personelAySonuToplamMap]);
 
   // Personel → halen AÇIK (aktif) ataması olan şantiyeler (çıkış tarihi girilmemiş).
   // Limit Dışı'da hem "halen aktif mi" kontrolü hem de "çıkış yaptığı şantiyede
@@ -1281,20 +1293,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Halen aktif (en az bir açık ataması olan) personel kümesi.
   const aktifPersonelIds = useMemo(() => new Set(aktifSantiyeMap.keys()), [aktifSantiyeMap]);
 
-  // Bir personel "Limit Dışı" listesine girer mi? (gün rozetleriyle AYNI eşikler)
-  //  - Normal aralık [beklenenGun, 30]. Cari ayda beklenenGun = bugüne kadar geçen gün;
-  //    geçmiş ayda 30. Bu aralıkta personel "limitte" sayılır → listelenmez.
-  //  - Halen aktif (açık atama) ise: beklenenGun'un ALTINDA (eksik) VEYA 30'u AŞAN
-  //    (SGK ihlali) → limit dışı. (Geçmiş ay: beklenenGun=30 → tam "30'dan farklı" demek.)
-  //  - İşten ayrılmış (açık atama yok) ise: SADECE 30'u AŞANLAR listelenir
-  //    (çift sigortalılık/SGK ihlali). Az gün çalışıp ayrılmak normaldir → listelenmez.
+  // Bir personel "Limit Dışı" listesine girer mi? (eksik rozetiyle AYNI eşik)
+  //  - Halen aktif (açık atama) ise: ayı 30 güne TAMAMLAYAMIYOR (eksik) VEYA toplam
+  //    30'u AŞIYOR (çift sigortalılık / SGK ihlali) → limit dışı.
+  //  - İşten ayrılmış (açık atama yok) ise: SADECE 30'u AŞANLAR listelenir —
+  //    az gün çalışıp ayrılmak normaldir, eksik sayılmaz.
+  // Ölçü atamalardan beklenen gün DEĞİL 30 gündür; kişi aynı anda birden çok şantiyede
+  // sigortalı olabilir, günler toplanır ve önemli olan toplamın 30'u bulmasıdır.
   const limitDisiKapsar = useCallback((personelId: string): boolean => {
     const t = personelEfektifToplamMap.get(personelId) ?? 0;
     if (t === 0) return false;
     const aktif = aktifPersonelIds.has(personelId);
-    if (aktif) return t < beklenenGunFor(personelId) || t > 30;
+    if (aktif) return otuzuDolduramiyorMu(personelId) || t > 30;
     return t > 30;
-  }, [personelEfektifToplamMap, aktifPersonelIds, beklenenGunFor]);
+  }, [personelEfektifToplamMap, aktifPersonelIds, otuzuDolduramiyorMu]);
 
   // "Limit Dışı" buton rozeti için: filtreye giren personel sayısı.
   const limitDisiAdet = useMemo(() => {
@@ -3023,7 +3035,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
   // 30 günün altında olan personelleri çıkar. TÜM ŞANTİYELERİ (aktif +
   // geçici kabulü yapılmış) kapsar — SGK için tüm günler önemli.
-  // Listelenme kuralı: actual < beklenen VE actual < 30 VE personel hala aktif.
+  //
+  // EKSİK = AYI 30 GÜNE TAMAMLAYAMAMAK. Ölçü atamalardan beklenen gün DEĞİL: bir kişi
+  // aynı anda birden çok şantiyede sigortalı olabilir (bu normaldir), günler toplanır
+  // ve önemli olan toplamın 30'u bulup bulmadığıdır. Ör. 3 + 20 + 5 = 28 → eksik.
+  // Karar AY SONU projeksiyonuyla verilir; bugüne kadarki günle bakılsaydı ayın
+  // ortasında 30'a henüz ulaşmamış herkes eksik görünürdü.
+  // Gösterilen "Gün" sütunu değişmez — o bugüne kadarki gerçek gündür.
   function otuzGununAltinda(): OtuzAsanRow[] {
     const tum = personelGunToplamTumSantiyeler();
     const sonuc: OtuzAsanRow[] = [];
@@ -3031,10 +3049,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       // Sadece aktif personeller (işten çıkışı olanlar dahil değil)
       if (acc.isenCikis !== "Halen") continue;
       if (acc.toplamGun <= 0) continue;
-      // Beklenen 30'da tavanlanır (SGK kuralı)
-      const beklenenCap = Math.min(acc.beklenenToplam, 30);
-      // Listele: actual < beklenen (eksik var) VE actual < 30
-      if (acc.toplamGun < beklenenCap && acc.toplamGun < 30) {
+      if (otuzuDolduramiyorMu(acc.personelId)) {
         sonuc.push({
           adSoyad: acc.adSoyad,
           tc: acc.tc,
@@ -4943,16 +4958,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ⚠️ {personelEfektifToplamMap.get(p.id)}g
               </span>
             )}
-            {/* Eksik gün rozeti yalnız 30 GÜNÜN ALTINDA gösterilir. Beklenen gün birden
-                fazla atamadan toplanınca 30'u aşabiliyor ve ör. 39 günlük personel "eksik"
-                işaretleniyordu; oysa bir ayda bildirilebilecek azami gün 30, 30 ve üstü
-                eksik değildir. */}
-            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < 30 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGunFor(p.id) && (
+            {/* EKSİK = ayı 30 güne tamamlayamamak. Ölçü atamalardan beklenen gün DEĞİL:
+                kişi aynı anda birden çok şantiyede sigortalı olabilir, günler toplanır ve
+                önemli olan toplamın 30'u bulmasıdır. Karar ay sonu projeksiyonuyla verilir,
+                yoksa ayın ortasında henüz 30'a ulaşmamış herkes eksik görünürdü. */}
+            {otuzuDolduramiyorMu(p.id) && (
               <span
                 className="flex-shrink-0 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold cursor-help"
-                title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün — kendi giriş tarihine göre beklenen ${beklenenGunFor(p.id)} günün altında, eksik gün (manuel + hesaplanan gri günler dahil)`}
+                title={`Bu personel ${ayLabel(seciliAy)} ayını 30 güne tamamlayamıyor: tüm şantiyeler toplamı ${personelAySonuToplamMap.get(p.id)} gün (ay sonuna kadar). Bu ay şu ana kadar ${personelEfektifToplamMap.get(p.id)} gün.`}
               >
-                {personelEfektifToplamMap.get(p.id)}g
+                {personelAySonuToplamMap.get(p.id)}g
               </span>
             )}
             {p.personel_tipi === "taseron" && (

@@ -329,6 +329,10 @@ function aktifBitisHam(ayBaslangic: string, ayBitis: string): string {
 export function gunHesaplaAyBazli(
   atamalar: PersonelAtamaGecmisi[],
   ayStr: string,
+  /** true → açık atamalar BUGÜNE değil AY SONUNA kadar sayılır.
+   *  "Bu kişi ayı 30 güne tamamlayabilecek mi?" sorusu ancak böyle yanıtlanır;
+   *  bugüne kadar sayılırsa ayın ortasında herkes eksik görünür. */
+  aySonunaKadar = false,
 ): Map<string, Map<string, number>> {
   const result = new Map<string, Map<string, number>>();
   const [yil, ay] = ayStr.split("-").map(Number);
@@ -340,7 +344,7 @@ export function gunHesaplaAyBazli(
   //      • Şubat'ta 20'sinde başlayan: 20…28 = 9 gün (28 üzerinden).
   //      • 31 çeken ayda 24'ünde başlayan: 24…31 = 8 gün (31 üzerinden, 31. gün sayılır).
   const ayBitis = `${yil}-${String(ay).padStart(2, "0")}-${String(sonGun).padStart(2, "0")}`;
-  const aktifSanalBitis = aktifBitisHam(ayBaslangic, ayBitis);
+  const aktifSanalBitis = aySonunaKadar ? ayBitis : aktifBitisHam(ayBaslangic, ayBitis);
   for (const a of atamalar) {
     const bitisHam = a.bitis_tarihi ?? aktifSanalBitis;
     // Çakışma kontrolü
@@ -462,8 +466,9 @@ export function gunHesaplaAyBazliOverride(
   atamalar: PersonelAtamaGecmisi[],
   ayStr: string,
   overrideMap: Map<string, number>,  // key: `${personelId}:${santiyeId}`
+  aySonunaKadar = false,
 ): Map<string, Map<string, number>> {
-  const dogal = gunHesaplaAyBazli(atamalar, ayStr);
+  const dogal = gunHesaplaAyBazli(atamalar, ayStr, aySonunaKadar);
   // Override'ları uygula — eğer doğal gün >0 veya override >0 ise overrideki değeri kullan
   for (const [key, gun] of overrideMap) {
     const [pId, sId] = key.split(":");
