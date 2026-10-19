@@ -4547,8 +4547,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 <span className="font-semibold">Atanmamış Teknik:</span> {teknikPersoneller.join(", ")}
               </div>
             )}
-            {/* Atama dışı doldurulan roller — hem bilgi hem düzeltme girişi.
-                Uyarı kalktıktan sonra bu kaydı değiştirecek başka bir yer kalmıyordu. */}
+            {/* Bordro dışından doldurulan roller — hem bilgi hem düzeltme girişi.
+                Uyarı kalktıktan sonra bu kaydı değiştirecek başka bir yer kalmıyordu.
+                ETİKET: eskiden "Teknik (atamasız)" yazıyordu ve rol DOLU olduğu hâlde
+                boşmuş gibi okunuyordu — firma yetkilisi atandığı hâlde "atamasız" görünmesi
+                kafa karıştırdı. Bu kişiler sigortalanamadığı için bordroda atamaları yok;
+                rol onlarla dolu. "Atanmamış Teknik" (kırmızı, üstteki satır) gerçekten
+                BOŞ rolleri gösterir — ikisi ayrı şey. */}
             {disAtamaOzet && (
               <div
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
@@ -4556,9 +4561,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 onTouchEnd={() => onTeknikBasiliBitir?.()}
                 onTouchMove={() => onTeknikBasiliBitir?.()}
                 className="text-[10px] text-indigo-700 mt-0.5 truncate select-none"
-                title="Atama açılmadan doldurulan teknik personel rolleri — değiştirmek için SAĞ TIKLAYIN"
+                title="Rol DOLU — bordroda ataması olmayan biri (firma yetkilisi vb.) tarafından dolduruldu. Değiştirmek için SAĞ TIKLAYIN."
               >
-                <span className="font-semibold">Teknik (atamasız):</span>{" "}
+                <span className="font-semibold">Teknik personel (bordro dışı):</span>{" "}
                 {disAtamaOzet}
               </div>
             )}
