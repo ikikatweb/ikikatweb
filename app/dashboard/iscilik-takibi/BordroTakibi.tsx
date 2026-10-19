@@ -4523,6 +4523,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>
                 {baslik.length > 60 ? baslik.slice(0, 60) + "…" : baslik}
               </h3>
+              {/* Sigortalı kişi sayısı. Eskiden kartın EN SAĞINDAydı; geniş ekranda sözleşme
+                  rakamlarının ötesinde kalıp görünmüyordu. İş adının yanında hep görünür.
+                  flex-shrink-0: ad uzasa bile rozet sıkışmaz, ad kısalır. */}
+              <span
+                className="text-xs bg-gray-100 border border-gray-300 px-2 py-0.5 rounded-full font-semibold text-gray-700 flex-shrink-0"
+                title="Bu işte sigortalı kişi sayısı"
+              >
+                {count} kişi
+              </span>
               {calDonemEtiket && (
                 <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap" title="Çalışılmayan dönem">
                   ⛔ {calDonemEtiket}
@@ -4753,9 +4762,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               {tumGun} gün
             </span>
           )}
-          <span className="text-xs bg-gray-100 border border-gray-300 px-2 py-0.5 rounded-full font-semibold text-gray-700">
-            {count} kişi
-          </span>
           {count > 0 && (
             <button
               type="button"
