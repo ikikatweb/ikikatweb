@@ -4517,7 +4517,12 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               (ör. "41 gün") karttan karta değişince çizgi kayardı. */}
           <div className="flex-1 min-w-0 lg:flex-none lg:w-[28rem] 2xl:w-[34rem] lg:border-r lg:border-gray-300 lg:pr-3">
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>{baslik}</h3>
+              {/* İş adı 60 karakterde kesilir. truncate (CSS) kalan yeri kadar gösteriyordu;
+                  60 karakter sabit bir sınır koyar, ad ne olursa olsun aynı uzunlukta durur.
+                  Tam ad title'da (üzerine gelince) duruyor. Hizalamaya dokunulmadı. */}
+              <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>
+                {baslik.length > 60 ? baslik.slice(0, 60) + "…" : baslik}
+              </h3>
               {calDonemEtiket && (
                 <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap" title="Çalışılmayan dönem">
                   ⛔ {calDonemEtiket}
