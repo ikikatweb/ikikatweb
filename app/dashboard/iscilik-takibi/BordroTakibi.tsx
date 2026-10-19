@@ -4515,7 +4515,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               noktada kesilir, gri ayırıcı çizgi ve sağdaki sözleşme rakamları her kartta aynı hizadan
               başlar. Yüzde KULLANILMAZ: yüzde kalan genişliğe göre ölçülür, sağdaki rozetler
               (ör. "41 gün") karttan karta değişince çizgi kayardı. */}
-          <div className="flex-1 min-w-0 lg:flex-none lg:w-[28rem] 2xl:w-[34rem] lg:border-r lg:border-gray-300 lg:pr-3">
+          {/* SOL SÜTUN iki hücre: solda metin (iş adı + prim/bitim satırları), sağda sigortalı
+              kişi rozeti. items-center → rozet sütunun TAMAMINA göre yukarı-aşağı ortalanır
+              (eskiden başlık satırının içindeydi, üste yapışıyordu). */}
+          <div className="flex items-center gap-2 flex-1 min-w-0 lg:flex-none lg:w-[28rem] 2xl:w-[34rem] lg:border-r lg:border-gray-300 lg:pr-3">
+            <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               {/* İş adı 60 karakterde kesilir. truncate (CSS) kalan yeri kadar gösteriyordu;
                   60 karakter sabit bir sınır koyar, ad ne olursa olsun aynı uzunlukta durur.
@@ -4523,15 +4527,6 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>
                 {baslik.length > 60 ? baslik.slice(0, 60) + "…" : baslik}
               </h3>
-              {/* Sigortalı kişi sayısı. Eskiden kartın EN SAĞINDAydı; geniş ekranda sözleşme
-                  rakamlarının ötesinde kalıp görünmüyordu. İş adının yanında hep görünür.
-                  flex-shrink-0: ad uzasa bile rozet sıkışmaz, ad kısalır. */}
-              <span
-                className="text-xs bg-gray-100 border border-gray-300 px-2 py-0.5 rounded-full font-semibold text-gray-700 flex-shrink-0"
-                title="Bu işte sigortalı kişi sayısı"
-              >
-                {count} kişi
-              </span>
               {calDonemEtiket && (
                 <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap" title="Çalışılmayan dönem">
                   ⛔ {calDonemEtiket}
@@ -4639,6 +4634,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 </div>
               );
             })()}
+            </div>
+            {/* Rozet hücresi: solunda dik çizgi, sağda sütunu bitiren çizgiye yaslı.
+                self-stretch → çizgi sütun boyunca iner, rozet ortasında durur. */}
+            <div className="self-stretch flex items-center border-l border-gray-300 pl-2 flex-shrink-0">
+              <span
+                className="text-xs bg-gray-100 border border-gray-300 px-2 py-0.5 rounded-full font-semibold text-gray-700 whitespace-nowrap"
+                title="Bu işte sigortalı kişi sayısı"
+              >
+                {count} kişi
+              </span>
+            </div>
           </div>
           {/* SAĞ SÜTUN: sözleşme bedeli / ek sözleşme bedeli (= keşif artışı) / fiyat farkı.
               Etiket solda, tutar sağda; 2 sütunlu grid + tabular-nums ile rakamlar hem kendi
