@@ -4943,7 +4943,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 ⚠️ {personelEfektifToplamMap.get(p.id)}g
               </span>
             )}
-            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGunFor(p.id) && (
+            {/* Eksik gün rozeti yalnız 30 GÜNÜN ALTINDA gösterilir. Beklenen gün birden
+                fazla atamadan toplanınca 30'u aşabiliyor ve ör. 39 günlük personel "eksik"
+                işaretleniyordu; oysa bir ayda bildirilebilecek azami gün 30, 30 ve üstü
+                eksik değildir. */}
+            {(personelEfektifToplamMap.get(p.id) ?? 0) > 0 && (personelEfektifToplamMap.get(p.id) ?? 0) < 30 && (personelEfektifToplamMap.get(p.id) ?? 0) < beklenenGunFor(p.id) && (
               <span
                 className="flex-shrink-0 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold cursor-help"
                 title={`Bu personel ${ayLabel(seciliAy)} ayında ${personelEfektifToplamMap.get(p.id)} gün — kendi giriş tarihine göre beklenen ${beklenenGunFor(p.id)} günün altında, eksik gün (manuel + hesaplanan gri günler dahil)`}
