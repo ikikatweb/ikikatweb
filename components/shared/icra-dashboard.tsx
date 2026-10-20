@@ -7,7 +7,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Gavel } from "lucide-react";
 import { useAuth } from "@/hooks";
-import { getIcraKayitlar } from "@/lib/supabase/queries/icra";
+import {
+  getIcraKayitlar, getIcraBorcluBaglamlari, icraBorcluAnahtar,
+  type IcraBorcluBaglam,
+} from "@/lib/supabase/queries/icra";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -29,6 +32,9 @@ export default function IcraDashboard() {
   const canDuzenle = isYonetici || hasPermission("icra", "duzenle");
   const [satirlar, setSatirlar] = useState<IcraKayit[]>([]);
   const [loading, setLoading] = useState(true);
+  // Borçlu kendi personelimizse: hangi şantiyede ve o şantiyenin firması hangi renk.
+  // Satırın solundaki renk şeridi buradan gelir.
+  const [baglamlar, setBaglamlar] = useState<Map<string, IcraBorcluBaglam>>(new Map());
 
   useEffect(() => {
     let iptal = false;
@@ -38,6 +44,17 @@ export default function IcraDashboard() {
       .finally(() => { if (!iptal) setLoading(false); });
     return () => { iptal = true; };
   }, []);
+
+  // Yalnız EKRANDA görünen borçlular için bağlam çekilir (genelde 1-5 satır).
+  useEffect(() => {
+    const bek = satirlar.filter((s) => !(s.cevap_tarihi ?? "").trim());
+    if (bek.length === 0) { setBaglamlar(new Map()); return; }
+    let iptal = false;
+    getIcraBorcluBaglamlari(bek.map((s) => ({ tc: s.borclu_tc_no, ad: s.borclu_adi })))
+      .then((m) => { if (!iptal) setBaglamlar(m); })
+      .catch(() => { /* bağlam yoksa renksiz devam */ });
+    return () => { iptal = true; };
+  }, [satirlar]);
 
   const bekleyen = useMemo(
     () => satirlar
@@ -80,15 +97,31 @@ export default function IcraDashboard() {
               {bekleyen.map((s) => {
                 const gecen = tebligGunGecen(s.teblig_tarihi);
                 const acil = gecen != null && gecen >= ACIL_ESIK_GUN; // 6. gün ve sonrası → kırmızı
+                const baglam = baglamlar.get(icraBorcluAnahtar(s.borclu_tc_no, s.borclu_adi));
                 return (
                 <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
-                  <TableCell className="px-2">
+                  {/* SOL ŞERİT: borçlunun çalıştığı şantiyenin firma rengi. Borçlu personelimiz
+                      değilse ya da aktif ataması yoksa şerit çizilmez (şeffaf). */}
+                  <TableCell
+                    className="px-2 border-l-4"
+                    style={{ borderLeftColor: baglam?.firmaRenk ?? "transparent" }}
+                  >
                     <div className="text-[9px] text-gray-400 leading-none">Borçlu</div>
                     <div className={`font-medium truncate max-w-[150px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
                     {s.alacakli_adi && <>
                       <div className="text-[9px] text-gray-400 leading-none mt-1">Alacaklı</div>
                       <div className="font-medium text-gray-700 truncate max-w-[150px]" title={s.alacakli_adi}>{s.alacakli_adi}</div>
                     </>}
+                    {baglam?.santiyeAd && (
+                      <div className="mt-1 flex items-center gap-1 text-[9px] text-gray-500 truncate max-w-[150px]"
+                        title={`${baglam.santiyeAd}${baglam.firmaKisa ? ` · ${baglam.firmaKisa}` : ""}`}>
+                        {baglam.firmaRenk && (
+                          <span className="inline-block h-1.5 w-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: baglam.firmaRenk }} />
+                        )}
+                        <span className="truncate">{baglam.santiyeAd}</span>
+                      </div>
+                    )}
                     {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre {gecen >= CEVAP_SURESI_GUN ? "doldu" : "doluyor"}</div>}
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
