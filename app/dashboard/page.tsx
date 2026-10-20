@@ -318,7 +318,27 @@ export default function DashboardPage() {
     return liste.includes(key);
   }, [kullanici, isYonetici]);
 
+  // UYANIŞTA TAZELEME — telefonda sekme dondurulup geri dönüldüğünde.
+  // Mobil tarayıcı arka plandaki sayfayı donduruyor; dönüşte eldeki veri bayat, hatta
+  // donma anında yarıda kalmış olabiliyor. Sayfa yeniden GÖRÜNÜR olunca (2 dakikadan
+  // uzun gizli kaldıysa) veriler yeniden çekilir. Kısa geçişlerde (bildirim, başka
+  // uygulamaya bakıp dönme) boşuna yük olmasın diye eşik var.
+  const [tazeleSayaci, setTazeleSayaci] = useState(0);
+  const gizlenmeAniRef = useRef<number | null>(null);
+  useEffect(() => {
+    const TAZELE_ESIGI_MS = 2 * 60 * 1000;
+    const onGorunurluk = () => {
+      if (document.visibilityState === "hidden") { gizlenmeAniRef.current = Date.now(); return; }
+      const t = gizlenmeAniRef.current;
+      gizlenmeAniRef.current = null;
+      if (t != null && Date.now() - t >= TAZELE_ESIGI_MS) setTazeleSayaci((n) => n + 1);
+    };
+    document.addEventListener("visibilitychange", onGorunurluk);
+    return () => document.removeEventListener("visibilitychange", onGorunurluk);
+  }, []);
+
   const loadAll = useCallback(async () => {
+    void tazeleSayaci;   // uyanışta yeniden çekmek için bağımlılık
     setLoading(true);
     setKasaLoading(true);
 
@@ -566,7 +586,7 @@ export default function DashboardPage() {
       setLoading(false);
       setDefterLoading(false);
     }
-  }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici, widgetGorunur, ayBaslangic, oncekiAySonGun]);
+  }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici, widgetGorunur, ayBaslangic, oncekiAySonGun, tazeleSayaci]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
