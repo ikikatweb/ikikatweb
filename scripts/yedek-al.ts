@@ -17,6 +17,13 @@
 //
 // GERİ YÜKLERKEN: haftalık JSON satırın özetini taşır (plaka, tarih, mesafe, nokta sayısı),
 // GPS noktaları gunluk\ klasöründeki gün dosyalarındadır — ikisi birlikte tam veridir.
+//
+// ŞİFRELEME: YEDEK_SIFRE_ANAHTARI tanımlıysa veritabanı anlık görüntüsü ve Storage aynası
+// AES-256-GCM ile şifreli yazılır (.enc). İçlerinde TC kimlik, ad-soyad, telefon, kasa slipi,
+// iş deneyim belgesi var; klasöre erişen herkesin her şeyi okuyabilmesi KVKK açığıydı.
+// Çözmek için: npx tsx scripts/yedek-coz.ts <dosya.enc>
+// Anahtar tanımsızsa yedek ESKİSİ GİBİ düz yazılır ve log'a büyük uyarı düşer — yedek
+// alınmaması, şifresiz alınmasından daha kötü olurdu.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -24,6 +31,7 @@ import {
   YEDEK_TABLOLARI, YEDEK_DISI, PARCA_BOYUTU, OZEL_PARCA,
   BUCKET_DISI, YEDEK_BUCKET_LISTESI, GUN_AYNASI, TAZE_GUN,
 } from "@/lib/yedek/kapsam";
+import { anahtarVar, sifreliYazici, sifreliYaz, SIFRELI_UZANTI, SIFRE_EK_BAYT } from "@/lib/yedek/sifre";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const kok = path.resolve(__dirname, "..");
@@ -74,9 +82,13 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
   for (const eskiYarim of fs.readdirSync(klasor).filter((d) => d.endsWith(".yaziliyor"))) {
     try { fs.unlinkSync(path.join(klasor, eskiYarim)); log(`  yarim kalmis yedek silindi: ${eskiYarim}`); } catch { /* yoksay */ }
   }
-  const akis = fs.createWriteStream(gecici, { encoding: "utf8" });
+  // Şifreli mod: aynı akış mantığı, araya AES-256-GCM giriyor (bellekte birikmez).
+  const sifreli = anahtarVar();
+  const sYazici = sifreli ? sifreliYazici(gecici) : null;
+  const akis = sifreli ? null : fs.createWriteStream(gecici, { encoding: "utf8" });
   const yaz = (metin: string) =>
-    new Promise<void>((coz, hata) => { akis.write(metin, (e) => (e ? hata(e) : coz())); });
+    sYazici ? sYazici.yaz(metin)
+            : new Promise<void>((coz, hata) => { akis!.write(metin, (e) => (e ? hata(e) : coz())); });
 
   const hatalar: { tablo: string; hata: string }[] = [];
   const uyarilar: string[] = [];
@@ -141,18 +153,23 @@ async function veritabaniYedegi(): Promise<{ dosya: string; boyut: number; hata:
     tablo_satir_sayilari: satirSayilari,
   };
   await yaz(`},"meta":${JSON.stringify(meta)}}`);
-  await new Promise<void>((coz) => akis.end(coz));
-  fs.renameSync(gecici, cikti); // dosya TAM → nihai adına al (bu satıra kadar gelen yedek eksiksizdir)
+  if (sYazici) await sYazici.bitir();
+  else await new Promise<void>((coz) => akis!.end(coz));
+  const nihai = sifreli ? cikti + SIFRELI_UZANTI : cikti;
+  fs.renameSync(gecici, nihai); // dosya TAM → nihai adına al (bu satıra kadar gelen yedek eksiksizdir)
 
-  const boyut = fs.statSync(cikti).size;
-  log(`Veritabanı: ${meta.toplam_satir.toLocaleString("tr-TR")} satır / ${YEDEK_TABLOLARI.length} tablo → ${path.basename(cikti)} (${mb(boyut)})`);
+  const boyut = fs.statSync(nihai).size;
+  log(`Veritabanı: ${meta.toplam_satir.toLocaleString("tr-TR")} satır / ${YEDEK_TABLOLARI.length} tablo → ${path.basename(nihai)} (${mb(boyut)})${sifreli ? " [şifreli]" : ""}`);
+  if (!sifreli) log("  UYARI: YEDEK_SIFRE_ANAHTARI tanımsız — yedek DÜZ METİN yazıldı (TC kimlik dahil her şey açık).");
   for (const u of uyarilar) log(`  UYARI: ${u}`);
 
   // Eski yedekleri temizle (en yeni SAKLANACAK_YEDEK tanesi kalsın)
-  const eskiler = fs.readdirSync(klasor).filter((d) => d.endsWith(".json")).sort().reverse().slice(SAKLANACAK_YEDEK);
+  const eskiler = fs.readdirSync(klasor)
+    .filter((d) => d.endsWith(".json") || d.endsWith(`.json${SIFRELI_UZANTI}`))
+    .sort().reverse().slice(SAKLANACAK_YEDEK);
   for (const d of eskiler) { fs.unlinkSync(path.join(klasor, d)); log(`  eski yedek silindi: ${d}`); }
 
-  return { dosya: cikti, boyut, hata: hatalar.length };
+  return { dosya: nihai, boyut, hata: hatalar.length };
 }
 
 /** Bir tablonun sütun adlarını okuyup ağır olanı çıkarır → PostgREST select listesi. */
@@ -262,17 +279,24 @@ async function dosyaYedegi(): Promise<{ yeni: number; atlanan: number; bayt: num
     let bYeni = 0;
     for (const d of dosyalar) {
       const hedefYol = path.join(kokKlasor, bucket, ...d.yol.split("/"));
-      // Aynı boyutta dosya zaten varsa tekrar indirme (ayna mantığı — haftalık çalışma hızlı olsun)
-      if (fs.existsSync(hedefYol) && fs.statSync(hedefYol).size === d.boyut && d.boyut > 0) { atlanan++; continue; }
+      // Aynı boyutta dosya zaten varsa tekrar indirme (ayna mantığı — haftalık çalışma hızlı olsun).
+      // ŞİFRELİ MOD: dosya adı .enc ve boyut ham + 52 bayt (sabit başlık+etiket) → karşılaştırma
+      // bu sabitle yapılır, yoksa her hafta 538 MB yeniden inerdi.
+      const sifreli = anahtarVar();
+      const yazilacakYol = sifreli ? hedefYol + SIFRELI_UZANTI : hedefYol;
+      const beklenenBoyut = sifreli ? d.boyut + SIFRE_EK_BAYT : d.boyut;
+      if (fs.existsSync(yazilacakYol) && fs.statSync(yazilacakYol).size === beklenenBoyut && d.boyut > 0) { atlanan++; continue; }
       try {
         const r = await fetch(`${URL_}/storage/v1/object/${bucket}/${d.yol.split("/").map(encodeURIComponent).join("/")}`, { headers: BASLIK });
         if (!r.ok) { hata++; log(`  HATA indirilemedi ${bucket}/${d.yol}: HTTP ${r.status}`); continue; }
         fs.mkdirSync(path.dirname(hedefYol), { recursive: true });
         // Önce geçici ada yaz, sonra taşı: kesintide yarım dosya nihai adı almaz (bir sonraki
         // çalışmada boyut eşleşmesi doğru olur, yarım dosya "inmiş" sanılıp atlanmaz).
-        const gecici = `${hedefYol}.iniyor`;
-        fs.writeFileSync(gecici, Buffer.from(await r.arrayBuffer()));
-        fs.renameSync(gecici, hedefYol);
+        const gecici = `${yazilacakYol}.iniyor`;
+        const icerik = Buffer.from(await r.arrayBuffer());
+        if (sifreli) await sifreliYaz(gecici, icerik);
+        else fs.writeFileSync(gecici, icerik);
+        fs.renameSync(gecici, yazilacakYol);
         yeni++; bYeni++; bayt += d.boyut;
       } catch (e) {
         hata++; log(`  HATA ${bucket}/${d.yol}: ${e instanceof Error ? e.message : String(e)}`);
