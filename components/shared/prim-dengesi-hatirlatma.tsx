@@ -172,7 +172,15 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
                 {/* DOLMA TARİHİ DE EYLEM RENGİNDE: satırın eylemi "kişi çıkarın" (kırmızı).
                     Tek amber kalan öge olunca satır iki renkli görünüyordu. */}
                 <span className="font-semibold text-red-700">{s.dolmaTarihi ? tarih(s.dolmaTarihi) : "—"}</span>
-                <span>dolacak, iş {tarih(s.bitimTarihi)}'de bitiyor —</span>
+                {/* ÇALIŞMA GÜNÜ SAYISI BURADA DA YAZAR: çıkarılacak kişi sayısı doğrudan
+                    bu sayıdan çıkıyor ve takvim günüyle aynı değil — çalışılmayan dönem
+                    (ör. Vezirköprü'de 01.01–15.03) düşülüyor. Görünmeyince "147 gün var,
+                    9 kişi niye gereksin" diye elle doğrulama gerekiyordu. */}
+                <span>dolacak, iş {tarih(s.bitimTarihi)}&apos;de bitiyor</span>
+                <span className="text-xs text-orange-700" title="Bitime kadar prim üreten gün sayısı — çalışılmayan dönem düşülmüştür">
+                  ({s.kalanCalismaGunu} çalışma günü)
+                </span>
+                <span>—</span>
                 {s.kisiFarki > 0 ? (
                   <>
                     <span className="font-bold text-red-700">{s.kisiFarki} kişi çıkarın</span>
