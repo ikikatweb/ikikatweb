@@ -10,7 +10,7 @@
 //   – teknik personel tabanı (sözleşme şartı, altına inilemez),
 //   – çalışılmayan dönem (o günlerde prim üretilmez; takvim gün gün yürütülür).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, UserPlus, UserMinus } from "lucide-react";
+import { AlertTriangle, UserPlus, UserMinus, UserX } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import { getPrimDengeleri, type PrimDengeSatiri } from "@/lib/supabase/queries/prim-dengesi";
@@ -115,9 +115,14 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
       <ul className="mt-2 space-y-1.5 pl-9 text-sm">
         {satirlar.map((s) => (
           <li key={s.santiyeId} className="flex flex-wrap items-baseline gap-x-1.5">
-            {s.durum === "eksik"
-              ? <UserPlus size={13} className="shrink-0 text-emerald-600" />
-              : <UserMinus size={13} className="shrink-0 text-red-600" />}
+            {/* SİMGE DE EYLEMİ ANLATIR: eksik→kişi ekle (yeşil), fazla→kişi çıkar (kırmızı),
+                İŞ BİTMİŞ eksik→eklenecek kimse yok (kırmızı, üstü çizili kişi). Bitmiş işte
+                yeşil "kişi ekle" simgesi durması tutarı kırmızıyken çelişki yaratıyordu. */}
+            {s.durum === "eksik" && s.isBitti
+              ? <UserX size={13} className="shrink-0 text-red-600" />
+              : s.durum === "eksik"
+                ? <UserPlus size={13} className="shrink-0 text-emerald-600" />
+                : <UserMinus size={13} className="shrink-0 text-red-600" />}
             <span className="font-medium text-orange-950">{s.santiyeAd.slice(0, 50)}</span>
 
             {s.durum === "eksik" && s.isBitti ? (
