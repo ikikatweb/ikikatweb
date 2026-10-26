@@ -1377,7 +1377,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (toplamGun > 0) {
         const d = new Date(info.baslangic_tarihi + "T00:00:00");
         d.setDate(d.getDate() + toplamGun - 1);
-        return d.toISOString().slice(0, 10);
+        return tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
       }
     }
     if (info?.is_bitim_tarihi || s?.is_bitim_tarihi) return info?.is_bitim_tarihi ?? s?.is_bitim_tarihi ?? null;
@@ -1386,7 +1386,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (teslim && sure && sure > 0) {
       const d = new Date(teslim + "T00:00:00");
       d.setDate(d.getDate() + sure - 1);
-      return d.toISOString().slice(0, 10);
+      return tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
     }
     return null;
   }, [iscilikBitimMap, santiyeler]);
@@ -4593,7 +4593,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         if (toplamGun > 0) {
           const d = new Date(info.baslangic_tarihi + "T00:00:00");
           d.setDate(d.getDate() + toplamGun - 1);
-          bitimTarihi = d.toISOString().slice(0, 10);
+          bitimTarihi = tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
         }
       }
       // 2) santiye.is_bitim_tarihi manuel
@@ -4607,7 +4607,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         if (teslim && sure && sure > 0) {
           const d = new Date(teslim + "T00:00:00");
           d.setDate(d.getDate() + sure - 1);
-          bitimTarihi = d.toISOString().slice(0, 10);
+          bitimTarihi = tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
         }
       }
       if (!bitimTarihi) return null;
