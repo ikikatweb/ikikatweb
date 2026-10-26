@@ -5466,13 +5466,25 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         const acik = expandedSantiyeler.has(s.id);
                         const tumGun = liste.reduce((acc, p) => acc + (gunMap.get(p.id)?.get(s.id) ?? 0), 0);
                         const tumSecili = liste.length > 0 && liste.every((p) => selectedKeys.has(`${p.id}:${s.id}`));
+                        // ROZET YALNIZ AKTİFLERİ SAYAR. Tablo o ay çalışan HERKESİ gösterir
+                        // (çıkışı ayın ortasındaysa o günler bordroya girer) ama rozette
+                        // "kaç kişi sigortalı duruyor" bilgisi aranıyor: 05.10'da çıkmış biri
+                        // Ekim'de "1 kişi" diye görünüyordu. Ay SONUNDA hâlâ açık ataması
+                        // olanlar sayılır.
+                        const aktifKisiSayisi = (() => {
+                          const [ay_y, ay_m] = seciliAy.split("-").map(Number);
+                          const aySonu = `${ay_y}-${String(ay_m).padStart(2, "0")}-${String(new Date(ay_y, ay_m, 0).getDate()).padStart(2, "0")}`;
+                          return liste.filter((p) => atamalar.some((a) =>
+                            a.personel_id === p.id && a.santiye_id === s.id
+                            && (!a.bitis_tarihi || a.bitis_tarihi > aySonu))).length;
+                        })();
                         return (
                           <SantiyeAccordion
                             key={s.id}
                             santiyeId={s.id}
                             baslik={s.is_adi}
                             renk={renk}
-                            count={liste.length}
+                            count={aktifKisiSayisi}
                             tumGun={tumGun}
                             acik={acik}
                             tumSecili={tumSecili}
