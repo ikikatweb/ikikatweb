@@ -4671,7 +4671,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 dilekceTarihi ? (
                   <span className="flex-shrink-0 whitespace-nowrap rounded border border-sky-300 bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800"
                     title={`İş bitti, geçici kabul dilekçesi ${new Date(dilekceTarihi + "T00:00:00").toLocaleDateString("tr-TR")} tarihinde verildi; kabul bekleniyor.`}>
-                    Dilekçe verildi
+                    Dilekçe verildi · {new Date(dilekceTarihi + "T00:00:00").toLocaleDateString("tr-TR")}
                   </span>
                 ) : (
                   <span className="flex-shrink-0 whitespace-nowrap rounded border border-red-300 bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
