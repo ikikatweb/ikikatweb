@@ -70,8 +70,8 @@ export default function PrimDengesiHatirlatma() {
         {satirlar.map((s) => (
           <li key={s.santiyeId} className="flex flex-wrap items-baseline gap-x-1.5">
             {s.durum === "eksik"
-              ? <UserPlus size={13} className="shrink-0 text-red-600" />
-              : <UserMinus size={13} className="shrink-0 text-amber-600" />}
+              ? <UserPlus size={13} className="shrink-0 text-emerald-600" />
+              : <UserMinus size={13} className="shrink-0 text-red-600" />}
             <span className="font-medium text-orange-950">{s.santiyeAd.slice(0, 50)}</span>
 
             {s.durum === "eksik" ? (
@@ -79,7 +79,9 @@ export default function PrimDengesiHatirlatma() {
                 <span>bitime ({tarih(s.bitimTarihi)}, {s.kalanCalismaGunu} çalışma günü) kadar</span>
                 <span className="font-bold text-red-700">{tl(s.kalanPrim)}</span>
                 <span>prim dolmayacak —</span>
-                <span className="font-bold text-red-700">
+                {/* EYLEM RENGİ: ekleme yeşil, çıkarma kırmızı. Tutarlar kendi
+                    anlamlarının rengini korur (eksik prim kırmızı, fazla ödeme amber). */}
+                <span className="font-bold text-emerald-700">
                   {s.kisiFarki > 0 ? `${s.kisiFarki} kişi ekleyin` : "sigortalı girin"}
                 </span>
               </>
@@ -92,7 +94,7 @@ export default function PrimDengesiHatirlatma() {
                     sözleşme gereği hiçbiri çıkarılamaz. "0 kişi çıkarın" demek saçma olurdu. */}
                 {s.kisiFarki > 0 ? (
                   <>
-                    <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
+                    <span className="font-bold text-red-700">{s.kisiFarki} kişi çıkarın</span>
                     <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
                   </>
                 ) : (
@@ -108,7 +110,7 @@ export default function PrimDengesiHatirlatma() {
                 <span>dolacak, iş {tarih(s.bitimTarihi)}'de bitiyor —</span>
                 {s.kisiFarki > 0 ? (
                   <>
-                    <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
+                    <span className="font-bold text-red-700">{s.kisiFarki} kişi çıkarın</span>
                     <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
                   </>
                 ) : (
