@@ -10,7 +10,7 @@ import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
-import { arizaIsaretle, damperDurakKonumu, rotaTemizle } from "@/lib/arvento/ocak";
+import { arizaIsaretle, damperDurakKonumu, rotaTemizle, saatSn } from "@/lib/arvento/ocak";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
@@ -187,6 +187,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     type Kayit = {
       plaka: string; etiket: string; noktalar: [number, number][];
       sonIz: [number, number] | null;     // güzergahın SON noktası (aracın gün sonu konumu)
+      sonIzSaat: string | null;
       canli: [number, number] | null;     // canlı konum (varsa odak buradan)
     };
     const m = new Map<string, Kayit>();
@@ -194,13 +195,27 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (lat == null || lng == null) return;
       const k = plakaNorm(plaka);
       if (!k) return;
-      const e = m.get(k) ?? { plaka, etiket: etiketler.get(k) ?? "", noktalar: [] as [number, number][], sonIz: null, canli: null };
+      const e = m.get(k) ?? { plaka, etiket: etiketler.get(k) ?? "", noktalar: [] as [number, number][], sonIz: null, sonIzSaat: null, canli: null };
       e.noktalar.push([lat, lng]);
-      if (tip === "iz") e.sonIz = [lat, lng];       // sırayla geldiği için en son yazılan = günün sonu
       if (tip === "canli") e.canli = [lat, lng];
       m.set(k, e);
     };
-    for (const g of guzergahBirlesik) for (const p of g.noktalar ?? []) ekle(g.plaka, p.lat, p.lng, "iz");
+    // GÜZERGAH: ham dizinin son elemanı "aracın son konumu" DEĞİL — dizi zamana göre sıralı
+    // değil ve içinde izole GPS çöpü olabiliyor (yüzlerce km öteye ışınlanan nokta). Bu yüzden
+    // noktalar rotaTemizle'den geçirilir, son konum GÜN + SAAT'e göre seçilir.
+    const sonIzBilgi = new Map<string, { tarih: string; sn: number; lat: number; lng: number; saat: string | null }>();
+    for (const g of guzergahlar) {
+      const temiz = rotaTemizle(g.noktalar ?? []).filter((p) => p.lat != null && p.lng != null);
+      const k = plakaNorm(g.plaka);
+      for (const p of temiz) {
+        ekle(g.plaka, p.lat, p.lng);
+        const sn = saatSn(p.saat) ?? -1;
+        const cur = sonIzBilgi.get(k);
+        if (!cur || g.rapor_tarihi > cur.tarih || (g.rapor_tarihi === cur.tarih && sn > cur.sn)) {
+          sonIzBilgi.set(k, { tarih: g.rapor_tarihi, sn, lat: p.lat as number, lng: p.lng as number, saat: p.saat ?? null });
+        }
+      }
+    }
     for (const o of damperKoordlu) ekle(o.plaka, o.lat, o.lng);
     for (const n of calismaNoktalari ?? []) {
       if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue;
@@ -215,10 +230,15 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       etiketEkle(plaka, cihaz?.model);
       ekle(plaka, c.lat, c.lng, "canli");
     }
-    // Etiket en sonda yazılır: canlı cihaz modeli, kayıt oluştuktan SONRA ekleniyor olabilir.
-    for (const [k, v] of m) v.etiket = etiketler.get(k) ?? v.etiket;
+    // Etiket ve son konum en sonda yazılır: canlı cihaz modeli ve temizlenmiş iz, kayıt
+    // oluştuktan SONRA hesaplanıyor.
+    for (const [k, v] of m) {
+      v.etiket = etiketler.get(k) ?? v.etiket;
+      const si = sonIzBilgi.get(k);
+      if (si) { v.sonIz = [si.lat, si.lng]; v.sonIzSaat = si.saat; }
+    }
     return m;
-  }, [guzergahBirlesik, damperKoordlu, calismaNoktalari, canliKonumlar, canliCihazMap, izinSet, raporlar]);
+  }, [guzergahlar, guzergahBirlesik, damperKoordlu, calismaNoktalari, canliKonumlar, canliCihazMap, izinSet, raporlar]);
 
   const [aramaPlaka, setAramaPlaka] = useState("");
   const eslesenPlakalar = useMemo(() => {
@@ -277,7 +297,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       .addTo(grup)
       // autoPan KAPALI: Leaflet balonu sığdırmak için haritayı kaydırıyor ve araç
       // merkezden çıkıyordu. Araç tam ortada kalsın.
-      .bindPopup(`<b>${kayit.plaka}</b>${kayit.etiket ? `<br>${kayit.etiket}` : ""}<br>${kayit.canli ? "canlı konum" : "günün son konumu"}`,
+      .bindPopup(`<b>${kayit.plaka}</b>${kayit.etiket ? `<br>${kayit.etiket}` : ""}<br>${kayit.canli ? "canlı konum" : `son konum${kayit.sonIzSaat ? ` · ${String(kayit.sonIzSaat).slice(0, 5)}` : ""}`}`,
         { autoPan: false })
       .openPopup();
     if (vurguZamanRef.current) clearTimeout(vurguZamanRef.current);
