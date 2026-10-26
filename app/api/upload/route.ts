@@ -1,8 +1,11 @@
 // Dosya yükleme API route - Service role key ile Storage'a yükler (policy bypass)
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -85,6 +88,8 @@ export async function POST(request: Request) {
 // Storage'dan dosya silme — service role ile (RLS bypass)
 // Body: { bucket: string, path: string }
 export async function DELETE(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

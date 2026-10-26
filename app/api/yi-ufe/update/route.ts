@@ -1,8 +1,11 @@
 // Yi-ÜFE tek kayıt güncelleme API route — service role key ile RLS bypass
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

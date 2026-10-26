@@ -1,6 +1,7 @@
 // Adres → koordinat (OpenStreetMap Nominatim) — sunucu tarafı (CORS/UA sorunsuz).
 // Kısaltmaları açar; bulunamazsa adresi kabalaştırıp (mahalle→ilçe→şehir) tekrar dener.
 import { NextResponse } from "next/server";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 const cache = new Map<string, { lat: number; lng: number } | null>();
 
@@ -28,6 +29,8 @@ async function nominatim(q: string): Promise<{ lat: number; lng: number } | null
 }
 
 export async function GET(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const q = new URL(request.url).searchParams.get("q")?.trim();
   if (!q) return NextResponse.json({ error: "q gerekli" }, { status: 400 });
   if (cache.has(q)) return NextResponse.json({ konum: cache.get(q) });

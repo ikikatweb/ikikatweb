@@ -12,8 +12,11 @@ import nodemailer from "nodemailer";
 
 /** Onay penceresinde gösterilen metinle birebir aynı olmalı (lib/police-talep-metin.ts). */
 import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseServiceKey) {

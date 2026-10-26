@@ -7,6 +7,7 @@
 // sahaya kadar İZ ÜZERİNDEN (yol boyunca) mesafeyi ölç → medyan. Ocak/damper/güzergah service-role okunur.
 import { NextResponse } from "next/server";
 import { serviceClient, ozetGetir } from "@/lib/arvento/stabilize-ozet-server";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -18,6 +19,8 @@ function sec(saat: string | null) { if (!saat) return -1; const m = String(saat)
 function medyan(a: number[]) { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
 
 export async function GET(req: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const { searchParams } = new URL(req.url);
   const bas = searchParams.get("bas") ?? "", bitis = searchParams.get("bitis") ?? "";
   if (!bas || !bitis) return NextResponse.json({ error: "bas ve bitis zorunlu" }, { status: 400 });

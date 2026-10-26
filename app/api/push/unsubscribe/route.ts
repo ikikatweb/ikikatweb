@@ -1,8 +1,11 @@
 // Web Push aboneliğini iptal et
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(req: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const body = await req.json();
   const { endpoint } = body;
   if (!endpoint) return NextResponse.json({ error: "endpoint zorunlu" }, { status: 400 });

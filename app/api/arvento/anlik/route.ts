@@ -5,11 +5,14 @@
 // GET /api/arvento/anlik → { araclar: [...], guncelleme: "...", kaynak: "db" }
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 export async function GET() {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;

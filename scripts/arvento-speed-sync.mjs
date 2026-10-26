@@ -117,7 +117,9 @@ async function aracGun(node, gunIso) {
   // bozmaz (hata yoksayılır). API en fazla 45 günü işler; geniş backfill'de son 45 gün ısınır.
   try {
     const bas = gunler[0], bitis = gunler[gunler.length - 1];
-    const r = await fetchTimeout(`https://ikikat.net/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}&force=1`, {}, 120000);
+    // Rota artık kapılı: oturum yok, görev anahtarı ile girilir (CRON_SECRET).
+    const r = await fetchTimeout(`https://ikikat.net/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}&force=1`,
+      { headers: { "x-gorev-anahtari": process.env.CRON_SECRET ?? "" } }, 120000);
     console.log(`Özet warming (${bas} → ${bitis}): HTTP ${r.status}`);
   } catch (e) {
     console.error(`Özet warming hatası (yoksayıldı): ${e instanceof Error ? e.message : String(e)}`);

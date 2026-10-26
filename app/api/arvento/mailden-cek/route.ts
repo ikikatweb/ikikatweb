@@ -3,11 +3,14 @@
 // (Mevcut /api/arvento dosya/link import'u ile aynı erişim modeli: dashboard içinden çağrılır.)
 import { NextResponse } from "next/server";
 import { cekVeIsleArventoMail } from "@/lib/arvento/mail-fetch";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST() {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   try {
     // Manuel çekimde biraz daha geniş pencere (son 5 gün) — kaçan günleri de toparla
     const sonuc = await cekVeIsleArventoMail(5);

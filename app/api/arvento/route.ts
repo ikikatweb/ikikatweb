@@ -6,8 +6,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ingestArventoBuffer, ingestArventoUrl } from "@/lib/arvento/ingest";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   try {
     const ctype = request.headers.get("content-type") ?? "";
     let sonuc;

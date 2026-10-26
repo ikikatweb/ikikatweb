@@ -9,8 +9,11 @@
 // Service-role ile çalışır (RLS'i atlar).
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 
 export async function POST(request: Request) {
+  // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
+  if (!(await oturum())) return yetkisiz();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return NextResponse.json({ error: "Supabase yapılandırması eksik" }, { status: 500 });
