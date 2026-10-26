@@ -107,7 +107,11 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
     for (const [sid, t] of toplam) {
       const s = S.get(sid)!;
       const bitim = s.sure_uzatimli_tarih || s.is_bitim_tarihi;
-      if (!bitim || bitim < bugun) continue;          // bitim yok ya da geçmiş → uyarılmaz
+      // BİTMİŞ İŞLER DE LİSTELENİR. Eskiden bitim tarihi geçmiş işler tamamen
+      // düşüyordu — oysa en kritik oldukları an orası: Kampüs Altyapı'da iş 10.09'da
+      // bitmiş, 0 sigortalı kalmış ve 28.890 ₺ prim eksik; o prim artık çalışmayla
+      // dolmayacak. Bitimi olmayan iş hesaplanamaz, o atlanır.
+      if (!bitim) continue;
       if (t.gereken <= 0) continue;                   // oran/bedel girilmemiş → hesaplanamaz
 
       const { toplam: tahminiBordro } = tahminiBordroHesapla({

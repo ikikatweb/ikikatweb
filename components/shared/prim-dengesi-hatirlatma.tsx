@@ -115,7 +115,18 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
               : <UserMinus size={13} className="shrink-0 text-red-600" />}
             <span className="font-medium text-orange-950">{s.santiyeAd.slice(0, 50)}</span>
 
-            {s.durum === "eksik" ? (
+            {s.durum === "eksik" && s.isBitti ? (
+              <>
+                {/* İŞ BİTMİŞ: prim artık çalışmayla dolmaz. "Kişi ekleyin" demek anlamsız;
+                    eksik tutar bildirilir, çözümü bordro dışında (ek bildirge vb.). */}
+                <span>iş {tarih(s.bitimTarihi)}&apos;de bitti,</span>
+                <span className="font-bold text-red-700">{tl(s.kalanPrim)}</span>
+                <span>prim eksik kaldı</span>
+                <span className="text-xs text-orange-700">
+                  ({s.aktifKisi > 0 ? `${s.aktifKisi} sigortalı duruyor` : "sigortalı kalmadı"})
+                </span>
+              </>
+            ) : s.durum === "eksik" ? (
               <>
                 <span>bitime ({tarih(s.bitimTarihi)}, {s.kalanCalismaGunu} çalışma günü) kadar</span>
                 <span className="font-bold text-red-700">{tl(s.kalanPrim)}</span>

@@ -53,6 +53,8 @@ export type DengeGirdi = {
 
 export type Denge = {
   durum: "eksik" | "fazla" | "dengede";
+  /** İş bitmiş (bitim tarihi geçmiş): prim artık çalışmayla dolmaz, eylem farklıdır. */
+  isBitti: boolean;
   kalanPrim: number;
   kalanCalismaGunu: number;
   /** Mevcut kadroyla bitime kadar üretilecek prim. */
@@ -69,14 +71,15 @@ export type Denge = {
 
 export function primDengesi(g: DengeGirdi): Denge {
   const { kalanPrim, gunlukUretim, kisiBasiUcret, aktifKisi, teknikKisi, bugun, bitim, calisilmayan } = g;
-  const kalanCalismaGunu = calisilanGun(calisilmayan, bugun, bitim);
+  const isBitti = bitim < bugun;
+  const kalanCalismaGunu = isBitti ? 0 : calisilanGun(calisilmayan, bugun, bitim);
   const bitimeKadarUretim = gunlukUretim * kalanCalismaGunu;
 
   // PRİM ZATEN DOLMUŞ (ya da fazlası ödenmiş)
   if (kalanPrim <= 0) {
     const cikarilabilir = Math.max(0, aktifKisi - teknikKisi);
     return {
-      durum: "fazla", kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
+      durum: "fazla", isBitti, kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
       kisiFarki: cikarilabilir, fazlaTutar: -kalanPrim, dolmaTarihi: null,
       tabanEngeli: Math.min(aktifKisi, teknikKisi),
     };
@@ -90,7 +93,7 @@ export function primDengesi(g: DengeGirdi): Denge {
   // DOLMAYACAK → kişi eklenmeli
   if (!Number.isFinite(gerekenKisi) || gerekenKisi > aktifKisi) {
     return {
-      durum: "eksik", kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
+      durum: "eksik", isBitti, kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
       kisiFarki: Number.isFinite(gerekenKisi) ? gerekenKisi - aktifKisi : 0,
       fazlaTutar: 0, dolmaTarihi: null, tabanEngeli: 0,
     };
@@ -114,7 +117,7 @@ export function primDengesi(g: DengeGirdi): Denge {
   }
   return {
     durum: cikarilabilir > 0 ? "fazla" : "dengede",
-    kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
+    isBitti, kalanPrim, kalanCalismaGunu, bitimeKadarUretim,
     kisiFarki: cikarilabilir, fazlaTutar: 0, dolmaTarihi,
     tabanEngeli: Math.max(0, teknikKisi - gerekenKisi),
   };
