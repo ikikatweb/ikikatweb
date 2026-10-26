@@ -624,9 +624,11 @@ export default function BankaYazismalariPage() {
       {/* Bildirimden gelen ÖNİZLEME — yazdırma diyaloğu yerine yazışmanın kendisi gösterilir (kullanıcı
           isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
       <Dialog open={!!onizlemeYazisma} onOpenChange={(o) => { if (!o) setOnizlemeYazisma(null); }}>
-        {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp. */}
+        {/* Dialog genişliği A4'e (210mm≈794px) göre sınırlı. Eskiden 90vw'ydi: geniş ekranda
+            sayfa ortada kalıp iki yanında kocaman boşluk oluyordu. Dar ekranda 95vw →
+            OnizlemeSayfa sayfayı sığacak kadar küçültür, yatay kaydırma çıkmaz. */}
         {/* !flex !flex-col + iç kaydırma: kaydırma yalnız SAYFA alanında → açılışta üstten başlar. */}
-        <DialogContent className="!w-[90vw] !max-w-none !flex !flex-col max-h-[95vh]">
+        <DialogContent className="!w-[95vw] md:!w-[860px] !max-w-none !flex !flex-col max-h-[95vh]">
           <DialogHeader>
             <DialogTitle>Yazışma Önizleme — {onizlemeYazisma?.evrak_sayi_no ?? ""}</DialogTitle>
           </DialogHeader>

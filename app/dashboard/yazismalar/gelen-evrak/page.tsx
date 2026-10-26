@@ -716,9 +716,10 @@ export default function GelenEvrakPage() {
       {/* Bildirimden gelen ÖNİZLEME — yazdırma diyaloğu yerine evrağın kendisi gösterilir (kullanıcı
           isteği: bildirime tıklayınca yazıyı görmek). İçindeki Yazdır ile istenirse baskıya geçilir. */}
       <Dialog open={!!onizlemeEvrak} onOpenChange={(o) => { if (!o) setOnizlemeEvrak(null); }}>
-        {/* Geniş dialog + düz 210mm sayfa — hizli-talimat önizlemesiyle AYNI (kanıtlanmış) kalıp. */}
+        {/* Dialog genişliği A4'e (210mm≈794px) göre sınırlı. Eskiden 90vw'ydi: geniş ekranda
+            sayfa ortada kalıp iki yanında kocaman boşluk oluyordu. */}
         {/* !flex !flex-col + iç kaydırma: kaydırma yalnız SAYFA alanında → açılışta üstten başlar. */}
-        <DialogContent className="!w-[90vw] !max-w-none !flex !flex-col max-h-[95vh]">
+        <DialogContent className="!w-[95vw] md:!w-[860px] !max-w-none !flex !flex-col max-h-[95vh]">
           <DialogHeader>
             <DialogTitle>Evrak Önizleme — {onizlemeEvrak?.evrak_sayi_no ?? ""}</DialogTitle>
           </DialogHeader>
