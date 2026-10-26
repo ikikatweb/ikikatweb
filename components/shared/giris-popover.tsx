@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogIn, X } from "lucide-react";
 import toast from "react-hot-toast";
+import Link from "next/link";
 
 export default function GirisPopover() {
   const [acik, setAcik] = useState(false);
@@ -74,6 +75,13 @@ export default function GirisPopover() {
               className="w-full bg-[#1E3A5F] font-medium text-white hover:bg-[#16304f]">
               {loading ? "Giriş yapılıyor..." : "Giriş Yap"}
             </Button>
+            {/* Şifre yenileme formu /login sayfasında duruyor; bu küçük kutuya ikinci bir
+                form sıkıştırmak yerine oraya yönlendirilir (?unuttum=1 paneli açık getirir). */}
+            <div className="pt-0.5 text-center">
+              <Link href="/login?unuttum=1" className="text-xs text-gray-500 hover:text-[#F97316] hover:underline">
+                Şifremi unuttum
+              </Link>
+            </div>
           </form>
         </div>
       )}

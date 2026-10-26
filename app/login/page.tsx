@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   // Şifremi unuttum paneli
+  // Kurumsal sayfadaki giriş kutusundan "Şifremi unuttum" ile gelinirse panel AÇIK başlar.
   const [unuttumAcik, setUnuttumAcik] = useState(false);
   const [unuttumKullanici, setUnuttumKullanici] = useState("");
   const [unuttumBekle, setUnuttumBekle] = useState(false);
@@ -41,8 +42,12 @@ export default function LoginPage() {
   // okunuyor: bu sayfa Suspense sınırı istemesin diye.
   const [oturumBitti, setOturumBitti] = useState(false);
   useEffect(() => {
-    try { setOturumBitti(new URLSearchParams(window.location.search).get("oturum") === "bitti"); }
-    catch { /* önemsiz */ }
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      setOturumBitti(sp.get("oturum") === "bitti");
+      // Kurumsal sayfadaki giriş kutusundaki "Şifremi unuttum" buraya ?unuttum=1 ile getirir.
+      if (sp.get("unuttum") === "1") setUnuttumAcik(true);
+    } catch { /* önemsiz */ }
   }, []);
   const router = useRouter();
 
