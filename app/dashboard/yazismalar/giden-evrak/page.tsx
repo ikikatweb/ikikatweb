@@ -580,6 +580,7 @@ export default function GidenEvrakPage() {
                 <TableHead className="text-white text-xs px-2">Kayıt No</TableHead>
                 <TableHead className="text-white text-xs px-2">Konu</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">Muhatap</TableHead>
+                <TableHead className="text-white text-xs px-2">Şantiye</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center w-[60px]">Ek</TableHead>
                 <TableHead className="text-white text-xs px-2">Oluşturan</TableHead>
                 <TableHead className="text-white text-xs px-2 text-center">İşlemler</TableHead>
@@ -624,7 +625,14 @@ export default function GidenEvrakPage() {
                   <TableCell className="px-2 leading-snug">
                     {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
                   </TableCell>
-                  {/* Ek sütunu — Muhatap ile Oluşturan arasında. Ek listesi varsa göz ikonu */}
+                  {/* Şantiye — Muhatap ile Ek arasında. İş adları çok uzun olabildiği için
+                      30 karakterde kesilir; tamamı ipucunda. */}
+                  <TableCell className="px-2 text-xs text-gray-600 whitespace-nowrap" title={e.santiyeler?.is_adi ?? ""}>
+                    {e.santiyeler?.is_adi
+                      ? (e.santiyeler.is_adi.length > 30 ? e.santiyeler.is_adi.slice(0, 30) + "…" : e.santiyeler.is_adi)
+                      : "—"}
+                  </TableCell>
+                  {/* Ek sütunu — Şantiye ile Oluşturan arasında. Ek listesi varsa göz ikonu */}
                   <TableCell className="px-2 text-center">
                     {e.ekler && e.ekler.length > 0 ? (
                       <button
