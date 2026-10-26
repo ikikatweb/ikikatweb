@@ -119,7 +119,9 @@ async function aracGun(node, gunIso) {
     const bas = gunler[0], bitis = gunler[gunler.length - 1];
     // Rota artık kapılı: oturum yok, görev anahtarı ile girilir (CRON_SECRET).
     const r = await fetchTimeout(`https://ikikat.net/api/arvento/stabilize-ozet?bas=${bas}&bitis=${bitis}&force=1`,
-      { headers: { "x-gorev-anahtari": process.env.CRON_SECRET ?? "" } }, 120000);
+      // Anahtar .env.local'den get() ile okunur — bu script process.env'i doldurmuyor,
+      // process.env.CRON_SECRET boş gelirdi ve ısıtma çağrısı 401 alırdı.
+      { headers: { "x-gorev-anahtari": get("CRON_SECRET") } }, 120000);
     console.log(`Özet warming (${bas} → ${bitis}): HTTP ${r.status}`);
   } catch (e) {
     console.error(`Özet warming hatası (yoksayıldı): ${e instanceof Error ? e.message : String(e)}`);
