@@ -729,11 +729,14 @@ export default function TanimlamalarPage() {
                                   />
                                 ) : (
                                   <div
-                                    className={`text-xs leading-snug truncate ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
-                                    title={yDuzenle ? tekSatirMuhatap(t.deger) + " (Düzenlemek için tıklayın)" : tekSatirMuhatap(t.deger)}
+                                    className={`text-xs leading-snug whitespace-pre-line ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                                    title={yDuzenle ? "Düzenlemek için tıklayın" : ""}
                                     onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
                                   >
-                                    {tekSatirMuhatap(t.deger)}
+                                    {/* ÇOK SATIRLI GÖSTERİM: muhatap "T.C. / kurum / şehir" diye
+                                        satırlara bölünür; tek satıra sıkıştırılıp kesilince değeri
+                                        görmek için düzenlemeye girmek gerekiyordu. */}
+                                    {t.deger}
                                   </div>
                                 )}
                                 <input
@@ -944,7 +947,10 @@ export default function TanimlamalarPage() {
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          {/* Satır düğmeleri HER ZAMAN görünür. Eskiden masaüstünde
+                              gizlenip yalnız satırın üzerine gelince beliriyordu; kullanıcı
+                              silme düğmesinin varlığını fark edemiyordu. */}
+                          <div className="flex items-center gap-0.5 transition-opacity">
                             {yDuzenle && (
                               <>
                                 <button onClick={() => handleSiraDegistir(kat.key, idx, "yukari")}
