@@ -258,6 +258,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     // 50 km dolaşan kamyonda harita o kadar açılıyordu ki araç görünmez oluyordu.
     const odak = kayit.canli ?? kayit.sonIz ?? kayit.noktalar[kayit.noktalar.length - 1];
     map.setView(odak, 17, { animate: true });
+    // Harita 66vh yüksekliğinde; sayfa yukarıdayken alt yarısı ekranın dışında kalıyor ve
+    // tam ortaya alınan araç görünmüyordu. Haritayı ekranın ortasına getir.
+    mapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
 
     // VURGU: odak noktasında kalın halka + aracın izi boyunca ince halkalar (uzaklaşınca
     // hattın tamamı görünsün). Birkaç saniye sonra kendiliğinden silinir.
@@ -272,7 +275,10 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     L.circleMarker(odak, { radius: 22, color: renk, weight: 4, opacity: 0.95, fill: false }).addTo(grup);
     L.circleMarker(odak, { radius: 7, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 })
       .addTo(grup)
-      .bindPopup(`<b>${kayit.plaka}</b>${kayit.etiket ? `<br>${kayit.etiket}` : ""}<br>${kayit.canli ? "canlı konum" : "günün son konumu"}`)
+      // autoPan KAPALI: Leaflet balonu sığdırmak için haritayı kaydırıyor ve araç
+      // merkezden çıkıyordu. Araç tam ortada kalsın.
+      .bindPopup(`<b>${kayit.plaka}</b>${kayit.etiket ? `<br>${kayit.etiket}` : ""}<br>${kayit.canli ? "canlı konum" : "günün son konumu"}`,
+        { autoPan: false })
       .openPopup();
     if (vurguZamanRef.current) clearTimeout(vurguZamanRef.current);
     vurguZamanRef.current = setTimeout(() => { vurguRef.current?.remove(); vurguRef.current = null; }, 8000);
