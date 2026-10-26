@@ -47,7 +47,7 @@ export async function PUT(
   const body = await request.json();
   const {
     ad_soyad, rol, aktif, sifre, izinler, santiye_ids, firma_ids, yetki_kaynak_id,
-    geriye_donus_gun, dashboard_widgets, santiyesiz_veri_gor,
+    geriye_donus_gun, dashboard_widgets, santiyesiz_veri_gor, eposta,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
     kasa_islem_gun, kasa_goruntuleme_gun,
@@ -109,6 +109,8 @@ export async function PUT(
   if (santiye_defteri_islem_gun !== undefined) updateData.santiye_defteri_islem_gun = santiye_defteri_islem_gun;
   if (santiye_defteri_goruntuleme_gun !== undefined) updateData.santiye_defteri_goruntuleme_gun = santiye_defteri_goruntuleme_gun;
   if (dashboard_widgets !== undefined) updateData.dashboard_widgets = dashboard_widgets;
+  // E-posta değişirse doğrulama sıfırlanır: yeni adres teyit edilene kadar güvenilmez.
+  if (eposta !== undefined) { updateData.eposta = eposta; updateData.eposta_dogrulandi = false; }
   if (santiyesiz_veri_gor !== undefined) updateData.santiyesiz_veri_gor = santiyesiz_veri_gor;
   // AÇIK METİN ŞİFRE SAKLANMAZ: parola yalnız Supabase Auth'ta (hash'li) durur.
   if (yetki_kaynak_id !== undefined) updateData.yetki_kaynak_id = yetki_kaynak_id;
@@ -145,7 +147,7 @@ export async function PUT(
     "yakit_islem_gun", "yakit_goruntuleme_gun",
     "kasa_islem_gun", "kasa_goruntuleme_gun",
     "santiye_defteri_islem_gun", "santiye_defteri_goruntuleme_gun",
-    "dashboard_widgets", "santiyesiz_veri_gor",
+    "dashboard_widgets", "santiyesiz_veri_gor", "eposta", "eposta_dogrulandi",
   ]) {
     if (alan in updateData) yayilacak[alan] = updateData[alan];
   }

@@ -84,7 +84,7 @@ export async function POST(request: Request) {
   const {
     ad_soyad, kullanici_adi, sifre, rol, izinler, santiye_ids, firma_ids,
     yetki_kaynak_id,
-    geriye_donus_gun, dashboard_widgets, santiyesiz_veri_gor,
+    geriye_donus_gun, dashboard_widgets, santiyesiz_veri_gor, eposta,
     puantaj_islem_gun, puantaj_goruntuleme_gun,
     yakit_islem_gun, yakit_goruntuleme_gun,
     kasa_islem_gun, kasa_goruntuleme_gun,
@@ -144,6 +144,7 @@ export async function POST(request: Request) {
       santiye_defteri_islem_gun: santiye_defteri_islem_gun ?? null,
       santiye_defteri_goruntuleme_gun: santiye_defteri_goruntuleme_gun ?? null,
       dashboard_widgets: dashboard_widgets ?? null,
+      eposta: eposta ?? null,
       santiyesiz_veri_gor: santiyesiz_veri_gor ?? false,
       // Çoğaltılarak açıldıysa kaynağın yetkilerini izler (bkz. sql/kullanici_yetki_kaynak.sql)
       yetki_kaynak_id: yetki_kaynak_id ?? null,

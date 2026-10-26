@@ -25,6 +25,8 @@ export type KullaniciCreatePayload = {
   santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
   santiyesiz_veri_gor?: boolean | null;
+  /** Şifre yenileme adresi (giriş kimliği DEĞİL). */
+  eposta?: string | null;
 };
 
 export type KullaniciUpdatePayload = {
@@ -50,6 +52,8 @@ export type KullaniciUpdatePayload = {
   santiye_defteri_goruntuleme_gun?: number | null;
   dashboard_widgets?: string[] | null;
   santiyesiz_veri_gor?: boolean | null;
+  /** Şifre yenileme adresi (giriş kimliği DEĞİL). */
+  eposta?: string | null;
 };
 
 // İzin şablonu tipi

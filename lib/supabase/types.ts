@@ -997,6 +997,9 @@ export type Kullanici = {
   // Anahtar biçimi: "<uyari-tipi>:<kayit-id>" (ör. "gecici-kabul-prim:<evrakId>").
   // Kişiye özeldir: bir kullanıcının kapatması diğerlerini etkilemez.
   gizlenen_uyarilar?: string[] | null;
+  /** Şifre yenileme bağlantısının gideceği gerçek adres. Giriş kimliği DEĞİL (giriş kullanıcı adıyla). */
+  eposta?: string | null;
+  eposta_dogrulandi?: boolean | null;
   // Şantiye atanmamış (genel) kayıtları görme yetkisi — TÜM modüller için (yazışmalar,
   // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.).
   // - true  → atanmış şantiyeler + santiye_id NULL olan kayıtlar/araçlar görünür

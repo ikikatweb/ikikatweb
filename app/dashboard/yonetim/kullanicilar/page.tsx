@@ -214,6 +214,7 @@ export default function KullanicilarPage() {
                   className="shadow-[2px_0_3px_rgba(0,0,0,0.15)]"
                 >Ad Soyad</TableHead>
                 <TableHead>Kullanıcı Adı</TableHead>
+                <TableHead>E-posta</TableHead>
                 <TableHead>Şifre</TableHead>
                 <TableHead className="text-center">Rol</TableHead>
                 <TableHead className="hidden md:table-cell">Şantiyeler</TableHead>
@@ -250,6 +251,18 @@ export default function KullanicilarPage() {
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
                   >{k.ad_soyad}</TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>
+                  {/* E-POSTA — şifre yenileme bağlantısı buraya gider; tanımsızsa kullanıcı
+                      "şifremi unuttum" diyemez, o yüzden eksikliği göze çarpsın. */}
+                  <TableCell className="text-sm whitespace-nowrap">
+                    {k.eposta
+                      ? <span className="inline-flex items-center gap-1">
+                          {k.eposta}
+                          {k.eposta_dogrulandi
+                            ? <span className="text-[10px] text-emerald-600" title="Adres doğrulandı">✓</span>
+                            : <span className="text-[10px] text-amber-600" title="Adres henüz doğrulanmadı">bekliyor</span>}
+                        </span>
+                      : <span className="text-xs text-amber-600">tanımsız</span>}
+                  </TableCell>
                   {/* ŞİFRE GÖSTERİLMEZ: açık metin kopya (sifre_gorunur) kaldırıldı.
                       Yönetici şifreyi göremez, yalnız düzenleme ekranından yenisini atar. */}
                   <TableCell className="font-mono text-sm text-gray-400" title="Şifreler saklanmaz; değiştirmek için kullanıcıyı düzenleyin">••••••</TableCell>

@@ -76,6 +76,8 @@ export default function KullaniciForm({
 
   const [adSoyad, setAdSoyad] = useState(kullanici?.ad_soyad ?? "");
   const [kullaniciAdi, setKullaniciAdi] = useState(kullanici?.kullanici_adi ?? "");
+  // E-POSTA: şifre yenileme bağlantısının gideceği GERÇEK adres (giriş kimliği değil).
+  const [eposta, setEposta] = useState(kullanici?.eposta ?? "");
   // Düzenlemede alan BOŞ başlar: açık metin şifre artık saklanmıyor, doldurulacak değer yok.
   const [sifre, setSifre] = useState("");
   const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kaynak?.rol ?? "kisitli");
@@ -282,6 +284,7 @@ export default function KullaniciForm({
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
+          eposta: eposta.trim() || null,
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success(izleyenler.length > 0
@@ -291,6 +294,7 @@ export default function KullaniciForm({
         await createKullanici({
           ad_soyad: formatliAdSoyad,
           kullanici_adi: kullaniciAdi.trim().toLowerCase(),
+          eposta: eposta.trim() || null,
           sifre,
           rol,
           izinler: izinKullanir ? izinler : {},
@@ -371,6 +375,17 @@ export default function KullaniciForm({
         <div className="space-y-2">
           <Label htmlFor="kullanici_adi">Kullanıcı Adı <span className="text-red-500">*</span></Label>
           <Input id="kullanici_adi" value={kullaniciAdi} onChange={(e) => setKullaniciAdi(e.target.value)} disabled={loading || isEdit} placeholder="kullanici_adi" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="eposta">E-posta</Label>
+          <Input id="eposta" type="email" value={eposta} onChange={(e) => setEposta(e.target.value)}
+            disabled={loading} placeholder="ornek@firma.com" />
+          <p className="text-xs text-gray-400">
+            Şifre yenileme bağlantısı buraya gider. Girişte kullanılmaz — giriş kullanıcı adıyla yapılır.
+            {isEdit && kullanici?.eposta && (kullanici?.eposta_dogrulandi
+              ? <span className="ml-1 text-emerald-600">· adres doğrulanmış</span>
+              : <span className="ml-1 text-amber-600">· adres henüz doğrulanmadı</span>)}
+          </p>
           {isEdit && <p className="text-xs text-gray-400">Kullanıcı adı değiştirilemez</p>}
         </div>
         <div className="space-y-2">
