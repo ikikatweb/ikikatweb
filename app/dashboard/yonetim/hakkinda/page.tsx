@@ -53,6 +53,8 @@ const GRUPLAR: Grup[] = [
     seritRenk: "bg-sky-500",
     moduller: [
       { ad: "Araç Çalışma Raporu", aciklama: "Arvento GPS cihazlarından gelen günlük güzergâh, çalışma süresi, mesafe ve damper sayıları. Stabilize serme, reglaj ve sıkıştırma gibi işler harita üzerinde ayrı ayrı izlenir." },
+      { ad: "Harita ve araç arama", aciklama: "Bir günde 20-30 aracın izi aynı haritada çizilir; her araç ayrı renktedir. Plaka (son haneleri de yeter), marka, model ya da \"greyder\" gibi araç sınıfı yazılınca aranan araç bulunur ve haritanın tam ortasına, son bilinen konumuna odaklanılır." },
+      { ad: "İş makinesi çalışma saati", aciklama: "İş makinelerinde kilometre anlamsızdır; gösterge saati esastır. Cihazdan gelen kontak süresinden günlük saat projeksiyonu üretilir, araç kartındaki gösterge değeri buna göre ilerletilir. Bakım ve yakıt denetimi bu saatten hesaplanır." },
     ],
   },
   {
@@ -117,7 +119,7 @@ const GRUPLAR: Grup[] = [
     renk: "bg-[#1E3A5F]/10 text-[#1E3A5F]",
     seritRenk: "bg-[#1E3A5F]",
     moduller: [
-      { ad: "Kullanıcılar", aciklama: "Kullanıcı açma ve modül bazında yetkilendirme. Yalnız yönetici erişir." },
+      { ad: "Kullanıcılar", aciklama: "Kullanıcı açma ve modül bazında yetkilendirme. Yalnız yönetici erişir. Bir kullanıcı başka birinin kopyası olarak açılabilir: kaynağa sonradan verilen yetkiler kopyalara da kendiliğinden geçer." },
       { ad: "Firmalar", aciklama: "Grup firmaları ve ortaklıklar; her firmanın kendi rengi vardır, listelerde bu renkle ayrışır." },
       { ad: "İş Deneyim Belgeleri", aciklama: "İşlerin (şantiyelerin) kartı: sözleşme bedeli, ihale ve sözleşme tarihleri, iş süresi, süre uzatımları, geçici ve kesin kabul tarihleri." },
       { ad: "Personeller", aciklama: "Personel kartları, öğrenim bilgileri, teknik personel atamaları." },
@@ -160,8 +162,53 @@ const OTOMATIK_ISLER = [
   { ad: "Netsim senkronu", sure: "15 dakikada bir", ne: "Hakediş tutarları ve yeni açılan işlerin eşleştirmesi" },
   { ad: "Bildirge okuma", sure: "2 dakikada bir", ne: "E-posta kutusundan SGK bildirgelerinin alınması" },
   { ad: "Arvento senkronu", sure: "Gün içinde düzenli", ne: "Araç güzergâh ve çalışma verileri" },
-  { ad: "Veri yedeği", sure: "Her cumartesi 12:00", ne: "Tüm verinin yerel diske yedeklenmesi" },
+  { ad: "Yaklaşan uyarılar", sure: "Her gün 05:00", ne: "Sigorta, muayene, bakım ve kabul tarihlerinin taranıp bildirime dönüşmesi" },
+  { ad: "Makine saati", sure: "Her gün 19:00", ne: "İş makinelerinin gösterge saatinin kontak süresinden ilerletilmesi" },
+  { ad: "Veri yedeği", sure: "Her cumartesi 12:00", ne: "Tüm verinin yerel diske ŞİFRELİ olarak yedeklenmesi" },
   { ad: "Bildirim budama", sure: "Her ayın 1'i 03:20", ne: "60 günden eski bildirimlerin temizlenmesi" },
+];
+
+const UYARILAR = [
+  {
+    ad: "SGK primi dolmayacak / fazla ödeniyor",
+    nokta: "bg-red-500",
+    metin: "Her iş için yatması gereken prim ile yatan ve bordro tahmini sürekli karşılaştırılır. Bitime kadar prim dolmayacaksa \"kaç kişi eklenmeli\", erken dolacaksa \"kaç kişi çıkarılmalı\" yazar. Hesap takvim günü değil ÇALIŞILAN gün üzerinden yapılır (şantiyenin kış tatili düşülür) ve sözleşme gereği kalması gereken teknik personel sayısının altına inilmesi önerilmez.",
+  },
+  {
+    ad: "Geçici kabul dilekçesi verildi ama prim eksik",
+    nokta: "bg-amber-500",
+    metin: "Giden evraklar taranır; bir işe geçici kabul dilekçesi verilmişse ve o işin primi hâlâ eksikse uyarı çıkar. Dilekçe metni uyarının içinden okunabilir. Kullanıcı durumu gördüyse \"Anlaşıldı\" diyerek uyarıyı kendisi için kapatabilir.",
+  },
+  {
+    ad: "Teknik personel ataması eksik",
+    nokta: "bg-purple-500",
+    metin: "Sözleşmede şartı olan teknik personel (inşaat mühendisi, harita mühendisi vb.) o işe atanmamışsa ya da çıkmışsa bildirilir.",
+  },
+  {
+    ad: "Sigorta, muayene ve bakım tarihleri",
+    nokta: "bg-blue-500",
+    metin: "Trafik sigortası, kasko ve muayene bitişine kalan gün sayısı izlenir; kasko için ayrı bir eşik tanımlanabilir. Bakımda ise hem tarih hem kilometre/saat eşiği izlenir.",
+  },
+  {
+    ad: "Yakıt tüketimi normalin dışında",
+    nokta: "bg-orange-500",
+    metin: "Her dolumda girilen sayaç değerinden tüketim ortalaması (L/100km veya L/saat) hesaplanır; araç cinsine tanımlı alt-üst sınırın dışına çıkan dolum işaretlenir. Araç çalıştı görünüp hiç yakıt almadıysa bu da çelişki olarak görünür.",
+  },
+  {
+    ad: "Bekleyen SGK bildirgesi",
+    nokta: "bg-emerald-500",
+    metin: "İşe giriş/çıkış için muhasebeye mail gönderilir; cevap bildirgesi e-posta kutusundan otomatik okunup TC ve tarihle eşleştirilir. Cevabı gelmeyen işlemler \"bildirge bekleniyor\" olarak listelenir. Bildirgedeki TC kayıttakiyle tutmazsa düzeltme önerilir.",
+  },
+  {
+    ad: "Netsim ile ayrışma",
+    nokta: "bg-sky-500",
+    metin: "Ön muhasebedeki hakediş tutarı ile sitedeki kayıt ayrışırsa rapor uyarır; hangi rakamın elle değiştirildiği rozetten anlaşılır.",
+  },
+  {
+    ad: "Süresi dolmuş işler",
+    nokta: "bg-gray-500",
+    metin: "Bitim tarihi geçtiği hâlde kabul, tasfiye ya da devir işlemi yapılmamış işler listenin altında soluk olarak ayrışır; geçici kabul dilekçesi verilip verilmediği rozetle görünür.",
+  },
 ];
 
 const ROLLER = [
@@ -392,6 +439,29 @@ export default function HakkindaPage() {
         </div>
       </section>
 
+      {/* ---------- KENDİLİĞİNDEN FARK EDİLENLER ---------- */}
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle size={18} className="text-[#1E3A5F]" />
+          <h2 className="text-lg font-bold text-[#1E3A5F]">Sistem neyi kendiliğinden fark eder?</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Asıl iş burada: kimse bakmasa da hesap kendi kendine dönüyor ve bir şey ters gittiğinde
+          ana ekranda karşınıza çıkıyor. Aşağıdakilerin hiçbiri için bir rapor açmanız gerekmez.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {UYARILAR.map((u) => (
+            <div key={u.ad} className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className={`h-2 w-2 rounded-full ${u.nokta}`} />
+                <h3 className="font-bold text-sm text-gray-800">{u.ad}</h3>
+              </div>
+              <p className="text-[13px] text-gray-600 leading-relaxed">{u.metin}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ---------- VERİ GÜVENLİĞİ ---------- */}
       <section className="mb-8">
         <div className="flex items-center gap-2 mb-1">
@@ -405,8 +475,10 @@ export default function HakkindaPage() {
               <h3 className="font-bold text-sm text-gray-800">Yedekleme</h3>
             </div>
             <p className="text-[13px] text-gray-600 leading-relaxed">
-              Veri bulutta tutulur, ayrıca her hafta ofisteki diske tam yedek alınır. Yani hem
-              sunucu tarafında hem şirket içinde kopya vardır.
+              Veri bulutta tutulur, ayrıca her hafta ofisteki diske tam yedek alınır — hem sunucu
+              tarafında hem şirket içinde kopya vardır. Yerel yedekler <strong>şifrelidir</strong>
+              {" "}(AES-256): içinde TC kimlik, ad-soyad ve belgeler olduğu için diski alan biri
+              okuyamaz, açmak anahtar ister.
             </p>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -440,6 +512,43 @@ export default function HakkindaPage() {
               Excel çıktısı alınır; resmî kurumlara verilecek belgeler buradan üretilir.
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* ---------- KİŞİSEL VERİ ---------- */}
+      <section className="mb-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Shield size={18} className="text-[#1E3A5F]" />
+          <h2 className="text-lg font-bold text-[#1E3A5F]">Kişisel veri ve erişim</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Sistemde TC kimlik numarası, ad-soyad ve telefon gibi kişisel veriler zorunlu olarak
+          bulunuyor (SGK bildirgesi, bordro). Bunların kimin görebileceği sınırlandırılmıştır.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {[
+            {
+              ad: "TC kimlik numaraları maskeli",
+              metin: "Listelerde \"129******30\" biçiminde durur. Personel yetkisi olan kullanıcı üstüne tıklayarak tek bir satırı açabilir; yetkisi olmayan hiç açamaz. Böylece ekran paylaşımında, projeksiyonda ya da ekran görüntüsünde numaralar toptan görünmez.",
+            },
+            {
+              ad: "Şifreler kimsede görünmez",
+              metin: "Şifreler geri çevrilemez biçimde (hash) saklanır; yönetici dahil kimse göremez. Şifresini unutan kullanıcı giriş kutusundaki \"Şifremi unuttum\" ile kendi e-postasına tek kullanımlık bağlantı ister ve yeni şifresini kendisi belirler.",
+            },
+            {
+              ad: "Dosyalar bağlantıyla açılmaz",
+              metin: "Kasa slipleri, evrak taramaları, poliçeler ve kabul belgeleri herkese açık adreslerde durmaz. Her dosya isteği oturumdan geçer ve kısa ömürlü, imzalı bir adrese yönlendirilir.",
+            },
+            {
+              ad: "Yetki modülün altına iner",
+              metin: "Yetki yalnız \"girer/giremez\" değildir: görüntüleme, ekleme, düzenleme ve silme ayrı ayrı verilir; bazı modüllerde geçmişe dönük görüntüleme gün sayısıyla, veri kapsamı da şantiye ve firma listesiyle sınırlandırılır.",
+            },
+          ].map((k) => (
+            <div key={k.ad} className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="font-bold text-sm text-gray-800 mb-1.5">{k.ad}</h3>
+              <p className="text-[13px] text-gray-600 leading-relaxed">{k.metin}</p>
+            </div>
+          ))}
         </div>
       </section>
 
