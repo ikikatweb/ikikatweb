@@ -88,16 +88,34 @@ export default function PrimDengesiHatirlatma() {
                 <span>primi doldu,</span>
                 <span className="font-bold text-amber-800">{tl(s.fazlaTutar)}</span>
                 <span>fazla ödendi —</span>
-                <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
-                <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
+                {/* Çıkarılacak kişi 0 olabilir: sigortalıların HEPSİ teknik personelse
+                    sözleşme gereği hiçbiri çıkarılamaz. "0 kişi çıkarın" demek saçma olurdu. */}
+                {s.kisiFarki > 0 ? (
+                  <>
+                    <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
+                    <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
+                  </>
+                ) : (
+                  <span className="font-semibold text-amber-800">
+                    çıkarılabilecek kişi yok — {s.aktifKisi} sigortalının hepsi teknik personel
+                  </span>
+                )}
               </>
             ) : (
               <>
                 <span>primi</span>
                 <span className="font-semibold text-amber-800">{s.dolmaTarihi ? tarih(s.dolmaTarihi) : "—"}</span>
                 <span>dolacak, iş {tarih(s.bitimTarihi)}'de bitiyor —</span>
-                <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
-                <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
+                {s.kisiFarki > 0 ? (
+                  <>
+                    <span className="font-bold text-amber-800">{s.kisiFarki} kişi çıkarın</span>
+                    <span className="text-xs text-orange-700">({s.aktifKisi} sigortalıdan)</span>
+                  </>
+                ) : (
+                  <span className="font-semibold text-amber-800">
+                    çıkarılabilecek kişi yok — {s.aktifKisi} sigortalının hepsi teknik personel
+                  </span>
+                )}
               </>
             )}
 
