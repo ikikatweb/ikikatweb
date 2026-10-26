@@ -8,7 +8,7 @@
 //
 // Veri evrakın kendisinden türetiliyor — şantiyeye kopyalanan ayrı bir alan yok.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, FileText, Minus, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, FileText, Minus, Plus, X } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import {
@@ -16,6 +16,8 @@ import {
   type GeciciKabulDilekce, type DilekceOnizleme,
 } from "@/lib/supabase/queries/gecici-kabul-prim";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
+import { uyariGizle, uyariAnahtari } from "@/lib/supabase/queries/uyari-gizle";
+import toast from "react-hot-toast";
 
 /** Ana ekranın Bordro Özeti'nden gelen satır — "Kalan" burada hesaplanmış hâliyle gelir. */
 export type PrimSatiri = {
@@ -51,6 +53,24 @@ export default function GeciciKabulPrimHatirlatma({
   // "Geç<i>c</i> kabul" gibi ham etiketler görünüyordu.
   const [onizleme, setOnizleme] = useState<DilekceOnizleme | null>(null);
   const [yukleniyor, setYukleniyor] = useState(false);
+  // "Anlaşıldı" ile KALICI kapatılan uyarılar (kullanıcı kaydında tutulur, tarayıcıda değil).
+  // Kullanıcı profili zaten yüklü geliyor; kapatınca burada da tutarız ki satır anında kalksın.
+  const [gizlenenler, setGizlenenler] = useState<string[]>([]);
+  const [onayBekleyen, setOnayBekleyen] = useState<string | null>(null);   // evrakId
+  const [gizleniyor, setGizleniyor] = useState(false);
+  useEffect(() => { setGizlenenler(kullanici?.gizlenen_uyarilar ?? []); }, [kullanici]);
+
+  const anlasildi = async (evrakId: string) => {
+    const anahtar = uyariAnahtari("gecici-kabul-prim", evrakId);
+    setGizleniyor(true);
+    try {
+      setGizlenenler(await uyariGizle(anahtar));
+      setOnayBekleyen(null);
+      toast.success("Uyarı bu kullanıcı için kapatıldı.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Uyarı kapatılamadı.");
+    } finally { setGizleniyor(false); }
+  };
 
   const kontrol = useCallback(async () => {
     if (!yetkili) { setDilekceler([]); return; }
@@ -127,6 +147,8 @@ export default function GeciciKabulPrimHatirlatma({
       return { ...d, is_adi: s.santiyeAd, gereken, kalan };
     })
     .filter((x): x is NonNullable<typeof x> => !!x && x.kalan >= 1)   // 1 TL altı yuvarlama
+    // "Anlaşıldı" denmiş olanlar bu kullanıcıya bir daha gösterilmez.
+    .filter((x) => !gizlenenler.includes(uyariAnahtari("gecici-kabul-prim", x.evrakId)))
     .sort((a, b) => b.kalan - a.kalan);
 
   if (!yetkili || kayitlar.length === 0) return null;
@@ -146,7 +168,8 @@ export default function GeciciKabulPrimHatirlatma({
       </div>
       <ul className="mt-2 space-y-1.5 pl-9 text-sm">
         {kayitlar.map((k) => (
-          <li key={k.evrakId} className="flex flex-wrap items-baseline gap-x-1.5">
+          <li key={k.evrakId} className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+            <span className="flex flex-1 flex-wrap items-baseline gap-x-1.5">
             {k.yazan && <span className="font-semibold text-amber-900">{k.yazan}</span>}
             <span className="font-medium text-amber-900">{k.is_adi}</span>
             <span>işi için</span>
@@ -163,6 +186,37 @@ export default function GeciciKabulPrimHatirlatma({
             <span>dilekçesi verdi ({tarih(k.dilekceTarihi)}) ancak hâlâ</span>
             <span className="font-bold text-emerald-700">{tl(k.kalan)}</span>
             <span>yatması gereken prim var!</span>
+            </span>
+            {/* ANLAŞILDI: uyarıyı YALNIZ bu kullanıcı için kalıcı kapatır. Geri alma yolu
+                arayüzde yok, o yüzden önce onay sorulur. Metnin peşine değil SATIR SONUNA
+                (ml-auto) konur ve dolgulu düğme olarak çizilir — metne yapışık ince
+                çerçeveli hâli yazının devamı sanılıyordu. */}
+            {onayBekleyen === k.evrakId ? (
+              // Onay kutusu KENDİ SATIRINA iner (basis-full): aynı satırda durunca uyarı
+              // metnini dar bir sütuna sıkıştırıp okunmaz hâle getiriyordu.
+              <span className="flex basis-full items-center justify-end gap-2">
+              <span className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 shadow-sm">
+                <span className="text-xs text-amber-900">Bu uyarı kalıcı olarak kaybolacak, onaylıyor musunuz?</span>
+                <button
+                  type="button" disabled={gizleniyor}
+                  onClick={() => anlasildi(k.evrakId)}
+                  className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                >Evet</button>
+                <button
+                  type="button" disabled={gizleniyor}
+                  onClick={() => setOnayBekleyen(null)}
+                  className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >Vazgeç</button>
+              </span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setOnayBekleyen(k.evrakId)}
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-700 bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700"
+                title="Bu uyarıyı kendim için kalıcı olarak kapat"
+              ><Check size={14} /> Anlaşıldı</button>
+            )}
           </li>
         ))}
       </ul>

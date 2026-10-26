@@ -991,6 +991,10 @@ export type Kullanici = {
   dashboard_widgets: string[] | null;
   // Push bildirim kategori ayarları: { "kasa": false, ... } — varsayılan hepsi true/open
   bildirim_ayarlari?: Record<string, boolean> | null;
+  // Kullanıcının "Anlaşıldı" diyip kalıcı olarak kapattığı uyarılar.
+  // Anahtar biçimi: "<uyari-tipi>:<kayit-id>" (ör. "gecici-kabul-prim:<evrakId>").
+  // Kişiye özeldir: bir kullanıcının kapatması diğerlerini etkilemez.
+  gizlenen_uyarilar?: string[] | null;
   // Şantiye atanmamış (genel) kayıtları görme yetkisi — TÜM modüller için (yazışmalar,
   // yakıt, kasa, araç bakım, iscilik takibi, personel, vb.).
   // - true  → atanmış şantiyeler + santiye_id NULL olan kayıtlar/araçlar görünür
