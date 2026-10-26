@@ -60,7 +60,7 @@ import { OGRENIM_DURUMLARI, type Personel, type PersonelAtamaGecmisi, type Perso
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 import { isBitimHesapla } from "@/lib/bordro/is-bitim";
-import { tcGoster } from "@/lib/utils/tc-maske";
+import TcGosterim from "@/components/shared/tc-gosterim";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -4499,7 +4499,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               })()}
             </div>
             {p.meslek && <div className="text-[10px] text-gray-500 truncate">{p.meslek}</div>}
-            {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400">{tcGoster(p.tc_kimlik_no, tcTamGorebilir)}</div>}
+            {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400"><TcGosterim tc={p.tc_kimlik_no} tamGorebilir={tcTamGorebilir} /></div>}
             {iseBaslama && (
               <div className="text-[9px] text-gray-400 mt-0.5">
                 İşe başlama: {formatTr(iseBaslama)}
@@ -5101,7 +5101,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           </div>
         </td>
         <td className={`px-2 py-1.5 text-[11px] ${ayVurgu ?? "text-gray-600"}`}>{p.meslek ?? "—"}</td>
-        <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}>{p.tc_kimlik_no ? tcGoster(p.tc_kimlik_no, tcTamGorebilir) : "—"}</td>
+        <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}><TcGosterim tc={p.tc_kimlik_no} tamGorebilir={tcTamGorebilir} /></td>
         {isAktifKolon && (
           <>
             {/* İşe başlama SİYAH; yalnız SEÇİLİ AYDA işe girenler yeşil (ayVurgu).

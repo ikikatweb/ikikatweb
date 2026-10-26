@@ -27,6 +27,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import TcGosterim from "@/components/shared/tc-gosterim";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -366,7 +367,11 @@ export default function PersonelPage() {
                 return (
                   <TableRow key={p.id} className={pasif ? "opacity-60 bg-gray-50" : undefined}>
                     <TableCell className="text-center text-gray-400 tabular-nums text-xs w-px">{sira + 1}</TableCell>
-                    <TableCell className="tabular-nums whitespace-nowrap w-px">{p.tc_kimlik_no}</TableCell>
+                    {/* TC varsayılan MASKELİ — bu ekrana zaten yalnız personel yetkisi olan giriyor,
+                        ama ekran paylaşımı/görüntüsü riskine karşı açmak tek tık istiyor. */}
+                    <TableCell className="tabular-nums whitespace-nowrap w-px">
+                      <TcGosterim tc={p.tc_kimlik_no} tamGorebilir />
+                    </TableCell>
                     <TableCell className="font-medium whitespace-nowrap w-px">
                       <div className="flex items-center gap-1.5">
                         <span className={pasif ? "text-gray-500" : undefined}>{p.ad_soyad}</span>
