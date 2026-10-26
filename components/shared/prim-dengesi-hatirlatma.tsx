@@ -14,7 +14,7 @@ import { AlertTriangle, UserPlus, UserMinus } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import { getPrimDengeleri, type PrimDengeSatiri } from "@/lib/supabase/queries/prim-dengesi";
-import { damgala, anaEkrandaGosterildiIsaretle } from "@/lib/bordro/prim-dengesi-gorulen";
+import { damgala, anaEkrandaGosterildiIsaretle, tespitZamani } from "@/lib/bordro/prim-dengesi-gorulen";
 
 const tl = (n: number) => Math.round(n).toLocaleString("tr-TR") + " ₺";
 const tarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
@@ -34,11 +34,16 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
   const kontrol = useCallback(async () => {
     if (!yetkili || !kullanici?.id) { setSatirlar([]); return; }
     const veri = (await getPrimDengeleri()).filter((s) => kayitGorunur(s.santiyeId, kullanici));
-    // Damga: yeni girenlere zaman damgası, listeden çıkanları depodan sil.
-    const depo = damgala(kullanici.id, veri.map((s) => s.santiyeId));
-    // LİSTEYE EN SON GİREN EN ÜSTTE.
+    // Damga: yeni girenlere ve DURUMU DEĞİŞENLERE zaman damgası, listeden çıkanları sil.
+    // İmza kaba tutulur (durum + kişi farkı + iş bitti mi) — tutar her gün değiştiği için
+    // imzaya girseydi her iş her gün "yeni" sayılırdı.
+    const depo = damgala(kullanici.id, veri.map((s) => ({
+      santiyeId: s.santiyeId,
+      imza: `${s.durum}|${s.kisiFarki}|${s.isBitti ? 1 : 0}`,
+    })));
+    // EN SON TESPİT EDİLEN EN ÜSTTE (ilk giriş ya da durum değişikliği).
     const sirali = [...veri].sort((a, b) =>
-      (depo[b.santiyeId]?.ilkGorulme ?? "").localeCompare(depo[a.santiyeId]?.ilkGorulme ?? ""));
+      tespitZamani(depo[b.santiyeId]).localeCompare(tespitZamani(depo[a.santiyeId])));
     if (mod === "sayfa") { setSatirlar(sirali); return; }
     // Ana ekran: yalnız HENÜZ GÖSTERİLMEMİŞ olanlar.
     // BU AÇILIŞTA gösterilenler listede KALIR: aksi hâlde kontrol ikinci kez çalışınca
@@ -164,7 +169,9 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
             ) : (
               <>
                 <span>primi</span>
-                <span className="font-semibold text-amber-800">{s.dolmaTarihi ? tarih(s.dolmaTarihi) : "—"}</span>
+                {/* DOLMA TARİHİ DE EYLEM RENGİNDE: satırın eylemi "kişi çıkarın" (kırmızı).
+                    Tek amber kalan öge olunca satır iki renkli görünüyordu. */}
+                <span className="font-semibold text-red-700">{s.dolmaTarihi ? tarih(s.dolmaTarihi) : "—"}</span>
                 <span>dolacak, iş {tarih(s.bitimTarihi)}'de bitiyor —</span>
                 {s.kisiFarki > 0 ? (
                   <>

@@ -9,9 +9,28 @@
 // görüntülemede yazmaya değmez. Başka cihazdan girildiğinde uyarı bir kez daha çıkar —
 // kasıtlı: yeni cihazda kullanıcı o işi henüz görmemiştir.
 //
-// ilkGorulme ayrıca SIRALAMA için kullanılır: listeye en son giren iş en üstte durur.
+// sonTespit SIRALAMA için kullanılır: listenin en üstünde EN SON TESPİT EDİLEN iş durur.
+// "Tespit" yalnız listeye ilk giriş değil, DURUMUN DEĞİŞMESİ de sayılır: "7 kişi çıkarın"
+// iken "6 kişi çıkarın" olduysa ya da eksikken fazlaya döndüyse iş yeniden en üste çıkar
+// ve ana ekranda bir kez daha gösterilir — kullanıcı için yeni bir bilgidir.
+//
+// İMZA KASITLI OLARAK KABA: durum + kişi farkı + iş bitti mi. Tutar her gün kuruşu
+// kuruşuna değişiyor; imzaya girseydi altı iş de her gün "değişti" sayılıp ana ekran
+// uyarısı hiç susmazdı.
 
-export type GorulenKayit = { ilkGorulme: string; anaEkrandaGosterildi: boolean };
+export type GorulenKayit = {
+  /** Son tespit/değişim damgası (ISO). Eski kayıtlarda ilkGorulme adıyla duruyor olabilir. */
+  sonTespit?: string;
+  ilkGorulme?: string;
+  anaEkrandaGosterildi: boolean;
+  /** Son görülen durum imzası; değişirse iş yeniden "tespit edildi" sayılır. */
+  imza?: string;
+};
+
+/** Kaydın damgası — eski (ilkGorulme) kayıtlarla uyumlu okuma. */
+export function tespitZamani(k: GorulenKayit | undefined): string {
+  return k?.sonTespit ?? k?.ilkGorulme ?? "";
+}
 type Depo = Record<string, GorulenKayit>;
 
 const anahtar = (kullaniciId: string) => `prim-dengesi-gorulen:${kullaniciId}`;
@@ -37,16 +56,28 @@ function yaz(kullaniciId: string, depo: Depo): void {
 
 /**
  * Listedeki işleri depoyla eşler:
- *  - yeni görülenlere ilkGorulme damgası basar,
+ *  - yeni görülenlere tespit damgası basar,
+ *  - DURUMU DEĞİŞENLERİN damgasını tazeler ve "ana ekranda gösterildi"yi sıfırlar,
  *  - artık riskte olmayan işleri depodan siler (tekrar riske girerse YENİ sayılsın).
  * Dönüş: her santiyeId için kayıt.
  */
-export function damgala(kullaniciId: string, santiyeIdler: string[]): Depo {
+export function damgala(kullaniciId: string, kayitlar: { santiyeId: string; imza: string }[]): Depo {
   const depo = oku(kullaniciId);
   const simdi = new Date().toISOString();
-  const kume = new Set(santiyeIdler);
-  for (const id of santiyeIdler) {
-    if (!depo[id]) depo[id] = { ilkGorulme: simdi, anaEkrandaGosterildi: false };
+  const kume = new Set(kayitlar.map((k) => k.santiyeId));
+  for (const { santiyeId: id, imza } of kayitlar) {
+    const mevcut = depo[id];
+    if (!mevcut) {
+      depo[id] = { sonTespit: simdi, anaEkrandaGosterildi: false, imza };
+    } else if (mevcut.imza !== imza) {
+      // DURUM DEĞİŞTİ → yeniden tespit: en üste çıkar, ana ekranda bir kez daha görünür.
+      // (İmzası olmayan eski kayıtlar bir kereye mahsus buraya düşer; damgası korunur.)
+      depo[id] = {
+        sonTespit: mevcut.imza === undefined ? tespitZamani(mevcut) || simdi : simdi,
+        anaEkrandaGosterildi: mevcut.imza === undefined ? mevcut.anaEkrandaGosterildi : false,
+        imza,
+      };
+    }
   }
   for (const id of Object.keys(depo)) {
     if (!kume.has(id)) delete depo[id];
