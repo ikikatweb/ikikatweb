@@ -43,6 +43,7 @@ import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
+import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
 import PoliceUyariHatirlatma from "@/components/shared/police-uyari-hatirlatma";
 import NetsimYeniIsHatirlatma from "@/components/shared/netsim-yeni-is-hatirlatma";
 import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hatirlatma";
@@ -1860,6 +1861,9 @@ export default function DashboardPage() {
       <BordroHatirlatma />
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
+      {/* SGK prim dengesi: bitime kadar dolmayacak işler + primi dolduğu hâlde
+          sigortalı taşıyan işler. Kişi ekle/çıkar sayısıyla birlikte. */}
+      <PrimDengesiHatirlatma />
       {/* Uyarı, Bordro Özeti'nin hesapladığı satırları kullanır — "Kalan" rakamı
           tablodakiyle birebir aynı olsun diye ikinci bir hesap yazılmadı. */}
       <GeciciKabulPrimHatirlatma
