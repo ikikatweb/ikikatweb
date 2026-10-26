@@ -33,6 +33,7 @@ import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
 import { uploadDosyaImzali } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
+import { muhatapBicimle } from "@/lib/utils/muhatap-bicim";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 // Kısmi gösterim stringinden ISO tarihi üretir (sıralama/filtre için fallback).
@@ -184,7 +185,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
 
   async function handleYeniMuhatap() {
     if (!yeniMuhatap.trim()) { toast.error("Muhatap adı zorunludur."); return; }
-    const ad = yeniMuhatap.trim();
+    // YAZIM BİRLİĞİ: kullanıcı tamamını büyük yazsa bile kayda "ilk harfler büyük,
+    // gerisi küçük" olarak girer. Kısaltmalar (T.C., A.Ş., CK) ve son satırdaki
+    // şehir korunur — bkz. lib/utils/muhatap-bicim.
+    const ad = muhatapBicimle(yeniMuhatap.trim());
     const kisaAd = yeniMuhatapKisa.trim() || null;
     try {
       const yeni = await createTanimlama({
@@ -717,12 +721,17 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
               <textarea
                 value={yeniMuhatap}
                 onChange={(e) => setYeniMuhatap(e.target.value)}
+                onBlur={(e) => setYeniMuhatap(muhatapBicimle(e.target.value))}
                 placeholder={"T.C.\nDevlet Su İşleri\nGenel Müdürlüğü\nTOKAT"}
                 rows={5}
                 className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm text-center outline-none focus:border-ring focus:ring-2 focus:ring-ring/50"
                 autoFocus
               />
-              <p className="text-[10px] text-gray-400">Her satıra bir bilgi yazın. Son satır şehir olmalı.</p>
+              <p className="text-[10px] text-gray-400">
+                Her satıra bir bilgi yazın. Son satır şehir olmalı. Yazım otomatik
+                düzeltilir: ilk harfler büyük, gerisi küçük (T.C., A.Ş. gibi kısaltmalar
+                ve şehir satırı korunur).
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Kısa Ad <span className="text-gray-400 text-[10px]">(Evrak sayı no için)</span></Label>

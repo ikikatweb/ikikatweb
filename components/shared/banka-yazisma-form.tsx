@@ -27,6 +27,7 @@ import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import PreviewScaler from "@/components/shared/preview-scaler";
 import { uploadDosya } from "@/lib/supabase/queries/upload";
 import toast from "react-hot-toast";
+import { muhatapBicimle } from "@/lib/utils/muhatap-bicim";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
 
 type Props = {
@@ -143,7 +144,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
   async function handleYeniMuhatap() {
     if (!yeniMuhatap.trim()) { toast.error("Muhatap adı zorunludur."); return; }
-    const ad = yeniMuhatap.trim();
+    // Yazım birliği — giden evrakla aynı kural (bkz. lib/utils/muhatap-bicim).
+    const ad = muhatapBicimle(yeniMuhatap.trim());
     const kisaAd = yeniMuhatapKisa.trim() || null;
     try {
       const yeni = await createTanimlama({
@@ -620,6 +622,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
               <Label>Muhatap (Çok Satırlı)</Label>
               <textarea
                 value={yeniMuhatap}
+                onBlur={(e) => setYeniMuhatap(muhatapBicimle(e.target.value))}
                 onChange={(e) => setYeniMuhatap(e.target.value)}
                 placeholder={"T.C.\nDevlet Su İşleri\nGenel Müdürlüğü\nTOKAT"}
                 rows={5}
