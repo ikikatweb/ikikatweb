@@ -250,7 +250,9 @@ export default function KullanicilarPage() {
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
                   >{k.ad_soyad}</TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>
-                  <TableCell className="font-mono text-sm">{k.sifre_gorunur ?? "••••••"}</TableCell>
+                  {/* ŞİFRE GÖSTERİLMEZ: açık metin kopya (sifre_gorunur) kaldırıldı.
+                      Yönetici şifreyi göremez, yalnız düzenleme ekranından yenisini atar. */}
+                  <TableCell className="font-mono text-sm text-gray-400" title="Şifreler saklanmaz; değiştirmek için kullanıcıyı düzenleyin">••••••</TableCell>
                   <TableCell className="text-center">
                     <Badge className={
                       k.rol === "yonetici" ? "bg-[#F97316]"

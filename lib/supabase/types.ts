@@ -958,7 +958,9 @@ export type Kullanici = {
   auth_id: string;
   ad_soyad: string;
   kullanici_adi: string;
-  sifre_gorunur: string | null;
+  /** @deprecated Açık metin şifre kopyası KALDIRILDI (sql/sifre_gorunur_kaldir.sql).
+   *  Alan sütun düşene kadar tipte kalıyor; hiçbir yerde okunmuyor/yazılmıyor. */
+  sifre_gorunur?: string | null;
   // "yonetici" — tam yetki
   // "santiye_admin" — atandığı şantiyelerin TÜM verilerine yetki (başka kullanıcılarınki dahil)
   // "kisitli" — atandığı şantiyelerde sadece KENDİ verilerini görür/yazar

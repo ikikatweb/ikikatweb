@@ -1,6 +1,6 @@
 // Kullanıcının kendi şifresini değiştirme API
 // - Eski şifreyi doğrular
-// - Yeni şifre Supabase auth'a yazılır + sifre_gorunur (yöneticinin görmesi için) güncellenir
+// - Yeni şifre YALNIZ Supabase auth'a yazılır (hash'li). Açık metin kopya TUTULMAZ.
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -83,15 +83,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Şifre güncellenemedi: ${authErr.message}` }, { status: 500 });
   }
 
-  // 6) sifre_gorunur'ü güncelle (yönetici listede görsün)
+  // 6) Kayıt zamanı güncellenir — ŞİFRENİN KENDİSİ TABLOYA YAZILMAZ.
+  // Eskiden sifre_gorunur'a açık metin kopya yazılıyordu (yönetici listede görsün diye);
+  // tek bir sızıntı ya da yönetici hesabının ele geçmesi herkesin gerçek şifresini verirdi
+  // ve insanlar aynı şifreyi başka yerlerde de kullanıyor. Yönetici artık şifre GÖREMEZ,
+  // yalnız yenisini atayabilir.
   const { error: updateErr } = await supabase
     .from("kullanicilar")
-    .update({ sifre_gorunur: yeni, updated_at: new Date().toISOString() })
+    .update({ updated_at: new Date().toISOString() })
     .eq("id", profil.id);
   if (updateErr) {
-    // Şifre değişti ama sifre_gorunur yazılamadı — hata bildir
     return NextResponse.json({
-      error: `Şifre değişti ama görünür alan güncellenemedi: ${updateErr.message}`,
+      error: `Şifre değişti ama kayıt zamanı güncellenemedi: ${updateErr.message}`,
     }, { status: 500 });
   }
 

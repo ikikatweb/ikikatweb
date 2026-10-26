@@ -76,7 +76,8 @@ export default function KullaniciForm({
 
   const [adSoyad, setAdSoyad] = useState(kullanici?.ad_soyad ?? "");
   const [kullaniciAdi, setKullaniciAdi] = useState(kullanici?.kullanici_adi ?? "");
-  const [sifre, setSifre] = useState(isEdit ? (kullanici?.sifre_gorunur ?? "") : "");
+  // Düzenlemede alan BOŞ başlar: açık metin şifre artık saklanmıyor, doldurulacak değer yok.
+  const [sifre, setSifre] = useState("");
   const [rol, setRol] = useState<"yonetici" | "santiye_admin" | "kisitli">(kaynak?.rol ?? "kisitli");
   const [izinler, setIzinler] = useState<Izinler>(kaynak?.izinler ?? {});
   const [seciliSantiyeler, setSeciliSantiyeler] = useState<string[]>(kaynak?.santiye_ids ?? []);
@@ -380,7 +381,7 @@ export default function KullaniciForm({
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
-          {isEdit && <p className="text-xs text-gray-400">Boş bırakılırsa mevcut şifre korunur</p>}
+          {isEdit && <p className="text-xs text-gray-400">Mevcut şifre görüntülenemez (saklanmıyor). Boş bırakılırsa değişmez; yazarsanız yeni şifre olur.</p>}
         </div>
       </div>
 

@@ -129,7 +129,6 @@ export async function POST(request: Request) {
       auth_id: authData.user.id,
       ad_soyad,
       kullanici_adi: kullanici_adi.trim().toLowerCase(),
-      sifre_gorunur: sifre,
       rol: rol || "kisitli",
       aktif: true,
       izinler: izinler || {},

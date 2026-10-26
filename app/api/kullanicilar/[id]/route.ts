@@ -110,7 +110,7 @@ export async function PUT(
   if (santiye_defteri_goruntuleme_gun !== undefined) updateData.santiye_defteri_goruntuleme_gun = santiye_defteri_goruntuleme_gun;
   if (dashboard_widgets !== undefined) updateData.dashboard_widgets = dashboard_widgets;
   if (santiyesiz_veri_gor !== undefined) updateData.santiyesiz_veri_gor = santiyesiz_veri_gor;
-  if (sifre && sifre.trim()) updateData.sifre_gorunur = sifre;
+  // AÇIK METİN ŞİFRE SAKLANMAZ: parola yalnız Supabase Auth'ta (hash'li) durur.
   if (yetki_kaynak_id !== undefined) updateData.yetki_kaynak_id = yetki_kaynak_id;
 
   const { data, error } = await supabase
