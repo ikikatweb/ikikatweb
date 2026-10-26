@@ -127,6 +127,11 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
         calisilmayan: { bas: s.calisilmayan_bas, bit: s.calisilmayan_bit },
       });
       if (denge.durum === "dengede") continue;        // sapma yoksa listeye girmez
+      // YAPILACAK ŞEY YOKSA LİSTELEME: prim fazla ama sigortalıların hepsi teknik
+      // personel → sözleşme gereği kimse çıkarılamaz. Uyarıda tutmak listeyi meşgul
+      // etmekten başka işe yaramıyor. (Eksik tarafta kişi sayısı 0 olsa bile eylem var:
+      // "sigortalı girin".)
+      if (denge.durum === "fazla" && denge.kisiFarki === 0) continue;
       sonuc.push({
         ...denge,
         santiyeId: sid, santiyeAd: s.is_adi, bitimTarihi: bitim,

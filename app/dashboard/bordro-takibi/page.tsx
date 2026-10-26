@@ -6,6 +6,7 @@ import { UserPlus, Calendar, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BordroTakibi from "../iscilik-takibi/BordroTakibi";
 import GunlukUcretSayfasi from "./GunlukUcret";
+import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
 
 type Sekme = "bordro" | "pasif-isler" | "gunluk-ucret";
 
@@ -48,6 +49,9 @@ export default function BordroTakibiPage() {
         </Button>
       </div>
 
+      {/* Prim dengesi uyarısı — BURADA HER ZAMAN TAMAMI görünür (ana ekranda her iş
+          yalnız bir kez çıkar). Kişi ekleme/çıkarma işlemi zaten bu sayfada yapılıyor. */}
+      {sekme === "bordro" && <PrimDengesiHatirlatma mod="sayfa" />}
       {sekme === "bordro" && <BordroTakibi gosterilecekDurum="aktif" />}
       {sekme === "pasif-isler" && <BordroTakibi gosterilecekDurum="pasif" />}
       {sekme === "gunluk-ucret" && <GunlukUcretSayfasi />}
