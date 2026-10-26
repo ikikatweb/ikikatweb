@@ -71,14 +71,20 @@ export const YEDEK_TABLOLARI = [
   "bildirge_imap_durum",
   // Netsim
   "netsim_isler",
+  "netsim_yeni_nokta",       // Netsim'den gelen yeni iş noktaları + elle tamamlanan bilgiler
+  // Denetim kaydı — kim neyi ne zaman değiştirdi. Geri yüklemede bu olmazsa geçmiş kaybolur.
+  "kayit_gecmisi",
+  // İşlenmiş sigorta maili işareti (bildirge_imap_durum'un karşılığı) — yoksa aynı mailler
+  // yeniden işlenip çift kayıt üretir.
+  "sigorta_mail_islenen",
   // Tanımlamalar / içerik
   "tanimlamalar",
   "yi_ufe",
   "haberler",
-  // Mesajlaşma / bildirim
-  "mesaj_konusma",
-  "mesaj_uye",
-  "mesaj",
+  // Bildirim
+  // NOT: mesaj / mesaj_konusma / mesaj_uye LİSTEDEN ÇIKARILDI — veritabanında böyle tablolar
+  // yok (kodda da yalnız bu listede geçiyordu). Her yedek çalışmasında 3 adet "tablo bulunamadı"
+  // hatası üretiyor, gerçek hatayı gölgeliyordu. Mesajlaşma eklenirse buraya geri konur.
   "push_subscriptions",
   // İhale
   "ihale",
