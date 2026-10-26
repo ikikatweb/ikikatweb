@@ -69,10 +69,22 @@ export type Denge = {
   tabanEngeli: number;
 };
 
+/** Ertesi gün (YYYY-MM-DD). */
+function ertesiGun(g: string): string {
+  const d = new Date(g + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function primDengesi(g: DengeGirdi): Denge {
   const { kalanPrim, gunlukUretim, kisiBasiUcret, aktifKisi, teknikKisi, bugun, bitim, calisilmayan } = g;
   const isBitti = bitim < bugun;
-  const kalanCalismaGunu = isBitti ? 0 : calisilanGun(calisilmayan, bugun, bitim);
+  // KALAN TAKVİM YARIN BAŞLAR. Tahmini bordro açık atamaları BUGÜN DÂHİL sayıyor
+  // (tahmini-bordro.ts: aktifSanal = bugün); kalan takvimi de bugünden başlatınca
+  // bugün iki kez prim üretiyordu. Lojman işinde bu bir gün, 15 sigortalıyla
+  // 16.515 ₺ ediyor ve "çıkarılabilir kişi"yi bir fazla gösteriyordu.
+  const yarin = ertesiGun(bugun);
+  const kalanCalismaGunu = isBitti ? 0 : calisilanGun(calisilmayan, yarin, bitim);
   const bitimeKadarUretim = gunlukUretim * kalanCalismaGunu;
 
   // PRİM ZATEN DOLMUŞ (ya da fazlası ödenmiş)
@@ -106,7 +118,7 @@ export function primDengesi(g: DengeGirdi): Denge {
   let dolmaTarihi: string | null = null;
   if (gunlukUretim > 0) {
     let birikim = 0;
-    const t = new Date(bugun + "T00:00:00");
+    const t = new Date(yarin + "T00:00:00");   // bugün tahmini bordroda zaten sayıldı
     const son = new Date(bitim + "T00:00:00");
     while (t <= son) {
       const gun = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
