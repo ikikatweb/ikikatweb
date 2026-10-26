@@ -60,6 +60,7 @@ import { OGRENIM_DURUMLARI, type Personel, type PersonelAtamaGecmisi, type Perso
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 import { isBitimHesapla } from "@/lib/bordro/is-bitim";
+import { tcGoster } from "@/lib/utils/tc-maske";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -565,6 +566,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const yEkle = hasPermission("bordro-takibi", "ekle");
   const yDuzenle = hasPermission("bordro-takibi", "duzenle");
   const ySil = hasPermission("bordro-takibi", "sil");
+  // TC KİMLİK — yalnız personel yetkisi olana TAM gösterilir (veri minimizasyonu).
+  // Bordro ekranını 12 kişi görüyor ama personel yetkisi 7'sinde var; kalan 5 kişinin
+  // (şantiye yöneticileri / kısıtlı kullanıcılar) işi TC numarasını okumayı gerektirmiyor.
+  const tcTamGorebilir = isYonetici || hasPermission("yonetim-personel", "goruntule");
   const [loading, setLoading] = useState(true);
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
   const [personeller, setPersoneller] = useState<Personel[]>([]);
@@ -4494,7 +4499,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               })()}
             </div>
             {p.meslek && <div className="text-[10px] text-gray-500 truncate">{p.meslek}</div>}
-            {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400">{p.tc_kimlik_no}</div>}
+            {p.tc_kimlik_no && <div className="text-[10px] font-mono text-gray-400">{tcGoster(p.tc_kimlik_no, tcTamGorebilir)}</div>}
             {iseBaslama && (
               <div className="text-[9px] text-gray-400 mt-0.5">
                 İşe başlama: {formatTr(iseBaslama)}
@@ -5096,7 +5101,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           </div>
         </td>
         <td className={`px-2 py-1.5 text-[11px] ${ayVurgu ?? "text-gray-600"}`}>{p.meslek ?? "—"}</td>
-        <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}>{p.tc_kimlik_no ?? "—"}</td>
+        <td className={`px-2 py-1.5 font-mono text-[11px] hidden md:table-cell ${ayVurgu ?? "text-gray-500"}`}>{p.tc_kimlik_no ? tcGoster(p.tc_kimlik_no, tcTamGorebilir) : "—"}</td>
         {isAktifKolon && (
           <>
             {/* İşe başlama SİYAH; yalnız SEÇİLİ AYDA işe girenler yeşil (ayVurgu).
