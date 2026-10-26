@@ -38,6 +38,29 @@ function tamamiBuyukMu(metin: string): boolean {
   return harfler.length > 0 && harfler === buyuk(harfler);
 }
 
+/** 81 il. Metnin sonundaki şehir adını BÜYÜK yazmak için — "son kelimeyi büyüt"
+ *  demek şehir olmayan sonları da bozardı, bu yüzden liste ile kesin ayrım. */
+const ILLER = new Set([
+  "ADANA","ADIYAMAN","AFYONKARAHISAR","AGRI","AKSARAY","AMASYA","ANKARA","ANTALYA","ARDAHAN",
+  "ARTVIN","AYDIN","BALIKESIR","BARTIN","BATMAN","BAYBURT","BILECIK","BINGOL","BITLIS","BOLU",
+  "BURDUR","BURSA","CANAKKALE","CANKIRI","CORUM","DENIZLI","DIYARBAKIR","DUZCE","EDIRNE",
+  "ELAZIG","ERZINCAN","ERZURUM","ESKISEHIR","GAZIANTEP","GIRESUN","GUMUSHANE","HAKKARI","HATAY",
+  "IGDIR","ISPARTA","ISTANBUL","IZMIR","KAHRAMANMARAS","KARABUK","KARAMAN","KARS","KASTAMONU",
+  "KAYSERI","KILIS","KIRIKKALE","KIRKLARELI","KIRSEHIR","KOCAELI","KONYA","KUTAHYA","MALATYA",
+  "MANISA","MARDIN","MERSIN","MUGLA","MUS","NEVSEHIR","NIGDE","ORDU","OSMANIYE","RIZE","SAKARYA",
+  "SAMSUN","SANLIURFA","SIIRT","SINOP","SIRNAK","SIVAS","TEKIRDAG","TOKAT","TRABZON","TUNCELI",
+  "USAK","VAN","YALOVA","YOZGAT","ZONGULDAK",
+]);
+
+/** Türkçe harfleri sadeleştirip büyütür — il karşılaştırması için. */
+function ilAnahtar(k: string): string {
+  return buyuk(k).replace(/[^\p{L}]/gu, "")
+    .replace(/[İI]/g, "I").replace(/Ş/g, "S").replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U").replace(/Ö/g, "O").replace(/Ç/g, "C");
+}
+
+const ilMi = (kelime: string) => ILLER.has(ilAnahtar(kelime));
+
 /** Kısa ve tamamı büyük kelime = KISALTMA (CK, DSİ, MYO, ASM). Satırın geri kalanı
  *  normal yazılmışsa kullanıcı bunu bilerek büyük yazmıştır, bozulmaz.
  *  Satırın TAMAMI büyükse bu ayrım yapılamaz (orada "VE" de büyüktür) → uygulanmaz. */
@@ -60,16 +83,16 @@ export function muhatapBicimle(ham: string | null | undefined): string {
   })();
   return satirlar
     .map((satir, i) => {
-      // ŞEHİR SATIRI: son satır, TEK kelime ve tamamı büyük → dokunma (SAMSUN, ANKARA).
-      // Tek kelime şartı önemli: "İLGİLİ MAKAMA" da tamamı büyük ama şehir değil,
-      // düzeltilmesi gerekiyor.
-      const tekKelime = satir.trim().split(/\s+/).length === 1;
-      if (i === sonDolu && tekKelime && tamamiBuyukMu(satir)) return satir;
       // Satırın tamamı büyükse kullanıcı caps ile yazmış demektir; kısaltma ayrımı
-      // yapılamaz, hepsi başlık yazımına çevrilir.
+      // yapılamaz (orada "VE" de büyüktür), hepsi başlık yazımına çevrilir.
       const satirTamamiBuyuk = tamamiBuyukMu(satir);
-      return satir.replace(/\S+/g, (k) =>
+      const bicimli = satir.replace(/\S+/g, (k) =>
         (!satirTamamiBuyuk && kisaltmaMi(k)) ? k : kelimeBicim(k));
+      if (i !== sonDolu) return bicimli;
+      // METNİN EN SONUNDAKİ KELİME İL İSE BÜYÜK YAZILIR — kendi satırında olsun ya da
+      // olmasın; "Müdürlüğü'ne TOKAT" ile son satırı SAMSUN olan yazı aynı kurala tabi.
+      return bicimli.replace(/(\S+)(\s*)$/, (tam, sonKelime, bosluk) =>
+        ilMi(sonKelime) ? buyuk(sonKelime) + bosluk : tam);
     })
     .join("\n");
 }
