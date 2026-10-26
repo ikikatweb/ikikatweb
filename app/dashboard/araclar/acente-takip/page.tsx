@@ -23,6 +23,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -401,7 +402,7 @@ export default function AcenteTakipPage() {
                     <TableCell className="px-2 text-center font-mono text-[10px]">{p.police_no ?? "—"}</TableCell>
                     <TableCell className="px-2 text-center">
                       {p.police_url ? (
-                        <a href={p.police_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
+                        <a href={dosyaUrl(p.police_url)} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700">
                           <ExternalLink size={14} />
                         </a>
                       ) : "—"}
@@ -540,7 +541,7 @@ export default function AcenteTakipPage() {
               <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setEDosya(e.target.files?.[0] ?? null)}
                 className="w-full text-sm text-gray-500 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-[#64748B] file:text-white" />
               {editPolice?.police_url && !eDosya && (
-                <a href={editPolice.police_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Mevcut dosyayı görüntüle</a>
+                <a href={dosyaUrl(editPolice.police_url)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline">Mevcut dosyayı görüntüle</a>
               )}
             </div>
             <div className="flex gap-2 justify-end pt-2">

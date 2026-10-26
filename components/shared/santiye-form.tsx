@@ -40,6 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { Save, X, Upload, Plus, Trash2, Loader2, Check, AlertTriangle } from "lucide-react";
 import { getDegerler, getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import toast from "react-hot-toast";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 // Yeni iş kaydından sonraki "Kullanıcı Atama" dialog'unda EN SON seçilen kullanıcılar (localStorage) →
 // bir sonraki yeni işte otomatik ön-seçili gelir (genelde aynı kişiler atanıyor; kullanıcı isterse çıkarır).
@@ -1791,7 +1792,7 @@ export default function SantiyeForm({
                     </label>
                     {formData.gecici_kabul_url && !geciciKabulFile && (
                       <>
-                        <a href={formData.gecici_kabul_url} target="_blank" rel="noopener noreferrer"
+                        <a href={dosyaUrl(formData.gecici_kabul_url)} target="_blank" rel="noopener noreferrer"
                           className="text-xs text-green-700 underline hover:text-green-800">
                           Mevcut PDF
                         </a>
@@ -1825,7 +1826,7 @@ export default function SantiyeForm({
                     </label>
                     {formData.kesin_kabul_url && !kesinKabulFile && (
                       <>
-                        <a href={formData.kesin_kabul_url} target="_blank" rel="noopener noreferrer"
+                        <a href={dosyaUrl(formData.kesin_kabul_url)} target="_blank" rel="noopener noreferrer"
                           className="text-xs text-green-700 underline hover:text-green-800">
                           Mevcut PDF
                         </a>
@@ -1854,7 +1855,7 @@ export default function SantiyeForm({
                   </label>
                   {formData.is_deneyim_url && !isDeneyimFile && (
                     <>
-                      <a href={formData.is_deneyim_url} target="_blank" rel="noopener noreferrer"
+                      <a href={dosyaUrl(formData.is_deneyim_url)} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-green-700 underline hover:text-green-800">
                         Mevcut PDF
                       </a>

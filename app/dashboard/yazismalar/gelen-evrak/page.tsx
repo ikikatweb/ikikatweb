@@ -28,6 +28,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 function formatTarih(d: string | null) {
   if (!d) return "—";
@@ -561,7 +562,7 @@ export default function GelenEvrakPage() {
                   <TableCell className="px-2 text-center">
                     {e.pdf_url ? (
                       <a
-                        href={e.pdf_url}
+                        href={dosyaUrl(e.pdf_url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center p-1 text-gray-500 hover:text-[#1E3A5F]"

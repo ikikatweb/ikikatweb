@@ -26,6 +26,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type Filtre = "tumu" | "aktif" | "pasif" | "trafikten_cekildi";
 
@@ -807,7 +808,7 @@ export default function AraclarPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-center">
                     {arac.ruhsat_url ? (
-                      <a href={arac.ruhsat_url} target="_blank" rel="noopener noreferrer"
+                      <a href={dosyaUrl(arac.ruhsat_url)} target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-200 rounded text-xs text-green-700 hover:bg-green-100 transition-colors">
                         <FileCheck size={12} /> İndir
                       </a>

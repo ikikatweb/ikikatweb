@@ -37,6 +37,7 @@ import * as XLSXStyle from "xlsx-js-style";
 import { paletGetBg } from "@/lib/utils/renk-palet";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type Filtre = "tumu" | "aktif" | "tamamlandi" | "tasfiye" | "devir";
 type SortDir = "asc" | "desc";
@@ -1002,7 +1003,7 @@ export default function SantiyelerPage() {
                       {s.gecici_kabul_tarihi ? (
                         <div className="flex items-center gap-1 justify-center">
                           <span>{formatTarih(s.gecici_kabul_tarihi)}</span>
-                          {s.gecici_kabul_url && <a href={s.gecici_kabul_url} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>}
+                          {s.gecici_kabul_url && <a href={dosyaUrl(s.gecici_kabul_url)} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>}
                         </div>
                       ) : "—"}
                     </TableCell>
@@ -1011,7 +1012,7 @@ export default function SantiyelerPage() {
                       {s.kesin_kabul_tarihi ? (
                         <div className="flex items-center gap-1 justify-center">
                           <span>{formatTarih(s.kesin_kabul_tarihi)}</span>
-                          {s.kesin_kabul_url && <a href={s.kesin_kabul_url} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>}
+                          {s.kesin_kabul_url && <a href={dosyaUrl(s.kesin_kabul_url)} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>}
                         </div>
                       ) : "—"}
                     </TableCell>
@@ -1022,7 +1023,7 @@ export default function SantiyelerPage() {
                       ) : s.is_deneyim_url ? (
                         <div className="flex items-center gap-1 justify-center">
                           <Badge className="bg-green-600">Var</Badge>
-                          <a href={s.is_deneyim_url} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>
+                          <a href={dosyaUrl(s.is_deneyim_url)} target="_blank" rel="noopener noreferrer" className="text-[#1E3A5F] hover:text-[#F97316]"><Download size={13} /></a>
                         </div>
                       ) : <Badge variant="secondary">Yok</Badge>}
                     </TableCell>

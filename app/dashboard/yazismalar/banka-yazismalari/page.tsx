@@ -29,6 +29,7 @@ import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import BankaYazismaOnIzleme from "@/components/shared/banka-yazisma-onizleme";
 import HizliTalimatDialog from "@/components/shared/hizli-talimat-dialog";
 import toast from "react-hot-toast";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 function formatTarih(d: string | null) {
   if (!d) return "—";
@@ -537,7 +538,7 @@ export default function BankaYazismalariPage() {
                         <button onClick={() => handleCogalt(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
                       )}
                       {y.pdf_url && (
-                        <a href={y.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
+                        <a href={dosyaUrl(y.pdf_url)} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
                       )}
                       {yDuzenle && (
                         <button onClick={() => handleEdit(y)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
@@ -611,11 +612,11 @@ export default function BankaYazismalariPage() {
           <span key={f.id}>
             {f.antet_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.antet_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrl(f.antet_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
             {f.kase_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.kase_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrl(f.kase_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
           </span>
         ))}

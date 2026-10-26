@@ -37,6 +37,7 @@ import { toastSuresi } from "@/lib/utils/toast-sure";
 import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 // Supabase/PostgREST hata nesnesini okunabilir stringe çevir
 // (Aksi halde "[object Object]" görünüyordu)
@@ -1073,7 +1074,7 @@ function SantiyeDefContent() {
           {/* PDF iframe */}
           <div className="flex-1 bg-white" onClick={(e) => e.stopPropagation()}>
             <iframe
-              src={pdfPreviewUrl}
+              src={dosyaUrl(pdfPreviewUrl)}
               title="PDF Ön İzleme"
               className="w-full h-full border-0"
             />

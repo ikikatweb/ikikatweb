@@ -44,6 +44,7 @@ import { tarihIzinliMi } from "@/lib/utils/tarih-izin";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { filtreliSantiyeler, otomatikSantiyeId } from "@/lib/utils/santiye-filtre";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type SantiyeBasic = { id: string; is_adi: string; durum: string; gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null; tasfiye_tarihi?: string | null; devir_tarihi?: string | null };
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
@@ -1344,7 +1345,7 @@ function KasaDefContent() {
             {slipGoster && (
               slipGoster.toLowerCase().match(/\.pdf(\?|$)/) ? (
                 <iframe
-                  src={slipGoster}
+                  src={dosyaUrl(slipGoster)}
                   title="Slip PDF"
                   className="absolute top-1/2 left-1/2 bg-white border-0"
                   style={{
@@ -1359,7 +1360,7 @@ function KasaDefContent() {
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={slipGoster}
+                  src={dosyaUrl(slipGoster)}
                   alt="Slip"
                   draggable={false}
                   className="absolute top-1/2 left-1/2 max-w-full max-h-full object-contain"

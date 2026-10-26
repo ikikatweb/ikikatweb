@@ -31,6 +31,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -804,7 +805,7 @@ export default function SigortaMuayenePage() {
                   </div>
                   <div className="flex items-center gap-1">
                     {p.police_url && (
-                      <a href={p.police_url} target="_blank" rel="noopener noreferrer" className="p-1 text-blue-500 hover:text-blue-700">
+                      <a href={dosyaUrl(p.police_url)} target="_blank" rel="noopener noreferrer" className="p-1 text-blue-500 hover:text-blue-700">
                         <ExternalLink size={14} />
                       </a>
                     )}

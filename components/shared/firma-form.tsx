@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Save, X, Upload, Trash2 } from "lucide-react";
 import RenkSecici from "@/components/shared/renk-secici";
 import toast from "react-hot-toast";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type FirmaFormProps = {
   firma?: Firma;
@@ -360,7 +361,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
                     {mevcutKaseUrl && !kaseFile && (
                       <>
                         <a
-                          href={mevcutKaseUrl}
+                          href={dosyaUrl(mevcutKaseUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-green-600 underline hover:text-green-700"
@@ -400,7 +401,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
                     {mevcutAntetUrl && !antetFile && (
                       <>
                         <a
-                          href={mevcutAntetUrl}
+                          href={dosyaUrl(mevcutAntetUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-green-600 underline hover:text-green-700"

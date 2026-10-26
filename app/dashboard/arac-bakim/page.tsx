@@ -32,6 +32,7 @@ import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -869,7 +870,7 @@ export default function AracBakimPage() {
               </>
             )}
             <a
-              href={lightboxUrl}
+              href={dosyaUrl(lightboxUrl)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
@@ -899,7 +900,7 @@ export default function AracBakimPage() {
             {resimMi(lightboxUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={lightboxUrl}
+                src={dosyaUrl(lightboxUrl)}
                 alt=""
                 style={{ transform: `scale(${lightboxZoom})`, transformOrigin: "center center", transition: "transform 120ms" }}
                 className="max-w-[92vw] max-h-[92vh] object-contain select-none"
@@ -914,7 +915,7 @@ export default function AracBakimPage() {
                 }}
               >
                 <iframe
-                  src={lightboxUrl}
+                  src={dosyaUrl(lightboxUrl)}
                   className="w-full h-full bg-white rounded-lg shadow-xl border-0"
                   title="PDF önizleme"
                 />
@@ -923,7 +924,7 @@ export default function AracBakimPage() {
               <div className="bg-white p-8 rounded-lg shadow-xl text-center">
                 <p className="text-gray-600 mb-3">Bu dosya tipi önizlenemiyor.</p>
                 <a
-                  href={lightboxUrl}
+                  href={dosyaUrl(lightboxUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700"
@@ -1230,7 +1231,7 @@ export default function AracBakimPage() {
                   <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dFaturaMevcut.length})</p>
                   {dFaturaMevcut.map((u, i) => (
                     <div key={`fat-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                      <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
                         <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
                       </a>
                       <button type="button" onClick={() => setDFaturaMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
@@ -1278,7 +1279,7 @@ export default function AracBakimPage() {
                   <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dIsFotoMevcut.length})</p>
                   {dIsFotoMevcut.map((u, i) => (
                     <div key={`isf-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                      <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
                         <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
                       </a>
                       <button type="button" onClick={() => setDIsFotoMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>

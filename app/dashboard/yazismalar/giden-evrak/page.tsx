@@ -32,6 +32,7 @@ import * as XLSX from "xlsx";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 function formatTarih(d: string | null) {
   if (!d) return "—";
@@ -668,7 +669,7 @@ export default function GidenEvrakPage() {
                       )}
                       {/* Evrak Taraması (PDF) butonu — sadece pdf_url yüklenmiş evraklar için gözükür */}
                       {e.pdf_url && (
-                        <a href={e.pdf_url} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="Evrak Taraması (PDF)"><Download size={14} /></a>
+                        <a href={dosyaUrl(e.pdf_url)} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="Evrak Taraması (PDF)"><Download size={14} /></a>
                       )}
                       {yDuzenle && !e.evrak_kayit_no && (
                         <button onClick={() => handleEdit(e)} className="p-1 text-gray-400 hover:text-[#F97316]" title="Düzenle"><Pencil size={14} /></button>
@@ -760,7 +761,7 @@ export default function GidenEvrakPage() {
                         Dosyası yoksa hiç görünmez (kullanıcı talebine göre). */}
                     {acilacakUrl && (
                       <a
-                        href={acilacakUrl}
+                        href={dosyaUrl(acilacakUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-shrink-0 p-1 text-gray-400 hover:text-green-600"
@@ -852,11 +853,11 @@ export default function GidenEvrakPage() {
           <span key={f.id}>
             {f.antet_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.antet_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrl(f.antet_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
             {f.kase_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={f.kase_url} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrl(f.kase_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
           </span>
         ))}

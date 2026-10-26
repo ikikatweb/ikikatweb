@@ -4,6 +4,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { hesaplaSehirOfsetYuzde } from "@/lib/utils/muhatap";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type Firma = {
   firma_adi: string;
@@ -242,7 +243,7 @@ export default function GidenEvrakOnIzleme({
       <div style={{ marginBottom: "0.3cm" }}>
         {firma?.antet_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={firma.antet_url} alt="Antet" style={{ width: "100%", height: "auto" }} loading="eager" decoding="sync" />
+          <img src={dosyaUrl(firma.antet_url)} alt="Antet" style={{ width: "100%", height: "auto" }} loading="eager" decoding="sync" />
         ) : (
           <div style={{ textAlign: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -361,7 +362,7 @@ export default function GidenEvrakOnIzleme({
             {/* Kaşe kağıtta EN FAZLA 5cm × 2.5cm kutusuna oturur (oran korunur; İkikat kaşesi ~2:1
                 oranlı olduğundan tam 4.95×2.5cm basılır). Eski sınır 105px (~2.78cm yükseklik) idi. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "2.5cm", maxWidth: "5cm", width: "auto", height: "auto" }} loading="eager" decoding="sync" />
+            <img src={dosyaUrl(firma.kase_url)} alt="Kaşe" style={{ maxHeight: "2.5cm", maxWidth: "5cm", width: "auto", height: "auto" }} loading="eager" decoding="sync" />
           </div>
         )}
       </div>

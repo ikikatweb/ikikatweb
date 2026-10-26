@@ -23,6 +23,7 @@ import { formatBaslik, formatPlaka, trAramaNormalize } from "@/lib/utils/isim";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type AracFormProps = {
   arac?: Arac;
@@ -639,7 +640,7 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
                         <span className="text-sm text-green-700 font-medium">Ruhsat yüklü</span>
                       </div>
                       <a
-                        href={arac.ruhsat_url}
+                        href={dosyaUrl(arac.ruhsat_url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 px-3 py-1.5 bg-[#1E3A5F] text-white rounded-md hover:bg-[#2a4f7a] transition-colors text-sm"

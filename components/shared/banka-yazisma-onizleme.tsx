@@ -3,6 +3,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { hesaplaSehirOfsetYuzde } from "@/lib/utils/muhatap";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type Firma = {
   firma_adi: string;
@@ -66,7 +67,7 @@ export default function BankaYazismaOnIzleme({
       <div style={{ marginBottom: "0.3cm" }}>
         {firma?.antet_url ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={firma.antet_url} alt="Antet" style={{ width: "100%", height: "auto" }} loading="eager" decoding="sync" />
+          <img src={dosyaUrl(firma.antet_url)} alt="Antet" style={{ width: "100%", height: "auto" }} loading="eager" decoding="sync" />
         ) : (
           <div style={{ textAlign: "center" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -155,7 +156,7 @@ export default function BankaYazismaOnIzleme({
         {kaseDahil && firma?.kase_url && (
           <div style={{ flexShrink: 0, marginRight: "1cm", marginTop: "-1cm" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={firma.kase_url} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} loading="eager" decoding="sync" />
+            <img src={dosyaUrl(firma.kase_url)} alt="Kaşe" style={{ maxHeight: "105px", width: "auto" }} loading="eager" decoding="sync" />
           </div>
         )}
       </div>
