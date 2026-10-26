@@ -129,7 +129,11 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
             ) : s.durum === "eksik" ? (
               <>
                 <span>bitime ({tarih(s.bitimTarihi)}, {s.kalanCalismaGunu} çalışma günü) kadar</span>
-                <span className="font-bold text-red-700">{tl(s.kalanPrim)}</span>
+                {/* TUTAR, EYLEMLE AYNI RENK: burada eksik prim bir kayıp değil, sigortalı
+                    girilerek doldurulacak hedef. Kırmızı yazılınca "kaybedildi" gibi
+                    okunuyordu; iş bitmiş satırda (aşağıda) kırmızı kalır, orada gerçekten
+                    kapanmış bir açık var. */}
+                <span className="font-bold text-emerald-700">{tl(s.kalanPrim)}</span>
                 <span>prim dolmayacak —</span>
                 {/* EYLEM RENGİ: ekleme yeşil, çıkarma kırmızı. Tutarlar kendi
                     anlamlarının rengini korur (eksik prim kırmızı, fazla ödeme amber). */}
@@ -140,7 +144,9 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
             ) : s.fazlaTutar > 0 ? (
               <>
                 <span>primi doldu,</span>
-                <span className="font-bold text-amber-800">{tl(s.fazlaTutar)}</span>
+                {/* FAZLA ÖDENEN TUTAR DA EYLEM RENGİNDE: satırın eylemi "kişi çıkarın"
+                    (kırmızı), tutar da kırmızı. Eksik satırlarda ikisi de yeşil. */}
+                <span className="font-bold text-red-700">{tl(s.fazlaTutar)}</span>
                 <span>fazla ödendi —</span>
                 {/* Çıkarılacak kişi 0 olabilir: sigortalıların HEPSİ teknik personelse
                     sözleşme gereği hiçbiri çıkarılamaz. "0 kişi çıkarın" demek saçma olurdu. */}
