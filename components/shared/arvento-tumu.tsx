@@ -184,16 +184,23 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     for (const r of raporlar) etiketEkle(r.plaka, r.marka, r.model);
     for (const g of guzergahBirlesik) etiketEkle(g.plaka, g.arac_sinifi);
 
-    const m = new Map<string, { plaka: string; etiket: string; noktalar: [number, number][] }>();
-    const ekle = (plaka: string, lat: number | null | undefined, lng: number | null | undefined) => {
+    type Kayit = {
+      plaka: string; etiket: string; noktalar: [number, number][];
+      sonIz: [number, number] | null;     // güzergahın SON noktası (aracın gün sonu konumu)
+      canli: [number, number] | null;     // canlı konum (varsa odak buradan)
+    };
+    const m = new Map<string, Kayit>();
+    const ekle = (plaka: string, lat: number | null | undefined, lng: number | null | undefined, tip: "iz" | "canli" | "nokta" = "nokta") => {
       if (lat == null || lng == null) return;
       const k = plakaNorm(plaka);
       if (!k) return;
-      const e = m.get(k) ?? { plaka, etiket: etiketler.get(k) ?? "", noktalar: [] as [number, number][] };
+      const e = m.get(k) ?? { plaka, etiket: etiketler.get(k) ?? "", noktalar: [] as [number, number][], sonIz: null, canli: null };
       e.noktalar.push([lat, lng]);
+      if (tip === "iz") e.sonIz = [lat, lng];       // sırayla geldiği için en son yazılan = günün sonu
+      if (tip === "canli") e.canli = [lat, lng];
       m.set(k, e);
     };
-    for (const g of guzergahBirlesik) for (const p of g.noktalar ?? []) ekle(g.plaka, p.lat, p.lng);
+    for (const g of guzergahBirlesik) for (const p of g.noktalar ?? []) ekle(g.plaka, p.lat, p.lng, "iz");
     for (const o of damperKoordlu) ekle(o.plaka, o.lat, o.lng);
     for (const n of calismaNoktalari ?? []) {
       if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue;
@@ -206,7 +213,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       if (!plaka) continue;
       if (izinSet && !izinSet.has(plakaNorm(plaka))) continue;
       etiketEkle(plaka, cihaz?.model);
-      ekle(plaka, c.lat, c.lng);
+      ekle(plaka, c.lat, c.lng, "canli");
     }
     // Etiket en sonda yazılır: canlı cihaz modeli, kayıt oluştuktan SONRA ekleniyor olabilir.
     for (const [k, v] of m) v.etiket = etiketler.get(k) ?? v.etiket;
@@ -219,12 +226,21 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     if (!ham) return [];
     const qPlaka = plakaNorm(ham);          // "60 bp 842" → "60BP842"
     const qMetin = trAramaNormalize(ham);   // "greyder" / "arocs" / "ekskavatör"
+    // SIRALAMA: kullanıcı çoğu zaman plakanın SON hanelerini yazıyor ("842"), o yüzden
+    // plakası sorguyla BİTEN araç en üstte; sonra plakanın içinde geçenler; en sonda
+    // yalnız marka/model/sınıftan eşleşenler. Liste KESİLMEZ, kaydırılır — "8" gibi kısa
+    // sorguda aranan araç sekizinciden sonraya düşüp görünmez oluyordu.
+    const puan = (v: { plaka: string; etiket: string }) => {
+      const p = plakaNorm(v.plaka);
+      if (qPlaka && p.endsWith(qPlaka)) return 0;
+      if (qPlaka && p.includes(qPlaka)) return 1;
+      return 2;
+    };
     return [...plakaKonumlari.values()]
       .filter((v) =>
         (qPlaka && plakaNorm(v.plaka).includes(qPlaka)) ||
         (qMetin && trAramaNormalize(`${v.plaka} ${v.etiket}`).includes(qMetin)))
-      .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"))
-      .slice(0, 8);
+      .sort((a, b) => puan(a) - puan(b) || a.plaka.localeCompare(b.plaka, "tr"));
   }, [aramaPlaka, plakaKonumlari]);
 
   /** Aranan araca odaklan: bütün noktalarını çerçeveye al, kısa süre vurgula. */
@@ -237,19 +253,29 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       toast.error(`${plaka} için bu tarihte konum yok.`, { duration: toastSuresi() });
       return;
     }
-    map.fitBounds(kayit.noktalar, { padding: [60, 60], maxZoom: 17 });
-    // VURGU: odaklanınca hangi hat olduğu anlaşılsın diye aracın noktaları birkaç saniye
-    // kendi renginde halkayla işaretlenir, sonra kendiliğinden silinir.
+    // ODAK NOKTASI: aracın NEREDE OLDUĞU. Önce canlı konum, yoksa güzergahın son noktası,
+    // o da yoksa eldeki ilk nokta. Eskiden günün bütün güzergahı çerçeveye alınıyordu;
+    // 50 km dolaşan kamyonda harita o kadar açılıyordu ki araç görünmez oluyordu.
+    const odak = kayit.canli ?? kayit.sonIz ?? kayit.noktalar[kayit.noktalar.length - 1];
+    map.setView(odak, 17, { animate: true });
+
+    // VURGU: odak noktasında kalın halka + aracın izi boyunca ince halkalar (uzaklaşınca
+    // hattın tamamı görünsün). Birkaç saniye sonra kendiliğinden silinir.
     vurguRef.current?.remove();
     const grup = L.layerGroup().addTo(map);
     vurguRef.current = grup;
     const renk = renkAl(kayit.plaka);
     const adim = Math.max(1, Math.floor(kayit.noktalar.length / 60));
     for (let i = 0; i < kayit.noktalar.length; i += adim) {
-      L.circleMarker(kayit.noktalar[i], { radius: 9, color: renk, weight: 3, opacity: 0.9, fill: false }).addTo(grup);
+      L.circleMarker(kayit.noktalar[i], { radius: 7, color: renk, weight: 2, opacity: 0.55, fill: false }).addTo(grup);
     }
+    L.circleMarker(odak, { radius: 22, color: renk, weight: 4, opacity: 0.95, fill: false }).addTo(grup);
+    L.circleMarker(odak, { radius: 7, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 })
+      .addTo(grup)
+      .bindPopup(`<b>${kayit.plaka}</b>${kayit.etiket ? `<br>${kayit.etiket}` : ""}<br>${kayit.canli ? "canlı konum" : "günün son konumu"}`)
+      .openPopup();
     if (vurguZamanRef.current) clearTimeout(vurguZamanRef.current);
-    vurguZamanRef.current = setTimeout(() => { vurguRef.current?.remove(); vurguRef.current = null; }, 4000);
+    vurguZamanRef.current = setTimeout(() => { vurguRef.current?.remove(); vurguRef.current = null; }, 8000);
     setAramaPlaka("");
   }, [plakaKonumlari, renkAl]);
 
@@ -507,14 +533,18 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
             <div className="absolute z-[1000] left-0 right-0 top-8 bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto">
               {eslesenPlakalar.length === 0 ? (
                 <div className="px-2 py-1.5 text-[11px] text-gray-400">Eşleşen araç yok.</div>
-              ) : eslesenPlakalar.map((v) => (
+              ) : (<>
+              <div className="px-2 py-1 text-[10px] text-gray-400 bg-gray-50 border-b sticky top-0">
+                {eslesenPlakalar.length} araç — birini seçin
+              </div>
+              {eslesenPlakalar.map((v) => (
                 <button key={v.plaka} type="button" onClick={() => plakayaOdaklan(v.plaka)}
                   className="w-full text-left px-2 py-1.5 hover:bg-gray-50 flex items-center gap-1.5 border-b last:border-b-0">
                   <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(v.plaka) }} />
                   <span className="text-[11px] font-semibold text-gray-700">{v.plaka}</span>
                   {v.etiket && <span className="text-[10px] text-gray-400 truncate">{v.etiket}</span>}
                 </button>
-              ))}
+              ))}</>)}
             </div>
           )}
         </div>
