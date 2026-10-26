@@ -17,9 +17,10 @@ import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
 import type { AracArventoGuzergah, AracArventoRapor } from "@/lib/supabase/types";
 import { Button } from "@/components/ui/button";
-import { Layers, Download } from "lucide-react";
+import { Layers, Download, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import "leaflet/dist/leaflet.css";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 
@@ -102,6 +103,9 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const havaTemizleRef = useRef<(() => void) | null>(null);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
+  // Plaka aramasında odaklanılan aracın geçici vurgu halkaları
+  const vurguRef = useRef<LayerGroup | null>(null);
+  const vurguZamanRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
   const [haritaHazir, setHaritaHazir] = useState(0);
   const canliVeriRef = useRef<{ konumlar?: CanliKonum[]; cihazMap?: CihazMap }>({});
@@ -159,6 +163,98 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
     const damper = damperKoordlu.length; // yalnız gerçek damper sayısı
     return { greyder, silindir, diger, damper, toplamArac: rotali.length };
   }, [guzergahBirlesik, damperKoordlu, sekmeMap, atananSekmeler]);
+
+  // PLAKA ARAMA — haritada 20-30 araç birden çiziliyor; aranan aracı gözle bulmak zor.
+  // Plaka yazılınca o aracın O GÜNKÜ bütün konumları (güzergah + damper + çalışma noktası +
+  // canlı konum) çerçeveye alınır. Arama kutusu haritayı filtrelemez, yalnız odaklar —
+  // kullanıcı diğer araçları da görmeye devam eder.
+  const plakaKonumlari = useMemo(() => {
+    // Araç etiketi: marka/model rapordan, sınıf güzergahtan. Kullanıcı "60 bp 842" de
+    // yazabilir "greyder"/"arocs" da — arama ikisini de tarar.
+    const etiketler = new Map<string, string>();
+    const etiketEkle = (plaka: string, ...parcalar: (string | null | undefined)[]) => {
+      const k = plakaNorm(plaka);
+      if (!k) return;
+      const mevcut = etiketler.get(k) ?? "";
+      const yeniParca = parcalar.map((x) => (x ?? "").trim()).filter(Boolean).join(" ");
+      if (!yeniParca) return;
+      if (mevcut.includes(yeniParca)) return;
+      etiketler.set(k, mevcut ? `${mevcut} ${yeniParca}` : yeniParca);
+    };
+    for (const r of raporlar) etiketEkle(r.plaka, r.marka, r.model);
+    for (const g of guzergahBirlesik) etiketEkle(g.plaka, g.arac_sinifi);
+
+    const m = new Map<string, { plaka: string; etiket: string; noktalar: [number, number][] }>();
+    const ekle = (plaka: string, lat: number | null | undefined, lng: number | null | undefined) => {
+      if (lat == null || lng == null) return;
+      const k = plakaNorm(plaka);
+      if (!k) return;
+      const e = m.get(k) ?? { plaka, etiket: etiketler.get(k) ?? "", noktalar: [] as [number, number][] };
+      e.noktalar.push([lat, lng]);
+      m.set(k, e);
+    };
+    for (const g of guzergahBirlesik) for (const p of g.noktalar ?? []) ekle(g.plaka, p.lat, p.lng);
+    for (const o of damperKoordlu) ekle(o.plaka, o.lat, o.lng);
+    for (const n of calismaNoktalari ?? []) {
+      if (izinSet && !izinSet.has(plakaNorm(n.plaka))) continue;
+      ekle(n.plaka, n.lat, n.lng);
+    }
+    // Canlı konum plakayı doğrudan taşımaz; node → cihaz eşlemesinden çözülür.
+    for (const c of canliKonumlar ?? []) {
+      const cihaz = c.node ? canliCihazMap?.get(c.node) : null;
+      const plaka = cihaz?.plaka;
+      if (!plaka) continue;
+      if (izinSet && !izinSet.has(plakaNorm(plaka))) continue;
+      etiketEkle(plaka, cihaz?.model);
+      ekle(plaka, c.lat, c.lng);
+    }
+    // Etiket en sonda yazılır: canlı cihaz modeli, kayıt oluştuktan SONRA ekleniyor olabilir.
+    for (const [k, v] of m) v.etiket = etiketler.get(k) ?? v.etiket;
+    return m;
+  }, [guzergahBirlesik, damperKoordlu, calismaNoktalari, canliKonumlar, canliCihazMap, izinSet, raporlar]);
+
+  const [aramaPlaka, setAramaPlaka] = useState("");
+  const eslesenPlakalar = useMemo(() => {
+    const ham = aramaPlaka.trim();
+    if (!ham) return [];
+    const qPlaka = plakaNorm(ham);          // "60 bp 842" → "60BP842"
+    const qMetin = trAramaNormalize(ham);   // "greyder" / "arocs" / "ekskavatör"
+    return [...plakaKonumlari.values()]
+      .filter((v) =>
+        (qPlaka && plakaNorm(v.plaka).includes(qPlaka)) ||
+        (qMetin && trAramaNormalize(`${v.plaka} ${v.etiket}`).includes(qMetin)))
+      .sort((a, b) => a.plaka.localeCompare(b.plaka, "tr"))
+      .slice(0, 8);
+  }, [aramaPlaka, plakaKonumlari]);
+
+  /** Aranan araca odaklan: bütün noktalarını çerçeveye al, kısa süre vurgula. */
+  const plakayaOdaklan = useCallback((plaka: string) => {
+    const map = mapInstanceRef.current;
+    const L = leafletRef.current;
+    const kayit = plakaKonumlari.get(plakaNorm(plaka));
+    if (!map || !L) return;
+    if (!kayit || kayit.noktalar.length === 0) {
+      toast.error(`${plaka} için bu tarihte konum yok.`, { duration: toastSuresi() });
+      return;
+    }
+    map.fitBounds(kayit.noktalar, { padding: [60, 60], maxZoom: 17 });
+    // VURGU: odaklanınca hangi hat olduğu anlaşılsın diye aracın noktaları birkaç saniye
+    // kendi renginde halkayla işaretlenir, sonra kendiliğinden silinir.
+    vurguRef.current?.remove();
+    const grup = L.layerGroup().addTo(map);
+    vurguRef.current = grup;
+    const renk = renkAl(kayit.plaka);
+    const adim = Math.max(1, Math.floor(kayit.noktalar.length / 60));
+    for (let i = 0; i < kayit.noktalar.length; i += adim) {
+      L.circleMarker(kayit.noktalar[i], { radius: 9, color: renk, weight: 3, opacity: 0.9, fill: false }).addTo(grup);
+    }
+    if (vurguZamanRef.current) clearTimeout(vurguZamanRef.current);
+    vurguZamanRef.current = setTimeout(() => { vurguRef.current?.remove(); vurguRef.current = null; }, 4000);
+    setAramaPlaka("");
+  }, [plakaKonumlari, renkAl]);
+
+  // Bileşen kapanırken vurgu zamanlayıcısı kalmasın
+  useEffect(() => () => { if (vurguZamanRef.current) clearTimeout(vurguZamanRef.current); }, []);
 
   // Haritayı BİR KEZ kur. Yeniden kurulmaz → veri değişince tile reload / flicker OLMAZ.
   useEffect(() => {
@@ -385,7 +481,44 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         {sonGuncelleme && (
           <span className="text-[10px] text-gray-400">🕒 Rapor güncellendi: <b className="text-gray-500">{sonGuncelleme.toLocaleTimeString("tr-TR")}</b></span>
         )}
-        <div className="flex flex-col gap-1 ml-auto">
+        {/* PLAKA / MARKA-MODEL ARAMA — haritadaki 20-30 araç arasından birini bulmak için.
+            Filtre değil ODAKLAMA: seçilen aracın o günkü bütün noktaları çerçeveye alınır,
+            diğer araçlar haritada kalır. */}
+        <div className="relative ml-auto w-[210px]">
+          <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={aramaPlaka}
+            onChange={(e) => setAramaPlaka(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && eslesenPlakalar[0]) plakayaOdaklan(eslesenPlakalar[0].plaka);
+              if (e.key === "Escape") setAramaPlaka("");
+            }}
+            placeholder="Plaka / marka-model ara…"
+            className="w-full h-7 pl-7 pr-6 rounded-md border border-gray-300 text-[11px] outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30"
+          />
+          {aramaPlaka && (
+            <button type="button" onClick={() => setAramaPlaka("")} title="Temizle"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <X size={12} />
+            </button>
+          )}
+          {aramaPlaka.trim() && (
+            <div className="absolute z-[1000] left-0 right-0 top-8 bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto">
+              {eslesenPlakalar.length === 0 ? (
+                <div className="px-2 py-1.5 text-[11px] text-gray-400">Eşleşen araç yok.</div>
+              ) : eslesenPlakalar.map((v) => (
+                <button key={v.plaka} type="button" onClick={() => plakayaOdaklan(v.plaka)}
+                  className="w-full text-left px-2 py-1.5 hover:bg-gray-50 flex items-center gap-1.5 border-b last:border-b-0">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: renkAl(v.plaka) }} />
+                  <span className="text-[11px] font-semibold text-gray-700">{v.plaka}</span>
+                  {v.etiket && <span className="text-[10px] text-gray-400 truncate">{v.etiket}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
           {/* Güzergah (hareket izi) çizgilerini aç/kapat — damper + çalışma noktaları görünmeye devam eder */}
           <button type="button" onClick={() => setGuzergahGoster((v) => !v)}
             title="Araçların hareket ederken bıraktığı güzergah çizgilerini gizle/göster (damper ve çalışma noktaları etkilenmez)"
