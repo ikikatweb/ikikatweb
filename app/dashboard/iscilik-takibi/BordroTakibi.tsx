@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect } from "react";
+import { getGeciciKabulDilekceleri } from "@/lib/supabase/queries/gecici-kabul-prim";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -1341,6 +1342,70 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //    az gün çalışıp ayrılmak normaldir, eksik sayılmaz.
   // Ölçü atamalardan beklenen gün DEĞİL 30 gündür; kişi aynı anda birden çok şantiyede
   // sigortalı olabilir, günler toplanır ve önemli olan toplamın 30'u bulmasıdır.
+  /** Personel, SEÇİLİ AYIN SONUNDA o şantiyede hâlâ sigortalı mı?
+   *  Rozetlerde "kaç kişi duruyor" sorusunun cevabı budur; tablo ise o ay ÇALIŞAN
+   *  herkesi gösterir (ayın ortasında çıkan günleri bordroya girer). */
+  // GEÇİCİ KABUL DİLEKÇESİ — süresi dolmuş işlerde "kabul bekleniyor" mu yoksa
+  // "dilekçe bile verilmemiş" mi olduğunu ayırmak için. Giden evraktaki geçici kabul
+  // yazısını bulan mantık zaten var (lib/gecici-kabul-dilekce), onu kullanır.
+  const [dilekceTarihMap, setDilekceTarihMap] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    let iptal = false;
+    getGeciciKabulDilekceleri()
+      .then((liste) => {
+        if (iptal) return;
+        setDilekceTarihMap(new Map(liste.map((d) => [d.santiye_id, d.dilekceTarihi])));
+      })
+      .catch(() => { /* dilekçe bilgisi yoksa rozet "dilekçe yok" der */ });
+    return () => { iptal = true; };
+  }, []);
+
+  /** İş bitim tarihi — accordion'daki kartla AYNI öncelik sırası:
+   *  süre uzatımlı tarih → iscilik_takibi (başlangıç + süre) → is_bitim_tarihi →
+   *  işyeri teslim + iş süresi. Hem kart rozetini hem listedeki sıralamayı aynı
+   *  kaynaktan beslemek için burada; iki yerde ayrı hesap ayrışmaya yol açardı. */
+  const isBitimTarihi = useCallback((sid: string): string | null => {
+    if (sid === PASIF_KEY || sid === ATANMAMIS_KEY) return null;
+    const info = iscilikBitimMap.get(sid);
+    const s = santiyeler.find((x) => x.id === sid);
+    if (s?.sure_uzatimli_tarih) return s.sure_uzatimli_tarih;
+    if (info?.baslangic_tarihi && info.sure_text) {
+      const toplamGun = info.sure_text.split("+").reduce((t, p) => t + (parseInt(p.trim()) || 0), 0);
+      if (toplamGun > 0) {
+        const d = new Date(info.baslangic_tarihi + "T00:00:00");
+        d.setDate(d.getDate() + toplamGun - 1);
+        return d.toISOString().slice(0, 10);
+      }
+    }
+    if (info?.is_bitim_tarihi || s?.is_bitim_tarihi) return info?.is_bitim_tarihi ?? s?.is_bitim_tarihi ?? null;
+    const teslim = info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi ?? null;
+    const sure = info?.is_suresi ?? s?.is_suresi ?? null;
+    if (teslim && sure && sure > 0) {
+      const d = new Date(teslim + "T00:00:00");
+      d.setDate(d.getDate() + sure - 1);
+      return d.toISOString().slice(0, 10);
+    }
+    return null;
+  }, [iscilikBitimMap, santiyeler]);
+
+  /** Süresi dolmuş iş: bitim tarihi geçmiş ama kabul/tasfiye/devir yapılmamış.
+   *  Bu işler fiilen bitmiştir, devam edenlerle aynı görünümde durmamalı. */
+  const suresiGectiMi = useCallback((sid: string): number | null => {
+    const bitim = isBitimTarihi(sid);
+    if (!bitim) return null;
+    const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+    const gecen = Math.floor((bugun.getTime() - new Date(bitim + "T00:00:00").getTime()) / 86400000);
+    return gecen > 0 ? gecen : null;
+  }, [isBitimTarihi]);
+
+  const aySonundaAktifMi = useCallback((personelId: string, santiyeId: string): boolean => {
+    const [y, m] = seciliAy.split("-").map(Number);
+    const aySonu = `${y}-${String(m).padStart(2, "0")}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+    return atamalar.some((a) =>
+      a.personel_id === personelId && a.santiye_id === santiyeId
+      && (!a.bitis_tarihi || a.bitis_tarihi > aySonu));
+  }, [atamalar, seciliAy]);
+
   const limitDisiKapsar = useCallback((personelId: string): boolean => {
     const t = personelEfektifToplamMap.get(personelId) ?? 0;
     if (t === 0) return false;
@@ -4479,6 +4544,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Accordion satırı: işin adı + sayım + chevron, tıklayınca açılıp altta personel listesi
   function SantiyeAccordion({
     santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamaOzet,
+    suresiGecenGun = null, dilekceTarihi = null,
     onToggle, onTumunuSecToggle, onPlus, onTeknikAta, onTeknikBasiliBasla, onTeknikBasiliBitir, children,
   }: {
     santiyeId: string;
@@ -4490,6 +4556,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     tumSecili: boolean;
     teknikPersoneller?: string[] | null;
     disAtamaOzet?: string | null;
+    /** Bitim tarihi geçtiyse kaç gün geçtiği; geçmemişse null. */
+    suresiGecenGun?: number | null;
+    /** Geçici kabul dilekçesi verildiyse tarihi — "kabul bekleniyor" ile
+     *  "süre doldu, dilekçe bile yok" ayrımı için. */
+    dilekceTarihi?: string | null;
     onTeknikAta?: (x: number, y: number) => void;
     onTeknikBasiliBasla?: (x: number, y: number) => void;
     onTeknikBasiliBitir?: () => void;
@@ -4559,7 +4630,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       return `${ga(s.calisilmayan_bas)} / ${ga(s.calisilmayan_bit)}`;
     })();
     return (
-      <div className="bg-white rounded-lg border-2 border-gray-300 overflow-hidden shadow-md">
+      // SÜRESİ DOLMUŞ İŞ: soluk görünür ve listenin altında durur. Gizlenmez —
+      // bu işlerde hâlâ sigortalı olabiliyor ve asıl fazla prim ödemesi orada oluyor.
+      <div className={`bg-white rounded-lg border-2 overflow-hidden shadow-md ${
+        suresiGecenGun != null ? "border-gray-200 opacity-70" : "border-gray-300"
+      }`}>
         {/* lg:min-h — kartların hepsi aynı yükseklikte dursun diye. Sağdaki rakam bloğu
             işe göre 2 ile 4 satır arasında değişiyordu (fiyat farkı ve tahmini FF yalnız
             doluysa yazılıyor) ve kart boyu onunla birlikte oynuyordu. 4 satırlık yükseklik
@@ -4587,6 +4662,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               <h3 className="font-bold text-sm text-[#1E3A5F] truncate" title={baslik}>
                 {baslik.length > 60 ? baslik.slice(0, 60) + "…" : baslik}
               </h3>
+              {/* Süresi dolmuş işte rozet YALNIZ dilekçe durumunu söyler; kaç gün
+                  geçtiği zaten kartta tarihin yanında yazıyor, tekrarlamaya gerek yok. */}
+              {suresiGecenGun != null && (
+                dilekceTarihi ? (
+                  <span className="flex-shrink-0 whitespace-nowrap rounded border border-sky-300 bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800"
+                    title={`İş bitti, geçici kabul dilekçesi ${new Date(dilekceTarihi + "T00:00:00").toLocaleDateString("tr-TR")} tarihinde verildi; kabul bekleniyor.`}>
+                    Dilekçe verildi
+                  </span>
+                ) : (
+                  <span className="flex-shrink-0 whitespace-nowrap rounded border border-red-300 bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-700"
+                    title="Bitim tarihi geçmiş ama geçici kabul dilekçesi kaydı yok. Süre uzatımı işlenmemiş ya da dilekçe verilmemiş olabilir.">
+                    Dilekçe yok
+                  </span>
+                )
+              )}
               {calDonemEtiket && (
                 <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap" title="Çalışılmayan dönem">
                   ⛔ {calDonemEtiket}
@@ -5355,9 +5445,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             // Arama VEYA Limit Dışı aktifken: SADECE personel içeren şantiyeler görünür
             // (boş "0 kişi" şantiyeler gizlenir).
             const bosGizle = aramaAktif || limitDisi;
-            const firmaSantiyeler = bosGizle
+            const firmaSantiyelerHam = bosGizle
               ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0)
               : tumFirmaSantiyeler;
+            // SÜRESİ DOLMUŞ İŞLER EN ALTA. Bunlar fiilen bitmiş (kabul bekliyor ya da
+            // dilekçesi bile verilmemiş) işler; devam edenlerle aynı sırada durunca
+            // ayırt edilemiyordu. Grup içinde en çok geciken üstte.
+            const firmaSantiyeler = [...firmaSantiyelerHam].sort((a, b) => {
+              const ga = suresiGectiMi(a.id), gb = suresiGectiMi(b.id);
+              if (!ga && gb) return -1;
+              if (ga && !gb) return 1;
+              if (ga && gb) return gb - ga;
+              return 0;
+            });
             // Görünür şantiyesi kalmayan firmayı da gizle
             if (bosGizle && firmaSantiyeler.length === 0) return null;
             // Firma accordion'u kullanıcı kontrollü — auto-expand yok
@@ -5371,7 +5471,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             let firmaBordro = 0;
             for (const s of firmaSantiyeler) {
               const liste = kanbanMap.get(s.id) ?? [];
-              firmaToplamKisi += liste.length;
+              // Firma rozeti de yalnız AKTİFLERİ sayar — şantiye rozetleriyle tutarlı olsun
+              // diye. Eskiden o ay çalışmış herkesi sayıyordu, çıkanlar da dâhildi.
+              firmaToplamKisi += liste.filter((p) => aySonundaAktifMi(p.id, s.id)).length;
               for (const p of liste) firmaToplamGun += gunMap.get(p.id)?.get(s.id) ?? 0;
               const prim = primMap.get(s.id);
               if (prim) {
@@ -5466,18 +5568,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                         const acik = expandedSantiyeler.has(s.id);
                         const tumGun = liste.reduce((acc, p) => acc + (gunMap.get(p.id)?.get(s.id) ?? 0), 0);
                         const tumSecili = liste.length > 0 && liste.every((p) => selectedKeys.has(`${p.id}:${s.id}`));
-                        // ROZET YALNIZ AKTİFLERİ SAYAR. Tablo o ay çalışan HERKESİ gösterir
-                        // (çıkışı ayın ortasındaysa o günler bordroya girer) ama rozette
-                        // "kaç kişi sigortalı duruyor" bilgisi aranıyor: 05.10'da çıkmış biri
-                        // Ekim'de "1 kişi" diye görünüyordu. Ay SONUNDA hâlâ açık ataması
-                        // olanlar sayılır.
-                        const aktifKisiSayisi = (() => {
-                          const [ay_y, ay_m] = seciliAy.split("-").map(Number);
-                          const aySonu = `${ay_y}-${String(ay_m).padStart(2, "0")}-${String(new Date(ay_y, ay_m, 0).getDate()).padStart(2, "0")}`;
-                          return liste.filter((p) => atamalar.some((a) =>
-                            a.personel_id === p.id && a.santiye_id === s.id
-                            && (!a.bitis_tarihi || a.bitis_tarihi > aySonu))).length;
-                        })();
+                        // ROZET YALNIZ AKTİFLERİ SAYAR (bkz. aySonundaAktifMi).
+                        const aktifKisiSayisi = liste.filter((p) => aySonundaAktifMi(p.id, s.id)).length;
                         return (
                           <SantiyeAccordion
                             key={s.id}
@@ -5485,6 +5577,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             baslik={s.is_adi}
                             renk={renk}
                             count={aktifKisiSayisi}
+                            suresiGecenGun={suresiGectiMi(s.id)}
+                            dilekceTarihi={dilekceTarihMap.get(s.id) ?? null}
                             tumGun={tumGun}
                             acik={acik}
                             tumSecili={tumSecili}
