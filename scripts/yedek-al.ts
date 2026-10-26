@@ -209,8 +209,11 @@ async function gunAynasi(): Promise<{ yeniGun: number; atlanan: number; bayt: nu
       continue;
     }
 
+    const gunSifreli = anahtarVar();
     for (const gun of [...gunler].sort()) {
-      const dosya = path.join(klasor, `${gun}.json`);
+      // Şifreli modda dosya adı "<gun>.json.enc" — varlık kontrolü de ONA bakar, yoksa
+      // şifrelemeye geçildiği hafta 152 MB'lık ayna yeniden inerdi.
+      const dosya = path.join(klasor, `${gun}.json${gunSifreli ? SIFRELI_UZANTI : ""}`);
       // Zaten inmiş ve TAZE aralıkta değilse atla — o günün verisi bir daha değişmiyor.
       if (fs.existsSync(dosya) && gun < tazeSinir) { atlanan++; continue; }
       try {
@@ -229,7 +232,8 @@ async function gunAynasi(): Promise<{ yeniGun: number; atlanan: number; bayt: nu
         }
         const metin = JSON.stringify(satirlar);
         const gecici = `${dosya}.iniyor`;
-        fs.writeFileSync(gecici, metin, "utf8");
+        if (gunSifreli) await sifreliYaz(gecici, metin);
+        else fs.writeFileSync(gecici, metin, "utf8");
         fs.renameSync(gecici, dosya);        // yarım dosya nihai adı almasın
         yeniGun++; bayt += metin.length;
       } catch (e) {
