@@ -159,6 +159,8 @@ export default function TanimlamalarPage() {
   // İnline değer düzenleme state'i (id -> yeni metin)
   const [duzenleId, setDuzenleId] = useState<string | null>(null);
   const [duzenleDeger, setDuzenleDeger] = useState("");
+  // Muhatap düzenlenirken kısa ad da aynı anda düzenlenir (ayrı kutucuğu kaldırıldı)
+  const [duzenleKisaAd, setDuzenleKisaAd] = useState("");
   const [renkPopoverId, setRenkPopoverId] = useState<string | null>(null);
 
   // Yeni kategori dialog
@@ -483,6 +485,31 @@ export default function TanimlamalarPage() {
     finally { setDuzenleId(null); setDuzenleDeger(""); }
   }
 
+  // MUHATAP SATIRI — değer ve kısa ad BİRLİKTE kaydedilir.
+  // Kısa ad eskiden listede her satırın altında ayrı bir input kutusu olarak duruyordu;
+  // liste kalabalık görünüyor, salt okuma için bile kutu çiziliyordu. Artık düzenlemeye
+  // basıldığında çıkar, dışarıda düz yazı olarak görünür.
+  async function handleMuhatapKaydet(t: Tanimlama) {
+    if (!yDuzenle) { toast.error("Düzenleme yetkiniz yok."); setDuzenleId(null); return; }
+    const ham = duzenleDeger.trim();
+    if (!ham) { toast.error("Değer boş olamaz."); return; }
+    const yeniKisa = formatBuyukHarf(duzenleKisaAd.trim()).slice(0, 10);
+    if (!yeniKisa) { toast.error("Muhatabın kısa adı zorunludur."); return; }
+    const yeniDeger = formatTanimlamaDeger(t.kategori, ham);
+    const degerDegisti = yeniDeger !== t.deger;
+    const kisaDegisti = yeniKisa !== (t.kisa_ad ?? "");
+    if (!degerDegisti && !kisaDegisti) { setDuzenleId(null); return; }
+    try {
+      const guncellenen = await updateTanimlama(t.id, {
+        ...(degerDegisti ? { deger: yeniDeger } : {}),
+        ...(kisaDegisti ? { kisa_ad: yeniKisa } : {}),
+      });
+      await loadData();
+      toast.success(guncellenen > 0 ? `Güncellendi — ${guncellenen} kayıt yeni ada çevrildi.` : "Güncellendi.");
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Güncelleme hatası."); }
+    finally { setDuzenleId(null); setDuzenleDeger(""); setDuzenleKisaAd(""); }
+  }
+
   async function handleSil() {
     if (!ySil) { toast.error("Silme yetkiniz yok."); return; }
     if (!deleteId) return;
@@ -719,45 +746,48 @@ export default function TanimlamalarPage() {
                             {isMuhatap ? (
                               <div className="flex flex-col gap-1 flex-1 min-w-0">
                                 {duzenleId === t.id ? (
-                                  <textarea
-                                    value={duzenleDeger}
-                                    onChange={(e) => setDuzenleDeger(e.target.value)}
-                                    onBlur={() => handleDuzenleKaydet(t)}
-                                    rows={4}
-                                    autoFocus
-                                    className="w-full text-[10px] border rounded px-1.5 py-1 text-center"
-                                  />
+                                  <div className="space-y-1">
+                                    <textarea
+                                      value={duzenleDeger}
+                                      onChange={(e) => setDuzenleDeger(e.target.value)}
+                                      rows={4}
+                                      autoFocus
+                                      className="w-full text-[10px] border rounded px-1.5 py-1 text-center"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={duzenleKisaAd}
+                                      onChange={(e) => setDuzenleKisaAd(e.target.value)}
+                                      placeholder="Kısa ad (zorunlu · en fazla 10 karakter · örn: DSİ)"
+                                      maxLength={10}
+                                      onKeyDown={(e) => { if (e.key === "Enter") handleMuhatapKaydet(t); }}
+                                      className="w-full text-[10px] border rounded px-1.5 py-0.5 uppercase"
+                                    />
+                                    <div className="flex gap-1">
+                                      <Button size="sm" className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={() => handleMuhatapKaydet(t)}>Kaydet</Button>
+                                      <Button size="sm" variant="outline" className="h-6 text-[10px]"
+                                        onClick={() => { setDuzenleId(null); setDuzenleDeger(""); setDuzenleKisaAd(""); }}>İptal</Button>
+                                    </div>
+                                  </div>
                                 ) : (
                                   <div
-                                    className={`text-xs leading-snug whitespace-pre-line ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
+                                    className={yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}
                                     title={yDuzenle ? "Düzenlemek için tıklayın" : ""}
-                                    onClick={() => { if (!yDuzenle) return; setDuzenleId(t.id); setDuzenleDeger(t.deger); }}
+                                    onClick={() => {
+                                      if (!yDuzenle) return;
+                                      setDuzenleId(t.id);
+                                      setDuzenleDeger(t.deger);
+                                      setDuzenleKisaAd(t.kisa_ad ?? "");
+                                    }}
                                   >
                                     {/* ÇOK SATIRLI GÖSTERİM: muhatap "T.C. / kurum / şehir" diye
                                         satırlara bölünür; tek satıra sıkıştırılıp kesilince değeri
                                         görmek için düzenlemeye girmek gerekiyordu. */}
-                                    {t.deger}
+                                    <div className="text-xs leading-snug whitespace-pre-line">{t.deger}</div>
+                                    {t.kisa_ad && <div className="text-[10px] text-gray-400 mt-0.5">{t.kisa_ad}</div>}
                                   </div>
                                 )}
-                                <input
-                                  type="text"
-                                  defaultValue={t.kisa_ad ?? ""}
-                                  placeholder="Kısa ad (örn: DSİ)"
-                                  readOnly={!yDuzenle}
-                                  maxLength={10}
-                                  onBlur={async (e) => {
-                                    if (!yDuzenle) return;
-                                    const yeni = formatBuyukHarf(e.target.value).slice(0, 10);
-                                    if (yeni !== (t.kisa_ad ?? "")) {
-                                      try {
-                                        await updateTanimlama(t.id, { kisa_ad: yeni || null });
-                                        setTanimlamalar((p) => p.map((x) => x.id === t.id ? { ...x, kisa_ad: yeni || null } : x));
-                                        toast.success("Kısa ad güncellendi.");
-                                      } catch { toast.error("Güncelleme hatası."); }
-                                    }
-                                  }}
-                                  className={`w-full text-[10px] border rounded px-1.5 py-0.5 uppercase ${!yDuzenle ? "bg-gray-50 cursor-not-allowed" : ""}`}
-                                />
                               </div>
                             ) : isAcente ? (() => {
                               const ac = unpackAcenteKisaAd(t.kisa_ad);
