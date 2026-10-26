@@ -622,7 +622,9 @@ export default function GidenEvrakPage() {
                     )}
                   </TableCell>
                   <TableCell className="px-2 max-w-[200px] truncate" title={e.konu}>{e.konu}</TableCell>
-                  <TableCell className="px-2 leading-snug">
+                  {/* Muhatap da kesilir: "T.C. Devlet Su İşleri … 231. Şube Müdürlüğü'ne
+                      KASTAMONU" gibi adlar tabloyu ekran dışına taşırıyordu. Tamamı ipucunda. */}
+                  <TableCell className="px-2 leading-snug max-w-[260px] truncate" title={e.muhatap ? tekSatirMuhatap(e.muhatap) : ""}>
                     {e.muhatap ? tekSatirMuhatap(e.muhatap) : "—"}
                   </TableCell>
                   {/* Şantiye — Muhatap ile Ek arasında. İş adları çok uzun olabildiği için
