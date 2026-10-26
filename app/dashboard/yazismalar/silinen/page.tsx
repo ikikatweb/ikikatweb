@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { trAramaNormalize } from "@/lib/utils/isim";
+import { trAramaNormalize, aramaEslesir } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import {
   getSilinenGelenEvraklar,
@@ -178,8 +178,8 @@ export default function SilinenPage() {
     if (fBaslangic && k.evrak_tarihi < fBaslangic) return false;
     if (fBitis && k.evrak_tarihi > fBitis) return false;
     if (fArama.trim()) {
-      const q = trAramaNormalize(fArama);
-      const text = trAramaNormalize([
+      // Çok terimli arama: ";" ile ayrılan her terim ayrı ayrı aranır (hepsi birden).
+      const text = ([
         k.evrak_sayi_no,
         k.konu,
         k.muhatap,
@@ -188,7 +188,7 @@ export default function SilinenPage() {
         k.silen_ad,
         k.silme_nedeni,
       ].filter(Boolean).join(" "));
-      if (!text.includes(q)) return false;
+      if (!aramaEslesir(fArama, text)) return false;
     }
     return true;
   });

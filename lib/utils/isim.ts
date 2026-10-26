@@ -202,3 +202,18 @@ export function formatMuhatap(metin: string | null | undefined): string {
     )
     .join("\n");
 }
+
+/**
+ * ÇOK TERİMLİ ARAMA — terimler NOKTALI VİRGÜLLE ayrılır, hepsi birden aranır.
+ *
+ *   "yavuz yılmaz; kabul"            → Yavuz'un yazdığı, içinde "kabul" geçen evraklar
+ *   "yavuz yılmaz; kayıt no eksik"   → Yavuz'un, kayıt numarası girilmemiş evrakları
+ *
+ * Tek terim yazıldığında davranış eskisiyle aynı. Boş parçalar (fazladan ";") atlanır.
+ */
+export function aramaEslesir(sorgu: string, metin: string): boolean {
+  const parcalar = sorgu.split(";").map((p) => trAramaNormalize(p.trim())).filter(Boolean);
+  if (parcalar.length === 0) return true;
+  const hedef = trAramaNormalize(metin);
+  return parcalar.every((p) => hedef.includes(p));
+}

@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { getGelenEvraklar, softDeleteGelenEvrak } from "@/lib/supabase/queries/gelen-evrak";
 import GelenEvrakOnIzleme from "@/components/shared/gelen-evrak-onizleme";
-import { trAramaNormalize } from "@/lib/utils/isim";
+import { trAramaNormalize, aramaEslesir } from "@/lib/utils/isim";
 import { evrakYazdir } from "@/lib/utils/evrak-yazdir";
 import OnizlemeSayfa from "@/components/shared/onizleme-sayfa";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
@@ -204,8 +204,8 @@ export default function GelenEvrakPage() {
     // Muhatap filtresi artık tam eşleşme (dropdown'dan seçilen değer)
     if (fMuhatap && (e.muhatap ?? "") !== fMuhatap) return false;
     if (fArama.trim()) {
-      const q = trAramaNormalize(fArama);
-      const text = trAramaNormalize([
+      // Çok terimli arama: ";" ile ayrılan her terim ayrı ayrı aranır (hepsi birden).
+      const text = ([
         e.evrak_sayi_no,
         e.konu,
         e.muhatap,
@@ -215,7 +215,7 @@ export default function GelenEvrakPage() {
         e.ilgi,
         formatTarih(e.evrak_tarihi),
       ].filter(Boolean).join(" "));
-      if (!text.includes(q)) return false;
+      if (!aramaEslesir(fArama, text)) return false;
     }
     return true;
   });
