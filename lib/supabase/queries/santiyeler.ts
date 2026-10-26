@@ -39,12 +39,14 @@ export type SantiyeAllRow = {
   // Önceki iki biçim de okunur: düz metin ("ad soyad") ve tek kayıt {"ad","tarih"}.
   teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null } | { ad: string; giris: string; cikis?: string | null }[]> | null;
   calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
+  sozlesme_tarihi?: string | null; ihale_tarihi?: string | null;
   sure_uzatimli_tarih: string | null; // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim_tarihi kullanılır)
 };
 
 export async function getSantiyelerAll(): Promise<SantiyeAllRow[]> {
   const supabase = getSupabase();
-  const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, sure_uzatimli_tarih, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit";
+  // sozlesme_tarihi/ihale_tarihi: bordro listesinde "en yeni iş üstte" sıralaması için.
+  const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, sure_uzatimli_tarih, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit, sozlesme_tarihi, ihale_tarihi";
   // ihaleli ve teknik_dis_atama kolonları henüz eklenmemiş olabilir (tipli client tanımaz)
   // → varsa al, yoksa sırayla geri düş. Kolon eksikken ekran çalışmaya devam etsin.
   const r1 = await supabase.from("santiyeler").select(base + ", ihaleli, teknik_dis_atama").order("is_adi", { ascending: true });

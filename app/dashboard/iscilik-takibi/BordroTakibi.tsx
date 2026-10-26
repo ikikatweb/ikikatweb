@@ -87,6 +87,9 @@ type SantiyeBasic = {
   teknik_dis_atama?: Record<string, string | { ad: string; tarih?: string | null } | DisAtamaKayit[]> | null;
   calisilmayan_bas?: string | null; // çalışılmayan dönem başlangıcı
   calisilmayan_bit?: string | null; // çalışılmayan dönem bitişi
+  ihaleli?: boolean | null;         // false → ihalesiz iş (listede ihalelilerin altında)
+  sozlesme_tarihi?: string | null;  // "en yeni iş üstte" sıralaması için
+  ihale_tarihi?: string | null;     // sözleşme tarihi yoksa yedek
 };
 /** Atama açılamayan kişinin (firma sahibi vb.) bir teknik rolü doldurduğu dönem. */
 type DisAtamaKayit = { ad: string; giris: string; cikis?: string | null };
@@ -5448,14 +5451,23 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             const firmaSantiyelerHam = bosGizle
               ? tumFirmaSantiyeler.filter((s) => (kanbanMap.get(s.id) ?? []).length > 0)
               : tumFirmaSantiyeler;
-            // SÜRESİ DOLMUŞ İŞLER EN ALTA. Bunlar fiilen bitmiş (kabul bekliyor ya da
-            // dilekçesi bile verilmemiş) işler; devam edenlerle aynı sırada durunca
-            // ayırt edilemiyordu. Grup içinde en çok geciken üstte.
+            // SIRALAMA — üç grup, üstten alta:
+            //   0) İHALELİ işler
+            //   1) İHALESİZ işler (ihaleli = false)
+            //   2) SÜRESİ DOLMUŞ işler ("pasif" sayılır; fiilen bitmiş, kabul bekliyor)
+            // Her grubun İÇİNDE en yeni iş üstte: sözleşme tarihi, yoksa ihale tarihi.
+            // Tarihi olmayanlar grubun sonunda (ad sırasını korurlar).
+            const isGrubu = (x: { id: string; ihaleli?: boolean | null }) =>
+              suresiGectiMi(x.id) != null ? 2 : (x.ihaleli === false ? 1 : 0);
+            const yenilikAnahtari = (x: { sozlesme_tarihi?: string | null; ihale_tarihi?: string | null }) =>
+              x.sozlesme_tarihi || x.ihale_tarihi || "";
             const firmaSantiyeler = [...firmaSantiyelerHam].sort((a, b) => {
-              const ga = suresiGectiMi(a.id), gb = suresiGectiMi(b.id);
-              if (!ga && gb) return -1;
-              if (ga && !gb) return 1;
-              if (ga && gb) return gb - ga;
+              const ga = isGrubu(a), gb = isGrubu(b);
+              if (ga !== gb) return ga - gb;
+              const ta = yenilikAnahtari(a), tb = yenilikAnahtari(b);
+              if (!ta && tb) return 1;          // tarihsizler sona
+              if (ta && !tb) return -1;
+              if (ta !== tb) return tb.localeCompare(ta);   // yeni → eski
               return 0;
             });
             // Görünür şantiyesi kalmayan firmayı da gizle
