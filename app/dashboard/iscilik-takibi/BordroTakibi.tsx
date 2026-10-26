@@ -59,6 +59,7 @@ import { bordroDonemIsaretle } from "@/lib/supabase/queries/bordro-gonderim";
 import { OGRENIM_DURUMLARI, type Personel, type PersonelAtamaGecmisi, type PersonelAtamaManuelGun, type PersonelBrutUcret } from "@/lib/supabase/types";
 import { formatKisiAdi, trAramaNormalize } from "@/lib/utils/isim";
 import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
+import { isBitimHesapla } from "@/lib/bordro/is-bitim";
 
 // Telefon formatlama: 0535 535 35 35
 function formatTelefon(val: string): string {
@@ -1371,24 +1372,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     if (sid === PASIF_KEY || sid === ATANMAMIS_KEY) return null;
     const info = iscilikBitimMap.get(sid);
     const s = santiyeler.find((x) => x.id === sid);
-    if (s?.sure_uzatimli_tarih) return s.sure_uzatimli_tarih;
-    if (info?.baslangic_tarihi && info.sure_text) {
-      const toplamGun = info.sure_text.split("+").reduce((t, p) => t + (parseInt(p.trim()) || 0), 0);
-      if (toplamGun > 0) {
-        const d = new Date(info.baslangic_tarihi + "T00:00:00");
-        d.setDate(d.getDate() + toplamGun - 1);
-        return tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
-      }
-    }
-    if (info?.is_bitim_tarihi || s?.is_bitim_tarihi) return info?.is_bitim_tarihi ?? s?.is_bitim_tarihi ?? null;
-    const teslim = info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi ?? null;
-    const sure = info?.is_suresi ?? s?.is_suresi ?? null;
-    if (teslim && sure && sure > 0) {
-      const d = new Date(teslim + "T00:00:00");
-      d.setDate(d.getDate() + sure - 1);
-      return tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
-    }
-    return null;
+    return isBitimHesapla({
+      sureUzatimliTarih: s?.sure_uzatimli_tarih,
+      isBitimTarihi: info?.is_bitim_tarihi ?? s?.is_bitim_tarihi,
+      baslangicTarihi: info?.baslangic_tarihi,
+      sureText: info?.sure_text,
+      isyeriTeslimTarihi: info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi,
+      isSuresi: info?.is_suresi ?? s?.is_suresi,
+    });
   }, [iscilikBitimMap, santiyeler]);
 
   /** Süresi dolmuş iş: bitim tarihi geçmiş ama kabul/tasfiye/devir yapılmamış.
@@ -4584,32 +4575,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
       const info = iscilikBitimMap.get(santiyeId);
       const s = santiyeler.find((x) => x.id === santiyeId);
-      let bitimTarihi: string | null = null;
-      // 0) Süre uzatımlı nihai bitiş tarihi (varsa) — hepsinin önünde.
-      if (s?.sure_uzatimli_tarih) bitimTarihi = s.sure_uzatimli_tarih;
-      // 1) iscilik_takibi: baslangic_tarihi + sure_text
-      if (!bitimTarihi && info?.baslangic_tarihi && info.sure_text) {
-        const toplamGun = info.sure_text.split("+").reduce((t, p) => t + (parseInt(p.trim()) || 0), 0);
-        if (toplamGun > 0) {
-          const d = new Date(info.baslangic_tarihi + "T00:00:00");
-          d.setDate(d.getDate() + toplamGun - 1);
-          bitimTarihi = tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
-        }
-      }
-      // 2) santiye.is_bitim_tarihi manuel
-      if (!bitimTarihi && (info?.is_bitim_tarihi || s?.is_bitim_tarihi)) {
-        bitimTarihi = info?.is_bitim_tarihi ?? s?.is_bitim_tarihi ?? null;
-      }
-      // 3) santiye.isyeri_teslim_tarihi + is_suresi
-      if (!bitimTarihi) {
-        const teslim = info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi ?? null;
-        const sure = info?.is_suresi ?? s?.is_suresi ?? null;
-        if (teslim && sure && sure > 0) {
-          const d = new Date(teslim + "T00:00:00");
-          d.setDate(d.getDate() + sure - 1);
-          bitimTarihi = tarihStr(d);   // yerel tarih: toISOString bir gün geri kaydırıyordu (UTC+3)
-        }
-      }
+      const bitimTarihi = isBitimHesapla({
+        sureUzatimliTarih: s?.sure_uzatimli_tarih,
+        isBitimTarihi: info?.is_bitim_tarihi ?? s?.is_bitim_tarihi,
+        baslangicTarihi: info?.baslangic_tarihi,
+        sureText: info?.sure_text,
+        isyeriTeslimTarihi: info?.isyeri_teslim_tarihi ?? s?.isyeri_teslim_tarihi,
+        isSuresi: info?.is_suresi ?? s?.is_suresi,
+      });
       if (!bitimTarihi) return null;
       // Kalan gün: bitim - bugün
       const bugun = new Date();

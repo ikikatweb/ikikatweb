@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { tahminiBordroHesapla, ayYilNum, yerelBugun } from "@/lib/bordro/tahmini-bordro";
 import { brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
 import { primDengesi, type Denge } from "@/lib/bordro/prim-dengesi";
+import { isBitimHesapla } from "@/lib/bordro/is-bitim";
 
 export type PrimDengeSatiri = Denge & {
   santiyeId: string;
@@ -24,8 +25,8 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
   try {
     const sb = createClient();
     const [sant, takibi, atama, ucret, brut, ayliklar, manuel, teknik] = await Promise.all([
-      sb.from("santiyeler").select("id, is_adi, sozlesme_bedeli, sozlesme_fiyatlariyla_gerceklesen, is_bitim_tarihi, sure_uzatimli_tarih, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, calisilmayan_bas, calisilmayan_bit, netsim_son_hakedis_kesif, netsim_son_hakedis_fark"),
-      sb.from("iscilik_takibi").select("id, santiye_id, kesif_artisi, fiyat_farki, iscilik_orani, yatan_prim").eq("silindi", false),
+      sb.from("santiyeler").select("id, is_adi, sozlesme_bedeli, sozlesme_fiyatlariyla_gerceklesen, is_bitim_tarihi, sure_uzatimli_tarih, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, calisilmayan_bas, calisilmayan_bit, netsim_son_hakedis_kesif, netsim_son_hakedis_fark, isyeri_teslim_tarihi, is_suresi"),
+      sb.from("iscilik_takibi").select("id, santiye_id, kesif_artisi, fiyat_farki, iscilik_orani, yatan_prim, baslangic_tarihi, sure_text").eq("silindi", false),
       sb.from("personel_atama_gecmisi").select("personel_id, santiye_id, baslangic_tarihi, bitis_tarihi"),
       sb.from("bordro_gunluk_ucret").select("yil, ucret"),
       sb.from("personel_brut_ucret").select("*"),
@@ -40,6 +41,7 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
       gecici_kabul_tarihi: string | null; kesin_kabul_tarihi: string | null;
       tasfiye_tarihi: string | null; devir_tarihi: string | null;
       calisilmayan_bas: string | null; calisilmayan_bit: string | null;
+      isyeri_teslim_tarihi: string | null; is_suresi: number | null;
       netsim_son_hakedis_kesif: number | null; netsim_son_hakedis_fark: number | null;
     };
     const santiyeler = (sant.data ?? []) as S[];
@@ -83,9 +85,9 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
     }
 
     // Şantiye bazında: yatması gereken (tahmini FF dâhil), yatan, işlenmiş son ay
-    type Toplam = { gereken: number; yatan: number; sonAyNum: number };
+    type Toplam = { gereken: number; yatan: number; sonAyNum: number; baslangic: string | null; sureText: string | null };
     const toplam = new Map<string, Toplam>();
-    for (const r of (takibi.data ?? []) as { id: string; santiye_id: string; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null }[]) {
+    for (const r of (takibi.data ?? []) as { id: string; santiye_id: string; kesif_artisi: number | null; fiyat_farki: number | null; iscilik_orani: number | null; yatan_prim: number | null; baslangic_tarihi: string | null; sure_text: string | null }[]) {
       const s = S.get(r.santiye_id);
       if (!s) continue;
       if (s.gecici_kabul_tarihi || s.kesin_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi) continue;  // biten iş
@@ -93,7 +95,9 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
       const shK = s.netsim_son_hakedis_kesif ?? 0, shF = s.netsim_son_hakedis_fark ?? 0;
       const kalanKesif = bedel + kesif - (s.sozlesme_fiyatlariyla_gerceklesen ?? 0);
       const tahminiFF = shK > 0 && shF > 0 && kalanKesif > 0 ? kalanKesif * (shF / shK) : 0;
-      const t = toplam.get(r.santiye_id) ?? { gereken: 0, yatan: 0, sonAyNum: 0 };
+      const t = toplam.get(r.santiye_id) ?? { gereken: 0, yatan: 0, sonAyNum: 0, baslangic: null as string | null, sureText: null as string | null };
+      t.baslangic ??= r.baslangic_tarihi;
+      t.sureText ??= r.sure_text;
       t.gereken += (bedel + kesif + ff + tahminiFF) * oran / 100;
       t.yatan += r.yatan_prim ?? 0;
       const sa = sonAy.get(r.id);
@@ -106,7 +110,18 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
     const sonuc: PrimDengeSatiri[] = [];
     for (const [sid, t] of toplam) {
       const s = S.get(sid)!;
-      const bitim = s.sure_uzatimli_tarih || s.is_bitim_tarihi;
+      // BİTİM TARİHİ — Bordro Takibi kartıyla AYNI sıra (lib/bordro/is-bitim.ts):
+      // şantiye kaydına girilen tarih esas, türetme yalnız o boşken. Eskiden burada
+      // yalnız şantiye alanlarına bakılıyordu; kart türetmeyi öne aldığı için iki
+      // ekran aynı iş için farklı tarih gösteriyordu.
+      const bitim = isBitimHesapla({
+        sureUzatimliTarih: s.sure_uzatimli_tarih,
+        isBitimTarihi: s.is_bitim_tarihi,
+        baslangicTarihi: t.baslangic,
+        sureText: t.sureText,
+        isyeriTeslimTarihi: s.isyeri_teslim_tarihi,
+        isSuresi: s.is_suresi,
+      });
       // BİTMİŞ İŞLER DE LİSTELENİR. Eskiden bitim tarihi geçmiş işler tamamen
       // düşüyordu — oysa en kritik oldukları an orası: Kampüs Altyapı'da iş 10.09'da
       // bitmiş, 0 sigortalı kalmış ve 28.890 ₺ prim eksik; o prim artık çalışmayla
