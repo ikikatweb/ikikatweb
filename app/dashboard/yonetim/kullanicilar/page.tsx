@@ -215,7 +215,6 @@ export default function KullanicilarPage() {
                 >Ad Soyad</TableHead>
                 <TableHead>Kullanıcı Adı</TableHead>
                 <TableHead>E-posta</TableHead>
-                <TableHead>Şifre</TableHead>
                 <TableHead className="text-center">Rol</TableHead>
                 <TableHead className="hidden md:table-cell">Şantiyeler</TableHead>
                 <TableHead className="text-center">Durum</TableHead>
@@ -263,9 +262,6 @@ export default function KullanicilarPage() {
                         </span>
                       : <span className="text-xs text-amber-600">tanımsız</span>}
                   </TableCell>
-                  {/* ŞİFRE GÖSTERİLMEZ: açık metin kopya (sifre_gorunur) kaldırıldı.
-                      Yönetici şifreyi göremez, yalnız düzenleme ekranından yenisini atar. */}
-                  <TableCell className="font-mono text-sm text-gray-400" title="Şifreler saklanmaz; değiştirmek için kullanıcıyı düzenleyin">••••••</TableCell>
                   <TableCell className="text-center">
                     <Badge className={
                       k.rol === "yonetici" ? "bg-[#F97316]"
