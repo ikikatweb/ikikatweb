@@ -417,7 +417,9 @@ export default function FirmalarPage() {
 
       {/* Firma ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleFirma(null); } }}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-5">
+        {/* pb-0: Kaydet/İptal şeridi yapışkan; alt iç boşluk kalsaydı şeridin ALTINDA ince
+            bir aralık açık kalır ve form içeriği (Kaşe/Antet başlıkları) oradan görünürdü. */}
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-5 pb-0">
           <DialogHeader>
             {/* Uzun firma adı başlığı genişletip yatay kaydırmaya yol açmasın: string düzeyinde kısalt + truncate.
                 pr-8: sağ üstteki × kapat butonuna yer bırak. */}
