@@ -49,7 +49,6 @@ import NetsimYeniIsHatirlatma from "@/components/shared/netsim-yeni-is-hatirlatm
 import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hatirlatma";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
-import SezonMaliyetOzet from "@/components/shared/sezon-maliyet-ozet";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
@@ -1879,11 +1878,11 @@ export default function DashboardPage() {
       <TeknikAtamaHatirlatma />
       <SozlesmeTarihiHatirlatma />
 
-      {/* Sezon Maliyeti özeti (yalnız yönetici; gizlenen şantiyeler hariç) */}
-      <div className="mb-4">
-        <SezonMaliyetOzet />
-      </div>
-
+      {/* Sezon Maliyeti özeti KALDIRILDI (27.10.2026): ana sayfa açılışını yavaşlatıyordu.
+          Widget yıl bazlı maliyet raporunun TAMAMINI tarayıcıda hesaplıyordu — kasa, atama,
+          puantaj, yakıt, kira, bakım tablolarını 1000'erlik sayfalarla baştan sona çekip
+          topluyordu. Dashboard'ın kendi sorgularıyla aynı anda koşunca havuzu tıkıyordu.
+          Rapor duruyor: Sezon Maliyeti sayfası (/dashboard/maliyet-raporu) açıldığında hesaplanır. */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
         {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-1 lg:order-1">
