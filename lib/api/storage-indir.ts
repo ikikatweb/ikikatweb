@@ -35,6 +35,10 @@ export async function storageIndir(url: string): Promise<Buffer | null> {
   try {
     const r = await fetch(url);
     if (r.ok) return Buffer.from(await r.arrayBuffer());
-  } catch { /* indirilemedi */ }
+    console.error(`[storageIndir] indirilemedi (HTTP ${r.status}): ${url}`);
+    return null;
+  } catch (e) {
+    console.error(`[storageIndir] indirilemedi: ${url}`, e instanceof Error ? e.message : e);
+  }
   return null;
 }
