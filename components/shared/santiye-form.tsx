@@ -490,6 +490,24 @@ export default function SantiyeForm({
     setFormData((prev) => ({ ...prev, [name]: value === "" ? null : value }));
   }
 
+  // İHALELİ TİKİ KALKINCA: çalışılmayan dönem ve teknik personel zorunluluğu ihaleli işlere
+  // özgü — ihalesiz işte bu bilgiler istenmez. Tik kalkınca ikisi de "yok / gerekli değil"
+  // olarak işaretlenir, kullanıcı aynı alanları ayrıca kapatmak zorunda kalmaz.
+  // Tik geri gelirse yalnız BİZİM işaretlediklerimiz geri alınır — kullanıcı kendi eliyle
+  // "dönem yok" demişse o tercih korunur.
+  const ihalesizIsaretledi = useRef({ calisilmayan: false, teknik: false });
+  function ihaleliDegisti(acik: boolean) {
+    setFormData((p) => ({ ...p, ihaleli: acik }));
+    if (!acik) {
+      if (!calisilmayanYok) { ihalesizIsaretledi.current.calisilmayan = true; setCalisilmayanYok(true); }
+      if (!teknikPersonelGerekliDegil) { ihalesizIsaretledi.current.teknik = true; setTeknikPersonelGerekliDegil(true); }
+      hatayiTemizle("calisilmayan_bas"); hatayiTemizle("calisilmayan_bit"); hatayiTemizle("teknik");
+    } else {
+      if (ihalesizIsaretledi.current.calisilmayan) { setCalisilmayanYok(false); ihalesizIsaretledi.current.calisilmayan = false; }
+      if (ihalesizIsaretledi.current.teknik) { setTeknikPersonelGerekliDegil(false); ihalesizIsaretledi.current.teknik = false; }
+    }
+  }
+
   // Çalışılmayan dönem alanı (yıl YOK, her yıl tekrar eder) → "AA-GG" gün-ay metni. Ay VEYA gün seçimi
   // KORUNUR (sıra bağımsız): gün'ü ay'dan önce seçmek günü kaybetmez. İkisi de boşsa alan null.
   function setGunAy(field: "calisilmayan_bas" | "calisilmayan_bit", ay: string, gun: string) {
@@ -1256,13 +1274,15 @@ export default function SantiyeForm({
                 <div className="space-y-1.5">
                   <label className="flex cursor-pointer items-center gap-2 pt-7 text-sm font-medium text-gray-700">
                     <input type="checkbox" checked={formData.ihaleli ?? true}
-                      onChange={(e) => setFormData((p) => ({ ...p, ihaleli: e.target.checked }))}
+                      onChange={(e) => ihaleliDegisti(e.target.checked)}
                       disabled={loading} className="h-4 w-4 accent-[#1E3A5F]" />
                     İhaleli iş
                   </label>
                   <p className="text-[11px] leading-snug text-gray-400">
                     İşaretliyse bu iş ana sayfadaki <strong>Projelerimiz</strong> ve <strong>Bordro — Şantiye Özeti</strong>
-                    tablosunda görünür. İşaret kaldırılırsa bu iki yerde <strong>gösterilmez</strong>. (Varsayılan: işaretli)
+                    tablosunda görünür. İşaret kaldırılırsa bu iki yerde <strong>gösterilmez</strong>; ayrıca
+                    <strong> çalışılmayan dönem</strong> ve <strong>teknik personel</strong> bilgileri istenmez
+                    (bu alanlar kendiliğinden &quot;yok / gerekli değil&quot; işaretlenir). (Varsayılan: işaretli)
                   </p>
                 </div>
                 {/* İş Grubu (Benzer İş) genel bilgilerde gösterilmez — kabul sekmesindeki İş Grubu Dağılımı'ndan seçilir */}
