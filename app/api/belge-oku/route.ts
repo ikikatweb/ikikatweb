@@ -9,6 +9,7 @@
 // uzatımı sanıp ortaklık oranı satırındaki değeri okumuştu). Kullanıcı önerilen değeri
 // kaynak satırla birlikte görüp onaylıyor; hiçbir şey kendiliğinden yazılmıyor.
 import { NextResponse } from "next/server";
+import { storageIndir } from "@/lib/api/storage-indir";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import Anthropic from "@anthropic-ai/sdk";
@@ -180,9 +181,10 @@ export async function POST(req: Request) {
     if (icerik) {
       buf = Buffer.from(icerik, "base64");
     } else {
-      const r = await fetch(url!);
-      if (!r.ok) return NextResponse.json({ error: `Belge indirilemedi (${r.status})` }, { status: 502 });
-      buf = Buffer.from(await r.arrayBuffer());
+      // service role ile iner (bucket özel; düz fetch 400 döner) — bkz. lib/api/storage-indir.
+      const indirilen = await storageIndir(url!);
+      if (!indirilen) return NextResponse.json({ error: "Belge indirilemedi" }, { status: 502 });
+      buf = indirilen;
     }
     // 30 MB üstü belgeyi modele göndermeyiz; tarama çok yüksek çözünürlükte olabiliyor.
     if (buf.length > 30 * 1024 * 1024) {

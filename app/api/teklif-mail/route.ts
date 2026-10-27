@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { KASKO_TEKLIF_KATEGORI, cinsToKaskoSinif, kaskoSablonVarsayilan, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
+import { storageIndir } from "@/lib/api/storage-indir";
 
 export async function POST(request: Request) {
   // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
@@ -146,22 +147,27 @@ export async function POST(request: Request) {
       ? `<p>İyi çalışmalar.<br>${htmlEscape(gonderenKullanici.trim())}</p>`
       : `<p>İyi çalışmalar.</p>`;
 
-    // Ruhsat ekini hazırla
+    // RUHSAT EKİ. Mailin metni "ekte ruhsat fotokopisi bulunan ... aracımız" diyor; ek
+    // yoksa acente teklif veremiyor. Bu yüzden ruhsat KAYITLI olup da inmiyorsa mail HİÇ
+    // GÖNDERİLMEZ, hata kullanıcıya söylenir.
+    //
+    // 27.10.2026: tam bu sessiz hata yaşandı. Bucket'lar özele çevrilince kayıtlı "public"
+    // URL'e düz fetch 400 dönmeye başladı, buradaki catch hatayı yutuyordu ve teklif maili
+    // ruhsatsız gidiyordu. Artık indirme service role ile yapılıyor (lib/api/storage-indir).
     const attachments: { filename: string; content: Buffer }[] = [];
     if (ruhsatUrl) {
-      try {
-        const ruhsatResponse = await fetch(ruhsatUrl);
-        if (ruhsatResponse.ok) {
-          const arrayBuffer = await ruhsatResponse.arrayBuffer();
-          const ext = ruhsatUrl.split(".").pop() ?? "pdf";
-          attachments.push({
-            filename: `ruhsat-${plaka.replace(/\s+/g, "-")}.${ext}`,
-            content: Buffer.from(arrayBuffer),
-          });
-        }
-      } catch {
-        // Ruhsat indirilemezse ek olmadan gönder
+      const icerik = await storageIndir(ruhsatUrl);
+      if (!icerik) {
+        return NextResponse.json({
+          error: `${plaka} aracının ruhsatı indirilemedi — mail GÖNDERİLMEDİ. `
+            + `Ruhsat eki olmadan acente teklif veremez. Araç kartından ruhsatı yeniden yükleyip tekrar deneyin.`,
+        }, { status: 502 });
       }
+      const ext = (ruhsatUrl.split("?")[0].split(".").pop() ?? "pdf").slice(0, 5);
+      attachments.push({
+        filename: `ruhsat-${plaka.replace(/\s+/g, "-")}.${ext}`,
+        content: icerik,
+      });
     }
 
     // Her acenteye mail gönder
@@ -193,6 +199,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       mesaj: `${basarili} mail gönderildi${basarisiz > 0 ? `, ${basarisiz} başarısız` : ""}`,
       sonuclar,
+      // Aracın hiç ruhsatı yoksa mail yine gider ama kullanıcı bilsin: acente ruhsatsız
+      // teklif veremez, geri dönüş gecikir.
+      uyari: ruhsatUrl ? null : `${plaka} aracının ruhsatı sistemde kayıtlı değil — mail ruhsat eki OLMADAN gitti.`,
     });
   } catch (err) {
     return NextResponse.json(

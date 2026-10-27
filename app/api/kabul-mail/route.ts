@@ -5,13 +5,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
-
-// Public storage URL → bucket içi yol. Service role ile indirmek için (public olmasa da çalışsın).
-function storageYolu(url: string): { bucket: string; yol: string } | null {
-  const m = url.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)$/);
-  if (!m) return null;
-  return { bucket: m[1], yol: decodeURIComponent(m[2].split("?")[0]) };
-}
+import { storageIndir } from "@/lib/api/storage-indir";
 
 const trTarih = (t: string | null | undefined): string | null => {
   if (!t) return null;
@@ -66,17 +60,8 @@ export async function POST(request: Request) {
     }
 
     // PDF'i storage'dan indir (service role → bucket public olmasa da iner). Olmazsa doğrudan URL'den çek.
-    let pdf: Buffer | null = null;
-    const konum = storageYolu(pdfUrl);
-    if (konum) {
-      const { data } = await supabase.storage.from(konum.bucket).download(konum.yol);
-      if (data) pdf = Buffer.from(await data.arrayBuffer());
-    }
-    if (!pdf) {
-      const res = await fetch(pdfUrl);
-      if (!res.ok) return NextResponse.json({ error: `PDF indirilemedi (${res.status})` }, { status: 502 });
-      pdf = Buffer.from(await res.arrayBuffer());
-    }
+    const pdf = await storageIndir(pdfUrl);
+    if (!pdf) return NextResponse.json({ error: "PDF indirilemedi" }, { status: 502 });
 
     const transporter = nodemailer.createTransport({
       host: firma.smtp_host as string,

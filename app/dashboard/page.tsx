@@ -1719,6 +1719,8 @@ export default function DashboardPage() {
         } else {
           toast.success(data.mesaj, { duration: toastSuresi() });
         }
+        // Ruhsat eki yoksa sessiz geçme: acente ruhsatsız teklif veremiyor.
+        if (data.uyari) toast(data.uyari, { icon: "⚠️", duration: toastSuresi() });
         // Gönderim kaydını veritabanına yaz
         try {
           const seciliAdlar = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.ad);
