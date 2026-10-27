@@ -2025,12 +2025,9 @@ export default function DashboardPage() {
                       </TableCell>
                       <TableCell className="px-2 text-center">
                         {(y.tip === "Trafik Sigorta" || y.tip === "Kasko") && (
+                          /* Düğmeler işin SIRASIYLA dizili: önce teklif istenir, sonra gelen
+                             teklifler karşılaştırılır, en son poliçe girilir. */
                           <div className="flex items-center gap-1 justify-center">
-                            <button type="button"
-                              onClick={() => policeDialogAc(y.aracId, y.tip)}
-                              className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100">
-                              Poliçe Gir
-                            </button>
                             <button type="button"
                               onClick={() => teklifDialogAc(y)}
                               className="inline-flex items-center gap-0.5 text-[9px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
@@ -2055,6 +2052,11 @@ export default function DashboardPage() {
                                 </button>
                               );
                             })()}
+                            <button type="button"
+                              onClick={() => policeDialogAc(y.aracId, y.tip)}
+                              className="inline-flex items-center gap-0.5 text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 hover:bg-emerald-100">
+                              Poliçe Gir
+                            </button>
                           </div>
                         )}
                       </TableCell>
