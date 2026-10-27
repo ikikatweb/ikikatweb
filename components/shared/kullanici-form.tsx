@@ -722,7 +722,11 @@ export default function KullaniciForm({
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3 pt-2">
+      {/* KAYDET/İPTAL HEP GÖRÜNÜR: form uzun (yetkiler, gün sınırları, kayıt geçmişi) ve
+          düğmeler en altta kalıyordu — kullanıcı her değişiklikten sonra sonuna kadar
+          kaydırmak zorundaydı. Pencerenin alt kenarına yapışır; negatif kenar boşluğu
+          pencerenin iç boşluğunu (p-5) kapatır ki altından içerik görünmesin. */}
+      <div className="sticky bottom-0 z-10 -mx-5 flex items-center justify-end gap-3 rounded-b-xl border-t border-gray-200 bg-white px-5 py-3">
         {/* ÇOĞALT — yalnız düzenlemede. Aynı yetkilerle ikinci bir kullanıcı açmak için;
             kaydetmeden önce ad/kullanıcı adı/şifre sorulur. */}
         {isEdit && kullanici && onCogalt && (

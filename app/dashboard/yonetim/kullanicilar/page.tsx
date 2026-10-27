@@ -325,7 +325,9 @@ export default function KullanicilarPage() {
 
       {/* Kullanıcı Ekle/Düzenle Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5">
+        {/* pb-0: Kaydet/İptal şeridi pencerenin alt kenarına YAPIŞIK dursun. Alt iç boşluk
+            kalsaydı şeridin altında bir şerit açık kalır, içerik oradan görünürdü. */}
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto p-5 pb-0">
           <DialogHeader>
             <DialogTitle>
               {cogaltilacak ? `Kullanıcı Çoğalt — ${cogaltilacak.ad_soyad}`
