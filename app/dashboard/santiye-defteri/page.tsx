@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import { useSearchParams } from "next/navigation";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -156,16 +157,8 @@ function SantiyeDefContent() {
       setDefterliSantiyeIds(new Set(defterliIds));
       const otoId = otomatikSantiyeId(sData as SantiyeBasic[], kullanici);
       if (otoId) setFiltreSantiye(otoId);
-      const map = new Map<string, string>();
+      const map = await getKullaniciAdMap();
       if (kullanici) map.set(kullanici.id, kullanici.ad_soyad);
-      try {
-        const res = await fetch("/api/kullanicilar/adlar");
-        if (res.ok) {
-          for (const k of (await res.json()) as { id: string; ad_soyad: string }[]) {
-            map.set(k.id, k.ad_soyad);
-          }
-        }
-      } catch { /* sessiz */ }
       setKullaniciMap(map);
     } catch (err) {
       console.error(err);

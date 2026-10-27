@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
+import { getKullaniciAdMap, getKullaniciListesi } from "@/lib/supabase/queries/kullanici-adlari";
 import { useSearchParams, useRouter } from "next/navigation";
 // Artık personel yerine kullanıcılar gösteriliyor
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -180,11 +181,11 @@ function KasaDefContent() {
         getSantiyelerAll(),
         getDegerler("kasa_harcama_kategori").catch(() => []),
         getKasaHareketleri().catch(() => []),
-        fetch("/api/kullanicilar/adlar").then((r) => r.ok ? r.json() : []).catch(() => []),
+        getKullaniciListesi(),
         getKasaHareketLimit().catch(() => null),
         getGoruntulemeLimit().catch(() => null),
       ]);
-      const kullaniciListesi = ((kResp as { id: string; ad_soyad: string; aktif?: boolean }[]) ?? [])
+      const kullaniciListesi = (kResp ?? [])
         .map((k) => ({ id: k.id, ad_soyad: k.ad_soyad, aktif: k.aktif !== false }));
       setPersoneller(kullaniciListesi);
       setSantiyeler((sData as SantiyeBasic[]) ?? []);
@@ -198,16 +199,8 @@ function KasaDefContent() {
       if (otoId) setFiltreSantiye(otoId);
 
       // Kullanıcı adları
-      const map = new Map<string, string>();
+      const map = await getKullaniciAdMap();
       if (kullanici) map.set(kullanici.id, kullanici.ad_soyad);
-      try {
-        const res = await fetch("/api/kullanicilar/adlar");
-        if (res.ok) {
-          for (const k of (await res.json()) as { id: string; ad_soyad: string }[]) {
-            map.set(k.id, k.ad_soyad);
-          }
-        }
-      } catch { /* sessiz */ }
       setKullaniciMap(map);
     } catch (err) {
       console.error(err);

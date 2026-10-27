@@ -1,5 +1,6 @@
 // Arvento araç çalışma raporu sorguları
 import { createClient } from "@/lib/supabase/client";
+import { paylasilanIstek } from "@/lib/supabase/istek-paylas";
 import type { AracArventoRapor, AracArventoGuzergah } from "@/lib/supabase/types";
 import type { OzetDamper, OzetGiris } from "@/lib/arvento/stabilize-ozet";
 import { kapsamAnahtari, guzergahGunleri, guzergahOnbellektenOku, guzergahOnbellegeYaz, guzergahOnbellekTemizle } from "@/lib/arvento/guzergah-onbellek";
@@ -795,7 +796,11 @@ async function tanimliSuz<T extends { plaka: string }>(rows: T[]): Promise<T[]> 
 
 // Plaka → Şantiye eşlemesi: araç puantajdan (o tarihteki kayıt), yoksa aracın atanmış şantiyesi.
 export type PlakaSantiye = { santiyeId: string | null; santiyeAdi: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null };
-export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, PlakaSantiye>> {
+export function getPlakaSantiyeMap(tarih: string): Promise<Map<string, PlakaSantiye>> {
+  return paylasilanIstek(`arvento:plaka_santiye:${tarih}`, () => plakaSantiyeMapCek(tarih));
+}
+
+async function plakaSantiyeMapCek(tarih: string): Promise<Map<string, PlakaSantiye>> {
   const supabase = getSupabase();
   const out = new Map<string, PlakaSantiye>();
   const [araclarRes, santiyelerRes, puantajRes] = await Promise.all([
@@ -819,7 +824,13 @@ export async function getPlakaSantiyeMap(tarih: string): Promise<Map<string, Pla
 
 // Atama tablosu için TÜM araçlar (plaka, sınıf, mevcut sekme ataması).
 export type AracAtama = { id: string; plaka: string; marka: string | null; model: string | null; cinsi: string | null; sayacTipi: "km" | "saat" | null; sekmeler: string[] | null; surucu: string | null; arventoNode: string | null; renk: string | null };
-export async function getAraclarAtama(): Promise<AracAtama[]> {
+export function getAraclarAtama(): Promise<AracAtama[]> {
+  // Ocak makine kümesi ve detayı art arda aynı listeyi istiyor → 1 dk taze tutulur.
+  // Araç kaydı değişince updateArac bu kaydı düşürüyor, bayat kalmaz.
+  return paylasilanIstek("arvento:araclar_atama", araclarAtamaCek, 60_000);
+}
+
+async function araclarAtamaCek(): Promise<AracAtama[]> {
   const supabase = getSupabase();
   // surucu / arvento_node / arvento_renk kolonları henüz eklenmemiş olabilir → kademeli fallback (geriye uyumlu).
   const sec = (ekstra: string) => supabase
@@ -836,7 +847,12 @@ export async function getAraclarAtama(): Promise<AracAtama[]> {
 }
 
 // En güncel rapor tarihini döndür (dashboard widget için)
-export async function getArventoSonTarih(): Promise<string | null> {
+// Arvento widget'ı ve günlük metrik yardımcıları açılışta bunu birlikte istiyor → uçuştaki istek paylaşılır.
+export function getArventoSonTarih(): Promise<string | null> {
+  return paylasilanIstek("arvento:son_tarih", arventoSonTarihCek);
+}
+
+async function arventoSonTarihCek(): Promise<string | null> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("arac_arvento_rapor")

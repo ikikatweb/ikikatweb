@@ -1,6 +1,7 @@
 // Personel Puantaj sorguları
 // Bir personel bir tarihte sadece 1 şantiyede puantajlanabilir (UNIQUE personel_id+tarih)
 import { createClient } from "@/lib/supabase/client";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { PersonelPuantaj, PersonelPuantajDurum } from "@/lib/supabase/types";
 
 function getSupabase() {
@@ -43,14 +44,7 @@ export async function getPersonelPuantajByAySantiye(
   // created_by id'lerinden kullanıcı ad_soyad'larını çek
   // RLS bypass için API endpoint kullan (service role key ile çalışır) — direkt
   // supabase.from("kullanicilar") sorgusu RLS politikasına takılıp boş döner.
-  const map = new Map<string, string>();
-  try {
-    const res = await fetch("/api/kullanicilar/adlar");
-    if (res.ok) {
-      const tumKullanicilar = (await res.json()) as { id: string; ad_soyad: string }[];
-      for (const k of tumKullanicilar) map.set(k.id, k.ad_soyad);
-    }
-  } catch { /* sessiz */ }
+  const map = await getKullaniciAdMap();
   return rows.map((p) => ({
     ...p,
     created_by_ad: p.created_by ? map.get(p.created_by) ?? null : null,

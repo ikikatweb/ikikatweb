@@ -1,5 +1,6 @@
 // Kullanıcı sorguları - API route'lara fetch yapan client fonksiyonları
 import type { Kullanici, Izinler } from "@/lib/supabase/types";
+import { kullaniciAdlariniUnut } from "@/lib/supabase/queries/kullanici-adlari";
 
 export type KullaniciCreatePayload = {
   ad_soyad: string;
@@ -101,6 +102,7 @@ export async function createKullanici(data: KullaniciCreatePayload): Promise<Kul
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error((await res.json()).error);
+  kullaniciAdlariniUnut();   // "kim girdi" sütunlarındaki ad önbelleği tazelensin
   return res.json();
 }
 
@@ -111,10 +113,12 @@ export async function updateKullanici(id: string, data: KullaniciUpdatePayload):
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error((await res.json()).error);
+  kullaniciAdlariniUnut();
   return res.json();
 }
 
 export async function deleteKullanici(id: string): Promise<void> {
   const res = await fetch(`/api/kullanicilar/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error((await res.json()).error);
+  kullaniciAdlariniUnut();
 }

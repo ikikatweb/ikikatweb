@@ -1,5 +1,6 @@
 // Araç bakım & tamirat sorguları
 import { createClient } from "@/lib/supabase/client";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { AracBakim, AracBakimWithArac, AracBakimTipi } from "@/lib/supabase/types";
 
 function getSupabase() {
@@ -29,14 +30,7 @@ export async function getAracBakimlar(): Promise<AracBakimWithArac[]> {
   if (tum.length === 0) return tum;
 
   // İşlemi giriş yapan kullanıcı adını API üzerinden çöz (created_by)
-  const kullaniciMap = new Map<string, string>();
-  try {
-    const res = await fetch("/api/kullanicilar/adlar");
-    if (res.ok) {
-      const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
-      for (const k of adlar) kullaniciMap.set(k.id, k.ad_soyad);
-    }
-  } catch { /* sessiz */ }
+  const kullaniciMap = await getKullaniciAdMap();
 
   return tum.map((b) => {
     const rec = b as AracBakimWithArac & { personel?: { ad_soyad: string } | null };

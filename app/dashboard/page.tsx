@@ -8,6 +8,7 @@ import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
 import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
@@ -352,10 +353,7 @@ export default function DashboardPage() {
     // Kullanıcı adları hem kasa hem şantiye defteri bölümünde lazım — bir kez istenir.
     // (State'e yazılıyor ama bu fonksiyonun kapanışı eski state'i gördüğü için
     //  değeri doğrudan bu sözden okumak gerekiyor.)
-    const adlarPromise: Promise<Map<string, string>> = fetch("/api/kullanicilar/adlar")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((liste: { id: string; ad_soyad: string }[]) => new Map(liste.map((k) => [k.id, k.ad_soyad])))
-      .catch(() => new Map<string, string>());
+    const adlarPromise: Promise<Map<string, string>> = getKullaniciAdMap();
 
     const kritikPromise = (async () => {
       try {
@@ -588,7 +586,11 @@ export default function DashboardPage() {
     }
   }, [ayBitis, tumZamanBaslangic, isYonetici, kullanici, widgetGorunur, ayBaslangic, oncekiAySonGun, tazeleSayaci]);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  // YETKİ ÇÖZÜLMEDEN ÇEKME. loadAll'un kimliği kullanici/isYonetici/widgetGorunur'a bağlı;
+  // profil gelince kimlik değişip BÜTÜN sorgular ikinci kez koşuyordu. Üstelik ilk tur
+  // kullanici=null ile koştuğu için widget süzgeci yanlış (her şey "görünür") çalışıyor ve
+  // sonucu zaten çöpe gidiyordu. Ölçümde ana sayfa trafiğinin ~yarısı bu boşa turdu.
+  useEffect(() => { if (authLoading) return; loadAll(); }, [loadAll, authLoading]);
 
   // Personel map
   const persMap = useMemo(() => {

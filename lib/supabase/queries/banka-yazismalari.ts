@@ -1,5 +1,6 @@
 // Banka yazışmaları CRUD sorguları
 import { createClient } from "@/lib/supabase/client";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { BankaYazismaInsert } from "@/lib/supabase/types";
 
 function getSupabase() {
@@ -24,14 +25,7 @@ export async function getBankaYazismalari(olusturanId?: string) {
 
   if (data && data.length > 0) {
     // RLS bypass için API üzerinden kullanıcı adlarını çek
-    const map = new Map<string, string>();
-    try {
-      const res = await fetch("/api/kullanicilar/adlar");
-      if (res.ok) {
-        const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
-        adlar.forEach((k) => map.set(k.id, k.ad_soyad));
-      }
-    } catch { /* sessiz */ }
+    const map = await getKullaniciAdMap();
 
     return data.map((e) => ({
       ...e,
@@ -119,14 +113,7 @@ export async function getSilinenBankaYazismalari(olusturanId?: string) {
 
   if (data && data.length > 0) {
     // RLS bypass için API route üzerinden kullanıcı adlarını çek (kısıtlı kullanıcı direkt çekemez → aksi halde isimler "—" görünür)
-    const map = new Map<string, string>();
-    try {
-      const res = await fetch("/api/kullanicilar/adlar");
-      if (res.ok) {
-        const adlar = (await res.json()) as { id: string; ad_soyad: string }[];
-        adlar.forEach((k) => map.set(k.id, k.ad_soyad));
-      }
-    } catch { /* sessiz */ }
+    const map = await getKullaniciAdMap();
     return data.map((e) => ({
       ...e,
       kullanicilar: e.olusturan_id ? { ad_soyad: map.get(e.olusturan_id) ?? "—" } : null,

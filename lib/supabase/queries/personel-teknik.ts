@@ -16,6 +16,7 @@
 // bir isim seçer ve burada saklanır. Eski model (is_teknik=true/false) hâlâ
 // çalışır; teknik_isim null kalır.
 import { createClient } from "@/lib/supabase/client";
+import { paylasilanIstek, istegiUnut } from "@/lib/supabase/istek-paylas";
 import { disAtamaDoluRolSayisi } from "@/lib/personel/dis-atama";
 
 export type PersonelTeknikRow = {
@@ -58,7 +59,13 @@ function isColumnMissingError(msg: string, col: string): boolean {
 }
 
 // Tüm teknik personel × şantiye eşleşmelerini getir.
-export async function getTeknikPersonelKayitlari(): Promise<PersonelTeknikRow[]> {
+// Ana sayfada üç ayrı bileşen (teknik atama uyarısı, prim dengesi, bordro özeti) bunu
+// aynı anda istiyor → uçuştaki istek paylaşılır, sorgu bir kez gider.
+export function getTeknikPersonelKayitlari(): Promise<PersonelTeknikRow[]> {
+  return paylasilanIstek("personel_teknik:tumu", teknikPersonelKayitlariniCek, 15_000);
+}
+
+async function teknikPersonelKayitlariniCek(): Promise<PersonelTeknikRow[]> {
   const supabase = getSupabase();
   // İlk denemede teknik_isim ile birlikte çek
   const { data, error } = await supabase
@@ -175,6 +182,7 @@ export async function setPersonelTeknikSantiye(
   isTeknik: boolean,
   teknikIsim?: string | null,
 ): Promise<void> {
+  istegiUnut("personel_teknik");   // okuma önbelleği düşsün: kullanıcı kendi atamasını hemen görsün
   const supabase = getSupabase();
   // Upsert ile both true ve false durumunu kalıcı olarak işaretle, isim varsa kaydet
   const row: Record<string, unknown> = {

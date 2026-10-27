@@ -1,6 +1,7 @@
 // Araç Puantaj sorguları
 // Bir araç bir tarihte sadece 1 şantiyede puantajlanabilir (UNIQUE arac_id+tarih)
 import { createClient } from "@/lib/supabase/client";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { AracPuantaj, AracPuantajDurum } from "@/lib/supabase/types";
 
 function getSupabase() {
@@ -77,14 +78,7 @@ export async function getAracPuantajByAySantiye(
 
   // created_by id'lerinden kullanıcı ad_soyad'larını çek
   // RLS sorunu yaşanmaması için API endpoint kullan (service role key ile çalışır)
-  const map = new Map<string, string>();
-  try {
-    const res = await fetch("/api/kullanicilar/adlar");
-    if (res.ok) {
-      const tumKullanicilar = (await res.json()) as { id: string; ad_soyad: string }[];
-      for (const k of tumKullanicilar) map.set(k.id, k.ad_soyad);
-    }
-  } catch { /* sessiz */ }
+  const map = await getKullaniciAdMap();
   return rows.map((p) => ({
     ...p,
     created_by_ad: p.created_by ? map.get(p.created_by) ?? null : null,

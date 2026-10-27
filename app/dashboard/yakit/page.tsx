@@ -6,6 +6,7 @@
 "use client";
 
 import AracForm from "@/components/shared/arac-form";
+import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -331,19 +332,8 @@ function YakitPageContent() {
 
       // Kullanıcı adlarını çek (created_by gösterimi için)
       // RLS sorunu yaşanmaması için API endpoint kullan (service role key ile çalışır)
-      const map = new Map<string, string>();
+      const map = await getKullaniciAdMap();
       if (kullanici) map.set(kullanici.id, kullanici.ad_soyad);
-      try {
-        const res = await fetch("/api/kullanicilar/adlar");
-        if (res.ok) {
-          const tumKullanicilar = (await res.json()) as { id: string; ad_soyad: string }[];
-          for (const k of tumKullanicilar) {
-            map.set(k.id, k.ad_soyad);
-          }
-        }
-      } catch {
-        // API hatası — mevcut map ile devam et
-      }
       setKullaniciMap(map);
     } catch (err) {
       console.error("Yakıt verileri yüklenirken hata:", err);

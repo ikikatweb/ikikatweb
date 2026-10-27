@@ -2,6 +2,7 @@
 // aynı değerleri görür. Tek satırlık global kayıt (id='global'). Düzenleme yetkisi olan
 // kullanıcılar değiştirebilir; diğerleri sadece görür.
 import { createClient } from "@/lib/supabase/client";
+import { paylasilanIstek, istegiUnut } from "@/lib/supabase/istek-paylas";
 
 export type ArventoAyarlar = {
   kmEsik: number;
@@ -75,7 +76,13 @@ export const VARSAYILAN_AYARLAR: ArventoAyarlar = {
 const TABLO = "arvento_ayarlar";
 const SATIR_ID = "global";
 
-export async function getArventoAyarlar(): Promise<ArventoAyarlar> {
+// Arvento widget'ı, sezon-uzunluk hesabı ve günlük metrik üçü de açılışta bu tek satırı
+// istiyor → uçuştaki istek paylaşılır (bkz. lib/supabase/istek-paylas).
+export function getArventoAyarlar(): Promise<ArventoAyarlar> {
+  return paylasilanIstek("arvento_ayarlar:global", arventoAyarlariCek, 60_000);
+}
+
+async function arventoAyarlariCek(): Promise<ArventoAyarlar> {
   const supabase = createClient();
   const { data, error } = await supabase.from(TABLO).select("*").eq("id", SATIR_ID).maybeSingle();
   if (error || !data) return VARSAYILAN_AYARLAR;
@@ -149,8 +156,12 @@ export async function manuelRaporTetikle(): Promise<{ ok: boolean; raporSonCalis
 // (yeni bir ocak eklenene kadar). Tüm okuyucular yaricap ≤ 0'ı "ocak yok" sayar.
 export const OCAK_YOK_YARICAP = 0;
 
-export async function getOcakForTarih(tarih: string): Promise<{ lat: number; lng: number; yaricap: number } | null> {
-  if (!tarih) return null;
+export function getOcakForTarih(tarih: string): Promise<{ lat: number; lng: number; yaricap: number } | null> {
+  if (!tarih) return Promise.resolve(null);
+  return paylasilanIstek(`arvento_ocak:${tarih}`, () => ocakForTarihCek(tarih), 60_000);
+}
+
+async function ocakForTarihCek(tarih: string): Promise<{ lat: number; lng: number; yaricap: number } | null> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("arvento_ocak")
@@ -182,6 +193,7 @@ export async function getTumOcaklar(): Promise<{ gecerli_tarih: string; lat: num
 
 // Ocağı belirli bir GÜN için kaydet (o tarihten itibaren geçerli). Tablo yoksa hata fırlatır → çağıran yakalar.
 export async function setOcakForTarih(tarih: string, lat: number, lng: number, yaricap: number): Promise<void> {
+  istegiUnut("arvento_ocak");
   const supabase = createClient();
   const { error } = await supabase.from("arvento_ocak").upsert({ gecerli_tarih: tarih, lat, lng, yaricap });
   if (error) throw error;
@@ -194,6 +206,7 @@ export async function setOcakForTarih(tarih: string, lat: number, lng: number, y
 // lat/lng NOT NULL olduğu için mevcut/0 koordinat yazılır; okuyucular yalnız yaricap ≤ 0'a bakar.
 export async function ocakKaldirForTarih(tarih: string, lat = 0, lng = 0): Promise<void> {
   if (!tarih) return;
+  istegiUnut("arvento_ocak");
   const supabase = createClient();
   const { error } = await supabase.from("arvento_ocak").upsert({ gecerli_tarih: tarih, lat, lng, yaricap: OCAK_YOK_YARICAP });
   if (error) throw error;
@@ -233,6 +246,7 @@ export async function setGirisForTarih(tarih: string, noktalar: GirisNokta[]): P
 // (SQL çalıştırılmadıysa) hata fırlatır → çağıran tarafta yakalanıp kullanıcıya bildirilir; diğer
 // ayarların kaydı bundan etkilenmez.
 export async function setArventoOcak(lat: number, lng: number, yaricap: number): Promise<void> {
+  istegiUnut("arvento_ayarlar");
   const supabase = createClient();
   const { error } = await supabase.from(TABLO).upsert({
     id: SATIR_ID, ocak_lat: lat, ocak_lng: lng, ocak_yaricap: yaricap,
@@ -241,6 +255,7 @@ export async function setArventoOcak(lat: number, lng: number, yaricap: number):
 }
 
 export async function setArventoAyarlar(a: ArventoAyarlar): Promise<void> {
+  istegiUnut("arvento_ayarlar");
   const supabase = createClient();
   const { error } = await supabase.from(TABLO).upsert({
     id: SATIR_ID,

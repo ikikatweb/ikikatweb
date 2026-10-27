@@ -1,5 +1,6 @@
 // Araç CRUD sorguları - Supabase üzerinden araç işlemleri
 import { createClient } from "@/lib/supabase/client";
+import { istegiUnut } from "@/lib/supabase/istek-paylas";
 import type { AracInsert, AracUpdate } from "@/lib/supabase/types";
 
 function getSupabase() {
@@ -124,6 +125,7 @@ export async function createArac(arac: AracInsert) {
 }
 
 export async function updateArac(id: string, arac: AracUpdate) {
+  istegiUnut("arvento");   // araç listesi/sekme ataması önbelleği düşsün
   const supabase = getSupabase();
   // Sadece gönderilen alanlar için kontrol yap
   await checkAracTekillik(

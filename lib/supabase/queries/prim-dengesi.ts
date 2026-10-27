@@ -7,6 +7,7 @@
 // tahmini bordro düşülmüş. İki ekranın farklı rakam göstermemesi için.
 
 import { createClient } from "@/lib/supabase/client";
+import { getTeknikPersonelKayitlari } from "@/lib/supabase/queries/personel-teknik";
 import { tahminiBordroHesapla, ayYilNum, yerelBugun } from "@/lib/bordro/tahmini-bordro";
 import { brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
 import { primDengesi, type Denge } from "@/lib/bordro/prim-dengesi";
@@ -32,7 +33,9 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
       sb.from("personel_brut_ucret").select("*"),
       sb.from("iscilik_aylik").select("iscilik_takibi_id, ait_oldugu_ay"),
       sb.from("personel_atama_manuel_gun").select("santiye_id, personel_id, ay, gun"),
-      sb.from("personel_teknik").select("personel_id, santiye_id, is_teknik, teknik_isim"),
+      // personel_teknik AYRI çekilmez: teknik atama uyarısı da aynı listeyi istiyor → ortak
+      // okuyucudan gelir, sorgu bir kez gider (bkz. lib/supabase/istek-paylas).
+      getTeknikPersonelKayitlari(),
     ]);
 
     type S = {
@@ -78,7 +81,7 @@ export async function getPrimDengeleri(): Promise<PrimDengeSatiri[]> {
     // teknik personel sayılır — dış atama (firma yetkilisi) zaten sigortalı değil, onu
     // çıkarmak diye bir şey yok.
     const teknikKisiSayisi = new Map<string, number>();
-    for (const t of (teknik.data ?? []) as { personel_id: string; santiye_id: string; is_teknik: boolean; teknik_isim: string | null }[]) {
+    for (const t of teknik) {
       if (!t.is_teknik || !t.teknik_isim?.trim()) continue;
       if (!(aktifKisiler.get(t.santiye_id) ?? []).includes(t.personel_id)) continue;  // çıkmışsa sayma
       teknikKisiSayisi.set(t.santiye_id, (teknikKisiSayisi.get(t.santiye_id) ?? 0) + 1);
