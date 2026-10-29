@@ -5,11 +5,10 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks";
-import { Menu, LogOut, Clock, X, KeyRound, ZoomIn, Plus, Minus, ChevronDown, UserCog } from "lucide-react";
+import { Menu, LogOut, Clock, X, ZoomIn, Plus, Minus, ChevronDown, UserCog } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
-import SifreDegistirDialog from "@/components/shared/sifre-degistir-dialog";
 
 // Yazı boyutu ayarları (eski FontSizeAyari component'inden taşındı)
 const FONT_LS_KEY = "site-font-zoom";
@@ -39,7 +38,6 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
   const router = useRouter();
   const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
   const [tarihSaat, setTarihSaat] = useState("");
-  const [sifreDialogOpen, setSifreDialogOpen] = useState(false);
   const [menuAcik, setMenuAcik] = useState(false);
   const [zoomAcik, setZoomAcik] = useState(false);
   const [zoomYuzde, setZoomYuzde] = useState<number>(100);
@@ -145,7 +143,8 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
             Ayarlar (kategoriler + giriş bildirimi dahil) bu menünün "Ayarlar" sekmesinde; ayrı pencere kaldırıldı. */}
         {(isYonetici || isShantiyeAdmin) && <PushBildirimMenu />}
 
-        {/* Birleşik kullanıcı menüsü: Bilgilerim / Yazı Boyutu / Şifre Değiştir / Çıkış */}
+        {/* Birleşik kullanıcı menüsü: Bilgilerim / Yazı Boyutu / Çıkış.
+            Şifre değiştirme buradan kalktı — Bilgilerim sayfasının içinde. */}
         <div className="relative" ref={menuRef}>
           <button
             type="button"
@@ -226,21 +225,11 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
                 </div>
               )}
 
-              {/* Şifre Değiştir */}
-              <button
-                type="button"
-                onClick={() => { setMenuAcik(false); setSifreDialogOpen(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-[#1E3A5F] hover:bg-gray-50 transition-colors text-left"
-              >
-                <KeyRound size={16} />
-                Şifre Değiştir
-              </button>
-
               {/* Çıkış */}
               <button
                 type="button"
                 onClick={() => { setMenuAcik(false); handleLogout(); }}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left border-t border-gray-100"
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
               >
                 <LogOut size={16} />
                 Çıkış
@@ -250,8 +239,6 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         </div>
       </div>
 
-      {/* Şifre Değiştir Dialog */}
-      <SifreDegistirDialog open={sifreDialogOpen} onOpenChange={setSifreDialogOpen} />
     </header>
   );
 }
