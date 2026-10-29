@@ -14,7 +14,7 @@ import { AlertTriangle, UserPlus, UserMinus, UserX } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import { getPrimDengeleri, type PrimDengeSatiri } from "@/lib/supabase/queries/prim-dengesi";
-import { damgala, anaEkrandaGosterildiIsaretle, tespitZamani } from "@/lib/bordro/prim-dengesi-gorulen";
+import { damgala, depoOku, anaEkrandaGosterildiIsaretle, tespitZamani, imzala, rutinDisiMi } from "@/lib/bordro/prim-dengesi-gorulen";
 
 const tl = (n: number) => Math.round(n).toLocaleString("tr-TR") + " ₺";
 const tarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
@@ -34,13 +34,15 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
   const kontrol = useCallback(async () => {
     if (!yetkili || !kullanici?.id) { setSatirlar([]); return; }
     const veri = (await getPrimDengeleri()).filter((s) => kayitGorunur(s.santiyeId, kullanici));
-    // Damga: yeni girenlere ve DURUMU DEĞİŞENLERE zaman damgası, listeden çıkanları sil.
-    // İmza kaba tutulur (durum + kişi farkı + iş bitti mi) — tutar her gün değiştiği için
-    // imzaya girseydi her iş her gün "yeni" sayılırdı.
-    const depo = damgala(kullanici.id, veri.map((s) => ({
-      santiyeId: s.santiyeId,
-      imza: `${s.durum}|${s.kisiFarki}|${s.isBitti ? 1 : 0}`,
-    })));
+    // Damga: yeni girenlere ve RUTİN DIŞI olay yaşayanlara zaman damgası, listeden
+    // çıkanları sil. Hangi farkın ana ekrana çıkacağına rutinDisiMi karar verir.
+    const depo = mod === "sayfa"
+      ? depoOku(kullanici.id)   // Bordro Takibi: yalnız sıralama için okunur, damga YAZILMAZ
+      : damgala(
+          kullanici.id,
+          veri.map((s) => ({ santiyeId: s.santiyeId, imza: imzala(s) })),
+          rutinDisiMi,
+        );
     // EN SON TESPİT EDİLEN EN ÜSTTE (ilk giriş ya da durum değişikliği).
     const sirali = [...veri].sort((a, b) =>
       tespitZamani(depo[b.santiyeId]).localeCompare(tespitZamani(depo[a.santiyeId])));
