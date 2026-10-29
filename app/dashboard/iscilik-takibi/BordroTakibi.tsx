@@ -1747,23 +1747,26 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   //      yazısının bir parçasıysa (min 3 karakter), teknik etiketi olan personeller
   //      de eşleşir. Örn: "teknik", "teknik personel", "teknik per" → teknik olanlar
   const filtreli = useMemo(() => {
-    const q = trAramaNormalize(arama);
+    // NOKTALI VİRGÜLLE ÇOKLU ARAMA: "ahmet; 1234; teknik" → üçünden HERHANGİ biri
+    // eşleşirse personel listede kalır. Tek arama kutusuyla birkaç kişiyi/alanı aynı
+    // anda süzmek için (ör. üç sigortalıyı yan yana görmek).
     const teknikLabel = trAramaNormalize("teknik personel");
-    const qTeknikEtiketAramasi = q.length >= 3 && teknikLabel.includes(q);
+    const parcalar = arama.split(";").map((x) => trAramaNormalize(x)).filter(Boolean);
+    const teknikEtiketiAraniyor = parcalar.some((q) => q.length >= 3 && teknikLabel.includes(q));
     return personeller.filter((p) => {
       const isTeknik = teknikPersonelIds.has(p.id);
       if (tipFiltre === "teknik" && !isTeknik) return false;
       // Limit Dışı: halen aktifse 30'dan farklı (alt/üst); ayrılmışsa sadece 30'u aşan.
       if (limitDisi && !limitDisiKapsar(p.id)) return false;
-      if (!q) return true;
+      if (parcalar.length === 0) return true;
       // Sadece personel metin alanlarında ara — ad_soyad, TC, görev, meslek.
       // Şantiye adı eşleşmesi KALDIRILDI: kullanıcı "tugay" arattığında, geçmişte
       // "tugay" isimli bir şantiyede çalışmış olan farklı personellerin de görünmesi
       // istenmiyor — sadece arama metnini içeren personeller görünmeli.
       const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
-      if (text.includes(q)) return true;
+      if (parcalar.some((q) => text.includes(q))) return true;
       // Sanal "teknik personel" etiketi araması — sadece teknik işaretli olanlar eşleşir
-      if (isTeknik && qTeknikEtiketAramasi) return true;
+      if (isTeknik && teknikEtiketiAraniyor) return true;
       return false;
     });
   }, [personeller, arama, tipFiltre, teknikPersonelIds, limitDisi, limitDisiKapsar]);
@@ -1796,19 +1799,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // Arama durumu: aranan q metni "teknik personel" sanal etiketinin parçası mı?
     // Eğer öyleyse VE personel metin alanlarında eşleşmiyorsa → sadece teknik etiketi
     // olduğu şantiyelerde göster (rozet yoksa orada listelenmesin)
-    const q = trAramaNormalize(arama);
+    // Noktalı virgülle çoklu arama — filtreli ile AYNI parçalama (bkz. yukarısı).
+    const aramaParcalari = arama.split(";").map((x) => trAramaNormalize(x)).filter(Boolean);
     const teknikLabel = trAramaNormalize("teknik personel");
-    const qTeknikEtiketAramasi = q.length >= 3 && teknikLabel.includes(q);
+    const qTeknikEtiketAramasi = aramaParcalari.some((q) => q.length >= 3 && teknikLabel.includes(q));
 
     for (const p of filtreli) {
       // Bu personel arama SONUCUNA neden eşleşti? — text mi, teknik etiketi mi?
       let matchesViaText = false;
-      if (q) {
+      if (aramaParcalari.length > 0) {
         const text = trAramaNormalize([p.ad_soyad, p.tc_kimlik_no, p.gorev, p.meslek].filter(Boolean).join(" "));
-        matchesViaText = text.includes(q);
+        matchesViaText = aramaParcalari.some((q) => text.includes(q));
       }
       // Sadece teknik etiketi ile eşleşmiş (text alanlarında "teknik" yok) → şantiye kısıtla
-      const sadeceTeknikEtiketIle = !!q && qTeknikEtiketAramasi && !matchesViaText;
+      const sadeceTeknikEtiketIle = aramaParcalari.length > 0 && qTeknikEtiketAramasi && !matchesViaText;
       // "Sadece Teknik Personel" filtre seçiliyse de aynı kısıtlama: personel yalnız
       // teknik olarak işaretlendiği şantiyelerde gösterilir, başka şantiyelerde değil.
       const teknikFiltreyleKisitla = tipFiltre === "teknik";
@@ -5324,7 +5328,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       <div ref={aracCubuguRef} className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
         <div className="flex-1">
           <Input
-            placeholder="Personel ara (ad, TC, görev) — 'teknik personel' yazarak sadece teknikleri süzebilirsiniz"
+            placeholder="Personel ara (ad, TC, görev) — birkaçını noktalı virgülle ayırın: ahmet; 12345; teknik personel"
             value={arama}
             onChange={(e) => setArama(e.target.value)}
           />
@@ -7108,35 +7112,32 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       {/* ———— ALT ŞERİT ————
           Araç çubuğu yukarıda kalınca ekranın altında arama + ay ileri/geri. Aynı
           state'lere bağlı (arama, seciliAy) → üstteki ile birebir aynı işi yapar.
-          Yazdırma/çıktı almada görünmesin diye print:hidden. */}
+
+          TAM GENİŞLİKTE BEYAZ BİR BANT DEĞİL: sadece denetimler kadar yer kaplayan
+          küçük bir ada, sağ altta. Önce bant hâlindeydi; altındaki her şeyi beyazla
+          örtüyor ve seçim yapınca çıkan "transfer / çıkış" şeridinin üzerine biniyordu.
+          Seçim şeridi ekrandayken (z-40, ortada) bu ada yukarı çekilir ve z-30'da
+          kalır → ikisi çakışmaz. Çıktıda görünmesin diye print:hidden. */}
       {aracCubuguGorunmez && !loading && (
-        <div className="fixed bottom-0 left-0 right-0 z-[70] border-t border-gray-200 bg-white/95 px-3 py-2 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur print:hidden lg:left-64">
-          <div className="mx-auto flex max-w-7xl items-center gap-2">
-            <Input
-              placeholder="Personel ara (ad, TC, görev)"
-              value={arama}
-              onChange={(e) => setArama(e.target.value)}
-              className="h-9 flex-1 min-w-0"
-            />
-            <div className="flex flex-shrink-0 items-center gap-1">
-              <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, -1))} title="Önceki ay"
-                className="h-9 w-9 flex items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
-                <ChevronLeft size={16} />
-              </button>
-              <span className="w-[92px] flex-shrink-0 truncate text-center text-[11px] font-semibold text-[#1E3A5F]">
-                {ayLabel(seciliAy)}
-              </span>
-              <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, 1))} title="Sonraki ay"
-                className="h-9 w-9 flex items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
-                <ChevronRight size={16} />
-              </button>
-            </div>
-            {isReadOnly && (
-              <span className="hidden flex-shrink-0 items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 sm:inline-flex">
-                <Lock size={10} /> salt-okunur
-              </span>
-            )}
-          </div>
+        <div className={`fixed right-3 z-30 flex items-center gap-1 rounded-lg border border-gray-200 bg-white/85 p-1 shadow-lg backdrop-blur print:hidden ${
+          selectedKeys.size > 0 ? "bottom-20" : "bottom-3"}`}>
+          <Input
+            placeholder="Ara — ahmet; mehmet"
+            value={arama}
+            onChange={(e) => setArama(e.target.value)}
+            className="h-8 w-40 bg-white/80 text-xs sm:w-52"
+          />
+          <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, -1))} title="Önceki ay"
+            className="h-8 w-8 flex flex-shrink-0 items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
+            <ChevronLeft size={15} />
+          </button>
+          <span className="w-[86px] flex-shrink-0 truncate text-center text-[11px] font-semibold text-[#1E3A5F]">
+            {ayLabel(seciliAy)}
+          </span>
+          <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, 1))} title="Sonraki ay"
+            className="h-8 w-8 flex flex-shrink-0 items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
+            <ChevronRight size={15} />
+          </button>
         </div>
       )}
 
