@@ -7116,16 +7116,17 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           TAM GENİŞLİKTE BEYAZ BİR BANT DEĞİL: sadece denetimler kadar yer kaplayan
           küçük bir ada, sağ altta. Önce bant hâlindeydi; altındaki her şeyi beyazla
           örtüyor ve seçim yapınca çıkan "transfer / çıkış" şeridinin üzerine biniyordu.
-          Seçim şeridi ekrandayken (z-40, ortada) bu ada yukarı çekilir ve z-30'da
-          kalır → ikisi çakışmaz. Çıktıda görünmesin diye print:hidden. */}
+          KONUM SABİT (bottom-3): seçim şeridi ortada-solda durduğu için çakışma yok;
+          seçim yapınca yukarı kaydırmak ayı yerinden oynatıyor, aranan kişiyi
+          seçerken düğmeler elin altından kayıyordu. z-30 → seçim şeridi (z-40) üstte
+          kalır. Çıktıda görünmesin diye print:hidden. */}
       {aracCubuguGorunmez && !loading && (
-        <div className={`fixed right-3 z-30 flex items-center gap-1 rounded-lg border border-gray-200 bg-white/85 p-1 shadow-lg backdrop-blur print:hidden ${
-          selectedKeys.size > 0 ? "bottom-20" : "bottom-3"}`}>
+        <div className="fixed bottom-3 right-3 z-30 flex items-center gap-1 rounded-lg border border-gray-200 bg-white/85 p-1 shadow-lg backdrop-blur print:hidden">
           <Input
             placeholder="Ara — ahmet; mehmet"
             value={arama}
             onChange={(e) => setArama(e.target.value)}
-            className="h-8 w-40 bg-white/80 text-xs sm:w-52"
+            className="h-8 w-48 bg-white/80 text-xs sm:w-80"
           />
           <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, -1))} title="Önceki ay"
             className="h-8 w-8 flex flex-shrink-0 items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
