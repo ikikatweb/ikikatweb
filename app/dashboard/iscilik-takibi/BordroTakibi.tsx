@@ -1238,6 +1238,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     }
   }, []);
 
+  /**
+   * Sağ tıklanan noktadaki kartı bulup menüyü açar. Kart, DOM'daki data-santiye-id'den
+   * çözülür: kartın başlığı, rakam bloğu ya da açılmış personel listesi — hepsi aynı
+   * işi verir. Kart dışında ise santiyeId null kalır, işe özgü seçenekler pasif gelir.
+   */
+  const kartMenusunuAc = useCallback((x: number, y: number, hedef: HTMLElement | null) => {
+    const kart = hedef?.closest<HTMLElement>("[data-santiye-id]");
+    const sid = kart?.dataset.santiyeId ?? null;
+    setKartMenu({
+      santiyeId: sid,
+      santiyeAd: sid ? (santiyeler.find((k) => k.id === sid)?.is_adi ?? "") : "",
+      x, y,
+    });
+  }, [santiyeler]);
+
   // Gizlenmiş iş sayısı — liste altındaki düğme bunu gösterir (yetki süzgecinden geçmiş hâli).
   const gizliSayisi = useMemo(
     () => filtreliSantiyelerHelper(santiyeler, kullanici).filter((x) => x.bordro_gizli === true).length,
@@ -5284,17 +5299,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const h = e.target as HTMLElement | null;
         if (h?.closest("input, textarea, select, [contenteditable='true']")) return;
         e.preventDefault();
-        // Kart, DOM'daki data-santiye-id'den bulunur: kartın HER yeri (başlık, rakamlar,
-        // açılmış personel listesi) aynı menüyü doğru işle açar. Kart dışında ise
-        // santiyeId null kalır ve işe özgü seçenekler pasif gelir.
-        const kart = h?.closest<HTMLElement>("[data-santiye-id]");
-        const sid = kart?.dataset.santiyeId ?? null;
-        setKartMenu({
-          santiyeId: sid,
-          santiyeAd: sid ? (santiyeler.find((x) => x.id === sid)?.is_adi ?? "") : "",
-          x: e.clientX,
-          y: e.clientY,
-        });
+        kartMenusunuAc(e.clientX, e.clientY, h);
       }}
     >
       {/* Toolbar */}
@@ -7006,7 +7011,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         return (
         <>
           <div className="fixed inset-0 z-[85]" onClick={() => setKartMenu(null)}
-            onContextMenu={(e) => { e.preventDefault(); setKartMenu(null); }} />
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const perde = e.currentTarget as HTMLElement;
+              perde.style.pointerEvents = "none";
+              const alt = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+              perde.style.pointerEvents = "";
+              if (alt?.closest("input, textarea, select, [contenteditable='true']")) { setKartMenu(null); return; }
+              kartMenusunuAc(e.clientX, e.clientY, alt);
+            }} />
           <div className="fixed z-[90] w-[280px] max-w-[92vw] rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
             style={{
               left: Math.min(kartMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 292),
