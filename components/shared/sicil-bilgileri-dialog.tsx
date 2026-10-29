@@ -66,21 +66,23 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahmini
     <Dialog open={!!hedef} onOpenChange={(o) => { if (!o) onKapat(); }}>
       <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          {/* Başlık satırının sağında İŞİN TAMAMLANMA ORANI: tamamlanan keşif ÷ sözleşme
-              bedeli (Bordro kartındaki yüzdenin aynısı). pr-8 → kapatma çarpısına girmesin. */}
-          <DialogTitle className="flex items-center justify-between gap-3 pr-8 text-base">
-            <span className="flex items-center gap-2">
-              <FileText size={17} /> Sicil Bilgileri
-            </span>
-            {tamamlanma != null && (
-              <span className="flex items-baseline gap-1.5 whitespace-nowrap"
-                title="İşin tamamlanma oranı: tamamlanan keşif ÷ sözleşme bedeli (Netsim verisiyle hesaplanır).">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tamamlanma</span>
-                <span className="text-lg font-bold tabular-nums text-emerald-700">{formatYuzde(tamamlanma)}</span>
-              </span>
-            )}
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <FileText size={17} /> Sicil Bilgileri
           </DialogTitle>
         </DialogHeader>
+
+        {/* İŞİN TAMAMLANMA ORANI — başlığın BİR SATIR ALTINDA, sağda: başlık satırında
+            kapatma çarpısının dibine geliyordu. Tamamlanan keşif ÷ sözleşme bedeli
+            (Bordro kartındaki yüzdenin aynısı). */}
+        {tamamlanma != null && (
+          <div className="-mt-2 flex justify-end">
+            <span className="flex items-baseline gap-1.5 whitespace-nowrap"
+              title="İşin tamamlanma oranı: tamamlanan keşif ÷ sözleşme bedeli (Netsim verisiyle hesaplanır).">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tamamlanma</span>
+              <span className="text-lg font-bold leading-none tabular-nums text-emerald-700">{formatYuzde(tamamlanma)}</span>
+            </span>
+          </div>
+        )}
 
         <div className="pb-1">
           {durum !== "hazir" && (
