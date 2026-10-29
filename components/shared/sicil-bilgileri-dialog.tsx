@@ -71,17 +71,14 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahmini
           </DialogTitle>
         </DialogHeader>
 
-        {/* İŞİN TAMAMLANMA ORANI — başlığın BİR SATIR ALTINDA, sağda: başlık satırında
-            kapatma çarpısının dibine geliyordu. Tamamlanan keşif ÷ sözleşme bedeli
-            (Bordro kartındaki yüzdenin aynısı). */}
+        {/* İŞİN TAMAMLANMA ORANI — sağ üstte, kapatma çarpısının altında. KONUMLANDIRILMIŞ
+            (absolute): akışta dursaydı kendine bir satır açıp içeriği aşağı itiyordu.
+            Tamamlanan keşif ÷ sözleşme bedeli — Bordro kartındaki yüzdenin aynısı. */}
         {tamamlanma != null && (
-          <div className="-mt-2 flex justify-end">
-            <span className="flex items-baseline gap-1.5 whitespace-nowrap"
-              title="İşin tamamlanma oranı: tamamlanan keşif ÷ sözleşme bedeli (Netsim verisiyle hesaplanır).">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tamamlanma</span>
-              <span className="text-lg font-bold leading-none tabular-nums text-emerald-700">{formatYuzde(tamamlanma)}</span>
-            </span>
-          </div>
+          <span className="pointer-events-auto absolute top-11 right-32 text-lg font-bold leading-none tabular-nums text-emerald-700"
+            title="İşin tamamlanma oranı: tamamlanan keşif ÷ sözleşme bedeli (Netsim verisiyle hesaplanır).">
+            {formatYuzde(tamamlanma)}
+          </span>
         )}
 
         <div className="pb-1">
