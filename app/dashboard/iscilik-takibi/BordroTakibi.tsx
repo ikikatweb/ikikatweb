@@ -635,6 +635,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // etkin, işe özgü olanlar (sicil bilgileri, yetkili ataması, gizle) pasif görünür.
   const [kartMenu, setKartMenu] = useState<{ santiyeId: string | null; santiyeAd: string; x: number; y: number } | null>(null);
   const kartBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Basılı tutarken parmağın başladığı nokta — küçük kaymalar menüyü iptal etmesin.
+  const kartBasiliNoktaRef = useRef<{ x: number; y: number } | null>(null);
+  // Menünün açıldığı an. Telefonda parmağı kaldırınca gelen tıklama perdeye düşüp
+  // menüyü hemen kapatıyordu; açılışın ilk yarım saniyesindeki tıklama yutulur.
+  const kartMenuAcilisRef = useRef(0);
   // Basılı tutarak menü açıldı → parmak kalkınca gelen tıklama kartı AÇMASIN.
   const kartMenuAcildiRef = useRef(false);
   // ALT ŞERİT: asıl araç çubuğu yukarı kayıp görünmez olunca ekranın altında
@@ -1251,6 +1256,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const kartMenusunuAc = useCallback((x: number, y: number, hedef: HTMLElement | null) => {
     const kart = hedef?.closest<HTMLElement>("[data-santiye-id]");
     const sid = kart?.dataset.santiyeId ?? null;
+    kartMenuAcilisRef.current = Date.now();
     setKartMenu({
       santiyeId: sid,
       santiyeAd: sid ? (santiyeler.find((k) => k.id === sid)?.is_adi ?? "") : "",
@@ -4616,7 +4622,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   function SantiyeAccordion({
     santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamaOzet,
     suresiGecenGun = null, dilekceTarihi = null,
-    onToggle, onTumunuSecToggle, onPlus, onKartMenu, onKartBasiliBasla, onKartBasiliBitir, children,
+    onToggle, onTumunuSecToggle, onPlus, onKartMenu, onKartBasiliBasla, onKartBasiliHareket, onKartBasiliBitir, children,
   }: {
     santiyeId: string;
     baslik: string;
@@ -4634,6 +4640,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     dilekceTarihi?: string | null;
     onKartMenu?: (x: number, y: number) => void;
     onKartBasiliBasla?: (x: number, y: number) => void;
+    /** Parmak kaydı — eşiği aşarsa basılı tutma iptal edilir (kaydırma yapılıyordur). */
+    onKartBasiliHareket?: (x: number, y: number) => void;
     onKartBasiliBitir?: () => void;
     onToggle: () => void;
     onTumunuSecToggle: () => void;
@@ -4701,8 +4709,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             ulaşılamıyordu. İçerideki teknik satırları aynı menüyü açmaya devam ediyor
             (kendi ipuçları duruyor), olayı durdurdukları için çift açılma olmuyor. */}
         <div
-          className="flex items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
-          style={{ borderLeftColor: renk }}
+          // select-none + touch-callout: telefonda basılı tutunca Android/iOS kendi metin
+          // seçme balonunu açıyordu; bizim menü onun altında kalıyordu.
+          className="flex select-none items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
+          style={{ borderLeftColor: renk, WebkitTouchCallout: "none" }}
           onClick={() => {
             // Basılı tutup menü açıldıysa parmağı kaldırınca gelen tıklama kartı da
             // açıyordu; menü açıldıysa bu tıklama yutulur.
@@ -4711,7 +4721,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           }}
           onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
           onTouchEnd={() => onKartBasiliBitir?.()}
-          onTouchMove={() => onKartBasiliBitir?.()}
+          onTouchCancel={() => onKartBasiliBitir?.()}
+          onTouchMove={(e) => { const d = e.touches[0]; onKartBasiliHareket?.(d.clientX, d.clientY); }}
         >
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
           {/* SOL SÜTUN: iş adı + prim/bitim satırları. lg'de sabit genişlik → uzun adlar hep aynı
@@ -4758,7 +4769,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onKartMenu?.(e.clientX, e.clientY); }}
                 onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
                 onTouchEnd={() => onKartBasiliBitir?.()}
-                onTouchMove={() => onKartBasiliBitir?.()}
+                onTouchCancel={() => onKartBasiliBitir?.()}
+                onTouchMove={(e) => { const d = e.touches[0]; onKartBasiliHareket?.(d.clientX, d.clientY); }}
                 className="text-[10px] text-red-600 mt-0.5 truncate select-none"
                 title={`Atanmamış Teknik Personel: ${teknikPersoneller.map(rolAdi).join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa SAĞ TIKLAYIN.`}
               >
@@ -4778,7 +4790,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onKartMenu?.(e.clientX, e.clientY); }}
                 onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
                 onTouchEnd={() => onKartBasiliBitir?.()}
-                onTouchMove={() => onKartBasiliBitir?.()}
+                onTouchCancel={() => onKartBasiliBitir?.()}
+                onTouchMove={(e) => { const d = e.touches[0]; onKartBasiliHareket?.(d.clientX, d.clientY); }}
                 className="text-[10px] text-indigo-700 mt-0.5 truncate select-none"
                 title="Rol DOLU — bordroda ataması olmayan biri (firma yetkilisi vb.) tarafından dolduruldu. Değiştirmek için SAĞ TIKLAYIN."
               >
@@ -5696,14 +5709,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             onKartBasiliBasla={yDuzenle ? (x, y) => {
                               // Telefonda sağ tık yok — yarım saniye basılı tutmak aynı menüyü açar.
                               if (kartBasiliRef.current) clearTimeout(kartBasiliRef.current);
+                              kartBasiliNoktaRef.current = { x, y };
                               kartBasiliRef.current = setTimeout(() => {
                                 kartBasiliRef.current = null;
                                 kartMenuAcildiRef.current = true;
+                                kartMenuAcilisRef.current = Date.now();
                                 setKartMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y });
                               }, 500);
                             } : undefined}
+                            onKartBasiliHareket={(x, y) => {
+                              // Yalnız GERÇEK kaydırmada iptal: parmak doğal olarak birkaç piksel
+                              // oynuyor, her kıpırtıda iptal edilince menü telefonda hiç açılmıyordu.
+                              const b = kartBasiliNoktaRef.current;
+                              if (!b) return;
+                              if (Math.abs(x - b.x) > 12 || Math.abs(y - b.y) > 12) {
+                                if (kartBasiliRef.current) { clearTimeout(kartBasiliRef.current); kartBasiliRef.current = null; }
+                                kartBasiliNoktaRef.current = null;
+                              }
+                            }}
                             onKartBasiliBitir={() => {
                               if (kartBasiliRef.current) { clearTimeout(kartBasiliRef.current); kartBasiliRef.current = null; }
+                              kartBasiliNoktaRef.current = null;
                             }}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
@@ -7032,7 +7058,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const pasifIpucu = "Bu seçenek için bir işin üzerine sağ tıklayın.";
         return (
         <>
-          <div className="fixed inset-0 z-[85]" onClick={() => setKartMenu(null)}
+          <div className="fixed inset-0 z-[85]"
+            onClick={() => { if (Date.now() - kartMenuAcilisRef.current < 500) return; setKartMenu(null); }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
