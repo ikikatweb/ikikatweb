@@ -8,9 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { KeyRound, Eye, EyeOff, Mail, MailCheck } from "lucide-react";
+import { KeyRound, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
-import { useAuth } from "@/hooks";
 
 type Props = {
   open: boolean;
@@ -24,32 +23,6 @@ export default function SifreDegistirDialog({ open, onOpenChange }: Props) {
   const [eskiGoster, setEskiGoster] = useState(false);
   const [yeniGoster, setYeniGoster] = useState(false);
   const [saving, setSaving] = useState(false);
-  // E-POSTA — şifresini unuttuğunda yenileme bağlantısının gideceği adres.
-  // Burada duruyor çünkü kullanıcının kendi hesap bilgilerine baktığı tek yer burası.
-  const { kullanici } = useAuth();
-  const [eposta, setEposta] = useState(kullanici?.eposta ?? "");
-  const [epostaKaydediyor, setEpostaKaydediyor] = useState(false);
-  const [epostaKaydedildi, setEpostaKaydedildi] = useState(false);
-  const dogrulandi = !!kullanici?.eposta_dogrulandi && (kullanici?.eposta ?? "") === eposta.trim();
-
-  async function epostaKaydet() {
-    const v = eposta.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) { toast.error("Geçerli bir e-posta adresi girin."); return; }
-    setEpostaKaydediyor(true);
-    try {
-      const r = await fetch("/api/eposta", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eposta: v }),
-      });
-      const d = await r.json();
-      if (!r.ok) { toast.error(d.error ?? "Kaydedilemedi."); return; }
-      setEpostaKaydedildi(true);
-      toast.success(d.mailGitti
-        ? "Adres kaydedildi — doğrulama bağlantısı gönderildi."
-        : "Adres kaydedildi, ancak doğrulama maili gönderilemedi.");
-    } catch { toast.error("Bağlantı hatası."); }
-    finally { setEpostaKaydediyor(false); }
-  }
 
   function reset() {
     setEski(""); setYeni(""); setYeniTekrar("");
@@ -94,28 +67,6 @@ export default function SifreDegistirDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          {/* E-POSTA bölümü — şifre alanlarından önce: "şifremi unuttum" bunu gerektiriyor. */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5 space-y-1.5">
-            <Label className="text-xs flex items-center gap-1.5">
-              {dogrulandi ? <MailCheck size={13} className="text-emerald-600" /> : <Mail size={13} className="text-gray-500" />}
-              E-posta adresim
-              {dogrulandi
-                ? <span className="text-[10px] font-normal text-emerald-600">doğrulandı</span>
-                : kullanici?.eposta ? <span className="text-[10px] font-normal text-amber-600">doğrulanmadı</span> : null}
-            </Label>
-            <div className="flex gap-1.5">
-              <Input type="email" value={eposta} onChange={(e) => { setEposta(e.target.value); setEpostaKaydedildi(false); }}
-                placeholder="ornek@firma.com" className="h-8 text-sm" />
-              <Button type="button" size="sm" variant="outline" className="h-8 shrink-0 text-xs"
-                onClick={epostaKaydet} disabled={epostaKaydediyor || epostaKaydedildi || !eposta.trim()}>
-                {epostaKaydediyor ? "…" : epostaKaydedildi ? "Kaydedildi" : "Kaydet"}
-              </Button>
-            </div>
-            <p className="text-[10px] text-gray-400 leading-relaxed">
-              Şifrenizi unutursanız yenileme bağlantısı bu adrese gönderilir. Girişte kullanılmaz.
-            </p>
-          </div>
-
           <div className="space-y-1">
             <Label className="text-xs">Eski Şifre <span className="text-red-500">*</span></Label>
             <div className="relative">

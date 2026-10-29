@@ -20,6 +20,9 @@ type AuthContextType = {
   // Veriler "kendi kayıtları" olarak filtrelensin mi? (sadece kısıtlı)
   // Yönetici ve şantiye admini için false → tüm kayıtlar görünür
   sadeceKendiKayitlari: boolean;
+  // Profili sunucudan yeniden okur. Kullanıcı kendi bilgisini (ad, e-posta) değiştirince
+  // üst bardaki ad ve e-posta durumu anında tazelensin diye.
+  profilYenile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -159,6 +162,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const profilYenile = useCallback(async () => {
+    try { setKullanici(await getKullaniciProfil()); }
+    catch { /* okunamadıysa eldeki profil kalsın — sayfa kendi hatasını zaten gösterdi */ }
+  }, []);
+
   const hasPermissionFn = useCallback(
     (moduleKey: string, aksiyon: IzinAksiyonu): boolean => {
       // Profil yüklenirken: yükleme tamamlanana kadar yetki yok varsay
@@ -180,6 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       kullanici,
       loading,
       hasPermission: hasPermissionFn,
+      profilYenile,
       isYonetici,
       isShantiyeAdmin,
       // Şantiye filtresi: yönetici hariç herkese (admin + kısıtlı) uygulanır
@@ -187,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Kendi kayıtları filtresi: SADECE kısıtlı için
       sadeceKendiKayitlari: !isYonetici && !isShantiyeAdmin,
     };
-  }, [kullanici, loading, hasPermissionFn]);
+  }, [kullanici, loading, hasPermissionFn, profilYenile]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -95,6 +95,18 @@ export async function getKullaniciProfil(): Promise<Kullanici> {
   return res.json();
 }
 
+/** Kullanıcının KENDİ ad soyadını değiştirmesi (Bilgilerim sayfası). Yetki alanlarına dokunmaz. */
+export async function profilAdGuncelle(ad_soyad: string): Promise<Kullanici> {
+  const res = await fetch("/api/kullanicilar/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ad_soyad }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  kullaniciAdlariniUnut();   // "kim girdi/kim yazdı" sütunlarındaki ad önbelleği tazelensin
+  return res.json();
+}
+
 export async function createKullanici(data: KullaniciCreatePayload): Promise<Kullanici> {
   const res = await fetch("/api/kullanicilar", {
     method: "POST",
