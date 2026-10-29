@@ -17,17 +17,20 @@ import { getAylikVeriler } from "@/lib/supabase/queries/iscilik-aylik";
 import type { IscilikTakibiWithSantiye } from "@/lib/supabase/types";
 import IscilikBilgiKarti from "@/components/shared/iscilik-bilgi-karti";
 import { FileText, ExternalLink } from "lucide-react";
+import { NetsimRozet } from "@/components/shared/netsim-rozet";
 
 type Props = {
   /** Açıksa şantiye; null → pencere kapalı. */
   hedef: { santiyeId: string; santiyeAd: string } | null;
   onKapat: () => void;
   yDuzenle: boolean;
+  /** Bordro Takibi'nde kartta görünen bordro tahmini — aynı rakam burada da yazsın. */
+  tahminiBordro?: number;
   /** Bir alan kaydedildi — çağıran listesini tazelesin. */
   onKaydedildi?: () => void;
 };
 
-export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, onKaydedildi }: Props) {
+export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahminiBordro, onKaydedildi }: Props) {
   const [takip, setTakip] = useState<IscilikTakibiWithSantiye | null>(null);
   const [toplamYatan, setToplamYatan] = useState(0);
   const [sonHakedis, setSonHakedis] = useState<{ kesif: number; fark: number; tarih: string | null } | undefined>();
@@ -91,14 +94,18 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, onKayde
                 takip={takip}
                 sonHakedis={sonHakedis}
                 toplamYatan={toplamYatan}
+                tahminiBordro={tahminiBordro}
                 yDuzenle={yDuzenle}
                 onTakipDegisti={(y) => { setTakip(y); onKaydedildi?.(); }}
               />
               <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2">
                 <span className="text-[11px] text-gray-400">
                   {yDuzenle
-                    ? "Kesik çerçeveli alanlar elle girilir — değiştirmek için üzerine tıklayın. Diğerleri hesaplanır."
+                    ? "Gri zeminli alanlar elle girilir — değiştirmek için tıklayın. Diğerleri hesaplanır."
                     : "Düzenleme yetkiniz yok."}
+                  <span className="ml-2 inline-flex items-center gap-1">
+                    <NetsimRozet /> Netsim&apos;den geldi
+                  </span>
                 </span>
                 <Link href={`/dashboard/iscilik-takibi/${takip.id}`}
                   className="flex items-center gap-1 text-xs font-medium text-[#1E3A5F] hover:text-[#F97316]">

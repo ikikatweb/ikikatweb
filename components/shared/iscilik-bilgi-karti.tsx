@@ -14,6 +14,7 @@ import { upsertIscilikTakibi } from "@/lib/supabase/queries/iscilik-takibi";
 import { updateSantiye } from "@/lib/supabase/queries/santiyeler";
 import type { IscilikTakibiWithSantiye } from "@/lib/supabase/types";
 import { sgkBicimle } from "@/lib/sgk-sicil";
+import { NetsimRozet, netsimKaynakli } from "@/components/shared/netsim-rozet";
 import { Pencil } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -27,14 +28,21 @@ export function formatTarih(d: string | null) {
   return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
 }
 
+// Değer kutusu: tüm satırlarda aynı genişlik + sağa yaslı rakam → sütun hâlinde hizalı.
+// tabular-nums: rakamlar eşit genişlikte, binlik ayraçları alt alta oturur.
+const DEGER_KUTU = "inline-flex min-w-[9.5rem] items-center justify-end px-2 py-1 text-right text-xs tabular-nums";
+
 export default function IscilikBilgiKarti({
-  takip, sonHakedis, toplamYatan, yDuzenle, onTakipDegisti,
+  takip, sonHakedis, toplamYatan, tahminiBordro, yDuzenle, onTakipDegisti,
 }: {
   takip: IscilikTakibiWithSantiye;
   /** Netsim son hakediş (tahmini fiyat farkı oranı buradan çıkar). */
   sonHakedis?: { kesif: number; fark: number; tarih: string | null };
   /** Aylık satırların yüklenici + alt yüklenici toplamı. */
   toplamYatan: number;
+  /** Henüz girilmemiş aylar için bordro tahmini (atama günü × günlük/brüt ücret).
+   *  Verilmezse satır çıkmaz. KALAN'dan düşülmez — bilgi amaçlıdır. */
+  tahminiBordro?: number;
   yDuzenle: boolean;
   /** Bir alan kaydedilince güncel kaydı geri verir — çağıran ekranını tazeler. */
   onTakipDegisti: (yeni: IscilikTakibiWithSantiye) => void;
@@ -47,19 +55,42 @@ export default function IscilikBilgiKarti({
   const setTakip = (f: (p: IscilikTakibiWithSantiye) => IscilikTakibiWithSantiye) => onTakipDegisti(f(takip));
 
   /**
-   * DEĞİŞTİRİLEBİLİR DEĞER. Kesik çerçeve + kalem simgesi: hangi satırların elle
-   * girildiği bakınca anlaşılsın. Hesaplanan satırlar (yatacak prim, kalan, bitiş
-   * tarihi vb.) düz metin kalır — onlara tıklanmaz.
+   * DEĞİŞTİRİLEBİLİR DEĞER. Hafif gri zemin + ince iç çerçeve: alan bir giriş kutusu
+   * gibi okunur, ama satırı yormaz. Kalem simgesi yalnız üzerine gelince belirir —
+   * sürekli durduğunda altı satır üst üste "kalem kalem" görünüyordu.
+   * Hesaplanan satırlar (yatacak prim, kalan, bitiş tarihi) düz metin kalır.
    */
   function Tiklanabilir({ onAc, children }: { onAc: () => void; children: React.ReactNode }) {
-    if (!yDuzenle) return <span className="text-xs font-semibold">{children}</span>;
+    if (!yDuzenle) return <span className={`${DEGER_KUTU} font-semibold`}>{children}</span>;
     return (
       <button type="button" onClick={onAc}
         title="Değiştirmek için tıklayın"
-        className="group inline-flex items-center gap-1 rounded border border-dashed border-gray-300 bg-white px-1.5 py-0.5 text-xs font-semibold text-[#1E3A5F] transition-colors hover:border-[#F97316] hover:bg-orange-50 hover:text-[#F97316]">
+        className={`group ${DEGER_KUTU} font-semibold text-[#1E3A5F] rounded-md bg-gray-50 ring-1 ring-inset ring-gray-200 transition-colors hover:bg-white hover:text-[#F97316] hover:ring-[#F97316] focus-visible:bg-white focus-visible:ring-[#F97316] focus-visible:outline-none`}>
+        {/* Kalem SOLDA (mr-auto): sağda dursaydı rakamı içeri iter, kutular arasında
+            sağ kenar kayardı. Yalnız üzerine gelince belirir. */}
+        <Pencil size={10} className="mr-auto shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
         {children}
-        <Pencil size={10} className="shrink-0 text-gray-300 transition-colors group-hover:text-[#F97316]" />
       </button>
+    );
+  }
+
+  /** Satır: etiket solda, değer sağda sabit yuvada, rozet değerin DIŞINDA. */
+  function Satir({ etiket, deger, netsim = false, netsimRozet, vurgu = "", etiketSinif = "text-gray-500" }: {
+    etiket: string; deger: React.ReactNode; netsim?: boolean;
+    /** Farklı açıklamalı rozet gerekiyorsa (ör. hesaplanan ama oranı Netsim'den gelen tutar). */
+    netsimRozet?: React.ReactNode;
+    vurgu?: string; etiketSinif?: string;
+  }) {
+    return (
+      <div className={`flex items-center justify-between gap-2 border-b border-gray-100 py-1 ${vurgu}`}>
+        <span className={`text-xs font-medium ${etiketSinif}`}>{etiket}</span>
+        <span className="flex items-center">
+          {deger}
+          {/* ROZET YUVASI sabit genişlikte: rozeti olan ve olmayan satırların
+              rakamları aynı dikey hizada kalsın. */}
+          <span className="flex w-4 shrink-0 justify-center">{netsimRozet ?? (netsim && <NetsimRozet />)}</span>
+        </span>
+      </div>
     );
   }
 
@@ -76,6 +107,12 @@ export default function IscilikBilgiKarti({
   // Yatacak Toplam Prim = (Sözleşme Bedeli + Ek Sözleşme Bedeli + Fiyat Farkı + Tahmini Fiyat Farkı) × İşçilik Oranı / 100
   const yatacakToplamPrim = (sozlesmeBedeli + kesifArtisi + fiyatFarki + tahminiFiyatFarki) * iscilikOrani / 100;
   const kalanPrim = yatacakToplamPrim - toplamYatan;
+
+  // NETSİM ROZETİ: değer, senkronun en son yazdığı gölge alanla birebir aynıysa çıkar
+  // (bkz. components/shared/netsim-rozet). "Bu rakama kimse elle dokunmadı" demektir.
+  const gerceklesen = takip.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? null;
+  const ffNetsim = netsimKaynakli(takip.fiyat_farki, takip.netsim_fiyat_farki);
+  const gerceklesenNetsim = netsimKaynakli(gerceklesen, takip.santiyeler?.netsim_gerceklesen);
 
   async function saveHeaderEdit() {
     if (!editingHeader) return;
@@ -99,27 +136,26 @@ export default function IscilikBilgiKarti({
     setEditingHeader(null);
   }
 
-  function headerField(label: string, field: string, value: number | null, editable = true) {
+  function headerField(label: string, field: string, value: number | null, editable = true, netsim = false) {
     const isEd = editingHeader === field;
     // Yetki: yDuzenle yoksa düzenleme tamamen kapalı
     const duzenlenebilir = editable && yDuzenle;
     return (
-      <div className="flex items-center justify-between py-1 border-b border-gray-100">
-        <span className="text-xs text-gray-500 font-medium">{label}</span>
-        {isEd ? (
+      <Satir etiket={label} netsim={netsim} deger={
+        isEd ? (
           <Input ref={inputRef} value={headerEditValue}
             onChange={(e) => setHeaderEditValue(e.target.value)}
             onBlur={saveHeaderEdit}
             onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
-            className="h-6 text-xs w-32 text-right" />
+            className="h-7 min-w-[9.5rem] text-xs text-right" />
         ) : duzenlenebilir ? (
           <Tiklanabilir onAc={() => { setEditingHeader(field); setHeaderEditValue(value != null ? formatPara(value) : ""); }}>
             {value != null ? formatPara(value) : "—"}
           </Tiklanabilir>
         ) : (
-          <span className="text-xs font-semibold">{value != null ? formatPara(value) : "—"}</span>
-        )}
-      </div>
+          <span className={`${DEGER_KUTU} font-semibold`}>{value != null ? formatPara(value) : "—"}</span>
+        )
+      } />
     );
   }
 
@@ -138,40 +174,42 @@ export default function IscilikBilgiKarti({
                 Sözleşme ve oran
               </div>
               {/* Sicil Numarası — metin, düzenlenebilir */}
-              <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Sicil Numarası</span>
-                {editingHeader === "sicil_no" ? (
+              <Satir etiket="Sicil Numarası" deger={
+                editingHeader === "sicil_no" ? (
                   <Input ref={inputRef} value={headerEditValue}
                     onChange={(e) => setHeaderEditValue(e.target.value)}
                     onBlur={saveHeaderEdit}
                     onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
-                    className="h-6 text-xs w-32 text-right" />
+                    className="h-7 min-w-[9.5rem] text-xs text-right" />
                 ) : (
                   <Tiklanabilir onAc={() => { setEditingHeader("sicil_no"); setHeaderEditValue(takip.sicil_no ?? ""); }}>
                     {/* Bitişik girilmiş numara mevzuattaki bölümlere ayrılarak gösterilir;
                         kayıttaki değere dokunulmaz. */}
                     {sgkBicimle(takip.sicil_no) || "—"}
                   </Tiklanabilir>
-                )}
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Sözleşme Bedeli</span>
-                <span className="text-xs font-semibold">{formatPara(sozlesmeBedeli)}</span>
-              </div>
+                )
+              } />
+              <Satir etiket="Sözleşme Bedeli" deger={
+                <span className={`${DEGER_KUTU} font-semibold`}>{formatPara(sozlesmeBedeli)}</span>} />
               {headerField("Ek Sözleşme Bedeli", "kesif_artisi", takip.kesif_artisi, true)}
-              {headerField("Fiyat Farkı", "fiyat_farki", takip.fiyat_farki, true)}
+              {headerField("Fiyat Farkı", "fiyat_farki", takip.fiyat_farki, true, ffNetsim)}
+              {/* TAMAMLANAN KEŞİF: elle girilmez, Netsim senkronu yazar. Tahmini fiyat
+                  farkının tabanı bu olduğu için burada görünmesi hesabı okunur kılıyor
+                  (kalan keşif = sözleşme + ek sözleşme − tamamlanan). */}
+              {gerceklesen != null && gerceklesen > 0 && (
+                <Satir etiket="Tamamlanan Keşif" netsim={gerceklesenNetsim} etiketSinif="text-gray-400" deger={
+                  <span className={`${DEGER_KUTU} font-semibold text-gray-400`}>{formatPara(gerceklesen)}</span>} />
+              )}
               {tahminiFiyatFarki > 0 && (
-                <div className="flex items-center justify-between py-1 border-b border-gray-100"
-                  title={`Kalan keşif: ${formatPara(kalanKesif)}\nOran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki son hakediş)`}>
-                  <span className="text-xs text-gray-400 font-medium">Tahmini Fiyat Farkı</span>
-                  <span className="text-xs font-semibold text-gray-400">{formatPara(tahminiFiyatFarki)}</span>
+                <div title={`Kalan keşif: ${formatPara(kalanKesif)}
+Oran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki son hakediş)`}>
+                  {/* Hesaplanan bir tutar ama ORANI Netsim'in son hakedişinden geliyor. */}
+                  <Satir etiket="Tahmini Fiyat Farkı" etiketSinif="text-gray-400"
+                    netsimRozet={<NetsimRozet title="Hesaplanan tutar; oranı Netsim'deki son hakedişin fiyat farkı ÷ keşif bedelinden alınır." />}
+                    deger={<span className={`${DEGER_KUTU} font-semibold text-gray-400`}>{formatPara(tahminiFiyatFarki)}</span>} />
                 </div>
               )}
               {headerField("İşçilik Oranı %", "iscilik_orani", takip.iscilik_orani, true)}
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-[#F1F5F9] px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Yatacak Toplam Prim</span>
-                <span className="text-xs font-bold text-[#1E3A5F]">{formatPara(yatacakToplamPrim)}</span>
-              </div>
             </div>
 
             {/* Sağ: prim durumu ve takvim */}
@@ -179,21 +217,29 @@ export default function IscilikBilgiKarti({
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Prim durumu ve süre
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-green-50 px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Yatan</span>
-                <span className="text-xs font-bold text-green-700">{formatPara(toplamYatan)}</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-red-50 px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Kalan</span>
-                <span className="text-xs font-bold text-red-700">{formatPara(kalanPrim)}</span>
-              </div>
+              {/* YATACAK → YATAN → KALAN sırası: hedef, ödenen, açık. Yatacak tutar
+                  eskiden sol sütunun en altındaydı, karşılaştırması gözle yapılamıyordu. */}
+              <Satir etiket="Yatacak Toplam Prim" vurgu="bg-[#F1F5F9] px-1 rounded" deger={
+                <span className={`${DEGER_KUTU} font-bold text-[#1E3A5F]`}>{formatPara(yatacakToplamPrim)}</span>} />
+              <Satir etiket="Yatan" vurgu="bg-green-50 px-1 rounded" deger={
+                <span className={`${DEGER_KUTU} font-bold text-green-700`}>{formatPara(toplamYatan)}</span>} />
+              {/* TAHMİNİ BORDRO: veri girilmemiş aylar için beklenen prim. Kalan'dan
+                  DÜŞÜLMEZ — henüz yatmış bir tutar değil, beklenen yükü gösterir. */}
+              {tahminiBordro != null && tahminiBordro > 0 && (
+                <Satir etiket="Tahmini Bordro" etiketSinif="text-gray-400" deger={
+                  <span className={`${DEGER_KUTU} font-semibold text-gray-400`}
+                    title="Veri girilmemiş aylar için bordro tahmini: atama günü × günlük/brüt ücret. Kalan tutardan düşülmemiştir.">
+                    {formatPara(tahminiBordro)}
+                  </span>} />
+              )}
+              <Satir etiket="Kalan" vurgu="bg-red-50 px-1 rounded" deger={
+                <span className={`${DEGER_KUTU} font-bold text-red-700`}>{formatPara(kalanPrim)}</span>} />
               {/* İş Yeri Teslim Tarihi - elle */}
               {(() => {
                 const isEdBas = editingHeader === "baslangic_tarihi";
                 return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">İş Yeri Teslim Tarihi</span>
-                    {isEdBas ? (
+                  <Satir etiket="İş Yeri Teslim Tarihi" deger={
+                    isEdBas ? (
                       <Input ref={inputRef} type="date" value={headerEditValue}
                         onChange={(e) => setHeaderEditValue(e.target.value)}
                         onBlur={async () => {
@@ -210,13 +256,13 @@ export default function IscilikBilgiKarti({
                           setEditingHeader(null);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
-                        className="h-6 text-xs w-36" />
+                        className="h-7 min-w-[9.5rem] text-xs text-right" />
                     ) : (
                       <Tiklanabilir onAc={() => { setEditingHeader("baslangic_tarihi"); setHeaderEditValue(takip.baslangic_tarihi ?? ""); }}>
                         {takip.baslangic_tarihi ? formatTarih(takip.baslangic_tarihi) : "—"}
                       </Tiklanabilir>
-                    )}
-                  </div>
+                    )
+                  } />
                 );
               })()}
               {/* Süre - + ile toplama */}
@@ -225,9 +271,8 @@ export default function IscilikBilgiKarti({
                 const sureText = takip.sure_text ?? "";
                 const sureToplam = sureText ? sureText.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0) : 0;
                 return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">Süre</span>
-                    {isEdSure ? (
+                  <Satir etiket="Süre" deger={
+                    isEdSure ? (
                       <Input ref={inputRef} value={headerEditValue} placeholder="100 + 200 + 300"
                         onChange={(e) => setHeaderEditValue(e.target.value)}
                         onBlur={async () => {
@@ -269,13 +314,13 @@ export default function IscilikBilgiKarti({
                           setEditingHeader(null);
                         }}
                         onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
-                        className="h-6 text-xs w-40" />
+                        className="h-7 min-w-[9.5rem] text-xs text-right" />
                     ) : (
                       <Tiklanabilir onAc={() => { setEditingHeader("sure_text"); setHeaderEditValue(sureText); }}>
                         {sureText ? `${sureText} = ${sureToplam} gün` : "—"}
                       </Tiklanabilir>
-                    )}
-                  </div>
+                    )
+                  } />
                 );
               })()}
               {/* Bitiş Tarihi = Başlangıç + Süre toplamı - 1 gün (başlangıç günü dahil) */}
@@ -289,10 +334,8 @@ export default function IscilikBilgiKarti({
                   bitisTarihi = d.toISOString().split("T")[0];
                 }
                 return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">Bitiş Tarihi</span>
-                    <span className="text-xs font-semibold">{bitisTarihi ? formatTarih(bitisTarihi) : "—"}</span>
-                  </div>
+                  <Satir etiket="Bitiş Tarihi" deger={
+                    <span className={`${DEGER_KUTU} font-semibold`}>{bitisTarihi ? formatTarih(bitisTarihi) : "—"}</span>} />
                 );
               })()}
             </div>
