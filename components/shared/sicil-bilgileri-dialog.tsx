@@ -106,6 +106,9 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahmini
                   <span className="ml-2 inline-flex items-center gap-1">
                     <NetsimRozet /> Netsim&apos;den geldi
                   </span>
+                  <span className="ml-2 inline-flex items-center gap-1">
+                    <NetsimRozet hesaplanan /> Netsim verisiyle hesaplandı
+                  </span>
                 </span>
                 <Link href={`/dashboard/iscilik-takibi/${takip.id}`}
                   className="flex items-center gap-1 text-xs font-medium text-[#1E3A5F] hover:text-[#F97316]">

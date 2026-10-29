@@ -41,7 +41,7 @@ export default function IscilikBilgiKarti({
   /** Aylık satırların yüklenici + alt yüklenici toplamı. */
   toplamYatan: number;
   /** Henüz girilmemiş aylar için bordro tahmini (atama günü × günlük/brüt ücret).
-   *  Verilmezse satır çıkmaz. KALAN'dan düşülmez — bilgi amaçlıdır. */
+   *  Verilmezse satır çıkmaz ve KALAN hesabına girmez. */
   tahminiBordro?: number;
   yDuzenle: boolean;
   /** Bir alan kaydedilince güncel kaydı geri verir — çağıran ekranını tazeler. */
@@ -106,7 +106,11 @@ export default function IscilikBilgiKarti({
     : 0;
   // Yatacak Toplam Prim = (Sözleşme Bedeli + Ek Sözleşme Bedeli + Fiyat Farkı + Tahmini Fiyat Farkı) × İşçilik Oranı / 100
   const yatacakToplamPrim = (sozlesmeBedeli + kesifArtisi + fiyatFarki + tahminiFiyatFarki) * iscilikOrani / 100;
-  const kalanPrim = yatacakToplamPrim - toplamYatan;
+  // KALAN = yatacak − yatan − TAHMİNİ BORDRO. Bordro kartındaki "sonuç" rakamıyla aynı
+  // formül: girilmemiş ayların beklenen primi de hesaba katılır, yoksa iki ekran farklı
+  // rakam gösteriyordu (Bilecik'te −1.675.282,09 kartta, −1.611.424,09 pencerede).
+  // Tahmin verilmeyen ekranlarda (detay sayfası) 0 sayılır → davranış değişmez.
+  const kalanPrim = yatacakToplamPrim - toplamYatan - (tahminiBordro ?? 0);
 
   // NETSİM ROZETİ: değer, senkronun en son yazdığı gölge alanla birebir aynıysa çıkar
   // (bkz. components/shared/netsim-rozet). "Bu rakama kimse elle dokunmadı" demektir.
@@ -205,7 +209,7 @@ export default function IscilikBilgiKarti({
 Oran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki son hakediş)`}>
                   {/* Hesaplanan bir tutar ama ORANI Netsim'in son hakedişinden geliyor. */}
                   <Satir etiket="Tahmini Fiyat Farkı" etiketSinif="text-gray-400"
-                    netsimRozet={<NetsimRozet title="Hesaplanan tutar; oranı Netsim'deki son hakedişin fiyat farkı ÷ keşif bedelinden alınır." />}
+                    netsimRozet={<NetsimRozet hesaplanan title="Netsim'den GELMEZ, burada hesaplanır: kalan keşif × (Netsim'deki son hakedişin fiyat farkı ÷ keşif bedeli). İçi boş rozet = Netsim verisiyle hesaplandı." />}
                     deger={<span className={`${DEGER_KUTU} font-semibold text-gray-400`}>{formatPara(tahminiFiyatFarki)}</span>} />
                 </div>
               )}
@@ -223,12 +227,12 @@ Oran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki
                 <span className={`${DEGER_KUTU} font-bold text-[#1E3A5F]`}>{formatPara(yatacakToplamPrim)}</span>} />
               <Satir etiket="Yatan" vurgu="bg-green-50 px-1 rounded" deger={
                 <span className={`${DEGER_KUTU} font-bold text-green-700`}>{formatPara(toplamYatan)}</span>} />
-              {/* TAHMİNİ BORDRO: veri girilmemiş aylar için beklenen prim. Kalan'dan
-                  DÜŞÜLMEZ — henüz yatmış bir tutar değil, beklenen yükü gösterir. */}
+              {/* TAHMİNİ BORDRO: veri girilmemiş aylar için beklenen prim. KALAN'dan
+                  düşülür — Bordro kartındaki sonuç rakamıyla aynı formül. */}
               {tahminiBordro != null && tahminiBordro > 0 && (
                 <Satir etiket="Tahmini Bordro" etiketSinif="text-gray-400" deger={
                   <span className={`${DEGER_KUTU} font-semibold text-gray-400`}
-                    title="Veri girilmemiş aylar için bordro tahmini: atama günü × günlük/brüt ücret. Kalan tutardan düşülmemiştir.">
+                    title="Veri girilmemiş aylar için bordro tahmini: atama günü × günlük/brüt ücret. Kalan tutardan düşülmüştür.">
                     {formatPara(tahminiBordro)}
                   </span>} />
               )}
