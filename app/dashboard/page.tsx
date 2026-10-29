@@ -54,6 +54,7 @@ import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { sonGonderimHaritasi, acenteKilidi as acenteKilidiOrtak, gonderimZamani, TEKLIF_BEKLEME_GUN } from "@/lib/utils/teklif-kilit";
 import ArventoWidget from "@/components/shared/arvento-widget";
@@ -3427,7 +3428,8 @@ export default function DashboardPage() {
                         onClick={() => { setAcikTeklifEk(null); setResimTamBoy(false); }}>
                         <div className={`${resimTamBoy ? "max-h-[85vh] max-w-full overflow-auto" : ""}`} onClick={(e) => e.stopPropagation()}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={acikTeklifEk} alt="Teklif görseli"
+                          {/* Geçitten geçer: bucket özel, kayıtlı adres doğrudan 400 dönüyor (lib/utils/dosya-url). */}
+                          <img src={dosyaUrl(acikTeklifEk)} alt="Teklif görseli"
                             onClick={() => setResimTamBoy((v) => !v)}
                             title={resimTamBoy ? "Küçültmek için tıklayın" : "Büyütmek için tıklayın"}
                             className={`rounded-lg bg-white ${
