@@ -25,6 +25,17 @@ export function formatPara(n: number | null) {
 export function formatYuzde(n: number) {
   return `%${n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+/**
+ * GERÇEKLEŞME ORANI — tamamlanan keşif ÷ sözleşme bedeli. Bordro kartındaki yüzdeyle
+ * birebir aynı formül; ek sözleşme bedeli paydaya GİRMEZ. Veri yoksa null.
+ */
+export function gerceklesmeOraniHesapla(takip: IscilikTakibiWithSantiye): number | null {
+  const bedel = takip.santiyeler?.sozlesme_bedeli ?? 0;
+  const gerceklesen = takip.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? 0;
+  if (bedel <= 0 || gerceklesen <= 0) return null;
+  return (gerceklesen / bedel) * 100;
+}
+
 export function formatTarih(d: string | null) {
   if (!d) return "—";
   const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
@@ -120,12 +131,6 @@ export default function IscilikBilgiKarti({
   const gerceklesen = takip.santiyeler?.sozlesme_fiyatlariyla_gerceklesen ?? null;
   const ffNetsim = netsimKaynakli(takip.fiyat_farki, takip.netsim_fiyat_farki);
   const gerceklesenNetsim = netsimKaynakli(gerceklesen, takip.santiyeler?.netsim_gerceklesen);
-  // GERÇEKLEŞME ORANI — Bordro kartındaki yüzdeyle AYNI formül: tamamlanan keşif ÷
-  // sözleşme bedeli. Ek sözleşme bedeli paydaya GİRMEZ (kart da girmiyor); iki ekran
-  // aynı rakamı göstersin diye formül birebir korundu.
-  const gerceklesmeOrani = sozlesmeBedeli > 0 && gerceklesen != null && gerceklesen > 0
-    ? (gerceklesen / sozlesmeBedeli) * 100
-    : null;
 
   async function saveHeaderEdit() {
     if (!editingHeader) return;
@@ -212,13 +217,6 @@ export default function IscilikBilgiKarti({
               {gerceklesen != null && gerceklesen > 0 && (
                 <Satir etiket="Tamamlanan Keşif" netsim={gerceklesenNetsim} etiketSinif="text-gray-400" deger={
                   <span className={`${DEGER_KUTU} font-semibold text-gray-400`}>{formatPara(gerceklesen)}</span>} />
-              )}
-              {gerceklesmeOrani != null && (
-                <Satir etiket="Tamamlanma" deger={
-                  <span className={`${DEGER_KUTU} font-bold text-emerald-700`}
-                    title="Gerçekleşme oranı: tamamlanan keşif ÷ sözleşme bedeli. Bordro kartındaki yüzdenin aynısı.">
-                    {formatYuzde(gerceklesmeOrani)}
-                  </span>} />
               )}
               {tahminiFiyatFarki > 0 && (
                 <div title={`Kalan keşif: ${formatPara(kalanKesif)}

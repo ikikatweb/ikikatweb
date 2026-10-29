@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { getIscilikTakibi, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getAylikVeriler } from "@/lib/supabase/queries/iscilik-aylik";
 import type { IscilikTakibiWithSantiye } from "@/lib/supabase/types";
-import IscilikBilgiKarti from "@/components/shared/iscilik-bilgi-karti";
+import IscilikBilgiKarti, { gerceklesmeOraniHesapla, formatYuzde } from "@/components/shared/iscilik-bilgi-karti";
 import { FileText, ExternalLink } from "lucide-react";
 import { NetsimRozet } from "@/components/shared/netsim-rozet";
 
@@ -37,6 +37,7 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahmini
   const [durum, setDurum] = useState<"yukleniyor" | "hazir" | "kayitYok" | "hata">("yukleniyor");
 
   const santiyeId = hedef?.santiyeId ?? null;
+  const tamamlanma = takip ? gerceklesmeOraniHesapla(takip) : null;
 
   const yukle = useCallback(async () => {
     if (!santiyeId) return;
@@ -65,8 +66,19 @@ export default function SicilBilgileriDialog({ hedef, onKapat, yDuzenle, tahmini
     <Dialog open={!!hedef} onOpenChange={(o) => { if (!o) onKapat(); }}>
       <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <FileText size={17} /> Sicil Bilgileri
+          {/* Başlık satırının sağında İŞİN TAMAMLANMA ORANI: tamamlanan keşif ÷ sözleşme
+              bedeli (Bordro kartındaki yüzdenin aynısı). pr-8 → kapatma çarpısına girmesin. */}
+          <DialogTitle className="flex items-center justify-between gap-3 pr-8 text-base">
+            <span className="flex items-center gap-2">
+              <FileText size={17} /> Sicil Bilgileri
+            </span>
+            {tamamlanma != null && (
+              <span className="flex items-baseline gap-1.5 whitespace-nowrap"
+                title="İşin tamamlanma oranı: tamamlanan keşif ÷ sözleşme bedeli (Netsim verisiyle hesaplanır).">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Tamamlanma</span>
+                <span className="text-lg font-bold tabular-nums text-emerald-700">{formatYuzde(tamamlanma)}</span>
+              </span>
+            )}
           </DialogTitle>
         </DialogHeader>
 
