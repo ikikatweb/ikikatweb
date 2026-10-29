@@ -20,21 +20,11 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, Plus, Trash2, FileDown, FileSpreadsheet } from "lucide-react";
 import toast from "react-hot-toast";
-import { sgkBicimle } from "@/lib/sgk-sicil";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth } from "@/hooks";
+import IscilikBilgiKarti, { formatPara, formatTarih } from "@/components/shared/iscilik-bilgi-karti";
 
 type EditingCell = { id: string; field: string } | null;
-
-function formatPara(n: number | null) {
-  if (n == null) return "—";
-  return n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function formatTarih(d: string | null) {
-  if (!d) return "—";
-  const dt = new Date(d + (d.length === 10 ? "T00:00:00" : ""));
-  return `${String(dt.getDate()).padStart(2, "0")}.${String(dt.getMonth() + 1).padStart(2, "0")}.${dt.getFullYear()}`;
-}
 
 export default function IscilikDetayPage() {
   const params = useParams();
@@ -405,179 +395,13 @@ export default function IscilikDetayPage() {
       {/* Üst Kart - İş Bilgileri */}
       <Card className="mb-6">
         <CardContent className="pt-4">
-          {/* İşin Adı */}
-          <div className="border-b border-gray-200 pb-3 mb-3">
-            <span className="text-[10px] text-gray-400 uppercase tracking-wider">İşin Adı</span>
-            <h2 className="text-lg font-bold text-[#1E3A5F]">{takip.santiyeler?.is_adi ?? "—"}</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
-            {/* Sol */}
-            <div>
-              {/* Sicil Numarası — metin, düzenlenebilir */}
-              <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Sicil Numarası</span>
-                {editingHeader === "sicil_no" ? (
-                  <Input ref={inputRef} value={headerEditValue}
-                    onChange={(e) => setHeaderEditValue(e.target.value)}
-                    onBlur={saveHeaderEdit}
-                    onKeyDown={(e) => { if (e.key === "Enter") saveHeaderEdit(); if (e.key === "Escape") setEditingHeader(null); }}
-                    className="h-6 text-xs w-32 text-right" />
-                ) : (
-                  <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
-                    onClick={() => {
-                      if (!yDuzenle) return;
-                      setEditingHeader("sicil_no");
-                      setHeaderEditValue(takip.sicil_no ?? "");
-                    }}>
-                    {/* Bitişik girilmiş numara mevzuattaki bölümlere ayrılarak gösterilir;
-                        kayıttaki değere dokunulmaz. */}
-                    {sgkBicimle(takip.sicil_no) || "—"}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-medium">Sözleşme Bedeli</span>
-                <span className="text-xs font-semibold">{formatPara(sozlesmeBedeli)}</span>
-              </div>
-              {headerField("Ek Sözleşme Bedeli", "kesif_artisi", takip.kesif_artisi, true)}
-              {headerField("Fiyat Farkı", "fiyat_farki", takip.fiyat_farki, true)}
-              {tahminiFiyatFarki > 0 && (
-                <div className="flex items-center justify-between py-1 border-b border-gray-100"
-                  title={`Kalan keşif: ${formatPara(kalanKesif)}\nOran: %${((sonHakedis!.fark / sonHakedis!.kesif) * 100).toFixed(2)} (Netsim'deki son hakediş)`}>
-                  <span className="text-xs text-gray-400 font-medium">Tahmini Fiyat Farkı</span>
-                  <span className="text-xs font-semibold text-gray-400">{formatPara(tahminiFiyatFarki)}</span>
-                </div>
-              )}
-              {headerField("İşçilik Oranı %", "iscilik_orani", takip.iscilik_orani, true)}
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-[#F1F5F9] px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Yatacak Toplam Prim</span>
-                <span className="text-xs font-bold text-[#1E3A5F]">{formatPara(yatacakToplamPrim)}</span>
-              </div>
-            </div>
-
-            {/* Sağ */}
-            <div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-green-50 px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Yatan</span>
-                <span className="text-xs font-bold text-green-700">{formatPara(toplamYatan)}</span>
-              </div>
-              <div className="flex items-center justify-between py-1 border-b border-gray-100 bg-red-50 px-1 rounded">
-                <span className="text-xs text-gray-500 font-medium">Kalan</span>
-                <span className="text-xs font-bold text-red-700">{formatPara(kalanPrim)}</span>
-              </div>
-              {/* İş Yeri Teslim Tarihi - elle */}
-              {(() => {
-                const isEdBas = editingHeader === "baslangic_tarihi";
-                return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">İş Yeri Teslim Tarihi</span>
-                    {isEdBas ? (
-                      <Input ref={inputRef} type="date" value={headerEditValue}
-                        onChange={(e) => setHeaderEditValue(e.target.value)}
-                        onBlur={async () => {
-                          if (!yDuzenle) { setEditingHeader(null); return; }
-                          try {
-                            const yeniDeger = headerEditValue || null;
-                            await upsertIscilikTakibi(takip.santiye_id, { baslangic_tarihi: yeniDeger });
-                            // SYNC: santiyeler tablosuna da yansıt (isyeri_teslim_tarihi)
-                            try {
-                              await updateSantiye(takip.santiye_id, { isyeri_teslim_tarihi: yeniDeger });
-                            } catch (e) { console.warn("santiye sync hatası:", e); }
-                            setTakip((p) => p ? { ...p, baslangic_tarihi: yeniDeger } : p);
-                          } catch { toast.error("Güncelleme hatası."); }
-                          setEditingHeader(null);
-                        }}
-                        onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
-                        className="h-6 text-xs w-36" />
-                    ) : (
-                      <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
-                        onClick={() => { if (!yDuzenle) return; setEditingHeader("baslangic_tarihi"); setHeaderEditValue(takip.baslangic_tarihi ?? ""); }}>
-                        {takip.baslangic_tarihi ? formatTarih(takip.baslangic_tarihi) : "—"}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-              {/* Süre - + ile toplama */}
-              {(() => {
-                const isEdSure = editingHeader === "sure_text";
-                const sureText = takip.sure_text ?? "";
-                const sureToplam = sureText ? sureText.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0) : 0;
-                return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">Süre</span>
-                    {isEdSure ? (
-                      <Input ref={inputRef} value={headerEditValue} placeholder="100 + 200 + 300"
-                        onChange={(e) => setHeaderEditValue(e.target.value)}
-                        onBlur={async () => {
-                          if (!yDuzenle) { setEditingHeader(null); return; }
-                          try {
-                            const yeniDeger = headerEditValue || null;
-                            await upsertIscilikTakibi(takip.santiye_id, { sure_text: yeniDeger });
-                            // SYNC → şantiye: "420 + 27 + 45" biçiminde İLK sayı ana iş süresi,
-                            // KALANLAR süre uzatımlarıdır. Böylece buraya "+27" eklemek, İş Deneyim
-                            // ekranındaki "Süre Uzatımı" alanına da 27 olarak işlenir.
-                            // (Eskiden tüm parçaların TOPLAMI is_suresi'ne yazılıyordu → uzatım
-                            //  ana süreye gömülüyor, şantiyedeki uzatım alanı boş kalıyordu.)
-                            const parcalar = yeniDeger
-                              ? yeniDeger.split("+").map((s) => parseInt(s.trim()) || 0).filter((n) => n > 0)
-                              : [];
-                            const anaSure = parcalar.length > 0 ? parcalar[0] : null;
-                            const uzatimlar = parcalar.slice(1);
-                            const toplamUzatim = uzatimlar.reduce((t, n) => t + n, 0);
-                            // Tarihler şantiye formundaki formülle BİREBİR aynı hesaplanır:
-                            //   iş bitim      = işyeri teslim + ana süre
-                            //   uzatımlı tarih = iş bitim + toplam uzatım
-                            const gunEkle = (tarih: string, gun: number) => {
-                              const d = new Date(tarih); d.setDate(d.getDate() + gun);
-                              return d.toISOString().split("T")[0];
-                            };
-                            const teslim = takip.baslangic_tarihi;
-                            const isBitim = teslim && anaSure ? gunEkle(teslim, anaSure) : null;
-                            try {
-                              await updateSantiye(takip.santiye_id, {
-                                is_suresi: anaSure,
-                                sure_uzatimlari: uzatimlar,
-                                sure_uzatimi: toplamUzatim > 0 ? toplamUzatim : null,
-                                is_bitim_tarihi: isBitim,
-                                sure_uzatimli_tarih: isBitim && toplamUzatim > 0 ? gunEkle(isBitim, toplamUzatim) : null,
-                              });
-                            } catch (e) { console.warn("santiye sync hatası:", e); }
-                            setTakip((p) => p ? { ...p, sure_text: yeniDeger } : p);
-                          } catch { toast.error("Güncelleme hatası."); }
-                          setEditingHeader(null);
-                        }}
-                        onKeyDown={(e) => e.key === "Escape" && setEditingHeader(null)}
-                        className="h-6 text-xs w-40" />
-                    ) : (
-                      <span className={`text-xs font-semibold ${yDuzenle ? "cursor-pointer hover:text-[#F97316]" : ""}`}
-                        onClick={() => { if (!yDuzenle) return; setEditingHeader("sure_text"); setHeaderEditValue(sureText); }}>
-                        {sureText ? `${sureText} = ${sureToplam} gün` : "—"}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-              {/* Bitiş Tarihi = Başlangıç + Süre toplamı - 1 gün (başlangıç günü dahil) */}
-              {(() => {
-                const sureText = takip.sure_text ?? "";
-                const sureToplam = sureText ? sureText.split("+").reduce((t, s) => t + (parseInt(s.trim()) || 0), 0) : 0;
-                let bitisTarihi: string | null = null;
-                if (takip.baslangic_tarihi && sureToplam > 0) {
-                  const d = new Date(takip.baslangic_tarihi);
-                  d.setDate(d.getDate() + sureToplam - 1);
-                  bitisTarihi = d.toISOString().split("T")[0];
-                }
-                return (
-                  <div className="flex items-center justify-between py-1 border-b border-gray-100">
-                    <span className="text-xs text-gray-500 font-medium">Bitiş Tarihi</span>
-                    <span className="text-xs font-semibold">{bitisTarihi ? formatTarih(bitisTarihi) : "—"}</span>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
+          <IscilikBilgiKarti
+            takip={takip}
+            sonHakedis={sonHakedis}
+            toplamYatan={toplamYatan}
+            yDuzenle={yDuzenle}
+            onTakipDegisti={setTakip}
+          />
         </CardContent>
       </Card>
 

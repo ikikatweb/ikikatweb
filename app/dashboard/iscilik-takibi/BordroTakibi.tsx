@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus, AlertTriangle, Banknote } from "lucide-react";
+import { UserPlus, Trash2, Mail, Building2, Users, Send, Eye, EyeOff, FileText, HardHat, ArrowRight, Lock, ChevronLeft, ChevronRight, ChevronDown, FileDown, FileSpreadsheet, Plus, AlertTriangle, Banknote } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
-import { getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
+import { getSantiyelerAll, setBordroGizli } from "@/lib/supabase/queries/santiyeler";
+import SicilBilgileriDialog from "@/components/shared/sicil-bilgileri-dialog";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
@@ -92,6 +93,7 @@ type SantiyeBasic = {
   ihaleli?: boolean | null;         // false → ihalesiz iş (listede ihalelilerin altında)
   sozlesme_tarihi?: string | null;  // "en yeni iş üstte" sıralaması için
   ihale_tarihi?: string | null;     // sözleşme tarihi yoksa yedek
+  bordro_gizli?: boolean | null;    // true → karta sağ tıklanıp "Gizle" denmiş (sql/bordro_gizli.sql)
 };
 /** Atama açılamayan kişinin (firma sahibi vb.) bir teknik rolü doldurduğu dönem. */
 type DisAtamaKayit = { ad: string; giris: string; cikis?: string | null };
@@ -629,8 +631,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const [disAtamaDialog, setDisAtamaDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
   // Uyarı yazısı SOL TIKLA açılıyordu ve listede gezerken kazara açılıyordu. Artık sağ tık
   // (telefonda basılı tutma) küçük bir menü açıyor; pencere ancak menüden seçilince geliyor.
-  const [teknikMenu, setTeknikMenu] = useState<{ santiyeId: string; santiyeAd: string; x: number; y: number } | null>(null);
-  const teknikBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [kartMenu, setKartMenu] = useState<{ santiyeId: string; santiyeAd: string; x: number; y: number } | null>(null);
+  const kartBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Basılı tutarak menü açıldı → parmak kalkınca gelen tıklama kartı AÇMASIN.
+  const kartMenuAcildiRef = useRef(false);
+  // Sicil Bilgileri penceresi — karttan açılır, sayfadan çıkılmaz.
+  const [sicilDialog, setSicilDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
+  // Gizlenmiş işler listede görünsün mü? (oturumluk; kalıcı olan gizlemenin kendisi)
+  const [gizliGoster, setGizliGoster] = useState(false);
   const [disAtamaSecim, setDisAtamaSecim] = useState<Record<string, DisAtamaKayit[]>>({});
   const [disAtamaKaydediliyor, setDisAtamaKaydediliyor] = useState(false);
   const [gunlukUcretler, setGunlukUcretler] = useState<GunlukUcret[]>([]);
@@ -1212,12 +1220,37 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // loadData'yı ref'e bağla — focus/visibility listener'larından çağrılabilsin
   useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
 
+  /**
+   * Karttan "Gizle" / "Gizlemeyi Kaldır". Gizleme HERKES İÇİN geçerli (şantiye kaydında
+   * tutulur), oturuma özel değil. Önce ekranda uygulanır, yazma başarısızsa geri alınır —
+   * kullanıcı "gizlendi" sanıp sonra geri geldiğini görmesin.
+   */
+  const gizleDegistir = useCallback(async (santiyeId: string, gizli: boolean) => {
+    setSantiyeler((p) => p.map((x) => (x.id === santiyeId ? { ...x, bordro_gizli: gizli } : x)));
+    try {
+      await setBordroGizli(santiyeId, gizli);
+      toast.success(gizli ? "İş listeden gizlendi." : "İş yeniden listede.");
+    } catch (e) {
+      setSantiyeler((p) => p.map((x) => (x.id === santiyeId ? { ...x, bordro_gizli: !gizli } : x)));
+      toast.error(e instanceof Error ? e.message : "Kaydedilemedi.");
+    }
+  }, []);
+
+  // Gizlenmiş iş sayısı — liste altındaki düğme bunu gösterir (yetki süzgecinden geçmiş hâli).
+  const gizliSayisi = useMemo(
+    () => filtreliSantiyelerHelper(santiyeler, kullanici).filter((x) => x.bordro_gizli === true).length,
+    [santiyeler, kullanici],
+  );
+
   // Yetki bazlı şantiye filtresi:
   // - Yönetici: tüm şantiyeler
   // - Şantiye admini / Kısıtlı: sadece atandığı şantiye(ler)
   const filtreliSantiyeler = useMemo(() => {
     // Önce yetki bazlı (kısıtlı kullanıcı sadece izinli şantiyeler) filtre
-    const yetkili = filtreliSantiyelerHelper(santiyeler, kullanici);
+    const yetkiliTumu = filtreliSantiyelerHelper(santiyeler, kullanici);
+    // GİZLENENLER: karta sağ tıklanıp "Gizle" denmiş işler. "Gizli işleri göster"
+    // açıkken hepsi görünür (kayıt silinmiyor, yalnız listeden çıkıyor).
+    const yetkili = gizliGoster ? yetkiliTumu : yetkiliTumu.filter((x) => x.bordro_gizli !== true);
     const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
     // TAMAMLANMIŞ iş = geçici kabul VEYA kesin kabul VEYA tasfiye VEYA devir tarihi dolu.
     // Sadece geçici kabule bakmak yetmiyor: kesin kabul / tasfiye / devir ile biten
@@ -1239,7 +1272,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     return yetkili
       .filter((s) => tamamlandi(s))
       .sort((a, b) => tamTarih(b).localeCompare(tamTarih(a))); // descending
-  }, [santiyeler, kullanici, gosterilecekDurum]);
+  }, [santiyeler, kullanici, gosterilecekDurum, gizliGoster]);
 
   // Doğal hesaplanmış günler — sadece max validation için kullanılır
   const naturalGunMap = useMemo(
@@ -4544,7 +4577,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   function SantiyeAccordion({
     santiyeId, baslik, renk, count, tumGun, acik, tumSecili, teknikPersoneller, disAtamaOzet,
     suresiGecenGun = null, dilekceTarihi = null,
-    onToggle, onTumunuSecToggle, onPlus, onTeknikAta, onTeknikBasiliBasla, onTeknikBasiliBitir, children,
+    onToggle, onTumunuSecToggle, onPlus, onKartMenu, onKartBasiliBasla, onKartBasiliBitir, children,
   }: {
     santiyeId: string;
     baslik: string;
@@ -4560,9 +4593,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     /** Geçici kabul dilekçesi verildiyse tarihi — "kabul bekleniyor" ile
      *  "süre doldu, dilekçe bile yok" ayrımı için. */
     dilekceTarihi?: string | null;
-    onTeknikAta?: (x: number, y: number) => void;
-    onTeknikBasiliBasla?: (x: number, y: number) => void;
-    onTeknikBasiliBitir?: () => void;
+    onKartMenu?: (x: number, y: number) => void;
+    onKartBasiliBasla?: (x: number, y: number) => void;
+    onKartBasiliBitir?: () => void;
     onToggle: () => void;
     onTumunuSecToggle: () => void;
     onPlus?: () => void;
@@ -4621,10 +4654,24 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             doluysa yazılıyor) ve kart boyu onunla birlikte oynuyordu. 4 satırlık yükseklik
             (4 × 12px + py-2.5) taban olarak sabitlendi; rakamı hiç olmayan kartlar da
             aynı boyda kalıyor. Dar ekranda rakamlar gizli olduğundan taban da uygulanmaz. */}
+        {/* KART MENÜSÜ: sağ tık (telefonda yarım saniye basılı tutma) kartın HER YERİNDE
+            açılır — Sicil Bilgileri / Teknik Personel Ata / Gizle. Eskiden yalnız teknik
+            personel satırına sağ tıklanınca açılıyordu, o satır olmayan kartta menüye
+            ulaşılamıyordu. İçerideki teknik satırları aynı menüyü açmaya devam ediyor
+            (kendi ipuçları duruyor), olayı durdurdukları için çift açılma olmuyor. */}
         <div
           className="flex items-center gap-2 px-3 py-2.5 lg:min-h-[4.25rem] cursor-pointer hover:bg-gray-50 transition-colors border-l-4"
           style={{ borderLeftColor: renk }}
-          onClick={onToggle}
+          onClick={() => {
+            // Basılı tutup menü açıldıysa parmağı kaldırınca gelen tıklama kartı da
+            // açıyordu; menü açıldıysa bu tıklama yutulur.
+            if (kartMenuAcildiRef.current) { kartMenuAcildiRef.current = false; return; }
+            onToggle();
+          }}
+          onContextMenu={(e) => { e.preventDefault(); onKartMenu?.(e.clientX, e.clientY); }}
+          onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
+          onTouchEnd={() => onKartBasiliBitir?.()}
+          onTouchMove={() => onKartBasiliBitir?.()}
         >
           {acik ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
           {/* SOL SÜTUN: iş adı + prim/bitim satırları. lg'de sabit genişlik → uzun adlar hep aynı
@@ -4668,10 +4715,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 PDF/Excel çıktısı ile tutarlı: sadece kimseye verilmemiş roller görünür. */}
             {teknikPersoneller && teknikPersoneller.length > 0 && (
               <div
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
-                onTouchStart={(e) => { const d = e.touches[0]; onTeknikBasiliBasla?.(d.clientX, d.clientY); }}
-                onTouchEnd={() => onTeknikBasiliBitir?.()}
-                onTouchMove={() => onTeknikBasiliBitir?.()}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onKartMenu?.(e.clientX, e.clientY); }}
+                onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
+                onTouchEnd={() => onKartBasiliBitir?.()}
+                onTouchMove={() => onKartBasiliBitir?.()}
                 className="text-[10px] text-red-600 mt-0.5 truncate select-none"
                 title={`Atanmamış Teknik Personel: ${teknikPersoneller.map(rolAdi).join(", ")}\nAtama açılamayan biri (firma sahibi vb.) dolduruyorsa SAĞ TIKLAYIN.`}
               >
@@ -4688,10 +4735,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 gerçekten BOŞ rolleri gösterir — ikisi ayrı şey. */}
             {disAtamaOzet && (
               <div
-                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onTeknikAta?.(e.clientX, e.clientY); }}
-                onTouchStart={(e) => { const d = e.touches[0]; onTeknikBasiliBasla?.(d.clientX, d.clientY); }}
-                onTouchEnd={() => onTeknikBasiliBitir?.()}
-                onTouchMove={() => onTeknikBasiliBitir?.()}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onKartMenu?.(e.clientX, e.clientY); }}
+                onTouchStart={(e) => { const d = e.touches[0]; onKartBasiliBasla?.(d.clientX, d.clientY); }}
+                onTouchEnd={() => onKartBasiliBitir?.()}
+                onTouchMove={() => onKartBasiliBitir?.()}
                 className="text-[10px] text-indigo-700 mt-0.5 truncate select-none"
                 title="Rol DOLU — bordroda ataması olmayan biri (firma yetkilisi vb.) tarafından dolduruldu. Değiştirmek için SAĞ TIKLAYIN."
               >
@@ -5245,6 +5292,27 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
           <option value="tumu">Tüm Çalışanlar</option>
           <option value="teknik">Teknik Personel</option>
         </select>
+        {/* GİZLİ İŞLER — karta sağ tıklayıp "Gizle" denen işler. Düğme ARAÇ ÇUBUĞUNDA:
+            önce listenin dibindeydi, 160 işlik listede kimse oraya kadar inmiyordu.
+            Aynı seçenek sağ tık menüsünde de var (kart üzerindeyken daha yakın). */}
+        {gizliSayisi > 0 && (
+          <button
+            type="button"
+            onClick={() => setGizliGoster((v) => !v)}
+            aria-pressed={gizliGoster}
+            title={gizliGoster
+              ? "Gizlenen işleri listeden yeniden kaldır."
+              : "Gizlenen işleri listede göster (kayıt silinmedi, yalnız listeden çıkarıldı)."}
+            className={`h-9 flex-shrink-0 inline-flex items-center gap-1 rounded-md border px-2.5 text-sm font-medium transition-colors ${
+              gizliGoster
+                ? "border-[#1E3A5F] bg-[#1E3A5F] text-white"
+                : "border-input bg-white text-gray-600 hover:bg-gray-50"}`}
+          >
+            {gizliGoster ? <EyeOff size={15} /> : <Eye size={15} />}
+            <span className="hidden sm:inline">{gizliGoster ? "Gizlileri sakla" : "Gizli işler"}</span>
+            <span className="rounded bg-black/10 px-1 text-[11px] tabular-nums">{gizliSayisi}</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setLimitDisi((v) => !v)}
@@ -5574,17 +5642,18 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                             tumSecili={tumSecili}
                             teknikPersoneller={atanmamisTeknikPersoneller(s.id, s.teknik_personeller)}
                             disAtamaOzet={disAtamaOzeti(s.id)}
-                            onTeknikAta={yDuzenle ? (x, y) => setTeknikMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y }) : undefined}
-                            onTeknikBasiliBasla={yDuzenle ? (x, y) => {
+                            onKartMenu={yDuzenle ? (x, y) => setKartMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y }) : undefined}
+                            onKartBasiliBasla={yDuzenle ? (x, y) => {
                               // Telefonda sağ tık yok — yarım saniye basılı tutmak aynı menüyü açar.
-                              if (teknikBasiliRef.current) clearTimeout(teknikBasiliRef.current);
-                              teknikBasiliRef.current = setTimeout(() => {
-                                teknikBasiliRef.current = null;
-                                setTeknikMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y });
+                              if (kartBasiliRef.current) clearTimeout(kartBasiliRef.current);
+                              kartBasiliRef.current = setTimeout(() => {
+                                kartBasiliRef.current = null;
+                                kartMenuAcildiRef.current = true;
+                                setKartMenu({ santiyeId: s.id, santiyeAd: s.is_adi, x, y });
                               }, 500);
                             } : undefined}
-                            onTeknikBasiliBitir={() => {
-                              if (teknikBasiliRef.current) { clearTimeout(teknikBasiliRef.current); teknikBasiliRef.current = null; }
+                            onKartBasiliBitir={() => {
+                              if (kartBasiliRef.current) { clearTimeout(kartBasiliRef.current); kartBasiliRef.current = null; }
                             }}
                             onToggle={() => {
                               setExpandedSantiyeler((prev) => {
@@ -6901,37 +6970,84 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         </DialogContent>
       </Dialog>
 
-      {/* Sağ tık menüsü — tek seçenek, ama kazara açılmayı önlüyor. */}
-      {teknikMenu && (
+      {/* KART SAĞ TIK MENÜSÜ — Sicil Bilgileri / Teknik Personel Ata / Gizle. */}
+      {kartMenu && (() => {
+        const kMenuSant = santiyeler.find((x) => x.id === kartMenu.santiyeId);
+        const kMenuGizli = kMenuSant?.bordro_gizli === true;
+        return (
         <>
-          <div className="fixed inset-0 z-[85]" onClick={() => setTeknikMenu(null)}
-            onContextMenu={(e) => { e.preventDefault(); setTeknikMenu(null); }} />
+          <div className="fixed inset-0 z-[85]" onClick={() => setKartMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setKartMenu(null); }} />
           <div className="fixed z-[90] w-[280px] max-w-[92vw] rounded-lg border border-gray-200 bg-white py-1 shadow-xl"
             style={{
-              left: Math.min(teknikMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 292),
-              top: Math.min(teknikMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 90),
+              left: Math.min(kartMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 292),
+              top: Math.min(kartMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 190),
             }}>
+            <div className="px-3 pb-1.5 pt-1 text-[11px] font-semibold text-gray-400 truncate" title={kartMenu.santiyeAd}>
+              {kartMenu.santiyeAd}
+            </div>
+
+            <button type="button"
+              onClick={() => { setSicilDialog({ santiyeId: kartMenu.santiyeId, santiyeAd: kartMenu.santiyeAd }); setKartMenu(null); }}
+              className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50 border-t border-gray-100">
+              <FileText size={15} className="shrink-0 text-gray-400" />
+              Sicil Bilgileri
+            </button>
+
             <button type="button"
               onClick={() => {
-                const sant = santiyeler.find((x) => x.id === teknikMenu.santiyeId);
                 // Mevcut kayıtlar İNDEKSLİ anahtara çevrilerek yüklenir; eski (yalnız ad)
                 // anahtarlar da disAtamaGecmisFor ile doğru sıraya düşer.
-                const roller = sant?.teknik_personeller ?? [];
+                const roller = kMenuSant?.teknik_personeller ?? [];
                 const mevcut: Record<string, DisAtamaKayit[]> = {};
                 roller.forEach((rol, i) => {
-                  const g = disAtamaGecmisFor(sant?.teknik_dis_atama ?? {}, roller, rol, i);
+                  const g = disAtamaGecmisFor(kMenuSant?.teknik_dis_atama ?? {}, roller, rol, i);
                   if (g.length) mevcut[disAtamaAnahtar(rol, i)] = g;
                 });
                 setDisAtamaSecim(mevcut);
-                setDisAtamaDialog({ santiyeId: teknikMenu.santiyeId, santiyeAd: teknikMenu.santiyeAd });
-                setTeknikMenu(null);
+                setDisAtamaDialog({ santiyeId: kartMenu.santiyeId, santiyeAd: kartMenu.santiyeAd });
+                setKartMenu(null);
               }}
-              className="w-full text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50">
-              Firma Yetkilisini Teknik Personel Olarak Ata
+              className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50 border-t border-gray-100"
+              title="Atama açılamayan biri (firma sahibi vb.) teknik personel rolünü dolduruyorsa buradan bağlanır.">
+              <HardHat size={15} className="shrink-0 text-gray-400" />
+              Yetkiliyi Teknik Personel Ata
             </button>
+
+            <button type="button"
+              onClick={() => { void gizleDegistir(kartMenu.santiyeId, !kMenuGizli); setKartMenu(null); }}
+              className={`w-full flex items-center gap-2 text-left px-3 py-2 text-sm hover:bg-gray-50 border-t border-gray-100 ${
+                kMenuGizli ? "text-emerald-700" : "text-red-600"}`}
+              title={kMenuGizli
+                ? "İş yeniden listede görünür."
+                : "İş bu listeden kaldırılır. Kayıt silinmez; liste altındaki \"Gizli işleri göster\" ile geri gelir. Gizleme herkes için geçerlidir."}>
+              {kMenuGizli ? <Eye size={15} className="shrink-0" /> : <EyeOff size={15} className="shrink-0" />}
+              {kMenuGizli ? "Gizlemeyi Kaldır" : "Gizle"}
+            </button>
+
+            {/* Gizlenmiş iş varsa listeyi buradan da açıp kapatabilsin — araç
+                çubuğundaki düğmenin aynısı, kart üstündeyken daha yakın. */}
+            {gizliSayisi > 0 && (
+              <button type="button"
+                onClick={() => { setGizliGoster((v) => !v); setKartMenu(null); }}
+                className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100">
+                {gizliGoster ? <EyeOff size={15} className="shrink-0 text-gray-400" /> : <Eye size={15} className="shrink-0 text-gray-400" />}
+                {gizliGoster ? "Gizlileri listeden sakla" : `Gizli işleri göster (${gizliSayisi})`}
+              </button>
+            )}
           </div>
         </>
-      )}
+        );
+      })()}
+
+      {/* SİCİL BİLGİLERİ — karttan sağ tık ile açılır, sayfadan çıkılmaz. Kaydedilince
+          liste tazelenir (yatacak/yatan/kalan rakamları kartta da değişsin). */}
+      <SicilBilgileriDialog
+        hedef={sicilDialog}
+        onKapat={() => setSicilDialog(null)}
+        yDuzenle={yDuzenle}
+        onKaydedildi={() => { void loadData(); }}
+      />
 
       {/* ATAMA DIŞI TEKNİK PERSONEL — uyarıya sağ tıklayıp menüden seçilince açılır.
           Firma sahibi gibi sigortalanamayan kişiler burada role bağlanır; personel ataması
@@ -7082,9 +7198,15 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                     className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm">
                     Vazgeç
                   </button>
-                  <button type="button" disabled={disAtamaKaydediliyor}
+                  {/* KAYDEDİLECEK BİR ŞEY YOKSA PASİF: boş teknik personel rolü de yoksa
+                      düzenlenecek kayıt da yoksa pencerede hiçbir alan yok — Kaydet'in
+                      aktif durması "bir şey yaptım" izlenimi veriyordu. */}
+                  <button type="button"
+                    disabled={disAtamaKaydediliyor || (bosRoller.length === 0 && Object.keys(disAtamaSecim).length === 0)}
                     onClick={disAtamaKaydet}
-                    className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+                    title={bosRoller.length === 0 && Object.keys(disAtamaSecim).length === 0
+                      ? "Kaydedilecek bir şey yok." : undefined}
+                    className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed">
                     {disAtamaKaydediliyor ? "Kaydediliyor…" : "Kaydet"}
                   </button>
                 </div>

@@ -41,19 +41,40 @@ export type SantiyeAllRow = {
   calisilmayan_bas: string | null; calisilmayan_bit: string | null; ihaleli?: boolean | null;
   sozlesme_tarihi?: string | null; ihale_tarihi?: string | null;
   sure_uzatimli_tarih: string | null; // süre uzatımı varsa nihai bitiş tarihi (yoksa null → is_bitim_tarihi kullanılır)
+  /** true → iş Bordro Takibi listesinde gizli (sql/bordro_gizli.sql). Kullanıcıya özel değil, geneldir. */
+  bordro_gizli?: boolean | null;
 };
 
 export async function getSantiyelerAll(): Promise<SantiyeAllRow[]> {
   const supabase = getSupabase();
   // sozlesme_tarihi/ihale_tarihi: bordro listesinde "en yeni iş üstte" sıralaması için.
   const base = "id, is_adi, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi, depo_kapasitesi, yuklenici_firma_id, isyeri_teslim_tarihi, is_suresi, is_bitim_tarihi, sure_uzatimli_tarih, teknik_personel_sayisi, teknik_personeller, calisilmayan_bas, calisilmayan_bit, sozlesme_tarihi, ihale_tarihi";
-  // ihaleli ve teknik_dis_atama kolonları henüz eklenmemiş olabilir (tipli client tanımaz)
-  // → varsa al, yoksa sırayla geri düş. Kolon eksikken ekran çalışmaya devam etsin.
-  const r1 = await supabase.from("santiyeler").select(base + ", ihaleli, teknik_dis_atama").order("is_adi", { ascending: true });
+  // bordro_gizli, ihaleli ve teknik_dis_atama kolonları henüz eklenmemiş olabilir (tipli
+  // client tanımaz) → varsa al, yoksa sırayla geri düş. Kolon eksikken ekran çalışmaya
+  // devam etsin; yalnız o kolona bağlı özellik (gizleme) etkisiz kalır.
+  const r0 = await supabase.from("santiyeler").select(base + ", ihaleli, teknik_dis_atama, bordro_gizli").order("is_adi", { ascending: true });
+  const r1 = r0.error ? await supabase.from("santiyeler").select(base + ", ihaleli, teknik_dis_atama").order("is_adi", { ascending: true }) : r0;
   const r2 = r1.error ? await supabase.from("santiyeler").select(base + ", ihaleli").order("is_adi", { ascending: true }) : r1;
   const r = r2.error ? await supabase.from("santiyeler").select(base).order("is_adi", { ascending: true }) : r2;
   if (r.error) throw r.error;
   return (r.data ?? []) as unknown as SantiyeAllRow[];
+}
+
+/**
+ * Bordro Takibi'nde gizle / gizlemeyi kaldır. Kolon yoksa (sql/bordro_gizli.sql henüz
+ * çalıştırılmadıysa) anlaşılır bir hata döner — sessizce "oldu" demez.
+ */
+export async function setBordroGizli(santiyeId: string, gizli: boolean): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("santiyeler")
+    .update({ bordro_gizli: gizli, updated_at: new Date().toISOString() } as never)
+    .eq("id", santiyeId);
+  if (error) {
+    const kolonYok = /bordro_gizli/.test(error.message) && /column|schema cache/i.test(error.message);
+    throw new Error(kolonYok
+      ? "Gizleme kolonu veritabanında yok — sql/bordro_gizli.sql çalıştırılmalı."
+      : error.message);
+  }
 }
 
 export async function getSantiyeById(id: string) {
