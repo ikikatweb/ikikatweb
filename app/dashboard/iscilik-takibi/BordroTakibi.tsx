@@ -637,6 +637,11 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   const kartBasiliRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Basılı tutarak menü açıldı → parmak kalkınca gelen tıklama kartı AÇMASIN.
   const kartMenuAcildiRef = useRef(false);
+  // ALT ŞERİT: asıl araç çubuğu yukarı kayıp görünmez olunca ekranın altında
+  // arama + ay ileri/geri belirir. Aksi hâlde ayı değiştirmek için her seferinde
+  // listenin en üstüne dönmek gerekiyordu (160 iş).
+  const aracCubuguRef = useRef<HTMLDivElement>(null);
+  const [aracCubuguGorunmez, setAracCubuguGorunmez] = useState(false);
   // Sicil Bilgileri penceresi — karttan açılır, sayfadan çıkılmaz.
   const [sicilDialog, setSicilDialog] = useState<{ santiyeId: string; santiyeAd: string } | null>(null);
   // Gizlenmiş işler listede görünsün mü? (oturumluk; kalıcı olan gizlemenin kendisi)
@@ -1258,6 +1263,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     () => filtreliSantiyelerHelper(santiyeler, kullanici).filter((x) => x.bordro_gizli === true).length,
     [santiyeler, kullanici],
   );
+
+  // Araç çubuğu ekranda mı? IntersectionObserver kaydırma kabından bağımsız çalışır
+  // (dashboard içeriği #dashboard-main içinde kayıyor).
+  useEffect(() => {
+    const el = aracCubuguRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const gozcu = new IntersectionObserver(
+      ([giris]) => setAracCubuguGorunmez(!giris.isIntersecting),
+      { threshold: 0 },
+    );
+    gozcu.observe(el);
+    return () => gozcu.disconnect();
+  }, [loading]);
 
   // Yetki bazlı şantiye filtresi:
   // - Yönetici: tüm şantiyeler
@@ -5303,7 +5321,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       }}
     >
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
+      <div ref={aracCubuguRef} className="flex flex-col sm:flex-row gap-2 mb-3 items-stretch sm:items-center">
         <div className="flex-1">
           <Input
             placeholder="Personel ara (ad, TC, görev) — 'teknik personel' yazarak sadece teknikleri süzebilirsiniz"
@@ -7086,6 +7104,41 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         </>
         );
       })()}
+
+      {/* ———— ALT ŞERİT ————
+          Araç çubuğu yukarıda kalınca ekranın altında arama + ay ileri/geri. Aynı
+          state'lere bağlı (arama, seciliAy) → üstteki ile birebir aynı işi yapar.
+          Yazdırma/çıktı almada görünmesin diye print:hidden. */}
+      {aracCubuguGorunmez && !loading && (
+        <div className="fixed bottom-0 left-0 right-0 z-[70] border-t border-gray-200 bg-white/95 px-3 py-2 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur print:hidden lg:left-64">
+          <div className="mx-auto flex max-w-7xl items-center gap-2">
+            <Input
+              placeholder="Personel ara (ad, TC, görev)"
+              value={arama}
+              onChange={(e) => setArama(e.target.value)}
+              className="h-9 flex-1 min-w-0"
+            />
+            <div className="flex flex-shrink-0 items-center gap-1">
+              <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, -1))} title="Önceki ay"
+                className="h-9 w-9 flex items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
+                <ChevronLeft size={16} />
+              </button>
+              <span className="w-[92px] flex-shrink-0 truncate text-center text-[11px] font-semibold text-[#1E3A5F]">
+                {ayLabel(seciliAy)}
+              </span>
+              <button type="button" onClick={() => setSeciliAy(ayDegistir(seciliAy, 1))} title="Sonraki ay"
+                className="h-9 w-9 flex items-center justify-center rounded-md border border-input bg-white hover:bg-gray-50">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+            {isReadOnly && (
+              <span className="hidden flex-shrink-0 items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 sm:inline-flex">
+                <Lock size={10} /> salt-okunur
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* SİCİL BİLGİLERİ — karttan sağ tık ile açılır, sayfadan çıkılmaz. Kaydedilince
           liste tazelenir (yatacak/yatan/kalan rakamları kartta da değişsin). */}
