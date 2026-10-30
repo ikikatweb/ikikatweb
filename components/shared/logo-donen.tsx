@@ -12,12 +12,15 @@ import { useEffect, useRef, useState } from "react";
 export type LogoItem = { src: string; alt: string };
 
 /** Kenar çubuğunda ve giriş ekranında gösterilecek kendi firmalarımız.
- *  Dosyalar public/ altında durur. Adi ortaklıklar ve "Şahsi" buraya girmez:
+ *  Dosyalar public/logolar/ altında ve HEPSİ AYNI TUVALDE (700x300, logo ortada,
+ *  görsel ağırlıkları eşitlenmiş) — oranları farklı olduğu için ham hâlleriyle biri
+ *  dar biri geniş görünüyordu. Yeni logo eklenirse aynı tuvale yerleştirilmeli.
+ *  Adi ortaklıklar ve "Şahsi" buraya girmez:
  *  ortaklığın kendi logosu yoktur, dış ortağın logosu da bizi temsil etmez. */
 export const FIRMA_LOGOLARI: LogoItem[] = [
-  { src: "/logo.png", alt: "KAD-TEM" },
-  { src: "/logo-ikikat.png", alt: "İkikat" },
-  { src: "/logo-kti.png", alt: "Kenan Tugay İkikat" },
+  { src: "/logolar/kad-tem.png", alt: "KAD-TEM" },
+  { src: "/logolar/ikikat.png", alt: "İkikat" },
+  { src: "/logolar/kenan-tugay-ikikat.png", alt: "Kenan Tugay İkikat" },
 ];
 
 type Props = {
