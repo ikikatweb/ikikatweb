@@ -199,6 +199,24 @@ export default function PersonelPuantajPage() {
     mesaiSaat: number | null;
   } | null>(null);
 
+  // Dokunmatikte not balonu kendiliğinden kapanmıyordu: hover olmadığı için
+  // onMouseLeave hiç gelmiyor, balon ekranda asılı kalıyordu. Bir sonraki
+  // dokunuşta kapat — çift dokunuşun ikinci dokunuşu da buraya düşer, balon
+  // kapanır ve hemen ardından puantaj penceresi açılır.
+  useEffect(() => {
+    if (!tooltip || !isTouch) return;
+    const kapat = () => setTooltip(null);
+    // capture: hücrenin kendi onClick'inden ÖNCE çalışsın.
+    document.addEventListener("touchstart", kapat, { capture: true, passive: true });
+    document.addEventListener("scroll", kapat, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("touchstart", kapat, { capture: true } as EventListenerOptions);
+      document.removeEventListener("scroll", kapat, { capture: true } as EventListenerOptions);
+    };
+    // tooltip'in kendisi değil, VARLIĞI önemli — her balonda dinleyici yenilenmesin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!tooltip, isTouch]);
+
   // Junction map yardımcısı
   function buildPersonelSantiyeMap(rows: { personel_id: string; santiye_id: string }[]): Map<string, Set<string>> {
     const m = new Map<string, Set<string>>();
@@ -746,6 +764,9 @@ export default function PersonelPuantajPage() {
 
   // Hücreye tıkla -> dialog aç
   function hucreTikla(p: PersonelWithRelations, gun: number) {
+    // MOBİL: ilk dokunuş not balonunu açıyor, ikincisi burayı çağırıyor. Balon
+    // kapatılmazsa pencerenin ÜSTÜNDE asılı kalıyordu — önce onu kaldır.
+    setTooltip(null);
     if (!santiyeId) return;
 
     // Geriye dönük gün sınırı kontrolü
@@ -1520,7 +1541,10 @@ export default function PersonelPuantajPage() {
                               }
                             }}
                             onMouseLeave={() => setTooltip(null)}
-                            className={`relative w-full h-[35px] text-xs font-bold transition-colors flex items-center justify-center ${
+                            // select-none + touch-action:manipulation → telefonda çift dokunuş
+                            // tarayıcının yakınlaştırmasını ve metin seçme balonunu tetiklemesin.
+                            style={{ touchAction: "manipulation", WebkitTouchCallout: "none" }}
+                            className={`relative w-full h-[35px] select-none text-xs font-bold transition-colors flex items-center justify-center ${
                               dBilgi
                                 ? `${dBilgi.bgClass} text-white hover:opacity-90`
                                 : "hover:bg-gray-200 text-gray-300"
