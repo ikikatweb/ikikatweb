@@ -1966,10 +1966,11 @@ export default function DashboardPage() {
                 </TableRow></TableHeader>
                 <TableBody>
                   {yaklasanlar.map((y, i) => (
-                    <TableRow key={`${y.plaka}-${y.tip}-${i}`}>
+                    // group: sola sabit plaka hücresi satır vurgusuna katılsın (bkz. aşağıdaki hücre).
+                    <TableRow key={`${y.plaka}-${y.tip}-${i}`} className="group hover:bg-gray-200">
                       {/* Plaka sütunu yatay kaydırmada sabit kalır. z-index VERİLMEZ — bkz.
                           components/ui/table.tsx: pozitif z'li gövde hücresi sticky başlığı örtüyor. */}
-                      <TableCell className="px-2 sticky left-0 bg-white shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                      <TableCell className="px-2 sticky left-0 bg-white group-hover:bg-gray-200 transition-colors shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                         <div className="font-bold text-[#1E3A5F]">{y.plaka}</div>
                       </TableCell>
                       <TableCell className="px-2">{y.tip}</TableCell>

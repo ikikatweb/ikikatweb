@@ -262,8 +262,9 @@ export default function YiUfePage() {
             </TableHeader>
             <TableBody>
               {veriler.map((satir) => (
-                <TableRow key={satir.yil} className="hover:bg-gray-50">
-                  <TableCell className="font-bold text-center text-[#1E3A5F] sticky left-0 bg-white z-10 border-r">
+                <TableRow key={satir.yil} className="group hover:bg-gray-200">
+                  {/* group-hover: yıl sütunu sola sabit, kendi zemini var - satır vurgusuna katılsın. */}
+                  <TableCell className="font-bold text-center text-[#1E3A5F] sticky left-0 bg-white group-hover:bg-gray-200 transition-colors z-10 border-r">
                     {satir.yil}
                   </TableCell>
                   {satir.aylar.map((deger, ayIndex) => {

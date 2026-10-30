@@ -1761,12 +1761,13 @@ function YakitPageContent() {
                   s.virmanYon === "giden" ? "border-l-4 border-l-red-400" :
                   "border-l-4 border-l-purple-400";
                 return (
-                  <TableRow key={s.satirKey} className={`hover:bg-gray-50 ${rowRenk}`}>
+                  <TableRow key={s.satirKey} className={`group hover:bg-gray-200 ${rowRenk}`}>
                     <TableCell className="px-2 whitespace-nowrap">
                       <div className="text-[11px] font-semibold">{h.tarih ? h.tarih.split("-").reverse().join(".") : "—"}</div>
                       <div className="text-[10px] text-gray-500">{h.saat.slice(0, 5)}</div>
                     </TableCell>
-                    <TableCell className="px-2 max-w-[140px] sticky left-0 bg-white">
+                    {/* group-hover: sola sabit olduğu için kendi zemini var, satır vurgusuna katılsın. */}
+                    <TableCell className="px-2 max-w-[140px] sticky left-0 bg-white group-hover:bg-gray-200 transition-colors">
                       <div className="truncate" style={{ maxWidth: "20ch" }} title={
                         h.tip === "arac_yakit"
                           ? `${aracMap.get(h.arac_id)?.plaka ?? ""} ${[aracMap.get(h.arac_id)?.marka, aracMap.get(h.arac_id)?.model, aracMap.get(h.arac_id)?.cinsi].filter(Boolean).join(" · ")}`

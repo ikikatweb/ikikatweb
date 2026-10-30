@@ -2243,9 +2243,10 @@ export default function AracPuantajPage() {
                       <TableCell colSpan={gunler.length + 1} className="p-0 bg-slate-200 border-b border-gray-300" />
                     </TableRow>
                   )}
-                  <TableRow className="hover:bg-gray-50">
-                    {/* Araç kolonu - çıktı seçim kutusu + plaka üstte, marka/model altta küçük punto */}
-                    <TableCell className="px-2 sticky left-0 bg-white z-[40] border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
+                  <TableRow className="group hover:bg-gray-200">
+                    {/* Araç kolonu - çıktı seçim kutusu + plaka üstte, marka/model altta küçük punto.
+                        group-hover: sola sabit olduğu için kendi zemini var, satır vurgusuna katılsın. */}
+                    <TableCell className="px-2 sticky left-0 bg-white group-hover:bg-gray-200 transition-colors z-[40] border-r shadow-[2px_0_3px_rgba(0,0,0,0.08)]">
                       <div className="flex items-center gap-1.5">
                         <input
                           type="checkbox"
