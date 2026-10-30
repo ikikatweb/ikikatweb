@@ -37,7 +37,6 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
   const [sayac, setSayac] = useState(0);
   const [azHareket, setAzHareket] = useState(false);
   const [sekmeGizli, setSekmeGizli] = useState(false);
-  const [uzerinde, setUzerinde] = useState(false);
 
   const gecerli = logolar.filter((l) => !bozuk[l.src]);
   const n = gecerli.length;
@@ -74,20 +73,20 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
     return () => document.removeEventListener("visibilitychange", uygula);
   }, []);
 
-  // Fare üstündeyken durur — bir logoya bakmak isteyen kaçırmasın.
+  // Fare üstüne gelince DURDURMUYORUZ: sayaç her durdurup başlatmada sıfırlandığı
+  // için logonun üstünden geçmek süreyi uzatıyordu; dokunmatikte ise tıklama sahte
+  // bir mouseenter doğurup dönmeyi büsbütün durdurabiliyordu.
   useEffect(() => {
-    if (sekmeGizli || uzerinde || gecerli.length < 2) return;
+    if (sekmeGizli || gecerli.length < 2) return;
     const t = setInterval(() => setSayac((p) => p + 1), Math.max(2, araSn) * 1000);
     return () => clearInterval(t);
-  }, [sekmeGizli, uzerinde, gecerli.length, araSn]);
+  }, [sekmeGizli, gecerli.length, araSn]);
 
   if (gecerli.length === 0) return null;
 
   return (
     <div
       className={`relative overflow-hidden ${className}`}
-      onMouseEnter={() => setUzerinde(true)}
-      onMouseLeave={() => setUzerinde(false)}
     >
       {gecerli.map((l, i) => (
         // eslint-disable-next-line @next/next/no-img-element
