@@ -26,13 +26,16 @@ type Props = {
   placeholder?: string;
   className?: string;
   showAll?: boolean;
+  /** Verilirse listenin başına bu etiketli bir satır konur ve seçimi TEMİZLER.
+   *  Zorunlu olmayan alanlar için: seçim bir kez yapıldıktan sonra geri alınamıyordu. */
+  bosSecenek?: string;
   // Verilirse aktif şantiyeler firma adı altında gruplanır (DB sira_no ASC).
   firmalar?: FirmaItem[];
 };
 
 export default function SantiyeSelect({
   santiyeler, value, onChange, placeholder = "Şantiye seçiniz", className = "",
-  showAll = false, firmalar,
+  showAll = false, firmalar, bosSecenek,
 }: Props) {
   const [acik, setAcik] = useState(false);
   const [arama, setArama] = useState("");
@@ -134,7 +137,7 @@ export default function SantiyeSelect({
             ad taşıp Kaydet butonunu kaydırmasın. CSS truncate ile birlikte güvenlik kemeri. */}
         <span className={`truncate min-w-0 flex-1 ${!gosterilenMetin ? "text-gray-400" : ""}`}>
           {(() => {
-            const ham = gosterilenMetin || (showAll ? "Tümü" : placeholder);
+            const ham = gosterilenMetin || (showAll ? "Tümü" : bosSecenek || placeholder);
             const limit = isMobile ? 22 : 38;
             if (ham.length > limit) return ham.slice(0, limit) + "...";
             return ham;
@@ -186,7 +189,16 @@ export default function SantiyeSelect({
                 Tümü
               </button>
             )}
-            {!showAll && !value && (
+            {!showAll && bosSecenek && (
+              <button
+                type="button"
+                onClick={() => { onChange(""); setAcik(false); setArama(""); }}
+                className={`w-full text-left px-3 py-1.5 text-xs italic truncate hover:bg-blue-50 ${!value ? "bg-blue-50 font-semibold not-italic" : "text-gray-500"}`}
+              >
+                {bosSecenek}
+              </button>
+            )}
+            {!showAll && !bosSecenek && !value && (
               <div className="px-3 py-1 text-[10px] text-gray-400 italic">{placeholder}</div>
             )}
             {gruplaAktiflere ? (

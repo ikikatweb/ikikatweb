@@ -713,7 +713,9 @@ export default function GidenEvrakPage() {
         }}
         disablePointerDismissal
       >
-        <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto">
+        {/* pb-0: alttaki sabit Kaydet şeridi kabın tam dibine otursun. DialogContent p-4 ile
+              gelince sticky şerit scroll dibinin 16px üstünde takılıyor, altından içerik görünüyordu. */}
+        <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto pb-0">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Giden Evrak Düzenle" : "Yeni Giden Evrak"}</DialogTitle>
           </DialogHeader>

@@ -232,12 +232,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     if (!evrakTarihi && !tarihGosterim) { toast.error("Evrak tarihi zorunludur."); return; }
     if (!firmaId) { toast.error("Firma seçimi zorunludur."); return; }
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
-    if (!santiyeId) { toast.error("Şantiye seçimi zorunludur."); return; }
+    if (!santiyeId && !sahsiEvrak) { toast.error("Şantiye seçimi zorunludur."); return; }
 
     // GEÇİCİ KABUL DİLEKÇESİ + EKSİK PRİM → önce onay al.
     // Konuda yazmıyorsa METNE de bakılır: kullanıcı konuya "Hakediş" yazıp gövdede
     // "geçici kabulün yapılması"nı isteyebiliyor — dilekçe yine geçici kabul dilekçesi.
-    if (geciciKabulDilekcesiMi(konu, metin) && !primOnaylandi.current) {
+    if (santiyeId && geciciKabulDilekcesiMi(konu, metin) && !primOnaylandi.current) {
       setPrimKontrol(true);
       const durum = await getSantiyePrimDurumu(santiyeId);
       setPrimKontrol(false);
@@ -261,7 +261,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         evrak_tarihi: tarihIso,
         tarih_gosterim: tarihGosterim,
         firma_id: firmaId,
-        santiye_id: santiyeId,
+        santiye_id: santiyeId || null,
         evrak_sayi_no: evrakSayiNo,
         evrak_kayit_no: evrak?.evrak_kayit_no ?? null,
         konu: formatBaslik(konu),
@@ -301,6 +301,12 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   }
 
   const seciliFirma = firmalar.find((f) => f.id === firmaId);
+  // ŞAHSİ DİLEKÇE: kişinin kendi adına yazdığı evrak bir şantiyeye bağlı olmaz →
+  // şantiye seçimi ZORUNLU DEĞİL. (Firma kısa kodu SHS; firma adı değişirse burası düzeltilir.)
+  const sahsiEvrak = !!seciliFirma && (
+    seciliFirma.kisa_adi?.trim().toUpperCase() === "SHS" ||
+    seciliFirma.firma_adi.trim().toLocaleLowerCase("tr") === "şahsi"
+  );
   const ilgiHarfler = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
   // ==================== ÖN İZLEME ====================
@@ -335,7 +341,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </PreviewScaler>
         </div>
 
-        <div className="flex gap-2 justify-end print:hidden">
+        <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-white px-4 py-3 print:hidden">
           <Button variant="outline" onClick={() => setOnIzleme(false)}>Geri Dön</Button>
           <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleSubmit} disabled={loading}>
             <Save size={16} className="mr-1" /> {loading ? "Kaydediliyor..." : "Kaydet"}
@@ -372,7 +378,11 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           </select>
         </div>
         <div className="space-y-2">
-          <Label>Şantiye <span className="text-red-500">*</span></Label>
+          <Label>
+            Şantiye {sahsiEvrak
+              ? <span className="font-normal text-[10px] text-gray-400">(şahsi dilekçede zorunlu değil)</span>
+              : <span className="text-red-500">*</span>}
+          </Label>
           {/* Tüm aktif şantiyeler firma adı altında <optgroup> ile gruplanmış halde gösterilir.
               Firma seçimi şantiye listesini filtrelemez — kullanıcı istediği şantiyeyi seçebilir. */}
           <SantiyeSelect
@@ -382,6 +392,9 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             placeholder="Şantiye seçin"
             className={selectClass}
             firmalar={firmalar}
+            // Şahsi dilekçede seçim geri alınabilsin: tek izinli şantiyesi olan kullanıcıda
+            // form açılışta otomatik seçiyor, temizleyecek bir satır olmadan boşaltılamıyordu.
+            bosSecenek={sahsiEvrak ? "Şantiye yok (şahsi)" : undefined}
           />
         </div>
       </div>
@@ -636,7 +649,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         </div>
       )}
 
-      <div className="flex gap-2 justify-end pt-2">
+      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center justify-end gap-2 rounded-b-xl border-t border-gray-200 bg-white px-4 py-3">
         <Button variant="outline" onClick={onCancel} disabled={loading}>İptal</Button>
         <Button variant="outline" onClick={() => setOnIzleme(true)} disabled={loading || !firmaId}>
           <Eye size={16} className="mr-1" /> Ön İzleme
