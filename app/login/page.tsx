@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import toast from "react-hot-toast";
+import LogoDonen from "@/components/shared/logo-donen";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -108,8 +109,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Uygulama Başlığı */}
         <div className="text-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="Kad-Tem" className="h-40 object-contain mx-auto mb-3" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          {/* Grup birden çok firmadan oluşuyor: logolar sırayla dönüyor (bkz. logo-donen). */}
+          <LogoDonen className="h-40 w-full mb-3" araSn={5} />
           <p className="text-sm text-gray-500 mt-1">
             Yönetim Sistemi
           </p>
