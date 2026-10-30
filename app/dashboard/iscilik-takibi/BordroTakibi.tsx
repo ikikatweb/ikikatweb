@@ -5196,21 +5196,20 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             )}
             {/* ÇOKLU ŞANTİYE: aynı kişinin birden çok şantiyede aynı anda açık (çıkışsız)
                 ataması olabilir — günler toplanır. Satır tek şantiyeyi gösterdiği için
-                diğerleri görünmüyordu; rozet kaç şantiyede sigortalı olduğunu söyler,
-                adlar balonda alt alta (bu satırınki ▸ ile işaretli). */}
+                diğerleri görünmüyordu. Rozet BU SATIRINKİNİ SAYMAZ: "başka kaç şantiyede
+                daha sigortalı" sorusunun cevabıdır; adlar balonda alt alta. */}
             {(() => {
-              const aktifler = aktifSantiyeMap.get(p.id);
-              if (!aktifler || aktifler.size < 2) return null;
-              const adlar = [...aktifler]
-                .map((sid) => ({ sid, ad: santiyeAdiKisa(sid) }))
-                .sort((a, b) => a.ad.localeCompare(b.ad, "tr"))
-                .map(({ sid, ad }) => `${sid === sutunKey ? "▸" : "•"} ${ad}`);
+              const digerler = [...(aktifSantiyeMap.get(p.id) ?? [])]
+                .filter((sid) => sid !== sutunKey)
+                .map((sid) => santiyeAdiKisa(sid))
+                .sort((a, b) => a.localeCompare(b, "tr"));
+              if (digerler.length === 0) return null;
               return (
                 <span
                   className="flex-shrink-0 text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold cursor-help"
-                  title={`Bu personel ${aktifler.size} şantiyede aynı anda sigortalı:\n${adlar.join("\n")}`}
+                  title={`Bu personel ayrıca ${digerler.length} şantiyede daha sigortalı:\n${digerler.map((ad) => "• " + ad).join("\n")}`}
                 >
-                  {aktifler.size} şantiye
+                  +{digerler.length} şantiye
                 </span>
               );
             })()}
