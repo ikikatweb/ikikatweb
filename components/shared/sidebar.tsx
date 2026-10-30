@@ -176,7 +176,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <Link href="/dashboard" onClick={() => onNavigate?.()}>
           <div className="flex items-center justify-center">
             {/* Grup birden çok firmadan oluşuyor: logolar sırayla dönüyor (bkz. logo-donen). */}
-            <LogoDonen className="h-24 w-full" araSn={5} />
+            <LogoDonen className="h-32 w-full" araSn={5} />
           </div>
         </Link>
       </div>

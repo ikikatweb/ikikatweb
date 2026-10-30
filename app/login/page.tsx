@@ -110,7 +110,7 @@ export default function LoginPage() {
         {/* Uygulama Başlığı */}
         <div className="text-center mb-8">
           {/* Grup birden çok firmadan oluşuyor: logolar sırayla dönüyor (bkz. logo-donen). */}
-          <LogoDonen className="h-40 w-full mb-3" araSn={5} />
+          <LogoDonen className="h-48 w-full mb-3" araSn={5} />
           <p className="text-sm text-gray-500 mt-1">
             Yönetim Sistemi
           </p>
