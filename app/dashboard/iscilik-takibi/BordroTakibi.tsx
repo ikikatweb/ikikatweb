@@ -1418,6 +1418,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
   // Halen aktif (en az bir açık ataması olan) personel kümesi.
   const aktifPersonelIds = useMemo(() => new Set(aktifSantiyeMap.keys()), [aktifSantiyeMap]);
 
+  /** Şantiye adı, rozet balonuna sığacak kadar (30 karakter). Ad bulunamazsa kimliği
+   *  yazmak işe yaramaz — kullanıcı için anlamsız; açıkça "bilinmeyen" denir. */
+  const santiyeAdiKisa = useCallback((santiyeId: string): string => {
+    const ad = santiyeler.find((x) => x.id === santiyeId)?.is_adi;
+    if (!ad) return "Bilinmeyen şantiye";
+    return ad.length > 30 ? ad.slice(0, 30) + "…" : ad;
+  }, [santiyeler]);
+
   // Bir personel "Limit Dışı" listesine girer mi? (eksik rozetiyle AYNI eşik)
   //  - Halen aktif (açık atama) ise: ayı 30 güne TAMAMLAYAMIYOR (eksik) VEYA toplam
   //    30'u AŞIYOR (çift sigortalılık / SGK ihlali) → limit dışı.
@@ -5186,6 +5194,26 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
                 {personelAySonuToplamMap.get(p.id)}g
               </span>
             )}
+            {/* ÇOKLU ŞANTİYE: aynı kişinin birden çok şantiyede aynı anda açık (çıkışsız)
+                ataması olabilir — günler toplanır. Satır tek şantiyeyi gösterdiği için
+                diğerleri görünmüyordu; rozet kaç şantiyede sigortalı olduğunu söyler,
+                adlar balonda alt alta (bu satırınki ▸ ile işaretli). */}
+            {(() => {
+              const aktifler = aktifSantiyeMap.get(p.id);
+              if (!aktifler || aktifler.size < 2) return null;
+              const adlar = [...aktifler]
+                .map((sid) => ({ sid, ad: santiyeAdiKisa(sid) }))
+                .sort((a, b) => a.ad.localeCompare(b.ad, "tr"))
+                .map(({ sid, ad }) => `${sid === sutunKey ? "▸" : "•"} ${ad}`);
+              return (
+                <span
+                  className="flex-shrink-0 text-[9px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold cursor-help"
+                  title={`Bu personel ${aktifler.size} şantiyede aynı anda sigortalı:\n${adlar.join("\n")}`}
+                >
+                  {aktifler.size} şantiye
+                </span>
+              );
+            })()}
             {p.personel_tipi === "taseron" && (
               <span className="text-[8px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold flex-shrink-0">TŞ</span>
             )}
