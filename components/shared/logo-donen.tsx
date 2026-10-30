@@ -37,7 +37,11 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
   const [uzerinde, setUzerinde] = useState(false);
 
   const gecerli = logolar.filter((l) => !bozuk[l.src]);
-  const aktif = gecerli.length > 0 ? sayac % gecerli.length : 0;
+  const n = gecerli.length;
+  const aktif = n > 0 ? sayac % n : 0;
+  // Çıkan logo sola süzülür, SIRA BEKLEYEN sağda durur: geçiş tek yöne akar,
+  // yoksa hepsi aynı yerden belirip kayma hissi kaybolur.
+  const cikan = n > 0 ? (sayac - 1 + n) % n : -1;
 
   // SSR ile gelen HTML'deki görsel, React olay dinleyicileri bağlanmadan ÖNCE 404
   // alırsa onError HİÇ çalışmıyor; kırık görsel ekranda kalıyordu. Bağlanır bağlanmaz
@@ -78,7 +82,7 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
 
   return (
     <div
-      className={`relative ${className}`}
+      className={`relative overflow-hidden ${className}`}
       onMouseEnter={() => setUzerinde(true)}
       onMouseLeave={() => setUzerinde(false)}
     >
@@ -90,9 +94,22 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
           src={l.src}
           alt={l.alt}
           // Hepsi yüklenir (ön belleğe girsin, geçişte boşluk olmasın); sırası gelmeyen şeffaf.
-          className={`absolute inset-0 w-full h-full object-contain transition-all duration-700 ease-out ${
-            i === aktif ? "opacity-100 translate-y-0" : "opacity-0 pointer-events-none"
-          } ${i === aktif || azHareket ? "" : "translate-y-2"}`}
+          // SIRALI GEÇİŞ: eski logo 300 ms'de çıkar, yeni logo 300 ms GECİKMEYLE girer.
+          // İkisi aynı anda yarı saydam olunca iç içe geçip bulanık bir karışım oluyordu.
+          className={`absolute inset-0 w-full h-full object-contain transition-all ease-out ${
+            i === aktif
+              ? "opacity-100 duration-500 delay-300"
+              : "opacity-0 duration-300 pointer-events-none"
+          } ${
+            // "Hareketi azalt" açıksa yalnız sol/opaklık — kayma ve ölçek yok.
+            azHareket
+              ? ""
+              : i === aktif
+                ? "translate-x-0 scale-100"
+                : i === cikan
+                  ? "-translate-x-4 scale-95"
+                  : "translate-x-4 scale-95"
+          }`}
           onError={() => setBozuk((p) => ({ ...p, [l.src]: true }))}
         />
       ))}
