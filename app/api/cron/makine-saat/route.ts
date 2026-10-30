@@ -7,6 +7,7 @@
 // Arvento rapor cron'u 18:00'de çalışıp o günün raporlarını yazdığı için bu cron ondan SONRA
 // (19:00) tetiklenir; aksi hâlde hep bir gün geriden gelirdi.
 import { NextResponse } from "next/server";
+import { gorevAnahtariGecerli, yetkisiz } from "@/lib/api/guvenlik";
 import { createClient } from "@supabase/supabase-js";
 import { kontakSaati, projeksiyon } from "@/lib/arvento/makine-saat";
 
@@ -14,11 +15,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
-  }
+  // Kapı AÇIK KALMAZ: eskiden "if (cronSecret && ...)" yazıyordu, yani CRON_SECRET ortamda
+  // yoksa kontrol tamamen atlanıyor ve rota HERKESE AÇIK kalıyordu. Ortak kapı
+  // (gorevAnahtariGecerli) anahtar tanımsızsa geçirmez; anahtar x-gorev-anahtari başlığı,
+  // Bearer ya da ?anahtar= ile gelebilir.
+  if (!gorevAnahtariGecerli(request)) return yetkisiz("Görev anahtarı geçersiz");
 
   const sb = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

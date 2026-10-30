@@ -8,6 +8,7 @@
 //   ARVENTO_MAIL_SUBJECT  — konu başlığında geçen ifade (ör. "rapor")
 //   ARVENTO_LINK_PATTERN  — indirme linkini seçmek için link içinde geçmesi gereken ifade
 import { NextResponse } from "next/server";
+import { gorevAnahtariGecerli, yetkisiz } from "@/lib/api/guvenlik";
 import { cekVeIsleArventoMail } from "@/lib/arvento/mail-fetch";
 import { serviceClient, getAyarServer, gunOzetiHesapla } from "@/lib/arvento/stabilize-ozet-server";
 
@@ -15,12 +16,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  // Güvenlik: Vercel cron Bearer secret
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
-  }
+  // Kapı AÇIK KALMAZ: eskiden "if (cronSecret && ...)" yazıyordu, yani CRON_SECRET ortamda
+  // yoksa kontrol tamamen atlanıyor ve rota HERKESE AÇIK kalıyordu. Ortak kapı
+  // (gorevAnahtariGecerli) anahtar tanımsızsa geçirmez; anahtar x-gorev-anahtari başlığı,
+  // Bearer ya da ?anahtar= ile gelebilir.
+  if (!gorevAnahtariGecerli(request)) return yetkisiz("Görev anahtarı geçersiz");
 
   try {
     // Son 7 günü tara: bir gece cron gecikir/atlanırsa ertesi gece kaçan günleri

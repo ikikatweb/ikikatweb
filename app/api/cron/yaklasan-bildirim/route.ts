@@ -1,16 +1,16 @@
 // Günlük yaklaşan sigorta/muayene + araç bakımı bildirimleri
 // Vercel Cron Jobs ile otomatik tetiklenir (vercel.json'da tanımlı)
 import { NextResponse } from "next/server";
+import { gorevAnahtariGecerli, yetkisiz } from "@/lib/api/guvenlik";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushToYoneticiler } from "@/lib/push";
 
 export async function GET(request: Request) {
-  // Güvenlik: Cron secret kontrolü (Vercel Cron Jobs için)
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Yetkisiz" }, { status: 401 });
-  }
+  // Kapı AÇIK KALMAZ: eskiden "if (cronSecret && ...)" yazıyordu, yani CRON_SECRET ortamda
+  // yoksa kontrol tamamen atlanıyor ve rota HERKESE AÇIK kalıyordu. Ortak kapı
+  // (gorevAnahtariGecerli) anahtar tanımsızsa geçirmez; anahtar x-gorev-anahtari başlığı,
+  // Bearer ya da ?anahtar= ile gelebilir.
+  if (!gorevAnahtariGecerli(request)) return yetkisiz("Görev anahtarı geçersiz");
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

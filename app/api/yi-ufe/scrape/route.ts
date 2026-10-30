@@ -1,9 +1,8 @@
 // Yi-ÜFE veri çekme API route - Tanımlamalar'daki URL'den endeks verilerini scrape eder
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import * as cheerio from "cheerio";
+import { oturumYaDaGorev, yetkisiz } from "@/lib/api/guvenlik";
 
 const AY_ISIMLERI = [
   "OCAK",
@@ -21,34 +20,12 @@ const AY_ISIMLERI = [
 ];
 
 export async function GET(request: Request) {
-  // İki yetki yolu: (a) Cron secret (Vercel Cron Jobs), (b) Authenticated yönetici (manuel buton)
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  const cronAuthOk = cronSecret ? authHeader === `Bearer ${cronSecret}` : true;
-
-  // Cron header'ı yoksa kullanıcının login olup olmadığına bak.
-  // Sayfa erişimi zaten "yonetim-yi-ufe" izniyle filtreleniyor — burada sadece auth kontrolü yeterli.
-  let userAuthOk = false;
-  if (!cronAuthOk) {
-    try {
-      const cookieStore = await cookies();
-      const supabaseAuth = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          cookies: {
-            getAll() { return cookieStore.getAll(); },
-            setAll() {},
-          },
-        },
-      );
-      const { data: { user } } = await supabaseAuth.auth.getUser();
-      if (user) userAuthOk = true;
-    } catch { /* sessiz */ }
-  }
-
-  if (!cronAuthOk && !userAuthOk) {
-    return NextResponse.json({ error: "Yetkisiz erişim — login olmanız gerekir" }, { status: 401 });
+  // İki yetki yolu: (a) görev anahtarı (Vercel cron), (b) oturumlu kullanıcı (manuel buton).
+  // ESKİDEN AÇIK KALIYORDU: "cronSecret ? ... : true" yüzünden CRON_SECRET ortamda yoksa
+  // cron yolu kendiliğinden GEÇERLİ sayılıyor, rota herkese açılıyordu. Ortak kapı anahtar
+  // tanımsızsa geçirmez; oturum tarafı da pasif kullanıcıyı eler.
+  if (!(await oturumYaDaGorev(request))) {
+    return yetkisiz("Yetkisiz erişim — oturum açmanız ya da görev anahtarı gerekir");
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
