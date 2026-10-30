@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks";
 import { hrefToModuleKey } from "@/lib/permissions";
+import LogoDonen from "@/components/shared/logo-donen";
 import {
   Users, Building2, HardHat, UserCog, Truck, TrendingUp, Settings, Newspaper,
   Mail, MailOpen, Landmark, Trash2,
@@ -174,8 +175,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="px-4 py-5 border-b border-[#cdd4dc]">
         <Link href="/dashboard" onClick={() => onNavigate?.()}>
           <div className="flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="KAD-TEM" className="h-24 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            {/* Grup birden çok firmadan oluşuyor: logolar sırayla dönüyor (bkz. logo-donen). */}
+            <LogoDonen className="h-24 w-full" araSn={5} />
           </div>
         </Link>
       </div>
