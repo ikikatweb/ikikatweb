@@ -2589,10 +2589,13 @@ export default function DashboardPage() {
                       ? row.santiyeAd.slice(0, 22) + "..."
                       : row.santiyeAd;
                     return (
-                      <TableRow key={row.santiyeId} className="hover:bg-gray-50/50">
+                      // group: sola SABİT şantiye hücresinin kendi beyaz zemini var, satır
+                      // grileşirken o hücre beyaz kalıyordu — iş adı vurgunun dışında duruyordu.
+                      // Hücre artık group-hover ile satırla aynı griye dönüyor.
+                      <TableRow key={row.santiyeId} className="group hover:bg-gray-200">
                         {/* Şantiye sütunu sticky — sağa-sola scroll'da solda sabit kalır.
                             Mobile'da diğer sütunlara kayarken şantiye adı her zaman görünür. */}
-                        <TableCell className="px-2 py-1.5 sticky left-0 bg-white">
+                        <TableCell className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-gray-200 transition-colors">
                           {/* Şantiye adının solunda firma rengi şeridi (İşçilik Durum Raporu pattern'i). */}
                           <div className="flex items-center gap-2">
                             <span
