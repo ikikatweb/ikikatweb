@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks";
 import { getYiUfeVerileri } from "@/lib/supabase/queries/yi-ufe";
 import { getKasaHareketleriByRange, getKasaDevirBakiyeleri } from "@/lib/supabase/queries/kasa";
-import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, deleteTeklifGonderimlerByAracTip, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTeklifGonderim, insertAracPolice, uploadPolice, getSigortaTeklifler, insertSigortaTeklif, updateSigortaTeklif, deleteSigortaTeklif, secSigortaTeklif, linkSigortaTekliflerToPolice, getSigortaVazgecler, addSigortaVazgec, removeSigortaVazgec } from "@/lib/supabase/queries/araclar";
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
@@ -1548,9 +1548,12 @@ export default function DashboardPage() {
       const updateField = pTip === "kasko" ? "kasko_bitis" : "trafik_sigorta_bitis";
       await updateArac(policeAracId, { [updateField]: pBitisTarih });
 
-      // Poliçe girildi → teklif İSTEĞİ kayıtlarını sil (bir sonraki dönem temiz başlasın),
-      // gelen TEKLİFLERİ ise silme; yeni poliçeye BAĞLA → Belgeler'den sonradan görülebilir.
-      await deleteTeklifGonderimlerByAracTip(policeAracId, pTip).catch(() => { /* sessiz */ });
+      // Teklif İSTEĞİ kayıtları artık SİLİNMİYOR: "biz ne zaman teklif istemiştik"
+      // sorusunun tek cevabı o kayıttı ve poliçe girilir girilmez yok oluyordu
+      // (Belgeler > Gelen Teklifler'de tarih gösterilemiyordu). Kayıtları tutmak bir
+      // sonraki dönemi bozmuyor: hem ana sayfadaki "teklif bekleniyor" hem acente
+      // kilidi tarihe bakıyor (TEKLIF_BEKLEME_GUN), eski kayıt kendiliğinden düşüyor.
+      // Gelen TEKLİFLER de silinmez; yeni poliçeye BAĞLANIR → Belgeler'den görülür.
       if (result?.id) await linkSigortaTekliflerToPolice(policeAracId, pTip, result.id).catch(() => { /* sessiz */ });
       await removeSigortaVazgec(policeAracId, pTip).catch(() => { /* sessiz — vazgeçilmişse takibe geri al */ });
 

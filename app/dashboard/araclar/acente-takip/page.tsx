@@ -2,11 +2,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { getAraclar, getTumPoliceler, deleteAracPolice, updateAracPolice, uploadPolice, getSigortaTeklifler } from "@/lib/supabase/queries/araclar";
+import { getAraclar, getTumPoliceler, deleteAracPolice, updateAracPolice, uploadPolice, getSigortaTeklifler, getTeklifGonderimler } from "@/lib/supabase/queries/araclar";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { useAuth, useOturumFiltresi } from "@/hooks";
-import type { AracWithRelations, AracPolice, SigortaTeklif } from "@/lib/supabase/types";
+import type { AracWithRelations, AracPolice, SigortaTeklif, TeklifGonderim } from "@/lib/supabase/types";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -50,6 +50,8 @@ export default function AcenteTakipPage() {
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
+  // "Biz ne zaman teklif istemiştik" — Gelen Teklifler penceresinin başlığında yazar.
+  const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
   // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
   const [arama, setArama] = useOturumFiltresi("acente-takip:arama", "");
   const [tipFiltre, setTipFiltre] = useOturumFiltresi<"" | "kasko" | "trafik">("acente-takip:tip", "");
@@ -83,18 +85,20 @@ export default function AcenteTakipPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, pData, sfData, acData, sigTek] = await Promise.all([
+      const [aData, pData, sfData, acData, sigTek, gonData] = await Promise.all([
         getAraclar(),
         getTumPoliceler().catch(() => []),
         getDegerler("sigorta_firmasi").catch(() => []),
         getDegerler("sigorta_acente").catch(() => []),
         getSigortaTeklifler().catch(() => []),
+        getTeklifGonderimler().catch(() => []),
       ]);
       setAraclar((aData as AracWithRelations[]) ?? []);
       setPoliceler(pData as AracPolice[]);
       setSigortaFirmalari(sfData);
       setAcenteler(acData);
       setSigortaTeklifler(sigTek as SigortaTeklif[]);
+      setTeklifGonderimler(gonData as TeklifGonderim[]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -510,6 +514,22 @@ export default function AcenteTakipPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-[13px] text-gray-500">
                     {hepsi.length} teklif · {firmaSayisi} firma · {acenteSayisi} acente
+                    {(() => {
+                      // BİZİM TEKLİF İSTEME TARİHİMİZ. Poliçe girilince bu kayıtlar
+                      // siliniyordu; eski poliçelerde tarih YOK ve bunu saklamak yerine
+                      // açıkça yazıyoruz — "boş" görünüp tarih yokmuş sanılmasın.
+                      const istek = teklifGonderimler
+                        .filter((g) => police && g.arac_id === police.arac_id && g.police_tipi === police.police_tipi)
+                        .map((g) => g.created_at)
+                        .sort()
+                        .pop();
+                      return istek ? (
+                        <span> · teklif istendi <b className="text-gray-700">{formatTarih(istek.slice(0, 10))}</b></span>
+                      ) : (
+                        <span title="Teklif isteği kayıtları eskiden poliçe girilince siliniyordu; bu poliçe için tarih kalmamış."
+                          className="text-gray-400"> · teklif isteme tarihi kayıtlı değil</span>
+                      );
+                    })()}
                   </p>
                   {hepsi.length > kisaListe.length && (
                     <button type="button" onClick={() => setTumTeklifler((v) => !v)}
@@ -524,7 +544,16 @@ export default function AcenteTakipPage() {
                   const alindi = yapilan?.id === t.id;
                   return (
                     <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${alindi ? "bg-emerald-50 border-emerald-400" : "bg-white border-gray-200"}`}>
-                      <span className="w-5 shrink-0 pt-0.5 text-center text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</span>
+                      {/* Solda sıra ve TEKLİFİN GELDİĞİ TARİH — hangi teklif ne zaman gelmiş,
+                          başlıktaki isteme tarihiyle birlikte sürecin zamanı okunur olsun. */}
+                      <div className="w-[52px] shrink-0 pt-0.5 text-center">
+                        <div className="text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</div>
+                        {(t.teklif_tarihi || t.mail_tarih) && (
+                          <div className="mt-0.5 text-[10.5px] leading-tight text-gray-400 tabular-nums">
+                            {formatTarih((t.teklif_tarihi ?? t.mail_tarih ?? "").slice(0, 10))}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[15px] font-semibold leading-tight text-[#1E3A5F]">{t.sigorta_firmasi || "Firma belirtilmemiş"}</span>
