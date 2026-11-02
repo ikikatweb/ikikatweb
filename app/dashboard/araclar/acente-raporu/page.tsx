@@ -333,7 +333,10 @@ export default function AcenteRaporuPage() {
     const body: Row[] = [];
     for (const o of ozetler) {
       const acenteAcik = !!acikAcenteler[o.acente];
-      body.push([tr(o.acente), "", "", "", "", formatPara(o.toplam)]);
+      // Ekrandaki sıranın aynısı; kâğıtta hangisinin pasif olduğu yazıyla da belli
+      // olsun — yoksa tutarların listenin ortasında yeniden küçülmesi sıralama
+      // hatası gibi duruyor.
+      body.push([tr(o.acente) + (o.aktif ? "" : " (PASIF)"), "", "", "", "", formatPara(o.toplam)]);
       // Acente kapalıysa şirketleri ve poliçeleri ATLA
       if (!acenteAcik) continue;
 
@@ -382,7 +385,8 @@ export default function AcenteRaporuPage() {
         const row = hookData.row.raw as Row;
         // Acente başlık: ilk kolonda değer var, ikinci boş → lacivert
         if (row[0] && !row[1]) {
-          hookData.cell.styles.fillColor = [30, 58, 95];
+          // Pasif acente ekranda olduğu gibi gri (slate-500), aktifler lacivert.
+          hookData.cell.styles.fillColor = row[0].endsWith("(PASIF)") ? [100, 116, 139] : [30, 58, 95];
           hookData.cell.styles.textColor = [255, 255, 255];
           hookData.cell.styles.fontStyle = "bold";
         }
@@ -401,7 +405,7 @@ export default function AcenteRaporuPage() {
     const headers = ["Acente", "Poliçe No / Şirket", "Plaka", "Belge Tipi", "Başlangıç", "Bitiş", "Tutar (TL)"];
     const rows: (string | number)[][] = [];
     for (const o of ozetler) {
-      rows.push([o.acente, "", "", "", "", "", o.toplam]);
+      rows.push([o.aktif ? o.acente : `${o.acente} (PASİF)`, "", "", "", "", "", o.toplam]);
       for (const s of o.sirketler) {
         rows.push(["", s.sirket, "", "", "", "", s.toplam]);
         for (const p of s.policeler) {
