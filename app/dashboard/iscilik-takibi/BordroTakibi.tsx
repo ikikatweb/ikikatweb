@@ -134,6 +134,18 @@ type PendingChange = {
   not?: string;
 };
 
+/** TAMAMLANMIŞ iş = geçici kabul VEYA kesin kabul VEYA tasfiye VEYA devir tarihi dolu.
+ *  Sadece geçici kabule bakmak yetmiyor: kesin kabul / tasfiye / devir ile biten ama geçici
+ *  kabul tarihi girilmemiş işler "aktif" sekmesinde kalıyordu. Sekme ayrımını yapan ekran
+ *  listesi de export kapsamı da buradan geçer — iki yerde ayrı ölçü olmasın. */
+function santiyeTamamlandiMi(s: {
+  gecici_kabul_tarihi?: string | null; kesin_kabul_tarihi?: string | null;
+  tasfiye_tarihi?: string | null; devir_tarihi?: string | null;
+}): boolean {
+  const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
+  return dolu(s.gecici_kabul_tarihi) || dolu(s.kesin_kabul_tarihi) || dolu(s.tasfiye_tarihi) || dolu(s.devir_tarihi);
+}
+
 const PASIF_KEY = "__pasif__";
 const ATANMAMIS_KEY = "__atanmamis__";
 const PENDING_LS_KEY = "bordro-pending-changes";
@@ -1281,12 +1293,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // açıkken hepsi görünür (kayıt silinmiyor, yalnız listeden çıkıyor).
     const yetkili = gizliGoster ? yetkiliTumu : yetkiliTumu.filter((x) => x.bordro_gizli !== true);
     const dolu = (v: string | null | undefined) => !!v && v.trim().length > 0;
-    // TAMAMLANMIŞ iş = geçici kabul VEYA kesin kabul VEYA tasfiye VEYA devir tarihi dolu.
-    // Sadece geçici kabule bakmak yetmiyor: kesin kabul / tasfiye / devir ile biten
-    // ama geçici kabul tarihi girilmemiş işler "aktif" sekmesinde kalıyordu.
-    const tamamlandi = (s: typeof yetkili[number]) =>
-      dolu(s.gecici_kabul_tarihi) || dolu(s.kesin_kabul_tarihi) ||
-      dolu(s.tasfiye_tarihi) || dolu(s.devir_tarihi);
+    const tamamlandi = santiyeTamamlandiMi;
     // "aktif" sekmesi → tamamlanmamış (devam eden) işler
     if (gosterilecekDurum === "aktif") {
       return yetkili.filter((s) => !tamamlandi(s));
@@ -2908,8 +2915,21 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     };
 
     const filtrelenmisIds = new Set(filtreli.map((p) => p.id));
-    // Firma filtresine uygun şantiyeler (filtre boşsa hepsi)
-    const santiyeIds = new Set(filtreliSantiyeler.map((s) => s.id));
+    // EXPORT KAPSAMI — ekrandaki listeden (filtreliSantiyeler) DEĞİL, yetkili işlerin
+    // tamamından kurulur. Tek fark sekme ayrımıdır (devam eden / tamamlanmış).
+    //
+    // GİZLİ İŞLER DE GİRER: "Gizle" karttan ekranı sadeleştirmek içindir, bordroyu kapatmak
+    // için değil. Gizli işte o ay sigortalı personel varsa giriş/çıkışı muhasebeye
+    // bildirilmek ZORUNDA — eskiden iş gizlendiği anda Excel/PDF ve bordro mailinden de
+    // düşüyordu, kimse fark etmeden eksik bordro gidiyordu.
+    // Boş işler kendiliğinden dışarda kalır: satırlar ATAMALARDAN türetilir, o ay
+    // ataması olmayan iş hiç satır üretmez ve başlığı da çıkmaz.
+    const kapsamTumu = filtreliSantiyelerHelper(santiyeler, kullanici);
+    const santiyeIds = new Set(
+      kapsamTumu
+        .filter((s) => (gosterilecekDurum === "aktif" ? !santiyeTamamlandiMi(s) : santiyeTamamlandiMi(s)))
+        .map((s) => s.id),
+    );
     // EK: Geçici kabulü yapılmış işlerde YATMASI GEREKEN TUTAR varsa onları da
     // export'a dahil et (sigortalı personel ödeme yapılacak şantiyeler).
     // Sadece "aktif" Bordro sekmesinde geçerli — "Geçici Kabulü Yapılmış" tabında
@@ -4114,7 +4134,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // ATANMAMIŞ teknik personel rolleri — şantiye başlığı altında kursiv kırmızı satır.
         // Key format'i "isim#index" şeklinde ve isimler İÇİNDE virgül olabileceği için
         // ham `,` split yapılmaz, regex ile "anyChars#digits" pattern'i aranır.
-        const santiyeKayitPdf = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
+        // Excel'deki ile aynı gerekçe: ekran listesinde olmayan (gizli ya da primi süren
+        // geçici kabullü) işin teknik personel listesi de bulunabilsin diye tüm şantiyeler.
+        const santiyeKayitPdf = santiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimlerPdf = santiyeKayitPdf?.teknik_personeller ?? [];
         const santiyeIdPdf = list[0]?.santiyeId ?? "";
         const atanmisKeylerPdf = new Set<string>();
