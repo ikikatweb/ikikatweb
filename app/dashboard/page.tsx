@@ -261,6 +261,10 @@ export default function DashboardPage() {
   // listede GÖRÜNMEZ — bunlara poliçe kestirilemiyor, yer kaplıyorlardı. Üstteki
   // "Tümünü göster" ile geri gelirler.
   const [gizliTeklifleriGoster, setGizliTeklifleriGoster] = useState(false);
+  // Teklif listesi VARSAYILAN olarak her acentenin yalnız en uygun teklifini gösterir —
+  // tek bir acente (Akın Ulusu) 12-19 satır gönderebiliyor, liste okunmuyordu.
+  // "Tümünü göster" hepsini açar.
+  const [teklifHepsiGoster, setTeklifHepsiGoster] = useState(false);
   // Teklif tabloları uzun (1600x3300 gibi); varsayılan ekrana sığdırılmış hâli, tıklayınca
   // gerçek boyutuna açılıp kaydırılabiliyor.
   const [resimTamBoy, setResimTamBoy] = useState(false);
@@ -3104,7 +3108,7 @@ export default function DashboardPage() {
       </Dialog>
 
       {/* Gelen Teklif Karşılaştırma Dialog — firma+tutar gir, en ucuz "en uygun" vurgulanır */}
-      <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) setTeklifKarsilastirArac(null); }}>
+      <Dialog open={!!teklifKarsilastirArac} onOpenChange={(o) => { if (!o) { setTeklifKarsilastirArac(null); setTeklifHepsiGoster(false); setTeklifAcenteSuz(null); } }}>
         {/* Teklif listesi — GELEN HER TEKLİF AYRI SATIR, ucuzdan pahalıya.
             Önce matris denendi (firma satır / acente sütun) ama sütunlar dar kaldığı ve
             çoğu hücre boş olduğu için okunmuyordu. Liste her satırda firmayı, acenteyi,
@@ -3146,7 +3150,6 @@ export default function DashboardPage() {
             // Sıra: rakamı olanlar ucuzdan pahalıya, tutarı okunamayanlar (resim) en altta.
             const deger = (t: SigortaTeklif) => (!t.elle_bekliyor && t.teklif_tutari > 0 ? t.teklif_tutari : Infinity);
             const sirali = [...hepsi].sort((a, b) => deger(a) - deger(b) || a.acente_adi.localeCompare(b.acente_adi, "tr"));
-            const gosterilen = teklifAcenteSuz ? sirali.filter((t) => t.acente_adi === teklifAcenteSuz) : sirali;
             const gecerliler = sirali.filter((t) => deger(t) !== Infinity);
             // ONAY İŞARETİ: acentenin tablosunda her firmanın yanında bir işaret var —
             // kırmızı ünlemli firmaya poliçe KESTİRİLEMİYOR. O yüzden "en ucuz" vurgusu,
@@ -3163,6 +3166,29 @@ export default function DashboardPage() {
             }
             // Poliçeleştirme talebi gönderilmiş teklif — mavi vurgu ve üst şerit bunu gösterir.
             const talepGonderilen = tumu.find((t) => t.police_talep_tarihi) ?? null;
+            // ── KISA LİSTE: her acentenin EN UYGUN teklifi ──
+            // Liste ucuzdan pahalıya sıralı olduğu için her acentenin İLK satırı onun en uygunu.
+            const acenteAdet = new Map<string, number>();
+            for (const t of sirali) acenteAdet.set(t.acente_adi, (acenteAdet.get(t.acente_adi) ?? 0) + 1);
+            const acenteEnIyiler: SigortaTeklif[] = [];
+            const gorulenAcente = new Set<string>();
+            for (const t of sirali) {
+              if (gorulenAcente.has(t.acente_adi)) continue;
+              gorulenAcente.add(t.acente_adi);
+              acenteEnIyiler.push(t);
+            }
+            // Poliçeleştirme istenen teklif, acentesinin en ucuzu olmasa bile kısa listede DURUR —
+            // yoksa "hangisini istedik" satırı yalnız "tümünü göster"de görünürdü.
+            const talepli = sirali.find((t) => t.police_talep_tarihi) ?? null;
+            const kisaListe = talepli && !acenteEnIyiler.some((t) => t.id === talepli.id)
+              ? [...acenteEnIyiler, talepli].sort((a, b) => deger(a) - deger(b))
+              : acenteEnIyiler;
+            // Acente süzgeci seçiliyse o acentenin TÜM teklifleri görünür: zaten tek acenteye
+            // bakılıyor, orada kısaltmanın anlamı yok.
+            const kisaMod = !teklifAcenteSuz && !teklifHepsiGoster;
+            const gosterilen = teklifAcenteSuz
+              ? sirali.filter((t) => t.acente_adi === teklifAcenteSuz)
+              : (teklifHepsiGoster ? sirali : kisaListe);
             const para = (v: number) => v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const kaynakAd = (k?: string | null) => k === "pdf" ? "PDF ekinden" : k === "mail" ? "mail metninden" : k === "resim" ? "tablo resminden" : "elle girildi";
             const tarihKisa = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" }) : null;
@@ -3201,13 +3227,22 @@ export default function DashboardPage() {
                     </div>
 
                     {/* ── ACENTE SÜZGECİ ── hangi acente kaç teklif göndermiş; tek tıkla yalnız onunkiler */}
-                    {(cevapVerenler.length > 1 || gizlenen.length > 0) && (
+                    {(cevapVerenler.length > 1 || gizlenen.length > 0 || sirali.length > kisaListe.length) && (
                       <div className="flex flex-wrap gap-1.5">
-                        {/* Gizlenen yapılamaz/şartlı teklifler buradan geri gelir. */}
+                        {/* Her acentenin en uygunu / tüm teklifler. Acente süzgeci açıkken
+                            anlamsız olduğu için gizlenir. */}
+                        {!teklifAcenteSuz && sirali.length > kisaListe.length && (
+                          <button type="button" onClick={() => setTeklifHepsiGoster((v) => !v)}
+                            className={`rounded-full border px-3 py-1 text-[13px] font-semibold ${teklifHepsiGoster ? "bg-[#1E3A5F] text-white border-[#1E3A5F]" : "bg-white text-gray-600 border-gray-300 hover:border-gray-500"}`}>
+                            {teklifHepsiGoster ? `Yalnız en uygunlar (${kisaListe.length})` : `Tümünü göster (${sirali.length})`}
+                          </button>
+                        )}
+                        {/* Gizlenen yapılamaz/şartlı teklifler buradan geri gelir.
+                            "Tümünü göster" adı yukarıdaki düğmeye ait; burası NE olduğunu yazar. */}
                         {gizlenen.length > 0 && (
                           <button type="button" onClick={() => setGizliTeklifleriGoster((v) => !v)}
                             className={`rounded-full border px-3 py-1 text-[13px] font-medium ${gizliTeklifleriGoster ? "bg-amber-500 text-white border-amber-500" : "bg-white text-amber-700 border-amber-400 hover:bg-amber-50"}`}>
-                            {gizliTeklifleriGoster ? "Yalnız yapılabilenler" : `Tümünü göster (+${gizlenen.length})`}
+                            {gizliTeklifleriGoster ? "Yalnız yapılabilenler" : `Yapılamazları da göster (+${gizlenen.length})`}
                           </button>
                         )}
                         {cevapVerenler.length > 1 && (
@@ -3297,13 +3332,18 @@ export default function DashboardPage() {
                                     </span>
                                   )}
                                   {enUcuz && <span className="rounded bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5">EN UYGUN</span>}
-                                  {!enUcuz && acentenin && <span className="rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
+                                  {/* Kısa modda ZATEN her satır acentesinin en uygunu — rozet gürültü olur. */}
+                                  {!enUcuz && acentenin && !kisaMod && <span className="rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5">acentenin en uygunu</span>}
                                 </div>
                                 <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                                   <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>
                                     {t.acente_adi}
                                   </span>
                                   <span>{kaynakAd(t.kaynak)}{tarihKisa(t.mail_tarih) ? ` · ${tarihKisa(t.mail_tarih)}` : ""}</span>
+                                  {/* Kaç teklifi gizlendi — "tümünü göster"in neyi açacağı belli olsun. */}
+                                  {kisaMod && (acenteAdet.get(t.acente_adi) ?? 1) > 1 && (
+                                    <span className="text-[11.5px] text-gray-400">bu acentenin {(acenteAdet.get(t.acente_adi) ?? 1) - 1} teklifi daha var</span>
+                                  )}
                                 </div>
                                 {aciklama && (
                                   <div className="text-[12.5px] text-gray-700 mt-1 break-words leading-snug">{aciklama}</div>
