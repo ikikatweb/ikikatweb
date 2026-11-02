@@ -144,6 +144,34 @@ function acenteRengi(ad: string): string {
   return ACENTE_RENKLERI[h % ACENTE_RENKLERI.length];
 }
 
+// ANA SAYFA YERLEŞİMİ — kapalı widget'ın yeri BOŞ KALMASIN.
+//
+// Izgara lg'de 4 sütun ve her kartın genişliği sabit yazılıydı: tam takımı olan
+// yöneticide satırlar doluyor, bir kartı kapalı olan kullanıcıda (ör. Arvento ve
+// İcra'sı olmayan) satırın sağı boş kalıyordu — ekran dağınık görünüyordu.
+// Artık her satırın sütunları O SATIRDA AÇIK olan kartlara paylaştırılıyor.
+//
+// taban[i]: kartın tam takımdaki genişliği (0 = kapalı). Artan sütun, tabanı en
+// geniş olana (tablo taşıyan kart) gider; eşitse sırayla dağıtılır ki iki küçük
+// kart 1+3 değil 2+2 olsun.
+function sutunPaylastir(taban: number[], toplam = 4): number[] {
+  const pay = [...taban];
+  const acik = taban.map((t, i) => (t > 0 ? i : -1)).filter((i) => i >= 0);
+  if (acik.length === 0) return pay;
+  let kalan = toplam - acik.reduce((t, i) => t + taban[i], 0);
+  while (kalan > 0) {
+    const hedef = [...acik].sort(
+      (a, b) => taban[b] - taban[a] || (pay[a] - taban[a]) - (pay[b] - taban[b]),
+    )[0];
+    pay[hedef]++;
+    kalan--;
+  }
+  return pay;
+}
+// Tailwind sınıfları derleme anında taranır — `lg:col-span-${n}` yazılamaz.
+const SPAN = ["", "lg:col-span-1", "lg:col-span-2", "lg:col-span-3", "lg:col-span-4"];
+const ICKOL = ["", "lg:grid-cols-1", "md:grid-cols-2 lg:grid-cols-2", "md:grid-cols-2 lg:grid-cols-3"];
+
 function Katman({ children }: { children: React.ReactNode }) {
   if (typeof document === "undefined") return null;
   return createPortal(children, document.body);
@@ -1800,6 +1828,18 @@ export default function DashboardPage() {
   //   (yönetici hangi widget'ları açtıysa sadece onları görür)
   const wg = widgetGorunur;   // çizim ile veri çekme aynı kuralı kullansın
 
+  // Satır satır sütun paylaşımı (bkz. sutunPaylastir).
+  //   Üst satır : Arvento (1) + Yi-ÜFE (1) + Yaklaşan Sigorta (2)
+  //   Orta satır: Eksik Veri Girişi (2) + Yaklaşan Bakım (2)
+  //   Üçlü satır: İcra + Kasa + Eksik Evrak — içeride açık kart sayısı kadar sütun
+  const [arvSpan, yiufeSpan, sigortaSpan] = sutunPaylastir([
+    wg("arvento") ? 1 : 0, wg("yiufe") ? 1 : 0, wg("sigorta_muayene") ? 2 : 0,
+  ]);
+  const [eksikVeriSpan, bakimSpan] = sutunPaylastir([
+    wg("eksik_veri_girisi") ? 2 : 0, wg("yaklasan_bakim") ? 2 : 0,
+  ]);
+  const ucluSayi = [wg("icra_ozet"), wg("kasa_ozet"), wg("eksik_evrak")].filter(Boolean).length;
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-[#1E3A5F] mb-4">Dashboard</h1>
@@ -1893,7 +1933,7 @@ export default function DashboardPage() {
           Rapor duruyor: Sezon Maliyeti sayfası (/dashboard/maliyet-raporu) açıldığında hesaplanır. */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
-        {wg("yiufe") ? <div className="bg-white rounded-xl border p-4 lg:col-span-1 lg:order-1">
+        {wg("yiufe") ? <div className={`bg-white rounded-xl border p-4 lg:order-1 ${SPAN[yiufeSpan]}`}>
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-[#1E3A5F]" />
             <h3 className="font-bold text-xs text-[#1E3A5F]">Yi-ÜFE Endeksler</h3>
@@ -1954,7 +1994,7 @@ export default function DashboardPage() {
         {/* Kasa özeti → aşağıda İcra + Eksik Evrak ile YAN YANA 3'lü satırda gösteriliyor. */}
 
         {/* Widget 3: Yaklaşan Sigorta/Muayene (üst sıra sağ) */}
-        {wg("sigorta_muayene") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-2">
+        {wg("sigorta_muayene") ? <div className={`bg-white rounded-lg border p-4 lg:order-2 ${SPAN[sigortaSpan]}`}>
           <CardHeader icon={Shield} title="Yaklaşan Sigorta & Muayene" color="text-amber-700" />
           {yaklasanlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bitiş yok</p> : (
             <div className="max-h-[200px] overflow-auto">
@@ -2078,7 +2118,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget: Yaklaşan Araç Bakımları */}
-        {wg("yaklasan_bakim") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-6">
+        {wg("yaklasan_bakim") ? <div className={`bg-white rounded-lg border p-4 lg:order-6 ${SPAN[bakimSpan]}`}>
           <CardHeader icon={AlertTriangle} title="Yaklaşan Araç Bakımları" color="text-orange-700" />
           {yaklasanBakimlar.length === 0 ? <p className="text-sm text-gray-400">Yaklaşan bakım yok</p> : (
             <div className="max-h-[220px] overflow-y-auto">
@@ -2146,7 +2186,7 @@ export default function DashboardPage() {
             Sadece bilgi amaçlı: İş Adı / Son Veri Girişi / Eksik Dönem. Buton yok, link yok.
             Kasa Defteri ve Yi-ÜFE ile aynı boyut (yarım kart — lg:col-span-2).
             Şantiye bazlı, canlı hesap: veri girildiğinde otomatik kaybolur. */}
-        {wg("eksik_veri_girisi") ? <div className="bg-white rounded-lg border p-4 lg:col-span-2 lg:order-5">
+        {wg("eksik_veri_girisi") ? <div className={`bg-white rounded-lg border p-4 lg:order-5 ${SPAN[eksikVeriSpan]}`}>
           <div className="flex items-center gap-2 mb-3 pb-2 border-b">
             <AlertTriangle size={16} className="text-amber-700" />
             <h3 className="font-bold text-sm text-[#1E3A5F]">Sgk Primi Girilmemiş İşler</h3>
@@ -2318,8 +2358,8 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* ▼ İcra Takibi + Kasa + Eksik Evrak — YAN YANA (tam genişlik 3'lü satır) */}
-        <div className="lg:col-span-4 lg:order-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={`lg:col-span-4 lg:order-3 ${ucluSayi === 0 ? "hidden" : ""}`}>
+          <div className={`grid grid-cols-1 gap-4 ${ICKOL[ucluSayi]}`}>
             {/* İcra Takibi */}
             {wg("icra_ozet") ? <IcraDashboard /> : null}
             {/* Kasa — Kullanıcı Özeti */}
@@ -2841,7 +2881,7 @@ export default function DashboardPage() {
         </div> : null}
 
         {/* Widget 8: Arvento Araç Çalışma — son rapor özeti */}
-        {wg("arvento") ? <div className="order-first md:col-span-1 lg:col-span-1">
+        {wg("arvento") ? <div className={`order-first md:col-span-1 ${SPAN[arvSpan]}`}>
           <ArventoWidget />
         </div> : null}
 
