@@ -24,6 +24,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
+import { acenteRengi } from "@/lib/utils/acente-renk";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -73,6 +74,8 @@ export default function AcenteTakipPage() {
   // Poliçeye bağlı gelen teklifler + görüntüleme diyaloğu
   const [sigortaTeklifler, setSigortaTeklifler] = useState<SigortaTeklif[]>([]);
   const [teklifGor, setTeklifGor] = useState<{ policeId: string; plaka: string; tip: string } | null>(null);
+  // Uzun mail metni satırı şişiriyordu: not iki satırda kesilir, istenirse açılır.
+  const [acikNotlar, setAcikNotlar] = useState<Record<string, boolean>>({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -113,7 +116,19 @@ export default function AcenteTakipPage() {
       arr.push(t);
       m.set(t.police_id, arr);
     }
-    for (const arr of m.values()) arr.sort((a, b) => a.teklif_tutari - b.teklif_tutari);
+    // AYNI TEKLİF İKİ KEZ GÖRÜNMESİN: aynı acente + aynı firma + aynı tutar tek satır.
+    // Elle girilen bir teklif sonradan mailden de okunabiliyor; ikisi aynı şeydir ve
+    // listede iki ayrı "En uygun" satırı olarak duruyordu. Kaynağı belli olan kalır.
+    const puan = (t: SigortaTeklif) => (t.ek_url ? 2 : 0) + (t.kaynak ? 1 : 0);
+    for (const [id, arr] of m) {
+      const tek = new Map<string, SigortaTeklif>();
+      for (const t of arr) {
+        const k = `${t.acente_adi}|${t.sigorta_firmasi ?? ""}|${Math.round(t.teklif_tutari)}`;
+        const o = tek.get(k);
+        if (!o || puan(t) > puan(o)) tek.set(k, t);
+      }
+      m.set(id, [...tek.values()].sort((a, b) => a.teklif_tutari - b.teklif_tutari));
+    }
     return m;
   }, [sigortaTeklifler]);
 
@@ -441,31 +456,66 @@ export default function AcenteTakipPage() {
       )}
 
       {/* Gelen Teklifler (poliçeye bağlı) — görüntüle */}
-      <Dialog open={!!teklifGor} onOpenChange={(o) => { if (!o) setTeklifGor(null); }}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+      <Dialog open={!!teklifGor} onOpenChange={(o) => { if (!o) { setTeklifGor(null); setAcikNotlar({}); } }}>
+        {/* GENİŞ pencere: dar kutuda firma adı, acente ve not kırpılıyor, TUTAR hiç
+            görünmüyordu — teklifleri karşılaştırmak için açılan pencerede rakam yoktu. */}
+        {/* sm:max-w-2xl — DialogContent'in kendi sm:max-w-sm kuralı medya sorgulu olduğu
+            için düz max-w-* sınıfını eziyor; pencere 384 px'te kalıyordu. */}
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gelen Teklifler — {teklifGor?.plaka} {teklifGor?.tip}</DialogTitle>
           </DialogHeader>
           {teklifGor && (() => {
             const tk = teklifByPolice.get(teklifGor.policeId) ?? [];
             const enUcuz = tk.length ? tk[0].teklif_tutari : null;
+            const firmaSayisi = new Set(tk.map((t) => t.sigorta_firmasi ?? "")).size;
+            const acenteSayisi = new Set(tk.map((t) => t.acente_adi)).size;
             return tk.length === 0 ? (
-              <p className="text-xs text-gray-400 py-4 text-center">Bu poliçe için teklif kaydı yok.</p>
+              <p className="text-sm text-gray-400 py-6 text-center">Bu poliçe için teklif kaydı yok.</p>
             ) : (
-              <div className="space-y-1 py-1">
-                {tk.map((t) => {
+              <div className="space-y-1.5 py-1">
+                <p className="text-[13px] text-gray-500">
+                  {tk.length} teklif · {firmaSayisi} firma · {acenteSayisi} acente
+                </p>
+                {tk.map((t, i) => {
                   const uc = t.teklif_tutari === enUcuz;
                   return (
-                    <div key={t.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded border ${uc ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200"}`}>
+                    <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${uc ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200"}`}>
+                      <span className="w-5 shrink-0 pt-0.5 text-center text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-medium truncate">{t.sigorta_firmasi || "—"}</span>
-                          {uc && <span className="text-[9px] bg-emerald-600 text-white px-1.5 py-0.5 rounded-full shrink-0">✓ En uygun</span>}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[15px] font-semibold leading-tight text-[#1E3A5F]">{t.sigorta_firmasi || "Firma belirtilmemiş"}</span>
+                          {uc && <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">EN UYGUN</span>}
                         </div>
-                        <span className="text-[10px] text-gray-400 truncate">{t.acente_adi}</span>
-                        {t.notlar && <span className="block text-[10px] text-gray-500 italic truncate" title={t.notlar}>“{t.notlar}”</span>}
+                        <div className="mt-1">
+                          <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>{t.acente_adi}</span>
+                        </div>
+                        {/* Not KIRPILMAZ: "şu şartla", "taksitli" gibi bilgiler tam da burada
+                            yazıyor ve tek satıra sığmadığı için okunmuyordu. */}
+                        {t.notlar && (() => {
+                          // Mailden okunan notlar uzun olabiliyor; satır sayfa boyu uzuyordu.
+                          // İki satır gösterilir, uzunsa "tamamını göster" ile açılır.
+                          const acik = !!acikNotlar[t.id];
+                          const uzun = t.notlar.length > 110;
+                          return (
+                            <div className="mt-1">
+                              <div className={`break-words text-[12.5px] leading-snug whitespace-pre-line text-gray-700 ${acik ? "" : "line-clamp-2"}`}>
+                                {t.notlar}
+                              </div>
+                              {uzun && (
+                                <button type="button"
+                                  onClick={() => setAcikNotlar((o) => ({ ...o, [t.id]: !acik }))}
+                                  className="mt-0.5 text-[11.5px] font-semibold text-blue-600 hover:underline">
+                                  {acik ? "kısalt" : "tamamını göster"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
-                      <span className={`text-sm font-bold tabular-nums shrink-0 ${uc ? "text-emerald-700" : "text-gray-700"}`}>{formatPara(t.teklif_tutari)}</span>
+                      <span className={`shrink-0 text-[17px] font-bold tabular-nums ${uc ? "text-emerald-700" : "text-gray-800"}`}>
+                        {formatPara(t.teklif_tutari)} <span className="text-xs font-semibold">₺</span>
+                      </span>
                     </div>
                   );
                 })}
