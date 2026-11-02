@@ -10,7 +10,7 @@ import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTe
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
-import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
+import { policeTalepKonu, policeTalepGovde, ODEME_NOTU } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
@@ -3376,13 +3376,18 @@ export default function DashboardPage() {
                               </div>
                             </div>
                             <div className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-gray-800">
-                              {policeTalepMetin({
+                              {policeTalepGovde({
                                 plaka: teklifKarsilastirArac.plaka,
                                 acenteAdi: policeTalep.acente_adi,
                                 sigortaFirmasi: policeTalep.sigorta_firmasi ?? "",
                                 tutar: policeTalep.teklif_tutari,
                                 gonderen: kullanici?.ad_soyad ?? null,
                               })}
+                            </div>
+                            {/* Bilgi notu mailde de gövdeden küçük gider; önizleme onunla aynı
+                                görünsün ki onaylanan ile giden ayrışmasın. */}
+                            <div className="mt-3 text-[11.5px] leading-relaxed text-gray-500">
+                              Not: {ODEME_NOTU}
                             </div>
                           </div>
                           <div className="mt-3 flex gap-2">

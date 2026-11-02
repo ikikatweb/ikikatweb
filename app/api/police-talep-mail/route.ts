@@ -11,7 +11,7 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
 /** Onay penceresinde gösterilen metinle birebir aynı olmalı (lib/police-talep-metin.ts). */
-import { policeTalepKonu, policeTalepMetin } from "@/lib/police-talep-metin";
+import { policeTalepKonu, policeTalepMetin, policeTalepHtml } from "@/lib/police-talep-metin";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { storageIndir } from "@/lib/api/storage-indir";
 
@@ -63,13 +63,14 @@ export async function POST(request: Request) {
     }
 
     const konu = policeTalepKonu(arac.plaka, teklif.police_tipi as "kasko" | "trafik");
-    const metin = policeTalepMetin({
+    const bilgi = {
       plaka: arac.plaka,
       acenteAdi: teklif.acente_adi,
       sigortaFirmasi: teklif.sigorta_firmasi ?? "",
       tutar: teklif.teklif_tutari,
       gonderen: gonderenKullanici ?? null,
-    });
+    };
+    const metin = policeTalepMetin(bilgi);
 
     const transporter = nodemailer.createTransport({
       host: firma.smtp_host,
@@ -78,8 +79,6 @@ export async function POST(request: Request) {
       auth: { user: firma.smtp_user, pass: firma.smtp_password },
       tls: { rejectUnauthorized: false },
     });
-
-    const htmlEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
     // ANTET: firmanın antet görseli mailin başına konur. Bağlantı olarak değil, mailin
     // İÇİNE gömülür (cid) — uzaktaki resimleri çoğu mail programı kendiliğinden
@@ -99,7 +98,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const html = `${antetHtml}<p>${htmlEscape(metin).replace(/\n/g, "<br>")}</p>`;
+    const html = `${antetHtml}${policeTalepHtml(bilgi)}`;
 
     await transporter.sendMail({
       from: `"${firma.smtp_sender_name || firma.firma_adi}" <${firma.smtp_sender_email || firma.smtp_user}>`,
