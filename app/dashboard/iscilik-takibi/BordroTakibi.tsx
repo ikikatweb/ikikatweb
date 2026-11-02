@@ -49,6 +49,8 @@ import {
 } from "@/lib/supabase/queries/bordro";
 import { getTumPersonelBrutUcretler, brutUcretForAy, aylikBrutTutar } from "@/lib/supabase/queries/personel-brut-ucret";
 import { filtreliSantiyeler as filtreliSantiyelerHelper } from "@/lib/utils/santiye-filtre";
+// Çalışılmayan dönem hesabı ORTAK: ana ekrandaki "dönem başladı" uyarısı da aynı kaynağı kullanır.
+import { calisilmayanBasladiMi } from "@/lib/utils/calisilmayan-donem";
 import {
   getPendingMailler,
   insertPendingMail,
@@ -109,50 +111,6 @@ type Firma = {
   smtp_user?: string | null;
   smtp_password?: string | null;
 };
-
-// Çalışılmayan dönem HER YIL TEKRAR EDER (yıl yok, "AA-GG" gün-ay). Seçili ayın (YYYY-MM) ayı, bu tekrar eden
-// aralığın aylarına düşüyorsa o şantiyedeki personeller bordroda gri+italik gösterilir. Yıl dönümünü saran
-// aralıkları da (ör. Aralık→Şubat, bas ayı > bit ayı) doğru kapsar. Tek uç girilmişse diğer yön açık kabul edilir.
-function ayCalisilmayanMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
-  const ay = Number(seciliAy.split("-")[1]);
-  if (!ay) return false;
-  const ayOf = (v: string | null | undefined): number | null => { const m = Number((v ?? "").split("-")[0]); return m >= 1 && m <= 12 ? m : null; };
-  const bA = ayOf(bas), tA = ayOf(bit);
-  if (bA == null && tA == null) return false;      // hiç geçerli ay yok
-  const basAy = bA ?? 1;                            // tek uç girildiyse diğer yön açık
-  const bitAy = tA ?? 12;
-  return basAy <= bitAy ? (ay >= basAy && ay <= bitAy) : (ay >= basAy || ay <= bitAy);
-}
-
-/** Seçili ayda çalışılmayan dönem BAŞLADI mi? (satırı gri+italik yapan ölçü)
- *
- *  ayCalisilmayanMi yalnız AY'a baktığı için, dönem 25 Kasım'da başlasa bile Kasım'ın
- *  1'inden itibaren herkes gri görünüyordu — henüz çalışılıyorken. Burada GÜNE de bakılır:
- *    - İçinde bulunduğumuz ay  → ayın 1'i ile BUGÜN arasına dönemden bir gün düşüyor mu?
- *    - Geçmiş/gelecek ay      → ayın tamamına bakılır (o ay fiilen dönem içinde geçmiş/geçecek)
- *  İş adının yanındaki dönem rozeti de aynı ölçüyü kullanır: gri satırla birlikte,
- *  tam başlangıç gününde çıkar. */
-function calisilmayanBasladiMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
-  if (!ayCalisilmayanMi(bas, bit, seciliAy)) return false;
-  const [yil, ay] = seciliAy.split("-").map(Number);
-  if (!yil || !ay) return false;
-  const ayGunu = (v: string | null | undefined): number | null => {
-    const [m, g] = (v ?? "").split("-").map(Number);
-    return m >= 1 && m <= 12 && g >= 1 && g <= 31 ? m * 100 + g : null;
-  };
-  const b = ayGunu(bas) ?? 101;    // tek uç girildiyse diğer yön açık
-  const t = ayGunu(bit) ?? 1231;
-  const donemde = (gun: number) => {
-    const ag = ay * 100 + gun;
-    return b <= t ? (ag >= b && ag <= t) : (ag >= b || ag <= t);
-  };
-  const sonGun = new Date(yil, ay, 0).getDate();
-  const bugun = yerelBugun();
-  // Bugün bu ayın içindeyse tarama bugünde durur; değilse ayın tamamı taranır.
-  const son = bugun.slice(0, 7) === seciliAy ? Number(bugun.slice(8, 10)) : sonGun;
-  for (let g = 1; g <= son; g++) if (donemde(g)) return true;
-  return false;
-}
 
 // Bekleyen değişiklik kaydı (mail kuyruğu için)
 type PendingChange = {

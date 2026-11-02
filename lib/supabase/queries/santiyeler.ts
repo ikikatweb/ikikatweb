@@ -29,6 +29,33 @@ export async function getSantiyelerBasic() {
   return data;
 }
 
+/** Çalışılmayan dönemi TANIMLI işler — ana ekran "dönem başladı" uyarısı için.
+ *  Uyarı her sayfa açılışında sorulacağı için getSantiyelerAll'ın ağır seçimi yerine
+ *  yalnız gereken dört kolon çekilir. Tamamlanmış/tasfiye işler elenir: biten işte
+ *  çalışılmayan dönemin başlaması bir şey ifade etmez. */
+export type CalisilmayanDonemRow = {
+  id: string; is_adi: string;
+  calisilmayan_bas: string | null; calisilmayan_bit: string | null;
+};
+export async function getCalisilmayanDonemliSantiyeler(): Promise<CalisilmayanDonemRow[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("santiyeler")
+    .select("id, is_adi, calisilmayan_bas, calisilmayan_bit, durum, gecici_kabul_tarihi, kesin_kabul_tarihi, tasfiye_tarihi, devir_tarihi")
+    .eq("durum", "aktif")
+    .not("calisilmayan_bas", "is", null)
+    .order("is_adi", { ascending: true });
+  if (error) throw error;
+  const bitmis = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+  return ((data ?? []) as Record<string, unknown>[])
+    .filter((r) => !bitmis(r.gecici_kabul_tarihi) && !bitmis(r.kesin_kabul_tarihi) && !bitmis(r.tasfiye_tarihi) && !bitmis(r.devir_tarihi))
+    .map((r) => ({
+      id: r.id as string, is_adi: r.is_adi as string,
+      calisilmayan_bas: (r.calisilmayan_bas as string | null) ?? null,
+      calisilmayan_bit: (r.calisilmayan_bit as string | null) ?? null,
+    }));
+}
+
 export type SantiyeAllRow = {
   id: string; is_adi: string; durum: string;
   gecici_kabul_tarihi: string | null; kesin_kabul_tarihi: string | null; tasfiye_tarihi: string | null; devir_tarihi: string | null;

@@ -64,9 +64,12 @@ export default function GeciciKabulPrimHatirlatma({
     const anahtar = uyariAnahtari("gecici-kabul-prim", evrakId);
     setGizleniyor(true);
     try {
-      setGizlenenler(await uyariGizle(anahtar));
+      const { gizlenenler, kayitHatasi } = await uyariGizle(anahtar);
+      setGizlenenler(gizlenenler);
       setOnayBekleyen(null);
       toast.success("Uyarı bu kullanıcı için kapatıldı.");
+      // Onay günlüğü tutulamadıysa söyle — kapandı sanılıp izi hiç kalmamasın.
+      if (kayitHatasi) toast.error(`Onay kaydı tutulamadı: ${kayitHatasi}`, { duration: 8000 });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Uyarı kapatılamadı.");
     } finally { setGizleniyor(false); }

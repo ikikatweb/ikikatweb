@@ -42,6 +42,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
+import CalisilmayanDonemHatirlatma from "@/components/shared/calisilmayan-donem-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
@@ -1863,6 +1864,8 @@ export default function DashboardPage() {
 
       <YedekHatirlatma />
       <BordroHatirlatma />
+      {/* Çalışılmayan dönemi bugün başlayan/süren işler — yalnız yönetici ve şantiye yöneticisi görür. */}
+      <CalisilmayanDonemHatirlatma />
       <BildirgeHatirlatma />
       <IscilikBilgiHatirlatma />
       {/* SGK prim dengesi: bitime kadar dolmayacak işler + primi dolduğu hâlde

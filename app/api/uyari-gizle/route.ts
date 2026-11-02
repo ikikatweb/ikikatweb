@@ -5,6 +5,10 @@
 // kullanıcı id'si KABUL EDİLMEZ — yoksa bir kullanıcı başkasının uyarısını kapatabilirdi.
 //
 // Anahtar biçimi: "<uyari-tipi>:<kayit-id>" (ör. "gecici-kabul-prim:<evrakId>").
+//
+// Her basış ayrıca uyari_onaylari günlüğüne yazılır (kim, ne zaman). Günlük yazılamazsa
+// işlem geri alınmaz ama SESSİZ GEÇİLMEZ: yanıtta kayitHatasi döner, arayüz uyarır —
+// "kim onayladı" bilgisinin tutulduğu sanılıp aslında hiç tutulmaması en kötüsü olurdu.
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -58,5 +62,22 @@ export async function POST(request: Request) {
     .eq("id", (kayit as { id: string }).id);
   if (yazErr) return NextResponse.json({ error: yazErr.message }, { status: 500 });
 
-  return NextResponse.json({ gizlenen_uyarilar: yeni });
+  // GÜNLÜK: kim, hangi uyarıyı, ne zaman kapattı/açtı (sql/uyari_onaylari.sql).
+  let kayitHatasi: string | null = null;
+  const { data: kisi } = await supabase
+    .from("kullanicilar").select("id, ad_soyad").eq("auth_id", user.id).maybeSingle();
+  const { error: logErr } = await supabase.from("uyari_onaylari").insert({
+    tip: anahtar.split(":")[0],
+    anahtar,
+    kullanici_id: (kisi as { id?: string } | null)?.id ?? null,
+    kullanici_ad: (kisi as { ad_soyad?: string } | null)?.ad_soyad ?? null,
+    geri_alindi: !!geriAl,
+  });
+  if (logErr) {
+    kayitHatasi = /uyari_onaylari/.test(logErr.message) && /does not exist|schema cache/i.test(logErr.message)
+      ? "uyari_onaylari tablosu yok — sql/uyari_onaylari.sql çalıştırılmalı."
+      : logErr.message;
+  }
+
+  return NextResponse.json({ gizlenen_uyarilar: yeni, kayitHatasi });
 }
