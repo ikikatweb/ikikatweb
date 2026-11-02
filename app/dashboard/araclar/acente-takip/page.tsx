@@ -483,7 +483,26 @@ export default function AcenteTakipPage() {
               alindi.add(t.acente_adi);
               enIyiler.push(t);
             }
-            const tk = tumTeklifler ? hepsi : enIyiler;
+            // YEŞİL = POLİÇESİ YAPTIRILAN teklif. Eskiden en ucuz yeşildi; ekrana bakan
+            // "hangisini aldık" sorusunun cevabını göremiyordu. Eşleşme poliçenin sigorta
+            // firması + acentesiyle; aynı ikiliden birden çok teklif varsa tutarı poliçeye
+            // en yakın olan.
+            const police = policeler.find((x) => x.id === teklifGor.policeId) ?? null;
+            const duzle = (v: string | null | undefined) => (v ?? "").trim().toLocaleLowerCase("tr");
+            const adaylar = police
+              ? hepsi.filter((t) => duzle(t.sigorta_firmasi) === duzle(police.sigorta_firmasi)
+                  && duzle(t.acente_adi) === duzle(police.acente))
+              : [];
+            const yapilan = adaylar.length
+              ? adaylar.reduce((en, t) =>
+                  Math.abs(t.teklif_tutari - (police?.tutar ?? 0)) < Math.abs(en.teklif_tutari - (police?.tutar ?? 0)) ? t : en)
+              : null;
+            // Yaptırılan teklif, acentesinin en ucuzu olmasa bile kısa listede DURUR —
+            // yoksa "hangisini aldık" satırı yalnız "tümünü göster"de görünürdü.
+            const kisaListe = yapilan && !enIyiler.some((t) => t.id === yapilan.id)
+              ? [...enIyiler, yapilan].sort((a, b) => a.teklif_tutari - b.teklif_tutari)
+              : enIyiler;
+            const tk = tumTeklifler ? hepsi : kisaListe;
             return hepsi.length === 0 ? (
               <p className="text-sm text-gray-400 py-6 text-center">Bu poliçe için teklif kaydı yok.</p>
             ) : (
@@ -492,23 +511,31 @@ export default function AcenteTakipPage() {
                   <p className="text-[13px] text-gray-500">
                     {hepsi.length} teklif · {firmaSayisi} firma · {acenteSayisi} acente
                   </p>
-                  {hepsi.length > enIyiler.length && (
+                  {hepsi.length > kisaListe.length && (
                     <button type="button" onClick={() => setTumTeklifler((v) => !v)}
                       className={`ml-auto rounded-full border px-3 py-1 text-[12px] font-semibold ${tumTeklifler ? "border-[#1E3A5F] bg-[#1E3A5F] text-white" : "border-gray-300 bg-white text-gray-600 hover:border-gray-500"}`}>
-                      {tumTeklifler ? `Yalnız en uygunlar (${enIyiler.length})` : `Tümünü göster (${hepsi.length})`}
+                      {tumTeklifler ? `Yalnız en uygunlar (${kisaListe.length})` : `Tümünü göster (${hepsi.length})`}
                     </button>
                   )}
                 </div>
                 {tk.map((t, i) => {
                   const digerAdet = (acenteAdet.get(t.acente_adi) ?? 1) - 1;
                   const uc = t.teklif_tutari === enUcuz;
+                  const alindi = yapilan?.id === t.id;
                   return (
-                    <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${uc ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200"}`}>
+                    <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${alindi ? "bg-emerald-50 border-emerald-400" : "bg-white border-gray-200"}`}>
                       <span className="w-5 shrink-0 pt-0.5 text-center text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[15px] font-semibold leading-tight text-[#1E3A5F]">{t.sigorta_firmasi || "Firma belirtilmemiş"}</span>
-                          {uc && <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">EN UYGUN</span>}
+                          {alindi && (
+                            <span title="Poliçe bu tekliften yapıldı"
+                              className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">POLİÇE BU</span>
+                          )}
+                          {/* "En uygun" bilgi olarak kalır ama RENKSİZ: yeşil yalnız alınan tekliftir. */}
+                          {uc && !alindi && (
+                            <span className="shrink-0 rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">en uygun</span>
+                          )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>{t.acente_adi}</span>
@@ -540,7 +567,7 @@ export default function AcenteTakipPage() {
                           );
                         })()}
                       </div>
-                      <span className={`shrink-0 text-[17px] font-bold tabular-nums ${uc ? "text-emerald-700" : "text-gray-800"}`}>
+                      <span className={`shrink-0 text-[17px] font-bold tabular-nums ${alindi ? "text-emerald-700" : "text-gray-800"}`}>
                         {formatPara(t.teklif_tutari)} <span className="text-xs font-semibold">₺</span>
                       </span>
                     </div>
