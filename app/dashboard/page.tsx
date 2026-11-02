@@ -3222,6 +3222,10 @@ export default function DashboardPage() {
                             : (t.notlar ?? t.mail_konu ?? "");
                           const aciklama = onizleme.length > 150 ? onizleme.slice(0, 150) + "…" : onizleme;
                           const onay = onayBilgi(t.onay_durumu);
+                          // POLİÇELEŞTİRME İSTENDİKTEN SONRA diğer teklifler artık geçerli değil.
+                          // Satır soldurulur (grayscale içerideki bütün rozetleri de soldurur, ayrı ayrı
+                          // renk geçmeye gerek kalmaz). Üstüne gelince gerçek renkleriyle okunabilir.
+                          const pasif = !!talepGonderilen && !t.police_talep_tarihi;
                           return (
                             <div key={t.id}
                               onContextMenu={(e) => { e.preventDefault(); menuAc(t, e.clientX, e.clientY); }}
@@ -3246,6 +3250,7 @@ export default function DashboardPage() {
                               // iOS parmak basılı tutunca kendi metin seçme balonunu açıyordu.
                               style={{ WebkitTouchCallout: "none" }}
                               className={`select-none rounded-lg border px-3 py-3 flex items-start gap-3 transition ${
+                                pasif ? "grayscale opacity-60 hover:grayscale-0 hover:opacity-100 " : ""}${
                                 t.police_talep_tarihi ? "border-blue-400 bg-blue-50"
                                 : enUcuz ? "border-emerald-400 bg-emerald-50/70"
                                 : t.onay_durumu === "uyari" ? "border-red-200 bg-red-50/40 hover:border-red-400"
@@ -3256,6 +3261,12 @@ export default function DashboardPage() {
                                   <span className="text-[17px] font-semibold text-[#1E3A5F] leading-tight">
                                     {t.sigorta_firmasi ?? "Firma belirtilmemiş"}
                                   </span>
+                                  {pasif && (
+                                    <span title={`Poliçeleştirme ${talepGonderilen?.sigorta_firmasi ?? "başka teklif"} için istendi — bu teklif artık geçerli değil`}
+                                      className="rounded border border-gray-300 bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5">
+                                      pasif
+                                    </span>
+                                  )}
                                   {onay && (
                                     <span title={onay.ipucu} className={`rounded border text-[10px] font-bold px-1.5 py-0.5 ${onay.sinif}`}>
                                       {onay.im} {onay.yazi}
