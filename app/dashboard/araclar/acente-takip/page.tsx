@@ -532,9 +532,10 @@ export default function AcenteTakipPage() {
                             <span title="Poliçe bu tekliften yapıldı"
                               className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">POLİÇE BU</span>
                           )}
-                          {/* "En uygun" bilgi olarak kalır ama RENKSİZ: yeşil yalnız alınan tekliftir. */}
+                          {/* En ucuz teklif yine yeşil rozetle işaretli; RENKSİZ olan satırın
+                              kendisi — zemin yeşili yalnız poliçesi yapılan teklifte. */}
                           {uc && !alindi && (
-                            <span className="shrink-0 rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600">en uygun</span>
+                            <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">EN UYGUN</span>
                           )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
