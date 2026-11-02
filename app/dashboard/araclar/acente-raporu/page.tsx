@@ -74,7 +74,9 @@ export default function AcenteRaporuPage() {
   const [acenteSiraMap, setAcenteSiraMap] = useState<Map<string, number>>(new Map());
   const [sirketSiraMap, setSirketSiraMap] = useState<Map<string, number>>(new Map());
   // Aktif/Pasif filtresi — varsayılan: aktif (bitis_tarihi >= bugün)
-  const [pasifGoster, setPasifGoster] = useOturumFiltresi("acente-raporu:pasif", false);
+  // Varsayılan AÇIK: rapor açılınca bitişi geçmiş poliçeler de görünür — acentenin
+  // geçmişi bir bütün, süresi dolmuş poliçeyi gizlemek tabloyu eksik gösteriyordu.
+  const [pasifGoster, setPasifGoster] = useOturumFiltresi("acente-raporu:pasif", true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
