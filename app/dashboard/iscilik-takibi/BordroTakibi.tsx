@@ -124,6 +124,36 @@ function ayCalisilmayanMi(bas: string | null | undefined, bit: string | null | u
   return basAy <= bitAy ? (ay >= basAy && ay <= bitAy) : (ay >= basAy || ay <= bitAy);
 }
 
+/** Seçili ayda çalışılmayan dönem BAŞLADI mi? (satırı gri+italik yapan ölçü)
+ *
+ *  ayCalisilmayanMi yalnız AY'a baktığı için, dönem 25 Kasım'da başlasa bile Kasım'ın
+ *  1'inden itibaren herkes gri görünüyordu — henüz çalışılıyorken. Burada GÜNE de bakılır:
+ *    - İçinde bulunduğumuz ay  → ayın 1'i ile BUGÜN arasına dönemden bir gün düşüyor mu?
+ *    - Geçmiş/gelecek ay      → ayın tamamına bakılır (o ay fiilen dönem içinde geçmiş/geçecek)
+ *  Etiket ("25.11 / 05.03") ayCalisilmayanMi ile gösterilmeye devam eder: dönemin ne zaman
+ *  başlayacağı başlamadan önce de görünmeli, gri olan yalnız satırın kendisi. */
+function calisilmayanBasladiMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
+  if (!ayCalisilmayanMi(bas, bit, seciliAy)) return false;
+  const [yil, ay] = seciliAy.split("-").map(Number);
+  if (!yil || !ay) return false;
+  const ayGunu = (v: string | null | undefined): number | null => {
+    const [m, g] = (v ?? "").split("-").map(Number);
+    return m >= 1 && m <= 12 && g >= 1 && g <= 31 ? m * 100 + g : null;
+  };
+  const b = ayGunu(bas) ?? 101;    // tek uç girildiyse diğer yön açık
+  const t = ayGunu(bit) ?? 1231;
+  const donemde = (gun: number) => {
+    const ag = ay * 100 + gun;
+    return b <= t ? (ag >= b && ag <= t) : (ag >= b || ag <= t);
+  };
+  const sonGun = new Date(yil, ay, 0).getDate();
+  const bugun = yerelBugun();
+  // Bugün bu ayın içindeyse tarama bugünde durur; değilse ayın tamamı taranır.
+  const son = bugun.slice(0, 7) === seciliAy ? Number(bugun.slice(8, 10)) : sonGun;
+  for (let g = 1; g <= son; g++) if (donemde(g)) return true;
+  return false;
+}
+
 // Bekleyen değişiklik kaydı (mail kuyruğu için)
 type PendingChange = {
   id: string;            // benzersiz id (örn. timestamp+random)
@@ -2968,7 +2998,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         firmaAd: firma?.firma_adi ?? "(Firma atanmamış)",
         santiyeId: sant.id,
         santiyeAd: sant.is_adi,
-        calisilmayan: ayCalisilmayanMi(sant.calisilmayan_bas, sant.calisilmayan_bit, seciliAy),
+        calisilmayan: calisilmayanBasladiMi(sant.calisilmayan_bas, sant.calisilmayan_bit, seciliAy),
         adSoyad: personel.ad_soyad,
         isTeknik,
         teknikIsim,
@@ -4572,9 +4602,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     };
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
-    // ÇALIŞILMAYAN DÖNEM: bu şantiyenin çalışılmayan dönemi seçili ayla çakışıyorsa personel gri+italik.
+    // ÇALIŞILMAYAN DÖNEM: dönem BAŞLADIYSA personel gri+italik (başlangıç gününe kadar normal).
     const santiyeKart = !inPasifCol && !inAtanmamisCol ? santiyeler.find((s) => s.id === sutunKey) : undefined;
-    const donemDisi = ayCalisilmayanMi(santiyeKart?.calisilmayan_bas, santiyeKart?.calisilmayan_bit, seciliAy);
+    const donemDisi = calisilmayanBasladiMi(santiyeKart?.calisilmayan_bas, santiyeKart?.calisilmayan_bit, seciliAy);
     // Bordro durumu, atama_gecmisi'ne göre — personel.durum'a bakılmaz.
     // Pasif sütununda gri görünüm uygulanır; diğer sütunlarda normal renk.
     const grileştir = inPasifCol && !isReadOnly;
@@ -5151,9 +5181,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     const tutarHesap = aylikBrutTutar(brutUcretGecmisi, p.id, seciliAy, tutarGun, ucret, atamalar, sutunKey);
     const inPasifCol = sutunKey === PASIF_KEY;
     const inAtanmamisCol = sutunKey === ATANMAMIS_KEY;
-    // ÇALIŞILMAYAN DÖNEM: bu şantiyenin çalışılmayan dönemi seçili ayla çakışıyorsa satır gri+italik.
+    // ÇALIŞILMAYAN DÖNEM: dönem BAŞLADIYSA satır gri+italik (başlangıç gününe kadar normal).
     const santiyeSatir = !inPasifCol && !inAtanmamisCol ? santiyeler.find((s) => s.id === sutunKey) : undefined;
-    const donemDisi = ayCalisilmayanMi(santiyeSatir?.calisilmayan_bas, santiyeSatir?.calisilmayan_bit, seciliAy);
+    const donemDisi = calisilmayanBasladiMi(santiyeSatir?.calisilmayan_bas, santiyeSatir?.calisilmayan_bit, seciliAy);
     // İşten çıkar: atama düzenlemesi → yDuzenle. Geri al: yeni atama → yEkle.
     const showCikis = !inPasifCol && !inAtanmamisCol && yDuzenle;
     const showGeriAl = inPasifCol && yEkle;
