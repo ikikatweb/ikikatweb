@@ -130,8 +130,8 @@ function ayCalisilmayanMi(bas: string | null | undefined, bit: string | null | u
  *  1'inden itibaren herkes gri görünüyordu — henüz çalışılıyorken. Burada GÜNE de bakılır:
  *    - İçinde bulunduğumuz ay  → ayın 1'i ile BUGÜN arasına dönemden bir gün düşüyor mu?
  *    - Geçmiş/gelecek ay      → ayın tamamına bakılır (o ay fiilen dönem içinde geçmiş/geçecek)
- *  Etiket ("25.11 / 05.03") ayCalisilmayanMi ile gösterilmeye devam eder: dönemin ne zaman
- *  başlayacağı başlamadan önce de görünmeli, gri olan yalnız satırın kendisi. */
+ *  İş adının yanındaki dönem rozeti de aynı ölçüyü kullanır: gri satırla birlikte,
+ *  tam başlangıç gününde çıkar. */
 function calisilmayanBasladiMi(bas: string | null | undefined, bit: string | null | undefined, seciliAy: string): boolean {
   if (!ayCalisilmayanMi(bas, bit, seciliAy)) return false;
   const [yil, ay] = seciliAy.split("-").map(Number);
@@ -4761,13 +4761,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       };
       return { bitimTarihi: fmtTr(bitimTarihi), kalanGun };
     })();
-    // Seçili ay çalışılmayan dönem İÇİNDEYSE (başlangıç, bitiş VE aradaki tüm aylar) → iş adının yanında
-    // tam aralığı "GG.AA / GG.AA" olarak göster (ör. 05.12 / 05.03 → 12,1,2,3. aylarda görünür).
+    // Çalışılmayan dönem BAŞLADIYSA iş adının yanında tam aralığı "GG.AA / GG.AA" göster.
+    // Ölçü satırın grisiyle AYNI (calisilmayanBasladiMi): rozet de tam başlangıç gününde çıkar —
+    // 25 Kasım'da başlayan dönem için Kasım'ın 1'inde değil, 25'inde.
     const calDonemEtiket = (() => {
       if (santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY) return null;
       const s = santiyeler.find((x) => x.id === santiyeId);
       if (!s || (!s.calisilmayan_bas && !s.calisilmayan_bit)) return null;
-      if (!ayCalisilmayanMi(s.calisilmayan_bas, s.calisilmayan_bit, seciliAy)) return null;
+      if (!calisilmayanBasladiMi(s.calisilmayan_bas, s.calisilmayan_bit, seciliAy)) return null;
       const ga = (v: string | null | undefined) => { const [m, d] = (v ?? "").split("-"); return `${d || "??"}.${m || "??"}`; }; // "AA-GG" → "GG.AA"
       return `${ga(s.calisilmayan_bas)} / ${ga(s.calisilmayan_bit)}`;
     })();
