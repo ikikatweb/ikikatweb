@@ -3294,6 +3294,34 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
       return lum > 0.6;
     };
+    // Firma rengini beyaza / siyaha doğru karıştırır. PDF'teki altSatirRengi ile AYNI
+    // mantık: her iş grubu, bağlı olduğu firmanın renginin açık tonuyla boyanır; böylece
+    // hangi işin hangi firmaya ait olduğu Excel'de de bir bakışta görülür.
+    //   oran 0 = rengin kendisi, 1 = bembeyaz (acTon) / simsiyah (koyuTon)
+    const karistir = (hex: string, oran: number, hedef: number) => {
+      const h = hex.replace("#", "").trim();
+      const kanal = (i: number) => {
+        const v = parseInt(h.slice(i, i + 2), 16);
+        const y = Math.round(v + (hedef - v) * oran);
+        return Math.max(0, Math.min(255, y)).toString(16).padStart(2, "0");
+      };
+      return ("FF" + kanal(0) + kanal(2) + kanal(4)).toUpperCase();
+    };
+    const acTon = (hex: string, oran: number) => karistir(hex, oran, 255);
+    const koyuTon = (hex: string, oran: number) => karistir(hex, oran, 0);
+    // Zemin üzerinde daha okunur olanı seç: siyah mı, beyaz mı? Eşik yerine gerçek
+    // karşıtlık oranına bakılır — canlı kırmızı gibi orta parlaklıktaki tonlarda eşik
+    // beyazı seçip yazıyı zor okunur bırakıyordu.
+    const zeminYazisi = (argb: string) => {
+      const h = argb.slice(2);
+      const bagil = [0, 2, 4]
+        .map((i) => parseInt(h.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+      const L = 0.2126 * bagil[0] + 0.7152 * bagil[1] + 0.0722 * bagil[2];
+      const beyaz = 1.05 / (L + 0.05);
+      const siyah = (L + 0.05) / 0.05;
+      return siyah > beyaz ? "FF000000" : "FFFFFFFF";
+    };
 
     type Cell = { v: string | number; s?: object };
     const sheet: Record<string, Cell> = {};
@@ -3328,6 +3356,13 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       const firmaRenk = firma?.renk ?? "#1E3A5F";
       const firmaArgb = hexToArgb(firmaRenk);
       const yaziArgb = isLight(firmaRenk) ? "FF000000" : "FFFFFFFF";
+      // İş bandı / tablo başlığı / zebra satırı / hücre çizgisi — hepsi firma renginin tonu.
+      const bantArgb = acTon(firmaRenk, 0.55);
+      const bantYazi = koyuTon(firmaRenk, isLight(firmaRenk) ? 0.72 : 0.55);
+      const basArgb = acTon(firmaRenk, 0.22);
+      const basYazi = zeminYazisi(basArgb);
+      const zebraArgb = acTon(firmaRenk, 0.88);
+      const cizgiArgb = acTon(firmaRenk, 0.62);
       const firmaToplamKisi = Array.from(santiyeMap.values()).reduce((s, l) => s + l.length, 0);
       const firmaToplamGun = Array.from(santiyeMap.values()).flat().reduce((s, r) => s + r.gun, 0);
 
@@ -3342,7 +3377,9 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       for (const [santiyeAd, list] of santiyeMap) {
         const sToplam = list.reduce((s, r) => s + r.gun, 0);
         // Teknik personel listesini şantiye kaydından çek
-        const santiyeKayit = filtreliSantiyeler.find((s) => s.id === list[0]?.santiyeId);
+        // Manuel gün/notla aynı gerekçe: ekrandaki listede olmayan (primı süren geçici
+        // kabullü) işin teknik personel listesi de bulunabilsin diye tüm şantiyelerden aranır.
+        const santiyeKayit = santiyeler.find((s) => s.id === list[0]?.santiyeId);
         const teknikIsimler = santiyeKayit?.teknik_personeller ?? [];
         const santiyeIdAktif = list[0]?.santiyeId ?? "";
         // Atanmış teknik rol key'lerini topla. Key formatı: "isim#index" — isimler İÇİNDE
@@ -3373,10 +3410,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         // İŞ ADI başlığı — her iş grubunu net ayır: belirgin bant + üstünde KALIN çizgi (gruplar arası ayrım).
         for (let c = 0; c < NUM_COLS; c++) {
           setCell(curRow, c, c === 0 ? `▼ ${santiyeAd}  (${list.length} kişi · ${sToplam} gün)` : "", {
-            font: { bold: true, sz: 13, color: { rgb: "FFFFFFFF" } },
+            font: { bold: true, sz: 13, color: { rgb: bantYazi } },
             alignment: { horizontal: "left", vertical: "center" },
-            fill: { fgColor: { rgb: "FF475569" }, patternType: "solid" },
-            border: { top: { style: "medium", color: { rgb: "FF1E3A5F" } } },
+            fill: { fgColor: { rgb: bantArgb }, patternType: "solid" },
+            border: { top: { style: "medium", color: { rgb: firmaArgb } } },
           });
         }
         merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: NUM_COLS - 1 } });
@@ -3396,14 +3433,14 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         const headers = ["Ad Soyad", "", "TC", "Meslek", "İşe Başlama", "İşten Çıkış", "Gün", "Teknik Personel", "Not"];
         for (let c = 0; c < headers.length; c++) {
           setCell(curRow, c, headers[c], {
-            font: { bold: true, sz: 11, color: { rgb: "FFFFFFFF" } },
+            font: { bold: true, sz: 11, color: { rgb: basYazi } },
             alignment: { horizontal: "center", vertical: "center" },
-            fill: { fgColor: { rgb: "FF64748B" }, patternType: "solid" },
+            fill: { fgColor: { rgb: basArgb }, patternType: "solid" },
             border: {
-              top: { style: "thin", color: { rgb: "FF000000" } },
-              bottom: { style: "thin", color: { rgb: "FF000000" } },
-              left: { style: "thin", color: { rgb: "FF000000" } },
-              right: { style: "thin", color: { rgb: "FF000000" } },
+              top: { style: "thin", color: { rgb: firmaArgb } },
+              bottom: { style: "thin", color: { rgb: firmaArgb } },
+              left: { style: "thin", color: { rgb: firmaArgb } },
+              right: { style: "thin", color: { rgb: firmaArgb } },
             },
           });
         }
@@ -3411,7 +3448,7 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
 
         for (let i = 0; i < list.length; i++) {
           const r = list[i];
-          const bgArgb = i % 2 === 0 ? "FFFFFFFF" : "FFF1F5F9";
+          const bgArgb = i % 2 === 0 ? "FFFFFFFF" : zebraArgb;
           // 9 sütun: Ad Soyad | (Teknik) | TC | Meslek | İşe Başlama | İşten Çıkış | Gün | Teknik Personel | Not
           const teknikEtiket = r.isTeknik ? "(Teknik Personel)" : "";
           const teknikIsimVal = r.teknikIsim ?? "";
@@ -3431,10 +3468,10 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
               alignment: { horizontal: c === 6 ? "right" : "left", vertical: "center", wrapText: c === 8 },
               fill: { fgColor: { rgb: bgArgb }, patternType: "solid" },
               border: {
-                top: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                bottom: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                left: { style: "thin", color: { rgb: "FFD1D5DB" } },
-                right: { style: "thin", color: { rgb: "FFD1D5DB" } },
+                top: { style: "thin", color: { rgb: cizgiArgb } },
+                bottom: { style: "thin", color: { rgb: cizgiArgb } },
+                left: { style: "thin", color: { rgb: cizgiArgb } },
+                right: { style: "thin", color: { rgb: cizgiArgb } },
               },
             });
           }
