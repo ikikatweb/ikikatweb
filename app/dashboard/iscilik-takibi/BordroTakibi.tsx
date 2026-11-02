@@ -3021,11 +3021,16 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
         teknikIsim: ilk.teknikIsim,
       });
     }
-    // Manuel gün override — manuel girilen değer de aynı bordro kuralına tabi
+    // Manuel gün override — manuel girilen değer de aynı bordro kuralına tabi.
+    // ŞANTİYE, EXPORT KAPSAMINDAN (santiyeIds) ARANIR, filtreliSantiyeler'den DEĞİL:
+    // geçici kabulü yapılmış ama primi devam eden işler Bordro sekmesinde listede olmadığı
+    // hâlde export'a ekleniyor (yukarıdaki prim bloku). filtreliSantiyeler'de aranması
+    // yüzünden o işlerin manuel günleri sessizce düşüyor, takvimden hesaplanan ham gün
+    // gidiyordu: ekranda 1 gün yazan personel bordro mailinde 15 gün çıkıyordu.
     for (const m of manuelGunler) {
       if (m.ay !== seciliAy) continue;
       const personel = personeller.find((p) => p.id === m.personel_id);
-      const sant = filtreliSantiyeler.find((s) => s.id === m.santiye_id);
+      const sant = santiyeIds.has(m.santiye_id) ? santiyeler.find((s) => s.id === m.santiye_id) : undefined;
       if (!personel || !sant) continue;
       const key = `${personel.tc_kimlik_no || personel.ad_soyad}:${sant.id}`;
       const idx = rows.findIndex((r) => `${r.tc || r.adSoyad}:${r.santiyeId}` === key);
@@ -3037,7 +3042,8 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
     // Bilgi notlarını uygula (ay-bağımsız — kalıcı not, her ay görünür)
     for (const n of bilgiNotlari) {
       const personel = personeller.find((p) => p.id === n.personel_id);
-      const sant = filtreliSantiyeler.find((s) => s.id === n.santiye_id);
+      // Manuel günle aynı gerekçe: not da export kapsamındaki işten aranır.
+      const sant = santiyeIds.has(n.santiye_id) ? santiyeler.find((s) => s.id === n.santiye_id) : undefined;
       if (!personel || !sant) continue;
       const key = `${personel.tc_kimlik_no || personel.ad_soyad}:${sant.id}`;
       const idx = rows.findIndex((r) => `${r.tc || r.adSoyad}:${r.santiyeId}` === key);
