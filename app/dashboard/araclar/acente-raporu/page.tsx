@@ -41,6 +41,7 @@ type PoliceDetay = {
   baslangic: string | null;
   bitis: string | null;
   tutar: number;
+  pasif: boolean;   // bitişi geçmiş poliçe
 };
 
 type SirketOzet = {
@@ -57,7 +58,14 @@ type AcenteOzet = {
   kaskoTutar: number;
   trafikTutar: number;
   toplam: number;
+  aktif: boolean;   // yürürlükte en az bir poliçesi var mı
 };
+
+/** Acente AKTİF sayılır: süresi dolmamış (ya da bitişi girilmemiş) en az bir poliçesi varsa.
+ *  Hepsi bitmişse acente pasiftir — kartı gri gösterilir ve listenin altına iner. */
+function aktifMi(sirketler: SirketOzet[]): boolean {
+  return sirketler.some((s) => s.policeler.some((pd) => !pd.pasif));
+}
 
 export default function AcenteRaporuPage() {
   const { kullanici, isYonetici } = useAuth();
@@ -181,6 +189,7 @@ export default function AcenteRaporuPage() {
         baslangic: p.baslangic_tarihi,
         bitis: p.bitis_tarihi,
         tutar,
+        pasif: !!p.bitis_tarihi && p.bitis_tarihi < bugun,
       });
     }
 
@@ -206,6 +215,7 @@ export default function AcenteRaporuPage() {
         kaskoTutar,
         trafikTutar,
         toplam: kaskoTutar + trafikTutar,
+        aktif: aktifMi(sirketler),
       });
     }
 
@@ -253,12 +263,20 @@ export default function AcenteRaporuPage() {
             kaskoTutar: kaskoT,
             trafikTutar: trafikT,
             toplam: kaskoT + trafikT,
+            // Aramada poliçelerin bir kısmı elendiği için aktiflik KALANLARA göre
+            // yeniden hesaplanır; yoksa tek bir eski poliçeyle süzülen acente
+            // hâlâ aktif görünürdü.
+            aktif: aktifMi(yeniSirketler),
           };
         })
         .filter((o): o is AcenteOzet => o !== null);
     }
-    // Acenteler: tanımlamalardaki sıraya göre (Yönetim > Tanımlamalar > sigorta_acente)
+    // Sıra: önce AKTİF acenteler, altında pasifler. Her grup kendi içinde toplam
+    // tutara göre küçükten büyüğe. (Tanımlamalardaki el sırası yalnız tutarlar eşitse
+    // devreye girer — liste artık "kimle ne kadar iş yapılmış" sorusuna göre diziliyor.)
     return filtered.sort((a, b) => {
+      if (a.aktif !== b.aktif) return a.aktif ? -1 : 1;
+      if (a.toplam !== b.toplam) return a.toplam - b.toplam;
       const sa = acenteSiraMap.get(a.acente.trim()) ?? Number.MAX_SAFE_INTEGER;
       const sb = acenteSiraMap.get(b.acente.trim()) ?? Number.MAX_SAFE_INTEGER;
       if (sa !== sb) return sa - sb;
@@ -499,9 +517,16 @@ export default function AcenteRaporuPage() {
             // Acentenin kendi rengi olmadığından, sıraya göre renk paleti uygulanır.
             // Bordro takibindeki firma kartlarıyla aynı görsel dil.
             const fallbackRenkler = ["#1E3A5F", "#7c3aed", "#dc2626", "#059669", "#d97706", "#0891b2", "#be185d", "#0d9488"];
-            return ozetler.map((o, aIdx) => {
+            const PASIF_RENK = "#64748b"; // slate-500 — yürürlükte poliçesi kalmamış acente
+            // Palet YALNIZ aktiflere dağıtılır: pasifler araya renk harcamasın, renkler
+            // aktif acenteler arasında ayırt edici kalsın.
+            const aktifSira = new Map<string, number>();
+            ozetler.filter((o) => o.aktif).forEach((o, i) => aktifSira.set(o.acente, i));
+            return ozetler.map((o) => {
               const acenteAcik = !!acikAcenteler[o.acente];
-              const acenteRenk = fallbackRenkler[aIdx % fallbackRenkler.length];
+              const acenteRenk = o.aktif
+                ? fallbackRenkler[(aktifSira.get(o.acente) ?? 0) % fallbackRenkler.length]
+                : PASIF_RENK;
               return (
                 <div key={`a-${o.acente}`} className="rounded-lg overflow-hidden shadow-md ring-1 ring-gray-200">
                   {/* Acente başlığı — gradient renkli kart */}
@@ -515,7 +540,15 @@ export default function AcenteRaporuPage() {
                       : <ChevronRight size={20} className="text-white flex-shrink-0" />}
                     <Building2 size={18} className="text-white flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <h2 className="font-bold text-base text-white truncate" title={o.acente}>{o.acente}</h2>
+                      <h2 className="font-bold text-base text-white truncate flex items-center gap-1.5" title={o.acente}>
+                        <span className="truncate">{o.acente}</span>
+                        {!o.aktif && (
+                          <span title="Bu acentede yürürlükte poliçe kalmadı — hepsinin süresi dolmuş"
+                            className="shrink-0 rounded bg-white/25 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                            pasif
+                          </span>
+                        )}
+                      </h2>
                       <div className="text-[10px] text-white/80 font-mono mt-0.5 truncate">
                         Kasko: <span className="text-white font-semibold">{formatPara(o.kaskoTutar)}</span>
                         <span className="mx-2 text-white/40">•</span>
