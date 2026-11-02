@@ -544,16 +544,7 @@ export default function AcenteTakipPage() {
                   const alindi = yapilan?.id === t.id;
                   return (
                     <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${alindi ? "bg-emerald-50 border-emerald-400" : "bg-white border-gray-200"}`}>
-                      {/* Solda sıra ve TEKLİFİN GELDİĞİ TARİH — hangi teklif ne zaman gelmiş,
-                          başlıktaki isteme tarihiyle birlikte sürecin zamanı okunur olsun. */}
-                      <div className="w-[52px] shrink-0 pt-0.5 text-center">
-                        <div className="text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</div>
-                        {(t.teklif_tarihi || t.mail_tarih) && (
-                          <div className="mt-0.5 text-[10.5px] leading-tight text-gray-400 tabular-nums">
-                            {formatTarih((t.teklif_tarihi ?? t.mail_tarih ?? "").slice(0, 10))}
-                          </div>
-                        )}
-                      </div>
+                      <span className="w-5 shrink-0 pt-0.5 text-center text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[15px] font-semibold leading-tight text-[#1E3A5F]">{t.sigorta_firmasi || "Firma belirtilmemiş"}</span>
