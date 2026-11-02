@@ -76,6 +76,9 @@ export default function AcenteTakipPage() {
   const [teklifGor, setTeklifGor] = useState<{ policeId: string; plaka: string; tip: string } | null>(null);
   // Uzun mail metni satırı şişiriyordu: not iki satırda kesilir, istenirse açılır.
   const [acikNotlar, setAcikNotlar] = useState<Record<string, boolean>>({});
+  // Varsayılan: her acentenin YALNIZ en uygun teklifi. Bir acente tek mailde 14 firma
+  // gönderebiliyor; hepsi alt alta dizilince karşılaştırılacak rakam kayboluyordu.
+  const [tumTeklifler, setTumTeklifler] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -456,7 +459,7 @@ export default function AcenteTakipPage() {
       )}
 
       {/* Gelen Teklifler (poliçeye bağlı) — görüntüle */}
-      <Dialog open={!!teklifGor} onOpenChange={(o) => { if (!o) { setTeklifGor(null); setAcikNotlar({}); } }}>
+      <Dialog open={!!teklifGor} onOpenChange={(o) => { if (!o) { setTeklifGor(null); setAcikNotlar({}); setTumTeklifler(false); } }}>
         {/* GENİŞ pencere: dar kutuda firma adı, acente ve not kırpılıyor, TUTAR hiç
             görünmüyordu — teklifleri karşılaştırmak için açılan pencerede rakam yoktu. */}
         {/* sm:max-w-2xl — DialogContent'in kendi sm:max-w-sm kuralı medya sorgulu olduğu
@@ -466,18 +469,38 @@ export default function AcenteTakipPage() {
             <DialogTitle>Gelen Teklifler — {teklifGor?.plaka} {teklifGor?.tip}</DialogTitle>
           </DialogHeader>
           {teklifGor && (() => {
-            const tk = teklifByPolice.get(teklifGor.policeId) ?? [];
-            const enUcuz = tk.length ? tk[0].teklif_tutari : null;
-            const firmaSayisi = new Set(tk.map((t) => t.sigorta_firmasi ?? "")).size;
-            const acenteSayisi = new Set(tk.map((t) => t.acente_adi)).size;
-            return tk.length === 0 ? (
+            const hepsi = teklifByPolice.get(teklifGor.policeId) ?? [];
+            const enUcuz = hepsi.length ? hepsi[0].teklif_tutari : null;
+            const firmaSayisi = new Set(hepsi.map((t) => t.sigorta_firmasi ?? "")).size;
+            const acenteSayisi = new Set(hepsi.map((t) => t.acente_adi)).size;
+            // Liste ucuzdan pahalıya sıralı: her acentenin İLK satırı onun en uygunu.
+            const acenteAdet = new Map<string, number>();
+            for (const t of hepsi) acenteAdet.set(t.acente_adi, (acenteAdet.get(t.acente_adi) ?? 0) + 1);
+            const enIyiler: typeof hepsi = [];
+            const alindi = new Set<string>();
+            for (const t of hepsi) {
+              if (alindi.has(t.acente_adi)) continue;
+              alindi.add(t.acente_adi);
+              enIyiler.push(t);
+            }
+            const tk = tumTeklifler ? hepsi : enIyiler;
+            return hepsi.length === 0 ? (
               <p className="text-sm text-gray-400 py-6 text-center">Bu poliçe için teklif kaydı yok.</p>
             ) : (
               <div className="space-y-1.5 py-1">
-                <p className="text-[13px] text-gray-500">
-                  {tk.length} teklif · {firmaSayisi} firma · {acenteSayisi} acente
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[13px] text-gray-500">
+                    {hepsi.length} teklif · {firmaSayisi} firma · {acenteSayisi} acente
+                  </p>
+                  {hepsi.length > enIyiler.length && (
+                    <button type="button" onClick={() => setTumTeklifler((v) => !v)}
+                      className={`ml-auto rounded-full border px-3 py-1 text-[12px] font-semibold ${tumTeklifler ? "border-[#1E3A5F] bg-[#1E3A5F] text-white" : "border-gray-300 bg-white text-gray-600 hover:border-gray-500"}`}>
+                      {tumTeklifler ? `Yalnız en uygunlar (${enIyiler.length})` : `Tümünü göster (${hepsi.length})`}
+                    </button>
+                  )}
+                </div>
                 {tk.map((t, i) => {
+                  const digerAdet = (acenteAdet.get(t.acente_adi) ?? 1) - 1;
                   const uc = t.teklif_tutari === enUcuz;
                   return (
                     <div key={t.id} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${uc ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200"}`}>
@@ -487,8 +510,12 @@ export default function AcenteTakipPage() {
                           <span className="text-[15px] font-semibold leading-tight text-[#1E3A5F]">{t.sigorta_firmasi || "Firma belirtilmemiş"}</span>
                           {uc && <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">EN UYGUN</span>}
                         </div>
-                        <div className="mt-1">
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <span className={`rounded border px-1.5 py-0.5 text-[12px] font-semibold ${acenteRengi(t.acente_adi)}`}>{t.acente_adi}</span>
+                          {/* Kaç teklifi gizlendi — "tümünü göster"in neyi açacağı belli olsun. */}
+                          {!tumTeklifler && digerAdet > 0 && (
+                            <span className="text-[11.5px] text-gray-400">bu acentenin {digerAdet} teklifi daha var</span>
+                          )}
                         </div>
                         {/* Not KIRPILMAZ: "şu şartla", "taksitli" gibi bilgiler tam da burada
                             yazıyor ve tek satıra sığmadığı için okunmuyordu. */}
