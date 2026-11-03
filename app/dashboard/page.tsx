@@ -1917,9 +1917,11 @@ export default function DashboardPage() {
           puantaj, yakıt, kira, bakım tablolarını 1000'erlik sayfalarla baştan sona çekip
           topluyordu. Dashboard'ın kendi sorgularıyla aynı anda koşunca havuzu tıkıyordu.
           Rapor duruyor: Sezon Maliyeti sayfası (/dashboard/maliyet-raporu) açıldığında hesaplanır. */}
-      {/* items-start: kart, satırdaki en uzun karta göre UZAMASIN — içeriği kadar bitsin.
-          Eskiden kısa tablolu kartın (ör. Kasa) altında kocaman beyaz boşluk kalıyordu. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
+      {/* Kartlar satırdaki en uzun karta göre UZAR (ızgaranın varsayılanı, items-start YOK):
+          kutular birbirine simetrik dursun. 02.11.2026'da items-start denendi — kısa kartın
+          içindeki boşluk gitti ama kartlar farklı yerlerde bittiği için ana sayfa tırtıklı
+          göründü; 03.11.2026'da geri alındı. Tercih SİMETRİ yönünde, tekrar denemeyin. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Widget 1: Yi-ÜFE Endeksler (sol üst) — iki kart yan yana */}
         {wg("yiufe") ? <div className={`bg-white rounded-xl border p-4 lg:order-1 ${SPAN[yiufeSpan]}`}>
           <div className="flex items-center gap-2 mb-3">
@@ -2347,7 +2349,8 @@ export default function DashboardPage() {
 
         {/* ▼ İcra Takibi + Kasa + Eksik Evrak — YAN YANA (tam genişlik 3'lü satır) */}
         <div className={`lg:col-span-4 lg:order-3 ${ucluSayi === 0 ? "hidden" : ""}`}>
-          <div className={`grid grid-cols-1 gap-4 items-start ${ICKOL[ucluSayi]}`}>
+          {/* items-start YOK: üç kart aynı boyda bitsin (yukarıdaki nota bakın). */}
+          <div className={`grid grid-cols-1 gap-4 ${ICKOL[ucluSayi]}`}>
             {/* İcra Takibi */}
             {wg("icra_ozet") ? <IcraDashboard /> : null}
             {/* Kasa — Kullanıcı Özeti */}
