@@ -3473,7 +3473,11 @@ export default function DashboardPage() {
                     {/* MAİLİ OKU — acentenin yazdığı şartlar (taksit, vade, kapsam) burada okunur */}
                     {acikTeklifMail && (
                       <Katman><div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3" onClick={() => setAcikTeklifMail(null)}>
-                        <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                        {/* DÜĞMELER ALTTA SABİT: mail metni uzun olunca (alıntılanan yazışma
+                            dipte sürüyor) "Poliçeleştir"e ulaşmak için sayfalarca kaydırmak
+                            gerekiyordu. Kart flex sütun; YALNIZ GÖVDE kayar. */}
+                        <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                          <div className="shrink-0 px-4 pt-4">
                           <div className="text-sm font-semibold text-[#1E3A5F]">
                             {acikTeklifMail.sigorta_firmasi ?? "Firma belirtilmemiş"}
                             {acikTeklifMail.teklif_tutari > 0 && ` — ${para(acikTeklifMail.teklif_tutari)} ₺`}
@@ -3489,10 +3493,12 @@ export default function DashboardPage() {
                           {acikTeklifMail.mail_konu && (
                             <div className="text-xs font-medium text-gray-700 mt-2">{acikTeklifMail.mail_konu}</div>
                           )}
-                          <div className="mt-2 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-800 border-t border-gray-100 pt-2">
+                          </div>
+                          {/* Kayan tek bölüm: mailin gövdesi. */}
+                          <div className="mt-2 flex-1 overflow-y-auto border-t border-gray-100 px-4 pt-2 pb-3 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-gray-800">
                             {mailTemiz(acikTeklifMail.mail_govde)}
                           </div>
-                          <div className="mt-3 flex gap-2">
+                          <div className="shrink-0 flex gap-2 border-t border-gray-200 bg-white p-3">
                             <button type="button"
                               onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); setPoliceTalep(t); }}
                               className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white">
