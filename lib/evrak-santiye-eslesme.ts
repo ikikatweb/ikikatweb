@@ -27,6 +27,30 @@ function htmlSiz(x: string): string {
     .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&#\d+;/g, " ");
 }
 
+// KISALTMALAR — aynı iş iki türlü yazılıyor:
+//   "Tokat Zile Ovası 2. Kısım Arazi Toplulaştırma ve Tarla İçi Geliştirme Hizmetleri"
+//   "Tokat Zile Ovası 2. Kısım A.T. ve T.İ.G.H."
+// Kısaltma noktalı yazıldığı için kelimelere bölününce tek harfler kalıyor ve hiçbir şey
+// eşleşmiyordu. Şantiye adlarında da her iki biçim var ("At Ve Tigh Projesi", "A.T Ve
+// T.İ.G.H"), yani sorun iki yönlü. Burada ikisi de AYNI anahtara çevrilir.
+// Sıra önemli: "AT VE TIGH" kalıbı, tek başına TIGH kuralından ÖNCE çalışmalı.
+const KISALTMALAR: [RegExp, string][] = [
+  [/\bAT\s+VE\s+TIGH\b/g, "ARAZITOPLULASTIRMA VE TARLAICIGELISTIRME"],
+  // Noktalı "A.T." — noktasız "AT" tek başına ALINMAZ, Türkçede ayrı bir kelime.
+  [/\bA\s*\.\s*T\s*\.?/g, "ARAZITOPLULASTIRMA"],
+  [/\bT\s*\.\s*I\s*\.\s*G\s*\.\s*H\s*\.?/g, "TARLAICIGELISTIRME"],
+  [/\bTIGH\b/g, "TARLAICIGELISTIRME"],
+  [/\bARAZI\s+TOPLULASTIR(MA|MASI|ILMASI|ILMASINA)\b/g, "ARAZITOPLULASTIRMA"],
+  [/\bTARLA\s+ICI\s+GELISTIRME\b/g, "TARLAICIGELISTIRME"],
+];
+
+/** Kısaltmayı ve uzun adı aynı anahtara indirger. */
+function kisaltmalariAc(n: string): string {
+  let x = n;
+  for (const [re, yerine] of KISALTMALAR) x = x.replace(re, yerine);
+  return x;
+}
+
 // Hemen her işin adında geçen kelimeler AYIRT ETMEZ; atılır. Yoksa "Bakım Onarım
 // Yapım İşi" ortaklığı iki alakasız şantiyeyi birbirine benzetiyor.
 const DUR = new Set([
@@ -40,7 +64,7 @@ const DUR = new Set([
 
 /** Anlamlı kelimeler: 3 harften kısa ve herkeste geçen kelimeler elenir. */
 function kelimeler(x: string): string[] {
-  return trNorm(x).split(/[^A-Z0-9]+/).filter((k) => k.length >= 3 && !DUR.has(k));
+  return kisaltmalariAc(trNorm(x)).split(/[^A-Z0-9]+/).filter((k) => k.length >= 3 && !DUR.has(k));
 }
 
 export type SantiyeAdi = { id: string; is_adi: string };

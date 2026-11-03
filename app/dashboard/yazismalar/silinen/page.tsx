@@ -319,7 +319,11 @@ export default function SilinenPage() {
                     <TableCell className="px-2 whitespace-nowrap font-mono text-[10px]">{k.evrak_sayi_no}</TableCell>
                     <TableCell className="px-2 max-w-[120px] truncate" title={k.firma_adi ?? ""}>{k.firma_adi ?? "—"}</TableCell>
                     <TableCell className="px-2 max-w-[180px] truncate" title={k.konu}>{k.konu}</TableCell>
-                    <TableCell className="px-2 leading-snug">
+                    {/* Muhatap uzun olabiliyor ("T.C. Devlet Su İşleri Genel Müdürlüğü 7. Şube
+                        Müdürlüğü'ne TOKAT"); sütun sınırlanmayınca tablo yana taşıyor ve
+                        İşlemler sütunu ekranın dışında kalıyordu. Tamamı ipucunda. */}
+                    <TableCell className="px-2 max-w-[220px] truncate leading-snug"
+                      title={k.muhatap ? tekSatirMuhatap(k.muhatap) : ""}>
                       {k.muhatap ? tekSatirMuhatap(k.muhatap) : "—"}
                     </TableCell>
                     <TableCell className="px-2">
