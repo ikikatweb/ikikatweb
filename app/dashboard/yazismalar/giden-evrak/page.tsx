@@ -715,7 +715,9 @@ export default function GidenEvrakPage() {
       >
         {/* pb-0: alttaki sabit Kaydet şeridi kabın tam dibine otursun. DialogContent p-4 ile
               gelince sticky şerit scroll dibinin 16px üstünde takılıyor, altından içerik görünüyordu. */}
-        <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[90vh] overflow-y-auto pb-0">
+        {/* max-h 95vh: 90vh'de uzun formda alt kısım (metin kutusunun altındaki not,
+            Ekler) ekrana sığmıyor, her seferinde kaydırmak gerekiyordu. */}
+        <DialogContent className="!w-[95vw] md:!w-[50vw] !max-w-none max-h-[95vh] overflow-y-auto pb-0">
           <DialogHeader>
             <DialogTitle>{editEvrak?.id ? "Giden Evrak Düzenle" : "Yeni Giden Evrak"}</DialogTitle>
           </DialogHeader>

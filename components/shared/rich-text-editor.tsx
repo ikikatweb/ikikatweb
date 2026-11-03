@@ -2,7 +2,19 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
-import { Bold, Italic, Underline } from "lucide-react";
+import { Bold, Italic, Underline, SpellCheck, X } from "lucide-react";
+
+// YAZIM DENETİMİ NOTU — bir kezlik, tarayıcı başına.
+//
+// Kırmızı alt çizgiyi TARAYICI çizer ve denetimi site açamaz: Chrome bunu kullanıcı
+// tercihi sayıp sayfanın erişimine kapatmıştır (spellcheck özniteliği "açıksa kullan"
+// demekten ibarettir). Durumunu JavaScript'ten okumanın da yolu yok — "kapalıysa göster"
+// diyemiyoruz, bu yüzden not herkese bir kez çıkar ve kapatılınca bir daha çıkmaz.
+//
+// Kayıt localStorage'da, KULLANICI HESABINDA DEĞİL: ayarın kendisi de tarayıcı
+// başınadır. Aynı kişi denetimi kapalı başka bir tarayıcıdan girdiğinde notu
+// yeniden görmesi DOĞRU davranıştır.
+const NOT_ANAHTARI = "yazim-denetimi-notu";
 
 type Props = {
   value: string;
@@ -291,6 +303,26 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
     }
   }
 
+  // Not: ilk açılışta görünür, "Anladım" ile kapanır.
+  const [notGoster, setNotGoster] = useState(false);
+  const [nasilAcik, setNasilAcik] = useState(false);
+  useEffect(() => {
+    // Gizli sekmede/depo kapalıysa okuma hata atar — notun çıkması zarar vermez, çıksın.
+    try { if (localStorage.getItem(NOT_ANAHTARI) !== "kapali") setNotGoster(true); }
+    catch { setNotGoster(true); }
+  }, []);
+  // Simge: anlatımı açar/kapatır. Şerit kapatılmışsa geri getirir — ama KALICI kaydı
+  // değiştirmez; kullanıcı "Anladım"a basmadıkça tercihi bozulmaz.
+  const anlatimAcKapa = () => {
+    if (notGoster && nasilAcik) { setNotGoster(false); setNasilAcik(false); return; }
+    setNotGoster(true); setNasilAcik(true);
+  };
+  const notuKapat = () => {
+    setNotGoster(false);
+    // Yazılamazsa not bir dahaki açılışta YİNE çıkar; sessiz bir kayıp değil, kullanıcı görür.
+    try { localStorage.setItem(NOT_ANAHTARI, "kapali"); } catch { /* depo kapalı */ }
+  };
+
   function btnClass(active: boolean) {
     return `p-1.5 rounded ${active ? "bg-[#1E3A5F] text-white" : "text-gray-600 hover:bg-gray-200"}`;
   }
@@ -316,6 +348,16 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
           title="Altı Çizili (Ctrl+U)">
           <Underline size={15} />
         </button>
+        {/* Şerit "Anladım" ile kapandıktan sonra anlatıma ulaşmanın tek yolu bu simge.
+            Yazım denetiminin açık mı kapalı mı olduğunu tarayıcı sayfaya söylemediği
+            için "yalnız kapalı olana göster" denemiyor; onun yerine kimseyi
+            rahatsız etmeyen kalıcı bir giriş bırakılıyor. */}
+        <button type="button"
+          onClick={anlatimAcKapa}
+          className="ml-auto flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+          title="Hatalı kelimelerin altı çizilmiyor mu? Yazım denetimi nasıl açılır">
+          <SpellCheck size={14} /> Yazım denetimi
+        </button>
       </div>
       <div
         ref={editorRef}
@@ -337,6 +379,58 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
         className="rich-text-editor-content w-full border border-t-0 border-gray-200 rounded-b-lg px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 overflow-y-auto whitespace-pre-wrap empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 [&_div]:text-justify [&_p]:text-justify [&_p]:my-0 [&_div]:my-0"
         style={{ minHeight: `${rows * 1.5}rem`, textAlign: "justify", tabSize: "1.25cm", MozTabSize: "1.25cm" } as React.CSSProperties}
       />
+      {!disabled && notGoster && (
+        <div className="mt-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] leading-snug text-blue-900">
+          <div className="flex items-start gap-2">
+            <SpellCheck size={15} className="mt-0.5 shrink-0 text-blue-600" />
+            <div className="flex-1">
+              <b>Hatalı kelimelerin altı kırmızı çizilmiyor mu?</b> Yazım denetimi tarayıcı
+              ayarıdır, site kendiliğinden açamaz — üç adımda siz açarsınız, sonra açık kalır.
+            </div>
+            <button type="button" onClick={() => setNasilAcik((v) => !v)}
+              className="shrink-0 rounded-md bg-blue-600 px-2.5 py-1 text-[11.5px] font-semibold text-white hover:bg-blue-700">
+              {nasilAcik ? "Gizle" : "Nasıl açılır?"}
+            </button>
+            <button type="button" onClick={notuKapat}
+              className="shrink-0 rounded-md border border-blue-300 bg-white px-2 py-1 text-[11.5px] font-semibold text-blue-800 hover:bg-blue-100"
+              title="Bu notu bir daha gösterme">
+              Anladım
+            </button>
+            <button type="button" onClick={notuKapat} className="shrink-0 text-blue-400 hover:text-blue-700" title="Kapat">
+              <X size={14} />
+            </button>
+          </div>
+          {/* OKUYUP UYGULAYAMAYAN İÇİN: menünün nasıl göründüğü ÇİZİLİ olarak gösterilir.
+              Sağ tık menüsünü sayfa açamadığı için en fazlası budur. */}
+          {nasilAcik && (
+            <div className="mt-2 flex flex-wrap items-start gap-4 border-t border-blue-200 pt-2">
+              <ol className="flex-1 min-w-[220px] list-decimal space-y-1 pl-4">
+                <li>Yukarıdaki <b>yazı alanının içine sağ tıklayın</b>.</li>
+                <li>Açılan menüde <b>Yazım denetimi</b> satırının üstüne gelin.</li>
+                <li>Yandaki listede <b>Bu metin alanında yazım denetimi yap</b> seçeneğini işaretleyin.</li>
+                <li className="text-blue-700">Hâlâ çizilmiyorsa: Chrome <b>Ayarlar → Diller → Yazım denetimi</b>&apos;nde <b>Türkçe</b>&apos;yi işaretleyin.</li>
+              </ol>
+              <svg viewBox="0 0 330 150" className="h-[150px] w-[330px] shrink-0" role="img"
+                aria-label="Sağ tık menüsünde Yazım denetimi ve Bu metin alanında yazım denetimi yap seçeneği">
+                <rect x="1" y="1" width="150" height="130" rx="7" fill="#fff" stroke="#cbd5e1" />
+                <text x="14" y="24" fontSize="11" fill="#475569">Geri al</text>
+                <text x="14" y="44" fontSize="11" fill="#475569">Kes</text>
+                <text x="14" y="64" fontSize="11" fill="#475569">Kopyala</text>
+                <text x="14" y="84" fontSize="11" fill="#475569">Yapıştır</text>
+                <rect x="6" y="94" width="140" height="22" rx="4" fill="#dbeafe" stroke="#60a5fa" />
+                <text x="14" y="109" fontSize="11" fontWeight="600" fill="#1e3a5f">Yazım denetimi</text>
+                <text x="134" y="109" fontSize="11" fill="#1e3a5f">›</text>
+                <path d="M152 105 L168 105" stroke="#60a5fa" strokeWidth="1.5" />
+                <rect x="168" y="62" width="160" height="62" rx="7" fill="#fff" stroke="#cbd5e1" />
+                <rect x="173" y="68" width="150" height="34" rx="4" fill="#dbeafe" stroke="#60a5fa" />
+                <text x="181" y="82" fontSize="10" fontWeight="600" fill="#1e3a5f">✓ Bu metin alanında</text>
+                <text x="181" y="95" fontSize="10" fontWeight="600" fill="#1e3a5f">   yazım denetimi yap</text>
+                <text x="181" y="116" fontSize="10" fill="#475569">Yazım denetimi ayarları</text>
+              </svg>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
