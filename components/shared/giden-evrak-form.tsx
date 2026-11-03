@@ -431,10 +431,19 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <div className="font-semibold">Metindeki iş ile seçili şantiye uyuşmuyor.</div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
             <span>Yazıda geçen iş: <b>{santiyeUyari.metindeki.is_adi}</b></span>
-            <button type="button" onClick={() => santiyeSec(santiyeUyari.metindeki.id)}
-              className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-red-700">
-              Metindeki işi seç
-            </button>
+            {/* BELİRSİZSE TEK TIK YOK: aynı puanda başka iş de var (ör. metinde kısım
+                numarası yazmıyor, 1. ve 2. kısım ayırt edilemiyor). Seçili iş yine de
+                yanlış — uyarı durur, ama doğrusunu kullanıcı listeden seçer. */}
+            {santiyeUyari.belirsiz ? (
+              <span className="text-[12px] font-semibold text-red-700">
+                — benzer adlı başka işler de var, doğrusunu listeden seçin
+              </span>
+            ) : (
+              <button type="button" onClick={() => santiyeSec(santiyeUyari.metindeki.id)}
+                className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-red-700">
+                Metindeki işi seç
+              </button>
+            )}
           </div>
           <div className="mt-1.5 text-[12px] text-red-700">
             Seçili şantiye doğruysa Kaydet&apos;e tekrar basın.

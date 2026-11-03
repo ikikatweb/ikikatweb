@@ -64,7 +64,13 @@ const DUR = new Set([
 
 /** Anlamlı kelimeler: 3 harften kısa ve herkeste geçen kelimeler elenir. */
 function kelimeler(x: string): string[] {
-  return kisaltmalariAc(trNorm(x)).split(/[^A-Z0-9]+/).filter((k) => k.length >= 3 && !DUR.has(k));
+  return kelimelerNormdan(kisaltmalariAc(trNorm(x)));
+}
+
+/** Zaten sadeleştirilmiş metinden kelimeler — aynı metni iki kez normalleştirmemek için
+ *  (kısım numaraları da aynı sadeleştirilmiş metinden okunuyor). */
+function kelimelerNormdan(n: string): string[] {
+  return n.split(/[^A-Z0-9]+/).filter((k) => k.length >= 3 && !DUR.has(k));
 }
 
 export type SantiyeAdi = { id: string; is_adi: string };
@@ -94,6 +100,37 @@ function skor(metinKelimeleri: Set<string>, sTokens: string[], agirlik: (k: stri
   return toplam ? bulunan / toplam : 0;
 }
 
+// KISIM NUMARASI AYRI İHALEDİR. "Tokat Zile Ovası 1. Kısım" ile "2. Kısım" farklı
+// işler, farklı sözleşmeler. Adları tek bir rakam dışında birebir aynı olduğu için
+// kelime benzerliği ikisini ayıramıyor (tek haneli kelimeler zaten eleniyor) ve
+// eşleştirici kararsız kalıp susuyordu. Bu yüzden kısım numarası BENZERLİK DEĞİL,
+// VETO olarak çalışır: metinde kısım numarası geçiyorsa, başka numaralı şantiyeler
+// aday olmaktan çıkar.
+//
+// Metinde birden çok kısım anılıyorsa ("1. kısımda olduğu gibi 2. kısımda da...")
+// hiçbiri elenmez — küme olarak bakılır, yanlış alarm çıkmasın.
+const KISIM_KALIBI = /\b([0-9]+[A-Z]?|[IVX]+)\s*\.?\s*KIS(IM|MI|MINA|MININ|IMDA|IMDAKI)\b/g;
+
+/** Roma rakamını Arap'a çevirir ("II" → "2"); zaten rakamsa olduğu gibi döner.
+ *  Şantiye adlarında ikisi de var: "Iı. Kısım (Temecük)" ve "2. Kısım". */
+function kisimSayisi(ham: string): string {
+  if (/^[0-9]/.test(ham)) return ham;
+  const d: Record<string, number> = { I: 1, V: 5, X: 10 };
+  let t = 0;
+  for (let i = 0; i < ham.length; i++) {
+    const v = d[ham[i]] ?? 0, son = d[ham[i + 1]] ?? 0;
+    t += v < son ? -v : v;
+  }
+  return t > 0 ? String(t) : ham;
+}
+
+/** Sadeleştirilmiş metinde anılan bütün kısım numaraları. */
+function kisimlar(n: string): Set<string> {
+  const k = new Set<string>();
+  for (const m of n.matchAll(KISIM_KALIBI)) k.add(kisimSayisi(m[1]));
+  return k;
+}
+
 // Eşikler 88 giden evrakın tamamı üzerinde ölçüldü (03.11.2026): 82 evrakta metinden
 // iş adı aranabiliyor, bu eşiklerle 2'sinde uyarı çıkıyor ve İKİSİ DE gerçek hata.
 // Yanlış alarm yok. Eşikleri düşürmeden önce aynı ölçümü tekrarlayın.
@@ -105,6 +142,10 @@ export type EslesmeSonucu = {
   metindeki: SantiyeAdi;
   metindekiSkor: number;
   seciliSkor: number;
+  /** Aynı puanda BAŞKA iş(ler) de var: metin hangisi olduğunu söylemiyor (ör. kısım
+   *  numarası yazılmamış). Uyarı yine doğrudur — seçili iş kesinlikle yanlış — ama
+   *  "şunu seç" demek yanıltır; arayüz tek tıkla düzeltmeyi gizler. */
+  belirsiz: boolean;
 };
 
 /**
@@ -123,18 +164,40 @@ export function santiyeUyumsuzlugu(
   santiyeler: SantiyeAdi[],
 ): EslesmeSonucu | null {
   if (!seciliSantiyeId || santiyeler.length === 0) return null;
-  const metinKelimeleri = new Set(kelimeler(htmlSiz(String(metin ?? "")) + " " + String(konu ?? "")));
+  const metinNorm = kisaltmalariAc(trNorm(htmlSiz(String(metin ?? "")) + " " + String(konu ?? "")));
+  const metinKelimeleri = new Set(kelimelerNormdan(metinNorm));
   if (metinKelimeleri.size < 4) return null;   // iş adı yazılmamış
 
+  // Metinde kısım numarası geçiyorsa, BAŞKA numaralı şantiyeler aday olamaz (veto).
+  const metinKisimlari = kisimlar(metinNorm);
+  const kisimUyar = (adi: string): boolean => {
+    if (metinKisimlari.size === 0) return true;          // metinde kısım yok → ayırt etmez
+    const k = kisimlar(kisaltmalariAc(trNorm(adi)));
+    if (k.size === 0) return true;                        // işin adında kısım yok → ayırt etmez
+    for (const x of k) if (metinKisimlari.has(x)) return true;
+    return false;                                         // numaralar tutmuyor → eleme
+  };
+
   const { tokens, agirlik } = agirlikTablosu(santiyeler);
-  const seciliSkor = skor(metinKelimeleri, tokens.get(seciliSantiyeId) ?? [], agirlik);
+  const secili = santiyeler.find((s) => s.id === seciliSantiyeId);
+  // Seçili şantiyenin kısmı metindekiyle tutmuyorsa puanı SIFIR: ad birebir aynı olsa
+  // bile başka bir ihaledir.
+  const seciliSkor = secili && !kisimUyar(secili.is_adi)
+    ? 0
+    : skor(metinKelimeleri, tokens.get(seciliSantiyeId) ?? [], agirlik);
 
   let enIyi: SantiyeAdi | null = null, enIyiSkor = 0;
   for (const s of santiyeler) {
+    if (!kisimUyar(s.is_adi)) continue;
     const sk = skor(metinKelimeleri, tokens.get(s.id) ?? [], agirlik);
     if (sk > enIyiSkor) { enIyiSkor = sk; enIyi = s; }
   }
   if (!enIyi || enIyi.id === seciliSantiyeId) return null;
   if (enIyiSkor < EN_AZ_SKOR || enIyiSkor - seciliSkor < EN_AZ_FARK) return null;
-  return { metindeki: enIyi, metindekiSkor: enIyiSkor, seciliSkor };
+  // Başa baş giden başka iş var mı? ("1. Kısım" / "2. Kısım" ikilisinde metin kısmı
+  // yazmıyorsa ikisi de aynı puanı alır.)
+  const esit = santiyeler.some((s) =>
+    s.id !== enIyi!.id && kisimUyar(s.is_adi)
+    && skor(metinKelimeleri, tokens.get(s.id) ?? [], agirlik) >= enIyiSkor - 0.02);
+  return { metindeki: enIyi, metindekiSkor: enIyiSkor, seciliSkor, belirsiz: esit };
 }
