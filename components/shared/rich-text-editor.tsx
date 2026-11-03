@@ -321,6 +321,12 @@ export default function RichTextEditor({ value, onChange, placeholder = "", disa
         ref={editorRef}
         contentEditable={!disabled}
         suppressContentEditableWarning
+        // Yazım denetimi (kırmızı alt çizgi) tarayıcının işi; burada AÇIKÇA isteniyor.
+        // Öznitelik yazılmadığında değer üst öğeden miras kalıyor ve ortama göre
+        // değişebiliyordu — canlıda çizgi çıkmıyordu. lang="tr": Chrome sözlüğü
+        // buradan seçiyor, yoksa yabancı sözlükle denetleyip hiçbir şey işaretlemiyor.
+        spellCheck
+        lang="tr"
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onBeforeInput={handleBeforeInput}
