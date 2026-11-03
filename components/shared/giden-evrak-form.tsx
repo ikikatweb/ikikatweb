@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks";
 import { filtreliSantiyeler } from "@/lib/utils/santiye-filtre";
 import TarihInput from "@/components/shared/tarih-input";
 import { geciciKabulDilekcesiMi, geciciKabulKonusuMu } from "@/lib/gecici-kabul-dilekce";
+import { santiyeUyumsuzlugu, type EslesmeSonucu } from "@/lib/evrak-santiye-eslesme";
 import { getSantiyePrimDurumu, type PrimDurumu } from "@/lib/bordro/prim-durumu";
 import { getMuhataplarFull, createTanimlama } from "@/lib/supabase/queries/tanimlamalar";
 import type { GidenEvrakWithRelations, Firma } from "@/lib/supabase/types";
@@ -67,6 +68,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [kapatOnay, setKapatOnay] = useState(false); // düzenlemede ESC → "kaydedeyim mi?" onay dialog'u
   // Geçici kabul dilekçesi kaydedilmeden ÖNCE: o işin SGK primi tamamlanmadıysa yazan
   // kişiye sorulur. Kabul süreci başladıktan sonra eksik prim fark edilirse geç olur.
+  // METİNDEKİ İŞ ≠ SEÇİLİ ŞANTİYE. Kaydet'e basınca kaydetmez, şantiye kutusunu kırmızıya
+  // boyar ve metinde adı geçen işi gösterir. 02-03.11.2026'da iki evrak yanlış şantiyeye
+  // bağlandığı için geçici kabul dilekçesindeki eksik prim uyarısı hiç çıkmamıştı.
+  const [santiyeUyari, setSantiyeUyari] = useState<EslesmeSonucu | null>(null);
   const [primOnay, setPrimOnay] = useState<PrimDurumu | null>(null);
   const [primKontrol, setPrimKontrol] = useState(false);   // prim sorgusu sürerken kaydet pasif
   const primOnaylandi = useRef(false);
@@ -87,6 +92,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [tarihGosterim, setTarihGosterim] = useState<string | null>(evrak?.tarih_gosterim ?? null);
   const [firmaId, setFirmaId] = useState(evrak?.firma_id ?? "");
   const [santiyeId, setSantiyeId] = useState(evrak?.santiye_id ?? "");
+  // Şantiye değişince kırmızı uyarı anında kalkar — düzeltildiği görülsün.
+  const santiyeSec = (id: string) => { setSantiyeId(id); setSantiyeUyari(null); };
   const [evrakSayiNo, setEvrakSayiNo] = useState(evrak?.evrak_sayi_no ?? "");
   const [konu, setKonu] = useState(evrak?.konu ?? "");
   const [muhatap, setMuhatap] = useState(evrak?.muhatap ?? "");
@@ -234,6 +241,22 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
     if (!konu.trim()) { toast.error("Konu zorunludur."); return; }
     if (!santiyeId && !sahsiEvrak) { toast.error("Şantiye seçimi zorunludur."); return; }
 
+    // ÖNCE ŞANTİYE, SONRA PRİM: prim hesabı seçili şantiyeye göre yapılıyor. Şantiye
+    // yanlışsa prim kontrolü de yanlış işin rakamlarına bakar ve eksik primi kaçırır —
+    // 03.11.2026'da tam olarak bu oldu.
+    if (santiyeId) {
+      const uyumsuz = santiyeUyumsuzlugu(konu, metin, santiyeId, santiyeler);
+      // İkinci kez Kaydet'e basılırsa kullanıcı görmüş ve seçili şantiyede ısrar ediyordur;
+      // kapı tamamen kilitlenmez (eşleştirme yanılırsa evrak hiç kaydedilemezdi).
+      if (uyumsuz && (!santiyeUyari || santiyeUyari.metindeki.id !== uyumsuz.metindeki.id)) {
+        setSantiyeUyari(uyumsuz);
+        // Kutu ekranın dışında kalmış olabilir — uyarıya götür.
+        document.getElementById("santiye-alani")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        toast.error("Metindeki iş ile seçili şantiye uyuşmuyor.");
+        return;
+      }
+    }
+
     // GEÇİCİ KABUL DİLEKÇESİ + EKSİK PRİM → önce onay al.
     // Konuda yazmıyorsa METNE de bakılır: kullanıcı konuya "Hakediş" yazıp gövdede
     // "geçici kabulün yapılması"nı isteyebiliyor — dilekçe yine geçici kabul dilekçesi.
@@ -291,6 +314,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       // Konusunda "geçici kabul" geçen evrak, işin geçici kabul BAŞVURUSUDUR. Tarihi
       // şantiyeye işlenir; ana ekran bu tarih itibarıyla primi tamamlanmamış işleri uyarır.
       primOnaylandi.current = false;
+      setSantiyeUyari(null);
       onSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
@@ -377,7 +401,7 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
             ))}
           </select>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2" id="santiye-alani">
           <Label>
             Şantiye {sahsiEvrak
               ? <span className="font-normal text-[10px] text-gray-400">(şahsi dilekçede zorunlu değil)</span>
@@ -388,9 +412,9 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           <SantiyeSelect
             santiyeler={santiyeler}
             value={santiyeId}
-            onChange={setSantiyeId}
+            onChange={santiyeSec}
             placeholder="Şantiye seçin"
-            className={selectClass}
+            className={santiyeUyari ? `${selectClass} border-2 border-red-500 bg-red-50` : selectClass}
             firmalar={firmalar}
             // Şahsi dilekçede seçim geri alınabilsin: tek izinli şantiyesi olan kullanıcıda
             // form açılışta otomatik seçiyor, temizleyecek bir satır olmadan boşaltılamıyordu.
@@ -398,6 +422,25 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
           />
         </div>
       </div>
+      {/* Uyarı satırın ALTINDA, TAM GENİŞLİKTE: şantiye sütununun içinde kalınca iş adı
+          kelime kelime alt alta diziliyor ve okunmuyordu. "Yine de kaydet" diye ayrı bir
+          düğme YOK — Kaydet'e tekrar basmak yeter; böylece refleksle geçilmez ama
+          eşleştirme yanılırsa evrak kilitlenmez. */}
+      {santiyeUyari && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-[13px] text-red-800">
+          <div className="font-semibold">Metindeki iş ile seçili şantiye uyuşmuyor.</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <span>Yazıda geçen iş: <b>{santiyeUyari.metindeki.is_adi}</b></span>
+            <button type="button" onClick={() => santiyeSec(santiyeUyari.metindeki.id)}
+              className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-semibold text-white hover:bg-red-700">
+              Metindeki işi seç
+            </button>
+          </div>
+          <div className="mt-1.5 text-[12px] text-red-700">
+            Seçili şantiye doğruysa Kaydet&apos;e tekrar basın.
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
