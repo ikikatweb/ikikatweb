@@ -10,7 +10,7 @@
 //   – teknik personel tabanı (sözleşme şartı, altına inilemez),
 //   – çalışılmayan dönem (o günlerde prim üretilmez; takvim gün gün yürütülür).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, UserPlus, UserMinus, UserX } from "lucide-react";
+import { AlertTriangle, UserPlus, UserMinus, UserX, Check } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { kayitGorunur } from "@/lib/utils/santiye-filtre";
 import { getPrimDengeleri, type PrimDengeSatiri } from "@/lib/supabase/queries/prim-dengesi";
@@ -89,6 +89,16 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
     };
   }, [mod, kullanici?.id]);
 
+  // "Anladım": satırı ŞİMDİ görüldü say ve ekrandan kaldır. Ayrılırken yapılan
+  // işaretlemenin elle tetiklenmişi — ayrı bir gizleme deposu açılmadı.
+  // KALICI SUSTURMA DEĞİL: gidişat değişirse (yön döner, toplu giriş/çıkış olur, iş
+  // biterse) uyarı yeniden çıkar; zaten uyarının amacı o.
+  const anladim = (santiyeId: string) => {
+    if (kullanici?.id) anaEkrandaGosterildiIsaretle(kullanici.id, [santiyeId]);
+    buAcilistaGosterilen.current.delete(santiyeId);
+    setSatirlar((p) => p.filter((x) => x.santiyeId !== santiyeId));
+  };
+
   if (!yetkili || satirlar.length === 0) return null;
 
   const eksik = satirlar.filter((s) => s.durum === "eksik");
@@ -116,7 +126,7 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
 
       <ul className="mt-2 space-y-1.5 pl-9 text-sm">
         {satirlar.map((s) => (
-          <li key={s.santiyeId} className="flex flex-wrap items-baseline gap-x-1.5">
+          <li key={s.santiyeId} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-2">
             {/* SİMGE DE EYLEMİ ANLATIR: eksik→kişi ekle (yeşil), fazla→kişi çıkar (kırmızı),
                 İŞ BİTMİŞ eksik→eklenecek kimse yok (kırmızı, üstü çizili kişi). Bitmiş işte
                 yeşil "kişi ekle" simgesi durması tutarı kırmızıyken çelişki yaratıyordu. */}
@@ -205,6 +215,16 @@ export default function PrimDengesiHatirlatma({ mod = "ana-ekran" }: {
               <span className="text-[11px] text-orange-600" title="Sözleşme gereği bu kadar teknik personel kalmalı">
                 · {s.tabanEngeli} teknik personel kalmalı
               </span>
+            )}
+            {/* Yalnız ANA EKRANDA: Bordro Takibi sayfasında liste zaten o iş için açık,
+                orada satır kapatmak anlamsız. */}
+            {mod === "ana-ekran" && (
+              <button
+                type="button"
+                onClick={() => anladim(s.santiyeId)}
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-orange-600 bg-orange-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-orange-700"
+                title="Bu satırı ana ekrandan kaldır. Gidişat değişirse (yön döner, toplu giriş/çıkış olur, iş biterse) uyarı yeniden çıkar."
+              ><Check size={14} /> Anladım</button>
             )}
           </li>
         ))}
