@@ -5,6 +5,7 @@ import nodemailer from "nodemailer";
 import { KASKO_TEKLIF_KATEGORI, cinsToKaskoSinif, kaskoSablonVarsayilan, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { storageIndir } from "@/lib/api/storage-indir";
+import { antetEki } from "@/lib/api/antet-eki";
 
 export async function POST(request: Request) {
   // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
@@ -170,27 +171,17 @@ export async function POST(request: Request) {
       });
     }
 
-    // ANTET — mail hangi firmanın hesabından gidiyorsa ONUN anteti en üste konur
-    // (poliçeleştirme mailiyle aynı düzen: app/api/police-talep-mail).
-    // Bağlantı olarak değil mailin İÇİNE gömülür (cid): uzaktaki resimleri çoğu mail
-    // programı kendiliğinden göstermiyor, antet görünmeyince mail antetsiz sanılıyor.
-    // İnmezse mail yine gider ama kullanıcıya SÖYLENİR (aşağıdaki uyarılar) — antet
-    // ruhsat gibi zorunlu değil, teklif verilmesini engellemiyor.
+    // ANTET — mail hangi firmanın hesabından gidiyorsa ONUN anteti en üste konur;
+    // poliçeleştirme mailiyle aynı modül (lib/api/antet-eki). Antet ruhsat gibi zorunlu
+    // DEĞİL: inemezse mail yine gider ama kullanıcıya söylenir.
     const uyarilar: string[] = [];
-    let antetHtml = "";
-    if (firma.antet_url) {
-      // service role ile iner: bucket özele çevrildikten sonra düz fetch 400 dönüyor.
-      const antet = await storageIndir(firma.antet_url);
-      if (antet) {
-        const uzanti = (firma.antet_url.split("?")[0].split(".").pop() ?? "png").slice(0, 5);
-        attachments.push({ filename: `antet.${uzanti}`, content: antet, cid: "antet" });
-        antetHtml = `<p style="margin:0 0 16px;"><img src="cid:antet" alt="" style="max-width:100%;height:auto;" /></p>`;
-      } else {
-        console.error("[Teklif Mail] Antet indirilemedi:", firma.antet_url);
-        uyarilar.push(`${firma.firma_adi} anteti indirilemedi — mail ANTETSİZ gitti.`);
-      }
+    const antet = await antetEki(firma.antet_url);
+    if (antet.ek) attachments.push(antet.ek);
+    if (antet.inemedi) {
+      console.error("[Teklif Mail] Antet indirilemedi:", firma.antet_url);
+      uyarilar.push(`${firma.firma_adi} anteti indirilemedi — mail ANTETSİZ gitti.`);
     }
-    html = `${antetHtml}${html}`;
+    html = `${antet.html}${html}`;
 
     // Her acenteye mail gönder
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;

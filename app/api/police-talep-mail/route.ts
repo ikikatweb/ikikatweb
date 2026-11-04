@@ -13,7 +13,7 @@ import nodemailer from "nodemailer";
 /** Onay penceresinde gösterilen metinle birebir aynı olmalı (lib/police-talep-metin.ts). */
 import { policeTalepKonu, policeTalepMetin, policeTalepHtml } from "@/lib/police-talep-metin";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
-import { storageIndir } from "@/lib/api/storage-indir";
+import { antetEki } from "@/lib/api/antet-eki";
 
 export async function POST(request: Request) {
   // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
@@ -80,25 +80,12 @@ export async function POST(request: Request) {
       tls: { rejectUnauthorized: false },
     });
 
-    // ANTET: firmanın antet görseli mailin başına konur. Bağlantı olarak değil, mailin
-    // İÇİNE gömülür (cid) — uzaktaki resimleri çoğu mail programı kendiliğinden
-    // göstermiyor, antet görünmeyince mail antetsiz gitmiş gibi oluyordu.
-    const ekler: { filename: string; content: Buffer; cid: string }[] = [];
-    let antetHtml = "";
-    if (firma.antet_url) {
-      // service role ile iner: bucket özele çevrildikten sonra düz fetch 400 dönüyor ve
-      // mail sessizce ANTETSİZ gidiyordu (bkz. lib/api/storage-indir).
-      const icerik = await storageIndir(firma.antet_url);
-      if (icerik) {
-        const uzanti = (firma.antet_url.split("?")[0].split(".").pop() ?? "png").slice(0, 5);
-        ekler.push({ filename: `antet.${uzanti}`, content: icerik, cid: "antet" });
-        antetHtml = `<p style="margin:0 0 16px;"><img src="cid:antet" alt="" style="max-width:100%;height:auto;" /></p>`;
-      } else {
-        console.error("[Poliçe Talep Mail] Antet indirilemedi:", firma.antet_url);
-      }
-    }
+    // ANTET: teklif isteme mailiyle ortak modül (lib/api/antet-eki).
+    const antet = await antetEki(firma.antet_url);
+    const ekler = antet.ek ? [antet.ek] : [];
+    if (antet.inemedi) console.error("[Poliçe Talep Mail] Antet indirilemedi:", firma.antet_url);
 
-    const html = `${antetHtml}${policeTalepHtml(bilgi)}`;
+    const html = `${antet.html}${policeTalepHtml(bilgi)}`;
 
     await transporter.sendMail({
       from: `"${firma.smtp_sender_name || firma.firma_adi}" <${firma.smtp_sender_email || firma.smtp_user}>`,
