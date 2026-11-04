@@ -11,7 +11,9 @@ import {
   uploadSantiyeFile,
   saveOrtaklar,
   getOrtaklar,
+  getSantiyeler,
 } from "@/lib/supabase/queries/santiyeler";
+import { aktifIsMi } from "@/lib/utils/santiye-filtre";
 import { useAuth } from "@/hooks";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 import { getSantiyeIsGruplari, saveSantiyeIsGruplari } from "@/lib/supabase/queries/santiyeler";
@@ -135,6 +137,9 @@ export default function SantiyeForm({
   const [kullaniciDialogAcik, setKullaniciDialogAcik] = useState(false);
   const [kullaniciListesi, setKullaniciListesi] = useState<Kullanici[]>([]);
   const [seciliKullaniciIds, setSeciliKullaniciIds] = useState<Set<string>>(new Set());
+  // Bütün aktif işlere atanmış kullanıcılar — listede rozetle gösterilir, neden seçili
+  // geldikleri belli olsun diye.
+  const [tamKapsamliIds, setTamKapsamliIds] = useState<Set<string>>(new Set());
   const [yeniKaydedilenSantiyeId, setYeniKaydedilenSantiyeId] = useState<string | null>(null);
   const [kullaniciAtamaYukleniyor, setKullaniciAtamaYukleniyor] = useState(false);
   // Geçici kabul prim onay dialogu — eksik prim varsa yine de onaylasın mı?
@@ -1072,13 +1077,39 @@ export default function SantiyeForm({
             return;
           }
           setKullaniciListesi(filtreli);
-          // EN SON seçilenler otomatik seçili gelsin (mevcut listede olanlarla kesişim). İstersen çıkarırsın.
+          // TÜM İŞLERE ATANMIŞ KULLANICILAR — yeni iş de onların olmalı.
+          // "Tüm Şantiyeler" diye GERÇEK bir yetki yok; kullanıcı listesindeki o etiket
+          // yalnız sayı karşılaştırması. Bu yüzden yeni iş açılınca kimse eklemiyordu ve
+          // kapsamı tam olan kullanıcı yeni işi sessizce GÖRMÜYORDU (04.11.2026: Bilgehan
+          // VARDAR 21 aktif işin 4'ünü kaçırmıştı). Burada sayıya değil, ÜYELİĞE bakılır:
+          // yeni iş dışındaki bütün aktif işler kullanıcıda varsa kapsamı tamdır.
+          let tamKapsamli = new Set<string>();
+          try {
+            const tumIsler = (await getSantiyeler()) as unknown as Santiye[];
+            const digerAktifler = tumIsler.filter((x) => x.id !== savedId && aktifIsMi(x));
+            if (digerAktifler.length > 0) {
+              tamKapsamli = new Set(
+                filtreli
+                  .filter((k) => {
+                    const sahip = new Set(k.santiye_ids ?? []);
+                    return digerAktifler.every((x) => sahip.has(x.id));
+                  })
+                  .map((k) => k.id),
+              );
+            }
+          } catch (e) {
+            // Liste çekilemezse ön-seçim eksik kalır; kullanıcı elle seçer. Sessiz
+            // geçmesin diye söylenir — yoksa "otomatik seçili gelir" sanılıp atlanır.
+            console.warn("Tam kapsamlı kullanıcılar belirlenemedi:", e);
+            toast("İşler okunamadı — tüm işlere atanmış kullanıcılar otomatik seçilemedi, elle seçin.", { icon: "⚠️" });
+          }
+          setTamKapsamliIds(tamKapsamli);
+          // EN SON seçilenler + tam kapsamlılar otomatik seçili gelsin.
           setSeciliKullaniciIds((() => {
-            try {
-              const ids: string[] = JSON.parse(localStorage.getItem(SON_KULLANICI_KEY) ?? "[]");
-              const mevcut = new Set(filtreli.map((k) => k.id));
-              return new Set(ids.filter((id) => mevcut.has(id)));
-            } catch { return new Set<string>(); }
+            const mevcut = new Set(filtreli.map((k) => k.id));
+            let sonSecilenler: string[] = [];
+            try { sonSecilenler = JSON.parse(localStorage.getItem(SON_KULLANICI_KEY) ?? "[]"); } catch { /* depo kapalı */ }
+            return new Set([...sonSecilenler.filter((id) => mevcut.has(id)), ...tamKapsamli]);
           })());
           setYeniKaydedilenSantiyeId(savedId);
           setKullaniciDialogAcik(true);
@@ -2238,6 +2269,13 @@ export default function SantiyeForm({
                                   <> · {k.santiye_ids.length} işe atanmış</>
                                 )}
                               </div>
+                              {/* Otomatik seçildiyse NEDEN seçildiği yazsın; kullanıcı
+                                  isterse işareti kaldırabilir. */}
+                              {tamKapsamliIds.has(k.id) && (
+                                <div className="text-[10px] font-semibold text-emerald-700">
+                                  Bütün aktif işlerde var — yeni iş de otomatik seçildi
+                                </div>
+                              )}
                             </div>
                           </div>
                         </li>

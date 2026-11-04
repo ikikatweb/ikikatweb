@@ -319,9 +319,7 @@ export default function KullaniciForm({
     }
   }
 
-  const aktifSantiyeler = santiyeler.filter((s) =>
-    s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
-  );
+  const aktifSantiyeler = santiyeler.filter(aktifIsMi);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
@@ -751,3 +749,4 @@ export default function KullaniciForm({
 // Fragment import
 import { Fragment } from "react";
 import KayitGecmisi from "@/components/shared/kayit-gecmisi";
+import { aktifIsMi } from "@/lib/utils/santiye-filtre";

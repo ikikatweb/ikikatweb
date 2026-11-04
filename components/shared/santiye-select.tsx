@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { aktifIsMi } from "@/lib/utils/santiye-filtre";
 
 type SantiyeItem = {
   id: string;
@@ -64,12 +65,8 @@ export default function SantiyeSelect({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [acik]);
 
-  const aktifler = santiyeler.filter((s) =>
-    s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
-  );
-  const digerleri = santiyeler.filter((s) =>
-    s.durum !== "aktif" || s.gecici_kabul_tarihi || s.kesin_kabul_tarihi || s.tasfiye_tarihi || s.devir_tarihi
-  );
+  const aktifler = santiyeler.filter(aktifIsMi);
+  const digerleri = santiyeler.filter((s) => !aktifIsMi(s));
 
   const seciliDigerde = digerleri.some((s) => s.id === value);
   const gosterDigerleri = digerAcik || seciliDigerde;

@@ -5,6 +5,21 @@
 // - santiyesiz_veri_gor=true → atanmış şantiyeler + şantiye_id NULL olan kayıtlar/araçlar
 
 type SantiyeLike = { id: string; is_adi: string };
+
+/** İŞ HÂLÂ SÜRÜYOR MU? durum "aktif" olsa bile kabul/tasfiye/devir tarihi girilmişse iş
+ *  bitmiştir. Aynı ölçü kullanıcı formunda, şantiye seçicide, kullanıcı listesindeki
+ *  "Tüm Şantiyeler" etiketinde ve yeni iş açılışındaki kullanıcı seçiminde kullanılıyor;
+ *  dört ayrı kopya yerine tek kaynak. */
+export function aktifIsMi(s: {
+  durum?: string | null;
+  gecici_kabul_tarihi?: string | null;
+  kesin_kabul_tarihi?: string | null;
+  tasfiye_tarihi?: string | null;
+  devir_tarihi?: string | null;
+}): boolean {
+  return s.durum === "aktif"
+    && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi;
+}
 type KullaniciMinimal = { rol: string; santiye_ids: string[] } | null;
 
 // Daha kapsamlı kullanıcı tipi (santiyesiz_veri_gor dahil) — kayıt filtreleme için.

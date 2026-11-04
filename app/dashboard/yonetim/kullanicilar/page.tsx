@@ -31,6 +31,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { aktifIsMi } from "@/lib/utils/santiye-filtre";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -65,9 +66,7 @@ export default function KullanicilarPage() {
       const map: Record<string, string> = {};
       all.forEach((s) => { map[s.id] = s.is_adi; });
       setSantiyeMap(map);
-      const aktifSayisi = all.filter((s) =>
-        s.durum === "aktif" && !s.gecici_kabul_tarihi && !s.kesin_kabul_tarihi && !s.tasfiye_tarihi && !s.devir_tarihi
-      ).length;
+      const aktifSayisi = all.filter(aktifIsMi).length;
       setAktifSantiyeSayisi(aktifSayisi);
     } catch {
       toast.error("Kullanıcılar yüklenirken hata oluştu.");
