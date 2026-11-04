@@ -154,7 +154,7 @@ export async function POST(request: Request) {
     // 27.10.2026: tam bu sessiz hata yaşandı. Bucket'lar özele çevrilince kayıtlı "public"
     // URL'e düz fetch 400 dönmeye başladı, buradaki catch hatayı yutuyordu ve teklif maili
     // ruhsatsız gidiyordu. Artık indirme service role ile yapılıyor (lib/api/storage-indir).
-    const attachments: { filename: string; content: Buffer }[] = [];
+    const attachments: { filename: string; content: Buffer; cid?: string }[] = [];
     if (ruhsatUrl) {
       const icerik = await storageIndir(ruhsatUrl);
       if (!icerik) {
@@ -169,6 +169,28 @@ export async function POST(request: Request) {
         content: icerik,
       });
     }
+
+    // ANTET — mail hangi firmanın hesabından gidiyorsa ONUN anteti en üste konur
+    // (poliçeleştirme mailiyle aynı düzen: app/api/police-talep-mail).
+    // Bağlantı olarak değil mailin İÇİNE gömülür (cid): uzaktaki resimleri çoğu mail
+    // programı kendiliğinden göstermiyor, antet görünmeyince mail antetsiz sanılıyor.
+    // İnmezse mail yine gider ama kullanıcıya SÖYLENİR (aşağıdaki uyarılar) — antet
+    // ruhsat gibi zorunlu değil, teklif verilmesini engellemiyor.
+    const uyarilar: string[] = [];
+    let antetHtml = "";
+    if (firma.antet_url) {
+      // service role ile iner: bucket özele çevrildikten sonra düz fetch 400 dönüyor.
+      const antet = await storageIndir(firma.antet_url);
+      if (antet) {
+        const uzanti = (firma.antet_url.split("?")[0].split(".").pop() ?? "png").slice(0, 5);
+        attachments.push({ filename: `antet.${uzanti}`, content: antet, cid: "antet" });
+        antetHtml = `<p style="margin:0 0 16px;"><img src="cid:antet" alt="" style="max-width:100%;height:auto;" /></p>`;
+      } else {
+        console.error("[Teklif Mail] Antet indirilemedi:", firma.antet_url);
+        uyarilar.push(`${firma.firma_adi} anteti indirilemedi — mail ANTETSİZ gitti.`);
+      }
+    }
+    html = `${antetHtml}${html}`;
 
     // Her acenteye mail gönder
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
@@ -201,7 +223,10 @@ export async function POST(request: Request) {
       sonuclar,
       // Aracın hiç ruhsatı yoksa mail yine gider ama kullanıcı bilsin: acente ruhsatsız
       // teklif veremez, geri dönüş gecikir.
-      uyari: ruhsatUrl ? null : `${plaka} aracının ruhsatı sistemde kayıtlı değil — mail ruhsat eki OLMADAN gitti.`,
+      uyari: [
+        ruhsatUrl ? null : `${plaka} aracının ruhsatı sistemde kayıtlı değil — mail ruhsat eki OLMADAN gitti.`,
+        ...uyarilar,
+      ].filter(Boolean).join(" ") || null,
     });
   } catch (err) {
     return NextResponse.json(

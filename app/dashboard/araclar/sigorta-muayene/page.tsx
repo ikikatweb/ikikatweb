@@ -320,6 +320,10 @@ export default function SigortaMuayenePage() {
             else toast.error(`${s.email} → HATA: ${s.hata}`, { duration: toastSuresi() });
           }
         } else toast.success(data.mesaj, { duration: toastSuresi() });
+        // Mail eksik gittiyse (ruhsat kayıtlı değil, antet inmedi) kullanıcı BİLSİN.
+        // Ana ekranda gösteriliyordu, burada gösterilmiyordu: aynı mail bu sayfadan
+        // gönderildiğinde eksiklik sessizce geçiyordu.
+        if (data.uyari) toast(data.uyari, { icon: "⚠️", duration: toastSuresi() });
         try {
           const seciliAdlar = acenteListesi.filter((a) => seciliAcenteler.has(a.id)).map((a) => a.ad);
           await insertTeklifGonderim({
