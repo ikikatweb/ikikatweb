@@ -118,10 +118,13 @@ export async function POST(request: Request) {
     } catch { /* sessiz — varsayılan kullanılır */ }
     const talepText = talepSablon.replace(/\{plaka\}/g, plaka).replace(/\{tip\}/g, tipMetni);
 
+    // SIRA: önce TALEP cümlesi ("Ekte ruhsat fotokopisi bulunan ... rica ederiz."),
+    // sonra KASKO ŞARTLARI (İMM, ikame araç, servis…), en altta imza. Şartlar eskiden
+    // en üstteydi; oysa şablon metni "AŞAĞIDA belirtilen şartlar doğrultusunda" diyor,
+    // mail kendi kendisiyle çelişiyordu.
     // Mail metni (düz metin sürümü — HTML desteklemeyen istemciler için)
-    let metin = "";
-    if (kaskoUst.trim()) metin += `${kaskoUst.trim()}\n\n`;
-    metin += talepText;
+    let metin = talepText;
+    if (kaskoUst.trim()) metin += `\n\n${kaskoUst.trim()}`;
     if (ekBilgi && ekBilgi.trim()) {
       metin += `\n\n${ekBilgi.trim()}`;
     }
@@ -137,9 +140,8 @@ export async function POST(request: Request) {
       .replace(/\{plaka\}/g, `<strong>${htmlEscape(plaka)}</strong>`)
       .replace(/\{tip\}/g, htmlEscape(tipMetni))
       .replace(/\n/g, "<br>");
-    let html = "";
-    if (kaskoUst.trim()) html += `<p style="margin-bottom:14px;">${htmlBr(kaskoUst.trim())}</p>`;
-    html += `<p>${talepHtml}</p>`;
+    let html = `<p>${talepHtml}</p>`;
+    if (kaskoUst.trim()) html += `<p style="margin-top:14px;">${htmlBr(kaskoUst.trim())}</p>`;
     // Kullanıcının yazdığı not KIRMIZI ve kalın görünsün.
     if (ekBilgi && ekBilgi.trim()) {
       html += `<p style="color:#dc2626;font-weight:bold;">${htmlBr(ekBilgi.trim())}</p>`;

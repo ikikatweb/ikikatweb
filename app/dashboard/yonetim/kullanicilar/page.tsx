@@ -52,7 +52,12 @@ export default function KullanicilarPage() {
   // Aktif / Pasif sekmesi — aktif ve pasif kullanıcılar ayrı tablolarda gösterilir
   const [aktifSekme, setAktifSekme] = useOturumFiltresi<"aktif" | "pasif">("yonetim-kullanicilar:sekme", "aktif");
   const [santiyeMap, setSantiyeMap] = useState<Record<string, string>>({});
-  const [aktifSantiyeSayisi, setAktifSantiyeSayisi] = useState(0);
+  // AKTİF İŞLERİN KİMLİKLERİ — "Tüm Şantiyeler" etiketi SAYIYA değil ÜYELİĞE bakar.
+  // Eskiden "atanmış sayısı >= aktif iş sayısı" yeterliydi; sayı kapanmış işlerle
+  // dolduğunda kullanıcı aktif işlerden eksik olsa bile "Tüm Şantiyeler" yazıyordu
+  // (04.11.2026: Bilgehan VARDAR 26 kayıtla "Tüm Şantiyeler" görünürken 21 aktif işin
+  // 4'ünü görmüyordu). Artık etiket gerçekten hepsi varsa çıkar.
+  const [aktifSantiyeIds, setAktifSantiyeIds] = useState<Set<string>>(new Set());
 
   async function loadKullanicilar() {
     try {
@@ -66,8 +71,7 @@ export default function KullanicilarPage() {
       const map: Record<string, string> = {};
       all.forEach((s) => { map[s.id] = s.is_adi; });
       setSantiyeMap(map);
-      const aktifSayisi = all.filter(aktifIsMi).length;
-      setAktifSantiyeSayisi(aktifSayisi);
+      setAktifSantiyeIds(new Set(all.filter(aktifIsMi).map((s) => s.id)));
     } catch {
       toast.error("Kullanıcılar yüklenirken hata oluştu.");
     } finally {
@@ -274,13 +278,40 @@ export default function KullanicilarPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px]">
                     {k.santiye_ids && k.santiye_ids.length > 0
-                      ? (aktifSantiyeSayisi > 0 && k.santiye_ids.length >= aktifSantiyeSayisi
-                        ? <span className="text-xs text-emerald-700 font-semibold">Tüm Şantiyeler</span>
-                        : <div className="flex flex-wrap gap-1">{k.santiye_ids.map((sid) => {
+                      ? (() => {
+                        const sahip = new Set(k.santiye_ids);
+                        const eksikler = [...aktifSantiyeIds].filter((id) => !sahip.has(id));
+                        if (aktifSantiyeIds.size > 0 && eksikler.length === 0) {
+                          return (
+                            <span className="text-xs text-emerald-700 font-semibold"
+                              title={`Yürüyen ${aktifSantiyeIds.size} işin hepsine atanmış`}>
+                              Tüm Şantiyeler
+                            </span>
+                          );
+                        }
+                        // Kapanmış işlerle birlikte liste uzun olabiliyor; o zaman tek tek
+                        // yazmak yerine sayı + EKSİK bilgisi. Asıl soru "neyi görmüyor".
+                        if (k.santiye_ids.length > 6) {
+                          return (
+                            <div className="text-xs">
+                              <span className="text-gray-600">{k.santiye_ids.length} işe atanmış</span>
+                              {eksikler.length > 0 && (
+                                <div className="text-[11px] font-semibold text-amber-700"
+                                  title={eksikler.map((id) => santiyeMap[id] || id).join("\n")}>
+                                  {eksikler.length} yürüyen işte YOK
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="flex flex-wrap gap-1">{k.santiye_ids.map((sid) => {
                             const ad = santiyeMap[sid] || sid;
                             const kisa = ad.length > 20 ? ad.slice(0, 18) + "…" : ad;
                             return <span key={sid} className="inline-block text-[10px] bg-gray-100 rounded px-1.5 py-0.5 truncate max-w-[180px]" title={ad}>{kisa}</span>;
-                          })}</div>)
+                          })}</div>
+                        );
+                      })()
                       : k.rol === "yonetici" ? "Tümü" : "—"}
                   </TableCell>
                   <TableCell className="text-center">
