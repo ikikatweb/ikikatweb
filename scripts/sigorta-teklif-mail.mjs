@@ -741,10 +741,10 @@ async function main() {
           await bildirimGonder(arac, tip, {
             baslik: `${arac.plaka} — ${yeniSayi} yeni teklif`,
             govde: `${acente.ad} ${yeniSayi} firma teklifi gönderdi`
-              // "BU MAİLDE" sözü bilerek duruyor: rakam yalnız bu acentenin gönderdiklerinin
-              // en düşüğüdür, dönemin tamamının değil. Başka acentede daha ucuzu olabilir;
-              // karşılaştırma ekranı onu gösterir. Söz kalkarsa bildirim en ucuzu bulmuş gibi okunur.
-              + (enUcuz ? ` · bu mailde en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
+              // Rakam YALNIZ bu mailin içindeki en düşüktür, dönemin tamamının değil; metinde
+              // bunun yazmaması KULLANICI TERCİHİ (05.11.2026, iki kez denendi ve bu hâli seçildi).
+              // Dönem geneli karşılaştırma ekranında duruyor. "Yanlış en ucuz" diye değiştirmeyin.
+              + (enUcuz ? ` · en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
             etiket: `teklif-${arac.id}-${tip}`,
             kategori: "sigorta-police",
           });
