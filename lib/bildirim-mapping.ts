@@ -12,6 +12,9 @@ export const BILDIRIM_TAG_MODULE: Record<string, string | null> = {
   "arac-bakim": "arac-bakim",
   "yaklasan-bakim": "arac-bakim",
   "yaklasan-sigorta": "araclar-sigorta-muayene",
+  // Mailden okunan poliçe/teklif — "yaklaşan"dan AYRI tag: o sabah özeti, bu anlık olay.
+  // Şantiyeye bağlı DEĞİL (poliçe şirket geneli), o yüzden şantiye-bağlı listelere eklenmedi.
+  "sigorta-police": "araclar-sigorta-muayene",
   arac: "yonetim-araclar",
   // Puantaj
   "arac-puantaj": "puantaj-arac",

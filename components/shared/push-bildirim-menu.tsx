@@ -42,6 +42,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "giden-evrak", label: "Giden Evrak", emoji: "📤", desc: "Yeni giden evrak" },
   { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni yazışma / hızlı talimat" },
   { tag: "yaklasan-sigorta", label: "Sigorta & Muayene", emoji: "📋", desc: "Yaklaşan/geçen — sabah özeti" },
+  { tag: "sigorta-police", label: "Sigorta Poliçe & Teklif", emoji: "🧾", desc: "Mailden okunan poliçe/teklif" },
   { tag: "arac-bakim", label: "Araç Bakım, Tamirat, Yedek Parça", emoji: "🛠️", desc: "Yeni bakım/tamirat/yedek parça" },
   { tag: "yaklasan-bakim", label: "Yaklaşan Araç Bakımı", emoji: "🛠️", desc: "Sabah 08:00 özeti" },
   { tag: "personel-puantaj", label: "Personel Puantaj", emoji: "👷", desc: "Her 10 girişte 1" },

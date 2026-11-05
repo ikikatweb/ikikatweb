@@ -347,6 +347,7 @@ async function policeyiKaydet(metin, ek, arac, acente, p, { plakalar, firmalar }
       ? uyari
       : `${firma ?? "?"} · ${(v.brutPrim ?? 0).toLocaleString("tr-TR")} ₺ · ${v.bitisTarihi} tarihine kadar`,
     etiket: `police-${hedefArac.id}-${tip}`,
+    kategori: "sigorta-police",
   });
   return true;
 }
@@ -737,6 +738,7 @@ async function main() {
             govde: `${acente.ad} ${yeniSayi} firma teklifi gönderdi`
               + (enUcuz ? ` · en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
             etiket: `teklif-${(hedefArac ?? arac).id}-${tip}`,
+            kategori: "sigorta-police",
           });
         }
 
