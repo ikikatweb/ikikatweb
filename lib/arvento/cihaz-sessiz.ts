@@ -64,10 +64,12 @@ export function sessizCihazlariBul(
   return out.sort((a, b) => b.saat - a.saat);
 }
 
-/** "3,2 gündür" / "31 saattir" — kısa, okunur süre. */
+/** "3 gündür" / "31 saattir" — kısa, okunur süre.
+ *  GÜN TAM SAYI: "3,3 gündür" kimsenin kullanmadığı bir hassasiyet, okurken de takılıyor.
+ *  Aşağı yuvarlanır — 3,9 günü "4 gündür" demek henüz dolmamış bir süreyi doldu göstermek olur. */
 export function sessizSure(saat: number): string {
   if (saat < 48) return `${Math.round(saat)} saattir`;
-  return `${(saat / 24).toFixed(1).replace(".", ",")} gündür`;
+  return `${Math.floor(saat / 24)} gündür`;
 }
 
 /** "02.11 13:05" — son paket zamanı. */
