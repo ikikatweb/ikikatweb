@@ -9,12 +9,14 @@
 /** Tuval: diğer logolarla aynı (public/logolar/*.png da 700x300). */
 export const LOGO_TUVAL_GEN = 700;
 export const LOGO_TUVAL_YUK = 300;
-/** Hedef "mürekkep" miktarı — opak piksel sayısı. Mevcut logolar 13.700–26.700
- *  aralığındaydı; ortası alındı ki yeni logo ötekilerden iri/ufak durmasın. */
-const HEDEF_OPAK = 21000;
-/** Tuvalin kenarlarında bırakılan pay. */
-const EN_COK_GEN = Math.round(LOGO_TUVAL_GEN * 0.92);
-const EN_COK_YUK = Math.round(LOGO_TUVAL_YUK * 0.88);
+/** Hedef "mürekkep" miktarı — opak piksel sayısı. Koda gömülü eski logolar
+ *  13.700–26.700 aralığındaydı (ortalama ~22.000); kenar çubuğunda biraz daha küçük
+ *  dursun diye onun altına çekildi. */
+const HEDEF_OPAK = 17000;
+/** Tuvalin kenarlarında bırakılan pay. Yükseklik payı geniş: dikey logolar kenar
+ *  çubuğunun kutusunda yüksekliğe oturuyor, kutuyu baştan aşağı doldurmasın. */
+const EN_COK_GEN = Math.round(LOGO_TUVAL_GEN * 0.90);
+const EN_COK_YUK = Math.round(LOGO_TUVAL_YUK * 0.82);
 
 export type LogoDuzenSonucu = {
   dosya: File;
