@@ -185,6 +185,10 @@ export default function BankaYazismalariPage() {
   function handleAdd() { setEditYazisma(undefined); setFormOpen(true); }
   function handleEdit(y: BankaYazismaWithRelations) { setEditYazisma(y); setFormOpen(true); }
 
+  // ÇOĞALT ONAYI: düğme kalem/çöp simgelerinin yanında, yanlışlıkla basılıp sessizce
+  // yeni kayıt oluşturuyordu. Artık önce soruluyor.
+  const [cogaltOnay, setCogaltOnay] = useState<BankaYazismaWithRelations | null>(null);
+
   async function handleCogalt(y: BankaYazismaWithRelations) {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     // Çoğalt: form açmadan, mevcut yazışmanın bir kopyasını otomatik kayıt eder.
@@ -535,7 +539,7 @@ export default function BankaYazismalariPage() {
                     <div className="flex items-center justify-center gap-0.5">
                       <button onClick={() => printYazisma(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Yazdır"><Printer size={14} /></button>
                       {yEkle && (
-                        <button onClick={() => handleCogalt(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
+                        <button onClick={() => setCogaltOnay(y)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
                       )}
                       {y.pdf_url && (
                         <a href={dosyaUrl(y.pdf_url)} target="_blank" rel="noopener noreferrer" className="p-1 text-gray-400 hover:text-green-600" title="PDF İndir"><Download size={14} /></a>
@@ -581,6 +585,26 @@ export default function BankaYazismalariPage() {
       </Dialog>
 
       {/* Silme Nedeni Dialog */}
+      {/* Çoğaltma onayı */}
+      <Dialog open={!!cogaltOnay} onOpenChange={(o) => { if (!o) setCogaltOnay(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yeni kopya oluşturulacak</DialogTitle>
+          </DialogHeader>
+          <p className="py-2 text-sm text-gray-600">
+            <b>{cogaltOnay?.evrak_sayi_no}</b>{cogaltOnay?.konu ? ` — ${cogaltOnay.konu}` : ""} yazışmasının
+            bir kopyası, bugünün tarihi ve yeni bir sayı numarasıyla listeye eklenecek. Emin misiniz?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCogaltOnay(null)}>Vazgeç</Button>
+            <Button className="bg-[#1E3A5F] hover:bg-[#2a4f7a] text-white"
+              onClick={() => { const y = cogaltOnay; setCogaltOnay(null); if (y) void handleCogalt(y); }}>
+              Evet, çoğalt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!silDialog} onOpenChange={() => setSilDialog(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>

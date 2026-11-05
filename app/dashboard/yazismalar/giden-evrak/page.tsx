@@ -246,6 +246,10 @@ export default function GidenEvrakPage() {
     setEditEvrak(e); setFormOpen(true);
   }
 
+  // ÇOĞALT ONAYI: düğme kalem/çöp simgelerinin yanında, yanlışlıkla basılıp sessizce
+  // yeni kayıt oluşturuyordu. Artık önce soruluyor.
+  const [cogaltOnay, setCogaltOnay] = useState<GidenEvrakWithRelations | null>(null);
+
   async function handleCogalt(e: GidenEvrakWithRelations) {
     if (!yEkle) { toast.error("Ekleme yetkiniz yok."); return; }
     // Çoğalt: form açmadan, mevcut evrakın bir kopyasını otomatik kayıt eder.
@@ -665,7 +669,7 @@ export default function GidenEvrakPage() {
                     <div className="flex items-center justify-center gap-0.5">
                       <button onClick={() => printEvrak(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Yazdır"><Printer size={14} /></button>
                       {yEkle && (
-                        <button onClick={() => handleCogalt(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
+                        <button onClick={() => setCogaltOnay(e)} className="p-1 text-gray-400 hover:text-[#1E3A5F]" title="Çoğalt"><Copy size={14} /></button>
                       )}
                       {/* Evrak Taraması (PDF) butonu — sadece pdf_url yüklenmiş evraklar için gözükür */}
                       {e.pdf_url && (
@@ -741,6 +745,26 @@ export default function GidenEvrakPage() {
       </Dialog>
 
       {/* Ek Listesi Dialog — Ek sütunundaki göz ikonuna tıklanınca açılır */}
+      {/* Çoğaltma onayı */}
+      <Dialog open={!!cogaltOnay} onOpenChange={(o) => { if (!o) setCogaltOnay(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yeni kopya oluşturulacak</DialogTitle>
+          </DialogHeader>
+          <p className="py-2 text-sm text-gray-600">
+            <b>{cogaltOnay?.evrak_sayi_no}</b>{cogaltOnay?.konu ? ` — ${cogaltOnay.konu}` : ""} evrakının
+            bir kopyası, bugünün tarihi ve yeni bir sayı numarasıyla listeye eklenecek. Emin misiniz?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCogaltOnay(null)}>Vazgeç</Button>
+            <Button className="bg-[#1E3A5F] hover:bg-[#2a4f7a] text-white"
+              onClick={() => { const e = cogaltOnay; setCogaltOnay(null); if (e) void handleCogalt(e); }}>
+              Evet, çoğalt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!ekDialog} onOpenChange={() => setEkDialog(null)}>
         <DialogContent className="max-w-md overflow-hidden">
           <DialogHeader>
