@@ -27,6 +27,16 @@ for (const dosya of [".env.local", ".env"]) {
 }
 
 const gun = parseInt(process.argv[2] || "7", 10);
+
+// process.exit() ANINDA ÇAĞIRILMIYOR. Node 25 + libuv'de kapanmakta olan bir IMAP soketi
+// varken hemen çıkmak süreci "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" ile
+// 0xC0000409 koduyla düşürüyordu: iş BİTMİŞ olmasına rağmen görev "çöktü" görünüyor ve
+// (05.11.2026'dan beri) her 2 dakikada bir boş yere hata bildirimi üretiyordu.
+// Doğal çıkışı bekliyoruz; bir soket takılı kalırsa 10 saniye sonra zorla kapatıyoruz.
+function bitir(kod: number) {
+  process.exitCode = kod;
+  setTimeout(() => process.exit(kod), 10000).unref();
+}
 async function main() {
   try {
     const { tarayVeKapat } = await import("@/lib/personel/bildirge-fetch");
@@ -35,10 +45,10 @@ async function main() {
     const ozet = s.kapatilan.map((k) => `${k.ad} (${k.tip === "giris" ? "giriş" : "çıkış"}/${k.kutu})`).join(", ");
     console.log(`${zaman} → ${s.eslesme} kapatıldı / ${s.taranan} PDF tarandı${ozet ? " | " + ozet : ""}`);
     if (s.uyari.length) console.log("Uyarı:", s.uyari.slice(0, 5).join(" · "));
-    process.exit(0);
+    bitir(0);
   } catch (e) {
     console.error("HATA:", e instanceof Error ? e.message : String(e));
-    process.exit(1);
+    bitir(1);
   }
 }
 main();
