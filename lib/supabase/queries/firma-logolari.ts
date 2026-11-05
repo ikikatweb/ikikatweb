@@ -33,7 +33,12 @@ export function getFirmaLogolari(): Promise<LogoItem[]> {
   return onbellek;
 }
 
-/** Logo yüklendikten/silindikten sonra çağrılır. */
+/** Logo yüklendikten/silindikten sonra çağrılır. Kenar çubuğu açık kalmaya devam
+ *  ettiği için haber de verilir: dinleyen LogoDonen listesini anında tazeler, yoksa
+ *  silinen logo sayfa yenilenene kadar dönmeye devam ederdi. */
+export const LOGO_DEGISTI_OLAYI = "firma-logolari-degisti";
+
 export function firmaLogolariOnbellegiDusur() {
   onbellek = null;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(LOGO_DEGISTI_OLAYI));
 }

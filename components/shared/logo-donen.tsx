@@ -8,7 +8,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getFirmaLogolari } from "@/lib/supabase/queries/firma-logolari";
+import { getFirmaLogolari, LOGO_DEGISTI_OLAYI } from "@/lib/supabase/queries/firma-logolari";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 export type LogoItem = { src: string; alt: string };
@@ -44,10 +44,16 @@ export default function LogoDonen({ logolar: disListe, araSn = 5, className = "h
   useEffect(() => {
     if (disListe) return;
     let iptal = false;
-    getFirmaLogolari()
-      .then((l) => { if (!iptal && l.length > 0) setDbListe(l); })
-      .catch(() => { /* yedek liste kalsın */ });
-    return () => { iptal = true; };
+    const yukle = () => {
+      getFirmaLogolari()
+        .then((l) => { if (!iptal) setDbListe(l.length > 0 ? l : null); })
+        .catch(() => { /* yedek liste kalsın */ });
+    };
+    yukle();
+    // Logo yüklenince/silinince anında tazele — kenar çubuğu açık kaldığı için
+    // yeniden kurulmuyor, haber verilmezse silinen logo dönmeye devam ederdi.
+    window.addEventListener(LOGO_DEGISTI_OLAYI, yukle);
+    return () => { iptal = true; window.removeEventListener(LOGO_DEGISTI_OLAYI, yukle); };
   }, [disListe]);
   const logolar = disListe ?? dbListe ?? FIRMA_LOGOLARI;
 

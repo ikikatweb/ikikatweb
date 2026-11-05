@@ -26,6 +26,7 @@ import toast from "react-hot-toast";
 import { griKopyaUret, renkliMi } from "@/lib/utils/gri-antet";
 import { antetGecmisineEkle } from "@/lib/supabase/queries/antet-gecmisi";
 import { firmaLogolariOnbellegiDusur } from "@/lib/supabase/queries/firma-logolari";
+import { logoDuzenle } from "@/lib/utils/logo-duzenle";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type FirmaFormProps = {
@@ -61,7 +62,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
       setLoading(true);
       await deleteFirmaFile(firma.id, tip);
       if (tip === "kase") setMevcutKaseUrl(null);
-      else if (tip === "logo") setMevcutLogoUrl(null);
+      else if (tip === "logo") { setMevcutLogoUrl(null); firmaLogolariOnbellegiDusur(); }
       else setMevcutAntetUrl(null);
       // KRİTİK: formData içindeki ESKİ URL'i de NULL yap — yoksa kullanıcı
       // formu kaydedince updateFirma eski URL'i geri yazar.
@@ -169,9 +170,24 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         setMevcutKaseUrl(kaseUrl);
       }
       if (logoFile) {
+        // BOYUTLANDIRMA + BEYAZ ZEMİN TEMİZLİĞİ yükleme sırasında yapılır: kullanıcı
+        // hangi boyutta verirse versin hepsi aynı tuvale ve aynı görsel ağırlığa gelir.
+        // Düzenlenemezse YÜKLEME YAPILMAZ — ham logo kenar çubuğunda dev ya da beyaz
+        // kutu olarak durur, kimse fark etmez (bkz. AGENTS.md "Sessiz hata yok").
+        let hazirLogo: File;
+        try {
+          const sonuc = await logoDuzenle(logoFile);
+          hazirLogo = sonuc.dosya;
+          toast.success(`Logo düzenlendi: ${sonuc.ozet}`, { duration: 6000 });
+        } catch (e) {
+          console.error("[Logo] düzenlenemedi:", e);
+          toast.error("Logo düzenlenemedi — YÜKLENMEDİ. Dosyayı PNG/JPG olarak kaydedip tekrar deneyin.", { duration: 9000 });
+          setLoading(false);
+          return;
+        }
         // Logo da üzerine yazmaz: adres değişsin ki tarayıcı önbelleği eskisini göstermesin.
         const logoDamga = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
-        const logoUrl = await uploadFirmaFile(logoFile, savedFirma.id, "logo", logoDamga);
+        const logoUrl = await uploadFirmaFile(hazirLogo, savedFirma.id, "logo", logoDamga);
         try {
           await updateFirma(savedFirma.id, { logo_url: logoUrl });
           setMevcutLogoUrl(logoUrl);
@@ -526,7 +542,8 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
                   </div>
                   <p className="text-[10px] text-gray-400">
                     Kenar çubuğunda ve giriş ekranında sırayla döner. Logosu yüklenmeyen firma dönmez.
-                    En iyi sonuç için <strong>700×300</strong> saydam PNG, logo ortada.
+                    <strong>Boyutla uğraşmayın</strong>: hangi ölçüde yüklerseniz yükleyin 700×300 tuvale
+                    ortalanır, diğer logolarla aynı büyüklüğe getirilir; beyaz zemin varsa silinir.
                   </p>
                 </div>
               </div>
