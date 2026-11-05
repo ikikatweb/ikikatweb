@@ -47,16 +47,26 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   });
   // YERLEŞİM İSİMLERİ (il / ilçe / köy-mahalle) — Esri'nin uydu için hazırladığı referans katmanı.
   //
-  // NEDEN AYRI BİR KATMAN: yukarıdaki iki katman yalnız YOL adı veriyor (Atatürk Bulvarı, 173. Sokak).
-  // Uyduya yaklaşınca "burası neresi?" sorusu cevapsız kalıyordu — 05.11.2026'da Nazilli'nin tam
-  // üstünde z13'te ekranda tek bir yerleşim adı yoktu. Bu katman zoom'a göre KADEMELİ yazar:
-  //   z9  → AYDIN / İZMİR (il) + Nazilli, Ödemiş (ilçe)
-  //   z11 → ilçe + köy/mahalle (Pınarbaşı, Yenipazar, Esenköy…)
-  //   z14+→ mahalle adları (yol adlarıyla birlikte)
-  // En SONA eklenir → yerleşim adı, yol adının üstünde kalır (şehir adı okunur).
-  const yerIsimleri = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
-    attribution: "Yer adları: Esri", maxZoom: ENUST_ZOOM, maxNativeZoom: 18,
+  // NEDEN AYRI BİR KATMAN: diğer iki katman yalnız YOL adı veriyor (Atatürk Bulvarı, 173. Sokak).
+  // Uyduya yaklaşınca "burası neresi?" sorusu cevapsız kalıyordu — Nazilli'nin tam üstünde z13'te
+  // ekranda tek bir yerleşim adı yoktu.
+  //
+  // KADEMELENDİRME (Google Earth'teki gibi: uzakta az, yaklaşınca çok ad):
+  // Kaynak mahalle adlarını z11'de açıyor; 30 km'lik görüntüde Tokat'ın çevresi Yeniyurt/Çağgölü/
+  // Mahmutpaşa/Topçubağı ile doluyor ve "Tokat" aralarında kayboluyordu. Çözüm iki parçalı:
+  //   z9–12  → katman BİR KADEME GERİDEN çizilir (tileSize 512 + zoomOffset -1): harita z11'de
+  //            kaynağın z10 karosu gelir, yani yalnız il/ilçe adı. 512 piksellik karo z-1 karosunun
+  //            tam hizasına oturur (retina karo deseni) → kayma olmaz.
+  //   z13+   → kaydırma YOK, kaynak kendi ölçeğinde (net yazı): mahalle adları burada açılır.
+  //   z<9    → katman KAPALI. Ülke görünümünde CARTO zaten İstanbul/Ankara yazıyor; kaydırılmış
+  //            katman aynı şehri iki kat büyük tekrar yazınca ÇİFT görünüyordu.
+  const YER_ADRES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+  const yerUzak = L.tileLayer(YER_ADRES, {
+    attribution: "Yer adları: Esri", minZoom: 9, maxZoom: 12, maxNativeZoom: 18, tileSize: 512, zoomOffset: -1,
   });
+  const yerYakin = L.tileLayer(YER_ADRES, { minZoom: 13, maxZoom: ENUST_ZOOM, maxNativeZoom: 18 });
+  // Katman seçicide TEK satır görünsün diye ikisi bir grupta (açıp kapatmak ikisini birden etkiler).
+  const yerIsimleri = L.layerGroup([yerUzak, yerYakin]);
   if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); yerIsimleri.addTo(map); }
   else sokak.addTo(map);
   L.control.layers(
