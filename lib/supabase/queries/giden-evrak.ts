@@ -1,4 +1,6 @@
 // Giden evrak CRUD sorguları
+import { getAntetGecmisi } from "@/lib/supabase/queries/antet-gecmisi";
+import { antetiTariheGoreAyarla } from "@/lib/utils/antet-gecmis";
 import { createClient } from "@/lib/supabase/client";
 import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { GidenEvrakInsert } from "@/lib/supabase/types";
@@ -57,8 +59,11 @@ export async function getGidenEvraklar(
     }
   }
 
-  const { data, error } = await query;
+  const { data: hamVeri, error } = await query;
   if (error) throw error;
+  // BELGENİN KENDİ TARİHİNDEKİ ANTET — firma anteti sonradan değişse de
+  // geçmiş yazışmalar eski antetiyle açılır (bkz. lib/utils/antet-gecmis.ts).
+  const data = antetiTariheGoreAyarla(hamVeri ?? [], await getAntetGecmisi());
 
   if (data && data.length > 0) {
     // RLS bypass için API route üzerinden kullanıcı adlarını çek
@@ -147,8 +152,11 @@ export async function getSilinenGidenEvraklar(olusturanId?: string) {
 
   if (olusturanId) query = query.eq("olusturan_id", olusturanId);
 
-  const { data, error } = await query;
+  const { data: hamVeri, error } = await query;
   if (error) throw error;
+  // BELGENİN KENDİ TARİHİNDEKİ ANTET — firma anteti sonradan değişse de
+  // geçmiş yazışmalar eski antetiyle açılır (bkz. lib/utils/antet-gecmis.ts).
+  const data = antetiTariheGoreAyarla(hamVeri ?? [], await getAntetGecmisi());
 
   if (data && data.length > 0) {
     // RLS bypass için API route üzerinden kullanıcı adlarını çek (kısıtlı kullanıcı direkt çekemez → aksi halde isimler "—" görünür)

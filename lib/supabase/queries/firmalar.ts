@@ -171,14 +171,22 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
   if (updErr) throw updErr;
 }
 
-/** type "antet-renkli": antetin renkli aslı — yalnız mailde kullanılır (bkz. sql/firmalar_antet_renkli.sql). */
+/** type "antet-renkli": antetin renkli aslı — yalnız mailde kullanılır (bkz. sql/firmalar_antet_renkli.sql).
+ *
+ *  ANTETLER ÜZERİNE YAZILMAZ: `damga` verilirse dosya adı `antet-<damga>.png` olur.
+ *  Eskiden hep `antet.png`e yazılıyordu; antet değişince eski dosya siliniyor ve o
+ *  antetle yazılmış GEÇMİŞ yazışmalar yeni anteti göstermeye başlıyordu
+ *  (05.11.2026, Kad-Tem–Atılım ortaklığı — 30 belge). Artık her sürüm storage'da kalır.
+ */
 export async function uploadFirmaFile(
   file: File,
   firmaId: string,
-  type: "kase" | "antet" | "antet-renkli"
+  type: "kase" | "antet" | "antet-renkli",
+  damga?: string,
 ) {
   const ext = file.name.split(".").pop();
-  const filePath = `${firmaId}/${type}.${ext}`;
+  const ad = damga ? `${type}-${damga}` : type;
+  const filePath = `${firmaId}/${ad}.${ext}`;
 
   const formData = new FormData();
   formData.append("file", file);

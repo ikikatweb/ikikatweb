@@ -24,6 +24,7 @@ import { Save, X, Upload, Trash2 } from "lucide-react";
 import RenkSecici from "@/components/shared/renk-secici";
 import toast from "react-hot-toast";
 import { griKopyaUret, renkliMi } from "@/lib/utils/gri-antet";
+import { antetGecmisineEkle } from "@/lib/supabase/queries/antet-gecmisi";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type FirmaFormProps = {
@@ -175,8 +176,11 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
           setLoading(false);
           return;
         }
-        const renkliUrl = await uploadFirmaFile(antetFile, savedFirma.id, "antet-renkli");
-        const griUrl = await uploadFirmaFile(griFile, savedFirma.id, "antet");
+        // ÜZERİNE YAZMA YOK: her antet kendi adresine gider, eski sürüm storage'da kalır —
+        // o antetle yazılmış geçmiş yazışmalar eski antetini göstermeye devam etsin.
+        const damga = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
+        const renkliUrl = await uploadFirmaFile(antetFile, savedFirma.id, "antet-renkli", damga);
+        const griUrl = await uploadFirmaFile(griFile, savedFirma.id, "antet", damga);
         try {
           await updateFirma(savedFirma.id, { antet_url: griUrl, antet_renkli_url: renkliUrl });
         } catch (e) {
@@ -189,6 +193,20 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
           } else throw e;
         }
         setMevcutAntetUrl(griUrl);
+        // GEÇMİŞE İŞLE: bu antet bugünden itibaren geçerli. Yazılamazsa mutlaka SÖYLENİR —
+        // sessiz geçilse geçmiş yazışmalar da yeni anteti göstermeye başlardı.
+        try {
+          await antetGecmisineEkle(savedFirma.id, griUrl, renkliUrl, new Date().toISOString().slice(0, 10));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error("[Antet] geçmişe yazılamadı:", e);
+          toast.error(
+            /firma_antet_gecmisi|does not exist|schema cache/i.test(msg)
+              ? "Antet yüklendi ama GEÇMİŞE işlenemedi: 'firma_antet_gecmisi' tablosu yok. sql/firma_antet_gecmisi.sql dosyasını Supabase'de çalıştırın — yoksa eski yazışmalar da bu yeni anteti gösterir."
+              : `Antet yüklendi ama geçmişe işlenemedi (${msg}) — eski yazışmalar da bu yeni anteti gösterecek.`,
+            { duration: 12000 },
+          );
+        }
         if (!(await renkliMi(antetFile))) {
           toast("Yüklenen antet zaten siyah-beyaz — mail de siyah-beyaz gidecek.", { icon: "⚠️", duration: 8000 });
         }

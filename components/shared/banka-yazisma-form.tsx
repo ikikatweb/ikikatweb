@@ -1,6 +1,8 @@
 // Banka yazışma form - Otomatik sayı no, çoklu ilgi/ek, kaşe toggle, ön izleme
 "use client";
 
+import { getAntetGecmisi } from "@/lib/supabase/queries/antet-gecmisi";
+import { antetSec, type AntetGecmisSatiri } from "@/lib/utils/antet-gecmis";
 import { useState, useEffect, useRef } from "react";
 import RichTextEditor from "@/components/shared/rich-text-editor";
 import {
@@ -278,7 +280,19 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
     }
   }
 
-  const seciliFirma = firmalar.find((f) => f.id === firmaId);
+  // ÖN İZLEMEDEKİ ANTET belgenin KENDİ TARİHİNDEKİ antettir: eski bir evrak
+  // düzenlenirken firmanın bugünkü anteti değil, o günkü antet görünür — kaydedilmiş
+  // listede göreceğiyle aynı olsun (bkz. lib/utils/antet-gecmis.ts).
+  const [antetGecmisi, setAntetGecmisi] = useState<AntetGecmisSatiri[]>([]);
+  useEffect(() => { getAntetGecmisi().then(setAntetGecmisi).catch(() => setAntetGecmisi([])); }, []);
+  const seciliFirmaHam = firmalar.find((f) => f.id === firmaId);
+  const seciliFirma = (() => {
+    if (!seciliFirmaHam) return seciliFirmaHam;
+    const secim = antetSec(firmaId, evrakTarihi, antetGecmisi);
+    return secim && secim.antet_url !== seciliFirmaHam.antet_url
+      ? { ...seciliFirmaHam, antet_url: secim.antet_url }
+      : seciliFirmaHam;
+  })();
   const ilgiHarfler = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
   // ==================== ÖN İZLEME ====================
