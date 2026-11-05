@@ -26,6 +26,10 @@ import { fileURLToPath } from "url";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { createClient } from "@supabase/supabase-js";
+// pdfjs'in node sürümü yüklenirken DOMMatrix arar; bunu @napi-rs/canvas sağlıyor. Paket
+// pdfjs'in İSTEĞE BAĞLI eşi olduğu için bir npm kurulumunda sessizce düşebiliyor — 05.11.2026'da
+// düştü ve bu script günlerce ilk satırında öldü. O yüzden package.json'da AÇIKÇA yazılı
+// (devDependencies; yalnız yerel scriptler kullanıyor, Vercel'e gerek yok). Kaldırma.
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { teklifResminiOku } from "./teklif-resim-oku.mjs";
 import { policePdfOku } from "./police-pdf-oku.mjs";
@@ -528,6 +532,19 @@ async function main() {
       : new Date(Date.now() - 30 * 86400000);
     let enSonTarih = oncekiTarih ? new Date(oncekiTarih) : since;
 
+    // HER ÇALIŞMADA "YAŞIYORUM" DAMGASI. Eskiden durum satırı yalnız yeni mail işlenince
+    // yazılıyordu; script 05.11.2026'da pdfjs bağımlılığı düşünce günlerce ölü kaldı ve
+    // son_calisma da donduğu için "ölü mü, sakin mi" ayırt edilemiyordu. Artık yeni mail
+    // olmasa da yazılır → son_calisma eskimişse görev gerçekten çalışmıyor demektir.
+    const durumYaz = async () => {
+      if (DENEME) return;
+      await sb.from("sigorta_mail_durum").upsert({
+        hesap: user, son_tarih: enSonTarih.toISOString(),
+        son_calisma: new Date().toISOString(),
+        son_sonuc: `${toplamYeni} teklif, ${toplamBekleyen} elle bekleyen`,
+      }, { onConflict: "hesap" });
+    };
+
     const c = new ImapFlow({
       host: `mail.${user.split("@")[1]}`, port: 993, secure: true,
       auth: { user, pass }, logger: false, tls: { rejectUnauthorized: false },
@@ -542,7 +559,7 @@ async function main() {
     try {
       await c.mailboxOpen("INBOX");
       const uidler = await c.search({ since }, { uid: true });
-      if (!uidler?.length) { log(`${user}: yeni mesaj yok`); continue; }
+      if (!uidler?.length) { log(`${user}: yeni mesaj yok`); await durumYaz(); continue; }
 
       // İNDİRMEDEN ÖNCE İKİ ELEME. Pencerede 29 mail varken hepsinin GÖVDESİ indiriliyordu;
       // oysa çoğu banka bildirimi, acente maili bile değil. Asıl yük buydu.
@@ -558,7 +575,7 @@ async function main() {
       const islenmis = await islenmisleriGetir(acenteUid.map((u) => `${user}/INBOX/${u}`));
       const yeniUid = acenteUid.filter((u) => !islenmis.has(`${user}/INBOX/${u}`));
       log(`${user}: ${uidler.length} mesaj · ${acenteUid.length} acenteden · ${yeniUid.length} yeni`);
-      if (!yeniUid.length) continue;
+      if (!yeniUid.length) { await durumYaz(); continue; }
       await referansYukle();
 
       // Mesajlar ÖNCE baştan sona indirilir, işleme SONRA yapılır.
@@ -746,13 +763,7 @@ async function main() {
       try { await c.logout(); } catch { /* bağlantı zaten kapanmış olabilir */ }
     }
 
-    if (!DENEME) {
-      await sb.from("sigorta_mail_durum").upsert({
-        hesap: user, son_tarih: enSonTarih.toISOString(),
-        son_calisma: new Date().toISOString(),
-        son_sonuc: `${toplamYeni} teklif, ${toplamBekleyen} elle bekleyen`,
-      }, { onConflict: "hesap" });
-    }
+    await durumYaz();
    } catch (e) {
      log(`${user}: bu hesap atlandı — ${e.message}`);
    }
