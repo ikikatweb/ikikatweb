@@ -51,10 +51,11 @@ export function policeTalepSablonCoz(
   satirlar: { kategori: string; deger: string | null }[] | null | undefined,
 ): PoliceTalepSablon {
   const bul = (kat: string) => (satirlar ?? []).find((s) => s.kategori === kat)?.deger;
-  const govde = (bul(POLICE_TALEP_KATEGORI) ?? "").trim();
+  // trim() YOK: metnin başındaki boş satır kasıtlı olabilir (antetle gövde arası boşluk).
+  const govde = bul(POLICE_TALEP_KATEGORI) ?? "";
   const not = bul(POLICE_TALEP_NOT_KATEGORI);
   return {
-    govde: govde || POLICE_TALEP_VARSAYILAN,
+    govde: govde.trim() ? govde : POLICE_TALEP_VARSAYILAN,
     not: not === undefined || not === null ? ODEME_NOTU_VARSAYILAN : not.trim(),
   };
 }

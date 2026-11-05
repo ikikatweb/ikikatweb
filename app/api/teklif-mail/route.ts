@@ -187,19 +187,46 @@ export async function POST(request: Request) {
     }
     html = `${antet.html}${html}`;
 
+    // {acente} YER TUTUCUSU: her acenteye AYRI mail gittiği için adı alıcıya göre yazılır.
+    // Ad, tanımlamalardaki acente kaydından gelir (kisa_ad alanında JSON: {"e": eposta}).
+    const acenteAdi = new Map<string, string>();
+    const { data: acenteTanim, error: acenteHata } = await supabase
+      .from("tanimlamalar").select("deger, kisa_ad").eq("kategori", "sigorta_acente");
+    if (acenteHata) {
+      return NextResponse.json({ error: `Acente listesi okunamadı (${acenteHata.message}) — mail gönderilmedi.` }, { status: 500 });
+    }
+    for (const a of acenteTanim ?? []) {
+      try {
+        const e = (JSON.parse(String(a.kisa_ad ?? "{}")) as { e?: string }).e;
+        if (e) acenteAdi.set(e.trim().toLocaleLowerCase("tr"), String(a.deger));
+      } catch { /* kisa_ad JSON değilse o acente eşleşmez — aşağıda yakalanır */ }
+    }
+    const acenteGerekli = metin.includes("{acente}") || html.includes("{acente}");
+
     // Her acenteye mail gönder
     const gonderenAd = firma.smtp_sender_name || firma.firma_adi;
     const gonderenEmail = firma.smtp_sender_email || firma.smtp_user;
     const sonuclar: { email: string; basarili: boolean; hata?: string }[] = [];
 
     for (const email of acenteEmails) {
+      const ad = acenteAdi.get(email.trim().toLocaleLowerCase("tr"));
+      // Metin {acente} diyor ama bu adresin acente adı bulunamadıysa mail GÖNDERİLMEZ:
+      // gitseydi acenteye "Sayın {acente}" diye bir mail giderdi (bkz. AGENTS.md "Sessiz hata yok").
+      if (acenteGerekli && !ad) {
+        const hata = `${email} için acente adı bulunamadı — metindeki {acente} doldurulamadı, bu adrese mail GÖNDERİLMEDİ. Tanımlamalar → Sigorta Acenteleri'nde bu e-postayı taşıyan kayıt var mı bakın.`;
+        console.error(`[Teklif Mail] ${hata}`);
+        sonuclar.push({ email, basarili: false, hata });
+        continue;
+      }
+      const metinSon = ad ? metin.replace(/\{acente\}/g, ad) : metin;
+      const htmlSon = ad ? html.replace(/\{acente\}/g, htmlEscape(ad)) : html;
       try {
         const info = await transporter.sendMail({
           from: `"${gonderenAd}" <${gonderenEmail}>`,
           to: email,
           subject: konu,
-          text: metin,
-          html,
+          text: metinSon,
+          html: htmlSon,
           attachments,
         });
         console.log(`[Teklif Mail] Gönderildi → ${email}, messageId: ${info.messageId}, response: ${info.response}`);

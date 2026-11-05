@@ -121,7 +121,9 @@ export default function TanimlamalarPage() {
         else await createTanimlama({ kategori: kat, sekme: "sigorta-muayene", deger, kisa_ad: "genel", sira: 1, aktif: true });
       };
       // Gövde boş bırakılamaz: boş mail gitmesin diye varsayılana dönülür.
-      await yaz(POLICE_TALEP_KATEGORI, policeMetin.trim() || POLICE_TALEP_VARSAYILAN);
+      // trim() YOK: kullanıcı metnin başına boş satır koyabilsin (antetle gövde arası boşluk).
+      // Eskiden trim'leniyordu, enter'la açılan ilk satır kaydedince geri kapanıyordu.
+      await yaz(POLICE_TALEP_KATEGORI, policeMetin.trim() ? policeMetin : POLICE_TALEP_VARSAYILAN);
       await yaz(POLICE_TALEP_NOT_KATEGORI, policeNot.trim());
       await loadData();
       toast.success("Poliçeleştirme mail metni kaydedildi.");
@@ -133,13 +135,15 @@ export default function TanimlamalarPage() {
   }
   async function kaskoSablonKaydet() {
     // Talep cümlelerinde de aynı denetim — {plaka} / {tip} bozuk yazılırsa mailde öyle görünür.
-    const tHata = yerTutucuHatasi(teklifTalepKasko, ["plaka", "tip"]) ?? yerTutucuHatasi(teklifTalepTrafik, ["plaka", "tip"]);
+    const TALEP_ALANLARI = ["plaka", "tip", "acente"];
+    const tHata = yerTutucuHatasi(teklifTalepKasko, TALEP_ALANLARI) ?? yerTutucuHatasi(teklifTalepTrafik, TALEP_ALANLARI);
     if (tHata) { toast.error(tHata, { duration: 8000 }); return; }
     setKaskoSablonKaydediyor(true);
     try {
       // Talep cümleleri — kasko ve trafik AYRI KATEGORİ (her kategoride tek satır → benzersiz kısıt çakışması yok)
       const talepKaydet = async (kat: string, deger: string) => {
-        const val = deger.trim() || TEKLIF_TALEP_VARSAYILAN;
+        // trim() YOK — baştaki/sondaki boş satırlar korunur (bkz. poliçe metni notu).
+        const val = deger.trim() ? deger : TEKLIF_TALEP_VARSAYILAN;
         const row = tanimlamalar.find((t) => t.kategori === kat);
         if (row) { if ((row.deger ?? "") !== val) await updateTanimlama(row.id, { deger: val }); }
         else await createTanimlama({ kategori: kat, sekme: "sigorta-muayene", deger: val, kisa_ad: "genel", sira: 1, aktif: true });
@@ -1427,7 +1431,9 @@ export default function TanimlamalarPage() {
                 rows={3}
                 className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400" />
               <p className="text-[9px] text-gray-400 mt-1">
-                <code>{"{plaka}"}</code> = araç plakası, <code>{"{tip}"}</code> = &quot;kasko&quot; / &quot;trafik sigortası&quot;. Kasko ve trafik cümleleri BAĞIMSIZDIR.
+                <code>{"{plaka}"}</code> = araç plakası, <code>{"{tip}"}</code> = &quot;kasko&quot; / &quot;trafik sigortası&quot;,{" "}
+                <code>{"{acente}"}</code> = mailin gittiği acentenin adı (her acenteye ayrı mail gider, adı ona göre yazılır).
+                Kasko ve trafik cümleleri BAĞIMSIZDIR.
               </p>
             </div>
 
