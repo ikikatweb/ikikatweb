@@ -10,13 +10,16 @@
 export const LOGO_TUVAL_GEN = 700;
 export const LOGO_TUVAL_YUK = 300;
 /** Hedef "mürekkep" miktarı — opak piksel sayısı. Koda gömülü eski logolar
- *  13.700–26.700 aralığındaydı (ortalama ~22.000); kenar çubuğunda biraz daha küçük
- *  dursun diye onun altına çekildi. */
-const HEDEF_OPAK = 17000;
-/** Tuvalin kenarlarında bırakılan pay. Yükseklik payı geniş: dikey logolar kenar
- *  çubuğunun kutusunda yüksekliğe oturuyor, kutuyu baştan aşağı doldurmasın. */
+ *  13.700–26.700 aralığındaydı; ortalaması (~22.000) hedef alındı.
+ *
+ *  DİKKAT: dikey logolarda boyutu çoğu zaman bu değil, aşağıdaki YÜKSEKLİK PAYI
+ *  belirliyor — içerik tuvalin tamamını kaplamaya çalışıp paya takılıyor. Logo
+ *  büyük/küçük isteniyorsa önce EN_COK_YUK'e bakın. */
+const HEDEF_OPAK = 22000;
+/** Tuvalin kenarlarında bırakılan pay. %92: eski logolar 214–300 piksel yüksekliğindeydi
+ *  (ortalama ~265), yeni ölçü 276 ile onun hemen yanında duruyor. */
 const EN_COK_GEN = Math.round(LOGO_TUVAL_GEN * 0.90);
-const EN_COK_YUK = Math.round(LOGO_TUVAL_YUK * 0.82);
+const EN_COK_YUK = Math.round(LOGO_TUVAL_YUK * 0.92);
 
 export type LogoDuzenSonucu = {
   dosya: File;
