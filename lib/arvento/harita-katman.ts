@@ -3,6 +3,7 @@
 // ortak kullanılır. Sağ üstte katman seçici (Uydu / Sokak + etiket) çıkar.
 import type { Map as LeafletMap, Path } from "leaflet";
 import { getHaritaKatmanlari, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
+import { ekleYerlesimAdlari, YERLESIM_EN_AZ_ZOOM, YERLESIM_EN_COK_ZOOM } from "@/lib/arvento/yerlesim-katman";
 
 // KML izin filtresi: bir katmanın (coğrafi konumuna/şantiyesine göre) görünür olup olmadığı.
 export type KatmanIzin = (k: HaritaKatman) => boolean;
@@ -45,30 +46,36 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   const isimler = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
     attribution: "Etiketler © OpenStreetMap, © CARTO", subdomains: "abcd", maxZoom: ENUST_ZOOM, maxNativeZoom: 20,
   });
-  // YERLEŞİM İSİMLERİ (il / ilçe / köy-mahalle) — Esri'nin uydu için hazırladığı referans katmanı.
+  // YERLEŞİM İSİMLERİ (il / ilçe / mahalle) — Esri'nin uydu için hazırladığı referans katmanı.
   //
   // NEDEN AYRI BİR KATMAN: diğer iki katman yalnız YOL adı veriyor (Atatürk Bulvarı, 173. Sokak).
   // Uyduya yaklaşınca "burası neresi?" sorusu cevapsız kalıyordu — Nazilli'nin tam üstünde z13'te
   // ekranda tek bir yerleşim adı yoktu.
   //
-  // KADEMELENDİRME (Google Earth'teki gibi: uzakta az, yaklaşınca çok ad):
-  // Kaynak mahalle adlarını z11'de açıyor; 30 km'lik görüntüde Tokat'ın çevresi Yeniyurt/Çağgölü/
-  // Mahmutpaşa/Topçubağı ile doluyor ve "Tokat" aralarında kayboluyordu. Çözüm iki parçalı:
-  //   z9–12  → katman BİR KADEME GERİDEN çizilir (tileSize 512 + zoomOffset -1): harita z11'de
-  //            kaynağın z10 karosu gelir, yani yalnız il/ilçe adı. 512 piksellik karo z-1 karosunun
-  //            tam hizasına oturur (retina karo deseni) → kayma olmaz.
-  //   z13+   → kaydırma YOK, kaynak kendi ölçeğinde (net yazı): mahalle adları burada açılır.
-  //   z<9    → katman KAPALI. Ülke görünümünde CARTO zaten İstanbul/Ankara yazıyor; kaydırılmış
-  //            katman aynı şehri iki kat büyük tekrar yazınca ÇİFT görünüyordu.
-  const YER_ADRES = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
-  const yerUzak = L.tileLayer(YER_ADRES, {
-    attribution: "Yer adları: Esri", minZoom: 9, maxZoom: 12, maxNativeZoom: 18, tileSize: 512, zoomOffset: -1,
-  });
-  const yerYakin = L.tileLayer(YER_ADRES, { minZoom: 13, maxZoom: ENUST_ZOOM, maxNativeZoom: 18 });
-  // Katman seçicide TEK satır görünsün diye ikisi bir grupta (açıp kapatmak ikisini birden etkiler).
-  const yerIsimleri = L.layerGroup([yerUzak, yerYakin]);
+  // KADEMELENDİRME — istenen: MAHALLE ADLARI z14'TEN İTİBAREN görünsün, daha uzakta il/ilçe yetsin.
+  // Esri mahalleyi kendi z11'inde açıyor; kaynağı "geriden" çizerek (zoomOffset) bastırmak z13'te
+  // yazıyı 8 kat büyütüp bulanıklaştırıyordu. Bu yüzden iş üçe bölündü:
+  //   z≤10   → Esri (kaynak o kademede zaten yalnız il/ilçe yazıyor)
+  //   z11–13 → Esri KAPALI; il/ilçe adlarını KENDİMİZ yazıyoruz (yerlesim-katman.ts, OSM verisi)
+  //   z14+   → Esri (mahalle adları burada açılır, net yazıyla)
+  const yerIsimleri = L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { attribution: "Yer adları: Esri", maxZoom: ENUST_ZOOM, maxNativeZoom: 18 },
+  );
+  // BANDI KENDİMİZ YÖNETİYORUZ: tileLayer'ın minZoom/maxZoom seçenekleri bu düzende güvenilir
+  // çalışmadı (z14'te katman hiç yüklenmedi). Opaklık 0/1 hem kesin hem de katman seçicinin
+  // aç/kapat kutusunu bozmaz (kullanıcı kapattıysa katman haritada zaten yoktur).
+  const yerBandiniAyarla = () => {
+    const z = map.getZoom();
+    const bantIci = z >= YERLESIM_EN_AZ_ZOOM && z <= YERLESIM_EN_COK_ZOOM;
+    yerIsimleri.setOpacity(bantIci ? 0 : 1);
+  };
+  map.on("zoomend", yerBandiniAyarla);
   if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); yerIsimleri.addTo(map); }
   else sokak.addTo(map);
+  yerBandiniAyarla();
+  // z11–13 aralığının il/ilçe adları — Esri'nin KAPALI olduğu bant (yukarıdaki yorum).
+  ekleYerlesimAdlari(L, map);
   L.control.layers(
     { "🛰️ Uydu (Earth)": uydu, "🗺️ Sokak": sokak },
     { "Yol çizgileri": etiketler, "Yol/yer isimleri": isimler, "Şehir/ilçe/köy adları": yerIsimleri },

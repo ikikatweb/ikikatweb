@@ -150,6 +150,30 @@ thead th {
 /* üçgen okun rengi kutuyla uyumlu */
 .leaflet-tooltip.canli-etiket.leaflet-tooltip-top::before { border-top-color: #94a3b8; }
 
+/* ── İL/İLÇE ADLARI (z11–13, lib/arvento/yerlesim-katman.ts) ──
+   Uydu üzerinde okunur olsun diye beyaz yazı + koyu hale (Esri/Google etiket düzeni).
+   Nokta tam koordinatta, yazı onun sağında. Tıklamayı engellemez. */
+.leaflet-marker-icon.yerlesim-ad {
+  pointer-events: none;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform-origin: left center;
+}
+.yerlesim-ad .ya-nokta {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: #ffffff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55);
+  flex: 0 0 auto;
+}
+.yerlesim-ad .ya-yazi {
+  font: 600 12px/1 system-ui, sans-serif;
+  color: #ffffff;
+  text-shadow: 0 0 3px rgba(0,0,0,.95), 0 0 2px rgba(0,0,0,.95), 1px 1px 2px rgba(0,0,0,.9);
+  letter-spacing: 0.2px;
+}
+.yerlesim-ad .ya-yazi.ya-buyuk { font-size: 15px; font-weight: 700; letter-spacing: 0.4px; }
+
 /* ── TAM EKRAN (büyütme): o sekmenin araç kartları haritanın ÜSTÜNE yüzer ──
    Kapsayıcı (kart paneli + harita) ekranı kaplar; harita tüm alanı doldurur, kart paneli
    ("harita-arac-panel") üstte kayan beyaz bara döner. Normal modda hiçbir etki yok.
