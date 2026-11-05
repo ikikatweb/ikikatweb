@@ -118,7 +118,7 @@ const OZET_MODU = true;
 // ocak çemberinin kendisinden yapılır (bkz. stabilize-ozet-server → ocakGirisCikis).
 const OCAK_GIRIS_HALKA_M = 50;
 
-export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, sonGuncellemeRapor = null, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, sekmePanel, kmlIndir = true, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; sonGuncellemeRapor?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
+export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, kalinliklar, renkler, kamyonIziRenk = "#dc2626", kamyonIziKalinlik = 3, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, onSessizBeklemede, gorunumRef: disGorunumRef, refreshKey = 0, sonGuncelleme, sonGuncellemeRapor = null, ocakLat = null, ocakLng = null, ocakYaricap = 150, yDuzenle = false, izinliPlakalar, katmanIzinli, canliButton, sekmePanel, kmlIndir = true, ocakMakineleri = [], ilkSonKontakMap }: { bas: string; bitis: string; tekrarEsigi?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kamyonIziRenk?: string; kamyonIziKalinlik?: number; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; onSessizBeklemede?: (s: SessizCihaz, geriAl?: boolean) => Promise<void>; gorunumRef?: MutableRefObject<HaritaGorunum | null>; refreshKey?: number; sonGuncelleme?: Date | null; sonGuncellemeRapor?: Date | null; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; yDuzenle?: boolean; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; ocakMakineleri?: { plaka: string; model: string | null; cins: string | null; calismaSn: number; lat: number | null; lng: number | null }[]; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }> }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const reglajRenkV = renkler?.reglaj ?? "#2563eb";
   const [tumGuzergahHam, setTumGuzergah] = useState<AracArventoGuzergah[]>([]); // reglaj çizgileri (referans)
@@ -151,6 +151,29 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
   const sessizRef = useRef<SessizCihaz[]>([]);
   sessizRef.current = sessizCihazlar ?? [];
   useEffect(() => { sessizUyariRef.current?.tazele(); }, [sessizCihazlar]);
+  // "beklemede" düğmesi: rozet senkron geri çağırma bekliyor, yazma ise ağ işi.
+  // Sonuç toast ile bildirilir — sessizce geçmek, düğmenin işe yaradığını sanmaya yol açar.
+  const sessizBeklemedeRef = useRef(onSessizBeklemede);
+  sessizBeklemedeRef.current = onSessizBeklemede;
+  const sessizBeklemedeTik = useCallback((s: SessizCihaz) => {
+    const f = sessizBeklemedeRef.current;
+    if (!f) return;
+    const hata = (e: unknown) => {
+      toast.error(`${s.plaka} gizlenemedi: ${e instanceof Error ? e.message : String(e)}`, { duration: toastSuresi() });
+      sessizUyariRef.current?.tazele();              // düğme "…"da kalmasın, geri gelsin
+    };
+    f(s).then(
+      // GERİ AL: yanlış basılan bir "beklemede", gerçek bir arızayı sessizce gömebilir.
+      () => toast.success((t) => (
+        <span>
+          {s.plaka} uyarıdan çıkarıldı.{" "}
+          <button type="button" className="underline font-semibold"
+            onClick={() => { toast.dismiss(t.id); f(s, true).catch(hata); }}>geri al</button>
+        </span>
+      ), { duration: toastSuresi() }),
+      hata,
+    );
+  }, []);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
@@ -698,7 +721,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
         const c = m.getCenter();
         return { lat: c.lat, lng: c.lng };
       });
-      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current);
+      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current, onSessizBeklemede ? sessizBeklemedeTik : undefined);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // STABİLİZE: kayıtlı KML yollarını canvas damperlerin ÜSTÜNE al → tıklanabilir kalsın (damper canvas'ı
@@ -1055,7 +1078,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
-          <SessizUyariKutu cihazlar={sessizCihazlar} />
+          <SessizUyariKutu cihazlar={sessizCihazlar} onBeklemede={onSessizBeklemede} />
         </div>
       </div>
     );
@@ -1071,7 +1094,7 @@ export default function ArventoStabilize({ bas, bitis, tekrarEsigi = 0, gridMesa
           </p>
           {/* Tarih navigatörü burada da erişilebilir olsun → kullanıcı sıkışmasın (tarihi değiştirebilsin). */}
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
-          <SessizUyariKutu cihazlar={sessizCihazlar} />
+          <SessizUyariKutu cihazlar={sessizCihazlar} onBeklemede={onSessizBeklemede} />
         </div>
       </div>
     );

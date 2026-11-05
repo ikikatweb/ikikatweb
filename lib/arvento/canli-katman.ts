@@ -18,7 +18,10 @@ export type CanliKonum = {
   adres: string | null;
   kontak?: boolean | null; // kontak (ignition): açık=true → duruyorsa mavi, kapalı=false → kırmızı
 };
-export type CihazBilgi = { plaka: string | null; surucu: string | null; model?: string | null };
+// sessizOnay: "bu araç zaten çalışmıyor, biliyorum" denince kaydedilen SON PAKET zamanı.
+// Sessiz cihaz uyarısı yalnız bu değer son pakete eşitse gizlenir; cihaz tekrar veri
+// gönderip sonra YİNE susarsa son paket değişir ve uyarı kendiliğinden geri gelir.
+export type CihazBilgi = { plaka: string | null; surucu: string | null; model?: string | null; sessizOnay?: string | null };
 
 // Harita görünümü (merkez + zoom) — sekmeler arası PAYLAŞILAN görünüm hafızası için.
 export type HaritaGorunum = { merkez: [number, number]; zoom: number };

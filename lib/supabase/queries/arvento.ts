@@ -56,12 +56,36 @@ export async function getAnlikKonumlarDirect(): Promise<AnlikSatir[]> {
   }));
 }
 
-export type CihazSatir = { node: string; plaka: string | null; surucu: string | null; model: string | null };
+export type CihazSatir = { node: string; plaka: string | null; surucu: string | null; model: string | null; sessiz_onay?: string | null };
 export async function getCihazlarDirect(): Promise<CihazSatir[]> {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from("arvento_cihaz").select("node, plaka, surucu, model");
-  if (error) return [];
-  return (data ?? []) as CihazSatir[];
+  const { data, error } = await supabase.from("arvento_cihaz").select("node, plaka, surucu, model, sessiz_onay");
+  if (!error) return (data ?? []) as CihazSatir[];
+  // sessiz_onay sütunu SQL çalıştırılmadığı için yok olabilir. O zaman tüm canlı takibi
+  // çökertmek yerine sütunsuz devam edilir — ama SESSİZ GEÇİLMEZ: "beklemede" düğmesinin
+  // neden çalışmadığı konsolda yazılı olsun.
+  if (/sessiz_onay/.test(error.message)) {
+    console.warn("[cihaz] sessiz_onay sütunu yok — sql/arvento_cihaz_sessiz_onay.sql çalıştırılmalı. Sessiz uyarısı susturulamaz.");
+    const { data: d2, error: e2 } = await supabase.from("arvento_cihaz").select("node, plaka, surucu, model");
+    if (e2) return [];
+    return (d2 ?? []) as CihazSatir[];
+  }
+  return [];
+}
+
+/** "Beklemede": aracın O ANKİ son paket zamanını kaydet → uyarı gizlenir. null = geri al. */
+export async function sessizOnayKaydet(node: string, sonPaket: string | null): Promise<void> {
+  // arvento_cihaz'da anon/authenticated UPDATE RLS politikası yok → model düzenlemesinde
+  // olduğu gibi service-role API üzerinden yazılır.
+  const res = await fetch("/api/arvento/cihaz", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ node, sessizOnay: sonPaket }),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => null);
+    throw new Error(j?.error || `Uyarı susturulamadı (${res.status})`);
+  }
 }
 
 // Cihaz modelini (haritada plaka altında görünen yazı, ör. "AROCS") güncelle — node ile.

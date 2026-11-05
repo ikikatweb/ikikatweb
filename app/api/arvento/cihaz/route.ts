@@ -24,9 +24,14 @@ const norm = (s: unknown) =>
 export async function GET() {
   try {
     const supabase = serviceClient();
-    const { data, error } = await supabase
-      .from("arvento_cihaz")
-      .select("node, plaka, tescil, surucu, marka, model, sinif");
+    const sutunlar = "node, plaka, tescil, surucu, marka, model, sinif";
+    let { data, error } = await supabase.from("arvento_cihaz").select(`${sutunlar}, sessiz_onay`);
+    // sessiz_onay sütunu (sql/arvento_cihaz_sessiz_onay.sql) çalıştırılmamış olabilir →
+    // tüm cihaz listesini kaybetmek yerine sütunsuz dön; eksiklik log'a yazılır.
+    if (error && /sessiz_onay/.test(error.message)) {
+      console.warn("[cihaz] sessiz_onay sütunu yok — sql/arvento_cihaz_sessiz_onay.sql çalıştırılmalı.");
+      ({ data, error } = await supabase.from("arvento_cihaz").select(sutunlar));
+    }
     if (error) throw new Error(error.message);
     // Cihaz↔plaka eşlemesi nadiren değişir (yalnız Excel yüklenince) → 5 dk CDN önbelleği: her sayfa
     // açılışında fonksiyon çalıştırmak yerine Edge'den servis edilir (Fluid CPU tasarrufu).
@@ -107,14 +112,28 @@ export async function PATCH(request: Request) {
     const body = await request.json().catch(() => null);
     const node = typeof body?.node === "string" ? body.node.trim() : "";
     if (!node) return NextResponse.json({ error: "node zorunlu" }, { status: 400 });
-    const model = typeof body?.model === "string" ? body.model.trim() : "";
 
     const supabase = serviceClient();
-    const { error } = await supabase
-      .from("arvento_cihaz")
-      .update({ model: model || null })
-      .eq("node", node);
-    if (error) throw new Error(error.message);
+
+    // İKİ AYRI İŞ, TEK ROTA: "model" harita etiketini, "sessizOnay" sessiz cihaz uyarısının
+    // susturulmasını yazar. Alanın GÖNDERİLMİŞ olması ile boş olması farklıdır: sessizOnay
+    // null gönderilirse susturma GERİ ALINIR, hiç gönderilmezse dokunulmaz.
+    const yama: Record<string, string | null> = {};
+    if ("model" in (body ?? {})) yama.model = (typeof body.model === "string" ? body.model.trim() : "") || null;
+    if ("sessizOnay" in (body ?? {})) yama.sessiz_onay = typeof body.sessizOnay === "string" && body.sessizOnay.trim() ? body.sessizOnay.trim() : null;
+    if (Object.keys(yama).length === 0) return NextResponse.json({ error: "güncellenecek alan yok" }, { status: 400 });
+
+    const { error } = await supabase.from("arvento_cihaz").update(yama).eq("node", node);
+    if (error) {
+      // Sütun yoksa sebebi AÇIKÇA söyle: "kaydedilmedi" diyip susmak, kullanıcının düğmeye
+      // basıp bir şey olmadığını sanmasına yol açar.
+      if (/sessiz_onay/.test(error.message)) {
+        return NextResponse.json({
+          error: "sessiz_onay sütunu yok — sql/arvento_cihaz_sessiz_onay.sql çalıştırılmalı.",
+        }, { status: 500 });
+      }
+      throw new Error(error.message);
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });

@@ -41,7 +41,7 @@ function formatAralik(bas: string, bitis: string): string {
 
 // Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, onSessizBeklemede, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; onSessizBeklemede?: (s: SessizCihaz, geriAl?: boolean) => Promise<void>; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -110,6 +110,29 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const sessizRef = useRef<SessizCihaz[]>([]);
   sessizRef.current = sessizCihazlar ?? [];
   useEffect(() => { sessizUyariRef.current?.tazele(); }, [sessizCihazlar]);
+  // "beklemede" düğmesi: rozet senkron geri çağırma bekliyor, yazma ise ağ işi.
+  // Sonuç toast ile bildirilir — sessizce geçmek, düğmenin işe yaradığını sanmaya yol açar.
+  const sessizBeklemedeRef = useRef(onSessizBeklemede);
+  sessizBeklemedeRef.current = onSessizBeklemede;
+  const sessizBeklemedeTik = useCallback((s: SessizCihaz) => {
+    const f = sessizBeklemedeRef.current;
+    if (!f) return;
+    const hata = (e: unknown) => {
+      toast.error(`${s.plaka} gizlenemedi: ${e instanceof Error ? e.message : String(e)}`, { duration: toastSuresi() });
+      sessizUyariRef.current?.tazele();              // düğme "…"da kalmasın, geri gelsin
+    };
+    f(s).then(
+      // GERİ AL: yanlış basılan bir "beklemede", gerçek bir arızayı sessizce gömebilir.
+      () => toast.success((t) => (
+        <span>
+          {s.plaka} uyarıdan çıkarıldı.{" "}
+          <button type="button" className="underline font-semibold"
+            onClick={() => { toast.dismiss(t.id); f(s, true).catch(hata); }}>geri al</button>
+        </span>
+      ), { duration: toastSuresi() }),
+      hata,
+    );
+  }, []);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   // Plaka aramasında odaklanılan aracın geçici vurgu halkaları
@@ -346,7 +369,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         const c = m.getCenter();
         return { lat: c.lat, lng: c.lng };
       });
-      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current);
+      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current, onSessizBeklemede ? sessizBeklemedeTik : undefined);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // Çizgiler SVG + üst pane (opYolPane z450) → KML'nin (350) ÜSTÜnde ve TIKLANIR (canvas ince hatta tıklamayı
@@ -545,7 +568,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
-          <SessizUyariKutu cihazlar={sessizCihazlar} />
+          <SessizUyariKutu cihazlar={sessizCihazlar} onBeklemede={onSessizBeklemede} />
         </div>
       </div>
     );
@@ -632,7 +655,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         <div className="text-center py-16 bg-white rounded-lg border">
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">{formatAralik(bas, bitis)} için operasyon verisi yok. Mesafe Bilgisi / damper raporlarını yükleyin.</p>
-          <SessizUyariKutu cihazlar={sessizCihazlar} />
+          <SessizUyariKutu cihazlar={sessizCihazlar} onBeklemede={onSessizBeklemede} />
         </div>
       ) : (
         <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "66vh" }} />

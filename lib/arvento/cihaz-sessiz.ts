@@ -13,6 +13,8 @@
 export const SESSIZ_ESIK_SAAT = 24;
 
 export type SessizCihaz = {
+  /** Cihaz kodu (arvento_cihaz.node) — "beklemede" işaretini bu satıra yazmak için. */
+  node: string | null;
   plaka: string;
   model: string | null;
   /** Son paketin zamanı (ISO) — null ise cihaz hiç konuşmamış. */
@@ -25,7 +27,7 @@ export type SessizCihaz = {
 };
 
 type Konum = { node: string | null; lat: number | null; lng: number | null; tarih: string | null };
-type Cihaz = { plaka: string | null; model?: string | null };
+type Cihaz = { plaka: string | null; model?: string | null; sessizOnay?: string | null };
 
 /** Son paketi `esikSaat` saatten eski olan cihazlar — en uzun susandan başlayarak. */
 export function sessizCihazlariBul(
@@ -43,7 +45,14 @@ export function sessizCihazlariBul(
     const saat = (simdi - t) / 3600000;
     if (saat < esikSaat) continue;
     const c = k.node ? cihazMap?.get(k.node.trim()) : undefined;
+    // "BEKLEMEDE" İŞARETİ. Araçların çoğu arızadan değil, uzun süre ÇALIŞMADIĞI için susuyor
+    // (05.11.2026: 6 sessiz araçtan 5'i park hâlindeydi). Hepsi kırmızı yanınca uyarı
+    // anlamını yitiriyor. Kullanıcı "biliyorum" dediğinde o anki son paket zamanı kaydedilir
+    // ve uyarı gizlenir; cihaz tekrar veri gönderip sonra YİNE susarsa son paket değişir,
+    // işaret tutmaz ve uyarı kendiliğinden geri gelir.
+    if (c?.sessizOnay && k.tarih && c.sessizOnay === k.tarih) continue;
     out.push({
+      node: k.node?.trim() ?? null,
       plaka: c?.plaka?.trim() || k.node || "(eşlenmemiş cihaz)",
       model: c?.model?.trim() || null,
       son: k.tarih,
