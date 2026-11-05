@@ -730,14 +730,19 @@ async function main() {
 
         // BİLDİRİM — mail başına TEK tane. Bir acente 14 firmalık tablo gönderdiğinde
         // 14 ayrı bildirim telefonu kilitlerdi; özet yeterli, ayrıntı ekranda.
+        // DİKKAT: burada `arac` kullanılır. Eskiden `hedefArac ?? arac` yazıyordu ama hedefArac
+        // policeyiKaydet()'in İÇİNDE tanımlı — bu kapsamda yok. Sonuç: her yeni teklifte
+        // ReferenceError atılıyor, hesap "atlandı" diye kesiliyordu. Teklifler kaydedilmiş
+        // oluyordu (insert bundan önce) ama BİLDİRİM HİÇ GİTMİYOR, aynı maildeki sonraki
+        // işler ve durum damgası da yapılmıyordu. Teklifin plakası zaten mailden bulunur.
         if (yeniSayi > 0 && !DENEME) {
           const tutarlar = bulunanlar.map((b) => b.tutar).filter((t) => t > 0);
           const enUcuz = tutarlar.length ? Math.min(...tutarlar) : null;
-          await bildirimGonder(hedefArac ?? arac, tip, {
-            baslik: `${(hedefArac ?? arac).plaka} — ${yeniSayi} yeni teklif`,
+          await bildirimGonder(arac, tip, {
+            baslik: `${arac.plaka} — ${yeniSayi} yeni teklif`,
             govde: `${acente.ad} ${yeniSayi} firma teklifi gönderdi`
               + (enUcuz ? ` · en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
-            etiket: `teklif-${(hedefArac ?? arac).id}-${tip}`,
+            etiket: `teklif-${arac.id}-${tip}`,
             kategori: "sigorta-police",
           });
         }
@@ -758,7 +763,18 @@ async function main() {
           if (DENEME) { log(`  [deneme] ${arac.plaka} ${tip} ${acente.ad} → RESİM (elle girilecek)`); continue; }
           const { error } = await sb.from("sigorta_teklif").insert(kayit);
           if (error) { if (!/duplicate|unique/i.test(error.message)) log(`  YAZILAMADI: ${error.message}`); }
-          else { toplamBekleyen++; log(`  ~ ${arac.plaka} ${tip} ${acente.ad} → resim, elle girilecek`); }
+          else {
+            toplamBekleyen++;
+            log(`  ~ ${arac.plaka} ${tip} ${acente.ad} → resim, elle girilecek`);
+            // BU DA HABER VERİLİR: teklif geldi ama makine okuyamadı. Kayıt "elle bekliyor"
+            // olarak duruyor; kimseye söylenmezse teklif ekranında fark edilene kadar bekler.
+            await bildirimGonder(arac, tip, {
+              baslik: `${arac.plaka} — teklif geldi, elle girilmeli`,
+              govde: `${acente.ad} teklifi resim olarak gönderdi, tutar okunamadı.`,
+              etiket: `teklif-elle-${arac.id}-${tip}`,
+              kategori: "sigorta-police",
+            });
+          }
         }
       }
     } finally {
