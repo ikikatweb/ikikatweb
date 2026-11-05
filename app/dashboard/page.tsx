@@ -10,7 +10,7 @@ import { getAraclar, getTumPoliceler, updateArac, getTeklifGonderimler, insertTe
 import { getAracBakimlar } from "@/lib/supabase/queries/arac-bakim";
 import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
-import { policeTalepKonu, policeTalepGovde, ODEME_NOTU } from "@/lib/police-talep-metin";
+import { policeTalepKonu, policeTalepGovde, policeTalepSablonCoz, type PoliceTalepSablon } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
@@ -246,6 +246,8 @@ export default function DashboardPage() {
   // "Eminim" denince gidiyor.
   const [teklifMenu, setTeklifMenu] = useState<{ t: SigortaTeklif; x: number; y: number } | null>(null);
   const [policeTalep, setPoliceTalep] = useState<SigortaTeklif | null>(null);
+  // Mail metni tanımlamalardan okunur; pencere ancak okunduktan sonra açılır (policeTalepAc).
+  const [policeSablon, setPoliceSablon] = useState<PoliceTalepSablon | null>(null);
   const [policeTalepGonderiliyor, setPoliceTalepGonderiliyor] = useState(false);
   // TELEFONDA MENÜ: sağ tık yok, çift dokunuş da güvenilir değil (tarayıcı yakınlaştırma
   // sayıyor). Parmağı basılı tutmak menüyü açar — telefonda alışılmış davranış budur.
@@ -1592,6 +1594,19 @@ export default function DashboardPage() {
   // Poliçeleştirme talebini gönder: acenteye mail + teklifi seçili işaretle.
   // Mailin metni lib/police-talep-metin.ts'te; onay penceresinde gösterilen metinle
   // sunucunun gönderdiği metin aynı yerden geliyor ki onaylanan şey ile giden şey ayrışmasın.
+  // Onay penceresini aç. Mail metni Tanımlamalar'dan geldiği için ÖNCE okunur: okunamazsa
+  // pencere AÇILMAZ — yoksa varsayılan metin onaylanır, acenteye tanımlamalardaki metin gider.
+  async function policeTalepAc(t: SigortaTeklif) {
+    try {
+      const tum = await getTumTanimlamalar();
+      setPoliceSablon(policeTalepSablonCoz(tum as { kategori: string; deger: string | null }[]));
+    } catch {
+      toast.error("Mail metni okunamadı — poliçeleştirme penceresi açılmadı. Tekrar deneyin.");
+      return;
+    }
+    setPoliceTalep(t);
+  }
+
   async function policeTalebiGonder(t: SigortaTeklif) {
     if (!teklifKarsilastirArac) return;
     setPoliceTalepGonderiliyor(true);
@@ -3394,7 +3409,7 @@ export default function DashboardPage() {
                             {teklifMenu.t.sigorta_firmasi} · {para(teklifMenu.t.teklif_tutari)} ₺
                           </div>
                           <button type="button"
-                            onClick={() => { setPoliceTalep(teklifMenu.t); setTeklifMenu(null); }}
+                            onClick={() => { const t = teklifMenu.t; setTeklifMenu(null); void policeTalepAc(t); }}
                             className="w-full text-left px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50">
                             Poliçeleştir
                           </button>
@@ -3417,7 +3432,7 @@ export default function DashboardPage() {
                     )}
 
                     {/* POLİÇELEŞTİRME ONAYI — giden mailin TAMAMI burada okunur, sonra gönderilir */}
-                    {policeTalep && (
+                    {policeTalep && policeSablon && (
                       <Katman><div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-3" onClick={() => !policeTalepGonderiliyor && setPoliceTalep(null)}>
                         <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                           <div className="text-base font-semibold text-[#1E3A5F]">Poliçeleştirme talebi gönderilsin mi?</div>
@@ -3448,14 +3463,17 @@ export default function DashboardPage() {
                                 acenteAdi: policeTalep.acente_adi,
                                 sigortaFirmasi: policeTalep.sigorta_firmasi ?? "",
                                 tutar: policeTalep.teklif_tutari,
+                                tip: tipKey,
                                 gonderen: kullanici?.ad_soyad ?? null,
-                              })}
+                              }, policeSablon)}
                             </div>
                             {/* Bilgi notu mailde de gövdeden küçük gider; önizleme onunla aynı
                                 görünsün ki onaylanan ile giden ayrışmasın. */}
-                            <div className="mt-3 text-[11.5px] leading-relaxed text-gray-500">
-                              Not: {ODEME_NOTU}
-                            </div>
+                            {policeSablon.not.trim() && (
+                              <div className="mt-3 text-[11.5px] leading-relaxed text-gray-500">
+                                Not: {policeSablon.not.trim()}
+                              </div>
+                            )}
                           </div>
                           <div className="mt-3 flex gap-2">
                             <button type="button" disabled={policeTalepGonderiliyor}
@@ -3503,7 +3521,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="shrink-0 flex gap-2 border-t border-gray-200 bg-white p-3">
                             <button type="button"
-                              onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); setPoliceTalep(t); }}
+                              onClick={() => { const t = acikTeklifMail; setAcikTeklifMail(null); void policeTalepAc(t); }}
                               className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white">
                               Poliçeleştir
                             </button>

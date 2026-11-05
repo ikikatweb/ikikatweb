@@ -39,6 +39,7 @@ import {
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet, Search } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import { KASKO_TEKLIF_SINIFLAR, KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
+import { POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI, POLICE_TALEP_VARSAYILAN, ODEME_NOTU_VARSAYILAN } from "@/lib/police-talep-metin";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 
@@ -84,6 +85,10 @@ export default function TanimlamalarPage() {
   const [teklifTalepKasko, setTeklifTalepKasko] = useState<string>(TEKLIF_TALEP_VARSAYILAN);   // kasko talep cümlesi
   const [teklifTalepTrafik, setTeklifTalepTrafik] = useState<string>(TEKLIF_TALEP_VARSAYILAN); // trafik talep cümlesi (AYRI)
   const [kaskoSablonKaydediyor, setKaskoSablonKaydediyor] = useState(false);
+  // Poliçeleştirme talebi maili (lib/police-talep-metin.ts) — gövde + imza altı bilgi notu
+  const [policeMetin, setPoliceMetin] = useState<string>(POLICE_TALEP_VARSAYILAN);
+  const [policeNot, setPoliceNot] = useState<string>(ODEME_NOTU_VARSAYILAN);
+  const [policeMetinKaydediyor, setPoliceMetinKaydediyor] = useState(false);
   useEffect(() => {
     const m: Record<string, string> = {};
     for (const s of KASKO_TEKLIF_SINIFLAR) {
@@ -95,7 +100,31 @@ export default function TanimlamalarPage() {
     const legacy = tanimlamalar.find((t) => t.kategori === TEKLIF_TALEP_KATEGORI)?.deger;
     setTeklifTalepKasko(katDeger(TEKLIF_TALEP_KASKO_KATEGORI) ?? legacy ?? TEKLIF_TALEP_VARSAYILAN); // kaskoda eski "genel" korunur
     setTeklifTalepTrafik(katDeger(TEKLIF_TALEP_TRAFIK_KATEGORI) ?? TEKLIF_TALEP_VARSAYILAN);         // trafik AYRI — legacy'e düşmez
+    setPoliceMetin(katDeger(POLICE_TALEP_KATEGORI) ?? POLICE_TALEP_VARSAYILAN);
+    // Not BOŞ kaydedilebilir (kasıtlı kaldırma) — bu yüzden "?? varsayılan" yalnız kayıt YOKSA
+    const notDeger = katDeger(POLICE_TALEP_NOT_KATEGORI);
+    setPoliceNot(notDeger === undefined ? ODEME_NOTU_VARSAYILAN : notDeger);
   }, [tanimlamalar]);
+
+  async function policeMetinKaydet() {
+    setPoliceMetinKaydediyor(true);
+    try {
+      const yaz = async (kat: string, deger: string) => {
+        const row = tanimlamalar.find((t) => t.kategori === kat);
+        if (row) { if ((row.deger ?? "") !== deger) await updateTanimlama(row.id, { deger }); }
+        else await createTanimlama({ kategori: kat, sekme: "sigorta-muayene", deger, kisa_ad: "genel", sira: 1, aktif: true });
+      };
+      // Gövde boş bırakılamaz: boş mail gitmesin diye varsayılana dönülür.
+      await yaz(POLICE_TALEP_KATEGORI, policeMetin.trim() || POLICE_TALEP_VARSAYILAN);
+      await yaz(POLICE_TALEP_NOT_KATEGORI, policeNot.trim());
+      await loadData();
+      toast.success("Poliçeleştirme mail metni kaydedildi.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message ?? JSON.stringify(err);
+      toast.error(`Kaydedilemedi: ${msg}`);
+    }
+    finally { setPoliceMetinKaydediyor(false); }
+  }
   async function kaskoSablonKaydet() {
     setKaskoSablonKaydediyor(true);
     try {
@@ -667,7 +696,7 @@ export default function TanimlamalarPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay", KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI].includes(k.key)).map((kat) => {
+        {kategoriler.filter((k) => !["is_gruplari", "is_gruplari_ana", "is_gruplari_alt", "is_gruplari_detay", KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI].includes(k.key)).map((kat) => {
           const isMuhatap = kat.key.toLowerCase() === "muhatap" || kat.key.toLowerCase() === "banka_muhatap";
           const aramaQ = isMuhatap ? (muhatapArama[kat.key] ?? "").trim() : "";
           const tumItems = getKategoriItems(kat.key).filter((t) => t.deger !== "(boş)");
@@ -1417,6 +1446,60 @@ export default function TanimlamalarPage() {
                 </Button>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Poliçeleştirme Mail Metni — teklif uygun bulununca acenteye giden mail */}
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-[#1E3A5F] flex items-center gap-1.5">
+                <Settings size={14} /> Poliçeleştirme Mail Metni
+              </h3>
+            </div>
+            <p className="text-[10px] text-gray-400 mb-3">
+              Teklifler ekranında bir teklif <strong>&ldquo;Poliçeleştir&rdquo;</strong> denince teklifi gönderen
+              acenteye giden mail. Üstte mailin gittiği firmanın anteti yer alır; konu satırı
+              (<em>plaka - Kasko/Trafik Sigortası Poliçeleştirme Talebi</em>) sabittir.
+            </p>
+
+            <div className="mb-2">
+              <Label className="text-[11px] font-semibold text-gray-600">Mail Metni</Label>
+              <textarea
+                value={policeMetin}
+                onChange={(e) => setPoliceMetin(e.target.value)}
+                disabled={!yDuzenle}
+                rows={9}
+                className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400 whitespace-pre-wrap" />
+              <p className="text-[9px] text-gray-400 mt-1">
+                <code>{"{acente}"}</code> = acente adı, <code>{"{plaka}"}</code> = araç plakası,{" "}
+                <code>{"{firma}"}</code> = teklifi veren sigorta şirketi, <code>{"{tutar}"}</code> = teklif tutarı
+                (TL yazısı metinde), <code>{"{tip}"}</code> = &quot;kasko&quot; / &quot;trafik sigortası&quot;,{" "}
+                <code>{"{gonderen}"}</code> = maili gönderen kullanıcının adı.{" "}
+                <code>{"{gonderen}"}</code> yazılmazsa ad metnin en sonuna eklenir.
+              </p>
+            </div>
+
+            <div className="mb-3">
+              <Label className="text-[11px] font-semibold text-gray-600">Bilgi Notu (imzanın altı)</Label>
+              <textarea
+                value={policeNot}
+                onChange={(e) => setPoliceNot(e.target.value)}
+                disabled={!yDuzenle}
+                rows={2}
+                className="w-full mt-0.5 text-xs border rounded-lg px-2.5 py-2 outline-none focus:border-[#1E3A5F] disabled:bg-gray-50 disabled:text-gray-400" />
+              <p className="text-[9px] text-gray-400 mt-1">
+                Mailin sonuna <strong>&ldquo;Not: …&rdquo;</strong> olarak, gövdeden bir punto küçük ve soluk
+                eklenir. Boş bırakılırsa not satırı hiç gitmez.
+              </p>
+            </div>
+
+            {yDuzenle && (
+              <Button size="sm" className="w-full h-8 bg-[#F97316] hover:bg-[#ea580c] text-white text-xs"
+                disabled={policeMetinKaydediyor} onClick={policeMetinKaydet}>
+                {policeMetinKaydediyor ? "Kaydediliyor..." : "Poliçeleştirme Metnini Kaydet"}
+              </Button>
+            )}
           </CardContent>
         </Card>
 

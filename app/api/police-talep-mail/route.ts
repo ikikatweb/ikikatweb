@@ -11,7 +11,10 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 
 /** Onay penceresinde gösterilen metinle birebir aynı olmalı (lib/police-talep-metin.ts). */
-import { policeTalepKonu, policeTalepMetin, policeTalepHtml } from "@/lib/police-talep-metin";
+import {
+  policeTalepKonu, policeTalepMetin, policeTalepHtml, policeTalepSablonCoz,
+  POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI,
+} from "@/lib/police-talep-metin";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { antetEki } from "@/lib/api/antet-eki";
 
@@ -62,15 +65,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Firma SMTP ayarları eksik" }, { status: 400 });
     }
 
-    const konu = policeTalepKonu(arac.plaka, teklif.police_tipi as "kasko" | "trafik");
+    // MAİL METNİ tanımlamalardan gelir (Tanımlamalar → Poliçeleştirme Mail Metni).
+    // Okuma HATA verirse mail GÖNDERİLMEZ: önizlemede onaylanan metin ile gidecek metin
+    // ayrışır, kullanıcı da farkı göremez (bkz. AGENTS.md "Sessiz hata yok").
+    const { data: sablonSatirlari, error: sablonHata } = await supabase
+      .from("tanimlamalar")
+      .select("kategori, deger")
+      .in("kategori", [POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI]);
+    if (sablonHata) {
+      return NextResponse.json(
+        { error: `Mail metni okunamadı (${sablonHata.message}) — mail gönderilmedi.` },
+        { status: 500 },
+      );
+    }
+    const sablon = policeTalepSablonCoz(sablonSatirlari);
+
+    const tipKey = teklif.police_tipi as "kasko" | "trafik";
+    const konu = policeTalepKonu(arac.plaka, tipKey);
     const bilgi = {
       plaka: arac.plaka,
       acenteAdi: teklif.acente_adi,
       sigortaFirmasi: teklif.sigorta_firmasi ?? "",
       tutar: teklif.teklif_tutari,
+      tip: tipKey,
       gonderen: gonderenKullanici ?? null,
     };
-    const metin = policeTalepMetin(bilgi);
+    const metin = policeTalepMetin(bilgi, sablon);
 
     const transporter = nodemailer.createTransport({
       host: firma.smtp_host,
@@ -85,7 +105,7 @@ export async function POST(request: Request) {
     const ekler = antet.ek ? [antet.ek] : [];
     if (antet.inemedi) console.error("[Poliçe Talep Mail] Antet indirilemedi:", firma.antet_url);
 
-    const html = `${antet.html}${policeTalepHtml(bilgi)}`;
+    const html = `${antet.html}${policeTalepHtml(bilgi, sablon)}`;
 
     await transporter.sendMail({
       from: `"${firma.smtp_sender_name || firma.firma_adi}" <${firma.smtp_sender_email || firma.smtp_user}>`,
