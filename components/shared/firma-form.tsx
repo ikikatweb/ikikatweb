@@ -25,6 +25,7 @@ import RenkSecici from "@/components/shared/renk-secici";
 import toast from "react-hot-toast";
 import { griKopyaUret, renkliMi } from "@/lib/utils/gri-antet";
 import { antetGecmisineEkle } from "@/lib/supabase/queries/antet-gecmisi";
+import { firmaLogolariOnbellegiDusur } from "@/lib/supabase/queries/firma-logolari";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type FirmaFormProps = {
@@ -44,26 +45,31 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
   const [loading, setLoading] = useState(false);
   const [kaseFile, setKaseFile] = useState<File | null>(null);
   const [antetFile, setAntetFile] = useState<File | null>(null);
+  // LOGO: kenar çubuğunda ve giriş ekranında dönen görsel. Antetten AYRI —
+  // antet uzun bir şerit, o kutuda okunamayacak kadar küçülüyor.
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   // Mevcut yüklü dosya URL'leri — silindiğinde UI bunları null'a çeker
   const [mevcutKaseUrl, setMevcutKaseUrl] = useState<string | null>(firma?.kase_url ?? null);
   const [mevcutAntetUrl, setMevcutAntetUrl] = useState<string | null>(firma?.antet_url ?? null);
+  const [mevcutLogoUrl, setMevcutLogoUrl] = useState<string | null>(firma?.logo_url ?? null);
 
-  async function handleDosyaSil(tip: "kase" | "antet") {
+  async function handleDosyaSil(tip: "kase" | "antet" | "logo") {
     if (!firma?.id) return;
-    const tipAd = tip === "kase" ? "kaşeyi" : "anteti";
+    const tipAd = tip === "kase" ? "kaşeyi" : tip === "logo" ? "logoyu" : "anteti";
     if (!confirm(`Mevcut ${tipAd} silmek istediğinize emin misiniz?`)) return;
     try {
       setLoading(true);
       await deleteFirmaFile(firma.id, tip);
       if (tip === "kase") setMevcutKaseUrl(null);
+      else if (tip === "logo") setMevcutLogoUrl(null);
       else setMevcutAntetUrl(null);
       // KRİTİK: formData içindeki ESKİ URL'i de NULL yap — yoksa kullanıcı
       // formu kaydedince updateFirma eski URL'i geri yazar.
       setFormData((p) => ({
         ...p,
-        ...(tip === "kase" ? { kase_url: null } : { antet_url: null }),
+        ...(tip === "kase" ? { kase_url: null } : tip === "logo" ? { logo_url: null } : { antet_url: null }),
       }));
-      toast.success(`${tip === "kase" ? "Kaşe" : "Antet"} silindi.`);
+      toast.success(`${tip === "kase" ? "Kaşe" : tip === "logo" ? "Logo" : "Antet"} silindi.`);
       router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bilinmeyen hata";
@@ -161,6 +167,22 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         const kaseUrl = await uploadFirmaFile(kaseFile, savedFirma.id, "kase");
         await updateFirma(savedFirma.id, { kase_url: kaseUrl });
         setMevcutKaseUrl(kaseUrl);
+      }
+      if (logoFile) {
+        // Logo da üzerine yazmaz: adres değişsin ki tarayıcı önbelleği eskisini göstermesin.
+        const logoDamga = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "");
+        const logoUrl = await uploadFirmaFile(logoFile, savedFirma.id, "logo", logoDamga);
+        try {
+          await updateFirma(savedFirma.id, { logo_url: logoUrl });
+          setMevcutLogoUrl(logoUrl);
+          firmaLogolariOnbellegiDusur();
+        } catch (e) {
+          // Kolon yoksa migrasyon çalıştırılmamıştır — SESSİZ GEÇME, söyle.
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/logo_url|column|schema cache/i.test(msg)) {
+            toast.error("Logo yüklendi ama kaydedilemedi: veritabanında 'logo_url' kolonu yok. sql/firmalar_logo.sql dosyasını Supabase'de çalıştırıp logoyu tekrar yükleyin.", { duration: 12000 });
+          } else throw e;
+        }
       }
       if (antetFile) {
         // ANTET İKİ DOSYA: yüklenen RENKLİ asıl mailde, tarayıcıda üretilen GRİ kopya
@@ -462,6 +484,50 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
                       </>
                     )}
                   </div>
+                </div>
+
+                {/* LOGO — kenar çubuğunda ve giriş ekranında sırayla dönen görsel.
+                    Antetten ayrı bir dosya: antet uzun bir şerit, o kutuda okunmuyor. */}
+                <div className="space-y-2">
+                  <Label>Logo</Label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 px-4 py-2 bg-[#1E3A5F] text-white rounded-md cursor-pointer hover:bg-[#2a4f7a] transition-colors text-sm">
+                      <Upload size={16} />
+                      {logoFile ? logoFile.name : "Logo Yükle"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => setLogoFile(e.target.files?.[0] ?? null)}
+                        disabled={loading}
+                      />
+                    </label>
+                    {mevcutLogoUrl && !logoFile && (
+                      <>
+                        <a
+                          href={mevcutLogoUrl.startsWith("/") ? mevcutLogoUrl : dosyaUrl(mevcutLogoUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-green-600 underline hover:text-green-700"
+                        >
+                          Mevcut dosya yüklü (göster)
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => handleDosyaSil("logo")}
+                          disabled={loading}
+                          title="Logoyu sil"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 p-1 rounded disabled:opacity-50"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    Kenar çubuğunda ve giriş ekranında sırayla döner. Logosu yüklenmeyen firma dönmez.
+                    En iyi sonuç için <strong>700×300</strong> saydam PNG, logo ortada.
+                  </p>
                 </div>
               </div>
             </CardContent>

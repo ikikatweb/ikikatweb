@@ -117,7 +117,7 @@ export async function toggleFirmaDurum(id: string, durum: "aktif" | "pasif") {
 
 // Storage'daki kaşe/antet dosyasını siler ve ilgili URL alanını NULL yapar.
 // Storage path'i mevcut publicUrl'den çıkarılır (firmaId/type.ext).
-export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
+export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet" | "logo") {
   const supabase = getSupabase();
   // Önce mevcut URL'i al — path'i çıkartmak için
   const { data: firma, error: fetchErr } = await supabase
@@ -131,6 +131,8 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
   // Antet silinince RENKLİ kopyası da gider — yoksa mail silinmiş antetle gitmeye devam ederdi.
   const silinecekler = (type === "kase"
     ? [(firma as { kase_url?: string | null })?.kase_url]
+    : type === "logo"
+    ? [(firma as { logo_url?: string | null })?.logo_url]
     : [
         (firma as { antet_url?: string | null })?.antet_url,
         (firma as { antet_renkli_url?: string | null })?.antet_renkli_url,
@@ -163,6 +165,8 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
   // DB'deki URL alanını NULL yap
   const updateField = type === "kase"
     ? { kase_url: null }
+    : type === "logo"
+    ? { logo_url: null }
     : { antet_url: null, antet_renkli_url: null };
   const { error: updErr } = await supabase
     .from("firmalar")
@@ -181,7 +185,7 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
 export async function uploadFirmaFile(
   file: File,
   firmaId: string,
-  type: "kase" | "antet" | "antet-renkli",
+  type: "kase" | "antet" | "antet-renkli" | "logo",
   damga?: string,
 ) {
   const ext = file.name.split(".").pop();

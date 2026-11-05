@@ -10,6 +10,8 @@ export type Firma = {
   adres: string | null;
   renk: string | null;
   kase_url: string | null;
+  /** Kenar çubuğunda/giriş ekranında dönen logo (sql/firmalar_logo.sql). Boşsa dönmez. */
+  logo_url?: string | null;
   /** Yazışma evraklarında basılan GRİ antet. Antet yüklenince renkli asıldan otomatik üretilir. */
   antet_url: string | null;
   /** Antetin RENKLİ aslı — yalnız mail başlığında kullanılır (sql/firmalar_antet_renkli.sql). */

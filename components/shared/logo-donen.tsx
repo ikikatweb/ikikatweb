@@ -8,15 +8,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getFirmaLogolari } from "@/lib/supabase/queries/firma-logolari";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 export type LogoItem = { src: string; alt: string };
 
-/** Kenar çubuğunda ve giriş ekranında gösterilecek kendi firmalarımız.
- *  Dosyalar public/logolar/ altında ve HEPSİ AYNI TUVALDE (700x300, logo ortada,
- *  görsel ağırlıkları eşitlenmiş) — oranları farklı olduğu için ham hâlleriyle biri
- *  dar biri geniş görünüyordu. Yeni logo eklenirse aynı tuvale yerleştirilmeli.
- *  Adi ortaklıklar ve "Şahsi" buraya girmez:
- *  ortaklığın kendi logosu yoktur, dış ortağın logosu da bizi temsil etmez. */
+/** VARSAYILAN liste — yalnız YEDEK. Asıl liste firmalardan gelir: Firma düzenleme
+ *  ekranındaki "Logo Yükle" ile logosu yüklenmiş her firma kendiliğinden döner
+ *  (lib/supabase/queries/firma-logolari.ts, sql/firmalar_logo.sql).
+ *
+ *  Bu liste yalnız veritabanından logo okunamadığında kullanılır: giriş ekranında
+ *  (oturum yok) ve migrasyon çalıştırılmadan önce. Dosyalar public/logolar/ altında
+ *  ve HEPSİ AYNI TUVALDE (700x300, logo ortada, görsel ağırlıkları eşitlenmiş) —
+ *  oranları farklı olduğu için ham hâlleriyle biri dar biri geniş görünüyordu.
+ *  Yüklenen yeni logolar da aynı tuvale yerleştirilmeli. */
 export const FIRMA_LOGOLARI: LogoItem[] = [
   { src: "/logolar/kad-tem.png", alt: "KAD-TEM" },
   { src: "/logolar/ikikat.png", alt: "İkikat" },
@@ -24,6 +29,7 @@ export const FIRMA_LOGOLARI: LogoItem[] = [
 ];
 
 type Props = {
+  /** Verilirse veritabanı okunmaz, bu liste döner. Verilmezse firmalardan gelir. */
   logolar?: LogoItem[];
   /** Bir logonun ekranda kalma süresi (saniye). */
   araSn?: number;
@@ -31,7 +37,20 @@ type Props = {
   className?: string;
 };
 
-export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, className = "h-24 w-full" }: Props) {
+export default function LogoDonen({ logolar: disListe, araSn = 5, className = "h-24 w-full" }: Props) {
+  // Firmalardan gelen logolar. Okunana kadar (ve okunamazsa) koddaki yedek liste görünür —
+  // böylece giriş ekranı ve migrasyon öncesi davranış bugünküyle aynı kalır.
+  const [dbListe, setDbListe] = useState<LogoItem[] | null>(null);
+  useEffect(() => {
+    if (disListe) return;
+    let iptal = false;
+    getFirmaLogolari()
+      .then((l) => { if (!iptal && l.length > 0) setDbListe(l); })
+      .catch(() => { /* yedek liste kalsın */ });
+    return () => { iptal = true; };
+  }, [disListe]);
+  const logolar = disListe ?? dbListe ?? FIRMA_LOGOLARI;
+
   const [bozuk, setBozuk] = useState<Record<string, true>>({});
   const imgRef = useRef<Record<string, HTMLImageElement | null>>({});
   const [sayac, setSayac] = useState(0);
@@ -93,7 +112,8 @@ export default function LogoDonen({ logolar = FIRMA_LOGOLARI, araSn = 5, classNa
         <img
           key={l.src}
           ref={(el) => { imgRef.current[l.src] = el; }}
-          src={l.src}
+          // public/ altındaki yollar olduğu gibi; Storage adresleri imzalı geçitten geçer
+          src={l.src.startsWith("/") ? l.src : dosyaUrl(l.src)}
           alt={l.alt}
           // Hepsi yüklenir (ön belleğe girsin, geçişte boşluk olmasın); sırası gelmeyen şeffaf.
           // SIRALI GEÇİŞ: eski logo 300 ms'de çıkar, yeni logo 300 ms GECİKMEYLE girer.
