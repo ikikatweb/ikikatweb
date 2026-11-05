@@ -7,6 +7,7 @@
 // izini yazar (idempotent → düşüş olmaz, hep güncel). anlik sync yalnız canlı konum yazar (rota buradan).
 // Kullanım:  node scripts/arvento-speed-sync.mjs [gunSayisi]     (varsayılan 1 = SADECE bugün; 2 = bugün+dün ...)
 //            node scripts/arvento-speed-sync.mjs 2026-06-20 2026-06-25   (geçmiş tarih aralığı — backfill)
+//            ... --sadece-artir  → mevcut rotayı YALNIZ daha YOĞUNU ile değiştirir (gecelik görev bunu kullanır)
 // .env.local: ARVENTO_WS_USERNAME/PIN1/PIN2, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
@@ -88,13 +89,28 @@ async function aracGun(node, gunIso) {
   const liste = (cihazlar || []).filter((c) => c.node && c.plaka);
   console.log(`${liste.length} cihaz × ${gunler.length} gün = ${liste.length * gunler.length} çağrı`);
 
-  let yazilan = 0, hata = 0, toplamNokta = 0;
+  // SADECE ARTIR: gecelik backfill eski günleri her gece yeniden çekiyor. Arvento o günü bir kere
+  // DAHA SEYREK döndürürse (geçmiş detayın inceltilmesi, kısmi yanıt) koşulsuz upsert mevcut yoğun
+  // rotayı EZER → reglaj/serme km'si sessizce düşerdi. Bu kipte yalnız DAHA ÇOK NOKTALI rota yazılır;
+  // gecelik görev boşluğu doldurur, var olanı asla bozmaz.
+  // (Elle backfill'de bayrak verilmez → eski davranış: düzeltmek için üzerine yazılabilir.)
+  const sadeceArtir = args.includes("--sadece-artir");
+  let yazilan = 0, hata = 0, toplamNokta = 0, korunan = 0;
   for (const gun of gunler) {
+    // O günün mevcut nokta sayıları (plaka → sayı) — cihaz başına ayrı sorgu atmamak için tek seferde.
+    let mevcutNokta = new Map();
+    if (sadeceArtir) {
+      const { data, error } = await sb.from("arac_arvento_guzergah").select("plaka, nokta_sayisi").eq("rapor_tarihi", gun);
+      // Okunamazsa O GÜNÜ ATLA: karşılaştıramadan yazmak mevcut yoğun rotayı ezebilir.
+      if (error) { console.error(`  ${gun}: mevcut rota okunamadı (${error.message}) — bu gün ATLANDI, veri korunsun.`); hata++; continue; }
+      mevcutNokta = new Map((data || []).map((r) => [r.plaka, r.nokta_sayisi ?? 0]));
+    }
     for (const c of liste) {
       try {
         const noktalar = await aracGun(c.node, gun);
         await bekle(BEKLE_MS);
         if (noktalar.length < 2) continue;
+        if (sadeceArtir && noktalar.length <= (mevcutNokta.get(c.plaka) ?? -1)) { korunan++; continue; } // mevcut rota en az bu kadar yoğun → dokunma
         // polyline km (çöp sıçramalar hariç)
         let m = 0;
         for (let i = 1; i < noktalar.length; i++) { const s = mesafeM(noktalar[i - 1].lat, noktalar[i - 1].lng, noktalar[i].lat, noktalar[i].lng); if (s <= SICRAMA_M) m += s; }
@@ -110,7 +126,7 @@ async function aracGun(node, gunIso) {
       }
     }
   }
-  console.log(`\nBitti: ${yazilan} araç-gün yazıldı, ${toplamNokta} nokta, ${hata} hata.`);
+  console.log(`\nBitti: ${yazilan} araç-gün yazıldı, ${toplamNokta} nokta, ${hata} hata${sadeceArtir ? `, ${korunan} araç-gün korundu (mevcut rota daha yoğun)` : ""}.`);
 
   // ÖZET WARMING: senkronlanan günlerin stabilize özetini CANLIDA önceden hesaplat (önbelleğe yaz). Böylece
   // kullanıcı stabilize'yi açınca BUGÜN de önbellekten gelir (canlı yeniden-hesap ~1,5s beklenmez). Sync'i
