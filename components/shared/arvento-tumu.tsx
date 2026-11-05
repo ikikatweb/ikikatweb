@@ -387,10 +387,35 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       const kal = op === "sikistirma" ? silindirKal : op === "reglaj" ? reglajKal : 3;
       const cizgiRenk = renkAl(k.plaka); // HER MAKİNE AYRI RENK (operasyon rengi değil)
       const popupHtml = `<b>${k.plaka}</b><br>${def ? def.ad + " · " : ""}${k.arac_sinifi ?? "Araç"}`;
+      // TIKLANAN NOKTANIN TARİH-SAATİ: çizgi, aracın GPS noktalarından geçer; tıklanan yere EN YAKIN
+      // nokta bulunup o noktanın günü/saati yazılır ("buradan ne zaman geçmiş?"). Çizim sadeleştirilmiş
+      // olsa bile arama HAM noktalar üzerinde yapılır → saat doğru kalır.
+      const zamanliPopup = (lat: number, lng: number): string => {
+        let en: (typeof noktalar)[number] | null = null, enD = Infinity;
+        const cosL = Math.cos((lat * Math.PI) / 180);
+        for (const q of noktalar) {
+          const dy = (q.lat - lat) * 111320, dx = (q.lng - lng) * 111320 * cosL;
+          const d = dx * dx + dy * dy;
+          if (d < enD) { enD = d; en = q; }
+        }
+        if (!en) return popupHtml;
+        const gun = en.gun ?? k.rapor_tarihi;
+        const tar = gun ? String(gun).split("-").reverse().join(".") : "";
+        const sa = en.saat ? String(en.saat).slice(0, 8) : "";
+        const hiz = en.hiz != null ? `${Math.round(en.hiz)} km/s` : "—";
+        // Biçim Operasyon sekmesindeki yol popup'ıyla AYNI (plaka / hız / tarih saat).
+        return `${popupHtml}<br>Hız: ${hiz}<br>${tar}${sa ? " " + sa : ""}`;
+      };
       (cizim.length ? cizim : [latlngs]).forEach((seg) => {
         // Görünür çizgi (tıklamaz) + üstünde GENİŞ ŞEFFAF isabet-çizgisi (kolay tıklanır) → popup. (Stabilize deseni.)
         L.polyline(seg, { color: cizgiRenk, weight: kal, opacity: 0.85, renderer: yolRenderer, interactive: false }).addTo(grup);
-        L.polyline(seg, { color: cizgiRenk, weight: Math.max(14, kal + 8), opacity: 0, smoothFactor: 2, renderer: yolRenderer }).addTo(grup).bindPopup(popupHtml);
+        const tikHedef = L.polyline(seg, { color: cizgiRenk, weight: Math.max(14, kal + 8), opacity: 0, smoothFactor: 2, renderer: yolRenderer }).addTo(grup);
+        // Popup TIKLAMADA kurulur (önceden bağlanmaz): içerik tıklanan yere göre değişiyor ve
+        // tam tıklanan noktada açılıyor. Önceden bağlanırsa ilk tık eski içerikle açılırdı.
+        tikHedef.on("click", (e) => {
+          const pt = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
+          tikHedef.bindPopup(zamanliPopup(pt.lat, pt.lng)).openPopup([pt.lat, pt.lng]);
+        });
       });
       for (const ll of latlngs) bounds.push(ll);
     });

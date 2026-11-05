@@ -114,13 +114,18 @@ export async function getGuzergahByTarih(tarih: string): Promise<AracArventoGuze
 // sınıflaması GÜN-BAZLI olmalı (plaka|tarih) → bunun için ham gün-bazlı satırlar kullanılır, bu DEĞİL.
 export function birlestirGuzergahPlaka(rows: AracArventoGuzergah[]): AracArventoGuzergah[] {
   const sirali = [...rows].sort((a, b) => String(a.rapor_tarihi ?? "").localeCompare(String(b.rapor_tarihi ?? "")));
+  // Her noktaya KENDİ GÜNÜNÜ damgala: birleşik satırın rapor_tarihi ilk güne sabitlenir, nokta
+  // hangi günden geldi bilgisi kaybolurdu. Haritada güzergah çizgisine tıklanınca "o noktadan
+  // hangi tarih-saatte geçmiş" yazılabilsin diye gerekli.
+  const damgala = (r: AracArventoGuzergah) =>
+    (r.noktalar ?? []).map((p) => (p.gun ? p : { ...p, gun: r.rapor_tarihi }));
   const m = new Map<string, AracArventoGuzergah>();
   for (const r of sirali) {
     const ex = m.get(r.plaka);
     if (!ex) {
-      m.set(r.plaka, { ...r, noktalar: [...(r.noktalar ?? [])] });
+      m.set(r.plaka, { ...r, noktalar: damgala(r) });
     } else {
-      ex.noktalar = [...ex.noktalar, ...(r.noktalar ?? [])];
+      ex.noktalar = [...ex.noktalar, ...damgala(r)];
       ex.toplam_mesafe = (ex.toplam_mesafe ?? 0) + (r.toplam_mesafe ?? 0);
       ex.nokta_sayisi = (ex.nokta_sayisi ?? 0) + (r.noktalar?.length ?? 0);
       if (!ex.arac_sinifi && r.arac_sinifi) ex.arac_sinifi = r.arac_sinifi;

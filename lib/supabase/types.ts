@@ -1055,7 +1055,10 @@ export type AracArventoGuzergah = {
   model: string | null;
   toplam_mesafe: number | null; // km
   nokta_sayisi: number | null;
-  noktalar: { saat: string | null; lat: number; lng: number; hiz: number | null }[];
+  // gun: noktanın ALINDIĞI gün. Satır zaten tek güne ait olduğu için DB'de yazılı değildir;
+  // birlestirGuzergahPlaka() çok günü tek satıra toplarken her noktaya damgalar (yoksa nokta
+  // hangi güne ait bilinemez → haritada "tarih saat" gösterilemezdi).
+  noktalar: { saat: string | null; lat: number; lng: number; hiz: number | null; gun?: string }[];
   created_at: string;
 };
 
