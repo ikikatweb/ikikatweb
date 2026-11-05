@@ -17,6 +17,9 @@ import { sadelesGuzergah, kapsananYolKm, parcalarUzunlukKm, tsSaniye } from "@/l
 import { kmlYollariHazirla, sermeGeometri, SERME_KOPRULUK_M, SERME_YOL_YAKINLIK_M, type KmlYolHat } from "@/lib/arvento/serme-hesap";
 import { getHaritaKatmanlari, type HaritaKatman } from "@/lib/supabase/queries/arvento-katman";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { ekleSessizUyarisi } from "@/lib/arvento/sessiz-uyari";
+import { SessizUyariKutu } from "@/components/shared/sessiz-uyari-kutu";
+import type { SessizCihaz } from "@/lib/arvento/cihaz-sessiz";
 import { canliKatmanKur, useCanliKatman, aracKonumunaOdaklan, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
@@ -125,8 +128,8 @@ function parcalar(noktalar: { lat: number; lng: number; hiz?: number | null }[],
   return [latlngs];
 }
 
-export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, tekrarPencereSaat = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, koprulukM = SERME_KOPRULUK_M, yolYakinlikM = SERME_YOL_YAKINLIK_M, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true }: {
-  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; tekrarPencereSaat?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; koprulukM?: number; yolYakinlikM?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean;
+export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 0, tekrarPencereSaat = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, koprulukM = SERME_KOPRULUK_M, yolYakinlikM = SERME_YOL_YAKINLIK_M, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, kontakRolantiMap, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, gorunumRef: disGorunumRef, modelGoster = false, modelMap, ilkSonKontakMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true }: {
+  bas: string; bitis: string; operasyon: OperasyonTip; tekrarEsigi?: number; tekrarPencereSaat?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; koprulukM?: number; yolYakinlikM?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; gorunumRef?: MutableRefObject<HaritaGorunum | null>; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean;
 }) {
   const def = OPERASYONLAR[operasyon];
   const sermeMi = operasyon === "serme";
@@ -177,6 +180,12 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
   const havaTemizleRef = useRef<(() => void) | null>(null);
+  // SESSİZ CİHAZ UYARISI — veri göndermeyi kesen araç haritada hiç çizilmediği için sessizce
+  // kayboluyordu; rozet sağ üstte durur. Veri ref'ten okunur → harita yeniden kurulmaz.
+  const sessizUyariRef = useRef<{ tazele: () => void; temizle: () => void } | null>(null);
+  const sessizRef = useRef<SessizCihaz[]>([]);
+  sessizRef.current = sessizCihazlar ?? [];
+  useEffect(() => { sessizUyariRef.current?.tazele(); }, [sessizCihazlar]);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
@@ -573,6 +582,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
         const c = m.getCenter();
         return { lat: c.lat, lng: c.lng };
       });
+      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // Güzergah/serme çizgileri için AYRI pane (z 450) — KML pane'inin (350) ÜSTÜnde → KML altta, çizgiler
@@ -589,6 +599,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
       havaTemizleRef.current?.(); havaTemizleRef.current = null;
+      sessizUyariRef.current?.temizle(); sessizUyariRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }
@@ -747,6 +758,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       </div>
     );
@@ -767,6 +779,7 @@ export default function ArventoOperasyon({ bas, bitis, operasyon, tekrarEsigi = 
           </p>
           {/* Navigatör burada da erişilebilir → kullanıcı sıkışmasın (tam ekran + tarih değiştirilebilir). */}
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       </div>
     );

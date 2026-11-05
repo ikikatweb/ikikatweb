@@ -12,6 +12,9 @@ import { HaritaIskelet } from "@/components/shared/harita-iskelet";
 import { mukerrerIsaretle } from "@/lib/arvento/damper-say";
 import { arizaIsaretle, damperDurakKonumu, rotaTemizle, saatSn } from "@/lib/arvento/ocak";
 import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHavaDurumu, type KatmanIzin } from "@/lib/arvento/harita-katman";
+import { ekleSessizUyarisi } from "@/lib/arvento/sessiz-uyari";
+import { SessizUyariKutu } from "@/components/shared/sessiz-uyari-kutu";
+import type { SessizCihaz } from "@/lib/arvento/cihaz-sessiz";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { OPERASYONLAR, operasyondaGorunur, atananSekmeleriHesapla, type SekmeAtamaMap } from "@/lib/arvento/operasyonlar";
@@ -38,7 +41,7 @@ function formatAralik(bas: string, bitis: string): string {
 
 // Araç renkleri MERKEZİ atanır (lib/arvento/arac-renk) → aynı plaka her sekmede aynı renk.
 
-export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
+export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik = 0, gridMesafe = 12, transitHiz = 20, mukerrerDk = 0, mukerrerYaricap = 0, ocakLat = null, ocakLng = null, ocakYaricap = 150, damperSinif, kalinliklar, renkler, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, gorunumRef: disGorunumRef, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, calismaNoktalari }: { bas: string; bitis: string; tekrarEsigi?: number; silindirEsik?: number; gridMesafe?: number; transitHiz?: number; mukerrerDk?: number; mukerrerYaricap?: number; ocakLat?: number | null; ocakLng?: number | null; ocakYaricap?: number; damperSinif?: Map<string, "gercek" | "mukerrer" | "ariza">; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; gorunumRef?: MutableRefObject<HaritaGorunum | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[] }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const silindirKal = kalinliklar?.silindir ?? 3;
   const reglajRenkV = renkler?.reglaj ?? OPERASYONLAR.reglaj.renk;
@@ -101,6 +104,12 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
   const havaTemizleRef = useRef<(() => void) | null>(null);
+  // SESSİZ CİHAZ UYARISI — veri göndermeyi kesen araç haritada hiç çizilmediği için sessizce
+  // kayboluyordu; rozet sağ üstte durur. Veri ref'ten okunur → harita yeniden kurulmaz.
+  const sessizUyariRef = useRef<{ tazele: () => void; temizle: () => void } | null>(null);
+  const sessizRef = useRef<SessizCihaz[]>([]);
+  sessizRef.current = sessizCihazlar ?? [];
+  useEffect(() => { sessizUyariRef.current?.tazele(); }, [sessizCihazlar]);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   // Plaka aramasında odaklanılan aracın geçici vurgu halkaları
@@ -337,6 +346,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         const c = m.getCenter();
         return { lat: c.lat, lng: c.lng };
       });
+      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return; // await sırasında harita silinmiş olabilir
       // Çizgiler SVG + üst pane (opYolPane z450) → KML'nin (350) ÜSTÜnde ve TIKLANIR (canvas ince hatta tıklamayı
@@ -353,6 +363,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
       havaTemizleRef.current?.(); havaTemizleRef.current = null;
+      sessizUyariRef.current?.temizle(); sessizUyariRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }
@@ -534,6 +545,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       </div>
     );
@@ -620,6 +632,7 @@ export default function ArventoTumu({ bas, bitis, tekrarEsigi = 0, silindirEsik 
         <div className="text-center py-16 bg-white rounded-lg border">
           <Layers size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">{formatAralik(bas, bitis)} için operasyon verisi yok. Mesafe Bilgisi / damper raporlarını yükleyin.</p>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       ) : (
         <div ref={mapRef} className="w-full rounded-lg border bg-gray-100 harita-leaflet" style={{ height: "66vh" }} />

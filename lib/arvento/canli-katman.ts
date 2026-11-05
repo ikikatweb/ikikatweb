@@ -4,6 +4,7 @@
 import { useEffect, type RefObject } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 import { CANLI_PANE } from "@/lib/arvento/harita-katman";
+import { SESSIZ_ESIK_SAAT, sessizSure } from "@/lib/arvento/cihaz-sessiz";
 
 type LeafletStatic = typeof import("leaflet");
 
@@ -99,10 +100,15 @@ export function cizCanliKatman(L: LeafletStatic, layer: LayerGroup, konumlar: Ca
           }),
         })
       : L.circleMarker([k.lat, k.lng], { pane: CANLI_PANE, className: "canli-nokta", radius: 6, color: "#ffffff", weight: 2, fillColor: renk, fillOpacity: 1 }); // ok ile orantılı
+    // CİHAZ SUSMUŞ MU: son paket eskiyse marker'ın yeri GÜNCEL DEĞİL — "araç burada duruyor"
+    // sanılmasın diye popup'ta açıkça yazılır (haritadaki rozetle aynı eşik).
+    const paketSaat = k.tarih ? (Date.now() - Date.parse(k.tarih)) / 3600000 : NaN;
+    const sessiz = Number.isFinite(paketSaat) && paketSaat >= SESSIZ_ESIK_SAAT;
     marker
       .addTo(layer)
       .bindPopup(
         `<b>${ad}</b>${c ? "" : " <i>(eşlenmemiş)</i>"}${sof}<br>` +
+        (sessiz ? `<span style="color:#b91c1c;font-weight:600">⚠ ${sessizSure(paketSaat)} veri gelmiyor — konum eski</span><br>` : "") +
         `${kontakAcik
             ? `⚡ <b>KONTAK AÇIK</b> · ${hareket ? "hareketli" : "yerinde çalışıyor"}`
             : (calismiyor ? "⭘ çalışmıyor (uzun süre hareketsiz)" : "⭘ kontak kapalı")} · ${k.hiz ?? 0} km/s${yon != null ? ` · ${Math.round(yon)}°` : ""}<br>` +

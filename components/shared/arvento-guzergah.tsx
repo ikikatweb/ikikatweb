@@ -14,6 +14,9 @@ import { ekleHaritaKatmanlari, ekleOlcumKontrolu, ekleKayitliKatmanlar, ekleHava
 import { yukluKatmanlarKml } from "@/lib/arvento/kml-export";
 import { aracRenkSecici } from "@/lib/arvento/arac-renk";
 import { HaritaIskelet } from "@/components/shared/harita-iskelet";
+import { ekleSessizUyarisi } from "@/lib/arvento/sessiz-uyari";
+import { SessizUyariKutu } from "@/components/shared/sessiz-uyari-kutu";
+import type { SessizCihaz } from "@/lib/arvento/cihaz-sessiz";
 import { canliKatmanKur, useCanliKatman, type CanliKonum, type CihazMap, type HaritaGorunum } from "@/lib/arvento/canli-katman";
 import type { MutableRefObject, ReactNode } from "react";
 import { usePasifSecim } from "@/lib/arvento/use-pasif-secim";
@@ -63,7 +66,7 @@ type GuzergahArac = {
 // burada eşiği düşürmek için onu oynatmak istemiyoruz.
 const TASINMA_HIZ = 5; // km/s
 
-export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0, transitRenk = "#dc2626", transitKalinlik = 2, tasinmaHiz = TASINMA_HIZ }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string; transitRenk?: string; transitKalinlik?: number; tasinmaHiz?: number }) {
+export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesafe = 12, transitHiz = 20, kalinliklar, plakaFiltre, ekstraAraclar, calismaSnMap, kontakRolantiMap, ilkSonKontakMap, calismaNoktalari, canliKontakByPlaka, sekmeMap, canliKonumlar, canliCihazMap, sessizCihazlar, gorunumRef: disGorunumRef, baslik = "Araçlar (Reglaj)", modelGoster = false, modelMap, izinliPlakalar, katmanIzinli, refreshKey = 0, sonGuncelleme, canliButton, sekmePanel, kmlIndir = true, secimKey = "guzergah", tekrarPencereSaat = 0, transitRenk = "#dc2626", transitKalinlik = 2, tasinmaHiz = TASINMA_HIZ }: { bas: string; bitis: string; tekrarEsigi?: number; tekrarPencereSaat?: number; gridMesafe?: number; transitHiz?: number; kalinliklar?: { reglaj?: number; serme?: number; silindir?: number }; renkler?: { reglaj?: string; serme?: string; silindir?: string }; plakaFiltre?: string[]; ekstraAraclar?: { plaka: string; arac_sinifi: string | null; toplam_mesafe: number | null; model?: string | null }[]; calismaSnMap?: Map<string, number>; kontakRolantiMap?: Map<string, { kontak: number; rolanti: number }>; ilkSonKontakMap?: Map<string, { ilk: string | null; son: string | null; ilkT?: boolean; sonT?: boolean }>; calismaNoktalari?: { plaka: string; rapor_tarihi: string; saat: string | null; lat: number; lng: number }[]; canliKontakByPlaka?: Map<string, boolean>; sekmeMap?: SekmeAtamaMap; canliKonumlar?: CanliKonum[]; canliCihazMap?: CihazMap; sessizCihazlar?: SessizCihaz[]; gorunumRef?: MutableRefObject<HaritaGorunum | null>; baslik?: string; modelGoster?: boolean; modelMap?: Map<string, string | null>; izinliPlakalar?: string[] | null; katmanIzinli?: KatmanIzin; refreshKey?: number; sonGuncelleme?: Date | null; canliButton?: ReactNode; sekmePanel?: ReactNode; kmlIndir?: boolean; secimKey?: string; transitRenk?: string; transitKalinlik?: number; tasinmaHiz?: number }) {
   const reglajKal = kalinliklar?.reglaj ?? 4;
   const [kayitlar, setKayitlar] = useState<AracArventoGuzergah[]>([]);
   // Reglaj = greyder rotası EKSİ serme → serme noktalarını çıkarmak için damper verisi (aralık içi + öncesi).
@@ -83,6 +86,12 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
   const mapInstanceRef = useRef<LeafletMap | null>(null);
   // Hava durumu kontrolü: temizleyici + havanın gösterileceği konum (ocak varsa ocak).
   const havaTemizleRef = useRef<(() => void) | null>(null);
+  // SESSİZ CİHAZ UYARISI — veri göndermeyi kesen araç haritada hiç çizilmediği için sessizce
+  // kayboluyordu; rozet sağ üstte durur. Veri ref'ten okunur → harita yeniden kurulmaz.
+  const sessizUyariRef = useRef<{ tazele: () => void; temizle: () => void } | null>(null);
+  const sessizRef = useRef<SessizCihaz[]>([]);
+  sessizRef.current = sessizCihazlar ?? [];
+  useEffect(() => { sessizUyariRef.current?.tazele(); }, [sessizCihazlar]);
   const ocakKonumRef = useRef<{ lat: number; lng: number } | null>(null);
   const veriKatmanRef = useRef<LayerGroup | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
@@ -365,6 +374,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
         const c = m.getCenter();
         return { lat: c.lat, lng: c.lng };
       });
+      sessizUyariRef.current = ekleSessizUyarisi(L, map, () => sessizRef.current);
       await ekleKayitliKatmanlar(L, map, (k) => (katmanIzinliRef.current ? katmanIzinliRef.current(k) : true));
       if (iptal || !map) return;
       // NOT: KML pane'i (350) yükseltilmez → güzergah çizgileri (SVG yolPane 450) KML'nin ÜSTÜNDE görünür.
@@ -380,6 +390,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
       canliLayerRef.current = null;
       veriKatmanRef.current = null;
       havaTemizleRef.current?.(); havaTemizleRef.current = null;
+      sessizUyariRef.current?.temizle(); sessizUyariRef.current = null;
       mapInstanceRef.current = null;
       leafletRef.current = null;
       if (map) { try { map.remove(); } catch { /* sessiz */ } }
@@ -607,6 +618,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
           <Route size={48} className="mx-auto text-gray-300 mb-4" />
           <p className="text-gray-500">Geçerli bir tarih aralığı seçin.</p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       </div>
     );
@@ -621,6 +633,7 @@ export default function ArventoGuzergah({ bas, bitis, tekrarEsigi = 0, gridMesaf
             <br />Tarihi değiştirin ya da &quot;Excel Yükle&quot; ile Mesafe Bilgisi raporu yükleyin.
           </p>
           <div className="mt-4 max-w-[240px] mx-auto flex flex-col gap-1">{canliButton}</div>
+          <SessizUyariKutu cihazlar={sessizCihazlar} />
         </div>
       </div>
     );

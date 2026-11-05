@@ -45,11 +45,23 @@ export function ekleHaritaKatmanlari(L: LeafletStatic, map: LeafletMap, varsayil
   const isimler = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png", {
     attribution: "Etiketler © OpenStreetMap, © CARTO", subdomains: "abcd", maxZoom: ENUST_ZOOM, maxNativeZoom: 20,
   });
-  if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); }
+  // YERLEŞİM İSİMLERİ (il / ilçe / köy-mahalle) — Esri'nin uydu için hazırladığı referans katmanı.
+  //
+  // NEDEN AYRI BİR KATMAN: yukarıdaki iki katman yalnız YOL adı veriyor (Atatürk Bulvarı, 173. Sokak).
+  // Uyduya yaklaşınca "burası neresi?" sorusu cevapsız kalıyordu — 05.11.2026'da Nazilli'nin tam
+  // üstünde z13'te ekranda tek bir yerleşim adı yoktu. Bu katman zoom'a göre KADEMELİ yazar:
+  //   z9  → AYDIN / İZMİR (il) + Nazilli, Ödemiş (ilçe)
+  //   z11 → ilçe + köy/mahalle (Pınarbaşı, Yenipazar, Esenköy…)
+  //   z14+→ mahalle adları (yol adlarıyla birlikte)
+  // En SONA eklenir → yerleşim adı, yol adının üstünde kalır (şehir adı okunur).
+  const yerIsimleri = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Yer adları: Esri", maxZoom: ENUST_ZOOM, maxNativeZoom: 18,
+  });
+  if (varsayilan === "uydu") { uydu.addTo(map); etiketler.addTo(map); isimler.addTo(map); yerIsimleri.addTo(map); }
   else sokak.addTo(map);
   L.control.layers(
     { "🛰️ Uydu (Earth)": uydu, "🗺️ Sokak": sokak },
-    { "Yol çizgileri": etiketler, "Yol/yer isimleri": isimler },
+    { "Yol çizgileri": etiketler, "Yol/yer isimleri": isimler, "Şehir/ilçe/köy adları": yerIsimleri },
     { collapsed: true },
   ).addTo(map);
   ekleTamEkranKontrolu(L, map);
