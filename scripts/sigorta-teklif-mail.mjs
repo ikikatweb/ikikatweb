@@ -736,29 +736,12 @@ async function main() {
         // oluyordu (insert bundan önce) ama BİLDİRİM HİÇ GİTMİYOR, aynı maildeki sonraki
         // işler ve durum damgası da yapılmıyordu. Teklifin plakası zaten mailden bulunur.
         if (yeniSayi > 0 && !DENEME) {
-          // "EN UYGUN" O DÖNEMİN TAMAMINA BAKAR, yalnız bu maile değil.
-          // Eskiden sadece bu maildeki en düşük rakam yazılıyordu ve başka acentede daha
-          // ucuzu dururken onu "en uygun" sanıyordunuz: 02.11'de Akın ULUSU'nun 10.585,04 TL
-          // teklifi "en uygun" yazıldı, oysa Tokat Özdemir 10.585,00 TL ile daha ucuzdu.
-          // Ekrandaki karşılaştırma zaten doğruyu gösteriyordu; yanlış olan bildirim metniydi.
-          let enUcuz = null;
-          try {
-            let q = sb.from("sigorta_teklif")
-              .select("sigorta_firmasi, acente_adi, teklif_tutari")
-              .eq("arac_id", arac.id).eq("police_tipi", tip)
-              .gt("teklif_tutari", 0).eq("elle_bekliyor", false)
-              .order("teklif_tutari", { ascending: true }).limit(1);
-            q = donemPolice?.id ? q.eq("police_id", donemPolice.id) : q.is("police_id", null);
-            const { data } = await q;
-            enUcuz = data?.[0] ?? null;
-          } catch { /* okunamazsa bildirim rakamsız gider, gönderilmemesinden iyidir */ }
-          const para = (n) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const tutarlar = bulunanlar.map((b) => b.tutar).filter((t) => t > 0);
+          const enUcuz = tutarlar.length ? Math.min(...tutarlar) : null;
           await bildirimGonder(arac, tip, {
             baslik: `${arac.plaka} — ${yeniSayi} yeni teklif`,
             govde: `${acente.ad} ${yeniSayi} firma teklifi gönderdi`
-              + (enUcuz
-                ? ` · en uygun ${para(enUcuz.teklif_tutari)} ₺ — ${enUcuz.sigorta_firmasi ?? "?"} (${enUcuz.acente_adi})`
-                : ""),
+              + (enUcuz ? ` · en uygun ${enUcuz.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺` : ""),
             etiket: `teklif-${arac.id}-${tip}`,
             kategori: "sigorta-police",
           });
