@@ -105,6 +105,59 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   const [ekUploadingIdx, setEkUploadingIdx] = useState<number>(-1);
   const [kaseDahil, setKaseDahil] = useState(evrak?.kase_dahil ?? false);
 
+  // DEĞİŞİKLİK TAKİBİ — ESC'de "Belgeyi kaydedeyim mi?" yalnız GERÇEKTEN bir şey
+  // değiştiyse sorulur. Hiçbir şeye dokunulmamış formda soru çıkıyordu; kullanıcı her
+  // seferinde "Kaydetmeden Kapat"a basmak zorunda kalıyordu.
+  //
+  // Baz = formun AÇILIŞ hâli. Kullanıcı dokunmadan olan otomatik doldurmalar
+  // (tek firma/şantiye kendiliğinden seçilir, sayı no üretilir) baza DA yazılır;
+  // yoksa form açılır açılmaz "değişti" sayılırdı.
+  const bazRef = useRef({
+    evrakTarihi: evrak?.evrak_tarihi ?? new Date().toISOString().split("T")[0],
+    tarihGosterim: evrak?.tarih_gosterim ?? null,
+    firmaId: evrak?.firma_id ?? "",
+    santiyeId: evrak?.santiye_id ?? "",
+    evrakSayiNo: evrak?.evrak_sayi_no ?? "",
+    konu: evrak?.konu ?? "",
+    muhatap: evrak?.muhatap ?? "",
+    muhatapId: evrak?.muhatap_id ?? "",
+    ilgiListesi: evrak?.ilgi_listesi ?? [],
+    metin: evrak?.metin ?? "",
+    ekler: evrak?.ekler ?? [],
+    kaseDahil: evrak?.kase_dahil ?? false,
+  });
+
+  function degisiklikVarMi(): boolean {
+    const b = bazRef.current;
+    // Editör boş metni kimi zaman "<p><br></p>" gibi yazar: iki taraf da gerçekten
+    // boşsa fark sayılmaz. İkisi de doluysa HAM metin karşılaştırılır (kalın/italik
+    // gibi yalnız biçim değişiklikleri de kaybolmasın).
+    const metinBos = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "") === "";
+    const metinDegisti = metin !== b.metin && !(metinBos(metin) && metinBos(b.metin));
+    // Boş satırlar sayılmaz: "+ Ek Ekle"ye basıp boş bırakmak değişiklik değildir.
+    const dolu = (l: string[]) => l.map((x) => x.trim()).filter(Boolean).join("\u0001");
+    return (
+      (evrakTarihi ?? "") !== (b.evrakTarihi ?? "") ||
+      (tarihGosterim ?? "") !== (b.tarihGosterim ?? "") ||
+      firmaId !== b.firmaId ||
+      santiyeId !== b.santiyeId ||
+      evrakSayiNo !== b.evrakSayiNo ||
+      konu !== b.konu ||
+      muhatap !== b.muhatap ||
+      muhatapId !== b.muhatapId ||
+      dolu(ilgiListesi) !== dolu(b.ilgiListesi) ||
+      dolu(ekler) !== dolu(b.ekler) ||
+      kaseDahil !== b.kaseDahil ||
+      metinDegisti ||
+      pdfFile !== null ||
+      pdfRemoved
+    );
+  }
+  // ESC dinleyicisi useEffect içinde kurulu ve her alan değişiminde yeniden kurulmuyor;
+  // doğrudan çağrılsa o render'ın ESKİ değerlerini görürdü. Ref her render'da tazelenir.
+  const degisiklikRef = useRef(degisiklikVarMi);
+  degisiklikRef.current = degisiklikVarMi;
+
   // ESC davranışı (Base UI Dialog escape-kapatmasını CAPTURE'da yakalayıp durdururuz):
   //  • Önizlemedeyken → düzenlemeye dön (setOnIzleme(false)).
   //  • Düzenlemedeyken → "Belgeyi kaydedeyim mi?" onay dialog'unu aç (kapatmadan önce sor).
@@ -116,7 +169,8 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
       e.stopImmediatePropagation();
       e.preventDefault();
       if (onIzleme) setOnIzleme(false);
-      else setKapatOnay(true);
+      else if (degisiklikRef.current()) setKapatOnay(true);
+      else onCancel(); // dokunulmamış form — sormaya gerek yok
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
@@ -148,10 +202,10 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         // firması/şantiyesi varsa onu seç (form daha hızlı doldurulur).
         if (!isEdit) {
           if (filtreliFirmalar.length === 1) {
-            setFirmaId((prev) => prev || filtreliFirmalar[0].id);
+            setFirmaId((prev) => { const v = prev || filtreliFirmalar[0].id; bazRef.current.firmaId = v; return v; });
           }
           if (filtreliSants.length === 1) {
-            setSantiyeId((prev) => prev || filtreliSants[0].id);
+            setSantiyeId((prev) => { const v = prev || filtreliSants[0].id; bazRef.current.santiyeId = v; return v; });
           }
         }
       } catch { /* sessiz */ }
@@ -164,13 +218,14 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
   useEffect(() => {
     // Düzenleme modunda: firma veya muhatap değişmediyse mevcut sayı no'yu koru
     if (isEdit && firmaId === evrak?.firma_id && muhatapId === (evrak?.muhatap_id ?? "") && muhatap === (evrak?.muhatap ?? "")) return;
-    if (!firmaId) { setEvrakSayiNo(""); return; }
+    if (!firmaId) { setEvrakSayiNo(""); bazRef.current.evrakSayiNo = ""; return; }
     let cancelled = false;
     (async () => {
       try {
         // muhatap metni de gönderilir — id yoksa metin ile tanımlamayı bulup kısa adı kullansın
         const no = await getGidenEvrakSayiNo(firmaId, muhatapId || null, muhatap || null);
-        if (!cancelled) setEvrakSayiNo(no);
+        // Kendiliğinden üretilen numara değişiklik sayılmaz (firma/muhatap değişimi zaten yakalanıyor).
+        if (!cancelled) { setEvrakSayiNo(no); bazRef.current.evrakSayiNo = no; }
       } catch { /* sessiz */ }
     })();
     return () => { cancelled = true; };

@@ -1,7 +1,7 @@
 // Banka yazışma form - Otomatik sayı no, çoklu ilgi/ek, kaşe toggle, ön izleme
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import RichTextEditor from "@/components/shared/rich-text-editor";
 import {
   createBankaYazisma,
@@ -71,6 +71,47 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
   const [ekUploadingIdx, setEkUploadingIdx] = useState<number>(-1);
   const [kaseDahil, setKaseDahil] = useState(yazisma?.kase_dahil ?? false);
 
+  // DEĞİŞİKLİK TAKİBİ — giden evrak formuyla AYNI: dokunulmamış formda ESC'ye basınca
+  // "kaydedeyim mi?" sorulmaz, pencere kapanır. Baz = açılış hâli; kullanıcı dokunmadan
+  // olan otomatik doldurmalar (tek firma seçimi, sayı no üretimi) baza da yazılır.
+  const bazRef = useRef({
+    evrakTarihi: yazisma?.evrak_tarihi ?? new Date().toISOString().split("T")[0],
+    firmaId: yazisma?.firma_id ?? "",
+    evrakSayiNo: yazisma?.evrak_sayi_no ?? "",
+    konu: yazisma?.konu ?? "",
+    muhatap: yazisma?.muhatap ?? "",
+    muhatapId: yazisma?.muhatap_id ?? "",
+    ilgiListesi: yazisma?.ilgi_listesi ?? [],
+    metin: yazisma?.metin ?? "",
+    ekler: yazisma?.ekler ?? [],
+    kaseDahil: yazisma?.kase_dahil ?? false,
+  });
+
+  function degisiklikVarMi(): boolean {
+    const b = bazRef.current;
+    const metinBos = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "") === "";
+    const metinDegisti = metin !== b.metin && !(metinBos(metin) && metinBos(b.metin));
+    const dolu = (l: string[]) => l.map((x) => x.trim()).filter(Boolean).join("\u0001");
+    return (
+      (evrakTarihi ?? "") !== (b.evrakTarihi ?? "") ||
+      firmaId !== b.firmaId ||
+      evrakSayiNo !== b.evrakSayiNo ||
+      konu !== b.konu ||
+      muhatap !== b.muhatap ||
+      muhatapId !== b.muhatapId ||
+      dolu(ilgiListesi) !== dolu(b.ilgiListesi) ||
+      dolu(ekler) !== dolu(b.ekler) ||
+      kaseDahil !== b.kaseDahil ||
+      metinDegisti ||
+      pdfFile !== null ||
+      pdfRemoved
+    );
+  }
+  // ESC dinleyicisi useEffect içinde kurulu ve her alan değişiminde yeniden kurulmuyor;
+  // doğrudan çağrılsa o render'ın ESKİ değerlerini görürdü. Ref her render'da tazelenir.
+  const degisiklikRef = useRef(degisiklikVarMi);
+  degisiklikRef.current = degisiklikVarMi;
+
   useEffect(() => {
     async function load() {
       try {
@@ -89,7 +130,7 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
         // Otomatik default — yeni kayıtta tek izinli firma varsa seç
         if (!isEdit && filtreliFirmalar.length === 1) {
-          setFirmaId((prev) => prev || filtreliFirmalar[0].id);
+          setFirmaId((prev) => { const v = prev || filtreliFirmalar[0].id; bazRef.current.firmaId = v; return v; });
         }
       } catch { /* sessiz */ }
     }
@@ -109,7 +150,8 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
       e.stopImmediatePropagation();
       e.preventDefault();
       if (onIzleme) setOnIzleme(false);
-      else setKapatOnay(true);
+      else if (degisiklikRef.current()) setKapatOnay(true);
+      else onCancel(); // dokunulmamış form — sormaya gerek yok
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
@@ -117,12 +159,12 @@ export default function BankaYazismaForm({ yazisma, onSuccess, onCancel }: Props
 
   useEffect(() => {
     if (isEdit && firmaId === yazisma?.firma_id && muhatapId === (yazisma?.muhatap_id ?? "")) return;
-    if (!firmaId) { setEvrakSayiNo(""); return; }
+    if (!firmaId) { setEvrakSayiNo(""); bazRef.current.evrakSayiNo = ""; return; }
     let cancelled = false;
     (async () => {
       try {
         const no = await getBankaYazismaSayiNo(firmaId, muhatapId || null);
-        if (!cancelled) setEvrakSayiNo(no);
+        if (!cancelled) { setEvrakSayiNo(no); bazRef.current.evrakSayiNo = no; } // otomatik numara değişiklik sayılmaz
       } catch { /* sessiz */ }
     })();
     return () => { cancelled = true; };
