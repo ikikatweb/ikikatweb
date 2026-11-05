@@ -101,7 +101,9 @@ export async function POST(request: Request) {
     });
 
     // ANTET: teklif isteme mailiyle ortak modül (lib/api/antet-eki).
-    const antet = await antetEki(firma.antet_url);
+    // MAİLDE RENKLİ ANTET: antet_url yazışma çıktıları için GRİ tutuluyor; renkli aslı
+    // antet_renkli_url'de. Eski kayıtlarda renkli yoksa eskisi gibi antet_url kullanılır.
+    const antet = await antetEki(firma.antet_renkli_url || firma.antet_url);
     const ekler = antet.ek ? [antet.ek] : [];
     if (antet.inemedi) console.error("[Poliçe Talep Mail] Antet indirilemedi:", firma.antet_url);
 

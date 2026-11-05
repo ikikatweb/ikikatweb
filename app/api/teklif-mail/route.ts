@@ -177,7 +177,9 @@ export async function POST(request: Request) {
     // poliçeleştirme mailiyle aynı modül (lib/api/antet-eki). Antet ruhsat gibi zorunlu
     // DEĞİL: inemezse mail yine gider ama kullanıcıya söylenir.
     const uyarilar: string[] = [];
-    const antet = await antetEki(firma.antet_url);
+    // MAİLDE RENKLİ ANTET: antet_url yazışma çıktıları için GRİ tutuluyor; renkli aslı
+    // antet_renkli_url'de. Eski kayıtlarda renkli yoksa eskisi gibi antet_url kullanılır.
+    const antet = await antetEki(firma.antet_renkli_url || firma.antet_url);
     if (antet.ek) attachments.push(antet.ek);
     if (antet.inemedi) {
       console.error("[Teklif Mail] Antet indirilemedi:", firma.antet_url);

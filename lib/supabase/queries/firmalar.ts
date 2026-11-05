@@ -122,14 +122,22 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
   // Önce mevcut URL'i al — path'i çıkartmak için
   const { data: firma, error: fetchErr } = await supabase
     .from("firmalar")
-    .select(type === "kase" ? "kase_url" : "antet_url")
+    // "*": antet_renkli_url kolonu henüz eklenmemişse (sql/firmalar_antet_renkli.sql)
+    // adıyla seçmek sorguyu komple düşürürdü; silme bu yüzden hiç çalışmazdı.
+    .select("*")
     .eq("id", firmaId)
     .single();
   if (fetchErr) throw fetchErr;
-  const url = type === "kase"
-    ? (firma as { kase_url?: string | null })?.kase_url
-    : (firma as { antet_url?: string | null })?.antet_url;
-  if (url) {
+  // Antet silinince RENKLİ kopyası da gider — yoksa mail silinmiş antetle gitmeye devam ederdi.
+  const silinecekler = (type === "kase"
+    ? [(firma as { kase_url?: string | null })?.kase_url]
+    : [
+        (firma as { antet_url?: string | null })?.antet_url,
+        (firma as { antet_renkli_url?: string | null })?.antet_renkli_url,
+      ]
+  ).filter((u): u is string => !!u);
+
+  for (const url of silinecekler) {
     // publicUrl formatı:
     //   https://xxx.supabase.co/storage/v1/object/public/firmalar/<firmaId>/<type>.<ext>
     const marker = "/firmalar/";
@@ -153,7 +161,9 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
     }
   }
   // DB'deki URL alanını NULL yap
-  const updateField = type === "kase" ? { kase_url: null } : { antet_url: null };
+  const updateField = type === "kase"
+    ? { kase_url: null }
+    : { antet_url: null, antet_renkli_url: null };
   const { error: updErr } = await supabase
     .from("firmalar")
     .update({ ...updateField, updated_at: new Date().toISOString() })
@@ -161,10 +171,11 @@ export async function deleteFirmaFile(firmaId: string, type: "kase" | "antet") {
   if (updErr) throw updErr;
 }
 
+/** type "antet-renkli": antetin renkli aslı — yalnız mailde kullanılır (bkz. sql/firmalar_antet_renkli.sql). */
 export async function uploadFirmaFile(
   file: File,
   firmaId: string,
-  type: "kase" | "antet"
+  type: "kase" | "antet" | "antet-renkli"
 ) {
   const ext = file.name.split(".").pop();
   const filePath = `${firmaId}/${type}.${ext}`;

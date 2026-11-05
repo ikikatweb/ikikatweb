@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Save, X, Upload, Trash2 } from "lucide-react";
 import RenkSecici from "@/components/shared/renk-secici";
 import toast from "react-hot-toast";
+import { griKopyaUret, renkliMi } from "@/lib/utils/gri-antet";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
 type FirmaFormProps = {
@@ -161,13 +162,36 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         setMevcutKaseUrl(kaseUrl);
       }
       if (antetFile) {
-        const antetUrl = await uploadFirmaFile(
-          antetFile,
-          savedFirma.id,
-          "antet"
-        );
-        await updateFirma(savedFirma.id, { antet_url: antetUrl });
-        setMevcutAntetUrl(antetUrl);
+        // ANTET İKİ DOSYA: yüklenen RENKLİ asıl mailde, tarayıcıda üretilen GRİ kopya
+        // yazışma evraklarında kullanılır (bkz. sql/firmalar_antet_renkli.sql).
+        // Gri kopya üretilemezse yükleme YAPILMAZ: sessizce geçilse yazışmalar renkli
+        // antetle basılır ve kimse fark etmez (bkz. AGENTS.md "Sessiz hata yok").
+        let griFile: File;
+        try {
+          griFile = await griKopyaUret(antetFile);
+        } catch (e) {
+          console.error("[Antet] gri kopya üretilemedi:", e);
+          toast.error("Antetin siyah-beyaz kopyası üretilemedi — antet YÜKLENMEDİ. Dosyayı PNG/JPG olarak kaydedip tekrar deneyin.", { duration: 9000 });
+          setLoading(false);
+          return;
+        }
+        const renkliUrl = await uploadFirmaFile(antetFile, savedFirma.id, "antet-renkli");
+        const griUrl = await uploadFirmaFile(griFile, savedFirma.id, "antet");
+        try {
+          await updateFirma(savedFirma.id, { antet_url: griUrl, antet_renkli_url: renkliUrl });
+        } catch (e) {
+          // antet_renkli_url kolonu yoksa migrasyon çalıştırılmamıştır. Gri antet yine de
+          // kaydedilir (yazışmalar doğru basar), ama mail renkli gidemez — SÖYLENİR.
+          const msg = e instanceof Error ? e.message : String(e);
+          if (/antet_renkli_url|column|schema cache/i.test(msg)) {
+            await updateFirma(savedFirma.id, { antet_url: griUrl });
+            toast.error("Antet kaydedildi ama mailde RENKLİ gidemeyecek: veritabanında 'antet_renkli_url' kolonu yok. sql/firmalar_antet_renkli.sql dosyasını Supabase'de çalıştırın, sonra anteti tekrar yükleyin.", { duration: 12000 });
+          } else throw e;
+        }
+        setMevcutAntetUrl(griUrl);
+        if (!(await renkliMi(antetFile))) {
+          toast("Yüklenen antet zaten siyah-beyaz — mail de siyah-beyaz gidecek.", { icon: "⚠️", duration: 8000 });
+        }
       }
 
       // Dialog içinde açıldıysa (onSuccess varsa) yönlendirme yapma, callback çağır.
