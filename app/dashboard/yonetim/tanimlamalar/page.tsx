@@ -39,7 +39,8 @@ import {
 import { Plus, Trash2, ArrowUp, ArrowDown, Settings, Pencil, Fuel, ChevronDown, ChevronRight, Wallet, Search } from "lucide-react";
 import { RENK_PALETI } from "@/lib/utils/renk-palet";
 import { KASKO_TEKLIF_SINIFLAR, KASKO_TEKLIF_KATEGORI, TEKLIF_TALEP_KATEGORI, TEKLIF_TALEP_KASKO_KATEGORI, TEKLIF_TALEP_TRAFIK_KATEGORI, TEKLIF_TALEP_VARSAYILAN } from "@/lib/kasko-teklif-sablon";
-import { POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI, POLICE_TALEP_VARSAYILAN, ODEME_NOTU_VARSAYILAN } from "@/lib/police-talep-metin";
+import { POLICE_TALEP_KATEGORI, POLICE_TALEP_NOT_KATEGORI, POLICE_TALEP_VARSAYILAN, ODEME_NOTU_VARSAYILAN, POLICE_TALEP_YER_TUTUCULAR } from "@/lib/police-talep-metin";
+import { yerTutucuHatasi } from "@/lib/utils/yer-tutucu";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 
@@ -107,6 +108,11 @@ export default function TanimlamalarPage() {
   }, [tanimlamalar]);
 
   async function policeMetinKaydet() {
+    // YER TUTUCU DENETİMİ: "{gonderen" gibi kapanmamış bir alan metne olduğu gibi basılır
+    // ve acenteye öyle gider. Kaydettirmiyoruz (bkz. lib/utils/yer-tutucu.ts).
+    const hata = yerTutucuHatasi(policeMetin, POLICE_TALEP_YER_TUTUCULAR)
+      ?? yerTutucuHatasi(policeNot, POLICE_TALEP_YER_TUTUCULAR);
+    if (hata) { toast.error(hata, { duration: 8000 }); return; }
     setPoliceMetinKaydediyor(true);
     try {
       const yaz = async (kat: string, deger: string) => {
@@ -126,6 +132,9 @@ export default function TanimlamalarPage() {
     finally { setPoliceMetinKaydediyor(false); }
   }
   async function kaskoSablonKaydet() {
+    // Talep cümlelerinde de aynı denetim — {plaka} / {tip} bozuk yazılırsa mailde öyle görünür.
+    const tHata = yerTutucuHatasi(teklifTalepKasko, ["plaka", "tip"]) ?? yerTutucuHatasi(teklifTalepTrafik, ["plaka", "tip"]);
+    if (tHata) { toast.error(tHata, { duration: 8000 }); return; }
     setKaskoSablonKaydediyor(true);
     try {
       // Talep cümleleri — kasko ve trafik AYRI KATEGORİ (her kategoride tek satır → benzersiz kısıt çakışması yok)

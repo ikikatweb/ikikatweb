@@ -25,6 +25,9 @@ export const POLICE_TALEP_VARSAYILAN =
 export const ODEME_NOTU_VARSAYILAN =
   "Ödeme için lütfen 0 533 314 58 15 numaralı telefonla iletişime geçiniz.";
 
+/** Mail metninde kullanılabilecek yer tutucular (Tanımlamalar kartındaki denetim bunu kullanır). */
+export const POLICE_TALEP_YER_TUTUCULAR = ["acente", "plaka", "firma", "tutar", "tip", "gonderen"];
+
 export type PoliceTalepSablon = {
   /** Mail gövdesi — yer tutucular doldurulmadan. */
   govde: string;
