@@ -55,25 +55,16 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
-      // PTT UETS logosunun renkleri, sarı-mavi dönüşümlü: E- · Te · bli · gat.
-      // Renkler logo dosyasından ölçüldü (camgöbeği #00A3CC, sarı #FDC32D), göz
-      // kararı seçilmedi. Bu ekranın verisi bizim değil, devletin sisteminden geliyor.
+      // Menüde YAZI YOK, logo var: ekranın adı zaten PTT UETS. Logo kendi renklerini
+      // taşıdığı için satır listede ayrı duruyor ve "bu veri devletin sisteminden
+      // geliyor" bilgisini tek bakışta veriyor. Erişilebilirlik için alt metni ve
+      // başlığı "E-Tebligat"; yetki matrisinde de adı böyle geçiyor.
       {
         label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
         etiket: (
-          <span className="font-semibold">
-            {/* Sarı açık zeminde soluk kalıyor; rengi değiştirmek yerine ince bir dış
-                çizgiyle okunur hâle getirildi — logoya sadık kalsın. */}
-            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">E-</span>
-            <span className="text-[#00A3CC]">Te</span>
-            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">bli</span>
-            <span className="text-[#00A3CC]">gat</span>
-            {/* Küçük PTT UETS logosu: yazının sağında, kaynağın işareti.
-                eslint-disable: next/image burada kazanç getirmiyor, boyut sabit ve küçük. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/ptt-uets.png" alt="" aria-hidden="true"
-              className="ml-1.5 inline h-3.5 w-auto align-[-2px]" />
-          </span>
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/ptt-uets.png" alt="E-Tebligat (PTT UETS)" title="E-Tebligat — Ulusal Elektronik Tebligat Sistemi"
+            className="h-4 w-auto" />
         ),
       },
       { label: "Gelen Evrak", href: "/dashboard/yazismalar/gelen-evrak", icon: <Mail size={16} /> },
@@ -277,7 +268,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                         <span className={`absolute -left-[21px] w-2 h-2 rounded-full ${
                           isActive ? "bg-[#1E3A5F]" : (item.noktaSinifi ?? "bg-[#b8c2ce]")
                         }`} />
-                        <span>{!isActive && item.etiket ? item.etiket : item.label}</span>
+                        <span>{item.etiket ?? item.label}</span>
                         {(rozetler[item.href] ?? 0) > 0 && (
                           <Rozet sayi={rozetler[item.href]} baslik={`${rozetler[item.href]} okunmamış tebligat`} />
                         )}
