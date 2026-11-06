@@ -116,7 +116,7 @@ export default function FirmaUetsAyar({
           hangi servise ait olduğunu söylemiyor. */}
       <div className="flex items-center gap-2.5 border-b pb-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ptt-uets.png" alt="PTT UETS" className="h-8 w-auto rounded-md shadow-sm" />
+        <img src="/ptt-uets.png" alt="PTT UETS" className="h-8 w-auto" />
         <div className="text-xs text-gray-500">
           Ulusal Elektronik Tebligat Sistemi — bu firmanın resmî tebligatları buradan çekilir.
         </div>
