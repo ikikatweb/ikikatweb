@@ -1,4 +1,8 @@
-// Bizden Haberler — YÖNETİM. Yönetici haber ekler/düzenler/siler; ana sayfada gösterilir.
+// Bizden Haberler — YÖNETİM. Haber ekler/düzenler/siler; ana sayfada ve kurumsal sitede görünür.
+//
+// YETKİ: bu ekranda hiç izin kontrolü yoktu. Yetki Ayarları'ndaki Ekle/Düzenle/Sil
+// kutuları çiziliyordu ama kimse onlara bakmıyordu; yani yalnız "Görüntüle" verilen bir
+// kullanıcı da kurumsal sitedeki haberi silebiliyordu. Kutuların karşılığı artık var.
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
@@ -9,10 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Pencil, Trash2, Upload, Eye, EyeOff, X, Newspaper } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "@/hooks";
 
 const BOS = { id: "", baslik: "", ozet: "", icerik: "", gorsel_url: "", yayinda: true };
 
 export default function HaberlerYonetim() {
+  const { hasPermission, isYonetici } = useAuth();
+  const yEkle = isYonetici || hasPermission("yonetim-haberler", "ekle");
+  const yDuzenle = isYonetici || hasPermission("yonetim-haberler", "duzenle");
+  const ySil = isYonetici || hasPermission("yonetim-haberler", "sil");
+
   const [liste, setListe] = useState<Haber[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<typeof BOS>(BOS);
@@ -28,8 +38,12 @@ export default function HaberlerYonetim() {
   }, []);
   useEffect(() => { void yukle(); }, [yukle]);
 
-  const yeni = () => { setForm(BOS); setFormAcik(true); };
+  const yeni = () => {
+    if (!yEkle) { toast.error("Haber ekleme yetkiniz yok."); return; }
+    setForm(BOS); setFormAcik(true);
+  };
   const duzenle = (h: Haber) => {
+    if (!yDuzenle) { toast.error("Haber düzenleme yetkiniz yok."); return; }
     setForm({ id: h.id, baslik: h.baslik, ozet: h.ozet ?? "", icerik: h.icerik, gorsel_url: h.gorsel_url ?? "", yayinda: h.yayinda });
     setFormAcik(true);
   };
@@ -46,6 +60,9 @@ export default function HaberlerYonetim() {
   async function kaydet(e: React.FormEvent) {
     e.preventDefault();
     if (!form.baslik.trim() || !form.icerik.trim()) { toast.error("Başlık ve içerik zorunludur."); return; }
+    // Düğmeler gizli olsa da kaydetme yolu ayrıca kontrol edilir: form bir kez açıldıktan
+    // sonra yetki değişmiş olabilir ve gizli düğme güvenlik değildir.
+    if (form.id ? !yDuzenle : !yEkle) { toast.error("Bu işlem için yetkiniz yok."); return; }
     setKaydediyor(true);
     try {
       const payload = {
@@ -60,12 +77,15 @@ export default function HaberlerYonetim() {
   }
 
   async function sil(h: Haber) {
+    if (!ySil) { toast.error("Haber silme yetkiniz yok."); return; }
     if (!window.confirm(`"${h.baslik}" haberini silmek istediğinize emin misiniz?`)) return;
     try { await deleteHaber(h.id); toast.success("Haber silindi."); await yukle(); }
     catch (err) { toast.error(err instanceof Error ? err.message : "Silinemedi."); }
   }
 
   async function yayinToggle(h: Haber) {
+    // Yayından kaldırmak da haberi değiştirmektir → düzenleme yetkisi.
+    if (!yDuzenle) { toast.error("Haber düzenleme yetkiniz yok."); return; }
     try { await updateHaber(h.id, { yayinda: !h.yayinda }); await yukle(); }
     catch { toast.error("Güncellenemedi."); }
   }
@@ -77,7 +97,9 @@ export default function HaberlerYonetim() {
           <h1 className="text-xl font-bold text-[#1E3A5F]">Bizden Haberler</h1>
           <p className="text-sm text-gray-500">Ana sayfada gösterilen haberleri yönetin.</p>
         </div>
-        <Button onClick={yeni} className="bg-[#1E3A5F] text-white hover:bg-[#16304f]"><Plus size={16} className="mr-1" /> Yeni Haber</Button>
+        {yEkle && (
+          <Button onClick={yeni} className="bg-[#1E3A5F] text-white hover:bg-[#16304f]"><Plus size={16} className="mr-1" /> Yeni Haber</Button>
+        )}
       </div>
 
       {loading ? (
@@ -85,7 +107,7 @@ export default function HaberlerYonetim() {
       ) : liste.length === 0 ? (
         <div className="rounded-lg border bg-white py-16 text-center text-gray-500">
           <Newspaper size={40} className="mx-auto mb-3 text-gray-300" />
-          Henüz haber eklenmemiş. &quot;Yeni Haber&quot; ile ekleyin.
+          Henüz haber eklenmemiş.{yEkle && <> &quot;Yeni Haber&quot; ile ekleyin.</>}
         </div>
       ) : (
         <div className="space-y-3">
@@ -103,12 +125,18 @@ export default function HaberlerYonetim() {
                 <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{h.ozet || h.icerik}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button onClick={() => yayinToggle(h)} title={h.yayinda ? "Yayından kaldır" : "Yayınla"}
-                  className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-[#1E3A5F]">
-                  {h.yayinda ? <Eye size={16} /> : <EyeOff size={16} />}
-                </button>
-                <button onClick={() => duzenle(h)} title="Düzenle" className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-[#1E3A5F]"><Pencil size={16} /></button>
-                <button onClick={() => sil(h)} title="Sil" className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"><Trash2 size={16} /></button>
+                {yDuzenle && (
+                  <button onClick={() => yayinToggle(h)} title={h.yayinda ? "Yayından kaldır" : "Yayınla"}
+                    className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-[#1E3A5F]">
+                    {h.yayinda ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                )}
+                {yDuzenle && (
+                  <button onClick={() => duzenle(h)} title="Düzenle" className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-[#1E3A5F]"><Pencil size={16} /></button>
+                )}
+                {ySil && (
+                  <button onClick={() => sil(h)} title="Sil" className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"><Trash2 size={16} /></button>
+                )}
               </div>
             </div>
           ))}

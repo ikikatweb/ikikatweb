@@ -38,17 +38,29 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "yazismalar-gelen-evrak", label: "Gelen Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-giden-evrak", label: "Giden Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-banka-yazismalari", label: "Banka Yazışmaları", grup: "Yazışmalar" },
-  { key: "yazismalar-silinen", label: "Silinen", grup: "Yazışmalar" },
+  // Silinen kutusunda "düzenle" diye bir şey yok: kayıt ya geri yüklenir ya kalıcı silinir.
+  {
+    key: "yazismalar-silinen", label: "Silinen", grup: "Yazışmalar",
+    aksiyonlar: ["goruntule", "ekle", "sil"],
+    not: "Ekle = geri yükleme · Sil = kalıcı silme",
+  },
   // Kasko & Sigorta
   { key: "araclar-sigorta-muayene", label: "Araç Listesi", grup: "Kasko & Sigorta" },
-  { key: "araclar-acente-takip", label: "Belgeler", grup: "Kasko & Sigorta" },
-  { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Kasko & Sigorta" },
-  { key: "araclar-kira-bedeli", label: "Kira Bedeli", grup: "Kasko & Sigorta" },
+  // Belgeler elle eklenmiyor (poliçeler mailden işleniyor); düzenleme ve silme var.
+  {
+    key: "araclar-acente-takip", label: "Belgeler", grup: "Kasko & Sigorta",
+    aksiyonlar: ["goruntule", "duzenle", "sil"],
+  },
+  // Salt rapor ekranı — yazma yok.
+  { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Kasko & Sigorta", aksiyonlar: ["goruntule"] },
+  // Salt liste — yazma yok.
+  { key: "araclar-kira-bedeli", label: "Kira Bedeli", grup: "Kasko & Sigorta", aksiyonlar: ["goruntule"] },
   // Araç Takip
   { key: "araclar-arvento-raporu", label: "Araç Çalışma Raporu", grup: "Araç Takip" },
   // Araç Bakım
   { key: "arac-bakim", label: "Bakım, Tamirat, Yedek Parça", grup: "Araç Bakım" },
-  { key: "arac-bakim-arac-listesi", label: "Araç Listesi", grup: "Araç Bakım" },
+  // Salt liste — yazma yok.
+  { key: "arac-bakim-arac-listesi", label: "Araç Listesi", grup: "Araç Bakım", aksiyonlar: ["goruntule"] },
   // Puantaj
   { key: "puantaj-personel", label: "Personel Puantaj", grup: "Puantaj" },
   { key: "puantaj-arac", label: "Araç Puantaj", grup: "Puantaj" },
@@ -64,7 +76,8 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "yonetim-haberler", label: "Bizden Haberler", grup: "Ayarlar" },
   { key: "yonetim-personel", label: "Personeller", grup: "Ayarlar" },
   { key: "yonetim-araclar", label: "Araçlar", grup: "Ayarlar" },
-  { key: "yonetim-yi-ufe", label: "Yi-ÜFE", grup: "Ayarlar" },
+  // Endeks satırı silinmiyor; yalnız ekleniyor ve düzeltiliyor.
+  { key: "yonetim-yi-ufe", label: "Yi-ÜFE", grup: "Ayarlar", aksiyonlar: ["goruntule", "ekle", "duzenle"] },
   { key: "yonetim-tanimlamalar", label: "Tanımlamalar", grup: "Ayarlar" },
 ];
 
