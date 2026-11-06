@@ -52,6 +52,7 @@ import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hat
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
 import TebligatHatirlatma from "@/components/shared/tebligat-hatirlatma";
+import KetsisHatirlatma from "@/components/shared/ketsis-hatirlatma";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
@@ -1908,6 +1909,11 @@ export default function DashboardPage() {
           ulaşmayı izleyen 5. günün sonunda tebliğ sayılır). Diğer hatırlatmaların
           hepsi beklerse gün kaybı olur; bu beklerse hak kaybı olur. */}
       <TebligatHatirlatma />
+      {/* Vergi dairesi tebligatı (GİB · KETSİS) AYRI uyarı: o sistemde tebligat panelden
+          açılamıyor (alıcı tarafı için API yok), tek yapılacak iş Dijital Vergi
+          Dairesi'ne girmek. Mail hiç gelmese de haftada bir hatırlatır — bilgilendirme
+          maili hukuken tebligatın parçası değil, gelmemesi süreyi durdurmaz. */}
+      <KetsisHatirlatma />
       <YedekHatirlatma />
       <BordroHatirlatma />
       {/* Çalışılmayan dönemi bugün başlayan/süren işler — yalnız yönetici ve şantiye yöneticisi görür. */}

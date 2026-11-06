@@ -26,15 +26,23 @@ export function useOkunmamisTebligat(etkin: boolean): number {
   const say = useCallback(async () => {
     const sb = createClient();
     // head + exact: satırlar indirilmez, yalnız sayı gelir — menü her açılışta ucuz kalsın.
-    const { count, error } = await sb
-      .from("tebligat")
-      .select("id", { count: "exact", head: true })
-      .in("durum", ["delivered", "readtimeout"])
-      .eq("arsivlendi", false);
+    //
+    // İKİ SİSTEM, TEK ROZET: menü satırı PTT UETS'in logosunu taşıyor ama açtığı ekranda
+    // vergi dairesi tebligatı (GİB · KETSİS) bölümü de var. Rozet o EKRANDA bekleyen işi
+    // sayar; ayrı rozet koymak "hangisi hangisi" sorusunu doğurur, ikisini de kaçırmamak
+    // tek sayıyla korunur.
+    const [uets, ketsis] = await Promise.all([
+      sb.from("tebligat").select("id", { count: "exact", head: true })
+        .in("durum", ["delivered", "readtimeout"]).eq("arsivlendi", false),
+      // GİB bildirimi: kimse Dijital Vergi Dairesi'ne girip bakmadıysa bekliyor.
+      sb.from("ketsis_bildirim").select("id", { count: "exact", head: true })
+        .eq("durum", "yeni"),
+    ]);
     // Sayı okunamazsa 0 GÖSTERME: "tebligat yok" diye okunur. Eldeki sayı kalsın,
     // sebep konsola düşsün — rozet menüyü kilitleyecek bir şey değil.
-    if (error) { console.warn("Okunmamış tebligat sayılamadı:", error.message); return; }
-    setSayi(count ?? 0);
+    if (uets.error) { console.warn("Okunmamış tebligat sayılamadı:", uets.error.message); return; }
+    if (ketsis.error) { console.warn("GİB bildirimi sayılamadı:", ketsis.error.message); return; }
+    setSayi((uets.count ?? 0) + (ketsis.count ?? 0));
   }, []);
 
   useEffect(() => {

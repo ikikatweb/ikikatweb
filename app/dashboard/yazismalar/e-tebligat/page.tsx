@@ -21,6 +21,7 @@ import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { tebligatDegisti } from "@/hooks";
+import KetsisTablosu from "@/components/shared/ketsis-tablosu";
 
 const UETS_GIRIS = "https://ptt.etebligat.gov.tr/login";
 
@@ -366,6 +367,14 @@ Açılsın mı?`;
         İndirme ofisteki sunucudan yapılır (UETS yalnız kayıtlı IP&apos;den çalışıyor),
         bu yüzden belgeler birkaç dakika içinde görünür.
       </p>
+
+      {/* VERGİ DAİRESİ TEBLİGATI AYNI EKRANDA, AMA AYRI TABLODA.
+          Aynı ekranda: kullanıcı "tebligatım var mı" sorusunu tek yerde sorsun.
+          Ayrı tabloda: yukarıdaki satırların hepsi PTT UETS'ten gelen ve panelden
+          açılabilen tebligatlar; aşağıdakiler GİB'in KETSİS'inden gelen ve yalnız
+          Dijital Vergi Dairesi'nde okunabilen bildirimler. İkisini tek listeye
+          karıştırmak "niye bu açılmıyor" sorusunu doğurur. */}
+      <KetsisTablosu />
     </div>
   );
 }
