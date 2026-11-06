@@ -60,7 +60,10 @@ function aciliyet(t: Tebligat) {
 
 export default function ETebligatPage() {
   const { hasPermission, isYonetici, loading } = useAuth();
-  const gor = isYonetici || hasPermission("yazismalar-gelen-evrak", "goruntule");
+  const gor = isYonetici || hasPermission("yazismalar-e-tebligat", "goruntule");
+  // AÇMA AYRI YETKİ: tebligatı açmak geri alınamaz ve o kişinin adına kaydedilir.
+  // Listeyi görebilen herkesin açabilmesi doğru değil — "düzenle" izni olan açar.
+  const acabilir = isYonetici || hasPermission("yazismalar-e-tebligat", "duzenle");
 
   const [satirlar, setSatirlar] = useState<Tebligat[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -295,11 +298,15 @@ Açılsın mı?`;
                         <Download size={12} /> EYP paketi
                       </a>
                     ) : (
+                      acabilir ? (
                       <button type="button" disabled={aciliyor === t.id} onClick={() => ac(t)}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
                         {aciliyor === t.id ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
                         Aç ve oku
                       </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">Açılmadı</span>
+                      )
                     )}
                   </td>
                 </tr>

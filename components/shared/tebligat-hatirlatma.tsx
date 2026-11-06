@@ -33,7 +33,7 @@ type Satir = {
 
 export default function TebligatHatirlatma() {
   const { hasPermission, isYonetici } = useAuth();
-  const yetkili = isYonetici || hasPermission("yazismalar-gelen-evrak", "goruntule");
+  const yetkili = isYonetici || hasPermission("yazismalar-e-tebligat", "goruntule");
   const [kayitlar, setKayitlar] = useState<Satir[]>([]);
   const [kapatiliyor, setKapatiliyor] = useState<number | null>(null);
 

@@ -166,7 +166,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   }, [pathname]);
 
   // Okunmamış e-tebligat rozeti. Yetkisi olmayana sayım sorgusu bile atılmaz.
-  const tebligatYetki = isYonetici || hasPermission("yazismalar-gelen-evrak", "goruntule");
+  const tebligatYetki = isYonetici || hasPermission("yazismalar-e-tebligat", "goruntule");
   const okunmamisTebligat = useOkunmamisTebligat(tebligatYetki);
   // href → rozet sayısı. Başka ekranlara rozet gerekirse buraya eklenir.
   const rozetler: Record<string, number> = {

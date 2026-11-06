@@ -19,6 +19,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "icra", label: "İcra Takibi", grup: "Büro Yönetimi" },
   { key: "ihale", label: "Sınır Değer Hesabı", grup: "Büro Yönetimi" },
   // Yazışmalar
+  { key: "yazismalar-e-tebligat", label: "E-Tebligat", grup: "Yazışmalar" },
   { key: "yazismalar-gelen-evrak", label: "Gelen Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-giden-evrak", label: "Giden Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-banka-yazismalari", label: "Banka Yazışmaları", grup: "Yazışmalar" },

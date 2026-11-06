@@ -56,9 +56,11 @@ export async function POST(request: Request) {
   if (!url || !servis) return NextResponse.json({ error: "Supabase yapılandırması eksik" }, { status: 500 });
   const sb = createClient(url, servis, { auth: { persistSession: false } });
 
-  // İzin: gelen evrakı görebilen açabilir. oturum() izinleri getirmiyor, burada okunuyor.
+  // İZİN: açmak için "E-Tebligat > düzenle" gerekir, görüntüleme yetmez. Açmak geri
+  // alınamaz ve o kişinin adına kaydedilir; listeyi görebilen herkese açık olmamalı.
+  // oturum() izinleri getirmiyor, burada okunuyor.
   const { data: kul } = await sb.from("kullanicilar").select("izinler").eq("id", k.id).single();
-  const izinli = hasPermission(k.rol as Rol, (kul?.izinler ?? {}) as Izinler, "yazismalar-gelen-evrak", "goruntule");
+  const izinli = hasPermission(k.rol as Rol, (kul?.izinler ?? {}) as Izinler, "yazismalar-e-tebligat", "duzenle");
   if (!izinli) return NextResponse.json({ error: "Tebligat açma yetkiniz yok." }, { status: 403 });
 
   const { id } = (await request.json().catch(() => ({}))) as { id?: number };
