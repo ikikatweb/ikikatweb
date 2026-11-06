@@ -151,4 +151,6 @@ async function main() {
   // Buraya kadar olan kısım anahtar çalışır çalışmaz denenebilir.
 }
 
-main().catch((e) => { console.error("HATA:", e?.message ?? e); process.exit(1); });
+// process.exit() KULLANILMIYOR: bu projede libuv teardown çökmesine yol açıyordu
+// (0xC0000409). Çıkış kodunu işaretleyip akışın kendiliğinden bitmesini bekliyoruz.
+main().catch((e) => { console.error("HATA:", e?.message ?? e); process.exitCode = 1; });
