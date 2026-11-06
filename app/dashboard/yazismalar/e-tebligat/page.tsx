@@ -169,8 +169,17 @@ Açılsın mı?`;
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <h1 className="flex items-center gap-2 text-lg font-semibold text-[#1E3A5F]">
+        <h1 className="flex items-center gap-2.5 text-lg font-semibold text-[#1E3A5F]">
           <Scale size={20} /> E-Tebligat
+          {/* PTT UETS logosu: bu ekranın verisi doğrudan PTT'nin sisteminden geliyor,
+              görsel süs değil kaynağın işareti. Logo "Ptt UETS" markasına kırpıldı:
+              altındaki "Ulusal Elektronik Tebligat Sistemi" satırı bu boyda okunmuyor,
+              lekeye dönüyordu. Zemin koyu kaldı (dokulu, temizlemek bozuyor), yuvarlatılmış
+              rozet gibi duruyor.
+              next/image yerine düz <img>: boyut sabit ve küçük, optimizasyona değmez. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/ptt-uets.png" alt="PTT UETS" title="Ulusal Elektronik Tebligat Sistemi"
+            className="h-6 w-auto rounded-md shadow-sm" />
         </h1>
         <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
           {([["acilmamis", `Açılmamış${acilmamis ? ` (${acilmamis})` : ""}`], ["hepsi", "Hepsi"]] as const).map(([id, et]) => (

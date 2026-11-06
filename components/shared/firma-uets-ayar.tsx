@@ -112,6 +112,16 @@ export default function FirmaUetsAyar({
 
   return (
     <div className="space-y-4">
+      {/* Hangi sistemin ayarı olduğu bir bakışta belli olsun — "API anahtarı" tek başına
+          hangi servise ait olduğunu söylemiyor. */}
+      <div className="flex items-center gap-2.5 border-b pb-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ptt-uets.png" alt="PTT UETS" className="h-8 w-auto rounded-md shadow-sm" />
+        <div className="text-xs text-gray-500">
+          Ulusal Elektronik Tebligat Sistemi — bu firmanın resmî tebligatları buradan çekilir.
+        </div>
+      </div>
+
       {!firmaId && (
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
