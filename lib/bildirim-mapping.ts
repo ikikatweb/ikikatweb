@@ -22,6 +22,10 @@ export const BILDIRIM_TAG_MODULE: Record<string, string | null> = {
   // Yakıt
   yakit: "yakit",
   // Yazışmalar
+  // E-TEBLİGAT: resmî tebligat gelen evrakın en kritik türü — süreye bağlı.
+  // Gelen evrakla aynı izin modülüne bağlı ama AYRI tag, çünkü kullanıcı
+  // "gelen evrak bildirimi istemiyorum" dese bile tebligatı kaçırmamalı.
+  "e-tebligat": "yazismalar-gelen-evrak",
   "gelen-evrak": "yazismalar-gelen-evrak",
   "giden-evrak": "yazismalar-giden-evrak",
   "banka-yazismalari": "yazismalar-banka-yazismalari",

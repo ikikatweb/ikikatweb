@@ -24,6 +24,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
+import { pushGonder } from "./push-gonder.mjs";
 
 const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = Object.fromEntries(
@@ -143,12 +144,34 @@ async function main() {
 
   // ───────── bildirim ─────────
   if (yeniler.length === 0) { console.log("Yeni tebligat yok."); return; }
+
   for (const { hesap, m } of yeniler) {
-    const sonGun = new Date(new Date(tarih(m.inserttime)).getTime() + 5 * 86400000);
-    console.log(`YENİ · ${hesap} · ${m.sender_name} · ${m.subject} · tebliğ sayılacağı gün ${sonGun.toLocaleDateString("tr-TR")}`);
+    const ulasma = tarih(m.inserttime);
+    const sonGun = new Date(new Date(ulasma).getTime() + 5 * 86400000);
+    const sonGunTR = sonGun.toLocaleDateString("tr-TR");
+    console.log(`YENİ · ${hesap} · ${m.sender_name} · ${m.subject} · tebliğ sayılacağı gün ${sonGunTR}`);
+
+    // Bildirimde SON GÜN yazıyor, "yeni tebligat var" demekle yetinmiyoruz: e-tebligatta
+    // önemli olan geldiği değil, ne zamana kadar cevap verilmesi gerektiğidir.
+    const govde = `${m.sender_name ?? m.sender} · ${m.subject ?? "konu yok"}`
+      + `
+Tebliğ sayılacağı gün: ${sonGunTR}`
+      + (m.status === "readtimeout" ? " · SÜRE DOLDU, otomatik okundu sayıldı" : "");
+    try {
+      const n = await pushGonder(sb, env, {
+        baslik: `${hesap} · yeni e-tebligat`,
+        govde,
+        url: "/dashboard",
+        // Etiket tebligata özel: aynı tebligat için ikinci bir push üst üste binmesin.
+        etiket: `tebligat-${m.id}`,
+        kategori: "e-tebligat",
+      });
+      if (n > 0) console.log(`   bildirim → ${n} cihaz`);
+    } catch (e) {
+      // Bildirim hatası veriyi etkilemesin; tebligat zaten deftere yazıldı.
+      console.log(`   bildirim gönderilemedi: ${e.message}`);
+    }
   }
-  // Bildirim gönderimi bir sonraki adımda bağlanacak (lib/bildirim.ts sunucu tarafında).
-  // Buraya kadar olan kısım anahtar çalışır çalışmaz denenebilir.
 }
 
 // process.exit() KULLANILMIYOR: bu projede libuv teardown çökmesine yol açıyordu

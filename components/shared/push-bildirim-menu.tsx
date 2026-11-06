@@ -38,6 +38,7 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "santiye", label: "İş Deneyim Belgeleri", emoji: "🏗️", desc: "Yeni iş / güncelleme" },
   { tag: "personel", label: "Personeller", emoji: "👤", desc: "Yeni personel / güncelleme" },
   { tag: "arac", label: "Araçlar", emoji: "🚗", desc: "Yeni araç / güncelleme" },
+  { tag: "e-tebligat", label: "E-Tebligat", emoji: "⚖️", desc: "UETS'ten gelen resmî tebligat" },
   { tag: "gelen-evrak", label: "Gelen Evrak", emoji: "📥", desc: "Yeni gelen evrak" },
   { tag: "giden-evrak", label: "Giden Evrak", emoji: "📤", desc: "Yeni giden evrak" },
   { tag: "banka-yazismalari", label: "Banka Yazışması", emoji: "🏦", desc: "Yeni yazışma / hızlı talimat" },
