@@ -55,19 +55,19 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
-      // PTT UETS logosunun dizilişi satıra taşındı: logoda SARI kuyruk → MAVİ "Ptt" →
-      // SARI "UETS" var. Burada da soldaki nokta sarı, "E-" mavi, "Tebligat" sarı.
-      // Renkler logo dosyasından ölçüldü (camgöbeği #00A3CC, sarı #FDC32D), göz kararı
-      // seçilmedi. Bu ekranın verisi bizim değil, devletin sisteminden geliyor.
+      // PTT UETS logosunun renkleri, sarı-mavi dönüşümlü: E- · Te · bli · gat.
+      // Renkler logo dosyasından ölçüldü (camgöbeği #00A3CC, sarı #FDC32D), göz
+      // kararı seçilmedi. Bu ekranın verisi bizim değil, devletin sisteminden geliyor.
       {
         label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
-        noktaSinifi: "bg-[#FDC32D]",
         etiket: (
           <span className="font-semibold">
-            <span className="text-[#00A3CC]">E-</span>
-            {/* Sarı açık zeminde soluk kalıyor; logonun sarısı korunup okunabilirlik
-                için ince bir dış çizgi verildi. */}
-            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">Tebligat</span>
+            {/* Sarı açık zeminde soluk kalıyor; rengi değiştirmek yerine ince bir dış
+                çizgiyle okunur hâle getirildi — logoya sadık kalsın. */}
+            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">E-</span>
+            <span className="text-[#00A3CC]">Te</span>
+            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">bli</span>
+            <span className="text-[#00A3CC]">gat</span>
           </span>
         ),
       },
