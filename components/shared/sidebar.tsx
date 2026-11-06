@@ -13,7 +13,7 @@ import {
   Shield, Headphones, BarChart3, Wrench, Satellite,
   ClipboardList, Fuel, Wallet, NotebookPen, Calculator, UserPlus, CalendarClock, Gavel, CreditCard,
   ChevronDown, ChevronUp,
-  FileBarChart2, Database, Briefcase, ListChecks, Info,
+  FileBarChart2, Database, Briefcase, ListChecks, Info, Scale,
 } from "lucide-react";
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
@@ -38,6 +38,7 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
+      { label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} /> },
       { label: "Gelen Evrak", href: "/dashboard/yazismalar/gelen-evrak", icon: <Mail size={16} /> },
       { label: "Giden Evrak", href: "/dashboard/yazismalar/giden-evrak", icon: <MailOpen size={16} /> },
       { label: "Banka Yazışmaları", href: "/dashboard/yazismalar/banka-yazismalari", icon: <Landmark size={16} /> },
