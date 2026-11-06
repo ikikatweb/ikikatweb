@@ -75,9 +75,28 @@ export default function ETebligatPage() {
   // UETS'te bir indirme, yani geri alınamaz bir "okundu" demek.
   const [aciliyor, setAciliyor] = useState<number | null>(null);
 
+  // İLK YÜKLEME. Hata SESSİZ GEÇMEZ: boş tablo "tebligat yok" diye okunur, oysa
+  // sorgu patlamıştır.
+  useEffect(() => {
+    if (!gor) return;
+    let iptal = false;
+    (async () => {
+      try {
+        const d = await getTebligatlar();
+        if (!iptal) { setSatirlar(d); setHata(null); }
+      } catch (e) {
+        if (!iptal) setHata(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!iptal) setYukleniyor(false);
+      }
+    })();
+    return () => { iptal = true; };
+  }, [gor]);
+
   /**
-   * Tebligatı AÇAR. Bu, UETS'te indirme yapar ve tebligat o an okunmuş sayılır
-   * (taahhütname md. 7) — geri alınamaz. Onay bu yüzden sorulur.
+   * Tebligatın AÇILMASINI İSTER. İndirme burada olmuyor: UETS yalnız ofisteki statik
+   * IP'den çalıştığı için (Vercel'den "fetch failed") istek kuyruğa yazılıyor, indirmeyi
+   * ofisteki görev yapıyor. Açmak GERİ ALINAMAZ (taahhütname md. 7) — onay bu yüzden.
    */
   async function ac(t: Tebligat) {
     const uyari = `"${t.konu ?? "konu yok"}" tebligatı AÇILACAK.
@@ -99,35 +118,27 @@ Açılsın mı?`;
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      // Paket inmiş ama içinden belge çıkmamış olabilir — SESSİZ GEÇİLMEZ.
-      if (j.uyari) toast.error(`Tebligat açıldı ama: ${j.uyari}`, { duration: 14000 });
-      else toast.success("Tebligat açıldı.", { duration: toastSuresi() });
-      // Listeyi tazele: durum, okuyan ve ekler sunucudan geldi.
+      if (j.durum === "zaten-acik") toast.success("Tebligat zaten açık.", { duration: toastSuresi() });
+      else toast.success("Açılma isteği alındı. Ofisteki görev birkaç dakika içinde indirecek.", { duration: 8000 });
       setSatirlar(await getTebligatlar());
-      tebligatDegisti();   // menüdeki kırmızı rozet düşsün
+      tebligatDegisti();
     } catch (e) {
-      toast.error(`Açılamadı: ${e instanceof Error ? e.message : e}`, { duration: 14000 });
+      toast.error(`İstek gönderilemedi: ${e instanceof Error ? e.message : e}`, { duration: 14000 });
     } finally {
       setAciliyor(null);
     }
   }
 
+  // Bekleyen istek varsa liste kendi kendine tazelensin: indirme ofiste yapılıyor,
+  // sonuç bu sekmeye haber vermeden geliyor.
+  const bekleyenVar = satirlar.some((t) => t.acilma_durumu === "bekliyor" || t.acilma_durumu === "islemde");
   useEffect(() => {
-    if (!gor) return;
-    let iptal = false;
-    (async () => {
-      try {
-        const d = await getTebligatlar();
-        if (!iptal) { setSatirlar(d); setHata(null); }
-      } catch (e) {
-        // Hata SESSİZ GEÇMEZ: boş tablo "tebligat yok" diye okunur, oysa sorgu patlamıştır.
-        if (!iptal) setHata(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (!iptal) setYukleniyor(false);
-      }
-    })();
-    return () => { iptal = true; };
-  }, [gor]);
+    if (!bekleyenVar) return;
+    const z = setInterval(() => { void (async () => {
+      try { setSatirlar(await getTebligatlar()); } catch { /* bir sonraki turda yine denenir */ }
+    })(); }, 15000);
+    return () => clearInterval(z);
+  }, [bekleyenVar]);
 
   const liste = useMemo(() => {
     let l = suzgec === "acilmamis" ? satirlar.filter((t) => t.durum === "delivered") : satirlar;
@@ -305,13 +316,28 @@ Açılsın mı?`;
                         className="inline-flex items-center gap-1 text-xs text-[#1E3A5F] hover:underline">
                         <Download size={12} /> EYP paketi
                       </a>
+                    ) : t.acilma_durumu === "bekliyor" || t.acilma_durumu === "islemde" ? (
+                      // İstek ofisteki görevde sırada. Kullanıcı neyi beklediğini bilsin.
+                      <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                        <Loader2 size={12} className="animate-spin" />
+                        {t.acilma_durumu === "islemde" ? "indiriliyor…" : "sırada…"}
+                        {t.acilma_isteyen_ad && <span className="text-gray-400">({t.acilma_isteyen_ad})</span>}
+                      </span>
                     ) : (
                       acabilir ? (
-                      <button type="button" disabled={aciliyor === t.id} onClick={() => ac(t)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
-                        {aciliyor === t.id ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
-                        Aç ve oku
-                      </button>
+                      <div className="flex flex-col items-start gap-1">
+                        {/* Önceki deneme hata verdiyse SESSİZ GEÇİLMEZ: sebebi burada yazar. */}
+                        {t.acilma_hatasi && (
+                          <span className="text-[11px] text-red-700" title={t.acilma_hatasi}>
+                            açılamadı: {t.acilma_hatasi.slice(0, 60)}
+                          </span>
+                        )}
+                        <button type="button" disabled={aciliyor === t.id} onClick={() => ac(t)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
+                          {aciliyor === t.id ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
+                          {t.acilma_hatasi ? "Tekrar dene" : "Aç ve oku"}
+                        </button>
+                      </div>
                       ) : (
                         <span className="text-xs text-gray-400">Açılmadı</span>
                       )
@@ -337,6 +363,8 @@ Açılsın mı?`;
         yapılmaz</b> — UETS&apos;te tebligatı indirmek onu açmak sayıldığı için (taahhütname
         md. 7), açma kararı size bırakılmıştır. <b>Aç ve oku</b> düğmesi tebligatı indirir,
         belgeleri buraya çıkarır ve <b>kimin açtığını kaydeder</b>; işlem geri alınamaz.
+        İndirme ofisteki sunucudan yapılır (UETS yalnız kayıtlı IP&apos;den çalışıyor),
+        bu yüzden belgeler birkaç dakika içinde görünür.
       </p>
     </div>
   );

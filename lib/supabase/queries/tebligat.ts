@@ -26,6 +26,11 @@ export type Tebligat = {
   okuyan_ad: string | null;
   // EYP paketinden çıkan belgeler. Boşsa paket açılamamıştır → indirme_hatasi'na bakılır.
   ekler: { ad: string; yol: string; tur: string; boyut: number }[] | null;
+  // Açma kuyruğu: istek ofisteki göreve bırakılıyor (UETS statik IP şartı).
+  acilma_durumu: "bekliyor" | "islemde" | "hata" | null;
+  acilma_istegi_at: string | null;
+  acilma_isteyen_ad: string | null;
+  acilma_hatasi: string | null;
   arsivlendi: boolean;
   firma_id: string | null;
   // Firmanın kendi rengi ve adı — tebligat hangi şirkete geldi, bir bakışta görünsün.
