@@ -695,10 +695,20 @@ export default function KullaniciForm({
                         </tr>
                         {moduller.map((m) => (
                           <tr key={m.key} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="py-2.5 pr-4">{m.label}</td>
+                            <td className="py-2.5 pr-4">
+                              {m.label}
+                              {m.not && <div className="text-[11px] text-gray-500">{m.not}</div>}
+                            </td>
                             {(["goruntule", "ekle", "duzenle", "sil"] as const).map((aksiyon) => (
                               <td key={aksiyon} className="text-center py-2.5 px-3">
-                                <input type="checkbox" checked={getIzin(m.key, aksiyon)} onChange={(e) => setIzin(m.key, aksiyon, e.target.checked)} disabled={loading} className="w-4 h-4 accent-[#F97316]" />
+                                {/* Modülde karşılığı olmayan aksiyon için kutu YOK, tire var:
+                                    işaretlenebilir ama hiçbir şey yapmayan kutu, yetki
+                                    verdiğini sanıp vermemeye yol açıyor. */}
+                                {(m.aksiyonlar ?? ["goruntule", "ekle", "duzenle", "sil"]).includes(aksiyon) ? (
+                                  <input type="checkbox" checked={getIzin(m.key, aksiyon)} onChange={(e) => setIzin(m.key, aksiyon, e.target.checked)} disabled={loading} className="w-4 h-4 accent-[#F97316]" />
+                                ) : (
+                                  <span className="text-gray-300" title="Bu modülde kullanılmıyor">—</span>
+                                )}
                               </td>
                             ))}
                           </tr>

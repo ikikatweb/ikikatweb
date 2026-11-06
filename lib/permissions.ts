@@ -6,6 +6,14 @@ export type ModulTanim = {
   key: string;
   label: string;
   grup: string;
+  /**
+   * Bu modülde ANLAMI OLAN aksiyonlar. Verilmezse dördü de geçerli sayılır.
+   * Amaç: izin matrisinde hiçbir kodun bakmadığı kutuyu işaretletmemek — işaretlenen
+   * kutunun bir karşılığı yoksa "verdim ama olmadı" diye zaman kaybettirir.
+   */
+  aksiyonlar?: IzinAksiyonu[];
+  /** Matriste modül adının altına düşen kısa açıklama (aksiyon kısıtlıysa sebebi). */
+  not?: string;
 };
 
 // Sıra + grup + etiketler SIDEBAR ile birebir eşleşir (Yetki Ayarları matrisi sidebar'ı aynen yansıtsın).
@@ -19,7 +27,14 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "icra", label: "İcra Takibi", grup: "Büro Yönetimi" },
   { key: "ihale", label: "Sınır Değer Hesabı", grup: "Büro Yönetimi" },
   // Yazışmalar
-  { key: "yazismalar-e-tebligat", label: "E-Tebligat", grup: "Yazışmalar" },
+  // E-Tebligat'ta "ekle" ve "sil" YOK: tebligatı biz oluşturmuyoruz (yalnız gelenleri
+  // alıyoruz) ve silmiyoruz (resmî belge; UETS'te silme yetkisi de kapalı tutuluyor).
+  // "düzenle" = tebligatı AÇMA yetkisi — geri alınamaz, o kişinin adına kaydedilir.
+  {
+    key: "yazismalar-e-tebligat", label: "E-Tebligat", grup: "Yazışmalar",
+    aksiyonlar: ["goruntule", "duzenle"],
+    not: "Düzenle = tebligatı açma yetkisi (geri alınamaz, açan kişi kayda geçer)",
+  },
   { key: "yazismalar-gelen-evrak", label: "Gelen Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-giden-evrak", label: "Giden Evrak", grup: "Yazışmalar" },
   { key: "yazismalar-banka-yazismalari", label: "Banka Yazışmaları", grup: "Yazışmalar" },
