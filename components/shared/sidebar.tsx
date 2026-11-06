@@ -29,7 +29,11 @@ function Rozet({ sayi, baslik }: { sayi: number; baslik: string }) {
   );
 }
 
-type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
+type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string;
+  /** Yazının yerine basılacak özel gösterim (ör. logo renkleriyle yazılmış ad). */
+  etiket?: React.ReactNode;
+  /** Soldaki noktaya verilecek ek sınıf (satırın rengini tamamlamak için). */
+  noktaSinifi?: string };
 type MenuGroup = { title: string; icon: React.ReactNode; color: string; items: MenuItem[] };
 
 const menuGroups: MenuGroup[] = [
@@ -51,7 +55,22 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
-      { label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} /> },
+      // PTT UETS logosunun dizilişi satıra taşındı: logoda SARI kuyruk → MAVİ "Ptt" →
+      // SARI "UETS" var. Burada da soldaki nokta sarı, "E-" mavi, "Tebligat" sarı.
+      // Renkler logo dosyasından ölçüldü (camgöbeği #00A3CC, sarı #FDC32D), göz kararı
+      // seçilmedi. Bu ekranın verisi bizim değil, devletin sisteminden geliyor.
+      {
+        label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
+        noktaSinifi: "bg-[#FDC32D]",
+        etiket: (
+          <span className="font-semibold">
+            <span className="text-[#00A3CC]">E-</span>
+            {/* Sarı açık zeminde soluk kalıyor; logonun sarısı korunup okunabilirlik
+                için ince bir dış çizgi verildi. */}
+            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">Tebligat</span>
+          </span>
+        ),
+      },
       { label: "Gelen Evrak", href: "/dashboard/yazismalar/gelen-evrak", icon: <Mail size={16} /> },
       { label: "Giden Evrak", href: "/dashboard/yazismalar/giden-evrak", icon: <MailOpen size={16} /> },
       { label: "Banka Yazışmaları", href: "/dashboard/yazismalar/banka-yazismalari", icon: <Landmark size={16} /> },
@@ -251,9 +270,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                         }`}>
                         {/* Sol nokta */}
                         <span className={`absolute -left-[21px] w-2 h-2 rounded-full ${
-                          isActive ? "bg-[#1E3A5F]" : "bg-[#b8c2ce]"
+                          isActive ? "bg-[#1E3A5F]" : (item.noktaSinifi ?? "bg-[#b8c2ce]")
                         }`} />
-                        <span>{item.label}</span>
+                        <span>{!isActive && item.etiket ? item.etiket : item.label}</span>
                         {(rozetler[item.href] ?? 0) > 0 && (
                           <Rozet sayi={rozetler[item.href]} baslik={`${rozetler[item.href]} okunmamış tebligat`} />
                         )}
