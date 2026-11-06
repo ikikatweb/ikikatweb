@@ -68,6 +68,11 @@ const menuGroups: MenuGroup[] = [
             <span className="text-[#00A3CC]">Te</span>
             <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">bli</span>
             <span className="text-[#00A3CC]">gat</span>
+            {/* Küçük PTT UETS logosu: yazının sağında, kaynağın işareti.
+                eslint-disable: next/image burada kazanç getirmiyor, boyut sabit ve küçük. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ptt-uets.png" alt="" aria-hidden="true"
+              className="ml-1.5 inline h-3.5 w-auto align-[-2px]" />
           </span>
         ),
       },
