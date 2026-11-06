@@ -7,20 +7,39 @@
 // GÜNÜN SONUNDA yapılmış sayılır — açılsa da açılmasa da. O yüzden liste "kalan gün"e
 // göre renkleniyor ve süresi yaklaşanlar en üstte.
 //
-// AÇMA İŞİ BURADA YAPILMAZ: UETS'te tebligatı indirmek onu açmak demektir
-// (taahhütname md. 7). Robot indirmiyor; açma kararı insanın ve UETS'in kendi
-// arayüzünden yapılıyor. Burada "UETS'te aç" bağlantısı var.
+// AÇMA İŞİ OTOMATİK YAPILMAZ: UETS'te tebligatı indirmek onu açmak demektir
+// (taahhütname md. 7). Robot indirmiyor. Ama kullanıcı "Aç ve oku" düğmesiyle buradan
+// açabiliyor: UETS'te tıklamakla hukuken aynı şey, geri dönüşü yok. Bu yüzden onay
+// soruluyor ve KİMİN açtığı kayda geçiyor ("... tarafından ... tarihinde okundu").
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getTebligatlar, kalanGun, type Tebligat } from "@/lib/supabase/queries/tebligat";
-import { Scale, ExternalLink, AlertTriangle } from "lucide-react";
+import { Scale, ExternalLink, AlertTriangle, FileText, Loader2, Download } from "lucide-react";
+import toast from "react-hot-toast";
+import { toastSuresi } from "@/lib/utils/toast-sure";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
+import { tebligatDegisti } from "@/hooks";
 
 const UETS_GIRIS = "https://ptt.etebligat.gov.tr/login";
 
 const gun = (t: string | null) =>
   t ? new Date(t).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+
+/** "05.11.2026 saat 18:32" — kimin ne zaman açtığını yazarken kullanılır. */
+const gunSaat = (t: string | null) =>
+  t ? new Date(t).toLocaleString("tr-TR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }).replace(" ", " saat ") : "—";
+
+// FİRMA RENGİ UYDURULMAZ: sistemde zaten tanımlı (firmalar.renk) ve araç formunda da
+// o kullanılıyor. Tebligat da aynı rengi kullanır ki "bu hangi şirketin" sorusu
+// ekrandan ekrana aynı renkle cevaplansın.
+//
+// Firma eşleşmemişse (firma_id boş) renk yok — uydurma renk vermektense nötr rozet,
+// çünkü yanlış renk "yanlış şirket" diye okunur.
+const NOTR = "#9ca3af";
 
 const DURUM: Record<string, { ad: string; sinif: string }> = {
   delivered: { ad: "Açılmadı", sinif: "bg-amber-100 text-amber-800" },
@@ -47,6 +66,48 @@ export default function ETebligatPage() {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
   const [suzgec, setSuzgec] = useOturumFiltresi<"acilmamis" | "hepsi">("e-tebligat:suzgec", "acilmamis");
+  // Firma süzgeci: birden çok şirketin tebligatı aynı listede akıyor.
+  const [firma, setFirma] = useOturumFiltresi<string>("e-tebligat:firma", "hepsi");
+  // Hangi tebligat şu an açılıyor? Aynı satıra iki kez basılmasın — her basış
+  // UETS'te bir indirme, yani geri alınamaz bir "okundu" demek.
+  const [aciliyor, setAciliyor] = useState<number | null>(null);
+
+  /**
+   * Tebligatı AÇAR. Bu, UETS'te indirme yapar ve tebligat o an okunmuş sayılır
+   * (taahhütname md. 7) — geri alınamaz. Onay bu yüzden sorulur.
+   */
+  async function ac(t: Tebligat) {
+    const uyari = `"${t.konu ?? "konu yok"}" tebligatı AÇILACAK.
+
+`
+      + `UETS'te tebligatı indirmek onu okumak sayılır; bu işlem GERİ ALINAMAZ ve `
+      + `kayda sizin adınıza okundu diye geçer.
+
+`
+      + `Tebliğ sayılacağı gün: ${gun(t.teblig_tarihi + "T00:00:00")}
+
+Açılsın mı?`;
+    if (!confirm(uyari)) return;
+    setAciliyor(t.id);
+    try {
+      const r = await fetch("/api/tebligat/ac", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: t.id }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      // Paket inmiş ama içinden belge çıkmamış olabilir — SESSİZ GEÇİLMEZ.
+      if (j.uyari) toast.error(`Tebligat açıldı ama: ${j.uyari}`, { duration: 14000 });
+      else toast.success("Tebligat açıldı.", { duration: toastSuresi() });
+      // Listeyi tazele: durum, okuyan ve ekler sunucudan geldi.
+      setSatirlar(await getTebligatlar());
+      tebligatDegisti();   // menüdeki kırmızı rozet düşsün
+    } catch (e) {
+      toast.error(`Açılamadı: ${e instanceof Error ? e.message : e}`, { duration: 14000 });
+    } finally {
+      setAciliyor(null);
+    }
+  }
 
   useEffect(() => {
     if (!gor) return;
@@ -66,7 +127,8 @@ export default function ETebligatPage() {
   }, [gor]);
 
   const liste = useMemo(() => {
-    const l = suzgec === "acilmamis" ? satirlar.filter((t) => t.durum === "delivered") : satirlar;
+    let l = suzgec === "acilmamis" ? satirlar.filter((t) => t.durum === "delivered") : satirlar;
+    if (firma !== "hepsi") l = l.filter((t) => t.hesap === firma);
     // Süresi yaklaşan/geçen en üstte: en acil olan ilk sırada olsun.
     return [...l].sort((a, b) => {
       if (a.durum === "delivered" && b.durum === "delivered") return a.teblig_tarihi.localeCompare(b.teblig_tarihi);
@@ -74,7 +136,26 @@ export default function ETebligatPage() {
       if (b.durum === "delivered") return 1;
       return b.ulasma_tarihi.localeCompare(a.ulasma_tarihi);
     });
-  }, [satirlar, suzgec]);
+  }, [satirlar, suzgec, firma]);
+
+  // Hangi firmalar var? Renk sırası sabit kalsın diye alfabetik.
+  const firmalar = useMemo(
+    () => [...new Set(satirlar.map((t) => t.hesap))].sort(),
+    [satirlar],
+  );
+  // Hesap kodu → firma bilgisi (renk + unvan). Firma eşleşmemişse unvan UETS'in
+  // verdiği alıcı adından gösterilir; renk verilmez.
+  const firmaBilgi = useMemo(() => {
+    const m = new Map<string, { ad: string; renk: string | null }>();
+    for (const t of satirlar) {
+      if (m.has(t.hesap)) continue;
+      m.set(t.hesap, {
+        ad: t.firmalar?.kisa_adi || t.firmalar?.firma_adi || t.alici_ad || t.hesap,
+        renk: t.firmalar?.renk ?? null,
+      });
+    }
+    return m;
+  }, [satirlar]);
 
   const acilmamis = satirlar.filter((t) => t.durum === "delivered").length;
   const suresiGecen = satirlar.filter((t) => t.durum === "delivered" && kalanGun(t.teblig_tarihi) < 0).length;
@@ -97,9 +178,28 @@ export default function ETebligatPage() {
             </button>
           ))}
         </div>
+        {firmalar.length > 1 && (
+          <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+            <button type="button" onClick={() => setFirma("hepsi")}
+              className={`px-3 h-9 rounded-md text-sm font-medium transition-colors ${
+                firma === "hepsi" ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
+              Tüm firmalar
+            </button>
+            {firmalar.map((f) => (
+              <button key={f} type="button" onClick={() => setFirma(f)}
+                title={firmaBilgi.get(f)?.ad ?? f}
+                className={`inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm font-medium transition-colors ${
+                  firma === f ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
+                <span className="inline-block h-2.5 w-2.5 rounded-full border border-gray-300"
+                  style={{ backgroundColor: firmaBilgi.get(f)?.renk ?? NOTR }} />
+                {firmaBilgi.get(f)?.ad ?? f}
+              </button>
+            ))}
+          </div>
+        )}
         <a href={UETS_GIRIS} target="_blank" rel="noopener noreferrer"
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 h-9 text-sm hover:bg-gray-50">
-          UETS'te aç <ExternalLink size={14} />
+          UETS&apos;te aç <ExternalLink size={14} />
         </a>
       </div>
 
@@ -124,13 +224,14 @@ export default function ETebligatPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
-              <th className="px-3 py-2 font-medium">Hesap</th>
+              <th className="px-3 py-2 font-medium">Firma</th>
               <th className="px-3 py-2 font-medium">Gönderen</th>
               <th className="px-3 py-2 font-medium">Konu</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ sayılacağı gün</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Kalan</th>
               <th className="px-3 py-2 font-medium">Durum</th>
+              <th className="px-3 py-2 font-medium">Belge</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -139,7 +240,20 @@ export default function ETebligatPage() {
               const d = DURUM[t.durum] ?? { ad: t.durum, sinif: "bg-gray-100 text-gray-700" };
               return (
                 <tr key={t.id} className={a.satir}>
-                  <td className="px-3 py-2 whitespace-nowrap font-medium">{t.hesap}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5" title={t.firmalar?.firma_adi ?? t.alici_ad ?? t.hesap}>
+                      <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
+                        style={{ backgroundColor: t.firmalar?.renk ?? NOTR }} />
+                      <span className="font-medium">
+                        {t.firmalar?.kisa_adi || t.firmalar?.firma_adi || t.hesap}
+                      </span>
+                    </span>
+                    {!t.firma_id && t.alici_ad && (
+                      <div className="mt-0.5 max-w-[14rem] truncate text-[11px] text-gray-500" title={t.alici_ad}>
+                        {t.alici_ad}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2">{t.gonderen_ad ?? t.gonderen_adres ?? "—"}</td>
                   <td className="px-3 py-2">{t.konu ?? "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums">{gun(t.ulasma_tarihi)}</td>
@@ -151,16 +265,53 @@ export default function ETebligatPage() {
                       <span className="ml-2 text-xs text-red-700" title={t.indirme_hatasi}>· ek inmedi</span>
                     )}
                   </td>
+                  <td className="px-3 py-2">
+                    {t.okuyan_ad && (
+                      <div className="text-[11px] text-gray-500">
+                        {t.okuyan_ad} tarafından {gunSaat(t.okuma_tarihi)}&apos;de okundu
+                      </div>
+                    )}
+                    {/* Paketten çıkan belgeler. Bağlantı dosyaUrl()'den geçer: kovalar
+                        özel, doğrudan adrese gidilirse 400 döner. */}
+                    {(t.ekler ?? []).length > 0 ? (
+                      <div className="mt-0.5 flex flex-col gap-0.5">
+                        {(t.ekler ?? []).map((e) => (
+                          <a key={e.yol} href={dosyaUrl(e.yol)} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[#1E3A5F] hover:underline">
+                            <FileText size={12} /> {e.ad}
+                          </a>
+                        ))}
+                        {t.paket_yolu && (
+                          <a href={dosyaUrl(t.paket_yolu)} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:underline"
+                            title="İmzalı EYP paketinin aslı">
+                            <Download size={11} /> EYP paketi
+                          </a>
+                        )}
+                      </div>
+                    ) : t.paket_yolu ? (
+                      <a href={dosyaUrl(t.paket_yolu)} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[#1E3A5F] hover:underline">
+                        <Download size={12} /> EYP paketi
+                      </a>
+                    ) : (
+                      <button type="button" disabled={aciliyor === t.id} onClick={() => ac(t)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
+                        {aciliyor === t.id ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
+                        Aç ve oku
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {!yukleniyor && liste.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-500">
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-500">
                 {suzgec === "acilmamis" ? "Açılmamış tebligat yok." : "Henüz tebligat yok."}
               </td></tr>
             )}
             {yukleniyor && (
-              <tr><td colSpan={7} className="px-3 py-10 text-center text-gray-500">Yükleniyor…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-500">Yükleniyor…</td></tr>
             )}
           </tbody>
         </table>
@@ -168,8 +319,9 @@ export default function ETebligatPage() {
 
       <p className="mt-3 text-xs text-gray-500">
         Tebligatlar UETS&apos;ten iki saatte bir otomatik çekilir. <b>Açma işlemi otomatik
-        yapılmaz</b> — UETS&apos;te tebligatı indirmek onu açmak sayıldığı için, açma kararı
-        size bırakılmıştır. Açmak için &quot;UETS&apos;te aç&quot; bağlantısını kullanın.
+        yapılmaz</b> — UETS&apos;te tebligatı indirmek onu açmak sayıldığı için (taahhütname
+        md. 7), açma kararı size bırakılmıştır. <b>Aç ve oku</b> düğmesi tebligatı indirir,
+        belgeleri buraya çıkarır ve <b>kimin açtığını kaydeder</b>; işlem geri alınamaz.
       </p>
     </div>
   );

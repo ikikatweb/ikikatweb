@@ -1,4 +1,4 @@
-// Firma formu bileşeni - İki sekmeli: Firma Bilgileri + SMTP Mail Ayarları
+// Firma formu bileşeni — sekmeler: Firma Bilgileri · SMTP Mail Ayarları · UETS E-Tebligat · Geçmiş
 "use client";
 
 import { useState } from "react";
@@ -28,6 +28,7 @@ import { antetGecmisineEkle } from "@/lib/supabase/queries/antet-gecmisi";
 import { firmaLogolariOnbellegiDusur } from "@/lib/supabase/queries/firma-logolari";
 import { logoDuzenle } from "@/lib/utils/logo-duzenle";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
+import FirmaUetsAyar, { UETS_BOS, type UetsDeger } from "@/components/shared/firma-uets-ayar";
 
 type FirmaFormProps = {
   firma?: Firma;
@@ -53,6 +54,10 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
   const [mevcutKaseUrl, setMevcutKaseUrl] = useState<string | null>(firma?.kase_url ?? null);
   const [mevcutAntetUrl, setMevcutAntetUrl] = useState<string | null>(firma?.antet_url ?? null);
   const [mevcutLogoUrl, setMevcutLogoUrl] = useState<string | null>(firma?.logo_url ?? null);
+  // UETS e-tebligat ayarları. Anahtar firmalar tablosunda DEĞİL (oradan herkes okur);
+  // ayrı tabloda, yalnız sunucunun eriştiği yerde duruyor — bkz. sql/firma_uets.sql.
+  const [uets, setUets] = useState<UetsDeger>({ ...UETS_BOS });
+  const [uetsKurulu, setUetsKurulu] = useState(false);
 
   async function handleDosyaSil(tip: "kase" | "antet" | "logo") {
     if (!firma?.id) return;
@@ -250,6 +255,29 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         }
       }
 
+      // UETS ayarları ayrı tabloda ve yalnız sunucudan yazılıyor (anahtar gizli).
+      // Yeni firmada da çalışsın diye kayıt SONRASINDA, elde id varken gönderiliyor.
+      // Dokunulmamış firmaya boş satır açılmasın diye: ya bir şey girilmiş, ya kayıt
+      // zaten var, ya da çekme kapatılmış olmalı.
+      if (uets.api_key || uets.sunucu_ip || uetsKurulu || !uets.aktif) {
+        try {
+          const r = await fetch("/api/firma-uets", {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ firma_id: savedFirma.id, ...uets }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+          setUets((p) => ({ ...p, api_key: "" }));   // anahtar formda asılı kalmasın
+        } catch (e) {
+          // SESSİZ GEÇME: firma kaydedildi ama anahtar kaydedilmediyse tebligat gelmez
+          // ve kimse fark etmez. Firma kaydı zaten yazıldı, geri alınmıyor; söyleniyor.
+          toast.error(
+            `Firma kaydedildi ama UETS ayarı kaydedilemedi: ${e instanceof Error ? e.message : e}`,
+            { duration: 12000 },
+          );
+        }
+      }
+
       // Dialog içinde açıldıysa (onSuccess varsa) yönlendirme yapma, callback çağır.
       if (onSuccess) { onSuccess(); return; }
       router.push("/dashboard/yonetim/firmalar");
@@ -266,17 +294,20 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
   }
 
   return (
-    <form onSubmit={handleSubmit} className="min-w-0 w-full overflow-x-clip">
-      <Tabs defaultValue="bilgiler" className="w-full">
+    // Dikey düzen: sekme içeriği kaydırılır, Kaydet/İptal şeridi altta sabit kalır.
+    // min-h-0 şart — flex çocuğu varsayılan olarak küçülmediği için onsuz kaydırma olmaz.
+    <form onSubmit={handleSubmit} className="flex min-h-0 min-w-0 w-full flex-col overflow-x-clip">
+      <Tabs defaultValue="bilgiler" className="flex min-h-0 w-full flex-1 flex-col">
         <TabsList className="mb-4">
           <TabsTrigger value="bilgiler">Firma Bilgileri</TabsTrigger>
           <TabsTrigger value="smtp">SMTP Mail Ayarları</TabsTrigger>
+          <TabsTrigger value="uets">UETS E-Tebligat</TabsTrigger>
           {/* Yeni firma eklerken geçmiş olmaz — kayıt henüz yok. */}
           {isEdit && <TabsTrigger value="gecmis">Geçmiş</TabsTrigger>}
         </TabsList>
 
         {/* Sekme 1: Firma Bilgileri */}
-        <TabsContent value="bilgiler">
+        <TabsContent value="bilgiler" className="min-h-0 flex-1 overflow-y-auto">
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -552,7 +583,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
         </TabsContent>
 
         {/* Sekme 2: SMTP Mail Ayarları */}
-        <TabsContent value="smtp">
+        <TabsContent value="smtp" className="min-h-0 flex-1 overflow-y-auto">
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -639,8 +670,23 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
           </Card>
         </TabsContent>
 
+        {/* Sekme 3: UETS E-Tebligat — firmanın kendi API anahtarı */}
+        <TabsContent value="uets" className="min-h-0 flex-1 overflow-y-auto">
+          <Card>
+            <CardContent className="pt-6">
+              <FirmaUetsAyar
+                firmaId={firma?.id}
+                deger={uets}
+                onChange={setUets}
+                onKurulu={setUetsKurulu}
+                disabled={loading}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {isEdit && (
-          <TabsContent value="gecmis">
+          <TabsContent value="gecmis" className="min-h-0 flex-1 overflow-y-auto">
             <Card>
               <CardContent className="pt-6">
                 <KayitGecmisi tablo="firmalar" kayitId={firma?.id} olusturma={firma?.created_at} />
@@ -652,7 +698,7 @@ export default function FirmaForm({ firma, onSuccess, onCancel }: FirmaFormProps
 
       {/* Alt butonlar — sticky: uzun firma adı/içerikte pencere kaydırılırken Kaydet/İptal her zaman görünür.
           Sil solda (sadece düzenleme + yetki), İptal/Kaydet sağda. */}
-      <div className="sticky bottom-0 z-20 mt-6 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
+      <div className="mt-4 shrink-0 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 sm:gap-3 border-t bg-white py-3">
         {isEdit && ySil && (
           <Button
             type="button"

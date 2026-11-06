@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks";
+import { useAuth, useOkunmamisTebligat } from "@/hooks";
 import { hrefToModuleKey } from "@/lib/permissions";
 import LogoDonen from "@/components/shared/logo-donen";
 import {
@@ -15,6 +15,19 @@ import {
   ChevronDown, ChevronUp,
   FileBarChart2, Database, Briefcase, ListChecks, Info, Scale,
 } from "lucide-react";
+
+/**
+ * iPhone usulü kırmızı rozet. 99'dan sonrası "99+" — menü genişliği bozulmasın.
+ * Sayı 0 ise hiç basılmaz (çağıran yerde kontrol ediliyor).
+ */
+function Rozet({ sayi, baslik }: { sayi: number; baslik: string }) {
+  return (
+    <span title={baslik} aria-label={baslik}
+      className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold leading-none text-white shadow-sm">
+      {sayi > 99 ? "99+" : sayi}
+    </span>
+  );
+}
 
 type MenuItem = { label: string; href: string; icon: React.ReactNode; moduleKey?: string };
 type MenuGroup = { title: string; icon: React.ReactNode; color: string; items: MenuItem[] };
@@ -152,6 +165,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     }
   }, [pathname]);
 
+  // Okunmamış e-tebligat rozeti. Yetkisi olmayana sayım sorgusu bile atılmaz.
+  const tebligatYetki = isYonetici || hasPermission("yazismalar-gelen-evrak", "goruntule");
+  const okunmamisTebligat = useOkunmamisTebligat(tebligatYetki);
+  // href → rozet sayısı. Başka ekranlara rozet gerekirse buraya eklenir.
+  const rozetler: Record<string, number> = {
+    "/dashboard/yazismalar/e-tebligat": okunmamisTebligat,
+  };
+
   function canView(item: MenuItem): boolean {
     // "Hakkında" HERKESE açık: sistemin ne olduğunu anlatan bilgi sayfası, veri içermiyor.
     if (item.href === "/dashboard/yonetim/hakkinda") return true;
@@ -187,6 +208,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {filteredGroups.map((group) => {
           const isOpen = openGroups[group.title] || (activeGroup?.title === group.title && !Object.values(openGroups).some(Boolean));
           const hasActive = group.items.some((i) => pathname === i.href);
+          const grupRozet = group.items.reduce((t, i) => t + (rozetler[i.href] ?? 0), 0);
 
           return (
             <div key={group.title} className="mb-1">
@@ -207,9 +229,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   {group.icon}
                 </span>
                 <span className="flex-1 text-left">{group.title}</span>
+                {/* Grup kapalıyken içindeki rozetler toplanıp burada görünür (iOS'ta
+                    klasör rozeti gibi); açıkken ilgili satırın kendi rozeti yeter. */}
+                {!isOpen && grupRozet > 0 && <Rozet sayi={grupRozet} baslik={`${grupRozet} okunmamış`} />}
                 {isOpen
-                  ? <ChevronUp size={16} className="text-gray-400" />
-                  : <ChevronDown size={16} className="text-gray-400" />
+                  ? <ChevronUp size={16} className="ml-2 text-gray-400" />
+                  : <ChevronDown size={16} className="ml-2 text-gray-400" />
                 }
               </button>
 
@@ -229,6 +254,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                           isActive ? "bg-[#1E3A5F]" : "bg-[#b8c2ce]"
                         }`} />
                         <span>{item.label}</span>
+                        {(rozetler[item.href] ?? 0) > 0 && (
+                          <Rozet sayi={rozetler[item.href]} baslik={`${rozetler[item.href]} okunmamış tebligat`} />
+                        )}
                       </Link>
                     );
                   })}

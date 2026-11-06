@@ -21,14 +21,22 @@ export type Tebligat = {
   paket_yolu: string | null;
   indirme_hatasi: string | null;
   notlar: string | null;
+  // Panelden kim açtı? UETS'te indirmek açmak demek; resmî işlemin izi (sql/tebligat_okuma).
+  okuyan_id: string | null;
+  okuyan_ad: string | null;
+  // EYP paketinden çıkan belgeler. Boşsa paket açılamamıştır → indirme_hatasi'na bakılır.
+  ekler: { ad: string; yol: string; tur: string; boyut: number }[] | null;
   arsivlendi: boolean;
+  firma_id: string | null;
+  // Firmanın kendi rengi ve adı — tebligat hangi şirkete geldi, bir bakışta görünsün.
+  firmalar?: { firma_adi: string; kisa_adi: string | null; renk: string | null } | null;
 };
 
 function sb() { return createClient(); }
 
 export async function getTebligatlar(): Promise<Tebligat[]> {
   const { data, error } = await sb()
-    .from("tebligat").select("*")
+    .from("tebligat").select("*, firmalar ( firma_adi, kisa_adi, renk )")
     .order("ulasma_tarihi", { ascending: false });
   // Hata YUTULMAZ: boş liste "tebligat yok" diye okunur, oysa sorgu patlamıştır.
   if (error) throw error;

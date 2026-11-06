@@ -1,4 +1,4 @@
-// UETS → MESNET DEĞİL, İKİKAT: gelen elektronik tebligatları çeker.
+// UETS → gelen elektronik tebligatları çeker.
 //
 // NE YAPAR, NE YAPMAZ
 // ---------------------------------------------------------------------------
@@ -10,11 +10,17 @@
 // Neden indirmiyoruz: kanun süreyi "adrese ulaştığı tarihi izleyen 5. günün sonu"ndan
 // sayar (7201 s. K. 7/a), açılsa da açılmasa da. Ama uygulamada bazı mahkemeler süreyi
 // AÇILMA tarihinden başlatıyor. Robot her geleni gece otomatik açarsa, o yorumda 5 güne
-// kadar cevap süresi kaybedilir. Açma kararı insanın.
+// kadar cevap süresi kaybedilir. Açma kararı insanın: panelde "Aç ve oku" düğmesi var
+// (app/api/tebligat/ac) ve kimin açtığı kayda geçer.
 //
-// SORGU HAKKI SINIRLI: Standart tarifede günde 12 sorgu (2 saatte 1). Her şirket için
-// ayrı anahtar, ayrı sorgu hakkı. Bu yüzden görev 2 saatte bir çalışacak ve her
-// çalışmada şirket başına EN FAZLA 2 istek atar (delivered + readtimeout).
+// ANAHTARLAR VERİTABANINDA: her firmanın anahtarı Firma Düzenle > UETS E-Tebligat
+// sekmesinden giriliyor ve firma_uets tablosunda duruyor (bkz. sql/firma_uets.sql).
+// .env.local'de UETS anahtarı ARANMAZ — yeni firma eklemek için sunucu dosyası
+// düzenlemek gerekmesin diye taşındı.
+//
+// SORGU HAKKI SINIRLI: Standart tarifede günde 12 sorgu (2 saatte 1). Her firmanın
+// ayrı anahtarı, ayrı sorgu hakkı var. Görev 2 saatte bir çalışır ve her çalışmada
+// firma başına EN AZ 2 istek atar (delivered + readtimeout).
 //
 // Çalıştırma:
 //   node scripts/uets-tebligat-cek.mjs            → son 7 günü sorgula, yaz, bildir
@@ -38,7 +44,6 @@ const KURU = process.argv.includes("--kuru");
 const GUN = Number((process.argv.find((a) => a.startsWith("--gun=")) ?? "").split("=")[1]) || 7;
 
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-const hesaplar = (env.UETS_HESAPLAR ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 const tarih = (saniye) => (saniye ? new Date(Number(saniye) * 1000).toISOString() : null);
 const gunTR = (iso) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "—");
@@ -78,9 +83,10 @@ async function listele(anahtar, durum, baslangic, bitis) {
   return hepsi;
 }
 
-function kayda(hesap, m) {
+function kayda(hesap, firmaId, m) {
   return {
     hesap,
+    firma_id: firmaId,
     uets_id: m.id,
     reference_id: m.reference_id ?? null,
     gonderen_adres: m.sender ?? null,
@@ -99,51 +105,90 @@ function kayda(hesap, m) {
   };
 }
 
+/**
+ * Firma ayarlarındaki son durum alanı — ekranda "son çekim / son hata" olarak görünür.
+ * `adres` verilirse firmanın UETS adresi de yazılır: bu bilgi kullanıcıdan istenmiyor,
+ * ilk gelen tebligatın "recipient" alanından öğreniliyor (zaten bizim adresimiz).
+ */
+async function durumYaz(firmaId, hata, adres) {
+  const yama = { son_cekim: new Date().toISOString(), son_hata: hata ?? null };
+  if (adres) yama.uets_adres = adres;
+  const { error } = await sb.from("firma_uets").update(yama).eq("firma_id", firmaId);
+  if (error) console.log(`   (firma_uets durumu yazılamadı: ${error.message})`);
+}
+
 async function main() {
-  if (hesaplar.length === 0) throw new Error("UETS_HESAPLAR boş — .env.local'e şirket kodlarını yazın.");
+  // Hangi firmalar sorgulanacak? Ayar ekranından girilen, aktif ve anahtarı olanlar.
+  const { data: ayarlar, error: ayarHata } = await sb
+    .from("firma_uets")
+    .select("firma_id, api_key, aktif, uets_adres, firmalar ( firma_adi, kisa_adi )")
+    .eq("aktif", true);
+  if (ayarHata) throw new Error(`firma_uets okunamadı: ${ayarHata.message}`);
+
+  const firmalar = (ayarlar ?? []).filter((f) => f.api_key);
+  if (firmalar.length === 0) {
+    throw new Error(
+      "UETS anahtarı tanımlı firma yok. Firma Düzenle > UETS E-Tebligat sekmesinden anahtarı girin.");
+  }
+
   const simdi = Math.floor(Date.now() / 1000);
   const baslangic = simdi - GUN * 86400;
   const yeniler = [];
   const raporlar = [];
+  const hatalar = [];
 
-  for (const hesap of hesaplar) {
-    const anahtar = env[`UETS_${hesap}_API_KEY`];
-    // Eksik anahtar SESSİZ GEÇİLMEZ: o şirketin tebligatları hiç gelmez ve kimse bilmez.
-    if (!anahtar) throw new Error(`UETS_${hesap}_API_KEY tanımlı değil.`);
+  for (const f of firmalar) {
+    // hesap = firmanın kısa adı; tebligat defterinde hangi şirkete geldiğini bu gösterir.
+    const hesap = (f.firmalar?.kisa_adi || f.firmalar?.firma_adi || f.firma_id).slice(0, 20);
+    try {
+      // İki sorgu, PTT'nin kendi önerdiği biçimde:
+      //   delivered   → teslim edilmiş ama açılmamış (asıl takip edilecek olan)
+      //   readtimeout → 5 gün açılmadığı için otomatik okundu sayılmış (gözden kaçmasın)
+      const acik = await listele(f.api_key, "delivered", baslangic, simdi);
+      const gecmis = await listele(f.api_key, "readtimeout", baslangic, simdi);
+      const tumu = [...acik, ...gecmis];
+      raporlar.push(`${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş`);
 
-    // İki sorgu, PTT'nin kendi önerdiği biçimde:
-    //   delivered   → teslim edilmiş ama açılmamış (asıl takip edilecek olan)
-    //   readtimeout → 5 gün açılmadığı için otomatik okundu sayılmış (gözden kaçmasın)
-    const acik = await listele(anahtar, "delivered", baslangic, simdi);
-    const gecmis = await listele(anahtar, "readtimeout", baslangic, simdi);
-    const tumu = [...acik, ...gecmis];
-    raporlar.push(`${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş`);
+      if (KURU) {
+        for (const m of tumu) console.log(`  ${hesap} · ${gunTR(tarih(m.inserttime))} · ${m.status} · ${m.sender_name} · ${m.subject}`);
+        continue;
+      }
+      // Firmanın UETS adresi henüz bilinmiyorsa ilk tebligattan öğren (alıcı = biziz).
+      const ogrenilenAdres = f.uets_adres ? null : (tumu.find((m) => m.recipient)?.recipient ?? null);
+      if (ogrenilenAdres) console.log(`   ${hesap} UETS adresi öğrenildi: ${ogrenilenAdres}`);
 
-    if (tumu.length === 0 || KURU) {
-      if (KURU) for (const m of tumu) console.log(`  ${hesap} · ${gunTR(tarih(m.inserttime))} · ${m.status} · ${m.sender_name} · ${m.subject}`);
-      continue;
+      if (tumu.length === 0) { await durumYaz(f.firma_id, null); continue; }
+
+      // Hangi kayıtlar YENİ? Bildirim yalnız ilk görülenler için gitsin.
+      const idler = tumu.map((m) => m.id);
+      const { data: mevcut, error: okuHata } = await sb
+        .from("tebligat").select("uets_id").eq("hesap", hesap).in("uets_id", idler);
+      if (okuHata) throw new Error(`tebligat okunamadı: ${okuHata.message}`);
+      const bilinen = new Set((mevcut ?? []).map((r) => r.uets_id));
+
+      const { error } = await sb.from("tebligat")
+        .upsert(tumu.map((m) => kayda(hesap, f.firma_id, m)), { onConflict: "hesap,uets_id" });
+      // Yazılamadıysa SESSİZ GEÇME: tebligat geldi ama deftere girmedi demektir.
+      if (error) throw new Error(`tebligat yazılamadı: ${error.message}`);
+
+      for (const m of tumu) if (!bilinen.has(m.id)) yeniler.push({ hesap, m });
+      await durumYaz(f.firma_id, null, ogrenilenAdres);
+    } catch (e) {
+      // BİR FİRMA PATLAYINCA DİĞERLERİ DE ÇEKİLMESİN OLMAZ: kalanlara devam edilir,
+      // ama hata firmanın ayar ekranına yazılır ve görev hatayla biter (sessiz kalmaz).
+      const mesaj = e?.message ?? String(e);
+      console.error(`HATA · ${hesap}: ${mesaj}`);
+      hatalar.push(`${hesap}: ${mesaj}`);
+      raporlar.push(`${hesap}: ÇEKİLEMEDİ — ${mesaj}`);
+      if (!KURU) await durumYaz(f.firma_id, mesaj);
     }
-
-    // Hangi kayıtlar YENİ? Bildirim yalnız ilk görülenler için gitsin.
-    const idler = tumu.map((m) => m.id);
-    const { data: mevcut, error: okuHata } = await sb
-      .from("tebligat").select("uets_id").eq("hesap", hesap).in("uets_id", idler);
-    if (okuHata) throw new Error(`tebligat okunamadı: ${okuHata.message}`);
-    const bilinen = new Set((mevcut ?? []).map((r) => r.uets_id));
-
-    const { error } = await sb.from("tebligat")
-      .upsert(tumu.map((m) => kayda(hesap, m)), { onConflict: "hesap,uets_id" });
-    // Yazılamadıysa SESSİZ GEÇME: tebligat geldi ama deftere girmedi demektir.
-    if (error) throw new Error(`tebligat yazılamadı: ${error.message}`);
-
-    for (const m of tumu) if (!bilinen.has(m.id)) yeniler.push({ hesap, m });
   }
 
   console.log(raporlar.join("\n"));
-  if (KURU) { console.log("--kuru: hiçbir şey yazılmadı."); return; }
+  if (KURU) { console.log("--kuru: hiçbir şey yazılmadı."); }
 
   // ───────── bildirim ─────────
-  if (yeniler.length === 0) { console.log("Yeni tebligat yok."); return; }
+  if (!KURU && yeniler.length === 0) console.log("Yeni tebligat yok.");
 
   for (const { hesap, m } of yeniler) {
     const ulasma = tarih(m.inserttime);
@@ -161,7 +206,7 @@ Tebliğ sayılacağı gün: ${sonGunTR}`
       const n = await pushGonder(sb, env, {
         baslik: `${hesap} · yeni e-tebligat`,
         govde,
-        url: "/dashboard",
+        url: "/dashboard/yazismalar/e-tebligat",
         // Etiket tebligata özel: aynı tebligat için ikinci bir push üst üste binmesin.
         etiket: `tebligat-${m.id}`,
         kategori: "e-tebligat",
@@ -172,6 +217,8 @@ Tebliğ sayılacağı gün: ${sonGunTR}`
       console.log(`   bildirim gönderilemedi: ${e.message}`);
     }
   }
+
+  if (hatalar.length) throw new Error(`${hatalar.length} firma çekilemedi · ${hatalar.join(" | ")}`);
 }
 
 // process.exit() KULLANILMIYOR: bu projede libuv teardown çökmesine yol açıyordu

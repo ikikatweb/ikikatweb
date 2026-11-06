@@ -48,3 +48,4 @@ logs/
 
 # gecici inceleme betikleri
 .tmp-sorgu/
+.tmp-*

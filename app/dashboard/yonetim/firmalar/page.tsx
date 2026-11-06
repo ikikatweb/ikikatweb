@@ -417,9 +417,13 @@ export default function FirmalarPage() {
 
       {/* Firma ekleme/düzenleme penceresi (ayrı sayfa yerine dialog) */}
       <Dialog open={formAcik} onOpenChange={(o) => { if (!o) { setFormAcik(false); setDuzenleFirma(null); } }}>
-        {/* pb-0: Kaydet/İptal şeridi yapışkan; alt iç boşluk kalsaydı şeridin ALTINDA ince
-            bir aralık açık kalır ve form içeriği (Kaşe/Antet başlıkları) oradan görünürdü. */}
-        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-5 pb-0">
+        {/* pb-0: Kaydet/İptal şeridi altta; alt iç boşluk kalsaydı şeridin ALTINDA ince
+            bir aralık açık kalır ve form içeriği (Kaşe/Antet başlıkları) oradan görünürdü.
+            SABİT YÜKSEKLİK (h-[90vh] + grid-rows-[auto_1fr]): sekmeler arasında gezinirken
+            pencere büyüyüp küçülmesin. Eskiden yükseklik içeriğe göreydi; Firma Bilgileri
+            sekmesi uzun, SMTP sekmesi kısa olduğu için pencere her tıklamada zıplıyordu.
+            Kaydırma artık pencerenin değil, sekme içeriğinin işi (bkz. firma-form). */}
+        <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-3xl h-[90vh] grid-rows-[auto_1fr] overflow-hidden p-5 pb-0">
           <DialogHeader>
             {/* Uzun firma adı başlığı genişletip yatay kaydırmaya yol açmasın: string düzeyinde kısalt + truncate.
                 pr-8: sağ üstteki × kapat butonuna yer bırak. */}

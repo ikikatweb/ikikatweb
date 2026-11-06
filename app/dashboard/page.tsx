@@ -51,6 +51,7 @@ import NetsimYeniIsHatirlatma from "@/components/shared/netsim-yeni-is-hatirlatm
 import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hatirlatma";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
+import TebligatHatirlatma from "@/components/shared/tebligat-hatirlatma";
 import IcraDashboard from "@/components/shared/icra-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
@@ -1903,6 +1904,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* EN ÜSTTE: e-tebligatta süre, kimse bakmasa bile işler (7201 s. K. 7/a —
+          ulaşmayı izleyen 5. günün sonunda tebliğ sayılır). Diğer hatırlatmaların
+          hepsi beklerse gün kaybı olur; bu beklerse hak kaybı olur. */}
+      <TebligatHatirlatma />
       <YedekHatirlatma />
       <BordroHatirlatma />
       {/* Çalışılmayan dönemi bugün başlayan/süren işler — yalnız yönetici ve şantiye yöneticisi görür. */}
