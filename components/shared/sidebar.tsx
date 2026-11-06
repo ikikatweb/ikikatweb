@@ -55,16 +55,18 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
-      // Menüde YAZI YOK, logo var: ekranın adı zaten PTT UETS. Logo kendi renklerini
-      // taşıdığı için satır listede ayrı duruyor ve "bu veri devletin sisteminden
-      // geliyor" bilgisini tek bakışta veriyor. Erişilebilirlik için alt metni ve
-      // başlığı "E-Tebligat"; yetki matrisinde de adı böyle geçiyor.
+      // Menüde ekranın adı yerine servisin adı yazıyor: logodaki gibi "Ptt" camgöbeği,
+      // "UETS" sarı. Görsel yerine YAZI: menü yüksekliğinde logo bulanıklaşıyordu, yazı
+      // her ekran çözünürlüğünde net. Renkler logo dosyasından ölçüldü (#00A3CC, #FDC32D).
       {
         label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
         etiket: (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/ptt-uets.png" alt="E-Tebligat (PTT UETS)" title="E-Tebligat — Ulusal Elektronik Tebligat Sistemi"
-            className="h-4 w-auto" />
+          <span title="E-Tebligat — Ulusal Elektronik Tebligat Sistemi" className="text-[15px] font-bold tracking-tight">
+            <span className="text-[#00A3CC]">Ptt</span>
+            {/* Sarı açık zeminde soluk kalıyor; rengi değiştirmek yerine ince bir dış
+                çizgiyle okunur hâle getirildi — logoya sadık kalsın. */}
+            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">UETS</span>
+          </span>
         ),
       },
       { label: "Gelen Evrak", href: "/dashboard/yazismalar/gelen-evrak", icon: <Mail size={16} /> },
