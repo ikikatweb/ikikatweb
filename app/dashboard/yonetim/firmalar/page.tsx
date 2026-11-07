@@ -23,6 +23,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import { telefonGoster } from "@/lib/utils/telefon";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -333,7 +334,12 @@ export default function FirmalarPage() {
                 </TableHeader>
                 <TableBody>
                   {kiralikFirmalar.map(([firmaAdi, aracListesi]) => {
-                    const iletisim = aracListesi.find((a) => a.kiralik_iletisim)?.kiralik_iletisim ?? "—";
+                    // Numaralar kullanıcının yazdığı gibi düşüyordu: aynı listede
+                    // "+90 (506) 793 06 82" ile "05333598347" yan yanaydı. Gösterim tek
+                    // biçime getiriliyor; numaraya benzemeyen metne dokunulmuyor
+                    // (bkz. lib/utils/telefon). Veritabanındaki değer DEĞİŞMİYOR.
+                    const iletisimHam = aracListesi.find((a) => a.kiralik_iletisim)?.kiralik_iletisim ?? "";
+                    const iletisim = telefonGoster(iletisimHam) || "—";
                     return (
                       <TableRow key={firmaAdi}>
                         {/* Kiralama firması adı da uzun olabilir → aynı şekilde kısaltılır. */}
@@ -343,7 +349,11 @@ export default function FirmalarPage() {
                         <TableCell className="text-center">
                           <Badge variant="secondary">{aracListesi.length}</Badge>
                         </TableCell>
-                        <TableCell className="text-gray-600">{iletisim}</TableCell>
+                        <TableCell className="text-gray-600 tabular-nums whitespace-nowrap">
+                          {/* title: kayıtta ne yazıyorsa o — biçim değişti diye asıl
+                              değerin görülemez olması istenmiyor. */}
+                          <span title={iletisimHam || undefined}>{iletisim}</span>
+                        </TableCell>
                         <TableCell className="text-center">
                           {(() => {
                             const aktifSayisi = aracListesi.filter((a) => (a.durum ?? "aktif") === "aktif").length;

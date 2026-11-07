@@ -41,7 +41,17 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
       // çözmüyor (th, thead'in yığın bağlamına sıkışıyor).
       // Doğrusu: gövde hücresi yalnız "sticky left-0" olsun — z-index'siz sticky hücre zaten
       // konumsuz komşu hücrelerin üstünde kalır, yani yatay sabitleme bozulmaz.
-      className={cn("[&_tr]:border-b sticky top-0 z-20", className)}
+      // DOLU ZEMİN ŞART: sabit başlık saydam kalırsa altından kayan gövde satırları
+      // başlığın İÇİNDEN görünür ve iki yazı üst üste biner (07.11.2026, Kiralık Araç
+      // Firmaları tablosunda görüldü). z-index bunu çözmez — saydam katmanın arkası
+      // zaten görünür. Sayfaların çoğu bunu tek tek "bg-white shadow-sm" ekleyerek
+      // çözmüştü; eklemeyi unutan tablo sessizce bozuk kalıyordu, onun için varsayılan
+      // buraya alındı.
+      // Renk gri (beyaz değil): gövde satırları beyaz olduğu için başlık şeridi böylece
+      // kaydırırken de kendini belli ediyor, "nereye kadar başlık" sorusu kalmıyor.
+      // Başlık satırına ayrı bir renk verilmişse (<TableRow bg-...>) o satır bunun
+      // üstüne çizilir, yani renkli başlıklar etkilenmez.
+      className={cn("[&_tr]:border-b sticky top-0 z-20 bg-gray-50", className)}
       {...props}
     />
   )

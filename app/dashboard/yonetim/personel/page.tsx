@@ -28,6 +28,7 @@ import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import TcGosterim from "@/components/shared/tc-gosterim";
+import { telefonGoster } from "@/lib/utils/telefon";
 
 function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
@@ -413,7 +414,12 @@ export default function PersonelPage() {
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell tabular-nums whitespace-nowrap w-px">{p.cep_telefon ?? "—"}</TableCell>
+                    {/* Gösterim tek biçimde: 0 (5xx) xxx xx xx. Kayıttaki değer DEĞİŞMİYOR;
+                        numaraya benzemeyen metne de dokunulmuyor (bkz. lib/utils/telefon). */}
+                    <TableCell className="hidden sm:table-cell tabular-nums whitespace-nowrap w-px"
+                      title={p.cep_telefon ?? undefined}>
+                      {telefonGoster(p.cep_telefon) || "—"}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell whitespace-nowrap w-px">{p.meslek ?? "—"}</TableCell>
                     <TableCell className="hidden md:table-cell whitespace-nowrap w-px">{p.gorev ?? "—"}</TableCell>
                     <TableCell className="hidden lg:table-cell tabular-nums whitespace-nowrap w-px text-right">
