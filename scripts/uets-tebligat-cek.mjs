@@ -165,7 +165,12 @@ async function main() {
       const gelenler = await listele(f.api_key, null, baslangic, simdi);
       const acik = gelenler.filter((m) => m.status === "delivered");
       const gecmis = gelenler.filter((m) => m.status === "readtimeout");
-      const tumu = [...acik, ...gecmis];
+      // DEFTERE HEPSİ YAZILIR, BİLDİRİM YALNIZ İKİSİNE: önceden yalnız delivered +
+      // readtimeout yazılıyordu, portalda açılmış (read) tebligatlar deftere hiç
+      // girmiyordu — geçmişte ne geldiği panelden görülemiyordu. Artık gelen kutusunun
+      // tamamı yazılıyor. Rozet ve ana ekran uyarısı bundan ETKİLENMEZ: ikisi de
+      // durum = delivered/readtimeout sayar (bkz. hooks/use-okunmamis-tebligat).
+      const tumu = gelenler;
       // HANGİ DURUMLAR GELDİ: "0 açılmamış" tek başına iki ayrı şeyi anlatıyor — gerçekten
       // tebligat yok, ya da hepsi başka bir durumda (ör. portalda elle açılmış → "read") ve
       // bu süzülmüş. İkisini ayırt edebilmek için sayım loga yazılıyor; ek istek gerektirmiyor,
@@ -201,7 +206,11 @@ async function main() {
       // Yazılamadıysa SESSİZ GEÇME: tebligat geldi ama deftere girmedi demektir.
       if (error) throw new Error(`tebligat yazılamadı: ${error.message}`);
 
-      for (const m of tumu) if (!bilinen.has(m.id)) yeniler.push({ hesap, m });
+      // BİLDİRİM SÜZGİCİ: yalnız açılmamış ya da süresi dolmuş olanlar haber değerinde.
+      // Portalda zaten açılmış (read) bir tebligat için telefon ötürmek, hele ilk kurulumda
+      // geçmişin tamamı için ötürmek, bildirimi değersizleştirir.
+      const bildirilir = new Set(["delivered", "readtimeout"]);
+      for (const m of tumu) if (!bilinen.has(m.id) && bildirilir.has(m.status)) yeniler.push({ hesap, m });
       await durumYaz(f.firma_id, null, ogrenilenAdres);
     } catch (e) {
       // BİR FİRMA PATLAYINCA DİĞERLERİ DE ÇEKİLMESİN OLMAZ: kalanlara devam edilir,
