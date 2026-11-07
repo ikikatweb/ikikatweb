@@ -37,7 +37,17 @@
 //
 // Çalıştırma:
 //   node scripts/uets-tebligat-cek.mjs            → gelen kutusunu sorgula, yaz, bildir
+//   node scripts/uets-tebligat-cek.mjs --tumu     → TAM DÖKÜM: kutunun tamamı, sayfalayarak
 //   node scripts/uets-tebligat-cek.mjs --kuru     → yazma, ekrana dök
+//
+// TAM DÖKÜM (--tumu) NE ZAMAN: bir kez, kurulumda. Rutin çalışma kutunun yalnız en yeni
+// 250 kaydını alır; geçmişi daha uzunsa gerisi hiç gelmez. --tumu sayfalayarak hepsini
+// alır ama HER SAYFA BİR SORGU HAKKI YER (günde 12, 2 saatte 1) — 250'den fazla kayıt
+// varsa döküm birkaç saate yayılır. Kota dolunca durur, aldığını yazar ve kaçının eksik
+// kaldığını söyler; yarım dökümü "tamam" diye bildirmez.
+// Döküm kipinde TELEFON BİLDİRİMİ GÖNDERİLMEZ: geçmişin tamamı için push atmak telefonu
+// onlarca kez titretir ve haber değeri taşımaz. Kayıtlar deftere girer, ekranda görünür;
+// kaç bildirimin bastırıldığı loga yazılır (sessiz geçilmez).
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -58,6 +68,7 @@ const env = Object.fromEntries(
 // Aynı anahtar api.etebligat.gov.tr'de ilk denemede 200 döndü. DEĞİŞTİRMEDEN ÖNCE DÜŞÜN.
 const TEMEL = "https://api.etebligat.gov.tr/v1";
 const KURU = process.argv.includes("--kuru");
+const TUMU = process.argv.includes("--tumu");
 // SAYFA BOYU: tek istekte alınabilen en fazla kayıt. Sorgu hakkı 2 saatte 1 olduğu için
 // sayfalama YAPILMIYOR — ikinci sayfa isteği "406 · istek limiti aşıldı" ile dönerdi.
 // Sunucudaki toplam bundan fazlaysa rapora uyarı düşer, sessiz kalmaz.
@@ -102,6 +113,44 @@ async function listele(anahtar) {
   return istek(anahtar, "/messages", {
     start: 0, count: SAYFA, sort: "-inserttime", type: "incoming",
   });
+}
+
+/**
+ * TAM DÖKÜM: gelen kutusunun tamamını sayfalayarak getirir — okunmuş, okunmamış, süresi
+ * dolmuş, hepsi. Status süzgeci yok, tarih penceresi yok.
+ *
+ * SIRALAMA BİLEREK "-inserttime" (yeniden eskiye, rutin çalışmayla aynı): bu sıralamanın
+ * çalıştığı görüldü, artan sıralama sözdizimi doğrulanmadı. Döküm sürerken yeni tebligat
+ * gelirse sayfalar kayar; eski kayıtlar yerinde durduğu için kaçan olmaz, yeni gelen ise
+ * rutin çalışmanın her turda okuduğu ilk sayfada zaten görünür.
+ *
+ * KOTA: her sayfa bir sorgu hakkı. Hak dolunca PTT "406 · istek limiti aşıldı (kod 501)"
+ * döner. O noktada DURULUR, o ana kadar alınanlar yazılır ve eksik kalan söylenir:
+ * yarım dökümü tamam saymak, bir tebligatı hiç görmemek demek olurdu.
+ */
+async function listeleTumu(anahtar, hesap) {
+  const hepsi = [];
+  let toplam = 0;
+  let eksik = null;
+  for (let start = 0; ; start += SAYFA) {
+    let sayfa;
+    try {
+      sayfa = await istek(anahtar, "/messages", {
+        start, count: SAYFA, sort: "-inserttime", type: "incoming",
+      });
+    } catch (e) {
+      // İLK sayfa alınamadıysa bu gerçek bir hata: yukarıya fırlat, firma "ÇEKİLEMEDİ" olsun.
+      if (start === 0) throw e;
+      eksik = `${hepsi.length}. kayıttan sonrası alınamadı — ${e.message}`;
+      console.log(`   ${hesap} · DÖKÜM YARIM KALDI: ${eksik}`);
+      break;
+    }
+    toplam = sayfa.toplam || toplam;
+    hepsi.push(...sayfa.satirlar);
+    console.log(`   ${hesap} · döküm ${hepsi.length}/${toplam || "?"} kayıt`);
+    if (sayfa.satirlar.length === 0 || (toplam && hepsi.length >= toplam)) break;
+  }
+  return { satirlar: hepsi, toplam, eksik };
 }
 
 function kayda(hesap, firmaId, m) {
@@ -169,7 +218,9 @@ async function main() {
       //   readtimeout → 5 gün açılmadığı için otomatik okundu sayılmış (gözden kaçmasın)
       // Diğer durumlar (ör. elle okunmuş) aynı cevapta geliyor ama deftere YAZILMIYOR —
       // kapsam bilerek eskisiyle aynı tutuldu.
-      const { satirlar: gelenler, toplam: sunucuToplam } = await listele(f.api_key);
+      const { satirlar: gelenler, toplam: sunucuToplam, eksik } = TUMU
+        ? await listeleTumu(f.api_key, hesap)
+        : { ...(await listele(f.api_key)), eksik: null };
       const acik = gelenler.filter((m) => m.status === "delivered");
       const gecmis = gelenler.filter((m) => m.status === "readtimeout");
       // DEFTERE HEPSİ YAZILIR, BİLDİRİM YALNIZ İKİSİNE: önceden yalnız delivered +
@@ -193,7 +244,10 @@ async function main() {
       // kutu gerçekten boş, ya da kayıt var ama bize gelmiyor. Toplam, aynı cevabın
       // x-total-count başlığından geliyor; ek istek yok, ek kota yok.
       const fazla = sunucuToplam > gelenler.length
-        ? ` · UYARI: sunucuda ${sunucuToplam} kayıt var, ilk ${gelenler.length} tanesi alındı (sayfalama kota yüzünden kapalı)`
+        ? (TUMU
+            ? ` · UYARI: sunucuda ${sunucuToplam} kayıt var, ${gelenler.length} tanesi alındı — DÖKÜM EKSİK`
+            : ` · UYARI: sunucuda ${sunucuToplam} kayıt var, ilk ${gelenler.length} tanesi alındı`
+              + ` (rutin çalışma sayfalamaz; tam döküm için: node scripts/uets-tebligat-cek.mjs --tumu)`)
         : "";
       raporlar.push(
         `${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş`
@@ -207,7 +261,13 @@ async function main() {
       const ogrenilenAdres = f.uets_adres ? null : (tumu.find((m) => m.recipient)?.recipient ?? null);
       if (ogrenilenAdres) console.log(`   ${hesap} UETS adresi öğrenildi: ${ogrenilenAdres}`);
 
-      if (tumu.length === 0) { await durumYaz(f.firma_id, null); continue; }
+      // Hiç kayıt gelmediyse de "eksik" yazılır: dökümün yarım kaldığı bilgisi,
+      // kayıt sayısından bağımsız olarak firmanın ayar ekranında durmalı.
+      if (tumu.length === 0) {
+        await durumYaz(f.firma_id, eksik);
+        if (eksik) hatalar.push(`${hesap}: ${eksik}`);
+        continue;
+      }
 
       // Hangi kayıtlar YENİ? Bildirim yalnız ilk görülenler için gitsin.
       const idler = tumu.map((m) => m.id);
@@ -225,8 +285,21 @@ async function main() {
       // Portalda zaten açılmış (read) bir tebligat için telefon ötürmek, hele ilk kurulumda
       // geçmişin tamamı için ötürmek, bildirimi değersizleştirir.
       const bildirilir = new Set(["delivered", "readtimeout"]);
-      for (const m of tumu) if (!bilinen.has(m.id) && bildirilir.has(m.status)) yeniler.push({ hesap, m });
-      await durumYaz(f.firma_id, null, ogrenilenAdres);
+      const haberlik = tumu.filter((m) => !bilinen.has(m.id) && bildirilir.has(m.status));
+      if (TUMU) {
+        // Geçmişin tamamı için push atılmaz (yukarıdaki nota bak) — ama kaç tanesinin
+        // bastırıldığı SÖYLENİR, kayıtlar panelde duruyor.
+        if (haberlik.length) {
+          console.log(`   ${hesap} · ${haberlik.length} açılmamış/süresi dolmuş kayıt deftere girdi,`
+            + ` döküm kipinde telefon bildirimi gönderilmedi — panelden bakın.`);
+        }
+      } else {
+        yeniler.push(...haberlik.map((m) => ({ hesap, m })));
+      }
+      await durumYaz(f.firma_id, eksik, ogrenilenAdres);
+      // EKSİK DÖKÜM ARIZADIR: hatalar listesine girer, görev hatayla biter ve .bat
+      // gorev-hata-bildir'i çağırır. Yoksa yarım döküm "tamam" görünür.
+      if (eksik) hatalar.push(`${hesap}: ${eksik}`);
     } catch (e) {
       // BİR FİRMA PATLAYINCA DİĞERLERİ DE ÇEKİLMESİN OLMAZ: kalanlara devam edilir,
       // ama hata firmanın ayar ekranına yazılır ve görev hatayla biter (sessiz kalmaz).
