@@ -35,6 +35,27 @@ export type KetsisBildirim = {
   firmalar?: { firma_adi: string; kisa_adi: string | null; renk: string | null } | null;
 };
 
+/**
+ * Dijital Vergi Dairesi'nde GÖRÜLEN tebligatın elle tutulan kaydı (ketsis_tebligat).
+ * Bildirim mailinden farklı: burada tebligatın kendisi var, süresiyle birlikte.
+ */
+export type KetsisTebligat = {
+  id: number;
+  firma_id: string | null;
+  vergi_dairesi: string | null;
+  konu: string | null;
+  belge_no: string | null;
+  ulasma_tarihi: string;
+  /** Hesaplanan sütun: ulaşma + 5 gün (VUK 107/A). */
+  teblig_tarihi: string;
+  okundu_at: string | null;
+  okuyan_ad: string | null;
+  notlar: string | null;
+  kaydeden_ad: string | null;
+  created_at: string;
+  firmalar?: { firma_adi: string; kisa_adi: string | null; renk: string | null } | null;
+};
+
 export type KetsisKontrol = {
   id: number;
   kontrol_at: string;
@@ -73,6 +94,24 @@ export async function getSonKetsisKontrol(): Promise<KetsisKontrol | null> {
     .limit(1);
   if (error) throw error;
   return ((data ?? [])[0] as KetsisKontrol | undefined) ?? null;
+}
+
+export async function getKetsisTebligatlar(): Promise<KetsisTebligat[]> {
+  const { data, error } = await sb()
+    .from("ketsis_tebligat")
+    .select("*, firmalar ( firma_adi, kisa_adi, renk )")
+    .order("teblig_tarihi", { ascending: true })
+    .limit(500);
+  // Hata YUTULMAZ: boş liste "tebligat yok" diye okunur, oysa sorgu patlamış olabilir.
+  if (error) throw error;
+  return (data ?? []) as unknown as KetsisTebligat[];
+}
+
+/** Tebliğ sayılacağı güne kalan tam gün. Negatif = süre geçti. */
+export function ketsisKalanGun(teblig_tarihi: string): number {
+  const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+  const son = new Date(teblig_tarihi + "T00:00:00");
+  return Math.round((son.getTime() - bugun.getTime()) / 86400000);
 }
 
 export async function getKetsisTarayici(): Promise<KetsisTarayiciDurum[]> {

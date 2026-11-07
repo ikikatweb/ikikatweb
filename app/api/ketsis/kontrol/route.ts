@@ -33,6 +33,8 @@ export async function POST(request: Request) {
 
   const g = (await request.json().catch(() => ({}))) as {
     islem?: string; id?: number; bulgu?: string; notlar?: string;
+    firma_id?: string | null; vergi_dairesi?: string; konu?: string; belge_no?: string;
+    ulasma_tarihi?: string; bildirim_id?: number | null;
   };
 
   // ── 1) Elle kontrol kaydı ────────────────────────────────────────────────
@@ -83,6 +85,70 @@ export async function POST(request: Request) {
       }
     }
     return NextResponse.json({ durum: "isaretlendi" });
+  }
+
+  // ── 4) Tebligat defteri ─────────────────────────────────────────
+  // Daireye bakan kişi GÖRDÜĞÜNÜ yazıyor; son günü panel hesaplıyor (VUK 107/A).
+  // Tebligatın KENDİSİ burada, bildirim maili değil — mail hiç gelmemiş olabilir.
+  if (g.islem === "tebligat-ekle") {
+    if (!duzenler) {
+      return NextResponse.json(
+        { error: "Tebligat kaydetmek için E-Tebligat düzenleme yetkisi gerekir." }, { status: 403 });
+    }
+    const tarih = String(g.ulasma_tarihi ?? "").slice(0, 10);
+    // Tarih ŞART: son gün bundan hesaplanıyor. Boş geçilirse kayıt sessizce
+    // süresiz görünür, yani defterin tek işi yapılmamış olur.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih)) {
+      return NextResponse.json({ error: "Tebligatın ulaşma tarihi gerekli (GG.AA.YYYY)." }, { status: 400 });
+    }
+    const { data, error } = await sb.from("ketsis_tebligat").insert({
+      firma_id: g.firma_id || null,
+      vergi_dairesi: g.vergi_dairesi?.slice(0, 200) || null,
+      konu: g.konu?.slice(0, 500) || null,
+      belge_no: g.belge_no?.slice(0, 50) || null,
+      ulasma_tarihi: tarih,
+      bildirim_id: g.bildirim_id ?? null,
+      notlar: g.notlar?.slice(0, 1000) || null,
+      kaydeden_id: k.id, kaydeden_ad: k.ad_soyad,
+    }).select("id, teblig_tarihi").single();
+    if (error) return NextResponse.json({ error: `Tebligat kaydedilemedi: ${error.message}` }, { status: 500 });
+
+    // Tebligat girildiyse daireye bakılmış demektir — haftalık hatırlatma da sıfırlansın.
+    const { error: kErr } = await sb.from("ketsis_kontrol").insert({
+      kullanici_id: k.id, kullanici_ad: k.ad_soyad, bulgu: "tebligat_var",
+      notlar: `Tebligat kaydedildi #${data?.id}`,
+    });
+    if (kErr) {
+      return NextResponse.json({
+        durum: "kaydedildi", id: data?.id, teblig_tarihi: data?.teblig_tarihi,
+        uyari: `Tebligat kaydedildi ama haftalık kontrol kaydı yazılamadı: ${kErr.message}`,
+      });
+    }
+    return NextResponse.json({ durum: "kaydedildi", id: data?.id, teblig_tarihi: data?.teblig_tarihi });
+  }
+
+  // Portalda açıldı işaretlemesi. SÜREYİ DEĞİŞTİRMEZ (107/A), yalnız "bakıldı" bilgisi.
+  if (g.islem === "tebligat-okundu") {
+    if (!duzenler) {
+      return NextResponse.json({ error: "Bunun için düzenleme yetkisi gerekir." }, { status: 403 });
+    }
+    if (!g.id) return NextResponse.json({ error: "id gerekli" }, { status: 400 });
+    const { error } = await sb.from("ketsis_tebligat")
+      .update({ okundu_at: new Date().toISOString(), okuyan_ad: k.ad_soyad }).eq("id", g.id);
+    if (error) return NextResponse.json({ error: `İşaretlenemedi: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ durum: "isaretlendi" });
+  }
+
+  // Yanlış girilen kayıt silinebilsin — yoksa hatalı bir tarih defterde sürekli
+  // kırmızı yanar ve defterin tamamı güvenilmez hale gelir.
+  if (g.islem === "tebligat-sil") {
+    if (!duzenler) {
+      return NextResponse.json({ error: "Bunun için düzenleme yetkisi gerekir." }, { status: 403 });
+    }
+    if (!g.id) return NextResponse.json({ error: "id gerekli" }, { status: 400 });
+    const { error } = await sb.from("ketsis_tebligat").delete().eq("id", g.id);
+    if (error) return NextResponse.json({ error: `Silinemedi: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ durum: "silindi" });
   }
 
   return NextResponse.json({ error: "Bilinmeyen işlem" }, { status: 400 });
