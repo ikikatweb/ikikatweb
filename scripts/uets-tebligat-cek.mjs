@@ -25,8 +25,18 @@
 // unutma: bir deneme, o firmanın o 2 saatlik hakkını yer.
 //
 // Çalıştırma:
-//   node scripts/uets-tebligat-cek.mjs            → son 7 günü sorgula, yaz, bildir
-//   node scripts/uets-tebligat-cek.mjs --gun=30   → daha geniş pencere (ilk kurulumda)
+// TARİH PENCERESİ GÖNDERİLMİYOR (07.11.2026). Eskiden isteğe starttime/endtime
+// eklenirdi; PTT'nin bu iki parametreyi hangi biçimde beklediği (saniye? milisaniye?
+// tarih metni?) hiçbir açık kaynakta yazmıyor — entegrasyon kılavuzu yalnız sözleşmeli
+// firmalara veriliyor. Biçim yanlışsa sunucu HATA DÖNDÜRMEZ, BOŞ LİSTE döndürür; o da
+// "tebligat yok" ile aynı görünür. 14:10 çekimi iki firmada da "0 kayıt" dedi ve bunun
+// gerçek mi yoksa süzgeç arızası mı olduğu ayırt edilemedi. Artık gelen kutusunun en
+// yenileri süzgeçsiz istenir, tarih ayıklaması BURADA yapılır ve rapora sunucunun
+// bildirdiği toplam kayıt sayısı yazılır: "0 kayıt · sunucu toplamı 0" gerçekten boş
+// kutudur, "0 kayıt · sunucu toplamı 12" ise bizim tarafta arıza demektir.
+//
+// Çalıştırma:
+//   node scripts/uets-tebligat-cek.mjs            → gelen kutusunu sorgula, yaz, bildir
 //   node scripts/uets-tebligat-cek.mjs --kuru     → yazma, ekrana dök
 import fs from "fs";
 import path from "path";
@@ -48,7 +58,15 @@ const env = Object.fromEntries(
 // Aynı anahtar api.etebligat.gov.tr'de ilk denemede 200 döndü. DEĞİŞTİRMEDEN ÖNCE DÜŞÜN.
 const TEMEL = "https://api.etebligat.gov.tr/v1";
 const KURU = process.argv.includes("--kuru");
-const GUN = Number((process.argv.find((a) => a.startsWith("--gun=")) ?? "").split("=")[1]) || 7;
+// SAYFA BOYU: tek istekte alınabilen en fazla kayıt. Sorgu hakkı 2 saatte 1 olduğu için
+// sayfalama YAPILMIYOR — ikinci sayfa isteği "406 · istek limiti aşıldı" ile dönerdi.
+// Sunucudaki toplam bundan fazlaysa rapora uyarı düşer, sessiz kalmaz.
+const SAYFA = 250;
+if (process.argv.some((a) => a.startsWith("--gun"))) {
+  // Sessiz yutma yok: bayrak artık bir şey yapmıyorsa bu söylenir, yoksa "30 günü
+  // taradım" sanılır. Pencere sunucuya hiç gönderilmiyor (yukarıdaki nota bak).
+  console.log("UYARI: --gun artık kullanılmıyor, yoksayıldı — gelen kutusunun en yenileri süzgeçsiz çekiliyor.");
+}
 
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -76,23 +94,14 @@ async function istek(anahtar, yol, parametreler) {
 }
 
 /**
- * Gelen kutusunu sayfalayarak getirir. `durum` verilmezse status SÜZGECİ GÖNDERİLMEZ —
- * tek sorguda bütün durumlar gelir, ayrım çağıran tarafta yapılır (bkz. TEK İSTEK KURALI).
+ * Gelen kutusunun en yenilerini TEK istekle getirir. Status süzgeci de, tarih penceresi
+ * de sunucuya GÖNDERİLMEZ (yukarıdaki nota bak) — ayrım çağıran tarafta yapılır.
+ * Dönen: { satirlar: alınan kayıtlar, toplam: sunucunun bildirdiği toplam }.
  */
-async function listele(anahtar, durum, baslangic, bitis) {
-  const hepsi = [];
-  for (let start = 0; ; start += 250) {
-    const parametreler = {
-      start, count: 250, sort: "-inserttime", type: "incoming",
-      starttime: baslangic, endtime: bitis,
-    };
-    if (durum) parametreler.status = durum;
-    const { satirlar, toplam } = await istek(anahtar, "/messages", parametreler);
-    hepsi.push(...satirlar);
-    // PTT'nin önerisi: toplam, getirilenden fazlaysa sayfalamaya devam.
-    if (satirlar.length < 250 || hepsi.length >= toplam) break;
-  }
-  return hepsi;
+async function listele(anahtar) {
+  return istek(anahtar, "/messages", {
+    start: 0, count: SAYFA, sort: "-inserttime", type: "incoming",
+  });
 }
 
 function kayda(hesap, firmaId, m) {
@@ -143,8 +152,6 @@ async function main() {
       "UETS anahtarı tanımlı firma yok. Firma Düzenle > UETS E-Tebligat sekmesinden anahtarı girin.");
   }
 
-  const simdi = Math.floor(Date.now() / 1000);
-  const baslangic = simdi - GUN * 86400;
   const yeniler = [];
   const raporlar = [];
   const hatalar = [];
@@ -162,7 +169,7 @@ async function main() {
       //   readtimeout → 5 gün açılmadığı için otomatik okundu sayılmış (gözden kaçmasın)
       // Diğer durumlar (ör. elle okunmuş) aynı cevapta geliyor ama deftere YAZILMIYOR —
       // kapsam bilerek eskisiyle aynı tutuldu.
-      const gelenler = await listele(f.api_key, null, baslangic, simdi);
+      const { satirlar: gelenler, toplam: sunucuToplam } = await listele(f.api_key);
       const acik = gelenler.filter((m) => m.status === "delivered");
       const gecmis = gelenler.filter((m) => m.status === "readtimeout");
       // DEFTERE HEPSİ YAZILIR, BİLDİRİM YALNIZ İKİSİNE: önceden yalnız delivered +
@@ -182,7 +189,15 @@ async function main() {
         return t;
       }, /** @type {Record<string, number>} */ ({}));
       const durumOzet = Object.entries(durumSayim).map(([d, n]) => `${d}:${n}`).join(" ") || "hiç kayıt yok";
-      raporlar.push(`${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş · pencerede ${gelenler.length} kayıt (${durumOzet})`);
+      // SUNUCU TOPLAMI RAPORA YAZILIR: "0 kayıt" tek başına iki ayrı şeyi anlatıyor —
+      // kutu gerçekten boş, ya da kayıt var ama bize gelmiyor. Toplam, aynı cevabın
+      // x-total-count başlığından geliyor; ek istek yok, ek kota yok.
+      const fazla = sunucuToplam > gelenler.length
+        ? ` · UYARI: sunucuda ${sunucuToplam} kayıt var, ilk ${gelenler.length} tanesi alındı (sayfalama kota yüzünden kapalı)`
+        : "";
+      raporlar.push(
+        `${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş`
+        + ` · gelen kutusunda ${gelenler.length} kayıt (${durumOzet}) · sunucu toplamı ${sunucuToplam}${fazla}`);
 
       if (KURU) {
         for (const m of tumu) console.log(`  ${hesap} · ${gunTR(tarih(m.inserttime))} · ${m.status} · ${m.sender_name} · ${m.subject}`);

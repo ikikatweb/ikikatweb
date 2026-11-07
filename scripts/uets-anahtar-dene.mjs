@@ -159,11 +159,12 @@ async function main() {
   log(`UETS AÇILDI — çalışan firma: ${calisan.map((s) => s.ad).join(", ")}`);
   if (KURU) { log("--kuru: çekme ve görev kurulumu atlandı."); return; }
 
-  // 1) Verileri hemen getir. Son 30 gün: bekleme süresinde gelmiş tebligatlar da gelsin.
+  // 1) Verileri hemen getir. Pencere yok: gelen kutusunun en yenileri süzgeçsiz çekiliyor
+  //    (sebep: uets-tebligat-cek.mjs başındaki "TARİH PENCERESİ GÖNDERİLMİYOR" notu).
   let cekmeOzet = "";
   let cekmeHata = null;
   try {
-    cekmeOzet = execFileSync(process.execPath, [path.join(kok, "scripts", "uets-tebligat-cek.mjs"), "--gun=30"],
+    cekmeOzet = execFileSync(process.execPath, [path.join(kok, "scripts", "uets-tebligat-cek.mjs")],
       { cwd: kok, encoding: "utf8", stdio: "pipe", timeout: 10 * 60_000 });
     log("İlk çekim tamam:\n" + cekmeOzet.trim());
   } catch (e) {
