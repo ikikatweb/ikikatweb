@@ -55,17 +55,21 @@ const menuGroups: MenuGroup[] = [
     icon: <MailOpen size={20} />,
     color: "text-emerald-600 bg-emerald-50",
     items: [
-      // Menüde ekranın adı yerine servisin adı yazıyor: logodaki gibi "Ptt" camgöbeği,
-      // "UETS" sarı. Görsel yerine YAZI: menü yüksekliğinde logo bulanıklaşıyordu, yazı
-      // her ekran çözünürlüğünde net. Renkler logo dosyasından ölçüldü (#00A3CC, #FDC32D).
+      // SATIR ADI "TEBLİGATLAR": önce "PttUETS" yazıyordu, ama açtığı ekranda İKİ AYRI
+      // sistem var — PTT UETS (mahkeme/icra) ve GİB KETSİS (vergi dairesi). Menüde tek
+      // sistemin adının yazması, diğerinin orada olduğunu gizliyordu.
+      // Renk korundu: bu satır diğerlerinden ayırt edilebilsin diye camgöbeği (#00A3CC),
+      // PTT UETS logosundan ölçülmüş renk. Görsel yerine YAZI: menü yüksekliğinde logo
+      // bulanıklaşıyordu, yazı her çözünürlükte net.
       {
-        label: "E-Tebligat", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
+        label: "Tebligatlar", href: "/dashboard/yazismalar/e-tebligat", icon: <Scale size={16} />,
         etiket: (
-          <span title="E-Tebligat — Ulusal Elektronik Tebligat Sistemi" className="text-[15px] font-bold tracking-tight">
-            <span className="text-[#00A3CC]">Ptt</span>
-            {/* Sarı açık zeminde soluk kalıyor; rengi değiştirmek yerine ince bir dış
-                çizgiyle okunur hâle getirildi — logoya sadık kalsın. */}
-            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">UETS</span>
+          <span title="Tebligatlar — PTT UETS (mahkeme/icra) ve GİB KETSİS (vergi dairesi)"
+            className="text-[15px] font-bold tracking-tight">
+            <span className="text-[#00A3CC]">Tebligat</span>
+            {/* Sarı, açık zeminde soluk kalıyor; rengi değiştirmek yerine ince bir dış
+                çizgiyle okunur hâle getirildi — logonun sarısına sadık kalsın. */}
+            <span className="text-[#FDC32D] [text-shadow:0_0_1px_rgba(0,0,0,.45)]">lar</span>
           </span>
         ),
       },

@@ -182,15 +182,11 @@ Açılsın mı?`;
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <h1 className="flex items-center gap-2.5 text-lg font-semibold text-[#1E3A5F]">
-          <Scale size={20} /> E-Tebligat
-          {/* PTT UETS logosu: bu ekranın verisi doğrudan PTT'nin sisteminden geliyor,
-              görsel süs değil kaynağın işareti. Logo "Ptt UETS" markasına kırpıldı:
-              altındaki "Ulusal Elektronik Tebligat Sistemi" satırı bu boyda okunmuyor,
-              lekeye dönüyordu. Koyu zemin alfa kanalına çevrilip silindi (public/ptt-uets.png).
-              next/image yerine düz <img>: boyut sabit ve küçük, optimizasyona değmez. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/ptt-uets.png" alt="PTT UETS" title="Ulusal Elektronik Tebligat Sistemi"
-            className="h-6 w-auto" />
+          <Scale size={20} /> Tebligatlar
+          {/* Logo buradan kaldırıldı, aşağıdaki PTT UETS bölüm başlığına taşındı:
+              sayfanın adı artık "Tebligatlar", çünkü ekranda İKİ ayrı sistem var. Logo
+              üstte durduğunda sayfanın tamamı PTT'denmiş gibi okunuyordu, oysa alt yarısı
+              GİB KETSİS. */}
         </h1>
         <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
           {([["acilmamis", `Açılmamış${acilmamis ? ` (${acilmamis})` : ""}`], ["hepsi", "Hepsi"]] as const).map(([id, et]) => (
@@ -224,6 +220,19 @@ Açılsın mı?`;
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 h-9 text-sm hover:bg-gray-50">
           UETS&apos;te aç <ExternalLink size={14} />
         </a>
+      </div>
+
+      {/* ---- BÖLÜM 1: PTT UETS ----
+          İki bölümün de kendi renkli başlık şeridi var. Önceden düz alt alta duruyorlardı
+          ve ikinci tablo birincinin devamı gibi okunuyordu; oysa biri mahkeme/icra
+          (PTT UETS, panelden açılabilir), diğeri vergi dairesi (GİB KETSİS, yalnız
+          Dijital Vergi Dairesi'nde okunur). */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-r-lg border-l-4 border-[#00A3CC] bg-[#00A3CC]/5 px-3 py-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ptt-uets.png" alt="PTT UETS" title="Ulusal Elektronik Tebligat Sistemi"
+          className="h-5 w-auto" />
+        <span className="text-sm font-semibold text-[#1E3A5F]">Mahkeme, icra ve kurum tebligatları</span>
+        <span className="text-xs text-gray-500">· PTT UETS — panelden açılabilir</span>
       </div>
 
       {suresiGecen > 0 && (

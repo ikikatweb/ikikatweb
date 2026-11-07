@@ -83,7 +83,11 @@ export default function KetsisTablosu() {
     .map((t) => t.son_calisma).filter((x): x is string => !!x)
     .sort().at(-1) ?? null;
   const taramaSaat = saatFarki(enSonTarama);
-  const tarayiciSessiz = tarayici.length === 0 || taramaSaat === null || taramaSaat > TARAYICI_TOLERANS_SAAT;
+  // YUKLENİRKEN ALARM VERME: başlangıçta tarayici=[] olduğu için bu uyarı her sayfa
+  // açılışında bir an "Hiç çalışmamış" diye kırmızı yanıp sönüyordu — görev çalışırken bile.
+  // Yalan alarm, gerçek alarmı değersizleştirir: insan kırmızıyı görmezden gelmeyi öğrenir.
+  const tarayiciSessiz = !yukleniyor
+    && (tarayici.length === 0 || taramaSaat === null || taramaSaat > TARAYICI_TOLERANS_SAAT);
   const tarayiciHata = tarayici.map((t) => t.son_hata).filter(Boolean)[0] ?? null;
 
   async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol") {
@@ -110,14 +114,16 @@ export default function KetsisTablosu() {
   if (!gor) return null;
 
   return (
-    <div className="mt-8">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+    /* mt-10 + kesik çizgi: bu bölüm yukarıdaki PTT tablosunun DEVAMI DEĞİL, ayrı sistem. */
+    <div className="mt-10 border-t-2 border-dashed border-gray-200 pt-6">
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-r-lg border-l-4 border-amber-500 bg-amber-50/60 px-3 py-2">
         <h2 className="flex items-center gap-2 text-base font-semibold text-[#1E3A5F]">
           <Landmark size={18} /> Vergi dairesi tebligatı
-          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-600"
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900"
             title="Kurumsal Elektronik Tebligat Sistemi — GİB işletir, PTT UETS'ten ayrıdır">
             GİB · KETSİS
           </span>
+          <span className="text-xs font-normal text-gray-500">— yalnız Dijital Vergi Dairesi&apos;nde okunur</span>
         </h2>
         {bekleyen.length > 0 && (
           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
