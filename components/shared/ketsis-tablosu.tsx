@@ -171,7 +171,12 @@ export default function KetsisTablosu() {
           onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
           className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
           {islemde === "kontrol" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-          Kontrol ettim
+          {/* "Baktım" değil "Dijital Vergi Dairesi'ne baktım": satırlardaki düğme de
+              "Baktım" diyor ama BAŞKA ŞEY kaydediyor. Satırdaki: "şu bildirimi inceledim".
+              Buradaki: "bildirim olsun olmasın gidip daireye baktım" — haftalık hatırlatma
+              buna göre susuyor. İkisi aynı kelimeyle yazılsaydı, bir satıra "Baktım" demek
+              haftalık kontrolü de yaptım sanılırdı; mail gelmeyen hafta gözden kaçardı. */}
+          Dijital Vergi Dairesi&apos;ne baktım
         </button>
       </div>
 
