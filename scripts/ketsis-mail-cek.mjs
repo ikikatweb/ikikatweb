@@ -329,7 +329,15 @@ async function main() {
         const bozukSayisi = (govde.match(/�/g) ?? []).length;
         const kodlamaBozuk = govde.length > 0 && bozukSayisi > govde.length / 20;
           const guven = siniflandir(adres, sadele(`${konu} ${govde}`), ogrenilmis);
-          if (!guven) continue;
+          // ELENEN MAİL SESSİZ GİTMEZ. Buraya gelen mail zaten "ihtimali var" diye
+          // indirilmişti (resmî/kamu gönderen ya da konuda tebligat izi); sınıflandırma
+          // tutmazsa eskiden hiç iz bırakmadan atılıyordu. GİB bir gün gönderen adresini
+          // ya da konu kalıbını değiştirirse, mail gelir — panele düşmez — ve kimse
+          // sebebini göremezdi. Tek satır log, o sessizliği kaldırıyor.
+          if (!guven) {
+            log(`  − elendi · ${adres || "gönderen yok"} · ${konu.slice(0, 70) || "konu yok"}`);
+            continue;
+          }
           bulunan++;
 
           const vkn = vknBul(`${konu} ${govde}`);

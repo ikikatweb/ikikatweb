@@ -73,6 +73,12 @@ const TUMU = process.argv.includes("--tumu");
 // sayfalama YAPILMIYOR — ikinci sayfa isteği "406 · istek limiti aşıldı" ile dönerdi.
 // Sunucudaki toplam bundan fazlaysa rapora uyarı düşer, sessiz kalmaz.
 const SAYFA = 250;
+// BİLDİRİM PENCERESİ: bu kadar günden eski tebligat için telefon ÖTMEZ. 07.11.2026'da
+// tarih penceresi arızası giderilince geçmişin tamamı bir anda deftere girdi ve 2023
+// tarihli bir icra tebligatı için bile bildirim gitti — 9 bildirim × 10 cihaz. Eski kayıt
+// haber değil, arşivdir; bildirimi değersizleştirir. Kayıtlar deftere YAZILIR, rozete ve
+// ekrana girer, yalnız push gönderilmez.
+const BILDIRIM_GUN = 7;
 if (process.argv.some((a) => a.startsWith("--gun"))) {
   // Sessiz yutma yok: bayrak artık bir şey yapmıyorsa bu söylenir, yoksa "30 günü
   // taradım" sanılır. Pencere sunucuya hiç gönderilmiyor (yukarıdaki nota bak).
@@ -191,7 +197,7 @@ async function main() {
   // Hangi firmalar sorgulanacak? Ayar ekranından girilen, aktif ve anahtarı olanlar.
   const { data: ayarlar, error: ayarHata } = await sb
     .from("firma_uets")
-    .select("firma_id, api_key, aktif, uets_adres, firmalar ( firma_adi, kisa_adi )")
+    .select("firma_id, api_key, aktif, uets_adres, son_cekim, firmalar ( firma_adi, kisa_adi )")
     .eq("aktif", true);
   if (ayarHata) throw new Error(`firma_uets okunamadı: ${ayarHata.message}`);
 
@@ -285,7 +291,28 @@ async function main() {
       // Portalda zaten açılmış (read) bir tebligat için telefon ötürmek, hele ilk kurulumda
       // geçmişin tamamı için ötürmek, bildirimi değersizleştirir.
       const bildirilir = new Set(["delivered", "readtimeout"]);
-      const haberlik = tumu.filter((m) => !bilinen.has(m.id) && bildirilir.has(m.status));
+      const adaylar = tumu.filter((m) => !bilinen.has(m.id) && bildirilir.has(m.status));
+      // GÜNCEL Mİ? Eşik iki ölçüden GENİŞ olanı:
+      //   a) son BILDIRIM_GUN gün,
+      //   b) bu firmanın en son başarılı çekimi.
+      // (b) olmasaydı sabit pencere tehlikeliydi: çekim 10 gün durursa (anahtar, kota,
+      // makine kapalı) o arada gelen GERÇEK tebligat "eski" sayılıp sessizce geçerdi.
+      // Çekim ne kadar uzun durmuşsa pencere o kadar geniş açılır. İlk kurulumda
+      // son_cekim boştur → yalnız (a) geçerlidir, yani geçmiş sessizce yazılır.
+      const simdiMs = Date.now();
+      const sonCekimMs = f.son_cekim ? new Date(f.son_cekim).getTime() : null;
+      const esikSaniye = Math.floor(
+        Math.min(simdiMs - BILDIRIM_GUN * 86400000, sonCekimMs ?? Infinity) / 1000);
+      const guncelMi = (m) => Number(m.inserttime ?? 0) >= esikSaniye;
+      const haberlik = adaylar.filter(guncelMi);
+      const eskiler = adaylar.filter((m) => !guncelMi(m));
+      // SESSİZ GEÇİLMEZ: bildirim gitmediyse bu loga yazılır, kayıtlar panelde durur.
+      if (eskiler.length) {
+        const enYeni = eskiler.reduce((a, m) =>
+          Number(m.inserttime ?? 0) > Number(a.inserttime ?? 0) ? m : a);
+        console.log(`   ${hesap} · ${eskiler.length} ESKİ kayıt deftere girdi, bildirim gönderilmedi`
+          + ` (en yenisi ${gunTR(tarih(enYeni.inserttime))}) — rozette ve e-tebligat ekranında görünür.`);
+      }
       if (TUMU) {
         // Geçmişin tamamı için push atılmaz (yukarıdaki nota bak) — ama kaç tanesinin
         // bastırıldığı SÖYLENİR, kayıtlar panelde duruyor.
