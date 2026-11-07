@@ -10,7 +10,12 @@ import { oturum, yetkisiz, type OturumKullanici } from "@/lib/api/guvenlik";
 import { hasPermission, type Rol } from "@/lib/permissions";
 import type { Izinler, IzinAksiyonu } from "@/lib/supabase/types";
 
-const TEMEL = "https://apipp.etebligat.gov.tr/v1";
+// ASIL SUNUCU: api.etebligat.gov.tr. "apipp.*" PİLOT (pp) ortamıdır — ayrı IP, ayrı
+// sürüm numarası, ayrı anahtar havuzu. 06–07.11.2026'da anahtarlar PTT portalında
+// "Aktif" göründüğü halde sürekli "401 · API anahtarı bulunamadı (kod 602)" alınmasının
+// sebebi buydu: istek pilot sunucuya gidiyordu, gerçek anahtar orada kayıtlı değil.
+// Aynı anahtar api.etebligat.gov.tr'de ilk denemede 200 döndü. DEĞİŞTİRMEDEN ÖNCE DÜŞÜN.
+const TEMEL = "https://api.etebligat.gov.tr/v1";
 
 function servis(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -75,7 +80,7 @@ export async function POST(request: Request) {
 
   const govde = (await request.json().catch(() => ({}))) as {
     firma_id?: string; islem?: "kaydet" | "dene" | "sil";
-    api_key?: string; aktif?: boolean; sunucu_ip?: string;
+    api_key?: string; aktif?: boolean; sunucu_ip?: string; uets_adres?: string;
   };
   const firmaId = govde.firma_id;
   if (!firmaId) return NextResponse.json({ error: "firma_id gerekli" }, { status: 400 });
@@ -101,8 +106,18 @@ export async function POST(request: Request) {
       const metin = await r.text();
       if (!r.ok) {
         let mesaj = metin.slice(0, 300);
-        try { const j = JSON.parse(metin); mesaj = `${j.message ?? mesaj}${j.code ? ` (kod ${j.code})` : ""}`; } catch { /* düz metin */ }
-        return NextResponse.json({ ok: false, durum: r.status, mesaj }, { status: 200 });
+        let kod: number | null = null;
+        try {
+          const j = JSON.parse(metin);
+          kod = typeof j.code === "number" ? j.code : null;
+          mesaj = `${j.message ?? mesaj}${j.code ? ` (kod ${j.code})` : ""}`;
+        } catch { /* düz metin */ }
+        // KOTA ARIZA DEĞİLDİR. Tarife firma başına 2 SAATTE 1 sorgu veriyor; hak doluysa
+        // PTT "406 · istek limiti aşıldı (kod 501)" dönüyor. Bu cevabı alabilmek anahtarın
+        // TANINDIĞINI gösterir: tanınmayan anahtarda "API anahtarı bulunamadı (kod 602)" gelir.
+        // Ekranda kırmızı hata gibi gösterilirse çalışan kurulum bozuk sanılır.
+        const kota = r.status === 406 && kod === 501;
+        return NextResponse.json({ ok: false, kota, durum: r.status, mesaj }, { status: 200 });
       }
       return NextResponse.json({
         ok: true, durum: r.status,
@@ -128,10 +143,22 @@ export async function POST(request: Request) {
     firma_id: firmaId,
     aktif: govde.aktif ?? true,
     sunucu_ip: govde.sunucu_ip?.trim() || null,
-    // uets_adres BİLEREK YOK: ekrandan girilmiyor, ilk tebligatla çekme işi yazıyor.
-    // Buradan null geçilseydi her kayıtta öğrenilmiş adres silinirdi.
     guncelleyen_id: g.k.id,
   };
+  // UETS ADRESİ: alan gönderilmediyse DÜZENLENMEZ. Çekme işi bu alanı ilk tebligatın
+  // "recipient" bilgisinden kendisi öğrenebiliyor; buradan koşulsuz null yazılsaydı her
+  // kayıt o öğrenilmiş adresi silerdi. Alan geldiyse kullanıcının yazdığı geçerlidir:
+  // boş gönderildiyse temizlenir (yanlış adresi silebilmek de gerekiyor).
+  if (govde.uets_adres !== undefined) {
+    // Rakam dışı ne varsa (boşluk, tire) atılır: portal "25939-92531-45878" diye gösteriyor,
+    // PTT'nin kendi alanı ise 15 haneli düz sayı. İki biçim arasında fark kalmasın.
+    const temiz = govde.uets_adres.replace(/\D/g, "");
+    if (temiz && temiz.length !== 15) {
+      return NextResponse.json(
+        { error: `UETS adresi 15 haneli olmalı (${temiz.length} hane girildi).` }, { status: 400 });
+    }
+    satir.uets_adres = temiz || null;
+  }
   // Anahtar kutusu BOŞ bırakıldıysa mevcut anahtara dokunulmaz. Ekranda anahtar
   // hiç gösterilmediği için, boş kutuyu "anahtarı sil" saymak onu kazara silerdi.
   if (yeni) satir.api_key = yeni;

@@ -19,8 +19,10 @@
 // düzenlemek gerekmesin diye taşındı.
 //
 // SORGU HAKKI SINIRLI: Standart tarifede günde 12 sorgu (2 saatte 1). Her firmanın
-// ayrı anahtarı, ayrı sorgu hakkı var. Görev 2 saatte bir çalışır ve her çalışmada
-// firma başına EN AZ 2 istek atar (delivered + readtimeout).
+// ayrı anahtarı, ayrı sorgu hakkı var. Görev 2 saatte bir çalışır ve firma başına
+// TEK istek atar — limit gerçekten 2 saatlik: ikinci istek "406 · istek limiti aşıldı
+// (kod 501) · 85 dakika sonra tekrar deneyiniz" ile döner. Elle deneme yaparken bunu
+// unutma: bir deneme, o firmanın o 2 saatlik hakkını yer.
 //
 // Çalıştırma:
 //   node scripts/uets-tebligat-cek.mjs            → son 7 günü sorgula, yaz, bildir
@@ -39,7 +41,12 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]),
 );
 
-const TEMEL = "https://apipp.etebligat.gov.tr/v1";
+// ASIL SUNUCU: api.etebligat.gov.tr. "apipp.*" PİLOT (pp) ortamıdır — ayrı IP, ayrı
+// sürüm numarası, ayrı anahtar havuzu. 06–07.11.2026'da anahtarlar PTT portalında
+// "Aktif" göründüğü halde sürekli "401 · API anahtarı bulunamadı (kod 602)" alınmasının
+// sebebi buydu: istek pilot sunucuya gidiyordu, gerçek anahtar orada kayıtlı değil.
+// Aynı anahtar api.etebligat.gov.tr'de ilk denemede 200 döndü. DEĞİŞTİRMEDEN ÖNCE DÜŞÜN.
+const TEMEL = "https://api.etebligat.gov.tr/v1";
 const KURU = process.argv.includes("--kuru");
 const GUN = Number((process.argv.find((a) => a.startsWith("--gun=")) ?? "").split("=")[1]) || 7;
 
@@ -68,14 +75,19 @@ async function istek(anahtar, yol, parametreler) {
   };
 }
 
-/** Bir durumdaki tebligatları sayfalayarak getirir. */
+/**
+ * Gelen kutusunu sayfalayarak getirir. `durum` verilmezse status SÜZGECİ GÖNDERİLMEZ —
+ * tek sorguda bütün durumlar gelir, ayrım çağıran tarafta yapılır (bkz. TEK İSTEK KURALI).
+ */
 async function listele(anahtar, durum, baslangic, bitis) {
   const hepsi = [];
   for (let start = 0; ; start += 250) {
-    const { satirlar, toplam } = await istek(anahtar, "/messages", {
+    const parametreler = {
       start, count: 250, sort: "-inserttime", type: "incoming",
-      status: durum, starttime: baslangic, endtime: bitis,
-    });
+      starttime: baslangic, endtime: bitis,
+    };
+    if (durum) parametreler.status = durum;
+    const { satirlar, toplam } = await istek(anahtar, "/messages", parametreler);
     hepsi.push(...satirlar);
     // PTT'nin önerisi: toplam, getirilenden fazlaysa sayfalamaya devam.
     if (satirlar.length < 250 || hepsi.length >= toplam) break;
@@ -141,13 +153,31 @@ async function main() {
     // hesap = firmanın kısa adı; tebligat defterinde hangi şirkete geldiğini bu gösterir.
     const hesap = (f.firmalar?.kisa_adi || f.firmalar?.firma_adi || f.firma_id).slice(0, 20);
     try {
-      // İki sorgu, PTT'nin kendi önerdiği biçimde:
+      // TEK İSTEK KURALI: tarife firma başına 2 SAATTE 1 sorgu veriyor (günde 12).
+      // Burada eskiden durum başına ayrı sorgu atılıyordu (delivered + readtimeout);
+      // ikinci istek daima "406 · API entegrasyonuna ait istek limiti aşıldı (kod 501)"
+      // ile dönüyor, yani çekim hiçbir zaman tamamlanmıyordu. Artık tek sorgu atılıyor,
+      // durum süzgeci gönderilmiyor ve ayrım burada yapılıyor.
       //   delivered   → teslim edilmiş ama açılmamış (asıl takip edilecek olan)
       //   readtimeout → 5 gün açılmadığı için otomatik okundu sayılmış (gözden kaçmasın)
-      const acik = await listele(f.api_key, "delivered", baslangic, simdi);
-      const gecmis = await listele(f.api_key, "readtimeout", baslangic, simdi);
+      // Diğer durumlar (ör. elle okunmuş) aynı cevapta geliyor ama deftere YAZILMIYOR —
+      // kapsam bilerek eskisiyle aynı tutuldu.
+      const gelenler = await listele(f.api_key, null, baslangic, simdi);
+      const acik = gelenler.filter((m) => m.status === "delivered");
+      const gecmis = gelenler.filter((m) => m.status === "readtimeout");
       const tumu = [...acik, ...gecmis];
-      raporlar.push(`${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş`);
+      // HANGİ DURUMLAR GELDİ: "0 açılmamış" tek başına iki ayrı şeyi anlatıyor — gerçekten
+      // tebligat yok, ya da hepsi başka bir durumda (ör. portalda elle açılmış → "read") ve
+      // bu süzülmüş. İkisini ayırt edebilmek için sayım loga yazılıyor; ek istek gerektirmiyor,
+      // aynı cevabın içinden çıkıyor. Sorgu hakkı 2 saatte 1 olduğu için "bir daha bakıp
+      // öğrenelim" seçeneği pahalı: cevap geldiğinde bıraktığı iz yeterli olmalı.
+      const durumSayim = gelenler.reduce((t, m) => {
+        const d = m.status ?? "bilinmiyor";
+        t[d] = (t[d] ?? 0) + 1;
+        return t;
+      }, /** @type {Record<string, number>} */ ({}));
+      const durumOzet = Object.entries(durumSayim).map(([d, n]) => `${d}:${n}`).join(" ") || "hiç kayıt yok";
+      raporlar.push(`${hesap}: ${acik.length} açılmamış · ${gecmis.length} süresi dolmuş · pencerede ${gelenler.length} kayıt (${durumOzet})`);
 
       if (KURU) {
         for (const m of tumu) console.log(`  ${hesap} · ${gunTR(tarih(m.inserttime))} · ${m.status} · ${m.sender_name} · ${m.subject}`);

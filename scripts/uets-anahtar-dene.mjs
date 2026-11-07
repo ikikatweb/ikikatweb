@@ -36,7 +36,12 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]),
 );
 
-const TEMEL = "https://apipp.etebligat.gov.tr/v1";
+// ASIL SUNUCU: api.etebligat.gov.tr. "apipp.*" PİLOT (pp) ortamıdır — ayrı IP, ayrı
+// sürüm numarası, ayrı anahtar havuzu. 06–07.11.2026'da anahtarlar PTT portalında
+// "Aktif" göründüğü halde sürekli "401 · API anahtarı bulunamadı (kod 602)" alınmasının
+// sebebi buydu: istek pilot sunucuya gidiyordu, gerçek anahtar orada kayıtlı değil.
+// Aynı anahtar api.etebligat.gov.tr'de ilk denemede 200 döndü. DEĞİŞTİRMEDEN ÖNCE DÜŞÜN.
+const TEMEL = "https://api.etebligat.gov.tr/v1";
 const KURU = process.argv.includes("--kuru");
 const GOREV_YOKLAMA = "UETS Anahtar Dene";     // bu betiğin kendi görevi (saat başı)
 const GOREV_CEKME = "UETS Tebligat Cek";       // asıl çekme görevi (2 saatte bir)

@@ -9,24 +9,34 @@
 //
 // Kutu boş bırakılırsa mevcut anahtara DOKUNULMAZ. Anahtarı kaldırmak için "Kaldır".
 import { useCallback, useEffect, useState } from "react";
-import { KeyRound, Plug, CheckCircle2, XCircle, Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { KeyRound, Plug, CheckCircle2, XCircle, Trash2, Loader2, AlertTriangle, Clock } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
-// UETS adresi BURADA SORULMAZ: ilk tebligat gelince "recipient" alanından kendisi yazılır
-// (bkz. scripts/uets-tebligat-cek.mjs). Kullanıcıdan, sistemin zaten öğreneceği bir bilgiyi
-// istemenin anlamı yok; aşağıda yalnız bilinen adres gösteriliyor.
-export type UetsDeger = { api_key: string; aktif: boolean; sunucu_ip: string };
-export const UETS_BOS: UetsDeger = { api_key: "", aktif: true, sunucu_ip: "" };
+// UETS adresi ELLE GİRİLEBİLİR. Önce salt okunurdu: çekme işi adresi ilk tebligatın
+// "recipient" alanından kendisi öğreniyor. Ama o ilk tebligat gelene kadar alan boş kalıyor
+// ve adres PTT portalında gözüküyorken panelde yokmuş gibi duruyordu. Şimdi ikisi birlikte:
+// kullanıcı yazarsa onunki geçerli, yazmazsa sistem öğrendiğinde doldurur (çekme işi dolu
+// alanın üzerine YAZMAZ).
+export type UetsDeger = { api_key: string; aktif: boolean; sunucu_ip: string; uets_adres: string };
+export const UETS_BOS: UetsDeger = { api_key: "", aktif: true, sunucu_ip: "", uets_adres: "" };
 
 type Durum = {
   kurulu: boolean; anahtarVar?: boolean; anahtarSon4?: string | null; aktif?: boolean;
   uets_adres?: string | null; sunucu_ip?: string | null;
   son_cekim?: string | null; son_hata?: string | null; guncelleyen?: string | null; updated_at?: string | null;
 };
+
+/**
+ * UETS adresini 5-5-5 diye gösterir: 259893159328682 → 25989-31593-28682.
+ * PTT portalı da böyle gösteriyor; 15 haneyi tek sırada okumak zor. Saklarken rakamlara
+ * indiriliyor (API rotası), yani tire yalnız EKRAN için.
+ */
+const adresBicimle = (ham: string) =>
+  ham.replace(/\D/g, "").slice(0, 15).replace(/(\d{5})(?=\d)/g, "$1-");
 
 const anTarih = (t?: string | null) =>
   t ? new Date(t).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -44,7 +54,8 @@ export default function FirmaUetsAyar({
   const [durum, setDurum] = useState<Durum | null>(null);
   const [yukleniyor, setYukleniyor] = useState(!!firmaId);
   const [deneniyor, setDeneniyor] = useState(false);
-  const [sonuc, setSonuc] = useState<{ ok: boolean; mesaj: string } | null>(null);
+  // kota: "hak doldu" durumu — başarısız ama ARIZA DEĞİL, ayrı renkte gösterilir.
+  const [sonuc, setSonuc] = useState<{ ok: boolean; kota?: boolean; mesaj: string } | null>(null);
 
   const yukle = useCallback(async () => {
     if (!firmaId) { setYukleniyor(false); return; }
@@ -55,7 +66,7 @@ export default function FirmaUetsAyar({
       setDurum(j);
       onKurulu?.(!!j.kurulu);
       // Kayıtlı bilgiler forma yansısın; anahtar HARİÇ (sunucu zaten göndermiyor).
-      onChange({ api_key: "", aktif: j.aktif ?? true, sunucu_ip: j.sunucu_ip ?? "" });
+      onChange({ api_key: "", aktif: j.aktif ?? true, sunucu_ip: j.sunucu_ip ?? "", uets_adres: adresBicimle(String(j.uets_adres ?? "")) });
     } catch (e) {
       // Sessiz geçilmez: ayarın okunamaması "ayar yok" sanılırsa anahtar ikinci kez girilir.
       toast.error(`UETS ayarı okunamadı: ${e instanceof Error ? e.message : e}`, { duration: toastSuresi() });
@@ -80,7 +91,9 @@ export default function FirmaUetsAyar({
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       setSonuc(j.ok
         ? { ok: true, mesaj: `Bağlantı başarılı. UETS'te ${j.toplam} tebligat görünüyor, ${j.okunmamis} tanesi okunmamış.` }
-        : { ok: false, mesaj: `${j.durum ? `HTTP ${j.durum} — ` : ""}${j.mesaj}` });
+        : j.kota
+          ? { ok: false, kota: true, mesaj: `${j.mesaj} — anahtar çalışıyor, yalnız sorgu hakkı dolu.` }
+          : { ok: false, mesaj: `${j.durum ? `HTTP ${j.durum} — ` : ""}${j.mesaj}` });
     } catch (e) {
       setSonuc({ ok: false, mesaj: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -182,18 +195,15 @@ export default function FirmaUetsAyar({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="uets_adres">UETS Adresi</Label>
-              {/* SALT OKUNUR: bu adresi kullanıcı bilmek zorunda değil. İlk tebligat
-                  geldiğinde "recipient" alanından kendisi yazılıyor (çekme işi), çünkü
-                  alıcı zaten biziz. Elle yazılabilir olsaydı yanlış girilen bir adres
-                  "bu tebligat bizim değil" gibi okunurdu. */}
               <Input
-                id="uets_adres" value={durum?.uets_adres ?? ""} readOnly disabled
-                placeholder="İlk tebligat geldiğinde otomatik dolar"
-                className="bg-gray-100 font-mono text-gray-600"
+                id="uets_adres" placeholder="15 haneli numara"
+                value={deger.uets_adres} onChange={(e) => d({ uets_adres: adresBicimle(e.target.value) })}
+                disabled={disabled} className="font-mono"
               />
               <p className="text-xs text-gray-500">
-                PTT&apos;nin bu firmaya verdiği tebligat adresi. <b>Girmenize gerek yok</b> —
-                ilk tebligatla birlikte sistem kendisi yazar.
+                PTT&apos;nin bu firmaya verdiği 15 haneli tebligat adresi; yazdıkça 5-5-5
+                gruplanır, kaydederken rakamlara indirilir. <b>Boş bırakırsanız</b> ilk
+                tebligat geldiğinde sistem kendisi doldurur; <b>yazdığınızın üzerine yazmaz.</b>
               </p>
             </div>
             <div className="space-y-2">
@@ -230,10 +240,19 @@ export default function FirmaUetsAyar({
             )}
           </div>
 
+          <p className="text-xs text-gray-500">
+            Deneme, bu firmanın <b>2 saatlik sorgu hakkından 1 tane harcar</b> (tarife: günde 12
+            sorgu). Hak doluyken otomatik çekme de aynı duvara çarpar, bir sonraki tura kalır.
+          </p>
+
           {sonuc && (
             <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
-              sonuc.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-800"}`}>
-              {sonuc.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> : <XCircle size={16} className="mt-0.5 shrink-0" />}
+              sonuc.ok ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : sonuc.kota ? "border-amber-200 bg-amber-50 text-amber-900"
+                : "border-red-200 bg-red-50 text-red-800"}`}>
+              {sonuc.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                : sonuc.kota ? <Clock size={16} className="mt-0.5 shrink-0" />
+                : <XCircle size={16} className="mt-0.5 shrink-0" />}
               <span>{sonuc.mesaj}</span>
             </div>
           )}
