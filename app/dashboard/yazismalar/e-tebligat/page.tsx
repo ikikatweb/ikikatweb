@@ -180,36 +180,50 @@ Açılsın mı?`;
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <h1 className="flex items-center gap-2.5 text-lg font-semibold text-[#1E3A5F]">
-          <Scale size={20} /> Tebligatlar
-          {/* Logo buradan kaldırıldı, aşağıdaki PTT UETS bölüm başlığına taşındı:
-              sayfanın adı artık "Tebligatlar", çünkü ekranda İKİ ayrı sistem var. Logo
-              üstte durduğunda sayfanın tamamı PTT'denmiş gibi okunuyordu, oysa alt yarısı
-              GİB KETSİS. */}
-        </h1>
-        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+      {/* SAYFA BAŞLIĞI YALNIZ AD: süzgeçler buradan alınıp aşağıdaki PTT şeridine
+          taşındı. Başlığın yanında dururken "Açılmamış / Hepsi" sayfanın TAMAMINI,
+          yani vergi dairesi bölümünü de süzdürüyormuş gibi okunuyordu; oysa yalnız
+          PTT UETS tablosuna etki ediyor. */}
+      <h1 className="mb-4 flex items-center gap-2.5 text-lg font-semibold text-[#1E3A5F]">
+        <Scale size={20} /> Tebligatlar
+      </h1>
+
+      {/* ---- BÖLÜM 1: PTT UETS ----
+          İki bölümün de kendi renkli başlık şeridi var. Önceden düz alt alta duruyorlardı
+          ve ikinci tablo birincinin devamı gibi okunuyordu; oysa biri mahkeme/icra
+          (PTT UETS, panelden açılabilir), diğeri vergi dairesi (GİB KETSİS, yalnız
+          Dijital Vergi Dairesi'nde okunur). Süzgeçler de bu şeridin içinde: hangi tabloyu
+          süzdükleri bakışta belli olsun. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-r-lg border-l-4 border-[#00A3CC] bg-[#00A3CC]/5 px-3 py-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/ptt-uets.png" alt="PTT UETS" title="Ulusal Elektronik Tebligat Sistemi"
+          className="h-5 w-auto" />
+        <span className="text-sm font-semibold text-[#1E3A5F]">Mahkeme, icra ve kurum tebligatları</span>
+        <span className="text-xs text-gray-500">· PTT UETS — panelden açılabilir</span>
+
+        {/* Süzgeçler küçük: şeridin içinde duruyorlar, başlığı bastırmasınlar. */}
+        <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-white/70 p-0.5">
           {([["acilmamis", `Açılmamış${acilmamis ? ` (${acilmamis})` : ""}`], ["hepsi", "Hepsi"]] as const).map(([id, et]) => (
             <button key={id} type="button" onClick={() => setSuzgec(id)}
-              className={`px-3.5 h-9 rounded-md text-sm font-medium transition-colors ${
+              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                 suzgec === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
               {et}
             </button>
           ))}
         </div>
         {firmalar.length > 1 && (
-          <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white/70 p-0.5">
             <button type="button" onClick={() => setFirma("hepsi")}
-              className={`px-3 h-9 rounded-md text-sm font-medium transition-colors ${
+              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                 firma === "hepsi" ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
               Tüm firmalar
             </button>
             {firmalar.map((f) => (
               <button key={f} type="button" onClick={() => setFirma(f)}
                 title={firmaBilgi.get(f)?.ad ?? f}
-                className={`inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm font-medium transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                   firma === f ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
-                <span className="inline-block h-2.5 w-2.5 rounded-full border border-gray-300"
+                <span className="inline-block h-2 w-2 rounded-full border border-gray-300"
                   style={{ backgroundColor: firmaBilgi.get(f)?.renk ?? NOTR }} />
                 {firmaBilgi.get(f)?.ad ?? f}
               </button>
@@ -217,22 +231,9 @@ Açılsın mı?`;
           </div>
         )}
         <a href={UETS_GIRIS} target="_blank" rel="noopener noreferrer"
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 h-9 text-sm hover:bg-gray-50">
-          UETS&apos;te aç <ExternalLink size={14} />
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white/70 px-2.5 h-7 text-xs hover:bg-gray-50">
+          UETS&apos;te aç <ExternalLink size={12} />
         </a>
-      </div>
-
-      {/* ---- BÖLÜM 1: PTT UETS ----
-          İki bölümün de kendi renkli başlık şeridi var. Önceden düz alt alta duruyorlardı
-          ve ikinci tablo birincinin devamı gibi okunuyordu; oysa biri mahkeme/icra
-          (PTT UETS, panelden açılabilir), diğeri vergi dairesi (GİB KETSİS, yalnız
-          Dijital Vergi Dairesi'nde okunur). */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-r-lg border-l-4 border-[#00A3CC] bg-[#00A3CC]/5 px-3 py-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ptt-uets.png" alt="PTT UETS" title="Ulusal Elektronik Tebligat Sistemi"
-          className="h-5 w-auto" />
-        <span className="text-sm font-semibold text-[#1E3A5F]">Mahkeme, icra ve kurum tebligatları</span>
-        <span className="text-xs text-gray-500">· PTT UETS — panelden açılabilir</span>
       </div>
 
       {suresiGecen > 0 && (

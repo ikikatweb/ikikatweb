@@ -131,13 +131,22 @@ export default function KetsisTablosu() {
             {bekleyen.length} bildirim bekliyor
           </span>
         )}
-        <button type="button" onClick={() => setHepsi((h) => !h)}
-          className="rounded-lg border border-gray-300 px-2.5 h-8 text-xs hover:bg-gray-50">
-          {hepsi ? "Yalnız bekleyenler" : "Hepsini göster"}
-        </button>
+        {/* SÜZGEÇ PTT BÖLÜMÜYLE AYNI BİÇİMDE: tek bir "Hepsini göster" düğmesi, hangi
+            durumun açık olduğunu göstermiyordu — yazısı "şu an ne görüyorsun"u değil
+            "tıklarsan ne olur"u anlatıyordu. İki parçalı seçici seçili olanı işaretliyor.
+            Ölçüler PTT şeridiyle aynı (h-7/text-xs), iki bölüm eşit ağırlıkta görünsün. */}
+        <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-white/70 p-0.5">
+          {([[false, `Bekleyen${bekleyen.length ? ` (${bekleyen.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
+            <button key={String(id)} type="button" onClick={() => setHepsi(id)}
+              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                hepsi === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
+              {et}
+            </button>
+          ))}
+        </div>
         <a href={GIB_GIRIS} target="_blank" rel="noopener noreferrer"
-          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 h-9 text-sm hover:bg-gray-50">
-          Dijital Vergi Dairesi <ExternalLink size={14} />
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white/70 px-2.5 h-7 text-xs hover:bg-gray-50">
+          Dijital Vergi Dairesi <ExternalLink size={12} />
         </a>
       </div>
 
