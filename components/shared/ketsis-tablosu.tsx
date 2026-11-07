@@ -136,7 +136,12 @@ export default function KetsisTablosu() {
             "tıklarsan ne olur"u anlatıyordu. İki parçalı seçici seçili olanı işaretliyor.
             Ölçüler PTT şeridiyle aynı (h-7/text-xs), iki bölüm eşit ağırlıkta görünsün. */}
         <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-white/70 p-0.5">
-          {([[false, `Bekleyen${bekleyen.length ? ` (${bekleyen.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
+          {/* "BAKILMAMIŞ", "Açılmamış" DEĞİL: PTT bölümüyle aynı kalıpta dursun diye
+              seçildi ama kelime kasten farklı. Buradaki satırlar tebligat değil, GİB'in
+              bilgilendirme maili; panel tebligatın açılıp açılmadığını BİLEMİYOR (KETSİS'in
+              alıcı tarafı için API yok). "Açılmamış" demek, bilmediğimiz bir şeyi biliyormuş
+              gibi yazmak olurdu. Satırdaki düğme de "Baktım" diyor, ikisi aynı dili konuşsun. */}
+          {([[false, `Bakılmamış${bekleyen.length ? ` (${bekleyen.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
             <button key={String(id)} type="button" onClick={() => setHepsi(id)}
               className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                 hepsi === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
