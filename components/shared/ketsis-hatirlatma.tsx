@@ -32,6 +32,15 @@ export default function KetsisHatirlatma() {
   const [sonKontrol, setSonKontrol] = useState<string | null>(null);
   const [hicKontrol, setHicKontrol] = useState(false);   // sorgu döndü, kayıt yok
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // İLK SORGU BİTMEDEN HİÇBİR ŞEY ÇİZİLMEZ. Başlangıçta sonKontrol null olduğu için
+  // kontrolYasiGun da null dönüyor, "kontrolGerekli" true çıkıyor ve ana sayfa her
+  // açıldığında sarı "hiç kontrol edilmedi" kutusu bir an parlayıp veri gelince
+  // kayboluyordu. Olmayan bir eksiği bildiren uyarı, gerçek uyarıya olan güveni yer.
+  const [yukleniyor, setYukleniyor] = useState(true);
+  // Sorgu patlarsa bunu SÖYLERİZ. Eskiden hata yalnız konsola düşüyordu; ekranda ise
+  // boş durumlar "vergi dairesi hiç kontrol edilmedi" diye yorumlanıyordu — yani
+  // okunamayan veri, yanlış bir iddiaya dönüşüyordu.
+  const [hata, setHata] = useState<string | null>(null);
 
   const kontrol = useCallback(async () => {
     try {
@@ -39,14 +48,19 @@ export default function KetsisHatirlatma() {
       setBekleyen(b.filter((x) => x.durum === "yeni"));
       setSonKontrol(k?.kontrol_at ?? null);
       setHicKontrol(!k);
+      setHata(null);
     } catch (e) {
-      // Ana ekranı kilitlemez ama yutulmaz: uyarı görünmez, sebep konsola düşer.
-      console.warn("GİB tebligat uyarısı okunamadı:", e instanceof Error ? e.message : e);
+      // Ana ekranı kilitlemez ama YUTULMAZ: sebep hem konsola hem ekrana düşer.
+      const m = e instanceof Error ? e.message : String(e);
+      console.warn("GİB tebligat uyarısı okunamadı:", m);
+      setHata(m);
+    } finally {
+      setYukleniyor(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!yetkili) { setBekleyen([]); return; }
+    if (!yetkili) { setBekleyen([]); setYukleniyor(false); return; }
     void (async () => { await kontrol(); })();
     const onFocus = () => void kontrol();
     window.addEventListener("focus", onFocus);
@@ -76,6 +90,32 @@ export default function KetsisHatirlatma() {
   }
 
   if (!yetkili) return null;
+  // Veri gelmeden karar verilmez (yukarıdaki nota bak).
+  if (yukleniyor) return null;
+
+  // OKUNAMADIYSA "hiç kontrol edilmedi" DENMEZ: bilmediğimiz şeyi eksiklik diye
+  // bildirmek yanlış olur. Ne olduğu söylenir, kullanıcı yine de daireye gidebilsin
+  // diye bağlantı durur.
+  if (hata) {
+    return (
+      <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm">
+        <div className="flex items-center gap-3">
+          <AlertTriangle size={22} className="shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <div className="font-semibold">Vergi dairesi tebligat durumu okunamadı</div>
+            <div className="text-xs text-amber-700">
+              Bekleyen tebligat var mı, bilinmiyor — &quot;yok&quot; anlamına gelmez. ({hata})
+            </div>
+          </div>
+          <a href={GIB_GIRIS} target="_blank" rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-current/30 bg-white/70 px-3 py-1.5 text-xs font-medium hover:bg-white">
+            Dijital Vergi Dairesi <ExternalLink size={13} />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   if (bekleyen.length === 0 && !kontrolGerekli) return null;
 
   // Yakalanmış bildirim varsa kırmızı (tebligat gelmiş olabilir); yalnız "süre geçti,
