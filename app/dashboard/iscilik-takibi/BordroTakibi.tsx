@@ -4753,12 +4753,23 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
       return `${ga(s.calisilmayan_bas)} / ${ga(s.calisilmayan_bit)}`;
     })();
     return (
-      // SÜRESİ DOLMUŞ İŞ: soluk görünür ve listenin altında durur. Gizlenmez —
-      // bu işlerde hâlâ sigortalı olabiliyor ve asıl fazla prim ödemesi orada oluyor.
+      // SÜRESİ DOLMUŞ İŞ: listenin altında durur, gizlenmez — bu işlerde hâlâ sigortalı
+      // olabiliyor ve asıl fazla prim ödemesi orada oluyor.
+      //
+      // BİTMİŞ SAYILMANIN ÖLÇÜSÜ TEK BAŞINA TARİH DEĞİL (07.11.2026):
+      // süresi geçen her kart soluklaşıp listenin altına atılıyordu. Panelde soluk
+      // görünüm "pasif" demek; içinde 4 kişi sigortalı olan Karabük işi bu yüzden pasif
+      // sanıldı. Sözleşme süresinin dolması işi kapatmaz — geçici kabul, süre uzatımı ve
+      // primin tamamlanması ayrı süreçler, bu işlerde fazla prim ödemesi de oluyor.
+      // Ölçü: SÜRESİ GEÇMİŞ **VE** ÜSTÜNDE KİMSE YOK → bitmiş sayılır, soluklaşır ve
+      // altta durur. Bir kişi bile varsa iş devam ediyordur: devam eden işlerle birlikte
+      // yukarıda ve aynı canlılıkta durur, "süre doldu" bilgisini tarihin yanındaki
+      // "N gün geçti" yazısı ile dilekçe rozeti taşır.
+      // Aynı ölçü sıralamada da kullanılıyor (bkz. isGrubu) — ikisi birlikte değişmeli.
       <div
         data-santiye-id={santiyeId === PASIF_KEY || santiyeId === ATANMAMIS_KEY ? undefined : santiyeId}
         className={`bg-white rounded-lg border-2 overflow-hidden shadow-md ${
-        suresiGecenGun != null ? "border-gray-200 opacity-70" : "border-gray-300"
+        suresiGecenGun != null && count === 0 ? "border-gray-200 opacity-70" : "border-gray-300"
       }`}>
         {/* lg:min-h — kartların hepsi aynı yükseklikte dursun diye. Sağdaki rakam bloğu
             işe göre 2 ile 4 satır arasında değişiyordu (fiyat farkı ve tahmini FF yalnız
@@ -5644,11 +5655,19 @@ export default function BordroTakibi({ gosterilecekDurum = "aktif" }: BordroTaki
             // SIRALAMA — üç grup, üstten alta:
             //   0) İHALELİ işler
             //   1) İHALESİZ işler (ihaleli = false)
-            //   2) SÜRESİ DOLMUŞ işler ("pasif" sayılır; fiilen bitmiş, kabul bekliyor)
+            //   2) BİTMİŞ SAYILAN işler
             // Her grubun İÇİNDE en yeni iş üstte: sözleşme tarihi, yoksa ihale tarihi.
             // Tarihi olmayanlar grubun sonunda (ad sırasını korurlar).
+            //
+            // BİTMİŞ SAYILMAK İÇİN İKİSİ BİRDEN GEREKİR: süresi geçmiş OLACAK **VE**
+            // üstünde kimse kalmamış olacak. Eskiden yalnız tarihe bakılıyordu; içinde
+            // 4 kişi sigortalı olan Karabük işi bu yüzden en alta düşüyor ve bitmiş
+            // sanılıyordu. Sözleşme süresinin dolması işi kapatmaz. Kart görünümündeki
+            // soluklaştırma da aynı ölçüyü kullanıyor — ikisi birlikte değişmeli.
+            const aktifKisiVarMi = (sid: string) =>
+              (kanbanMap.get(sid) ?? []).some((p) => aySonundaAktifMi(p.id, sid));
             const isGrubu = (x: { id: string; ihaleli?: boolean | null }) =>
-              suresiGectiMi(x.id) != null ? 2 : (x.ihaleli === false ? 1 : 0);
+              (suresiGectiMi(x.id) != null && !aktifKisiVarMi(x.id)) ? 2 : (x.ihaleli === false ? 1 : 0);
             const yenilikAnahtari = (x: { sozlesme_tarihi?: string | null; ihale_tarihi?: string | null }) =>
               x.sozlesme_tarihi || x.ihale_tarihi || "";
             const firmaSantiyeler = [...firmaSantiyelerHam].sort((a, b) => {
