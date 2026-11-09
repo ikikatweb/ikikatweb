@@ -49,11 +49,15 @@ export function evrakNumarasi(e: { evrak_kayit_no?: string | null; evrak_sayi_no
   return (e.evrak_kayit_no ?? "").trim() || (e.evrak_sayi_no ?? "").trim();
 }
 
-export default function IcraIadeliEvrak({ evrakNo, cevapTarihi, degistir, kilitli }: {
+export default function IcraIadeliEvrak({ evrakNo, cevapTarihi, degistir, kilitli, zorunlu, hatali }: {
   evrakNo: string;
   cevapTarihi: string;
   degistir: (y: { evrak_no?: string; cevap_tarihi?: string }) => void;
   kilitli?: boolean;
+  /** Cevap kaydediliyorsa yazı seçilmeden kayıt olmaz — etiket yıldızlanır. */
+  zorunlu?: boolean;
+  /** Kaydet denendi ama yazı seçilmemişti — şerit kırmızı çerçevelenir. */
+  hatali?: boolean;
 }) {
   const [secimAcik, setSecimAcik] = useState(false);
   const [yeniAcik, setYeniAcik] = useState(false);
@@ -101,28 +105,37 @@ export default function IcraIadeliEvrak({ evrakNo, cevapTarihi, degistir, kilitl
 
   return (
     <div className="sm:col-span-2">
-      <label className="text-xs font-medium text-gray-600 mb-1 block">Cevap yazısı</label>
+      <label className="text-xs font-medium text-gray-600 mb-1 block">
+        Cevap yazısı {zorunlu && <span className="text-red-600">*</span>}
+      </label>
 
+      {/* SEÇİLİ ŞERİT — NUMARASI EKSİKSE KIRMIZI: yeşil şerit "tamam" diye
+          okunuyor, oysa icra defterine yazılacak numara yoksa kayıt eksik. */}
       {evrakNo || cevapTarihi ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+        <div className={`flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs ${hatali
+          ? "border border-red-500 ring-1 ring-red-300 bg-red-50 text-red-900"
+          : "border border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
           <FileText size={14} className="shrink-0" />
           <span><strong>{evrakNo || "numara yok"}</strong> · {tarihGoster(cevapTarihi || null)}</span>
           {!kilitli && (
             <button type="button" onClick={() => degistir({ evrak_no: "", cevap_tarihi: "" })}
-              className="ml-auto inline-flex items-center gap-1 text-emerald-700 hover:underline">
+              className={`ml-auto inline-flex items-center gap-1 hover:underline ${hatali ? "text-red-700" : "text-emerald-700"}`}>
               <X size={12} /> kaldır
             </button>
           )}
         </div>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex flex-wrap items-center gap-2 rounded-lg${hatali ? " border border-red-500 ring-1 ring-red-300 p-1.5" : ""}`}>
           <button type="button" disabled={kilitli} onClick={() => setSecimAcik(true)}
             className={`${dugme} border-gray-300 bg-white text-[#1E3A5F] hover:bg-gray-50 disabled:opacity-50`}>
             <Search size={14} /> Eski yazışmalardan seç
           </button>
+          {/* GİDEN EVRAK SAYFASIYLA AYNI GÖRÜNÜM: aynı formu açan tuş orada
+              turuncu "+ Yeni Giden Evrak". İki ekranda farklı görünmesi,
+              aynı şeyi yaptığını gizliyordu. */}
           <button type="button" disabled={kilitli} onClick={() => setYeniAcik(true)}
-            className={`${dugme} border-[#1E3A5F] bg-[#1E3A5F] text-white hover:bg-[#162c47] disabled:opacity-50`}>
-            <PenLine size={14} /> Yeni yaz
+            className={`${dugme} border-[#F97316] bg-[#F97316] text-white hover:bg-[#ea580c] disabled:opacity-50`}>
+            <PenLine size={14} /> Yeni Giden Evrak
           </button>
         </div>
       )}

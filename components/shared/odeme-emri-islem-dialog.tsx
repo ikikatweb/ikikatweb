@@ -105,30 +105,31 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle — Şirkete Açılan Takip</DialogTitle></DialogHeader>
 
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Dosya</span>
+        <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-sm divide-y divide-gray-200">
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Dosya</span>
             <span className={`${salt} text-right`}>{kayit.dosya_esas_no} · {kayit.icra_dairesi}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Alacaklı</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Alacaklı</span>
             <span className={`${salt} text-right`}>{formatBaslik(kayit.alacakli_adi) || "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Borçlu firma</span>
-            <span className={`${salt} text-right`}>{kayit.borclu_firma ?? "—"}</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Borçlu firma</span>
+            {/* BORÇLU KOYU — icra penceresiyle aynı. */}
+            <span className={`${salt} text-right font-semibold`}>{kayit.borclu_firma ?? "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Tebliğ tarihi</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Tebliğ tarihi</span>
             <span className={salt}>{tarihGoster(kayit.teblig_tarihi)}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Son itiraz günü</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Son itiraz günü</span>
             {/* Süre belgede yazmıyorsa gün UYDURULMAZ — ekranın her yerinde aynı kural. */}
             <span className={`${salt} font-medium`}>{sonGun ? tarihGoster(sonGun) : "belgede yok"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Takip tutarı</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Takip tutarı</span>
             <span className={`${salt} text-red-600 tabular-nums`}>{paraGoster(Number(kayit.takip_tutari || 0))}</span>
           </div>
         </div>

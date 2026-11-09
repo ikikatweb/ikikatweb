@@ -13,7 +13,7 @@ import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
+import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { Button } from "@/components/ui/button";
 
@@ -111,6 +111,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // ana sayfadaki hızlı pencereyle aynı. İki yerde ayrı yazılsaydı biri değişip
   // öbürü geride kalırdı.
   const [cevap, setCevap] = useState<CevapAlanlari>(BOS_CEVAP);
+  // Kaydet denendi ve cevap bölümünde eksik vardı — kutular kırmızıya boyanır
+  // (uyarı balonu değil, hızlı pencereyle aynı davranış).
+  const [cevapDenendi, setCevapDenendi] = useState(false);
   // Düzenlenen kaydın avukat maili daha önce gitti mi? Gittiyse Kaydet tekrar
   // göndermez — her düzenlemede avukata aynı mailin gitmesi hem gereksiz hem de
   // "hangisi geçerli" karışıklığı yaratır.
@@ -235,6 +238,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "", avukat_notu: row.avukat_notu ?? "",
       });
     } else { setEditId(null); setForm(BOS_FORM); setCevap(BOS_CEVAP); }
+    setCevapDenendi(false);
     setKilitli(false); // normal aç (kalem/yeni) → kilitsiz; ?kilit=1 efekti sonra true yapar
     setDialogAcik(true);
   }
@@ -277,6 +281,10 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     // İcraya Cevap Tarihi, Tebliğ Tarihinden önce olamaz
     // Cevap/ödeme kuralları ORTAK (icra-cevap-alanlari): cevap şekline göre hangi
     // alanın zorunlu olduğu değişiyor ve hızlı pencereyle aynı olmalı.
+    // EKSİK ALAN BALONLA DEĞİL KIRMIZIYLA: bölüm opsiyonel, ama bir şey
+    // yazıldıysa o kipin bütün alanları isteniyor (eksikCevapAlanlari).
+    if (eksikCevapAlanlari(cevap, false).length) { setCevapDenendi(true); return; }
+    setCevapDenendi(false);
     const cevapSorun = cevapDogrula(cevap, form.teblig_tarihi);
     if (cevapSorun) { toast.error(cevapSorun); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -634,7 +642,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <IcraCevapAlanlari
               deger={cevap} degistir={(y) => setCevap((p) => ({ ...p, ...y }))}
               sekiller={cevapSekilleri} tebligTarihi={form.teblig_tarihi}
-              mailBilgisi={mailBilgisi} icraId={editId}
+              mailBilgisi={mailBilgisi} icraId={editId} denendi={cevapDenendi} denendiSifirla={() => setCevapDenendi(false)}
               tekrarGonderildi={(c) => setSatirlar((p) => p.map((x) => (x.id === editId
                 ? { ...x, avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
                     avukat_mail_gonderen: c.gonderen, avukat_mail_sayisi: (x.avukat_mail_sayisi ?? 0) + 1 }

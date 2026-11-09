@@ -24,7 +24,7 @@ import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import IcraCevapAlanlari, {
-  BOS_CEVAP, cevapKipi, cevapDogrula, eksikZorunluAlanlar, type CevapAlanlari,
+  BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, eksikZorunluAlanlar, type CevapAlanlari,
 } from "@/components/shared/icra-cevap-alanlari";
 
 /** Cevap Şekli varsayılanları (Tanımlamalar boşsa). Tablodakiyle aynı liste. */
@@ -44,6 +44,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   const [v, setV] = useState<CevapAlanlari>(BOS_CEVAP);
   const [sekiller, setSekiller] = useState<string[]>(CEVAP_VARSAYILAN);
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // KAYDET DENENDİ Mİ: eksik alanlar uyarı balonuyla değil, kutuları kırmızıya
+  // boyayarak söyleniyor — balondaki alan adını ekranda aramak gerekiyordu.
+  const [denendi, setDenendi] = useState(false);
   const degistir = (yama: Partial<CevapAlanlari>) => setV((p) => ({ ...p, ...yama }));
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   // Pencere her açıldığında alanlar kaydın kendi değerleriyle başlar.
   useEffect(() => {
     if (!acik || !kayit) return;
+    setDenendi(false);
     setV({
       cevap_sekli: kayit.cevap_sekli ?? "",
       cevap_tarihi: kayit.cevap_tarihi ?? "",
@@ -79,7 +83,12 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
         + `İcra Dosyaları sayfasından tamamlayın.`, { duration: 10000 });
       return;
     }
-    if (!v.cevap_sekli.trim()) { toast.error("Cevap şekli seçilmeli."); return; }
+    // ZORUNLU KİP: bu pencerede yapılan iş zaten "cevabı işlemek" — cevap
+    // şekline göre istenen alanlar yıldızlı görünüyor, kaydetme de onları arıyor.
+    // EKSİKSE BALON ÇIKMAZ: kutular kırmızıya boyanır, kullanıcı nereye
+    // bakacağını metinden değil ekrandan görür.
+    if (eksikCevapAlanlari(v, true).length) { setDenendi(true); return; }
+    setDenendi(false);
     const sorun = cevapDogrula(v, kayit.teblig_tarihi ?? "");
     if (sorun) { toast.error(sorun); return; }
 
@@ -147,29 +156,31 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
 
         {/* DOSYANIN KENDİSİ SALT OKUNUR: burada değiştirilecek bir şey yok, ama hangi
             dosyaya cevap girildiği görünmeden alan doldurulmamalı. */}
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Dosya</span>
+        <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-sm divide-y divide-gray-200">
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Dosya</span>
             <span className={salt}>{kayit.dosya_esas_no ?? "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Üçüncü şahıs</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Üçüncü şahıs</span>
             <span className={`${salt} text-right`}>{formatBaslik(kayit.ucuncu_sahis) || "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Borçlu</span>
-            <span className={`${salt} text-right`}>{formatBuyukHarf(kayit.borclu_adi) || "—"}</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Borçlu</span>
+            {/* BORÇLU KOYU: özetin içinde asıl aranan satır o — dosya hangi
+                kişi için açılmış, bakışta ayrılsın. */}
+            <span className={`${salt} text-right font-semibold`}>{formatBuyukHarf(kayit.borclu_adi) || "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Alacaklı</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Alacaklı</span>
             <span className={`${salt} text-right`}>{formatBaslik(kayit.alacakli_adi) || "—"}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Tebliğ tarihi</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Tebliğ tarihi</span>
             <span className={salt}>{tarihGoster(kayit.teblig_tarihi)}</span>
           </div>
-          <div className="flex justify-between gap-3">
-            <span className="text-gray-500">Borç</span>
+          <div className="flex justify-between gap-4 py-1.5">
+            <span className="shrink-0 text-gray-500">Borç</span>
             <span className={`${salt} text-red-600 tabular-nums`}>{paraGoster(Number(kayit.borc_miktari || 0))}</span>
           </div>
         </div>
@@ -183,10 +194,15 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
+        {/* GÖVDE SABİT YÜKSEKLİKTE: cevap şekli değişince sorulan alanlar değişiyor
+            (avukat kipi en uzunu, KEP en kısası) ve pencere her seçimde zıplıyordu —
+            İptal/Kaydet ayağının altından kayıyor, fare yanlış yere düşüyordu.
+            Ölçülen en uzun kip 316px; 320 verildi, taşan içerik kendi içinde kayar.
+            Kısa ekranda max-h-[90vh] devreye girip bu kutuyu daraltır. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[320px] min-h-0 overflow-y-auto pr-1 content-start">
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
-            tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id}
+            tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id} denendi={denendi} denendiSifirla={() => setDenendi(false)}
             mailBilgisi={{
               tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
               gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,
@@ -205,7 +221,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
         <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={kapat}>İptal</Button>
-          <Button onClick={kaydet} disabled={kaydediliyor || eksikler.length > 0 || !v.cevap_sekli.trim() || (kip.avukat && !v.avukat_id)}>
+          {/* KAYDET KAPATILMIYOR (dosyanın kendisi eksik değilse): basılmadan
+              kırmızı işaret çıkmaz, kapalı düğme de sebebini söylemez. */}
+          <Button onClick={kaydet} disabled={kaydediliyor || eksikler.length > 0}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
             {kip.avukat && !kayit.avukat_mail_at ? "Kaydet ve avukata gönder" : "Kaydet"}
           </Button>

@@ -25,7 +25,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle, Eye, FileText } from "lucide-react";
+import { PenLine, MailOpen, Printer, Copy, Pencil, Trash2, FileDown, FileSpreadsheet, Download, AlertCircle, Eye, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -383,7 +383,7 @@ export default function GidenEvrakPage() {
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {yEkle && (
             <Button className="bg-[#F97316] hover:bg-[#ea580c] text-white" onClick={handleAdd}>
-              <Plus size={16} className="mr-1" /> Yeni Giden Evrak
+              <PenLine size={16} className="mr-1" /> Yeni Giden Evrak
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={exportPDF} disabled={filtrelenmis.length === 0}>

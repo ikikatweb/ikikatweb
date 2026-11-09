@@ -7,11 +7,13 @@
 // yapmak zorunda kalırdı.
 //
 // CEVAP ŞEKLİNE GÖRE SORULAN ŞEY DEĞİŞİR:
-//   KEP            → tarih · evrak no            (KEP yazışmadır, ödeme değil)
-//   Banka Havalesi → dekont tarihi · dekont no · hangi banka · ödenen tutar
-//   Avukat         → avukat · not                (tarih mailin gittiği gün,
+//   KEP            → tarih* · evrak no*          (KEP yazışmadır, ödeme değil)
+//   Banka Havalesi → dekont tarihi* · dekont no* · hangi banka* · ödenen tutar
+//   Avukat         → avukat*· not                (tarih mailin gittiği gün,
 //                                                 evrak mailin kendisi)
-//   diğerleri      → tarih · evrak no · ödenen tutar
+//   İadeli Taah.   → cevap yazısı*               (giden evraktan gelir)
+//   diğerleri      → tarih* · evrak no*          (ödenen tutar SORULMAZ)
+// (* = zorunlu — ekranda da yıldızlı görünür, iki kural tek yerden gelir)
 "use client";
 
 import { useEffect, useState } from "react";
@@ -83,54 +85,64 @@ export function eksikZorunluAlanlar(kayit: Record<string, unknown>): string[] {
   }).map((x) => x.etiket);
 }
 
-/** Doğrulama — iki ekranda da aynı. Sorun yoksa null döner. */
-export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | null {
-  const kip = cevapKipi(v.cevap_sekli);
-  // CEVAP ŞEKLİ: bölüm opsiyonel ama BOŞ BIRAKILAMAZ — herhangi bir cevap/ödeme
-  // alanı doldurulduysa hangi kanaldan cevap verildiği de yazılmalı. Yoksa kayıt
-  // "cevap verildi" der ama ispatı olmaz. Hızlı pencerede zaten zorunluydu;
-  // tam formda da aynı kural işliyor.
-  const cevapDolu = Boolean(v.cevap_tarihi || v.evrak_no.trim() || v.banka_adi.trim()
-    || v.avukat_id || v.avukat_notu.trim() || parseParaInput(v.odenen_tutar) > 0);
-  if (cevapDolu && !v.cevap_sekli.trim()) return "Cevap şekli seçilmeli.";
-  if (!v.cevap_sekli.trim()) return null;   // bölüm hiç doldurulmamış — opsiyonel
-  if (kip.avukat) {
-    if (!v.avukat_id) return "Avukat seçilmeli.";
-    return null;   // tarih/evrak/tutar sorulmuyor
-  }
-  if (v.cevap_tarihi && tebligTarihi && v.cevap_tarihi < tebligTarihi) {
-    return kip.banka
-      ? "Dekont tarihi, tebliğ tarihinden önce olamaz."
-      : "İcraya cevap tarihi, tebliğ tarihinden önce olamaz.";
-  }
-  if (kip.banka) {
-    // ÜÇÜ BİRLİKTE: biri girilip diğeri boş kalırsa dosya kapanmaz ve kullanıcı
-    // niye kapanmadığını anlayamaz.
-    const dolu = [v.cevap_tarihi, v.evrak_no.trim(), parseParaInput(v.odenen_tutar) > 0 ? "x" : ""].filter(Boolean).length;
-    if (dolu > 0 && dolu < 3) return "Banka havalesinde dekont tarihi, dekont no ve ödenen tutar birlikte girilir.";
-    return null;
-  }
-  if (kip.iadeli) {
-    // İkisi birlikte gelir (evrak seçiminden). Biri varsa öbürü de olmalı —
-    // yarım kayıt "cevap verildi" der ama hangi yazıyla olduğu belli olmaz.
-    if ((v.cevap_tarihi ? 1 : 0) + (v.evrak_no.trim() ? 1 : 0) === 1) {
-      return "Cevap yazısı eksik — giden evraktan seçin ya da yeni yazın.";
-    }
-    return null;
-  }
-  if (v.cevap_tarihi && !v.evrak_no.trim()) return "Cevap tarihi girildi — evrak no zorunludur.";
-  return null;
-}
-
 /** Cevap/ödeme bölümünde herhangi bir alan dolu mu? (yıldızı göstermek için) */
 function cevapDolduMu(v: CevapAlanlari): boolean {
   return Boolean(v.cevap_tarihi || v.evrak_no.trim() || v.banka_adi.trim()
     || v.avukat_id || v.avukat_notu.trim() || parseParaInput(v.odenen_tutar) > 0);
 }
 
+/**
+ * CEVAP ŞEKLİNE GÖRE ZORUNLU ALANLAR İSTENİYOR MU?
+ *   hızlı pencere  → her zaman (orada yapılan iş zaten "cevabı işlemek")
+ *   tam form       → bölüme bir şey yazıldıysa
+ * Ekrandaki yıldız da, kaydetmedeki kontrol de BUNU kullanır: işaretlenip
+ * istenmeyen ya da istenip işaretlenmeyen alan kalmasın.
+ */
+export function cevapZorunluMu(v: CevapAlanlari, zorunlu: boolean): boolean {
+  return zorunlu || cevapDolduMu(v);
+}
+
+export type CevapAlan = "cevap_sekli" | "cevap_tarihi" | "evrak_no" | "banka_adi" | "avukat_id";
+
+/**
+ * CEVAP ŞEKLİNE GÖRE BOŞ KALAN ZORUNLU ALANLAR — adlarıyla.
+ *
+ * NİYE LİSTE, NİYE METİN DEĞİL: eksik alanı uyarı balonunda saymak, kullanıcıyı
+ * metni okuyup alanı gözüyle aramaya zorluyordu. Ad döndürülünce ekran o
+ * kutuların kendisini kırmızıya boyuyor — nerede olduğu bakışta görünüyor.
+ */
+export function eksikCevapAlanlari(v: CevapAlanlari, zorunlu: boolean): CevapAlan[] {
+  // Bölüm opsiyonel: tam formda hiç doldurulmamışsa hiçbir şey istenmez.
+  if (!cevapZorunluMu(v, zorunlu)) return [];
+  // CEVAP ŞEKLİ olmadan hangi alanın sorulacağı belli değil — önce o.
+  if (!v.cevap_sekli.trim()) return ["cevap_sekli"];
+  const kip = cevapKipi(v.cevap_sekli);
+  if (kip.avukat) return v.avukat_id ? [] : ["avukat_id"];   // tarih/evrak sorulmuyor
+  const eksik: CevapAlan[] = [];
+  if (!v.cevap_tarihi) eksik.push("cevap_tarihi");
+  if (!v.evrak_no.trim()) eksik.push("evrak_no");
+  // ÖDENEN TUTAR İSTENMİYOR: dekontun kendisi tutarın belgesi.
+  if (kip.banka && !v.banka_adi.trim()) eksik.push("banka_adi");
+  return eksik;
+}
+
+/**
+ * Eksik alan DIŞINDAKİ kurallar — iki ekranda da aynı. Sorun yoksa null döner.
+ * Eksik alanlar burada DEĞİL: onlar kırmızıya boyanıyor (bkz. eksikCevapAlanlari).
+ */
+export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | null {
+  const kip = cevapKipi(v.cevap_sekli);
+  if (v.cevap_tarihi && tebligTarihi && v.cevap_tarihi < tebligTarihi) {
+    return kip.banka
+      ? "Dekont tarihi, tebliğ tarihinden önce olamaz."
+      : "İcraya cevap tarihi, tebliğ tarihinden önce olamaz.";
+  }
+  return null;
+}
+
 export default function IcraCevapAlanlari({
   deger, degistir, sekiller, tebligTarihi, zorunlu = false, kilitli = false, mailBilgisi,
-  icraId, tekrarGonderildi,
+  icraId, tekrarGonderildi, denendi = false, denendiSifirla,
 }: {
   deger: CevapAlanlari;
   degistir: (yama: Partial<CevapAlanlari>) => void;
@@ -145,6 +157,10 @@ export default function IcraCevapAlanlari({
   icraId?: string | null;
   /** Tekrar gönderim sonrası üst ekranın tazelenmesi için. */
   tekrarGonderildi?: (c: { ek: string; gonderen: string; gonderildiAt: string }) => void;
+  /** Kaydet denendi ve eksik alan vardı — boş zorunlu kutular kırmızıya boyanır. */
+  denendi?: boolean;
+  /** Cevap şekli değişince kırmızılar silinir: istenen alanlar da değişti. */
+  denendiSifirla?: () => void;
 }) {
   const [avukatlar, setAvukatlar] = useState<Avukat[]>([]);
   const [tabloYok, setTabloYok] = useState(false);
@@ -154,6 +170,23 @@ export default function IcraCevapAlanlari({
   const [tekrarGidiyor, setTekrarGidiyor] = useState(false);
 
   const kip = cevapKipi(deger.cevap_sekli);
+  // YILDIZ VE KURAL AYNI KAPIDAN: ekranda işaretli olup kaydetmede sorulmayan
+  // (ya da tersi) alan kalmasın.
+  const yildiz = cevapZorunluMu(deger, zorunlu);
+  // CEVAP ŞEKLİ SEÇİLMEDEN ALT ALANLAR GÖRÜNMEZ: hangi alanın sorulacağı
+  // şekle bağlı (KEP'te evrak no, havalede dekont no, avukatta hiçbiri).
+  // Şekil seçilmeden gösterilen tarih/evrak no kutusu, sonra şekil seçilince
+  // yerini başka alana bırakıyor ve girilen şey boşa gidiyordu.
+  //
+  // AMA ESKİ KAYITTA VERİ VARSA GİZLENMEZ: cevap şekli alanı sonradan eklendi,
+  // 17 dosyada tarih/evrak no dolu ama şekil boş. Gizleseydik o veriler
+  // ekrandan sessizce kaybolurdu — kayıtta duruyor, görünmüyor olurdu.
+  // KIRMIZI KUTULAR — uyarı balonu yerine. Her çizimde yeniden hesaplanır:
+  // kullanıcı alanı doldurunca kırmızı kendiliğinden kalkar.
+  const kirmizi = new Set<CevapAlan>(denendi ? eksikCevapAlanlari(deger, zorunlu) : []);
+  const hata = (a: CevapAlan) => (kirmizi.has(a) ? " border-red-500 ring-1 ring-red-300" : "");
+  const sekilSecildi = Boolean(deger.cevap_sekli.trim());
+  const eskiCevapVerisi = Boolean(deger.cevap_tarihi || deger.evrak_no.trim());
 
   useEffect(() => {
     if (!kip.avukat) return;        // listeyi yalnız gerekince çek
@@ -225,8 +258,10 @@ export default function IcraCevapAlanlari({
         <label className={lbl}>
           Cevap şekli {(zorunlu || cevapDolduMu(deger)) && <span className="text-red-600">*</span>}
         </label>
-        <select className={inp} value={deger.cevap_sekli} disabled={kilitli}
-          onChange={(e) => degistir({ cevap_sekli: e.target.value })}>
+        {/* ŞEKİL DEĞİŞİNCE KIRMIZILAR SİLİNİR: başka kipin alanları geliyor,
+            eski kipten kalan işaretler yanlış yeri gösterirdi. */}
+        <select className={`${inp}${hata("cevap_sekli")}`} value={deger.cevap_sekli} disabled={kilitli}
+          onChange={(e) => { denendiSifirla?.(); degistir({ cevap_sekli: e.target.value }); }}>
           <option value="">Seçin…</option>
           {/* Kayıtta duran ama listeden kaldırılmış bir değer varsa KAYBOLMASIN. */}
           {(deger.cevap_sekli && !sekiller.includes(deger.cevap_sekli)
@@ -239,23 +274,31 @@ export default function IcraCevapAlanlari({
       {kip.iadeli && (
         <IcraIadeliEvrak
           evrakNo={deger.evrak_no} cevapTarihi={deger.cevap_tarihi}
-          degistir={degistir} kilitli={kilitli}
+          degistir={degistir} kilitli={kilitli} zorunlu={yildiz}
+          hatali={kirmizi.has("evrak_no") || kirmizi.has("cevap_tarihi")}
         />
       )}
 
-      {!kip.avukat && !kip.iadeli && (
+      {!kip.avukat && !kip.iadeli && (sekilSecildi || eskiCevapVerisi) && (
         <>
+          {!sekilSecildi && (
+            <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              Bu dosyada cevap bilgisi var ama <strong>cevap şekli yazılmamış</strong> — kaydetmeden önce seçin.
+            </div>
+          )}
           <div>
-            <label className={lbl}>{kip.banka ? "Dekont tarihi" : "İcraya cevap tarihi"}</label>
-            <input type="date" className={inp} value={deger.cevap_tarihi} disabled={kilitli}
+            <label className={lbl}>
+              {kip.banka ? "Dekont tarihi" : "İcraya cevap tarihi"} {yildiz && <span className="text-red-600">*</span>}
+            </label>
+            <input type="date" className={`${inp}${hata("cevap_tarihi")}`} value={deger.cevap_tarihi} disabled={kilitli}
               min={tebligTarihi || undefined}
               onChange={(e) => degistir({ cevap_tarihi: e.target.value })} />
           </div>
           <div>
             <label className={lbl}>
-              {kip.banka ? "Dekont no" : "Evrak no"} {deger.cevap_tarihi && <span className="text-red-600">*</span>}
+              {kip.banka ? "Dekont no" : "Evrak no"} {yildiz && <span className="text-red-600">*</span>}
             </label>
-            <input className={`${inp} ${deger.cevap_tarihi && !deger.evrak_no.trim() ? "border-red-400 ring-1 ring-red-300" : ""}`}
+            <input className={`${inp}${hata("evrak_no")}`}
               value={deger.evrak_no} disabled={kilitli}
               placeholder={kip.banka ? "Dekont numarası" : "Gönderilen evrak no"}
               onChange={(e) => degistir({ evrak_no: e.target.value })} />
@@ -265,8 +308,10 @@ export default function IcraCevapAlanlari({
 
       {kip.banka && (
         <div className="sm:col-span-2">
-          <label className={lbl}>Hangi bankadan ödendi</label>
-          <input className={inp} value={deger.banka_adi} disabled={kilitli}
+          <label className={lbl}>
+            Hangi bankadan ödendi {yildiz && <span className="text-red-600">*</span>}
+          </label>
+          <input className={`${inp}${hata("banka_adi")}`} value={deger.banka_adi} disabled={kilitli}
             placeholder="Ödemenin yapıldığı banka"
             onChange={(e) => degistir({ banka_adi: e.target.value })} />
         </div>
@@ -284,7 +329,7 @@ export default function IcraCevapAlanlari({
           ) : (
             <>
               {avukatlar.length > 0 && (
-                <select className={inp} value={deger.avukat_id} disabled={kilitli}
+                <select className={`${inp}${hata("avukat_id")}`} value={deger.avukat_id} disabled={kilitli}
                   onChange={(e) => degistir({ avukat_id: e.target.value })}>
                   <option value="">Seçin…</option>
                   {avukatlar.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
@@ -365,25 +410,22 @@ export default function IcraCevapAlanlari({
         </div>
       )}
 
-      {/* KEP ve AVUKATTA ÖDENEN TUTAR SORULMAZ: ikisi de yazışma, ödeme değil.
-          KAYITLI TUTAR SİLİNMEZ — alan gizlenince değer olduğu gibi kaydedilir;
+      {/* ÖDENEN TUTAR YALNIZ BANKA HAVALESİNDE SORULUR: KEP, avukat, iadeli
+          taahhütlü ve Dijital Vergi Dairesi birer YAZIŞMA — para oradan geçmiyor.
+          KAYITLI TUTAR SİLİNMEZ: alan gizlenince değer olduğu gibi kaydedilir;
           dolu bir tutar varken görünmez kalmasın diye yazıyla söylenir. */}
-      {kip.kep || kip.avukat || kip.iadeli ? (
-        parseParaInput(deger.odenen_tutar) > 0 ? (
-          <div className="sm:col-span-2 text-[11px] text-gray-500">
-            Kayıtlı ödenen tutar {deger.odenen_tutar} — bu cevap şeklinde sorulmuyor, silinmiyor.
-          </div>
-        ) : null
-      ) : (
-        <div>
-          <label className={lbl}>
-            Ödenen tutar {kip.banka && deger.cevap_tarihi && <span className="text-red-600">*</span>}
-          </label>
+      {kip.banka ? (
+        <div className="sm:col-span-2">
+          <label className={lbl}>Ödenen tutar</label>
           <input className={`${inp} text-right`} value={deger.odenen_tutar} inputMode="decimal" disabled={kilitli}
             placeholder="0"
             onChange={(e) => degistir({ odenen_tutar: formatParaInput(e.target.value) })} />
         </div>
-      )}
+      ) : parseParaInput(deger.odenen_tutar) > 0 ? (
+        <div className="sm:col-span-2 text-[11px] text-gray-500">
+          Kayıtlı ödenen tutar {deger.odenen_tutar} — bu cevap şeklinde sorulmuyor, silinmiyor.
+        </div>
+      ) : null}
     </>
   );
 }
