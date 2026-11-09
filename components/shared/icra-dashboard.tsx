@@ -19,6 +19,7 @@ import { sonGunHesapla, gunFarki, bugunISO, VARSAYILAN_CEVAP_SURESI } from "@/li
 // Başlık Biçimi. Kayıt değişmiyor, yalnız gösterim — veritabanında ne yazıldıysa o duruyor.
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import IcraCevapDialog from "@/components/shared/icra-cevap-dialog";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");
@@ -47,6 +48,9 @@ export default function IcraDashboard() {
   // Takipler" kartındaki şeritle aynı dili konuşuyor. Şantiye bilgisi kaybolmadı:
   // alttaki şantiye satırı kendi renk noktasını zaten taşıyor.
   const [renkler, setRenkler] = useState<Map<string, string>>(new Map());
+  // SAYFA DEĞİŞMEDEN CEVAP: düğme eskiden icra sayfasına gidiyordu, ana sayfa
+  // kapanıyordu. Artık pencere burada açılıyor ve kayıt sonrası satır listeden düşüyor.
+  const [cevapKayit, setCevapKayit] = useState<IcraKayit | null>(null);
 
   useEffect(() => {
     let iptal = false;
@@ -214,7 +218,7 @@ export default function IcraDashboard() {
                         birlikte giriliyor. "Tarih gir" yazınca insan sadece tarih
                         girilecek sanıyor ve formun kalanını boş bırakıyordu. */}
                     {canDuzenle ? (
-                      <button type="button" onClick={() => { window.location.href = `/dashboard/icra?duzenle=${s.id}&kilit=1`; }}
+                      <button type="button" onClick={() => setCevapKayit(s)}
                         title="Cevap tarihi, cevap şekli, evrak no ve ödenen tutarı girmek için formu açar"
                         className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 hover:bg-red-100">
                         <Check size={11} /> Cevabı işle
@@ -232,6 +236,11 @@ export default function IcraDashboard() {
           </div>
         </div>
       )}
+
+      <IcraCevapDialog
+        kayit={cevapKayit} acik={!!cevapKayit} kapat={() => setCevapKayit(null)}
+        kaydedildi={(yama) => setSatirlar((p) => p.map((x) => (x.id === cevapKayit?.id ? { ...x, ...yama } : x)))}
+      />
     </div>
   );
 }

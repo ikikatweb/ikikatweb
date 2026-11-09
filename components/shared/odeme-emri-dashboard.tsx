@@ -22,6 +22,7 @@ import { getIcraSirketTakipler } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import OdemeEmriIslemDialog from "@/components/shared/odeme-emri-islem-dialog";
 import { sonGunHesapla, gunFarki, bugunISO } from "@/lib/utils/icra-sure";
 import { formatBaslik } from "@/lib/utils/isim";
 
@@ -56,6 +57,8 @@ export default function OdemeEmriDashboard() {
   // yere kadar kırpılıp ayırt edilemiyordu. Renk şeridi aynı bilgiyi yer kaplamadan
   // veriyor; firma adı yine title'da (üstüne gelince) okunuyor.
   const [renkler, setRenkler] = useState<Map<string, string>>(new Map());
+  // SAYFA DEĞİŞMEDEN İŞLE: düğme eskiden icra sayfasına gidiyordu (bkz. icra kartı).
+  const [islemKayit, setIslemKayit] = useState<IcraSirketTakip | null>(null);
 
   useEffect(() => {
     let iptal = false;
@@ -94,7 +97,7 @@ export default function OdemeEmriDashboard() {
 
   if (!loading && bekleyen.length === 0) {
     return (
-      <div className="bg-white rounded-lg border p-3">
+      <div className="bg-white rounded-lg border p-3 flex flex-col h-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Scale size={16} className="text-[#1E3A5F]" />
@@ -108,8 +111,12 @@ export default function OdemeEmriDashboard() {
   }
 
   return (
-    <div className="bg-white rounded-lg border border-red-300 p-3">
-      <div className="flex items-center justify-between mb-2 pb-2 border-b">
+    // KOMŞUSUYLA AYNI BOYDA: İcra kartıyla yan yana duruyor ve ikisinin aynı yerde
+    // bitmesi isteniyor. Yapı da onunkiyle birebir — flex sütun + mutlak konumlu iç
+    // liste. Mutlak öğe üst öğenin boyuna katkı vermediği için kart kendi içeriğiyle
+    // uzamaz; satırdan aldığı boyun tamamını kaplar, taşan kısım scroll olur.
+    <div className="bg-white rounded-lg border border-red-300 p-3 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-2 pb-2 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Scale size={16} className="text-red-600" />
           <div>
@@ -131,7 +138,8 @@ export default function OdemeEmriDashboard() {
       {loading ? (
         <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
       ) : (
-        <div className="max-h-[260px] overflow-y-auto">
+        <div className="relative flex-1 min-h-[220px]">
+          <div className="absolute inset-0 overflow-y-auto">
           <Table noWrapper className="text-xs text-gray-900">
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Alacaklı / Dosya</TableHead>
@@ -188,7 +196,7 @@ export default function OdemeEmriDashboard() {
                     <TableCell className="px-2 py-1 text-center">
                       {canDuzenle ? (
                         <button type="button"
-                          onClick={() => { window.location.href = `/dashboard/icra?sekme=sirket&duzenle=${s.id}`; }}
+                          onClick={() => setIslemKayit(s)}
                           // DÜĞME ADI "CEVABI İŞLE" — İCRA KARTIYLA AYNI (09.11.2026 kullanıcı isteği).
                           // Önce "Dosyayı işle" yazılmıştı: buradaki form cevap değil
                           // itiraz/ödeme/durum istiyor. Kullanıcı iki kartta aynı sözcüğü
@@ -207,8 +215,14 @@ export default function OdemeEmriDashboard() {
               })}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
+
+      <OdemeEmriIslemDialog
+        kayit={islemKayit} acik={!!islemKayit} kapat={() => setIslemKayit(null)}
+        kaydedildi={(yama) => setSatirlar((p) => p.map((x) => (x.id === islemKayit?.id ? { ...x, ...yama } : x)))}
+      />
     </div>
   );
 }

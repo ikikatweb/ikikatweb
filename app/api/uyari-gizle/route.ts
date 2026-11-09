@@ -6,6 +6,11 @@
 //
 // Anahtar biçimi: "<uyari-tipi>:<kayit-id>" (ör. "gecici-kabul-prim:<evrakId>").
 //
+// GENEL KAPATMA (genel: true) — bazı uyarılar bir kişi kapatınca HERKESTE kapanmalı
+// (ör. icra süre uyarıları: dosyaya cevap veren tektir, iş bitince uyarı herkesten
+// kalkmalı). O durumda kullanıcının kendi listesine değil, paylaşımlı
+// uyari_kapatma_genel tablosuna yazılır (sql/uyari_kapatma_genel.sql).
+//
 // Her basış ayrıca uyari_onaylari günlüğüne yazılır (kim, ne zaman). Günlük yazılamazsa
 // işlem geri alınmaz ama SESSİZ GEÇİLMEZ: yanıtta kayitHatasi döner, arayüz uyarır —
 // "kim onayladı" bilgisinin tutulduğu sanılıp aslında hiç tutulmaması en kötüsü olurdu.
@@ -28,12 +33,46 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabaseAuth.auth.getUser();
   if (!user) return NextResponse.json({ error: "Oturum bulunamadı" }, { status: 401 });
 
-  const { anahtar, geriAl } = (await request.json()) as { anahtar?: string; geriAl?: boolean };
+  const { anahtar, geriAl, genel } = (await request.json()) as
+    { anahtar?: string; geriAl?: boolean; genel?: boolean };
   if (!anahtar || !ANAHTAR_BICIM.test(anahtar)) {
     return NextResponse.json({ error: "Geçersiz uyarı anahtarı" }, { status: 400 });
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Kim olduğu hem genel kapatmada hem günlükte lazım — bir kez okunur.
+  const { data: kisi } = await supabase
+    .from("kullanicilar").select("id, ad_soyad").eq("auth_id", user.id).maybeSingle();
+  const kisiId = (kisi as { id?: string } | null)?.id ?? null;
+  const kisiAd = (kisi as { ad_soyad?: string } | null)?.ad_soyad ?? null;
+
+  // ── GENEL KAPATMA: kişisel listeye DOKUNULMAZ, paylaşımlı tabloya yazılır. ──
+  if (genel) {
+    const { error: gErr } = geriAl
+      ? await supabase.from("uyari_kapatma_genel").delete().eq("anahtar", anahtar)
+      : await supabase.from("uyari_kapatma_genel").upsert({
+          anahtar, tip: anahtar.split(":")[0], kapatan_id: kisiId, kapatan_ad: kisiAd,
+        }, { onConflict: "anahtar" });
+    if (gErr) {
+      const eksikTablo = /uyari_kapatma_genel/.test(gErr.message) && /does not exist|schema cache/i.test(gErr.message);
+      return NextResponse.json({
+        error: eksikTablo
+          ? "uyari_kapatma_genel tablosu yok — sql/uyari_kapatma_genel.sql çalıştırılmalı."
+          : gErr.message,
+      }, { status: 500 });
+    }
+    const { error: logErr2 } = await supabase.from("uyari_onaylari").insert({
+      tip: anahtar.split(":")[0], anahtar, kullanici_id: kisiId, kullanici_ad: kisiAd,
+      geri_alindi: !!geriAl,
+    });
+    return NextResponse.json({
+      genel: true, anahtar, kapatan_ad: kisiAd,
+      // SESSİZ GEÇİLMEZ: kapandı ama "kim kapattı" günlüğe yazılamadıysa söylenir.
+      kayitHatasi: logErr2 ? logErr2.message : null,
+    });
+  }
+
   const { data: kayit, error: okuErr } = await supabase
     .from("kullanicilar")
     .select("id, gizlenen_uyarilar")
@@ -64,13 +103,11 @@ export async function POST(request: Request) {
 
   // GÜNLÜK: kim, hangi uyarıyı, ne zaman kapattı/açtı (sql/uyari_onaylari.sql).
   let kayitHatasi: string | null = null;
-  const { data: kisi } = await supabase
-    .from("kullanicilar").select("id, ad_soyad").eq("auth_id", user.id).maybeSingle();
   const { error: logErr } = await supabase.from("uyari_onaylari").insert({
     tip: anahtar.split(":")[0],
     anahtar,
-    kullanici_id: (kisi as { id?: string } | null)?.id ?? null,
-    kullanici_ad: (kisi as { ad_soyad?: string } | null)?.ad_soyad ?? null,
+    kullanici_id: kisiId,
+    kullanici_ad: kisiAd,
     geri_alindi: !!geriAl,
   });
   if (logErr) {
