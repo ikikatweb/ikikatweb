@@ -204,9 +204,12 @@ export default function KetsisTablosu() {
               <th className="px-3 py-2 font-medium">Gönderen</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
               <th className="px-3 py-2 font-medium">Konu / özet</th>
-              <th className="px-3 py-2 font-medium">Güven</th>
               <th className="px-3 py-2 font-medium" />
               <th className="px-3 py-2 font-medium">Durum</th>
+              {/* GÜVEN EN SAĞDA: her satırda "kesin" yazıyor, günlük işte bakılan bir
+                  bilgi değil — yalnız şüpheli ("aday") bir mail düştüğünde önem
+                  kazanıyor. Ortada durup asıl sütunları sıkıştırıyordu. */}
+              <th className="px-3 py-2 font-medium">Güven</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -311,19 +314,6 @@ export default function KetsisTablosu() {
                     </div>
                   )}
                 </td>
-                <td className="px-3 py-2">
-                  {s.guven === "kesin" ? (
-                    <span className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs text-red-800"
-                      title="Gönderen resmî alandan ya da daha önce onaylanmış bir adresten">
-                      kesin
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
-                      title="Gönderen tanıdık değil, konu vergi tebligatına benziyor — doğrulanmalı">
-                      <ShieldQuestion size={11} /> aday
-                    </span>
-                  )}
-                </td>
                 {/* AÇ VE OKU — doğrudan Dijital Vergi Dairesi GİRİŞ ekranına, YENİ SEKMEDE.
                     Belge panele inmiyor: KETSİS'in alıcı tarafı için API yok, tebligat
                     yalnız o ekranda okunuyor. Düğme yolu kısaltıyor, belgeyi getirmiyor —
@@ -383,6 +373,24 @@ export default function KetsisTablosu() {
                     </div>
                   ) : (
                     <span className="text-xs text-gray-400">ilgisiz</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {/* RENK ANLAMI (09.11.2026): yeşil = gönderen doğrulandı, iş tamam;
+                      kırmızı = DOĞRULANMADI, bakılması gereken budur. Eskiden "kesin"
+                      kırmızıydı (tebligat ciddi bir şey diye) ama listede hepsi kesin
+                      olduğu için tablo baştan aşağı kırmızı duruyordu ve kırmızı
+                      anlamını yitiriyordu. Renk artık DURUMU değil, GÜVENİ anlatıyor. */}
+                  {s.guven === "kesin" ? (
+                    <span className="inline-block rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
+                      title="Gönderen resmî alandan ya da daha önce onaylanmış bir adresten">
+                      kesin
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-xs text-red-800"
+                      title="Gönderen tanıdık değil, konu vergi tebligatına benziyor — DOĞRULANMALI">
+                      <ShieldQuestion size={11} /> aday
+                    </span>
                   )}
                 </td>
               </tr>
