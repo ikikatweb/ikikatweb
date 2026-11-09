@@ -873,6 +873,8 @@ export type IcraKayit = {
   odenen_tutar: number;
   /** Tebligat belgesinde YAZAN cevap süresi (gün). Hesaplanmaz; boşsa belgede yok. */
   cevap_suresi_gun: number | null;
+  /** Cevap şekli banka havalesi ise ödemenin yapıldığı banka. Diğerlerinde boş. */
+  banka_adi: string | null;
   /** İcra dairesinden haciz kaldırma yazısı geldiyse o yazının tarihi. Dosyayı kapatmaz. */
   haciz_kaldirma_tarihi: string | null;
   haciz_kaldirma_notu: string | null;

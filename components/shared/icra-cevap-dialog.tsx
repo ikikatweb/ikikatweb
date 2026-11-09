@@ -44,6 +44,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   const [cevapSekli, setCevapSekli] = useState("");
   const [evrakNo, setEvrakNo] = useState("");
   const [odenen, setOdenen] = useState("");
+  const [bankaAdi, setBankaAdi] = useState("");
   const [sekiller, setSekiller] = useState<string[]>(CEVAP_VARSAYILAN);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -60,6 +61,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     setCevapTarihi(kayit.cevap_tarihi ?? "");
     setCevapSekli(kayit.cevap_sekli ?? "");
     setEvrakNo(kayit.evrak_no ?? "");
+    setBankaAdi(kayit.banka_adi ?? "");
     const t = Number(kayit.odenen_tutar || 0);
     setOdenen(t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "");
   }, [acik, kayit]);
@@ -75,13 +77,33 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     if (i >= 0 && i + 1 < odak.length) odak[i + 1].focus();
   }
 
+  // KEP ile cevap verildiyse ödeme yoktur — tutar alanı sorulmaz (aşağıya bak).
+  // Değer Tanımlamalar'dan geldiği için metin karşılaştırılıyor; Türkçe büyük harf
+  // kuralıyla ("i" → "İ") çünkü liste elle düzenlenebiliyor.
+  const kepMi = cevapSekli.trim().toLocaleUpperCase("tr") === "KEP";
+  // BANKA HAVALESİ: cevap bir yazı değil, ödemedir. Sorulan şeyler başka —
+  // dekont tarihi/numarası, tutar ve ÖDEMENİN YAPILDIĞI BANKA. "İcraya cevap
+  // tarihi" diye sorulan alan burada dekontun tarihidir; aynı sütuna yazılır
+  // (cevap_tarihi), çünkü dosyayı "cevaplandı" yapan şey odur — ayrı bir sütuna
+  // yazılsaydı dosya "Cevap Bekleyen" listesinde sonsuza kadar kalırdı.
+  // "banka" geçen her seçeneği yakalar: liste Tanımlamalar'dan düzenlenebiliyor
+  // ("Banka", "Banka Havalesi", "Banka EFT" hepsi aynı kip).
+  const bankaMi = cevapSekli.toLocaleLowerCase("tr").includes("banka");
+
   async function kaydet() {
     if (!kayit) return;
     if (!cevapSekli.trim()) { toast.error("Cevap şekli seçilmeli."); return; }
     if (cevapTarihi && kayit.teblig_tarihi && cevapTarihi < kayit.teblig_tarihi) {
       toast.error("İcraya cevap tarihi, tebliğ tarihinden önce olamaz."); return;
     }
-    if (cevapTarihi && !evrakNo.trim()) {
+    if (bankaMi) {
+      // ÜÇÜ BİRLİKTE: biri girildiyse diğer ikisi de gerekli. Tarih olmadan dosya
+      // "cevaplandı" sayılmaz ve listede kalır; kullanıcı niye kalktığını anlamaz.
+      const dolu = [cevapTarihi, evrakNo.trim(), parseParaInput(odenen) > 0 ? "x" : ""].filter(Boolean).length;
+      if (dolu > 0 && dolu < 3) {
+        toast.error("Banka havalesinde dekont tarihi, dekont no ve ödenen tutar birlikte girilir."); return;
+      }
+    } else if (cevapTarihi && !evrakNo.trim()) {
       toast.error("Cevap tarihi girildi — evrak no zorunludur."); return;
     }
     const yama: Partial<IcraKayit> = {
@@ -89,6 +111,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       cevap_sekli: cevapSekli.trim() || null,
       evrak_no: evrakNo.trim() || null,
       odenen_tutar: parseParaInput(odenen),
+      // Banka dışı cevap şekillerinde banka adı SORULMUYOR ama SİLİNMİYOR:
+      // kullanıcı yanlışlıkla şekli değiştirip geri aldığında veri kaybolmasın.
+      banka_adi: bankaAdi.trim() || null,
     };
     setKaydediliyor(true);
     try {
@@ -97,15 +122,19 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       kaydedildi(yama);
       toast.success("Cevap işlendi.");
       kapat();
-    } catch { toast.error("Kaydedilemedi."); }
+    } catch (e) {
+      // SEBEBİ YUTULMAZ: "Kaydedilemedi." deyip geçmek, eksik sütun gibi tek
+      // komutla çözülecek bir sorunu saatlerce gizler. sql/icra_banka_adi.sql
+      // çalıştırılmadıysa mesaj bunu doğrudan söyler.
+      const m = e instanceof Error ? e.message : String(e);
+      toast.error(/banka_adi/.test(m)
+        ? "banka_adi sütunu yok — sql/icra_banka_adi.sql çalıştırılmalı."
+        : `Kaydedilemedi: ${m}`, { duration: 8000 });
+    }
     finally { setKaydediliyor(false); }
   }
 
   if (!kayit) return null;
-  // KEP ile cevap verildiyse ödeme yoktur — tutar alanı sorulmaz (aşağıya bak).
-  // Değer Tanımlamalar'dan geldiği için metin karşılaştırılıyor; Türkçe büyük harf
-  // kuralıyla ("i" → "İ") çünkü liste elle düzenlenebiliyor.
-  const kepMi = cevapSekli.trim().toLocaleUpperCase("tr") === "KEP";
   const lbl = "text-xs font-medium text-gray-600 mb-1 block";
   const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30";
   const salt = "text-sm text-gray-800";
@@ -160,14 +189,30 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               {sekiller.map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
+          {/* BANKA HAVALESİNDE ETİKETLER DEĞİŞİR, SÜTUN DEĞİŞMEZ.
+              "İcraya cevap tarihi" → "Dekont tarihi", "Evrak no" → "Dekont no".
+              İkisi de aynı sütuna yazılıyor (cevap_tarihi / evrak_no): dosyayı
+              "cevaplandı" yapan alan cevap_tarihi, ayrı bir yere yazılsaydı dosya
+              Cevap Bekleyen listesinde kalırdı. Sorulan soru değişti, kaydın anlamı
+              değil — ödeme de icraya verilmiş bir cevaptır. */}
           <div>
-            <label className={lbl}>İcraya cevap tarihi</label>
+            <label className={lbl}>{bankaMi ? "Dekont tarihi" : "İcraya cevap tarihi"}</label>
             <input type="date" className={inp} value={cevapTarihi} onChange={(e) => setCevapTarihi(e.target.value)} />
           </div>
           <div>
-            <label className={lbl}>Evrak no {cevapTarihi && <span className="text-red-600">*</span>}</label>
-            <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)} placeholder="Gönderilen evrak no" />
+            <label className={lbl}>
+              {bankaMi ? "Dekont no" : "Evrak no"} {cevapTarihi && <span className="text-red-600">*</span>}
+            </label>
+            <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)}
+              placeholder={bankaMi ? "Dekont numarası" : "Gönderilen evrak no"} />
           </div>
+          {bankaMi && (
+            <div className="sm:col-span-2">
+              <label className={lbl}>Hangi bankadan ödendi</label>
+              <input className={inp} value={bankaAdi} onChange={(e) => setBankaAdi(e.target.value)}
+                placeholder="Ödemenin yapıldığı banka" />
+            </div>
+          )}
           {/* KEP'TE ÖDENEN TUTAR SORULMAZ: KEP bir yazışma kanalı, ödeme değil.
               Alan orada durunca "doldurmam mı gerekiyor" sorusu doğuyordu.
               KAYITLI TUTAR SİLİNMEZ: alan gizlenince state'teki değer olduğu gibi
@@ -181,7 +226,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
             ) : null
           ) : (
             <div>
-              <label className={lbl}>Ödenen tutar</label>
+              <label className={lbl}>
+                Ödenen tutar {bankaMi && cevapTarihi && <span className="text-red-600">*</span>}
+              </label>
               <input className={`${inp} text-right`} value={odenen} inputMode="decimal"
                 onChange={(e) => setOdenen(formatParaInput(e.target.value))} />
             </div>
