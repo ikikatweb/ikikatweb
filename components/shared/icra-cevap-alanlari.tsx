@@ -19,6 +19,7 @@ import toast from "react-hot-toast";
 import { Plus, X, Loader2, Send } from "lucide-react";
 import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
 import { telefonGoster } from "@/lib/utils/telefon";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Avukat } from "@/lib/supabase/types";
@@ -49,6 +50,9 @@ export function cevapKipi(cevapSekli: string) {
     kep: k.trim() === "kep",
     banka: k.includes("banka"),
     avukat: k.includes("avukat"),
+    // İADELİ TAAHHÜTLÜ: cevap yazısı panelde zaten var olan bir giden evraktır.
+    // Tarih ve numara elle değil, o evraktan gelir (bkz. icra-iadeli-evrak).
+    iadeli: k.includes("iadeli") || k.includes("taahh"),
   };
 }
 
@@ -69,6 +73,14 @@ export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | n
     // niye kapanmadığını anlayamaz.
     const dolu = [v.cevap_tarihi, v.evrak_no.trim(), parseParaInput(v.odenen_tutar) > 0 ? "x" : ""].filter(Boolean).length;
     if (dolu > 0 && dolu < 3) return "Banka havalesinde dekont tarihi, dekont no ve ödenen tutar birlikte girilir.";
+    return null;
+  }
+  if (kip.iadeli) {
+    // İkisi birlikte gelir (evrak seçiminden). Biri varsa öbürü de olmalı —
+    // yarım kayıt "cevap verildi" der ama hangi yazıyla olduğu belli olmaz.
+    if ((v.cevap_tarihi ? 1 : 0) + (v.evrak_no.trim() ? 1 : 0) === 1) {
+      return "Cevap yazısı eksik — giden evraktan seçin ya da yeni yazın.";
+    }
     return null;
   }
   if (v.cevap_tarihi && !v.evrak_no.trim()) return "Cevap tarihi girildi — evrak no zorunludur.";
@@ -181,7 +193,14 @@ export default function IcraCevapAlanlari({
 
       {/* AVUKAT KİPİNDE TARİH VE EVRAK NO SORULMAZ: cevap, mailin gittiği gün
           verilmiş sayılıyor (tarihi sunucu yazar), evrak da mailin kendisi. */}
-      {!kip.avukat && (
+      {kip.iadeli && (
+        <IcraIadeliEvrak
+          evrakNo={deger.evrak_no} cevapTarihi={deger.cevap_tarihi}
+          degistir={degistir} kilitli={kilitli}
+        />
+      )}
+
+      {!kip.avukat && !kip.iadeli && (
         <>
           <div>
             <label className={lbl}>{kip.banka ? "Dekont tarihi" : "İcraya cevap tarihi"}</label>
@@ -306,7 +325,7 @@ export default function IcraCevapAlanlari({
       {/* KEP ve AVUKATTA ÖDENEN TUTAR SORULMAZ: ikisi de yazışma, ödeme değil.
           KAYITLI TUTAR SİLİNMEZ — alan gizlenince değer olduğu gibi kaydedilir;
           dolu bir tutar varken görünmez kalmasın diye yazıyla söylenir. */}
-      {kip.kep || kip.avukat ? (
+      {kip.kep || kip.avukat || kip.iadeli ? (
         parseParaInput(deger.odenen_tutar) > 0 ? (
           <div className="sm:col-span-2 text-[11px] text-gray-500">
             Kayıtlı ödenen tutar {deger.odenen_tutar} — bu cevap şeklinde sorulmuyor, silinmiyor.

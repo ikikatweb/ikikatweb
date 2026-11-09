@@ -53,7 +53,13 @@ function tarihGosterimdenIso(gs: string): string {
 
 type Props = {
   evrak?: GidenEvrakWithRelations;
-  onSuccess: () => void;
+  /**
+   * Kaydedilen evrak GERİ VERİLİR. İcra cevap penceresi "yeni yaz" deyip evrakı
+   * kaydedince evrak kayıt numarasını ve tarihini buradan alıyor; kullanıcıya
+   * aynı bilgiyi ikinci kez elle yazdırmak hata kaynağı olurdu.
+   * Eski çağıranlar parametresiz imzayla çalışmaya devam eder.
+   */
+  onSuccess: (kaydedilen?: GidenEvrakWithRelations) => void;
   onCancel: () => void;
 };
 
@@ -355,24 +361,26 @@ export default function GidenEvrakForm({ evrak, onSuccess, onCancel }: Props) {
         pdf_url: pdfUrl,
       };
 
+      let kaydedilen: GidenEvrakWithRelations | undefined;
       if (isEdit) {
         await updateGidenEvrak(evrak.id, payload);
+        kaydedilen = { ...evrak, ...payload } as GidenEvrakWithRelations;
         toast.success("Evrak güncellendi.");
       } else {
-        await createGidenEvrak({
+        kaydedilen = await createGidenEvrak({
           ...payload,
           olusturan_id: kullanici?.id ?? "",
           olusturma_tarihi: new Date().toISOString(),
           silindi: false,
           silme_nedeni: null,
-        });
+        }) as GidenEvrakWithRelations;
         toast.success("Evrak kaydedildi.");
       }
       // Konusunda "geçici kabul" geçen evrak, işin geçici kabul BAŞVURUSUDUR. Tarihi
       // şantiyeye işlenir; ana ekran bu tarih itibarıyla primi tamamlanmamış işleri uyarır.
       primOnaylandi.current = false;
       setSantiyeUyari(null);
-      onSuccess();
+      onSuccess(kaydedilen);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Bir hata oluştu";
       toast.error(`Kaydetme hatası: ${msg}`);
