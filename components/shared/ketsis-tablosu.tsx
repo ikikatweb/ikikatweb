@@ -13,7 +13,7 @@
 //     hukuken tebligatın parçası değil; gelmemesi süreyi durdurmaz (VUK 107/A).
 // Bu yüzden liste boşken de ekran "temiz" demez, "bakıldı mı?" diye sorar.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion, Trash2, Mail, Link2 as LinkIcon } from "lucide-react";
+import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion, Trash2, Mail, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth, tebligatDegisti } from "@/hooks";
@@ -49,7 +49,7 @@ export default function KetsisTablosu() {
   const [hata, setHata] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hepsi, setHepsi] = useState(false);
-  const [islemde, setIslemde] = useState<number | "kontrol" | "ekle" | "anahtar" | null>(null);
+  const [islemde, setIslemde] = useState<number | "kontrol" | "ekle" | "excel" | null>(null);
 
   // TEBLİGAT DEFTERİ — ekranın asıl sonucu. Bildirim maili "gel bak" uyarısıydı;
   // bunlar daireye bakıldığında GÖRÜLEN tebligatlar, süreleriyle birlikte.
@@ -61,10 +61,7 @@ export default function KetsisTablosu() {
   // HAM ANAHTAR YALNIZ BURADA, YALNIZ ÜRETİLDİĞİ AN: sunucu sha256 özetini saklıyor,
   // geri okunamıyor. Sayfa yenilenirse yer imi kutusu "üret" durumuna döner; eskisi
   // çalışmaya devam eder, yenisi üretilirse eski geçersiz olur.
-  const [anahtar, setAnahtar] = useState<string | null>(null);
-  const [portalDurum, setPortalDurum] = useState<
-    { kurulu: boolean; anahtar?: string; olusturan_ad?: string;
-      son_kullanim?: string; son_sonuc?: string } | null>(null);
+  const [yuklemeFirma, setYuklemeFirma] = useState("");
 
   const yukle = useCallback(async () => {
     try {
@@ -105,38 +102,6 @@ export default function KetsisTablosu() {
   const suresiGecenTeb = acikTebligat.filter((t) => ketsisKalanGun(ketsisTebligGunu(t).gun) < 0).length;
 
   const yas = kontrolYasiGun(sonKontrol?.kontrol_at);
-  // Anahtar kuruma ait: bir kez üretilir, HERKES aynı yer imini kurar. Bu yüzden
-  // sunucudan geri okunabiliyor (özet saklansaydı ikinci kullanıcı kuramazdı).
-  const gecerliAnahtar = anahtar ?? portalDurum?.anahtar ?? null;
-  const anahtarSon4 = gecerliAnahtar ? gecerliAnahtar.slice(-4) : "";
-  const yerImiRef = useRef<HTMLAnchorElement | null>(null);
-
-  // ═══ YER İMİ ═══ Portalın KENDİ sayfasında çalışır (aynı origin → CORS duvarı yok,
-  // oturum anahtarı sessionStorage'dan okunur). Tek yaptığı LİSTEYİ OKUMAK: hiçbir belge
-  // indirilmiyor, çünkü indirmek tebligatı açmak demek ve o karar insanın.
-  // Sessiz başarı yok: sonuç da, oturum düşmesi de, atlanan kayıt da ekrana basılıyor.
-  const yerImi = useMemo(() => {
-    if (!gecerliAnahtar) return "";
-    const kod = `(async()=>{try{
-if(!location.hostname.endsWith("dijital.gib.gov.tr")){alert("Bu yer imi Dijital Vergi Dairesi sayfasinda calisir.");return;}
-var t=sessionStorage.getItem("token");
-if(!t){alert("Portal oturumu bulunamadi. Giris yapip e-Tebligat sayfasini acin, sonra tekrar tiklayin.");return;}
-var hepsi=[],vkn="";
-try{var u=await fetch("/apigateway/auth/tdvd/user-info",{headers:{Authorization:t}});if(u.ok){var uj=await u.json();var ara=function(o){if(!o||typeof o!=="object")return"";for(var k in o){var v=o[k];if(typeof v==="string"&&/vkn|vergiKimlik|tckn|kimlikNo/i.test(k)&&/^[0-9]{10,11}$/.test(v))return v;if(typeof v==="object"){var r=ara(v);if(r)return r;}}return"";};vkn=ara(uj);}}catch(e){}
-for(var a=0;a<2;a++){for(var sf=1;sf<=60;sf++){
-var r=await fetch("/apigateway/etebligat/etebligat/tebligat-listele",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json, text/plain, */*","page-name":"e-tebligat","ui-client":"fe","Authorization":t},body:JSON.stringify({meta:{pagination:{pageNo:sf,pageSize:50},sortFieldName:"id",sortType:"ASC",filters:[{fieldName:"arsivDurum",values:[String(a)]}]}})});
-if(r.status===401){alert("Portal oturumu dusmus. Tekrar giris yapip HEMEN tiklayin.");return;}
-if(!r.ok){alert("Portal listesi alinamadi: HTTP "+r.status);return;}
-var j=await r.json();var d=(j&&j.data&&j.data.tebligatDtoList)||[];hepsi=hepsi.concat(d);
-var tp=(j&&j.pageDetail&&j.pageDetail.totalPage)||1;if(sf>=tp||d.length===0)break;}}
-var res=await fetch(${JSON.stringify(typeof window === "undefined" ? "" : window.location.origin)}+"/api/ketsis/portal-aktar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({anahtar:${JSON.stringify(gecerliAnahtar)},vkn:vkn,kayitlar:hepsi})});
-var jj=await res.json().catch(function(){return {};});
-if(!res.ok){alert("Panele yazilamadi: "+(jj.error||("HTTP "+res.status)));return;}
-alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla eslesmedi, kayitlar 'belirsiz' olarak girdi.")+((jj.atlanan&&jj.atlanan.length)?"\\n\\nAtlananlar:\\n"+jj.atlanan.join("\\n"):""));
-}catch(e){alert("Yer imi hata verdi: "+(e&&e.message?e.message:e));}})();`;
-    return "javascript:" + encodeURIComponent(kod.replace(/\n/g, ""));
-  }, [gecerliAnahtar]);
-
   const kontrolGerekli = yas === null || yas >= KONTROL_ARALIGI_GUN;
 
   // Tarayıcı sessizliği: en son çalışan kutuya bakılır (biri çalışıyorsa görev ayakta).
@@ -151,25 +116,66 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
     && (tarayici.length === 0 || taramaSaat === null || taramaSaat > TARAYICI_TOLERANS_SAAT);
   const tarayiciHata = tarayici.map((t) => t.son_hata).filter(Boolean)[0] ?? null;
 
-  // Yer imi adresini DOM'a doğrudan yaz (yukarıdaki nota bak: React href'i temizliyor).
-  useEffect(() => {
-    if (yerImiRef.current && yerImi) yerImiRef.current.setAttribute("href", yerImi);
-  }, [yerImi, portalAcik, gecerliAnahtar]);
-
-  // Yer imi kurulu mu, en son ne zaman çalıştı, sonucu neydi? HAM ANAHTAR DÖNMEZ —
-  // yalnız son 4 hanesi, "doğru yer imini mi kullanıyorum" sorusuna yetsin diye.
-  const portalDurumOku = useCallback(async () => {
+  // ═══ PORTAL EXCEL'İNİ OKU ═══
+  // Dosya TARAYICIDA ayrıştırılıyor, sunucuya yüklenmiyor. Sütunlar 09.11.2026'da
+  // gerçek bir çıktıdan okundu:
+  //   Gönderen Kurum · Alt Birim · Belge Türü · Belge No · Gönderme Tarihi ·
+  //   Tebliğ Tarihi · Mükellef Okuma Tarihi      (tarihler "GG/AA/YYYY SS:dd:ss")
+  // Başlık satırı sabit bir yerde DEĞİL (üstte boş satırlar ve rapor başlığı var),
+  // o yüzden sütun adlarına göre aranıyor: portal düzeni biraz kayarsa da çalışsın.
+  async function excelAktar(dosya: File) {
+    setIslemde("excel");
     try {
-      const r = await fetch("/api/ketsis/kontrol", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ islem: "portal-durum" }),
-      });
-      if (r.ok) setPortalDurum(await r.json());
-    } catch { /* ekranın geri kalanı çalışsın; kutu "üret" durumunda kalır */ }
-  }, []);
-  useEffect(() => { void portalDurumOku(); }, [portalDurumOku]);
+      const XLSX = await import("xlsx");
+      const kitap = XLSX.read(await dosya.arrayBuffer(), { type: "array" });
+      const sayfa = kitap.Sheets[kitap.SheetNames[0]];
+      const ham = XLSX.utils.sheet_to_json<string[]>(sayfa, { header: 1, raw: false, defval: "" });
 
-  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" | "ekle" | "anahtar") {
+      const sadele = (x: unknown) => String(x ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr");
+      const basIdx = ham.findIndex((r) => r.some((h) => sadele(h) === "belge no"));
+      // BAŞLIK BULUNAMAZSA DURULUR: yanlış sütundan tarih okumak, yanlış güne göre
+      // iş yapılması demek. Tahmin yok.
+      if (basIdx < 0) {
+        throw new Error("Bu dosyada 'Belge No' sütunu yok. Portaldaki e-Tebligat listesinden "
+          + "'Excel'e Aktar' ile inen dosyayı seçin.");
+      }
+      const baslik = ham[basIdx].map(sadele);
+      const sutun = (ad: string) => baslik.indexOf(ad);
+      const iKurum = sutun("gönderen kurum"), iAlt = sutun("alt birim"), iTur = sutun("belge türü");
+      const iNo = sutun("belge no"), iGonderme = sutun("gönderme tarihi");
+      const iTeblig = sutun("tebliğ tarihi"), iOkuma = sutun("mükellef okuma tarihi");
+
+      // "GG/AA/YYYY SS:dd:ss" → YYYY-MM-DD
+      const gun = (v: string | undefined) => {
+        const m = String(v ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+      };
+      const an = (v: string | undefined) => {
+        const m = String(v ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}):(\d{2})/);
+        return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`).toISOString() : null;
+      };
+
+      const satirlar = ham.slice(basIdx + 1)
+        .filter((r) => String(r[iNo] ?? "").trim())
+        .map((r) => ({
+          belge_no: String(r[iNo]).trim(),
+          kurum: [r[iKurum], r[iAlt]].map((x) => String(x ?? "").trim()).filter(Boolean).join(" · ") || undefined,
+          belge_turu: String(r[iTur] ?? "").trim() || undefined,
+          ulasma_tarihi: gun(r[iGonderme]) ?? undefined,
+          teblig_tarihi: gun(r[iTeblig]) ?? undefined,
+          okuma_at: an(r[iOkuma]) ?? undefined,
+        }));
+
+      if (satirlar.length === 0) throw new Error("Dosyada tebligat satırı bulunamadı.");
+      await gonder({ islem: "excel-aktar", firma_id: yuklemeFirma, satirlar }, "excel");
+    } catch (e) {
+      toast.error(`Aktarılamadı: ${e instanceof Error ? e.message : e}`, { duration: 16000 });
+    } finally {
+      setIslemde(null);
+    }
+  }
+
+  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" | "ekle" | "excel") {
     setIslemde(anahtar);
     try {
       const r = await fetch("/api/ketsis/kontrol", {
@@ -181,11 +187,9 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
       // HAM ANAHTAR SADECE BURADA GÖRÜLÜR: sunucu özetini saklıyor, bir daha dönmüyor.
       // Yer imi bu değerle üretiliyor; kullanıcı kurmadan sayfayı yenilerse yeniden
       // üretmesi gerekir (eskisi çalışmaya devam eder).
-      if (typeof j.anahtar === "string") setAnahtar(j.anahtar);
       // Yarım kalan işlem sessiz geçilmez: rota uyarı döndürdüyse kullanıcı görsün.
       if (j.uyari) toast.error(j.uyari, { duration: 14000 });
       else toast.success("Kaydedildi.", { duration: toastSuresi() });
-      await portalDurumOku();
       await yukle();
       tebligatDegisti();   // menü rozeti de düşsün
     } catch (e) {
@@ -273,7 +277,7 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
                   açıyor — kayıtlar Dijital Vergi Dairesi'nden tek tıkla geliyor. */}
               <button type="button" onClick={() => setPortalAcik((a) => !a)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 h-7 text-xs font-medium hover:bg-gray-50">
-                <LinkIcon size={12} /> Portal bağlantısı
+                <Upload size={12} /> Portal listesini aktar
               </button>
               <button type="button" disabled={islemde === "kontrol"}
                 onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
@@ -285,109 +289,50 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
           )}
         </div>
 
-        {/* ═══ PORTAL BAĞLANTISI (YER İMİ) ═══
-            NİYE YER İMİ: 09.11.2026'da portal üzerinde keşif yapıldı.
-              · Girişte CAPTCHA var → sunucu kendi kendine giremez.
-              · Oturum sessionStorage'da ve ~6-8 dakikada düşüyor → şifre saklamanın
-                anlamı yok; zaten saklanmıyor.
-              · Tarayıcı, panelin portal servislerini okumasına izin vermiyor (CORS) —
-                ama portalın KENDİ sayfasında çalışan kod okuyabiliyor.
-            Bu yüzden: girişi kullanıcı yapar, e-Tebligat ekranında yer imine tıklar,
-            yer imi listeyi okuyup panele gönderir. BELGE AÇILMAZ, yalnız liste okunur. */}
+        {/* ═══ PORTAL LİSTESİNİ AKTAR (EXCEL) ═══
+            NİYE EXCEL: portalda CAPTCHA var (09.11.2026'da ekranda görüldü), panel kendi
+            giremiyor; oturum da dakikalar içinde düşüyor. Yer imi yolu çalışıyordu ama
+            kurulumu zahmetli bulundu. Portal zaten "Excel'e Aktar" düğmesi veriyor —
+            en az adımlı ve en az kırılgan yol bu: indir, buraya bırak.
+            Dosya TARAYICIDA okunuyor, sunucuya yüklenmiyor. Belge indirilmiyor. */}
         {portalAcik && (
           <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-sm">
-            {!gecerliAnahtar ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <button type="button" disabled={islemde === "anahtar"}
-                  onClick={() => gonder({ islem: "portal-anahtar-uret" }, "anahtar")}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-3 h-8 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
-                  {islemde === "anahtar" ? <Loader2 size={12} className="animate-spin" /> : <LinkIcon size={12} />}
-                  Yer imini üret
-                </button>
-                <span className="text-xs text-gray-600">
-                  Tek seferlik kurulum, <b>tüm kullanıcılar için</b> geçerli.
-                  Vergi dairesi şifresi hiçbir yerde saklanmaz — portalda doğrulama kodu
-                  (CAPTCHA) olduğu için saklamanın faydası da yok, girişi kişi yapar.
-                </span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="font-medium text-[#1E3A5F]">
-                  Yer imi hazır — <b>tüm kullanıcılar için</b> aynı. Her kullanıcı kendi
-                  tarayıcısına bir kez kurar:
-                </div>
-                <ol className="list-decimal space-y-1 pl-5 text-xs text-gray-700">
-                  <li>Aşağıdaki bağlantıyı tarayıcınızın <b>yer imi çubuğuna sürükleyin</b>
-                    (ya da sağ tık → yer imi olarak ekle).</li>
-                  <li>Dijital Vergi Dairesi&apos;ne girip <b>e-Tebligat</b> sayfasını açın.</li>
-                  <li>Yer imine tıklayın. Liste panele düşer.</li>
-                </ol>
-                {/* href REACT ÜZERİNDEN VERİLMİYOR (09.11.2026). React, "javascript:" ile
-                    başlayan href'i güvenlik gereği temizliyor ve yerine
-                    "React has blocked a javascript: URL" fırlatan bir kod koyuyor —
-                    yer imi sürüklenip kullanıldığında sessizce çalışmıyordu. Bu yüzden
-                    adres, bağlama sonrası doğrudan DOM'a yazılıyor (aşağıdaki effect). */}
-                <a ref={yerImiRef} onClick={(e) => e.preventDefault()}
-                  title="Bu bağlantıyı yer imi çubuğuna sürükleyin"
-                  className="inline-flex cursor-grab items-center gap-1.5 rounded-lg border-2 border-dashed border-[#1E3A5F] bg-[#1E3A5F]/5 px-3 py-1.5 text-xs font-semibold text-[#1E3A5F]">
-                  <LinkIcon size={13} /> Vergi dairesi tebligatlarını aktar
-                </a>
-                {/* SÜRÜKLEMEK HER ZAMAN KOLAY DEĞİL: yer imi çubuğu kapalı olabilir,
-                    dokunmatik ekranda sürükleme hiç çalışmaz. Kopyala düğmesi ikinci
-                    yolu açıyor: yer imi çubuğuna sağ tık → "Sayfa ekle" → adres alanına
-                    yapıştır. (Adres çubuğuna yapıştırmak işe YARAMAZ, tarayıcılar
-                    "javascript:" önekini oradan siler — bu yüzden ayrıca yazıyor.) */}
-                <button type="button"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(yerImi);
-                      toast.success("Kopyalandı. Yer imi çubuğuna sağ tık → Sayfa ekle → adres alanına yapıştırın.",
-                        { duration: 12000 });
-                    } catch {
-                      // Panoya yazılamadıysa SÖYLENİR; "kopyalandı" deyip geçmek,
-                      // kullanıcının boş yapıştırmasına yol açardı.
-                      toast.error("Panoya kopyalanamadı. Bağlantıya sağ tıklayıp 'Bağlantı adresini kopyala' deyin.",
-                        { duration: 14000 });
-                    }
-                  }}
-                  className="ml-2 rounded-lg border border-gray-300 px-2.5 h-7 text-xs font-medium hover:bg-gray-50">
-                  Kopyala
-                </button>
-                <div className="text-[11px] text-gray-500">
-                  Sürükleyemiyorsanız: <b>Kopyala</b> → yer imi çubuğuna sağ tık →
-                  <b> Sayfa ekle</b> → adres alanına yapıştırın. Adres çubuğuna
-                  yapıştırmak işe yaramaz, tarayıcı &quot;javascript:&quot; önekini siler.
-                  Yer imi çubuğu kapalıysa <b>Ctrl + Shift + B</b>.
-                </div>
-                {/* OTURUM KISA: girişten hemen sonra tıklanmalı, yoksa 401 gelir.
-                    Bunu baştan söylemek, "çalışmıyor" sanılmasını önlüyor. */}
-                <div className="text-[11px] text-amber-800">
-                  Portal oturumu birkaç dakikada düşüyor — girişten <b>hemen sonra</b> tıklayın.
-                  Düşmüşse yer imi size &quot;oturum düşmüş&quot; der, sessiz kalmaz.
-                </div>
-                <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-gray-500">
-                  <span>Anahtar sonu: <b className="font-mono">…{anahtarSon4}</b></span>
-                  {portalDurum?.son_kullanim && (
-                    <span>Son aktarım: {gunSaat(portalDurum.son_kullanim)}
-                      {portalDurum.son_sonuc ? ` · ${portalDurum.son_sonuc}` : ""}</span>
-                  )}
-                  {portalDurum?.olusturan_ad && <span>Kuran: {portalDurum.olusturan_ad}</span>}
-                  {/* İPTAL HERKESİ ETKİLER: anahtar paylaşımlı olduğu için silmek, kurmuş
-                      olan herkesin yer imini çalışmaz hale getirir. Onay isteniyor. */}
-                  <button type="button"
-                    onClick={() => {
-                      if (!confirm("Bağlantı iptal edilsin mi? Bu anahtar TÜM KULLANICILAR için geçerli — "
-                        + "iptal ederseniz herkesin yer imi çalışmaz olur ve yenisini kurmaları gerekir."))
-                        return;
-                      setAnahtar(null);
-                      void gonder({ islem: "portal-anahtar-sil" }, "anahtar");
-                    }}
-                    className="underline underline-offset-2 hover:text-red-700">
-                    Bağlantıyı iptal et (herkes için)
-                  </button>
-                </div>
-              </div>
-            )}
+            <ol className="mb-3 list-decimal space-y-1 pl-5 text-xs text-gray-700">
+              <li><a href={GIB_GIRIS} target="_blank" rel="noopener noreferrer"
+                className="font-medium text-[#1E3A5F] underline underline-offset-2">Dijital Vergi Dairesi</a>
+                &apos;ne girip <b>e-Tebligat</b> sayfasını açın.</li>
+              <li>Listenin üstündeki <b>Excel&apos;e Aktar</b> düğmesine basın, dosya insin.</li>
+              <li>Firmayı seçip dosyayı aşağıya bırakın.</li>
+            </ol>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="text-xs text-gray-600">
+                Firma <span className="text-red-600">*</span>
+                {/* FİRMA ŞART: Excel'de VKN yok, hangi firmanın listesi olduğunu yalnız
+                    yükleyen kişi bilir. Tahminle bağlamak başka firmanın defterine
+                    yazmak demek olurdu. */}
+                <select value={yuklemeFirma} onChange={(e) => setYuklemeFirma(e.target.value)}
+                  className="mt-1 block w-56 rounded-lg border border-gray-300 px-2 h-8 text-sm">
+                  <option value="">— seçin —</option>
+                  {firmaListe.map((f) => (
+                    <option key={f.id} value={f.id}>{f.kisa_adi || f.firma_adi}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={`inline-flex items-center gap-1.5 rounded-lg px-3 h-8 text-xs font-medium ${
+                yuklemeFirma ? "cursor-pointer bg-[#1E3A5F] text-white hover:bg-[#162c47]"
+                             : "cursor-not-allowed bg-gray-200 text-gray-500"}`}>
+                {islemde === "excel" ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                Excel dosyasını seç
+                <input type="file" accept=".xlsx,.xls" className="hidden"
+                  disabled={!yuklemeFirma || islemde === "excel"}
+                  onChange={(e) => { const d = e.target.files?.[0]; e.target.value = ""; if (d) void excelAktar(d); }} />
+              </label>
+              {!yuklemeFirma && <span className="text-[11px] text-gray-500">Önce firma seçin.</span>}
+            </div>
+            <div className="mt-2 text-[11px] text-gray-500">
+              Dosya tarayıcınızda okunur, sunucuya yüklenmez. Aynı dosyayı tekrar
+              aktarabilirsiniz — var olan kayıtlar güncellenir, kopya oluşmaz.
+            </div>
           </div>
         )}
       </div>
@@ -485,8 +430,8 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
                 <td colSpan={isaretleyebilir ? 8 : 7} className="px-3 py-8 text-center text-gray-500">
                   {tebHepsi ? "Hiç tebligat kaydı yok." : "Açılmamış tebligat yok."}
                   <div className="mt-1 text-xs text-gray-400">
-                    Bu defter elle tutulur: Dijital Vergi Dairesi&apos;nde gördüğünüzü buraya yazın,
-                    süreyi panel takip etsin.
+                    Dijital Vergi Dairesi &rsaquo; e-Tebligat &rsaquo; <b>Excel&apos;e Aktar</b> ile
+                    inen dosyayı <b>Portal listesini aktar</b> düğmesinden yükleyin; süreyi panel takip etsin.
                   </div>
                 </td>
               </tr>
