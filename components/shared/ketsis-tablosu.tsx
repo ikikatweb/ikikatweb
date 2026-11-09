@@ -63,7 +63,8 @@ export default function KetsisTablosu() {
   // çalışmaya devam eder, yenisi üretilirse eski geçersiz olur.
   const [anahtar, setAnahtar] = useState<string | null>(null);
   const [portalDurum, setPortalDurum] = useState<
-    { kurulu: boolean; anahtar_son4?: string; son_kullanim?: string; son_sonuc?: string } | null>(null);
+    { kurulu: boolean; anahtar?: string; olusturan_ad?: string;
+      son_kullanim?: string; son_sonuc?: string } | null>(null);
 
   const yukle = useCallback(async () => {
     try {
@@ -104,7 +105,10 @@ export default function KetsisTablosu() {
   const suresiGecenTeb = acikTebligat.filter((t) => ketsisKalanGun(ketsisTebligGunu(t).gun) < 0).length;
 
   const yas = kontrolYasiGun(sonKontrol?.kontrol_at);
-  const anahtarSon4 = anahtar ? anahtar.slice(-4) : portalDurum?.anahtar_son4 ?? "";
+  // Anahtar kuruma ait: bir kez üretilir, HERKES aynı yer imini kurar. Bu yüzden
+  // sunucudan geri okunabiliyor (özet saklansaydı ikinci kullanıcı kuramazdı).
+  const gecerliAnahtar = anahtar ?? portalDurum?.anahtar ?? null;
+  const anahtarSon4 = gecerliAnahtar ? gecerliAnahtar.slice(-4) : "";
   const yerImiRef = useRef<HTMLAnchorElement | null>(null);
 
   // ═══ YER İMİ ═══ Portalın KENDİ sayfasında çalışır (aynı origin → CORS duvarı yok,
@@ -112,7 +116,7 @@ export default function KetsisTablosu() {
   // indirilmiyor, çünkü indirmek tebligatı açmak demek ve o karar insanın.
   // Sessiz başarı yok: sonuç da, oturum düşmesi de, atlanan kayıt da ekrana basılıyor.
   const yerImi = useMemo(() => {
-    if (!anahtar) return "";
+    if (!gecerliAnahtar) return "";
     const kod = `(async()=>{try{
 if(!location.hostname.endsWith("dijital.gib.gov.tr")){alert("Bu yer imi Dijital Vergi Dairesi sayfasinda calisir.");return;}
 var t=sessionStorage.getItem("token");
@@ -125,13 +129,13 @@ if(r.status===401){alert("Portal oturumu dusmus. Tekrar giris yapip HEMEN tiklay
 if(!r.ok){alert("Portal listesi alinamadi: HTTP "+r.status);return;}
 var j=await r.json();var d=(j&&j.data&&j.data.tebligatDtoList)||[];hepsi=hepsi.concat(d);
 var tp=(j&&j.pageDetail&&j.pageDetail.totalPage)||1;if(sf>=tp||d.length===0)break;}}
-var res=await fetch(${JSON.stringify(typeof window === "undefined" ? "" : window.location.origin)}+"/api/ketsis/portal-aktar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({anahtar:${JSON.stringify(anahtar)},vkn:vkn,kayitlar:hepsi})});
+var res=await fetch(${JSON.stringify(typeof window === "undefined" ? "" : window.location.origin)}+"/api/ketsis/portal-aktar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({anahtar:${JSON.stringify(gecerliAnahtar)},vkn:vkn,kayitlar:hepsi})});
 var jj=await res.json().catch(function(){return {};});
 if(!res.ok){alert("Panele yazilamadi: "+(jj.error||("HTTP "+res.status)));return;}
 alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla eslesmedi, kayitlar 'belirsiz' olarak girdi.")+((jj.atlanan&&jj.atlanan.length)?"\\n\\nAtlananlar:\\n"+jj.atlanan.join("\\n"):""));
 }catch(e){alert("Yer imi hata verdi: "+(e&&e.message?e.message:e));}})();`;
     return "javascript:" + encodeURIComponent(kod.replace(/\n/g, ""));
-  }, [anahtar]);
+  }, [gecerliAnahtar]);
 
   const kontrolGerekli = yas === null || yas >= KONTROL_ARALIGI_GUN;
 
@@ -150,7 +154,7 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
   // Yer imi adresini DOM'a doğrudan yaz (yukarıdaki nota bak: React href'i temizliyor).
   useEffect(() => {
     if (yerImiRef.current && yerImi) yerImiRef.current.setAttribute("href", yerImi);
-  }, [yerImi, portalAcik, anahtar]);
+  }, [yerImi, portalAcik, gecerliAnahtar]);
 
   // Yer imi kurulu mu, en son ne zaman çalıştı, sonucu neydi? HAM ANAHTAR DÖNMEZ —
   // yalnız son 4 hanesi, "doğru yer imini mi kullanıyorum" sorusuna yetsin diye.
@@ -292,7 +296,7 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
             yer imi listeyi okuyup panele gönderir. BELGE AÇILMAZ, yalnız liste okunur. */}
         {portalAcik && (
           <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-sm">
-            {!anahtar ? (
+            {!gecerliAnahtar ? (
               <div className="flex flex-wrap items-center gap-3">
                 <button type="button" disabled={islemde === "anahtar"}
                   onClick={() => gonder({ islem: "portal-anahtar-uret" }, "anahtar")}
@@ -301,12 +305,17 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
                   Yer imini üret
                 </button>
                 <span className="text-xs text-gray-600">
-                  Tek seferlik kurulum. Şifreniz hiçbir yerde saklanmaz.
+                  Tek seferlik kurulum, <b>tüm kullanıcılar için</b> geçerli.
+                  Vergi dairesi şifresi hiçbir yerde saklanmaz — portalda doğrulama kodu
+                  (CAPTCHA) olduğu için saklamanın faydası da yok, girişi kişi yapar.
                 </span>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="font-medium text-[#1E3A5F]">Yer imi hazır — kurulumu bir kez yapın:</div>
+                <div className="font-medium text-[#1E3A5F]">
+                  Yer imi hazır — <b>tüm kullanıcılar için</b> aynı. Her kullanıcı kendi
+                  tarayıcısına bir kez kurar:
+                </div>
                 <ol className="list-decimal space-y-1 pl-5 text-xs text-gray-700">
                   <li>Aşağıdaki bağlantıyı tarayıcınızın <b>yer imi çubuğuna sürükleyin</b>
                     (ya da sağ tık → yer imi olarak ekle).</li>
@@ -362,9 +371,19 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
                     <span>Son aktarım: {gunSaat(portalDurum.son_kullanim)}
                       {portalDurum.son_sonuc ? ` · ${portalDurum.son_sonuc}` : ""}</span>
                   )}
-                  <button type="button" onClick={() => { setAnahtar(null); void gonder({ islem: "portal-anahtar-sil" }, "anahtar"); }}
+                  {portalDurum?.olusturan_ad && <span>Kuran: {portalDurum.olusturan_ad}</span>}
+                  {/* İPTAL HERKESİ ETKİLER: anahtar paylaşımlı olduğu için silmek, kurmuş
+                      olan herkesin yer imini çalışmaz hale getirir. Onay isteniyor. */}
+                  <button type="button"
+                    onClick={() => {
+                      if (!confirm("Bağlantı iptal edilsin mi? Bu anahtar TÜM KULLANICILAR için geçerli — "
+                        + "iptal ederseniz herkesin yer imi çalışmaz olur ve yenisini kurmaları gerekir."))
+                        return;
+                      setAnahtar(null);
+                      void gonder({ islem: "portal-anahtar-sil" }, "anahtar");
+                    }}
                     className="underline underline-offset-2 hover:text-red-700">
-                    Bağlantıyı iptal et
+                    Bağlantıyı iptal et (herkes için)
                   </button>
                 </div>
               </div>

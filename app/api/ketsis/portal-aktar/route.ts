@@ -17,7 +17,6 @@
 // şey yazmamak, en tehlikeli sonuç olurdu.
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createHash } from "crypto";
 
 const KAYNAK = "https://dijital.gib.gov.tr";
 
@@ -67,21 +66,19 @@ export async function POST(request: Request) {
 
   // ───────── kimlik ─────────
   if (!g.anahtar) return yanit({ error: "Anahtar yok. Yer imini panelden yeniden üretin." }, 401);
-  const ozet = createHash("sha256").update(g.anahtar).digest("hex");
-  const { data: sahip, error: anahtarHata } = await sb
-    .from("ketsis_portal_anahtar").select("kullanici_id").eq("anahtar_ozet", ozet).maybeSingle();
+  const { data: kayit, error: anahtarHata } = await sb
+    .from("ketsis_portal_anahtar").select("anahtar").eq("id", 1).maybeSingle();
   // Hata YUTULMAZ: "anahtar yanlış" ile "veritabanı patladı" aynı şey değil.
   if (anahtarHata) return yanit({ error: `Anahtar doğrulanamadı: ${anahtarHata.message}` }, 500);
-  if (!sahip) return yanit({ error: "Anahtar tanınmadı. Panelden yeni yer imi üretin." }, 401);
-
-  const { data: kul } = await sb.from("kullanicilar")
-    .select("ad_soyad").eq("id", sahip.kullanici_id).maybeSingle();
+  if (!kayit || kayit.anahtar !== g.anahtar) {
+    return yanit({ error: "Anahtar tanınmadı. Panelden yeni yer imi üretip kurun." }, 401);
+  }
 
   const kayitlar = Array.isArray(g.kayitlar) ? g.kayitlar : [];
   const durumYaz = async (sonuc: string) => {
     await sb.from("ketsis_portal_anahtar")
       .update({ son_kullanim: new Date().toISOString(), son_sonuc: sonuc.slice(0, 500) })
-      .eq("kullanici_id", sahip.kullanici_id);
+      .eq("id", 1);
   };
 
   if (kayitlar.length === 0) {
@@ -127,8 +124,10 @@ export async function POST(request: Request) {
       // o yüzden okuyan adı yazılmıyor; uydurulmuyor da.
       okundu_at: k.mukellefOkumaZamani
         ? new Date(tarih(k.mukellefOkumaZamani) + "T00:00:00").toISOString() : null,
-      kaydeden_id: sahip.kullanici_id,
-      kaydeden_ad: kul?.ad_soyad ?? null,
+      // KİM AKTARDI BİLİNMİYOR: anahtar paylaşımlı, tıklayan kişi ayırt edilemiyor.
+      // Rastgele bir isim yazmaktansa boş bırakılıyor; ekranda "yer imi" görünür.
+      kaydeden_id: null,
+      kaydeden_ad: "yer imi (portal aktarımı)",
     });
   }
 
@@ -146,7 +145,7 @@ export async function POST(request: Request) {
 
   // Bu aktarım aynı zamanda bir "baktım" kaydıdır: kişi portala girip listeyi görmüştür.
   await sb.from("ketsis_kontrol").insert({
-    kullanici_id: sahip.kullanici_id, kullanici_ad: kul?.ad_soyad ?? null,
+    kullanici_id: null, kullanici_ad: "yer imi (portal aktarımı)",
     bulgu: satirlar.length > 0 ? "tebligat_var" : "temiz",
     notlar: `Portal aktarımı: ${satirlar.length} kayıt (${yeniSayi} yeni)`,
   });

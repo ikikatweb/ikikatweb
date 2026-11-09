@@ -12,7 +12,7 @@
 //   bildirim-ilgisiz: aday yanlış çıktı, satır listeden düşsün. Yetki: "düzenle".
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { hasPermission, type Rol } from "@/lib/permissions";
 import type { Izinler } from "@/lib/supabase/types";
@@ -157,31 +157,40 @@ export async function POST(request: Request) {
   // gitmiyor. Bu yüzden yazma yetkisini kullanıcıya özel bir anahtar taşıyor.
   // ANAHTAR BİR KEZ GÖSTERİLİR: veritabanında yalnız sha256 özeti durduğu için
   // sonradan geri okunamaz — kaybolursa yenisi üretilir, eskisi geçersiz olur.
+  // ANAHTAR KURUMA AİT, KİŞİYE DEĞİL: bir kez üretilir, panele giren herkes aynı yer
+  // imini kullanır (bkz. sql/ketsis_portal_paylasimli.sql). Yeniden üretmek ESKİSİNİ
+  // GEÇERSİZ KILAR — herkesin yer imini yenilemesi gerekir, o yüzden ekranda uyarılıyor.
   if (g.islem === "portal-anahtar-uret") {
     if (!duzenler) {
       return NextResponse.json(
         { error: "Portal bağlantısı kurmak için E-Tebligat düzenleme yetkisi gerekir." }, { status: 403 });
     }
     const ham = randomBytes(24).toString("base64url");
-    const ozet = createHash("sha256").update(ham).digest("hex");
     const { error } = await sb.from("ketsis_portal_anahtar").upsert({
-      kullanici_id: k.id, anahtar_ozet: ozet, anahtar_son4: ham.slice(-4),
+      id: 1, anahtar: ham, olusturan_id: k.id, olusturan_ad: k.ad_soyad,
       created_at: new Date().toISOString(), son_kullanim: null, son_sonuc: null,
-    }, { onConflict: "kullanici_id" });
+    }, { onConflict: "id" });
     if (error) return NextResponse.json({ error: `Anahtar üretilemedi: ${error.message}` }, { status: 500 });
     return NextResponse.json({ durum: "uretildi", anahtar: ham });
   }
 
   if (g.islem === "portal-anahtar-sil") {
-    const { error } = await sb.from("ketsis_portal_anahtar").delete().eq("kullanici_id", k.id);
+    if (!duzenler) {
+      return NextResponse.json(
+        { error: "Bağlantıyı iptal etmek için E-Tebligat düzenleme yetkisi gerekir." }, { status: 403 });
+    }
+    const { error } = await sb.from("ketsis_portal_anahtar").delete().eq("id", 1);
     if (error) return NextResponse.json({ error: `İptal edilemedi: ${error.message}` }, { status: 500 });
     return NextResponse.json({ durum: "silindi" });
   }
 
-  // Durum: anahtar var mı, en son ne zaman kullanıldı, sonucu neydi. HAM ANAHTAR DÖNMEZ.
+  // Durum + ANAHTARIN KENDİSİ. Paylaşımlı olduğu için geri okunabilmesi şart; yoksa
+  // ikinci kullanıcı yer imini kuramaz. Anahtarın yapabildiği tek şey tebligat listesini
+  // deftere yazmak — veri okuyamaz, silemez. Yine de yalnız görüntüleme yetkisi olana
+  // veriliyor ve tabloya tarayıcıdan doğrudan erişim yok (RLS, politikasız).
   if (g.islem === "portal-durum") {
     const { data, error } = await sb.from("ketsis_portal_anahtar")
-      .select("anahtar_son4, created_at, son_kullanim, son_sonuc").eq("kullanici_id", k.id).maybeSingle();
+      .select("anahtar, olusturan_ad, created_at, son_kullanim, son_sonuc").eq("id", 1).maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ kurulu: !!data, ...(data ?? {}) });
   }
