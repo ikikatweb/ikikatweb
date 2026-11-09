@@ -14,6 +14,7 @@ import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
+import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { Button } from "@/components/ui/button";
 
@@ -114,6 +115,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // Kaydet denendi ve cevap bölümünde eksik vardı — kutular kırmızıya boyanır
   // (uyarı balonu değil, hızlı pencereyle aynı davranış).
   const [cevapDenendi, setCevapDenendi] = useState(false);
+  // AÇILIŞTAKİ HALİ: pencere kazara kapanırken "bir şey yazılmış mıydı" sorusu.
+  const [baslangic, setBaslangic] = useState("");
   // Düzenlenen kaydın avukat maili daha önce gitti mi? Gittiyse Kaydet tekrar
   // göndermez — her düzenlemede avukata aynı mailin gitmesi hem gereksiz hem de
   // "hangisi geçerli" karışıklığı yaratır.
@@ -223,21 +226,26 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
 
   // ---- Dialog ----
   function dialogAc(row?: IcraKayit) {
+    let ilkForm: IcraForm = BOS_FORM;
+    let ilkCevap: CevapAlanlari = BOS_CEVAP;
     if (row) {
       setEditId(row.id);
-      setForm({
+      ilkForm = {
         ucuncu_sahis: row.ucuncu_sahis ?? "", dosya_esas_no: row.dosya_esas_no ?? "",
         gelen_yazi_tarihi: row.gelen_yazi_tarihi ?? "", teblig_tarihi: row.teblig_tarihi ?? "",
         alacakli_adi: row.alacakli_adi ?? "", alacakli_vergi_no: row.alacakli_vergi_no ?? "",
         borclu_adi: row.borclu_adi ?? "", borclu_tc_no: row.borclu_tc_no ?? "",
         borc_miktari: sayiToInput(Number(row.borc_miktari || 0)),
-      });
-      setCevap({
+      };
+      ilkCevap = {
         cevap_sekli: row.cevap_sekli ?? "", cevap_tarihi: row.cevap_tarihi ?? "",
         evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
         banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "", avukat_notu: row.avukat_notu ?? "",
-      });
+      };
+      setForm(ilkForm);
+      setCevap(ilkCevap);
     } else { setEditId(null); setForm(BOS_FORM); setCevap(BOS_CEVAP); }
+    setBaslangic(JSON.stringify([ilkForm, ilkCevap]));
     setCevapDenendi(false);
     setKilitli(false); // normal aç (kalem/yeni) → kilitsiz; ?kilit=1 efekti sonra true yapar
     setDialogAcik(true);
@@ -579,7 +587,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       {/* Öneri listeleri (form alanları için) */}
 
       {/* EKLE / DÜZENLE PENCERESİ */}
-      <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
+      {/* KAZARA KAPANMA: dışarı dokunmak ya da ESC, doldurulan formu sessizce
+          siliyordu — uzun bir icra kaydını baştan yazmak gerekiyordu. */}
+      <Dialog open={dialogAcik} onOpenChange={(a, d) => {
+        if (a) { setDialogAcik(true); return; }
+        if (!kapanabilir(d, !ayniMi(JSON.stringify([form, cevap]), baslangic))) return;
+        setDialogAcik(false);
+      }}>
         <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Gavel size={18} /> {editId ? "İcra Dosyasını Düzenle" : "Yeni İcra Dosyası"}</DialogTitle>

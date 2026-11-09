@@ -23,7 +23,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import OdemeEmriIslemDialog from "@/components/shared/odeme-emri-islem-dialog";
-import { sonGunHesapla, gunFarki, bugunISO } from "@/lib/utils/icra-sure";
+import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi } from "@/lib/utils/icra-sure";
 import { formatBaslik } from "@/lib/utils/isim";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,6 +37,18 @@ const kisalt = (v: string | null) => {
   // biçimlendiriciye girer ve son sözcük yarım büyük harfle kalırdı.
   const t = formatBaslik(v).trim();
   return t.length > KISALT ? t.slice(0, KISALT).trimEnd() + "…" : t;
+};
+
+/**
+ * "dosya no · icra dairesi" — 50 karakterde kırpılır.
+ * NİYE: Niğde dosyasında daire adı barkod numarasıyla birlikte geliyor
+ * ("Niğde İcra Dairesi-4005390295742-0-2022/2072") ve satır kartı aşıp altta
+ * sağ-sol kaydırma çubuğu çıkarıyordu. Tamamı title'da (üstüne gelince).
+ */
+const DOSYA_KISALT = 50;
+const dosyaKisalt = (dosya: string | null, daire: string | null) => {
+  const t = [dosya, daire].filter(Boolean).join(" · ");
+  return t.length > DOSYA_KISALT ? t.slice(0, DOSYA_KISALT).trimEnd() + "…" : t;
 };
 
 /** Son itiraz günü (ISO) — tebliğ + belgede yazan süre. Süre yoksa null. */
@@ -139,6 +151,9 @@ export default function OdemeEmriDashboard() {
         <p className="text-sm text-gray-400 animate-pulse">Yükleniyor...</p>
       ) : (
         <div className="relative flex-1 min-h-[220px]">
+          {/* YATAY ÇUBUĞU GİZLEMİYORUZ: overflow-x-hidden dar pencerede en sağdaki
+              Takip Tutarı sütununu görünmez yapıyor. Çubuğun sebebi uzun daire adıydı
+              (barkodla birlikte geliyor); o 50 karakterde kesiliyor. */}
           <div className="absolute inset-0 overflow-y-auto">
           <Table noWrapper className="text-xs text-gray-900">
             <TableHeader><TableRow className="bg-white">
@@ -152,9 +167,13 @@ export default function OdemeEmriDashboard() {
               {bekleyen.map((s) => {
                 const kalan = kalanGun(s);
                 const gecti = kalan != null && kalan < 0;
-                const acil = kalan != null && kalan >= 0 && kalan <= 2;
+                // RENK İCRA KARTIYLA AYNI KURAL: sarı, son günden bir gün önce
+                // başlar ve o gün hafta sonuna denk gelirse CUMAYA çekilir.
+                // "2 gün kala" gibi ayrı bir eşik iki kartı farklı davrandırıyordu.
+                const yaklasti = !gecti && hatirlatmaZamaniMi(sonGun(s));
                 return (
-                  <TableRow key={s.id} className={gecti ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
+                  <TableRow key={s.id} className={gecti ? "bg-red-100 hover:bg-red-200"
+                    : yaklasti ? "bg-amber-100 hover:bg-amber-200" : "hover:bg-gray-50"}>
                     {/* SOL ŞERİT: borçlu firmanın tanımlı rengi. Hücre kenarlığı değil,
                         "Eksik Evrak" kartındaki ince dikey çubuğun aynısı — panelde
                         firma rengi her yerde bu biçimde gösteriliyor. */}
@@ -165,14 +184,19 @@ export default function OdemeEmriDashboard() {
                           title={s.borclu_firma ? `Borçlu firma: ${s.borclu_firma}` : "Firma rengi tanımlı değil"} />
                         <div className="min-w-0">
                           {/* Etiket başında — İcra kartıyla aynı, satır yüksekliği düşük. */}
-                          <div className={`whitespace-nowrap ${gecti ? "text-red-700" : "text-[#1E3A5F]"}`}
+                          <div className={`whitespace-nowrap ${gecti ? "text-red-700" : yaklasti ? "text-amber-800" : "text-[#1E3A5F]"}`}
                             title={s.alacakli_adi ?? ""}>
                             <span className="text-[9px] text-gray-400">Alacaklı: </span>
                             <span className="font-medium">{kisalt(s.alacakli_adi) || "—"}</span>
                           </div>
-                          <div className="text-[10px] text-gray-500 truncate"
+                          {/* İKİNCİ SATIR İCRA KARTIYLA AYNI BİÇİMDE: orada
+                              "Alacaklı: …" satırı normal punto, burada dosya satırı
+                              10px'ti; iki kart yan yana duruyor ve satır yükseklikleri
+                              tutmuyordu (38px / 41px). Etiket başta, metin normal punto. */}
+                          <div className="text-gray-700 whitespace-nowrap"
                             title={`${s.icra_dairesi ?? ""} · ${s.dosya_esas_no ?? ""}`}>
-                            {s.dosya_esas_no} · {s.icra_dairesi}
+                            <span className="text-[9px] text-gray-400">Dosya: </span>
+                            <span className="font-medium">{dosyaKisalt(s.dosya_esas_no, s.icra_dairesi)}</span>
                           </div>
                         </div>
                       </div>
@@ -183,10 +207,10 @@ export default function OdemeEmriDashboard() {
                         <span className="text-gray-400" title="Belgede itiraz süresi yazmıyor — gün uydurulmadı">belgede yok</span>
                       ) : (
                         <>
-                          <div className={gecti ? "text-red-700 font-semibold" : acil ? "text-amber-700 font-semibold" : "text-gray-600"}>
+                          <div className={gecti ? "text-red-700 font-semibold" : yaklasti ? "text-amber-700 font-semibold" : "text-gray-600"}>
                             {tarihGoster(sonGun(s))}
                           </div>
-                          <div className={`text-[9px] ${gecti ? "text-red-600 font-semibold" : acil ? "text-amber-700" : "text-gray-400"}`}
+                          <div className={`text-[9px] ${gecti ? "text-red-600 font-semibold" : yaklasti ? "text-amber-700" : "text-gray-400"}`}
                             title={`Süre tebligat belgesinde yazıyor: ${s.itiraz_suresi_gun} gün.`}>
                             {gecti ? `⚠ ${-kalan} gün geçti` : kalan === 0 ? "⚠ bugün son gün" : `${kalan} gün kaldı`}
                           </div>

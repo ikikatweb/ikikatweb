@@ -14,7 +14,7 @@ import {
 } from "@/lib/supabase/queries/icra";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { createClient } from "@/lib/supabase/client";
-import { sonGunHesapla, gunFarki, bugunISO, VARSAYILAN_CEVAP_SURESI } from "@/lib/utils/icra-sure";
+import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi, VARSAYILAN_CEVAP_SURESI } from "@/lib/utils/icra-sure";
 // YAZIM BİÇİMİ: borçlu kişi adı TÜMÜ BÜYÜK (defterde öne çıksın), alacaklı ünvanı
 // Başlık Biçimi. Kayıt değişmiyor, yalnız gösterim — veritabanında ne yazıldıysa o duruyor.
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
@@ -30,8 +30,6 @@ const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") 
 // türde farklı süre çıkarsa sabit yanlış tarih gösterir ve insan ona güvenir.
 // Belge okunmamış eski kayıtlarda (cevap_suresi_gun boş) bu sabite düşülüyor.
 /** Son 2 gün kırmızı: 7 günlük sürede 6. günden itibaren. */
-const acilEsik = (sure: number) => Math.max(1, sure - 1);
-const tebligGunGecen = (v: string | null) => (v ? gunFarki(v, bugunISO()) : null);
 
 export default function IcraDashboard() {
   const { isYonetici, hasPermission } = useAuth();
@@ -90,8 +88,11 @@ export default function IcraDashboard() {
   const bekleyen = useMemo(
     () => satirlar
       .filter((s) => !(s.cevap_tarihi ?? "").trim())
-      // En acil üste: tebliği en eski (süresi en çok dolmuş) önce. Tebliğ yoksa gelen yazı tarihine düş.
-      .sort((a, b) => (a.teblig_tarihi ?? a.gelen_yazi_tarihi ?? "").localeCompare(b.teblig_tarihi ?? b.gelen_yazi_tarihi ?? "")),
+      // EN SON GELEN EN ÜSTTE: panelin her yerinde liste böyle sıralı, kullanıcı
+      // yeni gelen dosyayı listenin dibinde aramak zorunda kalmasın. (Süresi en
+      // çok dolmuş olan kırmızı "… gün geçti" yazısıyla zaten ayırt ediliyor.)
+      // Tebliğ yoksa gelen yazı tarihine düşülür.
+      .sort((a, b) => (b.teblig_tarihi ?? b.gelen_yazi_tarihi ?? "").localeCompare(a.teblig_tarihi ?? a.gelen_yazi_tarihi ?? "")),
     [satirlar],
   );
 
@@ -142,17 +143,22 @@ export default function IcraDashboard() {
             </TableRow></TableHeader>
             <TableBody>
               {bekleyen.map((s) => {
-                const gecen = tebligGunGecen(s.teblig_tarihi);
                 // Süre: belgede yazan. Yoksa varsayılan (yukarıdaki nota bak).
                 const sure = s.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI;
                 const belgedenMi = s.cevap_suresi_gun != null;
-                const acil = gecen != null && gecen >= acilEsik(sure);
                 const sonCevapGunu = sonGunHesapla(s.teblig_tarihi, sure);
                 const kalan = sonCevapGunu ? gunFarki(bugunISO(), sonCevapGunu) : null;
+                // RENK ANA SAYFADAKİ UYARIYLA AYNI KURAL: süre doluyorsa sarı,
+                // geçtiyse kırmızı, daha vakit varsa renksiz. Sarının başladığı gün
+                // hafta sonuna denk gelirse CUMAYA çekilir (hatirlatmaZamaniMi) —
+                // cumartesi çıkan sarı uyarıya elden bir şey gelmiyor. Eskiden
+                // bütün satırlar kırmızıydı; hepsi kırmızı olunca hiçbiri ayırt edilmiyordu.
                 const gecti = kalan != null && kalan < 0;
+                const yaklasti = !gecti && hatirlatmaZamaniMi(sonCevapGunu);
                 const baglam = baglamlar.get(icraBorcluAnahtar(s.borclu_tc_no, s.borclu_adi));
                 return (
-                <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
+                <TableRow key={s.id} className={gecti ? "bg-red-100 hover:bg-red-200"
+                  : yaklasti ? "bg-amber-100 hover:bg-amber-200" : "hover:bg-gray-50"}>
                   {/* SOL ŞERİT: yazının geldiği ÜÇÜNCÜ ŞAHIS firmasının rengi
                       (yukarıdaki nota bakın). Hücre kenarlığı değil, "Eksik Evrak"
                       kartındaki ince dikey çubuğun aynısı — panelde firma rengi her
@@ -166,7 +172,7 @@ export default function IcraDashboard() {
                     {/* ETİKET AYRI SATIRDA DEĞİL, BAŞINDA: "Borçlu" ve "Alacaklı" kendi
                         satırlarındayken her kayıt dört satır yer kaplıyordu; yan yana
                         yazılınca ikiye indi ve kutuya daha çok dosya sığıyor. */}
-                    <div className={`truncate max-w-[180px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>
+                    <div className={`truncate max-w-[180px] ${gecti ? "text-red-700" : yaklasti ? "text-amber-800" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>
                       <span className="text-[9px] text-gray-400">Borçlu: </span>
                       <span className="font-medium">{formatBuyukHarf(s.borclu_adi) || "—"}</span>
                     </div>
@@ -197,10 +203,10 @@ export default function IcraDashboard() {
                   <TableCell className="px-2 py-1 text-center whitespace-nowrap">
                     {sonCevapGunu ? (
                       <>
-                        <div className={gecti ? "text-red-700 font-semibold" : acil ? "text-amber-700 font-semibold" : "text-gray-600"}>
+                        <div className={gecti ? "text-red-700 font-semibold" : yaklasti ? "text-amber-700 font-semibold" : "text-gray-600"}>
                           {tarihGoster(sonCevapGunu)}
                         </div>
-                        <div className={`text-[9px] ${gecti ? "text-red-600 font-semibold" : acil ? "text-amber-700" : "text-gray-400"}`}
+                        <div className={`text-[9px] ${gecti ? "text-red-600 font-semibold" : yaklasti ? "text-amber-700" : "text-gray-400"}`}
                           title={belgedenMi
                             ? `Süre tebligat belgesinde yazıyor: ${sure} gün.`
                             : `Belge okunmadığı için varsayılan ${sure} gün kullanılıyor; gerçek süre belgede yazar.`}>

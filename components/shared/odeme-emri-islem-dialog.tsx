@@ -20,6 +20,7 @@ import { DURUMLAR } from "@/components/shared/icra-sirket-tablosu";
 import { icraDegisti } from "@/hooks";
 import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { formatBaslik } from "@/lib/utils/isim";
 import { sonGunHesapla } from "@/lib/utils/icra-sure";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -42,7 +43,10 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
   const [durum, setDurum] = useState<IcraSirketDurum>("yeni");
   const [aciklama, setAciklama] = useState("");
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // AÇILIŞTAKİ HALİ: kazara kapanışta "bir şey yazılmış mıydı" sorusunun cevabı.
+  const [baslangic, setBaslangic] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
+  const simdiki = JSON.stringify([itirazTarihi, itirazSekli, evrakNo, odenen, odemeTarihi, durum, aciklama]);
 
   useEffect(() => {
     if (!acik || !kayit) return;
@@ -53,7 +57,10 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
     setDurum(kayit.durum);
     setAciklama(kayit.aciklama ?? "");
     const t = Number(kayit.odenen_tutar || 0);
-    setOdenen(t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "");
+    const tutar = t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "";
+    setOdenen(tutar);
+    setBaslangic(JSON.stringify([kayit.itiraz_tarihi ?? "", kayit.itiraz_sekli ?? "", kayit.evrak_no ?? "",
+      tutar, kayit.odeme_tarihi ?? "", kayit.durum, kayit.aciklama ?? ""]));
   }, [acik, kayit]);
 
   function formEnter(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -101,7 +108,12 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
   const salt = "text-sm text-gray-800";
 
   return (
-    <Dialog open={acik} onOpenChange={(a) => { if (!a) kapat(); }}>
+    // KAZARA KAPANMA: dışarı dokunmak ya da ESC, yazılanı sessizce siliyordu.
+    <Dialog open={acik} onOpenChange={(a, d) => {
+      if (a) return;
+      if (!kapanabilir(d, !ayniMi(simdiki, baslangic))) return;   // vazgeçildi → açık kalsın
+      kapat();
+    }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle — Şirkete Açılan Takip</DialogTitle></DialogHeader>
 

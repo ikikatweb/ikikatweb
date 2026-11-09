@@ -20,6 +20,7 @@ import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { icraDegisti } from "@/hooks";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,8 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   kaydedildi: (yama: Partial<IcraKayit>) => void;
 }) {
   const [v, setV] = useState<CevapAlanlari>(BOS_CEVAP);
+  // AÇILIŞTAKİ HALİ: kazara kapanışta "bir şey yazılmış mıydı" sorusunun cevabı.
+  const [baslangic, setBaslangic] = useState<CevapAlanlari>(BOS_CEVAP);
   const [sekiller, setSekiller] = useState<string[]>(CEVAP_VARSAYILAN);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   // KAYDET DENENDİ Mİ: eksik alanlar uyarı balonuyla değil, kutuları kırmızıya
@@ -59,7 +62,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   useEffect(() => {
     if (!acik || !kayit) return;
     setDenendi(false);
-    setV({
+    const ilk: CevapAlanlari = {
       cevap_sekli: kayit.cevap_sekli ?? "",
       cevap_tarihi: kayit.cevap_tarihi ?? "",
       evrak_no: kayit.evrak_no ?? "",
@@ -67,7 +70,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       banka_adi: kayit.banka_adi ?? "",
       avukat_id: kayit.avukat_id ?? "",
       avukat_notu: kayit.avukat_notu ?? "",
-    });
+    };
+    setV(ilk);
+    setBaslangic(ilk);
   }, [acik, kayit]);
 
   const kip = cevapKipi(v.cevap_sekli);
@@ -150,7 +155,12 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   const salt = "text-sm text-gray-800";
 
   return (
-    <Dialog open={acik} onOpenChange={(a) => { if (!a) kapat(); }}>
+    // KAZARA KAPANMA: dışarı dokunmak ya da ESC, yazılanı sessizce siliyordu.
+    <Dialog open={acik} onOpenChange={(a, d) => {
+      if (a) return;
+      if (!kapanabilir(d, !ayniMi(v, baslangic))) return;   // vazgeçildi → açık kalsın
+      kapat();
+    }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle</DialogTitle></DialogHeader>
 
