@@ -205,8 +205,8 @@ export default function KetsisTablosu() {
               <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
               <th className="px-3 py-2 font-medium">Konu / özet</th>
               <th className="px-3 py-2 font-medium">Güven</th>
-              <th className="px-3 py-2 font-medium">Durum</th>
               <th className="px-3 py-2 font-medium" />
+              <th className="px-3 py-2 font-medium">Durum</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -258,7 +258,10 @@ export default function KetsisTablosu() {
                       duruyor ("Tarafınıza Emniyet Genel Müdürlüğü adına …") ve çekiliyor.
                       Trafik cezası mı, vergi dairesi yazısı mı: listeye bakınca görülsün.
                       Kurum okunamadıysa eski davranış sürer, robot adresi yazar. */}
-                  <div className="font-medium">{s.gonderen_kurum ?? s.gonderen ?? "—"}</div>
+                  {/* GÖNDEREN GENİŞ: "Emniyet Genel Müdürlüğü" dar sütunda üç satıra
+                      bölünüyordu. Yer konudan alındı — konu her satırda neredeyse aynı
+                      ("KETSİS Tebliğ Bilgilendirme İletisi"), ayırt edici olan kurum. */}
+                  <div className="min-w-[10rem] font-medium">{s.gonderen_kurum ?? s.gonderen ?? "—"}</div>
                   {s.gonderen_kurum
                     ? <div className="text-[11px] text-gray-500">GİB üzerinden</div>
                     : s.gonderen_adres && (
@@ -299,9 +302,11 @@ export default function KetsisTablosu() {
                       belge {s.belge_no}
                     </div>
                   )}
-                  <div className="font-medium">{s.konu ?? "—"}</div>
+                  {/* KONU KISALDI: her satırda aynı kalıp yazıyor, ayırt edici bilgi
+                      zaten üstteki belge numarası. Tamamı title'da duruyor. */}
+                  <div className="max-w-[18rem] truncate font-medium" title={s.konu ?? ""}>{s.konu ?? "—"}</div>
                   {s.ozet && (
-                    <div className="mt-0.5 max-w-[32rem] truncate text-[11px] text-gray-500" title={s.ozet}>
+                    <div className="mt-0.5 max-w-[18rem] truncate text-[11px] text-gray-500" title={s.ozet}>
                       {s.ozet}
                     </div>
                   )}
@@ -318,6 +323,38 @@ export default function KetsisTablosu() {
                       <ShieldQuestion size={11} /> aday
                     </span>
                   )}
+                </td>
+                {/* AÇ VE OKU — doğrudan Dijital Vergi Dairesi GİRİŞ ekranına, YENİ SEKMEDE.
+                    Belge panele inmiyor: KETSİS'in alıcı tarafı için API yok, tebligat
+                    yalnız o ekranda okunuyor. Düğme yolu kısaltıyor, belgeyi getirmiyor —
+                    adı "Aç ve oku" ama açan kullanıcı, panel değil.
+                    Portala giriş CAPTCHA istiyor (09.11.2026'da ölçüldü), o yüzden
+                    doğrudan belgeye değil giriş ekranına gidiliyor; aradaki adımları
+                    panelin geçmesi mümkün değil.
+                    Belge no satırda yazıyor: girişten sonra hangi satıra bakılacağı belli. */}
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {/* BASAN KİŞİ KAYDA GEÇER (09.11.2026): tıklayınca satır işaretleniyor,
+                      Durum sütununda kim ne zaman bastığı yazıyor. "Bu bildirime kimse
+                      gitmedi mi" sorusu böylece cevaplanıyor.
+                      BU BİR VARSAYIMDIR VE SINIRI VAR: düğmeye basmak portala GİTMEK
+                      demek, tebligatı OKUMUŞ olmak demek değil — kişi giriş ekranında
+                      vazgeçebilir. Metin bu yüzden "bakıldı" diyor, "okundu" demiyor.
+                      <a> olarak kalıyor (button + window.open değil): sekmeyi tarayıcı
+                      kendi açıyor, açılır pencere engelleyicisine takılmıyor; kayıt
+                      isteği arkadan gidiyor, sekmeyi geciktirmiyor. */}
+                  <a href={GIB_GIRIS_EKRANI} target="_blank" rel="noopener noreferrer"
+                    onClick={() => {
+                      if (isaretleyebilir && s.durum === "yeni") {
+                        void gonder({ islem: "bildirim-kontrol", id: s.id,
+                          notlar: "Aç ve oku ile Dijital Vergi Dairesi'ne gidildi" }, s.id);
+                      }
+                    }}
+                    title={s.belge_no
+                      ? `Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır. Giriş yapınca ${s.belge_no} numaralı belgeye bakın. Bastığınız kayda geçer.`
+                      : "Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır."}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E3A5F]/30 bg-white px-2.5 h-7 text-xs font-medium text-[#1E3A5F] hover:bg-[#1E3A5F]/5">
+                    Aç ve oku <ExternalLink size={12} />
+                  </a>
                 </td>
                 <td className="px-3 py-2">
                   {s.durum === "yeni" ? (
@@ -347,23 +384,6 @@ export default function KetsisTablosu() {
                   ) : (
                     <span className="text-xs text-gray-400">ilgisiz</span>
                   )}
-                </td>
-                {/* AÇ VE OKU — doğrudan Dijital Vergi Dairesi GİRİŞ ekranına, YENİ SEKMEDE.
-                    Belge panele inmiyor: KETSİS'in alıcı tarafı için API yok, tebligat
-                    yalnız o ekranda okunuyor. Düğme yolu kısaltıyor, belgeyi getirmiyor —
-                    adı "Aç ve oku" ama açan kullanıcı, panel değil.
-                    Portala giriş CAPTCHA istiyor (09.11.2026'da ölçüldü), o yüzden
-                    doğrudan belgeye değil giriş ekranına gidiliyor; aradaki adımları
-                    panelin geçmesi mümkün değil.
-                    Belge no satırda yazıyor: girişten sonra hangi satıra bakılacağı belli. */}
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <a href={GIB_GIRIS_EKRANI} target="_blank" rel="noopener noreferrer"
-                    title={s.belge_no
-                      ? `Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır. Giriş yapınca ${s.belge_no} numaralı belgeye bakın.`
-                      : "Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır."}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E3A5F]/30 bg-white px-2.5 h-7 text-xs font-medium text-[#1E3A5F] hover:bg-[#1E3A5F]/5">
-                    Aç ve oku <ExternalLink size={12} />
-                  </a>
                 </td>
               </tr>
             ))}
