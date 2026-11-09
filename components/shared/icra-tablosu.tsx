@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOturumFiltresi } from "@/hooks";
+import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
 import { Gavel, Plus, Trash2, Loader2, Search, Pencil, ChevronDown } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
@@ -285,6 +285,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         const row = await insertIcraKayit({ ...payload, sira: maxSira + 1 });
         setSatirlar((p) => [...p, row]);
       }
+      icraDegisti();   // cevap tarihi girildiyse menü rozeti hemen düşsün
       toast.success(editId ? "İcra dosyası güncellendi." : "İcra dosyası eklendi.");
       setDialogAcik(false);
     } catch { toast.error("Kaydedilemedi."); }
@@ -292,7 +293,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   }
   async function sil(id: string) {
     if (typeof window !== "undefined" && !window.confirm("Bu icra dosyası silinsin mi?")) return;
-    try { await deleteIcraKayit(id); setSatirlar((p) => p.filter((s) => s.id !== id)); }
+    try { await deleteIcraKayit(id); setSatirlar((p) => p.filter((s) => s.id !== id)); icraDegisti(); }
     catch { toast.error("Silinemedi."); }
   }
 
@@ -318,7 +319,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   return (
     <div>
       <div className="flex items-baseline mb-4 gap-x-3 gap-y-1 flex-wrap">
-        <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2"><Gavel size={24} /> İcra Takibi</h1>
+        <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2"><Gavel size={24} /> Üçüncü Şahıs Hacizleri</h1>
         {sonGuncelleme && <span className="text-xs text-gray-400">Son güncelleme: {tarihSaat(sonGuncelleme)}</span>}
         {canEkle && (
           <button type="button" onClick={() => dialogAc()}
@@ -327,6 +328,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </button>
         )}
       </div>
+
+      <p className="text-xs text-gray-500 -mt-2 mb-4">
+        Borçlu bir BAŞKASI; şirket üçüncü şahıs (işveren) sıfatıyla cevap veriyor — 89/1 haciz
+        ihbarnamesi, maaş haczi müzekkeresi. Şirketin kendisinin borçlu olduğu ödeme emirleri
+        diğer sekmede.
+      </p>
 
       {/* Genel arama */}
       <div className="mb-3 flex items-center gap-2 flex-wrap">

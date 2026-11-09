@@ -881,6 +881,40 @@ export type IcraKayit = {
   updated_at: string;
 };
 
+// ŞİRKETE AÇILAN icra takipleri — "İcra Dosyaları" sayfasının ikinci sekmesi.
+// public.icra'dan AYRI: orada borçlu bir başkası, şirket üçüncü şahıs. Burada rol
+// ters — BORÇLU ŞİRKETİN KENDİSİ; izlenen şey itiraz süresi, ödeme ve dosyanın akıbeti.
+export type IcraSirketTakip = {
+  id: string;
+  sira: number;
+  /** Bizim hangi firmamız borçlu (firmalar.firma_adi). */
+  borclu_firma: string | null;
+  dosya_esas_no: string | null;
+  icra_dairesi: string | null;
+  alacakli_adi: string | null;
+  alacakli_vergi_no: string | null;
+  takip_tutari: number;
+  belge_tarihi: string | null;
+  /** Tebligatın ULAŞTIĞI gün — itiraz süresi buradan işler. */
+  teblig_tarihi: string | null;
+  /** Belgede YAZAN itiraz süresi (gün). Hesaplanmaz; boşsa belgede yok. */
+  itiraz_suresi_gun: number | null;
+  itiraz_tarihi: string | null;
+  itiraz_sekli: string | null;
+  evrak_no: string | null;
+  odenen_tutar: number;
+  odeme_tarihi: string | null;
+  durum: IcraSirketDurum;
+  /** Tebligat ekindeki PDF'in kayıtlı adresi — panelde "Belgeyi aç" ile açılır. */
+  belge_yolu: string | null;
+  tebligat_barkod: string | null;
+  aciklama: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IcraSirketDurum = "yeni" | "avukatta" | "itiraz_edildi" | "taksit" | "odendi" | "kapandi";
+
 // İhale ve sınır değer hesaplama tipleri
 export type Ihale = {
   id: string;

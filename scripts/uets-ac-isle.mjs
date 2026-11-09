@@ -295,7 +295,7 @@ ${not}`,
  * bir maaş haczi gibi gösterirdi. 09.11.2026'da kutuda dört tane çıktı ve dördü de
  * hiç açılmamıştı — biri 252.199,22 TL.
  */
-async function icraDefteriniDoldur(t, ekler) {
+export async function icraDefteriniDoldur(t, ekler) {
   // Asıl yazı: "ustyazi" PTT'nin zarf kapağı, ekler arasında başka belgeler de olabilir
   // (fatura, takip dayanağı). Tebligat yazısı olan ilk PDF alınır.
   const yazi = ekler.find((e) => !/ustyazi/i.test(e.ad) && /pdf/i.test(e.tur ?? e.ad));
@@ -318,11 +318,7 @@ async function icraDefteriniDoldur(t, ekler) {
   }
 
   if (cozum.rolumuz === "borclu") {
-    console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${cozum.dosya_esas_no ?? "dosya no yok"}`
-      + ` · alacaklı ${cozum.alacakli_adi ?? "?"} · ${cozum.borc_miktari ?? "?"} TL — deftere YAZILMADI`);
-    return `⚠ Bu bir ödeme emri: BORÇLU BİZİZ. ${cozum.alacakli_adi ?? "?"}`
-      + `${cozum.borc_miktari != null ? ` · ${cozum.borc_miktari.toLocaleString("tr-TR")} TL` : ""}`
-      + ` · itiraz süresi kaçırılmamalı. İcra defterine yazılmadı.`;
+    return await sirketTakibineYaz(t, cozum, yazi);
   }
   if (cozum.tur === "haciz_kaldirma") {
     // KALDIRMA YAZISI YENİ SATIR AÇMAZ. Metin maaş haczi yazısına benziyor (aynı
@@ -411,6 +407,116 @@ async function icraDefteriniDoldur(t, ekler) {
   return null;
 }
 
+/**
+ * İcra dairesinin adı. UETS konusu şu biçimde geliyor ve BU EN GÜVENİLİR KAYNAK:
+ *   "Ankara 7. Genel İcra Dairesi [2026/27774] [Ankara 7. Genel İcra Dairesi-5002...-0-2026/27774]"
+ * Belge metninden okumaya çalışmak yerine konunun ilk köşeli parantezden önceki
+ * kısmı alınıyor; belgede daire adı başlıkta bazen iki satıra bölünüyor.
+ */
+function icraDairesi(konu) {
+  const ad = String(konu ?? "").split("[")[0].trim();
+  return ad || null;
+}
+
+/** UETS barkodu — konudaki "…-<13 hane>-0-…" kalıbından; bulunamazsa uets_id. */
+function barkodBul(t) {
+  return String(t.konu ?? "").match(/-(\d{11,15})-\d+-/)?.[1] ?? t.uets_id ?? null;
+}
+
+/**
+ * ŞİRKETE AÇILAN TAKİP defterine yazar (public.icra_sirket_takip).
+ *
+ * NİYE AYRI DEFTER: üçüncü şahıs defteri (public.icra) "borçlu bir başkası, şirket
+ * işveren" modeline göre kurulu. Ödeme emrinde rol ters — borçlu şirketin kendisi.
+ * Oraya yazmak, şirketten para istenmesini rutin bir maaş haczi gibi gösterirdi.
+ * 09.11.2026'ya kadar bu belgeler hiçbir ekranda görünmüyordu: dört tanesi kutuda
+ * duruyordu ve dördü de hiç açılmamıştı, biri 252.199,22 TL.
+ *
+ * İNSANIN GİRDİĞİ EZİLMEZ: satır zaten varsa yalnız BOŞ alanlar doldurulur, durum
+ * ve itiraz bilgilerine hiç dokunulmaz.
+ */
+async function sirketTakibineYaz(t, cozum, yazi) {
+  const daire = icraDairesi(t.konu);
+  const dosya = cozum.dosya_esas_no ?? String(t.konu ?? "").match(/(\d{4}\/\d+)/)?.[1] ?? null;
+  const tutar = cozum.borc_miktari;
+  const ozet = `${cozum.alacakli_adi ?? "alacaklı okunamadı"}`
+    + `${tutar != null ? ` · ${tutar.toLocaleString("tr-TR")} TL` : ""}`;
+
+  // SESSİZ GEÇİLMEZ: dosya no ya da daire yoksa satır açılmaz (tekrar kaydı engelleyen
+  // indeks de bu ikisine dayanıyor) — ama bu durum bildirimde SÖYLENİR.
+  if (!dosya || !daire) {
+    console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${ozet} — dosya no/daire okunamadı, deftere yazılamadı`);
+    return `⚠ ŞİRKETE ÖDEME EMRİ · ${ozet}. Dosya no ya da icra dairesi okunamadı —`
+      + ` "Şirkete Açılan Takipler" sekmesine ELLE eklenmeli. İtiraz süresi işliyor.`;
+  }
+
+  // Bizim hangi firmamız borçlu: tebligat hangi firmanın hesabına düştüyse o.
+  let firmaAdi = null;
+  if (t.firma_id) {
+    const { data } = await sb.from("firmalar").select("firma_adi").eq("id", t.firma_id).maybeSingle();
+    firmaAdi = data?.firma_adi ?? null;
+  }
+
+  const { data: mevcut, error: okumaHatasi } = await sb.from("icra_sirket_takip")
+    .select("id, borclu_firma, alacakli_adi, alacakli_vergi_no, takip_tutari, belge_tarihi, teblig_tarihi, itiraz_suresi_gun, belge_yolu, tebligat_barkod")
+    .eq("icra_dairesi", daire).eq("dosya_esas_no", dosya).limit(1).maybeSingle();
+  if (okumaHatasi) {
+    // Tablo henüz kurulmamış olabilir (sql/icra_sirket_takip.sql çalıştırılmadıysa).
+    console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet} — defter okunamadı: ${okumaHatasi.message}`);
+    return `⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet}. Defter yazılamadı (${okumaHatasi.message});`
+      + ` sql/icra_sirket_takip.sql çalıştırılmalı. İtiraz süresi işliyor.`;
+  }
+
+  const alanlar = {
+    borclu_firma: firmaAdi,
+    alacakli_adi: cozum.alacakli_adi,
+    alacakli_vergi_no: cozum.alacakli_vergi_no,
+    takip_tutari: tutar,
+    belge_tarihi: cozum.belge_tarihi,
+    // Süre tebligatın ULAŞTIĞI günden işler (defterdeki tebliğ tarihi kuralı aynı).
+    teblig_tarihi: (t.ulasma_tarihi ?? "").slice(0, 10) || null,
+    // Süre BELGEDEN: yazmıyorsa null kalır ve ekran son itiraz günü göstermez.
+    itiraz_suresi_gun: cozum.cevap_suresi_gun,
+    belge_yolu: yazi?.yol ?? null,
+    tebligat_barkod: barkodBul(t),
+  };
+
+  if (mevcut) {
+    // Yalnız BOŞ alanlar doldurulur — elle girilmiş değer silinmez.
+    const yama = {};
+    for (const [k, v] of Object.entries(alanlar)) {
+      if (v === null || v === undefined || v === "") continue;
+      const eski = mevcut[k];
+      if (eski === null || eski === undefined || eski === "" || Number(eski) === 0) yama[k] = v;
+    }
+    if (Object.keys(yama).length === 0) {
+      console.log(`  şirkete açılan takip zaten kayıtlı · ${daire} ${dosya} — değişiklik yapılmadı`);
+      return `⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet} — "Şirkete Açılan Takipler"de zaten kayıtlı.`;
+    }
+    const { error } = await sb.from("icra_sirket_takip").update({ ...yama, updated_at: new Date().toISOString() }).eq("id", mevcut.id);
+    if (error) {
+      console.log(`  şirket takibi güncellenemedi: ${error.message}`);
+      return `⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet}. Defter güncellenemedi: ${error.message}`;
+    }
+    console.log(`  şirkete açılan takip güncellendi · ${daire} ${dosya} · ${Object.keys(yama).join(", ")}`);
+    return `⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet} — "Şirkete Açılan Takipler"deki kayıt dolduruldu.`;
+  }
+
+  const { data: yeni, error } = await sb.from("icra_sirket_takip")
+    .insert({ ...alanlar, icra_dairesi: daire, dosya_esas_no: dosya, durum: "yeni",
+      aciklama: `Ödeme emri — tebligat belgesinden otomatik okundu.`
+        + (cozum.uyarilar.length ? ` Okunamayan: ${cozum.uyarilar.join(", ")}.` : "") })
+    .select("id").single();
+  if (error) {
+    console.log(`  şirket takibi açılamadı: ${error.message}`);
+    return `⚠ ŞİRKETE ÖDEME EMRİ · ${dosya} · ${ozet}. Deftere yazılamadı: ${error.message} —`
+      + ` "Şirkete Açılan Takipler" sekmesine ELLE eklenmeli. İtiraz süresi işliyor.`;
+  }
+  console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${daire} ${dosya} · ${ozet} — "Şirkete Açılan Takipler"e yazıldı`);
+  return `⚠ ŞİRKETE ÖDEME EMRİ: BORÇLU BİZİZ · ${dosya} · ${ozet}.`
+    + ` "Şirkete Açılan Takipler"e yazıldı (durum: yeni) — itiraz süresi kaçırılmamalı.`;
+}
+
 /** Kendi firmalarımızın VKN'leri — "borçlu biz miyiz" kontrolü için. */
 async function bizimVknler() {
   const { data } = await sb.from("firmalar").select("vergi_no").not("vergi_no", "is", null);
@@ -420,7 +526,7 @@ async function bizimVknler() {
 async function main() {
   const { data, error } = await sb.from("tebligat")
     // durum + okuyan_ad DA OKUNUR: "ilk açan kim" sorusu için gerekli (aşağıya bak).
-    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, ekler, durum, okuyan_ad, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
+    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, ekler, durum, okuyan_ad, ulasma_tarihi, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
     // "islemde" de alınır: önceki çalışma yarıda kaldıysa (makine kapandı vb.) iş asılı kalmasın.
     .in("acilma_durumu", ["bekliyor", "islemde"])
     .order("acilma_istegi_at", { ascending: true });
@@ -445,4 +551,12 @@ async function main() {
 }
 
 // process.exit() KULLANILMIYOR (libuv teardown çökmesi — bkz. uets-tebligat-cek.mjs).
-main().catch((e) => { console.error("HATA:", e?.message ?? e); process.exitCode = 1; });
+//
+// SADECE DOĞRUDAN ÇALIŞTIRILINCA: bu dosya icraDefteriniDoldur'u dışa veriyor ve
+// geçmişi tamamlayan betik onu içe alıyor. Koruma olmasaydı içe alma işlemi UETS
+// kuyruğunu da işletirdi — yani bir betiği çağırmak tebligat AÇARDI.
+const dogrudanCalistirildi = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (dogrudanCalistirildi) {
+  main().catch((e) => { console.error("HATA:", e?.message ?? e); process.exitCode = 1; });
+}

@@ -112,7 +112,7 @@ export default function IcraTanimlamalar({ canEkle, canDuzenle, canSil }: { canE
           </>
         )}
       </div>
-      <p className="text-[11px] text-gray-400 mt-3">Buraya eklenen değerler İcra Takibi tablosundaki “Cevap Şekli” açılır listesinde görünür.</p>
+      <p className="text-[11px] text-gray-400 mt-3">Buraya eklenen değerler Üçüncü Şahıs Hacizleri tablosundaki “Cevap Şekli” açılır listesinde görünür.</p>
     </div>
   );
 }

@@ -20,7 +20,7 @@ const GRUPLAR: Grup[] = [
       { ad: "Bordro Takibi", aciklama: "Personelin hangi ay hangi şantiyede olduğu, günlük/brüt ücretleri ve aylık bordro tahmini. İşçilik primi hesabının bordro ayağı buradan gelir." },
       { ad: "Ödeme Planı", aciklama: "Vadesi gelen ödemelerin takvimi." },
       { ad: "Kredi Kartları", aciklama: "Şirket kartlarının limit, ekstre ve harcama takibi." },
-      { ad: "İcra Takibi", aciklama: "Açılmış icra dosyalarının durumu." },
+      { ad: "İcra Dosyaları", aciklama: "Üçüncü şahıs haciz yazıları ve şirkete açılan takipler." },
       { ad: "Sınır Değer Hesabı", aciklama: "İhalede sınır değer ve aşırı düşük sorgulaması hesabı." },
     ],
   },

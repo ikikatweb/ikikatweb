@@ -24,7 +24,7 @@ export const MODUL_LISTESI: ModulTanim[] = [
   { key: "bordro-takibi", label: "Bordro Takibi", grup: "Büro Yönetimi" },
   { key: "odeme-plani", label: "Ödeme Planı", grup: "Büro Yönetimi" },
   { key: "kredi-kartlari", label: "Kredi Kartları", grup: "Büro Yönetimi" },
-  { key: "icra", label: "İcra Takibi", grup: "Büro Yönetimi" },
+  { key: "icra", label: "İcra Dosyaları", grup: "Büro Yönetimi" },
   { key: "ihale", label: "Sınır Değer Hesabı", grup: "Büro Yönetimi" },
   // Yazışmalar
   // E-Tebligat'ta "ekle" ve "sil" YOK: tebligatı biz oluşturmuyoruz (yalnız gelenleri
