@@ -237,7 +237,7 @@ export default function KetsisTablosu() {
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
               <th className="px-3 py-2 font-medium">Firma</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Mail tarihi</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Gönderme tarihi</th>
               <th className="px-3 py-2 font-medium">Gönderen</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
               <th className="px-3 py-2 font-medium">Konu / özet</th>
@@ -258,8 +258,26 @@ export default function KetsisTablosu() {
                   </span>
                   {s.vkn && <div className="mt-0.5 text-[11px] text-gray-500">VKN {s.vkn}</div>}
                 </td>
+                {/* GÖNDERME TARİHİ, MAİLİN GELDİĞİ GÜN DEĞİL (09.11.2026).
+                    GİB aynı belge için iki mail yolluyor: biri gönderildiği gün, biri
+                    tebliğ günü. İkincisinden yakalanmışsa mailin tarihi 5 gün sapıyor —
+                    MC09608584'te tam olarak bu oldu (mail 07.11, gönderme 02.11).
+                    Belgenin ne zaman gönderildiği metinde yazıyor, oradan okunuyor.
+                    Mailin geldiği gün FARKLIYSA altta gösteriliyor: "ikinci mailden
+                    yakalandı" bilgisi gizlenmiyor. Metin okunamadıysa eski davranış. */}
                 <td className="px-3 py-2 whitespace-nowrap tabular-nums">
-                  {gunSaat(s.mail_tarihi)}
+                  {s.gonderme_tarihi ? (
+                    <>
+                      <div>{new Date(s.gonderme_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}</div>
+                      {gunSaat(s.mail_tarihi).slice(0, 10) !==
+                        new Date(s.gonderme_tarihi + "T00:00:00").toLocaleDateString("tr-TR") && (
+                        <div className="mt-0.5 text-[11px] font-normal text-gray-500"
+                          title="Belge bu tarihte gönderilmiş; bildirim maili daha sonra yakalanmış (GİB aynı belge için iki mail yolluyor).">
+                          mail {gunSaat(s.mail_tarihi)}
+                        </div>
+                      )}
+                    </>
+                  ) : gunSaat(s.mail_tarihi)}
                   {/* INBOX DIŞINDAKİ KLASÖR BİR BULGUDUR: Junk'a düşmüş ya da silinmiş
                       bir tebligat bildirimi hiç görülmemiş olabilir. */}
                   {s.klasor && s.klasor !== "INBOX" && (
@@ -299,11 +317,8 @@ export default function KetsisTablosu() {
                           (new Date(s.teblig_tarihi + "T00:00:00").getTime() - Date.now()) / 86400000);
                         return kalan > 0
                           ? <div className="text-[11px] font-normal text-amber-700">{kalan} gün sonra</div>
-                          : s.gonderme_tarihi
-                            ? <div className="text-[11px] font-normal text-gray-500">
-                                gönderme {new Date(s.gonderme_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
-                              </div>
-                            : null;
+                          // Gönderme tarihi artık kendi sütununda; burada tekrarlanmıyor.
+                          : null;
                       })()}
                     </>
                   ) : (
