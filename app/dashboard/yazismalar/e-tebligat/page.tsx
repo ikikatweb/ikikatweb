@@ -16,7 +16,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getTebligatlar, kalanGun, type Tebligat } from "@/lib/supabase/queries/tebligat";
-import { Scale, ExternalLink, AlertTriangle, FileText, Loader2, Download, Search, X } from "lucide-react";
+import { Scale, ExternalLink, AlertTriangle, FileText, Loader2, Download, Search, X, Paperclip } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { trAramaNormalize } from "@/lib/utils/isim";
@@ -84,6 +85,8 @@ export default function ETebligatPage() {
   // Hangi tebligat şu an açılıyor? Aynı satıra iki kez basılmasın — her basış
   // UETS'te bir indirme, yani geri alınamaz bir "okundu" demek.
   const [aciliyor, setAciliyor] = useState<number | null>(null);
+  // Belgeler penceresi — hücredeki ataç düğmesi bunu açar (liste satırı şişiriyordu).
+  const [belgeKayit, setBelgeKayit] = useState<Tebligat | null>(null);
 
   // İLK YÜKLEME. Hata SESSİZ GEÇMEZ: boş tablo "tebligat yok" diye okunur, oysa
   // sorgu patlamıştır.
@@ -170,7 +173,6 @@ Açılsın mı?`;
   // gelsin, insan her seferinde yeniden kurmasın.
   const [arama, setArama] = useOturumFiltresi("e-tebligat:arama", "");
   const [tur, setTur] = useOturumFiltresi<"hepsi" | "icra" | "mahkeme">("e-tebligat:tur", "hepsi");
-  const [sira, setSira] = useOturumFiltresi<"acil" | "yeni" | "eski">("e-tebligat:sira", "acil");
 
   const liste = useMemo(() => {
     let l = suzgec === "acilmamis" ? satirlar.filter((t) => t.durum === "delivered") : satirlar;
@@ -197,17 +199,13 @@ Açılsın mı?`;
       ).includes(q));
     }
 
-    return [...l].sort((a, b) => {
-      if (sira === "yeni") return b.ulasma_tarihi.localeCompare(a.ulasma_tarihi);
-      if (sira === "eski") return a.ulasma_tarihi.localeCompare(b.ulasma_tarihi);
-      // "acil" (varsayılan): açılmamışlar en üstte, aralarında tebliğ günü yakın olan
-      // önce. Renk süs değil, sıralama da öyle: bugün bakılacak olan ilk sırada.
-      if (a.durum === "delivered" && b.durum === "delivered") return a.teblig_tarihi.localeCompare(b.teblig_tarihi);
-      if (a.durum === "delivered") return -1;
-      if (b.durum === "delivered") return 1;
-      return b.ulasma_tarihi.localeCompare(a.ulasma_tarihi);
-    });
-  }, [satirlar, suzgec, firma, tur, arama, sira]);
+    // SIRALAMA SEÇENEĞİ YOK: her zaman EN SON GELEN EN ÜSTTE (ulaşma tarihine göre).
+    // Önce "Aciliyete göre / En yeni / En eski" düğmeleri vardı; aciliyet sıralaması
+    // açılmamışları yukarı taşıyordu ve liste beklenmedik sırada duruyordu. Aciliyet
+    // zaten satır renginde ve "Açılmamış" süzgecinde görünüyor; sıra için gereken tek
+    // şey gelme zamanı. Üç düğme, tek doğru cevabı olan bir soruyu soruyordu.
+    return [...l].sort((a, b) => b.ulasma_tarihi.localeCompare(a.ulasma_tarihi));
+  }, [satirlar, suzgec, firma, tur, arama]);
 
   // Hangi firmalar var? Renk sırası sabit kalsın diye alfabetik.
   const firmalar = useMemo(
@@ -319,17 +317,6 @@ Açılsın mı?`;
           ))}
         </div>
 
-        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
-          {([["acil", "Aciliyete göre"], ["yeni", "En yeni"], ["eski", "En eski"]] as const).map(([id, et]) => (
-            <button key={id} type="button" onClick={() => setSira(id)}
-              title={id === "acil" ? "Açılmamışlar en üstte, tebliğ günü yakın olan önce" : "Ulaşma tarihine göre"}
-              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-                sira === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}>
-              {et}
-            </button>
-          ))}
-        </div>
-
         {/* KAÇ SATIR SÜZÜLDÜ: boş ya da kısa liste "kayıt yok" diye okunmasın. */}
         <span className="text-xs text-gray-500">
           {liste.length} / {satirlar.length} kayıt
@@ -361,14 +348,30 @@ Açılsın mı?`;
       )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+        {/* SÜTUN GENİŞLİKLERİ SABİT (table-fixed + oranlı colgroup).
+            Tarayıcının varsayılanı sütunu İÇERİĞE göre ayarlıyor: "İcra dairesi"
+            süzgecine basınca konular kısalıyor, sütunlar kayıyor ve göz her
+            süzgeçte tabloyu yeniden öğrenmek zorunda kalıyordu. Oranlı sabit
+            genişlikte süzgeç ne olursa olsun sütunlar aynı yerde duruyor.
+            min-w: dar ekranda sütunları ezmek yerine yatay kaydırma olur. */}
+        <table className="w-full min-w-[1100px] table-fixed text-sm">
+          <colgroup>
+            <col className="w-[4%]" />{/* Firma — yalnız renk noktası */}
+            <col className="w-[18%]" />{/* Gönderen */}
+            <col className="w-[30%]" />{/* Konu */}
+            <col className="w-[8%]" />{/* Ulaşma */}
+            <col className="w-[11%]" />{/* Tebliğ sayılacağı gün — başlık iki satıra sığsın */}
+            <col className="w-[6%]" />{/* Kalan */}
+            <col className="w-[11%]" />{/* Durum */}
+            <col className="w-[12%]" />{/* Belge — liste değil, simge + pencere (aşağıya bak) */}
+          </colgroup>
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
-              <th className="px-3 py-2 font-medium">Firma</th>
+              <th className="px-3 py-2 text-center font-medium">Firma</th>
               <th className="px-3 py-2 font-medium">Gönderen</th>
               <th className="px-3 py-2 font-medium">Konu</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ sayılacağı gün</th>
+              <th className="px-3 py-2 font-medium">Tebliğ sayılacağı gün</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Kalan</th>
               <th className="px-3 py-2 font-medium">Durum</th>
               <th className="px-3 py-2 font-medium">Belge</th>
@@ -380,22 +383,17 @@ Açılsın mı?`;
               const d = DURUM[t.durum] ?? { ad: t.durum, sinif: "bg-gray-100 text-gray-700" };
               return (
                 <tr key={t.id} className={a.satir}>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5" title={t.firmalar?.firma_adi ?? t.alici_ad ?? t.hesap}>
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
-                        style={{ backgroundColor: t.firmalar?.renk ?? NOTR }} />
-                      <span className="font-medium">
-                        {t.firmalar?.kisa_adi || t.firmalar?.firma_adi || t.hesap}
-                      </span>
-                    </span>
-                    {!t.firma_id && t.alici_ad && (
-                      <div className="mt-0.5 max-w-[14rem] truncate text-[11px] text-gray-500" title={t.alici_ad}>
-                        {t.alici_ad}
-                      </div>
-                    )}
+                  {/* YALNIZ RENK, AD YOK: iki firma var ve rengi herkes tanıyor;
+                      her satırda "IKI"/"KAD" yazmak sütunu şişiriyordu. Hangi firma
+                      olduğu noktanın üstüne gelince yazıyor. Süzgeç düğmelerinde ad
+                      duruyor — orada renk tek başına ne seçtiğini anlatmaz. */}
+                  <td className="px-3 py-2 text-center"
+                    title={t.firmalar?.firma_adi ?? t.alici_ad ?? t.hesap}>
+                    <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
+                      style={{ backgroundColor: t.firmalar?.renk ?? NOTR }} />
                   </td>
-                  <td className="px-3 py-2">{t.gonderen_ad ?? t.gonderen_adres ?? "—"}</td>
-                  <td className="px-3 py-2">{t.konu ?? "—"}</td>
+                  <td className="px-3 py-2 break-words" title={t.gonderen_ad ?? t.gonderen_adres ?? ""}>{t.gonderen_ad ?? t.gonderen_adres ?? "—"}</td>
+                  <td className="px-3 py-2 break-words" title={t.konu ?? ""}>{t.konu ?? "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums">{gun(t.ulasma_tarihi)}</td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums font-medium">{gun(t.teblig_tarihi + "T00:00:00")}</td>
                   <td className={`px-3 py-2 whitespace-nowrap ${a.rozet}`}>{a.metin || "—"}</td>
@@ -441,29 +439,20 @@ Açılsın mı?`;
                         {t.okuyan_ad} isteğiyle açıldı · {gunSaat(t.okuma_tarihi)}
                       </div>
                     )}
-                    {/* Paketten çıkan belgeler. Bağlantı dosyaUrl()'den geçer: kovalar
-                        özel, doğrudan adrese gidilirse 400 döner. */}
-                    {(t.ekler ?? []).length > 0 ? (
-                      <div className="mt-0.5 flex flex-col gap-0.5">
-                        {(t.ekler ?? []).map((e) => (
-                          <a key={e.yol} href={dosyaUrl(e.yol)} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-[#1E3A5F] hover:underline">
-                            <FileText size={12} /> {e.ad}
-                          </a>
-                        ))}
-                        {t.paket_yolu && (
-                          <a href={dosyaUrl(t.paket_yolu)} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:underline"
-                            title="İmzalı EYP paketinin aslı">
-                            <Download size={11} /> EYP paketi
-                          </a>
-                        )}
-                      </div>
-                    ) : t.paket_yolu ? (
-                      <a href={dosyaUrl(t.paket_yolu)} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-[#1E3A5F] hover:underline">
-                        <Download size={12} /> EYP paketi
-                      </a>
+                    {/* BELGELER LİSTE DEĞİL, SİMGE + PENCERE (09.11.2026).
+                        Dosya adları uzun ve bir pakette sekiz tane olabiliyor
+                        ("(2)_Trafik_Cezasina_Itirazin_Degerlendirilmesi_Karari.pdf");
+                        hepsi hücrede alt alta yazılınca satır on katına çıkıyor ve
+                        tablo okunmaz oluyordu. Artık ataç + adet; tıklayınca pencere
+                        açılıyor, indirme oradan. Bağlantılar dosyaUrl()'den geçer:
+                        kovalar özel, doğrudan adrese gidilirse 400 döner. */}
+                    {(t.ekler ?? []).length > 0 || t.paket_yolu ? (
+                      <button type="button" onClick={() => setBelgeKayit(t)}
+                        title="Belgeleri aç ve indir"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-[#1E3A5F] hover:bg-gray-50">
+                        <Paperclip size={13} />
+                        {(t.ekler ?? []).length + (t.paket_yolu ? 1 : 0)} belge
+                      </button>
                     ) : t.acilma_durumu === "bekliyor" || t.acilma_durumu === "islemde" ? (
                       // İstek ofisteki görevde sırada. Kullanıcı neyi beklediğini bilsin.
                       //
@@ -556,6 +545,44 @@ Açılsın mı?`;
           Dijital Vergi Dairesi'nde okunabilen bildirimler. İkisini tek listeye
           karıştırmak "niye bu açılmıyor" sorusunu doğurur. */}
       <KetsisTablosu />
+
+      {/* BELGELER PENCERESİ — tabloda satırı şişirmeden tam liste. */}
+      <Dialog open={!!belgeKayit} onOpenChange={(a) => { if (!a) setBelgeKayit(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Tebligat Belgeleri</DialogTitle></DialogHeader>
+          {belgeKayit && (
+            <>
+              <p className="-mt-2 break-words text-xs text-gray-500">{belgeKayit.konu}</p>
+              <div className="flex flex-col gap-1">
+                {(belgeKayit.ekler ?? []).map((e) => (
+                  <a key={e.yol} href={dosyaUrl(e.yol)} target="_blank" rel="noopener noreferrer"
+                    className="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#1E3A5F] hover:bg-gray-50"
+                    title={e.ad}>
+                    <FileText size={15} className="mt-0.5 shrink-0" />
+                    <span className="break-all">{e.ad}</span>
+                  </a>
+                ))}
+                {belgeKayit.paket_yolu && (
+                  <a href={dosyaUrl(belgeKayit.paket_yolu)} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50"
+                    title="İmzalı EYP paketinin aslı — belgelerin kaynağı">
+                    <Download size={14} className="shrink-0" /> EYP paketi (imzalı asıl)
+                  </a>
+                )}
+                {(belgeKayit.ekler ?? []).length === 0 && !belgeKayit.paket_yolu && (
+                  <p className="text-sm text-gray-500">Bu tebligatın belgesi panelde yok.</p>
+                )}
+              </div>
+              {/* SESSİZ GEÇİLMEZ: paket indi ama ekler çıkarılamadıysa burada yazar. */}
+              {belgeKayit.indirme_hatasi && (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Ek çıkarılamadı: {belgeKayit.indirme_hatasi}
+                </p>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
