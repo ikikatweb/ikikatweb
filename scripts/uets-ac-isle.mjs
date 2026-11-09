@@ -24,6 +24,7 @@ import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
 import { pushGonder } from "./push-gonder.mjs";
+import { pdfMetni, belgeCozumle } from "./icra-belge-oku.mjs";
 
 const kok = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = Object.fromEntries(
@@ -217,11 +218,21 @@ async function isle(t) {
   }
 
   console.log(`  açıldı · ${ekler.length} belge${sorunlar.length ? ` · UYARI: ${sorunlar.join(" · ")}` : ""}`);
+
+  // ═══ BELGEYİ OKU, İCRA DEFTERİNİ DOLDUR ═══
+  const icraNotu = await icraDefteriniDoldur(t, ekler);
+
+
   try {
     await pushGonder(sb, env, {
-      baslik: sorunlar.length ? "Tebligat açıldı — eksik var" : "Tebligat açıldı",
+      // ŞİRKETE TAKİP BİLDİRİMİ YÜKSELTİLİR: "Tebligat açıldı" başlığı altında
+      // kaybolmamalı. Üçüncü şahıs haciz yazısı rutin iştir; şirketten para
+      // istenmesi değildir.
+      baslik: icraNotu?.startsWith("⚠") ? "⚠ ŞİRKETE ÖDEME EMRİ"
+        : sorunlar.length ? "Tebligat açıldı — eksik var" : "Tebligat açıldı",
       govde: `${t.gonderen_ad ?? t.hesap} · ${t.konu ?? "konu yok"}\n`
-        + (sorunlar.length ? sorunlar.join(" · ") : `${ekler.length} belge hazır.`),
+        + (sorunlar.length ? sorunlar.join(" · ") : `${ekler.length} belge hazır.`)
+        + (icraNotu ? `\n${icraNotu}` : ""),
       // BİLDİRİME TIKLAYINCA DOĞRUDAN YAZI AÇILSIN (09.11.2026 kullanıcı isteği):
       // eskiden tebligat listesine götürüyordu, oradan satırı bulup belgeye tıklamak
       // gerekiyordu. Artık asıl belgeye gidiyor.
@@ -248,6 +259,109 @@ async function isle(t) {
   } catch (e) { console.log(`  bildirim gönderilemedi: ${e.message}`); }
 
   return sorunlar.length ? { hata: `${etiket}: ${sorunlar.join(" · ")}` } : {};
+}
+
+/**
+ * Belgeyi okuyup icra defterini doldurur. Dönen: bildirime eklenecek kısa not (ya da null).
+ *
+ * ÜÇ SONUÇ:
+ *   · üçüncü şahıs yazısı (89/1, maaş haczi) → taslak satır alacaklı/borçlu/tutarla dolar
+ *   · ÖDEME EMRİ (borçlu biz)                → DEFTERE YAZILMAZ, uyarı döner
+ *   · tanınmayan belge                        → yazılmaz, sebebi loga ve nota düşer
+ *
+ * NİYE ÖDEME EMRİ YAZILMIYOR: icra defteri "üçüncü şahıs" modeline göre kurulu
+ * (ucuncu_sahis, borclu_adi…). Şirkete açılmış bir takibi oraya yazmak, onu rutin
+ * bir maaş haczi gibi gösterirdi. 09.11.2026'da kutuda dört tane çıktı ve dördü de
+ * hiç açılmamıştı — biri 252.199,22 TL.
+ */
+async function icraDefteriniDoldur(t, ekler) {
+  // Asıl yazı: "ustyazi" PTT'nin zarf kapağı, ekler arasında başka belgeler de olabilir
+  // (fatura, takip dayanağı). Tebligat yazısı olan ilk PDF alınır.
+  const yazi = ekler.find((e) => !/ustyazi/i.test(e.ad) && /pdf/i.test(e.tur ?? e.ad));
+  if (!yazi) return null;
+
+  let cozum;
+  try {
+    // Kayıtlı adres genel-URL biçiminde duruyor; kova içi yol oradan çıkarılıyor.
+    // Kova ÖZEL: düz fetch 400 döner, service role ile indirilmeli.
+    const icYol = decodeURIComponent(String(yazi.yol).split(`/${KOVA}/`)[1] ?? "").split("?")[0];
+    if (!icYol) throw new Error("belge yolu çözülemedi");
+    const { data: dosya } = await sb.storage.from(KOVA).download(icYol);
+    if (!dosya) throw new Error("belge storage'dan inmedi");
+    const vknler = await bizimVknler();
+    cozum = belgeCozumle(await pdfMetni(Buffer.from(await dosya.arrayBuffer())), vknler);
+  } catch (e) {
+    // SESSİZ GEÇİLMEZ: okunamadıysa defter elle doldurulmalı, bu duyulmalı.
+    console.log(`  belge okunamadı: ${e.message} — icra defteri elle doldurulmalı`);
+    return `Belge okunamadı (${e.message}); icra defteri elle doldurulmalı.`;
+  }
+
+  if (cozum.rolumuz === "borclu") {
+    console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${cozum.dosya_esas_no ?? "dosya no yok"}`
+      + ` · alacaklı ${cozum.alacakli_adi ?? "?"} · ${cozum.borc_miktari ?? "?"} TL — deftere YAZILMADI`);
+    return `⚠ Bu bir ödeme emri: BORÇLU BİZİZ. ${cozum.alacakli_adi ?? "?"}`
+      + `${cozum.borc_miktari != null ? ` · ${cozum.borc_miktari.toLocaleString("tr-TR")} TL` : ""}`
+      + ` · itiraz süresi kaçırılmamalı. İcra defterine yazılmadı.`;
+  }
+  if (cozum.tur === "bilinmiyor" || !cozum.dosya_esas_no) {
+    console.log(`  belge türü tanınmadı ya da dosya no yok — icra defteri elle doldurulmalı`);
+    return "Belge türü tanınmadı; icra defteri elle doldurulmalı.";
+  }
+
+  // Taslak satır çekme sırasında açılmıştı; şimdi belgeden gelenlerle doluyor.
+  // BOŞ ALAN EZİLMEZ: okunamayan alan null döner ve mevcut değere dokunulmaz —
+  // insan elle doldurmuşsa makinenin boşu onu silmesin.
+  const yama = {};
+  if (cozum.alacakli_adi) yama.alacakli_adi = cozum.alacakli_adi;
+  if (cozum.alacakli_vergi_no) yama.alacakli_vergi_no = cozum.alacakli_vergi_no;
+  if (cozum.borclu_adi) yama.borclu_adi = cozum.borclu_adi;
+  if (cozum.borclu_tc_no) yama.borclu_tc_no = cozum.borclu_tc_no;
+  if (cozum.borc_miktari != null) yama.borc_miktari = cozum.borc_miktari;
+  if (cozum.belge_tarihi) yama.gelen_yazi_tarihi = cozum.belge_tarihi;
+  yama.aciklama = `${cozum.tur === "maas_haczi" ? "Maaş haczi müzekkeresi" : "89/1 haciz ihbarnamesi"}`
+    + ` — tebligat belgesinden otomatik okundu.`
+    + (cozum.uyarilar.length ? ` Okunamayan: ${cozum.uyarilar.join(", ")}.` : "");
+
+  const { data: satir } = await sb.from("icra")
+    .select("id, alacakli_adi, alacakli_vergi_no, borclu_adi, borclu_tc_no, borc_miktari, gelen_yazi_tarihi")
+    .eq("dosya_esas_no", cozum.dosya_esas_no).limit(1).maybeSingle();
+  if (!satir) {
+    console.log(`  icra defterinde ${cozum.dosya_esas_no} satırı yok — doldurulamadı`);
+    return null;
+  }
+
+  // İNSANIN GİRDİĞİ DEĞER EZİLMEZ: defterdeki 98 satır elle doldurulmuş ve kısaltılmış
+  // ünvanlar içeriyor ("ERDEM KILIÇ PETROL MAD. NAK. SAN. VE TİC. LTD. ŞTİ."). Makine
+  // yalnız BOŞ alanları doldurur. Zaten dolu bir alanı "daha doğrusu bu" diye değiştirmek,
+  // insanın bilerek yazdığını sessizce silmek olurdu.
+  const doluAlanlar = [];
+  for (const alan of Object.keys(yama)) {
+    if (alan === "aciklama") continue;                    // açıklama her zaman tazelenir
+    const mevcut = satir[alan];
+    if (mevcut !== null && mevcut !== undefined && mevcut !== "" && Number(mevcut) !== 0) {
+      doluAlanlar.push(alan);
+      delete yama[alan];
+    }
+  }
+  if (doluAlanlar.length) {
+    console.log(`  not: ${doluAlanlar.join(", ")} zaten dolu — dokunulmadı (elle girilmiş olabilir)`);
+  }
+  if (Object.keys(yama).length <= 1) {                    // yalnız aciklama kaldıysa
+    console.log(`  icra defteri zaten dolu · ${cozum.dosya_esas_no} — değişiklik yapılmadı`);
+    return null;
+  }
+
+  const { error } = await sb.from("icra").update(yama).eq("id", satir.id);
+  if (error) { console.log(`  icra defteri güncellenemedi: ${error.message}`); return `İcra defteri güncellenemedi: ${error.message}`; }
+  console.log(`  icra defteri dolduruldu · ${cozum.dosya_esas_no} · ${cozum.alacakli_adi ?? "?"}`
+    + ` → ${cozum.borclu_adi ?? "?"} · ${cozum.borc_miktari ?? "?"}`);
+  return null;
+}
+
+/** Kendi firmalarımızın VKN'leri — "borçlu biz miyiz" kontrolü için. */
+async function bizimVknler() {
+  const { data } = await sb.from("firmalar").select("vergi_no").not("vergi_no", "is", null);
+  return (data ?? []).map((f) => String(f.vergi_no).replace(/\D/g, "")).filter(Boolean);
 }
 
 async function main() {
