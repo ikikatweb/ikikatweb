@@ -16,7 +16,8 @@ import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { updateIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
-import { avukataGonder, AVUKAT_TAKIP_NOTU } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { icraDegisti } from "@/hooks";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -69,6 +70,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       odenen_tutar: sayiToInput(Number(kayit.odenen_tutar || 0)),
       banka_adi: kayit.banka_adi ?? "",
       avukat_id: kayit.avukat_id ?? "",
+      avukat_adi: kayit.avukat_adi ?? "",
       avukat_notu: kayit.avukat_notu ?? "",
     };
     setV(ilk);
@@ -94,6 +96,14 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     // bakacağını metinden değil ekrandan görür.
     if (eksikCevapAlanlari(v, true).length) { setDenendi(true); return; }
     setDenendi(false);
+    // CEVABI GERİ ALMA: kayıtlı bir cevap vardı, şimdi bölüm boş. Sessizce
+    // silinmez — dosya yeniden cevap bekleyenlere döneceği için sorulur.
+    const bosBirakildi = !v.cevap_sekli.trim() && !v.cevap_tarihi && !v.evrak_no.trim() && !v.avukat_id;
+    const geriAliniyor = bosBirakildi && Boolean(kayit.cevap_sekli || kayit.cevap_tarihi);
+    if (geriAliniyor && typeof window !== "undefined" && !window.confirm(
+      "Bu dosyadaki cevap kaydı silinecek ve dosya yeniden CEVAP BEKLEYENLER listesine girecek.\n\n"
+      + "Cevap tarihi, evrak no ve ödenen tutar da silinir. Avukata gönderilmiş mailin kaydı "
+      + "silinmez — mail gerçekten gitti.\n\nDevam edilsin mi?")) return;
     const sorun = cevapDogrula(v, kayit.teblig_tarihi ?? "");
     if (sorun) { toast.error(sorun); return; }
 
@@ -105,6 +115,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       cevap_sekli: t(v.cevap_sekli),
       banka_adi: t(v.banka_adi),
       avukat_id: v.avukat_id || null,
+      avukat_adi: t(v.avukat_adi),
       avukat_notu: t(v.avukat_notu),
       ...(kip.avukat ? {} : {
         cevap_tarihi: v.cevap_tarihi || null,
@@ -123,7 +134,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           icraDegisti();
           kaydedildi({ ...yama, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek });
           toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
-          toast(AVUKAT_TAKIP_NOTU, { icon: "📞", duration: 12000 });
+          avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
           kapat();
@@ -140,7 +151,8 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       }
       icraDegisti();
       kaydedildi(yama);
-      toast.success("Cevap işlendi.");
+      toast.success(geriAliniyor ? "Cevap geri alındı — dosya yeniden cevap bekliyor."
+        : bosBirakildi ? "Değişiklik yok — cevap bölümü boş." : "Cevap işlendi.");
       kapat();
     } catch (e) {
       // SEBEBİ YUTULMAZ: "Kaydedilemedi." deyip geçmek, eksik sütun gibi tek

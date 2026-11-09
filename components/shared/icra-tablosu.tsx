@@ -15,7 +15,8 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
-import { avukataGonder, AVUKAT_TAKIP_NOTU } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { Button } from "@/components/ui/button";
 
 // Cevap Şekli varsayılanları (Tanımlamalar boşsa kullanılır). Tanımlamalar sekmesinden yönetilir.
@@ -240,7 +241,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       ilkCevap = {
         cevap_sekli: row.cevap_sekli ?? "", cevap_tarihi: row.cevap_tarihi ?? "",
         evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
-        banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "", avukat_notu: row.avukat_notu ?? "",
+        banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "",
+        avukat_adi: row.avukat_adi ?? "", avukat_notu: row.avukat_notu ?? "",
       };
       setForm(ilkForm);
       setCevap(ilkCevap);
@@ -291,8 +293,22 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     // alanın zorunlu olduğu değişiyor ve hızlı pencereyle aynı olmalı.
     // EKSİK ALAN BALONLA DEĞİL KIRMIZIYLA: bölüm opsiyonel, ama bir şey
     // yazıldıysa o kipin bütün alanları isteniyor (eksikCevapAlanlari).
-    if (eksikCevapAlanlari(cevap, false).length) { setCevapDenendi(true); return; }
+    if (eksikCevapAlanlari(cevap, false).length) {
+      // KIRMIZI KUTU + KISA UYARI: bu form uzun, cevap bölümü ekranın altında
+      // kalabiliyor; yalnız kırmızıya boyamak sessiz kalmakla aynı şey olurdu.
+      setCevapDenendi(true);
+      toast.error("Cevap / Ödeme bölümünde eksik alan var — kırmızı kutulara bakın.");
+      return;
+    }
     setCevapDenendi(false);
+    // CEVABI GERİ ALMA — hızlı penceredekiyle aynı: kayıtlı cevap siliniyorsa
+    // sorulur, dosya yeniden cevap bekleyenlere döner.
+    if (duzenlenen && (duzenlenen.cevap_sekli || duzenlenen.cevap_tarihi)
+      && !cevap.cevap_sekli.trim() && !cevap.cevap_tarihi && !cevap.evrak_no.trim() && !cevap.avukat_id
+      && typeof window !== "undefined" && !window.confirm(
+        "Bu dosyadaki cevap kaydı silinecek ve dosya yeniden CEVAP BEKLEYENLER listesine girecek.\n\n"
+      + "Cevap tarihi, evrak no ve ödenen tutar da silinir. Avukata gönderilmiş mailin kaydı "
+      + "silinmez — mail gerçekten gitti.\n\nDevam edilsin mi?")) return;
     const cevapSorun = cevapDogrula(cevap, form.teblig_tarihi);
     if (cevapSorun) { toast.error(cevapSorun); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -303,6 +319,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       cevap_sekli: t(cevap.cevap_sekli),
       banka_adi: t(cevap.banka_adi),
       avukat_id: cevap.avukat_id || null,
+      avukat_adi: t(cevap.avukat_adi),
       avukat_notu: t(cevap.avukat_notu),
       ...(cevapKipi(cevap.cevap_sekli).avukat ? {} : {
         cevap_tarihi: cevap.cevap_tarihi || null,
@@ -336,7 +353,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             ? { ...s, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek, avukat_mail_at: new Date().toISOString() }
             : s)));
           toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
-          toast(AVUKAT_TAKIP_NOTU, { icon: "📞", duration: 12000 });
+          avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
         } catch (e) {
@@ -501,7 +518,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
                   <td className={`${td} text-center ${cevapYok ? "bg-red-100 text-red-600 font-medium" : ""}`} title={cevapYok ? "İcraya cevap verilmemiş" : undefined}>{cevapYok ? "Cevap yok" : tarihGoster(s.cevap_tarihi)}</td>
-                  <td className={td} title={s.cevap_sekli ?? ""}>{s.cevap_sekli}</td>
+                  {/* AVUKAT ARACILIĞIYSA DOĞRUDAN AVUKATIN ADI: "Avukat Aracılığı"
+                      yazısı hangi avukat olduğunu söylemiyor ve tabloda asıl
+                      aranan o. Ad, gönderim anında kopyalanıyor (avukat_adi);
+                      kopya yoksa kipin kendisi yazılır — ad UYDURULMAZ. */}
+                  <td className={td} title={[s.cevap_sekli, s.avukat_adi].filter(Boolean).join(" · ")}>
+                    {cevapKipi(s.cevap_sekli ?? "").avukat && s.avukat_adi ? s.avukat_adi : s.cevap_sekli}
+                  </td>
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
                   <td className={`${td} ${evrakGerekli ? "bg-red-50 text-red-600" : ""}`} title={evrakGerekli ? "Cevap tarihi girildi — evrak no zorunlu" : (s.evrak_no ?? "")}>{s.evrak_no || (evrakGerekli ? "Zorunlu!" : "")}</td>
                   <td className={td} title={s.alacakli_adi ?? ""}>{s.alacakli_adi}</td>

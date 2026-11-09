@@ -9,6 +9,7 @@ import Topbar from "@/components/shared/topbar";
 import PullToRefresh from "@/components/shared/pull-to-refresh";
 import TruncateTooltipHandler from "@/components/shared/truncate-tooltip-handler";
 import EpostaZorunlu from "@/components/shared/eposta-zorunlu";
+import AvukatTakipNotu from "@/components/shared/avukat-takip-notu";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export default function DashboardLayout({
@@ -56,6 +57,9 @@ export default function DashboardLayout({
       {/* E-posta adresi olmayan kullanıcıya kapatılamaz kutu: adres girilmeden panelde
           işlem yapılamaz. "Şifremi unuttum" akışı kayıtlı adrese bağlı. */}
       <EpostaZorunlu />
+      {/* AVUKATA MAİL GİDİNCE ÇIKAN TAKİP NOTU: gönderen pencereler kapandığı
+          için not panel düzeninde duruyor (bkz. avukat-takip-notu). */}
+      <AvukatTakipNotu />
       <div
         className="flex overflow-hidden bg-[#FAFAFA]"
         style={{

@@ -20,7 +20,8 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, X, Loader2, Send } from "lucide-react";
 import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
-import { avukataGonder, AVUKAT_TAKIP_NOTU } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
 import { telefonGoster } from "@/lib/utils/telefon";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -33,12 +34,14 @@ export type CevapAlanlari = {
   odenen_tutar: string;   // metin (para girişi biçimli)
   banka_adi: string;
   avukat_id: string;
+  /** Avukatın ADININ ANLIK KOPYASI — avukat silinse/adı değişse de kalır. */
+  avukat_adi: string;
   avukat_notu: string;
 };
 
 export const BOS_CEVAP: CevapAlanlari = {
   cevap_sekli: "", cevap_tarihi: "", evrak_no: "", odenen_tutar: "",
-  banka_adi: "", avukat_id: "", avukat_notu: "",
+  banka_adi: "", avukat_id: "", avukat_adi: "", avukat_notu: "",
 };
 
 /**
@@ -85,10 +88,18 @@ export function eksikZorunluAlanlar(kayit: Record<string, unknown>): string[] {
   }).map((x) => x.etiket);
 }
 
-/** Cevap/ödeme bölümünde herhangi bir alan dolu mu? (yıldızı göstermek için) */
+/**
+ * Cevap/ödeme bölümünde CEVABI BELGELEYEN bir alan dolu mu?
+ *
+ * AVUKAT NOTU SAYILMAZ: not, cevabın kendisi değil, maile eklenen bir cümle.
+ * Sayıldığında cevabı geri almak imkânsız hâle geliyordu — kullanıcı cevap
+ * şeklini "Seçin…"e çeker, alanlar boşalır ama not kayıtta kalır, bölüm "dolu"
+ * sayılır ve kaydetme sessizce engellenirdi. Not kayıtta duruyor (silinmiyor),
+ * yalnız "cevap verildi" ölçüsüne girmiyor.
+ */
 function cevapDolduMu(v: CevapAlanlari): boolean {
   return Boolean(v.cevap_tarihi || v.evrak_no.trim() || v.banka_adi.trim()
-    || v.avukat_id || v.avukat_notu.trim() || parseParaInput(v.odenen_tutar) > 0);
+    || v.avukat_id || parseParaInput(v.odenen_tutar) > 0);
 }
 
 /**
@@ -112,6 +123,11 @@ export type CevapAlan = "cevap_sekli" | "cevap_tarihi" | "evrak_no" | "banka_adi
  * kutuların kendisini kırmızıya boyuyor — nerede olduğu bakışta görünüyor.
  */
 export function eksikCevapAlanlari(v: CevapAlanlari, zorunlu: boolean): CevapAlan[] {
+  // CEVABI GERİ ALMA: bölümün tamamı boşsa hiçbir şey istenmez — hızlı
+  // pencerede bile. Avukat dosyayı reddedebiliyor, karşı taraf cevabı geri
+  // çevirebiliyor; işlenmiş bir cevabı geri almanın yolu kapalı kalmamalı.
+  // Boş kaydetmek "cevap verilmedi" demektir ve dosya yeniden listeye girer.
+  if (!cevapDolduMu(v) && !v.cevap_sekli.trim()) return [];
   // Bölüm opsiyonel: tam formda hiç doldurulmamışsa hiçbir şey istenmez.
   if (!cevapZorunluMu(v, zorunlu)) return [];
   // CEVAP ŞEKLİ olmadan hangi alanın sorulacağı belli değil — önce o.
@@ -197,6 +213,12 @@ export default function IcraCevapAlanlari({
 
   const secilen = avukatlar.find((a) => a.id === deger.avukat_id) ?? null;
 
+  // ESKİ KAYITTA AD BOŞ KALMIŞ OLABİLİR (sütun sonradan eklendi): liste gelince
+  // id'den çözülüp doldurulur, böylece bir dahaki kaydetmede kopya da yazılır.
+  useEffect(() => {
+    if (secilen && !deger.avukat_adi.trim()) degistir({ avukat_adi: secilen.ad_soyad });
+  }, [secilen, deger.avukat_adi, degistir]);
+
   async function avukatEkle() {
     const ad = yeni.ad_soyad.trim();
     if (!ad) { toast.error("Ad soyad zorunlu."); return; }
@@ -212,7 +234,7 @@ export default function IcraCevapAlanlari({
         aktif: true, sira: avukatlar.reduce((m, x) => Math.max(m, x.sira), 0) + 1,
       });
       setAvukatlar((p) => [...p, a]);
-      degistir({ avukat_id: a.id });          // eklenen hemen seçili gelsin
+      degistir({ avukat_id: a.id, avukat_adi: a.ad_soyad });   // eklenen hemen seçili gelsin
       setYeni({ ad_soyad: "", email: "", telefon: "" });
       setYeniAcik(false);
       toast.success("Avukat eklendi ve seçildi.");
@@ -239,7 +261,7 @@ export default function IcraCevapAlanlari({
       const c = await avukataGonder(icraId, deger.avukat_id, deger.avukat_notu);
       tekrarGonderildi?.({ ek: c.ek, gonderen: c.gonderen, gonderildiAt: c.gonderildiAt });
       toast.success(`${c.alici} adresine yeniden gönderildi · ek: ${c.ek}`, { duration: 7000 });
-      toast(AVUKAT_TAKIP_NOTU, { icon: "📞", duration: 12000 });
+      avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
       if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt tutulamadı: ${c.kayitHatasi}`, { duration: 10000 });
       if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
     } catch (e) {
@@ -262,7 +284,20 @@ export default function IcraCevapAlanlari({
         {/* ŞEKİL DEĞİŞİNCE KIRMIZILAR SİLİNİR: başka kipin alanları geliyor,
             eski kipten kalan işaretler yanlış yeri gösterirdi. */}
         <select className={`${inp}${hata("cevap_sekli")}`} value={deger.cevap_sekli} disabled={kilitli}
-          onChange={(e) => { denendiSifirla?.(); degistir({ cevap_sekli: e.target.value }); }}>
+          onChange={(e) => {
+            denendiSifirla?.();
+            // "Seçin…"E DÖNÜLÜNCE ALANLAR BOŞALIR: kaydedilince cevap geri
+            // alınmış olur. Eski kipin tarihi/evrakı ekranda kalsaydı hem
+            // kaydetme engellenirdi hem de "hangi cevap geçerli" belirsizleşirdi.
+            // Avukata gönderilmiş mailin KAYDI SİLİNMEZ (avukat_mail_*): mail
+            // gerçekten gitti, o iz kalmalı. Nota da dokunulmaz.
+            if (!e.target.value.trim()) {
+              degistir({ cevap_sekli: "", cevap_tarihi: "", evrak_no: "", odenen_tutar: "",
+                banka_adi: "", avukat_id: "", avukat_adi: "" });
+              return;
+            }
+            degistir({ cevap_sekli: e.target.value });
+          }}>
           <option value="">Seçin…</option>
           {/* Kayıtta duran ama listeden kaldırılmış bir değer varsa KAYBOLMASIN. */}
           {(deger.cevap_sekli && !sekiller.includes(deger.cevap_sekli)
@@ -335,7 +370,10 @@ export default function IcraCevapAlanlari({
                 // ilişkisi görünmüyordu. Küçük "+" aynı hizada.
                 <div className="flex items-center gap-1.5">
                   <select className={`${inp}${hata("avukat_id")}`} value={deger.avukat_id} disabled={kilitli}
-                    onChange={(e) => degistir({ avukat_id: e.target.value })}>
+                    onChange={(e) => degistir({
+                      avukat_id: e.target.value,
+                      avukat_adi: avukatlar.find((a) => a.id === e.target.value)?.ad_soyad ?? "",
+                    })}>
                     <option value="">Seçin…</option>
                     {avukatlar.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
                   </select>

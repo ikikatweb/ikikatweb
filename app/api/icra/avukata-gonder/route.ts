@@ -184,6 +184,10 @@ export async function POST(request: Request) {
     const { error: gErr } = await sb.from("icra").update({
       ...(kayit.cevap_tarihi ? {} : { cevap_tarihi: bugun }),
       avukat_mail_at: simdi,
+      // ADIN ANLIK KOPYASI: avukat listeden silinse ya da adı değişse de
+      // "bu dosya kime gitmişti" sorusu cevaplanabilsin. Tabloda da bu
+      // sütun gösteriliyor; id'den ada her seferinde çevirmek gerekmiyor.
+      avukat_adi: avukat.ad_soyad,
       avukat_mail_ek: belge.ad,
       avukat_mail_gonderen: kullanici.ad_soyad,
       avukat_mail_gonderen_id: kullanici.id,
