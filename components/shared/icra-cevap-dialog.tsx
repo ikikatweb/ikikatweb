@@ -140,6 +140,17 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
         </div>
 
         <div ref={formRef} onKeyDown={formEnter} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* CEVAP ŞEKLİ İLK SIRADA: iş sırası böyle — önce "nasıl cevap verdim"
+              (KEP / iadeli taahütlü / banka), sonra o gönderinin tarihi ve evrak
+              numarası. Tarih başta dururken insan önce onu dolduruyor, cevap şeklini
+              en sonda görüp boş bırakıyordu. Enter ile geçiş de bu sırayı izler. */}
+          <div>
+            <label className={lbl}>Cevap şekli</label>
+            <select className={inp} value={cevapSekli} onChange={(e) => setCevapSekli(e.target.value)} autoFocus>
+              <option value="">Seçin…</option>
+              {sekiller.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
           <div>
             <label className={lbl}>İcraya cevap tarihi</label>
             <input type="date" className={inp} value={cevapTarihi} onChange={(e) => setCevapTarihi(e.target.value)} />
@@ -147,13 +158,6 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           <div>
             <label className={lbl}>Evrak no {cevapTarihi && <span className="text-red-600">*</span>}</label>
             <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)} placeholder="Gönderilen evrak no" />
-          </div>
-          <div>
-            <label className={lbl}>Cevap şekli</label>
-            <select className={inp} value={cevapSekli} onChange={(e) => setCevapSekli(e.target.value)}>
-              <option value="">Seçin…</option>
-              {sekiller.map((x) => <option key={x} value={x}>{x}</option>)}
-            </select>
           </div>
           <div>
             <label className={lbl}>Ödenen tutar</label>
