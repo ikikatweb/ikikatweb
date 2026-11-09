@@ -222,7 +222,26 @@ async function isle(t) {
       baslik: sorunlar.length ? "Tebligat açıldı — eksik var" : "Tebligat açıldı",
       govde: `${t.gonderen_ad ?? t.hesap} · ${t.konu ?? "konu yok"}\n`
         + (sorunlar.length ? sorunlar.join(" · ") : `${ekler.length} belge hazır.`),
-      url: "/dashboard/yazismalar/e-tebligat",
+      // BİLDİRİME TIKLAYINCA DOĞRUDAN YAZI AÇILSIN (09.11.2026 kullanıcı isteği):
+      // eskiden tebligat listesine götürüyordu, oradan satırı bulup belgeye tıklamak
+      // gerekiyordu. Artık asıl belgeye gidiyor.
+      //
+      // HANGİSİ "ASIL" BELGE: pakette genelde iki dosya var — tebligat yazısının
+      // kendisi ve "ustyazi.pdf" (PTT'nin zarf/mazbata kapağı). Kapak değil, yazı
+      // açılmalı; o yüzden adı "ustyazi" olmayan ilk PDF seçiliyor.
+      // Belge yoksa ya da seçilemezse ESKİ DAVRANIŞ: listeye götürür. Bildirimin
+      // tıklanamaz hale gelmesindense liste açılsın.
+      url: (() => {
+        const yazi = ekler.find((e) => !/ustyazi/i.test(e.ad) && /pdf/i.test(e.tur ?? e.ad))
+          ?? ekler.find((e) => /pdf/i.test(e.tur ?? e.ad))
+          ?? ekler[0];
+        // Kovalar ÖZEL: doğrudan Storage adresine gidilirse 400 döner. /api/dosya
+        // geçidi oturumu doğrulayıp kısa ömürlü imzalı adrese yönlendiriyor
+        // (bkz. lib/utils/dosya-url).
+        return yazi?.yol
+          ? `/api/dosya?u=${encodeURIComponent(yazi.yol)}`
+          : "/dashboard/yazismalar/e-tebligat";
+      })(),
       etiket: `tebligat-acildi-${t.id}`,
       kategori: "e-tebligat",
     });
