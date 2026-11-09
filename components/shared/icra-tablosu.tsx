@@ -222,7 +222,16 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     const q = trAramaNormalize(arama.trim());
     if (!q) return sirali;
     return sirali.filter((s) => trAramaNormalize(
-      [s.ucuncu_sahis, s.dosya_esas_no, s.cevap_sekli, s.evrak_no, s.alacakli_adi, s.alacakli_vergi_no, s.borclu_adi, s.borclu_tc_no].filter(Boolean).join(" "),
+      [s.ucuncu_sahis, s.dosya_esas_no, s.cevap_sekli, s.evrak_no, s.alacakli_adi,
+        s.alacakli_vergi_no, s.borclu_adi, s.borclu_tc_no,
+        // AVUKAT VE BANKA DA ARANIR: ikisi de tabloda görünen veri; "şu avukata
+        // hangi dosyalar gitti" en sık sorulan şeylerden biri.
+        s.avukat_adi, s.banka_adi,
+        // DURUM SÖZCÜKLERİ: tabloda "Cevap yok" diye KIRMIZI görünen satırlar
+        // aranamıyordu — ekranda yazan bir şeyin aranabilmesi gerek. Eş anlamlılar
+        // da yazıldı; kimse aynı şeyi aynı sözcükle aramıyor.
+        s.cevap_tarihi ? "cevap verildi cevaplandı" : "cevap yok cevapsız cevap verilmedi",
+      ].filter(Boolean).join(" "),
     ).includes(q));
   }, [sirali, arama]);
   // HEPSİ GÖSTERİLİR: tablo artık 15 satırlık bir pencerede kendi içinde kayıyor;
@@ -436,7 +445,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         <div className="relative w-full sm:w-96">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={arama} onChange={(e) => setArama(e.target.value)}
-            placeholder="Dosya no, isim, TC / vergi no, evrak no…"
+            placeholder="Dosya no, isim, TC / vergi no, evrak no, avukat… ya da &quot;cevap yok&quot;"
             className="w-full h-9 pl-8 pr-3 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30" />
         </div>
         <span className="text-xs text-gray-500">{gorunen.length} kayıt</span>
