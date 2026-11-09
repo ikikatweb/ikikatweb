@@ -16,7 +16,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Scale, Pencil } from "lucide-react";
+import { Scale, Check } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { getIcraSirketTakipler } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
@@ -190,9 +190,13 @@ export default function OdemeEmriDashboard() {
                       {canDuzenle ? (
                         <button type="button"
                           onClick={() => { window.location.href = `/dashboard/icra?sekme=sirket&duzenle=${s.id}`; }}
+                          // DÜĞME ADI "CEVABI İŞLE" — İCRA KARTIYLA AYNI (09.11.2026 kullanıcı isteği).
+                          // Önce "Dosyayı işle" yazılmıştı: buradaki form cevap değil
+                          // itiraz/ödeme/durum istiyor. Kullanıcı iki kartta aynı sözcüğü
+                          // yeğledi; title alanı formun gerçekte ne istediğini söylüyor.
                           title="İtiraz, ödeme ve durum bilgilerini girmek için formu açar"
                           className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 hover:bg-red-100">
-                          <Pencil size={11} /> Dosyayı işle
+                          <Check size={11} /> Cevabı işle
                         </button>
                       ) : (
                         <span className="text-[11px] text-gray-400">—</span>
