@@ -12,14 +12,14 @@
 //   · Son kontrol satırı → mail GELMESE DE haftada bir bakılmalı. Bilgilendirme maili
 //     hukuken tebligatın parçası değil; gelmemesi süreyi durdurmaz (VUK 107/A).
 // Bu yüzden liste boşken de ekran "temiz" demez, "bakıldı mı?" diye sorar.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion, Plus, Trash2, Mail } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion, Trash2, Mail, Link2 as LinkIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth, tebligatDegisti } from "@/hooks";
 import {
   getKetsisBildirimler, getSonKetsisKontrol, getKetsisTarayici, kontrolYasiGun,
-  getKetsisTebligatlar, ketsisKalanGun,
+  getKetsisTebligatlar, ketsisKalanGun, ketsisTebligGunu,
   GIB_GIRIS, KONTROL_ARALIGI_GUN,
   type KetsisBildirim, type KetsisKontrol, type KetsisTarayiciDurum, type KetsisTebligat,
 } from "@/lib/supabase/queries/ketsis";
@@ -49,7 +49,7 @@ export default function KetsisTablosu() {
   const [hata, setHata] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hepsi, setHepsi] = useState(false);
-  const [islemde, setIslemde] = useState<number | "kontrol" | "ekle" | null>(null);
+  const [islemde, setIslemde] = useState<number | "kontrol" | "ekle" | "anahtar" | null>(null);
 
   // TEBLİGAT DEFTERİ — ekranın asıl sonucu. Bildirim maili "gel bak" uyarısıydı;
   // bunlar daireye bakıldığında GÖRÜLEN tebligatlar, süreleriyle birlikte.
@@ -57,9 +57,13 @@ export default function KetsisTablosu() {
   const [firmaListe, setFirmaListe] = useState<{ id: string; kisa_adi: string | null; firma_adi: string }[]>([]);
   const [tebHepsi, setTebHepsi] = useState(false);
   const [mailAcik, setMailAcik] = useState(false);
-  const [formAcik, setFormAcik] = useState(false);
-  const BOS_FORM = { firma_id: "", vergi_dairesi: "", konu: "", belge_no: "", ulasma_tarihi: "", notlar: "" };
-  const [form, setForm] = useState(BOS_FORM);
+  const [portalAcik, setPortalAcik] = useState(false);
+  // HAM ANAHTAR YALNIZ BURADA, YALNIZ ÜRETİLDİĞİ AN: sunucu sha256 özetini saklıyor,
+  // geri okunamıyor. Sayfa yenilenirse yer imi kutusu "üret" durumuna döner; eskisi
+  // çalışmaya devam eder, yenisi üretilirse eski geçersiz olur.
+  const [anahtar, setAnahtar] = useState<string | null>(null);
+  const [portalDurum, setPortalDurum] = useState<
+    { kurulu: boolean; anahtar_son4?: string; son_kullanim?: string; son_sonuc?: string } | null>(null);
 
   const yukle = useCallback(async () => {
     try {
@@ -95,11 +99,40 @@ export default function KetsisTablosu() {
   const acikTebligat = tebligatlar.filter((t) => !t.okundu_at);
   const tebListe = tebHepsi ? tebligatlar : acikTebligat;
   const enYakin = acikTebligat.length
-    ? acikTebligat.map((t) => ketsisKalanGun(t.teblig_tarihi)).sort((x, y) => x - y)[0]
+    ? acikTebligat.map((t) => ketsisKalanGun(ketsisTebligGunu(t).gun)).sort((x, y) => x - y)[0]
     : null;
-  const suresiGecenTeb = acikTebligat.filter((t) => ketsisKalanGun(t.teblig_tarihi) < 0).length;
+  const suresiGecenTeb = acikTebligat.filter((t) => ketsisKalanGun(ketsisTebligGunu(t).gun) < 0).length;
 
   const yas = kontrolYasiGun(sonKontrol?.kontrol_at);
+  const anahtarSon4 = anahtar ? anahtar.slice(-4) : portalDurum?.anahtar_son4 ?? "";
+  const yerImiRef = useRef<HTMLAnchorElement | null>(null);
+
+  // ═══ YER İMİ ═══ Portalın KENDİ sayfasında çalışır (aynı origin → CORS duvarı yok,
+  // oturum anahtarı sessionStorage'dan okunur). Tek yaptığı LİSTEYİ OKUMAK: hiçbir belge
+  // indirilmiyor, çünkü indirmek tebligatı açmak demek ve o karar insanın.
+  // Sessiz başarı yok: sonuç da, oturum düşmesi de, atlanan kayıt da ekrana basılıyor.
+  const yerImi = useMemo(() => {
+    if (!anahtar) return "";
+    const kod = `(async()=>{try{
+if(!location.hostname.endsWith("dijital.gib.gov.tr")){alert("Bu yer imi Dijital Vergi Dairesi sayfasinda calisir.");return;}
+var t=sessionStorage.getItem("token");
+if(!t){alert("Portal oturumu bulunamadi. Giris yapip e-Tebligat sayfasini acin, sonra tekrar tiklayin.");return;}
+var hepsi=[],vkn="";
+try{var u=await fetch("/apigateway/auth/tdvd/user-info",{headers:{Authorization:t}});if(u.ok){var uj=await u.json();var ara=function(o){if(!o||typeof o!=="object")return"";for(var k in o){var v=o[k];if(typeof v==="string"&&/vkn|vergiKimlik|tckn|kimlikNo/i.test(k)&&/^[0-9]{10,11}$/.test(v))return v;if(typeof v==="object"){var r=ara(v);if(r)return r;}}return"";};vkn=ara(uj);}}catch(e){}
+for(var a=0;a<2;a++){for(var sf=1;sf<=60;sf++){
+var r=await fetch("/apigateway/etebligat/etebligat/tebligat-listele",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json, text/plain, */*","page-name":"e-tebligat","ui-client":"fe","Authorization":t},body:JSON.stringify({meta:{pagination:{pageNo:sf,pageSize:50},sortFieldName:"id",sortType:"ASC",filters:[{fieldName:"arsivDurum",values:[String(a)]}]}})});
+if(r.status===401){alert("Portal oturumu dusmus. Tekrar giris yapip HEMEN tiklayin.");return;}
+if(!r.ok){alert("Portal listesi alinamadi: HTTP "+r.status);return;}
+var j=await r.json();var d=(j&&j.data&&j.data.tebligatDtoList)||[];hepsi=hepsi.concat(d);
+var tp=(j&&j.pageDetail&&j.pageDetail.totalPage)||1;if(sf>=tp||d.length===0)break;}}
+var res=await fetch(${JSON.stringify(typeof window === "undefined" ? "" : window.location.origin)}+"/api/ketsis/portal-aktar",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({anahtar:${JSON.stringify(anahtar)},vkn:vkn,kayitlar:hepsi})});
+var jj=await res.json().catch(function(){return {};});
+if(!res.ok){alert("Panele yazilamadi: "+(jj.error||("HTTP "+res.status)));return;}
+alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla eslesmedi, kayitlar 'belirsiz' olarak girdi.")+((jj.atlanan&&jj.atlanan.length)?"\\n\\nAtlananlar:\\n"+jj.atlanan.join("\\n"):""));
+}catch(e){alert("Yer imi hata verdi: "+(e&&e.message?e.message:e));}})();`;
+    return "javascript:" + encodeURIComponent(kod.replace(/\n/g, ""));
+  }, [anahtar]);
+
   const kontrolGerekli = yas === null || yas >= KONTROL_ARALIGI_GUN;
 
   // Tarayıcı sessizliği: en son çalışan kutuya bakılır (biri çalışıyorsa görev ayakta).
@@ -114,7 +147,25 @@ export default function KetsisTablosu() {
     && (tarayici.length === 0 || taramaSaat === null || taramaSaat > TARAYICI_TOLERANS_SAAT);
   const tarayiciHata = tarayici.map((t) => t.son_hata).filter(Boolean)[0] ?? null;
 
-  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" | "ekle") {
+  // Yer imi adresini DOM'a doğrudan yaz (yukarıdaki nota bak: React href'i temizliyor).
+  useEffect(() => {
+    if (yerImiRef.current && yerImi) yerImiRef.current.setAttribute("href", yerImi);
+  }, [yerImi, portalAcik, anahtar]);
+
+  // Yer imi kurulu mu, en son ne zaman çalıştı, sonucu neydi? HAM ANAHTAR DÖNMEZ —
+  // yalnız son 4 hanesi, "doğru yer imini mi kullanıyorum" sorusuna yetsin diye.
+  const portalDurumOku = useCallback(async () => {
+    try {
+      const r = await fetch("/api/ketsis/kontrol", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ islem: "portal-durum" }),
+      });
+      if (r.ok) setPortalDurum(await r.json());
+    } catch { /* ekranın geri kalanı çalışsın; kutu "üret" durumunda kalır */ }
+  }, []);
+  useEffect(() => { void portalDurumOku(); }, [portalDurumOku]);
+
+  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" | "ekle" | "anahtar") {
     setIslemde(anahtar);
     try {
       const r = await fetch("/api/ketsis/kontrol", {
@@ -123,9 +174,14 @@ export default function KetsisTablosu() {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      // HAM ANAHTAR SADECE BURADA GÖRÜLÜR: sunucu özetini saklıyor, bir daha dönmüyor.
+      // Yer imi bu değerle üretiliyor; kullanıcı kurmadan sayfayı yenilerse yeniden
+      // üretmesi gerekir (eskisi çalışmaya devam eder).
+      if (typeof j.anahtar === "string") setAnahtar(j.anahtar);
       // Yarım kalan işlem sessiz geçilmez: rota uyarı döndürdüyse kullanıcı görsün.
       if (j.uyari) toast.error(j.uyari, { duration: 14000 });
       else toast.success("Kaydedildi.", { duration: toastSuresi() });
+      await portalDurumOku();
       await yukle();
       tebligatDegisti();   // menü rozeti de düşsün
     } catch (e) {
@@ -142,7 +198,12 @@ export default function KetsisTablosu() {
     <div className="mt-10 border-t-2 border-dashed border-gray-200 pt-6">
       <div className="mb-3 flex flex-wrap items-center gap-3 rounded-r-lg border-l-4 border-amber-500 bg-amber-50/60 px-3 py-2">
         <h2 className="flex items-center gap-2 text-base font-semibold text-[#1E3A5F]">
-          <Landmark size={18} /> Vergi dairesi tebligatı
+          {/* ADLANDIRMA (09.11.2026): portaldan çekilen kayıtlara bakılınca görüldü ki
+              KETSİS yalnız vergi dairesi tebligatı taşımıyor — gelen 87 kaydın tamamı
+              EMNİYET GENEL MÜDÜRLÜĞÜ / Trafik Başkanlığı'ndan idari para cezası. Başlığı
+              "vergi dairesi" diye bırakmak, buraya düşen trafik cezasının gözden
+              kaçmasına yol açardı. Okunduğu yer hâlâ Dijital Vergi Dairesi. */}
+          <Landmark size={18} /> Vergi dairesi ve kurum tebligatları
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900"
             title="Kurumsal Elektronik Tebligat Sistemi — GİB işletir, PTT UETS'ten ayrıdır">
             GİB · KETSİS
@@ -203,11 +264,12 @@ export default function KetsisTablosu() {
           )}
           {isaretleyebilir && (
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {/* İKİ SONUÇ, İKİ DÜĞME: daireye bakan kişi ne gördüğünü söylüyor.
-                  "Baktım" tek başına yetmiyordu — baktı da ne buldu? */}
-              <button type="button" onClick={() => setFormAcik((a) => !a)}
+              {/* ELLE GİRİŞ KALDIRILDI (09.11.2026): defter elle doldurulmak için değil,
+                  portaldan aktarılmak için var. Buradaki düğme artık yer imi kurulumunu
+                  açıyor — kayıtlar Dijital Vergi Dairesi'nden tek tıkla geliyor. */}
+              <button type="button" onClick={() => setPortalAcik((a) => !a)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 h-7 text-xs font-medium hover:bg-gray-50">
-                <Plus size={12} /> Tebligat var, kaydet
+                <LinkIcon size={12} /> Portal bağlantısı
               </button>
               <button type="button" disabled={islemde === "kontrol"}
                 onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
@@ -219,59 +281,67 @@ export default function KetsisTablosu() {
           )}
         </div>
 
-        {/* TEBLİGAT GİRİŞ FORMU — ulaşma tarihi ŞART, son gün ondan hesaplanıyor. */}
-        {formAcik && (
-          <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
-            <label className="text-xs text-gray-600">
-              Firma
-              <select value={form.firma_id} onChange={(e) => setForm((f) => ({ ...f, firma_id: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-2 h-8 text-sm">
-                {/* Boş seçenek kasıtlı: hangi firma olduğu belli değilse tahmin edilmez,
-                    ekranda "belirsiz" yazar (aynı kural mail okuyucuda da var). */}
-                <option value="">belirsiz</option>
-                {firmaListe.map((f) => (
-                  <option key={f.id} value={f.id}>{f.kisa_adi || f.firma_adi}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs text-gray-600">
-              Tebligatın ulaşma tarihi <span className="text-red-600">*</span>
-              <input type="date" value={form.ulasma_tarihi}
-                onChange={(e) => setForm((f) => ({ ...f, ulasma_tarihi: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-2 h-8 text-sm" />
-            </label>
-            <label className="text-xs text-gray-600">
-              Vergi dairesi
-              <input value={form.vergi_dairesi} placeholder="örn. Tokat Vergi Dairesi"
-                onChange={(e) => setForm((f) => ({ ...f, vergi_dairesi: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-2 h-8 text-sm" />
-            </label>
-            <label className="text-xs text-gray-600 sm:col-span-2">
-              Konu
-              <input value={form.konu} onChange={(e) => setForm((f) => ({ ...f, konu: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-2 h-8 text-sm" />
-            </label>
-            <label className="text-xs text-gray-600">
-              Belge no
-              <input value={form.belge_no} onChange={(e) => setForm((f) => ({ ...f, belge_no: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-2 h-8 font-mono text-sm" />
-            </label>
-            <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
-              <button type="button" disabled={islemde === "ekle"}
-                onClick={async () => {
-                  await gonder({ islem: "tebligat-ekle", ...form }, "ekle");
-                  setForm(BOS_FORM); setFormAcik(false);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-3 h-8 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
-                {islemde === "ekle" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                Kaydet
-              </button>
-              <button type="button" onClick={() => { setForm(BOS_FORM); setFormAcik(false); }}
-                className="rounded-lg border border-gray-300 px-3 h-8 text-xs hover:bg-gray-50">Vazgeç</button>
-              <span className="text-[11px] text-gray-500">
-                Tebliğ sayılacağı günü panel hesaplıyor: ulaşma + 5 gün (VUK 107/A).
-              </span>
-            </div>
+        {/* ═══ PORTAL BAĞLANTISI (YER İMİ) ═══
+            NİYE YER İMİ: 09.11.2026'da portal üzerinde keşif yapıldı.
+              · Girişte CAPTCHA var → sunucu kendi kendine giremez.
+              · Oturum sessionStorage'da ve ~6-8 dakikada düşüyor → şifre saklamanın
+                anlamı yok; zaten saklanmıyor.
+              · Tarayıcı, panelin portal servislerini okumasına izin vermiyor (CORS) —
+                ama portalın KENDİ sayfasında çalışan kod okuyabiliyor.
+            Bu yüzden: girişi kullanıcı yapar, e-Tebligat ekranında yer imine tıklar,
+            yer imi listeyi okuyup panele gönderir. BELGE AÇILMAZ, yalnız liste okunur. */}
+        {portalAcik && (
+          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-sm">
+            {!anahtar ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" disabled={islemde === "anahtar"}
+                  onClick={() => gonder({ islem: "portal-anahtar-uret" }, "anahtar")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-3 h-8 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
+                  {islemde === "anahtar" ? <Loader2 size={12} className="animate-spin" /> : <LinkIcon size={12} />}
+                  Yer imini üret
+                </button>
+                <span className="text-xs text-gray-600">
+                  Tek seferlik kurulum. Şifreniz hiçbir yerde saklanmaz.
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="font-medium text-[#1E3A5F]">Yer imi hazır — kurulumu bir kez yapın:</div>
+                <ol className="list-decimal space-y-1 pl-5 text-xs text-gray-700">
+                  <li>Aşağıdaki bağlantıyı tarayıcınızın <b>yer imi çubuğuna sürükleyin</b>
+                    (ya da sağ tık → yer imi olarak ekle).</li>
+                  <li>Dijital Vergi Dairesi&apos;ne girip <b>e-Tebligat</b> sayfasını açın.</li>
+                  <li>Yer imine tıklayın. Liste panele düşer.</li>
+                </ol>
+                {/* href REACT ÜZERİNDEN VERİLMİYOR (09.11.2026). React, "javascript:" ile
+                    başlayan href'i güvenlik gereği temizliyor ve yerine
+                    "React has blocked a javascript: URL" fırlatan bir kod koyuyor —
+                    yer imi sürüklenip kullanıldığında sessizce çalışmıyordu. Bu yüzden
+                    adres, bağlama sonrası doğrudan DOM'a yazılıyor (aşağıdaki effect). */}
+                <a ref={yerImiRef} onClick={(e) => e.preventDefault()}
+                  title="Bu bağlantıyı yer imi çubuğuna sürükleyin"
+                  className="inline-flex cursor-grab items-center gap-1.5 rounded-lg border-2 border-dashed border-[#1E3A5F] bg-[#1E3A5F]/5 px-3 py-1.5 text-xs font-semibold text-[#1E3A5F]">
+                  <LinkIcon size={13} /> Vergi dairesi tebligatlarını aktar
+                </a>
+                {/* OTURUM KISA: girişten hemen sonra tıklanmalı, yoksa 401 gelir.
+                    Bunu baştan söylemek, "çalışmıyor" sanılmasını önlüyor. */}
+                <div className="text-[11px] text-amber-800">
+                  Portal oturumu birkaç dakikada düşüyor — girişten <b>hemen sonra</b> tıklayın.
+                  Düşmüşse yer imi size &quot;oturum düşmüş&quot; der, sessiz kalmaz.
+                </div>
+                <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-gray-500">
+                  <span>Anahtar sonu: <b className="font-mono">…{anahtarSon4}</b></span>
+                  {portalDurum?.son_kullanim && (
+                    <span>Son aktarım: {gunSaat(portalDurum.son_kullanim)}
+                      {portalDurum.son_sonuc ? ` · ${portalDurum.son_sonuc}` : ""}</span>
+                  )}
+                  <button type="button" onClick={() => { setAnahtar(null); void gonder({ islem: "portal-anahtar-sil" }, "anahtar"); }}
+                    className="underline underline-offset-2 hover:text-red-700">
+                    Bağlantıyı iptal et
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -282,7 +352,7 @@ export default function KetsisTablosu() {
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
               <th className="px-3 py-2 font-medium">Firma</th>
-              <th className="px-3 py-2 font-medium">Vergi dairesi</th>
+              <th className="px-3 py-2 font-medium">Gönderen kurum</th>
               <th className="px-3 py-2 font-medium">Konu</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ sayılacağı gün</th>
@@ -293,7 +363,10 @@ export default function KetsisTablosu() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tebListe.map((t) => {
-              const kalan = ketsisKalanGun(t.teblig_tarihi);
+              // Geçerli gün: portal kaydında GİB'in kendi bildirdiği tarih, yoksa bizim
+              // hesabımız (bkz. ketsisTebligGunu). Fark varsa aşağıda açıkça yazılıyor.
+              const { gun: tebligGunu, farkli: tarihFarkli } = ketsisTebligGunu(t);
+              const kalan = ketsisKalanGun(tebligGunu);
               const gecti = kalan < 0;
               return (
                 <tr key={t.id} className={!t.okundu_at && gecti ? "bg-red-50" : (!t.okundu_at && kalan <= 2 ? "bg-amber-50" : "")}>
@@ -315,7 +388,16 @@ export default function KetsisTablosu() {
                     {new Date(t.ulasma_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums font-medium">
-                    {new Date(t.teblig_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                    {new Date(tebligGunu + "T00:00:00").toLocaleDateString("tr-TR")}
+                    {/* FARK SESSİZ GEÇİLMEZ: GİB'in günü ile bizim hesabımız tutmuyorsa
+                        GİB'inki gösterilir ama bizimki de söylenir — hangi güne göre iş
+                        yapılacağı bu ekranın tek konusu. */}
+                    {tarihFarkli && (
+                      <div className="text-[11px] font-normal text-amber-700"
+                        title="GİB'in bildirdiği gün ile ulaşma + 5 hesabı tutmuyor. Gösterilen, GİB'in bildirdiği gündür.">
+                        GİB&apos;e göre · bizim hesap {new Date(t.teblig_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                      </div>
+                    )}
                   </td>
                   <td className={`px-3 py-2 whitespace-nowrap font-medium ${
                     gecti ? "text-red-700" : kalan <= 2 ? "text-amber-700" : "text-gray-700"}`}>

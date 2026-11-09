@@ -50,6 +50,13 @@ export type KetsisTebligat = {
   teblig_tarihi: string;
   okundu_at: string | null;
   okuyan_ad: string | null;
+  /** "elle" ya da "portal" (yer imiyle Dijital Vergi Dairesi'nden aktarıldı). */
+  kaynak?: string | null;
+  portal_teblig_id?: string | null;
+  kurum?: string | null;
+  belge_turu?: string | null;
+  /** GİB'in KENDİ bildirdiği tebliğ tarihi. Bizimkiyle çakışmazsa bu geçerlidir. */
+  portal_teblig_tarihi?: string | null;
   notlar: string | null;
   kaydeden_ad: string | null;
   created_at: string;
@@ -105,6 +112,20 @@ export async function getKetsisTebligatlar(): Promise<KetsisTebligat[]> {
   // Hata YUTULMAZ: boş liste "tebligat yok" diye okunur, oysa sorgu patlamış olabilir.
   if (error) throw error;
   return (data ?? []) as unknown as KetsisTebligat[];
+}
+
+/**
+ * Hangi tebliğ tarihi geçerli? GİB portaldan kendi hesabını veriyor (tebligZamani);
+ * biz de VUK 107/A'ya göre ulaşma + 5 hesaplıyoruz. İkisi genelde aynı çıkıyor ama
+ * AYNI OLDUĞUNU VARSAYMIYORUZ: fark varsa GİB'in günü gösterilir (tebligatı o işletiyor)
+ * ve fark ekranda BELİRTİLİR. Sessizce birini seçmek, yanlış güne göre iş yapılması
+ * demek olurdu — sürenin kendisi bu ekranın tek konusu.
+ */
+export function ketsisTebligGunu(t: KetsisTebligat): { gun: string; farkli: boolean } {
+  const bizim = t.teblig_tarihi;
+  const gib = t.portal_teblig_tarihi ?? null;
+  if (!gib) return { gun: bizim, farkli: false };
+  return { gun: gib, farkli: gib !== bizim };
 }
 
 /** Tebliğ sayılacağı güne kalan tam gün. Negatif = süre geçti. */
