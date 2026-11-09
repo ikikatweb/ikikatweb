@@ -35,8 +35,6 @@ export async function POST(request: Request) {
     islem?: string; id?: number; bulgu?: string; notlar?: string;
     firma_id?: string | null; vergi_dairesi?: string; konu?: string; belge_no?: string;
     ulasma_tarihi?: string; bildirim_id?: number | null;
-    satirlar?: { belge_no?: string; kurum?: string; belge_turu?: string;
-                 ulasma_tarihi?: string; teblig_tarihi?: string; okuma_at?: string }[];
   };
 
   // ── 1) Elle kontrol kaydı ────────────────────────────────────────────────
@@ -151,88 +149,6 @@ export async function POST(request: Request) {
     const { error } = await sb.from("ketsis_tebligat").delete().eq("id", g.id);
     if (error) return NextResponse.json({ error: `Silinemedi: ${error.message}` }, { status: 500 });
     return NextResponse.json({ durum: "silindi" });
-  }
-
-  // ── 4) Portal Excel'i aktar ─────────────────────────────────────────────
-  // Dijital Vergi Dairesi > e-Tebligat > "Excel'e Aktar" çıktısı. Dosya TARAYICIDA
-  // okunup satırlar buraya geliyor; sunucuya dosya yüklenmiyor.
-  //
-  // NİYE BU YOL: portalda CAPTCHA olduğu için panel kendi giremiyor, yer imi kurulumu
-  // da zahmetli bulundu. Excel'i portal zaten kendisi üretiyor — en az adımlı, en az
-  // kırılgan yol bu. Belge İNDİRİLMİYOR, yalnız liste aktarılıyor.
-  if (g.islem === "excel-aktar") {
-    if (!duzenler) {
-      return NextResponse.json({ error: "Aktarım için E-Tebligat düzenleme yetkisi gerekir." }, { status: 403 });
-    }
-    // FİRMA ŞART, TAHMİN EDİLMİYOR: Excel'de VKN yok (09.11.2026'da dosya incelendi).
-    // Hangi firmanın listesi olduğunu yalnız yükleyen kişi bilir. Tahminle bağlamak,
-    // bir firmanın tebligatını başka firmanın defterine yazmak demek olurdu.
-    if (!g.firma_id) {
-      return NextResponse.json(
-        { error: "Önce firma seçin. Excel dosyasında firma bilgisi yok, tahmin edilmiyor." }, { status: 400 });
-    }
-    const satirlar = Array.isArray(g.satirlar) ? g.satirlar : [];
-    if (satirlar.length === 0) {
-      return NextResponse.json(
-        { error: "Dosyada tebligat satırı bulunamadı. Doğru dosyayı seçtiğinizden emin olun." }, { status: 400 });
-    }
-
-    const atlanan: string[] = [];
-    const kayitlar = [];
-    for (const r of satirlar) {
-      // Ulaşma tarihi olmayan satır YAZILMAZ: süre ondan hesaplanıyor, boş geçilirse
-      // defterde tarihi olmayan bir kayıt kalır ve kimse fark etmez.
-      if (!r.ulasma_tarihi) {
-        atlanan.push(`${r.belge_no ?? "belge no yok"} — gönderme tarihi okunamadı`);
-        continue;
-      }
-      if (!r.belge_no) {
-        atlanan.push("belge no olmayan satır — tekrar kaydı ayırt edilemeyeceği için alınmadı");
-        continue;
-      }
-      kayitlar.push({
-        firma_id: g.firma_id,
-        kaynak: "portal",
-        belge_no: r.belge_no,
-        kurum: r.kurum ?? null,
-        vergi_dairesi: r.kurum ?? null,
-        belge_turu: r.belge_turu ?? null,
-        konu: r.belge_turu ?? null,
-        ulasma_tarihi: r.ulasma_tarihi,
-        portal_teblig_tarihi: r.teblig_tarihi ?? null,
-        portal_okuma_at: r.okuma_at ?? null,
-        okundu_at: r.okuma_at ?? null,
-        kaydeden_id: k.id,
-        kaydeden_ad: k.ad_soyad,
-      });
-    }
-
-    const { data: oncekiler } = await sb.from("ketsis_tebligat")
-      .select("belge_no").eq("firma_id", g.firma_id).in("belge_no", kayitlar.map((x) => x.belge_no));
-    const bilinen = new Set((oncekiler ?? []).map((x) => x.belge_no));
-    const yeniSayi = kayitlar.filter((x) => !bilinen.has(x.belge_no)).length;
-
-    if (kayitlar.length > 0) {
-      const { error } = await sb.from("ketsis_tebligat")
-        .upsert(kayitlar, { onConflict: "firma_id,belge_no" });
-      if (error) return NextResponse.json({ error: `Deftere yazılamadı: ${error.message}` }, { status: 500 });
-    }
-
-    // Aktarım aynı zamanda bir "baktım" kaydıdır: kişi portala girip listeyi görmüştür.
-    await sb.from("ketsis_kontrol").insert({
-      kullanici_id: k.id, kullanici_ad: k.ad_soyad,
-      bulgu: kayitlar.length > 0 ? "tebligat_var" : "temiz",
-      notlar: `Portal Excel aktarımı: ${kayitlar.length} kayıt (${yeniSayi} yeni)`,
-    });
-
-    return NextResponse.json({
-      durum: "aktarildi", okunan: satirlar.length, yazilan: kayitlar.length,
-      yeni: yeniSayi, atlanan,
-      // SESSİZ BAŞARI YOK: atlanan varsa bu bir uyarıdır, yeşil "kaydedildi" ile geçilmez.
-      uyari: atlanan.length
-        ? `${kayitlar.length} kayıt yazıldı (${yeniSayi} yeni), ${atlanan.length} satır ALINMADI: ${atlanan.slice(0, 3).join(" · ")}`
-        : undefined,
-    });
   }
 
   return NextResponse.json({ error: "Bilinmeyen işlem" }, { status: 400 });

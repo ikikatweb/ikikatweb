@@ -12,18 +12,16 @@
 //   · Son kontrol satırı → mail GELMESE DE haftada bir bakılmalı. Bilgilendirme maili
 //     hukuken tebligatın parçası değil; gelmemesi süreyi durdurmaz (VUK 107/A).
 // Bu yüzden liste boşken de ekran "temiz" demez, "bakıldı mı?" diye sorar.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion, Trash2, Mail, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { useAuth, tebligatDegisti } from "@/hooks";
 import {
   getKetsisBildirimler, getSonKetsisKontrol, getKetsisTarayici, kontrolYasiGun,
-  getKetsisTebligatlar, ketsisKalanGun, ketsisTebligGunu,
   GIB_GIRIS, KONTROL_ARALIGI_GUN,
-  type KetsisBildirim, type KetsisKontrol, type KetsisTarayiciDurum, type KetsisTebligat,
+  type KetsisBildirim, type KetsisKontrol, type KetsisTarayiciDurum,
 } from "@/lib/supabase/queries/ketsis";
-import { getFirmalar } from "@/lib/supabase/queries/firmalar";
 
 const NOTR = "#9ca3af";
 
@@ -49,28 +47,15 @@ export default function KetsisTablosu() {
   const [hata, setHata] = useState<string | null>(null);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [hepsi, setHepsi] = useState(false);
-  const [islemde, setIslemde] = useState<number | "kontrol" | "ekle" | "excel" | null>(null);
+  const [islemde, setIslemde] = useState<number | "kontrol"  | null>(null);
 
   // TEBLİGAT DEFTERİ — ekranın asıl sonucu. Bildirim maili "gel bak" uyarısıydı;
-  // bunlar daireye bakıldığında GÖRÜLEN tebligatlar, süreleriyle birlikte.
-  const [tebligatlar, setTebligatlar] = useState<KetsisTebligat[]>([]);
-  const [firmaListe, setFirmaListe] = useState<{ id: string; kisa_adi: string | null; firma_adi: string }[]>([]);
-  const [tebHepsi, setTebHepsi] = useState(false);
-  const [mailAcik, setMailAcik] = useState(false);
-  const [portalAcik, setPortalAcik] = useState(false);
-  // HAM ANAHTAR YALNIZ BURADA, YALNIZ ÜRETİLDİĞİ AN: sunucu sha256 özetini saklıyor,
-  // geri okunamıyor. Sayfa yenilenirse yer imi kutusu "üret" durumuna döner; eskisi
-  // çalışmaya devam eder, yenisi üretilirse eski geçersiz olur.
-  const [yuklemeFirma, setYuklemeFirma] = useState("");
-
   const yukle = useCallback(async () => {
     try {
-      const [b, k, t, d, f] = await Promise.all([
+      const [b, k, t] = await Promise.all([
         getKetsisBildirimler(), getSonKetsisKontrol(), getKetsisTarayici(),
-        getKetsisTebligatlar(), getFirmalar(),
       ]);
-      setSatirlar(b); setSonKontrol(k); setTarayici(t); setTebligatlar(d);
-      setFirmaListe((f ?? []) as { id: string; kisa_adi: string | null; firma_adi: string }[]);
+      setSatirlar(b); setSonKontrol(k); setTarayici(t);
       setHata(null);
     } catch (e) {
       // Hata YUTULMAZ: boş tablo "tebligat yok" diye okunur, oysa sorgu patlamıştır.
@@ -94,12 +79,6 @@ export default function KetsisTablosu() {
 
   // Açılmamış = portalda henüz okunmadı diye işaretlenmemiş olan. Süre bundan bağımsız
   // işliyor (VUK 107/A) — o yüzden sıralama okunup okunmadığına değil SON GÜNE göre.
-  const acikTebligat = tebligatlar.filter((t) => !t.okundu_at);
-  const tebListe = tebHepsi ? tebligatlar : acikTebligat;
-  const enYakin = acikTebligat.length
-    ? acikTebligat.map((t) => ketsisKalanGun(ketsisTebligGunu(t).gun)).sort((x, y) => x - y)[0]
-    : null;
-  const suresiGecenTeb = acikTebligat.filter((t) => ketsisKalanGun(ketsisTebligGunu(t).gun) < 0).length;
 
   const yas = kontrolYasiGun(sonKontrol?.kontrol_at);
   const kontrolGerekli = yas === null || yas >= KONTROL_ARALIGI_GUN;
@@ -116,66 +95,7 @@ export default function KetsisTablosu() {
     && (tarayici.length === 0 || taramaSaat === null || taramaSaat > TARAYICI_TOLERANS_SAAT);
   const tarayiciHata = tarayici.map((t) => t.son_hata).filter(Boolean)[0] ?? null;
 
-  // ═══ PORTAL EXCEL'İNİ OKU ═══
-  // Dosya TARAYICIDA ayrıştırılıyor, sunucuya yüklenmiyor. Sütunlar 09.11.2026'da
-  // gerçek bir çıktıdan okundu:
-  //   Gönderen Kurum · Alt Birim · Belge Türü · Belge No · Gönderme Tarihi ·
-  //   Tebliğ Tarihi · Mükellef Okuma Tarihi      (tarihler "GG/AA/YYYY SS:dd:ss")
-  // Başlık satırı sabit bir yerde DEĞİL (üstte boş satırlar ve rapor başlığı var),
-  // o yüzden sütun adlarına göre aranıyor: portal düzeni biraz kayarsa da çalışsın.
-  async function excelAktar(dosya: File) {
-    setIslemde("excel");
-    try {
-      const XLSX = await import("xlsx");
-      const kitap = XLSX.read(await dosya.arrayBuffer(), { type: "array" });
-      const sayfa = kitap.Sheets[kitap.SheetNames[0]];
-      const ham = XLSX.utils.sheet_to_json<string[]>(sayfa, { header: 1, raw: false, defval: "" });
-
-      const sadele = (x: unknown) => String(x ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr");
-      const basIdx = ham.findIndex((r) => r.some((h) => sadele(h) === "belge no"));
-      // BAŞLIK BULUNAMAZSA DURULUR: yanlış sütundan tarih okumak, yanlış güne göre
-      // iş yapılması demek. Tahmin yok.
-      if (basIdx < 0) {
-        throw new Error("Bu dosyada 'Belge No' sütunu yok. Portaldaki e-Tebligat listesinden "
-          + "'Excel'e Aktar' ile inen dosyayı seçin.");
-      }
-      const baslik = ham[basIdx].map(sadele);
-      const sutun = (ad: string) => baslik.indexOf(ad);
-      const iKurum = sutun("gönderen kurum"), iAlt = sutun("alt birim"), iTur = sutun("belge türü");
-      const iNo = sutun("belge no"), iGonderme = sutun("gönderme tarihi");
-      const iTeblig = sutun("tebliğ tarihi"), iOkuma = sutun("mükellef okuma tarihi");
-
-      // "GG/AA/YYYY SS:dd:ss" → YYYY-MM-DD
-      const gun = (v: string | undefined) => {
-        const m = String(v ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-        return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
-      };
-      const an = (v: string | undefined) => {
-        const m = String(v ?? "").match(/^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{2}):(\d{2})/);
-        return m ? new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`).toISOString() : null;
-      };
-
-      const satirlar = ham.slice(basIdx + 1)
-        .filter((r) => String(r[iNo] ?? "").trim())
-        .map((r) => ({
-          belge_no: String(r[iNo]).trim(),
-          kurum: [r[iKurum], r[iAlt]].map((x) => String(x ?? "").trim()).filter(Boolean).join(" · ") || undefined,
-          belge_turu: String(r[iTur] ?? "").trim() || undefined,
-          ulasma_tarihi: gun(r[iGonderme]) ?? undefined,
-          teblig_tarihi: gun(r[iTeblig]) ?? undefined,
-          okuma_at: an(r[iOkuma]) ?? undefined,
-        }));
-
-      if (satirlar.length === 0) throw new Error("Dosyada tebligat satırı bulunamadı.");
-      await gonder({ islem: "excel-aktar", firma_id: yuklemeFirma, satirlar }, "excel");
-    } catch (e) {
-      toast.error(`Aktarılamadı: ${e instanceof Error ? e.message : e}`, { duration: 16000 });
-    } finally {
-      setIslemde(null);
-    }
-  }
-
-  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" | "ekle" | "excel") {
+  async function gonder(govde: Record<string, unknown>, anahtar: number | "kontrol" ) {
     setIslemde(anahtar);
     try {
       const r = await fetch("/api/ketsis/kontrol", {
@@ -219,14 +139,13 @@ export default function KetsisTablosu() {
           <span className="text-xs font-normal text-gray-500">— yalnız Dijital Vergi Dairesi&apos;nde okunur</span>
         </h2>
 
-        {/* ŞERİTTEKİ SÜZGEÇ ARTIK TEBLİGAT TABLOSUNU SÜZÜYOR, bildirim maillerini değil:
-            ekranın asıl konusu tebligat. Mailler aşağıda, kendi başlığının altında. Ölçüler
-            PTT şeridiyle aynı (h-7/text-xs), iki bölüm eşit ağırlıkta görünsün. */}
-        <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-white/70 p-0.5">
-          {([[false, `Açılmamış${acikTebligat.length ? ` (${acikTebligat.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
-            <button key={String(id)} type="button" onClick={() => setTebHepsi(id)}
+        {/* SÜZGEÇ: bildirim mailleri. Varsayılan "Bakılmamış" — daireye gidip
+            bakılmamış mailler. "Hepsi" geçmişi de gösterir. */}
+        <div className="ml-auto inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
+          {([[false, `Bakılmamış${bekleyen.length ? ` (${bekleyen.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
+            <button key={String(id)} type="button" onClick={() => setHepsi(id)}
               className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-                tebHepsi === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
+                hepsi === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
               {et}
             </button>
           ))}
@@ -238,28 +157,29 @@ export default function KetsisTablosu() {
       </div>
 
       {/* ═══ SONUÇ KARTI ═══
-          Bu ekranın cevaplaması gereken tek soru: "vergi dairesinde bekleyen tebligat
-          var mı, son gün ne zaman?" Eskiden burada yalnız "en son ne zaman bakıldı"
-          yazıyordu — yapılan işin kaydıydı, sonucun değil. Artık önce cevap, sonra kaydı. */}
+          Bu ekranın cevaplaması gereken soru: "vergi dairesine bakılması gereken bir şey
+          var mı?" İki sebeple çıkar: (1) GİB bildirim maili geldi, kimse bakmadı,
+          (2) mail gelmese de HAFTADIR bakılmadı — bilgilendirme maili hukuken tebligatın
+          parçası değil (VUK 107/A), gelmemesi süreyi durdurmuyor.
+
+          DEFTER KALDIRILDI (09.11.2026 kullanıcı kararı): tebligat tablosu ve portal
+          Excel aktarımı buradaydı. Elle dosya yükleme iş akışına oturmadı; mail zaten
+          otomatik geliyor ve içinde tebliğ tarihi yazıyor, uyarı için yeterli görüldü.
+          Veri silinmedi, ketsis_tebligat tablosu duruyor — karar değişirse geri gelir. */}
       <div className={`mb-3 rounded-lg border px-3 py-2.5 ${
-        suresiGecenTeb > 0 ? "border-red-300 bg-red-50"
-          : acikTebligat.length > 0 ? "border-amber-300 bg-amber-50"
+        kesinBekleyen ? "border-red-300 bg-red-50"
+          : bekleyen.length > 0 ? "border-amber-300 bg-amber-50"
           : kontrolGerekli ? "border-amber-200 bg-amber-50/60"
           : "border-emerald-200 bg-emerald-50"}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`text-sm font-semibold ${
-            suresiGecenTeb > 0 ? "text-red-800"
-              : acikTebligat.length > 0 ? "text-amber-900"
+            kesinBekleyen ? "text-red-800"
+              : bekleyen.length > 0 ? "text-amber-900"
               : kontrolGerekli ? "text-amber-900" : "text-emerald-800"}`}>
-            {acikTebligat.length > 0
-              ? <>
-                  {acikTebligat.length} tebligat açılmamış
-                  {enYakin !== null && (enYakin < 0
-                    ? <> · <b>{-enYakin} gün önce tebliğ sayıldı</b></>
-                    : <> · en yakın son güne <b>{enYakin} gün</b></>)}
-                </>
+            {bekleyen.length > 0
+              ? `${bekleyen.length} tebligat bildirimi bekliyor — Dijital Vergi Dairesi'ne bakılmalı.`
               : yas === null
-                ? "Dijital Vergi Dairesi hiç kontrol edilmedi — bekleyen tebligat olup olmadığı bilinmiyor."
+                ? "Dijital Vergi Dairesi hiç kontrol edilmedi."
                 : kontrolGerekli
                   ? `${yas} gündür bakılmadı — bu sürede tebligat gelmiş olabilir.`
                   : "Bekleyen tebligat yok."}
@@ -271,217 +191,20 @@ export default function KetsisTablosu() {
             </span>
           )}
           {isaretleyebilir && (
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              {/* ELLE GİRİŞ KALDIRILDI (09.11.2026): defter elle doldurulmak için değil,
-                  portaldan aktarılmak için var. Buradaki düğme artık yer imi kurulumunu
-                  açıyor — kayıtlar Dijital Vergi Dairesi'nden tek tıkla geliyor. */}
-              <button type="button" onClick={() => setPortalAcik((a) => !a)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 h-7 text-xs font-medium hover:bg-gray-50">
-                <Upload size={12} /> Portal listesini aktar
-              </button>
-              <button type="button" disabled={islemde === "kontrol"}
-                onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 h-7 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
-                {islemde === "kontrol" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                Baktım, tebligat yok
-              </button>
-            </div>
+            <button type="button" disabled={islemde === "kontrol"}
+              onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 h-7 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
+              {islemde === "kontrol" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              Dijital Vergi Dairesi&apos;ne baktım
+            </button>
           )}
         </div>
-
-        {/* ═══ PORTAL LİSTESİNİ AKTAR (EXCEL) ═══
-            NİYE EXCEL: portalda CAPTCHA var (09.11.2026'da ekranda görüldü), panel kendi
-            giremiyor; oturum da dakikalar içinde düşüyor. Yer imi yolu çalışıyordu ama
-            kurulumu zahmetli bulundu. Portal zaten "Excel'e Aktar" düğmesi veriyor —
-            en az adımlı ve en az kırılgan yol bu: indir, buraya bırak.
-            Dosya TARAYICIDA okunuyor, sunucuya yüklenmiyor. Belge indirilmiyor. */}
-        {portalAcik && (
-          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 text-sm">
-            <ol className="mb-3 list-decimal space-y-1 pl-5 text-xs text-gray-700">
-              <li><a href={GIB_GIRIS} target="_blank" rel="noopener noreferrer"
-                className="font-medium text-[#1E3A5F] underline underline-offset-2">Dijital Vergi Dairesi</a>
-                &apos;ne girip <b>e-Tebligat</b> sayfasını açın.</li>
-              <li>Listenin üstündeki <b>Excel&apos;e Aktar</b> düğmesine basın, dosya insin.</li>
-              <li>Firmayı seçip dosyayı aşağıya bırakın.</li>
-            </ol>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-xs text-gray-600">
-                Firma <span className="text-red-600">*</span>
-                {/* FİRMA ŞART: Excel'de VKN yok, hangi firmanın listesi olduğunu yalnız
-                    yükleyen kişi bilir. Tahminle bağlamak başka firmanın defterine
-                    yazmak demek olurdu. */}
-                <select value={yuklemeFirma} onChange={(e) => setYuklemeFirma(e.target.value)}
-                  className="mt-1 block w-56 rounded-lg border border-gray-300 px-2 h-8 text-sm">
-                  <option value="">— seçin —</option>
-                  {firmaListe.map((f) => (
-                    <option key={f.id} value={f.id}>{f.kisa_adi || f.firma_adi}</option>
-                  ))}
-                </select>
-              </label>
-              <label className={`inline-flex items-center gap-1.5 rounded-lg px-3 h-8 text-xs font-medium ${
-                yuklemeFirma ? "cursor-pointer bg-[#1E3A5F] text-white hover:bg-[#162c47]"
-                             : "cursor-not-allowed bg-gray-200 text-gray-500"}`}>
-                {islemde === "excel" ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                Excel dosyasını seç
-                <input type="file" accept=".xlsx,.xls" className="hidden"
-                  disabled={!yuklemeFirma || islemde === "excel"}
-                  onChange={(e) => { const d = e.target.files?.[0]; e.target.value = ""; if (d) void excelAktar(d); }} />
-              </label>
-              {!yuklemeFirma && <span className="text-[11px] text-gray-500">Önce firma seçin.</span>}
-            </div>
-            <div className="mt-2 text-[11px] text-gray-500">
-              Dosya tarayıcınızda okunur, sunucuya yüklenmez. Aynı dosyayı tekrar
-              aktarabilirsiniz — var olan kayıtlar güncellenir, kopya oluşmaz.
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* ═══ TEBLİGAT TABLOSU ═══ PTT tablosuyla aynı mantık: sıralama son güne göre. */}
-      <div className="mb-4 overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-gray-600">
-            <tr>
-              <th className="px-3 py-2 font-medium">Firma</th>
-              <th className="px-3 py-2 font-medium">Gönderen kurum</th>
-              <th className="px-3 py-2 font-medium">Konu</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ sayılacağı gün</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Kalan</th>
-              <th className="px-3 py-2 font-medium">Durum</th>
-              {isaretleyebilir && <th className="px-3 py-2 font-medium" />}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {tebListe.map((t) => {
-              // Geçerli gün: portal kaydında GİB'in kendi bildirdiği tarih, yoksa bizim
-              // hesabımız (bkz. ketsisTebligGunu). Fark varsa aşağıda açıkça yazılıyor.
-              const { gun: tebligGunu, farkli: tarihFarkli } = ketsisTebligGunu(t);
-              const kalan = ketsisKalanGun(tebligGunu);
-              const gecti = kalan < 0;
-              return (
-                <tr key={t.id} className={!t.okundu_at && gecti ? "bg-red-50" : (!t.okundu_at && kalan <= 2 ? "bg-amber-50" : "")}>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
-                        style={{ backgroundColor: t.firmalar?.renk ?? NOTR }} />
-                      <span className="font-medium">
-                        {t.firmalar?.kisa_adi || t.firmalar?.firma_adi || "belirsiz"}
-                      </span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">{t.vergi_dairesi ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    {t.konu ?? "—"}
-                    {t.belge_no && <div className="font-mono text-[11px] text-gray-500">{t.belge_no}</div>}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap tabular-nums">
-                    {new Date(t.ulasma_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
-                    {/* KAYNAK ETİKETİ: tarih TAHMİN DEĞİL — GİB'in bildirim mailinin
-                        metninde yazıyor ("27/10/2026 tarihinde gönderilen …") ve Excel
-                        verisiyle birebir tuttuğu doğrulandı. Etiket yine de duruyor:
-                        kayıt henüz portal listesiyle karşılaştırılmadı, nereden geldiği
-                        görünsün. Excel aktarılınca satır portal verisiyle güncellenir. */}
-                    {t.kaynak === "mail" && (
-                      <div className="text-[11px] font-normal text-gray-500"
-                        title="Tarih, GİB bildirim mailinin metninden okundu. Portal listesiyle henüz karşılaştırılmadı.">
-                        GİB mailinden
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap tabular-nums font-medium">
-                    {new Date(tebligGunu + "T00:00:00").toLocaleDateString("tr-TR")}
-                    {/* FARK SESSİZ GEÇİLMEZ: GİB'in günü ile bizim hesabımız tutmuyorsa
-                        GİB'inki gösterilir ama bizimki de söylenir — hangi güne göre iş
-                        yapılacağı bu ekranın tek konusu. */}
-                    {tarihFarkli && (
-                      <div className="text-[11px] font-normal text-amber-700"
-                        title="GİB'in bildirdiği gün ile ulaşma + 5 hesabı tutmuyor. Gösterilen, GİB'in bildirdiği gündür.">
-                        GİB&apos;e göre · bizim hesap {new Date(t.teblig_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
-                      </div>
-                    )}
-                  </td>
-                  <td className={`px-3 py-2 whitespace-nowrap font-medium ${
-                    gecti ? "text-red-700" : kalan <= 2 ? "text-amber-700" : "text-gray-700"}`}>
-                    {gecti ? `${-kalan} gün geçti` : `${kalan} gün`}
-                  </td>
-                  <td className="px-3 py-2">
-                    {t.okundu_at
-                      ? <span className="text-xs text-gray-600">
-                          okundu{t.okuyan_ad ? ` · ${t.okuyan_ad}` : ""}
-                        </span>
-                      : <span className="inline-block rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">açılmamış</span>}
-                  </td>
-                  {isaretleyebilir && (
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        {!t.okundu_at && (
-                          <button type="button" disabled={islemde === t.id}
-                            onClick={() => gonder({ islem: "tebligat-okundu", id: t.id }, t.id)}
-                            title="Portalda açıldı (süreyi değiştirmez)"
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2 h-7 text-xs hover:bg-gray-50">
-                            {islemde === t.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-                            Okudum
-                          </button>
-                        )}
-                        <button type="button" disabled={islemde === t.id}
-                          onClick={() => { if (confirm("Bu tebligat kaydı silinsin mi?")) void gonder({ islem: "tebligat-sil", id: t.id }, t.id); }}
-                          title="Yanlış girilen kaydı sil"
-                          className="inline-flex items-center rounded-lg border border-red-200 px-2 h-7 text-xs text-red-600 hover:bg-red-50">
-                          <Trash2 size={11} />
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {!yukleniyor && tebListe.length === 0 && (
-              <tr>
-                <td colSpan={isaretleyebilir ? 8 : 7} className="px-3 py-8 text-center text-gray-500">
-                  {tebHepsi ? "Hiç tebligat kaydı yok." : "Açılmamış tebligat yok."}
-                  <div className="mt-1 text-xs text-gray-400">
-                    Dijital Vergi Dairesi &rsaquo; e-Tebligat &rsaquo; <b>Excel&apos;e Aktar</b> ile
-                    inen dosyayı <b>Portal listesini aktar</b> düğmesinden yükleyin; süreyi panel takip etsin.
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ═══ İKİNCİL BÖLÜM: GİB BİLDİRİM MAİLLERİ ═══
-          Bu liste artık ekranın konusu değil, İPUCU: GİB yeni tebligat gelince
-          bilgilendirme maili yolluyor. Mail hukuken tebligatın parçası değil (VUK 107/A) —
-          gelmemesi, spam'e düşmesi ya da geç gelmesi süreyi durdurmuyor. Bu yüzden
-          yukarıdaki defterin altında, ikincil ağırlıkta duruyor. Katlanabilir: işe
-          yarayan taraf tebligat tablosu, bu liste yalnız "nereden haberimiz oldu". */}
-      <button type="button" onClick={() => setMailAcik((a) => !a)}
-        className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 h-8 text-xs font-medium text-gray-700 hover:bg-gray-100">
-        <Mail size={13} />
-        GİB bildirim mailleri
-        {bekleyen.length > 0 && (
-          <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
-            kesinBekleyen ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>
-            {bekleyen.length} bakılmamış
-          </span>
-        )}
-        <span className="text-gray-400">{mailAcik ? "gizle" : "göster"}</span>
-      </button>
-
-      {mailAcik && (
-      <div>
-      <div className="mb-2 inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-        {([[false, `Bakılmamış${bekleyen.length ? ` (${bekleyen.length})` : ""}`], [true, "Hepsi"]] as const).map(([id, et]) => (
-          <button key={String(id)} type="button" onClick={() => setHepsi(id)}
-            className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-              hepsi === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"}`}>
-            {et}
-          </button>
-        ))}
-      </div>
-
+      {/* GİB BİLDİRİM MAİLLERİ — artık bu bölümün ana içeriği.
+          Önceden katlanmış ikincil bir listeydi, çünkü üstünde tebligat defteri vardı.
+          Defter kaldırılınca katlı kalmasının anlamı kalmadı: ekranda gösterilecek tek
+          şey bu. Mail hukuken tebligatın parçası değil — "gel bak" demek, kanıt değil. */}
       {/* TARAYICI SESSİZ Mİ? Görev çökerse mail hiç okunmaz ve bu bölüm boş kalır —
           boşluk "tebligat yok" diye okunmasın. */}
       {tarayiciSessiz && (
@@ -633,8 +356,6 @@ export default function KetsisTablosu() {
         (VUK 107/A: adrese ulaştığı tarihi izleyen beşinci günün sonunda tebliğ edilmiş
         sayılır). Bu yüzden haftada bir elle kontrol istenir.
       </p>
-      </div>
-      )}
     </div>
   );
 }
