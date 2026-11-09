@@ -1,7 +1,8 @@
 // Service Worker — Web Push bildirimlerini yönetir
 // Bu dosya tarayıcıda ayrı bir thread'de çalışır
 
-const CACHE_VERSION = "v1";
+// Sürüm artırıldı ki tarayıcılar yeni service worker'ı alsın (09.11.2026).
+const CACHE_VERSION = "v2";
 
 // Yükleme
 self.addEventListener("install", (event) => {
@@ -44,8 +45,19 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/dashboard";
 
+  // BELGE ADRESİ YENİ SEKMEDE AÇILIR (09.11.2026).
+  // Bildirime tıklayınca açık panel sekmesi kendini yönlendiriyordu; tebligat PDF'i
+  // açılırken PANEL KAYBOLUYORDU. Panel sayfaları için bu davranış doğru (aynı sekmede
+  // gezinmek istenir), ama belge bir "sayfa" değil — açıp kapatılan bir ek. Dosya
+  // geçidine (/api/dosya) giden adresler artık ayrı sekmede açılıyor, panel yerinde kalıyor.
+  const belgeMi = url.startsWith("/api/dosya");
+
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
+      if (belgeMi) {
+        // Açık sekmeye DOKUNULMAZ: postMessage gönderilmiyor, yönlendirme yapılmıyor.
+        return clients.openWindow ? clients.openWindow(url) : undefined;
+      }
       // Açık sekme varsa: postMessage gönder + focus.
       // SADECE postMessage kullanıyoruz — client.navigate ile çakışmayı önlemek için.
       // Sayfanın listener'ı window.location.href ile yönlendirme yapar.
