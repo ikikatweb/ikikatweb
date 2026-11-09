@@ -13,6 +13,8 @@ import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { Button } from "@/components/ui/button";
 
 // Cevap Şekli varsayılanları (Tanımlamalar boşsa kullanılır). Tanımlamalar sekmesinden yönetilir.
@@ -34,13 +36,11 @@ function tcNorm(v: string | null | undefined): string { return (v ?? "").replace
 
 type IcraForm = {
   ucuncu_sahis: string; dosya_esas_no: string; gelen_yazi_tarihi: string; teblig_tarihi: string;
-  cevap_tarihi: string; cevap_sekli: string; odenen_tutar: string; evrak_no: string;
   alacakli_adi: string; alacakli_vergi_no: string; borclu_adi: string; borclu_tc_no: string;
   borc_miktari: string;
 };
 const BOS_FORM: IcraForm = {
   ucuncu_sahis: "", dosya_esas_no: "", gelen_yazi_tarihi: "", teblig_tarihi: "",
-  cevap_tarihi: "", cevap_sekli: "", odenen_tutar: "", evrak_no: "",
   alacakli_adi: "", alacakli_vergi_no: "", borclu_adi: "", borclu_tc_no: "",
   borc_miktari: "",
 };
@@ -107,6 +107,15 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [dialogAcik, setDialogAcik] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<IcraForm>(BOS_FORM);
+  // CEVAP/ÖDEME ALANLARI AYRI: kuralları ortak bileşende (icra-cevap-alanlari),
+  // ana sayfadaki hızlı pencereyle aynı. İki yerde ayrı yazılsaydı biri değişip
+  // öbürü geride kalırdı.
+  const [cevap, setCevap] = useState<CevapAlanlari>(BOS_CEVAP);
+  // Düzenlenen kaydın avukat maili daha önce gitti mi? Gittiyse Kaydet tekrar
+  // göndermez — her düzenlemede avukata aynı mailin gitmesi hem gereksiz hem de
+  // "hangisi geçerli" karışıklığı yaratır.
+  const duzenlenen = editId ? satirlar.find((x) => x.id === editId) ?? null : null;
+  const mailBilgisi = { tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null };
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
@@ -213,13 +222,16 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       setForm({
         ucuncu_sahis: row.ucuncu_sahis ?? "", dosya_esas_no: row.dosya_esas_no ?? "",
         gelen_yazi_tarihi: row.gelen_yazi_tarihi ?? "", teblig_tarihi: row.teblig_tarihi ?? "",
-        cevap_tarihi: row.cevap_tarihi ?? "", cevap_sekli: row.cevap_sekli ?? "",
-        odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)), evrak_no: row.evrak_no ?? "",
         alacakli_adi: row.alacakli_adi ?? "", alacakli_vergi_no: row.alacakli_vergi_no ?? "",
         borclu_adi: row.borclu_adi ?? "", borclu_tc_no: row.borclu_tc_no ?? "",
         borc_miktari: sayiToInput(Number(row.borc_miktari || 0)),
       });
-    } else { setEditId(null); setForm(BOS_FORM); }
+      setCevap({
+        cevap_sekli: row.cevap_sekli ?? "", cevap_tarihi: row.cevap_tarihi ?? "",
+        evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
+        banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "", avukat_notu: row.avukat_notu ?? "",
+      });
+    } else { setEditId(null); setForm(BOS_FORM); setCevap(BOS_CEVAP); }
     setKilitli(false); // normal aç (kalem/yeni) → kilitsiz; ?kilit=1 efekti sonra true yapar
     setDialogAcik(true);
   }
@@ -260,23 +272,31 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       toast.error("Tebliğ Tarihi, Gelen İcra Yazısı Tarihinden önce olamaz."); return;
     }
     // İcraya Cevap Tarihi, Tebliğ Tarihinden önce olamaz
-    if (form.cevap_tarihi && form.teblig_tarihi && form.cevap_tarihi < form.teblig_tarihi) {
-      toast.error("İcraya Cevap Tarihi, Tebliğ Tarihinden önce olamaz."); return;
-    }
-    // İcraya Cevap Tarihi girildiyse Evrak No zorunlu
-    if (form.cevap_tarihi && !form.evrak_no.trim()) { toast.error("İcraya cevap tarihi girildi — Evrak No zorunludur."); return; }
+    // Cevap/ödeme kuralları ORTAK (icra-cevap-alanlari): cevap şekline göre hangi
+    // alanın zorunlu olduğu değişiyor ve hızlı pencereyle aynı olmalı.
+    const cevapSorun = cevapDogrula(cevap, form.teblig_tarihi);
+    if (cevapSorun) { toast.error(cevapSorun); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
     const payload: Partial<IcraKayit> = {
       ucuncu_sahis: t(form.ucuncu_sahis), dosya_esas_no: t(form.dosya_esas_no),
       gelen_yazi_tarihi: form.gelen_yazi_tarihi || null, teblig_tarihi: form.teblig_tarihi || null,
-      cevap_tarihi: form.cevap_tarihi || null, cevap_sekli: t(form.cevap_sekli),
-      odenen_tutar: parseParaInput(form.odenen_tutar), evrak_no: t(form.evrak_no),
+      // AVUKAT KİPİNDE CEVAP TARİHİ YAZILMAZ: mail gidince sunucu yazar.
+      cevap_sekli: t(cevap.cevap_sekli),
+      banka_adi: t(cevap.banka_adi),
+      avukat_id: cevap.avukat_id || null,
+      avukat_notu: t(cevap.avukat_notu),
+      ...(cevapKipi(cevap.cevap_sekli).avukat ? {} : {
+        cevap_tarihi: cevap.cevap_tarihi || null,
+        evrak_no: t(cevap.evrak_no),
+        odenen_tutar: parseParaInput(cevap.odenen_tutar),
+      }),
       alacakli_adi: t(form.alacakli_adi), alacakli_vergi_no: t(form.alacakli_vergi_no),
       borclu_adi: t(form.borclu_adi), borclu_tc_no: t(form.borclu_tc_no),
       borc_miktari: parseParaInput(form.borc_miktari),
     };
     setKaydediliyor(true);
     try {
+      let kayitId = editId;
       if (editId) {
         await updateIcraKayit(editId, payload);
         setSatirlar((p) => p.map((s) => (s.id === editId ? { ...s, ...payload, updated_at: new Date().toISOString() } : s)));
@@ -284,11 +304,40 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         const maxSira = satirlar.reduce((m, s) => Math.max(m, s.sira), 0);
         const row = await insertIcraKayit({ ...payload, sira: maxSira + 1 });
         setSatirlar((p) => [...p, row]);
+        kayitId = row.id;
       }
+
+      // AVUKATA MAİL — hızlı pencereyle aynı kural: yalnız daha önce gitmediyse.
+      // Mail gitmezse cevap_tarihi yazılmaz ve dosya cevapsız kalır; bu SÖYLENİR,
+      // yoksa kullanıcı cevabı iletmiş sanıp süre kaçırır.
+      if (cevapKipi(cevap.cevap_sekli).avukat && cevap.avukat_id && kayitId && !mailBilgisi.tarih) {
+        try {
+          const c = await avukataGonder(kayitId, cevap.avukat_id, cevap.avukat_notu);
+          setSatirlar((p) => p.map((s) => (s.id === kayitId
+            ? { ...s, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek, avukat_mail_at: new Date().toISOString() }
+            : s)));
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
+          if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+        } catch (e) {
+          toast.error(`${e instanceof Error ? e.message : "Mail gönderilemedi."}
+
+`
+            + `Kayıt tutuldu ama dosya cevapsız sayılmaya devam ediyor.`, { duration: 12000 });
+        }
+      }
+
       icraDegisti();   // cevap tarihi girildiyse menü rozeti hemen düşsün
       toast.success(editId ? "İcra dosyası güncellendi." : "İcra dosyası eklendi.");
       setDialogAcik(false);
-    } catch { toast.error("Kaydedilemedi."); }
+    } catch (e) {
+      // SEBEBİ YUTULMAZ: eksik sütun gibi tek komutla çözülecek sorunlar
+      // "Kaydedilemedi." altında saatlerce gizleniyordu.
+      const m = e instanceof Error ? e.message : String(e);
+      toast.error(/banka_adi|avukat_/.test(m)
+        ? `Eksik sütun — ilgili sql dosyası çalıştırılmalı: ${m}`
+        : `Kaydedilemedi: ${m}`, { duration: 8000 });
+    }
     finally { setKaydediliyor(false); }
   }
   async function sil(id: string) {
@@ -313,7 +362,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     form.alacakli_adi.trim() &&
     form.borclu_adi.trim() && form.borclu_tc_no.trim() &&
     parseParaInput(form.borc_miktari) > 0 &&
-    (!form.cevap_tarihi || form.evrak_no.trim()),
+    (!cevap.cevap_tarihi || cevap.evrak_no.trim()),
   );
 
   return (
@@ -575,25 +624,14 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
 
             {/* ── OPSİYONEL ALANLAR (altta) ── */}
             <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme <span className="font-normal text-gray-400">(opsiyonel)</span></div>
-            <div>
-              <label className={fLbl}>İcraya Cevap Tarihi</label>
-              <input type="date" min={form.teblig_tarihi || undefined} className={fInp} value={form.cevap_tarihi} onChange={(e) => setF("cevap_tarihi", e.target.value)} />
-            </div>
-            <div>
-              <label className={fLbl}>Evrak No {form.cevap_tarihi && <span className="text-red-500">*</span>}</label>
-              <input className={`${fInp} ${form.cevap_tarihi && !form.evrak_no.trim() ? "border-red-400 ring-1 ring-red-300" : ""}`} value={form.evrak_no} onChange={(e) => setF("evrak_no", e.target.value)} placeholder="Gönderilen evrak no" />
-            </div>
-            <div>
-              <label className={fLbl}>Cevap Şekli</label>
-              <select className={fInp} value={form.cevap_sekli} onChange={(e) => setF("cevap_sekli", e.target.value)}>
-                <option value=""></option>
-                {(form.cevap_sekli && !cevapSekilleri.includes(form.cevap_sekli) ? [form.cevap_sekli, ...cevapSekilleri] : cevapSekilleri).map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={fLbl}>Ödenen Tutar</label>
-              <input inputMode="decimal" className={`${fInp} text-right`} value={form.odenen_tutar} onChange={(e) => setF("odenen_tutar", formatParaInput(e.target.value))} placeholder="0" />
-            </div>
+            {/* ALANLAR ORTAK BİLEŞENDEN: ana sayfadaki hızlı "Cevabı işle"
+                penceresiyle birebir aynı kurallar (cevap şekline göre sorulan
+                alanlar değişiyor, avukatta mail gidiyor). */}
+            <IcraCevapAlanlari
+              deger={cevap} degistir={(y) => setCevap((p) => ({ ...p, ...y }))}
+              sekiller={cevapSekilleri} tebligTarihi={form.teblig_tarihi}
+              mailBilgisi={{ tarih: mailBilgisi.tarih, ek: mailBilgisi.ek }}
+            />
           </div>
 
           <DialogFooter className="gap-2 mt-4">
