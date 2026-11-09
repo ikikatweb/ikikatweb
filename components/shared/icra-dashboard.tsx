@@ -1,11 +1,12 @@
 // Dashboard İcra Takibi widget'ı — İCRAYA CEVABI VERİLMEMİŞ (İcraya Cevap Tarihi boş) dosyaları listeler.
-// "Cevap Tarihi" sütunundaki "Tarih gir" butonuna tıklayıp tarih girilince kayıt güncellenir ve satır düşer.
+// "Cevap" sütunundaki "Cevabı işle" butonu icra düzenleme formunu açar: cevap tarihi,
+// cevap şekli, evrak no ve ödenen tutar birlikte girilir. Cevap tarihi dolunca satır düşer.
 // SÜRE: tebliğ tarihinden itibaren 7 gün içinde cevap verilmeli. Cevap yoksa 6. günden itibaren (son 2 gün:
 // 6. ve 7. gün ve sonrası) satır KIRMIZI vurgulanır (süre doluyor uyarısı).
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Gavel } from "lucide-react";
+import { Gavel, Check } from "lucide-react";
 import { useAuth } from "@/hooks";
 import {
   getIcraKayitlar, getIcraBorcluBaglamlari, icraBorcluAnahtar,
@@ -90,7 +91,7 @@ export default function IcraDashboard() {
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
-              <TableHead className="px-2 text-[10px] text-center">Cevap Tarihi</TableHead>
+              <TableHead className="px-2 text-[10px] text-center">Cevap</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
             </TableRow></TableHeader>
             <TableBody>
@@ -126,10 +127,15 @@ export default function IcraDashboard() {
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
+                    {/* DÜĞME ADI "Tarih gir" DEĞİL (09.11.2026): açtığı form yalnız tarih
+                        istemiyor — cevap tarihi, cevap şekli, evrak no ve ödenen tutar
+                        birlikte giriliyor. "Tarih gir" yazınca insan sadece tarih
+                        girilecek sanıyor ve formun kalanını boş bırakıyordu. */}
                     {canDuzenle ? (
                       <button type="button" onClick={() => { window.location.href = `/dashboard/icra?duzenle=${s.id}&kilit=1`; }}
-                        className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded px-2 py-0.5 hover:bg-red-100">
-                        Tarih gir
+                        title="Cevap tarihi, cevap şekli, evrak no ve ödenen tutarı girmek için formu açar"
+                        className="inline-flex items-center gap-1 text-[11px] font-medium text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 hover:bg-red-100">
+                        <Check size={11} /> Cevabı işle
                       </button>
                     ) : (
                       <span className="text-[11px] text-gray-400">—</span>
