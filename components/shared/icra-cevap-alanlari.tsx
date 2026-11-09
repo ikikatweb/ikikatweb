@@ -56,9 +56,44 @@ export function cevapKipi(cevapSekli: string) {
   };
 }
 
+/**
+ * İCRA KAYDININ ZORUNLU ALANLARI — tam formdaki yıldızlı alanlarla birebir aynı.
+ * Hızlı "Cevabı işle" penceresi bu alanları DÜZENLEMİYOR ama eksikse cevap da
+ * işlenmemeli: eksik bir deftere "cevap verildi" yazmak, satırı tamamlanmış
+ * gibi gösterip gözden kaçırır. Eksikse pencere ne eksik olduğunu söyler ve
+ * tam forma yönlendirir — kapalı kapı bırakmaz.
+ */
+export const KAYIT_ZORUNLU: { alan: string; etiket: string }[] = [
+  { alan: "ucuncu_sahis", etiket: "Üçüncü şahıs" },
+  { alan: "dosya_esas_no", etiket: "Dosya esas no" },
+  { alan: "gelen_yazi_tarihi", etiket: "Gelen icra yazısı tarihi" },
+  { alan: "teblig_tarihi", etiket: "Tebliğ tarihi" },
+  { alan: "alacakli_adi", etiket: "Alacaklı adı" },
+  { alan: "borclu_adi", etiket: "Borçlu adı" },
+  { alan: "borclu_tc_no", etiket: "Borçlu vergi / TC no" },
+  { alan: "borc_miktari", etiket: "Borç miktarı" },
+];
+
+/** Kayıtta eksik olan zorunlu alanların etiketleri. Boş dizi = tam. */
+export function eksikZorunluAlanlar(kayit: Record<string, unknown>): string[] {
+  return KAYIT_ZORUNLU.filter(({ alan }) => {
+    const v = kayit[alan];
+    if (alan === "borc_miktari") return !Number(v);
+    return v === null || v === undefined || String(v).trim() === "";
+  }).map((x) => x.etiket);
+}
+
 /** Doğrulama — iki ekranda da aynı. Sorun yoksa null döner. */
 export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | null {
   const kip = cevapKipi(v.cevap_sekli);
+  // CEVAP ŞEKLİ: bölüm opsiyonel ama BOŞ BIRAKILAMAZ — herhangi bir cevap/ödeme
+  // alanı doldurulduysa hangi kanaldan cevap verildiği de yazılmalı. Yoksa kayıt
+  // "cevap verildi" der ama ispatı olmaz. Hızlı pencerede zaten zorunluydu;
+  // tam formda da aynı kural işliyor.
+  const cevapDolu = Boolean(v.cevap_tarihi || v.evrak_no.trim() || v.banka_adi.trim()
+    || v.avukat_id || v.avukat_notu.trim() || parseParaInput(v.odenen_tutar) > 0);
+  if (cevapDolu && !v.cevap_sekli.trim()) return "Cevap şekli seçilmeli.";
+  if (!v.cevap_sekli.trim()) return null;   // bölüm hiç doldurulmamış — opsiyonel
   if (kip.avukat) {
     if (!v.avukat_id) return "Avukat seçilmeli.";
     return null;   // tarih/evrak/tutar sorulmuyor
@@ -85,6 +120,12 @@ export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | n
   }
   if (v.cevap_tarihi && !v.evrak_no.trim()) return "Cevap tarihi girildi — evrak no zorunludur.";
   return null;
+}
+
+/** Cevap/ödeme bölümünde herhangi bir alan dolu mu? (yıldızı göstermek için) */
+function cevapDolduMu(v: CevapAlanlari): boolean {
+  return Boolean(v.cevap_tarihi || v.evrak_no.trim() || v.banka_adi.trim()
+    || v.avukat_id || v.avukat_notu.trim() || parseParaInput(v.odenen_tutar) > 0);
 }
 
 export default function IcraCevapAlanlari({
@@ -181,7 +222,9 @@ export default function IcraCevapAlanlari({
           dururken insan önce onu dolduruyor, cevap şeklini en sonda görüp boş
           bırakıyordu. */}
       <div className="sm:col-span-2">
-        <label className={lbl}>Cevap şekli {zorunlu && <span className="text-red-600">*</span>}</label>
+        <label className={lbl}>
+          Cevap şekli {(zorunlu || cevapDolduMu(deger)) && <span className="text-red-600">*</span>}
+        </label>
         <select className={inp} value={deger.cevap_sekli} disabled={kilitli}
           onChange={(e) => degistir({ cevap_sekli: e.target.value })}>
           <option value="">Seçin…</option>

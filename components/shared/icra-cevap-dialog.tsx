@@ -24,7 +24,7 @@ import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import IcraCevapAlanlari, {
-  BOS_CEVAP, cevapKipi, cevapDogrula, type CevapAlanlari,
+  BOS_CEVAP, cevapKipi, cevapDogrula, eksikZorunluAlanlar, type CevapAlanlari,
 } from "@/components/shared/icra-cevap-alanlari";
 
 /** Cevap Şekli varsayılanları (Tanımlamalar boşsa). Tablodakiyle aynı liste. */
@@ -67,9 +67,18 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   }, [acik, kayit]);
 
   const kip = cevapKipi(v.cevap_sekli);
+  // DEFTERDEKİ ZORUNLU ALANLAR TAM FORMLA AYNI: bu pencere onları düzenlemiyor
+  // ama eksikken cevap da işlenmemeli — eksik bir satıra "cevap verildi" yazmak
+  // onu tamamlanmış gibi gösterip gözden kaçırır.
+  const eksikler = kayit ? eksikZorunluAlanlar(kayit as unknown as Record<string, unknown>) : [];
 
   async function kaydet() {
     if (!kayit) return;
+    if (eksikler.length) {
+      toast.error(`Dosyada eksik zorunlu alan var: ${eksikler.join(", ")}. `
+        + `İcra Dosyaları sayfasından tamamlayın.`, { duration: 10000 });
+      return;
+    }
     if (!v.cevap_sekli.trim()) { toast.error("Cevap şekli seçilmeli."); return; }
     const sorun = cevapDogrula(v, kayit.teblig_tarihi ?? "");
     if (sorun) { toast.error(sorun); return; }
@@ -165,6 +174,15 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           </div>
         </div>
 
+        {/* EKSİK ALAN VARSA SÖYLENİR: Kaydet kapalı ama sebebini bilmeden kapalı
+            bir düğme "bozuk" diye okunur. Düzeltme yeri de yazıyor. */}
+        {eksikler.length > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            <strong>Dosya eksik:</strong> {eksikler.join(", ")}.<br />
+            Cevap işlenmeden önce <a href={`/dashboard/icra?duzenle=${kayit.id}`} className="underline font-medium">İcra Dosyaları</a> sayfasından tamamlanmalı.
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
@@ -187,7 +205,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
         <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={kapat}>İptal</Button>
-          <Button onClick={kaydet} disabled={kaydediliyor || !v.cevap_sekli.trim() || (kip.avukat && !v.avukat_id)}>
+          <Button onClick={kaydet} disabled={kaydediliyor || eksikler.length > 0 || !v.cevap_sekli.trim() || (kip.avukat && !v.avukat_id)}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
             {kip.avukat && !kayit.avukat_mail_at ? "Kaydet ve avukata gönder" : "Kaydet"}
           </Button>
