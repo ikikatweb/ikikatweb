@@ -239,6 +239,7 @@ export default function KetsisTablosu() {
               <th className="px-3 py-2 font-medium">Firma</th>
               <th className="px-3 py-2 font-medium whitespace-nowrap">Mail tarihi</th>
               <th className="px-3 py-2 font-medium">Gönderen</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
               <th className="px-3 py-2 font-medium">Konu / özet</th>
               <th className="px-3 py-2 font-medium">Güven</th>
               <th className="px-3 py-2 font-medium">Durum</th>
@@ -281,6 +282,35 @@ export default function KetsisTablosu() {
                     : s.gonderen_adres && (
                         <div className="text-[11px] text-gray-500">{s.gonderen_adres}</div>
                       )}
+                </td>
+                {/* TEBLİĞ TARİHİ — mailin metninden okunuyor, HESAPLANMIYOR.
+                    "Ulaşma + 5" bizim hesabımız olurdu; burada GİB'in kendi beyanı var
+                    ("… 07/11/2026 tarihinde tebliğ edilmiştir"). Sürenin başladığı gün
+                    bu (VUK 107/A). Gelecekteyse kaç gün kaldığı da yazılıyor; o tarihe
+                    kadar belge henüz tebliğ sayılmamış demektir. */}
+                <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                  {s.teblig_tarihi ? (
+                    <>
+                      <div className="font-medium">
+                        {new Date(s.teblig_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                      </div>
+                      {(() => {
+                        const kalan = Math.ceil(
+                          (new Date(s.teblig_tarihi + "T00:00:00").getTime() - Date.now()) / 86400000);
+                        return kalan > 0
+                          ? <div className="text-[11px] font-normal text-amber-700">{kalan} gün sonra</div>
+                          : s.gonderme_tarihi
+                            ? <div className="text-[11px] font-normal text-gray-500">
+                                gönderme {new Date(s.gonderme_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                              </div>
+                            : null;
+                      })()}
+                    </>
+                  ) : (
+                    // TARİH OKUNAMADIYSA BOŞ BIRAKILIR: uydurma tarih, yanlış güne göre
+                    // iş yapılması demek. Metin mailin özetinde duruyor, oradan bakılır.
+                    <span className="text-gray-400">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {/* BELGE NO önce: Dijital Vergi Dairesi'nde tebligatlar bu numarayla
@@ -342,7 +372,7 @@ export default function KetsisTablosu() {
               </tr>
             ))}
             {!yukleniyor && liste.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-500">
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-500">
                 {hepsi ? "Hiç GİB bildirimi yakalanmadı." : "Bekleyen GİB bildirimi yok."}
                 <div className="mt-1 text-xs text-gray-400">
                   Bu, tebligat olmadığı anlamına gelmez — bilgilendirme maili gelmeyebilir.
@@ -350,7 +380,7 @@ export default function KetsisTablosu() {
               </td></tr>
             )}
             {yukleniyor && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-gray-500">Yükleniyor…</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-500">Yükleniyor…</td></tr>
             )}
           </tbody>
         </table>

@@ -143,6 +143,18 @@ function siniflandir(adres, metin, ogrenilmis) {
 // uyarı için yeterli görüldü. ketsis_tebligat tablosu da kaldırıldı
 // (bkz. sql/ketsis_tebligat_kaldir.sql); ayrıştırıcı git geçmişinde duruyor.
 
+/** Mail metnindeki iki tarihi YYYY-MM-DD olarak döndürür; bulunamayan null kalır. */
+function tarihleriOku(metin) {
+  const al = (kalip) => {
+    const m = String(metin ?? "").match(kalip);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+  };
+  return {
+    gonderme_tarihi: al(/(\d{2})\/(\d{2})\/(\d{4})\s+tarihinde\s+g[öo]nderilen/i),
+    teblig_tarihi: al(/(\d{2})\/(\d{2})\/(\d{4})\s+tarihinde\s+tebli[ğg]\s+edilmi/i),
+  };
+}
+
 function belgeNoBul(metin) {
   const s = String(metin);
   // Yeni biçim (2026): "KETSİS Tebliğ Bilgilendirme İletisi - BELGE NO[MC09994486]"
@@ -372,6 +384,11 @@ async function main() {
             // Trafik cezası mı vergi dairesi yazısı mı, listeye bakınca görülsün.
             // Kalıp tutmazsa null kalır — uydurulmaz, ekranda GİB adresi görünür.
             gonderen_kurum: (`${konu} ${govde}`.match(/Taraf[ıi]n[ıi]za\s+(.+?)\s+ad[ıi]na/i)?.[1] ?? "").trim().slice(0, 200) || null,
+            // İKİ TARİH DE METİNDEN: "… 02/11/2026 tarihinde gönderilen … 07/11/2026
+            // tarihinde tebliğ edilmiştir". Tebliğ tarihi sürenin başladığı gün
+            // (VUK 107/A) — HESAPLANMIYOR, GİB ne diyorsa o yazılıyor. Kalıp tutmazsa
+            // null kalır; uydurma tarih, yanlış güne göre iş yapılması demek.
+            ...tarihleriOku(`${konu} ${govde}`),
             guven,
           };
 
