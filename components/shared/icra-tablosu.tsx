@@ -227,10 +227,14 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         // AVUKAT VE BANKA DA ARANIR: ikisi de tabloda görünen veri; "şu avukata
         // hangi dosyalar gitti" en sık sorulan şeylerden biri.
         s.avukat_adi, s.banka_adi,
-        // DURUM SÖZCÜKLERİ: tabloda "Cevap yok" diye KIRMIZI görünen satırlar
-        // aranamıyordu — ekranda yazan bir şeyin aranabilmesi gerek. Eş anlamlılar
-        // da yazıldı; kimse aynı şeyi aynı sözcükle aramıyor.
-        s.cevap_tarihi ? "cevap verildi cevaplandı" : "cevap yok cevapsız cevap verilmedi",
+        // DURUM SÖZCÜKLERİ YALNIZ CEVAPSIZ SATIRLARDA: tabloda "Cevap yok" diye
+        // KIRMIZI görünen satırlar aranamıyordu. Eş anlamlıları da var; kimse
+        // aynı şeyi aynı sözcükle aramıyor.
+        //
+        // CEVAPLANMIŞLARA "cevap verildi" YAZILMIYOR: yazıldığında her satırda
+        // "cevap" geçiyor ve "ce", "cev" gibi yarım yazılışlar 104 kaydın hepsini
+        // getiriyordu — arama yazdıkça daralmıyordu.
+        s.cevap_tarihi ? null : "cevap yok cevapsız cevap verilmedi",
       ].filter(Boolean).join(" "),
     ).includes(q));
   }, [sirali, arama]);
