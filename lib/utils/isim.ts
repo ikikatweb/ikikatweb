@@ -217,3 +217,21 @@ export function aramaEslesir(sorgu: string, metin: string): boolean {
   const hedef = trAramaNormalize(metin);
   return parcalar.every((p) => hedef.includes(p));
 }
+
+/**
+ * AVUKAT ADI — başına "Av." eklenir.
+ *
+ * NİYE: tabloda yalnız ad yazınca "Cemre İKİKAT" bir borçlu ya da alacaklı gibi
+ * okunuyordu; sütunun cevabın AVUKAT ARACILIĞIYLA verildiğini söylemesi gerek.
+ *
+ * ZATEN UNVANLI YAZILMIŞSA TEKRARLANMAZ: listeye "Av. Ali Veli" diye girilmiş
+ * adlar var (ekleme kutusunun örneği de öyle), "Av. Av. Ali Veli" çıkardı.
+ * Türkçe küçültme kullanılıyor — /av\./i kalıbı "AV."yi bulur ama "İ" gibi
+ * harflerde aynı tuzağa düşülmesin diye her yerde aynı yöntem kullanılıyor.
+ */
+export function avukatAdiGoster(ad: string | null | undefined): string {
+  const t = (ad ?? "").trim();
+  if (!t) return "";
+  const k = t.toLocaleLowerCase("tr");
+  return k.startsWith("av.") || k.startsWith("av ") || k.startsWith("avukat") ? t : `Av. ${t}`;
+}

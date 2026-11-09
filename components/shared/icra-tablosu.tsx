@@ -11,7 +11,7 @@ import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
-import { trAramaNormalize } from "@/lib/utils/isim";
+import { trAramaNormalize, avukatAdiGoster } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
@@ -533,7 +533,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                       aranan o. Ad, gönderim anında kopyalanıyor (avukat_adi);
                       kopya yoksa kipin kendisi yazılır — ad UYDURULMAZ. */}
                   <td className={td} title={[s.cevap_sekli, s.avukat_adi].filter(Boolean).join(" · ")}>
-                    {cevapKipi(s.cevap_sekli ?? "").avukat && s.avukat_adi ? s.avukat_adi : s.cevap_sekli}
+                    {cevapKipi(s.cevap_sekli ?? "").avukat && s.avukat_adi
+                      ? avukatAdiGoster(s.avukat_adi) : s.cevap_sekli}
                   </td>
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
                   <td className={`${td} ${evrakGerekli ? "bg-red-50 text-red-600" : ""}`} title={evrakGerekli ? "Cevap tarihi girildi — evrak no zorunlu" : (s.evrak_no ?? "")}>{s.evrak_no || (evrakGerekli ? "Zorunlu!" : "")}</td>
