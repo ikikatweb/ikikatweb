@@ -82,10 +82,31 @@ async function isle(t) {
   const etiket = `#${t.id} ${t.hesap} · ${t.konu ?? "konu yok"}`;
   console.log(`\n▶ ${etiket}`);
 
-  // Zaten inmişse tekrar indirme: hem sorgu hakkı harcar hem ilk açanın kaydını bozar.
+  // Zaten inmişse tekrar İNDİRİLMEZ: ilk açanın kaydını bozmamak için (bkz. aşağıdaki
+  // "ÖNEMLİ OLAN İLK AÇANDIR" notu).
+  //
+  // AMA BELGE YİNE DE OKUNUR (09.11.2026): burada koşulsuz çıkılıyordu ve bu bir boşluk
+  // bırakıyordu — belgesi daha önce inmiş tebligatlarda icra defteri hiç dolmuyordu.
+  // Okuyucu bugün eklendi; ondan önce indirilmiş 19 belge varken bu "sessizce hiç
+  // çalışmayan özellik" demekti. Artık "Belgeleri getir" denince mevcut paket okunup
+  // defter dolduruluyor; geçmişi tamamlamanın yolu da bu.
   if (t.paket_yolu) {
-    console.log("  zaten açık, istek kapatıldı");
+    console.log("  zaten açık — indirilmedi, belge okunuyor");
+    const not = await icraDefteriniDoldur(t, t.ekler ?? []);
     await sb.from("tebligat").update({ acilma_durumu: null, acilma_hatasi: null }).eq("id", t.id);
+    if (not) {
+      // Ödeme emri ya da okunamayan belge: sessiz geçilmez, haber verilir.
+      try {
+        await pushGonder(sb, env, {
+          baslik: not.startsWith("⚠") ? "⚠ ŞİRKETE ÖDEME EMRİ" : "Tebligat belgesi okundu",
+          govde: `${t.gonderen_ad ?? t.hesap} · ${t.konu ?? "konu yok"}
+${not}`,
+          url: "/dashboard/yazismalar/e-tebligat",
+          etiket: `icra-not-${t.id}`,
+          kategori: "e-tebligat",
+        });
+      } catch (e) { console.log(`  bildirim gönderilemedi: ${e.message}`); }
+    }
     return;
   }
 
@@ -367,7 +388,7 @@ async function bizimVknler() {
 async function main() {
   const { data, error } = await sb.from("tebligat")
     // durum + okuyan_ad DA OKUNUR: "ilk açan kim" sorusu için gerekli (aşağıya bak).
-    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, durum, okuyan_ad, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
+    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, ekler, durum, okuyan_ad, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
     // "islemde" de alınır: önceki çalışma yarıda kaldıysa (makine kapandı vb.) iş asılı kalmasın.
     .in("acilma_durumu", ["bekliyor", "islemde"])
     .order("acilma_istegi_at", { ascending: true });
