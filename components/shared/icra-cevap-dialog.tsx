@@ -77,6 +77,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
 
   async function kaydet() {
     if (!kayit) return;
+    if (!cevapSekli.trim()) { toast.error("Cevap şekli seçilmeli."); return; }
     if (cevapTarihi && kayit.teblig_tarihi && cevapTarihi < kayit.teblig_tarihi) {
       toast.error("İcraya cevap tarihi, tebliğ tarihinden önce olamaz."); return;
     }
@@ -101,6 +102,10 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   }
 
   if (!kayit) return null;
+  // KEP ile cevap verildiyse ödeme yoktur — tutar alanı sorulmaz (aşağıya bak).
+  // Değer Tanımlamalar'dan geldiği için metin karşılaştırılıyor; Türkçe büyük harf
+  // kuralıyla ("i" → "İ") çünkü liste elle düzenlenebiliyor.
+  const kepMi = cevapSekli.trim().toLocaleUpperCase("tr") === "KEP";
   const lbl = "text-xs font-medium text-gray-600 mb-1 block";
   const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30";
   const salt = "text-sm text-gray-800";
@@ -144,8 +149,12 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               (KEP / iadeli taahütlü / banka), sonra o gönderinin tarihi ve evrak
               numarası. Tarih başta dururken insan önce onu dolduruyor, cevap şeklini
               en sonda görüp boş bırakıyordu. Enter ile geçiş de bu sırayı izler. */}
-          <div>
-            <label className={lbl}>Cevap şekli</label>
+          {/* TEK SATIR VE ZORUNLU: formun geri kalanı buna bağlı (KEP seçilince
+              ödenen tutar hiç sorulmuyor), o yüzden önce ve tek başına duruyor.
+              Zorunlu, çünkü "cevap verildi" kaydının hangi kanaldan verildiği
+              yazılmazsa kayıt ispat değeri taşımıyor. */}
+          <div className="sm:col-span-2">
+            <label className={lbl}>Cevap şekli <span className="text-red-600">*</span></label>
             <select className={inp} value={cevapSekli} onChange={(e) => setCevapSekli(e.target.value)} autoFocus>
               <option value="">Seçin…</option>
               {sekiller.map((x) => <option key={x} value={x}>{x}</option>)}
@@ -159,16 +168,29 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
             <label className={lbl}>Evrak no {cevapTarihi && <span className="text-red-600">*</span>}</label>
             <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)} placeholder="Gönderilen evrak no" />
           </div>
-          <div>
-            <label className={lbl}>Ödenen tutar</label>
-            <input className={`${inp} text-right`} value={odenen} inputMode="decimal"
-              onChange={(e) => setOdenen(formatParaInput(e.target.value))} />
-          </div>
+          {/* KEP'TE ÖDENEN TUTAR SORULMAZ: KEP bir yazışma kanalı, ödeme değil.
+              Alan orada durunca "doldurmam mı gerekiyor" sorusu doğuyordu.
+              KAYITLI TUTAR SİLİNMEZ: alan gizlenince state'teki değer olduğu gibi
+              kaydediliyor. Dolu bir tutar varken gizlemek onu görünmez kılardı —
+              o yüzden varsa yazıyla söyleniyor. */}
+          {kepMi ? (
+            parseParaInput(odenen) > 0 ? (
+              <div className="self-end text-[11px] text-gray-500">
+                Kayıtlı ödenen tutar {odenen} — KEP seçiliyken sorulmuyor, silinmiyor.
+              </div>
+            ) : null
+          ) : (
+            <div>
+              <label className={lbl}>Ödenen tutar</label>
+              <input className={`${inp} text-right`} value={odenen} inputMode="decimal"
+                onChange={(e) => setOdenen(formatParaInput(e.target.value))} />
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={kapat}>İptal</Button>
-          <Button onClick={kaydet} disabled={kaydediliyor}>
+          <Button onClick={kaydet} disabled={kaydediliyor || !cevapSekli.trim()}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
           </Button>
         </DialogFooter>
