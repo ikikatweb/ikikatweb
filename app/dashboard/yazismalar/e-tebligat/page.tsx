@@ -25,6 +25,14 @@ import KetsisTablosu from "@/components/shared/ketsis-tablosu";
 
 const UETS_GIRIS = "https://ptt.etebligat.gov.tr/login";
 
+/**
+ * Tebligat UETS'te AÇILMIŞ MI? "read" = biri açmış (biz ya da PTT sitesinden başkası),
+ * "readtimeout" = 5 gün açılmadığı için otomatik okundu sayılmış. İkisinde de indirmek
+ * yeni bir şey başlatmıyor; "delivered" ise henüz açılmamış demektir ve indirmek
+ * onu AÇAR (taahhütname md. 7, geri alınamaz).
+ */
+const acikMi = (t: Tebligat) => t.durum === "read" || t.durum === "readtimeout";
+
 const gun = (t: string | null) =>
   t ? new Date(t).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
@@ -100,14 +108,29 @@ export default function ETebligatPage() {
    * ofisteki görev yapıyor. Açmak GERİ ALINAMAZ (taahhütname md. 7) — onay bu yüzden.
    */
   async function ac(t: Tebligat) {
-    const uyari = `"${t.konu ?? "konu yok"}" tebligatı AÇILACAK.
+    // ZATEN AÇIK OLANDA KORKUTUCU UYARI ÇIKMAZ: tebligat UETS'te okunmuş durumda
+    // (biri PTT sitesinden açmış). İndirmek yeni bir şey başlatmıyor, yalnız belgeleri
+    // panele getiriyor. Her iki durumda aynı sert uyarıyı göstermek, uyarıyı
+    // değersizleştirir — insan okumadan "tamam"a basmayı öğrenir.
+    const uyari = acikMi(t)
+      ? `"${t.konu ?? "konu yok"}" tebligatının BELGELERİ indirilecek.
 
 `
-      + `UETS'te tebligatı indirmek onu okumak sayılır; bu işlem GERİ ALINAMAZ ve `
-      + `kayda sizin adınıza okundu diye geçer.
+        + `Bu tebligat UETS'te zaten açılmış durumda; indirmek yeni bir şey başlatmaz, `
+        + `yalnız belgeleri panele getirir.
 
 `
-      + `Tebliğ sayılacağı gün: ${gun(t.teblig_tarihi + "T00:00:00")}
+        + `Tebliğ sayılacağı gün: ${gun(t.teblig_tarihi + "T00:00:00")}
+
+İndirilsin mi?`
+      : `"${t.konu ?? "konu yok"}" tebligatı AÇILACAK.
+
+`
+        + `UETS'te tebligatı indirmek onu okumak sayılır; bu işlem GERİ ALINAMAZ ve `
+        + `kayda sizin adınıza okundu diye geçer.
+
+`
+        + `Tebliğ sayılacağı gün: ${gun(t.teblig_tarihi + "T00:00:00")}
 
 Açılsın mı?`;
     if (!confirm(uyari)) return;
@@ -294,14 +317,41 @@ Açılsın mı?`;
                   <td className={`px-3 py-2 whitespace-nowrap ${a.rozet}`}>{a.metin || "—"}</td>
                   <td className="px-3 py-2">
                     <span className={`inline-block rounded px-2 py-0.5 text-xs ${d.sinif}`}>{d.ad}</span>
+                    {/* NEREDEN AÇILDI (09.11.2026): "Açıldı" iki ayrı şey olabiliyor —
+                        panelden biz açtık (kim açtı kayıtlı, belgeler burada) ya da biri
+                        doğrudan PTT UETS sitesinden açtı (panel yalnız durumu öğrendi,
+                        belgeler burada yok). Defterdeki 95 "Açıldı" kaydının 94'ü ikinci
+                        türden. Ayrımı YAZMAK gerekiyor: "açıldı" deyip geçmek, belgeleri
+                        panelde arayıp bulamayan insana arıza gibi görünüyor.
+                        Ölçü uydurma değil: acilma_isteyen_ad yalnız panelden açılınca
+                        doluyor (api/tebligat/ac), PTT sitesinden açılanda boş kalıyor. */}
+                    {t.durum === "read" && (
+                      <div className="mt-0.5 text-[11px] text-gray-500">
+                        {t.acilma_isteyen_ad
+                          ? <>panelden · {t.acilma_isteyen_ad}</>
+                          : <span title="Bu tebligat panel dışında, doğrudan PTT UETS sitesinden açılmış. Belgeleri panele getirmek için 'Belgeleri getir' düğmesini kullanabilirsiniz.">
+                              PTT UETS sitesinden
+                            </span>}
+                      </div>
+                    )}
                     {t.indirme_hatasi && (
                       <span className="ml-2 text-xs text-red-700" title={t.indirme_hatasi}>· ek inmedi</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
+                    {/* "OKUDU" DEMİYORUZ (09.11.2026 düzeltmesi): burada "X tarafından
+                        … okundu" yazıyordu, ama bu YANLIŞ BİR İDDİAYDI. Alan
+                        (okuyan_ad) açma İSTEĞİNİ veren kişiyle doldruluyor
+                        (uets-ac-isle.mjs: okuyan_ad = acilma_isteyen_ad); indirmeyi
+                        ofisteki görev yapıyor, çoğu zaman saatler sonra. Kişi düğmeye
+                        bastı diye belgeyi okumuş olmuyor — bugün tam bu oldu, istek
+                        08:03'te verildi, indirme 11:41'de yapıldı.
+                        Doğrusu: tebligat UETS'te açılmış sayılır (hukuken okunmuş),
+                        açılmasını isteyen de bu kişidir. İkisi ayrı cümle. */}
                     {t.okuyan_ad && (
-                      <div className="text-[11px] text-gray-500">
-                        {t.okuyan_ad} tarafından {gunSaat(t.okuma_tarihi)}&apos;de okundu
+                      <div className="text-[11px] text-gray-500"
+                        title="Açma isteğini bu kişi verdi; indirmeyi ofisteki görev yaptı. UETS'te indirmek hukuken okumak sayılır — bu kişinin belgeyi okuduğu anlamına gelmez.">
+                        {t.okuyan_ad} isteğiyle açıldı · {gunSaat(t.okuma_tarihi)}
                       </div>
                     )}
                     {/* Paketten çıkan belgeler. Bağlantı dosyaUrl()'den geçer: kovalar
@@ -374,7 +424,13 @@ Açılsın mı?`;
                         <button type="button" disabled={aciliyor === t.id} onClick={() => ac(t)}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
                           {aciliyor === t.id ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
-                          {t.acilma_hatasi ? "Tekrar dene" : "Aç ve oku"}
+                          {/* ZATEN AÇILMIŞSA "BELGELERİ GETİR" (09.11.2026): defterdeki
+                              95 kaydın 94'ünde durum "read" ama paket bizde yok — biri
+                              PTT sitesinden açmış, panel yalnız durumu öğrenmiş. O
+                              satırlarda düğme tebligatı AÇMIYOR, sadece belgeleri
+                              indiriyor. İkisine de "Aç ve oku" demek, geri alınamaz bir
+                              işlemle zararsız bir indirmeyi aynı gösteriyordu. */}
+                          {t.acilma_hatasi ? "Tekrar dene" : (acikMi(t) ? "Belgeleri getir" : "Aç ve oku")}
                         </button>
                       </div>
                       ) : (
