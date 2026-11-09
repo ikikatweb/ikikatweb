@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Gavel, Plus, Trash2, Loader2, Search, Pencil, ChevronDown } from "lucide-react";
+import { Gavel, Plus, Trash2, Loader2, Search, Pencil } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -100,7 +100,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const [loading, setLoading] = useState(true);
   const [hata, setHata] = useState<string | null>(null);
   const [arama, setArama] = useOturumFiltresi("icra-tablosu:arama", "");
-  const [hepsiGoster, setHepsiGoster] = useState(false); // ilk 100 kayıt; fazlası "ok" ile açılır
   const [kompakt, setKompakt] = useState(false); // dar ekran (yatay telefon) → Alacaklı Vergi + Borçlu TC sütunları gizli
   const [firmalar, setFirmalar] = useState<{ firma_adi: string | null; renk?: string | null }[]>([]);
   const [personeller, setPersoneller] = useState<{ ad_soyad: string | null; tc_kimlik_no: string | null }[]>([]);
@@ -226,8 +225,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       [s.ucuncu_sahis, s.dosya_esas_no, s.cevap_sekli, s.evrak_no, s.alacakli_adi, s.alacakli_vergi_no, s.borclu_adi, s.borclu_tc_no].filter(Boolean).join(" "),
     ).includes(q));
   }, [sirali, arama]);
-  const LIMIT = 100;
-  const gosterilecek = hepsiGoster ? gorunen : gorunen.slice(0, LIMIT); // ilk 100; fazlası "ok" ile açılır
+  // HEPSİ GÖSTERİLİR: tablo artık 15 satırlık bir pencerede kendi içinde kayıyor;
+  // "kalan N kaydı göster" düğmesi kaydırmanın ortasında durup listeyi kesiyordu.
+  const gosterilecek = gorunen;
   const toplamBorc = useMemo(() => gorunen.reduce((t, s) => t + Number(s.borc_miktari || 0), 0), [gorunen]);
   const sonGuncelleme = useMemo(() => {
     let en = 0;
@@ -443,7 +443,14 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       </div>
 
       {/* Tam tablo — YATAY (landscape) ve masaüstünde. Dik telefonda gizli (okunmuyor). */}
-      <div className="hidden landscape:block lg:block w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* 15 SATIRLIK PENCERE: tablo 100 satıra kadar uzuyor ve sayfanın geri
+          kalanı (toplam, açıklama) ekranın çok altında kalıyordu. Başlık
+          yapışkan — kaydırırken hangi sütuna baktığı kaybolmasın.
+          YÜKSEKLİK: 15 × 33px satır + 98px iki katlı başlık.
+          ARKA PLAN THEAD'DE: globals.css'teki katmansız `thead th {
+          background-color: inherit }` kuralı th'ye verilen rengi eziyor,
+          başlık saydam kalıp satırlar altından görünüyordu. */}
+      <div className="hidden landscape:block lg:block w-full bg-white rounded-lg border border-gray-200 overflow-auto max-h-[593px]">
         <table className="text-xs text-gray-900 border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
@@ -494,7 +501,11 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             {gosterilecek.map((s) => {
               const tekrar = tekrarTc.has(tcNorm(s.borclu_tc_no));
               const borcluTxt = tekrar ? "text-red-600 font-medium" : ""; // sadece isim metni kırmızı (zemin yok)
-              const evrakGerekli = !!s.cevap_tarihi && !(s.evrak_no ?? "").trim();
+              // AVUKAT KİPİNDE EVRAK NO DİYE BİR ALAN YOK: cevap, mailin kendisidir
+              // (gönderim kaydı avukat_mail_* sütunlarında). Burada "Zorunlu!"
+              // yazmak, doldurulması imkânsız bir eksik gösteriyordu.
+              const evrakGerekli = !!s.cevap_tarihi && !(s.evrak_no ?? "").trim()
+                && !cevapKipi(s.cevap_sekli ?? "").avukat;
               const cevapYok = !(s.cevap_tarihi ?? "").trim(); // icraya cevap verilmemiş → kırmızı
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
@@ -604,19 +615,10 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         })}
       </div>
 
-      {/* İlk 100 kayıt gösterilir; fazlası "ok" ile açılır. */}
-      {!hepsiGoster && gorunen.length > LIMIT && (
-        <div className="flex justify-center mt-3">
-          <button type="button" onClick={() => setHepsiGoster(true)}
-            className="flex items-center gap-1.5 text-sm text-[#1E3A5F] hover:bg-gray-100 rounded-md px-3 py-1.5 border border-gray-200">
-            <ChevronDown size={16} /> Kalan {gorunen.length - LIMIT} kaydı göster
-          </button>
-        </div>
-      )}
-
       <p className="text-[11px] text-gray-400 mt-3">
         Aynı borçlu (TC / Vergi No) birden fazla dosyada geçiyorsa o satırlar <span className="text-red-600 font-medium">kırmızı</span> vurgulanır ·
-        İcraya Cevap Tarihi girildiğinde <span className="text-red-600 font-medium">Evrak No zorunludur</span>.
+        İcraya Cevap Tarihi girildiğinde <span className="text-red-600 font-medium">Evrak No zorunludur</span>
+        (avukat aracılığıyla verilen cevapta sorulmaz — cevap, mailin kendisidir).
       </p>
 
       {/* Öneri listeleri (form alanları için) */}

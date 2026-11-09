@@ -127,7 +127,9 @@ export default function OdemeEmriDashboard() {
     // bitmesi isteniyor. Yapı da onunkiyle birebir — flex sütun + mutlak konumlu iç
     // liste. Mutlak öğe üst öğenin boyuna katkı vermediği için kart kendi içeriğiyle
     // uzamaz; satırdan aldığı boyun tamamını kaplar, taşan kısım scroll olur.
-    <div className="bg-white rounded-lg border border-red-300 p-3 flex flex-col h-full">
+    // ÇERÇEVE İCRA KARTIYLA AYNI: kırmızı kenarlık kartın tamamını "hata" gibi
+    // gösteriyordu. Aciliyet zaten satır renginde (sarı/kırmızı) ve rozette.
+    <div className="bg-white rounded-lg border p-3 flex flex-col h-full">
       <div className="flex items-center justify-between mb-2 pb-2 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Scale size={16} className="text-red-600" />

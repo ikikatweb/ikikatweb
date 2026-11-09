@@ -281,7 +281,11 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       </div>
 
       {/* Tam tablo — yatay/masaüstü. Dik telefonda kart görünümü aşağıda. */}
-      <div className="hidden landscape:block lg:block w-full bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* 15 SATIRLIK PENCERE — üçüncü şahıs tablosuyla aynı. Başlık yapışkan;
+          arka planı THEAD'de duruyor (globals.css'teki katmansız
+          `thead th { background-color: inherit }` th'ye verilen rengi eziyor).
+          YÜKSEKLİK: 15 × 33px satır + 65px başlık. */}
+      <div className="hidden landscape:block lg:block w-full bg-white rounded-lg border border-gray-200 overflow-auto max-h-[560px]">
         <table className="text-xs text-gray-900 border-collapse w-full table-fixed">
           <colgroup>
             <col className="w-[3%]" />{/* S.No */}
