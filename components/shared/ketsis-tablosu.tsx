@@ -195,35 +195,55 @@ export default function KetsisTablosu() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
+      {/* 8 SATIRLIK PENCERE + ASILI BAŞLIK — üstteki UETS tablosuyla aynı.
+          Liste uzadıkça sayfa uzuyor ve altındaki açıklama görünmez oluyordu. */}
+      <div className="max-h-[520px] overflow-auto rounded-lg border border-gray-200">
+        {/* SÜTUN GENİŞLİKLERİ SABİT: süzgeç değişince (Bakılmamış/Hepsi) içerik
+            kısalıyor ve sütunlar kayıyordu — UETS tablosundaki düzeltmenin aynısı. */}
+        <table className="w-full min-w-[1100px] table-fixed text-sm">
+          <colgroup>
+            <col className="w-[7%]" />{/* Firma — renk; eşleşmeyende ayrıca uyarı */}
+            <col className="w-[10%]" />{/* Gönderme tarihi */}
+            <col className="w-[14%]" />{/* Gönderen */}
+            <col className="w-[9%]" />{/* Tebliğ tarihi */}
+            <col className="w-[23%]" />{/* Konu / özet */}
+            <col className="w-[9%]" />{/* Aç ve oku */}
+            <col className="w-[21%]" />{/* Durum */}
+            <col className="w-[7%]" />{/* Güven */}
+          </colgroup>
+          {/* Zemin thead'de: globals.css'teki katmansız "thead th {background:inherit}"
+              kuralı th'ye verilen Tailwind zeminini eziyor (bkz. e-tebligat sayfası).
+              Yapışkanlık da globals.css'ten geliyor. */}
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
-              <th className="px-3 py-2 font-medium">Firma</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Gönderme tarihi</th>
-              <th className="px-3 py-2 font-medium">Gönderen</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
-              <th className="px-3 py-2 font-medium">Konu / özet</th>
-              <th className="px-3 py-2 font-medium" />
-              <th className="px-3 py-2 font-medium">Durum</th>
+              <th className="border-b border-gray-300 px-3 py-2 text-center font-medium">Firma</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium whitespace-nowrap">Gönderme tarihi</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Gönderen</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium whitespace-nowrap">Tebliğ tarihi</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Konu / özet</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium" />
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Durum</th>
               {/* GÜVEN EN SAĞDA: her satırda "kesin" yazıyor, günlük işte bakılan bir
                   bilgi değil — yalnız şüpheli ("aday") bir mail düştüğünde önem
                   kazanıyor. Ortada durup asıl sütunları sıkıştırıyordu. */}
-              <th className="px-3 py-2 font-medium">Güven</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Güven</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {liste.map((s) => (
               <tr key={s.id} className={s.durum === "yeni" && s.guven === "kesin" ? "bg-red-50" : s.durum === "yeni" ? "bg-amber-50" : ""}>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <span className="inline-flex items-center gap-1.5" title={s.firmalar?.firma_adi ?? s.kutu}>
-                    <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
-                      style={{ backgroundColor: s.firmalar?.renk ?? NOTR }} />
-                    <span className="font-medium">
-                      {s.firmalar?.kisa_adi || s.firmalar?.firma_adi || "firma belirsiz"}
-                    </span>
-                  </span>
-                  {s.vkn && <div className="mt-0.5 text-[11px] text-gray-500">VKN {s.vkn}</div>}
+                {/* EŞLEŞENDE YALNIZ RENK, EŞLEŞMEYENDE YAZI (UETS tablosuyla aynı).
+                    Ad ve maskeli VKN her satırda iki satır yer kaplıyordu; ikisi de
+                    noktanın üstüne gelince yazıyor. Ama bildirim bizim firmalarımızdan
+                    birine bağlanamamışsa nötr gri nokta "firmalardan biri" gibi
+                    görünür ve kayıt sessizce yanlış okunur — o satırda yazıyla söylenir. */}
+                <td className="px-3 py-2 text-center"
+                  title={`${s.firmalar?.firma_adi ?? s.kutu}${s.vkn ? ` · VKN ${s.vkn}` : ""}`}>
+                  <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
+                    style={{ backgroundColor: s.firmalar?.renk ?? NOTR }} />
+                  {!s.firmalar && (
+                    <div className="mt-0.5 text-[10px] font-medium text-amber-700">eşleşmedi</div>
+                  )}
                 </td>
                 {/* GÖNDERME TARİHİ, MAİLİN GELDİĞİ GÜN DEĞİL (09.11.2026).
                     GİB aynı belge için iki mail yolluyor: biri gönderildiği gün, biri

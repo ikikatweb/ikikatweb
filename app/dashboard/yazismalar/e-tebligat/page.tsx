@@ -347,7 +347,13 @@ Açılsın mı?`;
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      {/* 8 SATIRLIK PENCERE: 104 tebligat alt alta durunca sayfa uzuyor ve altındaki
+          vergi dairesi (KETSİS) bölümü görünmez oluyordu. Liste kendi içinde kayıyor,
+          başlık satırı üstte asılı kalıyor (sticky) — kaydırınca hangi sütunun ne
+          olduğu kaybolmasın. Yükseklik yaklaşık 8 satır; konusu üç satıra taşan
+          kayıtlarda biraz azı görünür, sabit satır sayısı için satır yüksekliğini
+          kırpmak gerekirdi ve konu okunmaz olurdu. */}
+      <div className="max-h-[520px] overflow-auto rounded-lg border border-gray-200">
         {/* SÜTUN GENİŞLİKLERİ SABİT (table-fixed + oranlı colgroup).
             Tarayıcının varsayılanı sütunu İÇERİĞE göre ayarlıyor: "İcra dairesi"
             süzgecine basınca konular kısalıyor, sütunlar kayıyor ve göz her
@@ -356,25 +362,32 @@ Açılsın mı?`;
             min-w: dar ekranda sütunları ezmek yerine yatay kaydırma olur. */}
         <table className="w-full min-w-[1100px] table-fixed text-sm">
           <colgroup>
-            <col className="w-[4%]" />{/* Firma — yalnız renk noktası */}
+            <col className="w-[7%]" />{/* Firma — renk; eşleşmeyende ayrıca uyarı */}
             <col className="w-[18%]" />{/* Gönderen */}
-            <col className="w-[30%]" />{/* Konu */}
+            <col className="w-[27%]" />{/* Konu */}
             <col className="w-[8%]" />{/* Ulaşma */}
             <col className="w-[11%]" />{/* Tebliğ sayılacağı gün — başlık iki satıra sığsın */}
             <col className="w-[6%]" />{/* Kalan */}
             <col className="w-[11%]" />{/* Durum */}
             <col className="w-[12%]" />{/* Belge — liste değil, simge + pencere (aşağıya bak) */}
           </colgroup>
+          {/* ZEMİN thead'DE OLMALI, th'DE DEĞİL: app/globals.css içinde
+              "thead th { background-color: inherit }" kuralı var ve KATMANSIZ
+              yazıldığı için Tailwind'in katmanlı "bg-gray-50" sınıfını eziyor
+              (katmansız CSS, @layer içindekini her zaman yener — özgüllükten
+              bağımsız). th'ye zemin verildiğinde başlık SAYDAM kalıyor ve altından
+              geçen satırlar okunuyordu. Yapışkanlık da yine globals.css'ten geliyor
+              (thead { position: sticky }), burada tekrarlanmıyor. */}
           <thead className="bg-gray-50 text-left text-gray-600">
             <tr>
-              <th className="px-3 py-2 text-center font-medium">Firma</th>
-              <th className="px-3 py-2 font-medium">Gönderen</th>
-              <th className="px-3 py-2 font-medium">Konu</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
-              <th className="px-3 py-2 font-medium">Tebliğ sayılacağı gün</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Kalan</th>
-              <th className="px-3 py-2 font-medium">Durum</th>
-              <th className="px-3 py-2 font-medium">Belge</th>
+              <th className="border-b border-gray-300 px-3 py-2 text-center font-medium">Firma</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Gönderen</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Konu</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium whitespace-nowrap">Ulaşma</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Tebliğ sayılacağı gün</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium whitespace-nowrap">Kalan</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Durum</th>
+              <th className="border-b border-gray-300 px-3 py-2 font-medium">Belge</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -383,14 +396,19 @@ Açılsın mı?`;
               const d = DURUM[t.durum] ?? { ad: t.durum, sinif: "bg-gray-100 text-gray-700" };
               return (
                 <tr key={t.id} className={a.satir}>
-                  {/* YALNIZ RENK, AD YOK: iki firma var ve rengi herkes tanıyor;
-                      her satırda "IKI"/"KAD" yazmak sütunu şişiriyordu. Hangi firma
-                      olduğu noktanın üstüne gelince yazıyor. Süzgeç düğmelerinde ad
-                      duruyor — orada renk tek başına ne seçtiğini anlatmaz. */}
+                  {/* EŞLEŞENDE YALNIZ RENK, EŞLEŞMEYENDE YAZI.
+                      İki firmamız var ve rengini herkes tanıyor; her satıra "IKI"/"KAD"
+                      yazmak sütunu şişiriyordu. AMA tebligat bizim firmalarımızdan
+                      birine bağlanamamışsa renk bir şey anlatmaz — nötr gri nokta
+                      "firmalardan biri" gibi görünür ve kayıt sessizce yanlış okunur.
+                      O satırda "eşleşmedi" yazıyor, alıcı adı da üstüne gelince. */}
                   <td className="px-3 py-2 text-center"
                     title={t.firmalar?.firma_adi ?? t.alici_ad ?? t.hesap}>
                     <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-gray-300"
                       style={{ backgroundColor: t.firmalar?.renk ?? NOTR }} />
+                    {!t.firma_id && (
+                      <div className="mt-0.5 text-[10px] font-medium text-amber-700">eşleşmedi</div>
+                    )}
                   </td>
                   <td className="px-3 py-2 break-words" title={t.gonderen_ad ?? t.gonderen_adres ?? ""}>{t.gonderen_ad ?? t.gonderen_adres ?? "—"}</td>
                   <td className="px-3 py-2 break-words" title={t.konu ?? ""}>{t.konu ?? "—"}</td>
