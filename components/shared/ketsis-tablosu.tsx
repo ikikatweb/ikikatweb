@@ -373,9 +373,19 @@ export default function KetsisTablosu() {
             ))}
             {!yukleniyor && liste.length === 0 && (
               <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-500">
-                {hepsi ? "Hiç GİB bildirimi yakalanmadı." : "Bekleyen GİB bildirimi yok."}
+                {/* BOŞ TABLO "KAYIT YOK" SANILIYORDU (09.11.2026, ikinci kez): bütün
+                    mailler "bakıldı" işaretliyken varsayılan "Bakılmamış" süzgeci
+                    hiçbirini göstermiyor ve bölüm bomboş duruyor. Kayıt OLDUĞUNU
+                    söylemek gerekiyor, yoksa "çalışmadı / gelmedi" sanılıyor. */}
+                {hepsi
+                  ? "Hiç GİB bildirimi yakalanmadı."
+                  : satirlar.length > 0
+                    ? `Bekleyen GİB bildirimi yok — ${satirlar.length} mailin hepsine bakılmış.`
+                    : "Bekleyen GİB bildirimi yok."}
                 <div className="mt-1 text-xs text-gray-400">
-                  Bu, tebligat olmadığı anlamına gelmez — bilgilendirme maili gelmeyebilir.
+                  {satirlar.length > 0 && !hepsi
+                    ? <>Gelen maillerin tamamını görmek için yukarıdaki <b>Hepsi</b> düğmesine basın.</>
+                    : <>Bu, tebligat olmadığı anlamına gelmez — bilgilendirme maili gelmeyebilir.</>}
                 </div>
               </td></tr>
             )}
