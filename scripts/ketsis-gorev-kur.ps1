@@ -1,4 +1,12 @@
-# KETSIS MAIL GOREVINI KUR — Windows Gorev Zamanlayici.
+# KETSIS MAIL GOREVINI KUR - Windows Gorev Zamanlayici.
+#
+# BU DOSYA SADECE ASCII. Turkce harf, uzun tire (U+2014) vb. YAZMAYIN.
+# Sebep (09.11.2026 yasandi): dosya UTF-8 (BOM yok) kaydediliyor, Windows
+# PowerShell 5.1 ise BOM yoksa dosyayi ANSI sanip okuyor. "-" yerine uzun tire
+# konunca UTF-8 baytlari (E2 80 94) ANSI-1254'te "a-euro-tirnak" diye cozuluyor;
+# sondaki tirnak PowerShell icin DIZGI SONU sayiliyor ve satirin kalani kod degil
+# metin oluyor. Yorumda zararsiz ama DIZGI ICINDE satiri bozuyor: dogrulama
+# satirlari ekrana "-ForegroundColor Green }" diye basildi.
 #
 # NEDEN AYRI BETIK: S4U gorevi (oturum acilmadan calisan gorev) kaydetmek YONETICI
 # yetkisi istiyor; normal kabukta "Erisim engellendi" doner. Bu dosya, yonetici olarak
@@ -9,7 +17,7 @@
 # NE KURAR: 5 dakikada bir, dakikanin 30. SANIYESINDE donen "KETSIS Mail Cek" gorevi.
 # Gorev, GIB'in (KETSIS)
 # e-tebligat bilgilendirme mailini muhasebe kutularindan okuyup panele dusurur.
-# Belgeyi INDIRMEZ — KETSIS'in alici tarafi icin API yok, tebligat yalniz Dijital
+# Belgeyi INDIRMEZ - KETSIS'in alici tarafi icin API yok, tebligat yalniz Dijital
 # Vergi Dairesi ekraninda okunur (gerekce: sql/ketsis_bildirim.sql).
 #
 # NIYE S4U: makine guc kesintisinden sonra kimse giris yapmadan toparliyor; diger
@@ -35,7 +43,7 @@ $eylem = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$vbs`""
 #
 # 30. SANIYE BILEREK (09.11.2026 olcumu). Bu makinede ayni posta kutularini okuyan iki
 # gorev daha 2 DAKIKADA BIR donuyor: Personel Bildirge Sync (cift dakikalar) ve Sigorta
-# Teklif Mail (tek dakikalar) — ikisi birlikte gunun HER dakikasini tutuyor, yani
+# Teklif Mail (tek dakikalar) - ikisi birlikte gunun HER dakikasini tutuyor, yani
 # "cakismayan dakika" diye bir sey yok. Ama ucu de dakikanin :01'inde basliyor ve
 # :04'te bitiyor (olculen sureler: bildirge ~1,2 sn, sigorta ~2,0 sn, ketsis ~2,5 sn).
 # Bu yuzden cozum dakikayi degil SANIYEYI kaydirmak: 30. saniyede digerleri coktan
@@ -43,7 +51,7 @@ $eylem = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$vbs`""
 #
 # NIYE ONEMLI: ayni posta kutusuna ikinci oturum acilinca sunucu baglantiyi dusuruyor
 # (ECONNRESET). KETSIS bunu atlatiyor (20 sn sonra bir kez yeniden deniyor) ama SIGORTA
-# ATLATMIYOR — baglanamazsa o posta kutusunu o tur atliyor. Yani cakismanin faturasini
+# ATLATMIYOR - baglanamazsa o posta kutusunu o tur atliyor. Yani cakismanin faturasini
 # KETSIS degil, sigorta teklif okuyucusu oduyordu.
 #
 # NIYE 5 DAKIKA, 2 DEGIL: log her turda sifirdan yaziliyor (bat'ta ">"), yani log penceresi
@@ -66,5 +74,5 @@ $g.Triggers | ForEach-Object { Write-Host "  baslangic=$($_.StartBoundary)  tekr
 Write-Host "Ilk tur icin beklemek istemezseniz: Start-ScheduledTask -TaskName 'KETSIS Mail Cek'"
 # Baslangic saniyesi gercekten 30 mu? Yanlissa cakisma geri doner, bu yuzden kontrol edilir.
 $sb = ($g.Triggers | Select-Object -First 1).StartBoundary
-if ($sb -match 'T\d{2}:\d{2}:30') { Write-Host "Baslangic saniyesi 30 — cakisma penceresi disinda." -ForegroundColor Green }
-else { Write-Host "DIKKAT: baslangic saniyesi 30 DEGIL ($sb) — diger mail gorevleriyle cakisabilir." -ForegroundColor Red }
+if ($sb -match 'T\d{2}:\d{2}:30') { Write-Host "Baslangic saniyesi 30 - cakisma penceresi disinda." -ForegroundColor Green }
+else { Write-Host "DIKKAT: baslangic saniyesi 30 DEGIL ($sb) - diger mail gorevleriyle cakisabilir." -ForegroundColor Red }
