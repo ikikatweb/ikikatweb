@@ -323,12 +323,15 @@ Açılsın mı?`;
                         belgeler burada yok). Defterdeki 95 "Açıldı" kaydının 94'ü ikinci
                         türden. Ayrımı YAZMAK gerekiyor: "açıldı" deyip geçmek, belgeleri
                         panelde arayıp bulamayan insana arıza gibi görünüyor.
-                        Ölçü uydurma değil: acilma_isteyen_ad yalnız panelden açılınca
-                        doluyor (api/tebligat/ac), PTT sitesinden açılanda boş kalıyor. */}
+                        ÖLÇÜ: okuyan_ad — İLK AÇANI tutuyor ve yalnız tebligat o ana
+                        kadar açılmamışken yazılıyor (uets-ac-isle). Daha sonra "Belgeleri
+                        getir" denirse DEĞİŞMİYOR, çünkü ikinci indirme yeni bir açma
+                        değil. acilma_isteyen_ad'a bakmak yanlış olurdu: o alan düğmeye
+                        son basanla doluyor, PTT'den açılmış bir tebligatta bile. */}
                     {t.durum === "read" && (
                       <div className="mt-0.5 text-[11px] text-gray-500">
-                        {t.acilma_isteyen_ad
-                          ? <>panelden · {t.acilma_isteyen_ad}</>
+                        {t.okuyan_ad
+                          ? <>panelden · {t.okuyan_ad}</>
                           : <span title="Bu tebligat panel dışında, doğrudan PTT UETS sitesinden açılmış. Belgeleri panele getirmek için 'Belgeleri getir' düğmesini kullanabilirsiniz.">
                               PTT UETS sitesinden
                             </span>}

@@ -176,12 +176,31 @@ async function isle(t) {
   }
 
   const simdi = new Date().toISOString();
+
+  // ÖNEMLİ OLAN İLK AÇANDIR (09.11.2026 düzeltmesi).
+  // Eskiden her indirmede okuyan_ad üzerine yazılıyordu. Oysa tebligat BİR KEZ açılır;
+  // ikinci indirme yeni bir açma değil, yalnız belgeleri panele getirmektir.
+  // İki kayıp vardı:
+  //   · Panelden açılmış bir tebligatın belgeleri sonradan getirilince İLK AÇAN siliniyor,
+  //     yerine düğmeye son basan yazılıyordu.
+  //   · PTT UETS sitesinden açılmış bir tebligatta "panelden X açtı" diye YANLIŞ bir
+  //     kayıt oluşuyordu. 09.11.2026'da #108'de tam bu oldu: UETS 10:10 çekiminde kaydı
+  //     zaten "read" bildiriyordu, yani biri PTT'den açmıştı; bizim indirme 11:41'de
+  //     üstüne Ahmet Can KILINÇ'i yazdı.
+  // Kural: açan bilgisi YALNIZ tebligat o ana kadar açılmamışken yazılır. Daha önce
+  // açılmışsa (durum read/readtimeout) o alanlara DOKUNULMAZ.
+  const ilkAcmaBizde = t.durum !== "read" && t.durum !== "readtimeout";
+  if (!ilkAcmaBizde) {
+    console.log(`  not: tebligat zaten açıkmış (${t.durum}) — yalnız belgeler getirildi,`
+      + ` açan bilgisi değiştirilmedi${t.okuyan_ad ? ` (${t.okuyan_ad})` : " (panel dışında açılmış)"}`);
+  }
   const { error: yazHata } = await sb.from("tebligat").update({
     durum: "read",
-    okuma_tarihi: simdi,
-    // Açan kişi, açılmasını isteyen kişidir — düğmeye o bastı.
-    okuyan_id: t.acilma_isteyen_id,
-    okuyan_ad: t.acilma_isteyen_ad,
+    ...(ilkAcmaBizde ? {
+      okuma_tarihi: simdi,
+      okuyan_id: t.acilma_isteyen_id,
+      okuyan_ad: t.acilma_isteyen_ad,
+    } : {}),
     paket_yolu: paketYolu,
     ekler,
     etag: etag ?? undefined,
@@ -214,7 +233,8 @@ async function isle(t) {
 
 async function main() {
   const { data, error } = await sb.from("tebligat")
-    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
+    // durum + okuyan_ad DA OKUNUR: "ilk açan kim" sorusu için gerekli (aşağıya bak).
+    .select("id, hesap, uets_id, konu, gonderen_ad, firma_id, paket_yolu, durum, okuyan_ad, acilma_isteyen_id, acilma_isteyen_ad, acilma_istegi_at")
     // "islemde" de alınır: önceki çalışma yarıda kaldıysa (makine kapandı vb.) iş asılı kalmasın.
     .in("acilma_durumu", ["bekliyor", "islemde"])
     .order("acilma_istegi_at", { ascending: true });
