@@ -181,6 +181,64 @@ async function listeleTumu(anahtar, hesap) {
   return { satirlar: hepsi, toplam, eksik };
 }
 
+/**
+ * İCRA DAİRESİNDEN GELEN YAZI MI? Konu "… İcra Dairesi [2026/368508] …" biçiminde.
+ * Mahkeme/hâkimlik tebligatları KAPSAM DIŞI: onların icra defterinde yeri yok ve
+ * otomatik açılmaları için bir sebep de yok — açmak geri alınamaz bir işlem.
+ */
+const icraYazisiMi = (m) => /icra\s+dairesi/i.test(String(m.subject ?? ""));
+
+/** Konudaki dosya esas numarası: "… [2026/368508] …" → "2026/368508". Yoksa null. */
+const dosyaEsasNo = (m) => String(m.subject ?? "").match(/(\d{4}\/\d+)/)?.[1] ?? null;
+
+/**
+ * İCRA DEFTERİNE TASLAK SATIR — tebligat düşer düşmez.
+ *
+ * NİYE: icra yazıları elle icra sayfasına işleniyordu; kullanıcı "gelir gelmez
+ * işlensin" dedi (09.11.2026). Satır hemen açılırsa dosya gözden kaçmıyor ve
+ * cevap süresi ilk günden görünür oluyor.
+ *
+ * YALNIZ BİLİNENLER YAZILIR: üçüncü şahıs (firma ünvanı), dosya esas no ve tebliğ
+ * tarihi. Alacaklı, borçlu ve tutar BELGENİN İÇİNDE — onları açma işleyicisi PDF'ten
+ * okuyup dolduruyor. Burada tahmin yok: bilinmeyen alan boş kalır.
+ *
+ * TEBLİĞ TARİHİ = ULAŞMA TARİHİ. "Ulaşma + 5" (VUK/7201) DEĞİL — ev usulü böyle:
+ * 09.11.2026'da mevcut kayıtlarda doğrulandı (2026/368508 → 08.10, 2026/17289 → 02.10).
+ * Hesaplayıp yazsaydım bütün satırlar yanlış tarihle girerdi.
+ *
+ * AYNI DOSYA İKİNCİ KEZ AÇILMAZ: bir dosyaya ikinci tebligat gelebiliyor (89/2 gibi);
+ * ikinci satır "iki ayrı icra dosyası" gibi okunur.
+ */
+async function icraTaslagiAc(m, firmaId, hesap) {
+  const dosya = dosyaEsasNo(m);
+  if (!dosya) {
+    console.log(`   ${hesap} · icra taslağı açılmadı: konuda dosya esas no yok — "${String(m.subject ?? "").slice(0, 60)}"`);
+    return;
+  }
+  const { data: mevcut, error: bakHata } = await sb.from("icra")
+    .select("id").eq("dosya_esas_no", dosya).limit(1);
+  if (bakHata) { console.log(`   ${hesap} · icra tablosu okunamadı: ${bakHata.message}`); return; }
+  if ((mevcut ?? []).length) { console.log(`   ${hesap} · ${dosya} icra defterinde zaten var — taslak açılmadı.`); return; }
+
+  // Üçüncü şahıs = firmanın ünvanı. UYDURULMAZ: firmalar.firma_adi ile icra.ucuncu_sahis
+  // birebir aynı değerler (09.11.2026'da doğrulandı: KAD 44, IKI 31 eşleşme).
+  let unvan = null;
+  if (firmaId) {
+    const { data: f } = await sb.from("firmalar").select("firma_adi").eq("id", firmaId).maybeSingle();
+    unvan = f?.firma_adi ?? null;
+  }
+
+  const { error } = await sb.from("icra").insert({
+    ucuncu_sahis: unvan,
+    dosya_esas_no: dosya,
+    teblig_tarihi: tarih(m.inserttime)?.slice(0, 10) ?? null,
+    aciklama: "UETS tebligatından otomatik açıldı — alacaklı/borçlu/tutar belge okunduktan sonra dolar.",
+  });
+  // SESSİZ GEÇİLMEZ: satır açılamadıysa dosya elle işlenmeli, bu duyulmalı.
+  if (error) console.log(`   ${hesap} · İCRA TASLAĞI AÇILAMADI (${dosya}): ${error.message}`);
+  else console.log(`   ${hesap} · icra defterine taslak açıldı: ${dosya}`);
+}
+
 function kayda(hesap, firmaId, m) {
   return {
     hesap,
@@ -344,6 +402,39 @@ async function main() {
         }
       } else {
         yeniler.push(...haberlik.map((m) => ({ hesap, m })));
+      }
+
+      // ═══ İCRA YAZISI GELİR GELMEZ İŞLENSİN (09.11.2026, kullanıcı kararı) ═══
+      // Yeni gelen bir İCRA DAİRESİ yazısı için iki şey yapılıyor:
+      //   1) icra defterine taslak satır açılıyor (yukarıdaki nota bak),
+      //   2) belge indirme kuyruğuna otomatik alınıyor ki alacaklı/borçlu/tutar
+      //      PDF'ten doldurulabilsin.
+      //
+      // DİKKAT — BU BİR POLİTİKA DEĞİŞİKLİĞİDİR: UETS'te indirmek tebligatı AÇMAK
+      // demektir (taahhütname md. 7) ve geri alınamaz. Panel bugüne kadar hiçbir
+      // tebligatı kendiliğinden açmıyordu; açma kararı bilerek insana bırakılmıştı.
+      // Kullanıcı bu kararı makineye devretti. KAPSAM DAR TUTULDU: yalnız konusunda
+      // "İcra Dairesi" geçen yazılar. Mahkeme ve hâkimlik tebligatları eskisi gibi
+      // elle açılır — onların icra defterinde yeri yok, otomatik açmanın da kazancı yok.
+      if (!KURU) {
+        const yeniIcra = tumu.filter((m) => !bilinen.has(m.id) && icraYazisiMi(m));
+        for (const m of yeniIcra) {
+          await icraTaslagiAc(m, f.firma_id, hesap);
+          // Zaten açılmış olanlarda da belge getirilir: tebligat read/readtimeout ise
+          // indirmek yeni bir hukuki sonuç doğurmuyor, yalnız belgeyi getiriyor.
+          const { data: satir } = await sb.from("tebligat")
+            .select("id, paket_yolu, acilma_durumu").eq("hesap", hesap).eq("uets_id", m.id).maybeSingle();
+          if (!satir || satir.paket_yolu || satir.acilma_durumu) continue;
+          const { error: kuyrukHata } = await sb.from("tebligat").update({
+            acilma_durumu: "bekliyor",
+            acilma_istegi_at: new Date().toISOString(),
+            // Kim istedi: insan değil, panel. Uydurma bir isim yazılmıyor.
+            acilma_isteyen_id: null,
+            acilma_isteyen_ad: "otomatik (icra yazısı)",
+          }).eq("id", satir.id);
+          if (kuyrukHata) console.log(`   ${hesap} · açma kuyruğuna alınamadı: ${kuyrukHata.message}`);
+          else console.log(`   ${hesap} · belge indirme kuyruğuna alındı (otomatik): ${dosyaEsasNo(m) ?? m.id}`);
+        }
       }
       await durumYaz(f.firma_id, eksik, ogrenilenAdres);
       // EKSİK DÖKÜM ARIZADIR: hatalar listesine girer, görev hatayla biter ve .bat
