@@ -43,7 +43,9 @@ type Ek = { ad: string; yol: string; tur?: string | null };
 
 export async function POST(request: Request) {
   // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
-  if (!(await oturum())) return yetkisiz();
+  // Kullanıcı ayrıca mailin İMZASI olur: avukat kime cevap yazacağını bilsin.
+  const kullanici = await oturum();
+  if (!kullanici) return yetkisiz();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anahtar = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -127,11 +129,15 @@ export async function POST(request: Request) {
       `<tr><td style="padding:4px 10px 4px 0;color:#64748b;font-size:13px;white-space:nowrap">${etiket}</td>`
       + `<td style="padding:4px 0;font-size:13px;${stil}">${deger}</td></tr>`;
 
+    // DİPNOT YOK: "Ek: <dosya adı>" ve "bu mail ... panelinden otomatik
+    // gönderilmiştir" satırları kaldırıldı — eki mail programı zaten gösteriyor,
+    // firmayı da antet söylüyor. Yorum ŞABLONUN DIŞINDA: içine yazılan her şey
+    // mailin gövdesine metin olarak basılır, burası JSX değil.
     const html = `${antet.html}
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:620px;color:#1E3A5F">
-  <h2 style="font-size:17px;margin:0 0 4px">İcra dosyası — cevap verilmesi gerekiyor</h2>
+  <p style="font-size:14px;margin:0 0 10px">Merhaba ${kacar(avukat.ad_soyad)};</p>
   <p style="font-size:13px;color:#475569;margin:0 0 14px">
-    Aşağıdaki icra dosyasına ilişkin tebligat yazısı ektedir.
+    Aşağıdaki icra dosyasına cevap verilmesi gerekmektedir. Tebligat yazısı ektedir.
   </p>
   <table style="border-collapse:collapse;margin-bottom:14px">
     ${satir("Dosya esas no", kacar(kayit.dosya_esas_no), "font-weight:600")}
@@ -150,9 +156,9 @@ export async function POST(request: Request) {
     <div style="font-size:11px;color:#64748b;margin-bottom:3px">Not</div>
     <div style="font-size:13px;white-space:pre-wrap">${kacar((not ?? "").trim())}</div>
   </div>` : ""}
-  <p style="font-size:12px;color:#64748b;margin:0">
-    Ek: ${kacar(belge.ad)}<br>
-    Bu mail ${kacar(firma?.firma_adi ?? "")} panelinden otomatik gönderilmiştir.
+  <p style="font-size:14px;margin:18px 0 0">
+    İyi çalışmalar,<br>
+    <strong>${kacar(kullanici.ad_soyad)}</strong>
   </p>
 </div>`;
 
