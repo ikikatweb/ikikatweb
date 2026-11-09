@@ -122,10 +122,20 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // göndermez — her düzenlemede avukata aynı mailin gitmesi hem gereksiz hem de
   // "hangisi geçerli" karışıklığı yaratır.
   const duzenlenen = editId ? satirlar.find((x) => x.id === editId) ?? null : null;
+  // ÜÇÜ BİRDEN: aynı avukat + mail gitmiş + dosyada cevap tarihi var. Biri bile
+  // eksikse dosyanın kayıtlı bir avukat cevabı yok demektir, mail gider.
+  const avukatCevabiDuruyor = Boolean(duzenlenen?.avukat_id) && duzenlenen?.avukat_id === cevap.avukat_id
+    && Boolean(duzenlenen?.avukat_mail_at) && Boolean(duzenlenen?.cevap_tarihi);
   const mailBilgisi = {
     tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null,
     gonderen: duzenlenen?.avukat_mail_gonderen ?? null, sayi: duzenlenen?.avukat_mail_sayisi ?? 0,
+    gecerli: avukatCevabiDuruyor,
   };
+  // MAİL GİDECEK Mİ? Hızlı penceredekiyle aynı kural: ölçü "bu dosyaya hiç mail
+  // gitti mi" değil, "seçili avukat hâlâ dosyanın kayıtlı cevabı mı". Geri
+  // çekilen dosya aynı avukata yeniden gönderilebilmeli.
+  const gonderilecek = cevapKipi(cevap.cevap_sekli).avukat && Boolean(cevap.avukat_id)
+    && !avukatCevabiDuruyor;
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
@@ -346,7 +356,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       // AVUKATA MAİL — hızlı pencereyle aynı kural: yalnız daha önce gitmediyse.
       // Mail gitmezse cevap_tarihi yazılmaz ve dosya cevapsız kalır; bu SÖYLENİR,
       // yoksa kullanıcı cevabı iletmiş sanıp süre kaçırır.
-      if (cevapKipi(cevap.cevap_sekli).avukat && cevap.avukat_id && kayitId && !mailBilgisi.tarih) {
+      if (gonderilecek && kayitId) {
         try {
           const c = await avukataGonder(kayitId, cevap.avukat_id, cevap.avukat_notu);
           setSatirlar((p) => p.map((s) => (s.id === kayitId
@@ -695,7 +705,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           <DialogFooter className="gap-2 mt-3 shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setDialogAcik(false)} disabled={kaydediliyor}>İptal</Button>
             <Button className="bg-[#1E3A5F] hover:bg-[#15293f] text-white" onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
-              {kaydediliyor ? "Kaydediliyor..." : "Kaydet"}
+              {kaydediliyor ? "Kaydediliyor..." : gonderilecek ? "Kaydet ve avukata gönder" : "Kaydet"}
             </Button>
           </DialogFooter>
         </DialogContent>

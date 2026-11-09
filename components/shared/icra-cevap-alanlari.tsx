@@ -167,8 +167,13 @@ export default function IcraCevapAlanlari({
   /** Hızlı pencerede cevap şekli zorunlu; tam formda "Cevap / Ödeme" bölümü opsiyonel. */
   zorunlu?: boolean;
   kilitli?: boolean;
-  /** Avukata mail daha önce gittiyse: ne zaman, kim, hangi ekle, kaç kez. */
-  mailBilgisi?: { tarih: string | null; ek: string | null; gonderen?: string | null; sayi?: number };
+  /**
+   * Avukata mail daha önce gittiyse: ne zaman, kim, hangi ekle, kaç kez.
+   * `gecerli`: o gönderim HÂLÂ dosyanın cevabı mı? Cevap geri alındıysa (ya da
+   * başka bir avukat seçildiyse) mail geçmişte kalmıştır; kaydetmek YENİDEN
+   * gönderir ve ekran bunu söylemelidir.
+   */
+  mailBilgisi?: { tarih: string | null; ek: string | null; gonderen?: string | null; sayi?: number; gecerli?: boolean };
   /** Kayıt id'si — "Tekrar gönder" için gerekli. Yeni (kaydedilmemiş) kayıtta boş. */
   icraId?: string | null;
   /** Tekrar gönderim sonrası üst ekranın tazelenmesi için. */
@@ -434,7 +439,7 @@ export default function IcraCevapAlanlari({
               {/* MAİL BİR KEZ GİDER: daha önce gönderilmişse kaydet yeniden
                   göndermez — her düzenlemede avukata aynı mailin tekrar gitmesi
                   hem gereksiz hem de "hangisi geçerli" karışıklığı yaratır. */}
-              {mailBilgisi?.tarih ? (
+              {mailBilgisi?.tarih && mailBilgisi.gecerli ? (
                 <div className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
                   <div>
                     Avukata gönderildi · {new Date(mailBilgisi.tarih).toLocaleString("tr-TR")}
@@ -452,11 +457,23 @@ export default function IcraCevapAlanlari({
                   )}
                 </div>
               ) : (
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Kaydet denince dosya bilgileri, <strong className="text-red-600">son cevap günü</strong>,
-                  bu not ve tebligat belgesi avukata mail ile gider. Belge indirilemezse mail
-                  gönderilmez ve dosya cevapsız kalır.
-                </p>
+                <>
+                  {/* GERİ ALINMIŞ GÖNDERİM: mail geçmişte gitti ama cevap geri
+                      alındı (ya da başka avukat seçildi). Yeşil "gönderildi"
+                      şeridi burada yanıltıcı olurdu — kaydetmek YENİDEN gönderir. */}
+                  {mailBilgisi?.tarih && (
+                    <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                      Bu dosya {new Date(mailBilgisi.tarih).toLocaleString("tr-TR")} tarihinde
+                      {mailBilgisi.gonderen ? ` ${mailBilgisi.gonderen} tarafından` : ""} avukata
+                      gönderilmişti; cevap sonradan geri alındı. <strong>Kaydet yeniden gönderir.</strong>
+                    </div>
+                  )}
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Kaydet denince dosya bilgileri, <strong className="text-red-600">son cevap günü</strong>,
+                    bu not ve tebligat belgesi avukata mail ile gider. Belge indirilemezse mail
+                    gönderilmez ve dosya cevapsız kalır.
+                  </p>
+                </>
               )}
             </>
           )}

@@ -78,6 +78,17 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   }, [acik, kayit]);
 
   const kip = cevapKipi(v.cevap_sekli);
+  // MAİL GİDECEK Mİ? Ölçü "bu dosyaya hiç mail gitti mi" DEĞİL, "seçili avukat
+  // hâlâ dosyanın kayıtlı cevabı mı". Cevap geri alındıysa (avukat_id silinmiş)
+  // ya da başka bir avukat seçildiyse bu YENİ bir gönderimdir.
+  // Eskiden avukat_mail_at'e bakılıyordu: geri çekilen dosya aynı avukata
+  // yeniden gönderilemiyor, Kaydet sessizce avukatı yazıp maili atlıyor ve
+  // dosya cevapsız kalmaya devam ediyordu.
+  // ÜÇÜ BİRDEN: aynı avukat + mail gitmiş + dosyada cevap tarihi var. Biri bile
+  // eksikse dosyanın kayıtlı bir avukat cevabı yok demektir, mail gider.
+  const avukatCevabiDuruyor = Boolean(kayit?.avukat_id) && kayit?.avukat_id === v.avukat_id
+    && Boolean(kayit?.avukat_mail_at) && Boolean(kayit?.cevap_tarihi);
+  const gonderilecek = kip.avukat && Boolean(v.avukat_id) && !avukatCevabiDuruyor;
   // DEFTERDEKİ ZORUNLU ALANLAR TAM FORMLA AYNI: bu pencere onları düzenlemiyor
   // ama eksikken cevap da işlenmemeli — eksik bir satıra "cevap verildi" yazmak
   // onu tamamlanmış gibi gösterip gözden kaçırır.
@@ -128,7 +139,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     try {
       await updateIcraKayit(kayit.id, yama);
       // MAİL BİR KEZ GİDER: daha önce gönderilmişse tekrar gönderilmez.
-      if (kip.avukat && v.avukat_id && !kayit.avukat_mail_at) {
+      if (gonderilecek) {
         try {
           const c = await avukataGonder(kayit.id, v.avukat_id, v.avukat_notu);
           icraDegisti();
@@ -229,6 +240,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
             mailBilgisi={{
               tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
               gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,
+              gecerli: avukatCevabiDuruyor,
             }}
             tekrarGonderildi={(c) => kaydedildi({
               avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
@@ -248,7 +260,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               kırmızı işaret çıkmaz, kapalı düğme de sebebini söylemez. */}
           <Button onClick={kaydet} disabled={kaydediliyor || eksikler.length > 0}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
-            {kip.avukat && !kayit.avukat_mail_at ? "Kaydet ve avukata gönder" : "Kaydet"}
+            {gonderilecek ? "Kaydet ve avukata gönder" : "Kaydet"}
           </Button>
         </DialogFooter>
       </DialogContent>
