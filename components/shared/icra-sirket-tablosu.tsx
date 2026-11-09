@@ -21,6 +21,7 @@ import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
+import { sonGunHesapla, bugunISO } from "@/lib/utils/icra-sure";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -48,13 +49,8 @@ function sayiToInput(n: number): string {
  * SÜRE YOKSA GÜN DE YOK: varsayılan bir sayı uydurup gün göstermek, insanın
  * güvendiği bir tarihi uydurmak olurdu (bkz. icra defterinde cevap süresi kuralı).
  */
-function sonItirazGunu(t: IcraSirketTakip): string | null {
-  if (!t.teblig_tarihi || t.itiraz_suresi_gun == null) return null;
-  const d = new Date(t.teblig_tarihi + "T00:00:00");
-  d.setDate(d.getDate() + t.itiraz_suresi_gun);
-  return d.toISOString().slice(0, 10);
-}
-const BUGUN = () => new Date().toISOString().slice(0, 10);
+const sonItirazGunu = (t: IcraSirketTakip) => sonGunHesapla(t.teblig_tarihi, t.itiraz_suresi_gun);
+const BUGUN = bugunISO;
 
 type Form = {
   borclu_firma: string; dosya_esas_no: string; icra_dairesi: string;

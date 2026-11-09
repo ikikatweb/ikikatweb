@@ -43,6 +43,7 @@ import { Label } from "@/components/ui/label";
 import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import CalisilmayanDonemHatirlatma from "@/components/shared/calisilmayan-donem-hatirlatma";
+import IcraSureHatirlatma from "@/components/shared/icra-sure-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
@@ -1918,6 +1919,10 @@ export default function DashboardPage() {
           açılamıyor (alıcı tarafı için API yok), tek yapılacak iş Dijital Vergi
           Dairesi'ne girmek. Mail hiç gelmese de haftada bir hatırlatır — bilgilendirme
           maili hukuken tebligatın parçası değil, gelmemesi süreyi durdurmaz. */}
+      {/* İCRA SÜRESİ — tebligat hatırlatmalarının hemen ardında, çünkü ikisi de
+          kaçırılınca geri dönüşü olmayan süreleri anlatıyor. Son günden bir gün önce
+          çıkar; o gün hafta sonuna denk gelirse cumadan (bkz. lib/utils/icra-sure). */}
+      <IcraSureHatirlatma />
       <KetsisHatirlatma />
       <YedekHatirlatma />
       <BordroHatirlatma />

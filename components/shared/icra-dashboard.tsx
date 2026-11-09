@@ -14,6 +14,10 @@ import {
 } from "@/lib/supabase/queries/icra";
 import type { IcraKayit } from "@/lib/supabase/types";
 import { createClient } from "@/lib/supabase/client";
+import { sonGunHesapla, gunFarki, bugunISO, VARSAYILAN_CEVAP_SURESI } from "@/lib/utils/icra-sure";
+// YAZIM BİÇİMİ: borçlu kişi adı TÜMÜ BÜYÜK (defterde öne çıksın), alacaklı ünvanı
+// Başlık Biçimi. Kayıt değişmiyor, yalnız gösterim — veritabanında ne yazıldıysa o duruyor.
+import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -24,16 +28,9 @@ const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") 
 // yani sabit doğruydu. Yine de belgeden okunanı kullanmak gerekiyor: görmediğimiz bir
 // türde farklı süre çıkarsa sabit yanlış tarih gösterir ve insan ona güvenir.
 // Belge okunmamış eski kayıtlarda (cevap_suresi_gun boş) bu sabite düşülüyor.
-const VARSAYILAN_CEVAP_SURESI = 7;
 /** Son 2 gün kırmızı: 7 günlük sürede 6. günden itibaren. */
 const acilEsik = (sure: number) => Math.max(1, sure - 1);
-function tebligGunGecen(v: string | null): number | null {
-  if (!v) return null;
-  const t = new Date(v + "T00:00:00");
-  if (Number.isNaN(t.getTime())) return null;
-  const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
-  return Math.floor((bugun.getTime() - t.getTime()) / 86400000);
-}
+const tebligGunGecen = (v: string | null) => (v ? gunFarki(v, bugunISO()) : null);
 
 export default function IcraDashboard() {
   const { isYonetici, hasPermission } = useAuth();
@@ -135,6 +132,7 @@ export default function IcraDashboard() {
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
+              <TableHead className="px-2 text-[10px] text-center">Son Cevap Günü</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Cevap</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
             </TableRow></TableHeader>
@@ -145,6 +143,9 @@ export default function IcraDashboard() {
                 const sure = s.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI;
                 const belgedenMi = s.cevap_suresi_gun != null;
                 const acil = gecen != null && gecen >= acilEsik(sure);
+                const sonCevapGunu = sonGunHesapla(s.teblig_tarihi, sure);
+                const kalan = sonCevapGunu ? gunFarki(bugunISO(), sonCevapGunu) : null;
+                const gecti = kalan != null && kalan < 0;
                 const baglam = baglamlar.get(icraBorcluAnahtar(s.borclu_tc_no, s.borclu_adi));
                 return (
                 <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
@@ -152,18 +153,25 @@ export default function IcraDashboard() {
                       (yukarıdaki nota bakın). Hücre kenarlığı değil, "Eksik Evrak"
                       kartındaki ince dikey çubuğun aynısı — panelde firma rengi her
                       yerde bu biçimde gösteriliyor. */}
-                  <TableCell className="px-2">
+                  <TableCell className="px-2 py-1">
                     <div className="flex items-stretch gap-2">
                     <span className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
-                      style={{ backgroundColor: firmaRengi(s.ucuncu_sahis) ?? "#e5e7eb", minHeight: "1.5rem" }}
+                      style={{ backgroundColor: firmaRengi(s.ucuncu_sahis) ?? "#e5e7eb", minHeight: "1.25rem" }}
                       title={s.ucuncu_sahis ? `Üçüncü şahıs: ${s.ucuncu_sahis}` : "Firma rengi tanımlı değil"} />
                     <div className="min-w-0">
-                    <div className="text-[9px] text-gray-400 leading-none">Borçlu</div>
-                    <div className={`font-medium truncate max-w-[150px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
-                    {s.alacakli_adi && <>
-                      <div className="text-[9px] text-gray-400 leading-none mt-1">Alacaklı</div>
-                      <div className="font-medium text-gray-700 truncate max-w-[150px]" title={s.alacakli_adi}>{s.alacakli_adi}</div>
-                    </>}
+                    {/* ETİKET AYRI SATIRDA DEĞİL, BAŞINDA: "Borçlu" ve "Alacaklı" kendi
+                        satırlarındayken her kayıt dört satır yer kaplıyordu; yan yana
+                        yazılınca ikiye indi ve kutuya daha çok dosya sığıyor. */}
+                    <div className={`truncate max-w-[180px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>
+                      <span className="text-[9px] text-gray-400">Borçlu: </span>
+                      <span className="font-medium">{formatBuyukHarf(s.borclu_adi) || "—"}</span>
+                    </div>
+                    {s.alacakli_adi && (
+                      <div className="truncate max-w-[180px] text-gray-700" title={s.alacakli_adi}>
+                        <span className="text-[9px] text-gray-400">Alacaklı: </span>
+                        <span className="font-medium">{formatBaslik(s.alacakli_adi)}</span>
+                      </div>
+                    )}
                     {baglam?.santiyeAd && (
                       <div className="mt-1 flex items-center gap-1 text-[9px] text-gray-500 truncate max-w-[150px]"
                         title={`${baglam.santiyeAd}${baglam.firmaKisa ? ` · ${baglam.firmaKisa}` : ""}`}>
@@ -174,20 +182,33 @@ export default function IcraDashboard() {
                         <span className="truncate">{baglam.santiyeAd}</span>
                       </div>
                     )}
-                    {acil && (
-                      <div className="text-[9px] font-semibold text-red-600"
-                        title={belgedenMi
-                          ? `Süre tebligat belgesinde yazıyor: ${sure} gün.`
-                          : `Belge okunmadığı için varsayılan ${sure} gün kullanılıyor; gerçek süre belgede yazar.`}>
-                        ⚠ Tebliğden {gecen}. gün · {sure} günlük süre {gecen >= sure ? "doldu" : "doluyor"}
-                        {!belgedenMi && <span className="font-normal"> (varsayılan)</span>}
-                      </div>
-                    )}
                     </div>
                     </div>
                   </TableCell>
-                  <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
-                  <TableCell className="px-2 text-center">
+                  <TableCell className="px-2 py-1 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
+                  {/* SON CEVAP GÜNÜ + KALAN GÜN — ödeme emri kartındaki sütunun eşi.
+                      Önce bu bilgi ilk hücrede uzun bir cümleydi ("Tebliğden 1817. gün ·
+                      7 günlük süre doldu"); sütun olunca iki kart aynı yerden okunuyor
+                      ve tarihin kendisi de görünüyor. */}
+                  <TableCell className="px-2 py-1 text-center whitespace-nowrap">
+                    {sonCevapGunu ? (
+                      <>
+                        <div className={gecti ? "text-red-700 font-semibold" : acil ? "text-amber-700 font-semibold" : "text-gray-600"}>
+                          {tarihGoster(sonCevapGunu)}
+                        </div>
+                        <div className={`text-[9px] ${gecti ? "text-red-600 font-semibold" : acil ? "text-amber-700" : "text-gray-400"}`}
+                          title={belgedenMi
+                            ? `Süre tebligat belgesinde yazıyor: ${sure} gün.`
+                            : `Belge okunmadığı için varsayılan ${sure} gün kullanılıyor; gerçek süre belgede yazar.`}>
+                          {gecti ? `⚠ ${-kalan!} gün geçti` : kalan === 0 ? "⚠ bugün son gün" : `${kalan} gün kaldı`}
+                          {!belgedenMi && <span className="font-normal"> (varsayılan)</span>}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-gray-400" title="Tebliğ tarihi yok — gün hesaplanamıyor">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="px-2 py-1 text-center">
                     {/* DÜĞME ADI "Tarih gir" DEĞİL (09.11.2026): açtığı form yalnız tarih
                         istemiyor — cevap tarihi, cevap şekli, evrak no ve ödenen tutar
                         birlikte giriliyor. "Tarih gir" yazınca insan sadece tarih
@@ -202,7 +223,7 @@ export default function IcraDashboard() {
                       <span className="text-[11px] text-gray-400">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="px-2 text-right tabular-nums text-red-600">{fmt(Number(s.borc_miktari || 0))}</TableCell>
+                  <TableCell className="px-2 py-1 text-right tabular-nums text-red-600">{fmt(Number(s.borc_miktari || 0))}</TableCell>
                 </TableRow>
                 );
               })}

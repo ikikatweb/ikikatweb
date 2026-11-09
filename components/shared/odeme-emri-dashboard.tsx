@@ -22,6 +22,8 @@ import { getIcraSirketTakipler } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { sonGunHesapla, gunFarki, bugunISO } from "@/lib/utils/icra-sure";
+import { formatBaslik } from "@/lib/utils/isim";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");
@@ -30,24 +32,18 @@ const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") 
 // değişiyordu; sabit sınır daha dengeli duruyor. Tamamı title'da (üstüne gelince).
 const KISALT = 30;
 const kisalt = (v: string | null) => {
-  const t = (v ?? "").trim();
+  // Biçim ÖNCE uygulanır, kırpma sonra: önce kırpsaydık "…" içeren metin
+  // biçimlendiriciye girer ve son sözcük yarım büyük harfle kalırdı.
+  const t = formatBaslik(v).trim();
   return t.length > KISALT ? t.slice(0, KISALT).trimEnd() + "…" : t;
 };
 
 /** Son itiraz günü (ISO) — tebliğ + belgede yazan süre. Süre yoksa null. */
-function sonGun(s: IcraSirketTakip): string | null {
-  if (!s.teblig_tarihi || s.itiraz_suresi_gun == null) return null;
-  const d = new Date(s.teblig_tarihi + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return null;
-  d.setDate(d.getDate() + s.itiraz_suresi_gun);
-  return d.toISOString().slice(0, 10);
-}
+const sonGun = (s: IcraSirketTakip) => sonGunHesapla(s.teblig_tarihi, s.itiraz_suresi_gun);
 /** Son güne kaç gün kaldı? Negatif = geçti. Süre bilinmiyorsa null. */
 function kalanGun(s: IcraSirketTakip): number | null {
   const g = sonGun(s);
-  if (!g) return null;
-  const bugun = new Date(); bugun.setHours(0, 0, 0, 0);
-  return Math.round((new Date(g + "T00:00:00").getTime() - bugun.getTime()) / 86400000);
+  return g ? gunFarki(bugunISO(), g) : null;
 }
 
 export default function OdemeEmriDashboard() {
@@ -154,15 +150,18 @@ export default function OdemeEmriDashboard() {
                     {/* SOL ŞERİT: borçlu firmanın tanımlı rengi. Hücre kenarlığı değil,
                         "Eksik Evrak" kartındaki ince dikey çubuğun aynısı — panelde
                         firma rengi her yerde bu biçimde gösteriliyor. */}
-                    <TableCell className="px-2">
+                    <TableCell className="px-2 py-1">
                       <div className="flex items-stretch gap-2">
                         <span className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
-                          style={{ backgroundColor: firmaRengi(s.borclu_firma) ?? "#e5e7eb", minHeight: "1.5rem" }}
+                          style={{ backgroundColor: firmaRengi(s.borclu_firma) ?? "#e5e7eb", minHeight: "1.25rem" }}
                           title={s.borclu_firma ? `Borçlu firma: ${s.borclu_firma}` : "Firma rengi tanımlı değil"} />
                         <div className="min-w-0">
-                          <div className="text-[9px] text-gray-400 leading-none">Alacaklı</div>
-                          <div className={`font-medium whitespace-nowrap ${gecti ? "text-red-700" : "text-[#1E3A5F]"}`}
-                            title={s.alacakli_adi ?? ""}>{kisalt(s.alacakli_adi) || "—"}</div>
+                          {/* Etiket başında — İcra kartıyla aynı, satır yüksekliği düşük. */}
+                          <div className={`whitespace-nowrap ${gecti ? "text-red-700" : "text-[#1E3A5F]"}`}
+                            title={s.alacakli_adi ?? ""}>
+                            <span className="text-[9px] text-gray-400">Alacaklı: </span>
+                            <span className="font-medium">{kisalt(s.alacakli_adi) || "—"}</span>
+                          </div>
                           <div className="text-[10px] text-gray-500 truncate"
                             title={`${s.icra_dairesi ?? ""} · ${s.dosya_esas_no ?? ""}`}>
                             {s.dosya_esas_no} · {s.icra_dairesi}
@@ -170,8 +169,8 @@ export default function OdemeEmriDashboard() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
-                    <TableCell className="px-2 text-center whitespace-nowrap">
+                    <TableCell className="px-2 py-1 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
+                    <TableCell className="px-2 py-1 text-center whitespace-nowrap">
                       {kalan == null ? (
                         <span className="text-gray-400" title="Belgede itiraz süresi yazmıyor — gün uydurulmadı">belgede yok</span>
                       ) : (
@@ -186,7 +185,7 @@ export default function OdemeEmriDashboard() {
                         </>
                       )}
                     </TableCell>
-                    <TableCell className="px-2 text-center">
+                    <TableCell className="px-2 py-1 text-center">
                       {canDuzenle ? (
                         <button type="button"
                           onClick={() => { window.location.href = `/dashboard/icra?sekme=sirket&duzenle=${s.id}`; }}
@@ -202,7 +201,7 @@ export default function OdemeEmriDashboard() {
                         <span className="text-[11px] text-gray-400">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="px-2 text-right tabular-nums text-red-600 whitespace-nowrap">{fmt(Number(s.takip_tutari || 0))}</TableCell>
+                    <TableCell className="px-2 py-1 text-right tabular-nums text-red-600 whitespace-nowrap">{fmt(Number(s.takip_tutari || 0))}</TableCell>
                   </TableRow>
                 );
               })}
