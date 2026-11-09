@@ -188,6 +188,21 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
     && Boolean(duzenlenen?.avukat_mail_at) && duzenlenen?.durum === "avukatta";
   const gonderilecek = form.durum === "avukatta" && Boolean(form.avukat_id) && !avukatCevabiDuruyor;
 
+  /**
+   * Cevap şekli değişince o kipe ait OLMAYAN alanlar boşalır — hızlı pencereyle
+   * aynı. Boşalmasaydı "Seçin…"e çekilen bir takip ele alınmamış görünürken
+   * kayıtta ödeme bilgisi durmaya devam ederdi: ekranda olmayan, veritabanında
+   * duran bir veri. Avukata gönderilmiş mailin KAYDI SİLİNMEZ (avukat_mail_*).
+   */
+  function sekilDegistir(k: IcraSirketDurum) {
+    setForm((f) => ({
+      ...f,
+      durum: k,
+      ...(k === "odendi" ? {} : { odeme_tarihi: "", odenen_tutar: "", banka_adi: "" }),
+      ...(k === "avukatta" ? {} : { avukat_id: "", avukat_adi: "" }),
+    }));
+  }
+
   function formEnter(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Enter") return;
     const el = e.target as HTMLElement;
@@ -219,6 +234,12 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       if (eksik.length) { toast.error(`Ödendi için ${eksik.join(", ")} zorunlu.`); return; }
     }
     if (form.durum === "avukatta" && !form.avukat_id) { toast.error("Avukat seçilmeli."); return; }
+    // CEVABI GERİ ALMA: işlenmiş bir takip "Seçin…"e çekilmiş. Sessizce silinmez.
+    if (form.durum === "yeni" && duzenlenen && duzenlenen.durum !== "yeni"
+      && typeof window !== "undefined" && !window.confirm(
+        "Bu takipteki cevap kaydı silinecek ve dosya yeniden ELE ALINMAMIŞ sayılacak.\n\n"
+        + "Ödeme bilgileri ve avukat seçimi silinir. Avukata gönderilmiş mailin kaydı "
+        + "silinmez — mail gerçekten gitti.\n\nDevam edilsin mi?")) return;
     const sure = form.itiraz_suresi_gun.trim() === "" ? null : Number(form.itiraz_suresi_gun);
     if (sure != null && (!Number.isFinite(sure) || sure <= 0)) { toast.error("İtiraz süresi gün olarak girilmeli."); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -528,7 +549,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                 (durum="yeni"); işlenmiş bir takip buraya çekilerek geri alınır. */}
             <div className="sm:col-span-3 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme</div>
             <div className="sm:col-span-3"><label className={fLbl}>Cevap şekli</label>
-              <select className={fInp} value={form.durum} onChange={(e) => setF("durum", e.target.value)}>
+              <select className={fInp} value={form.durum} onChange={(e) => sekilDegistir(e.target.value as IcraSirketDurum)}>
                 <option value="yeni">Seçin…</option>
                 {durumSecenekleri(form.durum as IcraSirketDurum).map((k) => (
                   <option key={k} value={k}>{DURUMLAR.find((d) => d.kod === k)?.ad ?? k}</option>
