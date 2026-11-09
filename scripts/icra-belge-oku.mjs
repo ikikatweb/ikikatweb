@@ -207,7 +207,10 @@ export function belgeCozumle(metin, bizimVknler = []) {
     uyarilar.push("Belgede BORÇLU bizim firmamız görünüyor; tür tespitiyle çelişiyor — elle bakılmalı.");
   }
   if (sonuc.rolumuz === "borclu") {
-    uyarilar.push("ÖDEME EMRİ / ŞİRKETE TAKİP: bu bir üçüncü şahıs haciz yazısı değil, borçlu biziz. İcra defterine yazılmadı.");
+    // "İcra defterine yazılmadı" DEMİYORUZ ARTIK (09.11.2026): o cümle doğruydu ama
+    // artık değil — ödeme emirleri "Şirkete Açılan Takipler" defterine yazılıyor.
+    // Eskisi, kaydın hiçbir yere girmediğini söylüyordu; okuyan insanı yanıltırdı.
+    uyarilar.push("ÖDEME EMRİ: üçüncü şahıs haciz yazısı değil, borçlu biziz.");
   }
   if (tur === "haciz_kaldirma") {
     uyarilar.push("HACİZ KALDIRMA yazısı: yeni bir haciz değil, var olan haczin kaldırılması. "

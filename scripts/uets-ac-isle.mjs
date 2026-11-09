@@ -503,9 +503,14 @@ async function sirketTakibineYaz(t, cozum, yazi) {
   }
 
   const { data: yeni, error } = await sb.from("icra_sirket_takip")
+    // AÇIKLAMA BOŞ BAŞLAR: burası kullanıcının kendi notu için. Önce her satıra
+    // "Ödeme emri — tebligat belgesinden otomatik okundu." yazılıyordu; sekmenin
+    // tamamı zaten ödeme emri, yani hiçbir şey söylemiyor ve kullanıcının yazacağı
+    // alanı dolu gösteriyordu. YALNIZ GERÇEKTEN OKUNAMAYAN ALAN varsa yazılır —
+    // o bilgi gerekli, çünkü satırın eksik olduğunu başka hiçbir şey söylemiyor.
+    // Tür/rol uyarıları ("borçlu biziz" gibi) buraya girmez: onlar eksik değil, bilgi.
     .insert({ ...alanlar, icra_dairesi: daire, dosya_esas_no: dosya, durum: "yeni",
-      aciklama: `Ödeme emri — tebligat belgesinden otomatik okundu.`
-        + (cozum.uyarilar.length ? ` Okunamayan: ${cozum.uyarilar.join(", ")}.` : "") })
+      aciklama: okunamayanNotu(cozum.uyarilar) })
     .select("id").single();
   if (error) {
     console.log(`  şirket takibi açılamadı: ${error.message}`);
@@ -515,6 +520,18 @@ async function sirketTakibineYaz(t, cozum, yazi) {
   console.log(`  ⚠ ŞİRKETE ÖDEME EMRİ · ${daire} ${dosya} · ${ozet} — "Şirkete Açılan Takipler"e yazıldı`);
   return `⚠ ŞİRKETE ÖDEME EMRİ: BORÇLU BİZİZ · ${dosya} · ${ozet}.`
     + ` "Şirkete Açılan Takipler"e yazıldı (durum: yeni) — itiraz süresi kaçırılmamalı.`;
+}
+
+/**
+ * Belgeden OKUNAMAYAN alanların notu. Ayrıştırıcının uyarı listesi iki tür şey
+ * içeriyor: gerçek eksikler ("borç miktarı okunamadı") ve bilgi notları ("ödeme
+ * emri: borçlu biziz"). Kullanıcının açıklama alanına yalnız eksikler yazılır;
+ * bilgi notları orayı doldurup işe yaramaz hale getiriyordu.
+ * Eksik yoksa null döner — alan boş kalır.
+ */
+function okunamayanNotu(uyarilar) {
+  const eksik = (uyarilar ?? []).filter((u) => /okunamad[ıi]/i.test(u));
+  return eksik.length ? `Belgeden okunamadı: ${eksik.join(", ")}.` : null;
 }
 
 /** Kendi firmalarımızın VKN'leri — "borçlu biz miyiz" kontrolü için. */
