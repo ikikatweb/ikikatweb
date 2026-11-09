@@ -22,6 +22,21 @@ import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { storageIndir } from "@/lib/api/storage-indir";
 import { antetEki } from "@/lib/api/antet-eki";
 import { sistemTasiyici } from "@/lib/mail/smtp";
+import { avukatAdiGoster, formatBaslik } from "@/lib/utils/isim";
+
+/**
+ * MAİLDEKİ HİTAP — "Sayın Av. Ali Veli".
+ *
+ * KULLANICININ YAZDIĞI BİÇİM KORUNUR: listeye "Cemre İKİKAT" diye soyadı büyük
+ * harfle girilmişse mailde de öyle çıkar; o bilinçli bir yazım. Yalnız TAMAMEN
+ * küçük harfle girilmiş adlar ("deneme") düzeltilir — resmî bir yazıda küçük
+ * harfle hitap etmek kusur olur.
+ */
+function hitapAdi(ad: string | null | undefined): string {
+  const t = (ad ?? "").trim();
+  const duzeltilmis = t && t === t.toLocaleLowerCase("tr") ? formatBaslik(t) : t;
+  return avukatAdiGoster(duzeltilmis);
+}
 
 export const runtime = "nodejs";
 
@@ -135,7 +150,8 @@ export async function POST(request: Request) {
     // mailin gövdesine metin olarak basılır, burası JSX değil.
     const html = `${antet.html}
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:620px;color:#1E3A5F">
-  <p style="font-size:14px;margin:0 0 10px">Merhaba ${kacar(avukat.ad_soyad)};</p>
+  <!-- HİTAP: resmî yazışma usulü. Unvan zaten yazılmışsa tekrarlanmaz. -->
+  <p style="font-size:14px;margin:0 0 10px">Sayın ${kacar(hitapAdi(avukat.ad_soyad))},</p>
   <p style="font-size:13px;color:#475569;margin:0 0 14px">
     Aşağıdaki icra dosyasına cevap verilmesi gerekmektedir. Tebligat yazısı ektedir.
   </p>
