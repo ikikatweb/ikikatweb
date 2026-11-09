@@ -377,6 +377,17 @@ export default function KetsisTablosu() {
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums">
                     {new Date(t.ulasma_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                    {/* KAYNAK ETİKETİ: tarih TAHMİN DEĞİL — GİB'in bildirim mailinin
+                        metninde yazıyor ("27/10/2026 tarihinde gönderilen …") ve Excel
+                        verisiyle birebir tuttuğu doğrulandı. Etiket yine de duruyor:
+                        kayıt henüz portal listesiyle karşılaştırılmadı, nereden geldiği
+                        görünsün. Excel aktarılınca satır portal verisiyle güncellenir. */}
+                    {t.kaynak === "mail" && (
+                      <div className="text-[11px] font-normal text-gray-500"
+                        title="Tarih, GİB bildirim mailinin metninden okundu. Portal listesiyle henüz karşılaştırılmadı.">
+                        GİB mailinden
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums font-medium">
                     {new Date(tebligGunu + "T00:00:00").toLocaleDateString("tr-TR")}

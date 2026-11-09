@@ -136,6 +136,94 @@ function siniflandir(adres, metin, ogrenilmis) {
  * Dijital Vergi Dairesi'nde tebligatlar bu numarayla listelendiği için ekrana yazılır:
  * kullanıcı hangi satıra bakacağını bilsin.
  */
+/**
+ * GİB BİLDİRİM MAİLİNİ AYRIŞTIRIR — tarihler mailin İÇİNDE yazıyor, tahmin edilmiyor.
+ *
+ * 09.11.2026'da kutudaki dört gerçek mail incelendi, kalıp şu:
+ *   "... tarafından 27/10/2026 tarihinde gönderilen MC09462508 sayılı belge
+ *    01/11/2026 tarihinde tebliğ edilmiş sayılacaktır."
+ *
+ * GİB AYNI TEBLİGAT İÇİN İKİ MAİL YOLLUYOR ve ikisi de aynı iki tarihi taşıyor:
+ *   · gönderildiği gün  → "... tebliğ edilmiş SAYILACAKTIR" (gelecek)
+ *   · tebliğ günü       → "... tebliğ EDİLMİŞTİR"            (geçmiş)
+ * Bu yüzden hangisi gelirse gelsin doğru tarihler çıkıyor.
+ *
+ * NİYE ÖNEMLİ: ilk tasarımda "mailin geldiği gün = ulaşma tarihi" varsayılmıştı. İkinci
+ * mail tebliğ günü geldiği için bu varsayım süreyi 5 GÜN GEÇ hesaplardı — yani panel
+ * "daha 5 gün var" derken süre çoktan dolmuş olurdu. Metinden okumak bunu tamamen kaldırıyor.
+ *
+ * 2017 ve öncesi maillerde kalıp farklı ve kodlaması bozuk; eşleşmezse null döner ve
+ * deftere kayıt AÇILMAZ (bildirim listesinde görünmeye devam eder).
+ */
+function mailAyristir(metin) {
+  const t = String(metin ?? "");
+  const tarih = (m) => (m ? `${m[3]}-${m[2]}-${m[1]}` : null);
+  const gonderme = tarih(t.match(/(\d{2})\/(\d{2})\/(\d{4})\s+tarihinde\s+g[öo]nderilen/i));
+  const teblig = tarih(t.match(/(\d{2})\/(\d{2})\/(\d{4})\s+tarihinde\s+tebli[ğg]\s+edilmi/i));
+  const kurum = (t.match(/Taraf[ıi]n[ıi]za\s+(.+?)\s+ad[ıi]na/i)?.[1] ?? "").trim().slice(0, 200) || null;
+  return { gonderme, teblig, kurum };
+}
+
+/**
+ * BİLDİRİM MAİLİNDEN DEFTERE KAYIT AÇAR — "süre işlemeye başladı" demek için.
+ *
+ * NİYE VAR: tebligatın kendisi yalnız Dijital Vergi Dairesi'nde duruyor ve portal
+ * girişinde CAPTCHA olduğu için panel oraya kendi giremiyor (09.11.2026'da denendi).
+ * Otomatik gelen TEK sinyal bu mail — ve içinde gereken her şey var.
+ *
+ * ÜÇ ŞART, ÜÇÜ DE SIKI — yanlış kayıt, olmayan bir tebligat için telaş demek:
+ *   1) guven = "kesin"   → gönderen doğrulanmış; "aday" olanlar deftere girmez.
+ *   2) belge_no + firma  → tekillik bunlardan; biri eksikse Excel aktarımıyla eşleşmez
+ *                          ve defterde kopya satır oluşur.
+ *   3) gönderme tarihi okunabilmiş → okunamıyorsa YAZILMAZ. Süre o tarihten işliyor;
+ *                          uydurulmuş bir tarih, yanlış güne göre iş yapılması demek.
+ *
+ * VAR OLAN KAYIT EZİLMEZ: portaldan gelmiş kayıt GİB'in kendi verisidir, mail onu
+ * değiştirmez. Mail yalnız YOKTAN kayıt açar.
+ */
+async function deftereYaz(kayit, metin) {
+  if (kayit.guven !== "kesin" || !kayit.belge_no || !kayit.firma_id) {
+    const sebep = kayit.guven !== "kesin" ? "gönderen doğrulanmadı"
+      : !kayit.belge_no ? "belge no yok" : "firma belirsiz";
+    log(`    defter: yazılmadı (${sebep}) — bildirim listesinde duruyor`);
+    return;
+  }
+  const { gonderme, teblig, kurum } = mailAyristir(metin);
+  if (!gonderme) {
+    log(`    defter: yazılmadı (mailde gönderme tarihi okunamadı, kalıp tanınmıyor)`
+      + ` — belge ${kayit.belge_no}, bildirim listesinde duruyor`);
+    return;
+  }
+
+  const { data: mevcutSatir, error: bakmaHata } = await sb.from("ketsis_tebligat")
+    .select("id, kaynak").eq("firma_id", kayit.firma_id).eq("belge_no", kayit.belge_no).limit(1);
+  if (bakmaHata) { log(`    DEFTER OKUNAMADI (belge ${kayit.belge_no}): ${bakmaHata.message}`); return; }
+  if ((mevcutSatir ?? []).length) {
+    log(`    defter: ${kayit.belge_no} zaten var (${mevcutSatir[0].kaynak}) — dokunulmadı`);
+    return;
+  }
+
+  const { error } = await sb.from("ketsis_tebligat").insert({
+    firma_id: kayit.firma_id,
+    kaynak: "mail",
+    belge_no: kayit.belge_no,
+    kurum: kurum ?? "GİB e-tebligat",
+    vergi_dairesi: kurum ?? "GİB e-tebligat",
+    konu: kayit.konu?.slice(0, 300) ?? null,
+    ulasma_tarihi: gonderme,
+    // GİB'in KENDİ bildirdiği tebliğ günü. Bizim ulaşma+5 hesabımızla aynı olduğu
+    // VARSAYILMIYOR; fark varsa ekran GİB'inkini gösterip farkı yazıyor.
+    portal_teblig_tarihi: teblig,
+    bildirim_id: kayit.id,
+    notlar: "GİB bildirim mailinden okundu. Tarihler mailin metninde yazıyor;"
+      + " portaldan Excel aktarıldığında aynı satır GİB'in liste verisiyle güncellenir.",
+    kaydeden_ad: "GİB bildirim maili",
+  });
+  // SESSİZ GEÇİLMEZ: deftere giremeyen kayıt, sayılmayan süre demek.
+  if (error) log(`    DEFTERE YAZILAMADI (belge ${kayit.belge_no}): ${error.message}`);
+  else log(`    defter: ${kayit.belge_no} eklendi · ulaşma ${gonderme} · tebliğ ${teblig ?? "—"}`);
+}
+
 function belgeNoBul(metin) {
   const s = String(metin);
   // Yeni biçim (2026): "KETSİS Tebliğ Bilgilendirme İletisi - BELGE NO[MC09994486]"
@@ -366,6 +454,18 @@ async function main() {
             log(`  [deneme] ${guven.toUpperCase()} · ${adres} · ${konu.slice(0, 70)}`);
             log(`           belge no: ${kayit.belge_no ?? "—"} · vkn ${vkn ?? "—"} → firma: ${vknFirma?.kisa_adi ?? vknFirma?.firma_adi ?? (tekFirmaId ? "(kutunun tek firmasi)" : "BELIRSIZ")}`);
             log(`           özet: ${govde.slice(0, 200)}`);
+            // DENEME KİPİ DEFTERİ DE GÖSTERSİN: "mail yakalandı" ile "deftere şu tarihlerle
+            // girecek" ayrı şeyler. Yazmadan önce tarihlerin doğru okunduğu görülebilmeli —
+            // yanlış okunmuş bir gönderme tarihi, yanlış güne göre iş yapılması demek.
+            {
+              const a = mailAyristir(`${konu} ${govde}`);
+              const engel = kayit.guven !== "kesin" ? "gönderen doğrulanmadı"
+                : !kayit.belge_no ? "belge no yok"
+                : !kayit.firma_id ? "firma belirsiz"
+                : !a.gonderme ? "gönderme tarihi okunamadı" : null;
+              log(`           defter: ${engel ? `YAZILMAZ (${engel})`
+                : `ulaşma ${a.gonderme} · tebliğ ${a.teblig ?? "—"} · kurum ${a.kurum ?? "—"}`}`);
+            }
             continue;
           }
 
@@ -398,6 +498,7 @@ async function main() {
             yazilan++;
             yeniKayitlar.push({ ...kayit, id: data[0].id });
             log(`  + ${guven} · ${adres} · ${konu.slice(0, 70)}`);
+            await deftereYaz({ ...kayit, id: data[0].id }, `${konu} ${govde}`);
           }
         }
       };

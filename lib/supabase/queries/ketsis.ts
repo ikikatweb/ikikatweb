@@ -107,7 +107,11 @@ export async function getKetsisTebligatlar(): Promise<KetsisTebligat[]> {
   const { data, error } = await sb()
     .from("ketsis_tebligat")
     .select("*, firmalar ( firma_adi, kisa_adi, renk )")
-    .order("teblig_tarihi", { ascending: true })
+    // EN SON GELEN EN ÜSTTE (09.11.2026 kullanıcı isteği): sıralama ulaşma tarihine
+    // göre, yeniden eskiye. Önce tebliğ gününe göre artan sıralanıyordu; defter
+    // geçmişle dolunca (2019'a kadar) ekranın başı yıllar önceki kayıtlarla açılıyordu.
+    // Kalan gün bilgisi satırın kendisinde duruyor, sıralamanın taşımasına gerek yok.
+    .order("ulasma_tarihi", { ascending: false })
     .limit(500);
   // Hata YUTULMAZ: boş liste "tebligat yok" diye okunur, oysa sorgu patlamış olabilir.
   if (error) throw error;
