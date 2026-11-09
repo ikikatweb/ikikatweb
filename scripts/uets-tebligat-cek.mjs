@@ -94,9 +94,31 @@ const gunTR = (iso) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "—")
 async function istek(anahtar, yol, parametreler) {
   const u = new URL(TEMEL + yol);
   for (const [k, v] of Object.entries(parametreler ?? {})) u.searchParams.set(k, String(v));
-  const r = await fetch(u, {
-    headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
-  });
+  // AĞ KOPMASINDA TEKRAR DENENİR (09.11.2026). 10:10 turunda IKI "fetch failed" aldı,
+  // aynı anda curl sorunsuz bağlanıyordu — anlık bir kopma. Eskiden o firma o tur
+  // atlanıyor ve 2 SAAT sonraki tura kalıyordu; tebligatta süre 5 gün, bir tur kaybı
+  // ucuz değil.
+  //
+  // TEKRAR BEDAVA: ağ koptuğunda istek PTT'ye HİÇ ulaşmıyor, yani sorgu hakkından
+  // (günde 12, 2 saatte 1) yemiyor. Sunucu bir cevap verdiyse — 401, 406, 500 — o
+  // cevap bilgidir ve TEKRAR DENENMEZ: 406 "kotan doldu" demek, üst üste denemek
+  // limiti daha da kilitler.
+  let r;
+  for (let deneme = 1; ; deneme++) {
+    try {
+      r = await fetch(u, {
+        headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
+      });
+      break;
+    } catch (agHatasi) {
+      // SEBEP YAZILIR: "fetch failed" tek başına hiçbir şey anlatmıyor; teşhis
+      // ettiren altındaki kod (ENOTFOUND, ECONNRESET, ETIMEDOUT…).
+      const sebep = agHatasi?.cause?.code ?? agHatasi?.cause?.message ?? "sebep bilinmiyor";
+      if (deneme >= 3) throw new Error(`${agHatasi.message} (${sebep}, ${deneme} deneme)`);
+      console.log(`   ağ hatası (${sebep}), ${deneme}. deneme — 10 sn sonra tekrar`);
+      await new Promise((c) => setTimeout(c, 10_000));
+    }
+  }
   const govde = await r.text();
   if (!r.ok) {
     let mesaj = govde.slice(0, 200);
