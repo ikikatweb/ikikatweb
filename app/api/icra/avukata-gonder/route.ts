@@ -108,10 +108,15 @@ export async function POST(request: Request) {
     // ── GÖNDEREN FİRMA ──
     // Üçüncü şahıs hangi firmamızsa mail o firmadan ve o firmanın anteti ile gider.
     const { data: firma } = kayit.ucuncu_sahis
-      ? await sb.from("firmalar").select("firma_adi, smtp_user, antet_url").eq("firma_adi", kayit.ucuncu_sahis).maybeSingle()
+      ? await sb.from("firmalar").select("firma_adi, smtp_user, antet_url, antet_renkli_url")
+          .eq("firma_adi", kayit.ucuncu_sahis).maybeSingle()
       : { data: null };
     const { tasiyici, gonderen } = await sistemTasiyici(sb, firma?.smtp_user || undefined);
-    const antet = await antetEki(firma?.antet_url);
+    // ANTET MAİLDE RENKLİ: antet_url GRİ sürümdür (yazışma çıktıları için), renkli
+    // aslı antet_renkli_url'de durur — bkz. sql/firmalar_antet_renkli.sql. Yalnız
+    // antet_url verilince mail gri antetle gidiyordu. Eski kayıtlarda renkli alan
+    // boş olabilir; o zaman griye düşülür, davranış eskisi gibi kalır.
+    const antet = await antetEki(firma?.antet_renkli_url || firma?.antet_url);
 
     // ── SON CEVAP GÜNÜ ──
     const sure = kayit.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI;
