@@ -44,6 +44,7 @@ import YedekHatirlatma from "@/components/shared/yedek-hatirlatma";
 import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import CalisilmayanDonemHatirlatma from "@/components/shared/calisilmayan-donem-hatirlatma";
 import IcraSureHatirlatma from "@/components/shared/icra-sure-hatirlatma";
+import AvukatTakipHatirlatma from "@/components/shared/avukat-takip-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
@@ -1923,6 +1924,8 @@ export default function DashboardPage() {
           kaçırılınca geri dönüşü olmayan süreleri anlatıyor. Son günden bir gün önce
           çıkar; o gün hafta sonuna denk gelirse cumadan (bkz. lib/utils/icra-sure). */}
       <IcraSureHatirlatma />
+      {/* AVUKATTAKİ DOSYALAR: süresi dolanlar için "aradınız mı" sorusu. */}
+      <AvukatTakipHatirlatma />
       <KetsisHatirlatma />
       <YedekHatirlatma />
       <BordroHatirlatma />
