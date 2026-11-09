@@ -329,11 +329,23 @@ export default function IcraCevapAlanlari({
           ) : (
             <>
               {avukatlar.length > 0 && (
-                <select className={`${inp}${hata("avukat_id")}`} value={deger.avukat_id} disabled={kilitli}
-                  onChange={(e) => degistir({ avukat_id: e.target.value })}>
-                  <option value="">Seçin…</option>
-                  {avukatlar.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
-                </select>
+                // EKLE DÜĞMESİ SEÇİM KUTUSUNUN YANINDA: altta ayrı bir satır
+                // olarak dururken hem yer kaplıyor hem de seçim kutusuyla
+                // ilişkisi görünmüyordu. Küçük "+" aynı hizada.
+                <div className="flex items-center gap-1.5">
+                  <select className={`${inp}${hata("avukat_id")}`} value={deger.avukat_id} disabled={kilitli}
+                    onChange={(e) => degistir({ avukat_id: e.target.value })}>
+                    <option value="">Seçin…</option>
+                    {avukatlar.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
+                  </select>
+                  {!kilitli && !yeniAcik && (
+                    <button type="button" onClick={() => setYeniAcik(true)}
+                      title="Listede yok — yeni avukat ekle"
+                      className="shrink-0 inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-gray-50">
+                      <Plus size={14} /> Ekle
+                    </button>
+                  )}
+                </div>
               )}
               {secilen && (
                 <div className="mt-1 text-[11px] text-gray-500">
@@ -363,12 +375,14 @@ export default function IcraCevapAlanlari({
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : avukatlar.length === 0 ? (
+                // Liste boşken seçim kutusu yok; "+" tek başına ne yapacağını
+                // anlatmaz, o yüzden burada yazılı düğme kalıyor.
                 <button type="button" onClick={() => setYeniAcik(true)}
                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[#1E3A5F] hover:underline">
-                  <Plus size={13} /> {avukatlar.length === 0 ? "İlk avukatı ekle" : "Listede yok, yeni avukat ekle"}
+                  <Plus size={13} /> İlk avukatı ekle
                 </button>
-              ))}
+              ) : null)}
 
               {/* NOT MAİLİN İÇİNE GİRER ve kayda da yazılır: "avukata ne yazmışız"
                   sonradan sorulabiliyor, yalnız mailde kalsaydı izi olmazdı. */}
