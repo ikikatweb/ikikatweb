@@ -23,6 +23,10 @@ import {
   type KetsisBildirim, type KetsisKontrol, type KetsisTarayiciDurum,
 } from "@/lib/supabase/queries/ketsis";
 
+// GİRİŞ EKRANININ KENDİSİ: dijital.gib.gov.tr ana sayfası tanıtım sayfası, giriş
+// kutusu burada. 09.11.2026'da portalda doğrulandı — /portal isteği buraya yönleniyor.
+const GIB_GIRIS_EKRANI = "https://dijital.gib.gov.tr/portal/login";
+
 const NOTR = "#9ca3af";
 
 const gunSaat = (t: string | null) =>
@@ -156,52 +160,11 @@ export default function KetsisTablosu() {
         </a>
       </div>
 
-      {/* ═══ SONUÇ KARTI ═══
-          Bu ekranın cevaplaması gereken soru: "vergi dairesine bakılması gereken bir şey
-          var mı?" İki sebeple çıkar: (1) GİB bildirim maili geldi, kimse bakmadı,
-          (2) mail gelmese de HAFTADIR bakılmadı — bilgilendirme maili hukuken tebligatın
-          parçası değil (VUK 107/A), gelmemesi süreyi durdurmuyor.
-
-          DEFTER KALDIRILDI (09.11.2026 kullanıcı kararı): tebligat tablosu ve portal
-          Excel aktarımı buradaydı. Elle dosya yükleme iş akışına oturmadı; mail zaten
-          otomatik geliyor ve içinde tebliğ tarihi yazıyor, uyarı için yeterli görüldü.
-          Tablo da kaldırıldı (bkz. sql/ketsis_tebligat_kaldir.sql); ekran ve mail
-          ayrıştırıcısı git geçmişinde duruyor. */}
-      <div className={`mb-3 rounded-lg border px-3 py-2.5 ${
-        kesinBekleyen ? "border-red-300 bg-red-50"
-          : bekleyen.length > 0 ? "border-amber-300 bg-amber-50"
-          : kontrolGerekli ? "border-amber-200 bg-amber-50/60"
-          : "border-emerald-200 bg-emerald-50"}`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`text-sm font-semibold ${
-            kesinBekleyen ? "text-red-800"
-              : bekleyen.length > 0 ? "text-amber-900"
-              : kontrolGerekli ? "text-amber-900" : "text-emerald-800"}`}>
-            {bekleyen.length > 0
-              ? `${bekleyen.length} tebligat bildirimi bekliyor — Dijital Vergi Dairesi'ne bakılmalı.`
-              : yas === null
-                ? "Dijital Vergi Dairesi hiç kontrol edilmedi."
-                : kontrolGerekli
-                  ? `${yas} gündür bakılmadı — bu sürede tebligat gelmiş olabilir.`
-                  : "Bekleyen tebligat yok."}
-          </span>
-          {yas !== null && (
-            <span className="text-xs text-gray-600">
-              Son bakış: {gunSaat(sonKontrol!.kontrol_at)}
-              {sonKontrol?.kullanici_ad && <> · {sonKontrol.kullanici_ad}</>}
-            </span>
-          )}
-          {isaretleyebilir && (
-            <button type="button" disabled={islemde === "kontrol"}
-              onClick={() => gonder({ islem: "kontrol-kaydi", bulgu: "temiz" }, "kontrol")}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#1E3A5F] px-2.5 h-7 text-xs font-medium text-white hover:bg-[#162c47] disabled:opacity-60">
-              {islemde === "kontrol" ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-              Dijital Vergi Dairesi&apos;ne baktım
-            </button>
-          )}
-        </div>
-      </div>
-
+      {/* SONUÇ KARTI KALDIRILDI (09.11.2026 kullanıcı kararı): "Bekleyen tebligat yok ·
+          son bakış …" şeridi buradaydı. Tablonun kendisi zaten aynı şeyi söylüyor ve
+          boş olduğunda sebebini yazıyor. Haftalık "bakıldı" kaydı KAYBOLMADI: bir
+          bildirimi "incelendi" yapmak o kaydı yazıyor (api/ketsis/kontrol), ayrıca ana
+          sayfadaki uyarının kendi "Kontrol ettim" düğmesi duruyor. */}
       {/* GİB BİLDİRİM MAİLLERİ — artık bu bölümün ana içeriği.
           Önceden katlanmış ikincil bir listeydi, çünkü üstünde tebligat defteri vardı.
           Defter kaldırılınca katlı kalmasının anlamı kalmadı: ekranda gösterilecek tek
@@ -243,6 +206,7 @@ export default function KetsisTablosu() {
               <th className="px-3 py-2 font-medium">Konu / özet</th>
               <th className="px-3 py-2 font-medium">Güven</th>
               <th className="px-3 py-2 font-medium">Durum</th>
+              <th className="px-3 py-2 font-medium" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -384,10 +348,27 @@ export default function KetsisTablosu() {
                     <span className="text-xs text-gray-400">ilgisiz</span>
                   )}
                 </td>
+                {/* AÇ VE OKU — doğrudan Dijital Vergi Dairesi GİRİŞ ekranına, YENİ SEKMEDE.
+                    Belge panele inmiyor: KETSİS'in alıcı tarafı için API yok, tebligat
+                    yalnız o ekranda okunuyor. Düğme yolu kısaltıyor, belgeyi getirmiyor —
+                    adı "Aç ve oku" ama açan kullanıcı, panel değil.
+                    Portala giriş CAPTCHA istiyor (09.11.2026'da ölçüldü), o yüzden
+                    doğrudan belgeye değil giriş ekranına gidiliyor; aradaki adımları
+                    panelin geçmesi mümkün değil.
+                    Belge no satırda yazıyor: girişten sonra hangi satıra bakılacağı belli. */}
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <a href={GIB_GIRIS_EKRANI} target="_blank" rel="noopener noreferrer"
+                    title={s.belge_no
+                      ? `Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır. Giriş yapınca ${s.belge_no} numaralı belgeye bakın.`
+                      : "Dijital Vergi Dairesi giriş ekranı yeni sekmede açılır."}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#1E3A5F]/30 bg-white px-2.5 h-7 text-xs font-medium text-[#1E3A5F] hover:bg-[#1E3A5F]/5">
+                    Aç ve oku <ExternalLink size={12} />
+                  </a>
+                </td>
               </tr>
             ))}
             {!yukleniyor && liste.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-sm text-gray-500">
+              <tr><td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-500">
                 {/* BOŞ TABLO "KAYIT YOK" SANILIYORDU (09.11.2026, ikinci kez): bütün
                     mailler "bakıldı" işaretliyken varsayılan "Bakılmamış" süzgeci
                     hiçbirini göstermiyor ve bölüm bomboş duruyor. Kayıt OLDUĞUNU
@@ -405,7 +386,7 @@ export default function KetsisTablosu() {
               </td></tr>
             )}
             {yukleniyor && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-500">Yükleniyor…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-8 text-center text-gray-500">Yükleniyor…</td></tr>
             )}
           </tbody>
         </table>
