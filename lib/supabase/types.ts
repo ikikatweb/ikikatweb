@@ -871,6 +871,8 @@ export type IcraKayit = {
   borclu_tc_no: string | null;
   borc_miktari: number;
   odenen_tutar: number;
+  /** Tebligat belgesinde YAZAN cevap süresi (gün). Hesaplanmaz; boşsa belgede yok. */
+  cevap_suresi_gun: number | null;
   aciklama: string | null;
   created_at: string;
   updated_at: string;

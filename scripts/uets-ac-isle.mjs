@@ -324,6 +324,17 @@ async function icraDefteriniDoldur(t, ekler) {
       + `${cozum.borc_miktari != null ? ` · ${cozum.borc_miktari.toLocaleString("tr-TR")} TL` : ""}`
       + ` · itiraz süresi kaçırılmamalı. İcra defterine yazılmadı.`;
   }
+  if (cozum.tur === "haciz_kaldirma") {
+    // KALDIRMA YAZISI YENİ SATIR AÇMAZ. Metin maaş haczi yazısına benziyor (aynı
+    // ALACAKLI/BORÇLU etiketleri) ama söylediği tersi: var olan haciz kaldırılıyor.
+    // Deftere yazılsaydı, kaldırılmış bir haciz açık borç gibi görünürdü.
+    // Hangi dosyanın kapatılacağı insan kararı: kısmi kaldırma da olabiliyor
+    // ("bu dosyamıza şamil olmak üzere"), makine kapatmamalı.
+    console.log(`  haciz KALDIRMA yazısı · ${cozum.dosya_esas_no ?? "dosya no yok"}`
+      + ` · ${cozum.borclu_adi ?? "?"} — deftere yazılmadı, ilgili dosya elle kapatılmalı`);
+    return `Haciz KALDIRMA yazısı${cozum.dosya_esas_no ? ` · ${cozum.dosya_esas_no}` : ""}`
+      + `${cozum.borclu_adi ? ` · ${cozum.borclu_adi}` : ""} — yeni haciz değil. İlgili dosya elle kapatılmalı.`;
+  }
   if (cozum.tur === "bilinmiyor" || !cozum.dosya_esas_no) {
     console.log(`  belge türü tanınmadı ya da dosya no yok — icra defteri elle doldurulmalı`);
     return "Belge türü tanınmadı; icra defteri elle doldurulmalı.";
@@ -339,6 +350,8 @@ async function icraDefteriniDoldur(t, ekler) {
   if (cozum.borclu_tc_no) yama.borclu_tc_no = cozum.borclu_tc_no;
   if (cozum.borc_miktari != null) yama.borc_miktari = cozum.borc_miktari;
   if (cozum.belge_tarihi) yama.gelen_yazi_tarihi = cozum.belge_tarihi;
+  // Süre BELGEDEN: yazmıyorsa yazılmaz, ekran da süre göstermez.
+  if (cozum.cevap_suresi_gun != null) yama.cevap_suresi_gun = cozum.cevap_suresi_gun;
   yama.aciklama = `${cozum.tur === "maas_haczi" ? "Maaş haczi müzekkeresi" : "89/1 haciz ihbarnamesi"}`
     + ` — tebligat belgesinden otomatik okundu.`
     + (cozum.uyarilar.length ? ` Okunamayan: ${cozum.uyarilar.join(", ")}.` : "");

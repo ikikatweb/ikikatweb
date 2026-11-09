@@ -52,6 +52,42 @@ function tutarCevir(ham) {
   return Number.isFinite(n) ? n : null;
 }
 
+const GUN_YAZI = {
+  bir: 1, iki: 2, "üç": 3, "dört": 4, "beş": 5, "altı": 6, yedi: 7, sekiz: 8,
+  dokuz: 9, on: 10, "onbeş": 15, "on beş": 15, yirmi: 20, otuz: 30,
+};
+
+/**
+ * BELGEDE YAZAN CEVAP SÜRESİ (gün). Yazmıyorsa null — HESAPLANMAZ.
+ *
+ * NİYE OKUNUYOR, VARSAYILMIYOR: elimizdeki 24 belgenin 18'inde süre açıkça yazıyor
+ * ve hepsinde 7 gün. Ama "7 gündür, kanun böyle" diye sabitlemek yanlış olurdu;
+ * göremediğimiz bir türde farklı süre çıkarsa panel yanlış tarih gösterir ve insan
+ * ona güvenir. Yazmayan belgede alan boş kalır, ekran da süre göstermez.
+ *
+ * BİRDEN ÇOK SÜRE OLABİLİR: 89/1 haciz ihbarnamesi İİK 89'un TAMAMINI alıntılıyor;
+ * içinde üç ayrı süre geçiyor (09.11.2026'da doğrulandı):
+ *   · yedi gün  → üçüncü şahsın İTİRAZ süresi   ← BİZİM cevap süremiz
+ *   · onbeş gün → ikinci ihbarnameden sonra ödeme
+ *   · yirmi gün → menfi tespit davası belgesini teslim
+ * Bu yüzden en küçüğü alınıyor: bir uyarı ekranında doğru gün, EN ERKEN yükümlülüğün
+ * günüdür. Büyük olanı almak, geçmiş bir süreyi "daha var" diye göstermek olurdu.
+ */
+function cevapSuresi(metin) {
+  const m = String(metin ?? "");
+  const adaylar = [];
+  for (const x of m.matchAll(/\(?\s*(\d{1,2})\s*\)?\s*gün\s*(?:içinde|içerisinde|zarfında)/gi)) {
+    adaylar.push(Number(x[1]));
+  }
+  for (const x of m.matchAll(/(on beş|onbeş|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on|yirmi|otuz)\s*gün\s*(?:içinde|içerisinde|zarfında)/gi)) {
+    const n = GUN_YAZI[x[1].toLocaleLowerCase("tr")];
+    if (n) adaylar.push(n);
+  }
+  if (/bir\s*hafta\s*(?:içinde|içerisinde)/i.test(m)) adaylar.push(7);
+  const gecerli = [...new Set(adaylar)].filter((n) => n >= 1 && n <= 60);
+  return gecerli.length ? Math.min(...gecerli) : null;
+}
+
 /** "07/10/2026" → "2026-10-07". */
 function tarihCevir(ham) {
   const m = String(ham ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -77,7 +113,16 @@ export function belgeCozumle(metin, bizimVknler = []) {
   const B = buyuk(m);
   const uyarilar = [];
 
-  const tur = B.includes("BİRİNCİ HACİZ İHBARNAMESİ") ? "haciz_ihbarnamesi"
+  // HACİZ KALDIRMA ÖNCE BAKILIR (09.11.2026'da #101'de çıktı): metin maaş haczi
+  // yazısına benziyor (ALACAKLI/BORÇLU etiketleri aynı) ama söylediği TERSİ —
+  // "borçlunun maaşına konulan haczin kaldırılmasına karar verilmiştir". Tür sırası
+  // yanlış olsaydı bu belge "yeni maaş haczi" sayılır ve KALDIRILMIŞ bir haciz
+  // açık borç gibi deftere girerdi.
+  const kaldirma = /haczin\s+kaldırılmasına|haczin\s+kaldırılması|hacizlerin\s+kaldırılmasına/i.test(m)
+    || /kaldırılmasına\s+karar\s+verilmiştir/i.test(m);
+
+  const tur = kaldirma ? "haciz_kaldirma"
+    : B.includes("BİRİNCİ HACİZ İHBARNAMESİ") ? "haciz_ihbarnamesi"
     : B.includes("İLAMSIZ TAKİPLERDE ÖDEME EMRİ") ? "odeme_emri"
     : (B.includes("MAAŞ HACZ") || B.includes("HACİZ MÜZEKKERE") || /ALACAKLI\s*:/.test(B)) ? "maas_haczi"
     : "bilinmiyor";
@@ -85,6 +130,8 @@ export function belgeCozumle(metin, bizimVknler = []) {
   const sonuc = {
     tur,
     rolumuz: tur === "odeme_emri" ? "borclu" : tur === "bilinmiyor" ? "bilinmiyor" : "ucuncu_sahis",
+    // Belgede yazan cevap süresi (gün). YAZMIYORSA null — hesaplanmaz (bkz. aşağıda).
+    cevap_suresi_gun: cevapSuresi(m),
     dosya_esas_no: m.match(/(\d{4}\/\d+)\s*ESAS/i)?.[1] ?? null,
     belge_tarihi: tarihCevir(m.match(/\b(\d{2}\/\d{2}\/\d{4})\b/)?.[1]),
     alacakli_adi: null, alacakli_vergi_no: null,
@@ -111,7 +158,7 @@ export function belgeCozumle(metin, bizimVknler = []) {
       borclu_adi: tarafAyir(borclu).ad, borclu_tc_no: tarafAyir(borclu).no,
       borc_miktari: tutarCevir(tutar),
     });
-  } else if (tur === "maas_haczi") {
+  } else if (tur === "maas_haczi" || tur === "haciz_kaldirma") {
     const alacakli = m.match(/ALACAKLI\s*:?\s*(.{3,160}?)\s*(?:VEKİL|BORÇLU)/i)?.[1];
     // BİTİŞ ETİKETİ DEĞİŞKEN (09.11.2026, #101): bazı yazılarda "BORÇ MİKTARI" hiç
     // yok, borçludan sonra doğrudan "Müdürlüğümüz dosya borçlusunun…" diye devam
@@ -150,6 +197,10 @@ export function belgeCozumle(metin, bizimVknler = []) {
   }
   if (sonuc.rolumuz === "borclu") {
     uyarilar.push("ÖDEME EMRİ / ŞİRKETE TAKİP: bu bir üçüncü şahıs haciz yazısı değil, borçlu biziz. İcra defterine yazılmadı.");
+  }
+  if (tur === "haciz_kaldirma") {
+    uyarilar.push("HACİZ KALDIRMA yazısı: yeni bir haciz değil, var olan haczin kaldırılması. "
+      + "İcra defterine yeni satır açılmadı — ilgili dosya elle kapatılmalı.");
   }
   if (tur === "bilinmiyor") uyarilar.push("Belge türü tanınmadı — alanlar okunamadı, elle işlenmeli.");
   for (const [alan, etiket] of [["dosya_esas_no", "dosya esas no"], ["alacakli_adi", "alacaklı"],

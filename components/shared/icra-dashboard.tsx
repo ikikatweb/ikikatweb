@@ -18,8 +18,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");
 // Tebliğ tarihinden bugüne kaç TAM gün geçti (null = tarih yok/geçersiz). 7 günlük cevap süresi bundan sayılır.
-const CEVAP_SURESI_GUN = 7;
-const ACIL_ESIK_GUN = 6; // 6. günden itibaren (son 2 gün) kırmızı
+// SÜRE BELGEDEN OKUNUR, BU SABİT YALNIZ YEDEKTİR (09.11.2026).
+// Elimizdeki 25 tebligat belgesinin 18'inde süre açıkça yazıyor ve hepsinde 7 gün —
+// yani sabit doğruydu. Yine de belgeden okunanı kullanmak gerekiyor: görmediğimiz bir
+// türde farklı süre çıkarsa sabit yanlış tarih gösterir ve insan ona güvenir.
+// Belge okunmamış eski kayıtlarda (cevap_suresi_gun boş) bu sabite düşülüyor.
+const VARSAYILAN_CEVAP_SURESI = 7;
+/** Son 2 gün kırmızı: 7 günlük sürede 6. günden itibaren. */
+const acilEsik = (sure: number) => Math.max(1, sure - 1);
 function tebligGunGecen(v: string | null): number | null {
   if (!v) return null;
   const t = new Date(v + "T00:00:00");
@@ -97,7 +103,10 @@ export default function IcraDashboard() {
             <TableBody>
               {bekleyen.map((s) => {
                 const gecen = tebligGunGecen(s.teblig_tarihi);
-                const acil = gecen != null && gecen >= ACIL_ESIK_GUN; // 6. gün ve sonrası → kırmızı
+                // Süre: belgede yazan. Yoksa varsayılan (yukarıdaki nota bak).
+                const sure = s.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI;
+                const belgedenMi = s.cevap_suresi_gun != null;
+                const acil = gecen != null && gecen >= acilEsik(sure);
                 const baglam = baglamlar.get(icraBorcluAnahtar(s.borclu_tc_no, s.borclu_adi));
                 return (
                 <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
@@ -123,7 +132,15 @@ export default function IcraDashboard() {
                         <span className="truncate">{baglam.santiyeAd}</span>
                       </div>
                     )}
-                    {acil && <div className="text-[9px] font-semibold text-red-600">⚠ Tebliğden {gecen}. gün · {CEVAP_SURESI_GUN} günlük süre {gecen >= CEVAP_SURESI_GUN ? "doldu" : "doluyor"}</div>}
+                    {acil && (
+                      <div className="text-[9px] font-semibold text-red-600"
+                        title={belgedenMi
+                          ? `Süre tebligat belgesinde yazıyor: ${sure} gün.`
+                          : `Belge okunmadığı için varsayılan ${sure} gün kullanılıyor; gerçek süre belgede yazar.`}>
+                        ⚠ Tebliğden {gecen}. gün · {sure} günlük süre {gecen >= sure ? "doldu" : "doluyor"}
+                        {!belgedenMi && <span className="font-normal"> (varsayılan)</span>}
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">
