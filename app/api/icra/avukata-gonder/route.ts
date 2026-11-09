@@ -1,6 +1,14 @@
-// İCRA DOSYASINI AVUKATA MAİLLE GÖNDER.
+// İCRA DOSYASINI AVUKATA MAİLLE GÖNDER — İKİ DEFTER İÇİN.
 //
-// Cevap şekli "Avukat Aracılığı" seçilip kaydedilince çağrılır. Mail içinde cevap
+//   kaynak="icra"   → üçüncü şahıs haciz dosyası (public.icra)
+//   kaynak="sirket" → şirkete açılan takip / ödeme emri (public.icra_sirket_takip)
+//
+// NİYE TEK SERVİS: gönderim kuralları (ek inmeden mail yok, antet, hitap, gönderim
+// izi, günlük) iki defterde de aynı. Ayrı iki servis yazılsaydı biri düzelir öbürü
+// geride kalırdı. Değişen yalnız hangi tablodan okunduğu, ekin nereden geldiği ve
+// maildeki satırlar.
+//
+// Cevap şekli "Avukat Aracılığı" (ödeme emrinde "Avukatta") seçilip kaydedilince çağrılır. Mail içinde cevap
 // penceresinde görünen dosya bilgileri, SON CEVAP GÜNÜ (kırmızı) ve varsa kullanıcı
 // notu bulunur; ekinde tebligat belgesinin aslı gider.
 //
@@ -68,14 +76,18 @@ export async function POST(request: Request) {
   const sb = createClient(url, anahtar, { auth: { persistSession: false } });
 
   try {
-    const { icraId, avukatId, not } = (await request.json()) as
-      { icraId?: string; avukatId?: string; not?: string };
+    const { icraId, kaynak, avukatId, not } = (await request.json()) as
+      { icraId?: string; kaynak?: "icra" | "sirket"; avukatId?: string; not?: string };
+    const sirket = kaynak === "sirket";
+    const tablo = sirket ? "icra_sirket_takip" : "icra";
     if (!icraId || !avukatId) {
       return NextResponse.json({ error: "icraId ve avukatId zorunlu" }, { status: 400 });
     }
 
-    const { data: kayit, error: kErr } = await sb.from("icra").select("*").eq("id", icraId).single();
-    if (kErr || !kayit) return NextResponse.json({ error: "İcra kaydı bulunamadı" }, { status: 404 });
+    const { data: kayit, error: kErr } = await sb.from(tablo).select("*").eq("id", icraId).single();
+    if (kErr || !kayit) {
+      return NextResponse.json({ error: sirket ? "Takip kaydı bulunamadı" : "İcra kaydı bulunamadı" }, { status: 404 });
+    }
 
     const { data: avukat, error: aErr } = await sb.from("avukatlar").select("*").eq("id", avukatId).single();
     if (aErr || !avukat) return NextResponse.json({ error: "Avukat bulunamadı" }, { status: 404 });
@@ -87,20 +99,34 @@ export async function POST(request: Request) {
     }
 
     // ── TEBLİGAT BELGESİNİ BUL ──
+    // ŞİRKET DEFTERİNDE BELGE KAYDA BAĞLI: ödeme emri okunurken belge_yolu
+    // yazılıyor, dosya esas numarasıyla tebligat aramaya gerek yok. Arama
+    // yapılsaydı aynı numarayı taşıyan başka bir tebligat seçilebilirdi.
+    let belge: Ek | null = null;
+    if (sirket) {
+      const yol = (kayit.belge_yolu ?? "").trim();
+      if (!yol) {
+        return NextResponse.json({
+          error: "Bu takipte tebligat belgesi bağlı değil — mail GÖNDERİLMEDİ. "
+            + "Avukat ödeme emrini görmeden cevap yazamaz.",
+        }, { status: 400 });
+      }
+      belge = { ad: yol.split("/").pop() || "odeme-emri.pdf", yol };
+    }
+
     // icra kaydında tebligat bağlantısı yok; eşleştirme dosya esas numarası üzerinden.
     // Konu biçimi: "<Daire> [2024/57908] [<Daire>-<barkod>-0-2024/57908]" — numara
     // köşeli parantez içinde geçiyor, benzersiz sayılabilir.
-    if (!kayit.dosya_esas_no) {
+    if (!sirket && !kayit.dosya_esas_no) {
       return NextResponse.json({ error: "Kayıtta dosya esas no yok — tebligat belgesi eşleştirilemedi." }, { status: 400 });
     }
-    const { data: tebligatlar } = await sb.from("tebligat")
+    const { data: tebligatlar } = sirket ? { data: [] } : await sb.from("tebligat")
       .select("id, konu, ekler, paket_yolu, ulasma_tarihi, indirme_hatasi")
       .ilike("konu", `%${kayit.dosya_esas_no}%`)
       .order("ulasma_tarihi", { ascending: false });
 
     // "ustyazi" PTT'nin zarf kapağı; asıl yazı o değil. Belgesi olan EN YENİ tebligat alınır.
-    let belge: Ek | null = null;
-    for (const t of tebligatlar ?? []) {
+    for (const t of (tebligatlar ?? []) as { ekler?: Ek[] }[]) {
       const ekler = (t.ekler ?? []) as Ek[];
       const yazi = ekler.find((e) => !/ustyazi/i.test(e.ad) && /pdf/i.test(e.tur ?? e.ad))
         ?? ekler.find((e) => /pdf/i.test(e.tur ?? e.ad));
@@ -124,9 +150,11 @@ export async function POST(request: Request) {
 
     // ── GÖNDEREN FİRMA ──
     // Üçüncü şahıs hangi firmamızsa mail o firmadan ve o firmanın anteti ile gider.
-    const { data: firma } = kayit.ucuncu_sahis
+    // ŞİRKET DEFTERİNDE BORÇLU BİZİZ: mail o firmadan ve o firmanın antetiyle gider.
+    const firmaAdi = (sirket ? kayit.borclu_firma : kayit.ucuncu_sahis) as string | null;
+    const { data: firma } = firmaAdi
       ? await sb.from("firmalar").select("firma_adi, smtp_user, antet_url, antet_renkli_url")
-          .eq("firma_adi", kayit.ucuncu_sahis).maybeSingle()
+          .eq("firma_adi", firmaAdi).maybeSingle()
       : { data: null };
     const { tasiyici, gonderen } = await sistemTasiyici(sb, firma?.smtp_user || undefined);
     // ANTET MAİLDE RENKLİ: antet_url GRİ sürümdür (yazışma çıktıları için), renkli
@@ -135,10 +163,16 @@ export async function POST(request: Request) {
     // boş olabilir; o zaman griye düşülür, davranış eskisi gibi kalır.
     const antet = await antetEki(firma?.antet_renkli_url || firma?.antet_url);
 
-    // ── SON CEVAP GÜNÜ ──
-    const sure = kayit.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI;
-    const belgedenMi = kayit.cevap_suresi_gun != null;
-    const sonGun = kayit.teblig_tarihi ? gunEkle(kayit.teblig_tarihi, sure) : null;
+    // ── SON CEVAP / İTİRAZ GÜNÜ ──
+    // ŞİRKET DEFTERİNDE VARSAYILAN SÜRE YOK: üçüncü şahıs yazılarının 18'inde süre
+    // 7 gün yazıyor, o yüzden orada varsayıma düşülüyor. Ödeme emirlerinde süre
+    // belgeden belgeye değişiyor; yazmıyorsa gün UYDURULMAZ, ekranda da öyle.
+    const sure = sirket
+      ? (kayit.itiraz_suresi_gun as number | null)
+      : (kayit.cevap_suresi_gun ?? VARSAYILAN_CEVAP_SURESI);
+    const belgedenMi = sirket ? true : kayit.cevap_suresi_gun != null;
+    const sonGun = kayit.teblig_tarihi && sure != null ? gunEkle(kayit.teblig_tarihi, sure) : null;
+    const sonGunEtiket = sirket ? "Son itiraz günü" : "Son cevap günü";
 
     const satir = (etiket: string, deger: string, stil = "") =>
       `<tr><td style="padding:4px 10px 4px 0;color:#64748b;font-size:13px;white-space:nowrap">${etiket}</td>`
@@ -153,20 +187,26 @@ export async function POST(request: Request) {
   <!-- HİTAP: resmî yazışma usulü. Unvan zaten yazılmışsa tekrarlanmaz. -->
   <p style="font-size:14px;margin:0 0 10px">Sayın ${kacar(hitapAdi(avukat.ad_soyad))},</p>
   <p style="font-size:13px;color:#475569;margin:0 0 14px">
-    Aşağıdaki icra dosyasına cevap verilmesi gerekmektedir. Tebligat yazısı ektedir.
+    ${sirket
+      ? "Şirketimize aşağıdaki ödeme emri tebliğ edilmiştir. Ödeme emrinin aslı ektedir."
+      : "Aşağıdaki icra dosyasına cevap verilmesi gerekmektedir. Tebligat yazısı ektedir."}
   </p>
   <table style="border-collapse:collapse;margin-bottom:14px">
     ${satir("Dosya esas no", kacar(kayit.dosya_esas_no), "font-weight:600")}
-    ${satir("Üçüncü şahıs", kacar(kayit.ucuncu_sahis ?? "—"))}
-    ${satir("Borçlu", kacar(kayit.borclu_adi ?? "—"))}
+    ${sirket
+      ? satir("İcra dairesi", kacar(kayit.icra_dairesi ?? "—"))
+        + satir("Borçlu firma", kacar(kayit.borclu_firma ?? "—"))
+      : satir("Üçüncü şahıs", kacar(kayit.ucuncu_sahis ?? "—"))
+        + satir("Borçlu", kacar(kayit.borclu_adi ?? "—"))}
     ${satir("Alacaklı", kacar(kayit.alacakli_adi ?? "—"))}
     ${satir("Tebliğ tarihi", gunTR(kayit.teblig_tarihi))}
-    ${satir("Son cevap günü",
+    ${satir(sonGunEtiket,
       sonGun
         ? `${gunTR(sonGun)}${belgedenMi ? "" : " <span style=\"font-size:11px;font-weight:400\">(belgede süre yazmıyor, 7 gün varsayıldı)</span>"}`
-        : "hesaplanamadı (tebliğ tarihi yok)",
+        : (sure == null ? "belgede süre yazmıyor" : "hesaplanamadı (tebliğ tarihi yok)"),
       "color:#dc2626;font-weight:700")}
-    ${satir("Borç miktarı", `${paraTR(Number(kayit.borc_miktari || 0))} TL`, "color:#dc2626")}
+    ${satir(sirket ? "Takip tutarı" : "Borç miktarı",
+      `${paraTR(Number((sirket ? kayit.takip_tutari : kayit.borc_miktari) || 0))} TL`, "color:#dc2626")}
   </table>
   ${(not ?? "").trim() ? `<div style="border-left:3px solid #1E3A5F;background:#f8fafc;padding:10px 12px;margin-bottom:14px">
     <div style="font-size:11px;color:#64748b;margin-bottom:3px">Not</div>
@@ -181,8 +221,8 @@ export async function POST(request: Request) {
     await tasiyici.sendMail({
       from: `"${firma?.firma_adi ?? "İkikat"}" <${gonderen}>`,
       to: avukat.email,
-      subject: `İcra dosyası ${kayit.dosya_esas_no}`
-        + (sonGun ? ` — son cevap günü ${gunTR(sonGun)}` : ""),
+      subject: `${sirket ? "Ödeme emri" : "İcra dosyası"} ${kayit.dosya_esas_no}`
+        + (sonGun ? ` — ${sonGunEtiket.toLocaleLowerCase("tr")} ${gunTR(sonGun)}` : ""),
       html,
       attachments: [
         ...(antet.ek ? [antet.ek] : []),
@@ -197,8 +237,11 @@ export async function POST(request: Request) {
     // yeni bir cevap değil; tarihi güncellemek süreyi olduğundan geç gösterirdi.
     const bugun = isoYerel(new Date());
     const simdi = new Date().toISOString();
-    const { error: gErr } = await sb.from("icra").update({
-      ...(kayit.cevap_tarihi ? {} : { cevap_tarihi: bugun }),
+    const { error: gErr } = await sb.from(tablo).update({
+      // ŞİRKET DEFTERİNDE CEVAP TARİHİ YOK: "cevap verildi" ölçüsü orada durum
+      // alanı (avukatta/ödendi/kapandı). Olmayan sütuna yazmaya çalışmak isteği
+      // tümden düşürürdü.
+      ...(sirket || kayit.cevap_tarihi ? {} : { cevap_tarihi: bugun }),
       avukat_mail_at: simdi,
       // ADIN ANLIK KOPYASI: avukat listeden silinse ya da adı değişse de
       // "bu dosya kime gitmişti" sorusu cevaplanabilsin. Tabloda da bu
@@ -214,7 +257,8 @@ export async function POST(request: Request) {
     // GÜNLÜK: her gönderim ayrı satır. Satırdaki özet SON gönderimi gösteriyor;
     // "kaç kere, kim gönderdi" sorusunun tam cevabı burada.
     const { error: logErr } = await sb.from("icra_avukat_mail_log").insert({
-      icra_id: icraId, avukat_id: avukatId, avukat_adi: avukat.ad_soyad,
+      ...(sirket ? { sirket_takip_id: icraId } : { icra_id: icraId }),
+      avukat_id: avukatId, avukat_adi: avukat.ad_soyad,
       avukat_email: avukat.email, gonderen_id: kullanici.id, gonderen_ad: kullanici.ad_soyad,
       ek_ad: belge.ad,
     });
@@ -223,7 +267,7 @@ export async function POST(request: Request) {
       gonderildi: true,
       alici: avukat.email,
       ek: belge.ad,
-      cevap_tarihi: kayit.cevap_tarihi ?? bugun,
+      cevap_tarihi: sirket ? null : (kayit.cevap_tarihi ?? bugun),
       gonderen: kullanici.ad_soyad,
       gonderildiAt: simdi,
       // SESSİZ GEÇİLMEZ: mail gitti ama kayıt/günlük yazılamadıysa kullanıcı bilmeli,

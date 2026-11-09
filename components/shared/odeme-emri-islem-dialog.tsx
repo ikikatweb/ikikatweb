@@ -1,15 +1,20 @@
 // ANA SAYFADAN "Cevabı işle" — ŞİRKETE AÇILAN TAKİP için, sayfa değişmeden.
 //
-// İcra kartındaki pencerenin (icra-cevap-dialog) eşi, ama alanlar BAŞKA: burada
-// borçlu şirketin kendisidir, yapılan iş cevap yazmak değil itiraz etmek / ödemek /
-// dosyayı avukata vermektir. O yüzden "cevap tarihi / cevap şekli" yerine
-// itiraz, ödeme ve DURUM alınır.
+// İcra kartındaki pencerenin (icra-cevap-dialog) eşi: burada borçlu şirketin
+// kendisidir, yapılan iş dosyayı avukata vermek / ödemek / kapatmaktır.
 //
-// Düğmenin adı yine "Cevabı işle": iki kart yan yana duruyor ve farklı fiil görmek
-// "bunlar başka başka şeyler mi" sorusunu doğuruyordu. Pencerenin başlığı ve
-// alanları ne istendiğini zaten anlatıyor.
+// CEVAP ŞEKLİNE GÖRE SORULAN ŞEY DEĞİŞİR — icra penceresindeki düzenin aynısı:
+//   (Seçin…)  → hiçbir şey. Dosya ele alınmamış sayılır (durum="yeni").
+//   Avukatta  → avukat · not          (Kaydet denince avukata mail gider)
+//   Ödendi    → ödeme tarihi · tutar · hangi banka
+//   Kapandı   → açıklama
 //
-// DOĞRULAMA: itiraz ve ödeme tarihi tebliğ tarihinden önce olamaz (tablodakiyle aynı).
+// İTİRAZ ALANLARI KALDIRILDI (09.11.2026): "İtiraz edildi" bir cevap şekli
+// olmaktan çıkınca itiraz tarihi/şekli ve evrak no'nun sorulacağı bir yer
+// kalmadı. Kayıttaki değerler SİLİNMİYOR, yalnız bu pencerede sorulmuyor —
+// zaten yedi kaydın hiçbirinde dolu değildi.
+//
+// DOĞRULAMA: ödeme tarihi tebliğ tarihinden önce olamaz.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +22,9 @@ import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
 import { DURUMLAR, durumSecenekleri } from "@/components/shared/icra-sirket-tablosu";
+import AvukatSecim from "@/components/shared/avukat-secim";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { icraDegisti } from "@/hooks";
 import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -35,32 +43,38 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
   kapat: () => void;
   kaydedildi: (yama: Partial<IcraSirketTakip>) => void;
 }) {
-  const [itirazTarihi, setItirazTarihi] = useState("");
-  const [itirazSekli, setItirazSekli] = useState("");
-  const [evrakNo, setEvrakNo] = useState("");
   const [odenen, setOdenen] = useState("");
   const [odemeTarihi, setOdemeTarihi] = useState("");
+  const [bankaAdi, setBankaAdi] = useState("");
+  const [avukatId, setAvukatId] = useState("");
+  const [avukatAdi, setAvukatAdi] = useState("");
+  const [avukatNotu, setAvukatNotu] = useState("");
   const [durum, setDurum] = useState<IcraSirketDurum>("yeni");
   const [aciklama, setAciklama] = useState("");
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // KAYDET DENENDİ Mİ: eksik alanlar uyarı balonuyla değil, kutuları kırmızıya
+  // boyayarak söyleniyor — icra penceresiyle aynı.
+  const [denendi, setDenendi] = useState(false);
   // AÇILIŞTAKİ HALİ: kazara kapanışta "bir şey yazılmış mıydı" sorusunun cevabı.
   const [baslangic, setBaslangic] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
-  const simdiki = JSON.stringify([itirazTarihi, itirazSekli, evrakNo, odenen, odemeTarihi, durum, aciklama]);
+  const simdiki = JSON.stringify([odenen, odemeTarihi, bankaAdi, avukatId, avukatNotu, durum, aciklama]);
 
   useEffect(() => {
     if (!acik || !kayit) return;
-    setItirazTarihi(kayit.itiraz_tarihi ?? "");
-    setItirazSekli(kayit.itiraz_sekli ?? "");
-    setEvrakNo(kayit.evrak_no ?? "");
-    setOdemeTarihi(kayit.odeme_tarihi ?? "");
-    setDurum(kayit.durum);
-    setAciklama(kayit.aciklama ?? "");
     const t = Number(kayit.odenen_tutar || 0);
     const tutar = t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "";
     setOdenen(tutar);
-    setBaslangic(JSON.stringify([kayit.itiraz_tarihi ?? "", kayit.itiraz_sekli ?? "", kayit.evrak_no ?? "",
-      tutar, kayit.odeme_tarihi ?? "", kayit.durum, kayit.aciklama ?? ""]));
+    setOdemeTarihi(kayit.odeme_tarihi ?? "");
+    setBankaAdi(kayit.banka_adi ?? "");
+    setAvukatId(kayit.avukat_id ?? "");
+    setAvukatAdi(kayit.avukat_adi ?? "");
+    setAvukatNotu(kayit.avukat_notu ?? "");
+    setDurum(kayit.durum);
+    setAciklama(kayit.aciklama ?? "");
+    setDenendi(false);
+    setBaslangic(JSON.stringify([tutar, kayit.odeme_tarihi ?? "", kayit.banka_adi ?? "",
+      kayit.avukat_id ?? "", kayit.avukat_notu ?? "", kayit.durum, kayit.aciklama ?? ""]));
   }, [acik, kayit]);
 
   function formEnter(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -73,32 +87,96 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
     if (i >= 0 && i + 1 < odak.length) odak[i + 1].focus();
   }
 
+  /** Cevap şekli değişince o kipe ait OLMAYAN alanlar boşalır. */
+  function sekilDegistir(k: IcraSirketDurum) {
+    setDenendi(false);
+    setDurum(k);
+    // "Seçin…"E DÖNÜLÜNCE HEPSİ BOŞALIR: kaydedilince cevap geri alınmış olur.
+    // Avukata gönderilmiş mailin KAYDI SİLİNMEZ (avukat_mail_*) — mail gerçekten
+    // gitti, o iz kalmalı. Nota da dokunulmaz: mail günlüğünde kopyası yok.
+    if (k === "yeni") { setOdenen(""); setOdemeTarihi(""); setBankaAdi(""); setAvukatId(""); setAvukatAdi(""); return; }
+    if (k !== "odendi") { setOdenen(""); setOdemeTarihi(""); setBankaAdi(""); }
+    if (k !== "avukatta") { setAvukatId(""); setAvukatAdi(""); }
+  }
+
+  /** Kipe göre boş kalan zorunlu alanlar. Boş dizi = tam. */
+  function eksikler(): string[] {
+    if (durum === "odendi") {
+      return [!odemeTarihi && "odeme_tarihi", !(parseParaInput(odenen) > 0) && "odenen_tutar",
+        !bankaAdi.trim() && "banka_adi"].filter(Boolean) as string[];
+    }
+    if (durum === "avukatta") return avukatId ? [] : ["avukat_id"];
+    return [];
+  }
+  const hata = (alan: string) =>
+    (denendi && eksikler().includes(alan) ? " border-red-500 ring-1 ring-red-300" : "");
+
+  // MAİL GİDECEK Mİ? İcra penceresiyle aynı ölçü: aynı avukat + mail gitmiş +
+  // dosya hâlâ avukatta. Biri bile eksikse bu YENİ bir gönderimdir.
+  const avukatCevabiDuruyor = Boolean(kayit?.avukat_id) && kayit?.avukat_id === avukatId
+    && Boolean(kayit?.avukat_mail_at) && kayit?.durum === "avukatta";
+  const gonderilecek = durum === "avukatta" && Boolean(avukatId) && !avukatCevabiDuruyor;
+
   async function kaydet() {
     if (!kayit) return;
-    if (itirazTarihi && kayit.teblig_tarihi && itirazTarihi < kayit.teblig_tarihi) {
-      toast.error("İtiraz tarihi, tebliğ tarihinden önce olamaz."); return;
-    }
+    // EKSİKSE BALON ÇIKMAZ: kutular kırmızıya boyanır.
+    if (eksikler().length) { setDenendi(true); return; }
+    setDenendi(false);
     if (odemeTarihi && kayit.teblig_tarihi && odemeTarihi < kayit.teblig_tarihi) {
       toast.error("Ödeme tarihi, tebliğ tarihinden önce olamaz."); return;
     }
+    // CEVABI GERİ ALMA: işlenmiş bir takip "Seçin…"e çekilmiş. Sessizce
+    // silinmez — dosya yeniden ele alınmamışlara döneceği için sorulur.
+    const geriAliniyor = durum === "yeni" && kayit.durum !== "yeni";
+    if (geriAliniyor && typeof window !== "undefined" && !window.confirm(
+      "Bu takipteki cevap kaydı silinecek ve dosya yeniden ELE ALINMAMIŞ sayılacak.\n\n"
+      + "Ödeme bilgileri ve avukat seçimi silinir. Avukata gönderilmiş mailin kaydı "
+      + "silinmez — mail gerçekten gitti.\n\nDevam edilsin mi?")) return;
+
     const yama: Partial<IcraSirketTakip> = {
-      itiraz_tarihi: itirazTarihi || null,
-      itiraz_sekli: itirazSekli.trim() || null,
-      evrak_no: evrakNo.trim() || null,
       odenen_tutar: parseParaInput(odenen),
       odeme_tarihi: odemeTarihi || null,
+      banka_adi: bankaAdi.trim() || null,
+      avukat_id: avukatId || null,
+      avukat_adi: avukatAdi.trim() || null,
+      avukat_notu: avukatNotu.trim() || null,
       durum,
       aciklama: aciklama.trim() || null,
     };
     setKaydediliyor(true);
     try {
       await updateIcraSirketTakip(kayit.id, yama);
+      if (gonderilecek) {
+        try {
+          const c = await avukataGonder(kayit.id, avukatId, avukatNotu, "sirket");
+          icraDegisti();
+          kaydedildi({ ...yama, avukat_mail_ek: c.ek, avukat_mail_at: c.gonderildiAt });
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
+          if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+          avukatTakipNotuGoster();
+          kapat();
+          return;
+        } catch (e) {
+          // SESSİZ GEÇİLMEZ: kayıt tutuldu ama MAİL GİTMEDİ.
+          kaydedildi(yama);
+          toast.error(`${e instanceof Error ? e.message : "Mail gönderilemedi."}\n\n`
+            + `Avukat seçimi ve not kaydedildi, ama dosya avukata ULAŞMADI.`, { duration: 12000 });
+          return;
+        }
+      }
       icraDegisti();           // menü rozeti ve süre uyarısı hemen tazelensin
       kaydedildi(yama);
-      toast.success("Dosya işlendi.");
+      toast.success(geriAliniyor ? "Cevap geri alındı — takip yeniden ele alınmamış."
+        : durum === "yeni" ? "Değişiklik yok — cevap bölümü boş." : "Dosya işlendi.");
       kapat();
-    } catch { toast.error("Kaydedilemedi."); }
-    finally { setKaydediliyor(false); }
+    } catch (e) {
+      // SEBEBİ YUTULMAZ: eksik sütun gibi tek komutla çözülecek bir sorunu gizlemesin.
+      const m = e instanceof Error ? e.message : String(e);
+      toast.error(/banka_adi|avukat_/.test(m)
+        ? `Eksik sütun — sql/icra_sirket_avukat_banka.sql çalıştırılmalı: ${m}`
+        : `Kaydedilemedi: ${m}`, { duration: 10000 });
+    } finally { setKaydediliyor(false); }
   }
 
   if (!kayit) return null;
@@ -106,6 +184,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
   const lbl = "text-xs font-medium text-gray-600 mb-1 block";
   const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30";
   const salt = "text-sm text-gray-800";
+  const yildiz = <span className="text-red-600">*</span>;
 
   return (
     // KAZARA KAPANMA: dışarı dokunmak ya da ESC, yazılanı sessizce siliyordu.
@@ -147,46 +226,75 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
         </div>
 
         <div ref={formRef} onKeyDown={formEnter}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[320px] min-h-0 overflow-y-auto pr-1 content-start">
           {/* CEVAP ŞEKLİ İLK VE TEK SATIR — icra penceresiyle aynı düzen: sorulan
               alanlar buna bağlı, insan önce bunu görmeli. "Seçin…" ele
               alınmamış demektir (durum="yeni"); işlenmiş bir takip buraya
               çekilerek geri alınabilir. */}
           <div className="sm:col-span-2">
             <label className={lbl}>Cevap şekli</label>
-            <select className={inp} value={durum} onChange={(e) => setDurum(e.target.value as IcraSirketDurum)}>
+            <select className={inp} value={durum} onChange={(e) => sekilDegistir(e.target.value as IcraSirketDurum)}>
               <option value="yeni">Seçin…</option>
               {durumSecenekleri(durum).map((k) => (
                 <option key={k} value={k}>{DURUMLAR.find((d) => d.kod === k)?.ad ?? k}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className={lbl}>İtiraz tarihi</label>
-            <input type="date" className={inp} value={itirazTarihi} onChange={(e) => setItirazTarihi(e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>İtiraz şekli</label>
-            <input className={inp} value={itirazSekli} onChange={(e) => setItirazSekli(e.target.value)}
-              placeholder="İcra dairesine dilekçe / UYAP" />
-          </div>
-          <div>
-            <label className={lbl}>Evrak no</label>
-            <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>Ödenen tutar</label>
-            <input className={`${inp} text-right`} value={odenen} inputMode="decimal"
-              onChange={(e) => setOdenen(formatParaInput(e.target.value))} />
-          </div>
-          <div>
-            <label className={lbl}>Ödeme tarihi</label>
-            <input type="date" className={inp} value={odemeTarihi} onChange={(e) => setOdemeTarihi(e.target.value)} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className={lbl}>Açıklama</label>
-            <input className={inp} value={aciklama} onChange={(e) => setAciklama(e.target.value)} />
-          </div>
+
+          {/* SEÇİM YAPILMADAN ALT ALANLAR GÖRÜNMEZ: hangi alanın sorulacağı
+              cevap şekline bağlı; önce doldurulup sonra şekil seçilince yazılan
+              şey boşa gidiyordu. */}
+          {durum === "avukatta" && (
+            <div className="sm:col-span-2">
+              <AvukatSecim
+                avukatId={avukatId} not_={avukatNotu} kaynak="sirket" kayitId={kayit.id}
+                hatali={denendi && !avukatId}
+                degistir={(y) => {
+                  if (y.avukat_id !== undefined) setAvukatId(y.avukat_id);
+                  if (y.avukat_adi !== undefined) setAvukatAdi(y.avukat_adi);
+                  if (y.avukat_notu !== undefined) setAvukatNotu(y.avukat_notu);
+                }}
+                mailBilgisi={{
+                  tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
+                  gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,
+                  gecerli: avukatCevabiDuruyor,
+                }}
+                tekrarGonderildi={(c) => kaydedildi({
+                  avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
+                  avukat_mail_gonderen: c.gonderen,
+                  avukat_mail_sayisi: (kayit.avukat_mail_sayisi ?? 0) + 1,
+                })}
+              />
+            </div>
+          )}
+
+          {durum === "odendi" && (
+            <>
+              <div>
+                <label className={lbl}>Ödeme tarihi {yildiz}</label>
+                <input type="date" className={`${inp}${hata("odeme_tarihi")}`} value={odemeTarihi}
+                  min={kayit.teblig_tarihi || undefined}
+                  onChange={(e) => setOdemeTarihi(e.target.value)} />
+              </div>
+              <div>
+                <label className={lbl}>Ödenen tutar {yildiz}</label>
+                <input className={`${inp} text-right${hata("odenen_tutar")}`} value={odenen} inputMode="decimal"
+                  placeholder="0" onChange={(e) => setOdenen(formatParaInput(e.target.value))} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={lbl}>Hangi bankadan ödendi {yildiz}</label>
+                <input className={`${inp}${hata("banka_adi")}`} value={bankaAdi}
+                  placeholder="Ödemenin yapıldığı banka" onChange={(e) => setBankaAdi(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          {durum !== "yeni" && (
+            <div className="sm:col-span-2">
+              <label className={lbl}>Açıklama</label>
+              <input className={inp} value={aciklama} onChange={(e) => setAciklama(e.target.value)} />
+            </div>
+          )}
         </div>
 
           {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
@@ -196,7 +304,8 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
         <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={kapat}>İptal</Button>
           <Button onClick={kaydet} disabled={kaydediliyor}>
-            {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
+            {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
+            {gonderilecek ? "Kaydet ve avukata gönder" : "Kaydet"}
           </Button>
         </DialogFooter>
       </DialogContent>

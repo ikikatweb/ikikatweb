@@ -4,7 +4,8 @@
 export type AvukatMailSonucu = {
   alici: string;
   ek: string;
-  cevap_tarihi: string;
+  /** Şirkete açılan takipte cevap tarihi diye bir alan yok — orada null döner. */
+  cevap_tarihi: string | null;
   /** Maili gönderen kullanıcı (sunucuda oturumdan çözülür). */
   gonderen: string;
   gonderildiAt: string;
@@ -27,11 +28,13 @@ export type AvukatMailSonucu = {
 export const AVUKAT_TAKIP_NOTU =
   "Avukatla iletişime geçerek gelişmeler hakkında bilgi almayı unutmayın !";
 
-export async function avukataGonder(icraId: string, avukatId: string, not: string): Promise<AvukatMailSonucu> {
+export async function avukataGonder(
+  icraId: string, avukatId: string, not: string, kaynak: "icra" | "sirket" = "icra",
+): Promise<AvukatMailSonucu> {
   const res = await fetch("/api/icra/avukata-gonder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ icraId, avukatId, not }),
+    body: JSON.stringify({ icraId, avukatId, not, kaynak }),
   });
   const c = await res.json();
   if (!res.ok) throw new Error(c.error ?? "Mail gönderilemedi.");

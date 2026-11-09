@@ -19,6 +19,9 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import AvukatSecim from "@/components/shared/avukat-secim";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { sonGunHesapla, bugunISO } from "@/lib/utils/icra-sure";
@@ -76,15 +79,17 @@ type Form = {
   borclu_firma: string; dosya_esas_no: string; icra_dairesi: string;
   alacakli_adi: string; alacakli_vergi_no: string; takip_tutari: string;
   belge_tarihi: string; teblig_tarihi: string; itiraz_suresi_gun: string;
-  itiraz_tarihi: string; itiraz_sekli: string; evrak_no: string;
-  odenen_tutar: string; odeme_tarihi: string; durum: IcraSirketDurum; aciklama: string;
+  odenen_tutar: string; odeme_tarihi: string; banka_adi: string;
+  avukat_id: string; avukat_adi: string; avukat_notu: string;
+  durum: IcraSirketDurum; aciklama: string;
 };
 const BOS: Form = {
   borclu_firma: "", dosya_esas_no: "", icra_dairesi: "",
   alacakli_adi: "", alacakli_vergi_no: "", takip_tutari: "",
   belge_tarihi: "", teblig_tarihi: "", itiraz_suresi_gun: "",
-  itiraz_tarihi: "", itiraz_sekli: "", evrak_no: "",
-  odenen_tutar: "", odeme_tarihi: "", durum: "yeni", aciklama: "",
+  odenen_tutar: "", odeme_tarihi: "", banka_adi: "",
+  avukat_id: "", avukat_adi: "", avukat_notu: "",
+  durum: "yeni", aciklama: "",
 };
 
 export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { canEkle: boolean; canDuzenle: boolean; canSil: boolean }) {
@@ -166,14 +171,22 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         alacakli_vergi_no: row.alacakli_vergi_no ?? "", takip_tutari: sayiToInput(Number(row.takip_tutari || 0)),
         belge_tarihi: row.belge_tarihi ?? "", teblig_tarihi: row.teblig_tarihi ?? "",
         itiraz_suresi_gun: row.itiraz_suresi_gun == null ? "" : String(row.itiraz_suresi_gun),
-        itiraz_tarihi: row.itiraz_tarihi ?? "", itiraz_sekli: row.itiraz_sekli ?? "",
-        evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
-        odeme_tarihi: row.odeme_tarihi ?? "", durum: row.durum, aciklama: row.aciklama ?? "",
+        odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
+        odeme_tarihi: row.odeme_tarihi ?? "", banka_adi: row.banka_adi ?? "",
+        avukat_id: row.avukat_id ?? "", avukat_adi: row.avukat_adi ?? "",
+        avukat_notu: row.avukat_notu ?? "",
+        durum: row.durum, aciklama: row.aciklama ?? "",
       });
     } else { setEditId(null); setForm(BOS); }
     setDialogAcik(true);
   }
   const setF = (k: keyof Form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  // Düzenlenen kaydın avukat gönderimi HÂLÂ geçerli mi? (aynı avukat + mail
+  // gitmiş + dosya hâlâ avukatta). Değilse kaydetmek YENİDEN gönderir.
+  const duzenlenen = editId ? satirlar.find((x) => x.id === editId) ?? null : null;
+  const avukatCevabiDuruyor = Boolean(duzenlenen?.avukat_id) && duzenlenen?.avukat_id === form.avukat_id
+    && Boolean(duzenlenen?.avukat_mail_at) && duzenlenen?.durum === "avukatta";
+  const gonderilecek = form.durum === "avukatta" && Boolean(form.avukat_id) && !avukatCevabiDuruyor;
 
   function formEnter(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "Enter") return;
@@ -198,8 +211,14 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
     ];
     for (const [v, ad] of zorunlu) if (!v.trim()) { toast.error(`${ad} zorunlu.`); return; }
     if (parseParaInput(form.takip_tutari) <= 0) { toast.error("Takip tutarı zorunlu."); return; }
-    if (form.itiraz_tarihi && form.itiraz_tarihi < form.teblig_tarihi) { toast.error("İtiraz tarihi, tebliğ tarihinden önce olamaz."); return; }
     if (form.odeme_tarihi && form.odeme_tarihi < form.teblig_tarihi) { toast.error("Ödeme tarihi, tebliğ tarihinden önce olamaz."); return; }
+    // KİPE GÖRE ZORUNLULAR — hızlı pencereyle aynı kural.
+    if (form.durum === "odendi") {
+      const eksik = [!form.odeme_tarihi && "ödeme tarihi", !(parseParaInput(form.odenen_tutar) > 0) && "ödenen tutar",
+        !form.banka_adi.trim() && "hangi banka"].filter(Boolean);
+      if (eksik.length) { toast.error(`Ödendi için ${eksik.join(", ")} zorunlu.`); return; }
+    }
+    if (form.durum === "avukatta" && !form.avukat_id) { toast.error("Avukat seçilmeli."); return; }
     const sure = form.itiraz_suresi_gun.trim() === "" ? null : Number(form.itiraz_suresi_gun);
     if (sure != null && (!Number.isFinite(sure) || sure <= 0)) { toast.error("İtiraz süresi gün olarak girilmeli."); return; }
     const t = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -208,12 +227,15 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       icra_dairesi: t(form.icra_dairesi), alacakli_adi: t(form.alacakli_adi),
       alacakli_vergi_no: t(form.alacakli_vergi_no), takip_tutari: parseParaInput(form.takip_tutari),
       belge_tarihi: form.belge_tarihi || null, teblig_tarihi: form.teblig_tarihi || null,
-      itiraz_suresi_gun: sure, itiraz_tarihi: form.itiraz_tarihi || null,
-      itiraz_sekli: t(form.itiraz_sekli), evrak_no: t(form.evrak_no),
+      itiraz_suresi_gun: sure,
       odenen_tutar: parseParaInput(form.odenen_tutar), odeme_tarihi: form.odeme_tarihi || null,
+      banka_adi: t(form.banka_adi),
+      avukat_id: form.avukat_id || null, avukat_adi: t(form.avukat_adi), avukat_notu: t(form.avukat_notu),
       durum: form.durum, aciklama: t(form.aciklama),
     };
     setKaydediliyor(true);
+    // MAİL İÇİN KAYIT ID'Sİ: yeni kayıtta id ancak eklemeden sonra doğuyor.
+    let kayitId: string | null = editId;
     try {
       if (editId) {
         await updateIcraSirketTakip(editId, payload);
@@ -222,9 +244,30 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         const maxSira = satirlar.reduce((m, s) => Math.max(m, s.sira), 0);
         const row = await insertIcraSirketTakip({ ...payload, sira: maxSira + 1 });
         setSatirlar((p) => [row, ...p]);
+        kayitId = row.id;
       }
       icraDegisti();   // durum "yeni"den çıktıysa menü rozeti hemen düşsün
       toast.success(editId ? "Dosya güncellendi." : "Dosya eklendi.");
+      // AVUKATA MAİL — hızlı penceredekiyle aynı kural. Mail gitmezse SÖYLENİR:
+      // kayıt tutuldu ama dosya avukata ULAŞMADI, bu sessiz geçilemez.
+      if (gonderilecek && kayitId) {
+        try {
+          const c = await avukataGonder(kayitId, form.avukat_id, form.avukat_notu, "sirket");
+          setSatirlar((p) => p.map((x) => (x.id === kayitId
+            ? { ...x, avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek, avukat_mail_gonderen: c.gonderen,
+                avukat_mail_sayisi: (x.avukat_mail_sayisi ?? 0) + 1 }
+            : x)));
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
+          if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+          avukatTakipNotuGoster();
+        } catch (e) {
+          toast.error(`${e instanceof Error ? e.message : "Mail gönderilemedi."}
+
+`
+            + `Kayıt tutuldu ama dosya avukata ULAŞMADI.`, { duration: 12000 });
+        }
+      }
       setDialogAcik(false);
     } catch (e) {
       const m = e instanceof Error ? e.message : "";
@@ -316,7 +359,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <col className="w-[9%]" />{/* Takip tutarı */}
             <col className="w-[7%]" />{/* Tebliğ */}
             <col className="w-[10%]" />{/* Son itiraz günü */}
-            <col className="w-[7%]" />{/* İtiraz tarihi */}
             <col className="w-[8%]" />{/* Ödenen */}
             <col className="w-[9%]" />{/* Durum */}
             <col className="w-[4%]" />{/* Belge */}
@@ -340,16 +382,16 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               <th className={th}>Takip Tutarı</th>
               <th className={th}>Tebliğ</th>
               <th className={th}>Son İtiraz Günü</th>
-              <th className={th}>İtiraz</th>
               <th className={th}>Ödenen</th>
-              <th className={th}>Durum</th>
+              {/* Pencerede de "Cevap şekli" diyor — iki yerde iki ad karışıklık yapıyordu. */}
+              <th className={th}>Cevap Şekli</th>
               <th className={th}>Belge</th>
               {islemVar && <th className={th}>İşlem</th>}
             </tr>
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={islemVar ? 13 : 12} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={islemVar ? 12 : 11} className="text-center text-gray-400 py-8">
                 {arama.trim() || sadeceAcik ? "Süzgeçle eşleşen kayıt yok." : "Henüz kayıt yok. Şirkete ödeme emri gelirse buraya düşer."}
               </td></tr>
             )}
@@ -369,7 +411,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                   <td className={`${td} text-right tabular-nums text-red-600`}>{paraGoster(Number(s.takip_tutari || 0))}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
                   <td className={`${td} text-center`}><SureHucresi s={s} /></td>
-                  <td className={`${td} text-center`}>{s.itiraz_tarihi ? tarihGoster(s.itiraz_tarihi) : <span className="text-gray-300">—</span>}</td>
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
                   <td className={`${td} text-center`}>
                     <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${d.sinif}`}>{d.ad}</span>
@@ -398,7 +439,8 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
               <td className={`${td} text-right`} colSpan={5}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamTakip)}</td>
-              <td className={td} colSpan={3} />
+              {/* Tebliğ + Son İtiraz Günü (İtiraz sütunu kaldırıldı) */}
+              <td className={td} colSpan={2} />
               <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
               <td className={td} colSpan={islemVar ? 3 : 2} />
             </tr>
@@ -493,21 +535,46 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                 ))}
               </select></div>
 
-            <div><label className={fLbl}>İtiraz tarihi</label>
-              <input type="date" className={fInp} value={form.itiraz_tarihi} onChange={(e) => setF("itiraz_tarihi", e.target.value)} /></div>
-            <div><label className={fLbl}>İtiraz şekli</label>
-              <input className={fInp} value={form.itiraz_sekli} onChange={(e) => setF("itiraz_sekli", e.target.value)} placeholder="İcra dairesine dilekçe / UYAP" /></div>
+            {/* SEÇİM YAPILMADAN ALT ALANLAR GÖRÜNMEZ — hızlı pencereyle aynı.
+                İTİRAZ ALANLARI KALDIRILDI: "İtiraz edildi" bir cevap şekli
+                olmaktan çıktı; kayıttaki değerler silinmiyor, sorulmuyor. */}
+            {form.durum === "avukatta" && (
+              <div className="sm:col-span-3">
+                <AvukatSecim
+                  avukatId={form.avukat_id} not_={form.avukat_notu} kaynak="sirket" kayitId={editId}
+                  degistir={(y: { avukat_id?: string; avukat_adi?: string; avukat_notu?: string }) => setForm((f) => ({
+                    ...f,
+                    ...(y.avukat_id !== undefined ? { avukat_id: y.avukat_id } : {}),
+                    ...(y.avukat_adi !== undefined ? { avukat_adi: y.avukat_adi } : {}),
+                    ...(y.avukat_notu !== undefined ? { avukat_notu: y.avukat_notu } : {}),
+                  }))}
+                  mailBilgisi={{
+                    tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null,
+                    gonderen: duzenlenen?.avukat_mail_gonderen ?? null,
+                    sayi: duzenlenen?.avukat_mail_sayisi ?? 0,
+                    gecerli: avukatCevabiDuruyor,
+                  }}
+                />
+              </div>
+            )}
 
-            <div><label className={fLbl}>Evrak no</label>
-              <input className={fInp} value={form.evrak_no} onChange={(e) => setF("evrak_no", e.target.value)} /></div>
-            <div><label className={fLbl}>Ödenen tutar</label>
-              <input className={`${fInp} text-right`} value={form.odenen_tutar}
-                onChange={(e) => setF("odenen_tutar", formatParaInput(e.target.value))} inputMode="decimal" /></div>
-            <div><label className={fLbl}>Ödeme tarihi</label>
-              <input type="date" className={fInp} value={form.odeme_tarihi} onChange={(e) => setF("odeme_tarihi", e.target.value)} /></div>
+            {form.durum === "odendi" && (
+              <>
+                <div><label className={fLbl}>Ödeme tarihi *</label>
+                  <input type="date" className={fInp} value={form.odeme_tarihi} onChange={(e) => setF("odeme_tarihi", e.target.value)} /></div>
+                <div><label className={fLbl}>Ödenen tutar *</label>
+                  <input className={`${fInp} text-right`} value={form.odenen_tutar}
+                    onChange={(e) => setF("odenen_tutar", formatParaInput(e.target.value))} inputMode="decimal" /></div>
+                <div><label className={fLbl}>Hangi bankadan ödendi *</label>
+                  <input className={fInp} value={form.banka_adi} placeholder="Ödemenin yapıldığı banka"
+                    onChange={(e) => setF("banka_adi", e.target.value)} /></div>
+              </>
+            )}
 
-            <div className="sm:col-span-2"><label className={fLbl}>Açıklama</label>
-              <input className={fInp} value={form.aciklama} onChange={(e) => setF("aciklama", e.target.value)} /></div>
+            {form.durum !== "yeni" && (
+              <div className="sm:col-span-3"><label className={fLbl}>Açıklama</label>
+                <input className={fInp} value={form.aciklama} onChange={(e) => setF("aciklama", e.target.value)} /></div>
+            )}
           </div>
           {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
               not kutusu, gönderim bilgisi) İptal/Kaydet aşağı kayıp görünmez
@@ -516,7 +583,8 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
           <DialogFooter className="shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setDialogAcik(false)}>Vazgeç</Button>
             <Button onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
-              {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
+              {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
+              {gonderilecek ? "Kaydet ve avukata gönder" : "Kaydet"}
             </Button>
           </DialogFooter>
         </DialogContent>

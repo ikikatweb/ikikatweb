@@ -921,7 +921,22 @@ export type IcraSirketTakip = {
   evrak_no: string | null;
   odenen_tutar: number;
   odeme_tarihi: string | null;
+  /** Ödeme banka havalesiyle yapıldıysa hangi banka. */
+  banka_adi: string | null;
   durum: IcraSirketDurum;
+  /** Dosya avukata verildiyse seçilen avukat (public.avukatlar). */
+  avukat_id: string | null;
+  /** Avukatın o andaki adı — ANLIK KOPYA: avukat silinse/adı değişse de kalır. */
+  avukat_adi: string | null;
+  /** Avukata gönderilen mailin içine eklenen serbest not. */
+  avukat_notu: string | null;
+  /** Mail BAŞARIYLA gittiği an. Boşsa gönderilmemiştir. */
+  avukat_mail_at: string | null;
+  /** Maile eklenen ödeme emri belgesinin adı. */
+  avukat_mail_ek: string | null;
+  avukat_mail_gonderen: string | null;
+  avukat_mail_gonderen_id: string | null;
+  avukat_mail_sayisi: number;
   /** Tebligat ekindeki PDF'in kayıtlı adresi — panelde "Belgeyi aç" ile açılır. */
   belge_yolu: string | null;
   tebligat_barkod: string | null;
