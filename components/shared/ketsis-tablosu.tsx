@@ -323,6 +323,33 @@ alert("Aktarildi - "+jj.mesaj+(jj.firmaEslesti?"":"\\n\\nNot: VKN bir firmayla e
                   className="inline-flex cursor-grab items-center gap-1.5 rounded-lg border-2 border-dashed border-[#1E3A5F] bg-[#1E3A5F]/5 px-3 py-1.5 text-xs font-semibold text-[#1E3A5F]">
                   <LinkIcon size={13} /> Vergi dairesi tebligatlarını aktar
                 </a>
+                {/* SÜRÜKLEMEK HER ZAMAN KOLAY DEĞİL: yer imi çubuğu kapalı olabilir,
+                    dokunmatik ekranda sürükleme hiç çalışmaz. Kopyala düğmesi ikinci
+                    yolu açıyor: yer imi çubuğuna sağ tık → "Sayfa ekle" → adres alanına
+                    yapıştır. (Adres çubuğuna yapıştırmak işe YARAMAZ, tarayıcılar
+                    "javascript:" önekini oradan siler — bu yüzden ayrıca yazıyor.) */}
+                <button type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(yerImi);
+                      toast.success("Kopyalandı. Yer imi çubuğuna sağ tık → Sayfa ekle → adres alanına yapıştırın.",
+                        { duration: 12000 });
+                    } catch {
+                      // Panoya yazılamadıysa SÖYLENİR; "kopyalandı" deyip geçmek,
+                      // kullanıcının boş yapıştırmasına yol açardı.
+                      toast.error("Panoya kopyalanamadı. Bağlantıya sağ tıklayıp 'Bağlantı adresini kopyala' deyin.",
+                        { duration: 14000 });
+                    }
+                  }}
+                  className="ml-2 rounded-lg border border-gray-300 px-2.5 h-7 text-xs font-medium hover:bg-gray-50">
+                  Kopyala
+                </button>
+                <div className="text-[11px] text-gray-500">
+                  Sürükleyemiyorsanız: <b>Kopyala</b> → yer imi çubuğuna sağ tık →
+                  <b> Sayfa ekle</b> → adres alanına yapıştırın. Adres çubuğuna
+                  yapıştırmak işe yaramaz, tarayıcı &quot;javascript:&quot; önekini siler.
+                  Yer imi çubuğu kapalıysa <b>Ctrl + Shift + B</b>.
+                </div>
                 {/* OTURUM KISA: girişten hemen sonra tıklanmalı, yoksa 401 gelir.
                     Bunu baştan söylemek, "çalışmıyor" sanılmasını önlüyor. */}
                 <div className="text-[11px] text-amber-800">
