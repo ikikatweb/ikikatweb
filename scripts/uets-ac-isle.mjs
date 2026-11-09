@@ -330,10 +330,29 @@ async function icraDefteriniDoldur(t, ekler) {
     // Deftere yazılsaydı, kaldırılmış bir haciz açık borç gibi görünürdü.
     // Hangi dosyanın kapatılacağı insan kararı: kısmi kaldırma da olabiliyor
     // ("bu dosyamıza şamil olmak üzere"), makine kapatmamalı.
+    // VAR OLAN DOSYAYA İŞARETLENİR, yeni satır açılmaz. Dosya KAPATILMAZ: kaldırma
+    // kısmi olabiliyor ("bu dosyamıza şamil olmak üzere"), başka dosyalardan gelen
+    // hacizler sürebilir. Karar insanın; panel yalnız haberi veriyor.
+    let nereye = "defterde o dosya yok, işaretlenemedi";
+    if (cozum.dosya_esas_no) {
+      const { data: satir } = await sb.from("icra").select("id, haciz_kaldirma_tarihi")
+        .eq("dosya_esas_no", cozum.dosya_esas_no).limit(1).maybeSingle();
+      if (satir && !satir.haciz_kaldirma_tarihi) {
+        const { error } = await sb.from("icra").update({
+          haciz_kaldirma_tarihi: cozum.belge_tarihi,
+          haciz_kaldirma_notu: `İcra dairesinden haciz kaldırma yazısı geldi`
+            + `${cozum.belge_tarihi ? ` (${cozum.belge_tarihi})` : ""}.`
+            + ` Dosya otomatik kapatılmadı — kaldırma kısmi olabilir, kontrol edin.`,
+        }).eq("id", satir.id);
+        nereye = error ? `işaretlenemedi: ${error.message}` : "defterdeki dosyaya işaretlendi";
+      } else if (satir) {
+        nereye = "zaten işaretliymiş";
+      }
+    }
     console.log(`  haciz KALDIRMA yazısı · ${cozum.dosya_esas_no ?? "dosya no yok"}`
-      + ` · ${cozum.borclu_adi ?? "?"} — deftere yazılmadı, ilgili dosya elle kapatılmalı`);
+      + ` · ${cozum.borclu_adi ?? "?"} — ${nereye}`);
     return `Haciz KALDIRMA yazısı${cozum.dosya_esas_no ? ` · ${cozum.dosya_esas_no}` : ""}`
-      + `${cozum.borclu_adi ? ` · ${cozum.borclu_adi}` : ""} — yeni haciz değil. İlgili dosya elle kapatılmalı.`;
+      + `${cozum.borclu_adi ? ` · ${cozum.borclu_adi}` : ""} — yeni haciz değil (${nereye}).`;
   }
   if (cozum.tur === "bilinmiyor" || !cozum.dosya_esas_no) {
     console.log(`  belge türü tanınmadı ya da dosya no yok — icra defteri elle doldurulmalı`);

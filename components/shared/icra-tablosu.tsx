@@ -399,7 +399,25 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-center" title={s.ucuncu_sahis ?? ""}>
                     {firmaRengi(s.ucuncu_sahis) && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />}
                   </td>
-                  <td className={td} title={s.dosya_esas_no ?? ""}>{s.dosya_esas_no}</td>
+                  {/* HACİZ KALDIRMA ROZETİ (09.11.2026): icra dairesinden "haczin
+                      kaldırılmasına karar verilmiştir" yazısı gelmişse burada görünür.
+                      Kaldırma yazısı YENİ bir dosya değil, bu dosyanın haczinin
+                      kalkması — o yüzden ayrı satır değil, satırın üstünde rozet.
+                      DOSYA KAPANMIŞ SAYILMAZ: kaldırma kısmi olabiliyor ("bu dosyamıza
+                      şamil olmak üzere"), başka dosyalardan gelen hacizler sürebilir.
+                      Rozet haber verir, kararı insan verir. */}
+                  <td className={td} title={s.dosya_esas_no ?? ""}>
+                    {s.dosya_esas_no}
+                    {s.haciz_kaldirma_tarihi && (
+                      <div className="mt-0.5">
+                        <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800"
+                          title={s.haciz_kaldirma_notu
+                            ?? "İcra dairesinden haciz kaldırma yazısı geldi. Dosya otomatik kapatılmadı — kaldırma kısmi olabilir."}>
+                          haciz kaldırıldı · {new Date(s.haciz_kaldirma_tarihi + "T00:00:00").toLocaleDateString("tr-TR")}
+                        </span>
+                      </div>
+                    )}
+                  </td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
                   <td className={`${td} text-center ${cevapYok ? "bg-red-100 text-red-600 font-medium" : ""}`} title={cevapYok ? "İcraya cevap verilmemiş" : undefined}>{cevapYok ? "Cevap yok" : tarihGoster(s.cevap_tarihi)}</td>
