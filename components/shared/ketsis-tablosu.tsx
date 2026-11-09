@@ -165,7 +165,8 @@ export default function KetsisTablosu() {
           DEFTER KALDIRILDI (09.11.2026 kullanıcı kararı): tebligat tablosu ve portal
           Excel aktarımı buradaydı. Elle dosya yükleme iş akışına oturmadı; mail zaten
           otomatik geliyor ve içinde tebliğ tarihi yazıyor, uyarı için yeterli görüldü.
-          Veri silinmedi, ketsis_tebligat tablosu duruyor — karar değişirse geri gelir. */}
+          Tablo da kaldırıldı (bkz. sql/ketsis_tebligat_kaldir.sql); ekran ve mail
+          ayrıştırıcısı git geçmişinde duruyor. */}
       <div className={`mb-3 rounded-lg border px-3 py-2.5 ${
         kesinBekleyen ? "border-red-300 bg-red-50"
           : bekleyen.length > 0 ? "border-amber-300 bg-amber-50"

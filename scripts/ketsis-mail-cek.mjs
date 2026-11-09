@@ -140,8 +140,8 @@ function siniflandir(adres, metin, ogrenilmis) {
 // "tebligat defteri" kaydı açılıyordu; defter ekranı kaldırılınca bu yazma da anlamsız
 // kaldı. Mailin kendisi zaten her iki tarihi taşıyor ("… 27/10/2026 tarihinde gönderilen
 // … 01/11/2026 tarihinde tebliğ edilmiş sayılacaktır") ve bildirim listesinde duruyor;
-// uyarı için yeterli görüldü. ketsis_tebligat tablosu ve içindeki 103 kayıt SİLİNMEDİ —
-// karar değişirse ayrıştırıcı git geçmişinde duruyor.
+// uyarı için yeterli görüldü. ketsis_tebligat tablosu da kaldırıldı
+// (bkz. sql/ketsis_tebligat_kaldir.sql); ayrıştırıcı git geçmişinde duruyor.
 
 function belgeNoBul(metin) {
   const s = String(metin);

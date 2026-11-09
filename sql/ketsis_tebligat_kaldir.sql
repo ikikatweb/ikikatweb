@@ -1,0 +1,22 @@
+-- TEBLİGAT DEFTERİ TABLOSU KALDIRILDI (09.11.2026, kullanıcı kararı)
+--
+-- NİYE VARDI: Dijital Vergi Dairesi'nde görülen tebligatların süresini (VUK 107/A,
+-- ulaşma + 5 gün) panelin takip etmesi için. Önce elle dolduruluyordu, sonra portalın
+-- Excel çıktısından aktarılıyordu.
+--
+-- NİYE KALKTI: elle dosya indirip yükleme iş akışına oturmadı. GİB'in bildirim maili
+-- zaten otomatik geliyor, 5 dakikada bir okunuyor ve METNİNDE her iki tarih yazıyor:
+--   "… 27/10/2026 tarihinde gönderilen MC09462508 sayılı belge
+--     01/11/2026 tarihinde tebliğ edilmiş sayılacaktır."
+-- Kullanıcı "mail geldiğinde bildirim gelsin yeter" dedi; defter ekranı kaldırıldı,
+-- tablo da onunla birlikte gidiyor.
+--
+-- KAYBEDİLEN: panelin 5 günlük süreyi geri sayması. Tarih bildirim mailinde duruyor
+-- (ketsis_bildirim.ozet), ama geri sayan bir yer kalmadı. Bu BİLEREK yapıldı.
+--
+-- İÇİNDEKİ 103 KAYIT: portalın "Excel'e Aktar" çıktısından gelmişti, aslı GİB'de duruyor.
+-- Gerekirse oradan yeniden alınabilir — benzersiz, kurtarılamaz bir veri değildi.
+--
+-- ketsis_bildirim (mail kayıtları) ve ketsis_kontrol (kim ne zaman baktı) DURUYOR.
+
+drop table if exists public.ketsis_tebligat;
