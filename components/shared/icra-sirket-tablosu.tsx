@@ -302,8 +302,16 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <col className="w-[4%]" />{/* Belge */}
             {islemVar && <col className="w-[6%]" />}
           </colgroup>
+          {/* ARKA PLAN SATIRA İNLINE VERİLİYOR — başlığın altından satırlar
+              görünmesin diye. globals.css'te katmansız iki kural var:
+              `thead { position: sticky }` ve `thead th { background-color: inherit }`.
+              Yapışkan thead'in KENDİ arka planı border-collapse'lı tabloda
+              boyanmıyor; th'ler de "inherit" dediği için satırdan renk alıyor,
+              satırın rengi yoksa saydam kalıyorlar. Rengi tr'ye inline vermek
+              hem o kuralla çalışıyor hem de Tailwind sınıflarının ezilmesine
+              takılmıyor (#f3f4f6 = gray-100). */}
           <thead className="bg-gray-100">
-            <tr>
+            <tr style={{ backgroundColor: "#f3f4f6" }}>
               <th className={th}>S.No</th>
               <th className={th}></th>
               <th className={th}>Dosya Esas No</th>
