@@ -269,10 +269,18 @@ export default function KetsisTablosu() {
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <div>{s.gonderen ?? "—"}</div>
-                  {s.gonderen_adres && (
-                    <div className="text-[11px] text-gray-500">{s.gonderen_adres}</div>
-                  )}
+                  {/* ASIL GÖNDEREN KURUM ÖNDE (09.11.2026): bu sütunda iki satır da
+                      ketsis-noreply@gelirler.gov.tr yazıyordu. O adres GİB'in dağıtım
+                      robotu — tebligatı gönderen kurum değil. Kurum mailin metninde
+                      duruyor ("Tarafınıza Emniyet Genel Müdürlüğü adına …") ve çekiliyor.
+                      Trafik cezası mı, vergi dairesi yazısı mı: listeye bakınca görülsün.
+                      Kurum okunamadıysa eski davranış sürer, robot adresi yazar. */}
+                  <div className="font-medium">{s.gonderen_kurum ?? s.gonderen ?? "—"}</div>
+                  {s.gonderen_kurum
+                    ? <div className="text-[11px] text-gray-500">GİB üzerinden</div>
+                    : s.gonderen_adres && (
+                        <div className="text-[11px] text-gray-500">{s.gonderen_adres}</div>
+                      )}
                 </td>
                 <td className="px-3 py-2">
                   {/* BELGE NO önce: Dijital Vergi Dairesi'nde tebligatlar bu numarayla

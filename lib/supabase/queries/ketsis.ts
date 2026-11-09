@@ -21,6 +21,8 @@ export type KetsisBildirim = {
   mail_tarihi: string;
   gonderen: string | null;
   gonderen_adres: string | null;
+  /** Tebligatı gönderen kurum, mail metninden. GİB yalnız taşıyıcı. */
+  gonderen_kurum?: string | null;
   konu: string | null;
   ozet: string | null;
   vkn: string | null;

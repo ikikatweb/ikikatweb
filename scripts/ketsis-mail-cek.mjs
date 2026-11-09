@@ -366,6 +366,12 @@ async function main() {
             firma_id: vknFirma?.id ?? tekFirmaId ?? null,
             vkn: vkn,
             belge_no: belgeNoBul(`${konu} ${govde}`),
+            // GÖNDEREN KURUM metinden: "Tarafınıza Emniyet Genel Müdürlüğü adına
+            // Gelir İdaresi Başkanlığı tarafından …". Mailin FROM adresi GİB'in dağıtım
+            // robotu (ketsis-noreply@gelirler.gov.tr), tebligatı gönderen kurum değil.
+            // Trafik cezası mı vergi dairesi yazısı mı, listeye bakınca görülsün.
+            // Kalıp tutmazsa null kalır — uydurulmaz, ekranda GİB adresi görünür.
+            gonderen_kurum: (`${konu} ${govde}`.match(/Taraf[ıi]n[ıi]za\s+(.+?)\s+ad[ıi]na/i)?.[1] ?? "").trim().slice(0, 200) || null,
             guven,
           };
 
