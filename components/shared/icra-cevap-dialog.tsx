@@ -18,11 +18,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
 import { updateIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
+import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
+import { telefonGoster } from "@/lib/utils/telefon";
 import { icraDegisti } from "@/hooks";
-import type { IcraKayit } from "@/lib/supabase/types";
+import type { IcraKayit, Avukat } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -45,9 +47,25 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   const [evrakNo, setEvrakNo] = useState("");
   const [odenen, setOdenen] = useState("");
   const [bankaAdi, setBankaAdi] = useState("");
+  const [avukatId, setAvukatId] = useState("");
+  const [avukatlar, setAvukatlar] = useState<Avukat[]>([]);
+  const [avukatTabloYok, setAvukatTabloYok] = useState(false);
+  // PENCEREDEN AVUKAT EKLEME: cevabı işlerken avukat listede yoksa kullanıcı
+  // pencereyi kapatıp Tanımlamalar'a gitmek zorunda kalıyordu — girdiği cevap
+  // bilgileri de kayboluyordu. Yeni avukat burada açılıp hemen seçiliyor.
+  const [yeniAvukatAcik, setYeniAvukatAcik] = useState(false);
+  const [yeniAvukat, setYeniAvukat] = useState({ ad_soyad: "", email: "", telefon: "" });
+  const [avukatEkleniyor, setAvukatEkleniyor] = useState(false);
   const [sekiller, setSekiller] = useState<string[]>(CEVAP_VARSAYILAN);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Liste okunamazsa pencere yine açılır; sebebi ekranda ayrı ayrı yazar.
+    getAktifAvukatlar().then(
+      ({ liste, tabloYok }) => { setAvukatlar(liste); setAvukatTabloYok(tabloYok); },
+      () => setAvukatlar([]));
+  }, []);
 
   useEffect(() => {
     getDegerler("icra_cevap_sekli")
@@ -62,6 +80,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     setCevapSekli(kayit.cevap_sekli ?? "");
     setEvrakNo(kayit.evrak_no ?? "");
     setBankaAdi(kayit.banka_adi ?? "");
+    setAvukatId(kayit.avukat_id ?? "");
     const t = Number(kayit.odenen_tutar || 0);
     setOdenen(t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "");
   }, [acik, kayit]);
@@ -89,6 +108,39 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   // "banka" geçen her seçeneği yakalar: liste Tanımlamalar'dan düzenlenebiliyor
   // ("Banka", "Banka Havalesi", "Banka EFT" hepsi aynı kip).
   const bankaMi = cevapSekli.toLocaleLowerCase("tr").includes("banka");
+  // AVUKAT ARACILIĞI: cevabı avukat gönderdiyse kim olduğu kayda geçmeli —
+  // "avukat gönderdi" tek başına bir şey anlatmıyor, sonradan kime soracağımız
+  // belli olmuyor. Liste İcra > Tanımlamalar'dan yönetiliyor.
+  const avukatMi = cevapSekli.toLocaleLowerCase("tr").includes("avukat");
+  const secilenAvukat = avukatlar.find((a) => a.id === avukatId) ?? null;
+
+  async function avukatEkle() {
+    const ad = yeniAvukat.ad_soyad.trim();
+    if (!ad) { toast.error("Ad soyad zorunlu."); return; }
+    // E-POSTA KONTROL EDİLİR: yanlış yazılmış adres, "avukata gönderdim"
+    // kaydının sessizce boşa çıkması demek. Boş bırakılabilir, hatalı yazılamaz.
+    if (yeniAvukat.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(yeniAvukat.email.trim())) {
+      toast.error("E-posta adresi geçerli değil."); return;
+    }
+    setAvukatEkleniyor(true);
+    try {
+      const a = await insertAvukat({
+        ad_soyad: ad,
+        email: yeniAvukat.email.trim() || null,
+        telefon: yeniAvukat.telefon.trim() || null,
+        aktif: true,
+        sira: avukatlar.reduce((m, x) => Math.max(m, x.sira), 0) + 1,
+      });
+      setAvukatlar((p) => [...p, a]);
+      setAvukatId(a.id);                 // eklenen avukat hemen seçili gelsin
+      setYeniAvukat({ ad_soyad: "", email: "", telefon: "" });
+      setYeniAvukatAcik(false);
+      toast.success("Avukat eklendi ve seçildi.");
+    } catch (e) {
+      const m = e instanceof Error ? e.message : "Eklenemedi.";
+      toast.error(/duplicate|avukatlar_ad_uq/.test(m) ? "Bu avukat zaten kayıtlı." : m, { duration: 8000 });
+    } finally { setAvukatEkleniyor(false); }
+  }
 
   async function kaydet() {
     if (!kayit) return;
@@ -96,6 +148,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     if (cevapTarihi && kayit.teblig_tarihi && cevapTarihi < kayit.teblig_tarihi) {
       toast.error("İcraya cevap tarihi, tebliğ tarihinden önce olamaz."); return;
     }
+    if (avukatMi && !avukatId) { toast.error("Avukat seçilmeli."); return; }
     if (bankaMi) {
       // ÜÇÜ BİRLİKTE: biri girildiyse diğer ikisi de gerekli. Tarih olmadan dosya
       // "cevaplandı" sayılmaz ve listede kalır; kullanıcı niye kalktığını anlamaz.
@@ -114,6 +167,10 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       // Banka dışı cevap şekillerinde banka adı SORULMUYOR ama SİLİNMİYOR:
       // kullanıcı yanlışlıkla şekli değiştirip geri aldığında veri kaybolmasın.
       banka_adi: bankaAdi.trim() || null,
+      avukat_id: avukatId || null,
+      // ANLIK KOPYA: avukat listeden silinse ya da adı değişse de "o tarihte
+      // kiminle cevap verdik" sorusunun cevabı kayıtta kalsın.
+      avukat_adi: secilenAvukat?.ad_soyad ?? (avukatId ? null : kayit.avukat_adi),
     };
     setKaydediliyor(true);
     try {
@@ -213,6 +270,71 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
                 placeholder="Ödemenin yapıldığı banka" />
             </div>
           )}
+
+          {/* AVUKAT: ad soyad LİSTEDEN seçilir, serbest metin değil — aynı kişi
+              üç farklı yazımla girilirse "hangi dosyaları kim takip ediyor"
+              sorusu cevaplanamaz hale gelir. İletişim bilgisi seçilince altında
+              görünür; ayrıca yazılmaz, çünkü tek doğru kaynağı avukat kaydıdır. */}
+          {avukatMi && (
+            <div className="sm:col-span-2">
+              <label className={lbl}>Avukat <span className="text-red-600">*</span></label>
+              {/* TABLO YOK ile AVUKAT YOK AYRI: ikisi tek bir "avukat yok"
+                  mesajına indirgenince kullanıcı eklemeye çalışıyor ve
+                  anlamadığı bir hata alıyordu. Kurulum eksikse ne yapılacağı
+                  doğrudan yazıyor. */}
+              {avukatTabloYok ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Avukat listesi kurulmamış — <code>sql/avukatlar.sql</code> çalıştırılmalı.
+                </p>
+              ) : (
+                <>
+                  {avukatlar.length > 0 && (
+                    <select className={inp} value={avukatId} onChange={(e) => setAvukatId(e.target.value)}>
+                      <option value="">Seçin…</option>
+                      {avukatlar.map((a) => <option key={a.id} value={a.id}>{a.ad_soyad}</option>)}
+                    </select>
+                  )}
+                  {secilenAvukat && (
+                    <div className="mt-1 text-[11px] text-gray-500">
+                      {secilenAvukat.email || "e-posta yok"} · {secilenAvukat.telefon ? telefonGoster(secilenAvukat.telefon) : "telefon yok"}
+                    </div>
+                  )}
+
+                  {/* BURADAN DA EKLENİR: avukat listede yoksa pencereyi kapatıp
+                      Tanımlamalar'a gitmek gerekiyordu — girilen cevap bilgileri
+                      de kayboluyordu. Eklenen avukat hemen seçili geliyor. */}
+                  {yeniAvukatAcik ? (
+                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input className={`${inp} sm:col-span-2`} autoFocus value={yeniAvukat.ad_soyad}
+                          placeholder="Ad soyad (ör. Av. Ali Veli)"
+                          onChange={(e) => setYeniAvukat((f) => ({ ...f, ad_soyad: e.target.value }))} />
+                        <input className={inp} value={yeniAvukat.email} placeholder="E-posta" inputMode="email"
+                          onChange={(e) => setYeniAvukat((f) => ({ ...f, email: e.target.value }))} />
+                        <input className={inp} value={yeniAvukat.telefon} placeholder="Cep telefonu" inputMode="tel"
+                          onChange={(e) => setYeniAvukat((f) => ({ ...f, telefon: e.target.value }))} />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button type="button" onClick={avukatEkle} disabled={avukatEkleniyor || !yeniAvukat.ad_soyad.trim()}
+                          className="inline-flex items-center gap-1 h-8 px-2.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
+                          {avukatEkleniyor ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Kaydet ve seç
+                        </button>
+                        <button type="button" onClick={() => setYeniAvukatAcik(false)}
+                          className="inline-flex items-center gap-1 h-8 px-2.5 text-xs rounded-lg border border-gray-300 text-gray-600 hover:bg-white">
+                          <X size={13} /> Vazgeç
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setYeniAvukatAcik(true)}
+                      className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-[#1E3A5F] hover:underline">
+                      <Plus size={13} /> {avukatlar.length === 0 ? "İlk avukatı ekle" : "Listede yok, yeni avukat ekle"}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {/* KEP'TE ÖDENEN TUTAR SORULMAZ: KEP bir yazışma kanalı, ödeme değil.
               Alan orada durunca "doldurmam mı gerekiyor" sorusu doğuyordu.
               KAYITLI TUTAR SİLİNMEZ: alan gizlenince state'teki değer olduğu gibi
@@ -237,7 +359,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
 
         <DialogFooter>
           <Button variant="outline" onClick={kapat}>İptal</Button>
-          <Button onClick={kaydet} disabled={kaydediliyor || !cevapSekli.trim()}>
+          <Button onClick={kaydet} disabled={kaydediliyor || !cevapSekli.trim() || (avukatMi && !avukatId)}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
           </Button>
         </DialogFooter>

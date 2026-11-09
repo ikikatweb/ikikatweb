@@ -875,6 +875,10 @@ export type IcraKayit = {
   cevap_suresi_gun: number | null;
   /** Cevap şekli banka havalesi ise ödemenin yapıldığı banka. Diğerlerinde boş. */
   banka_adi: string | null;
+  /** Cevap avukat aracılığıyla verildiyse seçilen avukat (public.avukatlar). */
+  avukat_id: string | null;
+  /** Avukatın o andaki adı — ANLIK KOPYA: avukat silinse/adı değişse de kalır. */
+  avukat_adi: string | null;
   /** İcra dairesinden haciz kaldırma yazısı geldiyse o yazının tarihi. Dosyayı kapatmaz. */
   haciz_kaldirma_tarihi: string | null;
   haciz_kaldirma_notu: string | null;
@@ -916,6 +920,21 @@ export type IcraSirketTakip = {
 };
 
 export type IcraSirketDurum = "yeni" | "avukatta" | "itiraz_edildi" | "taksit" | "odendi" | "kapandi";
+
+// AVUKATLAR — icra cevabı "Avukat Aracılığı" ile verildiğinde seçilen kişi.
+// İcra Dosyaları > Tanımlamalar sekmesinden yönetilir. Cevap Şekli listesinden
+// farklı olarak üç alanı var (ad, e-posta, cep), o yüzden kendi tablosunda.
+export type Avukat = {
+  id: string;
+  ad_soyad: string;
+  email: string | null;
+  telefon: string | null;
+  /** Ayrılan avukat SİLİNMEZ, pasife alınır — eski kayıtlardaki bağlantı kopmasın. */
+  aktif: boolean;
+  sira: number;
+  created_at: string;
+  updated_at: string;
+};
 
 // İhale ve sınır değer hesaplama tipleri
 export type Ihale = {
