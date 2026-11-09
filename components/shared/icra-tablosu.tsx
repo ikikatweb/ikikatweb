@@ -15,7 +15,7 @@ import { trAramaNormalize } from "@/lib/utils/isim";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanlari, type CevapAlanlari } from "@/components/shared/icra-cevap-alanlari";
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
-import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukataGonder, AVUKAT_TAKIP_NOTU } from "@/lib/supabase/queries/icra-avukat-mail";
 import { Button } from "@/components/ui/button";
 
 // Cevap Şekli varsayılanları (Tanımlamalar boşsa kullanılır). Tanımlamalar sekmesinden yönetilir.
@@ -336,6 +336,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             ? { ...s, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek, avukat_mail_at: new Date().toISOString() }
             : s)));
           toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          toast(AVUKAT_TAKIP_NOTU, { icon: "📞", duration: 12000 });
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
         } catch (e) {

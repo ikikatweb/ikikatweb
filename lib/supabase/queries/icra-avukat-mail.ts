@@ -14,6 +14,19 @@ export type AvukatMailSonucu = {
   antetInemedi: boolean;
 };
 
+/**
+ * MAİL GİTTİKTEN SONRA EKRANA ÇIKAN HATIRLATMA.
+ *
+ * NİYE: dosyayı avukata göndermek işi bitirmiyor; panel bundan sonrasını
+ * görmüyor (duruşma, haciz, itiraz sonucu avukatta kalıyor). "Gönderildi"
+ * yazısı tek başına işin kapandığı izlenimi veriyordu.
+ *
+ * YALNIZ MAİL GERÇEKTEN GİTTİYSE gösterilir — gitmeyen bir maile "takip et"
+ * demek yanlış yere güven verir.
+ */
+export const AVUKAT_TAKIP_NOTU =
+  "Avukatla iletişime geçerek gelişmeler hakkında bilgi almayı unutmayın !";
+
 export async function avukataGonder(icraId: string, avukatId: string, not: string): Promise<AvukatMailSonucu> {
   const res = await fetch("/api/icra/avukata-gonder", {
     method: "POST",

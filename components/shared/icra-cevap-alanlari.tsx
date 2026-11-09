@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, X, Loader2, Send } from "lucide-react";
 import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
-import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
+import { avukataGonder, AVUKAT_TAKIP_NOTU } from "@/lib/supabase/queries/icra-avukat-mail";
 import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
 import { telefonGoster } from "@/lib/utils/telefon";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -239,6 +239,7 @@ export default function IcraCevapAlanlari({
       const c = await avukataGonder(icraId, deger.avukat_id, deger.avukat_notu);
       tekrarGonderildi?.({ ek: c.ek, gonderen: c.gonderen, gonderildiAt: c.gonderildiAt });
       toast.success(`${c.alici} adresine yeniden gönderildi · ek: ${c.ek}`, { duration: 7000 });
+      toast(AVUKAT_TAKIP_NOTU, { icon: "📞", duration: 12000 });
       if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt tutulamadı: ${c.kayitHatasi}`, { duration: 10000 });
       if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
     } catch (e) {
