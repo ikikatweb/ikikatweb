@@ -36,6 +36,26 @@ export const DURUMLAR: { kod: IcraSirketDurum; ad: string; sinif: string }[] = [
 ];
 const durumBilgi = (k: string) => DURUMLAR.find((d) => d.kod === k) ?? DURUMLAR[0];
 
+/**
+ * CEVAP ŞEKLİ OLARAK SEÇİLEBİLENLER.
+ *
+ * "Yeni geldi" listede YOK: o bir cevap değil, cevabın henüz verilmediği hâl —
+ * seçeneği "Seçin…" temsil ediyor ve dosya ele alınmamış sayılıyor (menü
+ * rozeti, ana sayfa kartı ve süre uyarısı bu koda bakıyor). Böylece işlenmiş
+ * bir takip "Seçin…"e çekilerek geri de alınabiliyor.
+ *
+ * "İtiraz edildi" ve "Taksitlendi" de çıkarıldı. ESKİ KAYITTA DURUYORSA
+ * LİSTEYE EKLENİR (bkz. durumSecenekleri) — seçeneği kaldırmak, kayıttaki
+ * değeri sessizce değiştirmenin gerekçesi değil.
+ */
+export const SECILEBILIR_DURUMLAR: IcraSirketDurum[] = ["avukatta", "odendi", "kapandi"];
+
+/** Seçilebilirler + kayıtta duran (artık listede olmayan) değer. */
+export function durumSecenekleri(mevcut: IcraSirketDurum): IcraSirketDurum[] {
+  return mevcut !== "yeni" && !SECILEBILIR_DURUMLAR.includes(mevcut)
+    ? [mevcut, ...SECILEBILIR_DURUMLAR] : SECILEBILIR_DURUMLAR;
+}
+
 function tlFmt(n: number): string { return "₺" + n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function paraGoster(n: number): string { return n ? n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""; }
 function tarihGoster(v: string | null): string { return v ? v.split("-").reverse().join(".") : ""; }
@@ -461,6 +481,18 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                 onChange={(e) => setF("itiraz_suresi_gun", e.target.value.replace(/\D/g, ""))} placeholder="belgede yazan" />
               <p className="text-[10px] text-gray-400 mt-0.5">Belgede yazmıyorsa boş bırakın — gün uydurulmaz.</p>
             </div>
+            {/* CEVAP BÖLÜMÜ — hızlı pencereyle aynı düzen: cevap şekli önce ve tek
+                satır, sorulan alanlar ona bağlı. "Seçin…" ele alınmamış demek
+                (durum="yeni"); işlenmiş bir takip buraya çekilerek geri alınır. */}
+            <div className="sm:col-span-3 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme</div>
+            <div className="sm:col-span-3"><label className={fLbl}>Cevap şekli</label>
+              <select className={fInp} value={form.durum} onChange={(e) => setF("durum", e.target.value)}>
+                <option value="yeni">Seçin…</option>
+                {durumSecenekleri(form.durum as IcraSirketDurum).map((k) => (
+                  <option key={k} value={k}>{DURUMLAR.find((d) => d.kod === k)?.ad ?? k}</option>
+                ))}
+              </select></div>
+
             <div><label className={fLbl}>İtiraz tarihi</label>
               <input type="date" className={fInp} value={form.itiraz_tarihi} onChange={(e) => setF("itiraz_tarihi", e.target.value)} /></div>
             <div><label className={fLbl}>İtiraz şekli</label>
@@ -474,10 +506,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <div><label className={fLbl}>Ödeme tarihi</label>
               <input type="date" className={fInp} value={form.odeme_tarihi} onChange={(e) => setF("odeme_tarihi", e.target.value)} /></div>
 
-            <div><label className={fLbl}>Durum</label>
-              <select className={fInp} value={form.durum} onChange={(e) => setF("durum", e.target.value)}>
-                {DURUMLAR.map((d) => <option key={d.kod} value={d.kod}>{d.ad}</option>)}
-              </select></div>
             <div className="sm:col-span-2"><label className={fLbl}>Açıklama</label>
               <input className={fInp} value={form.aciklama} onChange={(e) => setF("aciklama", e.target.value)} /></div>
           </div>

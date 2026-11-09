@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
-import { DURUMLAR } from "@/components/shared/icra-sirket-tablosu";
+import { DURUMLAR, durumSecenekleri } from "@/components/shared/icra-sirket-tablosu";
 import { icraDegisti } from "@/hooks";
 import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -148,10 +148,17 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
 
         <div ref={formRef} onKeyDown={formEnter}
           className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
-          <div>
-            <label className={lbl}>Durum</label>
+          {/* CEVAP ŞEKLİ İLK VE TEK SATIR — icra penceresiyle aynı düzen: sorulan
+              alanlar buna bağlı, insan önce bunu görmeli. "Seçin…" ele
+              alınmamış demektir (durum="yeni"); işlenmiş bir takip buraya
+              çekilerek geri alınabilir. */}
+          <div className="sm:col-span-2">
+            <label className={lbl}>Cevap şekli</label>
             <select className={inp} value={durum} onChange={(e) => setDurum(e.target.value as IcraSirketDurum)}>
-              {DURUMLAR.map((d) => <option key={d.kod} value={d.kod}>{d.ad}</option>)}
+              <option value="yeni">Seçin…</option>
+              {durumSecenekleri(durum).map((k) => (
+                <option key={k} value={k}>{DURUMLAR.find((d) => d.kod === k)?.ad ?? k}</option>
+              ))}
             </select>
           </div>
           <div>
