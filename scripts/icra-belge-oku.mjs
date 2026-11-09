@@ -179,8 +179,19 @@ export function belgeCozumle(metin, bizimVknler = []) {
       borc_miktari: tutarCevir(tutar),
     });
   } else if (tur === "odeme_emri") {
-    const alacakli = m.match(/1-\s*Alacaklı[\s\S]{0,260}?adresi\s*:?\s*(.{5,200}?)(?:\s*vekili|\s*2-\s*Borçlu)/i)?.[1];
-    const borclu = m.match(/2-\s*Borçlu[\s\S]{0,280}?(?:numarası|adresi)\s*:?\s*(.{5,200}?)(?:\s*3-|\s*Takip)/i)?.[1];
+    // İKİ NOKTA ZORUNLU (09.11.2026'da Niğde 2022/2072'de yakalandı). Eski matbu
+    // formun etiketi uzun ve İÇİNDE "adresi;" geçiyor:
+    //   "1- Alacaklı … yerleşim yerindeki adresi; alacaklı yabancı ülkede
+    //    oturuyorsa, Türkiye'de göstereceği yerleşim yerindeki adresi : ÜMMÜGÜLSÜM BAL"
+    // İki nokta İSTEĞE BAĞLI olunca (":?") kalıp ilk "adresi"de duruyor ve alacaklı
+    // adı olarak ETİKETİN KENDİSİ okunuyordu — ekranda alacaklı "; alacaklı yabancı
+    // ülkede oturuyorsa…" diye görünüyordu. Aynısı borçluda "vergi kimlik numarası"
+    // etiketiyle oluyordu. İki noktayı zorunlu kılmak etiketi atlatıyor.
+    // Yedi ödeme emrinde denendi: altısında sonuç DEĞİŞMEDİ, yedincisi düzeldi.
+    // Belgede iki nokta hiç yoksa alan BOŞ kalır ve uyarıya düşer — etiket metnini
+    // alacaklı diye yazmaktan iyidir.
+    const alacakli = m.match(/1-\s*Alacaklı[\s\S]{0,300}?adresi\s*:\s*(.{5,200}?)(?:\s*vekili|\s*2-\s*Borçlu)/i)?.[1];
+    const borclu = m.match(/2-\s*Borçlu[\s\S]{0,320}?(?:numarası|adresi)\s*:\s*(.{5,200}?)(?:\s*3-|\s*Takip)/i)?.[1];
     Object.assign(sonuc, {
       alacakli_adi: tarafAyir(alacakli).ad, alacakli_vergi_no: tarafAyir(alacakli).no,
       borclu_adi: tarafAyir(borclu).ad, borclu_tc_no: tarafAyir(borclu).no,

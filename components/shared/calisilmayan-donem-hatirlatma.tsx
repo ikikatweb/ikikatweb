@@ -29,7 +29,7 @@ const UYARI_TIPI = "calisilmayan-donem";
 const trTarih = (g: string) => new Date(g + "T00:00:00").toLocaleDateString("tr-TR");
 
 export default function CalisilmayanDonemHatirlatma() {
-  const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
+  const { kullanici, isYonetici, isShantiyeAdmin, profilYenile } = useAuth();
   const yetkili = isYonetici || isShantiyeAdmin;
   const [santiyeler, setSantiyeler] = useState<CalisilmayanDonemRow[]>([]);
   const [gizlenenler, setGizlenenler] = useState<string[]>([]);
@@ -62,6 +62,9 @@ export default function CalisilmayanDonemHatirlatma() {
     try {
       const { gizlenenler: yeni, kayitHatasi } = await uyariGizle(anahtar);
       setGizlenenler(yeni);
+      // PROFİL TAZELENİR — YOKSA UYARI GERİ GELİR (09.11.2026). Gerekçe için
+      // bkz. gecici-kabul-prim-hatirlatma; buradaki kalıp birebir aynıydı.
+      await profilYenile();
       toast.success("Uyarı bu kullanıcı için kapatıldı.");
       // Onay günlüğü tutulamadıysa SÖYLE — "kim onayladı" kaydı tutuluyor sanılmasın.
       if (kayitHatasi) toast.error(`Onay kaydı tutulamadı: ${kayitHatasi}`, { duration: 8000 });

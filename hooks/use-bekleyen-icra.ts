@@ -23,8 +23,12 @@ export function icraDegisti() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(ICRA_DEGISTI));
 }
 
-export function useBekleyenIcra(etkin: boolean): number {
-  const [sayi, setSayi] = useState(0);
+/** Sayılar ayrı ayrı: menü rozeti toplamı, sekme rozetleri kendi kalemini gösterir. */
+export type BekleyenIcra = { ucuncuSahis: number; sirket: number; toplam: number };
+const BOS: BekleyenIcra = { ucuncuSahis: 0, sirket: 0, toplam: 0 };
+
+export function useBekleyenIcra(etkin: boolean): BekleyenIcra {
+  const [sayi, setSayi] = useState<BekleyenIcra>(BOS);
 
   const say = useCallback(async () => {
     const sb = createClient();
@@ -40,7 +44,9 @@ export function useBekleyenIcra(etkin: boolean): number {
     // çalıştırılmadıysa) o kalem 0 sayılır ama üçüncü şahıs sayısı gösterilmeye devam eder.
     if (ucuncuSahis.error) { console.warn("Cevapsız icra dosyası sayılamadı:", ucuncuSahis.error.message); return; }
     if (sirket.error) console.warn("Şirkete açılan takip sayılamadı:", sirket.error.message);
-    setSayi((ucuncuSahis.count ?? 0) + (sirket.count ?? 0));
+    const u = ucuncuSahis.count ?? 0;
+    const k = sirket.count ?? 0;
+    setSayi({ ucuncuSahis: u, sirket: k, toplam: u + k });
   }, []);
 
   useEffect(() => {
@@ -57,5 +63,5 @@ export function useBekleyenIcra(etkin: boolean): number {
     };
   }, [etkin, say]);
 
-  return etkin ? sayi : 0;
+  return etkin ? sayi : BOS;
 }

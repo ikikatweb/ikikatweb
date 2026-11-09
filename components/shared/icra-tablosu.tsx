@@ -403,8 +403,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
                   <td className={`${td} text-center text-gray-500 tabular-nums`}>{siraNo.get(s.id)}</td>
-                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle text-center" title={s.ucuncu_sahis ?? ""}>
-                    {firmaRengi(s.ucuncu_sahis) && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: firmaRengi(s.ucuncu_sahis)! }} />}
+                  {/* FİRMA RENGİ: yuvarlak nokta değil ince dikey çubuk — panelde
+                      firma rengi her yerde ("Eksik Evrak", icra kartları) bu biçimde
+                      gösteriliyor, ekranlar arasında aynı dil olsun. */}
+                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle" title={s.ucuncu_sahis ?? ""}>
+                    <span className="mx-auto block w-1 rounded-full"
+                      style={{ backgroundColor: firmaRengi(s.ucuncu_sahis) ?? "#e5e7eb", minHeight: "1.25rem" }} />
                   </td>
                   {/* HACİZ KALDIRMA ROZETİ (09.11.2026): icra dairesinden "haczin
                       kaldırılmasına karar verilmiştir" yazısı gelmişse burada görünür.

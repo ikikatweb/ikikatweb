@@ -13,6 +13,7 @@ import {
   type IcraBorcluBaglam,
 } from "@/lib/supabase/queries/icra";
 import type { IcraKayit } from "@/lib/supabase/types";
+import { createClient } from "@/lib/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -42,6 +43,28 @@ export default function IcraDashboard() {
   // Borçlu kendi personelimizse: hangi şantiyede ve o şantiyenin firması hangi renk.
   // Satırın solundaki renk şeridi buradan gelir.
   const [baglamlar, setBaglamlar] = useState<Map<string, IcraBorcluBaglam>>(new Map());
+  // ÜÇÜNCÜ ŞAHIS FİRMASININ RENGİ — satırın solundaki şerit.
+  // Eskiden şerit BORÇLUNUN çalıştığı şantiyenin firma rengiydi; borçlu personelimiz
+  // değilse ya da aktif ataması yoksa şerit hiç çizilmiyordu, yani çoğu satır renksizdi.
+  // Üçüncü şahıs (hangi firmamıza geldiği) her satırda dolu ve "Şirkete Açılan
+  // Takipler" kartındaki şeritle aynı dili konuşuyor. Şantiye bilgisi kaybolmadı:
+  // alttaki şantiye satırı kendi renk noktasını zaten taşıyor.
+  const [renkler, setRenkler] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    let iptal = false;
+    createClient().from("firmalar").select("firma_adi, renk").then(({ data }) => {
+      if (iptal) return;
+      const m = new Map<string, string>();
+      for (const f of (data ?? []) as { firma_adi: string | null; renk: string | null }[]) {
+        const ad = (f.firma_adi ?? "").trim().toLocaleUpperCase("tr");
+        if (ad && f.renk) m.set(ad, f.renk);
+      }
+      setRenkler(m);
+    }, () => { /* renk yoksa şeritsiz devam */ });
+    return () => { iptal = true; };
+  }, []);
+  const firmaRengi = (ad: string | null) => renkler.get((ad ?? "").trim().toLocaleUpperCase("tr")) ?? null;
 
   useEffect(() => {
     let iptal = false;
@@ -125,12 +148,16 @@ export default function IcraDashboard() {
                 const baglam = baglamlar.get(icraBorcluAnahtar(s.borclu_tc_no, s.borclu_adi));
                 return (
                 <TableRow key={s.id} className={acil ? "bg-red-100 hover:bg-red-200" : "hover:bg-red-50/40"}>
-                  {/* SOL ŞERİT: borçlunun çalıştığı şantiyenin firma rengi. Borçlu personelimiz
-                      değilse ya da aktif ataması yoksa şerit çizilmez (şeffaf). */}
-                  <TableCell
-                    className="px-2 border-l-4"
-                    style={{ borderLeftColor: baglam?.firmaRenk ?? "transparent" }}
-                  >
+                  {/* SOL ŞERİT: yazının geldiği ÜÇÜNCÜ ŞAHIS firmasının rengi
+                      (yukarıdaki nota bakın). Hücre kenarlığı değil, "Eksik Evrak"
+                      kartındaki ince dikey çubuğun aynısı — panelde firma rengi her
+                      yerde bu biçimde gösteriliyor. */}
+                  <TableCell className="px-2">
+                    <div className="flex items-stretch gap-2">
+                    <span className="inline-block w-1 self-stretch rounded-full flex-shrink-0"
+                      style={{ backgroundColor: firmaRengi(s.ucuncu_sahis) ?? "#e5e7eb", minHeight: "1.5rem" }}
+                      title={s.ucuncu_sahis ? `Üçüncü şahıs: ${s.ucuncu_sahis}` : "Firma rengi tanımlı değil"} />
+                    <div className="min-w-0">
                     <div className="text-[9px] text-gray-400 leading-none">Borçlu</div>
                     <div className={`font-medium truncate max-w-[150px] ${acil ? "text-red-700" : "text-[#1E3A5F]"}`} title={s.borclu_adi ?? ""}>{s.borclu_adi ?? "—"}</div>
                     {s.alacakli_adi && <>
@@ -156,6 +183,8 @@ export default function IcraDashboard() {
                         {!belgedenMi && <span className="font-normal"> (varsayılan)</span>}
                       </div>
                     )}
+                    </div>
+                    </div>
                   </TableCell>
                   <TableCell className="px-2 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
                   <TableCell className="px-2 text-center">

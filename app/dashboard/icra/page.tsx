@@ -13,7 +13,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useAuth, useOturumFiltresi } from "@/hooks";
+import { useAuth, useOturumFiltresi, useBekleyenIcra } from "@/hooks";
 import IcraTablosu from "@/components/shared/icra-tablosu";
 import IcraSirketTablosu from "@/components/shared/icra-sirket-tablosu";
 import IcraTanimlamalar from "@/components/shared/icra-tanimlamalar";
@@ -26,6 +26,7 @@ export default function IcraPage() {
   const canDuzenle = isYonetici || hasPermission("icra", "duzenle");
   const canSil = isYonetici || hasPermission("icra", "sil");
   const [sekme, setSekme] = useOturumFiltresi<"takip" | "sirket" | "tanim">("icra:sekme", "takip");
+  const bekleyen = useBekleyenIcra(gor);
 
   // Bildirimden/başka ekrandan "?sekme=sirket&duzenle=<id>" ile gelinince doğru sekme açılsın —
   // yoksa bağlantı üçüncü şahıs defterine düşer ve dosya "yok" görünür.
@@ -39,10 +40,14 @@ export default function IcraPage() {
   if (loading) return <div className="text-center py-16 text-gray-500">Yükleniyor...</div>;
   if (!gor) return <div className="text-center py-16 text-gray-500">Bu sayfayı görüntüleme yetkiniz yok.</div>;
 
+  // SEKME ROZETLERİ: menüdeki tek yuvarlak sayı burada ikiye ayrılır — hangi defterde
+  // kaç iş beklediği sekmeye girmeden görünsün. Toplamları menü rozetiyle aynıdır.
   const sekmeler = [
-    { id: "takip" as const, label: "Üçüncü Şahıs Hacizleri", icon: <Gavel size={15} /> },
-    { id: "sirket" as const, label: "Şirkete Açılan Takipler", icon: <Scale size={15} /> },
-    { id: "tanim" as const, label: "Tanımlamalar", icon: <ListChecks size={15} /> },
+    { id: "takip" as const, label: "Üçüncü Şahıs Hacizleri", icon: <Gavel size={15} />,
+      rozet: bekleyen.ucuncuSahis, baslik: `${bekleyen.ucuncuSahis} dosyada icraya cevap verilmemiş` },
+    { id: "sirket" as const, label: "Şirkete Açılan Takipler", icon: <Scale size={15} />,
+      rozet: bekleyen.sirket, baslik: `${bekleyen.sirket} ödeme emri henüz ele alınmadı` },
+    { id: "tanim" as const, label: "Tanımlamalar", icon: <ListChecks size={15} />, rozet: 0, baslik: "" },
   ];
 
   return (
@@ -55,6 +60,14 @@ export default function IcraPage() {
               sekme === s.id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-200"
             }`}>
             {s.icon} {s.label}
+            {s.rozet > 0 && (
+              <span title={s.baslik} aria-label={s.baslik}
+                className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-none ${
+                  sekme === s.id ? "bg-white text-[#1E3A5F]" : "bg-red-600 text-white"
+                }`}>
+                {s.rozet > 99 ? "99+" : s.rozet}
+              </span>
+            )}
           </button>
         ))}
       </div>

@@ -40,7 +40,7 @@ export default function GeciciKabulPrimHatirlatma({
   satirlar?: PrimSatiri[];
   tahminiFFKapali?: boolean;
 }) {
-  const { hasPermission, kullanici } = useAuth();
+  const { hasPermission, kullanici, profilYenile } = useAuth();
   // "yazismalar" diye bir yetki anahtarı YOK — gerçek anahtar yazismalar-giden-evrak.
   // Yanlış anahtar hasPermission'da hep false döner ve uyarı yalnız işçilik takibi
   // yetkisi olanlara görünürdü.
@@ -67,6 +67,15 @@ export default function GeciciKabulPrimHatirlatma({
       const { gizlenenler, kayitHatasi } = await uyariGizle(anahtar);
       setGizlenenler(gizlenenler);
       setOnayBekleyen(null);
+      // PROFİL TAZELENİR — YOKSA UYARI GERİ GELİR (09.11.2026).
+      // "Anlaşıldı" anahtarı veritabanına yazılıyor ama oturumdaki profil nesnesi
+      // (AuthProvider mount'ta bir kez okur) eski listeyi taşımaya devam ediyordu.
+      // Bu bileşen her yeniden kurulduğunda (sayfa değiştirip ana ekrana dönmek,
+      // herhangi bir işlemden sonra) gizlenenleri o ESKİ profilden okuyup kendi
+      // yazdığını siliyordu — uyarı her seferinde yeniden çıkıyordu. Yalnız F5
+      // yapınca düzeliyordu, o yüzden "bazen oluyor" gibi görünüyordu.
+      await profilYenile();
+
       toast.success("Uyarı bu kullanıcı için kapatıldı.");
       // Onay günlüğü tutulamadıysa söyle — kapandı sanılıp izi hiç kalmamasın.
       if (kayitHatasi) toast.error(`Onay kaydı tutulamadı: ${kayitHatasi}`, { duration: 8000 });

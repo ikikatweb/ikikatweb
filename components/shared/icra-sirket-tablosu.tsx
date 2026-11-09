@@ -330,8 +330,10 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               return (
                 <tr key={s.id} className="border-b border-gray-100 hover:bg-gray-50/60">
                   <td className={`${td} text-center text-gray-500 tabular-nums`}>{siraNo.get(s.id)}</td>
-                  <td className="border border-gray-100 px-1.5 py-1.5 text-center align-middle" title={s.borclu_firma ?? ""}>
-                    {firmaRengi(s.borclu_firma) && <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: firmaRengi(s.borclu_firma)! }} />}
+                  {/* FİRMA RENGİ: ince dikey çubuk (üçüncü şahıs defteriyle aynı dil). */}
+                  <td className="border border-gray-100 px-1.5 py-1.5 align-middle" title={s.borclu_firma ?? ""}>
+                    <span className="mx-auto block w-1 rounded-full"
+                      style={{ backgroundColor: firmaRengi(s.borclu_firma) ?? "#e5e7eb", minHeight: "1.25rem" }} />
                   </td>
                   <td className={td} title={s.dosya_esas_no ?? ""}>{s.dosya_esas_no}</td>
                   <td className={td} title={s.icra_dairesi ?? ""}>{s.icra_dairesi}</td>

@@ -48,7 +48,8 @@ const grupluModuller = getGrupluModuller();
 const DASHBOARD_WIDGETS = [
   { key: "yiufe", label: "Yi-ÜFE Endeksler" },
   { key: "kasa_ozet", label: "Kasa — Personel Özeti" },
-  { key: "icra_ozet", label: "İcra Dosyaları" },
+  { key: "icra_ozet", label: "İcra — Cevap Bekleyen" },
+  { key: "odeme_emri", label: "Şirkete Açılan Takipler (ödeme emri)" },
   { key: "sigorta_muayene", label: "Yaklaşan Sigorta & Muayene" },
   { key: "yaklasan_bakim", label: "Yaklaşan Araç Bakımları" },
   { key: "depo_yakit", label: "Depo Yakıt Durumu" },

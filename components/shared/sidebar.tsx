@@ -191,7 +191,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const okunmamisTebligat = useOkunmamisTebligat(tebligatYetki);
   // Ele alınmamış icra işi rozeti: cevapsız üçüncü şahıs hacizleri + "yeni" ödeme emirleri.
   const icraYetki = isYonetici || hasPermission("icra", "goruntule");
-  const bekleyenIcra = useBekleyenIcra(icraYetki);
+  const bekleyenIcra = useBekleyenIcra(icraYetki).toplam;
   // href → rozet (sayı + ne sayıldığını söyleyen başlık). Başka ekranlara rozet
   // gerekirse buraya eklenir; BAŞLIK HER SATIRDA KENDİSİNİN olmalı — eskiden hepsine
   // "okunmamış tebligat" yazıyordu, icra rozeti eklenince bu yanlış olurdu.

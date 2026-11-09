@@ -54,6 +54,7 @@ import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirl
 import TebligatHatirlatma from "@/components/shared/tebligat-hatirlatma";
 import KetsisHatirlatma from "@/components/shared/ketsis-hatirlatma";
 import IcraDashboard from "@/components/shared/icra-dashboard";
+import OdemeEmriDashboard from "@/components/shared/odeme-emri-dashboard";
 import jsPDF from "jspdf";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -1834,14 +1835,18 @@ export default function DashboardPage() {
   // Satır satır sütun paylaşımı (bkz. sutunPaylastir).
   //   Üst satır : Arvento (1) + Yi-ÜFE (1) + Yaklaşan Sigorta (2)
   //   Orta satır: Eksik Veri Girişi (2) + Yaklaşan Bakım (2)
-  //   Üçlü satır: İcra + Kasa + Eksik Evrak — içeride açık kart sayısı kadar sütun
+  //   İcra satırı : Cevap Bekleyen + Şirkete Açılan Takipler
+  //   Kasa satırı : Kasa + Eksik Evrak — her satır açık kart sayısı kadar sütun
   const [arvSpan, yiufeSpan, sigortaSpan] = sutunPaylastir([
     wg("arvento") ? 1 : 0, wg("yiufe") ? 1 : 0, wg("sigorta_muayene") ? 2 : 0,
   ]);
   const [eksikVeriSpan, bakimSpan] = sutunPaylastir([
     wg("eksik_veri_girisi") ? 2 : 0, wg("yaklasan_bakim") ? 2 : 0,
   ]);
-  const ucluSayi = [wg("icra_ozet"), wg("kasa_ozet"), wg("eksik_evrak")].filter(Boolean).length;
+  // İki ayrı satır: icra kartları (Cevap Bekleyen + Şirkete Açılan Takipler) ve
+  // Kasa + Eksik Evrak. Her satır kendi açık kart sayısı kadar sütuna bölünür.
+  const icraSayi = [wg("icra_ozet"), wg("odeme_emri")].filter(Boolean).length;
+  const ucluSayi = [wg("kasa_ozet"), wg("eksik_evrak")].filter(Boolean).length;
 
   return (
     <div>
@@ -2373,12 +2378,23 @@ export default function DashboardPage() {
           )}
         </div> : null}
 
-        {/* ▼ İcra Takibi + Kasa + Eksik Evrak — YAN YANA (tam genişlik 3'lü satır) */}
-        <div className={`lg:col-span-4 lg:order-3 ${ucluSayi === 0 ? "hidden" : ""}`}>
-          {/* items-start YOK: üç kart aynı boyda bitsin (yukarıdaki nota bakın). */}
-          <div className={`grid grid-cols-1 gap-4 ${ICKOL[ucluSayi]}`}>
-            {/* İcra Takibi */}
+        {/* ▼ İKİ İCRA KARTI YAN YANA — Cevap Bekleyen + Şirkete Açılan Takipler.
+            AYRI SATIR, ÇÜNKÜ ÖNCE TAM GENİŞLİK DENENDİ VE ÇOK GENİŞ OLDU: sütunlar
+            birbirinden kopuyor, satırın ortası boş kalıyordu. Üçlü satıra dördüncü
+            kart olarak sokmak da olmadı — o zaman Kasa ve Eksik Evrak da daralıyordu.
+            İkisi birbirinin eşi: biri borçlu bir BAŞKASI olan dosyalar, diğeri borçlu
+            ŞİRKETİN KENDİSİ olanlar. Yan yana durmaları konu olarak da doğru. */}
+        <div className={`lg:col-span-4 lg:order-3 ${icraSayi === 0 ? "hidden" : ""}`}>
+          <div className={`grid grid-cols-1 gap-4 ${ICKOL[icraSayi]}`}>
             {wg("icra_ozet") ? <IcraDashboard /> : null}
+            {wg("odeme_emri") ? <OdemeEmriDashboard /> : null}
+          </div>
+        </div>
+
+        {/* ▼ Kasa + Eksik Evrak — YAN YANA */}
+        <div className={`lg:col-span-4 lg:order-4 ${ucluSayi === 0 ? "hidden" : ""}`}>
+          {/* items-start YOK: kartlar aynı boyda bitsin (yukarıdaki nota bakın). */}
+          <div className={`grid grid-cols-1 gap-4 ${ICKOL[ucluSayi]}`}>
             {/* Kasa — Kullanıcı Özeti */}
             {wg("kasa_ozet") ? <div className="bg-white rounded-lg border p-3">
               <div className="flex items-center gap-2 mb-2">
