@@ -72,8 +72,14 @@ export default function IcraDashboard() {
   );
 
   return (
-    <div className="bg-white rounded-lg border p-3">
-      <div className="flex items-center justify-between mb-2 pb-2 border-b">
+    // KART KENDİ BOYUNU DOLDURUR (09.11.2026): bu kart komşularıyla (Kasa, Eksik
+    // Evrak) aynı yüksekliğe geriliyor, ama içindeki liste 220px'de sabitti ve altta
+    // boş alan kalıyordu — ekranda yer varken yalnız 2,5 satır görünüyordu.
+    // flex sütun + liste flex-1: liste kartın kalan boyunu alır, kart uzadıkça daha
+    // çok satır görünür. Sabit yükseklik yok, çünkü komşuların boyu içeriğe göre
+    // değişiyor ve hangisinin uzun olacağı önceden bilinmiyor.
+    <div className="bg-white rounded-lg border p-3 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-2 pb-2 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Gavel size={16} className="text-red-600" />
           <div>
@@ -92,7 +98,16 @@ export default function IcraDashboard() {
       ) : bekleyen.length === 0 ? (
         <p className="text-sm text-gray-400">Cevap bekleyen icra dosyası yok</p>
       ) : (
-        <div className="max-h-[220px] overflow-y-auto">
+        /* LİSTE KUTUYU UZATMAZ, KUTUYU DOLDURUR (09.11.2026).
+           Önce "flex-1 + overflow-auto" denendi: liste kendi içeriği kadar yer istedi
+           ve ÜÇ KARTI birden 355px'den 622px'e çıkardı — ölçüldü. Kullanıcı kutunun
+           uzamasını istemiyor, listenin kutunun dibine inmesini istiyor.
+           Çözüm: iç liste MUTLAK konumlu. Mutlak konumlu öğe üst öğenin yüksekliğine
+           katkı vermez, yani kart kendi içeriğiyle uzamaz; ama inset-0 ile kartın
+           komşularından aldığı boyun TAMAMINI kaplar ve taşan kısım scroll olur.
+           min-h-[220px] taban: komşular kısa kalırsa liste iğne gibi incelmesin. */
+        <div className="relative flex-1 min-h-[220px]">
+          <div className="absolute inset-0 overflow-y-auto">
           <Table noWrapper className="text-xs text-gray-900">
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
@@ -164,6 +179,7 @@ export default function IcraDashboard() {
               })}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
     </div>
