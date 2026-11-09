@@ -6,7 +6,7 @@ import { getTanimlamalar, createTanimlama, updateTanimlama, deleteTanimlama } fr
 import { createClient } from "@/lib/supabase/client";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { Plus, Trash2, Loader2, Pencil, Check, X, Scale } from "lucide-react";
-import { getAvukatlar, insertAvukat, updateAvukat, deleteAvukat } from "@/lib/supabase/queries/avukatlar";
+import { getAvukatlar, insertAvukat, updateAvukat, deleteAvukat, avukatKullanimSayisi } from "@/lib/supabase/queries/avukatlar";
 import { telefonGoster } from "@/lib/utils/telefon";
 import type { Avukat } from "@/lib/supabase/types";
 import toast from "react-hot-toast";
@@ -181,11 +181,23 @@ function AvukatListesi({ canEkle, canDuzenle, canSil }: { canEkle: boolean; canD
     catch { toast.error("Güncellenemedi."); }
   }
 
+  /**
+   * SİLME YALNIZ HİÇ KULLANILMAMIŞSA. Kullanımdaysa silmek, icra kayıtlarındaki
+   * bağlantıyı sessizce koparır (tabloda "on delete set null") — adı kalır ama
+   * iletişim bilgisi kaybolur ve kimse fark etmez. O yüzden önce sayılıyor.
+   * Sayı okunamazsa da silinmiyor: bilinmeyen durumda silmek aynı kaybı doğurur.
+   */
   async function sil(a: Avukat) {
-    if (typeof window !== "undefined" && !window.confirm(
-      `${a.ad_soyad} silinsin mi?\n\nBu avukatla cevap verilmiş icra kayıtlarında ADI kalır ama `
-      + `iletişim bilgisi kaybolur. Artık çalışmıyorsa SİLMEK yerine pasife almanız önerilir.`)) return;
-    try { await deleteAvukat(a.id); await yukle(); }
+    const n = await avukatKullanimSayisi(a.id);
+    if (n === -1) { toast.error("Avukatın kullanımda olup olmadığı okunamadı — silinmedi."); return; }
+    if (n > 0) {
+      toast.error(`${a.ad_soyad} ${n} icra dosyasında kullanılmış, silinemez. `
+        + `Artık çalışmıyorsa “pasife al” deyin: seçim listesinde çıkmaz, eski kayıtlar bozulmaz.`,
+        { duration: 9000 });
+      return;
+    }
+    if (typeof window !== "undefined" && !window.confirm(`${a.ad_soyad} silinsin mi?`)) return;
+    try { await deleteAvukat(a.id); await yukle(); toast.success("Avukat silindi."); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Silinemedi."); }
   }
 

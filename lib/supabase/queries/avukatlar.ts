@@ -48,9 +48,26 @@ export async function updateAvukat(id: string, patch: Partial<Avukat>): Promise<
 }
 
 /**
- * SİLME DEĞİL PASİFE ALMA yeğlenir (bkz. aktif alanı): silinen avukatın bağlı
- * olduğu icra kayıtlarında avukat_id null'a düşer. Adı yine de kalır (avukat_adi
- * anlık kopya), ama iletişim bilgisi kaybolur. Arayüz bunu kullanıcıya söyler.
+ * Bu avukat kaç icra dosyasında kullanılmış?
+ * Silmeden ÖNCE sorulur: kullanılmışsa silinmez (aşağıya bak).
+ * Sayı okunamazsa -1 döner — çağıran "bilinmiyor" sayıp silmeyi engellemeli;
+ * bilinmeyen bir durumda silmek, bağlantıyı sessizce koparmak olurdu.
+ */
+export async function avukatKullanimSayisi(id: string): Promise<number> {
+  const { count, error } = await sb()
+    .from("icra").select("id", { count: "exact", head: true }).eq("avukat_id", id);
+  if (error) { console.warn("Avukat kullanımı sayılamadı:", error.message); return -1; }
+  return count ?? 0;
+}
+
+/**
+ * SİLME YALNIZ HİÇ KULLANILMAMIŞSA. Tabloda "on delete set null" var, yani
+ * silinen avukatın bağlı olduğu icra kayıtlarında avukat_id SESSİZCE boşalırdı;
+ * adı kalırdı (anlık kopya) ama iletişim bilgisi kaybolurdu ve bunu kimse fark
+ * etmezdi. Kullanımda olan avukat silinmez, PASİFE ALINIR: seçim listesinde
+ * çıkmaz, eski kayıtlar bozulmaz.
+ *
+ * Kontrol arayüzde yapılıyor (avukatKullanimSayisi); burada yalnız silme var.
  */
 export async function deleteAvukat(id: string): Promise<void> {
   const { error } = await sb().from("avukatlar").delete().eq("id", id);

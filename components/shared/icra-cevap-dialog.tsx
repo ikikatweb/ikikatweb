@@ -56,6 +56,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
   const [yeniAvukatAcik, setYeniAvukatAcik] = useState(false);
   const [yeniAvukat, setYeniAvukat] = useState({ ad_soyad: "", email: "", telefon: "" });
   const [avukatEkleniyor, setAvukatEkleniyor] = useState(false);
+  const [avukatNotu, setAvukatNotu] = useState("");
   const [sekiller, setSekiller] = useState<string[]>(CEVAP_VARSAYILAN);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -81,6 +82,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     setEvrakNo(kayit.evrak_no ?? "");
     setBankaAdi(kayit.banka_adi ?? "");
     setAvukatId(kayit.avukat_id ?? "");
+    setAvukatNotu(kayit.avukat_notu ?? "");
     const t = Number(kayit.odenen_tutar || 0);
     setOdenen(t ? formatParaInput(t.toFixed(2).replace(/\.00$/, "").replace(".", ",")) : "");
   }, [acik, kayit]);
@@ -142,6 +144,55 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     } finally { setAvukatEkleniyor(false); }
   }
 
+  /**
+   * Avukat aracılığıyla cevap: dosya bilgileri + son cevap günü + not avukata
+   * maillenir, ekine tebligat belgesi konur. Sunucu EK İNMEDEN MAİL GÖNDERMEZ
+   * (AGENTS.md) ve cevap tarihini ancak mail gidince yazar.
+   */
+  async function avukatlaGonder() {
+    if (!kayit) return;
+    setKaydediliyor(true);
+    try {
+      // Not ve avukat seçimi mailden BAĞIMSIZ olarak kaydedilir: mail gitmese de
+      // "kimi seçmiştik, ne yazmıştık" kaybolmasın.
+      await updateIcraKayit(kayit.id, {
+        cevap_sekli: cevapSekli.trim() || null,
+        avukat_id: avukatId || null,
+        avukat_adi: secilenAvukat?.ad_soyad ?? null,
+        avukat_notu: avukatNotu.trim() || null,
+      });
+      const res = await fetch("/api/icra/avukata-gonder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ icraId: kayit.id, avukatId, not: avukatNotu }),
+      });
+      const c = await res.json();
+      if (!res.ok) {
+        // SESSİZ GEÇİLMEZ: kayıt tutuldu ama MAİL GİTMEDİ. Dosya hâlâ cevapsız;
+        // kullanıcı bunu bilmezse süre işlemeye devam eder.
+        toast.error(`${c.error ?? "Mail gönderilemedi."}
+
+Avukat seçimi ve not kaydedildi, `
+          + `ama dosya cevapsız sayılmaya devam ediyor.`, { duration: 12000 });
+        kaydedildi({ cevap_sekli: cevapSekli.trim() || null, avukat_id: avukatId || null,
+          avukat_adi: secilenAvukat?.ad_soyad ?? null, avukat_notu: avukatNotu.trim() || null });
+        return;
+      }
+      icraDegisti();
+      kaydedildi({
+        cevap_sekli: cevapSekli.trim() || null, cevap_tarihi: c.cevap_tarihi,
+        avukat_id: avukatId || null, avukat_adi: secilenAvukat?.ad_soyad ?? null,
+        avukat_notu: avukatNotu.trim() || null, avukat_mail_ek: c.ek,
+      });
+      toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+      if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
+      if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+      kapat();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gönderilemedi.", { duration: 9000 });
+    } finally { setKaydediliyor(false); }
+  }
+
   async function kaydet() {
     if (!kayit) return;
     if (!cevapSekli.trim()) { toast.error("Cevap şekli seçilmeli."); return; }
@@ -159,6 +210,11 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     } else if (cevapTarihi && !evrakNo.trim()) {
       toast.error("Cevap tarihi girildi — evrak no zorunludur."); return;
     }
+    // AVUKAT KİPİ SUNUCUDA: kayıt + mail + cevap tarihi tek yerde yapılır.
+    // Mail gitmezse cevap_tarihi YAZILMAZ ve dosya "Cevap Bekleyen"de kalır —
+    // gitmemiş bir cevabı cevaplanmış göstermek süre kaçırtır.
+    if (avukatMi) { await avukatlaGonder(); return; }
+
     const yama: Partial<IcraKayit> = {
       cevap_tarihi: cevapTarihi || null,
       cevap_sekli: cevapSekli.trim() || null,
@@ -252,17 +308,25 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               "cevaplandı" yapan alan cevap_tarihi, ayrı bir yere yazılsaydı dosya
               Cevap Bekleyen listesinde kalırdı. Sorulan soru değişti, kaydın anlamı
               değil — ödeme de icraya verilmiş bir cevaptır. */}
-          <div>
-            <label className={lbl}>{bankaMi ? "Dekont tarihi" : "İcraya cevap tarihi"}</label>
-            <input type="date" className={inp} value={cevapTarihi} onChange={(e) => setCevapTarihi(e.target.value)} />
-          </div>
-          <div>
-            <label className={lbl}>
-              {bankaMi ? "Dekont no" : "Evrak no"} {cevapTarihi && <span className="text-red-600">*</span>}
-            </label>
-            <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)}
-              placeholder={bankaMi ? "Dekont numarası" : "Gönderilen evrak no"} />
-          </div>
+          {/* AVUKAT KİPİNDE TARİH VE EVRAK NO SORULMAZ: cevap, mailin gittiği gün
+              verilmiş sayılıyor ve o tarihi sunucu yazıyor; evrak da mailin
+              kendisi. İkisini ayrıca sormak, kullanıcıya aynı bilgiyi elle
+              uydurtmak olurdu. */}
+          {!avukatMi && (
+            <>
+              <div>
+                <label className={lbl}>{bankaMi ? "Dekont tarihi" : "İcraya cevap tarihi"}</label>
+                <input type="date" className={inp} value={cevapTarihi} onChange={(e) => setCevapTarihi(e.target.value)} />
+              </div>
+              <div>
+                <label className={lbl}>
+                  {bankaMi ? "Dekont no" : "Evrak no"} {cevapTarihi && <span className="text-red-600">*</span>}
+                </label>
+                <input className={inp} value={evrakNo} onChange={(e) => setEvrakNo(e.target.value)}
+                  placeholder={bankaMi ? "Dekont numarası" : "Gönderilen evrak no"} />
+              </div>
+            </>
+          )}
           {bankaMi && (
             <div className="sm:col-span-2">
               <label className={lbl}>Hangi bankadan ödendi</label>
@@ -331,6 +395,19 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
                       <Plus size={13} /> {avukatlar.length === 0 ? "İlk avukatı ekle" : "Listede yok, yeni avukat ekle"}
                     </button>
                   )}
+
+                  {/* NOT MAİLİN İÇİNE GİRER ve kayda da yazılır: "avukata ne
+                      yazmışız" sonradan sorulabiliyor, yalnız mailde kalsaydı
+                      panelde hiç izi olmazdı. */}
+                  <label className={`${lbl} mt-3`}>Avukata not (isteğe bağlı)</label>
+                  <textarea rows={3} value={avukatNotu} onChange={(e) => setAvukatNotu(e.target.value)}
+                    placeholder="Mailin içine eklenecek not"
+                    className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30" />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    Kaydet denince dosya bilgileri, <strong className="text-red-600">son cevap günü</strong>,
+                    bu not ve tebligat belgesi avukata mail ile gider. Belge indirilemezse mail
+                    gönderilmez ve dosya cevapsız kalır.
+                  </p>
                 </>
               )}
             </div>
@@ -340,7 +417,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               KAYITLI TUTAR SİLİNMEZ: alan gizlenince state'teki değer olduğu gibi
               kaydediliyor. Dolu bir tutar varken gizlemek onu görünmez kılardı —
               o yüzden varsa yazıyla söyleniyor. */}
-          {kepMi ? (
+          {kepMi || avukatMi ? (
             parseParaInput(odenen) > 0 ? (
               <div className="self-end text-[11px] text-gray-500">
                 Kayıtlı ödenen tutar {odenen} — KEP seçiliyken sorulmuyor, silinmiyor.
@@ -360,7 +437,8 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
         <DialogFooter>
           <Button variant="outline" onClick={kapat}>İptal</Button>
           <Button onClick={kaydet} disabled={kaydediliyor || !cevapSekli.trim() || (avukatMi && !avukatId)}>
-            {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
+            {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}
+            {avukatMi ? "Kaydet ve avukata gönder" : "Kaydet"}
           </Button>
         </DialogFooter>
       </DialogContent>

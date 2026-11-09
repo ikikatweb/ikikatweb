@@ -879,6 +879,12 @@ export type IcraKayit = {
   avukat_id: string | null;
   /** Avukatın o andaki adı — ANLIK KOPYA: avukat silinse/adı değişse de kalır. */
   avukat_adi: string | null;
+  /** Avukata gönderilen mailin içine eklenen serbest not. */
+  avukat_notu: string | null;
+  /** Mail BAŞARIYLA gittiği an. Boşsa gönderilmemiştir — cevap_tarihi de boş kalır. */
+  avukat_mail_at: string | null;
+  /** Maile eklenen tebligat belgesinin adı. */
+  avukat_mail_ek: string | null;
   /** İcra dairesinden haciz kaldırma yazısı geldiyse o yazının tarihi. Dosyayı kapatmaz. */
   haciz_kaldirma_tarihi: string | null;
   haciz_kaldirma_notu: string | null;
