@@ -115,7 +115,10 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // göndermez — her düzenlemede avukata aynı mailin gitmesi hem gereksiz hem de
   // "hangisi geçerli" karışıklığı yaratır.
   const duzenlenen = editId ? satirlar.find((x) => x.id === editId) ?? null : null;
-  const mailBilgisi = { tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null };
+  const mailBilgisi = {
+    tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null,
+    gonderen: duzenlenen?.avukat_mail_gonderen ?? null, sayi: duzenlenen?.avukat_mail_sayisi ?? 0,
+  };
   const [kaydediliyor, setKaydediliyor] = useState(false);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
@@ -569,12 +572,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
 
       {/* EKLE / DÜZENLE PENCERESİ */}
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Gavel size={18} /> {editId ? "İcra Dosyasını Düzenle" : "Yeni İcra Dosyası"}</DialogTitle>
           </DialogHeader>
 
-          <div ref={formRef} onKeyDown={formEnter} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div ref={formRef} onKeyDown={formEnter}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
             {kilitli && (
               <div className="sm:col-span-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                 🔒 Mevcut bilgiler kilitli — yalnız <b>Cevap / Ödeme</b> alanları girilebilir.
@@ -630,11 +634,19 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <IcraCevapAlanlari
               deger={cevap} degistir={(y) => setCevap((p) => ({ ...p, ...y }))}
               sekiller={cevapSekilleri} tebligTarihi={form.teblig_tarihi}
-              mailBilgisi={{ tarih: mailBilgisi.tarih, ek: mailBilgisi.ek }}
+              mailBilgisi={mailBilgisi} icraId={editId}
+              tekrarGonderildi={(c) => setSatirlar((p) => p.map((x) => (x.id === editId
+                ? { ...x, avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
+                    avukat_mail_gonderen: c.gonderen, avukat_mail_sayisi: (x.avukat_mail_sayisi ?? 0) + 1 }
+                : x)))}
             />
           </div>
 
-          <DialogFooter className="gap-2 mt-4">
+          {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
+              not kutusu, gönderim bilgisi) İptal/Kaydet aşağı kayıp görünmez
+              oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
+              Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
+          <DialogFooter className="gap-2 mt-3 shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setDialogAcik(false)} disabled={kaydediliyor}>İptal</Button>
             <Button className="bg-[#1E3A5F] hover:bg-[#15293f] text-white" onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
               {kaydediliyor ? "Kaydediliyor..." : "Kaydet"}

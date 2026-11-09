@@ -16,8 +16,9 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Plus, X, Loader2, Send } from "lucide-react";
 import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
+import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { telefonGoster } from "@/lib/utils/telefon";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import type { Avukat } from "@/lib/supabase/types";
@@ -76,6 +77,7 @@ export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | n
 
 export default function IcraCevapAlanlari({
   deger, degistir, sekiller, tebligTarihi, zorunlu = false, kilitli = false, mailBilgisi,
+  icraId, tekrarGonderildi,
 }: {
   deger: CevapAlanlari;
   degistir: (yama: Partial<CevapAlanlari>) => void;
@@ -84,14 +86,19 @@ export default function IcraCevapAlanlari({
   /** Hızlı pencerede cevap şekli zorunlu; tam formda "Cevap / Ödeme" bölümü opsiyonel. */
   zorunlu?: boolean;
   kilitli?: boolean;
-  /** Avukata mail daha önce gittiyse: ne zaman, hangi ekle. */
-  mailBilgisi?: { tarih: string | null; ek: string | null };
+  /** Avukata mail daha önce gittiyse: ne zaman, kim, hangi ekle, kaç kez. */
+  mailBilgisi?: { tarih: string | null; ek: string | null; gonderen?: string | null; sayi?: number };
+  /** Kayıt id'si — "Tekrar gönder" için gerekli. Yeni (kaydedilmemiş) kayıtta boş. */
+  icraId?: string | null;
+  /** Tekrar gönderim sonrası üst ekranın tazelenmesi için. */
+  tekrarGonderildi?: (c: { ek: string; gonderen: string; gonderildiAt: string }) => void;
 }) {
   const [avukatlar, setAvukatlar] = useState<Avukat[]>([]);
   const [tabloYok, setTabloYok] = useState(false);
   const [yeniAcik, setYeniAcik] = useState(false);
   const [yeni, setYeni] = useState({ ad_soyad: "", email: "", telefon: "" });
   const [ekleniyor, setEkleniyor] = useState(false);
+  const [tekrarGidiyor, setTekrarGidiyor] = useState(false);
 
   const kip = cevapKipi(deger.cevap_sekli);
 
@@ -127,6 +134,30 @@ export default function IcraCevapAlanlari({
       const m = e instanceof Error ? e.message : "Eklenemedi.";
       toast.error(/duplicate|avukatlar_ad_uq/.test(m) ? "Bu avukat zaten kayıtlı." : m, { duration: 8000 });
     } finally { setEkleniyor(false); }
+  }
+
+  /**
+   * TEKRAR GÖNDER — avukat maili bir kez gider (Kaydet yeniden göndermez), ama
+   * bazen gerekiyor: avukat maili bulamıyor, adres değişmiş, hatırlatma isteniyor.
+   * Düğmeyle AÇIKÇA istenince gönderilir; her kaydetmede kendiliğinden değil.
+   *
+   * CEVAP TARİHİ DEĞİŞMEZ: sunucu ilk gönderimin tarihini koruyor — yeniden
+   * gönderme bir hatırlatmadır, yeni bir cevap değil.
+   */
+  async function tekrarGonder() {
+    if (!icraId || !deger.avukat_id) return;
+    if (typeof window !== "undefined" && !window.confirm(
+      `${secilen?.ad_soyad ?? "Avukata"} aynı dosya için mail yeniden gönderilsin mi?`)) return;
+    setTekrarGidiyor(true);
+    try {
+      const c = await avukataGonder(icraId, deger.avukat_id, deger.avukat_notu);
+      tekrarGonderildi?.({ ek: c.ek, gonderen: c.gonderen, gonderildiAt: c.gonderildiAt });
+      toast.success(`${c.alici} adresine yeniden gönderildi · ek: ${c.ek}`, { duration: 7000 });
+      if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt tutulamadı: ${c.kayitHatasi}`, { duration: 10000 });
+      if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gönderilemedi.", { duration: 10000 });
+    } finally { setTekrarGidiyor(false); }
   }
 
   const lbl = "text-xs font-medium text-gray-600 mb-1 block";
@@ -244,10 +275,22 @@ export default function IcraCevapAlanlari({
                   göndermez — her düzenlemede avukata aynı mailin tekrar gitmesi
                   hem gereksiz hem de "hangisi geçerli" karışıklığı yaratır. */}
               {mailBilgisi?.tarih ? (
-                <p className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
-                  Avukata gönderildi · {new Date(mailBilgisi.tarih).toLocaleString("tr-TR")}
-                  {mailBilgisi.ek ? ` · ek: ${mailBilgisi.ek}` : ""}. Kaydet tekrar göndermez.
-                </p>
+                <div className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                  <div>
+                    Avukata gönderildi · {new Date(mailBilgisi.tarih).toLocaleString("tr-TR")}
+                    {mailBilgisi.gonderen ? ` · ${mailBilgisi.gonderen}` : ""}
+                    {mailBilgisi.ek ? ` · ek: ${mailBilgisi.ek}` : ""}
+                    {(mailBilgisi.sayi ?? 0) > 1 ? ` · ${mailBilgisi.sayi}. gönderim` : ""}
+                  </div>
+                  <div className="mt-1 text-emerald-700">Kaydet tekrar göndermez.</div>
+                  {!kilitli && icraId && deger.avukat_id && (
+                    <button type="button" onClick={tekrarGonder} disabled={tekrarGidiyor}
+                      title="Aynı dosyayı avukata yeniden gönderir. Cevap tarihi DEĞİŞMEZ — ilk gönderim geçerlidir."
+                      className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-emerald-600 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
+                      {tekrarGidiyor ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Tekrar gönder
+                    </button>
+                  )}
+                </div>
               ) : (
                 <p className="mt-1 text-[11px] text-gray-500">
                   Kaydet denince dosya bilgileri, <strong className="text-red-600">son cevap günü</strong>,

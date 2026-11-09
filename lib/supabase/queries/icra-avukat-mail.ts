@@ -5,6 +5,9 @@ export type AvukatMailSonucu = {
   alici: string;
   ek: string;
   cevap_tarihi: string;
+  /** Maili gönderen kullanıcı (sunucuda oturumdan çözülür). */
+  gonderen: string;
+  gonderildiAt: string;
   /** Mail gitti ama kayıt güncellenemedi — kullanıcıya SÖYLENMELİ. */
   kayitHatasi: string | null;
   /** Antet kayıtlı ama inemedi — mail ANTETSİZ gitti. */

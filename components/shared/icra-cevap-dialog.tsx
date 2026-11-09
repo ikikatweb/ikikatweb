@@ -133,7 +133,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
 
   return (
     <Dialog open={acik} onOpenChange={(a) => { if (!a) kapat(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle</DialogTitle></DialogHeader>
 
         {/* DOSYANIN KENDİSİ SALT OKUNUR: burada değiştirilecek bir şey yok, ama hangi
@@ -165,15 +165,27 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
-            tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu
-            mailBilgisi={{ tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek }}
+            tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id}
+            mailBilgisi={{
+              tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
+              gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,
+            }}
+            tekrarGonderildi={(c) => kaydedildi({
+              avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
+              avukat_mail_gonderen: c.gonderen,
+              avukat_mail_sayisi: (kayit.avukat_mail_sayisi ?? 0) + 1,
+            })}
           />
         </div>
 
-        <DialogFooter>
+          {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
+              not kutusu, gönderim bilgisi) İptal/Kaydet aşağı kayıp görünmez
+              oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
+              Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
+        <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={kapat}>İptal</Button>
           <Button onClick={kaydet} disabled={kaydediliyor || !v.cevap_sekli.trim() || (kip.avukat && !v.avukat_id)}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}

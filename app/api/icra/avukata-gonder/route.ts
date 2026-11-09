@@ -175,22 +175,40 @@ export async function POST(request: Request) {
     });
 
     // Mail GİTTİKTEN SONRA yazılır: gitmediyse dosya cevapsız kalmalı.
+    //
+    // CEVAP TARİHİ EZİLMEZ: tekrar gönderimde dosyanın cevap tarihi İLK gönderimin
+    // günüdür — icraya cevap o gün verilmiştir. Yeniden gönderme bir hatırlatmadır,
+    // yeni bir cevap değil; tarihi güncellemek süreyi olduğundan geç gösterirdi.
     const bugun = isoYerel(new Date());
+    const simdi = new Date().toISOString();
     const { error: gErr } = await sb.from("icra").update({
-      cevap_tarihi: bugun,
-      avukat_mail_at: new Date().toISOString(),
+      ...(kayit.cevap_tarihi ? {} : { cevap_tarihi: bugun }),
+      avukat_mail_at: simdi,
       avukat_mail_ek: belge.ad,
-      updated_at: new Date().toISOString(),
+      avukat_mail_gonderen: kullanici.ad_soyad,
+      avukat_mail_gonderen_id: kullanici.id,
+      avukat_mail_sayisi: (kayit.avukat_mail_sayisi ?? 0) + 1,
+      updated_at: simdi,
     }).eq("id", icraId);
+
+    // GÜNLÜK: her gönderim ayrı satır. Satırdaki özet SON gönderimi gösteriyor;
+    // "kaç kere, kim gönderdi" sorusunun tam cevabı burada.
+    const { error: logErr } = await sb.from("icra_avukat_mail_log").insert({
+      icra_id: icraId, avukat_id: avukatId, avukat_adi: avukat.ad_soyad,
+      avukat_email: avukat.email, gonderen_id: kullanici.id, gonderen_ad: kullanici.ad_soyad,
+      ek_ad: belge.ad,
+    });
 
     return NextResponse.json({
       gonderildi: true,
       alici: avukat.email,
       ek: belge.ad,
-      cevap_tarihi: bugun,
-      // SESSİZ GEÇİLMEZ: mail gitti ama kayıt güncellenemediyse kullanıcı bilmeli,
+      cevap_tarihi: kayit.cevap_tarihi ?? bugun,
+      gonderen: kullanici.ad_soyad,
+      gonderildiAt: simdi,
+      // SESSİZ GEÇİLMEZ: mail gitti ama kayıt/günlük yazılamadıysa kullanıcı bilmeli,
       // yoksa dosya cevapsız görünür ve ikinci kez gönderilir.
-      kayitHatasi: gErr ? gErr.message : null,
+      kayitHatasi: gErr ? gErr.message : (logErr ? `gönderim günlüğü yazılamadı: ${logErr.message}` : null),
       antetInemedi: antet.inemedi,
     });
   } catch (e) {

@@ -102,7 +102,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
 
   return (
     <Dialog open={acik} onOpenChange={(a) => { if (!a) kapat(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle — Şirkete Açılan Takip</DialogTitle></DialogHeader>
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
@@ -133,7 +133,8 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
           </div>
         </div>
 
-        <div ref={formRef} onKeyDown={formEnter} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div ref={formRef} onKeyDown={formEnter}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
           <div>
             <label className={lbl}>Durum</label>
             <select className={inp} value={durum} onChange={(e) => setDurum(e.target.value as IcraSirketDurum)}>
@@ -168,7 +169,11 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
           </div>
         </div>
 
-        <DialogFooter>
+          {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
+              not kutusu, gönderim bilgisi) İptal/Kaydet aşağı kayıp görünmez
+              oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
+              Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
+        <DialogFooter className="shrink-0 border-t pt-3">
           <Button variant="outline" onClick={kapat}>İptal</Button>
           <Button onClick={kaydet} disabled={kaydediliyor}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet

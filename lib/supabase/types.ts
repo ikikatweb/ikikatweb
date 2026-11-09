@@ -885,6 +885,11 @@ export type IcraKayit = {
   avukat_mail_at: string | null;
   /** Maile eklenen tebligat belgesinin adı. */
   avukat_mail_ek: string | null;
+  /** Maili SON gönderen kullanıcının adı (anlık kopya). Geçmiş: icra_avukat_mail_log. */
+  avukat_mail_gonderen: string | null;
+  avukat_mail_gonderen_id: string | null;
+  /** Kaç kez gönderildi. 1'den büyükse tekrar gönderilmiştir. */
+  avukat_mail_sayisi: number;
   /** İcra dairesinden haciz kaldırma yazısı geldiyse o yazının tarihi. Dosyayı kapatmaz. */
   haciz_kaldirma_tarihi: string | null;
   haciz_kaldirma_notu: string | null;

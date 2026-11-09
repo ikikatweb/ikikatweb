@@ -412,11 +412,12 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       </div>
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editId ? "Takibi Düzenle" : "Yeni Takip Ekle"}</DialogTitle>
           </DialogHeader>
-          <div ref={formRef} onKeyDown={formEnter} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div ref={formRef} onKeyDown={formEnter}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
             <div className="sm:col-span-1">
               <label className={fLbl}>Borçlu firma *</label>
               <select className={fInp} value={form.borclu_firma} onChange={(e) => setF("borclu_firma", e.target.value)}>
@@ -468,7 +469,11 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <div className="sm:col-span-2"><label className={fLbl}>Açıklama</label>
               <input className={fInp} value={form.aciklama} onChange={(e) => setF("aciklama", e.target.value)} /></div>
           </div>
-          <DialogFooter>
+          {/* DÜĞMELER ALTTA SABİT: pencere içeriği uzayınca (avukat kipinde liste,
+              not kutusu, gönderim bilgisi) İptal/Kaydet aşağı kayıp görünmez
+              oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
+              Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
+          <DialogFooter className="shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setDialogAcik(false)}>Vazgeç</Button>
             <Button onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
               {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null} Kaydet
