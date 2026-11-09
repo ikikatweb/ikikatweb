@@ -98,9 +98,31 @@ async function isle(t) {
   // Bu noktadan SONRA tebligat açılmış sayılır. Öncesinde hiçbir şey yazılmaz.
   let paket, etag = null;
   try {
-    const r = await fetch(`${TEMEL}/messages/${encodeURIComponent(t.uets_id)}/_download`, {
-      headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
-    });
+    // AĞ KOPMASINDA TEKRAR DENENİR (09.11.2026): kullanıcı "Aç ve oku"ya bastı, istek
+    // 3,5 saat "bekliyor" kaldı ve elle çalıştırınca "fetch failed" verdi — aynı anda
+    // curl sorunsuz bağlanıyordu, yani anlık bir kopma. Böyle bir kopma yüzünden isteğin
+    // "hata"ya düşüp insanın yeniden basmasını beklemesi, 5 günlük sürede kayıp demek.
+    // TEKRAR GÜVENLİ: UETS'te indirme ikinci kez yapılsa da tebligat zaten açılmıştır,
+    // ikinci indirme yeni bir şey açmaz. Yalnız AĞ hatasında denenir; sunucu bir
+    // cevap verdiyse (401, 406, 500…) tekrar denenmez, o cevap bilgidir.
+    const indir = async () => {
+      const r = await fetch(`${TEMEL}/messages/${encodeURIComponent(t.uets_id)}/_download`, {
+        headers: { authorization: `Bearer ${anahtar}`, "content-type": "application/json" },
+      });
+      return r;
+    };
+    let r;
+    for (let deneme = 1; ; deneme++) {
+      try { r = await indir(); break; }
+      catch (agHatasi) {
+        // SEBEP YAZILIR: "fetch failed" tek başına hiçbir şey anlatmıyor; altındaki
+        // kod (ENOTFOUND, ECONNRESET, ETIMEDOUT…) arızayı teşhis ettiren şey.
+        const sebep = agHatasi?.cause?.code ?? agHatasi?.cause?.message ?? "sebep bilinmiyor";
+        if (deneme >= 3) throw new Error(`${agHatasi.message} (${sebep}, ${deneme} deneme)`);
+        console.error(`  ağ hatası (${sebep}), ${deneme}. deneme — 10 sn sonra tekrar`);
+        await new Promise((c) => setTimeout(c, 10_000));
+      }
+    }
     if (!r.ok) {
       let mesaj = (await r.text()).slice(0, 300);
       try { const j = JSON.parse(mesaj); mesaj = `${j.message ?? mesaj}${j.code ? ` (kod ${j.code})` : ""}`; } catch { /* düz metin */ }

@@ -329,11 +329,39 @@ Açılsın mı?`;
                       </a>
                     ) : t.acilma_durumu === "bekliyor" || t.acilma_durumu === "islemde" ? (
                       // İstek ofisteki görevde sırada. Kullanıcı neyi beklediğini bilsin.
-                      <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
-                        <Loader2 size={12} className="animate-spin" />
-                        {t.acilma_durumu === "islemde" ? "indiriliyor…" : "sırada…"}
-                        {t.acilma_isteyen_ad && <span className="text-gray-400">({t.acilma_isteyen_ad})</span>}
-                      </span>
+                      //
+                      // SONSUZA KADAR DÖNMEZ (09.11.2026): "Aç ve oku"ya basılan bir istek
+                      // 3,5 saat "sırada…" yazıp döndü, çünkü onu işleyecek zamanlanmış
+                      // görev hiç kurulmamıştı. Dönen çark "çalışıyor" diye okunuyor ve
+                      // kimse bakmıyor; tebligatta süre 5 gün, asılı kalan istek gün
+                      // kaybettirir. Makul süreyi aşarsa çark durur ve UYARIYA döner.
+                      // Eşik 20 dk: işleyici 5 dakikada bir dönüyor, 4 turu kaçırmışsa
+                      // ortada geçici bir gecikme değil arıza vardır.
+                      (() => {
+                        const gecenDk = t.acilma_istegi_at
+                          ? Math.floor((Date.now() - new Date(t.acilma_istegi_at).getTime()) / 60000)
+                          : 0;
+                        if (gecenDk >= 20) {
+                          return (
+                            <span className="inline-flex flex-col items-start gap-0.5 text-xs text-red-700"
+                              title="İndirmeyi ofisteki zamanlanmış görev yapıyor. Bu kadar beklemiş bir istek, görevin çalışmadığını gösterir.">
+                              <span className="inline-flex items-center gap-1 font-medium">
+                                <AlertTriangle size={12} /> {gecenDk} dakikadır beklemede
+                              </span>
+                              <span className="text-[11px] font-normal text-red-600">
+                                ofisteki açma görevi çalışmıyor olabilir
+                              </span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
+                            <Loader2 size={12} className="animate-spin" />
+                            {t.acilma_durumu === "islemde" ? "indiriliyor…" : "sırada…"}
+                            {t.acilma_isteyen_ad && <span className="text-gray-400">({t.acilma_isteyen_ad})</span>}
+                          </span>
+                        );
+                      })()
                     ) : (
                       acabilir ? (
                       <div className="flex flex-col items-start gap-1">
