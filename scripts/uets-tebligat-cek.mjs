@@ -186,7 +186,12 @@ async function listeleTumu(anahtar, hesap) {
  * Mahkeme/hâkimlik tebligatları KAPSAM DIŞI: onların icra defterinde yeri yok ve
  * otomatik açılmaları için bir sebep de yok — açmak geri alınamaz bir işlem.
  */
-const icraYazisiMi = (m) => /icra\s+dairesi/i.test(String(m.subject ?? ""));
+// TÜRKÇE "İ" TUZAĞI: /icra dairesi/i kalıbı "İcra Dairesi"yi BULMUYOR. JavaScript
+// "İ" (U+0130) harfini küçültünce "i̇" (i + birleşen nokta) üretiyor ve bu "i" ile
+// eşleşmiyor. İlk yazımda bu kalıp kullanılmıştı: otomatik açma HİÇ TETİKLENMEZDİ,
+// üstelik sessizce — "yeni icra yazısı yok" gibi görünürdü. Türkçe locale ile
+// küçültüp aramak gerekiyor.
+const icraYazisiMi = (m) => String(m.subject ?? "").toLocaleLowerCase("tr").includes("icra dairesi");
 
 /** Konudaki dosya esas numarası: "… [2026/368508] …" → "2026/368508". Yoksa null. */
 const dosyaEsasNo = (m) => String(m.subject ?? "").match(/(\d{4}\/\d+)/)?.[1] ?? null;

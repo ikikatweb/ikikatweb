@@ -16,9 +16,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth, useOturumFiltresi } from "@/hooks";
 import { getTebligatlar, kalanGun, type Tebligat } from "@/lib/supabase/queries/tebligat";
-import { Scale, ExternalLink, AlertTriangle, FileText, Loader2, Download } from "lucide-react";
+import { Scale, ExternalLink, AlertTriangle, FileText, Loader2, Download, Search, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { tebligatDegisti } from "@/hooks";
 import KetsisTablosu from "@/components/shared/ketsis-tablosu";
@@ -164,17 +165,49 @@ Açılsın mı?`;
     return () => clearInterval(z);
   }, [bekleyenVar]);
 
+  // ARAMA / TÜR / SIRALAMA — liste 100 satırı aştığı için göz taramasıyla bulunmuyor.
+  // Üçü de OTURUMDA SAKLANIR (useOturumFiltresi): sayfadan çıkıp dönünce aynı görünüm
+  // gelsin, insan her seferinde yeniden kurmasın.
+  const [arama, setArama] = useOturumFiltresi("e-tebligat:arama", "");
+  const [tur, setTur] = useOturumFiltresi<"hepsi" | "icra" | "mahkeme">("e-tebligat:tur", "hepsi");
+  const [sira, setSira] = useOturumFiltresi<"acil" | "yeni" | "eski">("e-tebligat:sira", "acil");
+
   const liste = useMemo(() => {
     let l = suzgec === "acilmamis" ? satirlar.filter((t) => t.durum === "delivered") : satirlar;
     if (firma !== "hepsi") l = l.filter((t) => t.hesap === firma);
-    // Süresi yaklaşan/geçen en üstte: en acil olan ilk sırada olsun.
+
+    // TÜR: konudaki daire adından. "İcra Dairesi" geçenler icra yazısı, kalanlar
+    // mahkeme/hâkimlik. Ölçü basit ama konu metni hep bu kalıpta geliyor
+    // (09.11.2026'da 103 kayıtta doğrulandı: 81 icra dairesi, 22 mahkeme/diğer).
+    if (tur !== "hepsi") {
+      // TÜRKÇE "İ" TUZAĞI (09.11.2026'da yakalandı): /icra dairesi/i kalıbı
+      // "İcra Dairesi"yi BULMUYOR — JavaScript "İ"yi küçültünce "i̇" (noktalı i)
+      // üretiyor, bu da "i" ile eşleşmiyor. Süzgeç sessizce 0 sonuç veriyordu.
+      // Doğrusu Türkçe locale ile küçültüp aramak.
+      const icraMi = (t: Tebligat) => (t.konu ?? "").toLocaleLowerCase("tr").includes("icra dairesi");
+      l = l.filter((t) => (tur === "icra" ? icraMi(t) : !icraMi(t)));
+    }
+
+    // ARAMA: konu, gönderen, firma ve alıcı adında. Türkçe büyük/küçük harf sorunu
+    // için trAramaNormalize — "İCRA" yazan "icra"yı da bulsun.
+    const q = trAramaNormalize(arama.trim());
+    if (q) {
+      l = l.filter((t) => trAramaNormalize(
+        [t.konu, t.gonderen_ad, t.alici_ad, t.hesap, t.firmalar?.firma_adi].filter(Boolean).join(" "),
+      ).includes(q));
+    }
+
     return [...l].sort((a, b) => {
+      if (sira === "yeni") return b.ulasma_tarihi.localeCompare(a.ulasma_tarihi);
+      if (sira === "eski") return a.ulasma_tarihi.localeCompare(b.ulasma_tarihi);
+      // "acil" (varsayılan): açılmamışlar en üstte, aralarında tebliğ günü yakın olan
+      // önce. Renk süs değil, sıralama da öyle: bugün bakılacak olan ilk sırada.
       if (a.durum === "delivered" && b.durum === "delivered") return a.teblig_tarihi.localeCompare(b.teblig_tarihi);
       if (a.durum === "delivered") return -1;
       if (b.durum === "delivered") return 1;
       return b.ulasma_tarihi.localeCompare(a.ulasma_tarihi);
     });
-  }, [satirlar, suzgec, firma]);
+  }, [satirlar, suzgec, firma, tur, arama, sira]);
 
   // Hangi firmalar var? Renk sırası sabit kalsın diye alfabetik.
   const firmalar = useMemo(
@@ -257,6 +290,57 @@ Açılsın mı?`;
           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white/70 px-2.5 h-7 text-xs hover:bg-gray-50">
           UETS&apos;te aç <ExternalLink size={12} />
         </a>
+      </div>
+
+      {/* ARAMA / TÜR / SIRALAMA — şeridin ALTINDA, ayrı satırda.
+          Şeridin içine sıkıştırılsaydı başlık ve logo ezilirdi; üstelik arama kutusu
+          süzgeç düğmelerinden farklı bir iş yapıyor, aynı kutuda durmaları karıştırırdı. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={arama} onChange={(e) => setArama(e.target.value)}
+            placeholder="Konu, daire, dosya no, firma ile ara…"
+            className="h-8 w-72 rounded-lg border border-gray-300 pl-7 pr-7 text-xs outline-none focus:border-[#1E3A5F]" />
+          {arama && (
+            <button type="button" onClick={() => setArama("")} title="Aramayı temizle"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
+        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
+          {([["hepsi", "Tüm türler"], ["icra", "İcra dairesi"], ["mahkeme", "Mahkeme"]] as const).map(([id, et]) => (
+            <button key={id} type="button" onClick={() => setTur(id)}
+              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                tur === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}>
+              {et}
+            </button>
+          ))}
+        </div>
+
+        <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5">
+          {([["acil", "Aciliyete göre"], ["yeni", "En yeni"], ["eski", "En eski"]] as const).map(([id, et]) => (
+            <button key={id} type="button" onClick={() => setSira(id)}
+              title={id === "acil" ? "Açılmamışlar en üstte, tebliğ günü yakın olan önce" : "Ulaşma tarihine göre"}
+              className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                sira === id ? "bg-[#1E3A5F] text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}>
+              {et}
+            </button>
+          ))}
+        </div>
+
+        {/* KAÇ SATIR SÜZÜLDÜ: boş ya da kısa liste "kayıt yok" diye okunmasın. */}
+        <span className="text-xs text-gray-500">
+          {liste.length} / {satirlar.length} kayıt
+          {(arama || tur !== "hepsi" || firma !== "hepsi" || suzgec === "acilmamis") && (
+            <button type="button"
+              onClick={() => { setArama(""); setTur("hepsi"); setFirma("hepsi"); setSuzgec("hepsi"); }}
+              className="ml-2 underline underline-offset-2 hover:text-[#1E3A5F]">
+              süzgeçleri temizle
+            </button>
+          )}
+        </span>
       </div>
 
       {suresiGecen > 0 && (
