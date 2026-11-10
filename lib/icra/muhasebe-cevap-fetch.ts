@@ -137,29 +137,34 @@ export async function muhasebeCevaplariniTara(gun = 14): Promise<MuhasebeCevapSo
             if (!konu.includes(b.dosya)) continue;
             if (an <= b.gonderimAt) continue;      // gönderimden önceki mail cevap olamaz
 
-            // ── EKLER KOVAYA ──
+            // ── EKLER VE GÖMÜLÜ GÖRSELLER KOVAYA ──
             // Hesap ekstresi burada geliyor; mail kutusunda bırakılırsa panelden
             // açılamaz ve avukata iletilemez. ÖZEL kovaya (yazismalar) konuyor,
             // arayüz imzalı geçitten açıyor (AGENTS.md).
-            const ekListe: { ad: string; yol: string }[] = [];
+            //
+            // GÖMÜLÜ GÖRSELLER DE KAYDEDİLİR (antet, imza logoları): mailin
+            // gövdesinde `src="cid:..."` diye duruyorlar ve panelde çözülmedikleri
+            // için KIRIK görünüyorlardı. Kaydedilip cid'leriyle birlikte
+            // tutuluyorlar; okuyucu adresleri değiştirip gösteriyor.
+            //
+            // AYRIMI cid KORUR: cid'si olan görsel EK SAYILMAZ — ek listesinde
+            // "image001.png" görünce "ekstre geldi" sanılıyordu.
+            const ekListe: { ad: string; yol: string; cid?: string }[] = [];
             for (const a of parsed.attachments ?? []) {
               const ad = (a.filename ?? "").trim();
               if (!ad || !a.content) continue;
-              // GÖVDEYE GÖMÜLÜ GÖRSEL EK DEĞİLDİR: antet/imza logoları (image001.png,
-              // cid ile gövdede gösterilenler) ek listesine girerse "hesap ekstresi
-              // geldi" sanılıyor. Yalnız gerçekten iliştirilmiş dosyalar alınır.
-              if (a.contentDisposition === "inline" || a.related || a.cid) continue;
-              const yol = `icra-muhasebe/${b.id}/${Date.now()}-${ad.replace(/[^\w.\-]+/g, "_")}`;
+              const gomulu = Boolean(a.cid) || a.contentDisposition === "inline" || a.related;
+              const yol = `icra-muhasebe/${b.id}/${gomulu ? "govde-" : ""}${Date.now()}-${ad.replace(/[^\w.\-]+/g, "_")}`;
               const { error: yErr } = await sb.storage.from("yazismalar")
                 .upload(yol, a.content as Buffer, { contentType: a.contentType ?? undefined, upsert: true });
               if (yErr) {
-                // SESSİZ GEÇİLMEZ: ek kaydedilemediyse adı yine yazılır ama
-                // sebep çıktıya düşer — dosya mail kutusunda duruyor demektir.
+                // SESSİZ GEÇİLMEZ: ek kaydedilemediyse sebep çıktıya düşer —
+                // dosya mail kutusunda duruyor demektir.
                 uyari.push(`${b.dosya} eki kaydedilemedi (${ad}): ${yErr.message}`);
                 continue;
               }
               const { data: genel } = sb.storage.from("yazismalar").getPublicUrl(yol);
-              ekListe.push({ ad, yol: genel?.publicUrl ?? yol });
+              ekListe.push({ ad, yol: genel?.publicUrl ?? yol, ...(a.cid ? { cid: a.cid } : {}) });
             }
 
             // MAİLİN DÜZ METNİ: panelde okunsun diye. HTML yerine text yeğleniyor;
@@ -171,7 +176,9 @@ export async function muhasebeCevaplariniTara(gun = 14): Promise<MuhasebeCevapSo
               muhasebe_cevap_mail_at: an,
               muhasebe_cevap_mail_gonderen: gonderen,
               muhasebe_cevap_mail_konu: konu.slice(0, 300),
-              muhasebe_cevap_mail_ek: ekListe.map((e) => e.ad).join(", ") || null,
+              // ÖZET YALNIZ GERÇEK EKLER: gövdeye gömülü görseller (cid'li)
+              // "ek" sayılmaz — listede logo görünce ekstre geldi sanılıyordu.
+              muhasebe_cevap_mail_ek: ekListe.filter((e) => !e.cid).map((e) => e.ad).join(", ") || null,
               muhasebe_cevap_mail_ekler: ekListe.length ? ekListe : null,
               muhasebe_cevap_mail_metin: govde ? govde.slice(0, 20000) : null,
               // MAİLİN ASLI: HTML mail düz metne çevrilince biçim dağılıyor

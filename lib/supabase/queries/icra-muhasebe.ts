@@ -57,7 +57,7 @@ export type MuhasebeDurumu = {
   /** Mailin HTML aslı — ayrı pencerede sandbox iframe içinde gösterilir. */
   muhasebe_cevap_mail_html?: string | null;
   /** Mailin ekleri (hesap ekstresi): yazismalar kovasında, dosyaUrl ile açılır. */
-  muhasebe_cevap_mail_ekler?: { ad: string; yol: string }[] | null;
+  muhasebe_cevap_mail_ekler?: { ad: string; yol: string; cid?: string }[] | null;
   /** ESKİ KAYITLARDA DOLU OLABİLİR — artık sorulmuyor (10.11.2026). */
   muhasebe_borc_durumu?: string | null;
   muhasebe_borc_tutari?: number | null;

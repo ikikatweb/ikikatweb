@@ -103,13 +103,28 @@ export function MuhasebeIkon({ kayit, sirket, boyut = 15 }: {
  * gösteriliyor: betik yok, form yok, panelin verisine erişim yok.
  */
 function MuhasebeMaili({ kayit, kapat }: { kayit: MuhasebeDurumu; kapat: () => void }) {
-  const ekler = (kayit.muhasebe_cevap_mail_ekler ?? []) as { ad: string; yol: string }[];
+  const hepsi = (kayit.muhasebe_cevap_mail_ekler ?? []) as { ad: string; yol: string; cid?: string }[];
+  // GÖMÜLÜ GÖRSEL EK DEĞİLDİR: antet/imza logoları listede durmaz, gövdede durur.
+  const ekler = hepsi.filter((e) => !e.cid);
   const kacar = (v: string) => v.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+
   // MAİLİN ASLI: HTML mail düz metne çevrilince biçim dağılıyor (alıntılanan
   // yazışma, tablolar iç içe giriyor). Asıl yoksa metin, satır araları korunarak.
-  const govde = kayit.muhasebe_cevap_mail_html
+  let govde = kayit.muhasebe_cevap_mail_html
     ?? `<pre style="white-space:pre-wrap;word-wrap:break-word;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.6;margin:0">`
       + kacar(kayit.muhasebe_cevap_mail_metin ?? "Mailin içeriği kaydedilmemiş.") + `</pre>`;
+
+  // ── GÖMÜLÜ GÖRSELLERİN ADRESİ DEĞİŞTİRİLİR ──
+  // Mailde görseller `src="cid:image001.png@01DD…"` diye duruyor; bu adres
+  // yalnız mail programında çözülür, panelde KIRIK görünüyordu. Görseller
+  // kovaya kaydedildi; burada cid'leri imzalı geçit adresleriyle değiştiriliyor
+  // (ÖZEL kova — düz adres 400 döner, AGENTS.md).
+  for (const g of hepsi) {
+    if (!g.cid) continue;
+    // cid metni olduğu gibi aranır (düzenli ifade kaçışına gerek yok).
+    const hedef = "cid:" + g.cid;
+    govde = govde.split(hedef).join(dosyaUrl(g.yol));
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
@@ -149,9 +164,18 @@ function MuhasebeMaili({ kayit, kapat }: { kayit: MuhasebeDurumu; kapat: () => v
         )}
 
         <iframe title="Muhasebe cevabı" sandbox=""
+          // GÖRSEL VE TABLO ÖLÇÜLERİ ZORLA ESNETİLİR (!important).
+          // Mail programları görseli satır içi sabit ölçüyle gönderiyor
+          // (`style="width:19.69in;height:2.12in"`). Genişlik kutuya sığacak
+          // şekilde daralırken YÜKSEKLİK sabit kaldığı için görsel eziliyordu;
+          // satır içi stili ancak !important yener. Tablolar da sabit
+          // genişlikle gelip yana taşıyordu.
           srcDoc={`<!doctype html><html><head><meta charset="utf-8">`
-            + `<style>body{margin:14px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1f2937}`
-            + `img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${govde}</body></html>`}
+            + `<style>body{margin:14px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;`
+            + `color:#1f2937;overflow-wrap:break-word}`
+            + `img{max-width:100%!important;height:auto!important}`
+            + `table{max-width:100%!important;table-layout:auto}`
+            + `td,th{word-break:break-word}</style></head><body>${govde}</body></html>`}
           className="min-h-0 flex-1 w-full bg-white" />
       </div>
     </div>
