@@ -913,10 +913,18 @@ function YakitPageContent() {
 
   // ============ DIALOG AÇMA FONKSİYONLARI ============
 
-  function verDialogAc() {
+  /**
+   * @param onayAtla Onay penceresinden geliniyorsa true.
+   *
+   * NİYE BAYRAK: onay verildiğinde setKonumOnayli(true) ile verDialogAc() aynı
+   * olay içinde çağrılıyor; durum bir sonraki çizimde güncellendiği için
+   * fonksiyonun gördüğü değer HÂLÂ false oluyordu ve onay penceresi kendini
+   * yeniden açıyordu — "Okudum, onaylıyorum" basılınca pencere kapanmıyordu.
+   */
+  function verDialogAc(onayAtla = false) {
     // ONAY YOKSA ÖNCE AYDINLATMA: konum zorunlu olduğu için kişi ne
     // toplandığını okumadan kayıt ekranına girmiyor. Onaylayınca form açılır.
-    if (konumOnayli === false) { setOnayDialogAcik(true); return; }
+    if (!onayAtla && konumOnayli === false) { setOnayDialogAcik(true); return; }
     setVerEditId(null);
     setVerDialogSantiyeId(filtreSantiyeId || "");
     setVerDialogAracId("");
@@ -1747,7 +1755,7 @@ function YakitPageContent() {
 
         {yEkle && (
           <div className={`grid grid-cols-1 sm:grid-cols-3 ${isYonetici ? "lg:grid-cols-4" : ""} gap-2 w-full sm:w-auto`}>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={verDialogAc}>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={() => verDialogAc()}>
               <Plus size={16} className="mr-1.5" /> Yakıt Ver
             </Button>
             <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={alDialogAc}>
@@ -2084,7 +2092,7 @@ function YakitPageContent() {
           "Konumu aç" düğmesi tarayıcı iznini buradan ister: izin uyarısını
           kullanıcılar kendi başına beceremiyordu. */}
       <KonumOnayDialog
-        acik={onayDialogAcik} kullaniciId={kullanici?.id ?? null}
+        acik={onayDialogAcik}
         kapat={() => setOnayDialogAcik(false)}
         onaylandi={() => {
           setKonumOnayli(true);
@@ -2092,7 +2100,7 @@ function YakitPageContent() {
           toast.success("Onayınız kaydedildi.");
           // Onaydan sonra kayıt ekranı kendiliğinden açılır: kullanıcı
           // "Yakıt Ver"e ikinci kez basmak zorunda kalmasın.
-          if (!verDialogOpen) verDialogAc();
+          if (!verDialogOpen) verDialogAc(true);
         }}
       />
 
