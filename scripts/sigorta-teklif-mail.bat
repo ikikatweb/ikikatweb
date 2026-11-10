@@ -4,7 +4,11 @@ REM Log + cokme bildirimi: 05.11.2026'da pdfjs bagimliligi dustu, script her cal
 REM satirda oldu ama gorev "basarili" gorundu ve 5 saat kimse fark etmedi. Artik iz kaliyor.
 cd /d "%~dp0.."
 if not exist logs mkdir logs
-echo === %DATE% %TIME% - sigorta teklif mail > logs\sigorta-teklif-mail.log
+REM Log UTF-8 BOM ile baslar: BOM yoksa PowerShell 5.1 dosyayi ANSI sanip
+REM Turkce harfleri bozuyor (10.11.2026). Icerik zaten UTF-8 idi; eksik olan
+REM okuyucuya hangi kodlama oldugunu soyleyen uc bayt.
+copy /b "%~dp0.utf8-bom" "logs\sigorta-teklif-mail.log" >nul
+echo === %DATE% %TIME% - sigorta teklif mail >> logs\sigorta-teklif-mail.log
 node scripts\sigorta-teklif-mail.mjs >> logs\sigorta-teklif-mail.log 2>&1
 set KOD=%ERRORLEVEL%
 echo === bitis: %DATE% %TIME% (cikis kodu %KOD%) >> logs\sigorta-teklif-mail.log

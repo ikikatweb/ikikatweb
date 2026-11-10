@@ -18,6 +18,9 @@ cd /d "%~dp0.."
 if not exist logs mkdir logs
 for /f %%i in ('powershell -NoProfile -Command "(Get-Date).AddDays(-7).ToString('yyyy-MM-dd')"') do set BAS=%%i
 for /f %%i in ('powershell -NoProfile -Command "(Get-Date).AddDays(-1).ToString('yyyy-MM-dd')"') do set BIT=%%i
-echo === %DATE% %TIME% - gecmis rota backfill: %BAS% -^> %BIT% > logs\arvento-backfill.log
+REM Log UTF-8 BOM ile baslar: BOM yoksa PowerShell 5.1 dosyayi ANSI sanip
+REM Turkce harfleri bozuyor (10.11.2026).
+copy /b "%~dp0.utf8-bom" "logs\arvento-backfill.log" >nul
+echo === %DATE% %TIME% - gecmis rota backfill: %BAS% -^> %BIT% >> logs\arvento-backfill.log
 node scripts\arvento-speed-sync.mjs %BAS% %BIT% --sadece-artir >> logs\arvento-backfill.log 2>&1
 echo === bitis: %DATE% %TIME% (cikis kodu %ERRORLEVEL%) >> logs\arvento-backfill.log
