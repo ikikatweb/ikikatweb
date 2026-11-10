@@ -22,7 +22,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { MapPin, ShieldCheck, Loader2, Check, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { konumAl, KonumHatasi } from "@/lib/utils/konum";
+import { konumAl, KonumHatasi, izinDurumu, konumAcmaAdimlari } from "@/lib/utils/konum";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -84,6 +84,9 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
 }) {
   const [izin, setIzin] = useState<"bilinmiyor" | "aliniyor" | "verildi" | "reddedildi">("bilinmiyor");
   const [izinHata, setIzinHata] = useState<string | null>(null);
+  // Site izni mi reddedilmiş, telefonun konum servisi mi kapalı? İkisi aynı
+  // hata koduyla geliyor; ayırt edilebiliyorsa doğru yere yönlendirilsin.
+  const [izinKaynagi, setIzinKaynagi] = useState<"site" | "cihaz" | "bilinmiyor">("bilinmiyor");
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
   useEffect(() => { if (acik) { setIzin("bilinmiyor"); setIzinHata(null); } }, [acik]);
@@ -97,6 +100,10 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
     } catch (e) {
       setIzin("reddedildi");
       setIzinHata(e instanceof KonumHatasi ? e.message : "Konum alınamadı.");
+      // Tarayıcı "reddedildi" diyorsa site izni kapalı; "sorulacak" diyorsa
+      // izin hiç reddedilmemiş demektir → sorun telefonun konum servisinde.
+      const d = await izinDurumu();
+      setIzinKaynagi(d === "reddedildi" ? "site" : d === "sorulacak" ? "cihaz" : "bilinmiyor");
     }
   }
 
@@ -180,9 +187,26 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
             </p>
           )}
           {izin === "reddedildi" && (
-            <p className="mt-1.5 flex items-start gap-1 text-[11px] text-red-700">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>{izinHata}</span>
-            </p>
+            <div className="mt-1.5 text-[11px] text-red-700">
+              <p className="flex items-start gap-1">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span>
+                  {izinKaynagi === "cihaz"
+                    ? "Bu siteye konum izni REDDEDİLMİŞ DEĞİL — telefonun konum servisi kapalı görünüyor."
+                    : izinKaynagi === "site"
+                      ? "Bu siteye konum izni kapalı."
+                      : izinHata}
+                </span>
+              </p>
+              {/* ADIMLAR CİHAZA GÖRE: "ayarlardan açın" demek yetmiyor, kullanıcı
+                  menüyü bulamıyor. iPhone ve Android yolu ayrı. */}
+              <div className="mt-1.5 rounded-md border border-red-200 bg-white px-2.5 py-2 text-gray-700">
+                <div className="mb-1 text-[11px] font-semibold text-gray-800">{konumAcmaAdimlari().baslik}</div>
+                <ol className="list-decimal space-y-0.5 pl-4">
+                  {konumAcmaAdimlari().adimlar.map((a) => <li key={a}>{a}</li>)}
+                </ol>
+              </div>
+            </div>
           )}
         </div>
 

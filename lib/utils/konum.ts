@@ -62,10 +62,14 @@ export function konumAl(saniye = 20): Promise<Konum> {
       (h) => {
         // SEBEP KULLANICIYA ANLAŞILIR DİLDE: "code 1" kimseye bir şey söylemiyor.
         if (h.code === h.PERMISSION_DENIED) {
+          // İKİ SEBEP AYNI KODLA GELİYOR: site izni reddedilmiş olabilir ya da
+          // TELEFONUN KONUM SERVİSİ kapalı olabilir. İkincisinde tarayıcı izin
+          // penceresini hiç göstermez; "reddettiyseniz" demek kullanıcıyı
+          // yanlış yere gönderiyordu (10.11.2026).
           red(new KonumHatasi(
-            "Konum izni verilmedi. Yakıt kaydı için konum zorunlu — tarayıcı çıkan "
-            + "pencerede 'İzin ver' deyin. Daha önce reddettiyseniz telefon ayarlarından "
-            + "bu site için konumu açmanız gerekir."));
+            "Konum alınamadı. Ya bu siteye konum izni kapalı ya da telefonun "
+            + "KONUM SERVİSİ kapalı — ikisinde de tarayıcı izin penceresini göstermez. "
+            + "Aşağıdaki adımları izleyin."));
         } else if (h.code === h.POSITION_UNAVAILABLE) {
           red(new KonumHatasi("Konum alınamadı (sinyal yok). Açık alana çıkıp tekrar deneyin."));
         } else if (h.code === h.TIMEOUT) {
@@ -118,4 +122,62 @@ export function mesafeSupheliMi(mesafeM: number | null, dogrulukM: number | null
   if (mesafeM == null) return false;
   const pay = dogrulukM != null && dogrulukM > 0 ? dogrulukM : 0;
   return mesafeM - pay > YAKIT_MESAFE_ESIK_M;
+}
+
+/**
+ * TARAYICI İZNİ HANGİ DURUMDA? (destekleyen tarayıcılarda)
+ *
+ * NİYE GEREKLİ: konum alınamadığında iki apayrı sebep aynı hata koduyla
+ * geliyor (code 1):
+ *   · site izni REDDEDİLMİŞ        → tarayıcı ayarından açılır
+ *   · telefonun KONUM SERVİSİ kapalı → işletim sistemi ayarından açılır
+ * İkisine de "daha önce reddettiyseniz" demek, reddetmemiş kullanıcıyı yanlış
+ * yere gönderiyordu. iOS Safari bu API'yi desteklemiyor → "bilinmiyor".
+ */
+export async function izinDurumu(): Promise<"verildi" | "reddedildi" | "sorulacak" | "bilinmiyor"> {
+  try {
+    const p = (navigator as unknown as { permissions?: { query: (o: { name: string }) => Promise<{ state: string }> } }).permissions;
+    if (!p?.query) return "bilinmiyor";
+    const s = await p.query({ name: "geolocation" });
+    return s.state === "granted" ? "verildi" : s.state === "denied" ? "reddedildi" : "sorulacak";
+  } catch { return "bilinmiyor"; }
+}
+
+/**
+ * CİHAZA GÖRE AÇMA ADIMLARI — "ayarlardan açın" demek yetmiyor, nereden
+ * açılacağı telefona göre değişiyor ve kullanıcı bulamıyor.
+ */
+export function konumAcmaAdimlari(): { baslik: string; adimlar: string[] } {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/iPhone|iPad|iPod/i.test(ua)) {
+    return {
+      baslik: "iPhone'da konumu açma",
+      adimlar: [
+        "Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri: AÇIK olmalı",
+        "Aynı listede aşağı inin: Safari Web Siteleri → \"Uygulamayı Kullanırken\"",
+        "\"Tam Konum\" seçeneği de açık olsun",
+        "Paneli ana ekrana eklediyseniz listede Safari yerine panelin adını arayın",
+        "Sonra bu sayfayı yenileyip tekrar \"Konumu aç\" deyin",
+      ],
+    };
+  }
+  if (/Android/i.test(ua)) {
+    return {
+      baslik: "Android'de konumu açma",
+      adimlar: [
+        "Telefon ayarları → Konum: AÇIK olmalı",
+        "Ayarlar → Uygulamalar → Chrome → İzinler → Konum: izin verin",
+        "Chrome'da adres çubuğundaki kilit simgesi → İzinler → Konum → İzin ver",
+        "Sonra bu sayfayı yenileyip tekrar \"Konumu aç\" deyin",
+      ],
+    };
+  }
+  return {
+    baslik: "Tarayıcıda konumu açma",
+    adimlar: [
+      "Adres çubuğundaki kilit simgesine dokunun",
+      "Site ayarları → Konum → İzin ver",
+      "Sayfayı yenileyip tekrar \"Konumu aç\" deyin",
+    ],
+  };
 }
