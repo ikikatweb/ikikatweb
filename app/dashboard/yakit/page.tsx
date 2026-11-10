@@ -90,6 +90,9 @@ type Hareket =
       konum_dogruluk_m?: number | null;
       konum_lat?: number | null;
       konum_lng?: number | null;
+      /** Aracın o andaki konumu — haritada iki nokta arası rota çizilsin diye. */
+      arac_lat?: number | null;
+      arac_lng?: number | null;
       konum_notu?: string | null;
       created_by: string | null;
     }
@@ -202,7 +205,8 @@ function parseDuzMiktar(formatted: string): number {
  */
 function KonumRozeti({ h }: {
   h: { arac_mesafe_m?: number | null; konum_dogruluk_m?: number | null;
-       konum_lat?: number | null; konum_lng?: number | null; konum_notu?: string | null };
+       konum_lat?: number | null; konum_lng?: number | null;
+       arac_lat?: number | null; arac_lng?: number | null; konum_notu?: string | null };
 }) {
   const mesafe = h.arac_mesafe_m ?? null;
   const dogruluk = h.konum_dogruluk_m ?? null;
@@ -210,10 +214,12 @@ function KonumRozeti({ h }: {
   const metin = mesafe == null
     ? "konum —"
     : mesafe >= 1000 ? `${(mesafe / 1000).toFixed(1).replace(".", ",")} km` : `${mesafe} m`;
+  const ikiNokta = h.konum_lat != null && h.konum_lng != null && h.arac_lat != null && h.arac_lng != null;
   const ipucu = [
-    mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı") : `Araçla arasındaki mesafe: ${metin}`,
+    mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı") : `Kuşbakışı mesafe: ${metin}`,
     dogruluk != null ? `telefon sapma payı ±${dogruluk} m` : "sapma payı bilinmiyor",
-    h.konum_lat != null ? "haritada açmak için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
+    ikiNokta ? "haritada yol tarifi açılır (araçtan kayda)" : h.konum_lat != null
+      ? "haritada açmak için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
   ].join(" · ");
   const sinif = mesafe == null ? "bg-gray-100 text-gray-500"
     : supheli ? "bg-red-100 text-red-700 font-semibold" : "bg-emerald-100 text-emerald-700";
@@ -223,13 +229,23 @@ function KonumRozeti({ h }: {
     </span>
   );
   if (h.konum_lat == null || h.konum_lng == null) return <div>{rozet}</div>;
+  // ── HARİTA: İKİ NOKTA ARASI YOL TARİFİ ──
+  // Tek nokta açmak "ne kadar uzaktaydı" sorusunu cevaplamıyordu. Araçtan
+  // kaydın girildiği yere YOL TARİFİ açılınca Google hem aradaki çizgiyi hem
+  // de YOLDAN kaç km / kaç dakika olduğunu gösteriyor — kuşbakışı mesafe
+  // (rozetteki sayı) dağ-nehir dinlemediği için ikisi farklı olabiliyor.
+  // Araç konumu yoksa eski davranış: tek nokta.
+  const adres = ikiNokta
+    ? `https://www.google.com/maps/dir/?api=1&origin=${h.arac_lat},${h.arac_lng}`
+      + `&destination=${h.konum_lat},${h.konum_lng}&travelmode=driving`
+    : `https://www.google.com/maps?q=${h.konum_lat},${h.konum_lng}`;
   return (
     <div>
-      <a href={`https://www.google.com/maps?q=${h.konum_lat},${h.konum_lng}`}
-        target="_blank" rel="noopener noreferrer">{rozet}</a>
+      <a href={adres} target="_blank" rel="noopener noreferrer">{rozet}</a>
     </div>
   );
 }
+
 
 export default function YakitPage() {
   return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}><YakitPageContent /></Suspense>;
@@ -526,6 +542,8 @@ function YakitPageContent() {
         konum_dogruluk_m: y.konum_dogruluk_m ?? null,
         konum_lat: y.konum_lat ?? null,
         konum_lng: y.konum_lng ?? null,
+        arac_lat: y.arac_lat ?? null,
+        arac_lng: y.arac_lng ?? null,
         konum_notu: y.konum_notu ?? null,
       });
     }
