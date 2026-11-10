@@ -17,7 +17,7 @@ const GRUPLAR: Grup[] = [
     seritRenk: "bg-slate-500",
     moduller: [
       { ad: "İşçilik Durum Raporu", aciklama: "Her iş için SGK asgari işçilik primi takibi. Sözleşme bedeli, ek sözleşme bedeli, fiyat farkı ve tahmini fiyat farkından yatması gereken prim hesaplanır; yatanla ve bordro tahminiyle karşılaştırılır. Eksik prim varsa geçici kabul tarihi girilirken uyarı çıkar." },
-      { ad: "Bordro Takibi", aciklama: "Personelin hangi ay hangi şantiyede olduğu, günlük/brüt ücretleri ve aylık bordro tahmini. İşçilik primi hesabının bordro ayağı buradan gelir." },
+      { ad: "Bordro Takibi", aciklama: "Personelin hangi ay hangi şantiyede olduğu, günlük/brüt ücretleri ve aylık bordro tahmini. İşçilik primi hesabının bordro ayağı buradan gelir. Her iş için SGK prim dengesi iki yönlü izlenir: bitime kadar prim dolmayacaksa kaç kişi eklenmeli, erken dolacaksa kaç kişi çıkarılabilir — fazla ödeme de para kaybıdır." },
       { ad: "Ödeme Planı", aciklama: "Vadesi gelen ödemelerin takvimi." },
       { ad: "Kredi Kartları", aciklama: "Şirket kartlarının limit, ekstre ve harcama takibi." },
       { ad: "İcra Dosyaları", aciklama: "Üçüncü şahıs haciz yazıları ve şirkete açılan takipler. Yazı sisteme girer girmez muhasebeye kendiliğinden mail gider (tebligat eki ekli) — borcumuz olup olmadığını onlar çıkarır. Muhasebenin cevabı e-posta kutusundan okunup dosyaya iliştirilir; satırdaki iki ikondan hangi aşamada olduğu görülür. Cevap yazısı avukata ek dosyalarla birlikte gönderilebilir, yasal süre geri sayılır." },
@@ -32,8 +32,7 @@ const GRUPLAR: Grup[] = [
     moduller: [
       { ad: "Gelen / Giden Evrak", aciklama: "Kurum yazışmalarının kayıt altına alınması, numaralandırılması ve aranması." },
       { ad: "Banka Yazışmaları", aciklama: "Teminat mektubu ve kredi yazışmaları ayrı tutulur." },
-      { ad: "E-Tebligat (UETS)", aciklama: "PTT Ulusal Elektronik Tebligat Sistemi'ndeki tebligatlar panelden izlenir; okunmamış tebligat ana sayfada uyarı verir." },
-      { ad: "Vergi Dairesi Tebligatı", aciklama: "Vergi dairesi tebligatı (GİB · KETSİS) ayrı bir sistemde durur ve alıcı tarafı için API'si yoktur — belge yalnız Dijital Vergi Dairesi ekranından görülür. Sistem GİB'in bilgilendirme mailini kutudan yakalar; mail hiç gelmese de haftada bir \"gidip bak\" hatırlatması çıkar, çünkü o mailin gelmemesi tebligat süresini durdurmaz." },
+      { ad: "Tebligatlar", aciklama: "Tek ekranda İKİ AYRI resmî tebligat sistemi. Üstte PTT UETS (mahkeme ve icra): tebligatlar iki saatte bir çekilir, menüdeki kırmızı rozet açılmamışları sayar. Tebligatı AÇMAK geri alınamaz — indirilen paket okunmuş sayılır — o yüzden yalnız kullanıcı \"aç ve oku\" dediğinde indirilir ve kimin istediği kayda geçer. İcra tebligatı açıldığında belgeden dosya no, alacaklı, borçlu ve tutar okunup icra sayfasına taslak satır düşer. Altta GİB KETSİS (vergi dairesi): alıcı tarafı için API olmadığından belge yalnız Dijital Vergi Dairesi ekranından görülür; sistem GİB'in bilgilendirme mailini yakalar, mail hiç gelmese de haftada bir \"gidip bak\" hatırlatması çıkar — çünkü mailin gelmemesi tebligat süresini durdurmaz." },
       { ad: "Silinen", aciklama: "Silinen evrak burada bekler; yanlışlıkla silinen geri alınabilir." },
     ],
   },
@@ -114,7 +113,7 @@ const GRUPLAR: Grup[] = [
     renk: "bg-indigo-50 text-indigo-700",
     seritRenk: "bg-indigo-500",
     moduller: [
-      { ad: "Günlük Kayıtlar", aciklama: "Sahadan günlük not, hava durumu ve yapılan iş kayıtları." },
+      { ad: "Günlük Kayıtlar", aciklama: "Sahadan günlük not, hava durumu ve yapılan iş kayıtları. Şantiyede çalışılmayan dönemler (kış tatili gibi) burada tanımlı dönemle birlikte yürür; prim ve puantaj hesapları o günleri saymaz." },
     ],
   },
   {
@@ -123,14 +122,14 @@ const GRUPLAR: Grup[] = [
     renk: "bg-[#1E3A5F]/10 text-[#1E3A5F]",
     seritRenk: "bg-[#1E3A5F]",
     moduller: [
-      { ad: "Kullanıcılar", aciklama: "Kullanıcı açma ve modül bazında yetkilendirme. Yalnız yönetici erişir. Bir kullanıcı başka birinin kopyası olarak açılabilir: kaynağa sonradan verilen yetkiler kopyalara da kendiliğinden geçer." },
+      { ad: "Kullanıcılar", aciklama: "Kullanıcı açma ve modül bazında yetkilendirme. Yalnız yönetici erişir. Bir kullanıcı başka birinin kopyası olarak açılabilir: kaynağa sonradan verilen yetkiler kopyalara da kendiliğinden geçer. Listede her kişinin e-posta adresinin doğrulanıp doğrulanmadığı görünür — doğrulanmamışsa doğrulama maili oradan gönderilir. Konum sütunu kimin aydınlatmayı onayladığını, kimin izni reddettiğini ayırır." },
       { ad: "Firmalar", aciklama: "Grup firmaları ve ortaklıklar; her firmanın kendi rengi vardır, listelerde bu renkle ayrışır." },
       { ad: "İş Deneyim Belgeleri", aciklama: "İşlerin (şantiyelerin) kartı: sözleşme bedeli, ihale ve sözleşme tarihleri, iş süresi, süre uzatımları, geçici ve kesin kabul tarihleri." },
       { ad: "Personeller", aciklama: "Personel kartları, öğrenim bilgileri, teknik personel atamaları." },
       { ad: "Araçlar", aciklama: "Araç kartları: plaka, cins, sayaç tipi (km/saat), 1 depo menzili, sahiplik (özmal/kiralık)." },
       { ad: "Yi-ÜFE", aciklama: "Fiyat farkı hesabında kullanılan Yurt İçi Üretici Fiyat Endeksi tablosu." },
       { ad: "Tanımlamalar", aciklama: "Açılır listelerin içeriği: görevler, meslekler, araç cinsleri, yakıt limitleri." },
-      { ad: "Haberler", aciklama: "Kurumsal sitede yayımlanan haber ve duyurular buradan yönetilir." },
+      { ad: "Bizden Haberler", aciklama: "Kurumsal sitede yayımlanan haber ve duyurular buradan yönetilir. Haber görselleri herkese açık kovada durur — sitenin oturumsuz gösterebilmesi için; panelin diğer bütün dosyaları özeldir." },
       { ad: "Veri Yedeği", aciklama: "Verinin dışa aktarımı. Yalnız yöneticiye açıktır." },
     ],
   },
@@ -166,6 +165,12 @@ const ENTEGRASYONLAR = [
     renk: "border-teal-300 bg-teal-50",
     baslikRenk: "text-teal-800",
     metin: "Yakıt kaydının girildiği yer ile aracın o anki konumu arasındaki YOL mesafesi açık rota servisinden alınır; harita uydu görüntüsüyle panel içinde küçük bir pencerede açılır. Hesaplanamazsa uydurulmaz, kuşbakışı mesafeye düşülür ve bu ekranda belli olur.",
+  },
+  {
+    ad: "Belge okuma",
+    renk: "border-violet-300 bg-violet-50",
+    baslikRenk: "text-violet-800",
+    metin: "Taranmış belgeler elle okunup forma geçirilmek yerine makineye okutulur. İş deneyim belgesi yüklendiğinde sözleşme bedeli, tarihler ve ortaklık oranı önerilir; icra tebligatı açıldığında dosya no, alacaklı, borçlu ve tutar çıkarılır. ÖNERİ KENDİLİĞİNDEN YAZILMAZ: her değer, belgede okunduğu SATIRLA birlikte gösterilir ve kullanıcı onaylar — taranmış belgelerde satır karışabildiği için bu şart.",
   },
   {
     ad: "Push Bildirim",
@@ -252,6 +257,51 @@ const UYARILAR = [
     ad: "Yakıt kaydı araçtan uzakta girildi",
     nokta: "bg-rose-500",
     metin: "Dolum kaydının girildiği yer ile aracın o anki GPS konumu karşılaştırılır. Aradaki yol mesafesi ekranda yazar; eşiği aşan kayıt işaretlenir. Araçta cihaz yoksa bu da açıkça söylenir — \"uzak değil\" diye geçiştirilmez.",
+  },
+  {
+    ad: "Okunmamış tebligat",
+    nokta: "bg-cyan-500",
+    metin: "UETS'te açılmamış tebligat varsa menüdeki satırda kırmızı rozet durur ve ana ekran uyarır. Rozet LİSTEYİ GÖRÜNCE DÜŞMEZ: burada \"açmak\" tebligatı UETS'te açmak demektir ve süre açılsa da açılmasa da işler (7201 s. K. 7/a). Tebligat açılınca rozet kendiliğinden iner.",
+  },
+  {
+    ad: "Avukattaki dosyanın son günü geldi",
+    nokta: "bg-fuchsia-500",
+    metin: "Dosyayı avukata göndermek işi bitirmiyor; sonrası panelde görünmüyor. Gönderilip unutulan dosya süresi dolduğunda kimsenin haberi olmadan kapanabiliyor. Son gün geldiğinde ekran tek bir şey soruyor: ne oldu?",
+  },
+  {
+    ad: "Bordro gönderilmedi",
+    nokta: "bg-lime-600",
+    metin: "Her ayın 1'inden itibaren, biten ayın bordrosu muhasebeye gönderilene kadar hatırlatma durur. Yalnız bordro yetkisi olanlara gösterilir; gönderildiği an kaybolur.",
+  },
+  {
+    ad: "Haftalık yedek alınmadı",
+    nokta: "bg-teal-600",
+    metin: "Cumartesi günü yedek alınmamışsa uyarı çıkar. Durum paylaşımlıdır: biri yedeği alınca uyarı HERKESTE kalkar, aynı iş iki kez yapılmaz.",
+  },
+  {
+    ad: "Şantiyede çalışılmayan dönem başladı",
+    nokta: "bg-slate-600",
+    metin: "Kış tatili gibi çalışılmayan dönemler şantiye kaydında gün-ay olarak tutulur ve her yıl tekrar eder. Dönem başlayınca hatırlatılır — prim ve puantaj hesapları o günleri saymıyor.",
+  },
+  {
+    ad: "İşçilik takibinde sicil no / oran eksik",
+    nokta: "bg-amber-500",
+    metin: "İhaleli ve aktif bir iş açıldıktan sonra SGK sicil numarası ya da asgari işçilik oranı girilmemişse uyarı çıkar — bu ikisi olmadan prim hesabı yapılamaz. Değerler uyarının içinden girilip kaydedilebilir.",
+  },
+  {
+    ad: "Sözleşme tarihi girilmedi",
+    nokta: "bg-stone-500",
+    metin: "\"Henüz sözleşme imzalanmadı\" diye boş bırakılan aktif işlerde, kayıttan bir hafta sonra tarihin girilmesi hatırlatılır. İş süresi ve bitim tarihi bu tarihten yürüyor.",
+  },
+  {
+    ad: "Poliçe, istenen teklifle uyuşmuyor",
+    nokta: "bg-blue-600",
+    metin: "Acenteden gelen poliçe PDF'i mailden okunup kendiliğinden kaydediliyor. Kesilen poliçe, poliçeleştirilmesi istenen teklifle tutmuyorsa (başka firma ya da başka rakam) uyarı çıkar.",
+  },
+  {
+    ad: "Netsim'de yeni iş açılmış",
+    nokta: "bg-sky-600",
+    metin: "Ön muhasebede yeni bir işlem noktası açılmış ama sitede karşılığı yoksa bildirilir — iş deneyim belgesi açılmadan hakediş rakamları bağlanamaz.",
   },
   {
     ad: "Süresi dolmuş işler",
@@ -393,8 +443,9 @@ export default function HakkindaPage() {
       <section className="mb-8">
         <h2 className="text-lg font-bold text-[#1E3A5F] mb-1">Modüller</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Soldaki menü bu başlıklardan oluşur. Bir kullanıcı yalnız yetkisi olan başlıkları görür —
-          yetkisi olmayan menüde hiç çıkmaz.
+          Soldaki menü bu gruplardan oluşur. Bir kullanıcı yalnız yetkisi olan başlıkları görür —
+          yetkisi olmayan menüde hiç çıkmaz. Bazı başlıklar ayrı bir sayfa değil, aynı sayfanın
+          içindeki sekme ya da özelliktir.
         </p>
         <div className="space-y-3">
           {GRUPLAR.map((g) => (
@@ -405,7 +456,7 @@ export default function HakkindaPage() {
                 </span>
                 <h3 className="font-bold text-[#1E3A5F]">{g.baslik}</h3>
                 <span className="ml-auto text-[11px] text-gray-400 font-medium">
-                  {g.moduller.length} sayfa
+                  {g.moduller.length} başlık
                 </span>
               </div>
               <div className="divide-y divide-gray-100">
