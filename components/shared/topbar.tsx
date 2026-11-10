@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks";
 import { Menu, LogOut, Clock, X, ZoomIn, Plus, Minus, ChevronDown, UserCog } from "lucide-react";
 import toast from "react-hot-toast";
+import { hatirlamayiUnut } from "@/lib/auth/beni-hatirla";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
 
@@ -105,6 +106,8 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
+      // "Beni hatırla" izi de silinsin: sonraki giriş kendi seçimiyle başlasın.
+      hatirlamayiUnut();
       toast.success("Çıkış yapıldı.");
       // SERT yönlendirme: router.push (soft-nav) mobil/PWA'da eski oturum ağacını taşıyıp bazen login'e
       // düşürüyordu. window.location tam sayfa yükler → oturum tamamen temizlenir, ana sayfaya (public) gider.

@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,11 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import toast from "react-hot-toast";
 import LogoDonen from "@/components/shared/logo-donen";
+import { hatirlamayiKaydet } from "@/lib/auth/beni-hatirla";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  // AÇIK BAŞLAR: bugüne kadar kutuyu işaretlemeyen de girişli kalıyordu (eski
+  // mantık tersine çalışıyordu, bkz. lib/auth/beni-hatirla.ts). Kapalı başlatmak
+  // herkesi uygulamayı her kapattığında yeniden şifre yazmaya mahkûm ederdi.
+  // İsteyen kutuyu kaldırır: o zaman uygulama kapanınca çıkış yapılır.
+  const [rememberMe, setRememberMe] = useState(true);
   // Şifremi unuttum paneli
   // Kurumsal sayfadaki giriş kutusundan "Şifremi unuttum" ile gelinirse panel AÇIK başlar.
   const [unuttumAcik, setUnuttumAcik] = useState(false);
@@ -50,7 +54,6 @@ export default function LoginPage() {
       if (sp.get("unuttum") === "1") setUnuttumAcik(true);
     } catch { /* önemsiz */ }
   }, []);
-  const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -85,17 +88,15 @@ export default function LoginPage() {
       if (error) {
         toast.error("Kullanıcı adı veya şifre hatalı.");
       } else {
-        // Beni hatırla: localStorage'a kaydet
-        if (rememberMe) {
-          localStorage.setItem("rememberMe", "true");
-          localStorage.setItem("rememberExpiry", String(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 7 gün
-        } else {
-          localStorage.removeItem("rememberMe");
-          localStorage.removeItem("rememberExpiry");
-        }
+        hatirlamayiKaydet(rememberMe);
         toast.success("Giriş başarılı, yönlendiriliyorsunuz...");
-        router.push("/dashboard");
-        router.refresh();
+        // ══ TAM SAYFA GEÇİŞİ — ŞİFRENİN TELEFONA KAYDEDİLMESİ İÇİN ══
+        // Safari/Chrome "şifreyi kaydedeyim mi?" diye yalnız şifre alanı dolu bir
+        // formdan sonra GERÇEK bir sayfa geçişi olursa sorar. router.push yalnız
+        // React içinde gezindiği için tarayıcı girişin tamamlandığını hiç görmüyor,
+        // kaydetme önerisi de hiç çıkmıyordu (iPhone'da şifre her açılışta elle
+        // yazılıyordu). Tam geçiş ayrıca sunucuya taze çerezle gidilmesini sağlıyor.
+        window.location.assign("/dashboard");
       }
     } catch {
       toast.error("Bir hata oluştu. Lütfen tekrar deneyin.");
@@ -137,6 +138,9 @@ export default function LoginPage() {
                 <Label htmlFor="username">Kullanıcı Adı</Label>
                 <Input
                   id="username"
+                  // name: şifre yöneticileri alanı adıyla tanıyor — kaydetme ve
+                  // sonraki otomatik doldurma bu ikiliye bakıyor.
+                  name="username"
                   type="text"
                   placeholder="Kullanıcı adınızı girin"
                   value={username}
@@ -150,6 +154,7 @@ export default function LoginPage() {
                 <Label htmlFor="password">Şifre</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
                   placeholder="Şifrenizi girin"
                   value={password}
@@ -163,7 +168,10 @@ export default function LoginPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
                     className="rounded border-gray-300" />
-                  <span className="text-sm text-gray-600">Beni hatırla</span>
+                  <span className="text-sm text-gray-600" title={
+                    "İşaretli: bir daha şifre sorulmaz — uygulamayı kapatıp açsanız da girişli kalırsınız.\n"
+                    + "İşaretsiz: uygulamayı kapattığınızda çıkış yapılır."
+                  }>Beni hatırla</span>
                 </label>
                 <button type="button" onClick={() => { setUnuttumAcik(true); setUnuttumSonuc(""); }}
                   className="text-sm text-[#1E3A5F] hover:text-[#F97316] hover:underline">

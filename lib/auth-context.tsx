@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, u
 import { getKullaniciProfil } from "@/lib/supabase/queries/kullanicilar";
 import { hasPermission as checkPermission } from "@/lib/permissions";
 import type { Kullanici, IzinAksiyonu } from "@/lib/supabase/types";
+import { oturumKapatilmaliMi, hatirlamayiUnut } from "@/lib/auth/beni-hatirla";
 
 type AuthContextType = {
   kullanici: Kullanici | null;
@@ -130,13 +131,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadProfile() {
       try {
-        // Beni hatırla süresi kontrolü
-        const rememberMe = localStorage.getItem("rememberMe");
-        const expiry = localStorage.getItem("rememberExpiry");
-        if (rememberMe && expiry && Date.now() > parseInt(expiry)) {
-          // 7 gün dolmuş — çıkış yap
-          localStorage.removeItem("rememberMe");
-          localStorage.removeItem("rememberExpiry");
+        // BENİ HATIRLA — kural lib/auth/beni-hatirla.ts'te, gerekçesiyle birlikte.
+        // Kısaca: işaretliyse oturum kalıcı (hiç sormaz), işaretsizse uygulama
+        // kapanınca çıkılır. Eskiden tam tersi oluyordu — işaretleyen 7 günde
+        // atılıyor, işaretlemeyen süresiz kalıyordu.
+        if (oturumKapatilmaliMi()) {
+          hatirlamayiUnut();
           const { createClient } = await import("@/lib/supabase/client");
           const supabase = createClient();
           await supabase.auth.signOut();

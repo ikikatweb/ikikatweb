@@ -5,13 +5,25 @@
 //    engelleyip olayı saklıyoruz; kullanıcı butona basınca deferredPrompt.prompt() ile native
 //    kurulum diyaloğunu açıyoruz. Tek dokunuş.
 //  • iOS Safari: beforeinstallprompt YOK. Kurulum yalnızca "Paylaş → Ana Ekrana Ekle" ile elle
-//    yapılır. Bu yüzden iOS'te görsel talimat gösteriyoruz.
+//    yapılır — bir web sayfası iOS'ta ana ekrana kendi kendine simge koyamaz. Bu yüzden
+//    iOS'te görsel talimat gösteriyoruz.
+//
+// ══ NEREDEYKEN ÖNERİLİR: PANEL İÇİ ══
+// iOS "Ana Ekrana Ekle" O ANDA AÇIK OLAN ADRESİ kaydeder; manifest'teki start_url'e
+// bakmaz. Banner her sayfada çıktığı için insanlar çoğunlukla GİRİŞ SAYFASINDAYKEN
+// ekliyordu: ana ekrandaki simge /login'i açıyor, uygulama her açılışta şifre soruyor
+// gibi görünüyordu (10.11.2026). Artık öneri yalnız panel içindeyken (/dashboard...)
+// çıkıyor; kaydedilen adres panelin kendisi oluyor.
+//
+// Talimatta "Web Uygulaması Olarak Aç" anahtarı ayrıca söyleniyor: kapalı bırakılırsa
+// iOS bunu sıradan bir yer imi gibi açıyor, tam ekran ve ayrı uygulama davranışı olmuyor.
 //
 // Gösterilmediği durumlar: masaüstü, zaten kurulu (standalone) açılış, ya da kullanıcı daha önce
 // kapatmışsa (localStorage'da hatırlanır; süre dolunca tekrar önerilir).
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Share, SquarePlus, Smartphone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -50,10 +62,13 @@ export default function PwaEkleBanner() {
   // İlk render (SSR + client hydration) daima "gizli" → hidrasyon uyuşmazlığı olmaz; karar effect'te.
   const [mod, setMod] = useState<"gizli" | "ios" | "android">("gizli");
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const yol = usePathname();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (standaloneMi() || yakindaKapatildi()) return;
+    // PANEL DIŞINDA ÖNERME: eklenecek adres panelin kendisi olsun (yukarıdaki nota bakın).
+    if (!yol?.startsWith("/dashboard")) return;
 
     const ua = window.navigator.userAgent;
     const iosCihaz = /iphone|ipad|ipod/i.test(ua);
@@ -86,7 +101,7 @@ export default function PwaEkleBanner() {
       window.removeEventListener("beforeinstallprompt", handler);
       window.removeEventListener("appinstalled", kuruldu);
     };
-  }, []);
+  }, [yol]);
 
   function kapat() {
     setMod("gizli");
@@ -132,12 +147,26 @@ export default function PwaEkleBanner() {
           <p className="text-sm font-semibold text-slate-900">İkikat&apos;i ana ekrana ekle</p>
 
           {iosMod ? (
-            <p className="mt-1 text-xs leading-relaxed text-slate-600">
-              Alttaki <Share className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom" />
-              <span className="font-medium">Paylaş</span> düğmesine dokun, ardından{" "}
-              <SquarePlus className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom" />
-              <span className="font-medium">Ana Ekrana Ekle</span> seçeneğini seç.
-            </p>
+            <div className="mt-1 space-y-1 text-xs leading-relaxed text-slate-600">
+              <p>
+                <span className="font-semibold text-slate-700">1.</span> Alttaki{" "}
+                <Share className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom" />
+                <span className="font-medium">Paylaş</span> düğmesine dokun.
+              </p>
+              <p>
+                <span className="font-semibold text-slate-700">2.</span>{" "}
+                <SquarePlus className="mx-0.5 inline h-3.5 w-3.5 align-text-bottom" />
+                <span className="font-medium">Ana Ekrana Ekle</span> seçeneğini seç.
+              </p>
+              <p>
+                <span className="font-semibold text-slate-700">3.</span>{" "}
+                <span className="font-medium">Web Uygulaması Olarak Aç</span> açık kalsın, sonra{" "}
+                <span className="font-medium">Ekle</span>.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Bu sayfadan eklersen simge doğrudan panele açılır.
+              </p>
+            </div>
           ) : (
             <p className="mt-1 text-xs leading-relaxed text-slate-600">
               Tek dokunuşla kur; uygulama gibi tam ekran açılır ve daha hızlı erişirsin.
