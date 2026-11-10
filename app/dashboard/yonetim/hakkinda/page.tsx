@@ -159,7 +159,7 @@ const ENTEGRASYONLAR = [
     ad: "UETS (PTT e-Tebligat)",
     renk: "border-rose-300 bg-rose-50",
     baslikRenk: "text-rose-800",
-    metin: "Ulusal Elektronik Tebligat Sistemi'ndeki tebligatların panelden izlenmesi. Bağlantı PTT'den gelecek erişim anahtarına bağlıdır; anahtar çalışır hâle gelene kadar sistem onu düzenli olarak dener.",
+    metin: "Ulusal Elektronik Tebligat Sistemi'ndeki tebligatlar iki saatte bir çekilir; gönderen, konu, ulaşma ve tebliğ tarihleri panele işlenir. TEBLİGATI AÇMAK GERİ ALINAMAZ — indirilen paket okunmuş sayılır, o yüzden açma işi yalnız kullanıcının açıkça istediği kayıtta yapılır ve kimin istediği kayda geçer. UETS yalnız PTT'de tanımlı sabit IP'den cevap verdiği için indirme ofisteki bilgisayardan yürür; panel isteği kuyruğa yazar.",
   },
   {
     ad: "Harita ve yol mesafesi",
@@ -177,27 +177,29 @@ const ENTEGRASYONLAR = [
 
 const OTOMATIK_ISLER = [
   { ad: "Arvento anlık konum", sure: "Dakikada bir", ne: "Araçların o anki konumu — yakıt kaydının konumu bununla karşılaştırılır" },
-  { ad: "Arvento rapor / damper", sure: "Dakikada bir", ne: "Günlük çalışma raporu ve damper sayıları" },
-  { ad: "Arvento güzergâh", sure: "15 dakikada bir", ne: "Gün içi rota izleri" },
+  { ad: "Arvento rapor / damper", sure: "Dakikada bir", ne: "Gün içi çalışma raporu ve damper sayıları" },
   { ad: "Bildirge okuma", sure: "2 dakikada bir", ne: "Posta kutusundan SGK işe giriş/çıkış bildirgelerinin alınıp TC ile eşleştirilmesi" },
   { ad: "Sigorta teklif maili", sure: "2 dakikada bir", ne: "Acentelerden gelen tekliflerin okunup poliçe kartına işlenmesi" },
   { ad: "KETSİS mail kontrolü", sure: "5 dakikada bir", ne: "Vergi dairesi tebligatının bilgilendirme mailinin yakalanması" },
+  { ad: "Tebligat açma istekleri", sure: "5 dakikada bir", ne: "Panelden \"aç ve oku\" denen tebligatın PTT'den indirilmesi — geri alınamaz işlem" },
+  { ad: "Arvento güzergâh", sure: "15 dakikada bir", ne: "Gün içi rota izleri" },
   { ad: "Netsim senkronu", sure: "15 dakikada bir", ne: "Hakediş tutarları ve yeni açılan işlerin eşleştirmesi" },
   { ad: "İcra muhasebe cevabı", sure: "15 dakikada bir", ne: "Muhasebenin icra yazısına verdiği cevabın ekleriyle birlikte dosyaya iliştirilmesi" },
-  { ad: "UETS tebligat", sure: "2 saatte bir", ne: "PTT e-Tebligat kutusunun taranması (anahtar bekliyor)" },
+  { ad: "UETS tebligat", sure: "2 saatte bir", ne: "PTT e-Tebligat kutusunun taranması; yeni tebligat panele düşer" },
+  { ad: "Bildirim budama", sure: "Ayın 1'i 03:20", ne: "60 günden eski bildirimlerin temizlenmesi" },
   { ad: "Geçmiş güzergâh tamamlama", sure: "Her gün 03:40", ne: "Eksik kalan eski günlerin rota verisinin doldurulması" },
-  { ad: "Bildirim budama", sure: "Her ayın 1'i 03:20", ne: "60 günden eski bildirimlerin temizlenmesi" },
-  { ad: "Yaklaşan uyarılar", sure: "Her gün 05:00", ne: "Sigorta, muayene, bakım ve kabul tarihlerinin taranıp bildirime dönüşmesi" },
-  { ad: "Makine saati", sure: "Her gün 19:00", ne: "İş makinelerinin gösterge saatinin kontak süresinden ilerletilmesi" },
-  { ad: "Yi-ÜFE çekimi", sure: "Her ayın başında", ne: "TÜİK endeksinin fiyat farkı hesabı için alınması" },
-  { ad: "Veri yedeği", sure: "Her cumartesi 12:00", ne: "Tüm verinin yerel diske ŞİFRELİ olarak yedeklenmesi" },
+  { ad: "Yaklaşan uyarılar", sure: "Her sabah 08:00", ne: "Sigorta, muayene, bakım ve kabul tarihlerinin taranıp bildirime dönüşmesi" },
+  { ad: "Yi-ÜFE çekimi", sure: "Ayın 3-6'sı 11:00", ne: "TÜİK endeksinin fiyat farkı hesabı için alınması (endeks açıklanana kadar denenir)" },
+  { ad: "Veri yedeği", sure: "Cumartesi 12:00", ne: "Tüm verinin yerel diske ŞİFRELİ olarak yedeklenmesi" },
+  { ad: "Arvento gece raporu", sure: "Her akşam 21:00", ne: "Arvento'nun mail ile gönderdiği günlük Excel raporunun içe aktarılması" },
+  { ad: "Makine saati", sure: "Her gece 22:00", ne: "İş makinelerinin gösterge saatinin kontak süresinden ilerletilmesi" },
 ];
 
 /** Görev çökerse haber verilir — sessizce durmasın. */
-const GOREV_NOTU = "Bu işlerden biri çalışmazsa sebebi sınıflandırılıp bildirime dönüşür: "
-  + "\"sunucu bakımda\", \"bağlantı kurulamadı\", \"yetki/anahtar sorunu\" gibi. "
-  + "Zamanlayıcı \"başarılı\" dese bile betik içeride çökmüş olabilir; o yüzden sonuç "
-  + "görevin kendi günlüğünden okunur.";
+const GOREV_NOTU = "Saatler Türkiye saatidir. Bu işlerden biri çalışmazsa sebebi "
+  + "sınıflandırılıp bildirime dönüşür: \"sunucu bakımda\", \"bağlantı kurulamadı\", "
+  + "\"yetki/anahtar sorunu\" gibi. Zamanlayıcı \"başarılı\" dese bile betik içeride "
+  + "çökmüş olabilir; o yüzden sonuç görevin kendi günlüğünden okunur.";
 
 
 const UYARILAR = [
@@ -297,7 +299,7 @@ export default function HakkindaPage() {
           sözleşme, personel, araç, yakıt, hakediş, prim ve maliyet — aynı veri tabanında tutulur.
         </p>
         <div className="flex flex-wrap gap-2 mt-5">
-          {["Her yerden erişim", "Telefona kurulabilir", "Anlık bildirim", "Rol bazlı yetki", "Şifreli yedek", "Kendiliğinden çalışan 15 görev"].map((t) => (
+          {["Her yerden erişim", "Telefona kurulabilir", "Anlık bildirim", "Rol bazlı yetki", "Şifreli yedek", "Kendiliğinden çalışan görevler"].map((t) => (
             <span key={t} className="text-[11px] font-semibold bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">
               {t}
             </span>
@@ -470,8 +472,12 @@ export default function HakkindaPage() {
           <h2 className="text-lg font-bold text-[#1E3A5F]">Kendiliğinden çalışan işler</h2>
         </div>
         <p className="text-sm text-gray-500 mb-4">
-          Bunlar kimse başlatmadan, ofisteki bilgisayarda arka planda döner. Elektrik kesilip
-          gelse bile bilgisayar kendiliğinden açılır ve görevler kaldığı yerden devam eder.
+          Bunlar kimse başlatmadan kendiliğinden döner. Çoğu ofisteki bilgisayarda çalışır —
+          çünkü bazı sistemler (Netsim ağdaki veritabanında, UETS yalnız tanımlı sabit IP üzerinden)
+          dışarıdan erişilemiyor. Elektrik kesilip gelse bile bilgisayar kendiliğinden açılır ve
+          görevler kaldığı yerden devam eder. Günlük tarama, endeks çekimi ve makine saati gibi
+          dışarıya bağlı olmayanlar ise sunucuda (bulutta) çalışır; bilgisayar kapalı olsa da
+          işlerler.
         </p>
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
           {OTOMATIK_ISLER.map((i, idx) => (
