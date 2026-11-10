@@ -187,7 +187,12 @@ export function MuhasebeBandi({ kayit, sirket }: {
     : "");
 
   return (
-    <div className={`sm:col-span-2 lg:col-span-3 rounded-lg border px-3 py-2 text-[11px] ${renk}`}>
+    // SPAN YALNIZ İKİ SÜTUN: üç sütunluk formlarda (şirket defteri, ödeme emri)
+    // şerit zaten col-span-3'lü bir kutunun içinde duruyor. Buraya lg:col-span-3
+    // yazıldığında İKİ sütunluk icra formunda ÜÇÜNCÜ BİR SÜTUN doğuruyor ve
+    // bütün form kayıyordu: bölüm başlıkları yarım kalıyor, alanlar yan yana
+    // dağılıyordu (10.11.2026).
+    <div className={`sm:col-span-2 rounded-lg border px-3 py-2 text-[11px] ${renk}`}>
       {asama === "cevaplandi" ? (
         <>
           <strong>Muhasebe cevabı işlendi.</strong>
