@@ -45,9 +45,14 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
 
   // İKİ NOKTA VARSA YOL TARİFİ, YOKSA TEK NOKTA: araçta cihaz yoksa çizilecek
   // rota da yok; o zaman yalnız kaydın girildiği yer gösterilir.
+  // UYDU + ETİKET (t=h) İLE AÇILIR: yakıt kaydında bakılan şey "burası neresi"
+  // — pompa mı, şantiye mi, tarla mı. Sokak haritasında orası boş bir alan
+  // olarak görünüyor; uydu görüntüsünde bina, depo, yol gerçekten görünüyor.
+  // Etiketli olanı (hybrid) seçildi: yer adları olmadan yön bulmak zor.
+  // Kullanıcı harita içinden katmanı yine değiştirebiliyor.
   const gomme = aracVar
-    ? `https://maps.google.com/maps?saddr=${aracNokta}&daddr=${kayitNokta}&hl=tr&output=embed`
-    : `https://maps.google.com/maps?q=${kayitNokta}&z=16&hl=tr&output=embed`;
+    ? `https://maps.google.com/maps?saddr=${aracNokta}&daddr=${kayitNokta}&hl=tr&t=h&output=embed`
+    : `https://maps.google.com/maps?q=${kayitNokta}&z=17&hl=tr&t=h&output=embed`;
   const disHarita = aracVar
     ? `https://www.google.com/maps/dir/?api=1&origin=${aracNokta}&destination=${kayitNokta}&travelmode=driving`
     : `https://www.google.com/maps?q=${kayitNokta}`;
