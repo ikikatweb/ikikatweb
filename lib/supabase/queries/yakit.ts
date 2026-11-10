@@ -95,6 +95,17 @@ export async function insertAracYakit(data: {
   dis_yakit_oncesi?: boolean | null;
   notu: string | null;
   created_by: string | null;
+  // ── KONUM ── Kaydı girenin konumu ZORUNLU (çağıran taraf ölçüp veriyor);
+  // aracın o andaki konumu ve mesafe hesaplanabildiyse birlikte yazılır.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+  konum_at?: string | null;
+  arac_lat?: number | null;
+  arac_lng?: number | null;
+  arac_konum_at?: string | null;
+  arac_mesafe_m?: number | null;
+  konum_notu?: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
 

@@ -758,6 +758,21 @@ export type AracYakit = {
   // oranında dağıtılan ± litre düzeltmesi). true ise km_saat null'dır (gerçek dolum değil).
   // Sadece yöneticiye gösterilir. null/false → normal yakıt verme kaydı.
   duzeltme?: boolean | null;
+  // ── KONUM (sql/yakit_konum.sql) ──
+  // Kaydı GİREN kişinin konumu — zorunlu; tarayıcı izin penceresiyle alınır.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  /** Sapma payı (m). Mesafe HER ZAMAN bununla birlikte okunur. */
+  konum_dogruluk_m?: number | null;
+  /** Konumun ÖLÇÜLDÜĞÜ an — kaydın kaydedildiği an değil. */
+  konum_at?: string | null;
+  // Aracın O ANDAKİ konumu (Arvento anlık kopyası; o tablo her dakika üstüne yazılıyor).
+  arac_lat?: number | null;
+  arac_lng?: number | null;
+  arac_konum_at?: string | null;
+  /** Kuşbakışı mesafe (m). Hesaplanamadıysa BOŞ — sebebi konum_notu'nda. */
+  arac_mesafe_m?: number | null;
+  konum_notu?: string | null;
   notu: string | null;
   created_at: string;
   created_by: string | null;

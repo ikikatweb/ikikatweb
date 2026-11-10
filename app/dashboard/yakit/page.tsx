@@ -11,6 +11,8 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "rea
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
+import { konumAl, mesafeM, mesafeSupheliMi, KonumHatasi, ARAC_KONUM_TAZELIK_DK, type Konum } from "@/lib/utils/konum";
+import { getAnlikKonumlarDirect } from "@/lib/supabase/queries/arvento";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -50,7 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   FileDown, FileSpreadsheet, Plus, Trash2, Truck, Download,
-  AlertTriangle, ArrowRight, Search, Fuel, RefreshCcw, Pencil,
+  AlertTriangle, ArrowRight, Search, Fuel, RefreshCcw, Pencil, MapPin,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -81,6 +83,13 @@ type Hareket =
       dis_yakit_oncesi: boolean | null;
       duzeltme: boolean; // düzeltme kaydı mı (km_saat yok, ± litre hisse dağıtımı)
       notu: string | null;
+      // ── KONUM KONTROLÜ ── Kaydın girildiği yer ile aracın o andaki yeri
+      // arasındaki mesafe. Hesaplanamadıysa boş; sebebi konum_notu'nda.
+      arac_mesafe_m?: number | null;
+      konum_dogruluk_m?: number | null;
+      konum_lat?: number | null;
+      konum_lng?: number | null;
+      konum_notu?: string | null;
       created_by: string | null;
     }
   | {
@@ -175,6 +184,50 @@ function parseDuzMiktar(formatted: string): number {
   const temiz = t.replace(/\./g, "").replace(",", ".");
   const n = parseFloat(temiz);
   return isNaN(n) ? NaN : n;
+}
+
+
+/**
+ * KONUM ROZETİ — yakıt kaydı nerede girildi, araç o anda neredeydi?
+ *
+ * Üç hâl:
+ *   yeşil  → mesafe eşiğin altında; kayıt aracın yanında girilmiş
+ *   kırmızı→ mesafe büyük; bakılması gereken kayıt
+ *   gri    → hesaplanamadı (araçta cihaz yok / cihazın ölçümü eski)
+ *
+ * SAPMA PAYI HESABA KATILIR: telefon 800 m yanılıyorsa 600 m'lik fark şüpheli
+ * sayılmaz — yoksa bina içinde girilen her kayıt yanlışlıkla işaretlenirdi.
+ * Rozete tıklayınca konum haritada açılır: sayı tek başına "nerede" demiyor.
+ */
+function KonumRozeti({ h }: {
+  h: { arac_mesafe_m?: number | null; konum_dogruluk_m?: number | null;
+       konum_lat?: number | null; konum_lng?: number | null; konum_notu?: string | null };
+}) {
+  const mesafe = h.arac_mesafe_m ?? null;
+  const dogruluk = h.konum_dogruluk_m ?? null;
+  const supheli = mesafeSupheliMi(mesafe, dogruluk);
+  const metin = mesafe == null
+    ? "konum —"
+    : mesafe >= 1000 ? `${(mesafe / 1000).toFixed(1).replace(".", ",")} km` : `${mesafe} m`;
+  const ipucu = [
+    mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı") : `Araçla arasındaki mesafe: ${metin}`,
+    dogruluk != null ? `telefon sapma payı ±${dogruluk} m` : "sapma payı bilinmiyor",
+    h.konum_lat != null ? "haritada açmak için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
+  ].join(" · ");
+  const sinif = mesafe == null ? "bg-gray-100 text-gray-500"
+    : supheli ? "bg-red-100 text-red-700 font-semibold" : "bg-emerald-100 text-emerald-700";
+  const rozet = (
+    <span className={`mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] ${sinif}`} title={ipucu}>
+      <MapPin size={9} /> {metin}
+    </span>
+  );
+  if (h.konum_lat == null || h.konum_lng == null) return <div>{rozet}</div>;
+  return (
+    <div>
+      <a href={`https://www.google.com/maps?q=${h.konum_lat},${h.konum_lng}`}
+        target="_blank" rel="noopener noreferrer">{rozet}</a>
+    </div>
+  );
 }
 
 export default function YakitPage() {
@@ -453,6 +506,11 @@ function YakitPageContent() {
         duzeltme: y.duzeltme === true,
         notu: y.notu,
         created_by: y.created_by,
+        arac_mesafe_m: y.arac_mesafe_m ?? null,
+        konum_dogruluk_m: y.konum_dogruluk_m ?? null,
+        konum_lat: y.konum_lat ?? null,
+        konum_lng: y.konum_lng ?? null,
+        konum_notu: y.konum_notu ?? null,
       });
     }
     for (const a of alimlar) {
@@ -1001,6 +1059,55 @@ function YakitPageContent() {
           notu: verDialogNotu.trim() || null,
         });
       } else {
+        // ── KONUM ZORUNLU ──
+        // Kaydın NEREDE girildiği, aracın o andaki konumuyla karşılaştırılıyor.
+        // İzin verilmezse KAYIT YAPILMAZ: konumsuz kayıt kabul edilseydi kural
+        // "isteyen vermez" hâline gelir ve kontrolün anlamı kalmazdı. Sebep
+        // kullanıcıya olduğu gibi söyleniyor (AGENTS.md "sessiz hata yok").
+        let konum: Konum;
+        try {
+          konum = await konumAl();
+        } catch (e) {
+          toast.error(e instanceof KonumHatasi ? e.message : "Konum alınamadı — yakıt kaydı için konum zorunlu.",
+            { duration: toastSuresi() });
+          return;
+        }
+
+        // ── ARACIN O ANDAKİ KONUMU ──
+        // UYDURMA YOK: araçta cihaz yoksa ya da son ölçüm eskiyse mesafe BOŞ
+        // kalır, sebebi kayda yazılır. Eski bir ölçümle "araç 40 km uzaktaydı"
+        // demek insanı yok yere suçlamak olur.
+        let aracLat: number | null = null, aracLng: number | null = null;
+        let aracKonumAt: string | null = null, mesafe: number | null = null;
+        let konumNotu: string | null = null;
+        const aracKayit = aracMap.get(verDialogAracId);
+        const node = (aracKayit?.arvento_node ?? "").trim();
+        if (!node) {
+          konumNotu = "Araçta takip cihazı tanımlı değil";
+        } else {
+          try {
+            const anlik = (await getAnlikKonumlarDirect()).find((a) => a.node === node);
+            if (!anlik || anlik.lat == null || anlik.lng == null) {
+              konumNotu = "Aracın canlı konumu okunamadı";
+            } else {
+              // ARVENTO'DA İKİ TARİH VAR: `tarih` cihazın ÖLÇÜM anı, `guncelleme`
+              // bizim senkron anımız. Tazelik ölçüsü ölçüm anıdır — senkron her
+              // dakika dönüyor ama cihaz günlerdir haber vermiyor olabilir.
+              const olcum = anlik.tarih ? new Date(anlik.tarih) : null;
+              const yas = olcum ? (Date.now() - olcum.getTime()) / 60000 : Infinity;
+              aracLat = anlik.lat; aracLng = anlik.lng;
+              aracKonumAt = olcum ? olcum.toISOString() : null;
+              if (yas > ARAC_KONUM_TAZELIK_DK) {
+                konumNotu = `Aracın son konum ölçümü ${Math.round(yas / 60)} saat önce — mesafe hesaplanmadı`;
+              } else {
+                mesafe = mesafeM(konum, { lat: anlik.lat, lng: anlik.lng });
+              }
+            }
+          } catch {
+            konumNotu = "Aracın canlı konumu okunamadı";
+          }
+        }
+
         const simdi = new Date();
         const saatStr = `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
         await insertAracYakit({
@@ -1014,6 +1121,15 @@ function YakitPageContent() {
           dis_yakit_oncesi: verDialogDisYakit,
           notu: verDialogNotu.trim() || null,
           created_by: kullanici?.id ?? null,
+          konum_lat: konum.lat,
+          konum_lng: konum.lng,
+          konum_dogruluk_m: konum.dogruluk >= 0 ? konum.dogruluk : null,
+          konum_at: konum.an,
+          arac_lat: aracLat,
+          arac_lng: aracLng,
+          arac_konum_at: aracKonumAt,
+          arac_mesafe_m: mesafe,
+          konum_notu: konumNotu,
         });
       }
       // Araçın güncel göstergesini güncelle (km > 0 ise)
@@ -1860,6 +1976,12 @@ function YakitPageContent() {
                     </TableCell>
                     <TableCell className="px-2 text-[10px] text-gray-600">
                       {h.created_by ? (kullaniciMap.get(h.created_by) ?? "—") : "—"}
+                      {/* KONUM KONTROLÜ: kaydın girildiği yer ile aracın o andaki
+                          yeri arasındaki mesafe. Kullanıcı adının altında duruyor —
+                          "kim girdi" ile "nereden girdi" aynı soruya ait.
+                          SAPMA PAYI HESABA KATILIR: telefon 800 m yanılıyorsa
+                          600 m'lik fark şüpheli sayılmaz (mesafeSupheliMi). */}
+                      {h.tip === "arac_yakit" ? <KonumRozeti h={h} /> : null}
                     </TableCell>
                     <TableCell className="px-2 text-[10px] text-gray-500 max-w-[120px] truncate" title={h.notu ?? ""}>
                       {h.notu || "—"}
