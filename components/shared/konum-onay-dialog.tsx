@@ -87,6 +87,8 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
   // Site izni mi reddedilmiş, telefonun konum servisi mi kapalı? İkisi aynı
   // hata koduyla geliyor; ayırt edilebiliyorsa doğru yere yönlendirilsin.
   const [izinKaynagi, setIzinKaynagi] = useState<"site" | "cihaz" | "bilinmiyor">("bilinmiyor");
+  // Pencere hiç çıkmadı mı? (ayar kapalıyken ret ANINDA döner — bkz. KonumHatasi)
+  const [sorulmadi, setSorulmadi] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
 
   useEffect(() => { if (acik) { setIzin("bilinmiyor"); setIzinHata(null); } }, [acik]);
@@ -100,6 +102,7 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
     } catch (e) {
       setIzin("reddedildi");
       setIzinHata(e instanceof KonumHatasi ? e.message : "Konum alınamadı.");
+      setSorulmadi(e instanceof KonumHatasi && e.sorulmadi === true);
       // Tarayıcı "reddedildi" diyorsa site izni kapalı; "sorulacak" diyorsa
       // izin hiç reddedilmemiş demektir → sorun telefonun konum servisinde.
       const d = await izinDurumu();
@@ -190,12 +193,17 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
             <div className="mt-1.5 text-[11px] text-red-700">
               <p className="flex items-start gap-1">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                {/* SORULMADIYSA ÖNCE BUNU SÖYLE: kullanıcı "ben reddetmedim ki"
+                    diyor ve haklı; ayar zaten kapalı olduğu için pencere hiç
+                    çıkmıyor. Yanlış teşhis insanı yanlış menüde dolaştırıyor. */}
                 <span>
-                  {izinKaynagi === "cihaz"
-                    ? "Bu siteye konum izni REDDEDİLMİŞ DEĞİL — telefonun konum servisi kapalı görünüyor."
-                    : izinKaynagi === "site"
-                      ? "Bu siteye konum izni kapalı."
-                      : izinHata}
+                  {sorulmadi
+                    ? "Telefonunuz size SORMADI bile — ayar kapalı olduğu için istek doğrudan reddedildi."
+                    : izinKaynagi === "cihaz"
+                      ? "Bu siteye konum izni REDDEDİLMİŞ DEĞİL — telefonun konum servisi kapalı görünüyor."
+                      : izinKaynagi === "site"
+                        ? "Bu siteye konum izni kapalı."
+                        : izinHata}
                 </span>
               </p>
               {/* ADIMLAR CİHAZA GÖRE: "ayarlardan açın" demek yetmiyor, kullanıcı

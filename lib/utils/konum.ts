@@ -22,7 +22,20 @@ export type Konum = {
 };
 
 /** Kullanıcıya gösterilecek sebep; sessiz başarısızlık yok. */
-export class KonumHatasi extends Error {}
+export class KonumHatasi extends Error {
+  /**
+   * İZİN PENCERESİ HİÇ ÇIKMADI MI?
+   *
+   * Reddedilme iki türlü oluyor ve ikisi aynı hata koduyla (code 1) geliyor:
+   *   · kullanıcı pencereyi görüp "İzin Verme"ye bastı  → saniyeler sürer
+   *   · ayar zaten kapalı, pencere HİÇ ÇIKMADI          → anında döner
+   * İkincisinde kullanıcı "bana sormadı bile" diyor ve haklı (10.11.2026:
+   * iPhone'da Ayarlar → Safari → Konum "Reddet"te duruyordu). Süreyi ölçüp
+   * ayırt ediyoruz: yarım saniyeden kısa sürede gelen ret, sorulmamış demektir.
+   */
+  sorulmadi?: boolean;
+  constructor(mesaj: string, sorulmadi = false) { super(mesaj); this.sorulmadi = sorulmadi; }
+}
 
 /**
  * Konumu bir kez ölç.
@@ -50,6 +63,7 @@ export function konumAl(saniye = 20): Promise<Konum> {
         + "adreslerde veriyor. Panele telefondan girerken ikikat.net adresini kullanın."));
       return;
     }
+    const basladi = Date.now();
     navigator.geolocation.getCurrentPosition(
       (p) => coz({
         lat: p.coords.latitude,
@@ -62,14 +76,15 @@ export function konumAl(saniye = 20): Promise<Konum> {
       (h) => {
         // SEBEP KULLANICIYA ANLAŞILIR DİLDE: "code 1" kimseye bir şey söylemiyor.
         if (h.code === h.PERMISSION_DENIED) {
-          // İKİ SEBEP AYNI KODLA GELİYOR: site izni reddedilmiş olabilir ya da
-          // TELEFONUN KONUM SERVİSİ kapalı olabilir. İkincisinde tarayıcı izin
-          // penceresini hiç göstermez; "reddettiyseniz" demek kullanıcıyı
-          // yanlış yere gönderiyordu (10.11.2026).
-          red(new KonumHatasi(
-            "Konum alınamadı. Ya bu siteye konum izni kapalı ya da telefonun "
-            + "KONUM SERVİSİ kapalı — ikisinde de tarayıcı izin penceresini göstermez. "
-            + "Aşağıdaki adımları izleyin."));
+          // SORULDU MU, SORULMADI MI? Pencereyi görüp reddetmek insan tepkisi
+          // ister (saniyeler); ayar kapalıyken ret ANINDA döner.
+          const sorulmadi = Date.now() - basladi < 500;
+          red(new KonumHatasi(sorulmadi
+            ? "Telefonunuz size SORMADI bile — konum ayarı kapalı olduğu için istek "
+              + "doğrudan reddedildi. Aşağıdaki adımlarla ayarı açın."
+            : "Konum izni verilmedi. Yakıt kaydı için konum zorunlu — izin penceresinde "
+              + "'İzin Ver' deyin ya da aşağıdaki adımlarla ayarı açın.",
+            sorulmadi));
         } else if (h.code === h.POSITION_UNAVAILABLE) {
           red(new KonumHatasi("Konum alınamadı (sinyal yok). Açık alana çıkıp tekrar deneyin."));
         } else if (h.code === h.TIMEOUT) {
