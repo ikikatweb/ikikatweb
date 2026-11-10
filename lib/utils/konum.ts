@@ -39,6 +39,17 @@ export function konumAl(saniye = 20): Promise<Konum> {
       red(new KonumHatasi("Bu cihaz/tarayıcı konum vermiyor. Yakıt kaydı için konum zorunlu."));
       return;
     }
+    // ══ GÜVENLİ BAĞLAM ŞART ══
+    // Tarayıcılar konumu yalnız https'te (ve aynı makinedeki localhost'ta) verir.
+    // Telefondan geliştirme sunucusuna IP ile bağlanınca (http://192.168.x.x:3000)
+    // izin penceresi HİÇ çıkmaz, istek doğrudan reddedilir — kullanıcı "izin
+    // vermedim ki" diye düşünür. Sebep açıkça söyleniyor.
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      red(new KonumHatasi(
+        "Bu sayfa güvenli bağlantıda değil (http). Tarayıcılar konumu yalnız https "
+        + "adreslerde veriyor. Panele telefondan girerken ikikat.net adresini kullanın."));
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       (p) => coz({
         lat: p.coords.latitude,

@@ -186,28 +186,32 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
           )}
         </div>
 
-        {/* ── 2. ADIM: ONAY ── İzin alınmadan kapalı, sebebi yanında. */}
-        <DialogFooter className="mt-3 shrink-0 items-center border-t pt-3">
-          <span className="mr-auto flex items-center gap-2">
+        {/* ── 2. ADIM: ONAY ── İzin alınmadan kapalı, sebebi yanında.
+            MOBİL DÜZEN: ayak varsayılan olarak alt alta diziliyor ve düğmeler
+            ters sırada çıkıyordu (onay üstte, vazgeç altta, adım yazısı en
+            altta) — telefonda okunmuyordu. Adım yazısı üstte, düğmeler yan yana. */}
+        <DialogFooter className="mt-3 shrink-0 flex-col items-stretch gap-2 border-t pt-3 sm:flex-row sm:items-center">
+          <span className="flex items-center gap-2 sm:mr-auto">
             <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white ${
               izin === "verildi" ? "bg-emerald-600" : "bg-gray-300"}`}>2</span>
             <span className={`text-[11px] ${izin === "verildi" ? "font-semibold text-[#1E3A5F]" : "text-gray-500"}`}>
               {izin === "verildi" ? "Metni okuyup onaylayın" : "Önce konumu açın"}
             </span>
           </span>
-          {/* VAZGEÇ KIRMIZI ÇERÇEVELİ: dolgu kırmızı olsaydı onay düğmesiyle aynı
-              ağırlıkta görünür, göz asıl yapılacak işi aramak zorunda kalırdı.
-              Çıkış yolu belli ama öne çıkmıyor. */}
-          <Button variant="outline" onClick={kapat} disabled={kaydediliyor}
-            className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800">
-            Vazgeç
-          </Button>
-          <Button onClick={() => void onayla()} disabled={kaydediliyor || izin !== "verildi"}
-            title={izin !== "verildi" ? "Önce konum izni verilmeli" : "Onayınız kaydedilir"}
-            className="bg-emerald-600 text-white hover:bg-emerald-700">
-            {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-            Okudum, onaylıyorum
-          </Button>
+          <div className="flex items-center justify-end gap-2">
+            {/* VAZGEÇ KIRMIZI ÇERÇEVELİ: dolgu kırmızı olsaydı onayla aynı
+                ağırlıkta görünür, göz asıl yapılacak işi aramak zorunda kalırdı. */}
+            <Button variant="outline" onClick={kapat} disabled={kaydediliyor}
+              className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800">
+              Vazgeç
+            </Button>
+            <Button onClick={() => void onayla()} disabled={kaydediliyor || izin !== "verildi"}
+              title={izin !== "verildi" ? "Önce konum izni verilmeli" : "Onayınız kaydedilir"}
+              className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700 sm:flex-none">
+              {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+              Okudum, onaylıyorum
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
