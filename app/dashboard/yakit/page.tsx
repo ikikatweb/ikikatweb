@@ -1291,8 +1291,22 @@ function YakitPageContent() {
     if (!alDialogSaat) { toast.error("Saat girin."); return; }
     if (!alDialogFirma.trim()) { toast.error("Tedarikçi firma girin."); return; }
 
-    const miktar = parseParaInput(alDialogMiktar);
-    if (miktar <= 0) { toast.error("Geçerli bir miktar girin."); return; }
+    // DÜZELTME KAYDI ± OLABİLİR, ALIM OLAMAZ.
+    // Depo düzeltmesi "Düzeltme" firma adıyla yakit_alim satırı olarak yazılıyor
+    // (bkz. duzKaydet). Eksi değer onun ta kendisi: "depoda 288 lt eksik çıktı".
+    // Düzenleme ekranı bunu "geçersiz miktar" diye geri çeviriyordu; var olan
+    // bir düzeltme kaydı artık düzeltilemiyordu (10.11.2026).
+    // Gerçek alımda eksi anlamsız — orada kural aynı kalıyor.
+    const duzeltmeKaydi = alDialogFirma.trim().toLocaleLowerCase("tr") === "düzeltme";
+    const miktar = parseDuzMiktar(alDialogMiktar);
+    if (isNaN(miktar) || miktar === 0) {
+      toast.error(duzeltmeKaydi ? "Geçerli bir miktar girin (± olabilir, 0 olamaz)." : "Geçerli bir miktar girin.");
+      return;
+    }
+    if (!duzeltmeKaydi && miktar < 0) {
+      toast.error("Alım miktarı eksi olamaz. Depo düzeltmesi için firma adı \"Düzeltme\" olmalı.");
+      return;
+    }
 
     const birimFiyat = parseParaInput(alDialogBirimFiyat);
     if (birimFiyat < 0) { toast.error("Geçerli bir birim fiyat girin."); return; }

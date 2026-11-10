@@ -14,7 +14,30 @@ export type KonumOnayOzet = {
   onay_at: string;
   cihaz: string | null;
   konum_izni: boolean | null;
+  /** Metin boşsa kişi onay vermedi — satır yalnız ret kaydı olabilir. */
+  metin: string | null;
+  /** Konum izni en son ne zaman reddedildi (sql/konum_izin_reddi.sql). */
+  ret_at: string | null;
+  ret_sebep: string | null;
+  /** site = site izni kapalı · cihaz = telefonun konum servisi kapalı */
+  ret_kaynak: string | null;
 };
+
+/** Listede gösterilen üç durum. */
+export type KonumDurum = "onayli" | "reddetti" | "yok";
+
+/**
+ * Kaydı duruma çevir.
+ *
+ * SIRA ÖNEMLİ: önce onay bakılır. Önce reddedip sonra izni açıp onaylayan
+ * kişide ret_at geçmiş kaydı olarak duruyor; o kişi KIRMIZI değil YEŞİL.
+ */
+export function konumDurumu(o: KonumOnayOzet | undefined): KonumDurum {
+  if (!o) return "yok";
+  if (o.konum_izni === true && (o.metin ?? "").length > 0) return "onayli";
+  if (o.ret_at) return "reddetti";
+  return "yok";
+}
 
 /**
  * Kullanıcı kimliğine göre onay özeti.
@@ -30,7 +53,7 @@ export type KonumOnayOzet = {
 export async function getKonumOnaylari(): Promise<Record<string, KonumOnayOzet>> {
   const { data, error } = await createClient()
     .from("konum_onaylari")
-    .select("kullanici_id, metin_surum, onay_at, cihaz, konum_izni")
+    .select("kullanici_id, metin_surum, onay_at, cihaz, konum_izni, metin, ret_at, ret_sebep, ret_kaynak")
     .order("onay_at", { ascending: false });
   if (error) throw new Error(error.message);
 

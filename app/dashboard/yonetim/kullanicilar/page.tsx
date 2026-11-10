@@ -9,7 +9,7 @@ import {
   deleteKullanici,
 } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
-import { getKonumOnaylari, type KonumOnayOzet } from "@/lib/supabase/queries/konum-onay";
+import { getKonumOnaylari, konumDurumu, type KonumOnayOzet } from "@/lib/supabase/queries/konum-onay";
 import type { Kullanici, SantiyeWithRelations } from "@/lib/supabase/types";
 import KullaniciForm from "@/components/shared/kullanici-form";
 import {
@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Pencil, Trash2, Users, Search, FileDown, FileSpreadsheet, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, FileDown, FileSpreadsheet, MapPin, MapPinOff } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -54,6 +54,22 @@ function konumOnayIpucu(o: KonumOnayOzet): string {
   return satir.join("\n");
 }
 
+/** Reddedilen izin: ne zaman, sebep ve KİME NE SÖYLENMELİ. */
+function konumRetIpucu(o: KonumOnayOzet): string {
+  const ne = o.ret_at
+    ? new Date(o.ret_at).toLocaleString("tr-TR", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+    })
+    : "—";
+  const satir = [`Konum izni reddedildi — ${ne}`];
+  if (o.ret_sebep) satir.push(o.ret_sebep);
+  // KAYNAK = YAPILACAK İŞ: telefon ayarı mı, site izni mi kapalı.
+  if (o.ret_kaynak === "site") satir.push("Site izni kapalı — tarayıcı ayarından bu siteye konum izni verilmeli.");
+  else if (o.ret_kaynak === "cihaz") satir.push("Telefonun konum servisi kapalı — Ayarlar'dan açılmalı.");
+  if (o.cihaz) satir.push(`Cihaz: ${o.cihaz}`);
+  return satir.join("\n");
+}
+
 export default function KullanicilarPage() {
   const [kullanicilar, setKullanicilar] = useState<Kullanici[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +94,8 @@ export default function KullanicilarPage() {
   // "onay yok" sanılmasın (bkz. onayHatasi).
   const [konumOnaylari, setKonumOnaylari] = useState<Record<string, KonumOnayOzet> | null>(null);
   const [onayHatasi, setOnayHatasi] = useState<string | null>(null);
+  // "Kimler onay vermemiş" sorusu tek tek satır taramadan cevaplansın.
+  const [yalnizOnaysiz, setYalnizOnaysiz] = useOturumFiltresi("yonetim-kullanicilar:onaysiz", false);
 
   async function loadKullanicilar() {
     try {
@@ -236,6 +254,41 @@ export default function KullanicilarPage() {
         </div>
       )}
 
+      {/* KONUM ÖZETİ — "kim vermemiş" sorusu satır taramadan cevaplansın.
+          Sayılar bulunulan sekmenin (aktif/pasif) kullanıcılarına göre. */}
+      {konumOnaylari && !loading && kullanicilar.length > 0 && (() => {
+        const sekmedekiler = kullanicilar.filter((k) => k.aktif === (aktifSekme === "aktif"));
+        const say = (d: ReturnType<typeof konumDurumu>) =>
+          sekmedekiler.filter((k) => konumDurumu(konumOnaylari[k.id]) === d).length;
+        const onayli = say("onayli"), reddeden = say("reddetti"), hic = say("yok");
+        return (
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-medium text-gray-500">Konum onayı:</span>
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-emerald-700">
+              <MapPin size={12} /> veren <strong>{onayli}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-red-700">
+              <MapPinOff size={12} /> reddeden <strong>{reddeden}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-gray-600">
+              hiç bakmayan <strong>{hic}</strong>
+            </span>
+            {/* SÜZGEÇ: listeyi onayı olmayanlara indirir (reddeden + hiç bakmayan). */}
+            <button
+              type="button"
+              onClick={() => setYalnizOnaysiz(!yalnizOnaysiz)}
+              className={`rounded border px-2 py-1 font-medium transition-colors ${
+                yalnizOnaysiz
+                  ? "border-[#F97316] bg-[#F97316] text-white"
+                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {yalnizOnaysiz ? "Tümünü göster" : "Yalnız onayı olmayanlar"}
+            </button>
+          </div>
+        );
+      })()}
+
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => (
           <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
@@ -257,6 +310,9 @@ export default function KullanicilarPage() {
                 >Ad Soyad</TableHead>
                 <TableHead>Kullanıcı Adı</TableHead>
                 <TableHead>E-posta</TableHead>
+                {/* KONUM: aydınlatma onayı tek sütunda alt alta okunsun —
+                    "kim vermiş, kim vermemiş" satır satır aranmasın. */}
+                <TableHead className="text-center whitespace-nowrap">Konum</TableHead>
                 <TableHead className="text-center">Rol</TableHead>
                 <TableHead className="hidden md:table-cell">Şantiyeler</TableHead>
                 <TableHead className="text-center">Durum</TableHead>
@@ -269,6 +325,8 @@ export default function KullanicilarPage() {
                 const liste = kullanicilar.filter((k) => {
                   // Sekme: aktif sekmesinde aktifler, pasif sekmesinde pasifler
                   if (k.aktif !== (aktifSekme === "aktif")) return false;
+                  // "Kimler konum onayı vermemiş" süzgeci — onaylı olanlar düşer.
+                  if (yalnizOnaysiz && konumOnaylari && konumDurumu(konumOnaylari[k.id]) === "onayli") return false;
                   if (!arama.trim()) return true;
                   const q = trAramaNormalize(arama);
                   return trAramaNormalize(k.ad_soyad).includes(q) || trAramaNormalize(k.kullanici_adi).includes(q);
@@ -276,7 +334,7 @@ export default function KullanicilarPage() {
                 if (liste.length === 0) {
                   return (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-gray-400 text-sm">
+                      <TableCell colSpan={10} className="text-center py-10 text-gray-400 text-sm">
                         {aktifSekme === "pasif"
                           ? "Pasif kullanıcı yok."
                           : (arama.trim() ? "Eşleşen aktif kullanıcı yok." : "Aktif kullanıcı yok.")}
@@ -290,23 +348,7 @@ export default function KullanicilarPage() {
                   <TableCell
                     style={{ position: "sticky", left: 0 }}
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      {k.ad_soyad}
-                      {/* KONUM AYDINLATMA ONAYI — yalnız onay VARSA çizilir.
-                          Onay yoksa boşluk kalır; "eksik" diye kırmızı bir işaret
-                          konmadı, çünkü konum onayı yalnız yakıt kaydı girenler
-                          için gerekiyor — ofisteki kişide eksiklik sayılmaz. */}
-                      {konumOnaylari?.[k.id] && (
-                        <span
-                          title={konumOnayIpucu(konumOnaylari[k.id])}
-                          className="inline-flex items-center text-emerald-600"
-                        >
-                          <MapPin size={13} strokeWidth={2.5} />
-                        </span>
-                      )}
-                    </span>
-                  </TableCell>
+                  >{k.ad_soyad}</TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>
                   {/* E-POSTA — şifre yenileme bağlantısı buraya gider; tanımsızsa kullanıcı
                       "şifremi unuttum" diyemez, o yüzden eksikliği göze çarpsın. */}
@@ -319,6 +361,38 @@ export default function KullanicilarPage() {
                             : <span className="text-[10px] text-amber-600" title="Adres henüz doğrulanmadı">bekliyor</span>}
                         </span>
                       : <span className="text-xs text-amber-600">tanımsız</span>}
+                  </TableCell>
+                  {/* KONUM — ÜÇ DURUM:
+                      YEŞİL  onayladı, izin açık
+                      KIRMIZI ekrana girdi ama izin çıkmadı → YARDIM İSTEYEN KİŞİ
+                      GRİ     hiç bakmamış; eksiklik sayılmaz (konum yalnız yakıt
+                              kaydı girecek kişi için gerekiyor)
+                      Onaylar okunamadıysa hiçbiri çizilmez — yanlış bilgi vermektense
+                      hiç gösterme (üstteki uyarı sebebini yazar). */}
+                  <TableCell className="text-center">
+                    {konumOnaylari && (() => {
+                      const o = konumOnaylari[k.id];
+                      const d = konumDurumu(o);
+                      if (d === "onayli") return (
+                        <span title={konumOnayIpucu(o)}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                          <MapPin size={13} strokeWidth={2.5} /> verdi
+                        </span>
+                      );
+                      if (d === "reddetti") return (
+                        <span title={konumRetIpucu(o)}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-600">
+                          <MapPinOff size={13} strokeWidth={2.5} /> reddetti
+                        </span>
+                      );
+                      return (
+                        <span title={"Konum ekranına hiç girmemiş.\n"
+                          + "Yakıt kaydı girmek isterse onay ekranı kendiliğinden çıkar."}
+                          className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                          <MapPinOff size={13} strokeWidth={2.5} /> —
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge className={

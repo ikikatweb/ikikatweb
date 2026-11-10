@@ -25,10 +25,17 @@ export async function POST(request: Request) {
   const sb = createClient(url, anahtar, { auth: { persistSession: false } });
 
   try {
-    const { metin_surum, metin, konum_izni, cihaz } = (await request.json()) as {
+    const { metin_surum, metin, konum_izni, cihaz, ret_sebep, ret_kaynak } = (await request.json()) as {
       metin_surum?: string; metin?: string; konum_izni?: boolean | null; cihaz?: string;
+      ret_sebep?: string; ret_kaynak?: string;
     };
-    if (!metin_surum || !metin) {
+    // İKİ AYRI KAYIT TÜRÜ, TEK SATIR:
+    //   onay → metin dolu gelir (kişi aydınlatmayı okuyup kabul etti)
+    //   ret  → metin YOK, ret_sebep var (kişi "Konumu aç"a bastı, izin çıkmadı)
+    // Ret de yazılıyor ki listede "hiç bakmamış" ile "deneyip reddedilmiş"
+    // birbirine karışmasın — ikincisi yardım isteyen kişidir.
+    const ret = !metin && Boolean(ret_sebep);
+    if (!metin_surum || (!metin && !ret)) {
       return NextResponse.json({ error: "metin ve metin_surum zorunlu" }, { status: 400 });
     }
 
@@ -39,16 +46,29 @@ export async function POST(request: Request) {
 
     // UPSERT: aynı sürüm için ikinci onay yeni satır açmaz, var olanı tazeler
     // (önce izinsiz onaylayıp sonra izni veren kullanıcı).
-    const { error } = await sb.from("konum_onaylari").upsert({
+    const simdi = new Date().toISOString();
+    const satir: Record<string, unknown> = {
       kullanici_id: kullanici.id,
       ad_soyad: kullanici.ad_soyad ?? null,
       metin_surum,
-      metin,
       konum_izni: typeof konum_izni === "boolean" ? konum_izni : null,
       cihaz: (cihaz ?? request.headers.get("user-agent") ?? "").slice(0, 300) || null,
       ip,
-      onay_at: new Date().toISOString(),
-    }, { onConflict: "kullanici_id,metin_surum" });
+    };
+    if (ret) {
+      // RET: onay alanlarına DOKUNULMAZ. Daha önce onay vermiş biri sonradan
+      // izni kapatırsa onayı silinmemeli — olan şey yeni bir ret denemesidir.
+      satir.ret_at = simdi;
+      satir.ret_sebep = (ret_sebep ?? "").slice(0, 300) || null;
+      satir.ret_kaynak = (ret_kaynak ?? "").slice(0, 40) || null;
+    } else {
+      satir.metin = metin;
+      satir.onay_at = simdi;
+    }
+
+    const { error } = await sb.from("konum_onaylari").upsert(satir, {
+      onConflict: "kullanici_id,metin_surum",
+    });
 
     // SESSİZ GEÇİLMEZ: kaydedilemediyse pencere "onayınız alındı" dememeli.
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

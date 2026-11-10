@@ -106,8 +106,35 @@ export default function KonumOnayDialog({ acik, kapat, onaylandi }: {
       // Tarayıcı "reddedildi" diyorsa site izni kapalı; "sorulacak" diyorsa
       // izin hiç reddedilmemiş demektir → sorun telefonun konum servisinde.
       const d = await izinDurumu();
-      setIzinKaynagi(d === "reddedildi" ? "site" : d === "sorulacak" ? "cihaz" : "bilinmiyor");
+      const kaynak = d === "reddedildi" ? "site" : d === "sorulacak" ? "cihaz" : "bilinmiyor";
+      setIzinKaynagi(kaynak);
+      // RET DE KAYDA GEÇER: yönetim listesinde "hiç bakmamış" ile "deneyip
+      // reddedilmiş" ayrışsın — ikincisi yardım isteyen kişidir (telefonunun
+      // ayarı kapalı). Kayıt tutmazsak ikisi de boş görünüyordu.
+      // Bu kayıt onay DEĞİL: metin gönderilmez, onay alanlarına dokunulmaz.
+      retBildir(e instanceof KonumHatasi ? e.message : "Konum alınamadı.", kaynak);
     }
+  }
+
+  /**
+   * Reddi sunucuya bildir. Sessiz başarısızlık burada KASITLI: kullanıcının
+   * ekranında zaten "konum açılamadı" yazıyor ve yapması gereken şey belli;
+   * üstüne bir de kayıt hatası göstermek onu çıkmaza sokar. Hata konsola
+   * yazılır — kaybolmaz.
+   */
+  function retBildir(sebep: string, kaynak: string) {
+    fetch("/api/konum-onay", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        metin_surum: KONUM_METIN_SURUM,
+        konum_izni: false,
+        ret_sebep: sebep,
+        ret_kaynak: kaynak,
+        cihaz: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+      }),
+    }).then(async (r) => {
+      if (!r.ok) console.warn("[konum reddi] kaydedilemedi:", (await r.json().catch(() => ({}))).error);
+    }).catch((err) => console.warn("[konum reddi] kaydedilemedi:", err));
   }
 
   async function onayla() {
