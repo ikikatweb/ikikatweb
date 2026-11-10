@@ -14,6 +14,7 @@ import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { konumAl, mesafeM, mesafeSupheliMi, KonumHatasi, ARAC_KONUM_TAZELIK_DK, type Konum } from "@/lib/utils/konum";
 import { getAnlikKonumlarDirect } from "@/lib/supabase/queries/arvento";
 import KonumOnayDialog, { konumOnayiVarMi } from "@/components/shared/konum-onay-dialog";
+import YakitKonumHaritasi, { type YakitKonumNokta } from "@/components/shared/yakit-konum-haritasi";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -203,10 +204,12 @@ function parseDuzMiktar(formatted: string): number {
  * sayılmaz — yoksa bina içinde girilen her kayıt yanlışlıkla işaretlenirdi.
  * Rozete tıklayınca konum haritada açılır: sayı tek başına "nerede" demiyor.
  */
-function KonumRozeti({ h }: {
+function KonumRozeti({ h, ac }: {
   h: { arac_mesafe_m?: number | null; konum_dogruluk_m?: number | null;
        konum_lat?: number | null; konum_lng?: number | null;
        arac_lat?: number | null; arac_lng?: number | null; konum_notu?: string | null };
+  /** Panel içi haritayı açar (iki nokta ayrı simgelerle, aralarında yol çizgisi). */
+  ac: () => void;
 }) {
   const mesafe = h.arac_mesafe_m ?? null;
   const dogruluk = h.konum_dogruluk_m ?? null;
@@ -214,34 +217,23 @@ function KonumRozeti({ h }: {
   const metin = mesafe == null
     ? "konum —"
     : mesafe >= 1000 ? `${(mesafe / 1000).toFixed(1).replace(".", ",")} km` : `${mesafe} m`;
-  const ikiNokta = h.konum_lat != null && h.konum_lng != null && h.arac_lat != null && h.arac_lng != null;
+  const varKonum = h.konum_lat != null && h.konum_lng != null;
   const ipucu = [
     mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı") : `Kuşbakışı mesafe: ${metin}`,
     dogruluk != null ? `telefon sapma payı ±${dogruluk} m` : "sapma payı bilinmiyor",
-    ikiNokta ? "haritada yol tarifi açılır (araçtan kayda)" : h.konum_lat != null
-      ? "haritada açmak için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
+    varKonum ? "haritada görmek için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
   ].join(" · ");
   const sinif = mesafe == null ? "bg-gray-100 text-gray-500"
     : supheli ? "bg-red-100 text-red-700 font-semibold" : "bg-emerald-100 text-emerald-700";
-  const rozet = (
-    <span className={`mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] ${sinif}`} title={ipucu}>
-      <MapPin size={9} /> {metin}
-    </span>
-  );
-  if (h.konum_lat == null || h.konum_lng == null) return <div>{rozet}</div>;
-  // ── HARİTA: İKİ NOKTA ARASI YOL TARİFİ ──
-  // Tek nokta açmak "ne kadar uzaktaydı" sorusunu cevaplamıyordu. Araçtan
-  // kaydın girildiği yere YOL TARİFİ açılınca Google hem aradaki çizgiyi hem
-  // de YOLDAN kaç km / kaç dakika olduğunu gösteriyor — kuşbakışı mesafe
-  // (rozetteki sayı) dağ-nehir dinlemediği için ikisi farklı olabiliyor.
-  // Araç konumu yoksa eski davranış: tek nokta.
-  const adres = ikiNokta
-    ? `https://www.google.com/maps/dir/?api=1&origin=${h.arac_lat},${h.arac_lng}`
-      + `&destination=${h.konum_lat},${h.konum_lng}&travelmode=driving`
-    : `https://www.google.com/maps?q=${h.konum_lat},${h.konum_lng}`;
+  // TEK ÇİP: önce yanına ayrı ayrı nokta simgeleri konmuştu, gereksizdi —
+  // iki nokta zaten haritanın ÜZERİNDE kendi simgeleriyle duruyor.
   return (
     <div>
-      <a href={adres} target="_blank" rel="noopener noreferrer">{rozet}</a>
+      <button type="button" disabled={!varKonum} onClick={ac} title={ipucu}
+        className={`mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] ${sinif} ${
+          varKonum ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}>
+        <MapPin size={9} /> {metin}
+      </button>
     </div>
   );
 }
@@ -300,6 +292,8 @@ function YakitPageContent() {
   // "Yakıt Ver" formu yerine önce aydınlatma penceresi açılır.
   const [konumOnayli, setKonumOnayli] = useState<boolean | null>(null);
   const [onayDialogAcik, setOnayDialogAcik] = useState(false);
+  // Konum haritası: kaydın girildiği yer + aracın o andaki yeri, arada yol çizgisi.
+  const [haritaKayit, setHaritaKayit] = useState<YakitKonumNokta | null>(null);
 
   // Dialog: Yakıt Ver
   const [verDialogOpen, setVerDialogOpen] = useState(false);
@@ -2030,7 +2024,19 @@ function YakitPageContent() {
                           "kim girdi" ile "nereden girdi" aynı soruya ait.
                           SAPMA PAYI HESABA KATILIR: telefon 800 m yanılıyorsa
                           600 m'lik fark şüpheli sayılmaz (mesafeSupheliMi). */}
-                      {h.tip === "arac_yakit" ? <KonumRozeti h={h} /> : null}
+                      {h.tip === "arac_yakit" ? (
+                        <KonumRozeti h={h} ac={() => {
+                          if (h.konum_lat == null || h.konum_lng == null) return;
+                          setHaritaKayit({
+                            konum_lat: h.konum_lat, konum_lng: h.konum_lng,
+                            konum_dogruluk_m: h.konum_dogruluk_m ?? null,
+                            arac_lat: h.arac_lat ?? null, arac_lng: h.arac_lng ?? null,
+                            arac_mesafe_m: h.arac_mesafe_m ?? null,
+                            plaka: aracMap.get(h.arac_id)?.plaka ?? null,
+                            baslik: `${h.tarih ? h.tarih.split("-").reverse().join(".") : ""} ${h.saat?.slice(0, 5) ?? ""}`,
+                          });
+                        }} />
+                      ) : null}
                     </TableCell>
                     <TableCell className="px-2 text-[10px] text-gray-500 max-w-[120px] truncate" title={h.notu ?? ""}>
                       {h.notu || "—"}
@@ -2121,6 +2127,10 @@ function YakitPageContent() {
           if (!verDialogOpen) verDialogAc(true);
         }}
       />
+
+      {/* KONUM HARİTASI: mavi damla kaydın yeri, turuncu araç Arvento ölçümü,
+          arada yoldan rota çizgisi ve yol mesafesi. */}
+      <YakitKonumHaritasi kayit={haritaKayit} acik={Boolean(haritaKayit)} kapat={() => setHaritaKayit(null)} />
 
       {/* Yakıt Ver Dialog */}
       <Dialog open={verDialogOpen} onOpenChange={(open) => { if (!open && menzilSoru) return; setVerDialogOpen(open); }}>
