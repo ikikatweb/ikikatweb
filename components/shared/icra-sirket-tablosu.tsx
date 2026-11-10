@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText } from "lucide-react";
+import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText, Calculator } from "lucide-react";
 import {
   getIcraSirketTakipler, insertIcraSirketTakip, updateIcraSirketTakip, deleteIcraSirketTakip,
 } from "@/lib/supabase/queries/icra-sirket";
@@ -22,7 +22,7 @@ import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import AvukatSecim from "@/components/shared/avukat-secim";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
-import MuhasebeCevapDialog, { MuhasebeRozet, MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import MuhasebeCevapDialog, { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
 import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
@@ -413,13 +413,12 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <col className="w-[3%]" />{/* S.No */}
             <col className="w-[3%]" />{/* firma rengi */}
             <col className="w-[8%]" />{/* Dosya */}
-            <col className="w-[11%]" />{/* İcra dairesi */}
-            <col className="w-[13%]" />{/* Alacaklı */}
+            <col className="w-[13%]" />{/* İcra dairesi */}
+            <col className="w-[15%]" />{/* Alacaklı */}
             <col className="w-[9%]" />{/* Takip tutarı */}
             <col className="w-[7%]" />{/* Tebliğ */}
             <col className="w-[10%]" />{/* Son itiraz günü */}
             <col className="w-[8%]" />{/* Ödenen */}
-            <col className="w-[7%]" />{/* Muhasebe */}
             <col className="w-[9%]" />{/* Durum */}
             <col className="w-[4%]" />{/* Belge */}
             {islemVar && <col className="w-[6%]" />}
@@ -443,9 +442,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               <th className={th}>Tebliğ</th>
               <th className={th}>Son İtiraz Günü</th>
               <th className={th}>Ödenen</th>
-              {/* MUHASEBE CEVAP ŞEKLİNDEN ÖNCE: ödeme emri gelir, muhasebeye
-                  gider, "ödendi mi / itiraz mı" cevabı gelir, şekil ona göre seçilir. */}
-              <th className={th}>Muhasebe</th>
               {/* Pencerede de "Cevap şekli" diyor — iki yerde iki ad karışıklık yapıyordu. */}
               <th className={th}>Cevap Şekli</th>
               <th className={th}>Belge</th>
@@ -454,7 +450,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={islemVar ? 13 : 12} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={islemVar ? 12 : 11} className="text-center text-gray-400 py-8">
                 {arama.trim() || sadeceAcik ? "Süzgeçle eşleşen kayıt yok." : "Henüz kayıt yok. Şirkete ödeme emri gelirse buraya düşer."}
               </td></tr>
             )}
@@ -475,16 +471,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
                   <td className={`${td} text-center`}><SureHucresi s={s} /></td>
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
-                  {/* MUHASEBE ROZETİ: tıklayınca gönderim izi ve muhasebenin
-                      bildirdiği borç durumu penceresi açılır. */}
-                  <td className="border border-gray-100 px-1 py-1.5 align-middle">
-                    <MuhasebeRozet kayit={s} sirket ac={() => setMuhasebeKayit(s)}
-                      gerekli={muhasebeGerekliMi({
-                        teblig_tarihi: s.teblig_tarihi,
-                        cevapVerildi: s.durum !== "yeni",
-                        sureGun: s.itiraz_suresi_gun,
-                      }, true)} />
-                  </td>
                   <td className={`${td} text-center`}>
                     <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${d.sinif}`}>{d.ad}</span>
                   </td>
@@ -499,6 +485,11 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                   {islemVar && (
                     <td className={`${td} text-center`}>
                       <div className="flex items-center justify-center gap-2">
+                        {/* MUHASEBE PENCERESİ — üçüncü şahıs defteriyle aynı yer. */}
+                        <button type="button" onClick={() => setMuhasebeKayit(s)}
+                          className="text-gray-400 hover:text-emerald-700" title="Muhasebe (gönderim ve cevap)">
+                          <Calculator size={14} />
+                        </button>
                         {canDuzenle && <button type="button" onClick={() => dialogAc(s)} className="text-gray-400 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={14} /></button>}
                         {canSil && <button type="button" onClick={() => sil(s.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={14} /></button>}
                       </div>
@@ -515,7 +506,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               {/* Tebliğ + Son İtiraz Günü */}
               <td className={td} colSpan={2} />
               <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
-              <td className={td} colSpan={islemVar ? 4 : 3} />
+              <td className={td} colSpan={islemVar ? 3 : 2} />
             </tr>
           </tfoot>
         </table>

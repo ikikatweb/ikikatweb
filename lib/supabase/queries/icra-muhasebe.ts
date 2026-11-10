@@ -11,6 +11,10 @@
 import { sonGunHesapla, bugunISO, hatirlatmaZamaniMi, VARSAYILAN_CEVAP_SURESI } from "@/lib/utils/icra-sure";
 
 export type MuhasebeMailSonucu = {
+  /** Mail bu çağrıda gerçekten gitti mi? Otomatik gönderimde daha önce gitmişse false. */
+  gonderildi: boolean;
+  /** Otomatik gönderimde "zaten gönderilmişti" — ikinci mail atılmadı. */
+  zatenGonderildi?: boolean;
   alicilar: string[];
   ek: string;
   /** Maili gönderen kullanıcı (sunucuda oturumdan çözülür). */
@@ -22,13 +26,18 @@ export type MuhasebeMailSonucu = {
   antetInemedi: boolean;
 };
 
+/**
+ * @param otomatik  Gönderimi insan değil ekran başlattı. Kayıtta gönderim izi
+ *                  varsa sunucu İKİNCİ MAİLİ ATMAZ — aynı dosyayı iki kullanıcının
+ *                  ekranı ya da bir sayfa yenilemesi tetikleyebilir.
+ */
 export async function muhasebeyeGonder(
-  icraId: string, kaynak: "icra" | "sirket" = "icra", not = "",
+  icraId: string, kaynak: "icra" | "sirket" = "icra", not = "", otomatik = false,
 ): Promise<MuhasebeMailSonucu> {
   const res = await fetch("/api/icra/muhasebeye-gonder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ icraId, kaynak, not }),
+    body: JSON.stringify({ icraId, kaynak, not, otomatik }),
   });
   const c = await res.json();
   if (!res.ok) throw new Error(c.error ?? "Mail gönderilemedi.");

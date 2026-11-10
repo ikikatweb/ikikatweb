@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Loader2, Send, Mail, AlertTriangle } from "lucide-react";
+import { Loader2, Send, Mail, MailCheck, MailX, AlertTriangle } from "lucide-react";
 import { useAuth, icraDegisti } from "@/hooks";
 import { updateIcraKayit } from "@/lib/supabase/queries/icra";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
@@ -61,6 +61,73 @@ const saatTR = (iso: string) => {
 };
 
 /**
+ * KART SATIRINDAKİ MUHASEBE İŞARETLERİ — iki ayrı ikon, iki ayrı soru:
+ *
+ *   ① GİTTİ Mİ?   icra yazısı muhasebeye mail edildi mi (tebliğden sonraki ilk adım)
+ *   ② GELDİ Mİ?   muhasebeden cevap döndü mü
+ *
+ * NİYE İKİSİ AYRI: tek ikon "aşama nerede" sorusunu cevaplıyor ama "gitti ama
+ * cevap yok" ile "hiç gitmedi"yi aynı yerde gösteriyordu. Ayrı duran iki işaret,
+ * listeye bakarken hangi tarafın beklediğini söylüyor.
+ *
+ * ② İKİ KAYNAKTAN DOLAR: muhasebenin cevap maili posta kutusunda yakalandıysa
+ * (muhasebe_cevap_mail_at) ya da cevabı panele giren oldu (muhasebe_cevap_at).
+ * İkincisi kesin bilgidir — insan okuyup girmiştir; birincisi "mail geldi,
+ * içeriği henüz işlenmedi" demek.
+ */
+export type MuhasebeIkonKaydi = MuhasebeDurumu & {
+  muhasebe_mail_at?: string | null;
+  muhasebe_mail_alici?: string | null;
+  muhasebe_cevap_mail_at?: string | null;
+  muhasebe_cevap_mail_gonderen?: string | null;
+};
+
+const anTR = (iso: string | null | undefined) => (iso
+  ? `${new Date(iso).toLocaleDateString("tr-TR")} ${new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`
+  : "");
+
+export function MuhasebeIkon({ kayit, sirket, boyut = 15 }: {
+  kayit: MuhasebeIkonKaydi | null;
+  sirket: boolean;
+  boyut?: number;
+}) {
+  if (!kayit) return null;
+  const gitti = Boolean(kayit.muhasebe_mail_at);
+  const cevapMaili = Boolean(kayit.muhasebe_cevap_mail_at);
+  const cevapGirildi = Boolean(kayit.muhasebe_cevap_at);
+
+  const gittiIpucu = gitti
+    ? `İcra yazısı muhasebeye gönderildi · ${anTR(kayit.muhasebe_mail_at)}`
+      + (kayit.muhasebe_mail_alici ? ` · ${kayit.muhasebe_mail_alici}` : "")
+    : "İcra yazısı muhasebeye GÖNDERİLMEDİ";
+  const cevapIpucu = cevapGirildi
+    ? `Muhasebe cevabı işlendi: ${muhasebeBorcMetni(kayit, sirket)}`
+      + (kayit.muhasebe_cevap_sekli ? ` → ${kayit.muhasebe_cevap_sekli}` : "")
+    : cevapMaili
+      ? `Muhasebeden cevap maili geldi · ${anTR(kayit.muhasebe_cevap_mail_at)}`
+        + (kayit.muhasebe_cevap_mail_gonderen ? ` · ${kayit.muhasebe_cevap_mail_gonderen}` : "")
+        + " — içeriği panele girilmedi"
+      : gitti ? "Muhasebeden cevap gelmedi" : "Muhasebe aşaması başlamadı";
+
+  return (
+    <span className="inline-flex items-center gap-2.5 align-middle">
+      <span title={gittiIpucu} className="inline-flex">
+        {gitti
+          ? <Send size={boyut} className="shrink-0 text-sky-600" aria-label="Muhasebeye gönderildi" />
+          : <MailX size={boyut} className="shrink-0 text-red-500" aria-label="Muhasebeye gönderilmedi" />}
+      </span>
+      <span title={cevapIpucu} className="inline-flex">
+        {cevapGirildi
+          ? <MailCheck size={boyut} className="shrink-0 text-emerald-600" aria-label="Muhasebe cevabı işlendi" />
+          : cevapMaili
+            ? <Mail size={boyut} className="shrink-0 text-emerald-600" aria-label="Muhasebeden cevap maili geldi" />
+            : <Mail size={boyut} className="shrink-0 text-gray-300" aria-label="Muhasebeden cevap gelmedi" />}
+      </span>
+    </span>
+  );
+}
+
+/**
  * CEVAP ŞEKLİNİN ÜSTÜNDEKİ MUHASEBE ŞERİDİ — her iki defterin formunda aynı.
  *
  * NİYE CEVAP ŞEKLİNİN YANINDA: şekli (yazışma / havale / avukat; ödeme emrinde
@@ -86,48 +153,9 @@ export function MuhasebeBandi({ kayit, sirket }: { kayit: MuhasebeDurumu | null;
           {sirket ? "Borcun ödenip ödenmediğini muhasebe bildirecek." : "Cevap şekli, muhasebenin bildirdiği borç durumuna göre seçilir."}</>
       ) : (
         <><strong>Dosya muhasebeye gönderilmedi.</strong>{" "}
-          {sirket ? "Borç durumunu muhasebe çıkarıyor" : "Cevabın altlığını ve borç durumunu muhasebe hazırlıyor"} — Muhasebe penceresinden gönderin.</>
+          {sirket ? "Borç durumunu muhasebe çıkarıyor" : "Borç durumunu ve hesap ekstresini muhasebe hazırlıyor"} — Muhasebe penceresinden gönderin.</>
       )}
     </div>
-  );
-}
-
-/**
- * TABLODAKİ MUHASEBE ROZETİ — üç hâli bir bakışta gösterir ve pencereyi açar.
- *
- * GÖNDERİLMEMİŞ DOSYA KIRMIZI: olmaması gereken hâl o. "Bekleniyor" sarı çünkü
- * süre işliyor; cevap gelmişse yeşil ve ne dediği yazıyor — tabloda asıl aranan
- * bilgi "muhasebe ne dedi".
- */
-export function MuhasebeRozet({ kayit, sirket, gerekli, ac }: {
-  kayit: MuhasebeDurumu;
-  sirket: boolean;
-  /** Süresi geçmiş eski dosyalarda "gönderilmedi" kırmızısı anlamsız — gri durur. */
-  gerekli: boolean;
-  ac: () => void;
-}) {
-  const asama = muhasebeAsamasi(kayit);
-  const borc = muhasebeBorcMetni(kayit, sirket);
-  const sinif = asama === "cevaplandi" ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-    : asama === "bekleniyor" ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
-      : gerekli ? "bg-red-100 text-red-700 hover:bg-red-200"
-        : "bg-gray-100 text-gray-500 hover:bg-gray-200";
-  // SÜRESİ GEÇMİŞ ESKİ DOSYADA YALNIZ ÇİZGİ: defterdeki 100 küsur devredilmiş
-  // kayıtta "Gönderilmedi" yazmak sütunu gürültüye boğuyordu — orada yapılacak
-  // bir iş yok. Sebebi ipucunda duruyor.
-  const metin = asama === "cevaplandi" ? borc
-    : asama === "bekleniyor" ? "Bekleniyor"
-      : gerekli ? "Gönderilmedi" : "—";
-  const ipucu = asama === "cevaplandi"
-    ? [borc, kayit.muhasebe_cevap_sekli, kayit.muhasebe_notu].filter(Boolean).join(" · ")
-    : asama === "bekleniyor" ? "Muhasebeye gönderildi, cevabı bekleniyor"
-      : gerekli ? "Bu dosya muhasebeye gönderilmedi — cevabın altlığı muhasebeden geliyor"
-        : "Muhasebeye gönderilmedi (süresi geçmiş dosya)";
-  return (
-    <button type="button" onClick={ac} title={ipucu}
-      className={`w-full truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${sinif}`}>
-      {metin}
-    </button>
   );
 }
 
@@ -305,7 +333,7 @@ export default function MuhasebeCevapDialog({ kayit, kaynak, sekiller, acik, kap
               <div className="flex items-center gap-1.5 font-semibold mb-1">
                 <AlertTriangle size={13} /> Bu dosya muhasebeye gönderilmedi
               </div>
-              Cevabın altlığı ve borç durumu muhasebeden geliyor. Yazıyı ekiyle birlikte gönderin.
+              Borç durumunu ve hesap ekstresini muhasebe çıkarıyor. Yazıyı ekiyle birlikte gönderin.
               <div className="mt-2">
                 <Button size="sm" onClick={gonder} disabled={gonderiliyor}>
                   {gonderiliyor ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

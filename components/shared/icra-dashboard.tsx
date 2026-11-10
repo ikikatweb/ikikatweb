@@ -20,6 +20,7 @@ import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi, VARSAYILAN_CEVAP
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import IcraCevapDialog from "@/components/shared/icra-cevap-dialog";
+import { MuhasebeIkon } from "@/components/shared/muhasebe-cevap-dialog";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");
@@ -137,6 +138,9 @@ export default function IcraDashboard() {
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Borçlu / Alacaklı</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ Tarihi</TableHead>
+              {/* TEBLİĞDEN SONRAKİ İLK ADIM MUHASEBE: yazı ona gidiyor, cevap
+                  şeklini onun bildirimi belirliyor. İki işaret: gitti mi, geldi mi. */}
+              <TableHead className="px-2 text-[10px] text-center">Muhasebe</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Son Cevap Günü</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Cevap</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Borç</TableHead>
@@ -196,6 +200,9 @@ export default function IcraDashboard() {
                     </div>
                   </TableCell>
                   <TableCell className="px-2 py-1 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
+                  <TableCell className="px-2 py-1 text-center whitespace-nowrap">
+                    <MuhasebeIkon kayit={s} sirket={false} />
+                  </TableCell>
                   {/* SON CEVAP GÜNÜ + KALAN GÜN — ödeme emri kartındaki sütunun eşi.
                       Önce bu bilgi ilk hücrede uzun bir cümleydi ("Tebliğden 1817. gün ·
                       7 günlük süre doldu"); sütun olunca iki kart aynı yerden okunuyor

@@ -904,6 +904,12 @@ export type IcraKayit = {
   muhasebe_mail_sayisi: number;
   /** Muhasebe cevabının PANELE girildiği an — mailin geldiği an değil. */
   muhasebe_cevap_at: string | null;
+  /** Cevap maili POSTA KUTUSUNDA görüldüğü an (scripts/icra-muhasebe-cevap-sync). İçerik işlenmiş demek DEĞİL. */
+  muhasebe_cevap_mail_at: string | null;
+  muhasebe_cevap_mail_gonderen: string | null;
+  muhasebe_cevap_mail_konu: string | null;
+  /** Cevap mailindeki ek dosya adları (altlık) — virgülle. */
+  muhasebe_cevap_mail_ek: string | null;
   /** "var" | "yok" — borçluya borcumuz var mı. */
   muhasebe_borc_durumu: string | null;
   muhasebe_borc_tutari: number | null;
@@ -970,6 +976,11 @@ export type IcraSirketTakip = {
   muhasebe_mail_gonderen_id: string | null;
   muhasebe_mail_sayisi: number;
   muhasebe_cevap_at: string | null;
+  /** Cevap maili POSTA KUTUSUNDA görüldüğü an. İçerik işlenmiş demek DEĞİL. */
+  muhasebe_cevap_mail_at: string | null;
+  muhasebe_cevap_mail_gonderen: string | null;
+  muhasebe_cevap_mail_konu: string | null;
+  muhasebe_cevap_mail_ek: string | null;
   /** "odendi" | "odenmedi" — takip konusu borç ödenmiş mi. */
   muhasebe_borc_durumu: string | null;
   muhasebe_borc_tutari: number | null;

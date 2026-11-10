@@ -22,6 +22,7 @@ import { getIcraSirketTakipler } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MuhasebeIkon } from "@/components/shared/muhasebe-cevap-dialog";
 import OdemeEmriIslemDialog from "@/components/shared/odeme-emri-islem-dialog";
 import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi } from "@/lib/utils/icra-sure";
 import { formatBaslik } from "@/lib/utils/isim";
@@ -161,6 +162,8 @@ export default function OdemeEmriDashboard() {
             <TableHeader><TableRow className="bg-white">
               <TableHead className="px-2 text-[10px]">Alacaklı / Dosya</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Tebliğ</TableHead>
+              {/* Üçüncü şahıs kartıyla aynı dil: gitti mi, geldi mi. */}
+              <TableHead className="px-2 text-[10px] text-center">Muhasebe</TableHead>
               <TableHead className="px-2 text-[10px] text-center">Son İtiraz Günü</TableHead>
               <TableHead className="px-2 text-[10px] text-center">İşlem</TableHead>
               <TableHead className="px-2 text-[10px] text-right">Takip Tutarı</TableHead>
@@ -204,6 +207,9 @@ export default function OdemeEmriDashboard() {
                       </div>
                     </TableCell>
                     <TableCell className="px-2 py-1 text-center whitespace-nowrap text-gray-600">{tarihGoster(s.teblig_tarihi)}</TableCell>
+                    <TableCell className="px-2 py-1 text-center whitespace-nowrap">
+                      <MuhasebeIkon kayit={s} sirket />
+                    </TableCell>
                     <TableCell className="px-2 py-1 text-center whitespace-nowrap">
                       {kalan == null ? (
                         <span className="text-gray-400" title="Belgede itiraz süresi yazmıyor — gün uydurulmadı">belgede yok</span>

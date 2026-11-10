@@ -4,11 +4,20 @@
 // (yazışma / havale / avukat) belirleyen de o. Bu aşamada duran dosya, hiçbir
 // ekranda "bekliyor" demiyordu — süre ise muhasebe beklerken de işliyor.
 //
-// İKİ HÂL GÖSTERİLİR:
-//   1) GÖNDERİLMEDİ (kırmızı) — dosya panele girilmiş ama mail gitmemiş. Olmaması
-//      gereken hâl: yeni kayıtta mail kendiliğinden gidiyor, burada görünen dosya
-//      ya gönderim hatası almış (ek inmemiş) ya da sütunlar kurulmadan girilmiş.
-//      Şeridin kendi üzerinden GÖNDERİLEBİLİR — bir tık, iki ekran gezdirmez.
+// ══ GÖNDERİM İNSANI BEKLEMEZ ══
+// Mail, dosya cevap bekleyenlere düşer düşmez KENDİLİĞİNDEN gider — yeni kayıtta
+// kaydetme anında, gidememiş dosyalarda ana ekran açılınca. Burada basılacak bir
+// "gönder" düğmesi yok: "gelir gelmez gönderilsin" kuralını insana bırakmak,
+// kuralı unutulabilir yapardı.
+//
+// ÇİFT MAİL YOK: gönderim izi olan dosya otomatik yolda atlanıyor (sunucuda
+// `otomatik` kapısı) — aynı dosyayı iki kullanıcının ekranı da tetiklese tek mail
+// gider.
+//
+// ŞERİTTE GÖRÜNEN İKİ HÂL:
+//   1) GÖNDERİLEMEDİ (kırmızı) — otomatik gönderim denendi ama olmadı; sebebi
+//      yazıyor (çoğunlukla tebligat belgesi panelde yok / inmedi). AGENTS.md
+//      "sessiz hata yok": gidemeyen mail gizlenmez, "Tekrar dene" burada durur.
 //   2) CEVAP BEKLENİYOR (sarı) — mail gitmiş, cevap girilmemiş VE süre daralmış
 //      (son günden bir gün önce; hafta sonuna denk gelirse cumaya çekilir, bkz.
 //      lib/utils/icra-sure). Muhasebeyi aramanın vakti budur.
@@ -22,7 +31,7 @@
 // karşılıksız bir mail olurdu (bkz. muhasebeGerekliMi).
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Calculator, Gavel, Scale, Loader2, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth, ICRA_DEGISTI } from "@/hooks";
@@ -39,10 +48,13 @@ const GOSTERILECEK = 6;
 type Satir = {
   id: string;
   nereye: "takip" | "sirket";
-  hal: "gonderilmedi" | "bekleniyor";
+  /** gonderiliyor → otomatik gönderim sürüyor · gonderilemedi → denendi, olmadı */
+  hal: "gonderiliyor" | "gonderilemedi" | "bekleniyor";
   kim: string;
   dosya: string;
   sonGun: string | null;
+  /** Gönderilemediyse sebebi — kullanıcıya olduğu gibi gösterilir. */
+  hata?: string;
 };
 
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "süre belirsiz");
@@ -52,6 +64,10 @@ export default function MuhasebeHatirlatma() {
   const yetkili = isYonetici || hasPermission("icra", "goruntule");
   const [satirlar, setSatirlar] = useState<Satir[]>([]);
   const [gonderilen, setGonderilen] = useState<string | null>(null);
+  // BU OTURUMDA DENENENLER: otomatik gönderim her satır için bir kez denenir.
+  // Olmadıysa sebebiyle şeritte durur; sayfa her tazelendiğinde yeniden
+  // denenseydi, inmeyen bir ek yüzünden dakikada bir mail denemesi olurdu.
+  const denenenler = useRef<Set<string>>(new Set());
 
   const kontrol = useCallback(async () => {
     if (!yetkili) { setSatirlar([]); return; }
@@ -78,7 +94,7 @@ export default function MuhasebeHatirlatma() {
         // aşama tamamlanmıştır — yazı kendi mail kutusundan gönderilmiş de
         // olabilir. "Gönderilmedi" demek, yapılmış işi yapılmamış göstermek olur.
         if (!r.muhasebe_mail_at && !r.muhasebe_cevap_at) {
-          bulunan.push({ id: r.id as string, nereye: "takip", hal: "gonderilmedi",
+          bulunan.push({ id: r.id as string, nereye: "takip", hal: "gonderiliyor",
             kim: r.borclu_adi ?? "borçlu belirsiz", dosya: r.dosya_esas_no ?? "—", sonGun: son });
         } else if (!r.muhasebe_cevap_at && muhasebeCevabiAcilMi(son, bugun)) {
           bulunan.push({ id: r.id as string, nereye: "takip", hal: "bekleniyor",
@@ -103,7 +119,7 @@ export default function MuhasebeHatirlatma() {
           if (!gerekli) continue;
           const son = sonGunHesapla(r.teblig_tarihi ?? null, r.itiraz_suresi_gun ?? null);
           if (!r.muhasebe_mail_at && !r.muhasebe_cevap_at) {
-            bulunan.push({ id: r.id as string, nereye: "sirket", hal: "gonderilmedi",
+            bulunan.push({ id: r.id as string, nereye: "sirket", hal: "gonderiliyor",
               kim: r.alacakli_adi ?? "alacaklı belirsiz", dosya: r.dosya_esas_no ?? "—", sonGun: son });
           } else if (!r.muhasebe_cevap_at && muhasebeCevabiAcilMi(son, bugun)) {
             bulunan.push({ id: r.id as string, nereye: "sirket", hal: "bekleniyor",
@@ -114,7 +130,7 @@ export default function MuhasebeHatirlatma() {
       // Önce gönderilmeyenler, sonra son günü en yakın olanlar.
       bulunan.sort((a, b) => (a.hal === b.hal
         ? (a.sonGun ?? "9999").localeCompare(b.sonGun ?? "9999")
-        : a.hal === "gonderilmedi" ? -1 : 1));
+        : a.hal === "bekleniyor" ? 1 : -1));
       setSatirlar(bulunan);
     } catch (e) {
       // Okunamazsa şerit çıkmaz; ana ekranın geri kalanı ayakta kalsın.
@@ -137,33 +153,62 @@ export default function MuhasebeHatirlatma() {
     };
   }, [kontrol]);
 
-  /** Şeridin üzerinden gönder — başarılıysa satır listeden düşer. */
-  async function gonder(s: Satir) {
+  /**
+   * OTOMATİK GÖNDERİM — insan beklemez.
+   *
+   * Cevap bekleyenlere düşmüş ama maili gitmemiş dosya bulununca mail
+   * kendiliğinden gider. Başarılıysa satır düşer; gidemezse SEBEBİYLE kalır
+   * (AGENTS.md "sessiz hata yok") ve "Tekrar dene" düğmesi çıkar.
+   *
+   * HER SATIR İÇİN BİR KEZ: sayfa her tazelendiğinde yeniden denenseydi,
+   * tebligat belgesi inmeyen bir dosya yüzünden sürekli gönderim denemesi
+   * olurdu. Sunucudaki `otomatik` kapısı da ayrıca ikinci maili engelliyor.
+   */
+  async function gonder(s: Satir, elle = false) {
     setGonderilen(s.id);
     try {
-      const c = await muhasebeyeGonder(s.id, s.nereye === "sirket" ? "sirket" : "icra");
-      setSatirlar((p) => p.filter((x) => !(x.id === s.id && x.hal === "gonderilmedi")));
-      toast.success(`${s.dosya} muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`, { duration: 7000 });
-      if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
-      if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+      const c = await muhasebeyeGonder(s.id, s.nereye === "sirket" ? "sirket" : "icra", "", !elle);
+      setSatirlar((p) => p.filter((x) => !(x.id === s.id && x.hal !== "bekleniyor")));
+      // ZATEN GİTMİŞSE SESSİZ: başka bir ekran göndermiş olabilir, kullanıcıya
+      // bildirilecek yeni bir şey yok.
+      if (c.gonderildi) {
+        toast.success(`${s.dosya} muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`, { duration: 7000 });
+        if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
+        if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+      }
     } catch (e) {
-      // SESSİZ GEÇİLMEZ (AGENTS.md): sebep söylenir, satır listede kalır.
-      toast.error(e instanceof Error ? e.message : "Mail gönderilemedi.", { duration: 12000 });
+      const mesaj = e instanceof Error ? e.message : "Mail gönderilemedi.";
+      // SESSİZ GEÇİLMEZ: satır sebebiyle şeritte kalır, balon da çıkar.
+      setSatirlar((p) => p.map((x) => (x.id === s.id && x.hal !== "bekleniyor"
+        ? { ...x, hal: "gonderilemedi", hata: mesaj } : x)));
+      toast.error(`${s.dosya} muhasebeye GÖNDERİLEMEDİ — ${mesaj}`, { duration: 12000 });
     } finally { setGonderilen(null); }
   }
 
+  // Gönderim sırası: listeye yeni düşen her dosya için bir kez, art arda.
+  useEffect(() => {
+    const sira = satirlar.filter((s) => s.hal === "gonderiliyor" && !denenenler.current.has(s.id));
+    if (sira.length === 0) return;
+    for (const s of sira) denenenler.current.add(s.id);
+    void (async () => { for (const s of sira) await gonder(s); })();
+    // gonder bileşenin içinde tanımlı; satırlar değiştikçe bu etki yeniden koşar
+    // ve denenenler kapısı tekrar göndermeyi engeller.
+  }, [satirlar]);
+
   if (!yetkili || satirlar.length === 0) return null;
-  const gonderilmeyen = satirlar.filter((s) => s.hal === "gonderilmedi").length;
-  const bekleyen = satirlar.length - gonderilmeyen;
+  const gidiyor = satirlar.filter((s) => s.hal === "gonderiliyor").length;
+  const gonderilemeyen = satirlar.filter((s) => s.hal === "gonderilemedi").length;
+  const bekleyen = satirlar.filter((s) => s.hal === "bekleniyor").length;
   const gorunen = satirlar.slice(0, GOSTERILECEK);
-  // ŞERİDİN RENGİ EN KÖTÜ HÂLE GÖRE: gönderilmemiş dosya varsa kırmızı.
-  const kirmizi = gonderilmeyen > 0;
+  // ŞERİDİN RENGİ EN KÖTÜ HÂLE GÖRE: gidemeyen mail varsa kırmızı.
+  const kirmizi = gonderilemeyen > 0;
   const kutu = kirmizi
     ? "border-red-300 bg-red-50 text-red-900"
     : "border-amber-300 bg-amber-50 text-amber-900";
   const ikincil = kirmizi ? "text-red-700" : "text-amber-700";
   const baslik = [
-    gonderilmeyen ? `${gonderilmeyen} dosya muhasebeye gönderilmedi` : "",
+    gonderilemeyen ? `${gonderilemeyen} dosya muhasebeye GÖNDERİLEMEDİ` : "",
+    gidiyor ? `${gidiyor} dosya muhasebeye gönderiliyor` : "",
     bekleyen ? `${bekleyen} dosyada muhasebe cevabı bekleniyor` : "",
   ].filter(Boolean).join(" · ");
 
@@ -174,7 +219,7 @@ export default function MuhasebeHatirlatma() {
         <div className="flex-1">
           <div className="font-semibold">{baslik}</div>
           <div className={`text-xs ${ikincil}`}>
-            Cevabın altlığını ve borç durumunu muhasebe hazırlıyor; cevap şeklini de o belirliyor.
+            Borç durumunu ve hesap ekstresini muhasebe hazırlıyor; cevap şeklini de o belirliyor.
             Süre muhasebe beklenirken de işliyor.
           </div>
         </div>
@@ -193,13 +238,20 @@ export default function MuhasebeHatirlatma() {
               · son gün <strong>{tarihGoster(s.sonGun)}</strong>
               {s.sonGun === bugunISO() ? " (bugün)" : ""}
             </span>
+            {/* SEBEP SATIRIN ALTINDA: "gönderilemedi" tek başına ne yapılacağını
+                söylemiyor; çoğu zaman tebligat belgesi panelde yok demek. */}
+            {s.hata ? <span className="basis-full text-xs text-red-700">{s.hata}</span> : null}
             <span className="ml-auto flex shrink-0 items-center gap-2">
-              {s.hal === "gonderilmedi" ? (
-                <button type="button" disabled={gonderilen === s.id} onClick={() => void gonder(s)}
-                  title="İcra yazısını ekiyle birlikte muhasebeye gönder"
+              {s.hal === "gonderiliyor" ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700">
+                  <Loader2 size={12} className="animate-spin" /> gönderiliyor…
+                </span>
+              ) : s.hal === "gonderilemedi" ? (
+                <button type="button" disabled={gonderilen === s.id} onClick={() => void gonder(s, true)}
+                  title="İcra yazısını ekiyle birlikte muhasebeye göndermeyi tekrar dene"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-red-700 bg-red-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60">
                   {gonderilen === s.id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                  Muhasebeye gönder
+                  Tekrar dene
                 </button>
               ) : (
                 <span className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800">

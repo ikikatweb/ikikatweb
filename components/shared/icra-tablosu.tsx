@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Gavel, Plus, Trash2, Loader2, Search, Pencil } from "lucide-react";
+import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Calculator } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -17,7 +17,7 @@ import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanla
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
-import MuhasebeCevapDialog, { MuhasebeRozet } from "@/components/shared/muhasebe-cevap-dialog";
+import MuhasebeCevapDialog from "@/components/shared/muhasebe-cevap-dialog";
 import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { Button } from "@/components/ui/button";
 
@@ -515,12 +515,11 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <col className="w-[7%]" />{/* Dosya Esas No */}
             <col className="w-[7%]" />{/* Gelen Yazı */}
             <col className="w-[7%]" />{/* Tebliğ */}
-            <col className="w-[8%]" />{/* Muhasebe */}
             <col className="w-[7%]" />{/* Cevap Tarihi */}
-            <col className="w-[7%]" />{/* Cevap Şekli */}
-            <col className="w-[6%]" />{/* Ödenen */}
-            <col className="w-[5%]" />{/* Evrak No */}
-            <col className="w-[9%]" />{/* Alacaklı Adı */}
+            <col className="w-[8%]" />{/* Cevap Şekli */}
+            <col className="w-[7%]" />{/* Ödenen */}
+            <col className="w-[6%]" />{/* Evrak No */}
+            <col className="w-[10%]" />{/* Alacaklı Adı */}
             {!kompakt && <col className="w-[6%]" />}{/* Alacaklı Vergi */}
             <col className="w-[10%]" />{/* Borçlu Adı */}
             {!kompakt && <col className="w-[6%]" />}{/* Borçlu TC */}
@@ -542,9 +541,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <th rowSpan={2} className={th}>Dosya Esas No</th>
               <th rowSpan={2} className={th}>Gelen İcra Yazısı Tarihi</th>
               <th rowSpan={2} className={th}>Tebliğ Tarihi</th>
-              {/* MUHASEBE CEVAP ŞEKLİNDEN ÖNCE: sıra böyle işliyor — yazı gelir,
-                  muhasebeye gider, borç durumu gelir, cevap şekli ona göre seçilir. */}
-              <th rowSpan={2} className={th}>Muhasebe</th>
               <th rowSpan={2} className={th}>İcraya Cevap Tarihi</th>
               <th rowSpan={2} className={th}>Cevap Şekli</th>
               <th rowSpan={2} className={th}>Ödenen Tutar</th>
@@ -563,7 +559,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={(islemVar ? 16 : 15) - (kompakt ? 2 : 0)} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={(islemVar ? 15 : 14) - (kompakt ? 2 : 0)} className="text-center text-gray-400 py-8">
                 {arama.trim() ? "Aramayla eşleşen kayıt yok." : `Henüz kayıt yok.${canEkle ? " “Yeni İcra Dosyası Ekle” ile başlayın." : ""}`}
               </td></tr>
             )}
@@ -607,16 +603,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   </td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
-                  {/* MUHASEBE ROZETİ: tıklayınca gönderim izi ve muhasebenin
-                      bildirdiği borç durumu penceresi açılır. */}
-                  <td className="border border-gray-100 px-1 py-1.5 align-middle">
-                    <MuhasebeRozet kayit={s} sirket={false} ac={() => setMuhasebeKayit(s)}
-                      gerekli={muhasebeGerekliMi({
-                        teblig_tarihi: s.teblig_tarihi,
-                        cevapVerildi: Boolean(s.cevap_sekli || s.cevap_tarihi),
-                        sureGun: s.cevap_suresi_gun,
-                      }, false)} />
-                  </td>
                   <td className={`${td} text-center ${cevapYok ? "bg-red-100 text-red-600 font-medium" : ""}`} title={cevapYok ? "İcraya cevap verilmemiş" : undefined}>{cevapYok ? "Cevap yok" : tarihGoster(s.cevap_tarihi)}</td>
                   {/* AVUKAT ARACILIĞIYSA DOĞRUDAN AVUKATIN ADI: "Avukat Aracılığı"
                       yazısı hangi avukat olduğunu söylemiyor ve tabloda asıl
@@ -641,6 +627,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   {islemVar && (
                     <td className={`${td} text-center`}>
                       <div className="flex items-center justify-center gap-2">
+                        {/* MUHASEBE PENCERESİ: gönderim izi ve muhasebenin bildirdiği
+                            borç durumu. Ayrı sütun yerine işlem düğmesi — tablo zaten
+                            on beş sütun ve durumun kendisi ana ekranda görünüyor. */}
+                        <button type="button" onClick={() => setMuhasebeKayit(s)}
+                          className="text-gray-400 hover:text-emerald-700" title="Muhasebe (gönderim ve cevap)">
+                          <Calculator size={14} />
+                        </button>
                         {canDuzenle && <button type="button" onClick={() => dialogAc(s)} className="text-gray-400 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={14} /></button>}
                         {canSil && <button type="button" onClick={() => sil(s.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={14} /></button>}
                       </div>
@@ -652,7 +645,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
-              <td className={`${td} text-right`} colSpan={kompakt ? 12 : 14}>TOPLAM</td>
+              <td className={`${td} text-right`} colSpan={kompakt ? 11 : 13}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
               {islemVar && <td className={td} />}
             </tr>

@@ -51,8 +51,8 @@ export async function POST(request: Request) {
   const sb = createClient(url, anahtar, { auth: { persistSession: false } });
 
   try {
-    const { icraId, kaynak, not } = (await request.json()) as
-      { icraId?: string; kaynak?: "icra" | "sirket"; not?: string };
+    const { icraId, kaynak, not, otomatik } = (await request.json()) as
+      { icraId?: string; kaynak?: "icra" | "sirket"; not?: string; otomatik?: boolean };
     const sirket = kaynak === "sirket";
     const tablo = sirket ? "icra_sirket_takip" : "icra";
     if (!icraId) return NextResponse.json({ error: "icraId zorunlu" }, { status: 400 });
@@ -60,6 +60,20 @@ export async function POST(request: Request) {
     const { data: kayit, error: kErr } = await sb.from(tablo).select("*").eq("id", icraId).single();
     if (kErr || !kayit) {
       return NextResponse.json({ error: sirket ? "Takip kaydı bulunamadı" : "İcra kaydı bulunamadı" }, { status: 404 });
+    }
+
+    // ── OTOMATİK GÖNDERİMDE İKİNCİ MAİL YOK ──
+    // Gönderimi ana ekran kendiliğinden başlatıyor; aynı dosyayı aynı anda iki
+    // kullanıcının ekranı tetikleyebilir ya da sayfa yenilenebilir. Kayıtta
+    // gönderim izi varsa mail TEKRAR GÖNDERİLMEZ. Elle "Tekrar gönder" bu
+    // kapıdan geçmez (otomatik gelmez) — orada tekrar göndermek istenen şeydir.
+    if (otomatik && kayit.muhasebe_mail_at) {
+      return NextResponse.json({
+        gonderildi: false, zatenGonderildi: true,
+        alicilar: String(kayit.muhasebe_mail_alici ?? "").split(",").map((x: string) => x.trim()).filter(Boolean),
+        ek: kayit.muhasebe_mail_ek ?? "", gonderen: kayit.muhasebe_mail_gonderen ?? "",
+        gonderildiAt: kayit.muhasebe_mail_at, kayitHatasi: null, antetInemedi: false,
+      });
     }
 
     // ── ALICILAR ──
@@ -79,7 +93,7 @@ export async function POST(request: Request) {
 
     // ── TEBLİGAT BELGESİ (EK İNMEDEN MAİL YOK) ──
     const ek = await icraTebligatBelgesi(sb, kayit, sirket,
-      "Muhasebe, yazıyı görmeden borç durumunu çıkaramaz ve cevap altlığını hazırlayamaz.");
+      "Muhasebe, yazıyı görmeden borç durumunu çıkaramaz ve hesap ekstresini hazırlayamaz.");
     if (ek.hata) return NextResponse.json({ error: ek.hata.mesaj }, { status: ek.hata.kod });
 
     // ── GÖNDEREN FİRMA ──
@@ -108,15 +122,19 @@ export async function POST(request: Request) {
       `<tr><td style="padding:4px 10px 4px 0;color:#64748b;font-size:13px;white-space:nowrap">${etiket}</td>`
       + `<td style="padding:4px 0;font-size:13px;${stil}">${deger}</td></tr>`;
 
-    // İSTENEN ŞEY AÇIK YAZILIR: muhasebenin ne döneceği (borç durumu, tutar,
-    // cevap şekli) maddelenmezse cevap eksik geliyor ve dosya beklemede kalıyor.
+    // İSTENEN ŞEY AÇIK YAZILIR: muhasebenin ne döneceği maddelenmezse cevap
+    // eksik geliyor ve dosya beklemede kalıyor.
+    //
+    // CEVAP ŞEKLİ MAİLDE SORULMUYOR (10.11.2026): "yazışma / havale / avukat"
+    // maddesi kaldırıldı — muhasebe borç durumunu bildiriyor, şekli panelde
+    // seçiliyor. ALTLIK = HESAP EKSTRESİ: "altlık" tek başına ne istendiğini
+    // söylemiyordu; istenen şey cari hesap ekstresi.
     const istek = sirket
       ? `<li>Takip konusu borcun <strong>ödenip ödenmediği</strong>, ödendiyse ödeme tarihi ve tutarı</li>
          <li>Ödenmemişse <strong>ödenecek mi, itiraz mı edilecek</strong> — avukata iletilmesi gerekiyorsa belirtiniz</li>
-         <li>Varsa cevap/itiraz yazısının <strong>altlığı</strong></li>`
+         <li>Cevap/itiraz yazısına altlık olarak <strong>hesap ekstresi</strong></li>`
       : `<li>Borçluya <strong>borcumuzun olup olmadığı</strong>, varsa tutarı</li>
-         <li>Cevabın <strong>ne şekilde verileceği</strong> (yazışma / banka havalesi / avukat aracılığı)</li>
-         <li>Cevap yazısının <strong>altlığı</strong></li>`;
+         <li>Cevap yazısına altlık olarak <strong>hesap ekstresi</strong></li>`;
 
     const html = `${antet.html}
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:620px;color:#1E3A5F">
@@ -167,7 +185,7 @@ export async function POST(request: Request) {
     await tasiyici.sendMail({
       from: `"${firma?.firma_adi ?? "İkikat"}" <${gonderen}>`,
       to: alicilar.join(", "),
-      subject: `${sirket ? "Ödeme emri" : "İcra yazısı"} ${kayit.dosya_esas_no} — borç durumu ve cevap altlığı`
+      subject: `${sirket ? "Ödeme emri" : "İcra yazısı"} ${kayit.dosya_esas_no} — borç durumu ve hesap ekstresi`
         + (sonGun ? ` · ${sonGunEtiket.toLocaleLowerCase("tr")} ${gunTR(sonGun)}` : ""),
       html,
       attachments: [
