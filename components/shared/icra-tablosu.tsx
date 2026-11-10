@@ -708,13 +708,25 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             sayılmadığı için eziliyor ve pencere masaüstünde 384px kalıyordu —
             iki sütunlu form o genişlikte iç içe geçiyor, tarih kutuları
             kırpılıyordu (10.11.2026'da görüldü). */}
-        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Gavel size={18} /> {editId ? "İcra Dosyasını Düzenle" : "Yeni İcra Dosyası"}</DialogTitle>
           </DialogHeader>
 
           <div ref={formRef} onKeyDown={formEnter}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            // ARALIKLAR SIKI: form uzun (on alan + cevap bölümü) ve kaydırma
+            // çubuğu çıkıyordu. 12px yerine 8px aralık ve ince bölüm başlıkları
+            // ile ortalama ekranda kaydırmadan sığıyor.
+            // ══ PENCERE BOYU SABİT ══ (kullanıcı kuralı, 10.11.2026)
+            // Hiçbir pencere içeriğe göre yükselip alçalmaz: cevap şekli
+            // değiştikçe pencere zıplıyor, İptal/Kaydet ayağı farenin altından
+            // kayıyor ve yanlış düğmeye basılıyor.
+            // EN UZUN KİP ÖLÇÜLDÜ: avukat aracılığı ~826px (10.11.2026; avukat
+            // seçili, ek dosya satırı açık) — 840 verildi, kısa kiplerde altta
+            // boşluk kalması yeğleniyor.
+            // max-h: başlık+ayak payı 70px; alçak ekranda pencere taşmasın,
+            // orada da boy SABİT kalır (sınıra dayanır).
+            className="grid grid-cols-1 sm:grid-cols-2 gap-2 h-[840px] max-h-[calc(95vh-70px)] min-h-0 overflow-y-auto overflow-x-hidden pr-1">
             {kilitli && (
               <div className="sm:col-span-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                 🔒 Mevcut bilgiler kilitli — yalnız <b>Cevap / Ödeme</b> alanları girilebilir.
@@ -742,7 +754,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <input inputMode="decimal" readOnly={kilitli} className={`${fInp} text-right ${kilitInp}`} value={form.borc_miktari} onChange={(e) => setF("borc_miktari", formatParaInput(e.target.value))} placeholder="0" />
             </div>
 
-            <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Alacaklı Bilgileri</div>
+            <div className="sm:col-span-2 border-t pt-2 text-xs font-semibold text-gray-500">Alacaklı Bilgileri</div>
             <div>
               <label className={fLbl}>Adı Soyadı / Ünvanı <span className="text-red-500">*</span></label>
               <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.alacakli_adi} onChange={(e) => setF("alacakli_adi", e.target.value)} />
@@ -752,7 +764,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <input readOnly={kilitli} className={`${fInp} ${kilitInp}`} value={form.alacakli_vergi_no} onChange={(e) => setF("alacakli_vergi_no", e.target.value)} />
             </div>
 
-            <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Borçlu Bilgileri</div>
+            <div className="sm:col-span-2 border-t pt-2 text-xs font-semibold text-gray-500">Borçlu Bilgileri</div>
             <div>
               <label className={fLbl}>Adı Soyadı / Ünvanı <span className="text-red-500">*</span></label>
               <AramaSecim value={form.borclu_adi} onChange={(v) => setF("borclu_adi", v)} onBlur={borcluAdiBlur} secenekler={borcluList} kilit={kilitli} className={`${fInp} ${kilitInp}`} placeholder="Personel seçin veya yazın" />
@@ -763,7 +775,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             </div>
 
             {/* ── OPSİYONEL ALANLAR (altta) ── */}
-            <div className="sm:col-span-2 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme <span className="font-normal text-gray-400">(opsiyonel)</span></div>
+            <div className="sm:col-span-2 border-t pt-2 text-xs font-semibold text-gray-500">Cevap / Ödeme <span className="font-normal text-gray-400">(opsiyonel)</span></div>
             {/* ALANLAR ORTAK BİLEŞENDEN: ana sayfadaki hızlı "Cevabı işle"
                 penceresiyle birebir aynı kurallar (cevap şekline göre sorulan
                 alanlar değişiyor, avukatta mail gidiyor). */}

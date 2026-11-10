@@ -553,12 +553,19 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       </div>
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[95vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editId ? "Takibi Düzenle" : "Yeni Takip Ekle"}</DialogTitle>
           </DialogHeader>
           <div ref={formRef} onKeyDown={formEnter}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 min-h-0 overflow-y-auto pr-1">
+            // ══ PENCERE BOYU SABİT ══ (kullanıcı kuralı, 10.11.2026)
+            // Cevap şekli değiştikçe pencere zıplamaz: en uzun kip ÖLÇÜLDÜ
+            // (avukatta 784px; ödendi 585, kapandı 517, seçilmedi 449) — 800
+            // verildi. Kısa kipte altta boşluk kalması yeğleniyor; zıplayan
+            // pencerede İptal/Kaydet ayağı farenin altından kayıyor.
+            // max-h: başlık+ayak payı 70px; alçak ekranda boy sınıra dayanır,
+            // yine SABİT kalır.
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3 h-[800px] max-h-[calc(95vh-70px)] min-h-0 overflow-y-auto pr-1">
             <div className="sm:col-span-1">
               <label className={fLbl}>Borçlu firma *</label>
               <select className={fInp} value={form.borclu_firma} onChange={(e) => setF("borclu_firma", e.target.value)}>

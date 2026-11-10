@@ -236,7 +236,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
         </div>
 
         <div ref={formRef} onKeyDown={formEnter}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] max-h-[calc(90vh-230px)] min-h-0 overflow-y-auto pr-1 content-start">
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[560px] max-h-[calc(92vh-200px)] min-h-0 overflow-y-auto pr-1 content-start">
           {/* CEVAP ŞEKLİ İLK VE TEK SATIR — icra penceresiyle aynı düzen: sorulan
               alanlar buna bağlı, insan önce bunu görmeli. "Seçin…" ele
               alınmamış demektir (durum="yeni"); işlenmiş bir takip buraya

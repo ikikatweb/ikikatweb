@@ -239,11 +239,11 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
             İptal/Kaydet ayağının altından kayıyor, fare yanlış yere düşüyordu.
             Ölçülen en uzun kip AVUKAT: muhasebe şeridi, avukat seçimi, ek dosya
             satırı ve not kutusuyla 422px (10.11.2026 ölçümü) — 430 verildi.
-            Ek dosya satırı ve eklenen dosyaların rozetleriyle birlikte 520.
+            Ek dosya satırı ve eklenen dosyaların rozetleriyle birlikte 560.
             max-h-[calc(90vh-230px)]: pencerenin başlık+özet+ayak payı 230px;
             alçak ekranda gövde o kadar daralır, pencere ekrandan taşmaz.
             Kısa ekranda max-h-[90vh] devreye girip bu kutuyu daraltır. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] max-h-[calc(90vh-230px)] min-h-0 overflow-y-auto pr-1 content-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[560px] max-h-[calc(92vh-200px)] min-h-0 overflow-y-auto pr-1 content-start">
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
             tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id} denendi={denendi} denendiSifirla={() => setDenendi(false)}
