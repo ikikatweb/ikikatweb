@@ -75,16 +75,25 @@ export default function LogoDonen({ logolar: disListe, araSn = 5, className = "h
   // yoksa hepsi aynı yerden belirip kayma hissi kaybolur.
   const cikan = n > 0 ? (sayac - 1 + n) % n : -1;
 
-  // SSR ile gelen HTML'deki görsel, React olay dinleyicileri bağlanmadan ÖNCE 404
-  // alırsa onError HİÇ çalışmıyor; kırık görsel ekranda kalıyordu. Bağlanır bağlanmaz
-  // bir de elle tara: yüklemesi bitmiş ama eni sıfırsa o dosya yok demektir.
-  useEffect(() => {
-    const dusenler: Record<string, true> = {};
-    for (const [src, el] of Object.entries(imgRef.current)) {
-      if (el && el.complete && el.naturalWidth === 0) dusenler[src] = true;
+  /**
+   * SSR ile gelen HTML'deki görsel, React olay dinleyicileri bağlanmadan ÖNCE 404
+   * alırsa onError HİÇ çalışmıyor; kırık görsel ekranda kalıyordu. Element DOM'a
+   * bağlanır bağlanmaz bakılıyor: yüklemesi bitmiş ama eni sıfırsa o dosya yok.
+   *
+   * NİYE EFEKTTE DEĞİL, ref İÇİNDE: aynı iş bir efektte yapılıyordu; efekt
+   * gövdesinde senkron setState çağırmak zincirleme çizim doğuruyor (React'in
+   * kendi kuralı da bunu hata sayıyor). ref geri çağrısı elementin bağlandığı
+   * anda çalışıyor — bilgi zaten orada, beklemeye gerek yok.
+   *
+   * AYNI DEĞERİ YENİDEN YAZMAZ: zaten işaretliyse önceki nesne aynen döner,
+   * yoksa her çizimde durum değişir ve döngü olurdu.
+   */
+  const imgBagla = (src: string) => (el: HTMLImageElement | null) => {
+    imgRef.current[src] = el;
+    if (el && el.complete && el.naturalWidth === 0) {
+      setBozuk((p) => (p[src] ? p : { ...p, [src]: true }));
     }
-    if (Object.keys(dusenler).length > 0) setBozuk((p) => ({ ...p, ...dusenler }));
-  }, [logolar]);
+  };
 
   // İşletim sisteminde "hareketi azalt" seçiliyse kaydırma yok, yalnız solma.
   useEffect(() => {
@@ -134,7 +143,7 @@ export default function LogoDonen({ logolar: disListe, araSn = 5, className = "h
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={l.src}
-          ref={(el) => { imgRef.current[l.src] = el; }}
+          ref={imgBagla(l.src)}
           // public/ altındaki yollar olduğu gibi; Storage adresleri imzalı geçitten geçer
           src={l.src.startsWith("/") ? l.src : dosyaUrl(l.src)}
           alt={l.alt}

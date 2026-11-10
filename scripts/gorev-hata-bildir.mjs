@@ -45,6 +45,67 @@ function sebepBul() {
   } catch { return ""; }
 }
 
+
+/**
+ * GÖREVİN İNSANCA ADI — bildirimde "UETS Tebligat Cek" değil "E-tebligat çekme"
+ * yazsın. Telefonda beliren uyarıyı okuyan kişi görev zamanlayıcıdaki teknik adı
+ * değil, işin kendisini tanıyor.
+ */
+const GOREV_ADLARI = {
+  "uets-tebligat-cek": "E-tebligat çekme",
+  "uets-acma-istekleri": "E-tebligat açma",
+  "uets-anahtar-dene": "UETS anahtar denemesi",
+  "personel-bildirge-sync": "SGK bildirge takibi",
+  "ketsis-mail-cek": "KETSİS bildirim okuma",
+  "sigorta-teklif-mail": "Sigorta teklif okuma",
+  "arvento-mail-sync": "Arvento rapor maili",
+  "icra-muhasebe-cevap": "Muhasebe cevabı tarama",
+};
+
+/**
+ * SEBEBİ SINIFLA — ham hata satırı telefonda okunmuyordu:
+ *   "HATA: 2 firma çekilemedi · IKI: UETS 503: Sistem bakımı yapılmaktadır.
+ *    Lütfen daha sonra tekrar deneyiz. (kod 999) · https://api.etebligat.gov.tr/…"
+ * Okuyan kişinin iki şeyi bilmesi yeter: NE OLDU ve BİR ŞEY YAPMALI MI.
+ *
+ * Dönen `gecici: true` ise arıza karşı taraftan ve kendiliğinden düzelir;
+ * uyarının başlığı da ona göre yumuşuyor — her bildirim "alarm" olursa
+ * gerçekten ilgilenilmesi gereken uyarı da aynı torbada kaybolur.
+ */
+function sebepSinifla(ham) {
+  const t = (ham || "").toLocaleLowerCase("tr");
+  if (/503|bak[ıi]m|maintenance|kod 999/.test(t)) {
+    return { gecici: true, nedir: "Karşı sistem (PTT) bakımda", islem: "Bakım bitince kendiliğinden düzelir, yapılacak bir şey yok." };
+  }
+  if (/401|403|unauthorized|forbidden|yetkisiz|ge[çc]ersiz anahtar|invalid.*(token|key)/.test(t)) {
+    return { gecici: false, nedir: "Yetki/anahtar geçersiz", islem: "İLGİLENİLMELİ: anahtar ya da şifre yenilenmeli." };
+  }
+  if (/econnreset|etimedout|enotfound|getaddrinfo|socket|upstream connect|connection failure|disconnect|timeout|zaman a[şs][ıi]m/.test(t)) {
+    return { gecici: true, nedir: "Bağlantı koptu", islem: "Bir sonraki turda yeniden denenecek." };
+  }
+  if (/uv_handle_closing|assertion failed/.test(t)) {
+    return { gecici: true, nedir: "Program kapanırken çöktü", islem: "İş yapılmış olabilir; tekrarlarsa bakılmalı." };
+  }
+  if (/<\/?(div|html|body)|error-footer|<!doctype/.test(t)) {
+    return { gecici: true, nedir: "Sunucudan hata sayfası döndü", islem: "Karşı taraf geçici olarak cevap veremiyor." };
+  }
+  if (/cannot find module|module not found|is not a function|undefined/.test(t)) {
+    return { gecici: false, nedir: "Programda hata", islem: "İLGİLENİLMELİ: görev her turda ölüyor olabilir." };
+  }
+  return { gecici: false, nedir: "", islem: "Sunucu makinesinde log'a bakılmalı." };
+}
+
+/** Ham satırı okunur hâle getir: adres, etiket ve tekrarlayan önekler atılır. */
+function sebepSadelestir(ham) {
+  return (ham || "")
+    .replace(/https?:\/\/\S+/g, "")              // adresler telefonda yer kaplıyor
+    .replace(/<[^>]*>/g, " ")                    // html parçaları
+    .replace(/^\s*(hata|error)\s*:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 110);
+}
+
 async function main() {
   fs.mkdirSync(path.join(kok, "logs"), { recursive: true });
   const sebep = sebepBul();
@@ -63,9 +124,19 @@ async function main() {
   const url = env.NEXT_PUBLIC_SUPABASE_URL, key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) { console.log("  Supabase yapılandırması yok — bildirim gönderilemedi"); return; }
   const sb = createClient(url, key);
+  // ── BİLDİRİM METNİ ──
+  // Başlık: ne yapamadı. Gövde: NEDEN ve BİR ŞEY YAPMALI MI + saat.
+  // Ham hata satırı telefonda okunmuyordu; sebep sınıflanıyor, adresler atılıyor.
+  // Ayrıntı log'da duruyor (gorev-hatalari.log) — bildirim özet, log kayıt.
+  const ad = GOREV_ADLARI[slug] ?? gorev;
+  const { gecici, nedir, islem } = sebepSinifla(sebep);
+  const sade = sebepSadelestir(sebep);
+  const saat = new Date().toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const n = await pushGonder(sb, env, {
-    baslik: `⚠ ${gorev} çalışmıyor`,
-    govde: sebep || `Görev ${kodHam} çıkış koduyla durdu. Sunucu makinesinde log'a bakılmalı.`,
+    // GEÇİCİ ARIZA ALARM DEĞİL: her bildirim "⚠" olursa gerçekten ilgilenilmesi
+    // gereken uyarı da aynı torbada kaybolur.
+    baslik: gecici ? `⏳ ${ad} şu an yapılamıyor` : `⚠ ${ad} durdu`,
+    govde: [nedir || sade, islem, saat].filter(Boolean).join(" · "),
     url: "/dashboard",
     etiket: `gorev-hata-${slug}`,
   });
