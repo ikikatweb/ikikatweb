@@ -20,7 +20,7 @@ const GRUPLAR: Grup[] = [
       { ad: "Bordro Takibi", aciklama: "Personelin hangi ay hangi şantiyede olduğu, günlük/brüt ücretleri ve aylık bordro tahmini. İşçilik primi hesabının bordro ayağı buradan gelir." },
       { ad: "Ödeme Planı", aciklama: "Vadesi gelen ödemelerin takvimi." },
       { ad: "Kredi Kartları", aciklama: "Şirket kartlarının limit, ekstre ve harcama takibi." },
-      { ad: "İcra Dosyaları", aciklama: "Üçüncü şahıs haciz yazıları ve şirkete açılan takipler." },
+      { ad: "İcra Dosyaları", aciklama: "Üçüncü şahıs haciz yazıları ve şirkete açılan takipler. Yazı sisteme girer girmez muhasebeye kendiliğinden mail gider (tebligat eki ekli) — borcumuz olup olmadığını onlar çıkarır. Muhasebenin cevabı e-posta kutusundan okunup dosyaya iliştirilir; satırdaki iki ikondan hangi aşamada olduğu görülür. Cevap yazısı avukata ek dosyalarla birlikte gönderilebilir, yasal süre geri sayılır." },
       { ad: "Sınır Değer Hesabı", aciklama: "İhalede sınır değer ve aşırı düşük sorgulaması hesabı." },
     ],
   },
@@ -32,6 +32,8 @@ const GRUPLAR: Grup[] = [
     moduller: [
       { ad: "Gelen / Giden Evrak", aciklama: "Kurum yazışmalarının kayıt altına alınması, numaralandırılması ve aranması." },
       { ad: "Banka Yazışmaları", aciklama: "Teminat mektubu ve kredi yazışmaları ayrı tutulur." },
+      { ad: "E-Tebligat (UETS)", aciklama: "PTT Ulusal Elektronik Tebligat Sistemi'ndeki tebligatlar panelden izlenir; okunmamış tebligat ana sayfada uyarı verir." },
+      { ad: "Vergi Dairesi Tebligatı", aciklama: "Vergi dairesi tebligatı (GİB · KETSİS) ayrı bir sistemde durur ve alıcı tarafı için API'si yoktur — belge yalnız Dijital Vergi Dairesi ekranından görülür. Sistem GİB'in bilgilendirme mailini kutudan yakalar; mail hiç gelmese de haftada bir \"gidip bak\" hatırlatması çıkar, çünkü o mailin gelmemesi tebligat süresini durdurmaz." },
       { ad: "Silinen", aciklama: "Silinen evrak burada bekler; yanlışlıkla silinen geri alınabilir." },
     ],
   },
@@ -92,7 +94,8 @@ const GRUPLAR: Grup[] = [
     renk: "bg-red-50 text-red-700",
     seritRenk: "bg-red-500",
     moduller: [
-      { ad: "Yakıt Hareketleri", aciklama: "Depoya alınan yakıt, araçlara dağıtımı ve şantiyeler arası virman. Her dolumda sayaç değeri girilir; sistem bundan tüketim ortalamasını (L/100km veya L/saat) hesaplar ve araç cinsine tanımlı limitlerin dışına çıkanı işaretler." },
+      { ad: "Yakıt Hareketleri", aciklama: "Depoya alınan yakıt, araçlara dağıtımı ve şantiyeler arası virman. Her dolumda sayaç değeri girilir; sistem bundan tüketim ortalamasını (L/100km veya L/saat) hesaplar ve araç cinsine tanımlı limitlerin dışına çıkanı işaretler. Depo sayımında fark çıkarsa ± düzeltme kaydı girilir." },
+      { ad: "Kaydın konumu", aciklama: "Araca yakıt verilirken telefonun konumu zorunlu olarak alınır ve aracın o andaki GPS konumuyla karşılaştırılır. İki nokta arasındaki YOL mesafesi (kuşbakışı değil) kayıt anında hesaplanıp saklanır; haritada araçtan kayda yol tarifi olarak açılır. Konum alınmadan ilk girişte kişiye KVKK aydınlatma metni okutulur, onayı adı, cihazı, IP'si ve metnin tamamıyla saklanır." },
     ],
   },
   {
@@ -101,7 +104,8 @@ const GRUPLAR: Grup[] = [
     renk: "bg-teal-50 text-teal-700",
     seritRenk: "bg-teal-500",
     moduller: [
-      { ad: "Kasa Hareketleri", aciklama: "Günlük nakit giriş çıkışı ve kasa defteri." },
+      { ad: "Kasa Hareketleri", aciklama: "Günlük nakit giriş çıkışı ve kasa defteri; satır satır kümülatif bakiye ve önceki dönemden devreden tutar görünür." },
+      { ad: "Kullanıcı özeti", aciklama: "Kimde ne kadar nakit var — ana sayfada kişi kişi bakiye. Bakiye kişiye aittir, şantiyeye değil: devir dahil, ve kim bakarsa baksın aynı rakamı görür." },
     ],
   },
   {
@@ -126,6 +130,7 @@ const GRUPLAR: Grup[] = [
       { ad: "Araçlar", aciklama: "Araç kartları: plaka, cins, sayaç tipi (km/saat), 1 depo menzili, sahiplik (özmal/kiralık)." },
       { ad: "Yi-ÜFE", aciklama: "Fiyat farkı hesabında kullanılan Yurt İçi Üretici Fiyat Endeksi tablosu." },
       { ad: "Tanımlamalar", aciklama: "Açılır listelerin içeriği: görevler, meslekler, araç cinsleri, yakıt limitleri." },
+      { ad: "Haberler", aciklama: "Kurumsal sitede yayımlanan haber ve duyurular buradan yönetilir." },
       { ad: "Veri Yedeği", aciklama: "Verinin dışa aktarımı. Yalnız yöneticiye açıktır." },
     ],
   },
@@ -145,10 +150,22 @@ const ENTEGRASYONLAR = [
     metin: "Araçlardaki takip cihazlarından günlük güzergâh, mesafe, çalışma süresi ve damper sayıları alınır. Geçmiş günlerin rotası değişmediği için tarayıcıda saklanır; ağdan yalnız yeni günler iner.",
   },
   {
-    ad: "E-posta (IMAP)",
+    ad: "E-posta (IMAP) — gelen kutusu okunur",
     renk: "border-emerald-300 bg-emerald-50",
     baslikRenk: "text-emerald-800",
-    metin: "SGK bildirgeleri ve Arvento raporları e-posta kutusundan otomatik okunur, ilgili personel ve araçlarla eşleştirilir.",
+    metin: "Posta kutusu sistemin sessiz veri kaynağıdır. SGK bildirgeleri, Arvento raporları, muhasebenin icra cevapları ve vergi dairesinin KETSİS bilgilendirme mailleri kutudan okunur; ekleri indirilip ilgili personel, araç ya da dosyayla eşleştirilir. Bir ek inmiyorsa işlem sessizce tamamlanmaz — eksik gittiği söylenir.",
+  },
+  {
+    ad: "UETS (PTT e-Tebligat)",
+    renk: "border-rose-300 bg-rose-50",
+    baslikRenk: "text-rose-800",
+    metin: "Ulusal Elektronik Tebligat Sistemi'ndeki tebligatların panelden izlenmesi. Bağlantı PTT'den gelecek erişim anahtarına bağlıdır; anahtar çalışır hâle gelene kadar sistem onu düzenli olarak dener.",
+  },
+  {
+    ad: "Harita ve yol mesafesi",
+    renk: "border-teal-300 bg-teal-50",
+    baslikRenk: "text-teal-800",
+    metin: "Yakıt kaydının girildiği yer ile aracın o anki konumu arasındaki YOL mesafesi açık rota servisinden alınır; harita uydu görüntüsüyle panel içinde küçük bir pencerede açılır. Hesaplanamazsa uydurulmaz, kuşbakışı mesafeye düşülür ve bu ekranda belli olur.",
   },
   {
     ad: "Push Bildirim",
@@ -159,14 +176,29 @@ const ENTEGRASYONLAR = [
 ];
 
 const OTOMATIK_ISLER = [
+  { ad: "Arvento anlık konum", sure: "Dakikada bir", ne: "Araçların o anki konumu — yakıt kaydının konumu bununla karşılaştırılır" },
+  { ad: "Arvento rapor / damper", sure: "Dakikada bir", ne: "Günlük çalışma raporu ve damper sayıları" },
+  { ad: "Arvento güzergâh", sure: "15 dakikada bir", ne: "Gün içi rota izleri" },
+  { ad: "Bildirge okuma", sure: "2 dakikada bir", ne: "Posta kutusundan SGK işe giriş/çıkış bildirgelerinin alınıp TC ile eşleştirilmesi" },
+  { ad: "Sigorta teklif maili", sure: "2 dakikada bir", ne: "Acentelerden gelen tekliflerin okunup poliçe kartına işlenmesi" },
+  { ad: "KETSİS mail kontrolü", sure: "5 dakikada bir", ne: "Vergi dairesi tebligatının bilgilendirme mailinin yakalanması" },
   { ad: "Netsim senkronu", sure: "15 dakikada bir", ne: "Hakediş tutarları ve yeni açılan işlerin eşleştirmesi" },
-  { ad: "Bildirge okuma", sure: "2 dakikada bir", ne: "E-posta kutusundan SGK bildirgelerinin alınması" },
-  { ad: "Arvento senkronu", sure: "Gün içinde düzenli", ne: "Araç güzergâh ve çalışma verileri" },
+  { ad: "İcra muhasebe cevabı", sure: "15 dakikada bir", ne: "Muhasebenin icra yazısına verdiği cevabın ekleriyle birlikte dosyaya iliştirilmesi" },
+  { ad: "UETS tebligat", sure: "2 saatte bir", ne: "PTT e-Tebligat kutusunun taranması (anahtar bekliyor)" },
+  { ad: "Geçmiş güzergâh tamamlama", sure: "Her gün 03:40", ne: "Eksik kalan eski günlerin rota verisinin doldurulması" },
+  { ad: "Bildirim budama", sure: "Her ayın 1'i 03:20", ne: "60 günden eski bildirimlerin temizlenmesi" },
   { ad: "Yaklaşan uyarılar", sure: "Her gün 05:00", ne: "Sigorta, muayene, bakım ve kabul tarihlerinin taranıp bildirime dönüşmesi" },
   { ad: "Makine saati", sure: "Her gün 19:00", ne: "İş makinelerinin gösterge saatinin kontak süresinden ilerletilmesi" },
+  { ad: "Yi-ÜFE çekimi", sure: "Her ayın başında", ne: "TÜİK endeksinin fiyat farkı hesabı için alınması" },
   { ad: "Veri yedeği", sure: "Her cumartesi 12:00", ne: "Tüm verinin yerel diske ŞİFRELİ olarak yedeklenmesi" },
-  { ad: "Bildirim budama", sure: "Her ayın 1'i 03:20", ne: "60 günden eski bildirimlerin temizlenmesi" },
 ];
+
+/** Görev çökerse haber verilir — sessizce durmasın. */
+const GOREV_NOTU = "Bu işlerden biri çalışmazsa sebebi sınıflandırılıp bildirime dönüşür: "
+  + "\"sunucu bakımda\", \"bağlantı kurulamadı\", \"yetki/anahtar sorunu\" gibi. "
+  + "Zamanlayıcı \"başarılı\" dese bile betik içeride çökmüş olabilir; o yüzden sonuç "
+  + "görevin kendi günlüğünden okunur.";
+
 
 const UYARILAR = [
   {
@@ -203,6 +235,21 @@ const UYARILAR = [
     ad: "Netsim ile ayrışma",
     nokta: "bg-sky-500",
     metin: "Ön muhasebedeki hakediş tutarı ile sitedeki kayıt ayrışırsa rapor uyarır; hangi rakamın elle değiştirildiği rozetten anlaşılır.",
+  },
+  {
+    ad: "İcra yazısı geldi, muhasebe cevabı bekleniyor",
+    nokta: "bg-indigo-500",
+    metin: "Yeni bir haciz yazısı girildiğinde muhasebeye kendiliğinden mail gider ve ana ekranda \"cevap bekleniyor\" olarak durur. Muhasebenin cevabı posta kutusundan okunup dosyaya iliştirilince ikon değişir. Yasal cevap süresi geri sayılır; son güne yaklaşan dosya öne çıkar.",
+  },
+  {
+    ad: "Vergi dairesi tebligatına bakılmadı",
+    nokta: "bg-amber-600",
+    metin: "GİB tebligatı panelden açılamıyor — belge yalnız Dijital Vergi Dairesi'nde. Bilgilendirme maili yakalandıysa uyarı çıkar; mail hiç gelmese de haftada bir hatırlatılır, çünkü mailin gelmemesi tebligatın olmadığı anlamına gelmez.",
+  },
+  {
+    ad: "Yakıt kaydı araçtan uzakta girildi",
+    nokta: "bg-rose-500",
+    metin: "Dolum kaydının girildiği yer ile aracın o anki GPS konumu karşılaştırılır. Aradaki yol mesafesi ekranda yazar; eşiği aşan kayıt işaretlenir. Araçta cihaz yoksa bu da açıkça söylenir — \"uzak değil\" diye geçiştirilmez.",
   },
   {
     ad: "Süresi dolmuş işler",
@@ -250,7 +297,7 @@ export default function HakkindaPage() {
           sözleşme, personel, araç, yakıt, hakediş, prim ve maliyet — aynı veri tabanında tutulur.
         </p>
         <div className="flex flex-wrap gap-2 mt-5">
-          {["Her yerden erişim", "Telefona kurulabilir", "Anlık bildirim", "Rol bazlı yetki", "Otomatik yedek"].map((t) => (
+          {["Her yerden erişim", "Telefona kurulabilir", "Anlık bildirim", "Rol bazlı yetki", "Şifreli yedek", "Kendiliğinden çalışan 15 görev"].map((t) => (
             <span key={t} className="text-[11px] font-semibold bg-white/15 border border-white/20 px-2.5 py-1 rounded-full">
               {t}
             </span>
@@ -437,6 +484,9 @@ export default function HakkindaPage() {
             </div>
           ))}
         </div>
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900">
+          {GOREV_NOTU}
+        </p>
       </section>
 
       {/* ---------- KENDİLİĞİNDEN FARK EDİLENLER ---------- */}
@@ -538,6 +588,14 @@ export default function HakkindaPage() {
             {
               ad: "Dosyalar bağlantıyla açılmaz",
               metin: "Kasa slipleri, evrak taramaları, poliçeler ve kabul belgeleri herkese açık adreslerde durmaz. Her dosya isteği oturumdan geçer ve kısa ömürlü, imzalı bir adrese yönlendirilir.",
+            },
+            {
+              ad: "Konum için aydınlatma ve onay",
+              metin: "Yakıt kaydında telefonun konumu alınıyor; konum kişisel veridir. Kişi ekrana ilk girdiğinde aydınlatma metnini okur ve onaylar. Onay, metnin TAMAMI, kişinin adı, cihazı, IP'si ve tarihiyle birlikte saklanır — sonradan \"ne söylendi, ne kabul edildi\" sorusunun cevabı elde olsun diye. Metin değişirse onay yeniden istenir. Kullanıcı listesinde kimin onay verdiği, kimin izni reddettiği ayrı ayrı görünür.",
+            },
+            {
+              ad: "Giriş ve şifre",
+              metin: "Giriş kullanıcı adıyla yapılır, e-posta yalnız şifre yenileme içindir ve adresin kişiye ait olduğu doğrulama bağlantısıyla teyit edilir. \"Beni hatırla\" işaretliyse oturum kalıcıdır, işaretsizse uygulama kapanınca çıkılır. Oturum sunucuya doğrulatılır: jeton düşmüşse kullanıcı boş ekranda bırakılmaz, giriş sayfasına sebebiyle alınır.",
             },
             {
               ad: "Yetki modülün altına iner",
