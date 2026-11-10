@@ -150,13 +150,20 @@ export async function izinDurumu(): Promise<"verildi" | "reddedildi" | "sorulaca
 export function konumAcmaAdimlari(): { baslik: string; adimlar: string[] } {
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   if (/iPhone|iPad|iPod/i.test(ua)) {
+    // iOS'TA WEB SİTESİ UYGULAMA DEĞİLDİR: Konum Servisleri listesinde panelin
+    // adı ARANMAZ, siteler Safari'nin altında yönetilir. En sık sebep de ilk
+    // madde: Safari'nin kendi konum ayarı "Reddet"te olunca HİÇBİR site
+    // soramıyor — kullanıcı "bana hiç sormadı" diyor, haklı (10.11.2026).
     return {
       baslik: "iPhone'da konumu açma",
       adimlar: [
+        "Ayarlar → Safari → (aşağı inin) Konum → \"Sor\" ya da \"İzin Ver\" olmalı. "
+          + "\"Reddet\" ise hiçbir site konum soramaz — en sık sebep budur.",
         "Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri: AÇIK olmalı",
-        "Aynı listede aşağı inin: Safari Web Siteleri → \"Uygulamayı Kullanırken\"",
-        "\"Tam Konum\" seçeneği de açık olsun",
-        "Paneli ana ekrana eklediyseniz listede Safari yerine panelin adını arayın",
+        "Aynı listede Safari Web Siteleri → \"Uygulamayı Kullanırken\" + Tam Konum açık",
+        "Listede \"İkikat/Kad-Tem\" ARAMAYIN: web siteleri uygulama olarak görünmez, "
+          + "Safari altında yönetilir. (Paneli ana ekrana eklediyseniz, bir kez izin "
+          + "istedikten SONRA kendi adıyla listeye düşer.)",
         "Sonra bu sayfayı yenileyip tekrar \"Konumu aç\" deyin",
       ],
     };
