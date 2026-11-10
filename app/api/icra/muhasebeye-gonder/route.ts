@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     // maddesi kaldırıldı — muhasebe borç durumunu bildiriyor, şekli panelde
     // seçiliyor. ALTLIK = HESAP EKSTRESİ: "altlık" tek başına ne istendiğini
     // söylemiyordu; istenen şey cari hesap ekstresi.
-    const md = "font-size:13px;color:#334155;margin:0 0 7px;padding-left:16px;position:relative";
+    const md = "font-size:14px;color:#334155;margin:0 0 8px;line-height:1.5";
     const istek = sirket
       ? `<li style="${md}">Takip konusu borcun <strong>ödenip ödenmediği</strong>, ödendiyse ödeme tarihi ve tutarı</li>
          <li style="${md}">Ödenmemişse <strong>ödenecek mi, itiraz mı edilecek</strong> — avukata iletilmesi gerekiyorsa belirtiniz</li>
@@ -160,20 +160,19 @@ export async function POST(request: Request) {
       : `<li style="${md}">Borçluya <strong>borcumuzun olup olmadığı</strong>, varsa tutarı</li>
          <li style="${md}">Cevap yazısına altlık olarak <strong>hesap ekstresi</strong></li>`;
 
-    /** Blok başlığı — iki bölümü birbirinden ayıran şerit. */
-    const baslikSerit = (metin: string, renk: string) =>
-      `<div style="background:${renk};color:#ffffff;font-size:11px;font-weight:700;`
+    /** Tebligat bilgileri tablosunun başlık şeridi — bu blok BİZİM yazımız değil. */
+    const baslikSerit = (metin: string) =>
+      `<div style="background:#64748b;color:#ffffff;font-size:11px;font-weight:700;`
       + `letter-spacing:.8px;padding:7px 12px;border-radius:6px 6px 0 0">${metin}</div>`;
 
-    // ══ MAİL İKİ BLOK ══
-    //   1) TEBLİGAT BİLGİLERİ — belgeden gelen, bilgi mahiyetinde (gri şerit)
-    //   2) TALEBİMİZ — muhasebeden istediğimiz şey (lacivert şerit)
-    // Araya boşluk ve ayrı çerçeve giriyor; okuyan kendisinden ne istendiğini
-    // aramak zorunda kalmıyor.
+    // ══ MAİLİN İKİ YARISI ══
+    //   1) TEBLİGAT BİLGİLERİ — belgeden gelen veri: çerçeveli, şeritli tablo
+    //   2) TALEBİMİZ — bizim cümlemiz: çerçevesiz düz metin, bir punto büyük
+    // Ayrım biçimden geliyor: kutulu olan belgeden, düz metin olan bizden.
     const html = `${antet.html}
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:620px;color:#1E3A5F">
-  <p style="font-size:14px;margin:0 0 12px">Sayın Muhasebe,</p>
-  <p style="font-size:13px;color:#475569;margin:0 0 20px;line-height:1.5">
+  <p style="font-size:15px;margin:0 0 12px">Sayın Muhasebe,</p>
+  <p style="font-size:14px;color:#475569;margin:0 0 20px;line-height:1.5">
     ${sirket
       ? "Şirketimize aşağıdaki ödeme emri tebliğ edilmiştir. Ödeme emrinin aslı ektedir."
       : "Tarafımıza aşağıdaki icra yazısı tebliğ edilmiştir. Tebligat yazısı ektedir."}
@@ -181,7 +180,7 @@ export async function POST(request: Request) {
 
   <!-- ① TEBLİGATTAN GELEN BİLGİLER (bilgi mahiyetinde) -->
   <div style="border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;margin-bottom:24px">
-    ${baslikSerit(sirket ? "ÖDEME EMRİ BİLGİLERİ" : "TEBLİGAT BİLGİLERİ", "#64748b")}
+    ${baslikSerit(sirket ? "ÖDEME EMRİ BİLGİLERİ" : "TEBLİGAT BİLGİLERİ")}
     <table style="border-collapse:collapse;width:100%">
       ${sat("Dosya esas no", kacar(kayit.dosya_esas_no), "font-weight:700")}
       ${sirket
@@ -203,29 +202,28 @@ export async function POST(request: Request) {
     </table>
   </div>
 
-  <!-- ② BİZİM TALEBİMİZ -->
-  <div style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;margin-bottom:20px">
-    ${baslikSerit("TALEBİMİZ", "#1E3A5F")}
-    <div style="padding:14px 12px 12px">
-      <p style="font-size:13px;margin:0 0 10px;color:#1E3A5F">
-        Aşağıdaki hususların tarafımıza bildirilmesini rica ederiz:
-      </p>
-      <ul style="margin:0 0 12px;padding-left:18px">${istek}</ul>
-      <p style="font-size:13px;color:#b91c1c;margin:0;line-height:1.5;border-top:1px solid #e2e8f0;padding-top:10px">
-        ${sonGun
-          ? `Cevabın icra dairesine <strong>${gunTR(sonGun)}</strong> tarihine kadar verilmesi gerektiğinden, `
-            + `bildiriminizi bu tarihten önce iletmenizi rica ederiz.`
-          : "Süre işlemekte olduğundan bildiriminizi en kısa sürede iletmenizi rica ederiz."}
-      </p>
-    </div>
-  </div>
+  <!-- ② BİZİM TALEBİMİZ — ÇERÇEVESİZ, DÜZ METİN.
+       Kutu içindeyken bu da "belgeden gelen bir blok" gibi duruyordu; oysa
+       bizim yazımız. Çerçeve yalnız tebligat bilgilerinde kaldı: kutulu olan
+       veri, düz metin olan bizim cümlemiz. Yazı bir punto büyük (14px) —
+       asıl okunması gereken kısım burası. -->
+  <p style="font-size:14px;margin:0 0 10px;color:#1E3A5F;line-height:1.5">
+    Aşağıdaki hususların tarafımıza bildirilmesini rica ederiz:
+  </p>
+  <ul style="margin:0 0 14px;padding-left:20px">${istek}</ul>
+  <p style="font-size:14px;color:#b91c1c;margin:0 0 20px;line-height:1.5">
+    ${sonGun
+      ? `Cevabın icra dairesine <strong>${gunTR(sonGun)}</strong> tarihine kadar verilmesi gerektiğinden, `
+        + `bildiriminizi bu tarihten önce iletmenizi rica ederiz.`
+      : "Süre işlemekte olduğundan bildiriminizi en kısa sürede iletmenizi rica ederiz."}
+  </p>
 
   ${(not ?? "").trim() ? `<div style="border-left:3px solid #94a3b8;background:#f8fafc;padding:10px 12px;margin-bottom:20px">
     <div style="font-size:11px;color:#64748b;margin-bottom:3px">Not</div>
     <div style="font-size:13px;white-space:pre-wrap">${kacar((not ?? "").trim())}</div>
   </div>` : ""}
 
-  <p style="font-size:14px;margin:0">
+  <p style="font-size:15px;margin:0">
     İyi çalışmalar,<br>
     <strong>${kacar(imza)}</strong>
   </p>
