@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText, Calculator, Send } from "lucide-react";
+import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText, Send } from "lucide-react";
 import {
   getIcraSirketTakipler, insertIcraSirketTakip, updateIcraSirketTakip, deleteIcraSirketTakip,
 } from "@/lib/supabase/queries/icra-sirket";
@@ -22,7 +22,7 @@ import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import AvukatSecim, { type AvukatEk } from "@/components/shared/avukat-secim";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
-import MuhasebeCevapDialog, { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import { MuhasebeBandi } from "@/components/shared/muhasebe-gosterim";
 import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
@@ -107,9 +107,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(BOS);
   const [kaydediliyor, setKaydediliyor] = useState(false);
-  // MUHASEBE PENCERESİ: gönderim izi + muhasebenin bildirdiği (borç ödenmiş mi,
-  // cevap şekli ne olacak).
-  const [muhasebeKayit, setMuhasebeKayit] = useState<IcraSirketTakip | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -496,11 +493,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                   {islemVar && (
                     <td className={`${td} text-center`}>
                       <div className="flex items-center justify-center gap-2">
-                        {/* MUHASEBE PENCERESİ — üçüncü şahıs defteriyle aynı yer. */}
-                        <button type="button" onClick={() => setMuhasebeKayit(s)}
-                          className="text-gray-400 hover:text-emerald-700" title="Muhasebe (gönderim ve cevap)">
-                          <Calculator size={14} />
-                        </button>
                         {canDuzenle && <button type="button" onClick={() => dialogAc(s)} className="text-gray-400 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={14} /></button>}
                         {canSil && <button type="button" onClick={() => sil(s.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={14} /></button>}
                       </div>
@@ -561,7 +553,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       </div>
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>{editId ? "Takibi Düzenle" : "Yeni Takip Ekle"}</DialogTitle>
           </DialogHeader>
@@ -679,20 +671,6 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         </DialogContent>
       </Dialog>
 
-      {/* MUHASEBE PENCERESİ: rozetten açılır. Cevap şekli listesi burada DURUM
-          kodlarıdır — muhasebe "ödendi / avukatta / kapandı"dan birini bildirir,
-          dosya o şekille açılır. */}
-      <MuhasebeCevapDialog
-        kayit={muhasebeKayit} kaynak="sirket" acik={Boolean(muhasebeKayit)}
-        kapat={() => setMuhasebeKayit(null)}
-        sekiller={SECILEBILIR_DURUMLAR.map((k) => ({ kod: k, ad: DURUMLAR.find((d) => d.kod === k)?.ad ?? k }))}
-        kaydedildi={(yama) => {
-          const id = muhasebeKayit?.id;
-          if (!id) return;
-          setSatirlar((p) => p.map((s) => (s.id === id ? { ...s, ...yama } as IcraSirketTakip : s)));
-          setMuhasebeKayit((m) => (m ? { ...m, ...yama } as IcraSirketTakip : m));
-        }}
-      />
     </div>
   );
 }

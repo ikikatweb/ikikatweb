@@ -18,7 +18,7 @@
 
 import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
 import AvukatSecim, { type AvukatMailBilgisi, type AvukatEk } from "@/components/shared/avukat-secim";
-import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import { MuhasebeBandi } from "@/components/shared/muhasebe-gosterim";
 import type { MuhasebeDurumu } from "@/lib/supabase/queries/icra-muhasebe";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 

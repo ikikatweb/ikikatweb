@@ -23,7 +23,7 @@ import { Loader2, Send } from "lucide-react";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
 import { DURUMLAR, durumSecenekleri } from "@/components/shared/icra-sirket-tablosu";
 import AvukatSecim, { type AvukatEk } from "@/components/shared/avukat-secim";
-import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import { MuhasebeBandi } from "@/components/shared/muhasebe-gosterim";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { icraDegisti } from "@/hooks";
@@ -203,7 +203,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
       if (!kapanabilir(d, !ayniMi(simdiki, baslangic))) return;   // vazgeçildi → açık kalsın
       kapat();
     }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle — Şirkete Açılan Takip</DialogTitle></DialogHeader>
 
         <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-sm divide-y divide-gray-200">

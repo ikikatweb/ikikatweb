@@ -58,6 +58,7 @@ export type MuhasebeDurumu = {
   muhasebe_cevap_mail_html?: string | null;
   /** Mailin ekleri (hesap ekstresi): yazismalar kovasında, dosyaUrl ile açılır. */
   muhasebe_cevap_mail_ekler?: { ad: string; yol: string }[] | null;
+  /** ESKİ KAYITLARDA DOLU OLABİLİR — artık sorulmuyor (10.11.2026). */
   muhasebe_borc_durumu?: string | null;
   muhasebe_borc_tutari?: number | null;
   muhasebe_cevap_sekli?: string | null;
@@ -76,23 +77,6 @@ export function muhasebeAsamasi(k: MuhasebeDurumu | null | undefined): MuhasebeA
   if (k.muhasebe_cevap_at) return "cevaplandi";
   if (k.muhasebe_mail_at) return "bekleniyor";
   return "gonderilmedi";
-}
-
-/** Muhasebenin bildirdiği borç durumunun okunur hâli. Defter başına farklı. */
-export function muhasebeBorcMetni(k: MuhasebeDurumu, sirket: boolean): string {
-  const d = (k.muhasebe_borc_durumu ?? "").trim();
-  const tutar = Number(k.muhasebe_borc_tutari ?? 0);
-  const para = tutar
-    ? tutar.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL"
-    : "";
-  if (sirket) {
-    if (d === "odendi") return para ? `Ödenmiş · ${para}` : "Ödenmiş";
-    if (d === "odenmedi") return para ? `Ödenmemiş · ${para}` : "Ödenmemiş";
-    return "—";
-  }
-  if (d === "yok") return "Borcumuz yok";
-  if (d === "var") return para ? `Borcumuz var · ${para}` : "Borcumuz var";
-  return "—";
 }
 
 /**

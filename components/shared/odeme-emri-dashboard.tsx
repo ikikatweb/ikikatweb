@@ -22,7 +22,7 @@ import { getIcraSirketTakipler } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip } from "@/lib/supabase/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { MuhasebeIkon } from "@/components/shared/muhasebe-cevap-dialog";
+import { MuhasebeIkon } from "@/components/shared/muhasebe-gosterim";
 import OdemeEmriIslemDialog from "@/components/shared/odeme-emri-islem-dialog";
 import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi } from "@/lib/utils/icra-sure";
 import { formatBaslik } from "@/lib/utils/isim";

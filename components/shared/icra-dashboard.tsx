@@ -20,7 +20,7 @@ import { sonGunHesapla, gunFarki, bugunISO, hatirlatmaZamaniMi, VARSAYILAN_CEVAP
 import { formatBaslik, formatBuyukHarf } from "@/lib/utils/isim";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import IcraCevapDialog from "@/components/shared/icra-cevap-dialog";
-import { MuhasebeIkon } from "@/components/shared/muhasebe-cevap-dialog";
+import { MuhasebeIkon } from "@/components/shared/muhasebe-gosterim";
 
 const fmt = (n: number) => n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tarihGoster = (v: string | null) => (v ? v.split("-").reverse().join(".") : "—");

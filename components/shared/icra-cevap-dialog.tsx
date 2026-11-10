@@ -191,7 +191,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       if (!kapanabilir(d, !ayniMi(v, baslangic))) return;   // vazgeçildi → açık kalsın
       kapat();
     }}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Cevabı İşle</DialogTitle></DialogHeader>
 
         {/* DOSYANIN KENDİSİ SALT OKUNUR: burada değiştirilecek bir şey yok, ama hangi

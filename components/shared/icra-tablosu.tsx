@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Calculator, Send } from "lucide-react";
+import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Send } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -17,7 +17,6 @@ import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanla
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
-import MuhasebeCevapDialog from "@/components/shared/muhasebe-cevap-dialog";
 import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { Button } from "@/components/ui/button";
 
@@ -145,8 +144,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     sureGun: null,
   }, false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
-  // MUHASEBE PENCERESİ: gönderim izi + muhasebenin bildirdiği borç durumu/cevap şekli.
-  const [muhasebeKayit, setMuhasebeKayit] = useState<IcraKayit | null>(null);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
 
@@ -637,13 +634,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   {islemVar && (
                     <td className={`${td} text-center`}>
                       <div className="flex items-center justify-center gap-2">
-                        {/* MUHASEBE PENCERESİ: gönderim izi ve muhasebenin bildirdiği
-                            borç durumu. Ayrı sütun yerine işlem düğmesi — tablo zaten
-                            on beş sütun ve durumun kendisi ana ekranda görünüyor. */}
-                        <button type="button" onClick={() => setMuhasebeKayit(s)}
-                          className="text-gray-400 hover:text-emerald-700" title="Muhasebe (gönderim ve cevap)">
-                          <Calculator size={14} />
-                        </button>
                         {canDuzenle && <button type="button" onClick={() => dialogAc(s)} className="text-gray-400 hover:text-[#1E3A5F]" title="Düzenle"><Pencil size={14} /></button>}
                         {canSil && <button type="button" onClick={() => sil(s.id)} className="text-gray-300 hover:text-red-600" title="Sil"><Trash2 size={14} /></button>}
                       </div>
@@ -713,7 +703,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         if (!kapanabilir(d, !ayniMi(JSON.stringify([form, cevap]), baslangic))) return;
         setDialogAcik(false);
       }}>
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* GENİŞLİK sm: ÖNEKİYLE: taban pencere bileşeninde `sm:max-w-sm` var
+            (components/ui/dialog). Önek taşımayan `max-w-*` onunla aynı kümede
+            sayılmadığı için eziliyor ve pencere masaüstünde 384px kalıyordu —
+            iki sütunlu form o genişlikte iç içe geçiyor, tarih kutuları
+            kırpılıyordu (10.11.2026'da görüldü). */}
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Gavel size={18} /> {editId ? "İcra Dosyasını Düzenle" : "Yeni İcra Dosyası"}</DialogTitle>
           </DialogHeader>
@@ -812,19 +807,6 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         </DialogContent>
       </Dialog>
 
-      {/* MUHASEBE PENCERESİ: rozetten açılır — gönderim izi ve muhasebenin
-          bildirdiği borç durumu / cevap şekli burada kaydedilir. */}
-      <MuhasebeCevapDialog
-        kayit={muhasebeKayit} kaynak="icra" acik={Boolean(muhasebeKayit)}
-        kapat={() => setMuhasebeKayit(null)}
-        sekiller={cevapSekilleri.map((s) => ({ kod: s, ad: s }))}
-        kaydedildi={(yama) => {
-          const id = muhasebeKayit?.id;
-          if (!id) return;
-          setSatirlar((p) => p.map((s) => (s.id === id ? { ...s, ...yama } as IcraKayit : s)));
-          setMuhasebeKayit((m) => (m ? { ...m, ...yama } as IcraKayit : m));
-        }}
-      />
     </div>
   );
 }
