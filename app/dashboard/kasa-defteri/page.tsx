@@ -378,15 +378,19 @@ function KasaDefContent() {
 
   // Devreden bakiye — dönem başlangıcından önceki nakit hareketlerin toplamı
   const devredenBakiye = useMemo(() => {
-    const izinliSantiyeler = isShantiyeAdmin && kullanici?.santiye_ids
-      ? new Set(kullanici.santiye_ids)
-      : null;
+    // DEVİR ŞANTİYE İZNİNE GÖRE KIRPILMAZ — ana sayfadaki kasa özetiyle aynı
+    // gerekçe: bakiye KİŞİYE aittir, şantiyeye değil; kişi bir şantiyede avans
+    // alıp başkasında harcayabiliyor. Eskiden şantiye yöneticisinde devir
+    // kendi şantiyeleriyle sınırlanıyordu ve aynı kişi için ekranda iki ayrı
+    // rakam çıkıyordu (10.11.2026: Erkan YİĞİT 30.000 / 22.356). Satır satır
+    // kümülatif bakiye sütunu zaten bütün hareketlerden hesaplanıyordu; devir
+    // de artık onunla aynı temelde.
+    // Kullanıcının KENDİ seçtiği şantiye/personel süzgeçleri uygulanmaya devam
+    // ediyor — onlar ekranda görünüyor, gizli bir kırpma değil.
     let bakiye = 0;
     for (const h of hareketler) {
       if (h.odeme_yontemi !== "nakit") continue;
       if (h.tarih >= filtreBaslangic) continue;
-      // Şantiye admini: sadece atandığı şantiyeler
-      if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) continue;
       // Kısıtlı kullanıcı sadece KENDİ kayıtlarının devir bakiyesini görsün
       if (sadeceKendiKayitlari && kullanici && h.personel_id !== kullanici.id) continue;
       // Şantiye filtresi
@@ -396,7 +400,7 @@ function KasaDefContent() {
       bakiye += h.tip === "gelir" ? h.tutar : -h.tutar;
     }
     return bakiye;
-  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, isShantiyeAdmin, sadeceKendiKayitlari, kullanici]);
+  }, [hareketler, filtreBaslangic, filtreSantiye, filtrePersonel, sadeceKendiKayitlari, kullanici]);
 
   // Özet tutarları YALNIZCA şantiye veya kullanıcı seçiliyken gösterilir. "Tümü/Tümü" iken tüm şantiye ve
   // kullanıcıların birikmiş nakiti karışıp anlamsız/yanıltıcı olduğu için tutarlar gizlenir (— gösterilir).

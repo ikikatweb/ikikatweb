@@ -94,8 +94,6 @@ export default function KullanicilarPage() {
   // "onay yok" sanılmasın (bkz. onayHatasi).
   const [konumOnaylari, setKonumOnaylari] = useState<Record<string, KonumOnayOzet> | null>(null);
   const [onayHatasi, setOnayHatasi] = useState<string | null>(null);
-  // "Kimler onay vermemiş" sorusu tek tek satır taramadan cevaplansın.
-  const [yalnizOnaysiz, setYalnizOnaysiz] = useOturumFiltresi("yonetim-kullanicilar:onaysiz", false);
 
   async function loadKullanicilar() {
     try {
@@ -254,41 +252,6 @@ export default function KullanicilarPage() {
         </div>
       )}
 
-      {/* KONUM ÖZETİ — "kim vermemiş" sorusu satır taramadan cevaplansın.
-          Sayılar bulunulan sekmenin (aktif/pasif) kullanıcılarına göre. */}
-      {konumOnaylari && !loading && kullanicilar.length > 0 && (() => {
-        const sekmedekiler = kullanicilar.filter((k) => k.aktif === (aktifSekme === "aktif"));
-        const say = (d: ReturnType<typeof konumDurumu>) =>
-          sekmedekiler.filter((k) => konumDurumu(konumOnaylari[k.id]) === d).length;
-        const onayli = say("onayli"), reddeden = say("reddetti"), hic = say("yok");
-        return (
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-medium text-gray-500">Konum onayı:</span>
-            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-1 text-emerald-700">
-              <MapPin size={12} /> veren <strong>{onayli}</strong>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-red-700">
-              <MapPinOff size={12} /> reddeden <strong>{reddeden}</strong>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-gray-600">
-              hiç bakmayan <strong>{hic}</strong>
-            </span>
-            {/* SÜZGEÇ: listeyi onayı olmayanlara indirir (reddeden + hiç bakmayan). */}
-            <button
-              type="button"
-              onClick={() => setYalnizOnaysiz(!yalnizOnaysiz)}
-              className={`rounded border px-2 py-1 font-medium transition-colors ${
-                yalnizOnaysiz
-                  ? "border-[#F97316] bg-[#F97316] text-white"
-                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {yalnizOnaysiz ? "Tümünü göster" : "Yalnız onayı olmayanlar"}
-            </button>
-          </div>
-        );
-      })()}
-
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => (
           <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
@@ -325,8 +288,6 @@ export default function KullanicilarPage() {
                 const liste = kullanicilar.filter((k) => {
                   // Sekme: aktif sekmesinde aktifler, pasif sekmesinde pasifler
                   if (k.aktif !== (aktifSekme === "aktif")) return false;
-                  // "Kimler konum onayı vermemiş" süzgeci — onaylı olanlar düşer.
-                  if (yalnizOnaysiz && konumOnaylari && konumDurumu(konumOnaylari[k.id]) === "onayli") return false;
                   if (!arama.trim()) return true;
                   const q = trAramaNormalize(arama);
                   return trAramaNormalize(k.ad_soyad).includes(q) || trAramaNormalize(k.kullanici_adi).includes(q);

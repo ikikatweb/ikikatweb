@@ -647,19 +647,27 @@ export default function DashboardPage() {
       : null;
     const sadeceKendiKayitlari = !isYonetici && !isShantiyeAdmin;
 
-    // Bu ay hareketleri grupla (şantiye admin için izinli şantiye filtresi de uygulanır)
-    const aylik = kasaData.filter((h) => {
-      if (h.tarih < ayBaslangic || h.tarih > ayBitis) return false;
-      if (izinliSantiyeler && !izinliSantiyeler.has(h.santiye_id)) return false;
-      return true;
-    });
+    // ══ RAKAM HERKESTE AYNI, KİMİN GÖRÜNECEĞİ AYRI SORU ══
+    // Eskiden şantiye admininde hem bu ay hareketleri izinli şantiyelerle
+    // süzülüyor hem de devir sıfır alınıyordu. Sonuç: aynı kişi için ekranda
+    // iki farklı rakam (10.11.2026: Erkan YİĞİT yöneticide 30.000, şantiye
+    // yöneticisinde 22.356) ve ekranda bunu söyleyen hiçbir şey yok.
+    //
+    // Kasa bakiyesi KİŞİYE aittir, şantiyeye değil: kişi bir şantiyede avans
+    // alıp başka şantiyede harcayabiliyor. Şantiyeye bölünmüş rakam bakiye
+    // değil, yarım bir toplam — ve hangi yarım olduğu ekrandan anlaşılmıyor.
+    // Artık TOPLAM herkese aynı; şantiye izni yalnız LİSTEDE KİMİN ÇIKACAĞINI
+    // belirliyor (ayrıntıya kasa defterinden bakılıyor, orada izin sürüyor).
+    const aylik = kasaData.filter((h) => h.tarih >= ayBaslangic && h.tarih <= ayBitis);
     const map = new Map<string, { gelir: number; giderNakit: number; giderKart: number }>();
     const izinliPersonelIds = new Set<string>();  // Şantiye admin için hangi kullanıcılar görünsün
     for (const h of aylik) {
       if (!kullaniciAdlari.has(h.personel_id)) continue;
       // Tam kısıtlı kullanıcı sadece kendi kayıtlarını görsün
       if (sadeceKendiKayitlari && kullanici && h.personel_id !== kullanici.id) continue;
-      izinliPersonelIds.add(h.personel_id);
+      // Şantiye admini: kendi şantiyesinde işlem yapmış kişiyi listede görür.
+      // (Rakam süzülmüyor — yalnız kimin satırının çıkacağı buradan belirleniyor.)
+      if (!izinliSantiyeler || izinliSantiyeler.has(h.santiye_id)) izinliPersonelIds.add(h.personel_id);
       if (!map.has(h.personel_id)) map.set(h.personel_id, { gelir: 0, giderNakit: 0, giderKart: 0 });
       const e = map.get(h.personel_id)!;
       if (h.tip === "gelir") e.gelir += h.tutar;
@@ -679,9 +687,8 @@ export default function DashboardPage() {
     }));
     return Array.from(tumIds).map((pid) => {
       const v = map.get(pid) ?? { gelir: 0, giderNakit: 0, giderKart: 0 };
-      // Şantiye admin için devir bakiyesi mantıklı değil (kullanıcı bazlı, şantiye filtresiz)
-      // — sıfır olarak alırız
-      const devir = izinliSantiyeler ? 0 : (devirBakiye.get(pid) ?? 0);
+      // DEVİR HERKESE DAHİL — şantiye yöneticisine de (yukarıdaki nota bakın).
+      const devir = devirBakiye.get(pid) ?? 0;
       // Bakiye = devir (önceki ay sonu) + bu ay nakit gelir - bu ay nakit gider
       const nakitBakiye = devir + v.gelir - v.giderNakit;
       return {
