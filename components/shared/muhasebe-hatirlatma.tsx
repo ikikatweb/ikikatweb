@@ -172,7 +172,7 @@ export default function MuhasebeHatirlatma() {
       // ZATEN GİTMİŞSE SESSİZ: başka bir ekran göndermiş olabilir, kullanıcıya
       // bildirilecek yeni bir şey yok.
       if (c.gonderildi) {
-        toast.success(`${s.dosya} muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`, { duration: 7000 });
+        toast.success(`${s.dosya} muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`);
         if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
         if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
       }

@@ -9,12 +9,14 @@
 // kim takip ediyor" sorusu cevaplanamaz olur.
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Plus, X, Loader2, Send } from "lucide-react";
+import { Plus, X, Loader2, Send, Paperclip } from "lucide-react";
 import { getAktifAvukatlar, insertAvukat } from "@/lib/supabase/queries/avukatlar";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { telefonGoster } from "@/lib/utils/telefon";
+import { uploadDosyaImzali } from "@/lib/supabase/queries/upload";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import type { Avukat } from "@/lib/supabase/types";
 
@@ -24,13 +26,15 @@ export type AvukatMailBilgisi = {
   gecerli?: boolean;
 };
 
+export type AvukatEk = { ad: string; yol: string };
+
 export default function AvukatSecim({
   avukatId, not_, degistir, kilitli = false, mailBilgisi, kayitId,
-  kaynak = "icra", tekrarGonderildi, hatali = false,
+  kaynak = "icra", tekrarGonderildi, hatali = false, ekler = [], muhasebeEkleri = [],
 }: {
   avukatId: string;
   not_: string;
-  degistir: (y: { avukat_id?: string; avukat_adi?: string; avukat_notu?: string }) => void;
+  degistir: (y: { avukat_id?: string; avukat_adi?: string; avukat_notu?: string; avukat_ekler?: AvukatEk[] }) => void;
   kilitli?: boolean;
   mailBilgisi?: AvukatMailBilgisi;
   /** Kayıt id'si — "Tekrar gönder" için gerekli. Yeni (kaydedilmemiş) kayıtta boş. */
@@ -39,6 +43,10 @@ export default function AvukatSecim({
   tekrarGonderildi?: (c: { ek: string; gonderen: string; gonderildiAt: string }) => void;
   /** Kaydet denendi ama avukat seçilmemişti — kutu kırmızıya boyanır. */
   hatali?: boolean;
+  /** Maile EK olarak gidecek dosyalar. Tebligat yazısı bu listede DEĞİL — o her mailde gider. */
+  ekler?: AvukatEk[];
+  /** Muhasebenin cevap mailiyle gelen dosyalar (hesap ekstresi) — tek tıkla eklenebilsin. */
+  muhasebeEkleri?: AvukatEk[];
 }) {
   const sirket = kaynak === "sirket";
   const [avukatlar, setAvukatlar] = useState<Avukat[]>([]);
@@ -47,6 +55,8 @@ export default function AvukatSecim({
   const [yeni, setYeni] = useState({ ad_soyad: "", email: "", telefon: "" });
   const [ekleniyor, setEkleniyor] = useState(false);
   const [tekrarGidiyor, setTekrarGidiyor] = useState(false);
+  const [yukleniyor, setYukleniyor] = useState(false);
+  const dosyaRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getAktifAvukatlar().then(
@@ -101,13 +111,41 @@ export default function AvukatSecim({
     try {
       const c = await avukataGonder(kayitId, avukatId, not_, kaynak);
       tekrarGonderildi?.({ ek: c.ek, gonderen: c.gonderen, gonderildiAt: c.gonderildiAt });
-      toast.success(`${c.alici} adresine yeniden gönderildi · ek: ${c.ek}`, { duration: 7000 });
+      toast.success(`${c.alici} adresine yeniden gönderildi · ek: ${c.ek}`);
       avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
       if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt tutulamadı: ${c.kayitHatasi}`, { duration: 10000 });
       if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gönderilemedi.", { duration: 10000 });
     } finally { setTekrarGidiyor(false); }
+  }
+
+  /**
+   * EK DOSYA YÜKLE — maile konacak dosyalar ÖZEL kovaya (yazismalar) gidiyor.
+   *
+   * NİYE KAYDEDİLİYOR, NİYE DOĞRUDAN MAİLE EKLENMİYOR: dosya kayıtta durunca
+   * "avukata neyi göndermiştik" sorusu cevaplanabiliyor ve tekrar gönderimde
+   * aynı ekler gidiyor. Tarayıcıdan doğrudan maile eklenseydi izi kalmazdı.
+   */
+  async function dosyaEkle(secilenler: FileList | null) {
+    const liste = Array.from(secilenler ?? []);
+    if (liste.length === 0) return;
+    setYukleniyor(true);
+    const eklenen: AvukatEk[] = [];
+    for (const f of liste) {
+      try {
+        const temizAd = f.name.replace(/[^\w.\-]+/g, "_");
+        const yol = await uploadDosyaImzali(f, "yazismalar",
+          `icra-avukat/${kayitId ?? "yeni"}/${Date.now()}-${temizAd}`);
+        eklenen.push({ ad: f.name, yol });
+      } catch (e) {
+        // SESSİZ GEÇİLMEZ: yüklenemeyen dosya maile de giremez.
+        toast.error(`${f.name} yüklenemedi: ${e instanceof Error ? e.message : "bilinmeyen hata"}`, { duration: 9000 });
+      }
+    }
+    if (eklenen.length) degistir({ avukat_ekler: [...ekler, ...eklenen] });
+    setYukleniyor(false);
+    if (dosyaRef.current) dosyaRef.current.value = "";
   }
 
   const lbl = "text-xs font-medium text-gray-600 mb-1 block";
@@ -189,6 +227,54 @@ export default function AvukatSecim({
                 placeholder="Mailin içine eklenecek not"
                 className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-300 outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]/30" />
 
+              {/* ── EK DOSYALAR ──
+                  Avukata yalnız tebligat yazısı gidiyordu; oysa çoğu zaman
+                  muhasebeden gelen hesap ekstresi, sözleşme ya da yazışma da
+                  gitmeli. Dosya KAYDA yükleniyor (yazismalar kovası, ÖZEL):
+                  tekrar gönderimde aynı ekler gidiyor ve "neyi göndermiştik"
+                  sorusu cevaplanabiliyor. */}
+              {!kilitli && (
+                <>
+                  <label className={`${lbl} mt-3`}>Maile eklenecek dosyalar (isteğe bağlı)</label>
+                  <input ref={dosyaRef} type="file" multiple className="hidden"
+                    onChange={(e) => void dosyaEkle(e.target.files)} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button type="button" onClick={() => dosyaRef.current?.click()} disabled={yukleniyor}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-300 px-2.5 text-xs font-medium text-[#1E3A5F] hover:bg-gray-50 disabled:opacity-50">
+                      {yukleniyor ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />} Dosya ekle
+                    </button>
+                    {/* MUHASEBEDEN GELENİ TEK TIKLA: ekstre zaten panelde duruyor,
+                        indirip yeniden yüklemek gereksiz bir tur olurdu. */}
+                    {muhasebeEkleri
+                      .filter((m) => !ekler.some((e) => e.yol === m.yol))
+                      .map((m) => (
+                        <button key={m.yol} type="button"
+                          onClick={() => degistir({ avukat_ekler: [...ekler, m] })}
+                          title="Muhasebenin cevabıyla gelen dosya — maile ekle"
+                          className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
+                          <Plus size={12} /> {m.ad}
+                        </button>
+                      ))}
+                  </div>
+                  {ekler.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {ekler.map((e) => (
+                        <span key={e.yol} className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 text-[11px] text-gray-700">
+                          {/* ÖZEL KOVA: dosyaUrl imzalı geçitten geçirir (AGENTS.md). */}
+                          <a href={dosyaUrl(e.yol)} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 hover:underline">
+                            <Paperclip size={10} /> {e.ad}
+                          </a>
+                          <button type="button" title="Ekten çıkar"
+                            onClick={() => degistir({ avukat_ekler: ekler.filter((x) => x.yol !== e.yol) })}
+                            className="text-gray-400 hover:text-red-600"><X size={11} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* MAİL BİR KEZ GİDER: daha önce gönderilmişse kaydet yeniden
                   göndermez — her düzenlemede avukata aynı mailin tekrar gitmesi
                   hem gereksiz hem de "hangisi geçerli" karışıklığı yaratır. */}
@@ -221,12 +307,14 @@ export default function AvukatSecim({
                       gönderilmişti; {sirket ? "sonra geri alındı" : "cevap sonradan geri alındı"}. <strong>Kaydet yeniden gönderir.</strong>
                     </div>
                   )}
+                  {/* TEK SATIR: üç cümlelik açıklama pencereyi uzatıp Kaydet'i
+                      ekrandan çıkarıyordu. Belge inmezse mail gitmiyor — bunu
+                      zaten hata mesajı söylüyor, burada tekrarlamaya gerek yok. */}
                   <p className="mt-1 text-[11px] text-gray-500">
                     Kaydet denince dosya bilgileri,{" "}
                     <strong className="text-red-600">{sirket ? "son itiraz günü" : "son cevap günü"}</strong>,
-                    bu not ve {sirket ? "ödeme emri" : "tebligat"} belgesi avukata mail ile gider.
-                    Belge indirilemezse mail gönderilmez ve
-                    {sirket ? " takip ele alınmamış sayılmaya devam eder." : " dosya cevapsız kalır."}
+                    bu not, {sirket ? "ödeme emri" : "tebligat"} belgesi
+                    {ekler.length > 0 ? ` ve ${ekler.length} ek` : ""} avukata gider.
                   </p>
                 </>
               )}

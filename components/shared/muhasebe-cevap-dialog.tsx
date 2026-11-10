@@ -16,12 +16,13 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Loader2, Send, Mail, MailCheck, MailX, AlertTriangle } from "lucide-react";
+import { Loader2, Send, Mail, MailCheck, MailX, AlertTriangle, Paperclip, X } from "lucide-react";
 import { useAuth, icraDegisti } from "@/hooks";
 import { updateIcraKayit } from "@/lib/supabase/queries/icra";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
 import { muhasebeyeGonder, muhasebeAsamasi, muhasebeBorcMetni, type MuhasebeDurumu } from "@/lib/supabase/queries/icra-muhasebe";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
+import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { sonGunHesapla, VARSAYILAN_CEVAP_SURESI } from "@/lib/utils/icra-sure";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -128,25 +129,118 @@ export function MuhasebeIkon({ kayit, sirket, boyut = 15 }: {
 }
 
 /**
+ * MUHASEBENİN MAİLİ — pencerenin üstüne binen okuma katmanı.
+ *
+ * NİYE KATMAN: mesaj önce şeridin ALTINDA açılıyordu, form aşağı kayıp Kaydet
+ * ekrandan çıkıyordu. Ayrı sekme de denendi: dashboard yerleşimiyle birlikte
+ * açıldığı için ağır kaldı ve bağlam koptu. Katman cevap penceresinin üstünde
+ * duruyor; kapatınca form olduğu gibi yerinde.
+ *
+ * KATMAN PENCERENİN İÇİNDE (portal DEĞİL): dışarı taşınsaydı buraya yapılan
+ * tıklama üstteki pencere için "dışarı tıklama" sayılır ve doldurulan cevap
+ * penceresi kapanırdı.
+ *
+ * ══ DIŞ KAYNAKLI İÇERİK SANDBOX'TA ══
+ * Bu HTML'i panel yazmadı, MUHASEBEDEN GELDİ. Doğrudan gömülseydi mailin
+ * içindeki betik panelin sayfasında çalışırdı. srcDoc + sandbox="" ile
+ * gösteriliyor: betik yok, form yok, panelin verisine erişim yok.
+ */
+function MuhasebeMaili({ kayit, kapat }: { kayit: MuhasebeDurumu; kapat: () => void }) {
+  const ekler = (kayit.muhasebe_cevap_mail_ekler ?? []) as { ad: string; yol: string }[];
+  const kacar = (v: string) => v.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+  // MAİLİN ASLI: HTML mail düz metne çevrilince biçim dağılıyor (alıntılanan
+  // yazışma, tablolar iç içe giriyor). Asıl yoksa metin, satır araları korunarak.
+  const govde = kayit.muhasebe_cevap_mail_html
+    ?? `<pre style="white-space:pre-wrap;word-wrap:break-word;font-family:Segoe UI,Arial,sans-serif;font-size:14px;line-height:1.6;margin:0">`
+      + kacar(kayit.muhasebe_cevap_mail_metin ?? "Mailin içeriği kaydedilmemiş.") + `</pre>`;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); kapat(); } }}>
+      <button type="button" aria-label="Kapat" onClick={kapat}
+        className="absolute inset-0 cursor-default bg-black/40" />
+      <div className="relative flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-2xl">
+        <div className="flex items-start gap-2 border-b bg-emerald-50 px-4 py-3">
+          <Mail size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-emerald-900">Muhasebenin cevabı</div>
+            <div className="text-[11px] text-emerald-800">
+              {kayit.muhasebe_cevap_mail_gonderen}
+              {kayit.muhasebe_cevap_mail_at
+                ? ` · ${new Date(kayit.muhasebe_cevap_mail_at).toLocaleString("tr-TR")}` : ""}
+            </div>
+            {kayit.muhasebe_cevap_mail_konu
+              ? <div className="mt-0.5 truncate text-[11px] text-emerald-700" title={kayit.muhasebe_cevap_mail_konu}>
+                  {kayit.muhasebe_cevap_mail_konu}
+                </div> : null}
+          </div>
+          <button type="button" onClick={kapat} aria-label="Kapat"
+            className="shrink-0 rounded p-1 text-emerald-700 hover:bg-emerald-100"><X size={16} /></button>
+        </div>
+
+        {ekler.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b bg-gray-50 px-4 py-2 text-[11px]">
+            <span className="text-gray-500">Ekler:</span>
+            {ekler.map((e) => (
+              // ÖZEL KOVA: adres doğrudan açılmaz, dosyaUrl imzalı geçitten geçirir (AGENTS.md).
+              <a key={e.yol} href={dosyaUrl(e.yol)} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-800 hover:bg-emerald-100">
+                <Paperclip size={10} /> {e.ad}
+              </a>
+            ))}
+          </div>
+        )}
+
+        <iframe title="Muhasebe cevabı" sandbox=""
+          srcDoc={`<!doctype html><html><head><meta charset="utf-8">`
+            + `<style>body{margin:14px;font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#1f2937}`
+            + `img{max-width:100%;height:auto}table{max-width:100%}</style></head><body>${govde}</body></html>`}
+          className="min-h-0 flex-1 w-full bg-white" />
+      </div>
+    </div>
+  );
+}
+
+/**
  * CEVAP ŞEKLİNİN ÜSTÜNDEKİ MUHASEBE ŞERİDİ — her iki defterin formunda aynı.
  *
  * NİYE CEVAP ŞEKLİNİN YANINDA: şekli (yazışma / havale / avukat; ödeme emrinde
  * ödendi / avukatta / kapandı) belirleyen muhasebenin bildirdiği borç durumu.
  * Bildirim başka pencerede dururken burada seçim yapmak tahmin olur.
+ *
+ * DÖRT HÂL: gönderilmedi · cevap bekleniyor · CEVAP MAİLİ GELDİ (tıklanınca
+ * mesaj okunur) · cevap panele girildi. Üçüncüsü eksikti: mail gelmiş olsa bile
+ * şerit "bekleniyor" diyordu, oysa beklenen şey artık okunmayı bekliyordu.
  */
-export function MuhasebeBandi({ kayit, sirket }: { kayit: MuhasebeDurumu | null; sirket: boolean }) {
+export function MuhasebeBandi({ kayit, sirket }: {
+  kayit: MuhasebeDurumu | null;
+  sirket: boolean;
+}) {
+  const [acik, setAcik] = useState(false);
   if (!kayit) return null;
   const asama = muhasebeAsamasi(kayit);
+  const mailVar = Boolean(kayit.muhasebe_cevap_mail_at);
+  // CEVAP MAİLİ GELDİYSE ŞERİT YEŞİL: "bekleniyor" sarısı yanlış olurdu.
+  const renk = asama === "cevaplandi" ? "border-sky-200 bg-sky-50 text-sky-900"
+    : mailVar ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : asama === "bekleniyor" ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-red-200 bg-red-50 text-red-800";
+  const anTR = (iso: string | null | undefined) => (iso
+    ? `${new Date(iso).toLocaleDateString("tr-TR")} ${new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`
+    : "");
+
   return (
-    <div className={`sm:col-span-2 lg:col-span-3 rounded-lg border px-3 py-2 text-[11px] ${
-      asama === "cevaplandi" ? "border-sky-200 bg-sky-50 text-sky-900"
-        : asama === "bekleniyor" ? "border-amber-200 bg-amber-50 text-amber-800"
-          : "border-red-200 bg-red-50 text-red-800"}`}>
+    <div className={`sm:col-span-2 lg:col-span-3 rounded-lg border px-3 py-2 text-[11px] ${renk}`}>
       {asama === "cevaplandi" ? (
         <>
           <strong>Muhasebe:</strong> {muhasebeBorcMetni(kayit, sirket)}
           {kayit.muhasebe_cevap_sekli ? <> → <strong>{kayit.muhasebe_cevap_sekli}</strong></> : null}
           {kayit.muhasebe_notu ? <div className="mt-0.5 whitespace-pre-wrap text-sky-800/90">{kayit.muhasebe_notu}</div> : null}
+        </>
+      ) : mailVar ? (
+        <>
+          <strong>Muhasebeden cevap maili geldi</strong> · {anTR(kayit.muhasebe_cevap_mail_at)}
+          {kayit.muhasebe_cevap_mail_gonderen ? ` · ${kayit.muhasebe_cevap_mail_gonderen}` : ""}
         </>
       ) : asama === "bekleniyor" ? (
         <><strong>Muhasebe cevabı bekleniyor.</strong>{" "}
@@ -154,6 +248,23 @@ export function MuhasebeBandi({ kayit, sirket }: { kayit: MuhasebeDurumu | null;
       ) : (
         <><strong>Dosya muhasebeye gönderilmedi.</strong>{" "}
           {sirket ? "Borç durumunu muhasebe çıkarıyor" : "Borç durumunu ve hesap ekstresini muhasebe hazırlıyor"} — Muhasebe penceresinden gönderin.</>
+      )}
+
+      {/* MESAJ AYRI PENCEREDE AÇILIR.
+          Önce şeridin altında açılıyordu: form aşağı kayıyor, Kaydet ekrandan
+          çıkıyordu. Üste binen katman da dar kaldı, uzun yazışma okunmadı.
+          Mail kendi penceresinde kendi boyunda okunuyor; cevap penceresi
+          arkada olduğu gibi duruyor (doldurulan form kaybolmuyor). */}
+      {mailVar && (
+        <>
+          <button type="button" onClick={() => setAcik(true)}
+            className="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2">
+            <Mail size={11} /> Muhasebenin mesajını oku
+            {(kayit.muhasebe_cevap_mail_ekler ?? []).length > 0
+              ? ` (${(kayit.muhasebe_cevap_mail_ekler as { ad: string }[]).length} ek)` : ""}
+          </button>
+          {acik && <MuhasebeMaili kayit={kayit} kapat={() => setAcik(false)} />}
+        </>
       )}
     </div>
   );
@@ -222,7 +333,7 @@ export default function MuhasebeCevapDialog({ kayit, kaynak, sekiller, acik, kap
         muhasebe_mail_alici: c.alicilar.join(", "), muhasebe_mail_gonderen: c.gonderen,
         muhasebe_mail_sayisi: (kayit.muhasebe_mail_sayisi ?? 0) + 1,
       });
-      toast.success(`Muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`, { duration: 7000 });
+      toast.success(`Muhasebeye gönderildi (${c.alicilar.length} alıcı) · ek: ${c.ek}`);
       if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
       if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
     } catch (e) {

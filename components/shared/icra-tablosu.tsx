@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Calculator } from "lucide-react";
+import { Gavel, Plus, Trash2, Loader2, Search, Pencil, Calculator, Send } from "lucide-react";
 import { getIcraKayitlar, insertIcraKayit, updateIcraKayit, deleteIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { createClient } from "@/lib/supabase/client";
@@ -137,6 +137,13 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   // çekilen dosya aynı avukata yeniden gönderilebilmeli.
   const gonderilecek = cevapKipi(cevap.cevap_sekli).avukat && Boolean(cevap.avukat_id)
     && !avukatCevabiDuruyor;
+  // YENİ KAYITTA MUHASEBEYE MAİL GİDER: kaydetme anında, cevap şekli
+  // seçilmeden. Süresi geçmiş eski kayıt girilirken gitmez (muhasebeGerekliMi).
+  const muhasebeyeGidecek = !editId && muhasebeGerekliMi({
+    teblig_tarihi: form.teblig_tarihi || null,
+    cevapVerildi: Boolean(cevap.cevap_sekli.trim() || cevap.cevap_tarihi),
+    sureGun: null,
+  }, false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
   // MUHASEBE PENCERESİ: gönderim izi + muhasebenin bildirdiği borç durumu/cevap şekli.
   const [muhasebeKayit, setMuhasebeKayit] = useState<IcraKayit | null>(null);
@@ -275,6 +282,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
         banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "",
         avukat_adi: row.avukat_adi ?? "", avukat_notu: row.avukat_notu ?? "",
+        avukat_ekler: row.avukat_ek_dosyalar ?? [],
       };
       setForm(ilkForm);
       setCevap(ilkCevap);
@@ -353,6 +361,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
       avukat_id: cevap.avukat_id || null,
       avukat_adi: t(cevap.avukat_adi),
       avukat_notu: t(cevap.avukat_notu),
+      // EKLER KAYITTA DURUR: mail servisi kayıttan okuyor, tekrar gönderimde de gider.
+      avukat_ek_dosyalar: cevap.avukat_ekler.length ? cevap.avukat_ekler : null,
       ...(cevapKipi(cevap.cevap_sekli).avukat ? {} : {
         cevap_tarihi: cevap.cevap_tarihi || null,
         evrak_no: t(cevap.evrak_no),
@@ -396,7 +406,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               muhasebe_mail_alici: m.alicilar.join(", "), muhasebe_mail_gonderen: m.gonderen,
               muhasebe_mail_sayisi: 1,
             } : s)));
-            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`, { duration: 7000 });
+            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`);
             if (m.kayitHatasi) toast.error(`Muhasebe maili gitti ama kayıt güncellenemedi: ${m.kayitHatasi}`, { duration: 10000 });
             if (m.antetInemedi) toast.error("Muhasebe maili ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
           } catch (e) {
@@ -419,7 +429,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           setSatirlar((p) => p.map((s) => (s.id === kayitId
             ? { ...s, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek, avukat_mail_at: new Date().toISOString() }
             : s)));
-          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`);
           avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
@@ -781,6 +791,19 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
           <DialogFooter className="gap-2 mt-3 shrink-0 border-t pt-3">
+            {/* KAYDETMEDEN ÖNCE SÖYLENİR: bu pencereden DIŞARIYA MAİL ÇIKIYOR —
+                yeni kayıtta muhasebeye, avukat seçiliyse avukata. Düğme yazısı
+                yalnız avukatı söylüyordu; muhasebe gönderimi ise hiç
+                görünmüyordu. Gönderim sürerken aynı yerde "gönderiliyor"
+                yazıyor: SMTP beklerken pencere donuk duruyor ve kullanıcı
+                ikinci kez basıyordu. */}
+            {(gonderilecek || muhasebeyeGidecek) && (
+              <span className="mr-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                {kaydediliyor
+                  ? <><Loader2 size={12} className="animate-spin" /> Mail gönderiliyor…</>
+                  : <><Send size={12} /> Kaydedince {[muhasebeyeGidecek ? "muhasebeye" : "", gonderilecek ? "avukata" : ""].filter(Boolean).join(" ve ")} mail gider</>}
+              </span>
+            )}
             <Button variant="outline" onClick={() => setDialogAcik(false)} disabled={kaydediliyor}>İptal</Button>
             <Button className="bg-[#1E3A5F] hover:bg-[#15293f] text-white" onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
               {kaydediliyor ? "Kaydediliyor..." : gonderilecek ? "Kaydet ve avukata gönder" : "Kaydet"}

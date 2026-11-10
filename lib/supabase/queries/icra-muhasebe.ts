@@ -48,6 +48,16 @@ export async function muhasebeyeGonder(
 export type MuhasebeDurumu = {
   muhasebe_mail_at?: string | null;
   muhasebe_cevap_at?: string | null;
+  /** Cevap maili POSTA KUTUSUNDA görüldü — içeriği işlendi demek DEĞİL. */
+  muhasebe_cevap_mail_at?: string | null;
+  muhasebe_cevap_mail_gonderen?: string | null;
+  muhasebe_cevap_mail_konu?: string | null;
+  /** Mailin düz metni — panelde okunsun diye. */
+  muhasebe_cevap_mail_metin?: string | null;
+  /** Mailin HTML aslı — ayrı pencerede sandbox iframe içinde gösterilir. */
+  muhasebe_cevap_mail_html?: string | null;
+  /** Mailin ekleri (hesap ekstresi): yazismalar kovasında, dosyaUrl ile açılır. */
+  muhasebe_cevap_mail_ekler?: { ad: string; yol: string }[] | null;
   muhasebe_borc_durumu?: string | null;
   muhasebe_borc_tutari?: number | null;
   muhasebe_cevap_sekli?: string | null;

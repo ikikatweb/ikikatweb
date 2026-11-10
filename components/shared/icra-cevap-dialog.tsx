@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { updateIcraKayit } from "@/lib/supabase/queries/icra";
 import { getDegerler } from "@/lib/supabase/queries/tanimlamalar";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
@@ -74,6 +74,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       avukat_id: kayit.avukat_id ?? "",
       avukat_adi: kayit.avukat_adi ?? "",
       avukat_notu: kayit.avukat_notu ?? "",
+      avukat_ekler: kayit.avukat_ek_dosyalar ?? [],
     };
     setV(ilk);
     setBaslangic(ilk);
@@ -130,6 +131,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
       avukat_id: v.avukat_id || null,
       avukat_adi: t(v.avukat_adi),
       avukat_notu: t(v.avukat_notu),
+      // EKLER KAYITTA DURUR: mail servisi ekleri kayıttan okuyup iliştiriyor,
+      // tekrar gönderimde de aynı dosyalar gidiyor.
+      avukat_ek_dosyalar: v.avukat_ekler.length ? v.avukat_ekler : null,
       ...(kip.avukat ? {} : {
         cevap_tarihi: v.cevap_tarihi || null,
         evrak_no: t(v.evrak_no),
@@ -146,7 +150,7 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           const c = await avukataGonder(kayit.id, v.avukat_id, v.avukat_notu);
           icraDegisti();
           kaydedildi({ ...yama, cevap_tarihi: c.cevap_tarihi, avukat_mail_ek: c.ek });
-          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`);
           avukatTakipNotuGoster();   // Tamam'a basılana kadar durur
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
@@ -233,9 +237,13 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
         {/* GÖVDE SABİT YÜKSEKLİKTE: cevap şekli değişince sorulan alanlar değişiyor
             (avukat kipi en uzunu, KEP en kısası) ve pencere her seçimde zıplıyordu —
             İptal/Kaydet ayağının altından kayıyor, fare yanlış yere düşüyordu.
-            Ölçülen en uzun kip 316px; 320 verildi, taşan içerik kendi içinde kayar.
+            Ölçülen en uzun kip AVUKAT: muhasebe şeridi, avukat seçimi, ek dosya
+            satırı ve not kutusuyla 422px (10.11.2026 ölçümü) — 430 verildi.
+            Ek dosya satırı ve eklenen dosyaların rozetleriyle birlikte 520.
+            max-h-[calc(90vh-230px)]: pencerenin başlık+özet+ayak payı 230px;
+            alçak ekranda gövde o kadar daralır, pencere ekrandan taşmaz.
             Kısa ekranda max-h-[90vh] devreye girip bu kutuyu daraltır. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[320px] min-h-0 overflow-y-auto pr-1 content-start">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] max-h-[calc(90vh-230px)] min-h-0 overflow-y-auto pr-1 content-start">
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
             tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id} denendi={denendi} denendiSifirla={() => setDenendi(false)}
@@ -260,6 +268,18 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
               oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
         <DialogFooter className="shrink-0 border-t pt-3">
+          {/* MAİL GİDECEĞİ KAYDETMEDEN ÖNCE SÖYLENİR: düğmenin adı "Kaydet ve
+              avukata gönder" olsa da, dışarıya mail çıkacağı kadar önemli bir
+              şey tek bir düğme yazısına bırakılmamalı. Gönderim sürerken de
+              aynı yerde "gönderiliyor" yazıyor — mail SMTP'ye bağlanırken
+              pencere donuk duruyordu, kullanıcı ikinci kez basıyordu. */}
+          {gonderilecek && (
+            <span className="mr-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+              {kaydediliyor
+                ? <><Loader2 size={12} className="animate-spin" /> Mail gönderiliyor…</>
+                : <><Send size={12} /> Kaydedince avukata mail gider</>}
+            </span>
+          )}
           <Button variant="outline" onClick={kapat}>İptal</Button>
           {/* KAYDET KAPATILMIYOR (dosyanın kendisi eksik değilse): basılmadan
               kırmızı işaret çıkmaz, kapalı düğme de sebebini söylemez. */}

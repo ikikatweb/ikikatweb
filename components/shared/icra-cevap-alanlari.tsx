@@ -17,7 +17,7 @@
 "use client";
 
 import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
-import AvukatSecim, { type AvukatMailBilgisi } from "@/components/shared/avukat-secim";
+import AvukatSecim, { type AvukatMailBilgisi, type AvukatEk } from "@/components/shared/avukat-secim";
 import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
 import type { MuhasebeDurumu } from "@/lib/supabase/queries/icra-muhasebe";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
@@ -32,11 +32,13 @@ export type CevapAlanlari = {
   /** Avukatın ADININ ANLIK KOPYASI — avukat silinse/adı değişse de kalır. */
   avukat_adi: string;
   avukat_notu: string;
+  /** Maile EK olarak gidecek dosyalar (tebligat yazısı bu listede değil). */
+  avukat_ekler: AvukatEk[];
 };
 
 export const BOS_CEVAP: CevapAlanlari = {
   cevap_sekli: "", cevap_tarihi: "", evrak_no: "", odenen_tutar: "",
-  banka_adi: "", avukat_id: "", avukat_adi: "", avukat_notu: "",
+  banka_adi: "", avukat_id: "", avukat_adi: "", avukat_notu: "", avukat_ekler: [],
 };
 
 /**
@@ -312,6 +314,10 @@ export default function IcraCevapAlanlari({
             degistir={degistir} kilitli={kilitli} kayitId={icraId}
             mailBilgisi={mailBilgisi} tekrarGonderildi={tekrarGonderildi}
             hatali={kirmizi.has("avukat_id")}
+            ekler={deger.avukat_ekler}
+            // MUHASEBEDEN GELEN EKSTRE TEK TIKLA EKLENSİN: avukata gidecek olan
+            // zaten o dosya; indirip yeniden yüklemek gereksiz bir tur olurdu.
+            muhasebeEkleri={muhasebe?.muhasebe_cevap_mail_ekler ?? []}
           />
         </div>
       )}

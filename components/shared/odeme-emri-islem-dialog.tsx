@@ -19,10 +19,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
 import { DURUMLAR, durumSecenekleri } from "@/components/shared/icra-sirket-tablosu";
-import AvukatSecim from "@/components/shared/avukat-secim";
+import AvukatSecim, { type AvukatEk } from "@/components/shared/avukat-secim";
 import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
@@ -50,6 +50,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
   const [avukatId, setAvukatId] = useState("");
   const [avukatAdi, setAvukatAdi] = useState("");
   const [avukatNotu, setAvukatNotu] = useState("");
+  const [avukatEkler, setAvukatEkler] = useState<AvukatEk[]>([]);
   const [durum, setDurum] = useState<IcraSirketDurum>("yeni");
   const [aciklama, setAciklama] = useState("");
   const [kaydediliyor, setKaydediliyor] = useState(false);
@@ -71,6 +72,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
     setAvukatId(kayit.avukat_id ?? "");
     setAvukatAdi(kayit.avukat_adi ?? "");
     setAvukatNotu(kayit.avukat_notu ?? "");
+    setAvukatEkler(kayit.avukat_ek_dosyalar ?? []);
     // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: dosya ele alınmamışsa (durum
     // "yeni") ve muhasebe bir şekil bildirmişse o seçili gelir. Kayıtlı bir
     // durum varsa dokunulmaz — verilmiş cevabı değiştirmek olurdu.
@@ -146,6 +148,8 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
       avukat_id: avukatId || null,
       avukat_adi: avukatAdi.trim() || null,
       avukat_notu: avukatNotu.trim() || null,
+      // EKLER KAYITTA DURUR: mail servisi kayıttan okuyor, tekrar gönderimde de gider.
+      avukat_ek_dosyalar: avukatEkler.length ? avukatEkler : null,
       durum,
       aciklama: aciklama.trim() || null,
     };
@@ -157,7 +161,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
           const c = await avukataGonder(kayit.id, avukatId, avukatNotu, "sirket");
           icraDegisti();
           kaydedildi({ ...yama, avukat_mail_ek: c.ek, avukat_mail_at: c.gonderildiAt });
-          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`);
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
           avukatTakipNotuGoster();
@@ -232,7 +236,7 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
         </div>
 
         <div ref={formRef} onKeyDown={formEnter}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[320px] min-h-0 overflow-y-auto pr-1 content-start">
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 h-[520px] max-h-[calc(90vh-230px)] min-h-0 overflow-y-auto pr-1 content-start">
           {/* CEVAP ŞEKLİ İLK VE TEK SATIR — icra penceresiyle aynı düzen: sorulan
               alanlar buna bağlı, insan önce bunu görmeli. "Seçin…" ele
               alınmamış demektir (durum="yeni"); işlenmiş bir takip buraya
@@ -263,7 +267,10 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
                   if (y.avukat_id !== undefined) setAvukatId(y.avukat_id);
                   if (y.avukat_adi !== undefined) setAvukatAdi(y.avukat_adi);
                   if (y.avukat_notu !== undefined) setAvukatNotu(y.avukat_notu);
+                  if (y.avukat_ekler !== undefined) setAvukatEkler(y.avukat_ekler);
                 }}
+                ekler={avukatEkler}
+                muhasebeEkleri={kayit.muhasebe_cevap_mail_ekler ?? []}
                 mailBilgisi={{
                   tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
                   gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,
@@ -312,6 +319,18 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
               oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
         <DialogFooter className="shrink-0 border-t pt-3">
+          {/* MAİL GİDECEĞİ KAYDETMEDEN ÖNCE SÖYLENİR: düğmenin adı "Kaydet ve
+              avukata gönder" olsa da, dışarıya mail çıkacağı kadar önemli bir
+              şey tek bir düğme yazısına bırakılmamalı. Gönderim sürerken de
+              aynı yerde "gönderiliyor" yazıyor — mail SMTP'ye bağlanırken
+              pencere donuk duruyordu, kullanıcı ikinci kez basıyordu. */}
+          {gonderilecek && (
+            <span className="mr-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+              {kaydediliyor
+                ? <><Loader2 size={12} className="animate-spin" /> Mail gönderiliyor…</>
+                : <><Send size={12} /> Kaydedince avukata mail gider</>}
+            </span>
+          )}
           <Button variant="outline" onClick={kapat}>İptal</Button>
           <Button onClick={kaydet} disabled={kaydediliyor}>
             {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}

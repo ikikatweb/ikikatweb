@@ -136,13 +136,48 @@ export async function muhasebeCevaplariniTara(gun = 14): Promise<MuhasebeCevapSo
             if (b.eslesti) continue;
             if (!konu.includes(b.dosya)) continue;
             if (an <= b.gonderimAt) continue;      // gönderimden önceki mail cevap olamaz
-            const ekler = (parsed.attachments ?? [])
-              .map((a) => a.filename).filter(Boolean).join(", ");
+
+            // ── EKLER KOVAYA ──
+            // Hesap ekstresi burada geliyor; mail kutusunda bırakılırsa panelden
+            // açılamaz ve avukata iletilemez. ÖZEL kovaya (yazismalar) konuyor,
+            // arayüz imzalı geçitten açıyor (AGENTS.md).
+            const ekListe: { ad: string; yol: string }[] = [];
+            for (const a of parsed.attachments ?? []) {
+              const ad = (a.filename ?? "").trim();
+              if (!ad || !a.content) continue;
+              // GÖVDEYE GÖMÜLÜ GÖRSEL EK DEĞİLDİR: antet/imza logoları (image001.png,
+              // cid ile gövdede gösterilenler) ek listesine girerse "hesap ekstresi
+              // geldi" sanılıyor. Yalnız gerçekten iliştirilmiş dosyalar alınır.
+              if (a.contentDisposition === "inline" || a.related || a.cid) continue;
+              const yol = `icra-muhasebe/${b.id}/${Date.now()}-${ad.replace(/[^\w.\-]+/g, "_")}`;
+              const { error: yErr } = await sb.storage.from("yazismalar")
+                .upload(yol, a.content as Buffer, { contentType: a.contentType ?? undefined, upsert: true });
+              if (yErr) {
+                // SESSİZ GEÇİLMEZ: ek kaydedilemediyse adı yine yazılır ama
+                // sebep çıktıya düşer — dosya mail kutusunda duruyor demektir.
+                uyari.push(`${b.dosya} eki kaydedilemedi (${ad}): ${yErr.message}`);
+                continue;
+              }
+              const { data: genel } = sb.storage.from("yazismalar").getPublicUrl(yol);
+              ekListe.push({ ad, yol: genel?.publicUrl ?? yol });
+            }
+
+            // MAİLİN DÜZ METNİ: panelde okunsun diye. HTML yerine text yeğleniyor;
+            // yoksa HTML'den etiketler ayıklanıyor. Uzun zincirler için üst sınır var.
+            const govde = (parsed.text ?? "").trim()
+              || (parsed.html ? String(parsed.html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "");
+
             const { error } = await sb.from(b.tablo).update({
               muhasebe_cevap_mail_at: an,
               muhasebe_cevap_mail_gonderen: gonderen,
               muhasebe_cevap_mail_konu: konu.slice(0, 300),
-              muhasebe_cevap_mail_ek: ekler || null,
+              muhasebe_cevap_mail_ek: ekListe.map((e) => e.ad).join(", ") || null,
+              muhasebe_cevap_mail_ekler: ekListe.length ? ekListe : null,
+              muhasebe_cevap_mail_metin: govde ? govde.slice(0, 20000) : null,
+              // MAİLİN ASLI: HTML mail düz metne çevrilince biçim dağılıyor
+              // (alıntılanan yazışma, tablolar iç içe giriyor). Aslı saklanıp
+              // ayrı pencerede sandbox'lı iframe içinde gösteriliyor.
+              muhasebe_cevap_mail_html: parsed.html ? String(parsed.html).slice(0, 400000) : null,
               updated_at: new Date().toISOString(),
             }).eq("id", b.id);
             if (error) { uyari.push(`${b.dosya} işaretlenemedi: ${error.message}`); continue; }

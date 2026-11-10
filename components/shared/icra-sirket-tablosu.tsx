@@ -12,14 +12,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useOturumFiltresi, icraDegisti } from "@/hooks";
 import toast from "react-hot-toast";
-import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText, Calculator } from "lucide-react";
+import { Scale, Plus, Trash2, Loader2, Search, Pencil, FileText, Calculator, Send } from "lucide-react";
 import {
   getIcraSirketTakipler, insertIcraSirketTakip, updateIcraSirketTakip, deleteIcraSirketTakip,
 } from "@/lib/supabase/queries/icra-sirket";
 import { createClient } from "@/lib/supabase/client";
 import type { IcraSirketTakip, IcraSirketDurum } from "@/lib/supabase/types";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
-import AvukatSecim from "@/components/shared/avukat-secim";
+import AvukatSecim, { type AvukatEk } from "@/components/shared/avukat-secim";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import MuhasebeCevapDialog, { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
@@ -83,6 +83,8 @@ type Form = {
   belge_tarihi: string; teblig_tarihi: string; itiraz_suresi_gun: string;
   odenen_tutar: string; odeme_tarihi: string; banka_adi: string;
   avukat_id: string; avukat_adi: string; avukat_notu: string;
+  /** Avukat mailine EK olarak gidecek dosyalar (ödeme emri belgesi bu listede değil). */
+  avukat_ekler: AvukatEk[];
   durum: IcraSirketDurum; aciklama: string;
 };
 const BOS: Form = {
@@ -90,7 +92,7 @@ const BOS: Form = {
   alacakli_adi: "", alacakli_vergi_no: "", takip_tutari: "",
   belge_tarihi: "", teblig_tarihi: "", itiraz_suresi_gun: "",
   odenen_tutar: "", odeme_tarihi: "", banka_adi: "",
-  avukat_id: "", avukat_adi: "", avukat_notu: "",
+  avukat_id: "", avukat_adi: "", avukat_notu: "", avukat_ekler: [],
   durum: "yeni", aciklama: "",
 };
 
@@ -179,7 +181,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
         odeme_tarihi: row.odeme_tarihi ?? "", banka_adi: row.banka_adi ?? "",
         avukat_id: row.avukat_id ?? "", avukat_adi: row.avukat_adi ?? "",
-        avukat_notu: row.avukat_notu ?? "",
+        avukat_notu: row.avukat_notu ?? "", avukat_ekler: row.avukat_ek_dosyalar ?? [],
         // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: dosya henüz ele alınmamışsa
         // (durum "yeni") ve muhasebe bir şekil bildirmişse o seçili gelir.
         // Kayıtlı bir durum varsa dokunulmaz — verilmiş cevabı değiştirmek olurdu.
@@ -197,6 +199,13 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
   const avukatCevabiDuruyor = Boolean(duzenlenen?.avukat_id) && duzenlenen?.avukat_id === form.avukat_id
     && Boolean(duzenlenen?.avukat_mail_at) && duzenlenen?.durum === "avukatta";
   const gonderilecek = form.durum === "avukatta" && Boolean(form.avukat_id) && !avukatCevabiDuruyor;
+  // YENİ TAKİPTE MUHASEBEYE MAİL GİDER (kaydetme anında). Süresi geçmiş eski
+  // kayıt girilirken gitmez (muhasebeGerekliMi).
+  const muhasebeyeGidecek = !editId && muhasebeGerekliMi({
+    teblig_tarihi: form.teblig_tarihi || null,
+    cevapVerildi: form.durum !== "yeni",
+    sureGun: form.itiraz_suresi_gun ? Number(form.itiraz_suresi_gun) : null,
+  }, true);
 
   /**
    * Cevap şekli değişince o kipe ait OLMAYAN alanlar boşalır — hızlı pencereyle
@@ -263,6 +272,8 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
       banka_adi: t(form.banka_adi),
       avukat_id: form.avukat_id || null, avukat_adi: t(form.avukat_adi), avukat_notu: t(form.avukat_notu),
       durum: form.durum, aciklama: t(form.aciklama),
+      // EKLER KAYITTA DURUR: mail servisi kayıttan okuyor, tekrar gönderimde de gider.
+      avukat_ek_dosyalar: form.avukat_ekler.length ? form.avukat_ekler : null,
     };
     setKaydediliyor(true);
     // MAİL İÇİN KAYIT ID'Sİ: yeni kayıtta id ancak eklemeden sonra doğuyor.
@@ -294,7 +305,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               muhasebe_mail_alici: m.alicilar.join(", "), muhasebe_mail_gonderen: m.gonderen,
               muhasebe_mail_sayisi: 1,
             } : x)));
-            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`, { duration: 7000 });
+            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`);
             if (m.kayitHatasi) toast.error(`Muhasebe maili gitti ama kayıt güncellenemedi: ${m.kayitHatasi}`, { duration: 10000 });
             if (m.antetInemedi) toast.error("Muhasebe maili ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
           } catch (e) {
@@ -316,7 +327,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             ? { ...x, avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek, avukat_mail_gonderen: c.gonderen,
                 avukat_mail_sayisi: (x.avukat_mail_sayisi ?? 0) + 1 }
             : x)));
-          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`, { duration: 7000 });
+          toast.success(`${c.alici} adresine gönderildi · ek: ${c.ek}`);
           if (c.kayitHatasi) toast.error(`Mail gitti ama kayıt güncellenemedi: ${c.kayitHatasi}`, { duration: 10000 });
           if (c.antetInemedi) toast.error("Mail ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
           avukatTakipNotuGoster();
@@ -608,12 +619,15 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               <div className="sm:col-span-3">
                 <AvukatSecim
                   avukatId={form.avukat_id} not_={form.avukat_notu} kaynak="sirket" kayitId={editId}
-                  degistir={(y: { avukat_id?: string; avukat_adi?: string; avukat_notu?: string }) => setForm((f) => ({
+                  degistir={(y) => setForm((f) => ({
                     ...f,
                     ...(y.avukat_id !== undefined ? { avukat_id: y.avukat_id } : {}),
                     ...(y.avukat_adi !== undefined ? { avukat_adi: y.avukat_adi } : {}),
                     ...(y.avukat_notu !== undefined ? { avukat_notu: y.avukat_notu } : {}),
+                    ...(y.avukat_ekler !== undefined ? { avukat_ekler: y.avukat_ekler } : {}),
                   }))}
+                  ekler={form.avukat_ekler}
+                  muhasebeEkleri={duzenlenen?.muhasebe_cevap_mail_ekler ?? []}
                   mailBilgisi={{
                     tarih: duzenlenen?.avukat_mail_at ?? null, ek: duzenlenen?.avukat_mail_ek ?? null,
                     gonderen: duzenlenen?.avukat_mail_gonderen ?? null,
@@ -647,6 +661,15 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               oluyordu — kullanıcı kaydetmek için kaydırmak zorunda kalıyordu.
               Gövde kendi içinde kayıyor, alt şerit yerinde duruyor. */}
           <DialogFooter className="shrink-0 border-t pt-3">
+            {/* KAYDETMEDEN ÖNCE SÖYLENİR: bu pencereden DIŞARIYA MAİL ÇIKIYOR —
+                yeni takipte muhasebeye, avukat seçiliyse avukata. */}
+            {(gonderilecek || muhasebeyeGidecek) && (
+              <span className="mr-auto inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700">
+                {kaydediliyor
+                  ? <><Loader2 size={12} className="animate-spin" /> Mail gönderiliyor…</>
+                  : <><Send size={12} /> Kaydedince {[muhasebeyeGidecek ? "muhasebeye" : "", gonderilecek ? "avukata" : ""].filter(Boolean).join(" ve ")} mail gider</>}
+              </span>
+            )}
             <Button variant="outline" onClick={() => setDialogAcik(false)}>Vazgeç</Button>
             <Button onClick={kaydet} disabled={kaydediliyor || !formGecerli}>
               {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : null}

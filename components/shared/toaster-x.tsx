@@ -1,4 +1,9 @@
 // Toaster wrapper — react-hot-toast'a kapatma (X) butonu ekler.
+//
+// BİLDİRİMİN HER YERİ TIKLANINCA KAPANIR (10.11.2026): uzun metinli bildirimde
+// (ör. "… adresine gönderildi · ek: …" üç satır) köşedeki X göze çarpmıyor,
+// kullanıcı bildirimi kapatamadan beklemek zorunda kalıyordu. Artık bildirimin
+// üzerine tıklamak yetiyor; X de yerinde duruyor.
 // Varsayılan süre: masaüstünde 5 sn, MOBİLDE 3 sn (viewport ≤ 768px).
 "use client";
 
@@ -41,7 +46,9 @@ export default function ToasterX() {
       {(t) => (
         <ToastBar toast={t}>
           {({ icon, message }) => (
-            <>
+            <div onClick={() => toast.dismiss(t.id)} role="presentation"
+              title="Kapatmak için tıklayın"
+              className="flex items-center gap-1 cursor-pointer">
               {icon}
               {message}
               {t.type !== "loading" && (
@@ -55,7 +62,7 @@ export default function ToasterX() {
                   ✕
                 </button>
               )}
-            </>
+            </div>
           )}
         </ToastBar>
       )}

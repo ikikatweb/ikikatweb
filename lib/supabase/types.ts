@@ -908,8 +908,16 @@ export type IcraKayit = {
   muhasebe_cevap_mail_at: string | null;
   muhasebe_cevap_mail_gonderen: string | null;
   muhasebe_cevap_mail_konu: string | null;
-  /** Cevap mailindeki ek dosya adları (altlık) — virgülle. */
+  /** Cevap mailindeki ek dosya adları — virgülle (özet; dosyalar aşağıdaki listede). */
   muhasebe_cevap_mail_ek: string | null;
+  /** Mailin düz metni — panelde okunsun diye. Karar değil, bilgi. */
+  muhasebe_cevap_mail_metin: string | null;
+  /** Mailin HTML aslı — yalnız sandbox iframe içinde gösterilir (dış kaynaklı). */
+  muhasebe_cevap_mail_html: string | null;
+  /** Cevap mailinin ekleri (hesap ekstresi) — yazismalar kovası (ÖZEL). */
+  muhasebe_cevap_mail_ekler: { ad: string; yol: string }[] | null;
+  /** Avukat mailine ELLE eklenen dosyalar. Tebligat yazısı bu listede değil. */
+  avukat_ek_dosyalar: { ad: string; yol: string }[] | null;
   /** "var" | "yok" — borçluya borcumuz var mı. */
   muhasebe_borc_durumu: string | null;
   muhasebe_borc_tutari: number | null;
@@ -981,6 +989,11 @@ export type IcraSirketTakip = {
   muhasebe_cevap_mail_gonderen: string | null;
   muhasebe_cevap_mail_konu: string | null;
   muhasebe_cevap_mail_ek: string | null;
+  muhasebe_cevap_mail_metin: string | null;
+  muhasebe_cevap_mail_html: string | null;
+  muhasebe_cevap_mail_ekler: { ad: string; yol: string }[] | null;
+  /** Avukat mailine ELLE eklenen dosyalar. Ödeme emri belgesi bu listede değil. */
+  avukat_ek_dosyalar: { ad: string; yol: string }[] | null;
   /** "odendi" | "odenmedi" — takip konusu borç ödenmiş mi. */
   muhasebe_borc_durumu: string | null;
   muhasebe_borc_tutari: number | null;

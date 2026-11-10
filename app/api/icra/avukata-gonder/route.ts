@@ -28,6 +28,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { icraTebligatBelgesi } from "@/lib/api/icra-tebligat-belge";
+import { storageIndir } from "@/lib/api/storage-indir";
 import { antetEki } from "@/lib/api/antet-eki";
 import { sistemTasiyici } from "@/lib/mail/smtp";
 import { avukatAdiGoster, formatBaslik } from "@/lib/utils/isim";
@@ -106,6 +107,27 @@ export async function POST(request: Request) {
     if (ekSonuc.hata) return NextResponse.json({ error: ekSonuc.hata.mesaj }, { status: ekSonuc.hata.kod });
     const belge = ekSonuc.belge;
     const icerik = ekSonuc.icerik;
+
+    // ── ELLE EKLENEN DOSYALAR ──
+    // Avukata yalnız tebligat yazısı gidiyordu; oysa çoğu zaman muhasebeden
+    // gelen hesap ekstresi, sözleşme ya da yazışma da gitmeli. Dosyalar kayıtta
+    // duruyor (avukat_ek_dosyalar), böylece tekrar gönderimde de aynı ekler
+    // gidiyor ve "neyi göndermiştik" sorusu cevaplanabiliyor.
+    //
+    // EKSİK EKLE MAİL GİTMEZ (AGENTS.md): kullanıcı dosyayı bilerek ekledi;
+    // inemiyorsa maili eksik göndermek, gönderdiğini sanmasına yol açar.
+    const elleEkler = (kayit.avukat_ek_dosyalar ?? []) as { ad: string; yol: string }[];
+    const ekDosyalar: { filename: string; content: Buffer }[] = [];
+    for (const e of elleEkler) {
+      const d = await storageIndir(e.yol);
+      if (!d) {
+        return NextResponse.json({
+          error: `Eklediğiniz dosya (${e.ad}) indirilemedi — mail GÖNDERİLMEDİ. `
+            + `Dosyayı penceredeki listeden çıkarıp tekrar yükleyin.`,
+        }, { status: 502 });
+      }
+      ekDosyalar.push({ filename: e.ad, content: d });
+    }
 
     // ── GÖNDEREN FİRMA ──
     // Üçüncü şahıs hangi firmamızsa mail o firmadan ve o firmanın anteti ile gider.
@@ -186,6 +208,7 @@ export async function POST(request: Request) {
       attachments: [
         ...(antet.ek ? [antet.ek] : []),
         { filename: belge.ad, content: icerik },
+        ...ekDosyalar,
       ],
     });
 
@@ -206,7 +229,9 @@ export async function POST(request: Request) {
       // "bu dosya kime gitmişti" sorusu cevaplanabilsin. Tabloda da bu
       // sütun gösteriliyor; id'den ada her seferinde çevirmek gerekmiyor.
       avukat_adi: avukat.ad_soyad,
-      avukat_mail_ek: belge.ad,
+      // EKİN ADI: tebligat yazısı + elle eklenenler. Ekranda "ek: …" diye
+      // görünüyor; yalnız tebligat yazılsaydı eklenen dosyaların izi kalmazdı.
+      avukat_mail_ek: [belge.ad, ...elleEkler.map((e) => e.ad)].join(", "),
       avukat_mail_gonderen: kullanici.ad_soyad,
       avukat_mail_gonderen_id: kullanici.id,
       avukat_mail_sayisi: (kayit.avukat_mail_sayisi ?? 0) + 1,
@@ -219,13 +244,13 @@ export async function POST(request: Request) {
       ...(sirket ? { sirket_takip_id: icraId } : { icra_id: icraId }),
       avukat_id: avukatId, avukat_adi: avukat.ad_soyad,
       avukat_email: avukat.email, gonderen_id: kullanici.id, gonderen_ad: kullanici.ad_soyad,
-      ek_ad: belge.ad,
+      ek_ad: [belge.ad, ...elleEkler.map((e) => e.ad)].join(", "),
     });
 
     return NextResponse.json({
       gonderildi: true,
       alici: avukat.email,
-      ek: belge.ad,
+      ek: [belge.ad, ...elleEkler.map((e) => e.ad)].join(", "),
       cevap_tarihi: sirket ? null : (kayit.cevap_tarihi ?? bugun),
       gonderen: kullanici.ad_soyad,
       gonderildiAt: simdi,
