@@ -5,9 +5,16 @@
 // değil. Bordro Takibi sayfasında ise her zaman tamamı görünür (orası zaten o iş için
 // açılan sayfa).
 //
-// Kayıt tarayıcıda (localStorage), kullanıcı bazında tutulur: ayrı bir tablo açıp her
-// görüntülemede yazmaya değmez. Başka cihazdan girildiğinde uyarı bir kez daha çıkar —
-// kasıtlı: yeni cihazda kullanıcı o işi henüz görmemiştir.
+// ══ KAYIT ARTIK SUNUCUDA, TARAYICIDA DEĞİL ══
+// Eskiden localStorage'daydı ve "başka cihazda bir kez daha çıkar" kasıtlı sayılmıştı.
+// Pratikte bu, uyarının arada bir topluca geri gelmesi demekti: bilgisayarda hepsine
+// "Anladım" denip telefondan girilince altısı birden yeniden çıkıyordu. iOS'ta ana
+// ekrana eklenmiş uygulamanın deposu Safari'den ayrı olduğu için aynı telefonda bile
+// iki hafıza vardı (10.11.2026). Panelin geri kalanında kural zaten "kullanıcı kaydına
+// yaz"dı (lib/supabase/queries/uyari-gizle); burası istisnaydı, kapatıldı.
+// Kayıt: public.prim_dengesi_gorulen · kapı: /api/prim-dengesi-gorulen
+// localStorage YEDEK olarak duruyor: sunucuya ulaşılamazsa ekran yine de makul
+// davransın (uyarıyı sonsuza kadar tekrar göstermesin).
 //
 // sonTespit SIRALAMA için kullanılır: listenin en üstünde EN SON TESPİT EDİLEN iş durur.
 // "Tespit" yalnız listeye ilk giriş değil, GİDİŞATIN DEĞİŞMESİ de sayılır (aşağıdaki
@@ -61,15 +68,6 @@ export type GorulenKayit = {
   imza?: string;
 };
 
-/**
- * Depoyu SALT OKUNUR getirir — sıralama için. Bordro Takibi sayfası bunu kullanır:
- * damga yazmaz. Yazsaydı, kullanıcı o sayfada sigortalı girip çıkarırken imza her
- * odaklanmada sessizce tazelenir, toplu giriş "tek tek" gibi parçalanır ve ana ekran
- * uyarısı hiç tetiklenmezdi.
- */
-export function depoOku(kullaniciId: string): Depo {
-  return oku(kullaniciId);
-}
 
 /** Kaydın damgası — eski (ilkGorulme) kayıtlarla uyumlu okuma. */
 export function tespitZamani(k: GorulenKayit | undefined): string {
@@ -89,6 +87,38 @@ function oku(kullaniciId: string): Depo {
   }
 }
 
+/**
+ * Sunucudaki depo. Okunamazsa yerel YEDEK kullanılır — ekran çalışmaya devam etsin.
+ * (Boş depo dönmek, her açılışta bütün uyarıları yeniden göstermek demekti.)
+ */
+export async function depoGetirSunucu(kullaniciId: string): Promise<Depo> {
+  try {
+    const r = await fetch("/api/prim-dengesi-gorulen", { cache: "no-store" });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = (await r.json()) as { depo?: Depo };
+    const depo = j.depo ?? {};
+    yaz(kullaniciId, depo);   // yerel yedeği tazele
+    return depo;
+  } catch (e) {
+    console.warn("[prim dengesi] görüldü kaydı sunucudan okunamadı, yerel yedek kullanılıyor:", e);
+    return oku(kullaniciId);
+  }
+}
+
+/** Depoyu sunucuya yaz (yerel yedek de tazelenir). */
+async function yazSunucu(kullaniciId: string, depo: Depo): Promise<void> {
+  yaz(kullaniciId, depo);
+  try {
+    const r = await fetch("/api/prim-dengesi-gorulen", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ depo }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  } catch (e) {
+    console.warn("[prim dengesi] görüldü kaydı sunucuya yazılamadı:", e);
+  }
+}
+
 function yaz(kullaniciId: string, depo: Depo): void {
   if (typeof window === "undefined") return;
   try {
@@ -105,14 +135,16 @@ function yaz(kullaniciId: string, depo: Depo): void {
  *  - artık riskte olmayan işleri depodan siler (tekrar riske girerse YENİ sayılsın).
  * Dönüş: her santiyeId için kayıt.
  */
-export function damgala(
+export async function damgala(
   kullaniciId: string,
+  /** Sunucudan okunmuş mevcut depo (depoGetirSunucu). */
+  mevcutDepo: Depo,
   kayitlar: { santiyeId: string; imza: string }[],
   /** İki imza arasındaki fark ANA EKRANA ÇIKMAYA DEĞER Mİ? Verilmezse her fark değer.
    *  Çağıran burada "rutin değişiklik" ile "rutin dışı olay"ı ayırır. */
   onemliMi?: (eskiImza: string, yeniImza: string) => boolean,
-): Depo {
-  const depo = oku(kullaniciId);
+): Promise<Depo> {
+  const depo: Depo = { ...mevcutDepo };
   const simdi = new Date().toISOString();
   const kume = new Set(kayitlar.map((k) => k.santiyeId));
   for (const { santiyeId: id, imza } of kayitlar) {
@@ -135,11 +167,18 @@ export function damgala(
   for (const id of Object.keys(depo)) {
     if (!kume.has(id)) delete depo[id];
   }
-  yaz(kullaniciId, depo);
+  // DEĞİŞMEDİYSE YAZMA: her odaklanmada sunucuya istek gitmesin.
+  if (JSON.stringify(depo) !== JSON.stringify(mevcutDepo)) await yazSunucu(kullaniciId, depo);
   return depo;
 }
 
-/** Ana ekranda gösterilenleri "gösterildi" olarak işaretler. */
+/**
+ * Ana ekranda gösterilenleri "gösterildi" olarak işaretler.
+ *
+ * SAYFA KAPANIRKEN DE ÇALIŞMALI: sekme kapanışında normal fetch iptal ediliyor,
+ * o yüzden sendBeacon kullanılıyor (tarayıcı isteği arka planda tamamlıyor).
+ * Yerel yedek her hâlde güncellenir.
+ */
 export function anaEkrandaGosterildiIsaretle(kullaniciId: string, santiyeIdler: string[]): void {
   if (santiyeIdler.length === 0) return;
   const depo = oku(kullaniciId);
@@ -147,4 +186,15 @@ export function anaEkrandaGosterildiIsaretle(kullaniciId: string, santiyeIdler: 
     if (depo[id]) depo[id].anaEkrandaGosterildi = true;
   }
   yaz(kullaniciId, depo);
+
+  const govde = JSON.stringify({ gosterildi: santiyeIdler });
+  try {
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      navigator.sendBeacon("/api/prim-dengesi-gorulen", new Blob([govde], { type: "application/json" }));
+      return;
+    }
+  } catch { /* aşağıdaki fetch'e düş */ }
+  void fetch("/api/prim-dengesi-gorulen", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: govde, keepalive: true,
+  }).catch((e) => console.warn("[prim dengesi] gösterildi kaydı yazılamadı:", e));
 }

@@ -19,6 +19,7 @@ import { AlertTriangle, ExternalLink, Check, Landmark } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth, tebligatDegisti } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
+import { hataMetni } from "@/lib/utils/hata-metni";
 import {
   getKetsisBildirimler, getSonKetsisKontrol, kontrolYasiGun,
   GIB_GIRIS, KONTROL_ARALIGI_GUN, type KetsisBildirim,
@@ -51,7 +52,9 @@ export default function KetsisHatirlatma() {
       setHata(null);
     } catch (e) {
       // Ana ekranı kilitlemez ama YUTULMAZ: sebep hem konsola hem ekrana düşer.
-      const m = e instanceof Error ? e.message : String(e);
+      // hataMetni ŞART: Supabase hataları Error değil düz nesne; String(e) onlara
+      // "[object Object]" diyor ve ekranda sebep yerine bu çıkıyordu.
+      const m = hataMetni(e);
       console.warn("GİB tebligat uyarısı okunamadı:", m);
       setHata(m);
     } finally {

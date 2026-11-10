@@ -13,6 +13,7 @@
 //     hukuken tebligatın parçası değil; gelmemesi süreyi durdurmaz (VUK 107/A).
 // Bu yüzden liste boşken de ekran "temiz" demez, "bakıldı mı?" diye sorar.
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { hataMetni } from "@/lib/utils/hata-metni";
 import { Landmark, ExternalLink, AlertTriangle, Check, X, Loader2, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { toastSuresi } from "@/lib/utils/toast-sure";
@@ -63,7 +64,7 @@ export default function KetsisTablosu() {
       setHata(null);
     } catch (e) {
       // Hata YUTULMAZ: boş tablo "tebligat yok" diye okunur, oysa sorgu patlamıştır.
-      setHata(e instanceof Error ? e.message : String(e));
+      setHata(hataMetni(e));
     } finally {
       setYukleniyor(false);
     }

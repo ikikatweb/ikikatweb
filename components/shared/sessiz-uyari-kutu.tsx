@@ -7,6 +7,7 @@
 "use client";
 
 import { useState } from "react";
+import { hataMetni } from "@/lib/utils/hata-metni";
 import { sessizSure, sessizSonZaman, SESSIZ_ESIK_SAAT, type SessizCihaz } from "@/lib/arvento/cihaz-sessiz";
 
 export function SessizUyariKutu({
@@ -27,7 +28,7 @@ export function SessizUyariKutu({
     if (!onBeklemede) return;
     setBekleyen(s.plaka); setHata(null);
     try { await onBeklemede(s); }
-    catch (e) { setHata(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setHata(hataMetni(e)); }
     finally { setBekleyen(null); }
   };
 
