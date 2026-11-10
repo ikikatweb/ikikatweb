@@ -118,6 +118,18 @@ export async function POST(request: Request) {
     const sonGun = kayit.teblig_tarihi && sure != null ? gunEkle(kayit.teblig_tarihi, sure) : null;
     const sonGunEtiket = sirket ? "Son itiraz günü" : "Son cevap günü";
 
+    // ── KİM GÖNDERDİ? ──
+    // OTOMATİK GÖNDERİMDE KİŞİ ADI YAZILMAZ: maili başlatan insan değil, panelin
+    // kendisi — dosya cevap bekleyenlere düşünce gidiyor. O an ekranı açık olan
+    // kullanıcının adını "gönderen" diye yazmak, yapmadığı bir işi ona mal eder
+    // (10.11.2026: deneme mailinde "Ahmet Can KILINÇ" göründü, oysa kimse
+    // göndermemişti). Kullanıcı kimliği yine kayda giriyor (gonderen_id) — hangi
+    // oturumdan tetiklendiği izlenebilsin diye; ekranda görünen ad "Sistem".
+    const gonderenAd = otomatik ? "Sistem (otomatik)" : kullanici.ad_soyad;
+    // MAİLİN ALTINDA DA AYNI: otomatik mail bir kişi tarafından yazılmış gibi
+    // imzalanmamalı. Muhasebe cevabı zaten bu kutuya dönüyor.
+    const imza = otomatik ? (firma?.firma_adi ?? "İkikat") : kullanici.ad_soyad;
+
     const satir = (etiket: string, deger: string, stil = "") =>
       `<tr><td style="padding:4px 10px 4px 0;color:#64748b;font-size:13px;white-space:nowrap">${etiket}</td>`
       + `<td style="padding:4px 0;font-size:13px;${stil}">${deger}</td></tr>`;
@@ -178,7 +190,7 @@ export async function POST(request: Request) {
   </div>` : ""}
   <p style="font-size:14px;margin:18px 0 0">
     İyi çalışmalar,<br>
-    <strong>${kacar(kullanici.ad_soyad)}</strong>
+    <strong>${kacar(imza)}</strong>
   </p>
 </div>`;
 
@@ -202,7 +214,7 @@ export async function POST(request: Request) {
       // ADRESİN ANLIK KOPYASI: tanımlar sonradan değişse de "bu dosya kime
       // gitmişti" sorusu cevaplanabilsin.
       muhasebe_mail_alici: alicilar.join(", "),
-      muhasebe_mail_gonderen: kullanici.ad_soyad,
+      muhasebe_mail_gonderen: gonderenAd,
       muhasebe_mail_gonderen_id: kullanici.id,
       muhasebe_mail_sayisi: (kayit.muhasebe_mail_sayisi ?? 0) + 1,
       updated_at: simdi,
@@ -211,7 +223,7 @@ export async function POST(request: Request) {
     const { error: logErr } = await sb.from("icra_muhasebe_mail_log").insert({
       ...(sirket ? { sirket_takip_id: icraId } : { icra_id: icraId }),
       alici: alicilar.join(", "),
-      gonderen_id: kullanici.id, gonderen_ad: kullanici.ad_soyad,
+      gonderen_id: kullanici.id, gonderen_ad: gonderenAd,
       ek_ad: ek.belge.ad,
     });
 
@@ -219,7 +231,7 @@ export async function POST(request: Request) {
       gonderildi: true,
       alicilar,
       ek: ek.belge.ad,
-      gonderen: kullanici.ad_soyad,
+      gonderen: gonderenAd,
       gonderildiAt: simdi,
       // SESSİZ GEÇİLMEZ: mail gitti ama kayıt/günlük yazılamadıysa kullanıcı
       // bilmeli, yoksa dosya gönderilmemiş görünür ve ikinci kez gönderilir.
