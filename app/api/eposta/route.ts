@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
 import { tokenOlustur } from "@/lib/auth/sifre-token";
 import { sistemTasiyici, mailGovde } from "@/lib/mail/smtp";
+import { mailSiteKoku } from "@/lib/mail/site-koku";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,11 @@ export async function POST(request: Request) {
   // Doğrulama bağlantısı — gönderilemezse adres yine kaydedilmiş olur (kullanıcıya bildirilir).
   let mailGitti = true;
   try {
+    const kok = mailSiteKoku(request);
+    // Yerel adresle gönderilen bağlantı alıcıda açılmaz — mail hiç yollanmaz,
+    // "mailGitti: false" ile kullanıcıya söylenir (bkz. lib/mail/site-koku).
+    if (!kok) throw new Error("Bağlantı adresi yerel sunucuyu gösteriyor (localhost).");
     const token = await tokenOlustur(sb, k.id, "eposta_dogrulama", eposta);
-    const kok = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
     const { tasiyici, gonderen } = await sistemTasiyici(sb);
     await tasiyici.sendMail({
       from: `"İkikat Yönetim Sistemi" <${gonderen}>`,

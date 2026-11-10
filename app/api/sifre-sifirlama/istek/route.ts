@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { tokenOlustur, sonSaattekiIstek } from "@/lib/auth/sifre-token";
 import { sistemTasiyici, mailGovde } from "@/lib/mail/smtp";
+import { mailSiteKoku } from "@/lib/mail/site-koku";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,10 @@ export async function POST(request: Request) {
   if (await sonSaattekiIstek(sb, k.id, "sifre_sifirlama") >= 3) return AYNI_YANIT;
 
   try {
+    // Yerel adresle gönderilen bağlantı alıcıda açılmaz (bkz. lib/mail/site-koku).
+    const kok = mailSiteKoku(request);
+    if (!kok) throw new Error("Bağlantı adresi yerel sunucuyu gösteriyor (localhost).");
     const token = await tokenOlustur(sb, k.id, "sifre_sifirlama", k.eposta.trim());
-    const kok = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
     const baglanti = `${kok}/sifre-yenile?t=${encodeURIComponent(token)}`;
 
     const { tasiyici, gonderen } = await sistemTasiyici(sb);

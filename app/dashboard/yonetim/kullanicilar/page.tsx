@@ -94,6 +94,8 @@ export default function KullanicilarPage() {
   // "onay yok" sanılmasın (bkz. onayHatasi).
   const [konumOnaylari, setKonumOnaylari] = useState<Record<string, KonumOnayOzet> | null>(null);
   const [onayHatasi, setOnayHatasi] = useState<string | null>(null);
+  // Doğrulama maili gönderilen kullanıcı (düğme iki kez basılmasın).
+  const [dogrulamaGiden, setDogrulamaGiden] = useState<string | null>(null);
 
   async function loadKullanicilar() {
     try {
@@ -126,6 +128,22 @@ export default function KullanicilarPage() {
   }
 
   useEffect(() => { loadKullanicilar(); }, []);
+
+  // DOĞRULAMA MAİLİ — sonucu sessizce yutma: gitmediyse sebebi ekranda yazsın.
+  async function dogrulamaMailiGonder(k: Kullanici) {
+    if (!k.eposta) { toast.error("Bu kullanıcının e-posta adresi tanımlı değil."); return; }
+    setDogrulamaGiden(k.id);
+    try {
+      const r = await fetch(`/api/kullanicilar/${k.id}/dogrulama-maili`, { method: "POST" });
+      const c = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(c.error ?? "Mail gönderilemedi.");
+      toast.success(`Doğrulama maili gönderildi: ${k.eposta}`, { duration: toastSuresi(6000) });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Mail gönderilemedi.", { duration: toastSuresi(9000) });
+    } finally {
+      setDogrulamaGiden(null);
+    }
+  }
 
   function handleAdd() {
     setEditKullanici(undefined);
@@ -319,7 +337,20 @@ export default function KullanicilarPage() {
                           {k.eposta}
                           {k.eposta_dogrulandi
                             ? <span className="text-[10px] text-emerald-600" title="Adres doğrulandı">✓</span>
-                            : <span className="text-[10px] text-amber-600" title="Adres henüz doğrulanmadı">bekliyor</span>}
+                            : (
+                              /* DOĞRULAMA MAİLİ YÖNETİCİDEN DE GİDEBİLSİN: adresi yönetici
+                                 girdiyse kullanıcıya doğrulama bağlantısı hiç gitmiyordu ve
+                                 kayıt sonsuza kadar "bekliyor"da kalıyordu. */
+                              <button
+                                type="button"
+                                disabled={dogrulamaGiden === k.id}
+                                onClick={() => dogrulamaMailiGonder(k)}
+                                title={`Doğrulama maili gönder — ${k.eposta}`}
+                                className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                {dogrulamaGiden === k.id ? "gönderiliyor…" : "bekliyor · gönder"}
+                              </button>
+                            )}
                         </span>
                       : <span className="text-xs text-amber-600">tanımsız</span>}
                   </TableCell>
