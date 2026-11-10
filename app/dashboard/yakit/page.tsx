@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
 import { konumAl, mesafeM, mesafeSupheliMi, KonumHatasi, ARAC_KONUM_TAZELIK_DK, type Konum } from "@/lib/utils/konum";
 import { getAnlikKonumlarDirect } from "@/lib/supabase/queries/arvento";
+import KonumOnayDialog, { konumOnayiVarMi } from "@/components/shared/konum-onay-dialog";
 import { getTanimlamalar } from "@/lib/supabase/queries/tanimlamalar";
 import type { Tanimlama } from "@/lib/supabase/types";
 import { getSantiyelerBasic, getSantiyelerAll } from "@/lib/supabase/queries/santiyeler";
@@ -278,6 +279,12 @@ function YakitPageContent() {
     setGosterilenSayi(SAYFA_BOYUTU);
   }, [filtreSantiyeId, filtreBaslangic, filtreBitis, arama, sadeceLimitDisi]);
 
+  // KONUM AYDINLATMASI: yakıt kaydında konum zorunlu olduğu için, kaydı girecek
+  // kişi önce ne toplandığını okuyup onaylıyor (konum_onaylari). Onay yoksa
+  // "Yakıt Ver" formu yerine önce aydınlatma penceresi açılır.
+  const [konumOnayli, setKonumOnayli] = useState<boolean | null>(null);
+  const [onayDialogAcik, setOnayDialogAcik] = useState(false);
+
   // Dialog: Yakıt Ver
   const [verDialogOpen, setVerDialogOpen] = useState(false);
   const [verEditId, setVerEditId] = useState<string | null>(null);
@@ -401,6 +408,15 @@ function YakitPageContent() {
   }, [kullanici]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // KONUM AYDINLATMA ONAYI: yürürlükteki metin onaylanmış mı? Okunamazsa
+  // (tablo kurulmadıysa) ekran kilitlenmez — konumOnayiVarMi true döner.
+  useEffect(() => {
+    if (!kullanici?.id) return;
+    let iptal = false;
+    konumOnayiVarMi(kullanici.id).then((v) => { if (!iptal) setKonumOnayli(v); });
+    return () => { iptal = true; };
+  }, [kullanici?.id]);
 
   // Araç map (hızlı erişim için)
   const aracMap = useMemo(() => {
@@ -898,6 +914,9 @@ function YakitPageContent() {
   // ============ DIALOG AÇMA FONKSİYONLARI ============
 
   function verDialogAc() {
+    // ONAY YOKSA ÖNCE AYDINLATMA: konum zorunlu olduğu için kişi ne
+    // toplandığını okumadan kayıt ekranına girmiyor. Onaylayınca form açılır.
+    if (konumOnayli === false) { setOnayDialogAcik(true); return; }
     setVerEditId(null);
     setVerDialogSantiyeId(filtreSantiyeId || "");
     setVerDialogAracId("");
@@ -1068,8 +1087,12 @@ function YakitPageContent() {
         try {
           konum = await konumAl();
         } catch (e) {
+          // TOAST YETMİYOR: tarayıcının izin uyarısını kullanıcılar beceremiyor,
+          // balonu da okumadan kapatıyorlar. "Konumu aç" düğmesinin bulunduğu
+          // aydınlatma penceresi açılıyor — oradan tek dokunuşla izin veriliyor.
           toast.error(e instanceof KonumHatasi ? e.message : "Konum alınamadı — yakıt kaydı için konum zorunlu.",
             { duration: toastSuresi() });
+          setOnayDialogAcik(true);
           return;
         }
 
@@ -2056,6 +2079,22 @@ function YakitPageContent() {
       )}
 
       {/* ============ DIALOGS ============ */}
+
+      {/* KONUM AYDINLATMASI — yakıt kaydından önce bir kez okunur ve onaylanır.
+          "Konumu aç" düğmesi tarayıcı iznini buradan ister: izin uyarısını
+          kullanıcılar kendi başına beceremiyordu. */}
+      <KonumOnayDialog
+        acik={onayDialogAcik} kullaniciId={kullanici?.id ?? null}
+        kapat={() => setOnayDialogAcik(false)}
+        onaylandi={() => {
+          setKonumOnayli(true);
+          setOnayDialogAcik(false);
+          toast.success("Onayınız kaydedildi.");
+          // Onaydan sonra kayıt ekranı kendiliğinden açılır: kullanıcı
+          // "Yakıt Ver"e ikinci kez basmak zorunda kalmasın.
+          if (!verDialogOpen) verDialogAc();
+        }}
+      />
 
       {/* Yakıt Ver Dialog */}
       <Dialog open={verDialogOpen} onOpenChange={(open) => { if (!open && menzilSoru) return; setVerDialogOpen(open); }}>
