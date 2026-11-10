@@ -105,6 +105,9 @@ export async function insertAracYakit(data: {
   arac_lng?: number | null;
   arac_konum_at?: string | null;
   arac_mesafe_m?: number | null;
+  arac_yol_m?: number | null;
+  arac_yol_dk?: number | null;
+  arac_yol_kaynak?: string | null;
   konum_notu?: string | null;
 }): Promise<void> {
   const supabase = getSupabase();

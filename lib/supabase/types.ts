@@ -770,8 +770,12 @@ export type AracYakit = {
   arac_lat?: number | null;
   arac_lng?: number | null;
   arac_konum_at?: string | null;
-  /** Kuşbakışı mesafe (m). Hesaplanamadıysa BOŞ — sebebi konum_notu'nda. */
+  /** Kuşbakışı mesafe (m) — ŞÜPHE EŞİĞİ buna bakar. Hesaplanamadıysa BOŞ. */
   arac_mesafe_m?: number | null;
+  /** YOLDAN mesafe (m) — ekranda görünen sayı. Hesaplanamadıysa BOŞ. */
+  arac_yol_m?: number | null;
+  arac_yol_dk?: number | null;
+  arac_yol_kaynak?: string | null;
   konum_notu?: string | null;
   notu: string | null;
   created_at: string;

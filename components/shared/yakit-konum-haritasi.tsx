@@ -27,6 +27,9 @@ export type YakitKonumNokta = {
   arac_lng?: number | null;
   arac_konum_at?: string | null;
   arac_mesafe_m?: number | null;
+  /** YOLDAN mesafe ve süre — kayıt anında hesaplanıp saklanmış değer. */
+  arac_yol_m?: number | null;
+  arac_yol_dk?: number | null;
   plaka?: string | null;
   baslik?: string | null;
 };
@@ -83,6 +86,13 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
               {kayit.arac_konum_at
                 ? ` · ${new Date(kayit.arac_konum_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`
                 : ""}
+            </span>
+          )}
+          {/* İKİ MESAFE: ekranda asıl görünen YOLDAN olanı; kuşbakışı yanında
+              küçük duruyor — şüphe eşiği ona baktığı için kaybolmamalı. */}
+          {kayit.arac_yol_m != null && (
+            <span className="rounded bg-[#1E3A5F] px-2 py-1 font-semibold text-white">
+              yoldan {km(kayit.arac_yol_m)}{kayit.arac_yol_dk ? ` · ~${kayit.arac_yol_dk} dk` : ""}
             </span>
           )}
           {kayit.arac_mesafe_m != null && (

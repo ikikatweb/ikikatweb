@@ -9,6 +9,7 @@ import {
   deleteKullanici,
 } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
+import { getKonumOnaylari, type KonumOnayOzet } from "@/lib/supabase/queries/konum-onay";
 import type { Kullanici, SantiyeWithRelations } from "@/lib/supabase/types";
 import KullaniciForm from "@/components/shared/kullanici-form";
 import {
@@ -24,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Pencil, Trash2, Users, Search, FileDown, FileSpreadsheet } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, Search, FileDown, FileSpreadsheet, MapPin } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -37,6 +38,20 @@ function tr(s: string): string {
   return s.replace(/ğ/g, "g").replace(/Ğ/g, "G").replace(/ü/g, "u").replace(/Ü/g, "U")
     .replace(/ş/g, "s").replace(/Ş/g, "S").replace(/ö/g, "o").replace(/Ö/g, "O")
     .replace(/ç/g, "c").replace(/Ç/g, "C").replace(/ı/g, "i").replace(/İ/g, "I").replace(/—/g, "-");
+}
+
+/** Konum onayı işaretinin ipucu: ne zaman, hangi metin, hangi cihaz, izin verdi mi. */
+function konumOnayIpucu(o: KonumOnayOzet): string {
+  const ne = new Date(o.onay_at).toLocaleString("tr-TR", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  const satir = [`Konum aydınlatmasını onayladı — ${ne}`, `Metin sürümü: ${o.metin_surum}`];
+  // İZİN AYRI BİR ŞEY: "okudum" beyanı ile tarayıcı izni aynı değil.
+  satir.push(o.konum_izni === true
+    ? "Onay anında konum izni verilmişti"
+    : "Onay anında konum izni alınamamıştı");
+  if (o.cihaz) satir.push(`Cihaz: ${o.cihaz}`);
+  return satir.join("\n");
 }
 
 export default function KullanicilarPage() {
@@ -58,6 +73,11 @@ export default function KullanicilarPage() {
   // (04.11.2026: Bilgehan VARDAR 26 kayıtla "Tüm Şantiyeler" görünürken 21 aktif işin
   // 4'ünü görmüyordu). Artık etiket gerçekten hepsi varsa çıkar.
   const [aktifSantiyeIds, setAktifSantiyeIds] = useState<Set<string>>(new Set());
+  // KONUM AYDINLATMA ONAYLARI — kullanıcı kimliğine göre.
+  // null = henüz okunmadı / okunamadı; o durumda işaret HİÇ çizilmez ki
+  // "onay yok" sanılmasın (bkz. onayHatasi).
+  const [konumOnaylari, setKonumOnaylari] = useState<Record<string, KonumOnayOzet> | null>(null);
+  const [onayHatasi, setOnayHatasi] = useState<string | null>(null);
 
   async function loadKullanicilar() {
     try {
@@ -76,6 +96,16 @@ export default function KullanicilarPage() {
       toast.error("Kullanıcılar yüklenirken hata oluştu.");
     } finally {
       setLoading(false);
+    }
+
+    // ONAYLAR AYRI OKUNUYOR: bu tablo okunamasa bile kullanıcı listesi açılsın.
+    // Ama sessizce geçilmez — işaret yoksa sebebi başlıkta yazar.
+    try {
+      setKonumOnaylari(await getKonumOnaylari());
+      setOnayHatasi(null);
+    } catch (err) {
+      setKonumOnaylari(null);
+      setOnayHatasi(err instanceof Error ? err.message : "bilinmeyen hata");
     }
   }
 
@@ -197,6 +227,15 @@ export default function KullanicilarPage() {
         ))}
       </div>
 
+      {/* ONAYLAR OKUNAMADIYSA SÖYLE: işaretin yokluğu "onay vermemiş" diye
+          okunmasın (AGENTS.md — sessiz hata yok). */}
+      {onayHatasi && (
+        <div className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Konum onayları okunamadı, bu yüzden <MapPin size={12} className="inline -mt-0.5" /> işareti
+          hiçbir satırda görünmüyor. Sebep: {onayHatasi}
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => (
           <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
@@ -251,7 +290,23 @@ export default function KullanicilarPage() {
                   <TableCell
                     style={{ position: "sticky", left: 0 }}
                     className={`font-medium shadow-[2px_0_3px_rgba(0,0,0,0.15)] ${!k.aktif ? "bg-gray-100" : "bg-white"}`}
-                  >{k.ad_soyad}</TableCell>
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {k.ad_soyad}
+                      {/* KONUM AYDINLATMA ONAYI — yalnız onay VARSA çizilir.
+                          Onay yoksa boşluk kalır; "eksik" diye kırmızı bir işaret
+                          konmadı, çünkü konum onayı yalnız yakıt kaydı girenler
+                          için gerekiyor — ofisteki kişide eksiklik sayılmaz. */}
+                      {konumOnaylari?.[k.id] && (
+                        <span
+                          title={konumOnayIpucu(konumOnaylari[k.id])}
+                          className="inline-flex items-center text-emerald-600"
+                        >
+                          <MapPin size={13} strokeWidth={2.5} />
+                        </span>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell>{k.kullanici_adi}</TableCell>
                   {/* E-POSTA — şifre yenileme bağlantısı buraya gider; tanımsızsa kullanıcı
                       "şifremi unuttum" diyemez, o yüzden eksikliği göze çarpsın. */}

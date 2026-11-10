@@ -11,7 +11,7 @@ import { useEffect, useState, useCallback, useMemo, useRef, Suspense } from "rea
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAraclar, updateArac } from "@/lib/supabase/queries/araclar";
-import { konumAl, mesafeM, mesafeSupheliMi, KonumHatasi, ARAC_KONUM_TAZELIK_DK, type Konum } from "@/lib/utils/konum";
+import { konumAl, mesafeM, mesafeSupheliMi, yolMesafesi, KonumHatasi, ARAC_KONUM_TAZELIK_DK, type Konum } from "@/lib/utils/konum";
 import { getAnlikKonumlarDirect } from "@/lib/supabase/queries/arvento";
 import KonumOnayDialog, { konumOnayiVarMi } from "@/components/shared/konum-onay-dialog";
 import YakitKonumHaritasi, { type YakitKonumNokta } from "@/components/shared/yakit-konum-haritasi";
@@ -88,6 +88,9 @@ type Hareket =
       // ── KONUM KONTROLÜ ── Kaydın girildiği yer ile aracın o andaki yeri
       // arasındaki mesafe. Hesaplanamadıysa boş; sebebi konum_notu'nda.
       arac_mesafe_m?: number | null;
+      /** YOLDAN mesafe — listede görünen sayı. */
+      arac_yol_m?: number | null;
+      arac_yol_dk?: number | null;
       konum_dogruluk_m?: number | null;
       konum_lat?: number | null;
       konum_lng?: number | null;
@@ -205,21 +208,30 @@ function parseDuzMiktar(formatted: string): number {
  * Rozete tıklayınca konum haritada açılır: sayı tek başına "nerede" demiyor.
  */
 function KonumRozeti({ h, ac }: {
-  h: { arac_mesafe_m?: number | null; konum_dogruluk_m?: number | null;
+  h: { arac_mesafe_m?: number | null; arac_yol_m?: number | null; arac_yol_dk?: number | null;
+       konum_dogruluk_m?: number | null;
        konum_lat?: number | null; konum_lng?: number | null;
        arac_lat?: number | null; arac_lng?: number | null; konum_notu?: string | null };
   /** Panel içi haritayı açar (iki nokta ayrı simgelerle, aralarında yol çizgisi). */
   ac: () => void;
 }) {
-  const mesafe = h.arac_mesafe_m ?? null;
+  const mesafe = h.arac_mesafe_m ?? null;        // kuşbakışı — şüphe eşiği buna bakar
+  const yol = h.arac_yol_m ?? null;              // yoldan — EKRANDA GÖRÜNEN sayı
   const dogruluk = h.konum_dogruluk_m ?? null;
   const supheli = mesafeSupheliMi(mesafe, dogruluk);
-  const metin = mesafe == null
-    ? "konum —"
-    : mesafe >= 1000 ? `${(mesafe / 1000).toFixed(1).replace(".", ",")} km` : `${mesafe} m`;
+  const olcu = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace(".", ",")} km` : `${m} m`);
+  // YOLDAN MESAFE YAZILIR: "19 km" kuşbakışıydı ve gerçeği olduğundan yakın
+  // gösteriyordu; insanın sorduğu "gitmek kaç km". Yol mesafesi yoksa
+  // kuşbakışına düşülür ve başına "~" konur — hangi sayı olduğu belli olsun.
+  const metin = yol != null ? olcu(yol)
+    : mesafe != null ? `~${olcu(mesafe)}`
+      : "konum —";
   const varKonum = h.konum_lat != null && h.konum_lng != null;
   const ipucu = [
-    mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı") : `Kuşbakışı mesafe: ${metin}`,
+    mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı")
+      : yol != null
+        ? `Yoldan ${olcu(yol)}${h.arac_yol_dk ? ` (~${h.arac_yol_dk} dk)` : ""} · kuşbakışı ${olcu(mesafe)}`
+        : `Kuşbakışı ${olcu(mesafe)} — yol mesafesi alınamadı`,
     dogruluk != null ? `telefon sapma payı ±${dogruluk} m` : "sapma payı bilinmiyor",
     varKonum ? "haritada görmek için tıklayın" : "konum kaydedilmemiş (eski kayıt)",
   ].join(" · ");
@@ -533,6 +545,8 @@ function YakitPageContent() {
         notu: y.notu,
         created_by: y.created_by,
         arac_mesafe_m: y.arac_mesafe_m ?? null,
+        arac_yol_m: y.arac_yol_m ?? null,
+        arac_yol_dk: y.arac_yol_dk ?? null,
         konum_dogruluk_m: y.konum_dogruluk_m ?? null,
         konum_lat: y.konum_lat ?? null,
         konum_lng: y.konum_lng ?? null,
@@ -1122,6 +1136,7 @@ function YakitPageContent() {
         // demek insanı yok yere suçlamak olur.
         let aracLat: number | null = null, aracLng: number | null = null;
         let aracKonumAt: string | null = null, mesafe: number | null = null;
+        let yolM: number | null = null, yolDk: number | null = null, yolKaynak: string | null = null;
         let konumNotu: string | null = null;
         const aracKayit = aracMap.get(verDialogAracId);
         const node = (aracKayit?.arvento_node ?? "").trim();
@@ -1144,6 +1159,10 @@ function YakitPageContent() {
                 konumNotu = `Aracın son konum ölçümü ${Math.round(yas / 60)} saat önce — mesafe hesaplanmadı`;
               } else {
                 mesafe = mesafeM(konum, { lat: anlik.lat, lng: anlik.lng });
+                // YOLDAN MESAFE: listede görünen sayı bu. Servis cevap
+                // vermezse boş kalır, ekran kuşbakışına düşer — uydurulmaz.
+                const y = await yolMesafesi({ lat: anlik.lat, lng: anlik.lng }, konum);
+                if (y) { yolM = y.m; yolDk = y.dk; yolKaynak = y.kaynak; }
               }
             }
           } catch {
@@ -1172,6 +1191,9 @@ function YakitPageContent() {
           arac_lng: aracLng,
           arac_konum_at: aracKonumAt,
           arac_mesafe_m: mesafe,
+          arac_yol_m: yolM,
+          arac_yol_dk: yolDk,
+          arac_yol_kaynak: yolKaynak,
           konum_notu: konumNotu,
         });
       }
@@ -2032,6 +2054,8 @@ function YakitPageContent() {
                             konum_dogruluk_m: h.konum_dogruluk_m ?? null,
                             arac_lat: h.arac_lat ?? null, arac_lng: h.arac_lng ?? null,
                             arac_mesafe_m: h.arac_mesafe_m ?? null,
+                            arac_yol_m: h.arac_yol_m ?? null,
+                            arac_yol_dk: h.arac_yol_dk ?? null,
                             plaka: aracMap.get(h.arac_id)?.plaka ?? null,
                             baslik: `${h.tarih ? h.tarih.split("-").reverse().join(".") : ""} ${h.saat?.slice(0, 5) ?? ""}`,
                           });

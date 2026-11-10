@@ -203,3 +203,35 @@ export function konumAcmaAdimlari(): { baslik: string; adimlar: string[] } {
     ],
   };
 }
+
+/**
+ * YOLDAN MESAFE — iki nokta arası sürüş rotası.
+ *
+ * NİYE GEREKLİ: kuşbakışı mesafe "aynı yerde miydiler" sorusunu cevaplıyor ama
+ * ekranda görülmek istenen "oraya gitmek kaç km". Aynı iki nokta için kuşbakışı
+ * 19, yoldan 24 km çıkabiliyor.
+ *
+ * SERVİS: OSRM açık sunucusu — anahtar istemiyor, kayıt başına BİR kez
+ * sorulur. Köy/tarla yolları OpenStreetMap'te eksikse rota en yakın bilinen
+ * yoldan geçer; Google'ınkinden birkaç yüz metre sapabilir.
+ *
+ * CEVAP GELMEZSE null: mesafe UYDURULMAZ, çağıran taraf kuşbakışına düşer.
+ */
+export async function yolMesafesi(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+  saniye = 12,
+): Promise<{ m: number; dk: number; kaynak: string } | null> {
+  try {
+    const r = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}`
+      + `?overview=false&snapping=any`,
+      { signal: AbortSignal.timeout(saniye * 1000) },
+    );
+    if (!r.ok) return null;
+    const c = await r.json();
+    const rota = c?.routes?.[0];
+    if (!rota || typeof rota.distance !== "number") return null;
+    return { m: Math.round(rota.distance), dk: Math.round((rota.duration ?? 0) / 60), kaynak: "osrm" };
+  } catch { return null; }
+}
