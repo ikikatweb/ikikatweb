@@ -13,7 +13,7 @@ async function cek(): Promise<LogoItem[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("firmalar")
-    .select("firma_adi, kisa_adi, logo_url, durum, sira_no")
+    .select("firma_adi, kisa_adi, logo_url, renk, durum, sira_no")
     .eq("durum", "aktif")
     .not("logo_url", "is", null)
     .order("sira_no", { ascending: true });
@@ -25,7 +25,14 @@ async function cek(): Promise<LogoItem[]> {
   }
   return (data ?? [])
     .filter((f) => typeof f.logo_url === "string" && f.logo_url.trim())
-    .map((f) => ({ src: String(f.logo_url), alt: f.kisa_adi?.trim() || f.firma_adi }));
+    // RENK DE GELİR: kenar çubuğunda logonun yanında ince bir çubuk olarak
+    // görünüyor — panelde firma rengi her yerde (tablolar, kartlar) bu dille
+    // gösteriliyor, logo da aynı dili konuşsun.
+    .map((f) => ({
+      src: String(f.logo_url),
+      alt: f.kisa_adi?.trim() || f.firma_adi,
+      renk: typeof f.renk === "string" && f.renk.trim() ? f.renk : null,
+    }));
 }
 
 export function getFirmaLogolari(): Promise<LogoItem[]> {

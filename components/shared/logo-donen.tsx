@@ -11,7 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { getFirmaLogolari, LOGO_DEGISTI_OLAYI } from "@/lib/supabase/queries/firma-logolari";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 
-export type LogoItem = { src: string; alt: string };
+export type LogoItem = {
+  src: string;
+  alt: string;
+  /** Firmanın rengi — logonun yanındaki ince çubuk. Yoksa çubuk çizilmez. */
+  renk?: string | null;
+};
 
 /** VARSAYILAN liste — yalnız YEDEK. Asıl liste firmalardan gelir: Firma düzenleme
  *  ekranındaki "Logo Yükle" ile logosu yüklenmiş her firma kendiliğinden döner
@@ -108,11 +113,23 @@ export default function LogoDonen({ logolar: disListe, araSn = 5, className = "h
   }, [sekmeGizli, gecerli.length, araSn]);
 
   if (gecerli.length === 0) return null;
+  const aktifRenk = gecerli[aktif]?.renk ?? null;
 
   return (
     <div
       className={`relative overflow-hidden ${className}`}
     >
+      {/* FİRMA RENGİ — LOGONUN YANINDA İNCE ÇUBUK.
+          Panelde firma rengi her yerde böyle gösteriliyor (icra tabloları,
+          kartlar); logo da aynı dili konuşuyor. DİKKAT ÇEKMEMESİ İSTENDİ:
+          3px eninde, kutunun beşte ikisi boyunda ve yarı saydam — bakınca
+          görülüyor, bakmayınca göze girmiyor. KENARDAN İÇERİDE duruyor:
+          sağ sınıra yapışınca kenar çubuğunun çizgisiyle karışıyor ve renk
+          seçilmiyordu. Logo dönerken rengi de yumuşakça değişiyor. */}
+      {aktifRenk && (
+        <span aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-2/5 w-[3px] -translate-y-1/2 rounded-full opacity-60 transition-colors duration-500"
+          style={{ backgroundColor: aktifRenk }} />
+      )}
       {gecerli.map((l, i) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
