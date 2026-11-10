@@ -890,6 +890,28 @@ export type IcraKayit = {
   avukat_mail_gonderen_id: string | null;
   /** Kaç kez gönderildi. 1'den büyükse tekrar gönderilmiştir. */
   avukat_mail_sayisi: number;
+  // ── MUHASEBE AŞAMASI (sql/icra_muhasebe.sql) ──
+  // Cevabın altlığını muhasebe hazırlıyor: borçluya borcumuz var mı, varsa ne
+  // kadar ve cevap hangi şekilde verilecek. Dosya panele girilir girilmez mail
+  // gidiyor; cevap şekli bu bildirime göre seçiliyor.
+  /** Mail BAŞARIYLA gittiği an. Boşsa gönderilmemiştir. */
+  muhasebe_mail_at: string | null;
+  muhasebe_mail_ek: string | null;
+  /** Mailin gittiği adresler (anlık kopya) — tanımlar değişse de kalır. */
+  muhasebe_mail_alici: string | null;
+  muhasebe_mail_gonderen: string | null;
+  muhasebe_mail_gonderen_id: string | null;
+  muhasebe_mail_sayisi: number;
+  /** Muhasebe cevabının PANELE girildiği an — mailin geldiği an değil. */
+  muhasebe_cevap_at: string | null;
+  /** "var" | "yok" — borçluya borcumuz var mı. */
+  muhasebe_borc_durumu: string | null;
+  muhasebe_borc_tutari: number | null;
+  /** Muhasebenin belirlediği cevap şekli (kullanıcı başkasını seçerse ikisi birden durur). */
+  muhasebe_cevap_sekli: string | null;
+  muhasebe_notu: string | null;
+  muhasebe_cevap_yazan: string | null;
+  muhasebe_cevap_yazan_id: string | null;
   /** İcra dairesinden haciz kaldırma yazısı geldiyse o yazının tarihi. Dosyayı kapatmaz. */
   haciz_kaldirma_tarihi: string | null;
   haciz_kaldirma_notu: string | null;
@@ -937,6 +959,24 @@ export type IcraSirketTakip = {
   avukat_mail_gonderen: string | null;
   avukat_mail_gonderen_id: string | null;
   avukat_mail_sayisi: number;
+  // ── MUHASEBE AŞAMASI (sql/icra_muhasebe.sql) ──
+  // Soru burada ters yönde: borçlu biziz. "Bu borç ödenmiş mi, ödenecek mi,
+  // itiraz edilecek mi" — cevap şeklini yine muhasebe belirliyor.
+  /** Mail BAŞARIYLA gittiği an. Boşsa gönderilmemiştir. */
+  muhasebe_mail_at: string | null;
+  muhasebe_mail_ek: string | null;
+  muhasebe_mail_alici: string | null;
+  muhasebe_mail_gonderen: string | null;
+  muhasebe_mail_gonderen_id: string | null;
+  muhasebe_mail_sayisi: number;
+  muhasebe_cevap_at: string | null;
+  /** "odendi" | "odenmedi" — takip konusu borç ödenmiş mi. */
+  muhasebe_borc_durumu: string | null;
+  muhasebe_borc_tutari: number | null;
+  muhasebe_cevap_sekli: string | null;
+  muhasebe_notu: string | null;
+  muhasebe_cevap_yazan: string | null;
+  muhasebe_cevap_yazan_id: string | null;
   /** Tebligat ekindeki PDF'in kayıtlı adresi — panelde "Belgeyi aç" ile açılır. */
   belge_yolu: string | null;
   tebligat_barkod: string | null;

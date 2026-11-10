@@ -23,6 +23,7 @@ import { Loader2 } from "lucide-react";
 import { updateIcraSirketTakip } from "@/lib/supabase/queries/icra-sirket";
 import { DURUMLAR, durumSecenekleri } from "@/components/shared/icra-sirket-tablosu";
 import AvukatSecim from "@/components/shared/avukat-secim";
+import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
 import { icraDegisti } from "@/hooks";
@@ -70,11 +71,16 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
     setAvukatId(kayit.avukat_id ?? "");
     setAvukatAdi(kayit.avukat_adi ?? "");
     setAvukatNotu(kayit.avukat_notu ?? "");
-    setDurum(kayit.durum);
+    // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: dosya ele alınmamışsa (durum
+    // "yeni") ve muhasebe bir şekil bildirmişse o seçili gelir. Kayıtlı bir
+    // durum varsa dokunulmaz — verilmiş cevabı değiştirmek olurdu.
+    const ilkDurum = kayit.durum === "yeni" && kayit.muhasebe_cevap_sekli
+      ? (kayit.muhasebe_cevap_sekli as IcraSirketDurum) : kayit.durum;
+    setDurum(ilkDurum);
     setAciklama(kayit.aciklama ?? "");
     setDenendi(false);
     setBaslangic(JSON.stringify([tutar, kayit.odeme_tarihi ?? "", kayit.banka_adi ?? "",
-      kayit.avukat_id ?? "", kayit.avukat_notu ?? "", kayit.durum, kayit.aciklama ?? ""]));
+      kayit.avukat_id ?? "", kayit.avukat_notu ?? "", ilkDurum, kayit.aciklama ?? ""]));
   }, [acik, kayit]);
 
   function formEnter(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -231,6 +237,10 @@ export default function OdemeEmriIslemDialog({ kayit, acik, kapat, kaydedildi }:
               alanlar buna bağlı, insan önce bunu görmeli. "Seçin…" ele
               alınmamış demektir (durum="yeni"); işlenmiş bir takip buraya
               çekilerek geri alınabilir. */}
+          {/* MUHASEBENİN BİLDİRDİĞİ, CEVAP ŞEKLİNİN ÜSTÜNDE: ödeme emrinde
+              "borç ödenmiş mi, itiraz mı edilecek" cevabını muhasebe veriyor;
+              cevap şekli ona bakılarak seçiliyor. */}
+          <div className="sm:col-span-2"><MuhasebeBandi kayit={kayit} sirket /></div>
           <div className="sm:col-span-2">
             <label className={lbl}>Cevap şekli</label>
             <select className={inp} value={durum} onChange={(e) => sekilDegistir(e.target.value as IcraSirketDurum)}>

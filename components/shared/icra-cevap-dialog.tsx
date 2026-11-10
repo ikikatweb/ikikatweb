@@ -64,7 +64,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
     if (!acik || !kayit) return;
     setDenendi(false);
     const ilk: CevapAlanlari = {
-      cevap_sekli: kayit.cevap_sekli ?? "",
+      // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: cevap şeklini muhasebe
+      // belirliyor. Dosyada kendi şekli varsa ona dokunulmaz.
+      cevap_sekli: kayit.cevap_sekli ?? kayit.muhasebe_cevap_sekli ?? "",
       cevap_tarihi: kayit.cevap_tarihi ?? "",
       evrak_no: kayit.evrak_no ?? "",
       odenen_tutar: sayiToInput(Number(kayit.odenen_tutar || 0)),
@@ -237,6 +239,9 @@ export default function IcraCevapDialog({ kayit, acik, kapat, kaydedildi }: {
           <IcraCevapAlanlari
             deger={v} degistir={degistir} sekiller={sekiller}
             tebligTarihi={kayit.teblig_tarihi ?? ""} zorunlu icraId={kayit.id} denendi={denendi} denendiSifirla={() => setDenendi(false)}
+            // MUHASEBENİN BİLDİRDİĞİ, CEVAP ŞEKLİNİN ÜSTÜNDE: cevap şeklini
+            // belirleyen o bildirim; görünmeden yapılan seçim tahmin olur.
+            muhasebe={kayit}
             mailBilgisi={{
               tarih: kayit.avukat_mail_at, ek: kayit.avukat_mail_ek,
               gonderen: kayit.avukat_mail_gonderen, sayi: kayit.avukat_mail_sayisi,

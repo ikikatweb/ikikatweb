@@ -22,6 +22,8 @@ import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import AvukatSecim from "@/components/shared/avukat-secim";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
+import MuhasebeCevapDialog, { MuhasebeRozet, MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
 import { sonGunHesapla, bugunISO } from "@/lib/utils/icra-sure";
@@ -103,6 +105,9 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(BOS);
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // MUHASEBE PENCERESİ: gönderim izi + muhasebenin bildirdiği (borç ödenmiş mi,
+  // cevap şekli ne olacak).
+  const [muhasebeKayit, setMuhasebeKayit] = useState<IcraSirketTakip | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -175,7 +180,12 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         odeme_tarihi: row.odeme_tarihi ?? "", banka_adi: row.banka_adi ?? "",
         avukat_id: row.avukat_id ?? "", avukat_adi: row.avukat_adi ?? "",
         avukat_notu: row.avukat_notu ?? "",
-        durum: row.durum, aciklama: row.aciklama ?? "",
+        // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: dosya henüz ele alınmamışsa
+        // (durum "yeni") ve muhasebe bir şekil bildirmişse o seçili gelir.
+        // Kayıtlı bir durum varsa dokunulmaz — verilmiş cevabı değiştirmek olurdu.
+        durum: row.durum === "yeni" && row.muhasebe_cevap_sekli
+          ? (row.muhasebe_cevap_sekli as IcraSirketDurum) : row.durum,
+        aciklama: row.aciklama ?? "",
       });
     } else { setEditId(null); setForm(BOS); }
     setDialogAcik(true);
@@ -266,6 +276,34 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
         const row = await insertIcraSirketTakip({ ...payload, sira: maxSira + 1 });
         setSatirlar((p) => [row, ...p]);
         kayitId = row.id;
+
+        // ── MUHASEBEYE OTOMATİK GÖNDERİM (YALNIZ YENİ KAYITTA) ──
+        // Ödeme emrinde soru şu: borç ödenmiş mi, ödenecek mi, itiraz mı
+        // edilecek. Cevabı muhasebe veriyor; dosya panele girildiği an gidiyor.
+        // GEÇMİŞ KAYIT GİRİLİRKEN GÖNDERİLMEZ (bkz. muhasebeGerekliMi).
+        const gerekli = muhasebeGerekliMi({
+          teblig_tarihi: row.teblig_tarihi,
+          cevapVerildi: row.durum !== "yeni",
+          sureGun: row.itiraz_suresi_gun,
+        }, true);
+        if (gerekli) {
+          try {
+            const m = await muhasebeyeGonder(row.id, "sirket", form.avukat_notu);
+            setSatirlar((p) => p.map((x) => (x.id === row.id ? {
+              ...x, muhasebe_mail_at: m.gonderildiAt, muhasebe_mail_ek: m.ek,
+              muhasebe_mail_alici: m.alicilar.join(", "), muhasebe_mail_gonderen: m.gonderen,
+              muhasebe_mail_sayisi: 1,
+            } : x)));
+            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`, { duration: 7000 });
+            if (m.kayitHatasi) toast.error(`Muhasebe maili gitti ama kayıt güncellenemedi: ${m.kayitHatasi}`, { duration: 10000 });
+            if (m.antetInemedi) toast.error("Muhasebe maili ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+          } catch (e) {
+            // SESSİZ GEÇİLMEZ (AGENTS.md): ek inmediyse mail HİÇ gitmedi.
+            toast.error(`${e instanceof Error ? e.message : "Muhasebeye mail gönderilemedi."}\n\n`
+              + `Dosya kaydedildi ama MUHASEBEYE GÖNDERİLMEDİ — Muhasebe penceresinden tekrar deneyin.`,
+              { duration: 14000 });
+          }
+        }
       }
       icraDegisti();   // durum "yeni"den çıktıysa menü rozeti hemen düşsün
       toast.success(editId ? "Dosya güncellendi." : "Dosya eklendi.");
@@ -375,12 +413,13 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <col className="w-[3%]" />{/* S.No */}
             <col className="w-[3%]" />{/* firma rengi */}
             <col className="w-[8%]" />{/* Dosya */}
-            <col className="w-[13%]" />{/* İcra dairesi */}
-            <col className="w-[15%]" />{/* Alacaklı */}
+            <col className="w-[11%]" />{/* İcra dairesi */}
+            <col className="w-[13%]" />{/* Alacaklı */}
             <col className="w-[9%]" />{/* Takip tutarı */}
             <col className="w-[7%]" />{/* Tebliğ */}
             <col className="w-[10%]" />{/* Son itiraz günü */}
             <col className="w-[8%]" />{/* Ödenen */}
+            <col className="w-[7%]" />{/* Muhasebe */}
             <col className="w-[9%]" />{/* Durum */}
             <col className="w-[4%]" />{/* Belge */}
             {islemVar && <col className="w-[6%]" />}
@@ -404,6 +443,9 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
               <th className={th}>Tebliğ</th>
               <th className={th}>Son İtiraz Günü</th>
               <th className={th}>Ödenen</th>
+              {/* MUHASEBE CEVAP ŞEKLİNDEN ÖNCE: ödeme emri gelir, muhasebeye
+                  gider, "ödendi mi / itiraz mı" cevabı gelir, şekil ona göre seçilir. */}
+              <th className={th}>Muhasebe</th>
               {/* Pencerede de "Cevap şekli" diyor — iki yerde iki ad karışıklık yapıyordu. */}
               <th className={th}>Cevap Şekli</th>
               <th className={th}>Belge</th>
@@ -412,7 +454,7 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={islemVar ? 12 : 11} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={islemVar ? 13 : 12} className="text-center text-gray-400 py-8">
                 {arama.trim() || sadeceAcik ? "Süzgeçle eşleşen kayıt yok." : "Henüz kayıt yok. Şirkete ödeme emri gelirse buraya düşer."}
               </td></tr>
             )}
@@ -433,6 +475,16 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
                   <td className={`${td} text-center`}><SureHucresi s={s} /></td>
                   <td className={`${td} text-right tabular-nums text-emerald-700`}>{paraGoster(Number(s.odenen_tutar || 0))}</td>
+                  {/* MUHASEBE ROZETİ: tıklayınca gönderim izi ve muhasebenin
+                      bildirdiği borç durumu penceresi açılır. */}
+                  <td className="border border-gray-100 px-1 py-1.5 align-middle">
+                    <MuhasebeRozet kayit={s} sirket ac={() => setMuhasebeKayit(s)}
+                      gerekli={muhasebeGerekliMi({
+                        teblig_tarihi: s.teblig_tarihi,
+                        cevapVerildi: s.durum !== "yeni",
+                        sureGun: s.itiraz_suresi_gun,
+                      }, true)} />
+                  </td>
                   <td className={`${td} text-center`}>
                     <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${d.sinif}`}>{d.ad}</span>
                   </td>
@@ -460,10 +512,10 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
               <td className={`${td} text-right`} colSpan={5}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamTakip)}</td>
-              {/* Tebliğ + Son İtiraz Günü (İtiraz sütunu kaldırıldı) */}
+              {/* Tebliğ + Son İtiraz Günü */}
               <td className={td} colSpan={2} />
               <td className={`${td} text-right tabular-nums text-emerald-700 px-2`}>{tlFmt(toplamOdenen)}</td>
-              <td className={td} colSpan={islemVar ? 3 : 2} />
+              <td className={td} colSpan={islemVar ? 4 : 3} />
             </tr>
           </tfoot>
         </table>
@@ -548,6 +600,8 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
                 satır, sorulan alanlar ona bağlı. "Seçin…" ele alınmamış demek
                 (durum="yeni"); işlenmiş bir takip buraya çekilerek geri alınır. */}
             <div className="sm:col-span-3 mt-1 border-t pt-3 text-xs font-semibold text-gray-500">Cevap / Ödeme</div>
+            {/* MUHASEBENİN BİLDİRDİĞİ, CEVAP ŞEKLİNİN ÜSTÜNDE: şekli belirleyen o. */}
+            <div className="sm:col-span-3"><MuhasebeBandi kayit={duzenlenen} sirket /></div>
             <div className="sm:col-span-3"><label className={fLbl}>Cevap şekli</label>
               <select className={fInp} value={form.durum} onChange={(e) => sekilDegistir(e.target.value as IcraSirketDurum)}>
                 <option value="yeni">Seçin…</option>
@@ -610,6 +664,21 @@ export default function IcraSirketTablosu({ canEkle, canDuzenle, canSil }: { can
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* MUHASEBE PENCERESİ: rozetten açılır. Cevap şekli listesi burada DURUM
+          kodlarıdır — muhasebe "ödendi / avukatta / kapandı"dan birini bildirir,
+          dosya o şekille açılır. */}
+      <MuhasebeCevapDialog
+        kayit={muhasebeKayit} kaynak="sirket" acik={Boolean(muhasebeKayit)}
+        kapat={() => setMuhasebeKayit(null)}
+        sekiller={SECILEBILIR_DURUMLAR.map((k) => ({ kod: k, ad: DURUMLAR.find((d) => d.kod === k)?.ad ?? k }))}
+        kaydedildi={(yama) => {
+          const id = muhasebeKayit?.id;
+          if (!id) return;
+          setSatirlar((p) => p.map((s) => (s.id === id ? { ...s, ...yama } as IcraSirketTakip : s)));
+          setMuhasebeKayit((m) => (m ? { ...m, ...yama } as IcraSirketTakip : m));
+        }}
+      />
     </div>
   );
 }

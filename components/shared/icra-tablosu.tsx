@@ -17,6 +17,8 @@ import IcraCevapAlanlari, { BOS_CEVAP, cevapKipi, cevapDogrula, eksikCevapAlanla
 import { kapanabilir, ayniMi } from "@/lib/utils/pencere-kapanis";
 import { avukataGonder } from "@/lib/supabase/queries/icra-avukat-mail";
 import { avukatTakipNotuGoster } from "@/components/shared/avukat-takip-notu";
+import MuhasebeCevapDialog, { MuhasebeRozet } from "@/components/shared/muhasebe-cevap-dialog";
+import { muhasebeyeGonder, muhasebeGerekliMi } from "@/lib/supabase/queries/icra-muhasebe";
 import { Button } from "@/components/ui/button";
 
 // Cevap Şekli varsayılanları (Tanımlamalar boşsa kullanılır). Tanımlamalar sekmesinden yönetilir.
@@ -136,6 +138,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
   const gonderilecek = cevapKipi(cevap.cevap_sekli).avukat && Boolean(cevap.avukat_id)
     && !avukatCevabiDuruyor;
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // MUHASEBE PENCERESİ: gönderim izi + muhasebenin bildirdiği borç durumu/cevap şekli.
+  const [muhasebeKayit, setMuhasebeKayit] = useState<IcraKayit | null>(null);
   const formRef = useRef<HTMLDivElement>(null); // Enter ile sonraki alana geçiş
   const [kilitli, setKilitli] = useState(false); // dashboard "Tarih gir" (?kilit=1): mevcut veriler kilitli, yalnız cevap/ödeme girilir
 
@@ -262,7 +266,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         borc_miktari: sayiToInput(Number(row.borc_miktari || 0)),
       };
       ilkCevap = {
-        cevap_sekli: row.cevap_sekli ?? "", cevap_tarihi: row.cevap_tarihi ?? "",
+        // MUHASEBENİN BELİRLEDİĞİ ŞEKİLLE AÇILIR: cevap şeklini muhasebe
+        // belirliyor (borcumuz yoksa yazışma, varsa havale, dava gerekiyorsa
+        // avukat). Dosyada kendi şekli varsa ona dokunulmaz — kayıtlı cevabı
+        // muhasebenin önerisiyle ezmek, verilmiş cevabı değiştirmek olurdu.
+        cevap_sekli: row.cevap_sekli ?? row.muhasebe_cevap_sekli ?? "",
+        cevap_tarihi: row.cevap_tarihi ?? "",
         evrak_no: row.evrak_no ?? "", odenen_tutar: sayiToInput(Number(row.odenen_tutar || 0)),
         banka_adi: row.banka_adi ?? "", avukat_id: row.avukat_id ?? "",
         avukat_adi: row.avukat_adi ?? "", avukat_notu: row.avukat_notu ?? "",
@@ -364,6 +373,41 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
         const row = await insertIcraKayit({ ...payload, sira: maxSira + 1 });
         setSatirlar((p) => [...p, row]);
         kayitId = row.id;
+
+        // ── MUHASEBEYE OTOMATİK GÖNDERİM (YALNIZ YENİ KAYITTA) ──
+        // Cevabın altlığını ve borç durumunu muhasebe çıkarıyor; cevap şeklini
+        // belirleyen de o. "Gelir gelmez gönderilsin" insana bırakılmıyor:
+        // dosya panele girildiği an gidiyor.
+        //
+        // GEÇMİŞ KAYIT GİRİLİRKEN GÖNDERİLMEZ: deftere eski dosyalar da
+        // işleniyor (2021-2023 tebliğ tarihli, süresi dolmuş). Onlar için
+        // muhasebeden altlık istemek karşılıksız bir mail olurdu. Ölçü
+        // muhasebeGerekliMi: cevabı verilmemiş VE süresi geçmemiş dosya.
+        const gerekli = muhasebeGerekliMi({
+          teblig_tarihi: row.teblig_tarihi,
+          cevapVerildi: Boolean(row.cevap_sekli || row.cevap_tarihi),
+          sureGun: row.cevap_suresi_gun,
+        }, false);
+        if (gerekli) {
+          try {
+            const m = await muhasebeyeGonder(row.id, "icra", cevap.avukat_notu);
+            setSatirlar((p) => p.map((s) => (s.id === row.id ? {
+              ...s, muhasebe_mail_at: m.gonderildiAt, muhasebe_mail_ek: m.ek,
+              muhasebe_mail_alici: m.alicilar.join(", "), muhasebe_mail_gonderen: m.gonderen,
+              muhasebe_mail_sayisi: 1,
+            } : s)));
+            toast.success(`Muhasebeye gönderildi (${m.alicilar.length} alıcı) · ek: ${m.ek}`, { duration: 7000 });
+            if (m.kayitHatasi) toast.error(`Muhasebe maili gitti ama kayıt güncellenemedi: ${m.kayitHatasi}`, { duration: 10000 });
+            if (m.antetInemedi) toast.error("Muhasebe maili ANTETSİZ gitti — firma anteti indirilemedi.", { duration: 9000 });
+          } catch (e) {
+            // SESSİZ GEÇİLMEZ (AGENTS.md): ek inmediyse mail HİÇ gitmedi.
+            // Dosya kaydedildi ama muhasebe aşaması başlamadı — bu söylenmezse
+            // altlık beklenirken süre işler.
+            toast.error(`${e instanceof Error ? e.message : "Muhasebeye mail gönderilemedi."}\n\n`
+              + `Dosya kaydedildi ama MUHASEBEYE GÖNDERİLMEDİ — Muhasebe penceresinden tekrar deneyin.`,
+              { duration: 14000 });
+          }
+        }
       }
 
       // AVUKATA MAİL — hızlı pencereyle aynı kural: yalnız daha önce gitmediyse.
@@ -471,11 +515,12 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
             <col className="w-[7%]" />{/* Dosya Esas No */}
             <col className="w-[7%]" />{/* Gelen Yazı */}
             <col className="w-[7%]" />{/* Tebliğ */}
+            <col className="w-[8%]" />{/* Muhasebe */}
             <col className="w-[7%]" />{/* Cevap Tarihi */}
-            <col className="w-[8%]" />{/* Cevap Şekli */}
-            <col className="w-[7%]" />{/* Ödenen */}
-            <col className="w-[6%]" />{/* Evrak No */}
-            <col className="w-[10%]" />{/* Alacaklı Adı */}
+            <col className="w-[7%]" />{/* Cevap Şekli */}
+            <col className="w-[6%]" />{/* Ödenen */}
+            <col className="w-[5%]" />{/* Evrak No */}
+            <col className="w-[9%]" />{/* Alacaklı Adı */}
             {!kompakt && <col className="w-[6%]" />}{/* Alacaklı Vergi */}
             <col className="w-[10%]" />{/* Borçlu Adı */}
             {!kompakt && <col className="w-[6%]" />}{/* Borçlu TC */}
@@ -497,6 +542,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               <th rowSpan={2} className={th}>Dosya Esas No</th>
               <th rowSpan={2} className={th}>Gelen İcra Yazısı Tarihi</th>
               <th rowSpan={2} className={th}>Tebliğ Tarihi</th>
+              {/* MUHASEBE CEVAP ŞEKLİNDEN ÖNCE: sıra böyle işliyor — yazı gelir,
+                  muhasebeye gider, borç durumu gelir, cevap şekli ona göre seçilir. */}
+              <th rowSpan={2} className={th}>Muhasebe</th>
               <th rowSpan={2} className={th}>İcraya Cevap Tarihi</th>
               <th rowSpan={2} className={th}>Cevap Şekli</th>
               <th rowSpan={2} className={th}>Ödenen Tutar</th>
@@ -515,7 +563,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </thead>
           <tbody>
             {gorunen.length === 0 && (
-              <tr><td colSpan={(islemVar ? 15 : 14) - (kompakt ? 2 : 0)} className="text-center text-gray-400 py-8">
+              <tr><td colSpan={(islemVar ? 16 : 15) - (kompakt ? 2 : 0)} className="text-center text-gray-400 py-8">
                 {arama.trim() ? "Aramayla eşleşen kayıt yok." : `Henüz kayıt yok.${canEkle ? " “Yeni İcra Dosyası Ekle” ile başlayın." : ""}`}
               </td></tr>
             )}
@@ -559,6 +607,16 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   </td>
                   <td className={`${td} text-center`}>{tarihGoster(s.gelen_yazi_tarihi)}</td>
                   <td className={`${td} text-center`}>{tarihGoster(s.teblig_tarihi)}</td>
+                  {/* MUHASEBE ROZETİ: tıklayınca gönderim izi ve muhasebenin
+                      bildirdiği borç durumu penceresi açılır. */}
+                  <td className="border border-gray-100 px-1 py-1.5 align-middle">
+                    <MuhasebeRozet kayit={s} sirket={false} ac={() => setMuhasebeKayit(s)}
+                      gerekli={muhasebeGerekliMi({
+                        teblig_tarihi: s.teblig_tarihi,
+                        cevapVerildi: Boolean(s.cevap_sekli || s.cevap_tarihi),
+                        sureGun: s.cevap_suresi_gun,
+                      }, false)} />
+                  </td>
                   <td className={`${td} text-center ${cevapYok ? "bg-red-100 text-red-600 font-medium" : ""}`} title={cevapYok ? "İcraya cevap verilmemiş" : undefined}>{cevapYok ? "Cevap yok" : tarihGoster(s.cevap_tarihi)}</td>
                   {/* AVUKAT ARACILIĞIYSA DOĞRUDAN AVUKATIN ADI: "Avukat Aracılığı"
                       yazısı hangi avukat olduğunu söylemiyor ve tabloda asıl
@@ -594,7 +652,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </tbody>
           <tfoot>
             <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold text-[#1E3A5F]">
-              <td className={`${td} text-right`} colSpan={kompakt ? 11 : 13}>TOPLAM</td>
+              <td className={`${td} text-right`} colSpan={kompakt ? 12 : 14}>TOPLAM</td>
               <td className={`${td} text-right tabular-nums text-red-600 px-2`}>{tlFmt(toplamBorc)}</td>
               {islemVar && <td className={td} />}
             </tr>
@@ -715,6 +773,9 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
               deger={cevap} degistir={(y) => setCevap((p) => ({ ...p, ...y }))}
               sekiller={cevapSekilleri} tebligTarihi={form.teblig_tarihi}
               mailBilgisi={mailBilgisi} icraId={editId} denendi={cevapDenendi} denendiSifirla={() => setCevapDenendi(false)}
+              // MUHASEBENİN BİLDİRDİĞİ, CEVAP ŞEKLİNİN ÜSTÜNDE: seçim ona
+              // bakılarak yapılıyor. Yeni kayıtta (henüz gönderilmemiş) gösterilmez.
+              muhasebe={duzenlenen}
               tekrarGonderildi={(c) => setSatirlar((p) => p.map((x) => (x.id === editId
                 ? { ...x, avukat_mail_at: c.gonderildiAt, avukat_mail_ek: c.ek,
                     avukat_mail_gonderen: c.gonderen, avukat_mail_sayisi: (x.avukat_mail_sayisi ?? 0) + 1 }
@@ -734,6 +795,20 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* MUHASEBE PENCERESİ: rozetten açılır — gönderim izi ve muhasebenin
+          bildirdiği borç durumu / cevap şekli burada kaydedilir. */}
+      <MuhasebeCevapDialog
+        kayit={muhasebeKayit} kaynak="icra" acik={Boolean(muhasebeKayit)}
+        kapat={() => setMuhasebeKayit(null)}
+        sekiller={cevapSekilleri.map((s) => ({ kod: s, ad: s }))}
+        kaydedildi={(yama) => {
+          const id = muhasebeKayit?.id;
+          if (!id) return;
+          setSatirlar((p) => p.map((s) => (s.id === id ? { ...s, ...yama } as IcraKayit : s)));
+          setMuhasebeKayit((m) => (m ? { ...m, ...yama } as IcraKayit : m));
+        }}
+      />
     </div>
   );
 }

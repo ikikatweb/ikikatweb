@@ -18,6 +18,8 @@
 
 import IcraIadeliEvrak from "@/components/shared/icra-iadeli-evrak";
 import AvukatSecim, { type AvukatMailBilgisi } from "@/components/shared/avukat-secim";
+import { MuhasebeBandi } from "@/components/shared/muhasebe-cevap-dialog";
+import type { MuhasebeDurumu } from "@/lib/supabase/queries/icra-muhasebe";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 
 export type CevapAlanlari = {
@@ -151,7 +153,7 @@ export function cevapDogrula(v: CevapAlanlari, tebligTarihi: string): string | n
 
 export default function IcraCevapAlanlari({
   deger, degistir, sekiller, tebligTarihi, zorunlu = false, kilitli = false, mailBilgisi,
-  icraId, tekrarGonderildi, denendi = false, denendiSifirla,
+  icraId, tekrarGonderildi, denendi = false, denendiSifirla, muhasebe,
 }: {
   deger: CevapAlanlari;
   degistir: (yama: Partial<CevapAlanlari>) => void;
@@ -175,6 +177,15 @@ export default function IcraCevapAlanlari({
   denendi?: boolean;
   /** Cevap şekli değişince kırmızılar silinir: istenen alanlar da değişti. */
   denendiSifirla?: () => void;
+  /**
+   * MUHASEBE AŞAMASI — cevap şeklini belirleyen bildirim.
+   *
+   * NİYE BURADA: cevap şekli (yazışma / havale / avukat) muhasebenin bildirdiği
+   * borç durumuna göre seçiliyor. Bildirim başka bir pencerede dururken burada
+   * seçim yapmak, kullanıcıyı iki pencere arasında gidip gelmeye zorluyordu.
+   * Cevap şeklinin HEMEN ÜSTÜNDE duruyor ki seçim ona bakılarak yapılsın.
+   */
+  muhasebe?: MuhasebeDurumu | null;
 }) {
 
   const kip = cevapKipi(deger.cevap_sekli);
@@ -205,6 +216,12 @@ export default function IcraCevapAlanlari({
 
   return (
     <>
+      {/* MUHASEBENİN BİLDİRDİĞİ — CEVAP ŞEKLİNİN ÜSTÜNDE.
+          Cevap şeklini belirleyen bu bildirim: "borcumuz yok" ise yazışma,
+          "var" ise havale, dava/itiraz gerekiyorsa avukat. Bildirimi görmeden
+          yapılan seçim tahmin olur. */}
+      <MuhasebeBandi kayit={muhasebe ?? null} sirket={false} />
+
       {/* CEVAP ŞEKLİ İLK VE TEK SATIR: formun geri kalanı buna bağlı. Tarih başta
           dururken insan önce onu dolduruyor, cevap şeklini en sonda görüp boş
           bırakıyordu. */}

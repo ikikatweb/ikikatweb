@@ -45,6 +45,7 @@ import BordroHatirlatma from "@/components/shared/bordro-hatirlatma";
 import CalisilmayanDonemHatirlatma from "@/components/shared/calisilmayan-donem-hatirlatma";
 import IcraSureHatirlatma from "@/components/shared/icra-sure-hatirlatma";
 import AvukatTakipHatirlatma from "@/components/shared/avukat-takip-hatirlatma";
+import MuhasebeHatirlatma from "@/components/shared/muhasebe-hatirlatma";
 import BildirgeHatirlatma from "@/components/shared/bildirge-hatirlatma";
 import IscilikBilgiHatirlatma from "@/components/shared/iscilik-bilgi-hatirlatma";
 import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
@@ -1926,6 +1927,8 @@ export default function DashboardPage() {
       <IcraSureHatirlatma />
       {/* AVUKATTAKİ DOSYALAR: süresi dolanlar için "aradınız mı" sorusu. */}
       <AvukatTakipHatirlatma />
+      {/* MUHASEBE AŞAMASINDA TIKANANLAR: gönderilmemiş dosya + cevabı daralan süre. */}
+      <MuhasebeHatirlatma />
       <KetsisHatirlatma />
       <YedekHatirlatma />
       <BordroHatirlatma />

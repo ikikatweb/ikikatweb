@@ -27,7 +27,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { oturum, yetkisiz } from "@/lib/api/guvenlik";
-import { storageIndir } from "@/lib/api/storage-indir";
+import { icraTebligatBelgesi } from "@/lib/api/icra-tebligat-belge";
 import { antetEki } from "@/lib/api/antet-eki";
 import { sistemTasiyici } from "@/lib/mail/smtp";
 import { avukatAdiGoster, formatBaslik } from "@/lib/utils/isim";
@@ -62,7 +62,6 @@ const gunEkle = (iso: string, n: number) => {
 const kacar = (v: unknown) => String(v ?? "").replace(/[&<>"]/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
-type Ek = { ad: string; yol: string; tur?: string | null };
 
 export async function POST(request: Request) {
   // GÜVENLİK: /api middleware kapsamı dışında — kapı burada (lib/api/guvenlik).
@@ -98,55 +97,15 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // ── TEBLİGAT BELGESİNİ BUL ──
-    // ŞİRKET DEFTERİNDE BELGE KAYDA BAĞLI: ödeme emri okunurken belge_yolu
-    // yazılıyor, dosya esas numarasıyla tebligat aramaya gerek yok. Arama
-    // yapılsaydı aynı numarayı taşıyan başka bir tebligat seçilebilirdi.
-    let belge: Ek | null = null;
-    if (sirket) {
-      const yol = (kayit.belge_yolu ?? "").trim();
-      if (!yol) {
-        return NextResponse.json({
-          error: "Bu takipte tebligat belgesi bağlı değil — mail GÖNDERİLMEDİ. "
-            + "Avukat ödeme emrini görmeden cevap yazamaz.",
-        }, { status: 400 });
-      }
-      belge = { ad: yol.split("/").pop() || "odeme-emri.pdf", yol };
-    }
-
-    // icra kaydında tebligat bağlantısı yok; eşleştirme dosya esas numarası üzerinden.
-    // Konu biçimi: "<Daire> [2024/57908] [<Daire>-<barkod>-0-2024/57908]" — numara
-    // köşeli parantez içinde geçiyor, benzersiz sayılabilir.
-    if (!sirket && !kayit.dosya_esas_no) {
-      return NextResponse.json({ error: "Kayıtta dosya esas no yok — tebligat belgesi eşleştirilemedi." }, { status: 400 });
-    }
-    const { data: tebligatlar } = sirket ? { data: [] } : await sb.from("tebligat")
-      .select("id, konu, ekler, paket_yolu, ulasma_tarihi, indirme_hatasi")
-      .ilike("konu", `%${kayit.dosya_esas_no}%`)
-      .order("ulasma_tarihi", { ascending: false });
-
-    // "ustyazi" PTT'nin zarf kapağı; asıl yazı o değil. Belgesi olan EN YENİ tebligat alınır.
-    for (const t of (tebligatlar ?? []) as { ekler?: Ek[] }[]) {
-      const ekler = (t.ekler ?? []) as Ek[];
-      const yazi = ekler.find((e) => !/ustyazi/i.test(e.ad) && /pdf/i.test(e.tur ?? e.ad))
-        ?? ekler.find((e) => /pdf/i.test(e.tur ?? e.ad));
-      if (yazi) { belge = yazi; break; }
-    }
-    if (!belge) {
-      return NextResponse.json({
-        error: `${kayit.dosya_esas_no} için tebligat belgesi panelde yok — mail GÖNDERİLMEDİ. `
-          + `Tebligatlar ekranından "Belgeleri getir" ile indirip tekrar deneyin.`,
-      }, { status: 400 });
-    }
-
-    // KOVALAR ÖZEL: düz fetch 400 döner, service role ile inilir (lib/api/storage-indir).
-    const icerik = await storageIndir(belge.yol);
-    if (!icerik) {
-      return NextResponse.json({
-        error: `Tebligat belgesi (${belge.ad}) indirilemedi — mail GÖNDERİLMEDİ. `
-          + `Avukat yazıyı görmeden cevap yazamaz; eksik ekle göndermek işe yaramaz.`,
-      }, { status: 502 });
-    }
+    // ── TEBLİGAT BELGESİNİ BUL VE İNDİR ──
+    // ORTAK YARDIMCI (lib/api/icra-tebligat-belge): aynı iş muhasebe servisinde de
+    // geçiyor ve kural ikisinde de aynı — EK İNMEDEN MAİL GİTMEZ. İki kopya
+    // tutulsaydı biri düzeltilir öbürü geride kalırdı.
+    const ekSonuc = await icraTebligatBelgesi(sb, kayit, sirket,
+      "Avukat yazıyı görmeden cevap yazamaz; eksik ekle göndermek işe yaramaz.");
+    if (ekSonuc.hata) return NextResponse.json({ error: ekSonuc.hata.mesaj }, { status: ekSonuc.hata.kod });
+    const belge = ekSonuc.belge;
+    const icerik = ekSonuc.icerik;
 
     // ── GÖNDEREN FİRMA ──
     // Üçüncü şahıs hangi firmamızsa mail o firmadan ve o firmanın anteti ile gider.
