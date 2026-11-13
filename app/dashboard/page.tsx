@@ -1401,10 +1401,14 @@ export default function DashboardPage() {
     // İkinci ölçü: BORDRODA PASİFE GEÇMİŞ iş — sözleşme süresi dolmuş ve üstünde kimse yok.
     // Bitim tarihi Bordro kartıyla aynı fonksiyondan (lib/bordro/is-bitim) gelir.
     const bitimTarihi = new Map<string, string>();
+    // Üçüncü ölçü: HENÜZ BAŞLAMAMIŞ iş — yer teslimi/başlangıç tarihi girilmiş mi?
+    // Bir şantiyenin birden çok iscilik_takibi kaydı olabilir; herhangi birinde tarih varsa başlamıştır.
+    const baslangicVar = new Set<string>();
     for (const r of bordroIscilikTakibi as unknown as {
       santiye_id: string | null; baslangic_tarihi?: string | null; sure_text?: string | null;
       santiyeler?: { sure_uzatimli_tarih?: string | null; is_bitim_tarihi?: string | null; isyeri_teslim_tarihi?: string | null; is_suresi?: number | null } | null;
     }[]) {
+      if (r.santiye_id && (r.baslangic_tarihi || r.santiyeler?.isyeri_teslim_tarihi)) baslangicVar.add(r.santiye_id);
       if (!r.santiye_id || bitimTarihi.has(r.santiye_id)) continue;
       const b = isBitimHesapla({
         sureUzatimliTarih: r.santiyeler?.sure_uzatimli_tarih,
@@ -1416,7 +1420,7 @@ export default function DashboardPage() {
       });
       if (b) bitimTarihi.set(r.santiye_id, b);
     }
-    const gizlenen: { santiyeAd: string; neden: string }[] = [];
+    const gizlenen: { santiyeAd: string; neden: string; tur: "bitmis" | "baslamamis" }[] = [];
 
     for (const [santiyeId, sonAy] of sonAyBySantiye) {
       // Eksik kriteri: sayısal karşılaştırma (YYYYMM).
@@ -1431,7 +1435,15 @@ export default function DashboardPage() {
           gizlenen.push({
             santiyeAd: santiyeAdMap.get(santiyeId) ?? "—",
             neden: dt ? `geçici kabul dilekçesi ${formatTarih(dt)}` : `süresi ${formatTarih(bt!)} tarihinde doldu`,
+            tur: "bitmis",
           });
+          continue;
+        }
+        // HENÜZ BAŞLAMAMIŞ: yer teslimi/başlangıç tarihi yok, bugüne kadar hiç prim girilmemiş
+        // ve hiç personel atanmamış. Üçünden biri değişince (tarih girilir, ilk kişi atanır)
+        // iş kendiliğinden listeye döner.
+        if (sonAy === null && !baslangicVar.has(santiyeId) && !personelVar(santiyeId, 0)) {
+          gizlenen.push({ santiyeAd: santiyeAdMap.get(santiyeId) ?? "—", neden: "henüz başlamadı (yer teslim tarihi yok)", tur: "baslamamis" });
           continue;
         }
         liste.push({
@@ -2364,7 +2376,14 @@ export default function DashboardPage() {
                 .map((g) => `${g.santiyeAd} — ${g.neden}`)
                 .join("\n")}
             >
-              {eksikVeriGirisleri.gizlenen.length} iş gösterilmiyor: fiilen bitmiş (dilekçe verilmiş ya da süresi dolmuş), sigortalı personel yok.
+              {(() => {
+                const bitmis = eksikVeriGirisleri.gizlenen.filter((g) => g.tur === "bitmis").length;
+                const baslamamis = eksikVeriGirisleri.gizlenen.length - bitmis;
+                return [
+                  bitmis > 0 ? `${bitmis} iş fiilen bitmiş` : null,
+                  baslamamis > 0 ? `${baslamamis} iş henüz başlamamış` : null,
+                ].filter(Boolean).join(", ") + " — gösterilmiyor.";
+              })()}
             </p>
           )}
         </div> : null}
