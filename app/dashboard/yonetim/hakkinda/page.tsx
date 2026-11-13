@@ -219,6 +219,11 @@ const UYARILAR = [
     metin: "Giden evraklar taranır; bir işe geçici kabul dilekçesi verilmişse ve o işin primi hâlâ eksikse uyarı çıkar. Dilekçe metni uyarının içinden okunabilir. Kullanıcı durumu gördüyse \"Anlaşıldı\" diyerek uyarıyı kendisi için kapatabilir.",
   },
   {
+    ad: "SGK primi girilmemiş işler",
+    nokta: "bg-amber-500",
+    metin: "Ana ekrandaki kart, devam eden işlerde geçen ayın SGK prim tutarının muhasebeden alınıp girilmediğini gösterir. Liste kalabalıklaşıp gerçek eksiği gizlemesin diye iki tür iş gösterilmez. Fiilen bitmiş iş: geçici kabul dilekçesi verilmiş ya da sözleşme süresi dolmuş ve primi girilmiş son aydan bu yana üstünde hiç sigortalı personel çalışmamış. Henüz başlamamış iş: yer teslim tarihi girilmemiş, hiç prim girilmemiş ve hiç personel atanmamış. Girilmemiş bir ayda tek kişi bile çalışmışsa iş listede kalır. Gösterilmeyen işler kartın altında \"5 iş fiilen bitmiş, 1 iş henüz başlamamış\" diye sayılır; üstüne gelince hangi iş, neden elendi görünür.",
+  },
+  {
     ad: "Teknik personel ataması eksik",
     nokta: "bg-purple-500",
     metin: "Sözleşmede şartı olan teknik personel (inşaat mühendisi, harita mühendisi vb.) o işe atanmamışsa ya da çıkmışsa bildirilir.",
