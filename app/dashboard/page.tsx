@@ -52,6 +52,8 @@ import PrimDengesiHatirlatma from "@/components/shared/prim-dengesi-hatirlatma";
 import PoliceUyariHatirlatma from "@/components/shared/police-uyari-hatirlatma";
 import NetsimYeniIsHatirlatma from "@/components/shared/netsim-yeni-is-hatirlatma";
 import GeciciKabulPrimHatirlatma from "@/components/shared/gecici-kabul-prim-hatirlatma";
+import { getGeciciKabulDilekceleri, type GeciciKabulDilekce } from "@/lib/supabase/queries/gecici-kabul-prim";
+import { isBitimHesapla } from "@/lib/bordro/is-bitim";
 import TeknikAtamaHatirlatma from "@/components/shared/teknik-atama-hatirlatma";
 import SozlesmeTarihiHatirlatma from "@/components/shared/sozlesme-tarihi-hatirlatma";
 import TebligatHatirlatma from "@/components/shared/tebligat-hatirlatma";
@@ -201,6 +203,8 @@ export default function DashboardPage() {
   // Bordro Takibi widget'ı
   const [bordroAtamalar, setBordroAtamalar] = useState<PersonelAtamaGecmisi[]>([]);
   const [bordroManuelGunler, setBordroManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
+  // Geçici kabul dilekçesi verilmiş işler — "Sgk Primi Girilmemiş İşler" bunları eler.
+  const [bordroDilekceler, setBordroDilekceler] = useState<GeciciKabulDilekce[]>([]);
   const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
   const [bordroGunlukUcretler, setBordroGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [bordroIscilikTakibi, setBordroIscilikTakibi] = useState<IscilikTakibiWithSantiye[]>([]);
@@ -456,7 +460,7 @@ export default function DashboardPage() {
       if (!widgetGorunur("bordro_ozet")) { setBordroLoading(false); return; }
       setBordroLoading(true);
       try {
-        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData, sonHakData] = await Promise.all([
+        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData, sonHakData, dilekceData] = await Promise.all([
           getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
           getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
           getBordroPersoneller().catch(() => [] as Personel[]),
@@ -469,7 +473,10 @@ export default function DashboardPage() {
           getFirmalar().catch(() => [] as FirmaBasic[]),
           // Tahmini fiyat farkı için son hakediş oranı.
           getSonHakedisMap().catch(() => new Map<string, { kesif: number; fark: number; tarih: string | null }>()),
+          // Okunamazsa boş döner → hiçbir iş elenmez, uyarılar olduğu gibi görünür (güvenli taraf).
+          getGeciciKabulDilekceleri(),
         ]);
+        setBordroDilekceler(dilekceData);
         setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
         setBordroManuelGunler(manuelData as PersonelAtamaManuelGun[]);
         setBordroPersoneller(bPers as Personel[]);
@@ -1366,12 +1373,67 @@ export default function DashboardPage() {
       return s;
     };
 
+    // FİİLEN BİTMİŞ İŞLER UYARI VERMEZ.
+    // Geçici kabul dilekçesi verilmiş ama idare kabulü henüz yapmamışsa iş kâğıt üzerinde
+    // "devam ediyor" görünür. Dilekçe verilmiş VE primi girilmemiş dönemde sigortalı personel
+    // hiç çalışmamışsa girilecek prim de yoktur; bu işler listeyi kalabalıklaştırıp gerçekten
+    // prim bekleyen işi gözden kaçırtıyordu.
+    // Personel penceresi "son girilen aydan sonrası"dır, yalnız geçen ay değil: dilekçeden
+    // sonra bile olsa primi girilmemiş bir ayda çalışan varsa o prim gerçekten eksiktir.
+    const dilekceTarihi = new Map(bordroDilekceler.map((d) => [d.santiye_id, d.dilekceTarihi]));
+    const bugunStr = yerelBugun();
+    const personelVar = (santiyeId: string, sonAyNum: number): boolean => {
+      // Girilmemiş dönemin ilk günü; hiç veri yoksa baştan beri.
+      let y = Math.floor(sonAyNum / 100), m = (sonAyNum % 100) + 1;
+      if (m > 12) { m = 1; y += 1; }
+      const pencereBasi = sonAyNum === 0 ? "" : `${y}-${String(m).padStart(2, "0")}-01`;
+      for (const at of bordroAtamalar) {
+        if (at.santiye_id !== santiyeId) continue;
+        if (at.baslangic_tarihi > bugunStr) continue;
+        if ((at.bitis_tarihi ?? bugunStr) >= pencereBasi) return true;
+      }
+      for (const mg of bordroManuelGunler) {
+        if (mg.santiye_id !== santiyeId || mg.gun <= 0) continue;
+        if (ayYilNumerik(mg.ay) > sonAyNum) return true;
+      }
+      return false;
+    };
+    // İkinci ölçü: BORDRODA PASİFE GEÇMİŞ iş — sözleşme süresi dolmuş ve üstünde kimse yok.
+    // Bitim tarihi Bordro kartıyla aynı fonksiyondan (lib/bordro/is-bitim) gelir.
+    const bitimTarihi = new Map<string, string>();
+    for (const r of bordroIscilikTakibi as unknown as {
+      santiye_id: string | null; baslangic_tarihi?: string | null; sure_text?: string | null;
+      santiyeler?: { sure_uzatimli_tarih?: string | null; is_bitim_tarihi?: string | null; isyeri_teslim_tarihi?: string | null; is_suresi?: number | null } | null;
+    }[]) {
+      if (!r.santiye_id || bitimTarihi.has(r.santiye_id)) continue;
+      const b = isBitimHesapla({
+        sureUzatimliTarih: r.santiyeler?.sure_uzatimli_tarih,
+        isBitimTarihi: r.santiyeler?.is_bitim_tarihi,
+        baslangicTarihi: r.baslangic_tarihi,
+        sureText: r.sure_text,
+        isyeriTeslimTarihi: r.santiyeler?.isyeri_teslim_tarihi,
+        isSuresi: r.santiyeler?.is_suresi,
+      });
+      if (b) bitimTarihi.set(r.santiye_id, b);
+    }
+    const gizlenen: { santiyeAd: string; neden: string }[] = [];
+
     for (const [santiyeId, sonAy] of sonAyBySantiye) {
       // Eksik kriteri: sayısal karşılaştırma (YYYYMM).
       // sonAy null → veri hiç girilmemiş → eksik
       // sonAy < prevAyNum → son veri ayı, geçen aydan eski → eksik
       const sonAyNum = sonAy === null ? 0 : ayYilNumerik(sonAy);
       if (sonAy === null || sonAyNum < prevAyNum) {
+        const dt = dilekceTarihi.get(santiyeId);
+        const bt = bitimTarihi.get(santiyeId);
+        const suresiDoldu = !!bt && bt < bugunStr;
+        if ((dt || suresiDoldu) && !personelVar(santiyeId, sonAyNum)) {
+          gizlenen.push({
+            santiyeAd: santiyeAdMap.get(santiyeId) ?? "—",
+            neden: dt ? `geçici kabul dilekçesi ${formatTarih(dt)}` : `süresi ${formatTarih(bt!)} tarihinde doldu`,
+          });
+          continue;
+        }
         liste.push({
           santiyeId,
           santiyeAd: santiyeAdMap.get(santiyeId) ?? "—",
@@ -1389,8 +1451,9 @@ export default function DashboardPage() {
       return a.santiyeAd.localeCompare(b.santiyeAd, "tr");
     });
 
-    return { prevAyNum, prevLabel, liste };
-  }, [bordroLoading, bordroAyliklar, bordroIscilikTakibi, isYonetici, kullanici, bugun]);
+    gizlenen.sort((a, b) => a.santiyeAd.localeCompare(b.santiyeAd, "tr"));
+    return { prevAyNum, prevLabel, liste, gizlenen };
+  }, [bordroLoading, bordroAyliklar, bordroIscilikTakibi, bordroAtamalar, bordroManuelGunler, bordroDilekceler, isYonetici, kullanici, bugun]);
 
   function alimDuzenleAc(a: YakitAlim) {
     setEditAlim(a);
@@ -2292,6 +2355,17 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             </div>
+          )}
+          {/* Elenen işler sessizce kaybolmasın: kaç iş, neden gösterilmiyor — üstüne gelince adları. */}
+          {eksikVeriGirisleri && eksikVeriGirisleri.gizlenen.length > 0 && (
+            <p
+              className="mt-2 pt-2 border-t text-[10px] text-gray-500 cursor-help"
+              title={eksikVeriGirisleri.gizlenen
+                .map((g) => `${g.santiyeAd} — ${g.neden}`)
+                .join("\n")}
+            >
+              {eksikVeriGirisleri.gizlenen.length} iş gösterilmiyor: fiilen bitmiş (dilekçe verilmiş ya da süresi dolmuş), sigortalı personel yok.
+            </p>
           )}
         </div> : null}
 
