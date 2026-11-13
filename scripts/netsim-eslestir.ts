@@ -70,7 +70,8 @@ function normalize(s: string): string {
     .trim();
 }
 
-// Netsim adları VARCHAR(40) — kırpılmış olabilir. Bu yüzden:
+// Ad önce "Diğer Bilgi" satırından (DIGER_BILGI — işin tam adı) okunur; o satır boşsa
+// ISLEM_NOKTASI_ADI'na düşülür. O alan VARCHAR(40) — kırpılmış olabilir. Bu yüzden:
 //   1) Netsim adı, şantiye adının ön-eki mi? (kırpma senaryosu) → çok güçlü sinyal,
 //      ama SADECE yeterince uzunsa. "HARİTA" gibi kısa adlar ön-ek sayılmaz.
 //   2) Değilse ortak kelime oranı — en az 2 ortak kelime şartıyla.
@@ -141,7 +142,7 @@ async function main() {
     // Başka noktaların ANA'sı olanlar (İNŞAAT, HARİTA gibi kategori düğümleri) hariç —
     // onlar proje değil, altındaki işlerin üst grubu.
     const rows = await fbSorgu(db, `
-      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, COALESCE(NULLIF(TRIM(I.DIGER_BILGI), ''), I.ISLEM_NOKTASI_ADI) AS AD
       FROM ISLMNOKT I
       WHERE I.ISLEM_NOKTASI_NO > 0
       AND NOT EXISTS (

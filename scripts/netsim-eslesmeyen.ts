@@ -86,7 +86,7 @@ async function main() {
   let netsimler: { no: number; ad: string; kesif: number; fark: number }[];
   try {
     const rows = await fbSorgu(db, `
-      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, COALESCE(NULLIF(TRIM(I.DIGER_BILGI), ''), I.ISLEM_NOKTASI_ADI) AS AD,
              (SELECT SUM(CASE WHEN D.STOK_NO = 39 THEN D.HAM_TUTAR ELSE 0 END)
                 FROM ALSADETA D JOIN ALSAASIL A ON A.ALISSATIS_NO = D.ALISSATIS_NO
                WHERE A.ISLEM_NOKTASI_NO = I.ISLEM_NOKTASI_NO AND A.ISLEM_KODU = 'HAKFAT') AS KESIF,

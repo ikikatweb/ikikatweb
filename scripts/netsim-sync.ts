@@ -23,6 +23,11 @@
 // hakediş hakediş yükseliyor. Kalan keşfin alacağı FF tahmin edilirken işin ortalaması değil
 // en son hakedişin oranı kullanılır (bkz. sql/netsim_son_hakedis.sql).
 //
+// İŞİN ADI: ISLEM_NOKTASI_ADI VARCHAR(40) — uzun adlar kırpılıyor ve sitedeki adla tutmuyor.
+// Netsim'de işin TAM adı "Diğer Bilgi" satırına (ISLMNOKT.DIGER_BILGI, VARCHAR(250)) yazılıyor;
+// ad önce oradan okunur, o satır boşsa kırpık ada düşülür. Aynı kural netsim-eslestir.ts ve
+// netsim-eslesmeyen.ts'de de var — üçü birlikte değişmeli.
+//
 // Geçici kabulü yapılmış işlerde "gerçekleşen" tutar formda KİLİTLİ (belge kesinleşmiş sayılır),
 // bu yüzden senkron da onlara DOKUNMAZ — sadece raporlar.
 //
@@ -111,7 +116,7 @@ const GUN_PENCERE = 15;
 /**
  * Netsim'de aynı işe ait, uyarıda göstermeye değer alanlar. Hangilerinin alındığı
  * ölçülerek seçildi — 106 gerçek iş noktasında hepsi boş olan alanlar (EKAP belge no,
- * belge tutarı, diğer bilgi) alınmıyor. Ayrıntı: sql/netsim_yeni_nokta_bilgiler.sql
+ * belge tutarı) alınmıyor. "Diğer bilgi" artık işin UZUN ADI için kullanılıyor (dosya başı). Ayrıntı: sql/netsim_yeni_nokta_bilgiler.sql
  */
 type NoktaBilgi = {
   kod: string | null;
@@ -221,12 +226,12 @@ async function yeniNoktalariIsaretle(
 ) {
   const { data: kayitlar, error } = await sb
     .from("netsim_yeni_nokta")
-    .select("nokta_no, durum, karar_veren");
+    .select("nokta_no, ad, durum, karar_veren");
   if (error) {
     if (!/netsim_yeni_nokta/.test(error.message)) console.error("  yeni nokta kaydı:", error.message);
     return;
   }
-  type Kayit = { nokta_no: number; durum: string; karar_veren: string | null };
+  type Kayit = { nokta_no: number; ad: string | null; durum: string; karar_veren: string | null };
   const mevcut = new Map(
     ((kayitlar ?? []) as Kayit[]).map((k) => [Number(k.nokta_no), k]),
   );
@@ -283,6 +288,18 @@ NETSİM'DE YENİ İŞ (${GUN_PENCERE} günlük pencere): [${n.no}] ${n.ad}`);
   for (const n of bekleyenler) {
     const { error: e } = await sb.from("netsim_yeni_nokta").update(n.bilgi).eq("nokta_no", n.no);
     if (e) console.error(`  [${n.no}] bilgiler yazılamadı: ${e.message}`);
+  }
+
+  // ADI TAZELE. Uzun ad Netsim'e SONRADAN yazılıyor (DIGER_BILGI); kayıt ilk görüldüğünde
+  // 40 karakterlik kırpık adla açılmış oluyor. Ad yalnız eklemede yazılsaydı uyarı ve
+  // "yeni şantiye" formu kırpık adı göstermeye devam ederdi.
+  for (const n of netsimler) {
+    const k = mevcut.get(n.no);
+    if (!k || !n.ad || k.ad === n.ad) continue;
+    const { data, error: e } = await sb.from("netsim_yeni_nokta")
+      .update({ ad: n.ad }).eq("nokta_no", n.no).select("nokta_no");
+    if (e || !data?.length) console.error(`  [${n.no}] ad güncellenemedi: ${e?.message ?? "satır yazılmadı"}`);
+    else console.log(`  AD       [${n.no}] ${k.ad ?? "—"} → ${n.ad}`);
   }
 
   if (eklenecek.length === 0) return;
@@ -351,7 +368,7 @@ async function main() {
   }[] = [];
   try {
     const rows = await fbSorgu(db, `
-      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD,
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, COALESCE(NULLIF(TRIM(I.DIGER_BILGI), ''), I.ISLEM_NOKTASI_ADI) AS AD,
              COALESCE((
                SELECT SUM(CASE WHEN D.STOK_NO = 39 THEN D.HAM_TUTAR ELSE 0 END)
                FROM ALSADETA D
@@ -418,7 +435,7 @@ async function main() {
     // yoksa kayıt tablosuna sonradan giren ESKİ noktalar da yeni sanılıp ana ekranı
     // dolduruyor (32 nokta birden sorulmuştu).
     const noktaRows = await fbSorgu(db, `
-      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, I.ISLEM_NOKTASI_ADI AS AD, I.CTIMESTAMP AS OLUSTURMA,
+      SELECT I.ISLEM_NOKTASI_NO AS NOKTA, COALESCE(NULLIF(TRIM(I.DIGER_BILGI), ''), I.ISLEM_NOKTASI_ADI) AS AD, I.CTIMESTAMP AS OLUSTURMA,
              I.ISLEM_NOKTASI_KODU AS KOD, I.OZEL_KOD AS SORUMLU, I.K_IS_GRUBU AS IS_GRUBU,
              I.K_SOZLESME_BEDELI AS SOZ_BEDEL, I.K_EKSOZLESME_BEDELI AS EK_BEDEL,
              I.K_YAKLASIK_MALIYET AS YAK_MALIYET,
