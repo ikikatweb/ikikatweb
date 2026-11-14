@@ -205,6 +205,35 @@ function firmaEslesVkn(vkn, firmalar) {
   return uyan.length === 1 ? uyan[0] : null;
 }
 
+// ─────────────────────── bildirim cümlesi ───────────────────────
+// AYNI MANTIK lib/utils/ketsis-bildirim-metin.ts içinde (ana sayfadaki kart oradan
+// yazıyor; .mjs o dosyayı içe alamıyor). Birini değiştiren ötekini de değiştirsin.
+const KURUM_AZAMI = 45;   // uzun kurum adı telefonda satır taşırıyor
+
+/** "-den" eki: Müdürlüğü → nden, Başkanlığı → ndan, Başkanlık → tan. */
+function cikmaEki(ad) {
+  const harfler = ad.toLocaleLowerCase("tr").replace(/[^a-zçğıöşü]/g, "");
+  if (!harfler) return "den";
+  const son = harfler[harfler.length - 1];
+  const sonUnlu = [...harfler].reverse().find((h) => "aıoueiöü".includes(h));
+  const unlu = sonUnlu && "aıou".includes(sonUnlu) ? "a" : "e";
+  if ("ıiuü".includes(son)) return `nd${unlu}n`;
+  return `${"fstkçşhp".includes(son) ? "t" : "d"}${unlu}n`;
+}
+
+function bildirimCumlesi(kurum, belgeNo) {
+  const k = String(kurum ?? "").replace(/\s+/g, " ").trim();
+  const b = String(belgeNo ?? "").trim();
+  if (!k && !b) return null;
+  const belge = b ? `${b} belge numaralı bildirim aldınız` : "bildirim aldınız";
+  if (!k) return belge.charAt(0).toLocaleUpperCase("tr") + belge.slice(1);
+  let ek = cikmaEki(k);
+  if (k === k.toLocaleUpperCase("tr")) ek = ek.toLocaleUpperCase("tr");
+  // Kesilen ada ek yapışmaz → kesme işaretiyle ayrılır.
+  const kurumlu = k.length > KURUM_AZAMI ? `${k.slice(0, KURUM_AZAMI).trimEnd()}…’${ek}` : `${k}${ek}`;
+  return `${kurumlu} ${belge}`;
+}
+
 // ───────────────────────────── ana akış ─────────────────────────────
 
 async function main() {
@@ -272,25 +301,33 @@ async function main() {
       }, { onConflict: "kutu" });
     };
 
-    const c = new ImapFlow({
-      host: (env.KETSIS_IMAP_HOST || `mail.${user.split("@")[1]}`),
-      port: Number(env.KETSIS_IMAP_PORT || 993),
-      secure: Number(env.KETSIS_IMAP_PORT || 993) === 993,
-      auth: { user, pass }, logger: false,
-      // Paylaşımlı hosting sertifikası alan adıyla eşleşmeyebiliyor (bildirge okuyucuda
-      // da aynı gevşetme var).
-      tls: { rejectUnauthorized: false },
-    });
-    // ImapFlow bağlantı hatalarını OLAY olarak yayıyor; dinlenmezse süreç çöküyor.
-    c.on("error", (e) => log(`${user}: bağlantı hatası — ${e.message}`));
+    const imapAc = () => {
+      const yeni = new ImapFlow({
+        host: (env.KETSIS_IMAP_HOST || `mail.${user.split("@")[1]}`),
+        port: Number(env.KETSIS_IMAP_PORT || 993),
+        secure: Number(env.KETSIS_IMAP_PORT || 993) === 993,
+        auth: { user, pass }, logger: false,
+        // Paylaşımlı hosting sertifikası alan adıyla eşleşmeyebiliyor (bildirge okuyucuda
+        // da aynı gevşetme var).
+        tls: { rejectUnauthorized: false },
+      });
+      // ImapFlow bağlantı hatalarını OLAY olarak yayıyor; dinlenmezse süreç çöküyor.
+      yeni.on("error", (e) => log(`${user}: bağlantı hatası — ${e.message}`));
+      return yeni;
+    };
+    let c = imapAc();
 
     try {
       // Bağlanmayı bir kez daha dene: çakışma anlıktır, 20 saniye sonra kutu boşalıyor.
+      // İKİNCİ DENEME YENİ NESNEYLE: ImapFlow bağlanamamış nesneyi tekrar kullandırmıyor
+      // ("Can not re-use ImapFlow instance"). 14.11.2026'da mail sunucusu bağlantıyı
+      // reddederken bildirime bu yazı düştü ve asıl nedeni (ECONNREFUSED) örttü.
       try {
         await c.connect();
       } catch (e) {
         log(`${user}: bağlanamadı (${e.message}) — 20 saniye sonra tekrar`);
         await new Promise((r) => setTimeout(r, 20000));
+        c = imapAc();
         await c.connect();
       }
       // KLASÖR KLASÖR TARA. Yalnız INBOX yetmiyor:
@@ -465,10 +502,18 @@ async function main() {
     const baslik = kesin
       ? "⚖️ Vergi dairesi tebligatı"
       : "⚖️ Vergi tebligatı olabilir";
+    // KİMDEN, HANGİ BELGE: "Emniyet Genel Müdürlüğünden MC10790796 belge numaralı bildirim
+    // aldınız". Eskiden yalnız "1 tebligat bildirimi geldi" yazıyordu; telefona bakan
+    // kişi trafik cezası mı vergi yazısı mı, anlayamıyordu. En çok üç tanesi yazılır,
+    // gerisi sayıyla — bildirim ekrana sığsın.
     const parcalar = [];
-    if (kesin) parcalar.push(`${kesin} tebligat bildirimi geldi`);
+    const kesinler = yeniKayitlar.filter((k) => k.guven === "kesin");
+    for (const k of kesinler.slice(0, 3)) {
+      parcalar.push(bildirimCumlesi(k.gonderen_kurum, k.belge_no) ?? "Tebligat bildirimi aldınız");
+    }
+    if (kesinler.length > 3) parcalar.push(`${kesinler.length - 3} bildirim daha var`);
     if (aday) parcalar.push(`${aday} şüpheli mail doğrulanmalı`);
-    const govde = `${parcalar.join(", ")}. Belge yalnız Dijital Vergi Dairesi'nde görülür — süre VUK 107/A'ya göre işliyor.`;
+    const govde = `${parcalar.join(" · ")}. Belge yalnız Dijital Vergi Dairesi'nde görülür — süre VUK 107/A'ya göre işliyor.`;
     try {
       const n = await pushGonder(sb, env, {
         baslik, govde,

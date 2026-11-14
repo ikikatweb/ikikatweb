@@ -30,7 +30,9 @@ const env = Object.fromEntries(
     .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]),
 );
 
-const slug = gorev.toLocaleLowerCase("tr").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "gorev";
+// toLowerCase — toLocaleLowerCase("tr") DEĞİL: Türkçe kuralda "I" → "ı" olur, "KETSIS Mail
+// Cek" slug'ı "kets-s-ma-l-cek" çıkıyordu ve aşağıdaki insanca ad hiç bulunmuyordu.
+const slug = gorev.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "gorev";
 const isaretDosya = path.join(kok, "logs", `.hata-bildirim-${slug}`);
 
 /** Log'un sonundan hata satırını çıkar — bildirimde sebep görünsün. */
@@ -74,6 +76,18 @@ const GOREV_ADLARI = {
  */
 function sebepSinifla(ham) {
   const t = (ham || "").toLocaleLowerCase("tr");
+  // MAİL SUNUCUSU KAPIYI AÇMIYOR. 14.11.2026'da bildirim "Can not re-use ImapFlow
+  // instance · Sunucu makinesinde log'a bakılmalı" diye gitti; okuyan hiçbir şey
+  // anlamadı. Oysa söylenecek şey basit: hangi kutu okunamıyor ve kime sorulacak.
+  // 503 kalıbından ÖNCE durmalı — hata satırındaki IP/port rakamları ona takılmasın.
+  if (/econnrefused|re-use imapflow/.test(t)) {
+    const kutu = (ham.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/) || [])[0];
+    return {
+      gecici: false,
+      nedir: `${kutu ? kutu + " kutusu" : "Posta kutusu"} okunamıyor: mail sunucusu bağlantıyı kabul etmiyor`,
+      islem: "Bu kutuya gelen mailler şu an siteye alınmıyor (kaybolmaz, düzelince okunur). Mail Outlook'ta da açılmıyorsa hosting firması aranmalı.",
+    };
+  }
   if (/503|bak[ıi]m|maintenance|kod 999/.test(t)) {
     return { gecici: true, nedir: "Karşı sistem (PTT) bakımda", islem: "Bakım bitince kendiliğinden düzelir, yapılacak bir şey yok." };
   }

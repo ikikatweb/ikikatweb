@@ -20,6 +20,7 @@ import toast from "react-hot-toast";
 import { useAuth, tebligatDegisti } from "@/hooks";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import { hataMetni } from "@/lib/utils/hata-metni";
+import { ketsisBildirimCumlesi } from "@/lib/utils/ketsis-bildirim-metin";
 import {
   getKetsisBildirimler, getSonKetsisKontrol, kontrolYasiGun,
   GIB_GIRIS, KONTROL_ARALIGI_GUN, type KetsisBildirim,
@@ -163,8 +164,12 @@ export default function KetsisHatirlatma() {
                 title={b.firmalar?.firma_adi ?? b.kutu} />
               <b>{b.firmalar?.kisa_adi || b.firmalar?.firma_adi || "firma belirsiz"}</b>
               {/* Belge no: Dijital Vergi Dairesi'nde hangi satıra bakılacağını söyler. */}
-              {b.belge_no && <span className="font-mono text-xs">belge {b.belge_no}</span>}
-              <span className="truncate max-w-[22rem]" title={b.konu ?? ""}>{b.konu ?? "konu yok"}</span>
+              {/* TEK CÜMLE: "Emniyet Genel Müdürlüğünden MC… belge numaralı bildirim aldınız".
+                  Eskiden mailin konusu yazıyordu; her tebligatta aynı kalıp olduğu için
+                  kimden geldiği okunmuyordu. Kurum da belge no da yoksa konuya düşülür. */}
+              <span className="min-w-0" title={b.konu ?? ""}>
+                {ketsisBildirimCumlesi(b.gonderen_kurum, b.belge_no) ?? b.konu ?? "konu yok"}
+              </span>
               {/* Gönderen tanıdık değilse bunu SÖYLERİZ: kesin diye göstermek yanlış güven verir. */}
               {b.guven === "aday" && (
                 <span className="rounded bg-white/80 px-1.5 py-0.5 text-xs font-semibold" title={b.gonderen_adres ?? ""}>
