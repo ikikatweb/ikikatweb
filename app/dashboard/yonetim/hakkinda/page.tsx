@@ -32,7 +32,7 @@ const GRUPLAR: Grup[] = [
     moduller: [
       { ad: "Gelen / Giden Evrak", aciklama: "Kurum yazışmalarının kayıt altına alınması, numaralandırılması ve aranması." },
       { ad: "Banka Yazışmaları", aciklama: "Teminat mektubu ve kredi yazışmaları ayrı tutulur." },
-      { ad: "Tebligatlar", aciklama: "Tek ekranda İKİ AYRI resmî tebligat sistemi. Üstte PTT UETS (mahkeme ve icra): tebligatlar iki saatte bir çekilir, menüdeki kırmızı rozet açılmamışları sayar. Tebligatı AÇMAK geri alınamaz — indirilen paket okunmuş sayılır — o yüzden yalnız kullanıcı \"aç ve oku\" dediğinde indirilir ve kimin istediği kayda geçer. İcra tebligatı açıldığında belgeden dosya no, alacaklı, borçlu ve tutar okunup icra sayfasına taslak satır düşer. Altta GİB KETSİS (vergi dairesi): alıcı tarafı için API olmadığından belge yalnız Dijital Vergi Dairesi ekranından görülür; sistem GİB'in bilgilendirme mailini yakalar, mail hiç gelmese de haftada bir \"gidip bak\" hatırlatması çıkar — çünkü mailin gelmemesi tebligat süresini durdurmaz." },
+      { ad: "Tebligatlar", aciklama: "Tek ekranda İKİ AYRI resmî tebligat sistemi. Üstte PTT UETS (mahkeme ve icra): tebligatlar iki saatte bir çekilir, menüdeki kırmızı rozet açılmamışları sayar. Tebligatı AÇMAK geri alınamaz — indirilen paket okunmuş sayılır — o yüzden yalnız kullanıcı \"aç ve oku\" dediğinde indirilir ve kimin istediği kayda geçer. İcra tebligatı açıldığında belgeden dosya no, alacaklı, borçlu ve tutar okunup icra sayfasına taslak satır düşer. Altta GİB KETSİS (vergi dairesi): alıcı tarafı için API olmadığından belge yalnız Dijital Vergi Dairesi ekranından görülür; sistem GİB'in bilgilendirme mailini yakalar ve tebligatı gönderen kurumu belge numarasıyla birlikte bildirir, mail hiç gelmese de haftada bir \"gidip bak\" hatırlatması çıkar — çünkü mailin gelmemesi tebligat süresini durdurmaz." },
       { ad: "Silinen", aciklama: "Silinen evrak burada bekler; yanlışlıkla silinen geri alınabilir." },
     ],
   },
@@ -203,7 +203,11 @@ const OTOMATIK_ISLER = [
 /** Görev çökerse haber verilir — sessizce durmasın. */
 const GOREV_NOTU = "Saatler Türkiye saatidir. Bu işlerden biri çalışmazsa sebebi "
   + "sınıflandırılıp bildirime dönüşür: \"sunucu bakımda\", \"bağlantı kurulamadı\", "
-  + "\"yetki/anahtar sorunu\" gibi. Zamanlayıcı \"başarılı\" dese bile betik içeride "
+  + "\"yetki/anahtar sorunu\" gibi. Bildirim teknik hata satırını değil, ne olduğunu ve "
+  + "bir şey yapmak gerekip gerekmediğini yazar — örneğin mail sunucusu bağlantıyı "
+  + "reddediyorsa hangi posta kutusunun okunamadığı, maillerin kaybolmadığı ve hosting "
+  + "firmasının aranması gerektiği söylenir. Aynı arıza için en çok 6 saatte bir "
+  + "bildirim gider. Zamanlayıcı \"başarılı\" dese bile betik içeride "
   + "çökmüş olabilir; o yüzden sonuç görevin kendi günlüğünden okunur.";
 
 
@@ -256,7 +260,7 @@ const UYARILAR = [
   {
     ad: "Vergi dairesi tebligatına bakılmadı",
     nokta: "bg-amber-600",
-    metin: "GİB tebligatı panelden açılamıyor — belge yalnız Dijital Vergi Dairesi'nde. Bilgilendirme maili yakalandıysa uyarı çıkar; mail hiç gelmese de haftada bir hatırlatılır, çünkü mailin gelmemesi tebligatın olmadığı anlamına gelmez.",
+    metin: "GİB tebligatı panelden açılamıyor — belge yalnız Dijital Vergi Dairesi'nde. Bilgilendirme maili yakalandıysa uyarı çıkar ve kimden geldiğini tek cümleyle söyler: \"Emniyet Genel Müdürlüğünden MC10790796 belge numaralı bildirim aldınız\" — aynı cümle telefon bildiriminde de yazar; 45 karakteri aşan kurum adı kısaltılır. Mail hiç gelmese de haftada bir hatırlatılır, çünkü mailin gelmemesi tebligatın olmadığı anlamına gelmez.",
   },
   {
     ad: "Yakıt kaydı araçtan uzakta girildi",
