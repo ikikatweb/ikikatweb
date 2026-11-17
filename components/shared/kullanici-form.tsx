@@ -226,6 +226,16 @@ export default function KullaniciForm({
     if (!isEdit && !kullaniciAdi.trim()) { toast.error("Kullanıcı adı zorunludur."); return; }
     if (!isEdit && !sifre.trim()) { toast.error("Şifre zorunludur."); return; }
     if (sifre.trim() && sifre.length < 6) { toast.error("Şifre en az 6 karakter olmalıdır."); return; }
+    // E-POSTA BOŞ KALABİLİR: adresi kullanıcı ilk girişinde kendisi yazar (EpostaZorunlu).
+    // Yalnız DOLUYSA biçimine bakılır. Denetim tarayıcıya bırakılmıyor (form noValidate):
+    // tarayıcı kayıtlı kullanıcı adını bu kutuya kendiliğinden doldurunca "@ ekleyin"
+    // balonu çıkıyor, yönetici adres girmek zorunda sanıyordu (17.11.2026).
+    const epostaYeni = eposta.trim();
+    if (epostaYeni && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(epostaYeni)) {
+      toast.error(`E-posta kutusunda geçersiz bir değer var: "${epostaYeni}". Kutuyu boşaltın ya da geçerli bir adres yazın — boş bırakılabilir, kullanıcı kendisi girer.`,
+        { duration: 9000 });
+      return;
+    }
 
     // Ad soyadı standart formata çevir: "ahmet can kılınç" -> "Ahmet Can KILINÇ"
     const formatliAdSoyad = formatKisiAdi(adSoyad);
@@ -285,7 +295,10 @@ export default function KullaniciForm({
           ...(izinKullanir ? limitler : bosLimitler),
           dashboard_widgets: izinKullanir && dashboardWidgets.length > 0 ? dashboardWidgets : null,
           santiyesiz_veri_gor: santiyesizVeriGorFinal,
-          eposta: eposta.trim() || null,
+          // E-POSTA YALNIZ DEĞİŞTİYSE GİDER: sunucu bu alanı her gördüğünde doğrulamayı
+          // sıfırlıyor. Her yetki kaydında gönderilince kullanıcının doğrulanmış adresi
+          // "doğrulanmadı"ya dönüyordu.
+          ...(epostaYeni !== (kullanici.eposta ?? "").trim() ? { eposta: epostaYeni || null } : {}),
           ...(sifre.trim() ? { sifre } : {}),
         });
         toast.success(izleyenler.length > 0
@@ -295,7 +308,7 @@ export default function KullaniciForm({
         await createKullanici({
           ad_soyad: formatliAdSoyad,
           kullanici_adi: kullaniciAdi.trim().toLowerCase(),
-          eposta: eposta.trim() || null,
+          eposta: epostaYeni || null,
           sifre,
           rol,
           izinler: izinKullanir ? izinler : {},
@@ -323,7 +336,7 @@ export default function KullaniciForm({
   const aktifSantiyeler = santiyeler.filter(aktifIsMi);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} noValidate autoComplete="off" className="space-y-5">
       {/* ÇOĞALTMA KİPİ — yetkiler kaynaktan geldi, kimlik alanları boş */}
       {cogaltilacak && (
         <div className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
@@ -378,9 +391,9 @@ export default function KullaniciForm({
         <div className="space-y-2">
           <Label htmlFor="eposta">E-posta</Label>
           <Input id="eposta" type="email" value={eposta} onChange={(e) => setEposta(e.target.value)}
-            disabled={loading} placeholder="ornek@firma.com" />
+            disabled={loading} placeholder="ornek@firma.com" autoComplete="off" />
           <p className="text-xs text-gray-400">
-            Şifre yenileme bağlantısı buraya gider. Girişte kullanılmaz — giriş kullanıcı adıyla yapılır.
+            Boş bırakılabilir — kullanıcı ilk girişinde kendisi yazar. Şifre yenileme bağlantısı buraya gider. Girişte kullanılmaz — giriş kullanıcı adıyla yapılır.
             {isEdit && kullanici?.eposta && (kullanici?.eposta_dogrulandi
               ? <span className="ml-1 text-emerald-600">· adres doğrulanmış</span>
               : <span className="ml-1 text-amber-600">· adres henüz doğrulanmadı</span>)}
@@ -390,7 +403,10 @@ export default function KullaniciForm({
         <div className="space-y-2">
           <Label htmlFor="sifre">{isEdit ? "Şifre" : "Şifre *"}</Label>
           <div className="relative">
-            <Input id="sifre" type={showPassword ? "text" : "password"} value={sifre} onChange={(e) => setSifre(e.target.value)} disabled={loading} placeholder="••••••" className="pr-10" />
+            <Input id="sifre" type={showPassword ? "text" : "password"} value={sifre} onChange={(e) => setSifre(e.target.value)} disabled={loading} placeholder="••••••" className="pr-10"
+              // new-password: tarayıcı kayıtlı (yöneticinin kendi) kullanıcı adı ve şifresini
+              // bu forma doldurmasın — şifre kutusu dolarsa kayıtta kullanıcının şifresi değişir.
+              autoComplete="new-password" />
             <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
