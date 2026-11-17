@@ -238,12 +238,20 @@ function KonumRozeti({ h, ac }: {
   // YOLDAN MESAFE YAZILIR: "19 km" kuşbakışıydı ve gerçeği olduğundan yakın
   // gösteriyordu; insanın sorduğu "gitmek kaç km". Yol mesafesi yoksa
   // kuşbakışına düşülür ve başına "~" konur — hangi sayı olduğu belli olsun.
-  const metin = yol != null ? olcu(yol)
-    : mesafe != null ? `~${olcu(mesafe)}`
-      : "konum —";
+  //
+  // ARAÇ YANINDAYSA YOL MESAFESİ YAZILMAZ (kullanıcı, 17.11.2026): işlerin çoğu
+  // arazide, yol olmayan yerde; insan araca tarladan yürüyerek gidiyor. Rota servisi
+  // ise en yakın yola çıkıp dolaşıyor — aracın 2 m yanında girilen kayıtta "754 m"
+  // yazdı. Yakın kayıtta (şüphe eşiğinin altı) doğru sayı düz çizgidir; yol mesafesi
+  // yalnız uzak kayıtta anlamlı, orada "gitmek kaç km" sorulur.
+  const metin = mesafe != null && !supheli ? olcu(mesafe)
+    : yol != null ? olcu(yol)
+      : mesafe != null ? `~${olcu(mesafe)}`
+        : "konum —";
   const varKonum = h.konum_lat != null && h.konum_lng != null;
   const ipucu = [
     mesafe == null ? (h.konum_notu ?? "Araç konumuyla karşılaştırılamadı")
+      : !supheli ? `Araç ${olcu(mesafe)} uzakta (düz çizgi) — yürüme mesafesi, yol hesabı yazılmaz`
       : yol != null
         ? `Yoldan ${olcu(yol)}${h.arac_yol_dk ? ` (~${h.arac_yol_dk} dk)` : ""} · kuşbakışı ${olcu(mesafe)}`
         : `Kuşbakışı ${olcu(mesafe)} — yol mesafesi alınamadı`,
@@ -1271,8 +1279,13 @@ function YakitPageContent() {
                 mesafe = mesafeM(konum, { lat: anlik.lat, lng: anlik.lng });
                 // YOLDAN MESAFE: listede görünen sayı bu. Servis cevap
                 // vermezse boş kalır, ekran kuşbakışına düşer — uydurulmaz.
-                const y = await yolMesafesi({ lat: anlik.lat, lng: anlik.lng }, konum);
-                if (y) { yolM = y.m; yolDk = y.dk; yolKaynak = y.kaynak; }
+                // YALNIZ UZAK KAYITTA SORULUR: araç yanındaysa (şüphe eşiğinin altı)
+                // rota servisi yola çıkıp dolaşan bir sayı veriyor (2 m yerine 754 m);
+                // arazide insan yürüyerek gidiyor, o sayı yanlış izlenim bırakıyor.
+                if (mesafeSupheliMi(mesafe, konum.dogruluk >= 0 ? konum.dogruluk : null)) {
+                  const y = await yolMesafesi({ lat: anlik.lat, lng: anlik.lng }, konum);
+                  if (y) { yolM = y.m; yolDk = y.dk; yolKaynak = y.kaynak; }
+                }
               }
             }
           } catch {

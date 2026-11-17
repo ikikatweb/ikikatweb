@@ -18,6 +18,7 @@
 import { MapPin, Truck, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { mesafeSupheliMi } from "@/lib/utils/konum";
 
 export type YakitKonumNokta = {
   konum_lat: number;
@@ -58,11 +59,18 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
   // olarak görünüyor; uydu görüntüsünde bina, depo, yol gerçekten görünüyor.
   // Etiketli olanı (hybrid) seçildi: yer adları olmadan yön bulmak zor.
   // Kullanıcı harita içinden katmanı yine değiştirebiliyor.
+  //
+  // ARAÇ YANINDAYSA YOL MESAFESİ GÖSTERİLMEZ, TARİF YÜRÜME OLUR (17.11.2026): arazide
+  // yol yok, insan araca yürüyerek gidiyor. Araç yolu en yakın asfalta çıkıp dolaşıyor;
+  // aracın 2 m yanındaki kayıtta "yoldan 754 m" yazdı. Yakın kayıtta doğru sayı
+  // kuşbakışıdır. Ölçüt listedeki rozetle AYNI (şüphe eşiği + telefonun sapma payı).
+  const yakin = kayit.arac_mesafe_m != null
+    && !mesafeSupheliMi(kayit.arac_mesafe_m, kayit.konum_dogruluk_m ?? null);
   const gomme = aracVar
-    ? `https://maps.google.com/maps?saddr=${aracNokta}&daddr=${kayitNokta}&hl=tr&t=h&output=embed`
+    ? `https://maps.google.com/maps?saddr=${aracNokta}&daddr=${kayitNokta}&hl=tr&t=h${yakin ? "&dirflg=w" : ""}&output=embed`
     : `https://maps.google.com/maps?q=${kayitNokta}&z=17&hl=tr&t=h&output=embed`;
   const disHarita = aracVar
-    ? `https://www.google.com/maps/dir/?api=1&origin=${aracNokta}&destination=${kayitNokta}&travelmode=driving`
+    ? `https://www.google.com/maps/dir/?api=1&origin=${aracNokta}&destination=${kayitNokta}&travelmode=${yakin ? "walking" : "driving"}`
     : `https://www.google.com/maps?q=${kayitNokta}`;
 
   return (
@@ -95,12 +103,17 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
           )}
           {/* İKİ MESAFE: ekranda asıl görünen YOLDAN olanı; kuşbakışı yanında
               küçük duruyor — şüphe eşiği ona baktığı için kaybolmamalı. */}
-          {kayit.arac_yol_m != null && (
+          {!yakin && kayit.arac_yol_m != null && (
             <span className="rounded bg-[#1E3A5F] px-2 py-1 font-semibold text-white">
               yoldan {km(kayit.arac_yol_m)}{kayit.arac_yol_dk ? ` · ~${kayit.arac_yol_dk} dk` : ""}
             </span>
           )}
-          {kayit.arac_mesafe_m != null && (
+          {yakin && kayit.arac_mesafe_m != null && (
+            <span className="rounded bg-emerald-600 px-2 py-1 font-semibold text-white">
+              araç yanında · {km(kayit.arac_mesafe_m)}
+            </span>
+          )}
+          {!yakin && kayit.arac_mesafe_m != null && (
             <span className="rounded bg-gray-100 px-2 py-1 text-gray-700">
               kuşbakışı <strong>{km(kayit.arac_mesafe_m)}</strong>
             </span>
