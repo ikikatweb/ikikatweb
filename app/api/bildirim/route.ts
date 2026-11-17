@@ -28,7 +28,8 @@ export const dynamic = "force-dynamic";
 const KAYNAK_TIP = "ag-kontrol";
 
 function anahtarGecerli(request: Request): boolean {
-  const beklenen = process.env.AGKONTROL_TOKEN;
+  // trim: Vercel'e yapıştırılan değerin sonunda boşluk/satır sonu kalırsa kapı hiç açılmıyor.
+  const beklenen = process.env.AGKONTROL_TOKEN?.trim();
   if (!beklenen) return false;
   const m = /^Bearer\s+(.+)$/i.exec(request.headers.get("authorization") ?? "");
   if (!m) return false;
