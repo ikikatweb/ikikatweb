@@ -158,8 +158,19 @@ function tarihleriOku(metin) {
 function belgeNoBul(metin) {
   const s = String(metin);
   // Yeni biçim (2026): "KETSİS Tebliğ Bilgilendirme İletisi - BELGE NO[MC09994486]"
-  const belge = s.match(/BELGE\s*NO\s*[[(]?\s*([A-Z0-9-]{4,30})/i);
-  if (belge) return belge[1];
+  //
+  // KÖŞELİ PARANTEZİN İÇİ OLDUĞU GİBİ ALINIR. Eskiden yalnız harf-rakam-tire kabul
+  // ediliyordu; Emniyet'in "MC10790796" numarası tutuyor, Vergi Denetim Kurulu'nun
+  // "11.11.2026/E.25009" sayısı (nokta ve bölü var) tutmuyordu → belge no BOŞ kaldı →
+  // aşağıdaki "aynı belge, ikinci mail" denetimi atlandı → 16.11.2026'da "tebliğ
+  // edilmiştir" iletisi yeni tebligatmış gibi ikinci satır açtı ve push attı.
+  const koseli = s.match(/BELGE\s*NO\s*\[\s*([^\]\r\n]{2,60}?)\s*\]/i);
+  if (koseli) return koseli[1];
+  const belge = s.match(/BELGE\s*NO\s*[(:]?\s*([A-Z0-9][A-Z0-9./-]{3,40})/i);
+  if (belge) return belge[1].replace(/[./-]+$/, "");
+  // Konuda yoksa gövdeden: "… tarihinde gönderilen 11.11.2026/E.25009 sayılı belge …"
+  const govde = s.match(/g[öo]nderilen\s+(\S{2,60})\s+say[ıi]l[ıi]\s+belge/i);
+  if (govde) return govde[1];
   // Eski biçim (2017, eteblig-noreply@gelirler.gov.tr): "... - ZARF ID[0rj27mq3hw15d0]"
   const zarf = s.match(/ZARF\s*ID\s*[[(]?\s*([A-Za-z0-9-]{6,40})/i);
   return zarf ? zarf[1] : null;
@@ -272,6 +283,7 @@ async function main() {
   const durumMap = new Map((durumlar ?? []).map((d) => [d.kutu, d]));
 
   const yeniKayitlar = [];   // push için
+  const teyitler = [];       // "tebliğ edilmiştir" teyit mailleri → süre başladı bildirimi
   const hatalar = [];        // bu turdaki bütün hatalar (ekranda görünür)
   // KALICI hatalar — yalnız bunlar görev çöktü bildirimi doğurur. Gerekçe:
   // bu makinede iki mail görevi 2 DAKİKADA BİR dönüyor (sigorta tek, bildirge çift
@@ -428,8 +440,14 @@ async function main() {
             ...tarihleriOku(`${konu} ${govde}`),
             guven,
           };
+          // TEYİT MAİLİ Mİ: "… tarihinde tebliğ edilmiştir" (ilk mail "edilmiş
+          // sayılacaktır" der). İlk mail kaçmış ve satırı bu mail açıyorsa teyit de
+          // görülmüş demektir — ayrıca "süre başladı" bildirimi beklenmez.
+          const tebligEdildi = /teblig\s+edilmistir/.test(sadele(`${konu} ${govde}`));
+          if (tebligEdildi) kayit.teblig_teyit_at = kayit.mail_tarihi;
 
           if (DENEME) {
+            if (tebligEdildi) log(`  [deneme] ↓ TEYİT maili ("tebliğ edilmiştir")`);
             log(`  [deneme] ${guven.toUpperCase()} · ${adres} · ${konu.slice(0, 70)}`);
             log(`           belge no: ${kayit.belge_no ?? "—"} · vkn ${vkn ?? "—"} → firma: ${vknFirma?.kisa_adi ?? vknFirma?.firma_adi ?? (tekFirmaId ? "(kutunun tek firmasi)" : "BELIRSIZ")}`);
             log(`           özet: ${govde.slice(0, 200)}`);
@@ -442,12 +460,44 @@ async function main() {
           // numarası yakalar. İkinci satır açmak "iki tebligat var" demek olur.
           if (kayit.belge_no) {
             const { data: mevcut, error: mevcutHata } = await sb.from("ketsis_bildirim")
-              .select("id").eq("belge_no", kayit.belge_no).limit(1);
+              .select("id, teblig_teyit_at, firma_id, gonderen_kurum, gonderme_tarihi, teblig_tarihi")
+              .eq("belge_no", kayit.belge_no).limit(1);
             if (mevcutHata) {
               kaliciHatalar.push(`${user}/${klasor} / belge ${kayit.belge_no}: ${mevcutHata.message}`);
               continue;
             }
-            if ((mevcut ?? []).length) { log(`  = zaten var (belge ${kayit.belge_no})`); continue; }
+            if ((mevcut ?? []).length) {
+              // İKİNCİ MAİL = TEYİT ("tebliğ edilmiştir"): satır açmaz ama beş günün
+              // dolduğunu, sürenin işlemeye başladığını haber verir (kullanıcı kararı,
+              // 17.11.2026). teblig_teyit_at boşken BİR KEZ işlenir; tarama aynı maili
+              // bir gün boyunca tekrar gördüğü için bu işaret olmadan bildirim yağardı.
+              const eski = mevcut[0];
+              if (tebligEdildi && !eski.teblig_teyit_at) {
+                const { data: isaret, error: isaretHata } = await sb.from("ketsis_bildirim")
+                  .update({ teblig_teyit_at: kayit.mail_tarihi })
+                  .eq("id", eski.id).is("teblig_teyit_at", null).select("id");
+                if (isaretHata) {
+                  kaliciHatalar.push(`${user}/${klasor} / teyit ${kayit.belge_no}: ${isaretHata.message}`);
+                  continue;
+                }
+                // ESKİ MAİL BİLDİRİM DOĞURMAZ: --gun ile geçmiş taranırken haftalar önceki
+                // teyit "süre başladı" diye telefona düşmesin. İşaret yine konur.
+                const taze = Date.now() - Date.parse(kayit.mail_tarihi) < 3 * 86400000;
+                if ((isaret ?? []).length && taze) {
+                  teyitler.push({
+                    belge_no: kayit.belge_no,
+                    gonderen_kurum: kayit.gonderen_kurum ?? eski.gonderen_kurum,
+                    gonderme_tarihi: kayit.gonderme_tarihi ?? eski.gonderme_tarihi,
+                    teblig_tarihi: kayit.teblig_tarihi ?? eski.teblig_tarihi,
+                    firma_id: eski.firma_id ?? kayit.firma_id,
+                  });
+                  log(`  ✓ teyit (belge ${kayit.belge_no}) → süre başladı bildirimi`);
+                  continue;
+                }
+              }
+              log(`  = zaten var (belge ${kayit.belge_no})`);
+              continue;
+            }
           }
 
           // Tekilleştirme veritabanında (kutu, tekil) tekil indeksiyle. Çakışmada
@@ -529,7 +579,43 @@ async function main() {
     }
   }
 
-  log(`bitti · ${yeniKayitlar.length} yeni kayıt`);
+  // ───────────── push: teyit maili geldiyse "süre başladı" ─────────────
+  // HER BELGE AYRI BİLDİRİM ve HANGİ BELGE OLDUĞU TAM YAZILIR (kullanıcı isteği,
+  // 17.11.2026): firma, gönderen kurum, gönderildiği gün, belge numarası, tebliğ günü.
+  // "Bir tebligatın süresi başladı" demek, hangisi olduğunu aratır.
+  const gunYaz = (t) => { const m = String(t ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}.${m[2]}.${m[1]}` : null; };
+  for (const t of DENEME ? [] : teyitler) {
+    const firma = firmalar.find((f) => f.id === t.firma_id);
+    const firmaAd = firma?.kisa_adi || firma?.firma_adi || null;
+    const kurum = String(t.gonderen_kurum ?? "").replace(/\s+/g, " ").trim();
+    let kimden = "";
+    if (kurum) {
+      let ek = cikmaEki(kurum);
+      if (kurum === kurum.toLocaleUpperCase("tr")) ek = ek.toLocaleUpperCase("tr");
+      kimden = kurum.length > KURUM_AZAMI ? `${kurum.slice(0, KURUM_AZAMI).trimEnd()}…’${ek} ` : `${kurum}${ek} `;
+    }
+    const gonderme = gunYaz(t.gonderme_tarihi);
+    const teblig = gunYaz(t.teblig_tarihi);
+    const govde =
+      `${kimden}${gonderme ? `${gonderme} tarihinde gelen ` : kimden ? "gelen " : ""}` +
+      `${t.belge_no} belge numaralı tebligat ${teblig ? `${teblig} tarihinde ` : ""}tebliğ edildi. ` +
+      `Yeni bir belge değil; bu belgenin süresi işlemeye başladı.`;
+    try {
+      const n = await pushGonder(sb, env, {
+        baslik: `⚖️ Tebligat süresi başladı${firmaAd ? ` — ${firmaAd}` : ""}`,
+        govde,
+        url: "/dashboard/yazismalar/e-tebligat",
+        etiket: `ketsis-teyit-${t.belge_no}`,
+        kategori: "e-tebligat",
+      });
+      log(`push (süre başladı, belge ${t.belge_no}): ${n} cihaza gönderildi`);
+    } catch (e) {
+      log(`push gönderilemedi (teyit ${t.belge_no}): ${e.message}`);
+      kaliciHatalar.push(`push (teyit ${t.belge_no}): ${e.message}`);
+    }
+  }
+
+  log(`bitti · ${yeniKayitlar.length} yeni kayıt · ${teyitler.length} teyit`);
   // GÖREV ÇÖKTÜ BİLDİRİMİ yalnız KALICI hatalarda: veritabanına yazılamaması, push'un
   // gitmemesi ya da aynı kutunun üst üste ikinci turda patlaması. Tek seferlik IMAP
   // kopması (iki dakikalık mail görevleriyle çakışma) bildirim doğurmaz — ama kaybolmaz
