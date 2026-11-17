@@ -99,8 +99,8 @@ type Hareket =
       arac_lng?: number | null;
       konum_notu?: string | null;
       created_by: string | null;
-    }
-  | {
+    } & DuzeltmeKonumu
+  | ({
       tip: "alim";
       id: string;
       tarih: string;
@@ -111,8 +111,8 @@ type Hareket =
       birim_fiyat: number;
       notu: string | null;
       created_by: string | null;
-    }
-  | {
+    } & GirisKonumu & DuzeltmeKonumu)
+  | ({
       tip: "virman";
       id: string;
       tarih: string;
@@ -122,7 +122,22 @@ type Hareket =
       miktar_lt: number;
       notu: string | null;
       created_by: string | null;
-    };
+    } & GirisKonumu & DuzeltmeKonumu);
+
+/** Kaydı girenin konumu — alım ve virmanda karşılaştırılacak araç yok, tek nokta. */
+type GirisKonumu = {
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+};
+/** Kaydı SON düzenleyenin konumu. İlk giriş konumu değişmez; bu ayrı tutulur. */
+type DuzeltmeKonumu = {
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
+};
 
 // Hesaplanmış tablo satırı
 type TabloSatir = {
@@ -251,6 +266,32 @@ function KonumRozeti({ h, ac }: {
 }
 
 
+const duzeltmeKonumu = (k: DuzeltmeKonumu): DuzeltmeKonumu => ({
+  duzeltme_konum_lat: k.duzeltme_konum_lat ?? null,
+  duzeltme_konum_lng: k.duzeltme_konum_lng ?? null,
+  duzeltme_konum_dogruluk_m: k.duzeltme_konum_dogruluk_m ?? null,
+  duzeltme_konum_at: k.duzeltme_konum_at ?? null,
+  duzeltme_by: k.duzeltme_by ?? null,
+});
+
+/**
+ * TEK NOKTA ROZETİ — alım/virman kaydının girildiği yer ve her kayıt türünde
+ * "düzeltme konumu". Karşılaştırılacak araç olmadığı için mesafe yazmaz; tıklayınca
+ * nokta haritada açılır.
+ */
+function NoktaRozeti({ etiket, sinif, ipucu, ac }: {
+  etiket: string; sinif: string; ipucu: string; ac: () => void;
+}) {
+  return (
+    <div>
+      <button type="button" onClick={ac} title={ipucu}
+        className={`mt-0.5 inline-flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9px] hover:brightness-95 ${sinif}`}>
+        <MapPin size={9} /> {etiket}
+      </button>
+    </div>
+  );
+}
+
 export default function YakitPage() {
   return <Suspense fallback={<div className="text-center py-16 text-gray-500">Yükleniyor...</div>}><YakitPageContent /></Suspense>;
 }
@@ -322,6 +363,9 @@ function YakitPageContent() {
   const [verDialogLoading, setVerDialogLoading] = useState(false);
   // Çift tıklama kilidi — state'ten farklı olarak SENKRON, aynı tick'te etkili.
   const kaydediliyorRef = useRef(false);
+  // Aydınlatma onayından sonra HANGİ kayıt ekranı açılacak. Eskiden yalnız "Yakıt Ver"
+  // konum istiyordu; artık alım, virman ve stok düzeltmesi de istiyor.
+  const onayHedefRef = useRef<"ver" | "al" | "vir" | "duz" | null>(null);
   const [menzilSoru, setMenzilSoru] = useState<{ fark: number; menzil: number; birim: string } | null>(null); // 1 depo menzili aşımı Evet/Hayır sorusu
 
   // Dialog: Yakıt Düzeltme (SADECE yönetici) — eksik/fazla mazotu araçlara hisse oranında dağıt
@@ -553,6 +597,7 @@ function YakitPageContent() {
         arac_lat: y.arac_lat ?? null,
         arac_lng: y.arac_lng ?? null,
         konum_notu: y.konum_notu ?? null,
+        ...duzeltmeKonumu(y),
       });
     }
     for (const a of alimlar) {
@@ -567,6 +612,10 @@ function YakitPageContent() {
         birim_fiyat: a.birim_fiyat,
         notu: a.notu,
         created_by: a.created_by,
+        konum_lat: a.konum_lat ?? null,
+        konum_lng: a.konum_lng ?? null,
+        konum_dogruluk_m: a.konum_dogruluk_m ?? null,
+        ...duzeltmeKonumu(a),
       });
     }
     for (const v of virmanlar) {
@@ -580,6 +629,10 @@ function YakitPageContent() {
         miktar_lt: v.miktar_lt,
         notu: v.notu,
         created_by: v.created_by,
+        konum_lat: v.konum_lat ?? null,
+        konum_lng: v.konum_lng ?? null,
+        konum_dogruluk_m: v.konum_dogruluk_m ?? null,
+        ...duzeltmeKonumu(v),
       });
     }
     return hs;
@@ -937,6 +990,55 @@ function YakitPageContent() {
     return { toplamAlim, toplamDagitim, virmanGelen, virmanGiden, virmanNet: virmanGelen - virmanGiden };
   }, [tabloSatirlari]);
 
+  // ============ KONUM ============
+
+  /**
+   * KAYIT/DÜZELTME İÇİN KONUM — ZORUNLU. Alınamazsa null döner ve kayıt YAPILMAZ:
+   * konumsuz kayıt kabul edilseydi kural "isteyen vermez" hâline gelirdi. Sebep
+   * kullanıcıya söylenir, "Konumu aç" düğmesinin durduğu aydınlatma penceresi açılır
+   * (tarayıcının izin balonunu kullanıcılar kendi başına beceremiyor).
+   */
+  async function kayitKonumuAl(neIcin: string): Promise<Konum | null> {
+    try {
+      return await konumAl();
+    } catch (e) {
+      toast.error(e instanceof KonumHatasi ? e.message : `Konum alınamadı — ${neIcin} için konum zorunlu.`,
+        { duration: toastSuresi() });
+      onayHedefRef.current = null;   // kayıt ekranı zaten açık; onaydan sonra yenisi açılmasın
+      setOnayDialogAcik(true);
+      return null;
+    }
+  }
+
+  /** İlk giriş konumu — alım, virman ve stok düzeltmesi kaydına yazılır. */
+  const girisKonumAlanlari = (k: Konum) => ({
+    konum_lat: k.lat,
+    konum_lng: k.lng,
+    konum_dogruluk_m: k.dogruluk >= 0 ? k.dogruluk : null,
+    konum_at: k.an,
+  });
+
+  /**
+   * DÜZELTME KONUMU — kayıt sonradan değiştirilirken yazılan İKİNCİ konum. İlk giriş
+   * konumuna dokunulmaz (kaydın sahada girildiğinin kanıtı o); bu, değişikliğin
+   * nereden ve kim tarafından yapıldığını söyler. Her düzenleme öncekinin üstüne yazar.
+   */
+  const duzeltmeKonumAlanlari = (k: Konum) => ({
+    duzeltme_konum_lat: k.lat,
+    duzeltme_konum_lng: k.lng,
+    duzeltme_konum_dogruluk_m: k.dogruluk >= 0 ? k.dogruluk : null,
+    duzeltme_konum_at: k.an,
+    duzeltme_by: kullanici?.id ?? null,
+  });
+
+  /** Aydınlatma onayı yoksa önce onu aç; true dönerse kayıt ekranı AÇILMAZ. */
+  function onayBekletir(hedef: "ver" | "al" | "vir" | "duz", onayAtla: boolean): boolean {
+    if (onayAtla || konumOnayli !== false) return false;
+    onayHedefRef.current = hedef;
+    setOnayDialogAcik(true);
+    return true;
+  }
+
   // ============ DIALOG AÇMA FONKSİYONLARI ============
 
   /**
@@ -950,7 +1052,7 @@ function YakitPageContent() {
   function verDialogAc(onayAtla = false) {
     // ONAY YOKSA ÖNCE AYDINLATMA: konum zorunlu olduğu için kişi ne
     // toplandığını okumadan kayıt ekranına girmiyor. Onaylayınca form açılır.
-    if (!onayAtla && konumOnayli === false) { setOnayDialogAcik(true); return; }
+    if (onayBekletir("ver", onayAtla)) return;
     setVerEditId(null);
     setVerDialogSantiyeId(filtreSantiyeId || "");
     setVerDialogAracId("");
@@ -982,7 +1084,8 @@ function YakitPageContent() {
     setVerDialogOpen(true);
   }
 
-  function duzDialogAc() {
+  function duzDialogAc(onayAtla = false) {
+    if (onayBekletir("duz", onayAtla)) return;
     setDuzDialogSantiyeId(filtreSantiyeId || "");
     setDuzDialogTarih(new Date().toISOString().slice(0, 10));
     const sm = new Date();
@@ -992,7 +1095,8 @@ function YakitPageContent() {
     setDuzDialogOpen(true);
   }
 
-  function alDialogAc() {
+  function alDialogAc(onayAtla = false) {
+    if (onayBekletir("al", onayAtla)) return;
     setAlEditId(null);
     setAlDialogSantiyeId(filtreSantiyeId || "");
     const bugunStr = new Date().toISOString().slice(0, 10);
@@ -1020,7 +1124,8 @@ function YakitPageContent() {
     setAlDialogOpen(true);
   }
 
-  function virDialogAc() {
+  function virDialogAc(onayAtla = false) {
+    if (onayBekletir("vir", onayAtla)) return;
     setVirEditId(null);
     setVirDialogGonderen(filtreSantiyeId || "");
     setVirDialogAlan("");
@@ -1101,7 +1206,11 @@ function YakitPageContent() {
     setVerDialogLoading(true);
     try {
       if (verEditId) {
+        // DÜZELTME KONUMU: ilk giriş konumu yerinde kalır, bu ayrıca yazılır.
+        const dKonum = await kayitKonumuAl("yakıt kaydını düzeltmek");
+        if (!dKonum) return;
         await updateAracYakit(verEditId, {
+          ...duzeltmeKonumAlanlari(dKonum),
           arac_id: verDialogAracId,
           santiye_id: verDialogSantiyeId,
           tarih: verDialogTarih,
@@ -1126,6 +1235,7 @@ function YakitPageContent() {
           // aydınlatma penceresi açılıyor — oradan tek dokunuşla izin veriliyor.
           toast.error(e instanceof KonumHatasi ? e.message : "Konum alınamadı — yakıt kaydı için konum zorunlu.",
             { duration: toastSuresi() });
+          onayHedefRef.current = null;
           setOnayDialogAcik(true);
           return;
         }
@@ -1254,7 +1364,10 @@ function YakitPageContent() {
       // Düzeltme = o şantiyenin DEPO mazotuna ± stok girişi. Araçlara dağıtım YOK.
       // yakit_alim kaydı "Düzeltme" firma adıyla yazılır → stokMap'te tip "alim"
       // olarak (stok += miktar_lt) sayılır; ± miktar otomatik doğru stok düzeltmesi yapar.
+      const konum = await kayitKonumuAl("stok düzeltmesi");
+      if (!konum) return;
       await insertYakitAlim({
+        ...girisKonumAlanlari(konum),
         santiye_id: duzDialogSantiyeId,
         tarih: duzDialogTarih,
         saat: saatStr,
@@ -1314,7 +1427,10 @@ function YakitPageContent() {
     setAlDialogLoading(true);
     try {
       if (alEditId) {
+        const dKonum = await kayitKonumuAl("yakıt alımını düzeltmek");
+        if (!dKonum) return;
         await updateYakitAlim(alEditId, {
+          ...duzeltmeKonumAlanlari(dKonum),
           santiye_id: alDialogSantiyeId,
           tarih: alDialogTarih,
           saat: `${alDialogSaat}:00`,
@@ -1324,7 +1440,11 @@ function YakitPageContent() {
           notu: alDialogNotu.trim() || null,
         });
       } else {
+        // KONUM ZORUNLU: tanker depoya boşaltılırken kaydı giren neredeydi.
+        const konum = await kayitKonumuAl("yakıt alımı");
+        if (!konum) return;
         await insertYakitAlim({
+          ...girisKonumAlanlari(konum),
           santiye_id: alDialogSantiyeId,
           tarih: alDialogTarih,
           saat: `${alDialogSaat}:00`,
@@ -1369,7 +1489,10 @@ function YakitPageContent() {
     setVirDialogLoading(true);
     try {
       if (virEditId) {
+        const dKonum = await kayitKonumuAl("virmanı düzeltmek");
+        if (!dKonum) return;
         await updateYakitVirman(virEditId, {
+          ...duzeltmeKonumAlanlari(dKonum),
           gonderen_santiye_id: virDialogGonderen,
           alan_santiye_id: virDialogAlan,
           tarih: virDialogTarih,
@@ -1379,7 +1502,11 @@ function YakitPageContent() {
       } else {
         const simdi = new Date();
         const saatStr = `${String(simdi.getHours()).padStart(2, "0")}:${String(simdi.getMinutes()).padStart(2, "0")}:${String(simdi.getSeconds()).padStart(2, "0")}`;
+        // KONUM ZORUNLU: yakıt başka şantiyeye aktarılırken kaydı giren neredeydi.
+        const konum = await kayitKonumuAl("virman");
+        if (!konum) return;
         await insertYakitVirman({
+          ...girisKonumAlanlari(konum),
           gonderen_santiye_id: virDialogGonderen,
           alan_santiye_id: virDialogAlan,
           tarih: virDialogTarih,
@@ -1806,15 +1933,15 @@ function YakitPageContent() {
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white h-11 text-sm" onClick={() => verDialogAc()}>
               <Plus size={16} className="mr-1.5" /> Yakıt Ver
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={alDialogAc}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white h-11 text-sm" onClick={() => alDialogAc()}>
               <Download size={16} className="mr-1.5" /> Yakıt Al (Depo)
             </Button>
-            <Button className="bg-purple-600 hover:bg-purple-700 text-white h-11 text-sm" onClick={virDialogAc}>
+            <Button className="bg-purple-600 hover:bg-purple-700 text-white h-11 text-sm" onClick={() => virDialogAc()}>
               <RefreshCcw size={16} className="mr-1.5" /> Şantiye Virmanı
             </Button>
             {/* Düzeltme — SADECE yönetici */}
             {isYonetici && (
-              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white h-11 text-sm" onClick={duzDialogAc}>
+              <Button className="bg-indigo-600 hover:bg-indigo-700 text-white h-11 text-sm" onClick={() => duzDialogAc()}>
                 <AlertTriangle size={16} className="mr-1.5" /> Düzeltme
               </Button>
             )}
@@ -2074,7 +2201,46 @@ function YakitPageContent() {
                             baslik: `${h.tarih ? h.tarih.split("-").reverse().join(".") : ""} ${h.saat?.slice(0, 5) ?? ""}`,
                           });
                         }} />
+                      ) : h.konum_lat != null && h.konum_lng != null ? (
+                        // ALIM / VİRMAN: karşılaştırılacak araç yok, yalnız kaydın
+                        // girildiği nokta. Eski kayıtlarda konum yok — rozet çıkmaz.
+                        <NoktaRozeti etiket="konum" sinif="bg-sky-100 text-sky-700"
+                          ipucu={[
+                            "Kaydın girildiği yer",
+                            h.konum_dogruluk_m != null ? `telefon sapma payı ±${h.konum_dogruluk_m} m` : "sapma payı bilinmiyor",
+                            "haritada görmek için tıklayın",
+                          ].join(" · ")}
+                          ac={() => setHaritaKayit({
+                            konum_lat: h.konum_lat as number, konum_lng: h.konum_lng as number,
+                            konum_dogruluk_m: h.konum_dogruluk_m ?? null,
+                            pencereBaslik: h.tip === "virman" ? "Virman kaydı konumu" : "Yakıt alımı konumu",
+                            baslik: `${h.tarih ? h.tarih.split("-").reverse().join(".") : ""} ${h.saat?.slice(0, 5) ?? ""}`,
+                          })} />
                       ) : null}
+                      {/* DÜZELTME KONUMU: kayıt sonradan değiştirildiyse İKİNCİ rozet.
+                          İlk konum kaydın nerede girildiğini, bu ise son değişikliğin
+                          nereden ve kim tarafından yapıldığını söyler. */}
+                      {h.duzeltme_konum_lat != null && h.duzeltme_konum_lng != null && (() => {
+                        const kim = h.duzeltme_by ? (kullaniciMap.get(h.duzeltme_by) ?? "bilinmiyor") : "bilinmiyor";
+                        const ne = h.duzeltme_konum_at
+                          ? new Date(h.duzeltme_konum_at).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : "";
+                        return (
+                          <NoktaRozeti etiket="düzeltme" sinif="bg-violet-100 text-violet-700"
+                            ipucu={[
+                              `Son düzeltme: ${kim}${ne ? ` · ${ne}` : ""}`,
+                              h.duzeltme_konum_dogruluk_m != null ? `telefon sapma payı ±${h.duzeltme_konum_dogruluk_m} m` : "sapma payı bilinmiyor",
+                              "haritada görmek için tıklayın",
+                            ].join(" · ")}
+                            ac={() => setHaritaKayit({
+                              konum_lat: h.duzeltme_konum_lat as number, konum_lng: h.duzeltme_konum_lng as number,
+                              konum_dogruluk_m: h.duzeltme_konum_dogruluk_m ?? null,
+                              pencereBaslik: "Düzeltme konumu",
+                              noktaEtiket: "Düzeltmenin yapıldığı yer",
+                              baslik: `${kim}${ne ? ` · ${ne}` : ""}`,
+                            })} />
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="px-2 text-[10px] text-gray-500 max-w-[120px] truncate" title={h.notu ?? ""}>
                       {h.notu || "—"}
@@ -2162,7 +2328,14 @@ function YakitPageContent() {
           toast.success("Onayınız kaydedildi.");
           // Onaydan sonra kayıt ekranı kendiliğinden açılır: kullanıcı
           // "Yakıt Ver"e ikinci kez basmak zorunda kalmasın.
-          if (!verDialogOpen) verDialogAc(true);
+          // Hangisinden gelindiyse o açılır. Kayıt sırasında (ekran zaten açıkken)
+          // gelindiyse hedef boştur — yeni ekran açılmaz, kullanıcı Kaydet'e yeniden basar.
+          const hedef = onayHedefRef.current;
+          onayHedefRef.current = null;
+          if (hedef === "ver") verDialogAc(true);
+          else if (hedef === "al") alDialogAc(true);
+          else if (hedef === "vir") virDialogAc(true);
+          else if (hedef === "duz") duzDialogAc(true);
         }}
       />
 

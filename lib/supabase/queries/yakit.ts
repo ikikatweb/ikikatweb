@@ -224,6 +224,12 @@ export async function updateAracYakit(id: string, data: {
   depo_full?: boolean;
   dis_yakit_oncesi?: boolean | null;
   notu: string | null;
+  // Düzenleyenin konumu — çağıran ölçüp verir. Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
   let { error } = await supabase.from("arac_yakit").update(data).eq("id", id);
@@ -347,6 +353,11 @@ export async function insertYakitAlim(data: {
   birim_fiyat: number;
   notu: string | null;
   created_by: string | null;
+  // Kaydı girenin konumu — çağıran ölçüp verir. Yönetici düzeltmesinde yok.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+  konum_at?: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
   const { data: inserted, error } = await supabase
@@ -386,6 +397,12 @@ export async function updateYakitAlim(id: string, data: {
   miktar_lt: number;
   birim_fiyat: number;
   notu: string | null;
+  // Düzenleyenin konumu — çağıran ölçüp verir. Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 }): Promise<void> {
   const supabase = getSupabase();
   const { error } = await supabase.from("yakit_alim").update(data).eq("id", id);
@@ -439,6 +456,11 @@ export async function insertYakitVirman(data: {
   miktar_lt: number;
   notu: string | null;
   created_by: string | null;
+  // Kaydı girenin konumu — çağıran ölçüp verir.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+  konum_at?: string | null;
 }): Promise<void> {
   if (data.gonderen_santiye_id === data.alan_santiye_id) {
     throw new Error("Gönderen ve alan şantiye aynı olamaz.");
@@ -478,6 +500,12 @@ export async function updateYakitVirman(id: string, data: {
   tarih: string;
   miktar_lt: number;
   notu: string | null;
+  // Düzenleyenin konumu — çağıran ölçüp verir. Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 }): Promise<void> {
   if (data.gonderen_santiye_id === data.alan_santiye_id) {
     throw new Error("Gönderen ve alan şantiye aynı olamaz.");

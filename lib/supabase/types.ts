@@ -780,6 +780,12 @@ export type AracYakit = {
   notu: string | null;
   created_at: string;
   created_by: string | null;
+  // Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 };
 
 // Depoya yakıt alımı (tedarikçiden)
@@ -794,6 +800,17 @@ export type YakitAlim = {
   notu: string | null;
   created_at: string;
   created_by: string | null;
+  // Kaydı girenin konumu (sql/yakit_alim_virman_konum.sql). Eski kayıtlarda boş.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+  konum_at?: string | null;
+  // Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 };
 
 // Şantiyeler arası yakıt virmanı
@@ -807,6 +824,17 @@ export type YakitVirman = {
   notu: string | null;
   created_at: string;
   created_by: string | null;
+  // Kaydı girenin konumu (sql/yakit_alim_virman_konum.sql). Eski kayıtlarda boş.
+  konum_lat?: number | null;
+  konum_lng?: number | null;
+  konum_dogruluk_m?: number | null;
+  konum_at?: string | null;
+  // Kaydı SON düzenleyenin konumu — ilk giriş konumu (konum_*) değişmez.
+  duzeltme_konum_lat?: number | null;
+  duzeltme_konum_lng?: number | null;
+  duzeltme_konum_dogruluk_m?: number | null;
+  duzeltme_konum_at?: string | null;
+  duzeltme_by?: string | null;
 };
 
 export type BankaYazismaWithRelations = BankaYazisma & {

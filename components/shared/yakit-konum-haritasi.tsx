@@ -32,6 +32,11 @@ export type YakitKonumNokta = {
   arac_yol_dk?: number | null;
   plaka?: string | null;
   baslik?: string | null;
+  /** Pencere başlığı — verilmezse "Yakıt kaydı konumu". Alım, virman ve düzeltme
+   *  konumu da bu pencerede açılıyor; hangisine bakıldığı başlıkta yazsın. */
+  pencereBaslik?: string | null;
+  /** Mavi noktanın adı — verilmezse "Kaydın yeri". */
+  noktaEtiket?: string | null;
 };
 
 const km = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace(".", ",")} km` : `${Math.round(m)} m`);
@@ -67,7 +72,7 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
             <MapPin size={17} className="text-sky-600" />
-            Yakıt kaydı konumu
+            {kayit.pencereBaslik ?? "Yakıt kaydı konumu"}
             {kayit.baslik ? <span className="text-xs font-normal text-gray-500">{kayit.baslik}</span> : null}
           </DialogTitle>
         </DialogHeader>
@@ -77,7 +82,7 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
             yol mesafesini Google kendi panelinde zaten yazıyor. */}
         <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
           <span className="inline-flex items-center gap-1 rounded bg-sky-100 px-2 py-1 text-sky-800">
-            <MapPin size={12} /> Kaydın yeri
+            <MapPin size={12} /> {kayit.noktaEtiket ?? "Kaydın yeri"}
             {kayit.konum_dogruluk_m ? ` (±${kayit.konum_dogruluk_m} m)` : ""}
           </span>
           {aracVar && (
@@ -103,7 +108,7 @@ export default function YakitKonumHaritasi({ kayit, acik, kapat }: {
         </div>
 
         <iframe
-          title="Yakıt kaydı konumu"
+          title={kayit.pencereBaslik ?? "Yakıt kaydı konumu"}
           src={gomme}
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
