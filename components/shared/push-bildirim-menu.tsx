@@ -57,6 +57,8 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   { tag: "mesaj", label: "Mesajlar", emoji: "💬", desc: "Yeni mesaj geldiğinde" },
   // Yalnız yönetici görür (yonetim-kullanicilar modülüne bağlı → gorunenKategoriler filtresi otomatik gizler).
   { tag: "kullanici-giris", label: "Kullanıcı Girişi", emoji: "🔐", desc: "Bir kullanıcı siteye giriş yapınca" },
+  // Ofis ağ kontrol panelinden gelir (POST /api/bildirim). Yalnız yönetici görür.
+  { tag: "ag-kontrol", label: "Ağ Kontrol", emoji: "📡", desc: "Bir cihaz ofis ağına girince / çıkınca" },
 ];
 
 type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";

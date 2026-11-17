@@ -36,6 +36,8 @@ export const BILDIRIM_TAG_MODULE: Record<string, string | null> = {
   personel: "yonetim-personel",
   // Kullanıcı girişi — sadece yönetici görebilir (yonetim-kullanicilar izni yalnız yöneticide)
   "kullanici-giris": "yonetim-kullanicilar",
+  // Ağ kontrol paneli (cihaz ağa girdi/çıktı) — yalnız yönetici
+  "ag-kontrol": "yonetim-kullanicilar",
   // Mesajlaşma — modül izninden bağımsız (herkes)
   mesaj: null,
 };
