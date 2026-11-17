@@ -58,8 +58,13 @@ const KATEGORILER: { tag: string; label: string; emoji: string; desc: string }[]
   // Yalnız yönetici görür (yonetim-kullanicilar modülüne bağlı → gorunenKategoriler filtresi otomatik gizler).
   { tag: "kullanici-giris", label: "Kullanıcı Girişi", emoji: "🔐", desc: "Bir kullanıcı siteye giriş yapınca" },
   // Ofis ağ kontrol panelinden gelir (POST /api/bildirim). Yalnız yönetici görür.
-  { tag: "ag-kontrol", label: "Ağ Kontrol", emoji: "📡", desc: "Bir cihaz ofis ağına girince / çıkınca" },
+  // VARSAYILAN KAPALI: isteyen yönetici açar, açana gelir (bkz. VARSAYILAN_KAPALI).
+  { tag: "ag-kontrol", label: "Ofis Bildirimleri", emoji: "🏢", desc: "Biri büroya gelince / çıkınca" },
 ];
+
+// Diğer kategoriler ayar yokken AÇIK sayılır; bunlar yalnız açıkça açılınca gelir.
+// /api/bildirim aynı kuralla çalışır: yalnız değeri true olanlara yazar.
+const VARSAYILAN_KAPALI = new Set(["ag-kontrol"]);
 
 type Durum = "yukleniyor" | "desteklenmiyor" | "reddedilmis" | "kapali" | "acik";
 
@@ -357,6 +362,7 @@ export default function PushBildirimMenu() {
   }
 
   function isAcikKat(a: Record<string, boolean>, tag: string) {
+    if (VARSAYILAN_KAPALI.has(tag)) return a[tag] === true;
     return a[tag] !== false; // varsayılan açık
   }
 

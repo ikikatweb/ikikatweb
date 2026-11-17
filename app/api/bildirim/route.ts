@@ -7,16 +7,16 @@
 // bir anahtar: panel ayrı bir cihaz, onun anahtarı sızarsa cron rotaları açılmasın.
 // AGKONTROL_TOKEN ortamda yoksa kapı KAPALI sayılır (yanlışlıkla herkese açılmasın).
 //
-// KİME: AGKONTROL_ALICI (virgülle ayrılmış kullanıcı adları). Tanımsızsa "mustafa2kat".
-// Bütün yöneticilere değil: kimin büroda olduğu bilgisi herkese dağıtılacak bir şey değil.
+// KİME: bildirim ayarlarında "Ofis Bildirimleri"ni AÇMIŞ aktif yöneticilere. Kategori
+// varsayılan KAPALI — kimin büroda olduğu bilgisi isteyene gider, herkese dağıtılmaz.
+// Kimse açmamışsa 200 döner (eklenen: 0, alici: 0): bu hata değil, tercih.
 //
 // TEKRAR: gövdedeki "id" bildirim_gecmisi.kaynak_id'ye yazılır. Aynı id ikinci kez
 // gelirse satır eklenmez (sql/ag_kontrol_bildirim.sql — tekil dizin), yine 200 döner
 // ki panel "gitmedi" sanıp sonsuza kadar denemesin.
 //
 // PUSH DA GİDER (17.11.2026, kullanıcı kararı): listeye yazılan her YENİ olay alıcının
-// telefonuna da düşer. Tekrar gelen id için push ATILMAZ. Alıcı "ag-kontrol" kategorisini
-// bildirim ayarından kapattıysa push gitmez, liste kaydı yine yazılır.
+// telefonuna da düşer — sitenin diğer bildirimleri gibi. Tekrar gelen id için push ATILMAZ.
 // Push düşerse cevapta "pushGiden: 0" görünür — sessizce yutulmaz.
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -26,7 +26,6 @@ import { sendPushToKullanici } from "@/lib/push";
 export const dynamic = "force-dynamic";
 
 const KAYNAK_TIP = "ag-kontrol";
-const VARSAYILAN_ALICI = "mustafa2kat";
 
 function anahtarGecerli(request: Request): boolean {
   const beklenen = process.env.AGKONTROL_TOKEN;
@@ -88,18 +87,15 @@ export async function POST(request: Request) {
     { auth: { persistSession: false } },
   );
 
-  const adlar = (process.env.AGKONTROL_ALICI || VARSAYILAN_ALICI)
-    .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  const { data: alicilar, error: aliciHata } = await supabase
+  const { data: yoneticiler, error: aliciHata } = await supabase
     .from("kullanicilar")
     .select("id, bildirim_ayarlari")
-    .in("kullanici_adi", adlar)
+    .eq("rol", "yonetici")
     .eq("aktif", true);
   if (aliciHata) return NextResponse.json({ ok: false, error: aliciHata.message }, { status: 500 });
-  // Alıcı bulunamadıysa "ok" DENMEZ: bildirim hiç kimseye düşmedi, panel bunu bilsin.
-  if (!alicilar || alicilar.length === 0) {
-    return NextResponse.json({ ok: false, error: `Alıcı kullanıcı bulunamadı: ${adlar.join(", ")}` }, { status: 500 });
-  }
+  const alicilar = (yoneticiler ?? []).filter(
+    (k) => ((k.bildirim_ayarlari ?? {}) as Record<string, boolean>)[KAYNAK_TIP] === true,
+  );
 
   // Cihaz adı mesajda zaten geçmiyorsa sona eklenir ("Mki Büroda — Mustafa Kürşat İkikat").
   const govdeMetni = cihaz && !mesaj.includes(cihaz) ? `${mesaj} — ${cihaz}` : mesaj;
@@ -119,18 +115,15 @@ export async function POST(request: Request) {
     });
     if (!error) {
       eklenen++;
-      const kapali = ((a.bildirim_ayarlari ?? {}) as Record<string, boolean>)[KAYNAK_TIP] === false;
-      if (!kapali) {
-        // Etiket olaya özel: iki ayrı cihazın bildirimi telefonda birbirinin üstüne yazmasın.
-        pushGiden += await sendPushToKullanici(a.id, {
-          title: baslik, body: govdeMetni, url: "/dashboard", tag: `${KAYNAK_TIP}-${olayId}`,
-        });
-      }
+      // Etiket olaya özel: iki ayrı cihazın bildirimi telefonda birbirinin üstüne yazmasın.
+      pushGiden += await sendPushToKullanici(a.id, {
+        title: baslik, body: govdeMetni, url: "/dashboard", tag: `${KAYNAK_TIP}-${olayId}`,
+      });
       continue;
     }
     if (error.code === "23505") continue;            // aynı id daha önce yazılmış
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, eklenen, tekrar: eklenen === 0, pushGiden });
+  return NextResponse.json({ ok: true, alici: alicilar.length, eklenen, tekrar: alicilar.length > 0 && eklenen === 0, pushGiden });
 }
