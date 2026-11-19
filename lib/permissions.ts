@@ -130,6 +130,36 @@ export function pathToAction(pathname: string): IzinAksiyonu {
 
 export type Rol = "yonetici" | "santiye_admin" | "kisitli";
 
+// ── "Yakıt Personeli" ──
+// AYRI BİR ROL DEĞİL: güvenlik modeli üç rol üzerine kurulu ve rol değeri 70'ten fazla yerde
+// kontrol ediliyor (veritabanı kısıtı da var). Dördüncü bir rol eklemek her kontrolün yeniden
+// denetlenmesini gerektirir ve gözden kaçan bir "kisitli" kontrolü sessizce yetki açar/kapatır.
+// Bunun yerine: YAYGIN BİR KURULUMA AD VERİLDİ — yalnız Yakıt modülüne yetkili kısıtlı kullanıcı.
+// Kullanıcı formunda tek seçimle kurulur, listede bu adla görünür; güvenlik tarafında hiçbir şey
+// değişmez, kişi her yerde "kisitli" olarak değerlendirilir.
+export const YAKIT_MODUL_KEY = "yakit";
+
+/** Yakıt Personeli kurulumunun izin matrisi: yalnız Yakıt, silme hariç. */
+export const YAKIT_PERSONELI_IZINLER: Izinler = {
+  [YAKIT_MODUL_KEY]: { goruntule: true, ekle: true, duzenle: true, sil: false },
+};
+
+/** Kısıtlı kullanıcının AÇIK olan tek modülü Yakıt mı? */
+export function yakitPersoneliMi(rol: Rol, izinler: Izinler | null | undefined): boolean {
+  if (rol !== "kisitli") return false;
+  const acikModuller = Object.entries(izinler ?? {})
+    .filter(([, aksiyonlar]) => aksiyonlar && Object.values(aksiyonlar).some(Boolean))
+    .map(([key]) => key);
+  return acikModuller.length === 1 && acikModuller[0] === YAKIT_MODUL_KEY;
+}
+
+/** Kullanıcı listesinde ve formda gösterilen rol adı. */
+export function rolEtiketi(rol: Rol, izinler?: Izinler | null): string {
+  if (rol === "yonetici") return "Yönetici";
+  if (rol === "santiye_admin") return "Şantiye Yöneticisi";
+  return yakitPersoneliMi(rol, izinler) ? "Yakıt Personeli" : "Kısıtlı";
+}
+
 // İzin kontrolü
 // Hem "kisitli" hem "santiye_admin" izin matrisinden geçer; aralarındaki fark
 // VERİ KAPSAMINDA: kisitli sadece kendi kayıtlarını görür, santiye_admin

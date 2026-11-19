@@ -12,7 +12,7 @@ import {
 } from "@/lib/supabase/queries/kullanicilar";
 import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
 import { getFirmalar } from "@/lib/supabase/queries/firmalar";
-import { getGrupluModuller } from "@/lib/permissions";
+import { getGrupluModuller, yakitPersoneliMi, YAKIT_PERSONELI_IZINLER } from "@/lib/permissions";
 import { formatKisiAdi } from "@/lib/utils/isim";
 import type { Kullanici, Izinler, ModulIzinleri, SantiyeWithRelations, Firma } from "@/lib/supabase/types";
 import { Card, CardContent } from "@/components/ui/card";
@@ -418,15 +418,34 @@ export default function KullaniciForm({
       <div className="space-y-2">
         <Label>Kullanıcı Tipi</Label>
         <select
-          value={rol}
-          onChange={(e) => setRol(e.target.value as "yonetici" | "santiye_admin" | "kisitli")}
+          value={yakitPersoneliMi(rol, izinler) ? "yakit_personeli" : rol}
+          onChange={(e) => {
+            const secim = e.target.value;
+            // "Yakıt Personeli" ayrı bir rol DEĞİL, hazır bir kurulum: kısıtlı kullanıcı +
+            // yalnız Yakıt modülü izni. Aşağıdaki izin matrisinden başka bir modül açılırsa
+            // seçim kendiliğinden "Kısıtlı"ya döner (değer türetiliyor, saklanmıyor).
+            if (secim === "yakit_personeli") {
+              setRol("kisitli");
+              setIzinler({ ...YAKIT_PERSONELI_IZINLER });
+              return;
+            }
+            setRol(secim as "yonetici" | "santiye_admin" | "kisitli");
+          }}
           disabled={loading}
           className={selectClass + " max-w-xs"}
         >
           <option value="yonetici">Yönetici (tam yetki)</option>
           <option value="santiye_admin">Şantiye Yöneticisi (atandığı şantiyelerin tümünü görür)</option>
           <option value="kisitli">Kısıtlı Kullanıcı (sadece kendi kayıtları)</option>
+          <option value="yakit_personeli">Yakıt Personeli (yalnız Yakıt ekranı)</option>
         </select>
+        {yakitPersoneliMi(rol, izinler) && (
+          <p className="text-xs text-emerald-700">
+            <strong>Yakıt Personeli:</strong> Kısıtlı kullanıcıdır; aşağıda yalnız{" "}
+            <strong>Yakıt Hareketleri</strong> modülü açıktır (görüntüleme, ekleme, düzenleme — silme yok).
+            Şantiye ataması yine gereklidir. Başka bir modül işaretlerseniz tip &quot;Kısıtlı&quot;ya döner.
+          </p>
+        )}
         {rol === "santiye_admin" && (
           <>
             <p className="text-xs text-blue-600">

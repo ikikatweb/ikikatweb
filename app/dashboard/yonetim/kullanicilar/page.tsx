@@ -12,6 +12,7 @@ import { getSantiyeler } from "@/lib/supabase/queries/santiyeler";
 import { getKonumOnaylari, konumDurumu, type KonumOnayOzet } from "@/lib/supabase/queries/konum-onay";
 import type { Kullanici, SantiyeWithRelations } from "@/lib/supabase/types";
 import KullaniciForm from "@/components/shared/kullanici-form";
+import { rolEtiketi, yakitPersoneliMi } from "@/lib/permissions";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -207,7 +208,7 @@ export default function KullanicilarPage() {
     const headers = ["Ad Soyad", "Kullanıcı Adı", "Rol", "Durum"];
     const data = kullanicilar.map((k) => [
       k.ad_soyad, k.kullanici_adi,
-      k.rol === "yonetici" ? "Yönetici" : k.rol === "santiye_admin" ? "Şantiye Yöneticisi" : "Kısıtlı",
+      rolEtiketi(k.rol, k.izinler),
       k.aktif ? "Aktif" : "Pasif",
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -390,11 +391,10 @@ export default function KullanicilarPage() {
                     <Badge className={
                       k.rol === "yonetici" ? "bg-[#F97316]"
                       : k.rol === "santiye_admin" ? "bg-blue-600"
+                      : yakitPersoneliMi(k.rol, k.izinler) ? "bg-emerald-600"
                       : "bg-gray-500"
                     }>
-                      {k.rol === "yonetici" ? "Yönetici"
-                        : k.rol === "santiye_admin" ? "Şantiye Yöneticisi"
-                        : "Kısıtlı"}
+                      {rolEtiketi(k.rol, k.izinler)}
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px]">
