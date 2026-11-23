@@ -10,6 +10,10 @@
 //
 // Video adresi /api/tanitim-video'dan gelir (özel kova + imzalı adres). Video yoksa pencere
 // bunu açıkça yazar; sessizce boş açılmaz.
+//
+// TELEFON / TABLET: dokunmatik cihazda sağ tık yoktur. İki yol var:
+//  • Üst bardaki klaket düğmesi (components/shared/topbar) — TANITIM_OLAY olayını yayar.
+//  • Ekrana parmağı basılı tutmak (yarım saniye) — sağ tıkın dokunmatik karşılığı.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -24,6 +28,19 @@ const TARAYICIYA_BIRAK = 'a[href], img, video, audio, input, textarea, select, [
 
 const ATLAMA_SANIYE = 10;
 const HIZLAR = [0.75, 1, 1.25, 1.5, 2];
+
+/** Telefon/tablette menünün açılması için parmağın basılı tutulma süresi (ms). */
+const UZUN_BASMA_MS = 500;
+/** Basılı tutarken hoş görülen en fazla kayma (px) — fazlası kaydırma sayılır, menü açılmaz. */
+const UZUN_BASMA_KAYMA = 10;
+/** Menü açıldıktan sonra bu süre içindeki tıklama onu kapatmaz (parmağı kaldırınca kapanmasın). */
+const KAPATMA_KORUMA_MS = 350;
+
+/**
+ * Üst bardaki "Sayfayı Tanı" düğmesi bu olayı yayar, pencere dinler.
+ * Telefonda sağ tık/basılı tutma bulunamazsa görünür ve kesin çalışan yol budur.
+ */
+export const TANITIM_OLAY = "sayfayi-tani";
 
 type Durum =
   | { tip: "yukleniyor" }
@@ -57,6 +74,15 @@ export default function TanitimVideo() {
   const [sessiz, setSessiz] = useState(false);
   const [hiz, setHiz] = useState(1);
 
+  // Menüyü verilen noktada aç — ekran dışına taşmasın (yaklaşık 220×54 px).
+  const acilisAniRef = useRef(0);
+  const menuAc = useCallback((x: number, y: number) => {
+    acilisAniRef.current = Date.now();
+    const sx = Math.min(x, window.innerWidth - 232);
+    const sy = Math.min(y, window.innerHeight - 66);
+    setMenu({ x: Math.max(8, sx), y: Math.max(8, sy) });
+  }, []);
+
   // ── Sağ tık: menüyü aç ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const sagTik = (e: MouseEvent) => {
@@ -66,19 +92,71 @@ export default function TanitimVideo() {
       if (hedef?.closest?.(TARAYICIYA_BIRAK)) return; // bağlantı/görsel/yazı alanı → tarayıcı menüsü
       if ((window.getSelection()?.toString() ?? "").trim()) return;  // seçili metin varsa kopyalayabilsin
       e.preventDefault();
-      // Menü ekran dışına taşmasın (yaklaşık 220×54 px).
-      const x = Math.min(e.clientX, window.innerWidth - 232);
-      const y = Math.min(e.clientY, window.innerHeight - 66);
-      setMenu({ x: Math.max(8, x), y: Math.max(8, y) });
+      menuAc(e.clientX, e.clientY);
     };
     document.addEventListener("contextmenu", sagTik);
     return () => document.removeEventListener("contextmenu", sagTik);
-  }, [sayfa]);
+  }, [sayfa, menuAc]);
+
+  // ── Telefon/tablet: parmağı basılı tutunca aynı menü ──────────────────────────────────────
+  // Dokunmatik cihazda sağ tık yok. Kaydırmayı ve yakınlaştırmayı bozmamak için: yalnız TEK
+  // parmak, 10 px'ten fazla kayarsa iptal (aşağı çekip yenileme çalışmaya devam eder), bağlantı
+  // ve yazı alanlarında hiç devreye girmez. Parmak kalkınca menü hemen kapanmasın diye kapatma
+  // koruması yenilenir.
+  useEffect(() => {
+    if (!sayfa) return;
+    let sayac: number | null = null;
+    let bas: { x: number; y: number } | null = null;
+    let menuAcildi = false;
+
+    const iptal = () => {
+      if (sayac !== null) { clearTimeout(sayac); sayac = null; }
+      bas = null;
+    };
+    const basla = (e: TouchEvent) => {
+      iptal();
+      if (e.touches.length !== 1) return;
+      const hedef = e.target as HTMLElement | null;
+      if (hedef?.closest?.(TARAYICIYA_BIRAK)) return;
+      const t = e.touches[0];
+      bas = { x: t.clientX, y: t.clientY };
+      sayac = window.setTimeout(() => {
+        sayac = null;
+        if (bas) { menuAcildi = true; menuAc(bas.x, bas.y); }
+        bas = null;
+      }, UZUN_BASMA_MS);
+    };
+    const hareket = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!bas || sayac === null || !t) return;
+      if (Math.abs(t.clientX - bas.x) > UZUN_BASMA_KAYMA || Math.abs(t.clientY - bas.y) > UZUN_BASMA_KAYMA) iptal();
+    };
+    const bitti = () => {
+      // Basılı tutma menüyü açtıysa: parmağın kalkmasıyla gelen tıklama menüyü kapatmasın.
+      if (menuAcildi) { acilisAniRef.current = Date.now(); menuAcildi = false; }
+      iptal();
+    };
+
+    document.addEventListener("touchstart", basla, { passive: true });
+    document.addEventListener("touchmove", hareket, { passive: true });
+    document.addEventListener("touchend", bitti, { passive: true });
+    document.addEventListener("touchcancel", bitti, { passive: true });
+    return () => {
+      iptal();
+      document.removeEventListener("touchstart", basla);
+      document.removeEventListener("touchmove", hareket);
+      document.removeEventListener("touchend", bitti);
+      document.removeEventListener("touchcancel", bitti);
+    };
+  }, [sayfa, menuAc]);
 
   // Menü; tıklama, kaydırma, Esc ve sayfa değişiminde kapanır.
   useEffect(() => {
     if (!menu) return;
-    const kapat = () => setMenu(null);
+    const kapat = () => {
+      if (Date.now() - acilisAniRef.current < KAPATMA_KORUMA_MS) return;  // açılışın hemen ardındaki olay
+      setMenu(null);
+    };
     const tus = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
     document.addEventListener("click", kapat);
     document.addEventListener("scroll", kapat, true);
@@ -118,6 +196,14 @@ export default function TanitimVideo() {
     }
   }, [sayfa]);
 
+  // Üst bardaki klaket düğmesi (telefonda görünür yol) bu olayı yayar; menüye hiç uğramadan
+  // doğrudan video penceresini açar.
+  useEffect(() => {
+    const ac = () => { setMenu(null); void pencereAc(); };
+    window.addEventListener(TANITIM_OLAY, ac);
+    return () => window.removeEventListener(TANITIM_OLAY, ac);
+  }, [pencereAc]);
+
   const pencereKapat = useCallback(() => {
     videoRef.current?.pause();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -153,11 +239,17 @@ export default function TanitimVideo() {
     setSessiz(yeni);
   }, []);
 
+  // Tam ekran. iPhone/iPad Safari kutuyu (div) tam ekrana ALMAZ; orada videonun kendi
+  // webkitEnterFullscreen'i kullanılır — yoksa düğme sessizce hiçbir şey yapmış olurdu.
   const tamEkran = useCallback(() => {
     const k = kutuRef.current;
-    if (!k) return;
+    const v = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
     if (document.fullscreenElement) { void document.exitFullscreen().catch(() => {}); return; }
-    void k.requestFullscreen().catch(() => {});
+    if (k?.requestFullscreen && document.fullscreenEnabled) {
+      void k.requestFullscreen().catch(() => v?.webkitEnterFullscreen?.());
+      return;
+    }
+    v?.webkitEnterFullscreen?.();
   }, []);
 
   // Klavye: boşluk oynat/durdur, ok tuşları sarma ve ses, Esc kapat.
@@ -319,12 +411,14 @@ export default function TanitimVideo() {
                 className="rounded-md p-1.5 text-[#1E3A5F] hover:bg-slate-100 disabled:opacity-30">
                 {sessiz || ses === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
               </button>
+              {/* Ses düzeyi sürgüsü telefonda GİZLİ: iOS'ta video.volume salt okunur, sürgü
+                  oynatılsa bile hiçbir şey olmaz. Telefonda ses tuşları + sustur düğmesi kullanılır. */}
               <input
                 type="range" min={0} max={1} step={0.05} value={sessiz ? 0 : ses}
                 disabled={durum.tip !== "hazir"}
                 onChange={(e) => sesAyarla(Number(e.target.value))}
                 title="Ses düzeyi (↑ ↓)"
-                className="h-1.5 w-20 cursor-pointer accent-[#1E3A5F] disabled:opacity-30"
+                className="hidden h-1.5 w-20 cursor-pointer accent-[#1E3A5F] disabled:opacity-30 sm:block"
               />
 
               <select

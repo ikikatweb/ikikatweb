@@ -2,14 +2,16 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks";
-import { Menu, LogOut, Clock, X, ZoomIn, Plus, Minus, ChevronDown, UserCog } from "lucide-react";
+import { Menu, LogOut, Clock, X, ZoomIn, Plus, Minus, ChevronDown, UserCog, Clapperboard } from "lucide-react";
 import toast from "react-hot-toast";
 import { hatirlamayiUnut } from "@/lib/auth/beni-hatirla";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
+import { TANITIM_OLAY } from "@/components/shared/tanitim-video";
+import { sayfaBul } from "@/lib/tanitim/sayfalar";
 
 // Yazı boyutu ayarları (eski FontSizeAyari component'inden taşındı)
 const FONT_LS_KEY = "site-font-zoom";
@@ -37,7 +39,10 @@ type TopbarProps = {
 
 export default function Topbar({ onMenuToggle }: TopbarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { kullanici, isYonetici, isShantiyeAdmin } = useAuth();
+  // Bulunulan ekranın tanıtımı var mı? (Telefonda sağ tık yok; klaket düğmesi görünür yol.)
+  const tanitimSayfa = sayfaBul(pathname ?? "");
   const [tarihSaat, setTarihSaat] = useState("");
   const [menuAcik, setMenuAcik] = useState(false);
   const [zoomAcik, setZoomAcik] = useState(false);
@@ -141,6 +146,21 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-sm font-medium text-[#1E3A5F]">{displayName}</span>
         </div>
+
+        {/* SAYFAYI TANI — bulunulan ekranın tanıtım videosunu açar (components/shared/tanitim-video).
+            Masaüstünde sağ tık, telefonda basılı tutma da aynı pencereyi açıyor; bu düğme ikisini
+            bilmeyen/bulamayan kullanıcı için GÖRÜNÜR yol — dokunmatikte tek çalışan yol da bu. */}
+        {tanitimSayfa && (
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(TANITIM_OLAY))}
+            className="p-2 rounded-md text-[#1E3A5F] hover:bg-gray-100 transition-colors"
+            title={`Sayfayı Tanı — ${tanitimSayfa.baslik} tanıtım videosu`}
+            aria-label={`Sayfayı Tanı — ${tanitimSayfa.baslik} tanıtım videosu`}
+          >
+            <Clapperboard size={18} className="text-[#F97316]" />
+          </button>
+        )}
 
         {/* Bildirim Menüsü — yönetici ve şantiye admini görür (kısıtlı kullanıcıya değil).
             Ayarlar (kategoriler + giriş bildirimi dahil) bu menünün "Ayarlar" sekmesinde; ayrı pencere kaldırıldı. */}
