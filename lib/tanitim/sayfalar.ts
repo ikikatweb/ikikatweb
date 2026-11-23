@@ -27,6 +27,7 @@ export const TANITIM_SAYFALAR: TanitimSayfa[] = [
 
   // Büro Yönetimi
   { yol: "/dashboard/iscilik-takibi", slug: "iscilik-durum-raporu", baslik: "İşçilik Durum Raporu" },
+  { yol: "/dashboard/iscilik-takibi/:id", slug: "is-detayi", baslik: "İş Detayı" },
   { yol: "/dashboard/bordro-takibi", slug: "bordro-takibi", baslik: "Bordro Takibi" },
   { yol: "/dashboard/odeme-plani", slug: "odeme-plani", baslik: "Ödeme Planı" },
   { yol: "/dashboard/kredi-kartlari", slug: "kredi-kartlari", baslik: "Kredi Kartları" },
@@ -68,6 +69,7 @@ export const TANITIM_SAYFALAR: TanitimSayfa[] = [
   { yol: "/dashboard/yonetim/haberler", slug: "haberler", baslik: "Bizden Haberler" },
   { yol: "/dashboard/yonetim/personel", slug: "personeller", baslik: "Personeller" },
   { yol: "/dashboard/yonetim/araclar", slug: "araclar", baslik: "Araçlar" },
+  { yol: "/dashboard/yonetim/araclar/kiralik", slug: "kiralik-araclar", baslik: "Kiralık Araçlar" },
   { yol: "/dashboard/yonetim/yi-ufe", slug: "yi-ufe", baslik: "Yi-ÜFE" },
   { yol: "/dashboard/yonetim/tanimlamalar", slug: "tanimlamalar", baslik: "Tanımlamalar" },
   { yol: "/dashboard/yedek", slug: "veri-yedegi", baslik: "Veri Yedeği" },
@@ -79,10 +81,25 @@ export const TANITIM_SAYFALAR: TanitimSayfa[] = [
 // önce; "/dashboard" ise en sonda kalıp genel karşılık olur.
 const SIRALI = [...TANITIM_SAYFALAR].sort((a, b) => b.yol.length - a.yol.length);
 
-/** Adres çubuğundaki yola karşılık gelen tanıtım sayfası. Alt rotalar üst sayfanın videosunu alır. */
+/** "/dashboard/iscilik-takibi/:id" kalıbı gerçek yola uyuyor mu (":" ile başlayan parça her şeyi tutar). */
+function kalibaUyuyor(kalip: string, yol: string): boolean {
+  const k = kalip.split("/");
+  const y = yol.split("/");
+  if (k.length !== y.length) return false;
+  return k.every((parca, i) => (parca.startsWith(":") ? y[i].length > 0 : parca === y[i]));
+}
+
+/**
+ * Adres çubuğundaki yola karşılık gelen tanıtım sayfası.
+ * Önce birebir/kalıp eşleşmesi aranır (ör. iş detayı, kiralık araçlar kendi videosunu alır),
+ * bulunamazsa en yakın ÜST sayfanın videosu kullanılır — "yeni kayıt"/"düzenle" gibi alt
+ * ekranlarda üst sayfanın tanıtımı açılır, hiçbir ekran videosuz kalmaz.
+ */
 export function sayfaBul(pathname: string): TanitimSayfa | null {
   const yol = pathname.replace(/\/+$/, "") || "/dashboard";
-  return SIRALI.find((s) => yol === s.yol || yol.startsWith(s.yol + "/")) ?? null;
+  const tam = SIRALI.find((s) => (s.yol.includes(":") ? kalibaUyuyor(s.yol, yol) : s.yol === yol));
+  if (tam) return tam;
+  return SIRALI.find((s) => !s.yol.includes(":") && yol.startsWith(s.yol + "/")) ?? null;
 }
 
 /** Dışarıdan gelen slug'ı doğrular — dosya adı kurgulamadan önce (yol geçişi/enjeksiyon olmasın). */
