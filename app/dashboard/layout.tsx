@@ -10,6 +10,7 @@ import PullToRefresh from "@/components/shared/pull-to-refresh";
 import TruncateTooltipHandler from "@/components/shared/truncate-tooltip-handler";
 import EpostaZorunlu from "@/components/shared/eposta-zorunlu";
 import AvukatTakipNotu from "@/components/shared/avukat-takip-notu";
+import TanitimVideo from "@/components/shared/tanitim-video";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export default function DashboardLayout({
@@ -60,6 +61,9 @@ export default function DashboardLayout({
       {/* AVUKATA MAİL GİDİNCE ÇIKAN TAKİP NOTU: gönderen pencereler kapandığı
           için not panel düzeninde duruyor (bkz. avukat-takip-notu). */}
       <AvukatTakipNotu />
+      {/* SAĞ TIK → "Sayfayı Tanı": bulunulan ekranın tanıtım videosunu küçük pencerede oynatır.
+          Kendi sağ tık menüsü olan bileşenlere ve bağlantı/görsel/yazı alanlarına karışmaz. */}
+      <TanitimVideo />
       <div
         className="flex overflow-hidden bg-[#FAFAFA]"
         style={{

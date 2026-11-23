@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   getIscilikTakibi,
   upsertIscilikTakibi,
@@ -202,7 +202,6 @@ export default function IscilikTakibiPage() {
   // Tahmini fiyat farkı oranı (fark / kesif) buradan gelir.
   const [sonHakedisMap, setSonHakedisMap] = useState<Map<string, { kesif: number; fark: number; tarih: string | null }>>(new Map());
   const [permanentDeleteId, setPermanentDeleteId] = useState<string | null>(null);
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const { kullanici, isYonetici, hasPermission, loading: authLoading } = useAuth();
   const yEkle = hasPermission("iscilik-takibi", "ekle");
@@ -1056,16 +1055,20 @@ export default function IscilikTakibiPage() {
                       );
                     }
 
-                    // İş adına tıklayınca detay sayfasına git
+                    // İş adına tıklayınca detay sayfasına git. GERÇEK bağlantı (<Link> → <a href>):
+                    // böylece sağ tık "Bağlantıyı yeni sekmede aç" diyebiliyor, orta tık / Ctrl+tık da çalışıyor.
+                    // prefetch kapalı: tabloda onlarca satır var, hepsinin detayını önden çekmek boşa trafik.
                     if (col.key === "is_adi") {
                       return (
                         <TableCell key={col.key} style={stickyStyle} className={cellClass + " cursor-pointer text-[#1E3A5F] hover:text-[#F97316]"}
-                          title={row.santiyeler?.is_adi}
-                          onClick={() => router.push(`/dashboard/iscilik-takibi/${row.id}`)}>
-                          <span className="inline-flex items-start gap-1.5">
-                            {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: firmaRengi }} />}
-                            <span>{col.getValue(row)}</span>
-                          </span>
+                          title={row.santiyeler?.is_adi}>
+                          <Link href={`/dashboard/iscilik-takibi/${row.id}`} prefetch={false}
+                            className="block w-full text-inherit no-underline">
+                            <span className="inline-flex items-start gap-1.5">
+                              {firmaRengi && <span className="inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: firmaRengi }} />}
+                              <span>{col.getValue(row)}</span>
+                            </span>
+                          </Link>
                         </TableCell>
                       );
                     }
