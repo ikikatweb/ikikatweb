@@ -353,6 +353,44 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
     ];
     for (const [v, ad] of zorunlu) if (!v.trim()) { toast.error(`${ad} zorunlu.`); return; }
     if (parseParaInput(form.borc_miktari) <= 0) { toast.error("Borç Miktarı zorunlu."); return; }
+
+    // ── TEBLİGAT BELGESİ ZORUNLU ──
+    // Belge olmadan muhasebeye mail gitmiyor (ek inmeden mail yok) ve dosya sessizce
+    // "altlık bekliyor" durumunda kalıyordu. Bu yüzden kayıt belgesiz açılmaz.
+    //
+    // UETS'TEN GELENDE İKİNCİ KEZ YÜKLETMİYORUZ: belge zaten panelde, dosya esas
+    // numarasıyla eşleşiyor (lib/api/icra-tebligat-belge ile AYNI ölçü: ekleri olan
+    // bir tebligat kaydı var mı). Eşleşme yoksa yükleme istenir.
+    // GEÇMİŞ DOSYA DÜZENLEMESİNİ KİLİTLEMEZ: deftere eski (cevabı verilmiş ya da
+    // muhasebeye çoktan gitmiş) dosyalar da işleniyor. Onlarda belge zorunlu tutulursa
+    // bir yazım hatasını düzeltmek için belge aranır. Şart yalnız SÜRECİ DEVAM EDEN
+    // dosyalarda: yeni kayıt ya da muhasebeye hâlâ gitmemiş, cevabı girilmemiş dosya.
+    const belgeGerekli = !editId
+      || (!duzenlenen?.muhasebe_mail_at && !duzenlenen?.cevap_sekli && !duzenlenen?.cevap_tarihi);
+    if (belgeGerekli && !form.belge_yolu.trim()) {
+      let uetsBelgesiVar = false;
+      try {
+        const sb = createClient();
+        const { data } = await sb.from("tebligat")
+          .select("ekler")
+          .ilike("konu", `%${form.dosya_esas_no.trim()}%`)
+          .limit(20);
+        uetsBelgesiVar = ((data ?? []) as { ekler?: { ad?: string; tur?: string | null }[] | null }[])
+          .some((t) => (t.ekler ?? []).some((e) => /pdf/i.test(e?.tur ?? e?.ad ?? "")));
+      } catch (e) {
+        // Sorgulayamadıysak kullanıcıyı belgesiz bırakmayalım ama sebebi de gizlemeyelim.
+        console.error("UETS tebligat kontrolü yapılamadı:", e);
+      }
+      if (!uetsBelgesiVar) {
+        toast.error(
+          "Tebligat belgesi zorunlu. Fiziki posta ile geldiyse \"Gözat\" ile yükleyin; "
+          + `UETS'ten geldiyse Tebligatlar ekranından "Belgeleri getir" ile indirin `
+          + `(${form.dosya_esas_no.trim()} için panelde belge bulunamadı).`,
+          { duration: 12000 },
+        );
+        return;
+      }
+    }
     // Tebliğ Tarihi, Gelen İcra Yazısı Tarihinden önce olamaz (ISO yyyy-mm-dd → metin karşılaştırması yeterli)
     if (form.gelen_yazi_tarihi && form.teblig_tarihi && form.teblig_tarihi < form.gelen_yazi_tarihi) {
       toast.error("Tebliğ Tarihi, Gelen İcra Yazısı Tarihinden önce olamaz."); return;
@@ -788,7 +826,8 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                 Yüklenen belge muhasebeye (ve gerekirse avukata) giden mailin ekidir. */}
             <div className="sm:col-span-2">
               <label className={fLbl}>
-                Tebligat Belgesi <span className="font-normal text-gray-400">— fiziki posta ile geldiyse</span>
+                Tebligat Belgesi <span className="text-red-500">*</span>
+                <span className="font-normal text-gray-400"> — fiziki posta ile geldiyse</span>
               </label>
               {form.belge_yolu ? (
                 <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5">
@@ -812,6 +851,7 @@ export default function IcraTablosu({ canEkle, canDuzenle, canSil }: { canEkle: 
                   </button>
                   <span className="text-[11px] text-gray-400">
                     UETS&apos;ten gelen dosyalarda gerekmez — belge tebligat kaydından bulunur.
+                    Bulunamazsa kayıt açılmaz.
                   </span>
                 </div>
               )}
