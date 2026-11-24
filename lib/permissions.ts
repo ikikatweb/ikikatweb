@@ -53,8 +53,6 @@ export const MODUL_LISTESI: ModulTanim[] = [
   },
   // Salt rapor ekranı — yazma yok.
   { key: "araclar-acente-raporu", label: "Acente Raporu", grup: "Kasko & Sigorta", aksiyonlar: ["goruntule"] },
-  // Salt liste — yazma yok.
-  { key: "araclar-kira-bedeli", label: "Kira Bedeli", grup: "Kasko & Sigorta", aksiyonlar: ["goruntule"] },
   // Araç Takip
   { key: "araclar-arvento-raporu", label: "Araç Çalışma Raporu", grup: "Araç Takip" },
   // Araç Bakım

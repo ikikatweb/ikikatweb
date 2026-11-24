@@ -48,7 +48,6 @@ export const TANITIM_SAYFALAR: TanitimSayfa[] = [
 
   // Araç Takip
   { yol: "/dashboard/araclar/arvento-raporu", slug: "arac-calisma-raporu", baslik: "Araç Çalışma Raporu" },
-  { yol: "/dashboard/araclar/kira-bedeli", slug: "kira-bedeli", baslik: "Kira Bedeli" },
 
   // Maliyet / Bakım / Puantaj
   { yol: "/dashboard/maliyet-raporu", slug: "sezon-maliyeti", baslik: "Sezon Maliyeti" },
