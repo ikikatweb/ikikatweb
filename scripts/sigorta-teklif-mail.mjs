@@ -675,6 +675,40 @@ async function main() {
         const gonderenFirma = gonderendenFirma(gonderen, govde, firmalar);
         for (const b of bulunanlar) if (!b.firma) b.firma = gonderenFirma;
 
+        // MÜKERRER AYIKLAMA — firma boşlukları DOLDURULDUKTAN SONRA.
+        //
+        // Adım 2'deki "aynı firma PDF'ten de geldiyse ekleme" süzgeci yetmiyor: PDF satırının
+        // firması o anda çoğu kez BOŞ oluyor (firmaBul pdf metninde bulamıyor), gönderenin
+        // şirketiyle ancak burada dolduruluyor. Sonuç: aynı teklif iki kez yazılıyordu.
+        // 24.11.2026 — 60 AFA 401 kaskosu: ekteki PDF'ten 20.605,50 ve gövde metninden
+        // 20.605 diye iki kayıt açıldı, bildirim de "İş Bankası 2 firma teklifi gönderdi" dedi.
+        // Oysa teklif tek, firma tek (Anadolu Sigorta).
+        //
+        // Hangi kaynak kalır: PDF > resim > gövde. PDF acentenin RESMİ belgesi, kuruşu da
+        // doğru veriyor; gövdedeki rakam yuvarlanmış oluyor.
+        // Firması hâlâ boş olanlara DOKUNULMAZ — onları tek satıra indirmek gerçek bir
+        // teklifi sessizce silebilirdi.
+        const kaynakOnceligi = { pdf: 0, resim: 1, mail: 2 };
+        // Türkçe "I" tuzağı: toLocaleLowerCase("tr") "SIGORTA"yı "sıgorta" yapar, "sigorta" ile
+        // eşleşmez. Dört i harfi de tek harfe indirilip ondan sonra küçültülür.
+        const firmaAnahtari = (f) => (f ?? "").replace(/[İIıi]/g, "i").toLowerCase().replace(/\s+/g, " ").trim();
+        const firmaliTekil = new Map();
+        const firmasizlar = [];
+        for (const b of bulunanlar) {
+          const anahtar = firmaAnahtari(b.firma);
+          if (!anahtar) { firmasizlar.push(b); continue; }
+          const eski = firmaliTekil.get(anahtar);
+          if (!eski || (kaynakOnceligi[b.kaynak] ?? 9) < (kaynakOnceligi[eski.kaynak] ?? 9)) {
+            firmaliTekil.set(anahtar, b);
+          }
+        }
+        const tekilBulunanlar = [...firmaliTekil.values(), ...firmasizlar];
+        if (tekilBulunanlar.length < bulunanlar.length) {
+          log(`  mükerrer ayıklandı: ${bulunanlar.length} → ${tekilBulunanlar.length} (aynı firma birden çok kaynaktan)`);
+          bulunanlar.length = 0;
+          bulunanlar.push(...tekilBulunanlar);
+        }
+
         // Poliçe geldiyse gövdedeki rakamlar teklif değil, poliçenin kendi tutarıdır.
         if (policeYazildi) { bulunanlar.length = 0; }
 
