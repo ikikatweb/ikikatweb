@@ -13,7 +13,7 @@ import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/sup
 import { policeTalepKonu, policeTalepGovde, policeTalepSablonCoz, type PoliceTalepSablon } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitDepoOzet, getSonYakitAlimlari, updateYakitAlim, type YakitDepoOzet } from "@/lib/supabase/queries/yakit";
-import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
+import { getAtamaGecmisiTumu, getManuelGunler, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
 import { ayYilNum, yerelBugun, tahminiBordroHesapla } from "@/lib/bordro/tahmini-bordro";
@@ -203,7 +203,6 @@ export default function DashboardPage() {
   const [bordroManuelGunler, setBordroManuelGunler] = useState<PersonelAtamaManuelGun[]>([]);
   // Geçici kabul dilekçesi verilmiş işler — "Sgk Primi Girilmemiş İşler" bunları eler.
   const [bordroDilekceler, setBordroDilekceler] = useState<GeciciKabulDilekce[]>([]);
-  const [bordroPersoneller, setBordroPersoneller] = useState<Personel[]>([]);
   const [bordroGunlukUcretler, setBordroGunlukUcretler] = useState<GunlukUcret[]>([]);
   const [bordroIscilikTakibi, setBordroIscilikTakibi] = useState<IscilikTakibiWithSantiye[]>([]);
   // Tahmini fiyat farkı için son hakediş oranı (İşçilik Takibi ile aynı kaynak).
@@ -469,10 +468,12 @@ export default function DashboardPage() {
       if (!widgetGorunur("bordro_ozet")) { setBordroLoading(false); return; }
       setBordroLoading(true);
       try {
-        const [atamaData, manuelData, bPers, ucretData, iscilikData, ayliklarData, brutData, firmaData, sonHakData, dilekceData] = await Promise.all([
+        // NOT: getBordroPersoneller() buradan KALKTI — personel tablosunun tamamını ikinci kez
+        // çekiyordu (ölçüm: 101 KB) ve sonucu hiçbir yerde okunmuyordu. Personel listesi zaten
+        // BACKGROUND BATCH 2'de getPersoneller() ile geliyor.
+        const [atamaData, manuelData, ucretData, iscilikData, ayliklarData, brutData, firmaData, sonHakData, dilekceData] = await Promise.all([
           getAtamaGecmisiTumu().catch(() => [] as PersonelAtamaGecmisi[]),
           getManuelGunler().catch(() => [] as PersonelAtamaManuelGun[]),
-          getBordroPersoneller().catch(() => [] as Personel[]),
           getGunlukUcretler().catch(() => [] as GunlukUcret[]),
           getIscilikTakibi().catch(() => [] as IscilikTakibiWithSantiye[]),
           getTumIscilikAyliklari().catch(() => [] as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]),
@@ -488,7 +489,6 @@ export default function DashboardPage() {
         setBordroDilekceler(dilekceData);
         setBordroAtamalar(atamaData as PersonelAtamaGecmisi[]);
         setBordroManuelGunler(manuelData as PersonelAtamaManuelGun[]);
-        setBordroPersoneller(bPers as Personel[]);
         setBordroGunlukUcretler(ucretData as GunlukUcret[]);
         setBordroIscilikTakibi(iscilikData as IscilikTakibiWithSantiye[]);
         setBordroAyliklar(ayliklarData as { iscilik_takibi_id: string; ait_oldugu_ay: string; yuklenici_tutar?: number | null; alt_yuklenici_tutar?: number | null }[]);

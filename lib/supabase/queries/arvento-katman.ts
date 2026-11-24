@@ -40,13 +40,19 @@ export async function setSantiyeIl(santiyeId: string, il: string | null): Promis
   if (error) throw error;
 }
 
-// Tüm katmanları getir (eski → yeni). Tablo yoksa/erişilemezse boş döner ki haritalar bozulmasın.
-export async function getHaritaKatmanlari(): Promise<HaritaKatman[]> {
+/**
+ * Tüm katmanları getir (eski → yeni). Tablo yoksa/erişilemezse boş döner ki haritalar bozulmasın.
+ *
+ * yalnizGorunur: SERME HESABI için. Geometriler çok büyük (ölçüm: 12 katman = 2,05 MB; yalnız
+ * görünür olanlar 0,64 MB) ve serme hesabı gizli katmanları ZATEN yok sayıyor
+ * (kmlYollariHazirla: `if (!k.gorunur) continue`). Yani gizli katmanları indirmek saf israftı.
+ * Haritayı çizen ekranlar bu seçeneği KULLANMAZ: orada kullanıcı gizli katmanı açabilmeli.
+ */
+export async function getHaritaKatmanlari(yalnizGorunur = false): Promise<HaritaKatman[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from(TABLO)
-    .select("*")
-    .order("created_at", { ascending: true });
+  let q = supabase.from(TABLO).select("*").order("created_at", { ascending: true });
+  if (yalnizGorunur) q = q.eq("gorunur", true);
+  const { data, error } = await q;
   if (error) return [];
   return (data ?? []) as HaritaKatman[];
 }

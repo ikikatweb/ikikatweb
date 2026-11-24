@@ -6,7 +6,6 @@
 import { getAraclarAtama, getGuzergahByRange, getArventoRaporByRange, getPlakaSantiyeMap, plakaNorm } from "@/lib/supabase/queries/arvento";
 import { getArventoAyarlar, getOcakForTarih } from "@/lib/supabase/queries/arvento-ayarlar";
 import { atananSekmeleriHesapla, type SekmeAtamaMap, type ArventoSekme } from "@/lib/arvento/operasyonlar";
-import { createClient } from "@/lib/supabase/client";
 import { hesaplaGunlukMetrik } from "./gunluk-metrik";
 import { sermeAralikKm, reglajRotalariniAyikla, kmlYollariHazirla, SERME_KOPRULUK_M, SERME_YOL_YAKINLIK_M, type OncekiDamper } from "./serme-hesap";
 import { getHaritaKatmanlari } from "@/lib/supabase/queries/arvento-katman";
@@ -48,22 +47,23 @@ function damperNoktalari(r: AracArventoRapor): OncekiDamper[] {
 
 // Aralık ÖNCESİ damperler (serme "önceden döküldü mü" geçmişi) — Serme sekmesindeki oncekiDamper ile aynı.
 async function oncekiDamperCek(bas: string): Promise<OncekiDamper[]> {
-  const sb = createClient();
-  const out: OncekiDamper[] = [];
-  const PARCA = 1000; let offset = 0;
-  while (true) {
-    const { data, error } = await sb.from("arac_arvento_rapor").select("rapor_tarihi, damper_olaylar").lt("rapor_tarihi", bas).range(offset, offset + PARCA - 1);
-    if (error || !data) break;
-    for (const r of data as { rapor_tarihi: string; damper_olaylar?: { lat?: number | null; lng?: number | null; saat?: string | null }[] | null }[]) {
-      for (const d of (r.damper_olaylar ?? [])) {
-        if (d?.lat == null || d?.lng == null) continue;
-        out.push({ lat: d.lat, lng: d.lng, dt: `${r.rapor_tarihi} ${d.saat ?? "00:00:00"}` });
-      }
+  // SUNUCUDAN SÜZÜLMÜŞ gelir (app/api/arvento/onceki-damper): ham satırlar 2,14 MB,
+  // serme hesabının kullandığı lat/lng/zaman ise ~370 KB. Eskiden tarayıcı ham veriyi
+  // 1000'erlik beş turda indiriyordu.
+  try {
+    const y = await fetch(`/api/arvento/onceki-damper?bas=${encodeURIComponent(bas)}`, { cache: "no-store" });
+    if (!y.ok) {
+      // Sessiz geçilirse geçmiş damper görünmez ve o yol "ilk kez seriliyor" sayılıp serme
+      // km'si SESSİZCE şişer. Hata görünür olsun; hesap boş geçmişle sürer (eski davranış).
+      console.error(`Geçmiş damper noktaları alınamadı (${y.status}) — serme km'si olduğundan büyük çıkabilir.`);
+      return [];
     }
-    if (data.length < PARCA) break;
-    offset += PARCA; if (offset > 300000) break;
+    const veri = (await y.json()) as { noktalar?: [number, number, string][] };
+    return (veri.noktalar ?? []).map(([lat, lng, dt]) => ({ lat, lng, dt }));
+  } catch (e) {
+    console.error("Geçmiş damper noktaları alınamadı — serme km'si olduğundan büyük çıkabilir.", e);
+    return [];
   }
-  return out;
 }
 
 export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakinePlakalar?: Set<string> | null): Promise<SezonUzunluk> {
@@ -92,7 +92,7 @@ export async function sezonUzunlukMetrik(bas: string, bitis: string, ocakMakineP
     getOcakForTarih(bitis),
     getArventoRaporByRange(bas, bitis), // serme: aralık içi damperler
     oncekiDamperCek(bas),               // serme: aralık öncesi damperler
-    getHaritaKatmanlari(),              // serme: KML yol izdüşümü (yoksa eski omurga yöntemine düşer)
+    getHaritaKatmanlari(true),          // serme: KML yol izdüşümü — gizli katman zaten ölçülmüyor, indirilmez de
   ]);
   const yollar = kmlYollariHazirla(katmanlar);
 
@@ -150,7 +150,7 @@ export async function gunlukSermeKm(tarih: string): Promise<number> {
     getArventoRaporByRange(tarih, tarih),                          // bugünün damperi
     getArventoAyarlar(),
     oncekiDamperCek(tarih),                                        // bugünden ÖNCEKİ tüm damperler (seyrek; yola daha önce döküldüyse bugünkü geçiş serme sayılır)
-    getHaritaKatmanlari(),                                         // KML yol izdüşümü
+    getHaritaKatmanlari(true),                                     // KML yol izdüşümü (yalnız görünür katmanlar)
   ]);
   return sermeAralikKm({
     guzergahRows: bugunGuz, raporlar: bugunRapor, oncekiDamper,
