@@ -152,18 +152,34 @@ async function pdfMetin(buf) {
 }
 
 /**
- * PDF teklifinden tutar: "Toplam Brüt Prim" ödenecek rakamdır (net prim + vergiler).
+ * Etiket eşleştirme için metni sadeleştirir: DÖRT i harfi de ("İ I ı i") tek "i"ye
+ * indirilir, sonra küçültülür.
+ *
+ * NİYE: JavaScript'te "PRİM".toLowerCase() = "pri̇m" — araya U+0307 (birleşen nokta)
+ * giriyor ve düz "prim" ile EŞİT ÇIKMIYOR. Bu yüzden /Prim/i deseni büyük harfle
+ * yazılmış "PRİM"i hiç yakalamıyor. Aynı tuzak bu dosyada trNorm'da da anlatılıyor.
+ */
+const etiketNorm = (s) => String(s ?? "").replace(/[İIıi]/g, "i").toLowerCase();
+
+/**
+ * PDF teklifinden tutar: "BRÜT PRİM" ödenecek rakamdır (net prim + vergiler).
  * Bulunamazsa sırayla diğer toplam alanlarına düşülür.
+ *
+ * 24.11.2026 — Serdar ÇUHADAROĞLU'nun 60 AFA 401 kasko teklifinde PDF'in içinde
+ * "BRÜT PRİM 19,308.17 TL" yazılıydı ama desenler /i bayrağıyla aranıyordu ve yukarıdaki
+ * "İ" tuzağı yüzünden HİÇBİRİ eşleşmedi. Mail "rakam yok" diye işaretlendi, 19.308,17 TL'lik
+ * teklif panelde hiç görünmedi. Metin artık önce etiketNorm'dan geçiyor, desenler küçük harf.
  */
 function pdfTutar(metin) {
   const desenler = [
-    /Toplam\s*Brüt\s*Prim\s*:?\s*([\d.,]+)/i,
-    /Brüt\s*Prim\s*:?\s*([\d.,]+)/i,
-    /Ödenecek\s*Tutar\s*:?\s*([\d.,]+)/i,
-    /Toplam\s*Prim\s*:?\s*([\d.,]+)/i,
+    /toplam\s*brüt\s*prim\s*:?\s*([\d.,]+)/,
+    /brüt\s*prim\s*:?\s*([\d.,]+)/,
+    /ödenecek\s*tutar\s*:?\s*([\d.,]+)/,
+    /toplam\s*prim\s*:?\s*([\d.,]+)/,
   ];
+  const duz = etiketNorm(metin);
   for (const d of desenler) {
-    const m = metin.match(d);
+    const m = duz.match(d);
     if (m) { const v = paraCoz(m[1]); if (v > 0) return v; }
   }
   return NaN;
@@ -387,14 +403,14 @@ async function mailiIsaretle(kimlik, sonuc) {
 }
 
 /** Teklif resmini depoya yükle, herkese açık adresini döndür (yüklenemezse null). */
-async function resmiYukle(ek, aracId, uid) {
+async function ekYukle(ek, aracId, uid) {
   if (DENEME) return null;
   const uzanti = (ek.filename?.split(".").pop() ?? "png").replace(/[^\w]/g, "");
   const yol = `sigorta-teklif/${aracId}/${uid}.${uzanti}`;
   const { error } = await sb.storage.from("araclar").upload(yol, ek.content, {
     contentType: ek.contentType ?? "image/png", upsert: true,
   });
-  if (error) { log(`  resim yüklenemedi: ${error.message}`); return null; }
+  if (error) { log(`  ek yüklenemedi (${ek.filename ?? "ek"}): ${error.message}`); return null; }
   return sb.storage.from("araclar").getPublicUrl(yol).data.publicUrl;
 }
 
@@ -604,6 +620,37 @@ async function main() {
 
         if (!arac) { log(`  [atlandı] ${konu.slice(0, 50)} — plaka bulunamadı`); await mailiIsaretle(kimlikKok, "plaka yok"); continue; }
 
+        /**
+         * "ELLE GİRİLECEK" KAYDI AÇ — teklif geldi ama makine tutarı okuyamadı.
+         * Eki depoya koyar, tutarsız kaydı açar ve HABER VERİR. İki yerden çağrılıyor
+         * (okunamayan PDF, okunamayan resim); tek yerde durması, birinin düzeltilip
+         * öbürünün geride kalmasını önlüyor.
+         */
+        const elleBekleyenAc = async (ek, kaynak, not, bildirimGovde, policeId = null) => {
+          const ekUrl = await ekYukle(ek, arac.id, m.uid);
+          const kayit = {
+            arac_id: arac.id, police_tipi: tip, acente_adi: acente.ad,
+            sigorta_firmasi: null, teklif_tutari: 0,
+            teklif_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
+            notlar: not,
+            kaynak, elle_bekliyor: true, ek_url: ekUrl, police_id: policeId,
+            mail_kimlik: `${kimlikKok}#${kaynak}`, mail_konu: konu.slice(0, 200),
+            mail_tarih: (p.date ?? new Date()).toISOString(),
+          };
+          if (DENEME) { log(`  [deneme] ${arac.plaka} ${tip} ${acente.ad} → ${kaynak.toUpperCase()} (elle girilecek)`); return; }
+          const { error } = await sb.from("sigorta_teklif").insert(kayit);
+          if (error) { if (!/duplicate|unique/i.test(error.message)) log(`  YAZILAMADI: ${error.message}`); return; }
+          toplamBekleyen++;
+          log(`  ~ ${arac.plaka} ${tip} ${acente.ad} → ${kaynak}, elle girilecek`);
+          // KİMSEYE SÖYLENMEZSE teklif ekranında gözle fark edilene kadar bekler.
+          await bildirimGonder(arac, tip, {
+            baslik: `${arac.plaka} — teklif geldi, elle girilmeli`,
+            govde: bildirimGovde,
+            etiket: `teklif-elle-${arac.id}-${tip}`,
+            kategori: "sigorta-police",
+          });
+        };
+
         const bulunanlar = [];   // {firma, tutar, kaynak, kanit, onay, ek}
         // POLİÇE MAİLİ TEKLİF DEĞİLDİR. Acente poliçeyi gönderirken gövdeye tutarı da
         // yazıyor ("...39.500 TL..."); bu rakam teklif sanılıp poliçenin YANINA ikinci bir
@@ -612,8 +659,8 @@ async function main() {
         let policeYazildi = false;
 
         // 1) PDF ekleri
-        for (const ek of p.attachments ?? []) {
-          if (!/pdf/i.test(ek.contentType ?? "")) continue;
+        const pdfEkleri = (p.attachments ?? []).filter((ek) => /pdf/i.test(ek.contentType ?? ""));
+        for (const ek of pdfEkleri) {
           try {
             const metin = await pdfMetin(ek.content);
             const tutar = pdfTutar(metin);
@@ -656,7 +703,7 @@ async function main() {
               if (sonuc.satirlar.length > 0) {
                 // Tablo okunsa da ASLI saklanır: teklif satırındaki "resmi aç" bağlantısı buna gider,
                 // okunan rakamdan şüphe edilirse kaynağa bakılabilsin.
-                const ekUrl = await resmiYukle(ek, arac.id, m.uid);
+                const ekUrl = await ekYukle(ek, arac.id, m.uid);
                 bulunanlar.length = 0;
                 for (const r of sonuc.satirlar) {
                   bulunanlar.push({
@@ -712,9 +759,23 @@ async function main() {
         // Poliçe geldiyse gövdedeki rakamlar teklif değil, poliçenin kendi tutarıdır.
         if (policeYazildi) { bulunanlar.length = 0; }
 
+        // EK VAR AMA RAKAM ÇIKMADI → SESSİZCE GEÇME (AGENTS.md: "Sessiz hata yok").
+        // 24.11.2026: Serdar ÇUHADAROĞLU'nun 60 AFA 401 kasko teklifi PDF'i okundu, tutar
+        // deseni "İ" tuzağına takıldı (bkz. pdfTutar) ve mail "rakam yok" diye işaretlenip
+        // SESSİZCE kapatıldı. Teklif panelde hiç görünmedi, kimse haberdar olmadı. Desen
+        // düzeltildi; yine de okunamayan bir ek gelirse artık kayıt açılır ve haber verilir.
+        // Rakamsız DÜZ METİN maili (ör. "teklifi hazırlıyoruz") bu kapsamda değil: ek yoksa
+        // ortada girilecek bir teklif de yok, bildirim gürültü olurdu.
         if (bulunanlar.length === 0 && resimler.length === 0) {
-          log(`  [boş] ${konu.slice(0, 50)} — rakam bulunamadı`);
-          await mailiIsaretle(kimlikKok, "rakam yok");
+          if (pdfEkleri.length > 0 && !policeYazildi) {
+            await elleBekleyenAc(pdfEkleri[0], "pdf",
+              `Teklif PDF olarak geldi, tutar okunamadı (${pdfEkleri[0].filename ?? "ek.pdf"}) — elle girilmeli.`,
+              `${acente.ad} teklifi PDF gönderdi, tutar okunamadı.`);
+            await mailiIsaretle(kimlikKok, "pdf okunamadı — elle girilecek");
+          } else {
+            log(`  [boş] ${konu.slice(0, 50)} — rakam bulunamadı`);
+            await mailiIsaretle(kimlikKok, "rakam yok");
+          }
           continue;
         }
 
@@ -786,32 +847,10 @@ async function main() {
 
         // Resim okunamadıysa (anahtar yok ya da hata): "elle bakılmalı" kaydı aç, eki sakla.
         if (resimler.length > 0 && bulunanlar.length === 0) {
-          const ek = resimler[0];
-          const ekUrl = await resmiYukle(ek, arac.id, m.uid);
-          const kayit = {
-            arac_id: arac.id, police_tipi: tip, acente_adi: acente.ad,
-            sigorta_firmasi: null, teklif_tutari: 0,
-            teklif_tarihi: (p.date ?? new Date()).toISOString().slice(0, 10),
-            notlar: "Teklif resim olarak geldi — tutar elle girilmeli.",
-            kaynak: "resim", elle_bekliyor: true, ek_url: ekUrl, police_id: donemPolice?.id ?? null,
-            mail_kimlik: `${kimlikKok}#resim`, mail_konu: konu.slice(0, 200),
-            mail_tarih: (p.date ?? new Date()).toISOString(),
-          };
-          if (DENEME) { log(`  [deneme] ${arac.plaka} ${tip} ${acente.ad} → RESİM (elle girilecek)`); continue; }
-          const { error } = await sb.from("sigorta_teklif").insert(kayit);
-          if (error) { if (!/duplicate|unique/i.test(error.message)) log(`  YAZILAMADI: ${error.message}`); }
-          else {
-            toplamBekleyen++;
-            log(`  ~ ${arac.plaka} ${tip} ${acente.ad} → resim, elle girilecek`);
-            // BU DA HABER VERİLİR: teklif geldi ama makine okuyamadı. Kayıt "elle bekliyor"
-            // olarak duruyor; kimseye söylenmezse teklif ekranında fark edilene kadar bekler.
-            await bildirimGonder(arac, tip, {
-              baslik: `${arac.plaka} — teklif geldi, elle girilmeli`,
-              govde: `${acente.ad} teklifi resim olarak gönderdi, tutar okunamadı.`,
-              etiket: `teklif-elle-${arac.id}-${tip}`,
-              kategori: "sigorta-police",
-            });
-          }
+          await elleBekleyenAc(resimler[0], "resim",
+            "Teklif resim olarak geldi — tutar elle girilmeli.",
+            `${acente.ad} teklifi resim olarak gönderdi, tutar okunamadı.`,
+            donemPolice?.id ?? null);
         }
       }
     } finally {
