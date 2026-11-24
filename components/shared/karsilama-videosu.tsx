@@ -31,6 +31,10 @@ export const GEREKEN_IZLEME = 2;
 const ANAHTAR_ONEK = "karsilama-videosu:v1";
 const izlemeAnahtari = (sira: number) => `${ANAHTAR_ONEK}-izleme${sira}`;
 
+/** 24.11.2026 öncesi tek-izleme sürümünün anahtarı. O gün izleyenlerin emeği sayılsın:
+ *  bir izleme olarak kabul edilir, yoksa videoyu toplam üç kez izlemeleri gerekirdi. */
+const ESKI_TEK_IZLEME_ANAHTARI = ANAHTAR_ONEK;
+
 /** Üst bardaki "Nasıl izlenir?" düğmesi bu olayı yayar — izlemiş kullanıcı tekrar açabilsin. */
 export const KARSILAMA_OLAY = "karsilama-videosu-ac";
 
@@ -55,7 +59,11 @@ export default function KarsilamaVideosu() {
   const ertelendiRef = useRef(false);
 
   const gizlenenler = kullanici?.gizlenen_uyarilar ?? [];
-  const izlemeSayisi = [1, 2].filter((n) => gizlenenler.includes(izlemeAnahtari(n))).length;
+  const izlemeSayisi = Math.min(
+    GEREKEN_IZLEME,
+    [1, 2].filter((n) => gizlenenler.includes(izlemeAnahtari(n))).length +
+      (gizlenenler.includes(ESKI_TEK_IZLEME_ANAHTARI) ? 1 : 0),
+  );
   const tamamlandi = izlemeSayisi >= GEREKEN_IZLEME;
 
   // Videonun imzalı adresi. Taze adres elde varsa yeniden istenmez.
