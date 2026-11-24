@@ -55,9 +55,20 @@ export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
     const url = URL.createObjectURL(file);
     if (sekme && !sekme.closed) sekme.location.href = url;
     else window.location.href = url; // popup engellendiyse aynı sekmede aç (geri ile dönülür)
-  } catch {
-    // PDF üretilemedi (ör. görsel CORS engeli) → normal yazdırmaya düş: alt bilgili de olsa çalışsın.
+  } catch (e) {
+    // SESSİZ DÜŞME YOK: PDF üretilemezse normal yazdırmaya geçilir ama kullanıcı bunu BİLMELİ.
+    // 24.11.2026'da bu catch sessizdi: geçit değişikliği antet görselini başka kökene taşıyınca
+    // toDataURL SecurityError atmaya başladı, iPhone'da PDF önizlemesi haftalarca açılmadı ve
+    // ekranda hiçbir işaret yoktu — "yazdıra basıyorum bir şey olmuyor" diye fark edildi.
+    const sebep = e instanceof Error ? e.message : String(e);
+    console.error("[evrakYazdir] PDF üretilemedi:", e);
     try { sekme?.close(); } catch { /* yoksay */ }
+    const { default: toast } = await import("react-hot-toast");
+    toast.error(
+      "Evrak PDF'e çevrilemedi, tarayıcının kendi yazdırması açılıyor "
+      + "(sayfa kenarında adres/tarih damgası çıkabilir). Sebep: " + sebep,
+      { duration: 10000 },
+    );
     window.print();
   } finally {
     portal.style.removeProperty("visibility");

@@ -32,7 +32,7 @@ import * as XLSX from "xlsx";
 import { tekSatirMuhatap } from "@/lib/utils/muhatap";
 import GidenEvrakOnIzleme from "@/components/shared/giden-evrak-onizleme";
 import toast from "react-hot-toast";
-import { dosyaUrl } from "@/lib/utils/dosya-url";
+import { dosyaUrl, dosyaUrlHam } from "@/lib/utils/dosya-url";
 
 function formatTarih(d: string | null) {
   if (!d) return "—";
@@ -881,11 +881,11 @@ export default function GidenEvrakPage() {
           <span key={f.id}>
             {f.antet_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={dosyaUrl(f.antet_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrlHam(f.antet_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
             {f.kase_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={dosyaUrl(f.kase_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
+              <img src={dosyaUrlHam(f.kase_url)} alt="" width={1} height={1} loading="eager" decoding="sync" />
             )}
           </span>
         ))}
