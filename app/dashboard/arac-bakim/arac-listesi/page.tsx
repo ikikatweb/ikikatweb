@@ -21,6 +21,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { trAramaNormalize } from "@/lib/utils/isim";
+import type { TahminiGosterge } from "@/app/api/arac/tahmini-gosterge/route";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -50,6 +51,10 @@ function tr(s: string): string {
 type Satir = {
   arac: AracWithRelations;
   birim: "km" | "sa";
+  /** Sütunda gösterilecek gösterge: tahmin varsa o, yoksa araç kaydındaki gerçek değer. */
+  gosterge: number | null;
+  /** Dolu ise değer TAHMİNİDİR (son gerçek okuma + Arvento). Başına ~ konur. */
+  tahmin: TahminiGosterge | null;
   aracAdi: string;
   firmaAdi: string;
   sonBakimTarihi: string | null;
@@ -69,6 +74,8 @@ export default function AracBakimListesiPage() {
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
   const [bakimlar, setBakimlar] = useState<AracBakimWithArac[]>([]);
+  // arac_id → son gerçek okuma + Arvento'dan eklenen. Yalnız ilerleme varsa dolu gelir.
+  const [tahminiler, setTahminiler] = useState<Record<string, TahminiGosterge>>({});
   const [cinsSiralama, setCinsSiralama] = useState<Map<string, number>>(new Map());
   // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
   const [arama, setArama] = useOturumFiltresi("bakim-arac-listesi:arama", "");
@@ -78,13 +85,20 @@ export default function AracBakimListesiPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [aData, bData, cinsData] = await Promise.all([
+      const [aData, bData, cinsData, tahminiData] = await Promise.all([
         getAraclar(),
         getAracBakimlar().catch(() => [] as AracBakimWithArac[]),
         getTanimlamalar("arac_cinsi").catch(() => [] as Tanimlama[]),
+        // Yakıt almayan araçta gösterge aylarca donuyordu; son gerçek okumanın üstüne
+        // Arvento mesafesi/saati eklenir (bkz. app/api/arac/tahmini-gosterge).
+        // Alınamazsa sütun GERÇEK değeri gösterir — tahmin yokken uydurma yapılmaz.
+        fetch("/api/arac/tahmini-gosterge")
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`sunucu ${r.status}`))))
+          .catch((e) => { console.error("Tahmini gösterge alınamadı:", e); return {} as Record<string, TahminiGosterge>; }),
       ]);
       setAraclar((aData as AracWithRelations[]) ?? []);
       setBakimlar(bData ?? []);
+      setTahminiler((tahminiData ?? {}) as Record<string, TahminiGosterge>);
       const sMap = new Map<string, number>();
       ((cinsData as Tanimlama[]) ?? []).forEach((t, i) => sMap.set(t.deger, i));
       setCinsSiralama(sMap);
@@ -120,7 +134,11 @@ export default function AracBakimListesiPage() {
         const birim: "km" | "sa" = saatMi ? "sa" : "km";
         const sonrakiKm = b?.sonraki_bakim_km ?? null;
         const sonrakiTarih = b?.sonraki_bakim_tarihi ?? null;
-        const kalanGosterge = sonrakiKm != null && a.guncel_gosterge != null ? sonrakiKm - a.guncel_gosterge : null;
+        // Gösterge: tahmin varsa o kullanılır. "Bakıma ne kadar kaldı" hesabı da bundan
+        // beslenir — asıl mesele oydu: donmuş değerle kalan km olduğundan fazla görünüyordu.
+        const tahmin = tahminiler[a.id] ?? null;
+        const gosterge = tahmin ? tahmin.tahmini : a.guncel_gosterge ?? null;
+        const kalanGosterge = sonrakiKm != null && gosterge != null ? sonrakiKm - gosterge : null;
         const kalanGun = sonrakiTarih
           ? Math.ceil((new Date(sonrakiTarih + "T00:00:00").getTime() - bugunMs) / 86400000)
           : null;
@@ -134,6 +152,8 @@ export default function AracBakimListesiPage() {
         return {
           arac: a,
           birim,
+          gosterge,
+          tahmin,
           aracAdi: [a.marka, a.model].filter(Boolean).join(" ") || "—",
           firmaAdi: a.firmalar?.firma_adi ?? "Firma atanmamış",
           sonBakimTarihi: b?.bakim_tarihi ?? null,
@@ -141,7 +161,7 @@ export default function AracBakimListesiPage() {
           sonrakiKm, sonrakiTarih, kalanGosterge, kalanGun, durum,
         };
       });
-  }, [araclar, sonBakimMap, bugunMs]);
+  }, [araclar, sonBakimMap, bugunMs, tahminiler]);
 
   // FİRMA (sira_no) → CİNS (tanımlama sırası) → PLAKA. Sıra numarası olmayan firma/cins en sona.
   const filtrelenmis = useMemo(() => {
@@ -209,7 +229,8 @@ export default function AracBakimListesiPage() {
       body: filtrelenmis.map((s, i) => [
         String(i + 1), tr(s.firmaAdi), tr(s.arac.cinsi ?? "-"), s.arac.plaka, tr(s.aracAdi),
         tr(`${formatTarih(s.sonBakimTarihi)}${s.sonBakimGosterge != null ? ` (${formatGosterge(s.sonBakimGosterge)} ${s.birim})` : ""}`),
-        tr(`${formatGosterge(s.arac.guncel_gosterge)} ${s.birim}`),
+        // Tahminiyse "~" ile çıkar — kâğıda bakan da gerçek okuma sanmasın.
+        tr(`${s.tahmin ? "~" : ""}${formatGosterge(s.gosterge)} ${s.birim}`),
         tr([s.sonrakiKm != null ? `${formatGosterge(s.sonrakiKm)} ${s.birim}` : null, s.sonrakiTarih ? formatTarih(s.sonrakiTarih) : null].filter(Boolean).join(" / ") || "-"),
       ]),
       styles: { fontSize: 7, cellPadding: 1.5 },
@@ -220,11 +241,14 @@ export default function AracBakimListesiPage() {
   }
 
   function exportExcel() {
-    const headers = ["No", "Firma", "Cinsi", "Plaka", "Araç Adı", "Son Bakım", "Son Bakım Km/Saat", "Mevcut Km/Saat", "Sıradaki Bakım Km/Saat", "Sıradaki Bakım Tarihi", "Durum"];
+    // "Değer Türü" sütunu bilerek ayrı: Excel'de sayıyı metne çevirip "~" eklemek hücreyi
+    // hesaplanamaz hâle getirirdi. Sayı sayı kalır, tahmin olduğu yanında yazar.
+    const headers = ["No", "Firma", "Cinsi", "Plaka", "Araç Adı", "Son Bakım", "Son Bakım Km/Saat", "Mevcut Km/Saat", "Değer Türü", "Sıradaki Bakım Km/Saat", "Sıradaki Bakım Tarihi", "Durum"];
     const durumAd = { gecti: "Geçti", yaklasti: "Yaklaştı", normal: "Normal", yok: "Kayıt yok" } as const;
     const data = filtrelenmis.map((s, i) => [
       i + 1, s.firmaAdi, s.arac.cinsi ?? "", s.arac.plaka, s.aracAdi,
-      formatTarih(s.sonBakimTarihi), s.sonBakimGosterge ?? "", s.arac.guncel_gosterge ?? "",
+      formatTarih(s.sonBakimTarihi), s.sonBakimGosterge ?? "", s.gosterge ?? "",
+      s.tahmin ? `Tahmini (${formatTarih(s.tahmin.tabanTarih)} okuması + Arvento)` : "Girilen",
       s.sonrakiKm ?? "", s.sonrakiTarih ? formatTarih(s.sonrakiTarih) : "", durumAd[s.durum],
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
@@ -332,10 +356,23 @@ export default function AracBakimListesiPage() {
                         </>
                       ) : <span className="text-gray-400">—</span>}
                     </TableCell>
+                    {/* TAHMİNİ DEĞER AÇIKÇA İŞARETLİ: "~" + turuncu + "tahmini" etiketi.
+                        Üzerine gelince hesabın dökümü yazar — kullanıcı neye baktığını bilsin.
+                        Gerçek okuma girilince (yakıt/bakım) taban o olur, ekleme oradan devam eder. */}
                     <TableCell className="px-2 text-right tabular-nums">
-                      {s.arac.guncel_gosterge != null
-                        ? <>{formatGosterge(s.arac.guncel_gosterge)} <span className="text-gray-400">{s.birim}</span></>
-                        : <span className="text-gray-400">—</span>}
+                      {s.gosterge == null ? (
+                        <span className="text-gray-400">—</span>
+                      ) : s.tahmin ? (
+                        <span
+                          className="text-[#C2410C]"
+                          title={`Tahmini. ${formatTarih(s.tahmin.tabanTarih)} ${s.tahmin.tabanKaynak === "yakit" ? "yakıt kaydında" : "bakım kaydında"} girilen ${formatGosterge(s.tahmin.taban)} ${s.birim} + Arvento'dan ${formatGosterge(s.tahmin.eklenen)} ${s.birim} (${s.tahmin.gun} gün). Gösterge girilince gerçek değere döner.`}
+                        >
+                          ~{formatGosterge(s.gosterge)} <span className="text-[#C2410C]/70">{s.birim}</span>
+                          <span className="block text-[9px] text-[#C2410C]/80">tahmini</span>
+                        </span>
+                      ) : (
+                        <>{formatGosterge(s.gosterge)} <span className="text-gray-400">{s.birim}</span></>
+                      )}
                     </TableCell>
                     <TableCell className="px-2 text-center">{durumRozet(s)}</TableCell>
                   </TableRow>
