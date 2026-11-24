@@ -1,12 +1,16 @@
 // KARŞILAMA VİDEOSU — "tanıtım videoları nasıl izlenir" anlatımı.
 //
-// Girişten sonra HER KULLANICIYA bir kez kendiliğinden açılır; kullanıcı izleyip
-// "Anladım" dediğinde bir daha açılmaz.
+// NE ZAMAN AÇILIR: kullanıcı bu videoyu İKİ KEZ izleyene kadar; hem girişten sonra hem de
+// uygulamaya geri dönüldüğünde (telefon uyanınca, sekme öne gelince). Telefonda uygulama
+// çoğu zaman yeniden YÜKLENMEDEN devam ettiriliyor; yalnız açılışa bakılsaydı uyanan
+// telefonda hiç açılmazdı — kullanıcı 24.11.2026'da bunu bildirdi.
 //
 // İZLENDİ İŞARETİ NEREDE DURUYOR: tarayıcıda değil, kullanıcının kendi kaydında
-// (kullanicilar.gizlenen_uyarilar, anahtar "karsilama-videosu:v1"). Böylece kişi
-// telefondan da girse tekrar karşısına çıkmaz. Anahtarın sonundaki sürüm numarası
-// bilerek duruyor: video yenilenirse v2 yapılır ve herkese bir kez daha gösterilir.
+// (kullanicilar.gizlenen_uyarilar). Her izleme ayrı bir anahtar:
+//   karsilama-videosu:v1-izleme1 · karsilama-videosu:v1-izleme2
+// İkisi de varsa pencere bir daha kendiliğinden açılmaz. Böylece kişi telefondan da
+// girse sayaç kaldığı yerden devam eder. Anahtardaki "v1" bilerek duruyor: video
+// yenilenirse v2 yapılır ve herkes yeniden iki kez izler.
 //
 // VİDEO YOKSA PENCERE HİÇ AÇILMAZ. Dosya kovaya konmadan önce herkese "video
 // bulunamadı" kutusu çıkmasın diye; dosya yüklendiği an kendiliğinden devreye girer.
@@ -20,85 +24,107 @@ import { KARSILAMA_SLUG } from "@/lib/tanitim/sayfalar";
 import { uyariGizle } from "@/lib/supabase/queries/uyari-gizle";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 
-/** Kullanıcı kaydındaki işaret. Video değişirse sürümü artır → herkese bir kez daha açılır. */
-export const KARSILAMA_ANAHTARI = "karsilama-videosu:v1";
+/** Kaç kez izlenmesi isteniyor. */
+export const GEREKEN_IZLEME = 2;
+
+/** Kullanıcı kaydındaki işaretin önü. Video yenilenirse v2 yapılır → herkes baştan izler. */
+const ANAHTAR_ONEK = "karsilama-videosu:v1";
+const izlemeAnahtari = (sira: number) => `${ANAHTAR_ONEK}-izleme${sira}`;
 
 /** Üst bardaki "Nasıl izlenir?" düğmesi bu olayı yayar — izlemiş kullanıcı tekrar açabilsin. */
 export const KARSILAMA_OLAY = "karsilama-videosu-ac";
+
+/** İmzalı adres 2 saat geçerli; uyanan telefonda bayat adresle video açılmasın diye 90 dk sonra tazelenir. */
+const ADRES_TAZELEME_MS = 90 * 60 * 1000;
 
 export default function KarsilamaVideosu() {
   const { kullanici, loading, profilYenile } = useAuth();
 
   const [url, setUrl] = useState<string | null>(null);
   const [acik, setAcik] = useState(false);
-  const [bitti, setBitti] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
-  const istendiRef = useRef(false);
+  const adresAniRef = useRef(0);
+  const ilkDenemeRef = useRef(false);
+  // "Daha sonra" dendiyse bu oturumda uygulamaya her dönüşte tekrar açılmasın.
+  const ertelendiRef = useRef(false);
 
-  const izlemis = (kullanici?.gizlenen_uyarilar ?? []).includes(KARSILAMA_ANAHTARI);
+  const gizlenenler = kullanici?.gizlenen_uyarilar ?? [];
+  const izlemeSayisi = [1, 2].filter((n) => gizlenenler.includes(izlemeAnahtari(n))).length;
+  const tamamlandi = izlemeSayisi >= GEREKEN_IZLEME;
 
-  // Videonun imzalı adresini getir. Adres 2 saat geçerli; pencere kapanınca da elde tutulur
-  // ki "tekrar izle" denince yeniden istek atılmasın.
+  // Videonun imzalı adresi. Taze adres elde varsa yeniden istenmez.
   const videoGetir = useCallback(async (): Promise<string | null> => {
-    if (url) return url;
+    if (url && Date.now() - adresAniRef.current < ADRES_TAZELEME_MS) return url;
     const y = await fetch(`/api/tanitim-video?sayfa=${KARSILAMA_SLUG}`, { cache: "no-store" });
     const veri = (await y.json().catch(() => null)) as { var?: boolean; url?: string; error?: string } | null;
     if (!y.ok) throw new Error(veri?.error ?? `Sunucu ${y.status} döndü.`);
     if (!veri?.var || !veri.url) return null;
+    adresAniRef.current = Date.now();
     setUrl(veri.url);
     return veri.url;
   }, [url]);
 
-  // ── Girişten sonra bir kez kendiliğinden aç ──────────────────────────────────────────────
-  useEffect(() => {
-    if (loading || !kullanici || izlemis || istendiRef.current) return;
-    istendiRef.current = true;
-    void (async () => {
+  // Pencereyi aç (gerekiyorsa). sessiz=true: kendiliğinden açılan denemelerde hata gürültüsü yapma.
+  const acmayiDene = useCallback(
+    async (sessiz: boolean) => {
       try {
         const adres = await videoGetir();
         if (adres) setAcik(true);          // dosya yoksa hiçbir şey gösterme
+        else if (!sessiz) {
+          toast.error("Anlatım videosu henüz yüklenmemiş (tanitim/nasil-izlenir.mp4).", { duration: toastSuresi() });
+        }
       } catch (e) {
-        // Sessiz geçmiyoruz ama kullanıcıyı da panele sokmadan durdurmuyoruz: karşılama
-        // videosu işin kendisi değil. Hata görünür olsun, giriş akışı bozulmasın.
+        // Sessiz geçmiyoruz ama giriş akışını da durdurmuyoruz: karşılama videosu işin kendisi değil.
         toast.error(
           `Karşılama videosu açılamadı: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
           { duration: toastSuresi() },
         );
       }
-    })();
-  }, [loading, kullanici, izlemis, videoGetir]);
+    },
+    [videoGetir],
+  );
 
-  // ── Üst bardaki düğme: izlemiş olsa da tekrar açabilsin ──────────────────────────────────
+  // ── Girişten sonra ilk açılış ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const ac = () => {
-      void (async () => {
-        try {
-          const adres = await videoGetir();
-          if (!adres) {
-            toast.error("Anlatım videosu henüz yüklenmemiş (tanitim/nasil-izlenir.mp4).", { duration: toastSuresi() });
-            return;
-          }
-          setBitti(false);
-          setAcik(true);
-        } catch (e) {
-          toast.error(
-            `Video getirilemedi: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
-            { duration: toastSuresi() },
-          );
-        }
-      })();
+    if (loading || !kullanici || tamamlandi || ilkDenemeRef.current) return;
+    ilkDenemeRef.current = true;
+    void acmayiDene(true);
+  }, [loading, kullanici, tamamlandi, acmayiDene]);
+
+  // ── Uygulamaya geri dönünce (telefon uyanınca, sekme öne gelince) ────────────────────────
+  // Telefon uyandığında sayfa çoğu zaman baştan yüklenmez; bu yüzden açılış efekti değil,
+  // görünürlük olayı dinlenir. "Daha sonra" diyen kullanıcıyı o oturumda rahatsız etmez.
+  useEffect(() => {
+    if (tamamlandi) return;
+    const bak = () => {
+      if (document.visibilityState !== "visible") return;
+      if (loading || !kullanici || ertelendiRef.current || acik) return;
+      void acmayiDene(true);
     };
+    document.addEventListener("visibilitychange", bak);
+    window.addEventListener("focus", bak);
+    window.addEventListener("pageshow", bak);
+    return () => {
+      document.removeEventListener("visibilitychange", bak);
+      window.removeEventListener("focus", bak);
+      window.removeEventListener("pageshow", bak);
+    };
+  }, [loading, kullanici, tamamlandi, acik, acmayiDene]);
+
+  // ── Üst bardaki düğme: tamamlamış olsa da tekrar açabilsin ───────────────────────────────
+  useEffect(() => {
+    const ac = () => { ertelendiRef.current = false; void acmayiDene(false); };
     window.addEventListener(KARSILAMA_OLAY, ac);
     return () => window.removeEventListener(KARSILAMA_OLAY, ac);
-  }, [videoGetir]);
+  }, [acmayiDene]);
 
-  // "Bir daha gösterme" — kullanıcının kendi kaydına yazar.
+  // Bir izlemeyi kullanıcının kendi kaydına yaz.
   // kapat=false: video sonuna geldiğinde işaret konur ama pencere açık kalır (kullanıcı kapatır).
-  const izlendiIsaretle = useCallback(async (kapat = true) => {
-    if (izlemis) { if (kapat) setAcik(false); return; }   // zaten işaretli (tekrar izleme)
+  const izlemeyiYaz = useCallback(async (kapat = true) => {
+    if (tamamlandi) { if (kapat) setAcik(false); return; }
     setKaydediliyor(true);
     try {
-      const { kayitHatasi } = await uyariGizle(KARSILAMA_ANAHTARI);
+      const { kayitHatasi } = await uyariGizle(izlemeAnahtari(izlemeSayisi + 1));
       // Onay günlüğü yazılamadıysa sessiz geçme: "kim izledi" kaydı tutuluyor sanılmasın.
       if (kayitHatasi) {
         toast.error(`İşaretlendi ama onay günlüğüne yazılamadı: ${kayitHatasi}`, { duration: toastSuresi() });
@@ -106,23 +132,21 @@ export default function KarsilamaVideosu() {
       await profilYenile();
       if (kapat) setAcik(false);
     } catch (e) {
-      // İşaretlenemediyse pencereyi kapatıp "bir daha çıkmaz" izlenimi VERME.
+      // İşaretlenemediyse pencereyi kapatıp "sayıldı" izlenimi VERME.
       toast.error(
-        `İşaretlenemedi, bir daha denemek için düğmeye tekrar basın: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
+        `İzleme kaydedilemedi, düğmeye tekrar basın: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
         { duration: toastSuresi() },
       );
     } finally {
       setKaydediliyor(false);
     }
-  }, [izlemis, profilYenile]);
+  }, [tamamlandi, izlemeSayisi, profilYenile]);
 
-  // Video sonuna gelince kendiliğinden işaretle — kullanıcı izledi, iş bitti.
-  const videoBitti = useCallback(() => {
-    setBitti(true);
-    void izlendiIsaretle(false);   // pencere açık kalsın, kapatmayı kullanıcı yapsın
-  }, [izlendiIsaretle]);
+  const ertele = useCallback(() => { ertelendiRef.current = true; setAcik(false); }, []);
 
   if (!acik || !url) return null;
+
+  const kalan = Math.max(0, GEREKEN_IZLEME - izlemeSayisi);
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-3">
@@ -133,10 +157,15 @@ export default function KarsilamaVideosu() {
             <span className="truncate text-sm font-semibold text-[#1E3A5F]">
               Tanıtım videoları nasıl izlenir?
             </span>
+            {!tamamlandi && (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums">
+                {izlemeSayisi + 1}. izleme / {GEREKEN_IZLEME}
+              </span>
+            )}
           </div>
           <button
             type="button"
-            onClick={() => setAcik(false)}
+            onClick={ertele}
             title="Kapat"
             aria-label="Kapat"
             className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
@@ -152,7 +181,7 @@ export default function KarsilamaVideosu() {
           controls
           autoPlay
           playsInline
-          onEnded={videoBitti}
+          onEnded={() => void izlemeyiYaz(false)}
           onError={() =>
             toast.error("Video dosyası açılamadı (bozuk olabilir ya da adresin süresi dolmuş).", {
               duration: toastSuresi(),
@@ -162,15 +191,17 @@ export default function KarsilamaVideosu() {
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-2.5">
           <span className="text-xs text-gray-500">
-            {izlemis || bitti
+            {tamamlandi
               ? "Bu pencere bir daha kendiliğinden açılmayacak."
-              : "Panelde her ekranın kendi tanıtımı var; bu pencere yalnız bir kez açılır."}
+              : kalan === GEREKEN_IZLEME
+                ? `Bu anlatımın ${GEREKEN_IZLEME} kez izlenmesi isteniyor.`
+                : "Bir kez daha açılacak."}
           </span>
           <div className="flex items-center gap-2">
-            {!izlemis && !bitti && (
+            {!tamamlandi && (
               <button
                 type="button"
-                onClick={() => setAcik(false)}
+                onClick={ertele}
                 className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
               >
                 Daha sonra
@@ -178,12 +209,12 @@ export default function KarsilamaVideosu() {
             )}
             <button
               type="button"
-              onClick={() => void izlendiIsaretle()}
+              onClick={() => void izlemeyiYaz()}
               disabled={kaydediliyor}
               className="flex items-center gap-1.5 rounded-md bg-[#1E3A5F] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#2a4e7d] disabled:opacity-50"
             >
               {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              {izlemis || bitti ? "Kapat" : "Anladım, bir daha gösterme"}
+              {tamamlandi ? "Kapat" : `İzledim (${izlemeSayisi + 1}/${GEREKEN_IZLEME})`}
             </button>
           </div>
         </div>
