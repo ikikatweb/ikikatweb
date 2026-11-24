@@ -964,176 +964,329 @@ export default function AracBakimPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Araç <span className="text-red-500">*</span></Label>
-                {(() => {
-                  // Trafikten çekildi araçlara da bakım/tamirat girilebilmeli — sadece "pasif" hariç
-                  const aktifAraclar = ozMalAraclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
-                  const q = trAramaNormalize(dAracAra.trim());
-                  const filtrelenmisAraclar = q
-                    ? aktifAraclar.filter((a) => {
-                        const t = trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" "));
-                        return t.includes(q);
-                      })
-                    : aktifAraclar;
-                  const seciliArac = aktifAraclar.find((a) => a.id === dAracId);
-                  return (
-                    <div className="relative">
-                      {/* Kapalı durumda görünen buton — seçili aracı gösterir, tıklayınca açılır */}
-                      <button
-                        type="button"
-                        onClick={() => setDAracAcik((v) => !v)}
-                        className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 flex items-center justify-between gap-2 text-left"
-                      >
-                        <span className={seciliArac ? "text-gray-900 truncate" : "text-gray-400"}>
-                          {seciliArac
-                            ? `${seciliArac.plaka} ${[seciliArac.marka, seciliArac.model].filter(Boolean).join(" ")}`
-                            : "Araç seçiniz veya arayın..."}
-                        </span>
-                        <span className="text-gray-400 text-xs flex-shrink-0">{dAracAcik ? "▲" : "▼"}</span>
-                      </button>
+            {/* YAPILAN İŞ — bu kaydın kendisi. Aşağıdaki "sonraki bakım" kutusundan
+                ayrı dursun diye kendi çerçevesinde; hangi alanın neye ait olduğu karışmasın. */}
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+              <p className="text-xs font-bold text-slate-700">Yapılan iş</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Araç <span className="text-red-500">*</span></Label>
+                  {(() => {
+                    // Trafikten çekildi araçlara da bakım/tamirat girilebilmeli — sadece "pasif" hariç
+                    const aktifAraclar = ozMalAraclar.filter((a) => (a.durum ?? "aktif") !== "pasif");
+                    const q = trAramaNormalize(dAracAra.trim());
+                    const filtrelenmisAraclar = q
+                      ? aktifAraclar.filter((a) => {
+                          const t = trAramaNormalize([a.plaka, a.marka, a.model, a.cinsi].filter(Boolean).join(" "));
+                          return t.includes(q);
+                        })
+                      : aktifAraclar;
+                    const seciliArac = aktifAraclar.find((a) => a.id === dAracId);
+                    return (
+                      <div className="relative">
+                        {/* Kapalı durumda görünen buton — seçili aracı gösterir, tıklayınca açılır */}
+                        <button
+                          type="button"
+                          onClick={() => setDAracAcik((v) => !v)}
+                          className="h-9 w-full rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50 flex items-center justify-between gap-2 text-left"
+                        >
+                          <span className={seciliArac ? "text-gray-900 truncate" : "text-gray-400"}>
+                            {seciliArac
+                              ? `${seciliArac.plaka} ${[seciliArac.marka, seciliArac.model].filter(Boolean).join(" ")}`
+                              : "Araç seçiniz veya arayın..."}
+                          </span>
+                          <span className="text-gray-400 text-xs flex-shrink-0">{dAracAcik ? "▲" : "▼"}</span>
+                        </button>
 
-                      {/* Açıldığında backdrop + popover */}
-                      {dAracAcik && (
-                        <>
-                          {/* Dışarı tıklayınca kapat */}
-                          <div
-                            className="fixed inset-0 z-[60]"
-                            onClick={() => { setDAracAcik(false); setDAracAra(""); }}
-                          />
-                          <div className="absolute left-0 right-0 top-full mt-1 z-[61] bg-white border border-input rounded-lg shadow-lg">
-                            <div className="relative p-2 border-b">
-                              <Search size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                              <input
-                                type="text"
-                                autoFocus
-                                value={dAracAra}
-                                onChange={(e) => setDAracAra(e.target.value)}
-                                placeholder="Plaka, marka veya cins ile ara..."
-                                className="h-8 w-full rounded border border-gray-200 bg-white pl-7 pr-8 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
-                              />
-                              {dAracAra && (
-                                <button
-                                  type="button"
-                                  onClick={() => setDAracAra("")}
-                                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs"
-                                >✕</button>
-                              )}
-                            </div>
-                            <div className="max-h-48 overflow-y-auto">
-                              {filtrelenmisAraclar.length === 0 ? (
-                                <div className="px-3 py-3 text-xs text-gray-400 text-center">Eşleşen araç yok</div>
-                              ) : (
-                                filtrelenmisAraclar.map((a) => (
+                        {/* Açıldığında backdrop + popover */}
+                        {dAracAcik && (
+                          <>
+                            {/* Dışarı tıklayınca kapat */}
+                            <div
+                              className="fixed inset-0 z-[60]"
+                              onClick={() => { setDAracAcik(false); setDAracAra(""); }}
+                            />
+                            <div className="absolute left-0 right-0 top-full mt-1 z-[61] bg-white border border-input rounded-lg shadow-lg">
+                              <div className="relative p-2 border-b">
+                                <Search size={12} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={dAracAra}
+                                  onChange={(e) => setDAracAra(e.target.value)}
+                                  placeholder="Plaka, marka veya cins ile ara..."
+                                  className="h-8 w-full rounded border border-gray-200 bg-white pl-7 pr-8 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50"
+                                />
+                                {dAracAra && (
                                   <button
                                     type="button"
-                                    key={a.id}
-                                    onClick={() => {
-                                      setDAracId(a.id);
-                                      setDAracAcik(false);
-                                      setDAracAra("");
-                                    }}
-                                    className={`w-full text-left px-3 py-1.5 text-xs border-b last:border-b-0 hover:bg-blue-50 ${
-                                      dAracId === a.id ? "bg-blue-100 font-semibold text-blue-900" : ""
-                                    }`}
-                                  >
-                                    <span className="font-bold text-[#1E3A5F]">{a.plaka}</span>
-                                    {" "}
-                                    <span className="text-gray-600">{[a.marka, a.model].filter(Boolean).join(" ")}</span>
-                                    {a.cinsi && <span className="text-gray-400 text-[10px] ml-1">({a.cinsi})</span>}
-                                  </button>
-                                ))
-                              )}
+                                    onClick={() => setDAracAra("")}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs"
+                                  >✕</button>
+                                )}
+                              </div>
+                              <div className="max-h-48 overflow-y-auto">
+                                {filtrelenmisAraclar.length === 0 ? (
+                                  <div className="px-3 py-3 text-xs text-gray-400 text-center">Eşleşen araç yok</div>
+                                ) : (
+                                  filtrelenmisAraclar.map((a) => (
+                                    <button
+                                      type="button"
+                                      key={a.id}
+                                      onClick={() => {
+                                        setDAracId(a.id);
+                                        setDAracAcik(false);
+                                        setDAracAra("");
+                                      }}
+                                      className={`w-full text-left px-3 py-1.5 text-xs border-b last:border-b-0 hover:bg-blue-50 ${
+                                        dAracId === a.id ? "bg-blue-100 font-semibold text-blue-900" : ""
+                                      }`}
+                                    >
+                                      <span className="font-bold text-[#1E3A5F]">{a.plaka}</span>
+                                      {" "}
+                                      <span className="text-gray-600">{[a.marka, a.model].filter(Boolean).join(" ")}</span>
+                                      {a.cinsi && <span className="text-gray-400 text-[10px] ml-1">({a.cinsi})</span>}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{tipEtiket(dTip)} Tarihi <span className="text-red-500">*</span></Label>
+                  <input type="date" value={dTarih} onChange={(e) => setDTarih(e.target.value)} className={selectClass + " w-full"} />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{tipEtiket(dTip)} Tarihi <span className="text-red-500">*</span></Label>
-                <input type="date" value={dTarih} onChange={(e) => setDTarih(e.target.value)} className={selectClass + " w-full"} />
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">
-                  {dTip === "yedek_parca" ? "Parçayı Alan (Personel)" : "Yaptıran (Personel)"}
-                  {(dTip === "bakim" || dTip === "tamirat") && <span className="text-red-500"> *</span>}
-                </Label>
-                <select value={dYaptiranId} onChange={(e) => setDYaptiranId(e.target.value)} className={selectClass + " w-full"}>
-                  <option value="">Seçiniz</option>
-                  {personeller
-                    .filter((p) => (p.durum ?? "aktif") === "aktif")
-                    .slice()
-                    .sort((a, b) => (a.ad_soyad ?? "").localeCompare(b.ad_soyad ?? "", "tr"))
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>{p.ad_soyad}</option>
-                    ))}
-                </select>
-                <p className="text-[9px] text-gray-400">
-                  İşi fiilen yaptıran personel. Kaydı giren kullanıcı: <strong>{kullanici?.ad_soyad ?? "—"}</strong>
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Tutar (TL) <span className="text-red-500">*</span></Label>
-                <input
-                  type="text" inputMode="decimal"
-                  value={dTutar}
-                  onChange={(e) => setDTutar(formatParaInput(e.target.value))}
-                  placeholder="0,00"
-                  className={selectClass + " w-full"}
-                />
-                {/* Tutarın altında ödeme durumu: tik işaretlenince ödemeyi yapan OTOMATİK
-                    olarak işaretleyen (giriş yapan) kullanıcı olarak kaydedilir. */}
-                <label className="flex items-center gap-2 cursor-pointer mt-1.5">
-                  <input type="checkbox" checked={dOdemeYapildi}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setDOdemeYapildi(true);
-                        // Daha önce kayıtlı ödeyen yoksa, işaretleyen kullanıcı olarak ata.
-                        if (!dOdeyenAdi) { setDOdeyenId(kullanici?.id ?? ""); setDOdeyenAdi(kullanici?.ad_soyad ?? ""); }
-                      } else {
-                        setDOdemeYapildi(false); setDOdeyenId(""); setDOdeyenAdi("");
-                      }
-                    }}
-                    className="w-4 h-4 accent-emerald-600" />
-                  <span className="text-[11px] font-semibold text-emerald-700">💵 Ödemesi yapıldı</span>
-                </label>
-                {dOdemeYapildi && (
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    Ödemeyi yapan: <strong className="text-emerald-700">{dOdeyenAdi || kullanici?.ad_soyad || "—"}</strong>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    {dTip === "yedek_parca" ? "Parçayı Alan (Personel)" : "Yaptıran (Personel)"}
+                    {(dTip === "bakim" || dTip === "tamirat") && <span className="text-red-500"> *</span>}
+                  </Label>
+                  <select value={dYaptiranId} onChange={(e) => setDYaptiranId(e.target.value)} className={selectClass + " w-full"}>
+                    <option value="">Seçiniz</option>
+                    {personeller
+                      .filter((p) => (p.durum ?? "aktif") === "aktif")
+                      .slice()
+                      .sort((a, b) => (a.ad_soyad ?? "").localeCompare(b.ad_soyad ?? "", "tr"))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>{p.ad_soyad}</option>
+                      ))}
+                  </select>
+                  <p className="text-[9px] text-gray-400">
+                    İşi fiilen yaptıran personel. Kaydı giren kullanıcı: <strong>{kullanici?.ad_soyad ?? "—"}</strong>
                   </p>
-                )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Tutar (TL) <span className="text-red-500">*</span></Label>
+                  <input
+                    type="text" inputMode="decimal"
+                    value={dTutar}
+                    onChange={(e) => setDTutar(formatParaInput(e.target.value))}
+                    placeholder="0,00"
+                    className={selectClass + " w-full"}
+                  />
+                  {/* Tutarın altında ödeme durumu: tik işaretlenince ödemeyi yapan OTOMATİK
+                      olarak işaretleyen (giriş yapan) kullanıcı olarak kaydedilir. */}
+                  <label className="flex items-center gap-2 cursor-pointer mt-1.5">
+                    <input type="checkbox" checked={dOdemeYapildi}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setDOdemeYapildi(true);
+                          // Daha önce kayıtlı ödeyen yoksa, işaretleyen kullanıcı olarak ata.
+                          if (!dOdeyenAdi) { setDOdeyenId(kullanici?.id ?? ""); setDOdeyenAdi(kullanici?.ad_soyad ?? ""); }
+                        } else {
+                          setDOdemeYapildi(false); setDOdeyenId(""); setDOdeyenAdi("");
+                        }
+                      }}
+                      className="w-4 h-4 accent-emerald-600" />
+                    <span className="text-[11px] font-semibold text-emerald-700">💵 Ödemesi yapıldı</span>
+                  </label>
+                  {dOdemeYapildi && (
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      Ödemeyi yapan: <strong className="text-emerald-700">{dOdeyenAdi || kullanici?.ad_soyad || "—"}</strong>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Yedek parçada km/saat alanına gerek yok.
+                  Not: "Bakım yapılacak km/saat" ve "tarih" buradan ALINDI — formun en altında,
+                  kendi başlığı altında duruyor. Üstteki alanların hepsi BU SEFER yapılan işle
+                  ilgili; o ikisi bir sonraki adım, karışmasın. */}
+              {dTip !== "yedek_parca" && (
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Mevcut Km / Saat <span className="text-red-500">*</span></Label>
+                  <input
+                    type="text" inputMode="numeric"
+                    value={dKm}
+                    onChange={(e) => setDKm(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Örn: 120000"
+                    className={selectClass + " w-full"}
+                  />
+                  {/* Alanın NE OLDUĞU yazsın: buraya bakımın yapıldığı gündeki sayaç girilir,
+                      bugünkü değil. Birim ve aracın bildiğimiz son değeri yanında durur. */}
+                  <p className="text-[9px] text-gray-400">
+                    Aracın bakımının yapıldığı tarihteki Km / Saat
+                    {seciliAracGuncelKm != null && (
+                      <> — araç güncel: <strong>{seciliAracGuncelKm.toLocaleString("tr-TR")}</strong></>
+                    )}
+                  </p>
+                </div>
+              </div>
+              )}
+
+
+              <div className="space-y-1">
+                <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"} <span className="text-red-500">*</span></Label>
+                <input
+                  type="text"
+                  list="servis-tamirci-oneri"
+                  value={dServisTamirci}
+                  onChange={(e) => setDServisTamirci(e.target.value)}
+                  placeholder="Örn: Oto Yunus, Özkan Lastik, Kamil Usta..."
+                  className={selectClass + " w-full"}
+                />
+                <datalist id="servis-tamirci-oneri">
+                  {servisTamirciOnerileri.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+                <p className="text-[9px] text-gray-400">Bakım/tamiratı yaptıran dış servis veya tamirci.</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">{dTip === "yedek_parca" ? "Alınan Yedek Parça" : "Yapılan İşin Detayı"} <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={dDetay}
+                  onChange={(e) => setDDetay(e.target.value)}
+                  placeholder={dTip === "yedek_parca"
+                    ? "Filtre, ampül, lastik, balata, conta, far, akü..."
+                    : "Yağ değişimi, balata, lastik rotasyonu, fren kontrolü..."}
+                  rows={3}
+                  className="text-sm"
+                />
+              </div>
+
+              {/* DOSYA KUTULARI YAN YANA: ikisi de "bu sefer yapılan iş" belgesi.
+                  Alt alta dururken form gereksiz uzuyor, Kaydet'e kadar kaydırmak gerekiyordu.
+                  Dar ekranda (sm altı) yine alt alta düşer. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* FATURA dosyaları */}
+                <div className="space-y-1 bg-blue-50/30 border border-blue-200 rounded-lg p-2">
+                  <Label className="text-[11px] font-semibold text-blue-800">📄 Fatura / Makbuz</Label>
+                  <div className="flex gap-2 items-center">
+                    <label htmlFor="fatura-dosya-input" className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                      📁 Dosya Seç
+                    </label>
+                    <input
+                      id="fatura-dosya-input"
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        const liste = e.target.files ? Array.from(e.target.files) : [];
+                        setDFaturaYeni((prev) => [...prev, ...liste]);
+                        e.target.value = "";
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {dFaturaMevcut.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dFaturaMevcut.length})</p>
+                      {dFaturaMevcut.map((u, i) => (
+                        <div key={`fat-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
+                          <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                            <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
+                          </a>
+                          <button type="button" onClick={() => setDFaturaMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {dFaturaYeni.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dFaturaYeni.length})</p>
+                      {dFaturaYeni.map((f, i) => (
+                        <div key={`fat-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                          <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
+                          <button type="button" onClick={() => setDFaturaYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* YAPILAN İŞ — foto / PDF */}
+                <div className="space-y-1 bg-amber-50/30 border border-amber-200 rounded-lg p-2">
+                  <Label className="text-[11px] font-semibold text-amber-800">{dTip === "yedek_parca" ? "📷 Yedek Parça Fotoğrafı" : "🔧 Yapılan İş Foto / PDF"}</Label>
+                  <div className="flex gap-2 items-center">
+                    <label htmlFor="isfoto-dosya-input" className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[11px] rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
+                      📁 Dosya Seç
+                    </label>
+                    <input
+                      id="isfoto-dosya-input"
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      onChange={(e) => {
+                        const liste = e.target.files ? Array.from(e.target.files) : [];
+                        setDIsFotoYeni((prev) => [...prev, ...liste]);
+                        e.target.value = "";
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {dIsFotoMevcut.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dIsFotoMevcut.length})</p>
+                      {dIsFotoMevcut.map((u, i) => (
+                        <div key={`isf-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
+                          <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
+                            <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
+                          </a>
+                          <button type="button" onClick={() => setDIsFotoMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {dIsFotoYeni.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dIsFotoYeni.length})</p>
+                      {dIsFotoYeni.map((f, i) => (
+                        <div key={`isf-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+                          <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
+                          <button type="button" onClick={() => setDIsFotoYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Yedek parçada km/saat alanına gerek yok */}
-            {dTip !== "yedek_parca" && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Mevcut Km / Saat <span className="text-red-500">*</span></Label>
-                <input
-                  type="text" inputMode="numeric"
-                  value={dKm}
-                  onChange={(e) => setDKm(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Örn: 120000"
-                  className={selectClass + " w-full"}
-                />
-                {/* Alanın NE OLDUĞU yazsın: buraya bakımın yapıldığı gündeki sayaç girilir,
-                    bugünkü değil. Birim ve aracın bildiğimiz son değeri yanında durur. */}
-                <p className="text-[9px] text-gray-400">
-                  Aracın bakımının yapıldığı tarihteki Km / Saat
-                  {seciliAracGuncelKm != null && (
-                    <> — araç güncel: <strong>{seciliAracGuncelKm.toLocaleString("tr-TR")}</strong></>
-                  )}
+            {/* SONRAKİ BAKIM — formun en altında, kendi başlığı altında.
+                Yukarıdaki alanların hepsi BU SEFER yapılan işi anlatıyor; buradaki iki alan
+                ise bir sonraki adımı planlıyor. Ayrı durunca hangisinin ne olduğu karışmıyor. */}
+            {dTip === "bakim" && (
+              <div className="space-y-2 rounded-lg border-2 border-emerald-400 bg-emerald-50 p-3 shadow-sm">
+                <p className="text-xs font-bold text-emerald-900">⏭ Sonraki bakım planı</p>
+                <p className="text-[10px] text-emerald-800/80">
+                  Yukarısı bu sefer yapılan işi anlatır; buradaki iki alan bir sonraki bakımı planlar.
                 </p>
-              </div>
-              {dTip === "bakim" && (
+                <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Bakım Yapılacak Km / Saat <span className="text-red-500">*</span></Label>
                   <input
@@ -1168,149 +1321,22 @@ export default function AracBakimPage() {
                     </p>
                   )}
                 </div>
-              )}
-            </div>
-            )}
-
-            {dTip === "bakim" && (
-              <div className="space-y-1">
-                <Label className="text-xs">Bakım Yapılacak Tarih</Label>
-                <input type="date" value={dSonrakiTarih} onChange={(e) => setDSonrakiTarih(e.target.value)} className={selectClass + " w-full"} />
-                <p className="text-[9px] text-gray-400">
-                  Bakım tarihi seçildiğinde otomatik olarak 1 yıl sonrası atanır.
-                  Km dolmadıysa bu tarihte bakım yapılacaktır.
-                </p>
+                <div className="space-y-1">
+                  <Label className="text-xs">Bakım Yapılacak Tarih</Label>
+                  <input type="date" value={dSonrakiTarih} onChange={(e) => setDSonrakiTarih(e.target.value)} className={selectClass + " w-full"} />
+                  <p className="text-[9px] text-gray-400">
+                    Bakım tarihi seçildiğinde otomatik olarak 1 yıl sonrası atanır.
+                    Km dolmadıysa bu tarihte bakım yapılacaktır.
+                  </p>
+                </div>
+                </div>
               </div>
             )}
 
-            <div className="space-y-1">
-              <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"} <span className="text-red-500">*</span></Label>
-              <input
-                type="text"
-                list="servis-tamirci-oneri"
-                value={dServisTamirci}
-                onChange={(e) => setDServisTamirci(e.target.value)}
-                placeholder="Örn: Oto Yunus, Özkan Lastik, Kamil Usta..."
-                className={selectClass + " w-full"}
-              />
-              <datalist id="servis-tamirci-oneri">
-                {servisTamirciOnerileri.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-              <p className="text-[9px] text-gray-400">Bakım/tamiratı yaptıran dış servis veya tamirci.</p>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">{dTip === "yedek_parca" ? "Alınan Yedek Parça" : "Yapılan İşin Detayı"} <span className="text-red-500">*</span></Label>
-              <Textarea
-                value={dDetay}
-                onChange={(e) => setDDetay(e.target.value)}
-                placeholder={dTip === "yedek_parca"
-                  ? "Filtre, ampül, lastik, balata, conta, far, akü..."
-                  : "Yağ değişimi, balata, lastik rotasyonu, fren kontrolü..."}
-                rows={3}
-                className="text-sm"
-              />
-            </div>
-
-            {/* FATURA dosyaları */}
-            <div className="space-y-1 bg-blue-50/30 border border-blue-200 rounded-lg p-2">
-              <Label className="text-xs font-semibold text-blue-800">📄 Fatura / Makbuz (PDF, JPG, PNG)</Label>
-              <div className="flex gap-2 items-center">
-                <label htmlFor="fatura-dosya-input" className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
-                  📁 Dosya Seç
-                </label>
-                <input
-                  id="fatura-dosya-input"
-                  type="file"
-                  multiple
-                  accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    const liste = e.target.files ? Array.from(e.target.files) : [];
-                    setDFaturaYeni((prev) => [...prev, ...liste]);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
-              </div>
-
-              {dFaturaMevcut.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dFaturaMevcut.length})</p>
-                  {dFaturaMevcut.map((u, i) => (
-                    <div key={`fat-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
-                        <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
-                      </a>
-                      <button type="button" onClick={() => setDFaturaMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {dFaturaYeni.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dFaturaYeni.length})</p>
-                  {dFaturaYeni.map((f, i) => (
-                    <div key={`fat-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
-                      <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
-                      <button type="button" onClick={() => setDFaturaYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* YAPILAN İŞ — foto / PDF */}
-            <div className="space-y-1 bg-amber-50/30 border border-amber-200 rounded-lg p-2">
-              <Label className="text-xs font-semibold text-amber-800">{dTip === "yedek_parca" ? "📷 Alınan Yedek Parçaların Fotoğrafı" : "🔧 Yapılan İşle İlgili Foto / PDF (parça, hasar, rapor vb.)"}</Label>
-              <div className="flex gap-2 items-center">
-                <label htmlFor="isfoto-dosya-input" className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded cursor-pointer inline-flex items-center gap-1 whitespace-nowrap">
-                  📁 Dosya Seç
-                </label>
-                <input
-                  id="isfoto-dosya-input"
-                  type="file"
-                  multiple
-                  accept="image/*,application/pdf"
-                  onChange={(e) => {
-                    const liste = e.target.files ? Array.from(e.target.files) : [];
-                    setDIsFotoYeni((prev) => [...prev, ...liste]);
-                    e.target.value = "";
-                  }}
-                  className="hidden"
-                />
-              </div>
-
-              {dIsFotoMevcut.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-[10px] text-gray-500 font-semibold">Mevcut ({dIsFotoMevcut.length})</p>
-                  {dIsFotoMevcut.map((u, i) => (
-                    <div key={`isf-mev-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-white border border-gray-200 rounded px-2 py-1">
-                      <a href={dosyaUrl(u)} target="_blank" rel="noopener noreferrer" className="text-[11px] text-amber-700 hover:underline flex items-center gap-1 truncate min-w-0 flex-1" title={dosyaAd(u)}>
-                        <Download size={11} className="flex-shrink-0" /> <span className="truncate">{dosyaAd(u)}</span>
-                      </a>
-                      <button type="button" onClick={() => setDIsFotoMevcut((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {dIsFotoYeni.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-[10px] text-emerald-700 font-semibold">Kaydedince yüklenecek ({dIsFotoYeni.length})</p>
-                  {dIsFotoYeni.map((f, i) => (
-                    <div key={`isf-yeni-${i}`} className="flex items-center justify-between gap-2 min-w-0 bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
-                      <span className="text-[11px] text-emerald-800 truncate min-w-0 flex-1" title={f.name}>+ {f.name} <span className="text-gray-500">({(f.size / 1024).toFixed(0)} KB)</span></span>
-                      <button type="button" onClick={() => setDIsFotoYeni((arr) => arr.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 text-[10px] px-1 flex-shrink-0">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2 justify-end pt-2">
+            {/* DÜĞMELER ALTTA SABİT: form uzun, pencere kendi içinde kayıyor. Eskiden
+                Kaydet'e ulaşmak için en alta kadar inmek gerekiyordu. sticky + pencerenin
+                p-4 dolgusunu kenarlara taşıran negatif marj → çubuk kenardan kenara oturur. */}
+            <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex gap-2 justify-end border-t border-gray-200 bg-white px-4 py-3">
               <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={dialogLoading}>İptal</Button>
               <Button
                 className={dTip === "tamirat" ? "bg-orange-600 hover:bg-orange-700 text-white" : dTip === "yedek_parca" ? "bg-purple-600 hover:bg-purple-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
