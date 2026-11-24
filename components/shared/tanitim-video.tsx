@@ -109,20 +109,42 @@ export default function TanitimVideo() {
     let bas: { x: number; y: number } | null = null;
     let menuAcildi = false;
 
+    // Basılı tutarken Android/iOS kendi METİN SEÇME balonunu açıyor ve bizim menü onun
+    // altında kalıyor (aynı sorun bordro kartında da yaşanmıştı). Çözüm aynı: dokunuş
+    // başladığı anda seçim ve iOS "callout" kapatılır, parmak kalkınca geri açılır —
+    // böylece metin seçme ve kopyalama normal zamanlarda çalışmaya devam eder.
+    const govdeStili = () => document.body.style as CSSStyleDeclaration &
+      { webkitUserSelect?: string; webkitTouchCallout?: string };
+    const secimKapat = () => {
+      const s = govdeStili();
+      s.userSelect = "none"; s.webkitUserSelect = "none"; s.webkitTouchCallout = "none";
+    };
+    const secimAc = () => {
+      const s = govdeStili();
+      s.userSelect = ""; s.webkitUserSelect = ""; s.webkitTouchCallout = "";
+    };
+
     const iptal = () => {
       if (sayac !== null) { clearTimeout(sayac); sayac = null; }
       bas = null;
+      secimAc();
     };
     const basla = (e: TouchEvent) => {
       iptal();
       if (e.touches.length !== 1) return;
       const hedef = e.target as HTMLElement | null;
-      if (hedef?.closest?.(TARAYICIYA_BIRAK)) return;
+      if (hedef?.closest?.(TARAYICIYA_BIRAK)) return;   // yazı alanı/bağlantı: seçime dokunma
       const t = e.touches[0];
       bas = { x: t.clientX, y: t.clientY };
+      secimKapat();
       sayac = window.setTimeout(() => {
         sayac = null;
-        if (bas) { menuAcildi = true; menuAc(bas.x, bas.y); }
+        if (bas) {
+          menuAcildi = true;
+          // Parmak inmeden önce kalmış bir seçim varsa menünün altında durmasın.
+          window.getSelection()?.removeAllRanges();
+          menuAc(bas.x, bas.y);
+        }
         bas = null;
       }, UZUN_BASMA_MS);
     };
