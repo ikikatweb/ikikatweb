@@ -365,7 +365,7 @@ export default function AracBakimListesiPage() {
                       ) : s.tahmin ? (
                         <span
                           className="text-[#C2410C]"
-                          title={`Tahmini. ${formatTarih(s.tahmin.tabanTarih)} ${s.tahmin.tabanKaynak === "yakit" ? "yakıt kaydında" : "bakım kaydında"} girilen ${formatGosterge(s.tahmin.taban)} ${s.birim} + Arvento'dan ${formatGosterge(s.tahmin.eklenen)} ${s.birim} (${s.tahmin.gun} gün). Gösterge girilince gerçek değere döner.`}
+                          title={`Tahmini. ${formatTarih(s.tahmin.tabanTarih)} ${({ yakit: "yakıt kaydında", bakim: "bakım kaydında", puantaj: "araç puantajında" } as const)[s.tahmin.tabanKaynak]} girilen ${formatGosterge(s.tahmin.taban)} ${s.birim} + Arvento'dan ${formatGosterge(s.tahmin.eklenen)} ${s.birim} (${s.tahmin.gun} gün). Gösterge girilince gerçek değere döner.`}
                         >
                           ~{formatGosterge(s.gosterge)} <span className="text-[#C2410C]/70">{s.birim}</span>
                           <span className="block text-[9px] text-[#C2410C]/80">tahmini</span>

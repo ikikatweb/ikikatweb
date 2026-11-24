@@ -29,7 +29,7 @@ export type TahminiGosterge = {
   /** Okumanın tarihi (YYYY-MM-DD). */
   tabanTarih: string;
   /** Okuma nereden geldi. */
-  tabanKaynak: "yakit" | "bakim";
+  tabanKaynak: "yakit" | "bakim" | "puantaj";
   /** Arvento'dan eklenen (km ya da saat). */
   eklenen: number;
   /** taban + eklenen (yuvarlanmış). */
@@ -71,7 +71,7 @@ export async function GET() {
   }[];
 
   // ── Taban: en son gerçek okuma (yakıt ya da bakım) ─────────────────────────────────────
-  type Okuma = { deger: number; tarih: string; kaynak: "yakit" | "bakim" };
+  type Okuma = { deger: number; tarih: string; kaynak: "yakit" | "bakim" | "puantaj" };
   const taban = new Map<string, Okuma>();
   const dahaYeni = (o: Okuma, m?: Okuma) => !m || o.tarih > m.tarih;
 
@@ -89,6 +89,17 @@ export async function GET() {
   for (const b of (bakim ?? []) as { arac_id: string; bakim_tarihi: string; km: number }[]) {
     const o: Okuma = { deger: Number(b.km), tarih: b.bakim_tarihi, kaynak: "bakim" };
     if (dahaYeni(o, taban.get(b.arac_id))) taban.set(b.arac_id, o);
+  }
+
+  // ÜÇÜNCÜ KAYNAK: araç puantajı. O ekranda da gösterge giriliyor ve araç kartındaki
+  // guncel_gosterge oradan da güncelleniyor. Atlanırsa taban yakıt kaydında kalıp araç
+  // kartı ondan ileride görünüyor, tahmin de üretilemiyordu (9 araçta böyleydi).
+  const { data: puantaj, error: puantajHata } = await sb
+    .from("arac_puantaj").select("arac_id, tarih, gosterge").gt("gosterge", 0);
+  if (puantajHata) return NextResponse.json({ error: puantajHata.message }, { status: 502 });
+  for (const p of (puantaj ?? []) as { arac_id: string; tarih: string; gosterge: number }[]) {
+    const o: Okuma = { deger: Number(p.gosterge), tarih: p.tarih, kaynak: "puantaj" };
+    if (dahaYeni(o, taban.get(p.arac_id))) taban.set(p.arac_id, o);
   }
   if (taban.size === 0) return NextResponse.json({});
 
@@ -122,21 +133,31 @@ export async function GET() {
   for (const a of araclar) {
     const o = taban.get(a.id);
     if (!o) continue;                                   // hiç gerçek okuma yok → tahmin de yok
-    // Araç kartındaki değer daha yüksekse onu taban al (biri elle girmiş olabilir).
-    const tabanDeger = a.guncel_gosterge != null && a.guncel_gosterge > o.deger ? a.guncel_gosterge : o.deger;
+    // ARAÇ KARTI İLERİDEYSE: kartın değeri tarihli okumadan büyük olabiliyor (ör. 60 BP 164:
+    // kart 263.785, son yakıt okuması 11.11'de 262.668). Aradaki fark, Arvento'nun o tarihten
+    // beri saydığı mesafenin ZATEN KARTA İŞLENMİŞ kısmıdır — tamamını tekrar eklersek aynı
+    // yolu iki kez saymış oluruz. Bu yüzden taban kart değeri olur ve eklenecek miktardan
+    // kartta hâlihazırda bulunan kadarı DÜŞÜLÜR.
+    const kart = a.guncel_gosterge;
+    const kartIleride = kart != null && kart > o.deger;
+    const tabanDeger = kartIleride ? kart! : o.deger;
+    const kartaIslenmis = kartIleride ? kart! - o.deger : 0;
     const gunler = (plakaGun.get(plakaAnahtar(a.plaka)) ?? []).filter((r) => r.rapor_tarihi > o.tarih);
     if (gunler.length === 0) continue;                  // Arvento verisi yok → sütunda gerçek değer kalır
 
     const saatMi = a.sayac_tipi === "saat";
-    let eklenen: number;
+    // Okumadan bu yana Arvento'nun saydığı ham ilerleme (km ya da katsayılı saat).
+    let ham: number;
     if (saatMi) {
       const saat = gunler.reduce((t, r) => t + raporCalismaSn(r), 0) / 3600;
-      const ileri = projeksiyon(tabanDeger, saat, a.saat_katsayi);
+      const ileri = projeksiyon(o.deger, saat, a.saat_katsayi);
       if (ileri == null) continue;
-      eklenen = ileri - tabanDeger;
+      ham = ileri - o.deger;
     } else {
-      eklenen = gunler.reduce((t, r) => t + Number(r.mesafe_km ?? 0), 0);
+      ham = gunler.reduce((t, r) => t + Number(r.mesafe_km ?? 0), 0);
     }
+    // Kartta zaten işlenmiş kısmı düş (yukarıdaki açıklama).
+    const eklenen = Math.max(0, ham - kartaIslenmis);
     // 1 birimden az ilerleme "tahmini" etiketini hak etmiyor: ekranda aynı sayı görünür,
     // kullanıcı boş yere "bu neden tahmini?" diye düşünür.
     if (!(eklenen >= 1)) continue;
