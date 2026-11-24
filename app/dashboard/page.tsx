@@ -2279,8 +2279,8 @@ export default function DashboardPage() {
                   <TableRow className="bg-white">
                     <TableHead className="px-2 text-[10px]">Plaka</TableHead>
                     <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
-                    <TableHead className="px-2 text-[10px] text-right">Güncel Km/Sa</TableHead>
                     <TableHead className="px-2 text-[10px] text-right">Yapılacak Km/Sa</TableHead>
+                    <TableHead className="px-2 text-[10px] text-right">Güncel Km/Sa</TableHead>
                     <TableHead className="px-2 text-[10px] text-center">Durum</TableHead>
                     <TableHead className="px-2 text-[10px] text-center">Yapılacak Tarih</TableHead>
                   </TableRow>
@@ -2319,14 +2319,14 @@ export default function DashboardPage() {
                           {[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}
                         </TableCell>
                         <TableCell className="px-2 text-right tabular-nums text-[11px]">
+                          {b.sonraki_bakim_km != null ? b.sonraki_bakim_km.toLocaleString("tr-TR") : "—"}
+                        </TableCell>
+                        <TableCell className="px-2 text-right tabular-nums text-[11px]">
                           {guncelKm == null ? "—" : tahmin ? (
                             <span className="text-[#C2410C]" title={`Tahmini: ${formatTarih(tahmin.tabanTarih)} okumasındaki ${tahmin.taban.toLocaleString("tr-TR")} ${birim} + Arvento'dan ${tahmin.eklenen.toLocaleString("tr-TR")} ${birim}`}>
                               ~{guncelKm.toLocaleString("tr-TR")}
                             </span>
                           ) : guncelKm.toLocaleString("tr-TR")}
-                        </TableCell>
-                        <TableCell className="px-2 text-right tabular-nums text-[11px]">
-                          {b.sonraki_bakim_km != null ? b.sonraki_bakim_km.toLocaleString("tr-TR") : "—"}
                         </TableCell>
                         <TableCell className="px-2 text-center">
                           <div className="flex flex-col items-center gap-0.5">
