@@ -344,7 +344,10 @@ export default function HizliTalimatDialog({ open, onOpenChange, onSuccess }: Pr
                 <Button variant="ghost" size="sm" onClick={() => setOnIzleme(false)} className="text-gray-500">
                   <ArrowLeft size={16} className="mr-1" /> Düzenlemeye Dön
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => evrakYazdir(konuOtomatik)}>
+                {/* YENİ SEKME ŞART: diğer ekranlarda PDF aynı sekmede açılıyor ama burada
+                    ekranda henüz KAYDEDİLMEMİŞ talimat metni var — sayfadan çıkılırsa
+                    (Safari sayfayı bellekte tutmazsa) yazılan metin kaybolur. */}
+                <Button variant="outline" size="sm" onClick={() => evrakYazdir(konuOtomatik, { yeniSekme: true })}>
                   <Printer size={16} className="mr-1" /> Yazdır / PDF İndir
                 </Button>
               </div>

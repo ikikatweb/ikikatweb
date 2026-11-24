@@ -4,7 +4,11 @@
 //    DAMGALAR ve bunu kapatan bir ayar YOKTUR — @page margin:0 bile kaldırmıyor (içeriğin üstüne biner).
 //    Tek temiz çözüm: evrağı PDF'e çevirip PDF'i açmak — PDF yazdırmada Safari damga basmaz.
 //    Print portalı (.evrak-print-portal) globals.css sayesinde ekran DIŞINDA tam A4 layout'uyla zaten
-//    hazır: html2canvas ile rasterize → jsPDF A4 → yeni sekmede aç (oradan Yazdır/Paylaş).
+//    hazır: html2canvas ile rasterize → jsPDF A4 → PDF'i aç (oradan Yazdır/Paylaş).
+//
+// PDF AYNI SEKMEDE açılır, kapatmak geri tuşudur. Ayrı sekmede açılırken Safari arkadaki
+// sayfayı bellekten atıyor, geri dönülünce yazışma listesi baştan yükleniyordu. Tek istisna
+// Hızlı Talimat: orada ekranda KAYDEDİLMEMİŞ yazı var, sayfadan çıkılamaz (yeniSekme: true).
 
 export function iosMu(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -12,17 +16,47 @@ export function iosMu(): boolean {
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS kendini "Mac" gösterir
 }
 
+/**
+ * Aynı sekmede PDF üretilirken sayfanın üstüne konan bekleme örtüsü.
+ * Olmasaydı kullanıcı düğmeye basıp hiçbir şey olmadığını sanırdı.
+ */
+function bekleOrtusuAc(): HTMLElement {
+  const ortu = document.createElement("div");
+  ortu.style.cssText = "position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;"
+    + "align-items:center;justify-content:center;gap:12px;background:rgba(255,255,255,.93);"
+    + "font:16px/1.5 -apple-system,system-ui,sans-serif;color:#1E3A5F";
+  const halka = document.createElement("div");
+  halka.style.cssText = "width:34px;height:34px;border:3px solid #dbe3ec;border-top-color:#1E3A5F;"
+    + "border-radius:50%;animation:evrakDon .8s linear infinite";
+  const stil = document.createElement("style");
+  stil.textContent = "@keyframes evrakDon{to{transform:rotate(360deg)}}";
+  const yazi = document.createElement("div");
+  yazi.textContent = "Evrak PDF'e çevriliyor…";
+  ortu.append(stil, halka, yazi);
+  document.body.appendChild(ortu);
+  // GERİ DÖNÜLDÜĞÜNDE KALMASIN: Safari sayfayı bellekten geri yüklüyorsa (bfcache) DOM
+  // olduğu gibi döner — örtü ekranı kaplamış halde karşılardı.
+  window.addEventListener("pageshow", () => ortu.remove(), { once: true });
+  return ortu;
+}
+
 // dosyaAdi: PDF'in kaydedilme adı (ör. "KAT-26/DİD.001 Hakediş") — uzantısız ver, ".pdf" eklenir.
 // Verilmezse "evrak.pdf". Ad, isimli File nesnesiyle taşınır; çıplak Blob URL'si Safari'de
 // "unknown.pdf" oluyordu.
-export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
+export async function evrakYazdir(
+  dosyaAdi?: string,
+  secenek?: { /** PDF ayrı sekmede açılsın — sayfada kaydedilmemiş veri varsa ŞART. */ yeniSekme?: boolean },
+): Promise<void> {
   if (!iosMu()) { window.print(); return; }
   const portal = document.querySelector<HTMLElement>(".evrak-print-portal");
   const hedef = portal?.querySelector<HTMLElement>(".evrak-onizleme") ?? portal;
   if (!portal || !hedef) { window.print(); return; }
-  // Yeni sekmeyi SENKRON aç (henüz kullanıcı jesti içindeyken) — PDF hazır olunca adresi verilir.
-  // Beklemeden sonra açılsaydı Safari "otomatik açılan pencere" saydığı için engellerdi.
-  const sekme = window.open("", "_blank");
+  const yeniSekme = secenek?.yeniSekme === true;
+  // Yeni sekme gerekiyorsa SENKRON aç (henüz kullanıcı jesti içindeyken) — adresi PDF hazır
+  // olunca verilir. Beklemeden sonra açılsaydı Safari "otomatik açılan pencere" saydığı için
+  // engellerdi. Aynı sekmede açılırken böyle bir kısıt yok, bekleme örtüyle gösterilir.
+  const sekme = yeniSekme ? window.open("", "_blank") : null;
+  const ortu = yeniSekme ? null : bekleOrtusuAc();
   // … ama BOŞ KALMASIN: kullanıcı bir süre bembeyaz "about:blank" görüyordu ve
   // bir şey açılmadı sanıyordu. PDF gelene kadar ne olduğunu yaz.
   if (sekme) {
@@ -81,8 +115,16 @@ export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
     const ad = (dosyaAdi ?? "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "evrak";
     const file = new File([pdf.output("blob")], `${ad}.pdf`, { type: "application/pdf" });
     const url = URL.createObjectURL(file);
-    if (sekme && !sekme.closed) sekme.location.href = url;
-    else window.location.href = url; // popup engellendiyse aynı sekmede aç (geri ile dönülür)
+    // Aynı sekmede: örtü yerinde kalsın, sayfa birazdan PDF'e gidiyor zaten.
+    if (sekme && !sekme.closed) {
+      sekme.location.href = url;
+      ortu?.remove();
+    } else {
+      window.location.href = url; // (geri tuşu ile sayfaya dönülür)
+      // EMNİYET: adres bir sebeple açılmazsa kullanıcı dönen halkanın altında KİLİTLİ kalır,
+      // sayfaya dokunamaz. Açılırsa bu zamanlayıcı zaten sayfayla birlikte gider.
+      setTimeout(() => ortu?.remove(), 6000);
+    }
   } catch (e) {
     // SESSİZ DÜŞME YOK: PDF üretilemezse normal yazdırmaya geçilir ama kullanıcı bunu BİLMELİ.
     // 24.11.2026'da bu catch sessizdi: geçit değişikliği antet görselini başka kökene taşıyınca
@@ -91,6 +133,7 @@ export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
     const sebep = e instanceof Error ? e.message : String(e);
     console.error("[evrakYazdir] PDF üretilemedi:", e);
     try { sekme?.close(); } catch { /* yoksay */ }
+    ortu?.remove();
     const { default: toast } = await import("react-hot-toast");
     toast.error(
       "Evrak PDF'e çevrilemedi, tarayıcının kendi yazdırması açılıyor "
