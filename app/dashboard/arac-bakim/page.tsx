@@ -1124,8 +1124,10 @@ export default function AracBakimPage() {
                   placeholder="Örn: 120000"
                   className={selectClass + " w-full"}
                 />
+                {/* Alanın NE OLDUĞU yazsın: buraya bakımın yapıldığı gündeki sayaç girilir,
+                    bugünkü değil. Birim ve aracın bildiğimiz son değeri yanında durur. */}
                 <p className="text-[9px] text-gray-400">
-                  Bu araç: {seciliAracSayacTipi === "saat" ? "Saat" : "Km"}
+                  Aracın bakımının yapıldığı tarihteki Km / Saat
                   {seciliAracGuncelKm != null && (
                     <> — araç güncel: <strong>{seciliAracGuncelKm.toLocaleString("tr-TR")}</strong></>
                   )}
@@ -1148,6 +1150,13 @@ export default function AracBakimPage() {
                         : "border-input bg-white focus:border-ring focus:ring-ring/50")
                     }
                   />
+                  {/* Diğer alanlarla aynı: altta ne girileceği yazar. Uyarı çıktığında
+                      (geçti/yaklaştı) onun yerini uyarı alır — iki satır üst üste binmesin. */}
+                  {sonrakiKmDurum !== "gecti" && sonrakiKmDurum !== "yaklasti" && (
+                    <p className="text-[9px] text-gray-400">
+                      Bir sonraki bakımın yapılacağı Km / Saat
+                    </p>
+                  )}
                   {sonrakiKmDurum === "gecti" && seciliAracGuncelKm != null && (
                     <p className="text-[10px] text-red-600 font-semibold">
                       ⚠ Bakım tarihi GEÇTİ — araç {(seciliAracGuncelKm - parseInt(dSonrakiKm.replace(/\D/g, ""), 10)).toLocaleString("tr-TR")} {seciliAracSayacTipi === "saat" ? "saat" : "km"} daha gitmiş
