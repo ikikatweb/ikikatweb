@@ -2277,7 +2277,10 @@ export default function DashboardPage() {
               <Table noWrapper className="text-xs">
                 <TableHeader>
                   <TableRow className="bg-white">
-                    <TableHead className="px-2 text-[10px]">Plaka</TableHead>
+                    {/* PLAKA SÜTUNU SOLA SABİT: kutu yatay kayıyor, kaydırınca hangi satıra
+                        baktığın kayboluyordu. z-30 — sabit başlık (thead z-20) ile sabit sütun
+                        kesişiminde plaka başlığı en üstte kalmalı. */}
+                    <TableHead className="px-2 text-[10px] sticky left-0 z-30 bg-white">Plaka</TableHead>
                     <TableHead className="px-2 text-[10px]">Marka/Model</TableHead>
                     <TableHead className="px-2 text-[10px] text-right">Yapılacak Km/Sa</TableHead>
                     <TableHead className="px-2 text-[10px] text-right">Güncel Km/Sa</TableHead>
@@ -2300,7 +2303,8 @@ export default function DashboardPage() {
                     return (
                       <TableRow
                         key={b.id}
-                        className={kritik ? "bg-red-50" : ""}
+                        // group: sola sabit plaka hücresi satırın vurgusunu alsın (aşağıdaki hücre).
+                        className={`group ${kritik ? "bg-red-50" : ""}`}
                         onContextMenu={(e) => {
                           if (!b.arac_id) return;
                           // preventDefault: hem tarayıcı menüsü hem genel "Sayfayı Tanı" menüsü
@@ -2314,7 +2318,11 @@ export default function DashboardPage() {
                           });
                         }}
                       >
-                        <TableCell className="px-2 font-bold text-[#1E3A5F] whitespace-nowrap">{b.araclar?.plaka ?? "—"}</TableCell>
+                        {/* Sabit hücrenin ZEMİNİ SATIRIN ZEMİNİYLE AYNI olmalı: saydam kalırsa
+                            altından kayan sütunlar görünür. Kritik satır kırmızı, diğeri beyaz.
+                            z-index VERİLMEZ — bkz. components/ui/table.tsx: pozitif z'li gövde
+                            hücresi sabit başlığı örtüyor. */}
+                        <TableCell className={`px-2 font-bold text-[#1E3A5F] whitespace-nowrap sticky left-0 transition-colors shadow-[2px_0_3px_rgba(0,0,0,0.08)] ${kritik ? "bg-red-50 group-hover:bg-red-100" : "bg-white group-hover:bg-muted/50"}`}>{b.araclar?.plaka ?? "—"}</TableCell>
                         <TableCell className="px-2 truncate max-w-[140px] text-[11px]">
                           {[b.araclar?.marka, b.araclar?.model].filter(Boolean).join(" ") || "—"}
                         </TableCell>
