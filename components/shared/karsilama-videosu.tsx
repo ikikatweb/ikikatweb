@@ -16,9 +16,9 @@
 // bulunamadı" kutusu çıkmasın diye; dosya yüklendiği an kendiliğinden devreye girer.
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Clapperboard, X, Loader2, Check, Volume2, Play } from "lucide-react";
+import { Clapperboard, X, Check, Volume2, Play } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { KARSILAMA_SLUG } from "@/lib/tanitim/sayfalar";
 import { uyariGizle } from "@/lib/supabase/queries/uyari-gizle";
@@ -46,7 +46,6 @@ export default function KarsilamaVideosu() {
 
   const [url, setUrl] = useState<string | null>(null);
   const [acik, setAcik] = useState(false);
-  const [kaydediliyor, setKaydediliyor] = useState(false);
   // Tarayıcı SESLİ otomatik oynatmayı engellerse video sessiz başlar; bu durumda tek
   // dokunuşluk "Sesi aç" düğmesi çıkar. Hiç oynatılamadıysa "Oynat" düğmesi çıkar —
   // kullanıcı donmuş bir kare ile baş başa bırakılmaz.
@@ -57,8 +56,12 @@ export default function KarsilamaVideosu() {
   const ilkDenemeRef = useRef(false);
   // "Daha sonra" dendiyse bu oturumda uygulamaya her dönüşte tekrar açılmasın.
   const ertelendiRef = useRef(false);
+  // "İzledim"e basıldı. Sunucuya yazma arkada sürerken (veritabanı yavaşsa saniyeler sürebilir)
+  // profil henüz tazelenmemiş olur; bu bayrak olmasa telefon uyandığında pencere yeniden açılırdı.
+  const izlediBasildiRef = useRef(false);
 
-  const gizlenenler = kullanici?.gizlenen_uyarilar ?? [];
+  // useMemo: aksi hâlde her render'da yeni dizi olur ve aşağıdaki useCallback'ler boş yere yenilenir.
+  const gizlenenler = useMemo(() => kullanici?.gizlenen_uyarilar ?? [], [kullanici]);
   const izlemeSayisi = Math.min(
     GEREKEN_IZLEME,
     [1, 2].filter((n) => gizlenenler.includes(izlemeAnahtari(n))).length +
@@ -102,7 +105,7 @@ export default function KarsilamaVideosu() {
   // AÇILIŞ TRAFİĞİYLE YARIŞMAZ: ana ekran onlarca sorgu başlatıyor; video adresi isteği de
   // aynı anda girince telefonda sayfanın açılması gecikiyordu. Tarayıcı boşa çıkınca istenir.
   useEffect(() => {
-    if (loading || !kullanici || tamamlandi || ilkDenemeRef.current) return;
+    if (loading || !kullanici || tamamlandi || izlediBasildiRef.current || ilkDenemeRef.current) return;
     ilkDenemeRef.current = true;
     const calistir = () => void acmayiDene(true);
     if (typeof window.requestIdleCallback === "function") {
@@ -120,7 +123,7 @@ export default function KarsilamaVideosu() {
     if (tamamlandi) return;
     const bak = () => {
       if (document.visibilityState !== "visible") return;
-      if (loading || !kullanici || ertelendiRef.current || acik) return;
+      if (loading || !kullanici || ertelendiRef.current || izlediBasildiRef.current || acik) return;
       void acmayiDene(true);
     };
     document.addEventListener("visibilitychange", bak);
@@ -140,29 +143,49 @@ export default function KarsilamaVideosu() {
     return () => window.removeEventListener(KARSILAMA_OLAY, ac);
   }, [acmayiDene]);
 
-  // Bir izlemeyi kullanıcının kendi kaydına yaz.
-  // kapat=false: video sonuna geldiğinde işaret konur ama pencere açık kalır (kullanıcı kapatır).
-  const izlemeyiYaz = useCallback(async (kapat = true) => {
-    if (tamamlandi) { if (kapat) setAcik(false); return; }
-    setKaydediliyor(true);
-    try {
-      const { kayitHatasi } = await uyariGizle(izlemeAnahtari(izlemeSayisi + 1));
-      // Onay günlüğü yazılamadıysa sessiz geçme: "kim izledi" kaydı tutuluyor sanılmasın.
-      if (kayitHatasi) {
-        toast.error(`İşaretlendi ama onay günlüğüne yazılamadı: ${kayitHatasi}`, { duration: toastSuresi() });
+  // "İZLEDİM" → İŞ BİTTİ. Kullanıcı bir kez izlemiş olsa bile bu düğmeye bastıysa yeterince
+  // izlemiş sayılır; video bir daha kendiliğinden açılmaz. (Sadece sonuna kadar izleyip
+  // düğmeye basmayanda sayaç işler: bkz. videoBitti → tekIzlemeYaz.)
+  //
+  // PENCERE HEMEN KAPANIR, yazma arkada sürer. Eskiden düğme sunucu cevabını bekliyordu;
+  // veritabanı yavaşladığında (bugün 10 sn'yi aştı) düğme donmuş gibi görünüyordu.
+  // Yazma başarısız olursa kullanıcı bunu toast ile öğrenir — sessiz geçilmez.
+  const izlediIsaretle = useCallback(() => {
+    izlediBasildiRef.current = true;
+    setAcik(false);
+    if (tamamlandi) return;
+    void (async () => {
+      try {
+        const eksikler = [1, 2].filter((n) => !gizlenenler.includes(izlemeAnahtari(n)));
+        for (const n of eksikler) {
+          const { kayitHatasi } = await uyariGizle(izlemeAnahtari(n));
+          // Onay günlüğü yazılamadıysa sessiz geçme: "kim izledi" kaydı tutuluyor sanılmasın.
+          if (kayitHatasi) {
+            toast.error(`İşaretlendi ama onay günlüğüne yazılamadı: ${kayitHatasi}`, { duration: toastSuresi() });
+          }
+        }
+        await profilYenile();
+      } catch (e) {
+        toast.error(
+          `"İzledim" kaydedilemedi, video bir daha açılabilir: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
+          { duration: toastSuresi() },
+        );
       }
-      await profilYenile();
-      if (kapat) setAcik(false);
-    } catch (e) {
-      // İşaretlenemediyse pencereyi kapatıp "sayıldı" izlenimi VERME.
-      toast.error(
-        `İzleme kaydedilemedi, düğmeye tekrar basın: ${e instanceof Error ? e.message : "bilinmeyen hata"}`,
-        { duration: toastSuresi() },
-      );
-    } finally {
-      setKaydediliyor(false);
-    }
-  }, [tamamlandi, izlemeSayisi, profilYenile]);
+    })();
+  }, [tamamlandi, gizlenenler, profilYenile]);
+
+  // Video sonuna kadar izlendi ama düğmeye basılmadı → yalnız BİR izleme işaretlenir.
+  const tekIzlemeYaz = useCallback(() => {
+    if (tamamlandi) return;
+    void (async () => {
+      try {
+        const sira = [1, 2].find((n) => !gizlenenler.includes(izlemeAnahtari(n)));
+        if (!sira) return;
+        await uyariGizle(izlemeAnahtari(sira));
+        await profilYenile();
+      } catch { /* kullanıcı zaten düğmeye basabilir; burada uyarı gürültü olur */ }
+    })();
+  }, [tamamlandi, gizlenenler, profilYenile]);
 
   const ertele = useCallback(() => { ertelendiRef.current = true; setAcik(false); }, []);
 
@@ -231,7 +254,7 @@ export default function KarsilamaVideosu() {
             autoPlay
             playsInline
             onLoadedData={kendiOynat}
-            onEnded={() => void izlemeyiYaz(false)}
+            onEnded={tekIzlemeYaz}
             onError={() =>
               toast.error("Video dosyası açılamadı (bozuk olabilir ya da adresin süresi dolmuş).", {
                 duration: toastSuresi(),
@@ -284,12 +307,11 @@ export default function KarsilamaVideosu() {
             )}
             <button
               type="button"
-              onClick={() => void izlemeyiYaz()}
-              disabled={kaydediliyor}
+              onClick={izlediIsaretle}
               className="flex items-center gap-1.5 rounded-md bg-[#1E3A5F] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#2a4e7d] disabled:opacity-50"
             >
-              {kaydediliyor ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-              {tamamlandi ? "Kapat" : `İzledim (${izlemeSayisi + 1}/${GEREKEN_IZLEME})`}
+              <Check size={15} />
+              {tamamlandi ? "Kapat" : "İzledim"}
             </button>
           </div>
         </div>
