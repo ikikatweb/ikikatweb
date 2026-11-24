@@ -636,4 +636,26 @@ html {
     visibility: hidden !important;
     pointer-events: none !important;
   }
+
+  /* PDF ÇIKTI KİPİ (iOS) — evrakı YAZICININ gördüğü geometriye sokar.
+     evrakYazdir, html2canvas'ı çağırmadan hemen önce portala bu sınıfı ekler, sonra kaldırır.
+
+     NEDEN: PDF yolu ekrandaki kutuyu tek parça resme çevirip 297mm'de bir kesiyordu.
+     Ekran kutusunun boşluğu yalnız en üstte ve en altta olduğu için ARA SAYFALARDA
+     kenar boşluğu hiç kalmıyor, her sayfaya 297mm'lik metin sığıyordu: yazıcıda 3 sayfa
+     olan evrak PDF'te 2 sayfa çıkıyordu. Burada @media print'teki kuralın aynısı
+     uygulanır (boşluklar sıfırlanır, kutu içerik genişliğine iner); sayfa boşluklarını
+     artık @page değil evrakYazdir koyar (üst 12.5mm, alt 25mm, yan 22.5mm).
+     Satır kırılımı DEĞİŞMEZ: 210mm − 2×22.5mm zaten 165mm'dir. */
+  .evrak-print-portal.evrak-pdf-cikti { width: 165mm !important; }
+
+  .evrak-pdf-cikti .evrak-onizleme,
+  .evrak-pdf-cikti > div {
+    width: 165mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }

@@ -16,6 +16,46 @@ export function iosMu(): boolean {
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS kendini "Mac" gösterir
 }
 
+// SAYFA KENAR BOŞLUKLARI — @page kuralıyla (globals.css @media print) BİREBİR aynı olmalı,
+// yoksa aynı evrak yazıcıdan ve telefondan farklı sayfa sayısıyla çıkar.
+const UST_MM = 12.5, ALT_MM = 25, YAN_MM = 22.5;
+const ICERIK_GENISLIK_MM = 210 - YAN_MM * 2;        // 165
+const ICERIK_YUKSEKLIK_MM = 297 - UST_MM - ALT_MM;  // 259.5
+
+/**
+ * Sayfa kesiminin metnin ORTASINDAN geçmemesi için: ideal noktadan yukarı doğru
+ * tamamen boş (beyaz) bir piksel satırı arar, bulursa orayı kesim yeri verir.
+ *
+ * NEDEN: tarayıcı yazdırırken satırı ASLA ikiye bölmez, sayfayı satır arasından
+ * böler. Resim dilimlerken bu kendiliğinden olmaz — düz geometrik kesim harflerin
+ * tam ortasından geçip üst yarısını bir sayfada, alt yarısını öbüründe bırakır.
+ * Tablo/çerçeve gibi kesintisiz bir şey varsa boş satır bulunamaz → ideal nokta.
+ */
+function kesimNoktasi(canvas: HTMLCanvasElement, ideal: number, enAz: number): number {
+  const ctx = canvas.getContext("2d");
+  if (!ctx || ideal <= enAz) return ideal;
+  const bandBas = Math.max(enAz, ideal - Math.round((ideal - enAz) * 0.3));
+  const yukseklik = ideal - bandBas;
+  if (yukseklik <= 0) return ideal;
+  let veri: Uint8ClampedArray;
+  try {
+    veri = ctx.getImageData(0, bandBas, canvas.width, yukseklik).data;
+  } catch {
+    return ideal; // tuval okunamıyorsa (kirlendiyse) geometrik kes — PDF yine çıksın
+  }
+  const g = canvas.width;
+  for (let satir = yukseklik - 1; satir >= 0; satir--) {
+    let bos = true;
+    // Her pikseli taramaya gerek yok: harf gövdesi iki pikselden geniş.
+    for (let x = 0; x < g; x += 2) {
+      const i = (satir * g + x) * 4;
+      if (veri[i] < 245 || veri[i + 1] < 245 || veri[i + 2] < 245) { bos = false; break; }
+    }
+    if (bos) return bandBas + satir;
+  }
+  return ideal;
+}
+
 /**
  * Aynı sekmede PDF üretilirken sayfanın üstüne konan bekleme örtüsü.
  * Olmasaydı kullanıcı düğmeye basıp hiçbir şey olmadığını sanırdı.
@@ -79,6 +119,9 @@ export async function evrakYazdir(
   // Portal ekranda visibility:hidden !important (globals.css) — html2canvas gizli içeriği BOŞ çizer.
   // Geçici olarak görünür yap (yine ekran dışında, kullanıcı görmez); important şart (kural important).
   portal.style.setProperty("visibility", "visible", "important");
+  // Evrağı YAZICININ gördüğü geometriye sok (bkz. globals.css .evrak-pdf-cikti):
+  // kutunun kendi boşlukları sıfırlanır, sayfa boşluklarını aşağıda biz koyarız.
+  portal.classList.add("evrak-pdf-cikti");
   try {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
     const canvas = await html2canvas(hedef, {
@@ -91,15 +134,18 @@ export async function evrakYazdir(
       ignoreElements: (el) => el.parentElement === document.body && !el.contains(hedef),
     });
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-    const sayfaPx = Math.floor((canvas.width * 297) / 210); // bir A4 sayfasına düşen kaynak piksel yüksekliği
+    // Tuval artık SADECE içerik sütunu (165mm). Sayfa boşluklarını addImage'in konumu koyar.
+    const pxPerMm = canvas.width / ICERIK_GENISLIK_MM;
+    const sayfaPx = Math.round(ICERIK_YUKSEKLIK_MM * pxPerMm);
     let y = 0, sayfa = 0;
     while (y < canvas.height) {
       const kalan = canvas.height - y;
-      // Evrak kutusu tam A4 boyunda (min-height 297mm); mm→px çevriminin yuvarlama artığı (birkaç
-      // piksel-yarım cm) döngüde fazladan tur açıp BOMBOŞ ikinci sayfa üretiyordu. Bir sayfanın
-      // %5'inden (≈15mm) küçük artık gerçek içerik olamaz (evrağın alt boşluğu zaten 2.5cm) → atla.
-      if (sayfa > 0 && kalan < sayfaPx * 0.05) break;
-      const h = Math.min(sayfaPx, kalan);
+      // 3mm'den kısa artık gerçek içerik değil, yuvarlama payıdır → bomboş son sayfa açma.
+      if (sayfa > 0 && kalan < pxPerMm * 3) break;
+      // Sayfa dolacaksa kesimi satır arasına denk getir; son sayfada kesim yok.
+      const h = kalan <= sayfaPx
+        ? kalan
+        : kesimNoktasi(canvas, y + sayfaPx, y + Math.round(sayfaPx * 0.5)) - y;
       const dilim = document.createElement("canvas");
       dilim.width = canvas.width; dilim.height = h;
       const ctx = dilim.getContext("2d");
@@ -107,8 +153,8 @@ export async function evrakYazdir(
       ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, dilim.width, h);
       ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
       if (sayfa > 0) pdf.addPage();
-      pdf.addImage(dilim.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, (h * 210) / canvas.width);
-      y += sayfaPx; sayfa++;
+      pdf.addImage(dilim.toDataURL("image/jpeg", 0.92), "JPEG", YAN_MM, UST_MM, ICERIK_GENISLIK_MM, h / pxPerMm);
+      y += h; sayfa++;
     }
     // Dosya adı: yasak karakterleri temizle ("sayı no konu" gibi / içerebilir) → isimli File.
     // Safari, File'lı object URL'de kaydet/paylaşta bu adı kullanır (çıplak Blob → "unknown.pdf").
@@ -142,6 +188,7 @@ export async function evrakYazdir(
     );
     window.print();
   } finally {
+    portal.classList.remove("evrak-pdf-cikti");
     portal.style.removeProperty("visibility");
   }
 }
