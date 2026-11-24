@@ -963,7 +963,7 @@ export default function AracBakimPage() {
                 : `Yeni ${tipEtiket(dTip)} Kaydı`}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 py-1">
+          <div className="space-y-2 pt-1 pb-3">
             {/* YAPILAN İŞ — bu kaydın kendisi. Aşağıdaki "sonraki bakım" kutusundan
                 ayrı dursun diye kendi çerçevesinde; hangi alanın neye ait olduğu karışmasın. */}
             <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
@@ -1327,7 +1327,7 @@ export default function AracBakimPage() {
             {/* DÜĞMELER ALTTA SABİT: form uzun, pencere kendi içinde kayıyor. Eskiden
                 Kaydet'e ulaşmak için en alta kadar inmek gerekiyordu. sticky + pencerenin
                 p-4 dolgusunu kenarlara taşıran negatif marj → çubuk kenardan kenara oturur. */}
-            <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex gap-2 justify-end border-t border-gray-200 bg-white px-4 py-3">
+            <div className="sticky bottom-0 -mx-4 -mb-4 mt-3 flex gap-2 justify-end border-t border-gray-200 bg-white px-4 py-3 shadow-[0_-6px_10px_-8px_rgba(0,0,0,0.25)]">
               <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={dialogLoading}>İptal</Button>
               <Button
                 className={dTip === "tamirat" ? "bg-orange-600 hover:bg-orange-700 text-white" : dTip === "yedek_parca" ? "bg-purple-600 hover:bg-purple-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
