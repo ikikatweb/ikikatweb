@@ -15,6 +15,64 @@ function getSupabase() {
   return createClient();
 }
 
+// ==================== ANA EKRAN: DEPO STOĞU ====================
+//
+// Ana ekrandaki depo widget'ı için şantiye başına toplamlar. Eskiden bu üç tablonun TAMAMI
+// (ölçümde 2.731 satır, 1000'erlik sıralı turlarla) tarayıcıya indirilip orada toplanıyordu;
+// ekranda görünen ise şantiye başına dört sayı. Artık toplama veritabanında yapılıyor:
+// aynı sonuç, tek istek, ~600 bayt. Tanım: sql/yakit_depo_ozet.sql
+
+export type YakitDepoOzet = {
+  santiye_id: string;
+  alim: number;
+  dagitim: number;
+  gelen_virman: number;
+  giden_virman: number;
+};
+
+export async function getYakitDepoOzet(): Promise<YakitDepoOzet[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("yakit_depo_ozet");
+  if (error) throw error;
+  // numeric alanlar PostgREST'ten metin gelebilir — sayıya çevrilir.
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    santiye_id: String(r.santiye_id),
+    alim: Number(r.alim) || 0,
+    dagitim: Number(r.dagitim) || 0,
+    gelen_virman: Number(r.gelen_virman) || 0,
+    giden_virman: Number(r.giden_virman) || 0,
+  }));
+}
+
+/**
+ * Ana ekrandaki "son yakıt alımları" listesi.
+ * Eskiden tüm zamanın alımları indirilip tarayıcıda sıralanıp ilk 50'si alınıyordu.
+ * "Düzeltme" kayıtları gerçek alım değildir; boş tedarikçi alanı olan eski kayıtlar listede kalır.
+ * santiyeIds verilirse (kısıtlı kullanıcı) süzgeç SORGUDA uygulanır — yoksa ilk 50 içinden
+ * eleme yapılıp kullanıcıya 50'den az kayıt görünürdü.
+ */
+export async function getSonYakitAlimlari(
+  adet = 50,
+  santiyeIds?: string[] | null,
+): Promise<YakitAlim[]> {
+  const supabase = getSupabase();
+  let q = supabase
+    .from("yakit_alim")
+    .select("*")
+    .or('tedarikci_firma.is.null,tedarikci_firma.neq."Düzeltme"')
+    .order("tarih", { ascending: false })
+    .order("saat", { ascending: false })
+    .limit(adet);
+  if (santiyeIds) {
+    q = santiyeIds.length > 0
+      ? q.in("santiye_id", santiyeIds)
+      : q.eq("santiye_id", "00000000-0000-0000-0000-000000000000");  // hiçbir şantiyeye atanmamış
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as YakitAlim[];
+}
+
 // ==================== ARAÇ YAKIT ====================
 
 // Tarih aralığındaki araç yakıt kayıtlarını getir.

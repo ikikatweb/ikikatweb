@@ -12,7 +12,7 @@ import { getKullaniciAdMap } from "@/lib/supabase/queries/kullanici-adlari";
 import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/supabase/types";
 import { policeTalepKonu, policeTalepGovde, policeTalepSablonCoz, type PoliceTalepSablon } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
-import { getYakitAlimlarByRange, getAracYakitlarByRange, getYakitVirmanlarByRange, updateYakitAlim } from "@/lib/supabase/queries/yakit";
+import { getYakitDepoOzet, getSonYakitAlimlari, updateYakitAlim, type YakitDepoOzet } from "@/lib/supabase/queries/yakit";
 import { getAtamaGecmisiTumu, getManuelGunler, getBordroPersoneller, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
 import { getTumPersonelBrutUcretler, brutUcretForAy } from "@/lib/supabase/queries/personel-brut-ucret";
@@ -73,7 +73,6 @@ type SantiyeBasic = { id: string; is_adi: string; durum: string; depo_kapasitesi
 type FirmaBasic = { id: string; firma_adi: string; renk: string | null; sira_no?: number | null };
 type YiUfe = { id: string; yil: number; ay: number; endeks: number; created_at: string };
 type YakitAlim = { id: string; santiye_id: string; tarih: string; saat: string; tedarikci_firma: string | null; miktar_lt: number; birim_fiyat: number; notu: string | null };
-type AracYakit = { id: string; arac_id: string; santiye_id: string; tarih: string; miktar_lt: number };
 type GidenEvrak = { id: string; evrak_tarihi: string; evrak_kayit_no: string | null; konu: string | null; muhatap: string | null; firma_id: string | null; santiye_id: string | null; olusturan_id: string | null; firmalar?: { firma_adi: string } | null; santiyeler?: { is_adi: string } | null };
 type DefterOzet = { santiye_id: string; santiye_adi: string; tarih: string; kayit_sayisi: number };
 type DefterDetay = {
@@ -182,12 +181,11 @@ export default function DashboardPage() {
   const [policeler, setPoliceler] = useState<AracPolice[]>([]);
   const [teklifGonderimler, setTeklifGonderimler] = useState<TeklifGonderim[]>([]);
   const [aracBakimlar, setAracBakimlar] = useState<AracBakimWithArac[]>([]);
-  const [yakitAlimlar, setYakitAlimlar] = useState<YakitAlim[]>([]);
-  const [yakitDagitimlar, setYakitDagitimlar] = useState<AracYakit[]>([]);
-  // Stok hesabı için TÜM ZAMAN alım + dağıtım + virman (son 30 gün değil)
-  const [yakitAlimlarTum, setYakitAlimlarTum] = useState<YakitAlim[]>([]);
-  const [yakitDagitimlarTum, setYakitDagitimlarTum] = useState<AracYakit[]>([]);
-  const [yakitVirmanlarTum, setYakitVirmanlarTum] = useState<{ gonderen_santiye_id: string; alan_santiye_id: string; miktar_lt: number }[]>([]);
+  // Depo stoğu: şantiye başına toplamlar veritabanında hesaplanır (sql/yakit_depo_ozet.sql).
+  // Eskiden alım + dağıtım + virman tablolarının TAMAMI indirilip burada toplanıyordu.
+  const [depoOzetVeri, setDepoOzetVeri] = useState<YakitDepoOzet[]>([]);
+  // "Son yakıt alımları" listesi — sorguda sıralanıp sınırlanır, tüm zaman indirilmez.
+  const [sonAlimVeri, setSonAlimVeri] = useState<YakitAlim[]>([]);
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -452,15 +450,13 @@ export default function DashboardPage() {
       try {
         const evrakVar = widgetGorunur("eksik_evrak");
         const yiufeVar = widgetGorunur("yiufe");
-        const [alim, dagitim, evrak, pers, yi] = await Promise.all([
-          getYakitAlimlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
-          getAracYakitlarByRange(null, tumZamanBaslangic, ayBitis).catch(() => []),
+        // Yakıt alım/dağıtım sorguları buradan KALKTI: çekilen veri hiçbir yerde
+        // okunmuyordu (depo widget'ı artık kendi özet sorgusunu kullanıyor).
+        const [evrak, pers, yi] = await Promise.all([
           evrakVar ? getGidenEvraklar().catch(() => []) : Promise.resolve([]),
           getPersoneller().catch(() => []),
           yiufeVar ? getYiUfeVerileri().catch(() => []) : Promise.resolve([]),
         ]);
-        setYakitAlimlar(alim as YakitAlim[]);
-        setYakitDagitimlar(dagitim as AracYakit[]);
         setGidenEvraklar(evrak as GidenEvrak[]);
         setPersoneller(pers as PersonelWithRelations[]);
         setYiUfeData(yi as YiUfe[]);
@@ -511,20 +507,19 @@ export default function DashboardPage() {
       // Sayfa render olabilir (kritik veriler hazır)
       setLoading(false);
 
-      // Arka planda: depo stok hesabı için TÜM ZAMAN yakıt verilerini çek
-      // (son 30 gün yeterli değil — kümülatif stok hesabı için)
+      // Depo stoğu + son alımlar. Kümülatif stok için tüm zaman gerekiyor AMA satırlar değil:
+      // toplamlar veritabanında alınır, liste de sorguda sıralanıp 50 ile sınırlanır.
+      // Ölçüm: eskiden 7 istek / 2.731 satır, şimdi 2 istek / ~600 bayt + 50 satır.
       (async () => {
         if (!widgetGorunur("depo_yakit")) return;   // stok widget'ı kapalıysa gereksiz
-        try {
-          const [alimTum, dagitimTum, virmanTum] = await Promise.all([
-            getYakitAlimlarByRange(null, "2000-01-01", "2099-12-31").catch(() => []),
-            getAracYakitlarByRange(null, "2000-01-01", "2099-12-31").catch(() => []),
-            getYakitVirmanlarByRange("2000-01-01", "2099-12-31").catch(() => []),
-          ]);
-          setYakitAlimlarTum(alimTum as YakitAlim[]);
-          setYakitDagitimlarTum(dagitimTum as AracYakit[]);
-          setYakitVirmanlarTum(virmanTum as { gonderen_santiye_id: string; alan_santiye_id: string; miktar_lt: number }[]);
-        } catch { /* sessiz */ }
+        const kisitliSantiyeler = isYonetici ? null : (kullanici?.santiye_ids ?? []);
+        const [ozet, sonlar] = await Promise.all([
+          getYakitDepoOzet().catch((e) => { console.error("Depo stok özeti alınamadı:", e); return null; }),
+          getSonYakitAlimlari(50, kisitliSantiyeler).catch((e) => { console.error("Son yakıt alımları alınamadı:", e); return null; }),
+        ]);
+        // Hata hâlinde eski veri ekranda kalır; boş listeyle "stok yok" gibi görünmesin.
+        if (ozet) setDepoOzetVeri(ozet);
+        if (sonlar) setSonAlimVeri(sonlar);
       })();
 
       // Şantiye defteri özetleri + son 5 gün detay (arka planda)
@@ -926,15 +921,16 @@ export default function DashboardPage() {
   // Widget 4: Depo yakıt durumu — depo kapasitesi olan tüm şantiyeler
   // TÜM ZAMAN verileri kullanılır (son 30 gün değil) + virman hareketleri dahil edilir
   const depoOzet = useMemo(() => {
+    // Toplamlar veritabanından hazır gelir (sql/yakit_depo_ozet.sql); burada yalnız haritalanır.
     const alimMap = new Map<string, number>();
-    for (const a of yakitAlimlarTum) alimMap.set(a.santiye_id, (alimMap.get(a.santiye_id) ?? 0) + a.miktar_lt);
     const dagitimMap = new Map<string, number>();
-    for (const d of yakitDagitimlarTum) dagitimMap.set(d.santiye_id, (dagitimMap.get(d.santiye_id) ?? 0) + d.miktar_lt);
     const gelenVirmanMap = new Map<string, number>();
     const gidenVirmanMap = new Map<string, number>();
-    for (const v of yakitVirmanlarTum) {
-      gidenVirmanMap.set(v.gonderen_santiye_id, (gidenVirmanMap.get(v.gonderen_santiye_id) ?? 0) + v.miktar_lt);
-      gelenVirmanMap.set(v.alan_santiye_id, (gelenVirmanMap.get(v.alan_santiye_id) ?? 0) + v.miktar_lt);
+    for (const o of depoOzetVeri) {
+      alimMap.set(o.santiye_id, o.alim);
+      dagitimMap.set(o.santiye_id, o.dagitim);
+      gelenVirmanMap.set(o.santiye_id, o.gelen_virman);
+      gidenVirmanMap.set(o.santiye_id, o.giden_virman);
     }
     const result: { santiyeId: string; santiye: string; alim: number; dagitim: number; stok: number; depoKapasitesi: number }[] = [];
     // Şantiye id → depo kapasitesi haritası
@@ -976,25 +972,19 @@ export default function DashboardPage() {
       });
     }
     return result.sort((a, b) => a.santiye.localeCompare(b.santiye, "tr"));
-  }, [yakitAlimlarTum, yakitDagitimlarTum, yakitVirmanlarTum, santMap, santiyeler, kullanici, isYonetici]);
+  }, [depoOzetVeri, santMap, santiyeler, kullanici, isYonetici]);
 
   // Widget 5: Son yakıt alımları — tüm zaman içinde en yeni 50 kayıt
   // (kullanıcı 4'erli paginating ile gezecek)
   // Kısıtlı kullanıcı: sadece kendi atandığı şantiyelerin alımları görünür
+  // Süzgeç, sıralama ve 50 sınırı SORGUDA uygulanıyor (getSonYakitAlimlari); burada
+  // yalnız güvenlik ağı olarak yetki süzgeci tekrarlanır — veri taze gelmezse bile
+  // kısıtlı kullanıcıya başka şantiyenin kaydı sızmasın.
   const sonAlimlar = useMemo(() => {
-    // yakitAlimlarTum tüm zamandan veri içerir (yakitAlimlar son 30 günle sınırlı)
-    // Stok "Düzeltme" kayıtları gerçek alım değildir → bu listeden hariç tut.
-    const kaynak = (yakitAlimlarTum.length > 0 ? yakitAlimlarTum : yakitAlimlar)
-      .filter((a) => a.tedarikci_firma !== "Düzeltme");
-    let filtreli = kaynak;
-    if (!isYonetici) {
-      const izinli = new Set(kullanici?.santiye_ids ?? []);
-      filtreli = kaynak.filter((a) => izinli.has(a.santiye_id));
-    }
-    return [...filtreli]
-      .sort((a, b) => `${b.tarih}${b.saat ?? ""}`.localeCompare(`${a.tarih}${a.saat ?? ""}`))
-      .slice(0, 50);
-  }, [yakitAlimlarTum, yakitAlimlar, isYonetici, kullanici]);
+    if (isYonetici) return sonAlimVeri;
+    const izinli = new Set(kullanici?.santiye_ids ?? []);
+    return sonAlimVeri.filter((a) => izinli.has(a.santiye_id));
+  }, [sonAlimVeri, isYonetici, kullanici]);
   // Görünen kayıt sayısı — varsayılan 4, "v" tuşuyla 4'er artar
   const [sonAlimGoster, setSonAlimGoster] = useState(4);
 
