@@ -955,7 +955,7 @@ export default function AracBakimPage() {
         // Kasa defterinden gelinip pencere kapatılırsa (iptal/dışına tıklama) kasaya dön
         if (!o && kasayaDon) { setKasayaDon(false); router.push("/dashboard/kasa-defteri"); }
       }}>
-        <DialogContent className="max-w-xl max-h-[92vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="max-w-xl max-h-[96vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>
               {editId
@@ -963,10 +963,10 @@ export default function AracBakimPage() {
                 : `Yeni ${tipEtiket(dTip)} Kaydı`}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-2 py-1">
             {/* YAPILAN İŞ — bu kaydın kendisi. Aşağıdaki "sonraki bakım" kutusundan
                 ayrı dursun diye kendi çerçevesinde; hangi alanın neye ait olduğu karışmasın. */}
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
               <p className="text-xs font-bold text-slate-700">Yapılan iş</p>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -1079,9 +1079,7 @@ export default function AracBakimPage() {
                         <option key={p.id} value={p.id}>{p.ad_soyad}</option>
                       ))}
                   </select>
-                  <p className="text-[9px] text-gray-400">
-                    İşi fiilen yaptıran personel. Kaydı giren kullanıcı: <strong>{kullanici?.ad_soyad ?? "—"}</strong>
-                  </p>
+                  <p className="text-[9px] text-gray-400 truncate">İşi yaptıran personel · kaydı giren: <strong>{kullanici?.ad_soyad ?? "—"}</strong></p>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Tutar (TL) <span className="text-red-500">*</span></Label>
@@ -1120,8 +1118,10 @@ export default function AracBakimPage() {
                   Not: "Bakım yapılacak km/saat" ve "tarih" buradan ALINDI — formun en altında,
                   kendi başlığı altında duruyor. Üstteki alanların hepsi BU SEFER yapılan işle
                   ilgili; o ikisi bir sonraki adım, karışmasın. */}
-              {dTip !== "yedek_parca" && (
-              <div className="grid grid-cols-1 gap-3">
+              {/* Sayaç ve servis YAN YANA: ikisi de kısa alan, alt alta durunca pencere
+                  boşuna uzayıp kaydırma çıkarıyordu. Yedek parçada sayaç alanı yok. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {dTip !== "yedek_parca" && (
                 <div className="space-y-1">
                   <Label className="text-xs">Mevcut Km / Saat <span className="text-red-500">*</span></Label>
                   <input
@@ -1140,10 +1140,7 @@ export default function AracBakimPage() {
                     )}
                   </p>
                 </div>
-              </div>
-              )}
-
-
+                )}
               <div className="space-y-1">
                 <Label className="text-xs">{dTip === "yedek_parca" ? "Yedek Parçacı" : "Servis / Tamirci"} <span className="text-red-500">*</span></Label>
                 <input
@@ -1159,7 +1156,7 @@ export default function AracBakimPage() {
                     <option key={s} value={s} />
                   ))}
                 </datalist>
-                <p className="text-[9px] text-gray-400">Bakım/tamiratı yaptıran dış servis veya tamirci.</p>
+              </div>
               </div>
 
               <div className="space-y-1">
@@ -1170,7 +1167,7 @@ export default function AracBakimPage() {
                   placeholder={dTip === "yedek_parca"
                     ? "Filtre, ampül, lastik, balata, conta, far, akü..."
                     : "Yağ değişimi, balata, lastik rotasyonu, fren kontrolü..."}
-                  rows={3}
+                  rows={2}
                   className="text-sm"
                 />
               </div>
@@ -1281,11 +1278,8 @@ export default function AracBakimPage() {
                 Yukarıdaki alanların hepsi BU SEFER yapılan işi anlatıyor; buradaki iki alan
                 ise bir sonraki adımı planlıyor. Ayrı durunca hangisinin ne olduğu karışmıyor. */}
             {dTip === "bakim" && (
-              <div className="space-y-2 rounded-lg border-2 border-emerald-400 bg-emerald-50 p-3 shadow-sm">
-                <p className="text-xs font-bold text-emerald-900">⏭ Sonraki bakım planı</p>
-                <p className="text-[10px] text-emerald-800/80">
-                  Yukarısı bu sefer yapılan işi anlatır; buradaki iki alan bir sonraki bakımı planlar.
-                </p>
+              <div className="space-y-1.5 rounded-lg border-2 border-emerald-400 bg-emerald-50 p-2.5 shadow-sm">
+                <p className="text-xs font-bold text-emerald-900">⏭ Sonraki bakım planı <span className="font-normal text-emerald-800/70">— bir sonraki adım</span></p>
                 <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Bakım Yapılacak Km / Saat <span className="text-red-500">*</span></Label>
@@ -1324,10 +1318,7 @@ export default function AracBakimPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Bakım Yapılacak Tarih</Label>
                   <input type="date" value={dSonrakiTarih} onChange={(e) => setDSonrakiTarih(e.target.value)} className={selectClass + " w-full"} />
-                  <p className="text-[9px] text-gray-400">
-                    Bakım tarihi seçildiğinde otomatik olarak 1 yıl sonrası atanır.
-                    Km dolmadıysa bu tarihte bakım yapılacaktır.
-                  </p>
+                  <p className="text-[9px] text-gray-400">Bakım tarihi seçilince 1 yıl sonrası atanır; km dolmazsa bu tarihte yapılır.</p>
                 </div>
                 </div>
               </div>
