@@ -21,13 +21,41 @@ export async function evrakYazdir(dosyaAdi?: string): Promise<void> {
   const hedef = portal?.querySelector<HTMLElement>(".evrak-onizleme") ?? portal;
   if (!portal || !hedef) { window.print(); return; }
   // Yeni sekmeyi SENKRON aç (henüz kullanıcı jesti içindeyken) — PDF hazır olunca adresi verilir.
+  // Beklemeden sonra açılsaydı Safari "otomatik açılan pencere" saydığı için engellerdi.
   const sekme = window.open("", "_blank");
+  // … ama BOŞ KALMASIN: kullanıcı bir süre bembeyaz "about:blank" görüyordu ve
+  // bir şey açılmadı sanıyordu. PDF gelene kadar ne olduğunu yaz.
+  if (sekme) {
+    try {
+      sekme.document.write(
+        '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
+        + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        + "<title>Evrak hazırlanıyor</title><style>"
+        + "body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;"
+        + "font:16px/1.5 -apple-system,system-ui,sans-serif;color:#1E3A5F;background:#fff}"
+        + ".k{text-align:center}"
+        + ".d{width:34px;height:34px;margin:0 auto 14px;border:3px solid #dbe3ec;"
+        + "border-top-color:#1E3A5F;border-radius:50%;animation:d .8s linear infinite}"
+        + "@keyframes d{to{transform:rotate(360deg)}}</style></head>"
+        + `<body><div class="k"><div class="d"></div>Evrak PDF'e çevriliyor…</div></body></html>`,
+      );
+      sekme.document.close();
+    } catch { /* yazamıyorsak sekme boş kalır, PDF yine de gelir */ }
+  }
   // Portal ekranda visibility:hidden !important (globals.css) — html2canvas gizli içeriği BOŞ çizer.
   // Geçici olarak görünür yap (yine ekran dışında, kullanıcı görmez); important şart (kural important).
   portal.style.setProperty("visibility", "visible", "important");
   try {
     const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-    const canvas = await html2canvas(hedef, { scale: 3, useCORS: true, backgroundColor: "#ffffff", logging: false });
+    const canvas = await html2canvas(hedef, {
+      scale: 3, useCORS: true, backgroundColor: "#ffffff", logging: false,
+      // HIZ — html2canvas çizeceği parçayı değil BELGENİN TAMAMINI kopyalıyor ve her
+      // düğüm için :before/:after hesaplanmış stillerini ayrı ayrı soruyor. 100+ satırlık
+      // yazışma listesinde bu tek başına 3,4 sn sürüyordu (ölçüldü; PDF'in kendisi 0,2 sn).
+      // Telefon masaüstünden yavaş olduğu için bekleme oradan kat kat uzundu.
+      // Yazdırma portalı dışındaki kök dalları kopyalama — çizime hiç girmiyorlar.
+      ignoreElements: (el) => el.parentElement === document.body && !el.contains(hedef),
+    });
     const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const sayfaPx = Math.floor((canvas.width * 297) / 210); // bir A4 sayfasına düşen kaynak piksel yüksekliği
     let y = 0, sayfa = 0;
