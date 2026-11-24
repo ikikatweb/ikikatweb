@@ -380,24 +380,37 @@ export default function DashboardPage() {
     //  değeri doğrudan bu sözden okumak gerekiyor.)
     const adlarPromise: Promise<Map<string, string>> = getKullaniciAdMap();
 
+    // İSKELET YALNIZ KÜÇÜK İKİ SORGUYU BEKLER: kullanıcı adları + şantiyeler.
+    // Eskiden 440 KB'lık kasa hareketleri sorgusu da bu bekleyişin içindeydi; telefonda
+    // yavaş bağlantıda bütün sayfa onun yüzünden gri kutularda kalıyordu. Kasa verisi
+    // ayrı yürüyor, o widget zaten kendi "Yükleniyor..." yazısını gösteriyor.
     const kritikPromise = (async () => {
       try {
-        // Kasa widget'ı kapalıysa hareketleri hiç çekme — 440 KB'lık en ağır sorgu odur.
-        const [kasaErken, devirErken, kAdlar, sant] = await Promise.all([
-          kasaVar ? getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => []) : Promise.resolve([]),
-          kasaVar ? getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()) : Promise.resolve(new Map<string, number>()),
+        const [kAdlar, sant] = await Promise.all([
           adlarPromise,
           getSantiyelerAll().catch(() => []),
         ]);
-        setKasaData(kasaErken as KasaHareketi[]);
-        setDevirBakiye(devirErken);
         setKullaniciAdlari(kAdlar);
         setSantiyeler(sant as SantiyeBasic[]);
-        setKasaLoading(false);
         return sant as SantiyeBasic[];
       } catch {
-        setKasaLoading(false);
         return [] as SantiyeBasic[];
+      }
+    })();
+
+    // KASA WIDGET'I — en ağır sorgu, sayfanın açılmasını bekletmez.
+    // Kasa widget'ı kapalıysa hareketler hiç çekilmez.
+    (async () => {
+      if (!kasaVar) { setKasaLoading(false); return; }
+      try {
+        const [kasaErken, devirErken] = await Promise.all([
+          getKasaHareketleriByRange(ayBaslangic, ayBitis).catch(() => [] as KasaHareketi[]),
+          getKasaDevirBakiyeleri(oncekiAySonGun).catch(() => new Map<string, number>()),
+        ]);
+        setKasaData(kasaErken as KasaHareketi[]);
+        setDevirBakiye(devirErken);
+      } finally {
+        setKasaLoading(false);
       }
     })();
 

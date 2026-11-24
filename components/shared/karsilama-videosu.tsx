@@ -91,10 +91,18 @@ export default function KarsilamaVideosu() {
   );
 
   // ── Girişten sonra ilk açılış ────────────────────────────────────────────────────────────
+  // AÇILIŞ TRAFİĞİYLE YARIŞMAZ: ana ekran onlarca sorgu başlatıyor; video adresi isteği de
+  // aynı anda girince telefonda sayfanın açılması gecikiyordu. Tarayıcı boşa çıkınca istenir.
   useEffect(() => {
     if (loading || !kullanici || tamamlandi || ilkDenemeRef.current) return;
     ilkDenemeRef.current = true;
-    void acmayiDene(true);
+    const calistir = () => void acmayiDene(true);
+    if (typeof window.requestIdleCallback === "function") {
+      const kimlik = window.requestIdleCallback(calistir, { timeout: 5000 });
+      return () => window.cancelIdleCallback?.(kimlik);
+    }
+    const sayac = window.setTimeout(calistir, 2500);   // iOS Safari'de requestIdleCallback yok
+    return () => clearTimeout(sayac);
   }, [loading, kullanici, tamamlandi, acmayiDene]);
 
   // ── Uygulamaya geri dönünce (telefon uyanınca, sekme öne gelince) ────────────────────────

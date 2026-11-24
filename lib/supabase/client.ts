@@ -28,6 +28,44 @@ function zamanAsimliFetch(girdi: RequestInfo | URL, init?: RequestInit): Promise
   return fetch(girdi, { ...init, signal: kontrolcu.signal }).finally(() => clearTimeout(sayac));
 }
 
+// AYNI ANDA UÇAN AYNI İSTEĞİ BİRLEŞTİR.
+//
+// Ana ekranda onlarca bağımsız widget var ve çoğu aynı yardımcı tabloları kendi başına
+// çekiyor: açılışta şantiyeler 15, tanımlamalar 6 kez isteniyordu. Telefonda bunların
+// her biri ayrı bir tur demek; sayfa gri kutularda bekliyordu.
+//
+// Burada ÖNBELLEK YOK: yalnız HÂLÂ CEVABI GELMEMİŞ, birebir aynı GET isteği paylaşılır.
+// Cevap gelir gelmez kayıt silinir, sonraki istek yeniden sunucuya gider — yani veri
+// bayatlamaz, "güncelle" düğmeleri eskisi gibi taze veri çeker.
+const ucusanIstekler = new Map<string, Promise<Response>>();
+
+function istekAnahtari(girdi: RequestInfo | URL, init?: RequestInit): string | null {
+  const yontem = (init?.method ?? "GET").toUpperCase();
+  if (yontem !== "GET") return null;                       // yazma isteği asla birleştirilmez
+  const adres = typeof girdi === "string" ? girdi : girdi instanceof URL ? girdi.toString() : girdi.url;
+  if (!adres) return null;
+  // Başlıklar cevabı değiştirir: sayfalama (Range), sayım/tekil satır (Prefer, Accept).
+  const b = new Headers(init?.headers ?? {});
+  const ayirt = ["range", "prefer", "accept", "accept-profile", "authorization"]
+    .map((h) => `${h}=${b.get(h) ?? ""}`)
+    .join("|");
+  return `${adres}\n${ayirt}`;
+}
+
+function birlestirenFetch(girdi: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const anahtar = istekAnahtari(girdi, init);
+  if (!anahtar) return zamanAsimliFetch(girdi, init);
+
+  const ucusan = ucusanIstekler.get(anahtar);
+  // Gövde bir kez okunabilir: her çağırana kendi kopyası verilir.
+  if (ucusan) return ucusan.then((c) => c.clone());
+
+  const soz = zamanAsimliFetch(girdi, init);
+  ucusanIstekler.set(anahtar, soz);
+  void soz.finally(() => { ucusanIstekler.delete(anahtar); });
+  return soz.then((c) => c.clone());
+}
+
 export function createClient() {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
@@ -36,6 +74,6 @@ export function createClient() {
   }
 
   return createBrowserClient(supabaseUrl, supabaseAnonKey, {
-    global: { fetch: zamanAsimliFetch },
+    global: { fetch: birlestirenFetch },
   });
 }
