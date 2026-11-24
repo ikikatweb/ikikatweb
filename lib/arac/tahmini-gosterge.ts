@@ -4,10 +4,17 @@
 // donuyor (60 ADR 790: 17 gün boyunca 105.479 km yazarken araç 1.618 km daha yapmıştı) ve
 // "sıradaki bakıma ne kadar kaldı" sorusu yanlış cevaplanıyor.
 //
-// TABAN = en son GERÇEK okuma; üç kaynaktan hangisi daha yeniyse o:
+// TABAN = en son GERÇEK okuma; dört kaynaktan hangisi daha yeniyse o:
+//   • ELLE GİRİLEN OKUMA (araclar.son_okuma_deger/son_okuma_tarihi) — aynı günde diğerlerini yener
 //   • yakıt kaydındaki gösterge (pompacı/biz giriyoruz)
 //   • bakım kaydındaki km/saat
 //   • araç puantajındaki gösterge
+//
+// ELLE OKUMA NİYE GEREKLİ: Arvento eksik sayıyor. 60 AJ 465'te taban 23.05.2026 bakımındaki
+// 501.130 km, Arvento 165 günde 10.945 km eklemiş → 512.075 km; sayaçta ise 513.110 km vardı.
+// 1.035 km'lik sapma yarım yılda birikiyor ve bakım eşiği bu yüzden geç haber veriyor. Sayaçtan
+// okunan değer girilince taban O GÜNE taşınır, Arvento ertesi günden itibaren yeniden eklemeye
+// başlar (aynı gün zaten geçmiş kilometreyi de taşıdığı için o gün sayılmaz).
 //
 // EKLENEN = taban tarihinden SONRAKİ Arvento günleri:
 //   • km aracı      → mesafe_km toplamı
@@ -29,7 +36,7 @@ export type TahminiGosterge = {
   /** Okumanın tarihi (YYYY-MM-DD). */
   tabanTarih: string;
   /** Okuma nereden geldi. */
-  tabanKaynak: "yakit" | "bakim" | "puantaj";
+  tabanKaynak: "elle" | "yakit" | "bakim" | "puantaj";
   /** Arvento'dan eklenen (km ya da saat), kartta zaten bulunan düşülmüş hâliyle. */
   eklenen: number;
   /** taban + eklenen (yuvarlanmış). */
@@ -56,19 +63,23 @@ export async function tahminiGostergeler(
 ): Promise<Record<string, TahminiGosterge>> {
   const { data: aracVeri, error: aracHata } = await sb
     .from("araclar")
-    .select("id, plaka, sayac_tipi, guncel_gosterge, saat_katsayi");
+    .select("id, plaka, sayac_tipi, guncel_gosterge, saat_katsayi, son_okuma_deger, son_okuma_tarihi");
   if (aracHata) throw new Error(`Araçlar okunamadı: ${aracHata.message}`);
   const araclar = (aracVeri ?? []) as {
     id: string; plaka: string; sayac_tipi: string | null;
     guncel_gosterge: number | null; saat_katsayi: number | null;
+    son_okuma_deger: number | null; son_okuma_tarihi: string | null;
   }[];
 
   // ── Taban: en son gerçek okuma ───────────────────────────────────────────────────────────
   type Okuma = { deger: number; tarih: string; kaynak: TahminiGosterge["tabanKaynak"] };
   const taban = new Map<string, Okuma>();
-  const koy = (aracId: string, o: Okuma) => {
+  // esitlikteKazan: aynı TARİHLİ okuma varsa bunu üste yaz. Elle girilen okuma için kullanılır —
+  // aynı gün yakıt da alınmış olabilir; sayaçtan okunan değer o kaydın göstergesinden sonra
+  // girildiği için doğru olanı odur.
+  const koy = (aracId: string, o: Okuma, esitlikteKazan = false) => {
     const m = taban.get(aracId);
-    if (!m || o.tarih > m.tarih) taban.set(aracId, o);
+    if (!m || o.tarih > m.tarih || (esitlikteKazan && o.tarih === m.tarih)) taban.set(aracId, o);
   };
 
   const { data: yakit, error: yakitHata } = await sb
@@ -90,6 +101,14 @@ export async function tahminiGostergeler(
   if (puantajHata) throw new Error(`Puantaj kayıtları okunamadı: ${puantajHata.message}`);
   for (const p of (puantaj ?? []) as { arac_id: string; tarih: string; gosterge: number }[]) {
     koy(p.arac_id, { deger: Number(p.gosterge), tarih: p.tarih, kaynak: "puantaj" });
+  }
+  // ELLE GİRİLEN OKUMA EN SON: aynı tarihte diğer kaynakları yener (bkz. koy).
+  for (const a of araclar) {
+    const deger = a.son_okuma_deger == null ? null : Number(a.son_okuma_deger);
+    const tarih = (a.son_okuma_tarihi ?? "").slice(0, 10);
+    if (deger != null && deger > 0 && /^\d{4}-\d{2}-\d{2}$/.test(tarih)) {
+      koy(a.id, { deger, tarih, kaynak: "elle" }, true);
+    }
   }
   if (taban.size === 0) return {};
 
@@ -123,7 +142,12 @@ export async function tahminiGostergeler(
     const o = taban.get(a.id);
     if (!o) continue;                                   // hiç gerçek okuma yok → tahmin de yok
 
-    const kart = a.guncel_gosterge;
+    // ELLE OKUMADA KART HESABA KATILMAZ: okumanın tarihi biliniyor, o tarihte kartta da aynı
+    // değer yazıyor (ikisi birlikte yazılıyor — components/shared/gosterge-hucresi, arac-form).
+    // Karttaki sonraki büyüme makine-saat cron'unun Arvento'dan türettiği artıştır; aşağıda
+    // "ham" aynı dönemi yeniden hesapladığı için kart farkı düşülmez. Kart hesaba katılsaydı
+    // kart yüksek kalan bir araçta ELLE YAPILAN DÜZELTME sessizce yok sayılırdı.
+    const kart = o.kaynak === "elle" ? null : a.guncel_gosterge;
     const kartIleride = kart != null && kart > o.deger;
     const tabanDeger = kartIleride ? kart : o.deger;
     const kartaIslenmis = kartIleride ? kart - o.deger : 0;

@@ -199,9 +199,18 @@ export default function AracForm({ arac, tip, onSuccess, onCancel }: AracFormPro
         }
       }
 
+      // GÖSTERGE DEĞİŞTİYSE OKUMA TARİHİ DE YAZILIR: tarihsiz kart değeri tahmini yanlış
+      // tabana oturtur — tahmin, tarihli okumayı taban alıp Arvento'yu ondan SONRA ekliyor
+      // (lib/arac/tahmini-gosterge). Formda girilen değer "şu an sayaçta bu yazıyor" demek.
+      const gostergeDegisti = !isEdit || formData.guncel_gosterge !== (arac?.guncel_gosterge ?? null);
+      const okuma = gostergeDegisti && formData.guncel_gosterge != null
+        ? { son_okuma_deger: formData.guncel_gosterge, son_okuma_tarihi: new Date().toISOString() }
+        : {};
+
       // Format uygula: plaka BÜYÜK, marka/model/kiralama_firmasi title case
       const submitData = {
         ...formData,
+        ...okuma,
         ruhsat_url: ruhsatUrl,
         plaka: formatPlaka(formData.plaka),
         marka: formData.marka ? formatBaslik(formData.marka) : formData.marka,

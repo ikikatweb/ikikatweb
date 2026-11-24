@@ -269,6 +269,13 @@ export type Arac = {
   arac_degeri_updated_at: string | null;
   sayac_tipi: "km" | "saat" | null;
   guncel_gosterge: number | null;
+  // SAYAÇTAN OKUNAN DEĞER + OKUMA GÜNÜ. guncel_gosterge'in tarihi yok; bu ikili tarihli olduğu
+  // için tahmini göstergeye TABAN olur: o günden sonrası Arvento'dan eklenir, öncesi eklenmez
+  // (lib/arac/tahmini-gosterge). İkisi her zaman guncel_gosterge ile BİRLİKTE yazılır.
+  son_okuma_deger?: number | null;
+  son_okuma_tarihi?: string | null;
+  // Saat makinesinde Arvento çalışma saatini sayaç saatine çeviren katsayı (lib/arvento/makine-saat).
+  saat_katsayi?: number | null;
   // 1 depo (tam dolum) ile gidilebilecek km veya çalışabilecek saat. Yakıt verirken
   // iki dolum arası fark bu değeri AŞARSA "dışarıdan yakıt alındı" otomatik işaretlenir.
   depo_menzil: number | null;

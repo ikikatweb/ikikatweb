@@ -22,6 +22,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import type { TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
+import { GostergeHucresi } from "@/components/shared/gosterge-hucresi";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -70,6 +71,8 @@ export default function AracBakimListesiPage() {
   // Yetki Ayarları'da "Araç Bakım > Araç Listesi" satırı bu anahtarı yönetir (salt-okunur sayfa → görüntüle yeter).
   const { hasPermission } = useAuth();
   const yGoruntule = hasPermission("arac-bakim-arac-listesi", "goruntule");
+  // Sayaç değeri elle girilebilsin: aynı sayfanın düzenleme yetkisi (ortak hücre).
+  const yDuzenle = hasPermission("arac-bakim-arac-listesi", "duzenle");
 
   const [loading, setLoading] = useState(true);
   const [araclar, setAraclar] = useState<AracWithRelations[]>([]);
@@ -108,6 +111,18 @@ export default function AracBakimListesiPage() {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  // Elle okuma kaydedildi: kart değeri yenilenir, tahmin DÜŞER (girilen değer artık o günün
+  // gerçek okuması; Arvento ertesi günden ekler). "Bakıma kalan" da bu değerden hesaplanır.
+  const gostergeKaydedildi = useCallback((aracId: string, deger: number) => {
+    setAraclar((prev) => prev.map((a) => a.id === aracId ? { ...a, guncel_gosterge: deger } : a));
+    setTahminiler((prev) => {
+      if (!(aracId in prev)) return prev;
+      const yeni = { ...prev };
+      delete yeni[aracId];
+      return yeni;
+    });
+  }, []);
 
   // Araç → SON BAKIM kaydı. Yalnız tip="bakim" (periyodik bakım) sayılır; tamirat/yedek parça
   // "son bakım" değildir — yaklaşan bakım bildirimi de aynı kuralı kullanır.
@@ -356,23 +371,16 @@ export default function AracBakimListesiPage() {
                         </>
                       ) : <span className="text-gray-400">—</span>}
                     </TableCell>
-                    {/* TAHMİNİ DEĞER AÇIKÇA İŞARETLİ: "~" + turuncu + "tahmini" etiketi.
-                        Üzerine gelince hesabın dökümü yazar — kullanıcı neye baktığını bilsin.
-                        Gerçek okuma girilince (yakıt/bakım) taban o olur, ekleme oradan devam eder. */}
+                    {/* TAHMİNİ DEĞER AÇIKÇA İŞARETLİ ("~" + turuncu) ve TIKLANINCA sayaçtaki
+                        değer girilir — hücrenin tamamı ortak bileşende (components/shared/
+                        gosterge-hucresi), aynısı Sigorta & Muayene ekranında da kullanılıyor. */}
                     <TableCell className="px-2 text-right tabular-nums">
-                      {s.gosterge == null ? (
-                        <span className="text-gray-400">—</span>
-                      ) : s.tahmin ? (
-                        <span
-                          className="text-[#C2410C]"
-                          title={`Tahmini. ${formatTarih(s.tahmin.tabanTarih)} ${({ yakit: "yakıt kaydında", bakim: "bakım kaydında", puantaj: "araç puantajında" } as const)[s.tahmin.tabanKaynak]} girilen ${formatGosterge(s.tahmin.taban)} ${s.birim} + Arvento'dan ${formatGosterge(s.tahmin.eklenen)} ${s.birim} (${s.tahmin.gun} gün). Gösterge girilince gerçek değere döner.`}
-                        >
-                          ~{formatGosterge(s.gosterge)} <span className="text-[#C2410C]/70">{s.birim}</span>
-                          <span className="block text-[9px] text-[#C2410C]/80">tahmini</span>
-                        </span>
-                      ) : (
-                        <>{formatGosterge(s.gosterge)} <span className="text-gray-400">{s.birim}</span></>
-                      )}
+                      <GostergeHucresi
+                        aracId={s.arac.id} sayacTipi={s.arac.sayac_tipi}
+                        guncelGosterge={s.arac.guncel_gosterge}
+                        tahmin={s.tahmin} duzenlenebilir={yDuzenle}
+                        onKaydedildi={gostergeKaydedildi}
+                      />
                     </TableCell>
                     <TableCell className="px-2 text-center">{durumRozet(s)}</TableCell>
                   </TableRow>

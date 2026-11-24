@@ -32,6 +32,8 @@ import { toastSuresi } from "@/lib/utils/toast-sure";
 import { formatParaInput, parseParaInput } from "@/lib/utils/para-format";
 import { trAramaNormalize } from "@/lib/utils/isim";
 import { dosyaUrl } from "@/lib/utils/dosya-url";
+import { GostergeHucresi } from "@/components/shared/gosterge-hucresi";
+import type { TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
 
 const selectClass = "h-9 rounded-lg border border-input bg-white px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/50";
 
@@ -89,6 +91,9 @@ export default function SigortaMuayenePage() {
   // Filtreler oturum-içi: F5'te korunur, sayfadan çıkıp dönünce sıfırlanır.
   const [arama, setArama] = useOturumFiltresi("sigorta-muayene:arama", "");
   const [durumFiltre, setDurumFiltre] = useOturumFiltresi<"tumu" | "aktif" | "pasif">("sigorta-muayene:durum", "aktif");
+
+  // Sayaç (km/saat) tahminleri — hesap sunucuda (app/api/arac/tahmini-gosterge).
+  const [tahminiler, setTahminiler] = useState<Record<string, TahminiGosterge>>({});
 
   // Inline edit (muayene/taşıt kartı)
   const [editKey, setEditKey] = useState<string | null>(null);
@@ -184,6 +189,37 @@ export default function SigortaMuayenePage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Tahmini sayaç AYRI İSTEK: sigorta/muayene verisinin arkasında beklemesin, gecikirse
+  // tablo yine açılır (tahmin gelmeyen araçta kartın kendi değeri görünür).
+  useEffect(() => {
+    let iptal = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/arac/tahmini-gosterge");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const veri = await r.json() as Record<string, TahminiGosterge>;
+        if (!iptal) setTahminiler(veri ?? {});
+      } catch (e) {
+        // Sessiz geçmez: tahmin yoksa ekranda eski kart değeri görünür, kullanıcı bunu
+        // güncel sanabilir. Tabloyu engellemeden uyarır.
+        toast.error(`Tahmini sayaç hesaplanamadı: ${e instanceof Error ? e.message : String(e)}`, { duration: 8000 });
+      }
+    })();
+    return () => { iptal = true; };
+  }, []);
+
+  // Elle okuma kaydedildi: kart değeri yenilenir ve tahmin DÜŞER — girilen değer artık
+  // o günün gerçek okumasıdır, Arvento ertesi günden ekler (lib/arac/tahmini-gosterge).
+  const gostergeKaydedildi = useCallback((aracId: string, deger: number) => {
+    setAraclar((prev) => prev.map((a) => a.id === aracId ? { ...a, guncel_gosterge: deger } : a));
+    setTahminiler((prev) => {
+      if (!(aracId in prev)) return prev;
+      const yeni = { ...prev };
+      delete yeni[aracId];
+      return yeni;
+    });
+  }, []);
 
   // Araç bazlı son poliçe map'i
   // Her araç için bitiş tarihi en ileri olan poliçeyi bul
@@ -591,6 +627,7 @@ export default function SigortaMuayenePage() {
                 <TableHead className="text-white text-[11px] px-2">Marka</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Model</TableHead>
                 <TableHead className="text-white text-[11px] px-2">Cinsi</TableHead>
+                <TableHead className="text-white text-[11px] px-2 text-right min-w-[95px]" title="Sayaçtaki değeri yazmak için hücreye tıklayın">Km / Saat</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center min-w-[100px]">Trafik Sigorta Bitiş</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center min-w-[100px]">Kasko Bitiş</TableHead>
                 <TableHead className="text-white text-[11px] px-2 text-center min-w-[100px]">Muayene Bitiş</TableHead>
@@ -610,6 +647,15 @@ export default function SigortaMuayenePage() {
                   <TableCell className="px-2">{a.marka ?? "—"}</TableCell>
                   <TableCell className="px-2">{a.model ?? "—"}</TableCell>
                   <TableCell className="px-2">{a.cinsi ?? "—"}</TableCell>
+                  <TableCell className="px-2 text-right text-xs">
+                    <GostergeHucresi
+                      aracId={a.id} sayacTipi={a.sayac_tipi}
+                      guncelGosterge={a.guncel_gosterge}
+                      tahmin={tahminiler[a.id] ?? null}
+                      duzenlenebilir={yDuzenle}
+                      onKaydedildi={gostergeKaydedildi}
+                    />
+                  </TableCell>
                   <TableCell className="px-2"><SigortaCell arac={a} tip="trafik" /></TableCell>
                   <TableCell className="px-2"><SigortaCell arac={a} tip="kasko" /></TableCell>
                   <TableCell className="px-2">{renderTarihCell(a, "muayene_bitis")}</TableCell>
