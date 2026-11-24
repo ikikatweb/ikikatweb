@@ -11,6 +11,7 @@ import { hatirlamayiUnut } from "@/lib/auth/beni-hatirla";
 import { toastSuresi } from "@/lib/utils/toast-sure";
 import PushBildirimMenu from "@/components/shared/push-bildirim-menu";
 import { TANITIM_OLAY } from "@/components/shared/tanitim-video";
+import { KARSILAMA_OLAY } from "@/components/shared/karsilama-videosu";
 import { sayfaBul } from "@/lib/tanitim/sayfalar";
 
 // Yazı boyutu ayarları (eski FontSizeAyari component'inden taşındı)
@@ -191,6 +192,17 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
               >
                 <UserCog size={16} />
                 Bilgilerim
+              </button>
+
+              {/* Nasıl izlenir — girişte bir kez açılan karşılama videosunu tekrar açar.
+                  Kullanıcı "bir daha gösterme" dedikten sonra buradan ulaşabilsin diye. */}
+              <button
+                type="button"
+                onClick={() => { setMenuAcik(false); setZoomAcik(false); window.dispatchEvent(new Event(KARSILAMA_OLAY)); }}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-[#1E3A5F] hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
+              >
+                <Clapperboard size={16} />
+                Tanıtım videoları nasıl izlenir?
               </button>
 
               {/* Yazı Boyutu — varsayılan kapalı, başlığa tıklayınca açılır */}

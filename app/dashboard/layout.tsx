@@ -11,6 +11,7 @@ import TruncateTooltipHandler from "@/components/shared/truncate-tooltip-handler
 import EpostaZorunlu from "@/components/shared/eposta-zorunlu";
 import AvukatTakipNotu from "@/components/shared/avukat-takip-notu";
 import TanitimVideo from "@/components/shared/tanitim-video";
+import KarsilamaVideosu from "@/components/shared/karsilama-videosu";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 export default function DashboardLayout({
@@ -64,6 +65,10 @@ export default function DashboardLayout({
       {/* SAĞ TIK → "Sayfayı Tanı": bulunulan ekranın tanıtım videosunu küçük pencerede oynatır.
           Kendi sağ tık menüsü olan bileşenlere ve bağlantı/görsel/yazı alanlarına karışmaz. */}
       <TanitimVideo />
+      {/* "Tanıtım videoları nasıl izlenir" — girişten sonra bir kez açılır, izleyen bir daha
+          görmez (işaret kullanıcının kendi kaydında, cihazda değil). Video kovaya konmadıysa
+          hiç açılmaz. */}
+      <KarsilamaVideosu />
       <div
         className="flex overflow-hidden bg-[#FAFAFA]"
         style={{

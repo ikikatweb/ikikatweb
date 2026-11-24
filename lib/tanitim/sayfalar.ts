@@ -12,6 +12,14 @@ export const TANITIM_KOVA = "tanitim";
 /** Kovada aranacak uzantılar (küçük harf). */
 export const TANITIM_UZANTILAR = ["mp4", "webm", "m4v", "mov"] as const;
 
+/**
+ * KARŞILAMA VİDEOSU — bir sayfanın tanıtımı DEĞİL; "bu tanıtım videoları bilgisayardan ve
+ * telefondan nasıl izlenir" anlatımı. Girişten sonra bir kez açılır, kullanıcı izleyince
+ * bir daha açılmaz (bkz. components/shared/karsilama-videosu).
+ * Kovadaki dosya: tanitim/nasil-izlenir.mp4 — dosya yoksa pencere HİÇ açılmaz.
+ */
+export const KARSILAMA_SLUG = "nasil-izlenir";
+
 export type TanitimSayfa = {
   /** Rota. Alt rotalar (ör. .../yeni, .../[id]/duzenle) bu sayfanın videosunu kullanır. */
   yol: string;
@@ -103,5 +111,5 @@ export function sayfaBul(pathname: string): TanitimSayfa | null {
 
 /** Dışarıdan gelen slug'ı doğrular — dosya adı kurgulamadan önce (yol geçişi/enjeksiyon olmasın). */
 export function slugGecerli(slug: string): boolean {
-  return TANITIM_SAYFALAR.some((s) => s.slug === slug);
+  return slug === KARSILAMA_SLUG || TANITIM_SAYFALAR.some((s) => s.slug === slug);
 }
