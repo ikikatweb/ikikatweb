@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Clapperboard, X, Loader2, Check } from "lucide-react";
+import { Clapperboard, X, Loader2, Check, Volume2, Play } from "lucide-react";
 import { useAuth } from "@/hooks";
 import { KARSILAMA_SLUG } from "@/lib/tanitim/sayfalar";
 import { uyariGizle } from "@/lib/supabase/queries/uyari-gizle";
@@ -43,6 +43,12 @@ export default function KarsilamaVideosu() {
   const [url, setUrl] = useState<string | null>(null);
   const [acik, setAcik] = useState(false);
   const [kaydediliyor, setKaydediliyor] = useState(false);
+  // Tarayıcı SESLİ otomatik oynatmayı engellerse video sessiz başlar; bu durumda tek
+  // dokunuşluk "Sesi aç" düğmesi çıkar. Hiç oynatılamadıysa "Oynat" düğmesi çıkar —
+  // kullanıcı donmuş bir kare ile baş başa bırakılmaz.
+  const [sessizBasladi, setSessizBasladi] = useState(false);
+  const [oynatilamadi, setOynatilamadi] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const adresAniRef = useRef(0);
   const ilkDenemeRef = useRef(false);
   // "Daha sonra" dendiyse bu oturumda uygulamaya her dönüşte tekrar açılmasın.
@@ -144,6 +150,31 @@ export default function KarsilamaVideosu() {
 
   const ertele = useCallback(() => { ertelendiRef.current = true; setAcik(false); }, []);
 
+  // Kullanıcı play'e basmasın: video hazır olur olmaz başlat. Sesli oynatma engellenirse
+  // (telefonda ve dokunulmamış sayfada çoğu tarayıcı engeller) sessiz başlatılır.
+  const kendiOynat = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = false;
+    v.play()
+      .then(() => { setSessizBasladi(false); setOynatilamadi(false); })
+      .catch(() => {
+        v.muted = true;
+        v.play()
+          .then(() => { setSessizBasladi(true); setOynatilamadi(false); })
+          .catch(() => setOynatilamadi(true));   // hiç oynatamadı: düğmeyle kullanıcı başlatsın
+      });
+  }, []);
+
+  const sesiAc = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = false;
+    v.volume = 1;
+    void v.play().catch(() => {});
+    setSessizBasladi(false);
+  }, []);
+
   if (!acik || !url) return null;
 
   const kalan = Math.max(0, GEREKEN_IZLEME - izlemeSayisi);
@@ -175,19 +206,47 @@ export default function KarsilamaVideosu() {
         </div>
 
         {/* Tarayıcının kendi kumandası: telefonda tam ekran, ses ve sarma oradan daha tanıdık. */}
-        <video
-          src={url}
-          className="aspect-video w-full bg-black"
-          controls
-          autoPlay
-          playsInline
-          onEnded={() => void izlemeyiYaz(false)}
-          onError={() =>
-            toast.error("Video dosyası açılamadı (bozuk olabilir ya da adresin süresi dolmuş).", {
-              duration: toastSuresi(),
-            })
-          }
-        />
+        <div className="relative">
+          <video
+            ref={videoRef}
+            src={url}
+            className="aspect-video w-full bg-black"
+            controls
+            autoPlay
+            playsInline
+            onLoadedData={kendiOynat}
+            onEnded={() => void izlemeyiYaz(false)}
+            onError={() =>
+              toast.error("Video dosyası açılamadı (bozuk olabilir ya da adresin süresi dolmuş).", {
+                duration: toastSuresi(),
+              })
+            }
+          />
+
+          {/* Sesli otomatik oynatma engellendiyse: video oynuyor ama sessiz — tek dokunuş yeter. */}
+          {sessizBasladi && (
+            <button
+              type="button"
+              onClick={sesiAc}
+              className="absolute left-1/2 top-3 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[#F97316] px-4 py-2 text-sm font-semibold text-white shadow-lg"
+            >
+              <Volume2 size={16} />
+              Sesi aç
+            </button>
+          )}
+
+          {/* Hiç oynatılamadıysa donmuş kare ile bırakma. */}
+          {oynatilamadi && (
+            <button
+              type="button"
+              onClick={kendiOynat}
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/50 text-white"
+            >
+              <Play size={40} />
+              <span className="text-sm font-medium">Oynatmak için dokunun</span>
+            </button>
+          )}
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-2.5">
           <span className="text-xs text-gray-500">
