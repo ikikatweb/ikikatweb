@@ -162,25 +162,52 @@ async function pdfMetin(buf) {
 const etiketNorm = (s) => String(s ?? "").replace(/[İIıi]/g, "i").toLowerCase();
 
 /**
- * PDF teklifinden tutar: "BRÜT PRİM" ödenecek rakamdır (net prim + vergiler).
- * Bulunamazsa sırayla diğer toplam alanlarına düşülür.
+ * PDF teklifinden ÖDENECEK tutar. Net prim DEĞİL — vergiler dahil brüt rakam.
  *
- * 24.11.2026 — Serdar ÇUHADAROĞLU'nun 60 AFA 401 kasko teklifinde PDF'in içinde
- * "BRÜT PRİM 19,308.17 TL" yazılıydı ama desenler /i bayrağıyla aranıyordu ve yukarıdaki
- * "İ" tuzağı yüzünden HİÇBİRİ eşleşmedi. Mail "rakam yok" diye işaretlendi, 19.308,17 TL'lik
- * teklif panelde hiç görünmedi. Metin artık önce etiketNorm'dan geçiyor, desenler küçük harf.
+ * İKİ KURAL, ikisi de pahalıya öğrenildi:
+ *
+ * 1) TÜRKÇE "İ" TUZAĞI — 24.11.2026: Serdar ÇUHADAROĞLU'nun 60 AFA 401 kasko teklifinde
+ *    PDF'te "BRÜT PRİM 19,308.17 TL" yazılıydı, desen /Brüt\s*Prim/i idi ve eşleşmedi:
+ *    "PRİM".toLowerCase() = "pri̇m" (araya U+0307 giriyor). Mail "rakam yok" diye kapandı,
+ *    19.308,17 TL'lik teklif hiç görünmedi. Metin önce etiketNorm'dan geçer, desenler küçük harf.
+ *
+ * 2) DESEN SATIR SINIRINI GEÇMEZ. Allianz trafik poliçesinde etiketler bir satırda
+ *    ("... Garanti Fonu Trafik Fonu Ödenecek Prim"), rakamlar ALT satırda duruyor. \s* satır
+ *    sonunu aştığı için alt satırın ilk sayısı (415,88) prim sanıldı — oysa prim 23.289,44.
+ *    YANLIŞ RAKAM, rakamsızlıktan kötüdür: teklif ekranında "en ucuz" diye öne çıkar.
+ *    Artık her satır ayrı denenir; etiket ile rakam AYNI satırda olmak zorunda.
+ *
+ * Depodaki 46 poliçe PDF'i (14 sigorta şirketi) ile ölçüldü: eski hâli 28'inde tutar
+ * buluyordu, bu hâli 35'inde buluyor ve hiçbirinde satır atlayıp yanlış sayı almıyor.
+ * Okunamayan 11'i hep trafik poliçesi; rakam etiketten ayrı bir tablo hücresinde duruyor.
+ * MODEL DENENDİ, OLMADI: aynı 11 belgede policePdfOku 4'ünü doğru okudu, birkaçında sigorta
+ * şirketini bile uydurdu (Axa poliçesine "Allianz" dedi). Okunamayan belge artık sessizce
+ * düşmüyor; "elle girilmeli" kaydı açılıp bildirim gidiyor (bkz. elleBekleyenAc).
  */
 function pdfTutar(metin) {
   const desenler = [
-    /toplam\s*brüt\s*prim\s*:?\s*([\d.,]+)/,
-    /brüt\s*prim\s*:?\s*([\d.,]+)/,
+    // "prim\w*": PRİMİ / PRİMİ: gibi ekli yazımlar da tutsun (Türkiye Katılım: "BRÜT PRİMİ 13974.84").
+    /toplam\s*brüt\s*prim\w*\s*:?\s*([\d.,]+)/,
+    /brüt\s*prim\w*\s*:?\s*([\d.,]+)/,
+    /toplam\s*ödenecek\s*prim\w*\s*:?\s*([\d.,]+)/,
+    /ödenecek\s*prim\w*\s*:?\s*([\d.,]+)/,
     /ödenecek\s*tutar\s*:?\s*([\d.,]+)/,
-    /toplam\s*prim\s*:?\s*([\d.,]+)/,
+    /toplam\s*prim\w*\s*:?\s*([\d.,]+)/,
+    /genel\s*toplam\s*:?\s*([\d.,]+)/,
+    // Poliçe/teklif metinlerindeki kalıp cümle: "...ait toplam 11,343.08 TRY tutarındaki prim..."
+    /toplam\s*([\d.,]+)\s*(?:tl|try)?\s*tutarındaki\s*prim/,
   ];
-  const duz = etiketNorm(metin);
+  // "NET PRİM" hiçbir desende yok ve olmamalı: ödenecek rakam brüt olandır. Araya kelime
+  // giremediği için /toplam\s*prim/ de "TOPLAM NET PRİM" satırını yakalamaz.
+  const satirlar = etiketNorm(metin).split(/\r?\n/);
   for (const d of desenler) {
-    const m = duz.match(d);
-    if (m) { const v = paraCoz(m[1]); if (v > 0) return v; }
+    for (const satir of satirlar) {
+      const m = satir.match(d);
+      // 100 TL ALTI KABUL EDİLMEZ: araç poliçesinde böyle bir prim yok, o rakam tablodan
+      // yanlışlıkla kapılmış bir yan kalem demektir. Kabul edilmeyince belge "elle girilmeli"
+      // listesine düşer — sessizce yanlış rakam yazmaktan iyidir.
+      if (m) { const v = paraCoz(m[1]); if (v >= 100) return v; }
+    }
   }
   return NaN;
 }
