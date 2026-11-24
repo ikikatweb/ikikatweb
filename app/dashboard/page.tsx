@@ -14,6 +14,7 @@ import type { TeklifGonderim, AracBakimWithArac, SigortaTeklif } from "@/lib/sup
 import { policeTalepKonu, policeTalepGovde, policeTalepSablonCoz, type PoliceTalepSablon } from "@/lib/police-talep-metin";
 import { createPortal } from "react-dom";
 import { getYakitDepoOzet, getSonYakitAlimlari, updateYakitAlim, type YakitDepoOzet } from "@/lib/supabase/queries/yakit";
+import BakimFormDialog from "@/components/shared/bakim-form-dialog";
 import type { TahminiGosterge } from "@/lib/arac/tahmini-gosterge";
 import { getAtamaGecmisiTumu, getManuelGunler, getGunlukUcretler, type GunlukUcret } from "@/lib/supabase/queries/bordro";
 import { getIscilikTakibi, getTumIscilikAyliklari, getSonHakedisMap } from "@/lib/supabase/queries/iscilik-takibi";
@@ -193,6 +194,8 @@ export default function DashboardPage() {
   const [tahminiGosterge, setTahminiGosterge] = useState<Record<string, TahminiGosterge>>({});
   // Yaklaşan bakım satırında sağ tık menüsü ("Yeni bakım kaydı").
   const [bakimMenu, setBakimMenu] = useState<{ x: number; y: number; aracId: string; plaka: string } | null>(null);
+  // Dolu ise bakım formu ana ekranda AÇIK (o araç seçili). Sayfa değişmez.
+  const [bakimFormArac, setBakimFormArac] = useState<string | null>(null);
   const [gidenEvraklar, setGidenEvraklar] = useState<GidenEvrak[]>([]);
   const [kullaniciAdlari, setKullaniciAdlari] = useState<Map<string, string>>(new Map());
   const [santiyeler, setSantiyeler] = useState<SantiyeBasic[]>([]);
@@ -3870,9 +3873,10 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => {
-                const id = bakimMenu.aracId;
+                // Sayfa DEĞİŞMEZ: form ortak bileşen (components/shared/bakim-form-dialog),
+                // burada da açılıyor. Kayıt sonrası bakım listesi tazelenir.
+                setBakimFormArac(bakimMenu.aracId);
                 setBakimMenu(null);
-                router.push(`/dashboard/arac-bakim?yeniBakim=${encodeURIComponent(id)}`);
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#1E3A5F] hover:bg-slate-100"
             >
@@ -3885,6 +3889,26 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+
+      {/* Bakım formu — Araç Bakım sayfasındakiyle AYNI bileşen. Sağ tık → "Yeni bakım
+          kaydı" burada açar; kullanıcı ana ekrandan ayrılmaz. */}
+      <BakimFormDialog
+        acik={!!bakimFormArac}
+        onKapat={() => setBakimFormArac(null)}
+        onKaydedildi={async () => {
+          // Liste ve tahminler tazelensin: kaydedilen bakım "yaklaşan" kutusundan düşer.
+          try {
+            setAracBakimlar(await getAracBakimlar());
+          } catch (e) {
+            console.error("Bakım listesi tazelenemedi:", e);
+          }
+        }}
+        araclar={araclar}
+        personeller={personeller}
+        acilis={bakimFormArac ? { tip: "bakim", aracId: bakimFormArac } : undefined}
+        yEkle={hasPermission("arac-bakim", "ekle")}
+        yDuzenle={hasPermission("arac-bakim", "duzenle")}
+      />
     </div>
   );
 }
