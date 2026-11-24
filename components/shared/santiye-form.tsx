@@ -26,6 +26,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatBaslik } from "@/lib/utils/isim";
 import type { Santiye, SantiyeInsert, Firma, Tanimlama, Kullanici } from "@/lib/supabase/types";
 import { TR_ILLER } from "@/lib/tr-iller";
+import { isAdindanIl } from "@/lib/tr-il-bul";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -332,6 +333,21 @@ export default function SantiyeForm({
     calisilmayan_bit: santiye?.calisilmayan_bit ?? null,
     depo_kapasitesi: santiye?.depo_kapasitesi ?? null,
   });
+
+  // ── İŞ ADINDAN İL ───────────────────────────────────────────────────────────────────────
+  // Yeni işte il kutusu boş açılıyordu; oysa iş adı çoğu kez ili ("Amasya Merzifon…") ya da
+  // ilçeyi ("Tokat Niksar…", "Erbaa Myo…") zaten söylüyor. Ad değiştikçe yeniden bakılır.
+  // Kullanıcı kutuyu bir kez kendi seçtiyse (ilElleRef) bir daha karışılmaz.
+  // Düzenlemede hiç çalışmaz: kayıtlı il kullanıcının kararıdır.
+  // Bulunamazsa kutu BOŞ kalır — tahminle doldurmak yanlış ili sessizce yazardı.
+  const ilElleRef = useRef(false);
+  const ilOnerisi = !isEdit ? isAdindanIl(formData.is_adi ?? "") : null;
+  const [ilIcinIslenenAd, setIlIcinIslenenAd] = useState<string | null>(null);
+  if (!isEdit && !ilElleRef.current && (formData.is_adi ?? "") !== ilIcinIslenenAd) {
+    // React'in "render sırasında düzelt" kalıbı — efekt içinde setState lint kuralına takılıyor.
+    setIlIcinIslenenAd(formData.is_adi ?? "");
+    if (ilOnerisi && formData.il !== ilOnerisi.il) setFormData((p) => ({ ...p, il: ilOnerisi.il }));
+  }
 
   const loadDropdowns = useCallback(async () => {
     try {
@@ -1289,10 +1305,17 @@ export default function SantiyeForm({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="il">İl <span className="text-red-500">*</span></Label>
-                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => { hatayiTemizle("il"); setFormData((p) => ({ ...p, il: e.target.value || null })); }} disabled={loading} className={`${selectClass}${hataCls("il")}`}>
+                  <select id="il" name="il" value={formData.il ?? ""} onChange={(e) => { ilElleRef.current = true; hatayiTemizle("il"); setFormData((p) => ({ ...p, il: e.target.value || null })); }} disabled={loading} className={`${selectClass}${hataCls("il")}`}>
                     <option value="">Seçiniz</option>
                     {TR_ILLER.map((il) => (<option key={il} value={il}>{il}</option>))}
                   </select>
+                  {/* İş adından bulunduysa NEDEN bu il olduğu yazılır — kullanıcı körlemesine
+                      kaydetmesin, yanlışsa kutudan değiştirsin. */}
+                  {ilOnerisi && formData.il === ilOnerisi.il && !ilElleRef.current && (
+                    <p className="text-[11px] text-sky-700">
+                      İş adındaki <b>{ilOnerisi.kelime}</b> {ilOnerisi.kaynak === "ilce" ? "ilçesinden" : "ilinden"} bulundu — yanlışsa değiştirin.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>İş Tanımları <span className="text-red-500">*</span></Label>
